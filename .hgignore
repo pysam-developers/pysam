@@ -1,0 +1,7 @@
+syntax: glob
+*~
+*#
+
+syntax: regexp
+/doc/_build/
+^/build
