@@ -11,6 +11,8 @@ PAPEROPT_a4     = -D latex_paper_size=a4
 PAPEROPT_letter = -D latex_paper_size=letter
 ALLSPHINXOPTS   = -d _build/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) .
 
+DIR_PUBLISH=/home/andreas/public_html/documentation/samtools
+
 .PHONY: help clean html dirhtml pickle json htmlhelp qthelp latex changes linkcheck doctest
 
 help:
@@ -25,6 +27,7 @@ help:
 	@echo "  changes   to make an overview of all changed/added/deprecated items"
 	@echo "  linkcheck to check all external links for integrity"
 	@echo "  doctest   to run all doctests embedded in the documentation (if enabled)"
+	@echo "  publish   to copy the HTML documentation to the server."
 
 clean:
 	-rm -rf _build/*
@@ -86,3 +89,8 @@ doctest:
 	$(SPHINXBUILD) -b doctest $(ALLSPHINXOPTS) _build/doctest
 	@echo "Testing of doctests in the sources finished, look at the " \
 	      "results in _build/doctest/output.txt."
+
+publish:
+	rm -rf $(DIR_PUBLISH)
+	mkdir -p $(DIR_PUBLISH)
+	cp -r _build/html/* $(DIR_PUBLISH)

@@ -31,6 +31,8 @@ cdef extern from "string.h":
   char *strdup(char *)
   char *strcat(char *,char *)
 
+
+
 cdef extern from "bam.h":
 
   # IF _IOLIB=2, bamFile = BGZF, see bgzf.h
@@ -39,18 +41,43 @@ cdef extern from "bam.h":
   ctypedef int int64_t
   ctypedef int int32_t
   ctypedef int uint32_t
+  ctypedef int uint8_t
+  ctypedef int uint64_t
 
   ctypedef struct tamFile:
-    pass
+      pass
 
   ctypedef struct bamFile:
-    pass
+      pass
 
-  ctypedef struct bam_pileup1_t:
-    pass
+  ctypedef struct bam1_core_t:
+      int32_t tid 
+      int32_t pos
+      uint32_t bin
+      uint32_t qual
+      uint32_t l_qname
+      uint32_t flag
+      uint32_t n_cigar
+      int32_t l_qseq
+      int32_t mtid 
+      int32_t mpos 
+      int32_t isize
 
   ctypedef struct bam1_t:
-    pass
+    bam1_core_t core
+    int l_aux
+    int data_len
+    int m_data
+    uint8_t *data
+
+  ctypedef struct bam_pileup1_t:
+      bam1_t *b 
+      int32_t qpos 
+      int indel
+      int level
+      uint32_t is_del
+      uint32_t is_head
+      uint32_t is_tail
 
   ctypedef int (*bam_pileup_f)(uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, void *data)
 
@@ -66,16 +93,22 @@ cdef extern from "bam.h":
      char *text
 
   ctypedef struct bam_index_t:
-    pass
+      pass
 
   ctypedef struct bam_plbuf_t:
-    pass
+      pass
 
   bamFile razf_dopen(int data_fd, char *mode)
+
+  int64_t bam_seek( bamFile fp, uint64_t voffset, int where)
+
+  int64_t bam_tell( bamFile fp )
 
   bam_index_t *bam_index_load(char *f )
 
   void bam_index_destroy(bam_index_t *idx)
+
+  void bam_destroy1( bam1_t * b) 
 
   int bam_parse_region(bam_header_t *header, char *str, int *ref_id, int *begin, int *end)
 
@@ -87,10 +120,11 @@ cdef extern from "bam.h":
 
   void bam_plbuf_destroy(bam_plbuf_t *buf)
 
+  int bam_read1(bamFile fp, bam1_t *b)
 
 cdef extern from "sam.h":
 
-  cdef struct samfile_t_un:
+  ctypedef struct samfile_t_un:
     tamFile tamr
     bamFile bam
     FILE *tamw
@@ -106,6 +140,26 @@ cdef extern from "sam.h":
 
   void samclose(samfile_t *fp)
 
+  int samread(samfile_t *fp, bam1_t *b)
 
+  int samwrite(samfile_t *fp, bam1_t *b)
+
+cdef extern from "pysam_util.h":
+
+    ctypedef struct pair64_t:
+        uint64_t u
+        uint64_t v
+
+    int pysam_bam_fetch_init(bamFile fp, bam_index_t *idx, int tid, int beg, int end, pair64_t ** offp )
+
+    int pysam_bam_fetch_is_overlap(uint32_t beg, uint32_t end, bam1_t *b)
+
+    int pysam_bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf, int cont)
+
+    int pysam_get_pos( bam_plbuf_t *buf)
+
+    int pysam_get_tid( bam_plbuf_t *buf)
+
+    bam_pileup1_t * pysam_get_pileup( bam_plbuf_t *buf)
 
 

@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 pysam: samtools interface for python
-=============================
+====================================
 
 :Author: Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Leo Goodstad
 :Date: |today|
@@ -17,26 +17,22 @@ methods.
 This module provides a low-level wrapper around the samtools_ C-API using `cython`_
 and a high-level API for convenient access to the data in *SAM/BAM* formatted files.
 
-Usage
------
-
-.. TODO::
-   add usage
-
-API
----
-
-Contents:
+Contents
+--------
 
 .. toctree::
    :maxdepth: 2
 
-.. automodule:: pysam
-   :members:
-   :undoc-members:
+   usage.rst
+   glossary.rst
+   api.rst
+
 
 Indices and tables
 ------------------
+
+Contents:
+
 
 * :ref:`genindex`
 * :ref:`modindex`

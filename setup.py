@@ -51,6 +51,7 @@ pysam = Extension(
       "bam_pileup.c",
       "bam_lpileup.c",
       "bam_md.c",
+      "pysam_util.c",
       "glf.c",
       "razf.c",
       "faidx.c",
