@@ -19,3 +19,16 @@ print "###########################"
 iter = pysam.IteratorColumn( samfile, "seq1:10-20")
 for x in iter: print str(x)
 
+class Counter:
+    mCounts = 0
+    def __call__(self, alignment):
+        self.mCounts += 1
+
+c = Counter()
+samfile.fetch( "seq1:10-20", c )
+print "counts=", c.mCounts
+
+print samfile.getTarget( 0 )
+print samfile.getTarget( 1 )
+
+

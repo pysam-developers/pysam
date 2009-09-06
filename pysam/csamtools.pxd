@@ -18,6 +18,12 @@ cdef extern from "stdio.h":
   ctypedef struct FILE:
     pass
   FILE *fopen(char *,char *)
+  FILE *freopen(char *path, char *mode, FILE *stream)
+  int fileno(FILE *stream)
+  int dup2(int oldfd, int newfd)
+  int fflush(FILE *stream)
+
+  FILE * stderr
   int fclose(FILE *)
   int sscanf(char *str,char *fmt,...)
   int sprintf(char *str,char *fmt,...)
@@ -31,7 +37,8 @@ cdef extern from "string.h":
   char *strdup(char *)
   char *strcat(char *,char *)
 
-
+cdef extern from "razf.h":
+  pass
 
 cdef extern from "bam.h":
 
@@ -122,6 +129,8 @@ cdef extern from "bam.h":
 
   int bam_read1(bamFile fp, bam1_t *b)
 
+  bam_header_t *bam_header_read( bamFile fp )
+
 cdef extern from "sam.h":
 
   ctypedef struct samfile_t_un:
@@ -162,4 +171,4 @@ cdef extern from "pysam_util.h":
 
     bam_pileup1_t * pysam_get_pileup( bam_plbuf_t *buf)
 
-
+    int pysam_dispatch(int argc, char *argv[] )

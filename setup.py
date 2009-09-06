@@ -16,10 +16,13 @@ modifications include:
 
 """\
 
-import os
-import sys
+import os, sys, glob, shutil
 from distutils.core import setup, Extension
 from Pyrex.Distutils import build_ext
+
+samtools_src = "/home/andreas/samtools-0.1.6"
+samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
+samtools_dest = os.path.abspath( "samtools" )
 
 name = "pysam"
 version = "0.1"
@@ -37,35 +40,31 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
+# copy samtools source
+cfiles = glob.glob( os.path.join( samtools_src, "*.c" ) )
+hfiles = glob.glob( os.path.join( samtools_src, "*.h" ) )
+for p in cfiles + hfiles:
+   f = os.path.basename(p)
+   if f in samtools_exclude: continue
+   if os.path.exists( os.path.join( samtools_dest, f )): continue
+   shutil.copy( p, samtools_dest )
+
 pysam = Extension(
     "pysam/csamtools",                   # name of extension
-    [ "pysam/csamtools.pyx",] + \
-    [ "pysam/%s" % x for x in [ 
-      "bgzf.c",
-      "kstring.c",
-      "bam_aux.c",
-      "bam.c",
-      "bam_import.c",
-      "sam.c",
-      "bam_index.c",
-      "bam_pileup.c",
-      "bam_lpileup.c",
-      "bam_md.c",
-      "pysam_util.c",
-      "glf.c",
-      "razf.c",
-      "faidx.c",
-      "knetfile.c",
-      "bam_sort.c" ]],
-      library_dirs=[],
-      libraries=[ "z", ],
-      language="c",
+    [ "pysam/csamtools.pyx",]  +\
+       [ "pysam/%s" % x for x in (
+             "pysam_util.c", )] +\
+       glob.glob( os.path.join( "samtools", "*.c" ) ),
+    library_dirs=[],
+    include_dirs=[ "samtools", ],
+    libraries=[ "z", ],
+    language="c",
     )
 
 metadata = {
     'name': name,
     'version': version,
-    'description': "NCL", 
+    'description': "pysam", 
     'long_description': __doc__,
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",

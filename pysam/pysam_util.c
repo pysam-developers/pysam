@@ -35,8 +35,6 @@ struct __bam_index_t
   bam_lidx_t *index2;
 };
 
-
-
 static inline int reg2bins(uint32_t beg, uint32_t end, uint16_t list[MAX_BIN])
 {
 	int i = 0, k;
@@ -310,7 +308,6 @@ int pysam_bam_plbuf_push(const bam1_t *b, bam_plbuf_t *buf, int cont)
   return 0;
 }
 
-
 int pysam_get_pos( const bam_plbuf_t *buf) 
 {
   return buf->pos;
@@ -326,7 +323,52 @@ bam_pileup1_t * pysam_get_pileup( const bam_plbuf_t *buf)
 {
   return buf->pu;
 }
-  
 
+// pysam dispatch function to emulate the samtools
+// command line within python.
+// taken from the main function in bamtk.c
+// add code to reset getopt
+int pysam_dispatch(int argc, char *argv[] )
+{
+
+#ifdef _WIN32
+  setmode(fileno(stdout), O_BINARY);
+  setmode(fileno(stdin),  O_BINARY);
+#ifdef _USE_KNETFILE
+  knet_win32_init();
+#endif
+#endif
+
+  // reset getop
+  optind = 1;
+
+  if (argc < 2) return 1;
+
+  if (strcmp(argv[1], "view") == 0) return main_samview(argc-1, argv+1);
+  else if (strcmp(argv[1], "import") == 0) return main_import(argc-1, argv+1);
+  else if (strcmp(argv[1], "pileup") == 0) return bam_pileup(argc-1, argv+1);
+  else if (strcmp(argv[1], "merge") == 0) return bam_merge(argc-1, argv+1);
+  else if (strcmp(argv[1], "sort") == 0) return bam_sort(argc-1, argv+1);
+  else if (strcmp(argv[1], "index") == 0) return bam_index(argc-1, argv+1);
+  else if (strcmp(argv[1], "faidx") == 0) return faidx_main(argc-1, argv+1);
+  else if (strcmp(argv[1], "fixmate") == 0) return bam_mating(argc-1, argv+1);
+  else if (strcmp(argv[1], "rmdup") == 0) return bam_rmdup(argc-1, argv+1);
+  else if (strcmp(argv[1], "rmdupse") == 0) return bam_rmdupse(argc-1, argv+1);
+  else if (strcmp(argv[1], "glfview") == 0) return glf3_view_main(argc-1, argv+1);
+  else if (strcmp(argv[1], "flagstat") == 0) return bam_flagstat(argc-1, argv+1);
+  //  else if (strcmp(argv[1], "tagview") == 0) return bam_tagview(argc-1, argv+1);
+  else if (strcmp(argv[1], "calmd") == 0) return bam_fillmd(argc-1, argv+1);
+  else if (strcmp(argv[1], "fillmd") == 0) return bam_fillmd(argc-1, argv+1);
+
+#if _CURSES_LIB != 0
+  else if (strcmp(argv[1], "tview") == 0) return bam_tview_main(argc-1, argv+1);
+#endif
+  else 
+    {
+      fprintf(stderr, "[main] unrecognized command '%s'\n", argv[1]);
+      return 1;
+    }
+  return 0;
+}
 
 

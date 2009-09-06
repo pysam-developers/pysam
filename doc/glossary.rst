@@ -35,4 +35,7 @@ Glossary
    fetching
       Retrieving all mapped reads mapped to a :term:`region`.
 
+   tid
+      A :term:`targed` id.
+
 .. _samtools: http://samtools.sourceforge.net

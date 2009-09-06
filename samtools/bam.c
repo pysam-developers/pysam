@@ -6,6 +6,7 @@
 #include "kstring.h"
 
 int bam_is_be = 0;
+char *bam_flag2char_table = "pPuUrR12sfd\0\0\0\0\0";
 
 /**************************
  * CIGAR related routines *
@@ -90,7 +91,11 @@ bam_header_t *bam_header_read(bamFile fp)
 {
 	bam_header_t *header;
 	char buf[4];
-	int32_t i, name_len;
+	int32_t i = 1, name_len;
+	// check EOF
+	i = bgzf_check_EOF(fp);
+	if (i < 0) fprintf(stderr, "[bam_header_read] read from pipe; skip EOF checking.\n");
+	else if (i == 0) fprintf(stderr, "[bam_header_read] EOF marker is absent.\n");
 	// read "BAM1"
 	if (bam_read(fp, buf, 4) != 4) return 0;
 	if (strncmp(buf, "BAM\001", 4)) {
@@ -236,7 +241,7 @@ int bam_write1(bamFile fp, const bam1_t *b)
 	return bam_write1_core(fp, &b->core, b->data_len, b->data);
 }
 
-char *bam_format1(const bam_header_t *header, const bam1_t *b)
+char *bam_format1_core(const bam_header_t *header, const bam1_t *b, int of)
 {
 	uint8_t *s = bam1_seq(b), *t = bam1_qual(b);
 	int i;
@@ -244,7 +249,15 @@ char *bam_format1(const bam_header_t *header, const bam1_t *b)
 	kstring_t str;
 	str.l = str.m = 0; str.s = 0;
 
-	ksprintf(&str, "%s\t%d\t", bam1_qname(b), c->flag);
+	ksprintf(&str, "%s\t", bam1_qname(b));
+	if (of == BAM_OFDEC) ksprintf(&str, "%d\t", c->flag);
+	else if (of == BAM_OFHEX) ksprintf(&str, "0x%x\t", c->flag);
+	else { // BAM_OFSTR
+		for (i = 0; i < 16; ++i)
+			if ((c->flag & 1<<i) && bam_flag2char_table[i])
+				kputc(bam_flag2char_table[i], &str);
+		kputc('\t', &str);
+	}
 	if (c->tid < 0) kputs("*\t", &str);
 	else ksprintf(&str, "%s\t", header->target_name[c->tid]);
 	ksprintf(&str, "%d\t%d\t", c->pos + 1, c->qual);
@@ -258,10 +271,12 @@ char *bam_format1(const bam_header_t *header, const bam1_t *b)
 	else if (c->mtid == c->tid) kputs("=\t", &str);
 	else ksprintf(&str, "%s\t", header->target_name[c->mtid]);
 	ksprintf(&str, "%d\t%d\t", c->mpos + 1, c->isize);
-	for (i = 0; i < c->l_qseq; ++i) kputc(bam_nt16_rev_table[bam1_seqi(s, i)], &str);
-	kputc('\t', &str);
-	if (t[0] == 0xff) kputc('*', &str);
-	else for (i = 0; i < c->l_qseq; ++i) kputc(t[i] + 33, &str);
+	if (c->l_qseq) {
+		for (i = 0; i < c->l_qseq; ++i) kputc(bam_nt16_rev_table[bam1_seqi(s, i)], &str);
+		kputc('\t', &str);
+		if (t[0] == 0xff) kputc('*', &str);
+		else for (i = 0; i < c->l_qseq; ++i) kputc(t[i] + 33, &str);
+	} else ksprintf(&str, "*\t*");
 	s = bam1_aux(b);
 	while (s < b->data + b->data_len) {
 		uint8_t type, key[2];
@@ -280,6 +295,11 @@ char *bam_format1(const bam_header_t *header, const bam1_t *b)
 		else if (type == 'Z' || type == 'H') { ksprintf(&str, "%c:", type); while (*s) kputc(*s++, &str); ++s; }
 	}
 	return str.s;
+}
+
+char *bam_format1(const bam_header_t *header, const bam1_t *b)
+{
+	return bam_format1_core(header, b, BAM_OFDEC);
 }
 
 void bam_view1(const bam_header_t *header, const bam1_t *b)

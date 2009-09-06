@@ -78,6 +78,10 @@ static inline int resolve_cigar(bam_pileup1_t *p, uint32_t pos)
 						int op_next = cigar&BAM_CIGAR_MASK; // next CIGAR operation
 						if (op_next == BAM_CDEL) p->indel = -(int32_t)(cigar>>BAM_CIGAR_SHIFT); // del
 						else if (op_next == BAM_CINS) p->indel = cigar>>BAM_CIGAR_SHIFT; // ins
+						if (op_next == BAM_CDEL || op_next == BAM_CINS) {
+							if (k + 2 < c->n_cigar) op_next = bam1_cigar(b)[k+2]&BAM_CIGAR_MASK;
+							else p->is_tail = 1;
+						}
 						if (op_next == BAM_CSOFT_CLIP || op_next == BAM_CREF_SKIP || op_next == BAM_CHARD_CLIP)
 							p->is_tail = 1; // tail
 					} else p->is_tail = 1; // this is the last operation; set tail
@@ -166,9 +170,13 @@ int bam_plbuf_push(const bam1_t *b, bam_plbuf_t *buf)
 		if (b->core.flag & buf->flag_mask) return 0;
 		bam_copy1(&buf->tail->b, b);
 		buf->tail->beg = b->core.pos; buf->tail->end = bam_calend(&b->core, bam1_cigar(b));
-		if (!(b->core.tid >= buf->max_tid || (b->core.tid == buf->max_tid && buf->tail->beg >= buf->max_pos))) {
-			fprintf(stderr, "[bam_pileup_core] the input is not sorted. Abort!\n");
-			abort();
+		if (b->core.tid < buf->max_tid) {
+			fprintf(stderr, "[bam_pileup_core] the input is not sorted (chromosomes out of order)\n");
+			return -1;
+		}
+		if ((b->core.tid == buf->max_tid) && (buf->tail->beg < buf->max_pos)) {
+			fprintf(stderr, "[bam_pileup_core] the input is not sorted (reads out of order)\n");
+			return -1;
 		}
 		buf->max_tid = b->core.tid; buf->max_pos = buf->tail->beg;
 		if (buf->tail->end > buf->pos || buf->tail->b.core.tid > buf->tid) {
@@ -210,5 +218,21 @@ int bam_plbuf_push(const bam1_t *b, bam_plbuf_t *buf)
 		} else ++buf->pos; // scan contiguously
 		if (buf->is_eof && buf->head->next == 0) break;
 	}
+	return 0;
+}
+
+int bam_pileup_file(bamFile fp, int mask, bam_pileup_f func, void *func_data)
+{
+	bam_plbuf_t *buf;
+	int ret;
+	bam1_t *b;
+	b = bam_init1();
+	buf = bam_plbuf_init(func, func_data);
+	bam_plbuf_set_mask(buf, mask);
+	while ((ret = bam_read1(fp, b)) >= 0)
+		bam_plbuf_push(b, buf);
+	bam_plbuf_push(0, buf);
+	bam_plbuf_destroy(buf);
+	bam_destroy1(b);
 	return 0;
 }

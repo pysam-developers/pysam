@@ -45,21 +45,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define _IOLIB 2
-
-#if _IOLIB == 1 && !defined(_NO_RAZF)
-#define BAM_TRUE_OFFSET
-#include "razf.h"
-/*! @abstract BAM file handler */
-typedef RAZF *bamFile;
-#define bam_open(fn, mode) razf_open(fn, mode)
-#define bam_dopen(fd, mode) razf_dopen(fd, mode)
-#define bam_close(fp) razf_close(fp)
-#define bam_read(fp, buf, size) razf_read(fp, buf, size)
-#define bam_write(fp, buf, size) razf_write(fp, buf, size)
-#define bam_tell(fp) razf_tell(fp)
-#define bam_seek(fp, pos, dir) razf_seek(fp, pos, dir)
-#elif _IOLIB == 2
+#ifndef BAM_LITE
 #define BAM_VIRTUAL_OFFSET16
 #include "bgzf.h"
 /*! @abstract BAM file handler */
@@ -71,18 +57,15 @@ typedef BGZF *bamFile;
 #define bam_write(fp, buf, size) bgzf_write(fp, buf, size)
 #define bam_tell(fp) bgzf_tell(fp)
 #define bam_seek(fp, pos, dir) bgzf_seek(fp, pos, dir)
-#elif _IOLIB == 3
-#define BAM_VIRTUAL_OFFSET16
-#include "razf.h"
-/*! @abstract BAM file handler */
-typedef RAZF *bamFile;
-#define bam_open(fn, mode) razf_open2(fn, mode)
-#define bam_dopen(fd, mode) razf_dopen2(fd, mode)
-#define bam_close(fp) razf_close(fp)
-#define bam_read(fp, buf, size) razf_read(fp, buf, size)
-#define bam_write(fp, buf, size) razf_write(fp, buf, size)
-#define bam_tell(fp) razf_tell2(fp)
-#define bam_seek(fp, pos, dir) razf_seek2(fp, pos, dir)
+#else
+#define BAM_TRUE_OFFSET
+#include <zlib.h>
+typedef gzFile bamFile;
+#define bam_open(fn, mode) gzopen(fn, mode)
+#define bam_dopen(fd, mode) gzdopen(fd, mode)
+#define bam_close(fp) gzclose(fp)
+#define bam_read(fp, buf, size) gzread(fp, buf, size)
+/* no bam_write/bam_tell/bam_seek() here */
 #endif
 
 /*! @typedef
@@ -129,6 +112,10 @@ typedef struct {
 #define BAM_FQCFAIL      512
 /*! @abstract optical or PCR duplicate */
 #define BAM_FDUP        1024
+
+#define BAM_OFDEC          0
+#define BAM_OFHEX          1
+#define BAM_OFSTR          2
 
 /*! @abstract defautl mask for pileup */
 #define BAM_DEF_MASK (BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP)
@@ -448,6 +435,8 @@ extern "C" {
 	 */
 	char *bam_format1(const bam_header_t *header, const bam1_t *b);
 
+	char *bam_format1_core(const bam_header_t *header, const bam1_t *b, int of);
+
 	/*! @typedef
 	  @abstract Structure for one alignment covering the pileup position.
 	  @field  b      pointer to the alignment
@@ -526,6 +515,8 @@ extern "C" {
 	 */
 	int bam_plbuf_push(const bam1_t *b, bam_plbuf_t *buf);
 
+	int bam_pileup_file(bamFile fp, int mask, bam_pileup_f func, void *func_data);
+
 	struct __bam_lplbuf_t;
 	typedef struct __bam_lplbuf_t bam_lplbuf_t;
 
@@ -539,9 +530,6 @@ extern "C" {
 
 	/*! @abstract  bam_plbuf_push() equivalent with level calculated. */
 	int bam_lplbuf_push(const bam1_t *b, bam_lplbuf_t *buf);
-
-	/*! @abstract  bam_plbuf_file() equivalent with level calculated. */
-	int bam_lpileup_file(bamFile fp, int mask, bam_pileup_f func, void *func_data);
 
 	struct __bam_index_t;
 	typedef struct __bam_index_t bam_index_t;
@@ -622,8 +610,8 @@ extern "C" {
 	char bam_aux2A(const uint8_t *s);
 	char *bam_aux2Z(const uint8_t *s);
 
+	int bam_aux_del(bam1_t *b, uint8_t *s);
 	void bam_aux_append(bam1_t *b, const char tag[2], char type, int len, uint8_t *data);
-
 	uint8_t *bam_aux_get_core(bam1_t *b, const char tag[2]); // an alias of bam_aux_get()
 
 	/*!  

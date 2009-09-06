@@ -1,13 +1,25 @@
-/*
- * The Broad Institute
- * SOFTWARE COPYRIGHT NOTICE AGREEMENT
- * This software and its documentation are copyright 2008 by the
- * Broad Institute/Massachusetts Institute of Technology. All rights are reserved.
- *
- * This software is supplied without any warranty or guaranteed support whatsoever.
- * Neither the Broad Institute nor MIT can be responsible for its use, misuse,
- * or functionality.
- */
+/* The MIT License
+
+   Copyright (c) 2008 Broad Institute / Massachusetts Institute of Technology
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+   THE SOFTWARE.
+*/
 
 /*
   2009-06-29 by lh3: cache recent uncompressed blocks.
@@ -31,10 +43,15 @@ typedef struct {
 } cache_t;
 KHASH_MAP_INIT_INT64(cache, cache_t)
 
+#if defined(_WIN32) || defined(_MSC_VER)
+#define ftello(fp) ftell(fp)
+#define fseeko(fp, offset, whence) fseek(fp, offset, whence)
+#else
 extern off_t ftello(FILE *stream);
 extern int fseeko(FILE *stream, off_t offset, int whence);
+#endif
 
-typedef int8_t byte;
+typedef int8_t bgzf_byte_t;
 
 static const int DEFAULT_BLOCK_SIZE = 64 * 1024;
 static const int MAX_BLOCK_SIZE = 64 * 1024;
@@ -81,9 +98,9 @@ packInt32(uint8_t* buffer, uint32_t value)
     buffer[3] = value >> 24;
 }
 
-inline
+static inline
 int
-min(int x, int y)
+bgzf_min(int x, int y)
 {
     return (x < y) ? x : y;
 }
@@ -169,14 +186,20 @@ bgzf_open(const char* __restrict path, const char* __restrict mode)
 		fp->open_mode = 'r';
 		fp->x.fpr = file;
 #else
-		int oflag = O_RDONLY;
-		int fd = open(path, oflag);
+		int fd, oflag = O_RDONLY;
+#ifdef _WIN32
+		oflag |= O_BINARY;
+#endif
+		fd = open(path, oflag);
 		if (fd == -1) return 0;
         fp = open_read(fd);
 #endif
     } else if (mode[0] == 'w' || mode[0] == 'W') {
-		int oflag = O_WRONLY | O_CREAT | O_TRUNC;
-		int fd = open(path, oflag, 0644);
+		int fd, oflag = O_WRONLY | O_CREAT | O_TRUNC;
+#ifdef _WIN32
+		oflag |= O_BINARY;
+#endif
+		fd = open(path, oflag, 0644);
 		if (fd == -1) return 0;
         fp = open_write(fd, strstr(mode, "u")? 1 : 0);
     }
@@ -206,7 +229,7 @@ deflate_block(BGZF* fp, int block_length)
     // Deflate the block in fp->uncompressed_block into fp->compressed_block.
     // Also adds an extra field that stores the compressed block length.
 
-    byte* buffer = fp->compressed_block;
+    bgzf_byte_t* buffer = fp->compressed_block;
     int buffer_size = fp->compressed_block_size;
 
     // Init gzip header
@@ -337,10 +360,10 @@ inflate_block(BGZF* fp, int block_length)
 
 static
 int
-check_header(const byte* header)
+check_header(const bgzf_byte_t* header)
 {
     return (header[0] == GZIP_ID1 &&
-            header[1] == (byte) GZIP_ID2 &&
+            header[1] == (bgzf_byte_t) GZIP_ID2 &&
             header[2] == Z_DEFLATED &&
             (header[3] & FLG_FEXTRA) != 0 &&
             unpackInt16((uint8_t*)&header[10]) == BGZF_XLEN &&
@@ -410,7 +433,7 @@ static
 int
 read_block(BGZF* fp)
 {
-    byte header[BLOCK_HEADER_LENGTH];
+    bgzf_byte_t header[BLOCK_HEADER_LENGTH];
 	int size = 0;
 #ifdef _USE_KNETFILE
     int64_t block_address = knet_tell(fp->x.fpr);
@@ -435,7 +458,7 @@ read_block(BGZF* fp)
         return -1;
     }
     int block_length = unpackInt16((uint8_t*)&header[16]) + 1;
-    byte* compressed_block = (byte*) fp->compressed_block;
+    bgzf_byte_t* compressed_block = (bgzf_byte_t*) fp->compressed_block;
     memcpy(compressed_block, header, BLOCK_HEADER_LENGTH);
     int remaining = block_length - BLOCK_HEADER_LENGTH;
 #ifdef _USE_KNETFILE
@@ -474,7 +497,7 @@ bgzf_read(BGZF* fp, void* data, int length)
     }
 
     int bytes_read = 0;
-    byte* output = data;
+    bgzf_byte_t* output = data;
     while (bytes_read < length) {
         int available = fp->block_length - fp->block_offset;
         if (available <= 0) {
@@ -486,8 +509,8 @@ bgzf_read(BGZF* fp, void* data, int length)
                 break;
             }
         }
-        int copy_length = min(length-bytes_read, available);
-        byte* buffer = fp->uncompressed_block;
+        int copy_length = bgzf_min(length-bytes_read, available);
+        bgzf_byte_t* buffer = fp->uncompressed_block;
         memcpy(output, buffer + fp->block_offset, copy_length);
         fp->block_offset += copy_length;
         output += copy_length;
@@ -540,12 +563,12 @@ bgzf_write(BGZF* fp, const void* data, int length)
         fp->uncompressed_block = malloc(fp->uncompressed_block_size);
     }
 
-    const byte* input = data;
+    const bgzf_byte_t* input = data;
     int block_length = fp->uncompressed_block_size;
     int bytes_written = 0;
     while (bytes_written < length) {
-        int copy_length = min(block_length - fp->block_offset, length - bytes_written);
-        byte* buffer = fp->uncompressed_block;
+        int copy_length = bgzf_min(block_length - fp->block_offset, length - bytes_written);
+        bgzf_byte_t* buffer = fp->uncompressed_block;
         memcpy(buffer + fp->block_offset, input, copy_length);
         fp->block_offset += copy_length;
         input += copy_length;
@@ -566,6 +589,14 @@ bgzf_close(BGZF* fp)
         if (flush_block(fp) != 0) {
             return -1;
         }
+		{ // add an empty block
+			int count, block_length = deflate_block(fp, 0);
+#ifdef _USE_KNETFILE
+			count = fwrite(fp->compressed_block, 1, block_length, fp->x.fpw);
+#else
+			count = fwrite(fp->compressed_block, 1, block_length, fp->file);
+#endif
+		}
 #ifdef _USE_KNETFILE
         if (fflush(fp->x.fpw) != 0) {
 #else
@@ -605,6 +636,25 @@ void bgzf_set_cache_size(BGZF *fp, int cache_size)
 	if (fp) fp->cache_size = cache_size;
 }
 
+int bgzf_check_EOF(BGZF *fp)
+{
+	static uint8_t magic[28] = "\037\213\010\4\0\0\0\0\0\377\6\0\102\103\2\0\033\0\3\0\0\0\0\0\0\0\0\0";
+	uint8_t buf[28];
+	off_t offset;
+#ifdef _USE_KNETFILE
+	offset = knet_tell(fp->x.fpr);
+	if (knet_seek(fp->x.fpr, -28, SEEK_END) != 0) return -1;
+	knet_read(fp->x.fpr, buf, 28);
+	knet_seek(fp->x.fpr, offset, SEEK_SET);
+#else
+	offset = ftello(fp->file);
+	if (fseeko(fp->file, -28, SEEK_END) != 0) return -1;
+	fread(buf, 1, 28, fp->file);
+	fseeko(fp->file, offset, SEEK_SET);
+#endif
+	return (memcmp(magic, buf, 28) == 0)? 1 : 0;
+}
+
 int64_t
 bgzf_seek(BGZF* fp, int64_t pos, int where)
 {
@@ -631,4 +681,3 @@ bgzf_seek(BGZF* fp, int64_t pos, int where)
     fp->block_offset = block_offset;
     return 0;
 }
-

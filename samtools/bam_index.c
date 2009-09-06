@@ -4,7 +4,9 @@
 #include "khash.h"
 #include "ksort.h"
 #include "bam_endian.h"
+#ifdef _USE_KNETFILE
 #include "knetfile.h"
+#endif
 
 /*!
   @header
@@ -328,7 +330,7 @@ bam_index_t *bam_index_load_local(const char *_fn)
 	FILE *fp;
 	char *fnidx, *fn;
 
-	if (strstr(_fn, "ftp://") == _fn) {
+	if (strstr(_fn, "ftp://") == _fn || strstr(_fn, "http://") == _fn) {
 		const char *p;
 		int l = strlen(_fn);
 		for (p = _fn + l - 1; p >= _fn; --p)
@@ -354,6 +356,7 @@ bam_index_t *bam_index_load_local(const char *_fn)
 	} else return 0;
 }
 
+#ifdef _USE_KNETFILE
 static void download_from_remote(const char *url)
 {
 	const int buf_size = 1 * 1024 * 1024;
@@ -362,7 +365,7 @@ static void download_from_remote(const char *url)
 	uint8_t *buf;
 	knetFile *fp_remote;
 	int l;
-	if (strstr(url, "ftp://") != url) return;
+	if (strstr(url, "ftp://") != url && strstr(url, "http://") != url) return;
 	l = strlen(url);
 	for (fn = (char*)url + l - 1; fn >= url; --fn)
 		if (*fn == '/') break;
@@ -384,12 +387,18 @@ static void download_from_remote(const char *url)
 	fclose(fp);
 	knet_close(fp_remote);
 }
+#else
+static void download_from_remote(const char *url)
+{
+	return;
+}
+#endif
 
 bam_index_t *bam_index_load(const char *fn)
 {
 	bam_index_t *idx;
 	idx = bam_index_load_local(fn);
-	if (idx == 0 && strstr(fn, "ftp://") == fn) {
+	if (idx == 0 && (strstr(fn, "ftp://") == fn || strstr(fn, "http://") == fn)) {
 		char *fnidx = calloc(strlen(fn) + 5, 1);
 		strcat(strcpy(fnidx, fn), ".bai");
 		fprintf(stderr, "[bam_index_load] attempting to download the remote index file.\n");

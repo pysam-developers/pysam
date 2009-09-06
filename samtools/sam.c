@@ -1,4 +1,6 @@
 #include <string.h>
+#include <unistd.h>
+#include "faidx.h"
 #include "sam.h"
 
 #define TYPE_BAM  1
@@ -75,6 +77,9 @@ samfile_t *samopen(const char *fn, const char *mode, const void *aux)
 			// open file
 			fp->x.tamw = strcmp(fn, "-")? fopen(fn, "w") : stdout;
 			if (fp->x.tamr == 0) goto open_err_ret;
+			if (strstr(mode, "X")) fp->type |= BAM_OFSTR<<2;
+			else if (strstr(mode, "x")) fp->type |= BAM_OFHEX<<2;
+			else fp->type |= BAM_OFDEC<<2;
 			// write header
 			if (strstr(mode, "h")) {
 				int i;
@@ -126,7 +131,7 @@ int samwrite(samfile_t *fp, const bam1_t *b)
 	if (fp == 0 || (fp->type & TYPE_READ)) return -1; // not open for writing
 	if (fp->type & TYPE_BAM) return bam_write1(fp->x.bam, b);
 	else {
-		char *s = bam_format1(fp->header, b);
+		char *s = bam_format1_core(fp->header, b, fp->type>>2&3);
 		int l = strlen(s);
 		fputs(s, fp->x.tamw); fputc('\n', fp->x.tamw);
 		free(s);
@@ -148,4 +153,24 @@ int sampileup(samfile_t *fp, int mask, bam_pileup_f func, void *func_data)
 	bam_plbuf_destroy(buf);
 	bam_destroy1(b);
 	return 0;
+}
+
+char *samfaipath(const char *fn_ref)
+{
+	char *fn_list = 0;
+	if (fn_ref == 0) return 0;
+	fn_list = calloc(strlen(fn_ref) + 5, 1);
+	strcat(strcpy(fn_list, fn_ref), ".fai");
+	if (access(fn_list, R_OK) == -1) { // fn_list is unreadable
+		if (access(fn_ref, R_OK) == -1) {
+			fprintf(stderr, "[samfaipath] fail to read file %s.\n", fn_ref);
+		} else {
+			fprintf(stderr, "[samfaipath] build FASTA index...\n");
+			if (fai_build(fn_ref) == -1) {
+				fprintf(stderr, "[samfaipath] fail to build FASTA index.\n");
+				free(fn_list); fn_list = 0;
+			}
+		}
+	}
+	return fn_list;
 }

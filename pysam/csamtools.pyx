@@ -18,7 +18,7 @@ DEF BAM_FUNMAP        =4
 ## @abstract the mate is unmapped */
 DEF BAM_FMUNMAP       =8
 ## @abstract the read is mapped to the reverse strand */
-DEF BAM_FREVERSE=16
+DEF BAM_FREVERSE      =16
 ## @abstract the mate is mapped to the reverse strand */
 DEF BAM_FMREVERSE     =32
 ## @abstract this is read1 */
@@ -64,12 +64,12 @@ cdef bam_index_t * openIndex( filename ):
 ## but I could not get the following to work, usually
 ## getting a "can not convert to Python object"
 ##   1. struct to dict conversion 
-##   2. using "cdef class Alignment" with __cinit__(self, bam1_t * )
+##   2. using "cdef class AlignedRead" with __cinit__(self, bam1_t * )
 DEF BAM_CIGAR_SHIFT=4
 DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
 
-cdef samtoolsToAlignment( dest, bam1_t * src ):
-    '''enter src into Alignment.'''
+cdef samtoolsToAlignedRead( dest, bam1_t * src ):
+    '''enter src into AlignedRead.'''
 
     dest.tid = src.core.tid
     dest.pos = src.core.pos
@@ -129,9 +129,9 @@ cdef samtoolsToAlignment( dest, bam1_t * src ):
 
     return dest
 
-cdef samtoolsToPiledAlignment( dest, bam_pileup1_t * src ):
-    '''fill a  PiledAlignment object from a bam_pileup1_t * object.'''
-    dest.alignment = samtoolsToAlignment( Alignment(), src.b )
+cdef samtoolsToPileupRead( dest, bam_pileup1_t * src ):
+    '''fill a  PileupRead object from a bam_pileup1_t * object.'''
+    dest.alignment = samtoolsToAlignedRead( AlignedRead(), src.b )
     dest.qpol = src.qpos
     dest.indel = src.indel
     dest.level = src.level
@@ -148,9 +148,9 @@ cdef samtoolsToPiledAlignment( dest, bam_pileup1_t * src ):
 cdef int fetch_callback( bam1_t *alignment, void *f):
     '''callback for bam_fetch. 
     
-    calls function in *f* with a new :class:`Alignment` object as parameter.
+    calls function in *f* with a new :class:`AlignedRead` object as parameter.
     '''
-    a = samtoolsToAlignment( Alignment(), alignment )
+    a = samtoolsToAlignedRead( AlignedRead(), alignment )
     (<object>f)(a)
 
 cdef int pileup_callback( uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, void *f):
@@ -170,14 +170,14 @@ cdef int pileup_callback( uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, 
         user provided data
     '''
 
-    p = Pileup()
+    p = PileupColumn()
     p.tid = tid
     p.pos = pos
     p.n = n
     pileups = []
 
     for x from 0 <= x < n:
-        pileups.append( samtoolsToPiledAlignment( PiledAlignment(), &(pl[x]) ) )
+        pileups.append( samtoolsToPileupRead( PileupRead(), &(pl[x]) ) )
     p.pileups = pileups
         
     (<object>f)(p)
@@ -198,11 +198,13 @@ cdef int pileup_fetch_callback( bam1_t *b, void *data):
 ## Public methods
 ######################################################################
 cdef class Samfile:
-    '''A sam file'''
+    '''A bam/sam file
+    '''
 
     cdef samfile_t * samfile
     cdef bam_index_t *index
     cdef char * filename
+    cdef bam_header_t * header
 
     def __cinit__(self):
        self.samfile = NULL
@@ -216,7 +218,8 @@ cdef class Samfile:
         return self.index != NULL
 
     def open( self, char * filename, char * mode ):
-        '''open sampfile. If an index exists, it will be opened as well.'''
+        '''open sampfile. If an index exists, it will be opened as well.
+        '''
 
         ## TODO: implement automatic indexing
 
@@ -233,6 +236,16 @@ cdef class Samfile:
             raise IOError("could not open index `%s` " % filename )
 
         self.filename = filename
+
+    def getTarget( self, tid ):
+        '''convert numerical :term:`tid` into target name.'''
+        if not 0 <= tid < self.samfile.header.n_targets:
+            raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
+        return self.samfile.header.target_name[tid]
+
+    def getNumTargets( self ):
+        '''return the number of targets in file.'''
+        return self.samfile.header.n_targets
 
     def fetch(self, region, callback ):
         '''fetch a :term:`region` from the samfile.
@@ -382,7 +395,7 @@ cdef class IteratorRow:
         ret = self.cnext()
 
         if ret > 0 :
-            return samtoolsToAlignment( Alignment(), self.b )
+            return samtoolsToAlignedRead( AlignedRead(), self.b )
         else:
             raise StopIteration
 
@@ -455,7 +468,7 @@ cdef class IteratorColumn:
         cdef bam_pileup1_t * pl
 
         if ret > 0 :
-            p = Pileup()
+            p = PileupColumn()
             p.tid = pysam_get_tid( self.buf )
             p.pos = pysam_get_pos( self.buf )
             p.n = self.n_pu
@@ -464,7 +477,7 @@ cdef class IteratorColumn:
             pileups = []
             
             for x from 0 <= x < p.n:
-                pileups.append( samtoolsToPiledAlignment( PiledAlignment(), &pl[x]) )
+                pileups.append( samtoolsToPileupRead( PileupRead(), &pl[x]) )
             p.pileups = pileups
 
             return p
@@ -474,7 +487,7 @@ cdef class IteratorColumn:
     def __dealloc__(self):
         bam_plbuf_destroy(self.buf);
 
-class Alignment(object):
+class AlignedRead(object):
     '''
     Python wrapper around an aligned read. The following
     fields are exported:
@@ -571,28 +584,29 @@ class Alignment(object):
     def _getfdup( self ): return (self.flag & BAM_FDUP) != 0
     is_duplicate = property( _getfdup, doc="true if optical or PCR duplicate" )
 
-class Pileup(object):
-    '''container for piled-up alignments.
+class PileupColumn(object):
+    '''A pileup column. A pileup column contains
+    all the reads that map to a certain target base.
 
     tid
         chromosome ID as is defined in the header
     pos
-        start coordinate of the alignment, 0-based
+        the target base coordinate (0-based)
     n
-        number of reads in mapped reads pileup
+        number of reads mapping to this column
     pileups
-        piled up alignments
+        list of reads (:class:`pysam.PileupRead`) aligned to this column
     '''
     def __str__(self):
         return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
             "\n" +\
             "\n".join( map(str, self.pileups) )
 
-class PiledAlignment(object):
-    '''A piled alignment.
+class PileupRead(object):
+    '''A read aligned to a column.
 
     alignment
-       a class:`Alignment` object of the aligned read
+       a :class:`pysam.AlignedRead` object of the aligned read
     qpos
        position of the read base at the pileup site, 0-based
     indel
@@ -607,7 +621,7 @@ class PiledAlignment(object):
         
         ## there must be an easier way to construct this class, but it won't accept
         ## a typed parameter.
-        self.alignment = kwargs.get( "alignment", Alignment() )
+        self.alignment = kwargs.get( "alignment", AlignedRead() )
         self.qpos = kwargs.get("qpos", 0)
         self.indel = kwargs.get("indel", 0)
         self.level = kwargs.get("level", 0)
@@ -618,5 +632,47 @@ class PiledAlignment(object):
     def __str__(self):
         return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )
 
-__all__ = ["Samfile", "IteratorRow", "IteratorColumn", "Alignment", "Pileup", "PiledAlignment" ]
+import tempfile, os
+
+def _samtools_dispatch( method, args = () ):
+    '''call ``method`` in samtools providing arguments in args.
+    '''
+
+    # redirect stderr to file
+    # save old stderr
+    cdef int stderr_n 
+    cdef int stderr_save_n
+
+    stderr_n = fileno( stderr )
+    dup2( stderr_n, stderr_save_n )
+
+    # open file and redirect into it
+    stderr_h, stderr_f = tempfile.mkstemp()
+    os.close(stderr_h)
+    cdef FILE * stderr_redirect 
+    stderr_redirect = freopen( stderr_f, "wb", stderr)
+
+    # do the function call to samtools
+    cdef char ** cargs
+    cdef int i, n, retval
+
+    n = len(args)
+    # allocate two more for first (dummy) argument (contains command)
+    cargs = <char**>calloc( n+2, sizeof( char *) )
+    cargs[0] = "samtools"
+    cargs[1] = method
+    for i from 0 <= i < n: cargs[i+2] = args[i]
+    retval = pysam_dispatch(n+2, cargs)
+    free( cargs )
+
+    # capture stderr (flush, but do not close)
+    fflush( stderr_redirect )
+    output = open( stderr_f, "r").readlines()
+    
+    dup2( stderr_save_n, stderr_n )
+    return retval, output
+
+__all__ = ["Samfile", "IteratorRow", "IteratorColumn", "AlignedRead", "PileupColumn", "PileupRead" ]
+
+               
 

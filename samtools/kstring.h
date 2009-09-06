@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
@@ -18,6 +19,14 @@ typedef struct __kstring_t {
 
 int ksprintf(kstring_t *s, const char *fmt, ...);
 int ksplit_core(char *s, int delimiter, int *_max, int **_offsets);
+
+// calculate the auxiliary array, allocated by calloc()
+int *ksBM_prep(const uint8_t *pat, int m);
+
+/* Search pat in str and returned the list of matches. The size of the
+ * list is returned as n_matches. _prep is the array returned by
+ * ksBM_prep(). If it is a NULL pointer, ksBM_prep() will be called. */
+int *ksBM_search(const uint8_t *str, int n, const uint8_t *pat, int m, int *_prep, int *n_matches);
 
 static inline int kputsn(const char *p, int l, kstring_t *s)
 {

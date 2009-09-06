@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#endif
 #include "kstring.h"
 #include "bam.h"
 #include "kseq.h"
@@ -34,6 +37,25 @@ unsigned char bam_nt16_table[256] = {
 	15,15,15,15, 15,15,15,15, 15,15,15,15, 15,15,15,15,
 	15,15,15,15, 15,15,15,15, 15,15,15,15, 15,15,15,15,
 	15,15,15,15, 15,15,15,15, 15,15,15,15, 15,15,15,15
+};
+
+unsigned short bam_char2flag_table[256] = {
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,BAM_FREAD1,BAM_FREAD2,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	BAM_FPROPER_PAIR,0,BAM_FMREVERSE,0, 0,BAM_FMUNMAP,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, BAM_FDUP,0,BAM_FQCFAIL,0, 0,0,0,0, 0,0,0,0,
+	BAM_FPAIRED,0,BAM_FREVERSE,BAM_FSECONDARY, 0,BAM_FUNMAP,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0
 };
 
 char *bam_nt16_rev_table = "=ACMGRSVTWYHKDBN";
@@ -99,9 +121,10 @@ bam_header_t *sam_header_read2(const char *fn)
 	kstring_t *str;
 	kh_ref_t *hash;
 	khiter_t k;
-	hash = kh_init(ref);
+	if (fn == 0) return 0;
 	fp = (strcmp(fn, "-") == 0)? gzdopen(fileno(stdin), "r") : gzopen(fn, "r");
-	assert(fp);
+	if (fp == 0) return 0;
+	hash = kh_init(ref);
 	ks = ks_init(fp);
 	str = (kstring_t*)calloc(1, sizeof(kstring_t));
 	while (ks_getuntil(ks, 0, str, &dret) > 0) {
@@ -296,8 +319,19 @@ int sam_read1(tamFile fp, bam_header_t *header, bam1_t *b)
 		memcpy(alloc_data(b, doff + c->l_qname) + doff, str->s, c->l_qname);
 		doff += c->l_qname;
 	}
-	{ // flag, tid, pos, qual
-		ret = ks_getuntil(ks, KS_SEP_TAB, str, &dret); z += str->l + 1; c->flag = atoi(str->s);
+	{ // flag
+		long flag;
+		char *s;
+		ret = ks_getuntil(ks, KS_SEP_TAB, str, &dret); z += str->l + 1;
+		flag = strtol((char*)str->s, &s, 0);
+		if (*s) { // not the end of the string
+			flag = 0;
+			for (s = str->s; *s; ++s)
+				flag |= bam_char2flag_table[(int)*s];
+		}
+		c->flag = flag;
+	}
+	{ // tid, pos, qual
 		ret = ks_getuntil(ks, KS_SEP_TAB, str, &dret); z += str->l + 1; c->tid = bam_get_tid(header, str->s);
 		if (c->tid < 0 && strcmp(str->s, "*")) {
 			if (header->n_targets == 0) {
@@ -325,7 +359,7 @@ int sam_read1(tamFile fp, bam_header_t *header, bam1_t *b)
 			for (i = 0, s = str->s; i != c->n_cigar; ++i) {
 				x = strtol(s, &t, 10);
 				op = toupper(*t);
-				if (op == 'M') op = BAM_CMATCH;
+				if (op == 'M' || op == '=' || op == 'X') op = BAM_CMATCH;
 				else if (op == 'I') op = BAM_CINS;
 				else if (op == 'D') op = BAM_CDEL;
 				else if (op == 'N') op = BAM_CREF_SKIP;
@@ -339,7 +373,13 @@ int sam_read1(tamFile fp, bam_header_t *header, bam1_t *b)
 			if (*s) parse_error(fp->n_lines, "unmatched CIGAR operation");
 			c->bin = bam_reg2bin(c->pos, bam_calend(c, bam1_cigar(b)));
 			doff += c->n_cigar * 4;
-		} else c->bin = bam_reg2bin(c->pos, c->pos + 1);
+		} else {
+			if (!(c->flag&BAM_FUNMAP)) {
+				fprintf(stderr, "Parse warning at line %lld: mapped sequence without CIGAR\n", (long long)fp->n_lines);
+				c->flag |= BAM_FUNMAP;
+			}
+			c->bin = bam_reg2bin(c->pos, c->pos + 1);
+		}
 	}
 	{ // mtid, mpos, isize
 		ret = ks_getuntil(ks, KS_SEP_TAB, str, &dret); z += str->l + 1;
@@ -352,16 +392,18 @@ int sam_read1(tamFile fp, bam_header_t *header, bam1_t *b)
 	}
 	{ // seq and qual
 		int i;
-		uint8_t *p;
+		uint8_t *p = 0;
 		if (ks_getuntil(ks, KS_SEP_TAB, str, &dret) < 0) return -5; // seq
 		z += str->l + 1;
-		c->l_qseq = strlen(str->s);
-		if (c->n_cigar && c->l_qseq != (int32_t)bam_cigar2qlen(c, bam1_cigar(b)))
-			parse_error(fp->n_lines, "CIGAR and sequence length are inconsistent");
-		p = (uint8_t*)alloc_data(b, doff + c->l_qseq + (c->l_qseq+1)/2) + doff;
-		bzero(p, (c->l_qseq+1)/2);
-		for (i = 0; i < c->l_qseq; ++i)
-			p[i/2] |= bam_nt16_table[(int)str->s[i]] << 4*(1-i%2);
+		if (strcmp(str->s, "*")) {
+			c->l_qseq = strlen(str->s);
+			if (c->n_cigar && c->l_qseq != (int32_t)bam_cigar2qlen(c, bam1_cigar(b)))
+				parse_error(fp->n_lines, "CIGAR and sequence length are inconsistent");
+			p = (uint8_t*)alloc_data(b, doff + c->l_qseq + (c->l_qseq+1)/2) + doff;
+			memset(p, 0, (c->l_qseq+1)/2);
+			for (i = 0; i < c->l_qseq; ++i)
+				p[i/2] |= bam_nt16_table[(int)str->s[i]] << 4*(1-i%2);
+		} else c->l_qseq = 0;
 		if (ks_getuntil(ks, KS_SEP_TAB, str, &dret) < 0) return -6; // qual
 		z += str->l + 1;
 		if (strcmp(str->s, "*") && c->l_qseq != strlen(str->s))
@@ -457,9 +499,11 @@ int sam_read1(tamFile fp, bam_header_t *header, bam1_t *b)
 tamFile sam_open(const char *fn)
 {
 	tamFile fp;
+	gzFile gzfp = (strcmp(fn, "-") == 0)? gzdopen(fileno(stdin), "rb") : gzopen(fn, "rb");
+	if (gzfp == 0) return 0;
 	fp = (tamFile)calloc(1, sizeof(struct __tamFile_t));
 	fp->str = (kstring_t*)calloc(1, sizeof(kstring_t));
-	fp->fp = (strcmp(fn, "-") == 0)? gzdopen(fileno(stdin), "r") : gzopen(fn, "r");
+	fp->fp = gzfp;
 	fp->ks = ks_init(fp->fp);
 	return fp;
 }
