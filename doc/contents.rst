@@ -26,7 +26,7 @@ Contents
    usage.rst
    glossary.rst
    api.rst
-
+   developer.rst
 
 Indices and tables
 ------------------

@@ -17,12 +17,31 @@ modifications include:
 """\
 
 import os, sys, glob, shutil
+
+samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
+samtools_dest = os.path.abspath( "samtools" )
+
+# copy samtools source
+if len(sys.argv) >= 2 and sys.argv[1] == "import":
+   if len(sys.argv) < 3: raise ValueError("missing PATH to samtools source directory")
+   samtools_src = os.path.abspath( sys.argv[2] )
+   if not os.path.exists( samtools_src ): raise IOError( "samtools src dir `%s` does not exist." % samtools_src )
+
+   cfiles = glob.glob( os.path.join( samtools_src, "*.c" ) )
+   hfiles = glob.glob( os.path.join( samtools_src, "*.h" ) )
+   ncopied = 0
+   for p in cfiles + hfiles:
+      f = os.path.basename(p)
+      if f in samtools_exclude: continue
+      if os.path.exists( os.path.join( samtools_dest, f )): continue
+      shutil.copy( p, samtools_dest )
+      ncopied += 1
+   print "installed latest source code from %s: %i files copied" % (samtools_src, ncopied)
+   sys.exit(0)
+
 from distutils.core import setup, Extension
 from Pyrex.Distutils import build_ext
 
-samtools_src = "/home/andreas/samtools-0.1.6"
-samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
-samtools_dest = os.path.abspath( "samtools" )
 
 name = "pysam"
 version = "0.1"
@@ -40,14 +59,6 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
-# copy samtools source
-cfiles = glob.glob( os.path.join( samtools_src, "*.c" ) )
-hfiles = glob.glob( os.path.join( samtools_src, "*.h" ) )
-for p in cfiles + hfiles:
-   f = os.path.basename(p)
-   if f in samtools_exclude: continue
-   if os.path.exists( os.path.join( samtools_dest, f )): continue
-   shutil.copy( p, samtools_dest )
 
 pysam = Extension(
     "pysam/csamtools",                   # name of extension
