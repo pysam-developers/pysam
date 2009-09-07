@@ -31,7 +31,8 @@ alignment in a :term:`region`::
 
    samfile.fetch( "seq1:10-20", my_fetch_callback )
 
-Using a function object, the alignments can be processed::
+Using a function object, work can be done on the alignments. The
+code below simply counts aligned reads::
 
    class Counter:
        mCounts = 0

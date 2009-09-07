@@ -36,6 +36,6 @@ Glossary
       Retrieving all mapped reads mapped to a :term:`region`.
 
    tid
-      A :term:`targed` id.
+      A :term:`target` id.
 
 .. _samtools: http://samtools.sourceforge.net
