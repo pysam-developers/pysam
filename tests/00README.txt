@@ -21,3 +21,12 @@ To try samtools, you may run the following commands:
   samtools pileup -cf ex1.fa ex1.bam    # pileup and consensus
   samtools pileup -cf ex1.fa -t ex1.fa.fai ex1.sam.gz
 
+In order for the script pysam_test.py to work, you will need pysam
+in your PYTHONPATH.
+
+In order for the script example.py to work, you will need pysam
+in your PYTHONPATH and run
+
+  make all
+
+beforehand.

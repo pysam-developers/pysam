@@ -83,7 +83,7 @@ metadata = {
     'platforms': "ALL",
     'url': "TBD",
     'py_modules': [
-      "pysam/__init__", ],
+      "pysam/__init__", "pysam/Pileup"],
     'ext_modules': [pysam,],
     'cmdclass' : {'build_ext': build_ext} }
 

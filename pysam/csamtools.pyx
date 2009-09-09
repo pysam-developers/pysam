@@ -632,25 +632,75 @@ class PileupRead(object):
     def __str__(self):
         return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )
 
-import tempfile, os
+import tempfile, os, sys
+
+class Outs:
+    '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
+    def __init__(self, id = 1):
+        self.streams = []
+        self.id = id
+
+    def setdevice(self, filename):
+        '''open an existing file, like "/dev/null"'''
+        fd = os.open(filename, os.O_WRONLY)
+        self.setfd(fd)
+
+    def setfile(self, filename):
+        '''open a new file.'''
+        fd = os.open(filename, os.O_WRONLY|os.O_CREAT, 0660);
+        self.setfd(fd)
+
+    def setfd(self, fd):
+        ofd = os.dup(self.id)      #  Save old stream on new unit.
+        self.streams.append(ofd)
+        sys.stdout.flush()    #  Buffered data goes to old stream.
+        os.dup2(fd, self.id)        #  Open unit 1 on new stream.
+        os.close(fd)          #  Close other unit (look out, caller.)
+            
+    def restore(self):
+        '''restore previous output stream'''
+        if self.streams:
+            # the following was not sufficient, hence flush both stderr and stdout
+            # os.fsync( self.id )
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(self.streams[-1], self.id)
+            os.close(self.streams[-1])
+            del self.streams[-1]
 
 def _samtools_dispatch( method, args = () ):
     '''call ``method`` in samtools providing arguments in args.
+    
+    .. note:: 
+       This method redirects stdout and stderr to capture it 
+       from samtools. If for some reason stdout/stderr disappears
+       the reason might be in this method.
+
+    .. note::
+       The current implementation might only work on linux.
+       
+    .. note:: 
+       This method captures stdout and stderr using temporary files, 
+       which are then read into memory in their entirety. This method
+       is slow and might cause large memory overhead. 
+
+    See http://bytes.com/topic/c/answers/487231-how-capture-stdout-temporarily
+    on the topic of redirecting stderr/stdout.
     '''
 
-    # redirect stderr to file
-    # save old stderr
-    cdef int stderr_n 
-    cdef int stderr_save_n
+    # note that debugging this module can be a problem
+    # as stdout/stderr will not appear
 
-    stderr_n = fileno( stderr )
-    dup2( stderr_n, stderr_save_n )
+    # redirect stderr and stdout to file
 
-    # open file and redirect into it
+    # open files and redirect into it
     stderr_h, stderr_f = tempfile.mkstemp()
-    os.close(stderr_h)
-    cdef FILE * stderr_redirect 
-    stderr_redirect = freopen( stderr_f, "wb", stderr)
+    stdout_h, stdout_f = tempfile.mkstemp()
+
+    stdout_save = Outs( sys.stdout.fileno() )
+    stdout_save.setfd( stdout_h )
+    stderr_save = Outs( sys.stderr.fileno() )
+    stderr_save.setfd( stderr_h )
 
     # do the function call to samtools
     cdef char ** cargs
@@ -665,12 +715,20 @@ def _samtools_dispatch( method, args = () ):
     retval = pysam_dispatch(n+2, cargs)
     free( cargs )
 
-    # capture stderr (flush, but do not close)
-    fflush( stderr_redirect )
-    output = open( stderr_f, "r").readlines()
-    
-    dup2( stderr_save_n, stderr_n )
-    return retval, output
+    # restore stdout/stderr. This will also flush, so
+    # needs to be before reading back the file contents
+    stdout_save.restore()
+    stderr_save.restore()
+
+    # capture stderr/stdout.
+    out_stderr = open( stderr_f, "r").readlines()
+    out_stdout = open( stdout_f, "r").readlines()
+
+    # clean up files
+    os.remove( stderr_f )
+    os.remove( stdout_f )
+
+    return retval, out_stderr, out_stdout
 
 __all__ = ["Samfile", "IteratorRow", "IteratorColumn", "AlignedRead", "PileupColumn", "PileupRead" ]
 

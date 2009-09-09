@@ -31,4 +31,11 @@ print "counts=", c.mCounts
 print samfile.getTarget( 0 )
 print samfile.getTarget( 1 )
 
+for p in pysam.pileup( "-c", "ex1.bam" ):
+    print str(p)
+
+print pysam.pileup.getMessages()
+
+for p in pysam.pileup( "-c", "ex1.bam", raw=True ):
+    print str(p),
 

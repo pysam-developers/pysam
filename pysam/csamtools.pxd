@@ -24,11 +24,16 @@ cdef extern from "stdio.h":
   int fflush(FILE *stream)
 
   FILE * stderr
+  FILE * stdout
   int fclose(FILE *)
   int sscanf(char *str,char *fmt,...)
   int sprintf(char *str,char *fmt,...)
   int fprintf(FILE *ifile,char *fmt,...)
   char *fgets(char *str,int size,FILE *ifile)
+
+cdef extern from "unistd.h":
+  char *ttyname(int fd)
+  int isatty(int fd)  
 
 cdef extern from "string.h":
   int strcmp(char *s1, char *s2)

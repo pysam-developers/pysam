@@ -17,6 +17,8 @@ methods.
 This module provides a low-level wrapper around the samtools_ C-API using `cython`_
 and a high-level API for convenient access to the data in *SAM/BAM* formatted files.
 
+The current version wraps *samtools-0.1.6*.
+
 Contents
 --------
 
