@@ -104,7 +104,7 @@ class BinaryTest(unittest.TestCase):
                 command = self.mCommands[label]
                 samtools_target, samtools_command = command[0]
                 pysam_target, pysam_command = command[1]
-                self.runSamtools( samtools_command )
+                runSamtools( samtools_command )
                 pysam_method, pysam_options = pysam_command
                 output = pysam_method( *pysam_options.split(" "), raw=True)
                 if ">" in samtools_command:
@@ -117,7 +117,7 @@ class BinaryTest(unittest.TestCase):
     def checkCommand( self, command ):
         if command:
             samtools_target, pysam_target = self.mCommands[command][0][0], self.mCommands[command][1][0]
-            self.assertTrue( self.checkBinaryEqual( samtools_target, pysam_target ), 
+            self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 
                              "%s failed: files %s and %s are not the same" % (command, samtools_target, pysam_target) )
 
     def testImport( self ):
