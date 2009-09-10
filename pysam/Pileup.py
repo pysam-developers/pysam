@@ -21,9 +21,12 @@ def iterate( infile ):
     *infile* can be any iterator over a lines.
 
     The function yields objects of the type :class:`pysam.Pileup.PileupEntry`.
+
+    .. note:: 
+       The parser converts to 0-based coordinates
     '''
     
-    conv = (str,int,str,str,int,int,int,int,str,str)
+    conv = (str,lambda x: int(x)-1,str,str,int,int,int,int,str,str)
 
     for line in infile:
         try:
