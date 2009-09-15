@@ -82,6 +82,9 @@ cdef samtoolsToAlignedRead( dest, bam1_t * src ):
     dest.data_len = src.data_len
     dest.l_aux = src.l_aux
     dest.m_data = src.m_data
+    dest.mtid = src.core.mtid
+    dest.mpos = src.core.mpos
+    dest.isize = src.core.isize
 
     ## for the following, see the definition on bam.h
     ## parse cigar
@@ -516,6 +519,12 @@ class AlignedRead(object):
         the query sequence (None if not present)
     bqual
         the base quality (None if not present)
+    mtid
+        the :term:`target` id of the mate 
+    mpos  
+        the position of the mate
+    izise
+        the insert size
     '''
 
     tid = 0
@@ -530,6 +539,9 @@ class AlignedRead(object):
     cigar = None
     qseq = None
     bqual = None
+    mtid = 0
+    mpos = 0
+    isize = 0
 
     def __init__(self, **kwargs):
         self.tid = kwargs.get("tid",0)
