@@ -357,11 +357,11 @@ cdef class IteratorRow:
         cdef int i 
         i = self.i
 
-        cdef int curr_off
-        cdef pair64_t * off
-        cdef int n_off
+        cdef uint64_t curr_off
         curr_off = self.curr_off
+        cdef pair64_t * off
         off = self.off
+        cdef int n_off
         n_off = self.n_off
 
         if curr_off == 0 or curr_off >= off[i].v: # then jump to the next chunk
@@ -544,19 +544,19 @@ class AlignedRead(object):
     isize = 0
 
     def __init__(self, **kwargs):
-        self.tid = kwargs.get("tid",0)
-        self.pos = kwargs.get("pos",0)
-        self.bin = kwargs.get("bin",0)
-        self.qual = kwargs.get("qual",0)
+        self.tid     = kwargs.get("tid",0)
+        self.pos     = kwargs.get("pos",0)
+        self.bin     = kwargs.get("bin",0)
+        self.qual    = kwargs.get("qual",0)
         self.l_qname = kwargs.get("l_qname",0)
-        self.flag = kwargs.get("flag",0)
+        self.flag    = kwargs.get("flag",0)
         self.n_cigar = kwargs.get("n_cigar",0)
-        self.l_qseq = kwargs.get("l_qseq",0)
-        self.qname = kwargs.get("qname", None)
-        self.cigar = kwargs.get("cigar", None)
-        self.qseq = kwargs.get("qseq", None)
-        self.qual = kwargs.get("qual", None)
-        self.bqual = kwargs.get("bqual", None)
+        self.l_qseq  = kwargs.get("l_qseq",0)
+        self.qname   = kwargs.get("qname", None)
+        self.cigar   = kwargs.get("cigar", None)
+        self.qseq    = kwargs.get("qseq", None)
+        self.qual    = kwargs.get("qual", None)
+        self.bqual   = kwargs.get("bqual", None)
 
     def __str__(self):
         return "\t".join( map(str, (self.qname,
@@ -634,12 +634,12 @@ class PileupRead(object):
         ## there must be an easier way to construct this class, but it won't accept
         ## a typed parameter.
         self.alignment = kwargs.get( "alignment", AlignedRead() )
-        self.qpos = kwargs.get("qpos", 0)
-        self.indel = kwargs.get("indel", 0)
-        self.level = kwargs.get("level", 0)
-        self.is_del = kwargs.get("is_del", 0)
-        self.is_head = kwargs.get("is_head", 0)
-        self.is_tail = kwargs.get("is_tail", 0)
+        self.qpos      = kwargs.get("qpos", 0)
+        self.indel     = kwargs.get("indel", 0)
+        self.level     = kwargs.get("level", 0)
+        self.is_del    = kwargs.get("is_del", 0)
+        self.is_head   = kwargs.get("is_head", 0)
+        self.is_tail   = kwargs.get("is_tail", 0)
 
     def __str__(self):
         return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )
