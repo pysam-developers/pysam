@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''unit testing code for pysam.'''
 
 import pysam
