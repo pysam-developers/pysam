@@ -45,6 +45,26 @@ cdef extern from "string.h":
 cdef extern from "razf.h":
   pass
 
+cdef extern from "pysam_util.h":
+
+    ctypedef struct pair64_t:
+        uint64_t u
+        uint64_t v
+
+    int pysam_bam_fetch_init(bamFile fp, bam_index_t *idx, int tid, int beg, int end, pair64_t ** offp )
+
+    int pysam_bam_fetch_is_overlap(uint32_t beg, uint32_t end, bam1_t *b)
+
+    int pysam_bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf, int cont)
+
+    int pysam_get_pos( bam_plbuf_t *buf)
+
+    int pysam_get_tid( bam_plbuf_t *buf)
+
+    bam_pileup1_t * pysam_get_pileup( bam_plbuf_t *buf)
+
+    int pysam_dispatch(int argc, char *argv[] )
+
 cdef extern from "bam.h":
 
   # IF _IOLIB=2, bamFile = BGZF, see bgzf.h
@@ -126,6 +146,31 @@ cdef extern from "bam.h":
 
   bam_plbuf_t *bam_plbuf_init(bam_pileup_f func, void *data)
 
+
+  ctypedef struct pair64_t:
+        uint64_t u
+        uint64_t v
+
+  ctypedef struct bam_fetch_iterator_t:
+      bam1_t *        b
+      pair64_t *      off
+      int             n_off
+      uint64_t        curr_off
+      int             curr_chunk
+      bamFile         fp;
+      int             tid;
+      int             beg;
+      int             end;
+      int             n_seeks;
+  
+  
+  bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, bam_index_t *idx, int tid, int beg, int end)
+  
+  bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
+  
+  void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
+
+
   int bam_fetch(bamFile fp, bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
 
   int bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf)
@@ -158,22 +203,4 @@ cdef extern from "sam.h":
 
   int samwrite(samfile_t *fp, bam1_t *b)
 
-cdef extern from "pysam_util.h":
 
-    ctypedef struct pair64_t:
-        uint64_t u
-        uint64_t v
-
-    int pysam_bam_fetch_init(bamFile fp, bam_index_t *idx, int tid, int beg, int end, pair64_t ** offp )
-
-    int pysam_bam_fetch_is_overlap(uint32_t beg, uint32_t end, bam1_t *b)
-
-    int pysam_bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf, int cont)
-
-    int pysam_get_pos( bam_plbuf_t *buf)
-
-    int pysam_get_tid( bam_plbuf_t *buf)
-
-    bam_pileup1_t * pysam_get_pileup( bam_plbuf_t *buf)
-
-    int pysam_dispatch(int argc, char *argv[] )

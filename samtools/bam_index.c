@@ -476,7 +476,8 @@ static inline int is_overlap(uint32_t beg, uint32_t end, const bam1_t *b)
 	return (rend > beg && rbeg < end);
 }
 
-int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
+// bam_fetch helper function retrieves 
+pair64_t * get_chunk_coordinates(const bam_index_t *idx, int tid, int beg, int end, int* cnt_off)
 {
 	uint16_t *bins;
 	int i, n_bins, n_off;
@@ -507,10 +508,8 @@ int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, voi
 	}
 	free(bins);
 	{
-		bam1_t *b;
-		int l, ret, n_seeks;
-		uint64_t curr_off;
-		b = (bam1_t*)calloc(1, sizeof(bam1_t));
+		bam1_t *b = (bam1_t*)calloc(1, sizeof(bam1_t));
+		int l;
 		ks_introsort(off, n_off, off);
 		// resolve completely contained adjacent blocks
 		for (i = 1, l = 0; i < n_off; ++i)
@@ -533,8 +532,23 @@ int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, voi
 			n_off = l + 1;
 #endif
 		}
+		bam_destroy1(b);
+	}
+	*cnt_off = n_off;
+	return off;
+}
+
+
+int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
+{
+	int n_off;
+	pair64_t *off = get_chunk_coordinates(idx, tid, beg, end, &n_off);
+	{
 		// retrive alignments
+		uint64_t curr_off;
+		int i, ret, n_seeks;
 		n_seeks = 0; i = -1; curr_off = 0;
+		bam1_t *b = (bam1_t*)calloc(1, sizeof(bam1_t));
 		for (;;) {
 			if (curr_off == 0 || curr_off >= off[i].v) { // then jump to the next chunk
 				if (i == n_off - 1) break; // no more chunks
@@ -558,3 +572,77 @@ int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, voi
 	free(off);
 	return 0;
 }
+
+struct __bam_fetch_iterator_t{
+	bam1_t *        b;
+	pair64_t *      off;
+	int             n_off;
+	uint64_t        curr_off;
+	int             curr_chunk;
+	bamFile 		fp;
+	int				tid;
+	int				beg;
+	int				end;
+	int             n_seeks;
+};
+
+
+
+bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, const bam_index_t *idx, int tid, int beg, int end)
+{
+	// iterator contains current alignment position
+	//      and will contain actual alignment during iterations
+	bam_fetch_iterator_t* iter  = (bam_fetch_iterator_t*)calloc(1, sizeof(bam_fetch_iterator_t));
+	iter->b                     = (bam1_t*)calloc(1, sizeof(bam1_t));
+		
+	// list of chunks containing our alignments
+	iter->off = get_chunk_coordinates(idx, tid, beg, end, &iter->n_off);
+	
+	// initialise other state variables in iterator
+	iter->fp                = fp;
+	iter->curr_chunk        = -1;   
+	iter->curr_off          =  0;
+	iter->n_seeks           =  0;    
+	iter->tid				= tid;
+	iter->beg				= beg;
+	iter->end				= end;
+	return iter;
+}
+
+bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
+{
+	int ret;
+	// iterate through all alignments in chunks
+	for (;;) {
+		if (iter->curr_off == 0 || iter->curr_off >= iter->off[iter->curr_chunk].v) { // then jump to the next chunk
+			if (iter->curr_chunk == iter->n_off - 1) break; // no more chunks
+			if (iter->curr_chunk >= 0) assert(iter->curr_off == iter->off[iter->curr_chunk].v); // otherwise bug
+			if (iter->curr_chunk < 0 || iter->off[iter->curr_chunk].v != iter->off[iter->curr_chunk+1].u) { // not adjacent chunks; then seek
+				bam_seek(iter->fp, iter->off[iter->curr_chunk+1].u, SEEK_SET);
+				iter->curr_off = bam_tell(iter->fp);
+				++iter->n_seeks;
+			}
+			++iter->curr_chunk;
+		}
+		if ((ret = bam_read1(iter->fp, iter->b)) > 0) {
+			iter->curr_off = bam_tell(iter->fp);
+			if (iter->b->core.tid != iter->tid || iter->b->core.pos >= iter->end) break; // no need to proceed
+			else if (is_overlap(iter->beg, iter->end, iter->b)) 
+				//
+				//func(iter->b, data);
+				//
+				return iter->b;
+		} else 
+			return 0; // end of file
+	}
+}
+
+void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
+{
+//  fprintf(stderr, "[bam_fetch] # seek calls: %d\n", iter->n_seeks);
+	bam_destroy1(iter->b);
+	free(iter->off);
+}
+
+
+

@@ -308,20 +308,19 @@ cdef class Samfile:
 ## Thus I chose to rewrite the functions requiring callbacks. The downside is that if the samtools C-API or code
 ## changes, the changes have to be manually entered.
 
-cdef class IteratorRow:
+cdef class IteratorRow_old:
     """iterate over mapped reads in a region.
     """
-
-    cdef pair64_t * off 
-    cdef bam1_t * b
-    cdef uint64_t curr_off
-    cdef int n_seeks
-    cdef int i
-    cdef int n_off 
-    cdef bamFile fp
-    cdef int tid
-    cdef int beg
-    cdef int end
+    cdef pair64_t * off                # pairs of begin (u) / end (v) positions for chunk containing alignments
+    cdef bam1_t *   b                  # pointer to an alignment struct filled by cnext()
+    cdef uint64_t   curr_off           # position in binary/compressed bam file
+    cdef int        n_seeks            # not used???: number of discontiguous groups of chunks i.e. seek operations
+    cdef int        i
+    cdef int        n_off 
+    cdef bamFile    fp
+    cdef int        tid                # contig ID 
+    cdef int        beg                # start of desired region to retrieve alignments from, 0-based 
+    cdef int        end                # end of desired region to retrieve alignments from
 
     def __cinit__(self, Samfile samfile, region ):
 
@@ -359,28 +358,63 @@ cdef class IteratorRow:
 
         cdef uint64_t curr_off
         curr_off = self.curr_off
+
+        # list of chunks
         cdef pair64_t * off
         off = self.off
+    
+        # number of chunks
         cdef int n_off
         n_off = self.n_off
 
+        #
+        #   set current chunk (off[i].u / v) to contain the next alignment (curr_off)
+        #       When are non-adjacent chunks specified??
+        # 
         if curr_off == 0 or curr_off >= off[i].v: # then jump to the next chunk
             if i == n_off - 1: return 0 # no more chunks
             if i >= 0: assert(curr_off == off[i].v) #  otherwise bug
             if i < 0 or off[i].v != off[i+1].u:
+                #
+                #   !!!!
+                #   Leo's comment:
+                #   N.B. This and the original C code suggest that alignments might not
+                #        always be in adjacent chunks. However, it seems to me that given
+                #        a contiguous region, matching alignments should *always* be in
+                #        successive chunk, given that alignments in and across chunks are
+                #        sorted.
+                #   N.B. This code is still called for the *first* chunk
+                #   !!!
+                #   
+                # 
                 # not adjacent chunks; then seek
                 bam_seek(self.fp, off[i+1].u, SEEK_SET);
                 self.curr_off = bam_tell(self.fp);
                 self.n_seeks += 1
             self.i += 1
 
+        # 
+        # read alignment block, and increment the offset to point to the next alignment block
+        # 
         ret = bam_read1(self.fp, self.b)
         
         if ret > 0:
             self.curr_off = bam_tell(self.fp)
+            print self.curr_off, off[i].u, off[i].v
             if (self.b.core.tid != self.tid or self.b.core.pos >= self.end):
                 return 0 # no need to proceed
             else:
+                
+                #
+                #   !!!!
+                #   Leo's comment:
+                #   Bug!
+                #   N.B. The C code does not abort when the particular alignment does not overlap.
+                #        It just skips it and continues
+                #        To emulate this, we need to wrap this whole logic in a loop 
+                #   !!!
+                #   
+                # 
                 if pysam_bam_fetch_is_overlap(self.beg, self.end, self.b):
                     return 1
         else:
@@ -406,6 +440,51 @@ cdef class IteratorRow:
         '''remember: dealloc cannot call other methods!'''
         bam_destroy1( self.b )
         free( <void*>self.off )
+
+        
+cdef class IteratorRow:
+    """iterate over mapped reads in a region.
+    """
+    
+    cdef bam_fetch_iterator_t*  bam_iter # iterator state object
+    cdef bam1_t *               b
+
+    def __cinit__(self, Samfile samfile, region ):
+
+        assert samfile.isOpen()
+        assert samfile.hasIndex()
+
+        # parse the region
+        cdef int      tid
+        cdef int      beg
+        cdef int      end
+        cdef bamFile  fp
+        bam_parse_region( samfile.samfile.header, region, &tid, &beg, &end)
+        if tid < 0: raise ValueError( "invalid region `%s`" % region )
+
+        fp = samfile.samfile.x.bam
+        self.bam_iter = bam_init_fetch_iterator(fp, samfile.index, tid, beg, end)
+
+    def __iter__(self):
+        return self 
+
+    cdef bam1_t * getCurrent( self ):
+        return self.b
+
+    def __next__(self): 
+        """python version of next().
+
+        pyrex uses this non-standard name instead of next()
+        """
+        self.b = bam_fetch_iterate(self.bam_iter)
+        if self.b <> NULL:
+            return samtoolsToAlignedRead( AlignedRead(), self.b )
+        else:
+            raise StopIteration
+
+    def __dealloc__(self):
+        '''remember: dealloc cannot call other methods!'''
+        bam_cleanup_fetch_iterator(self.bam_iter)
 
 
 cdef class IteratorColumn:
