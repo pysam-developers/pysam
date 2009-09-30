@@ -744,4 +744,7 @@ static inline bam1_t *bam_dup1(const bam1_t *src)
 	return b;
 }
 
+bam_fetch_iterator_t* bam_init_fetchall_iterator(bamFile fp, const bam_index_t *idx);
+bam1_t * bam_fetchall_iterate(bam_fetch_iterator_t *iter);
+
 #endif

@@ -539,39 +539,39 @@ pair64_t * get_chunk_coordinates(const bam_index_t *idx, int tid, int beg, int e
 }
 
 
-int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
-{
-	int n_off;
-	pair64_t *off = get_chunk_coordinates(idx, tid, beg, end, &n_off);
-	{
-		// retrive alignments
-		uint64_t curr_off;
-		int i, ret, n_seeks;
-		n_seeks = 0; i = -1; curr_off = 0;
-		bam1_t *b = (bam1_t*)calloc(1, sizeof(bam1_t));
-		for (;;) {
-			if (curr_off == 0 || curr_off >= off[i].v) { // then jump to the next chunk
-				if (i == n_off - 1) break; // no more chunks
-				if (i >= 0) assert(curr_off == off[i].v); // otherwise bug
-				if (i < 0 || off[i].v != off[i+1].u) { // not adjacent chunks; then seek
-					bam_seek(fp, off[i+1].u, SEEK_SET);
-					curr_off = bam_tell(fp);
-					++n_seeks;
-				}
-				++i;
-			}
-			if ((ret = bam_read1(fp, b)) > 0) {
-				curr_off = bam_tell(fp);
-				if (b->core.tid != tid || b->core.pos >= end) break; // no need to proceed
-				else if (is_overlap(beg, end, b)) func(b, data);
-			} else break; // end of file
-		}
-//		fprintf(stderr, "[bam_fetch] # seek calls: %d\n", n_seeks);
-		bam_destroy1(b);
-	}
-	free(off);
-	return 0;
-}
+//int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
+//{
+//	int n_off;
+//	pair64_t *off = get_chunk_coordinates(idx, tid, beg, end, &n_off);
+//	{
+//		// retrive alignments
+//		uint64_t curr_off;
+//		int i, ret, n_seeks;
+//		n_seeks = 0; i = -1; curr_off = 0;
+//		bam1_t *b = (bam1_t*)calloc(1, sizeof(bam1_t));
+//		for (;;) {
+//			if (curr_off == 0 || curr_off >= off[i].v) { // then jump to the next chunk
+//				if (i == n_off - 1) break; // no more chunks
+//				if (i >= 0) assert(curr_off == off[i].v); // otherwise bug
+//				if (i < 0 || off[i].v != off[i+1].u) { // not adjacent chunks; then seek
+//					bam_seek(fp, off[i+1].u, SEEK_SET);
+//					curr_off = bam_tell(fp);
+//					++n_seeks;
+//				}
+//				++i;
+//			}
+//			if ((ret = bam_read1(fp, b)) > 0) {
+//				curr_off = bam_tell(fp);
+//				if (b->core.tid != tid || b->core.pos >= end) break; // no need to proceed
+//				else if (is_overlap(beg, end, b)) func(b, data);
+//			} else break; // end of file
+//		}
+////		fprintf(stderr, "[bam_fetch] # seek calls: %d\n", n_seeks);
+//		bam_destroy1(b);
+//	}
+//	free(off);
+//	return 0;
+//}
 
 struct __bam_fetch_iterator_t{
 	bam1_t *        b;
@@ -645,4 +645,13 @@ void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
 }
 
 
+int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
+{
+	bam_fetch_iterator_t* iter = bam_init_fetch_iterator(fp, idx, tid, beg, end);
+	bam1_t *        b;
+	while (b = bam_fetch_iterate(iter))
+		func(b, data);
+	bam_cleanup_fetch_iterator(iter);
+	return 0;
+}
 

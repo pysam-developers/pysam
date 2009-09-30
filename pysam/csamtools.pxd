@@ -136,6 +136,9 @@ cdef extern from "bam.h":
   
   void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
 
+  bam_fetch_iterator_t* bam_init_fetchall_iterator(bamFile fp, bam_index_t *idx)
+
+  bam1_t * bam_fetchall_iterate(bam_fetch_iterator_t *iter)
 
   int bam_fetch(bamFile fp, bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
 
@@ -146,6 +149,8 @@ cdef extern from "bam.h":
   int bam_read1(bamFile fp, bam1_t *b)
 
   bam_header_t *bam_header_read( bamFile fp )
+
+  void bam_header_destroy(bam_header_t *header)
 
 cdef extern from "sam.h":
 
