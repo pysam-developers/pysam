@@ -565,6 +565,49 @@ class AlignedRead(object):
                                     self.qseq,
                                     self.cigar,
                                     self.bqual, ) ) )
+    def fancy_str (self):
+        ret_string = []
+        field_names = {
+                        "tid":           "Contig index",
+                        "pos":           "Mapped position on contig",
+
+                        "mtid":          "Contig index for mate pair",
+                        "mpos":          "Position of mate pair",
+                        "isize":         "Insert size",
+
+                        "flag":          "Binary flag",
+                        "n_cigar":       "Count of cigar entries",
+                        "cigar":         "Cigar entries",
+                        "qual":          "Mapping quality",
+
+                        "bin":           "Bam index bin number",
+
+                        "l_qname":       "Length of query name",
+                        "qname":         "Query name",
+
+                        "l_qseq":        "Length of query sequence",
+                        "qseq":          "Query sequence",
+                        "bqual":         "Quality scores",
+
+
+                        "l_aux":         "Length of auxilary data",
+                        "m_data":        "Maximum data length",
+                        "data_len":      "Current data length",
+                        }
+        fields_names_in_order = ["tid", "pos", "mtid", "mpos", "isize", "flag", 
+                                 "n_cigar", "cigar", "qual", "bin", "l_qname", "qname", 
+                                 "l_qseq", "qseq", "bqual", "l_aux", "m_data", "data_len"]
+
+        for f in fields_names_in_order:
+            if not f in self.__dict__:
+                continue
+            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
+
+        for f in self.__dict__:
+            if not f in field_names:
+                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
+        return ret_string
+        
 
     # @abstract the read is paired in sequencing, no matter whether it is mapped in a pair */
     def _getfpaired( self ): return (self.fpaired & BAM_FPAIRED) != 0
