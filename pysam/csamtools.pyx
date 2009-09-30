@@ -566,6 +566,9 @@ class AlignedRead(object):
                                     self.cigar,
                                     self.bqual, ) ) )
     def fancy_str (self):
+        """
+        returns list of fieldnames/values in pretty format for debugging
+        """
         ret_string = []
         field_names = {
                         "tid":           "Contig index",
