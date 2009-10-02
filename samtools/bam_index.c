@@ -611,6 +611,10 @@ bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, const bam_index_t *idx
 
 bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
 {
+	if (!iter->off) {
+		return 0;
+	}
+
 	int ret;
 	// iterate through all alignments in chunks
 	for (;;) {

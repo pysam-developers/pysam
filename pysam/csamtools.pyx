@@ -314,8 +314,10 @@ cdef class IteratorRow:
     
     cdef bam_fetch_iterator_t*  bam_iter # iterator state object
     cdef bam1_t *               b
-
+    cdef                        error_msg
+    cdef int                    error_state
     def __cinit__(self, Samfile samfile, region ):
+        self.bam_iter = NULL
 
         assert samfile.isOpen()
         assert samfile.hasIndex()
@@ -325,8 +327,13 @@ cdef class IteratorRow:
         cdef int      beg
         cdef int      end
         cdef bamFile  fp
+        self.error_state = 0
+        self.error_msg = None
         bam_parse_region( samfile.samfile.header, region, &tid, &beg, &end)
-        if tid < 0: raise ValueError( "invalid region `%s`" % region )
+        if tid < 0: 
+            self.error_state = 1
+            self.error_msg = "invalid region `%s`" % region
+            return
 
         fp = samfile.samfile.x.bam
         self.bam_iter = bam_init_fetch_iterator(fp, samfile.index, tid, beg, end)
@@ -342,6 +349,9 @@ cdef class IteratorRow:
 
         pyrex uses this non-standard name instead of next()
         """
+        if self.error_state:
+            raise ValueError( self.error_msg)
+        
         self.b = bam_fetch_iterate(self.bam_iter)
         if self.b <> NULL:
             return samtoolsToAlignedRead( AlignedRead(), self.b )
@@ -350,7 +360,8 @@ cdef class IteratorRow:
 
     def __dealloc__(self):
         '''remember: dealloc cannot call other methods!'''
-        bam_cleanup_fetch_iterator(self.bam_iter)
+        if self.bam_iter:
+            bam_cleanup_fetch_iterator(self.bam_iter)
 
         
         
@@ -611,6 +622,158 @@ class AlignedRead(object):
                 ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
         return ret_string
         
+
+    # @abstract the read is paired in sequencing, no matter whether it is mapped in a pair */
+    def _getfpaired( self ): return (self.fpaired & BAM_FPAIRED) != 0
+    is_paired = property( _getfpaired, doc="true if read is paired in sequencing" )
+    def _getfproper_pair( self ): return (self.flag & BAM_FPROPER_PAIR) != 0
+    is_proper_pair = property( _getfproper_pair, doc="true if read is mapped in a proper pair" )
+    def _getfunmap( self ): return (self.flag & BAM_FUNMAP) != 0
+    is_unmapped = property( _getfunmap, doc="true if read itself is unmapped" )
+    def _getfmunmap( self ): return (self.flag & BAM_FMUNMAP) != 0
+    mate_is_unmapped = property( _getfmunmap, doc="true if the mate is unmapped" )
+    def _getreverse( self ): return (self.flag & BAM_FREVERSE) != 0
+    is_reverse = property( _getreverse, doc = "true if read is mapped to reverse strand" )
+    def _getmreverse( self ): return (self.flag & BAM_FMREVERSE) != 0
+    mate_is_reverse = property( _getmreverse, doc= "true is read is mapped to reverse strand" )
+    def _getread1( self ): return (self.flag & BAM_FREAD1) != 0
+    is_read1 = property( _getread1, doc = "true if this is read1" )
+    def _getread2( self ): return (self.flag & BAM_FREAD2) != 0
+    is_read2 = property( _getread2, doc = "true if this is read2" )
+    def _getfsecondary( self ): return (self.flag & BAM_FSECONDARY) != 0
+    is_secondary = property( _getfsecondary, doc="true if not primary alignment" )
+    def _getfqcfail( self ): return (self.flag & BAM_FSECONDARY) != 0
+    is_qcfail = property( _getfqcfail, doc="true if QC failure" )
+    def _getfdup( self ): return (self.flag & BAM_FDUP) != 0
+    is_duplicate = property( _getfdup, doc="true if optical or PCR duplicate" )
+
+class FastAlignedRead(object):
+    '''
+    Python wrapper around an aligned read. The following
+    fields are exported:
+
+    tid
+        chromosome/target ID
+    pos
+        0-based leftmost coordinate
+    bin
+        bin calculated by bam_reg2bin()
+    qual
+        mapping quality
+    l_qname
+        length of the query name
+    flag
+        bitwise flag
+    n_cigar
+        number of CIGAR operations
+    l_qseq
+        length of the query sequence (read)
+    qname
+        the query name (None if not present)
+    cigar
+        the :term:`cigar` alignment string (None if not present)
+    qseq
+        the query sequence (None if not present)
+    bqual
+        the base quality (None if not present)
+    mtid
+        the :term:`target` id of the mate 
+    mpos  
+        the position of the mate
+    izise
+        the insert size
+    '''
+
+    tid = 0
+    pos = 0
+    bin = 0
+    qual = 0
+    l_qname = 0
+    flag = 0
+    n_cigar = 0
+    l_qseq = 0
+    qname = None
+    cigar = None
+    qseq = None
+    bqual = None
+    mtid = 0
+    mpos = 0
+    isize = 0
+
+    def __init__(self, **kwargs):
+        self.tid     = kwargs.get("tid",0)
+        self.pos     = kwargs.get("pos",0)
+        self.bin     = kwargs.get("bin",0)
+        self.qual    = kwargs.get("qual",0)
+        self.l_qname = kwargs.get("l_qname",0)
+        self.flag    = kwargs.get("flag",0)
+        self.n_cigar = kwargs.get("n_cigar",0)
+        self.l_qseq  = kwargs.get("l_qseq",0)
+        self.qname   = kwargs.get("qname", None)
+        self.cigar   = kwargs.get("cigar", None)
+        self.qseq    = kwargs.get("qseq", None)
+        self.qual    = kwargs.get("qual", None)
+        self.bqual   = kwargs.get("bqual", None)
+
+    def __str__(self):
+        return "\t".join( map(str, (self.qname,
+                                    self.tid,
+                                    self.pos,
+                                    self.bin,
+                                    self.qual,
+                                    self.l_qname,
+                                    self.flag, 
+                                    self.n_cigar,
+                                    self.l_qseq,
+                                    self.qseq,
+                                    self.cigar,
+                                    self.bqual, ) ) )
+    def fancy_str (self):
+        """
+        returns list of fieldnames/values in pretty format for debugging
+        """
+        ret_string = []
+        field_names = {
+                        "tid":           "Contig index",
+                        "pos":           "Mapped position on contig",
+
+                        "mtid":          "Contig index for mate pair",
+                        "mpos":          "Position of mate pair",
+                        "isize":         "Insert size",
+
+                        "flag":          "Binary flag",
+                        "n_cigar":       "Count of cigar entries",
+                        "cigar":         "Cigar entries",
+                        "qual":          "Mapping quality",
+
+                        "bin":           "Bam index bin number",
+
+                        "l_qname":       "Length of query name",
+                        "qname":         "Query name",
+
+                        "l_qseq":        "Length of query sequence",
+                        "qseq":          "Query sequence",
+                        "bqual":         "Quality scores",
+
+
+                        "l_aux":         "Length of auxilary data",
+                        "m_data":        "Maximum data length",
+                        "data_len":      "Current data length",
+                        }
+        fields_names_in_order = ["tid", "pos", "mtid", "mpos", "isize", "flag", 
+                                 "n_cigar", "cigar", "qual", "bin", "l_qname", "qname", 
+                                 "l_qseq", "qseq", "bqual", "l_aux", "m_data", "data_len"]
+
+        for f in fields_names_in_order:
+            if not f in self.__dict__:
+                continue
+            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
+
+        for f in self.__dict__:
+            if not f in field_names:
+                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
+        return ret_string
+
 
     # @abstract the read is paired in sequencing, no matter whether it is mapped in a pair */
     def _getfpaired( self ): return (self.fpaired & BAM_FPAIRED) != 0
