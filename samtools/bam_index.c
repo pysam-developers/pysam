@@ -631,14 +631,18 @@ bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
 		if ((ret = bam_read1(iter->fp, iter->b)) > 0) {
 			iter->curr_off = bam_tell(iter->fp);
 			if (iter->b->core.tid != iter->tid || iter->b->core.pos >= iter->end) break; // no need to proceed
-			else if (is_overlap(iter->beg, iter->end, iter->b)) 
+			else
+			{
+				if (is_overlap(iter->beg, iter->end, iter->b)) 
 				//
 				//func(iter->b, data);
 				//
-				return iter->b;
+					return iter->b;
+			}
 		} else 
 			return 0; // end of file
 	}
+	return 0;
 }
 
 void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
