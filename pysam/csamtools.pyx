@@ -317,34 +317,26 @@ cdef class IteratorRow:
     cdef                        error_msg
     cdef int                    error_state
     def __cinit__(self, Samfile samfile, region ):
-        sys.stderr.write("A ")
         self.bam_iter = NULL
 
         assert samfile.isOpen()
-        sys.stderr.write("B ")
         assert samfile.hasIndex()
 
-        sys.stderr.write("C ")
         # parse the region
         cdef int      tid
         cdef int      beg
         cdef int      end
         self.error_state = 0
         self.error_msg = None
-        sys.stderr.write("1 ")
         bam_parse_region( samfile.samfile.header, region, &tid, &beg, &end)
-        sys.stderr.write("2 ")
         if tid < 0: 
             self.error_state = 1
             self.error_msg = "invalid region `%s`" % region
             return
-        sys.stderr.write("3 ")
 
         cdef bamFile  fp
         fp = samfile.samfile.x.bam
-        sys.stderr.write("4 ")
         self.bam_iter = bam_init_fetch_iterator(fp, samfile.index, tid, beg, end)
-        sys.stderr.write("5 ")
 
     def __iter__(self):
         return self 
@@ -357,22 +349,15 @@ cdef class IteratorRow:
 
         pyrex uses this non-standard name instead of next()
         """
-        sys.stderr.write("6 ")
         if self.error_state:
             raise ValueError( self.error_msg)
-        sys.stderr.write("7 ")
         
         self.b = bam_fetch_iterate(self.bam_iter)
-        sys.stderr.write("8 ")
         if self.b <> NULL:
-            sys.stderr.write("9 ")
             dest = samtoolsToAlignedRead( AlignedRead(), self.b )
-            sys.stderr.write("10 ")
             return dest
         else:
-            sys.stderr.write("11 ")
             raise StopIteration
-            sys.stderr.write("12 ")
 
     def __dealloc__(self):
         '''remember: dealloc cannot call other methods!'''
