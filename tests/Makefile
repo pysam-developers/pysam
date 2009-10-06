@@ -1,5 +1,8 @@
-all: ex1.glf ex1.pileup.gz ex1.bam.bai ex1.glfview.gz 
+all: ex1.glf ex1.pileup.gz ex1.bam.bai ex1.glfview.gz ex2.sam.gz
 		@echo; echo \# You can now launch the viewer with: \'samtools tview ex1.bam ex1.fa\'; echo;
+
+ex2.sam.gz: ex1.bam ex1.bam.bai
+		samtools view -h ex1.bam | gzip > ex2.sam.gz
 
 ex1.fa.fai:ex1.fa
 		samtools faidx ex1.fa

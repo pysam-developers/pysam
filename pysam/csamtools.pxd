@@ -39,6 +39,7 @@ cdef extern from "string.h":
   int strcmp(char *s1, char *s2)
   int strncmp(char *s1,char *s2,size_t len)
   char *strcpy(char *dest,char *src)
+  char *strncpy(char *dest,char *src, size_t len)
   char *strdup(char *)
   char *strcat(char *,char *)
 
@@ -126,7 +127,6 @@ cdef extern from "bam.h":
 
   bam_plbuf_t *bam_plbuf_init(bam_pileup_f func, void *data)
 
-
   ctypedef struct bam_fetch_iterator_t:
       pass
   
@@ -148,9 +148,19 @@ cdef extern from "bam.h":
 
   int bam_read1(bamFile fp, bam1_t *b)
 
+  int bam_write1( bamFile fp, bam1_t *b)
+
+  bam_header_t *bam_header_init()
+
+  int bam_header_write( bamFile fp, bam_header_t *header)
+
   bam_header_t *bam_header_read( bamFile fp )
 
   void bam_header_destroy(bam_header_t *header)
+
+  bam1_t * bam_dup1( bam1_t *src ) 
+  
+  bam1_t * bam_copy1(bam1_t *bdst, bam1_t *bsrc)
 
 cdef extern from "sam.h":
 

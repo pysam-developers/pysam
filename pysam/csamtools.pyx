@@ -59,7 +59,6 @@ cdef bam_index_t * openIndex( filename ):
 
     return idx
 
-
 ## there might a better way to build an Aligment object,
 ## but I could not get the following to work, usually
 ## getting a "can not convert to Python object"
@@ -79,12 +78,13 @@ cdef samtoolsToAlignedRead( dest, bam1_t * src ):
     dest.flag = src.core.flag
     dest.n_cigar = src.core.n_cigar
     dest.l_qseq = src.core.l_qseq
-    dest.data_len = src.data_len
-    dest.l_aux = src.l_aux
-    dest.m_data = src.m_data
     dest.mtid = src.core.mtid
     dest.mpos = src.core.mpos
     dest.isize = src.core.isize
+
+    dest.l_aux = src.l_aux
+    dest.data_len = src.data_len
+    dest.m_data = src.m_data
 
     ## for the following, see the definition on bam.h
     ## parse cigar
@@ -130,6 +130,24 @@ cdef samtoolsToAlignedRead( dest, bam1_t * src ):
         dest.bqual = q
         free(q)
 
+    return dest
+
+cdef bam1_t * alignedReadToSamtools( bam1_t * dest, src ):
+    '''convert to samtools data structure'''
+    dest.core.tid = src.tid
+    dest.core.pos = src.pos
+    dest.core.bin = src.bin
+    dest.core.qual = src.qual
+    dest.core.l_qname = src.l_qname
+    dest.core.flag = src.flag
+    dest.core.n_cigar = src.n_cigar
+    dest.core.l_qseq = src.l_qseq
+    dest.data_len = src.data_len
+    dest.l_aux = src.l_aux
+    dest.m_data = src.m_data
+    dest.core.mtid = src.mtid
+    dest.core.mpos = src.mpos
+    dest.core.isize = src.isize
     return dest
 
 cdef samtoolsToPileupRead( dest, bam_pileup1_t * src ):
@@ -207,10 +225,12 @@ cdef class Samfile:
     cdef samfile_t * samfile
     cdef bam_index_t *index
     cdef char * filename
-    cdef bam_header_t * header
+    cdef int isbam
 
-    def __cinit__(self):
+    def __cinit__(self, *args, **kwargs ):
        self.samfile = NULL
+       self.isbam = False
+       self.open( *args, **kwargs )
 
     def isOpen( self ):
         '''return true if samfile has been opened.'''
@@ -220,25 +240,92 @@ cdef class Samfile:
         '''return true if samfile has an existing (and opened) index.'''
         return self.index != NULL
 
-    def open( self, char * filename, char * mode ):
-        '''open sampfile. If an index exists, it will be opened as well.
+    def open( self, 
+              char * filename, 
+              mode,
+              Samfile template = None,
+              targetnames = None,
+              targetlengths = None,
+              ):
+        '''open a sam/bam file. If an index exists, it will be opened as well.
+
+        For writing, the names (*targetnames*) and lengths (*targetlengths*)
+        of targets need to be supplied or the header is taken from a *template*.
+
+        The *mode* corresponds to the syntax in samtools. Valid modes are
+        ``/[rw](b?)(u?)(h?)/``: 
+        
+        r for reading
+        w for writing, 
+        b for BAM I/O, i.e., input/output is in binary format 
+        u for uncompressed BAM output 
+        h for outputing header in SAM 
+         
+        If ``b`` is present, it must immediately follow ``r`` or ``w``. 
+        Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.
         '''
+        
+        assert mode in ("r","w","rb","wb"), "invalid file opening mode `%s`" % mode
 
         ## TODO: implement automatic indexing
+        cdef bam_header_t * header
+        header = NULL
 
         if self.samfile != NULL: self.close()
-        
-        self.samfile = samopen( filename, mode, NULL)
+        self.filename = filename
+
+        self.isbam = len(mode) > 1 and mode[1] == 'b'
+
+        if mode[0] == 'w':
+            # open file for writing
+            
+            # header structure (used for writing)
+            if self.isbam:
+
+                if template:
+                    # copy header from another file
+                    header = template.samfile.header
+                else:
+                    # build header from a target names and lengths
+                    assert targetnames and targetlengths, "supply names and lengths of targets for writing"
+                    assert len(targetnames) == len(targetlengths), "unequal names and lengths of targets"
+
+                    # allocate and fill header
+                    header = bam_header_init()
+                    header.n_targets = len(targetnames)
+                    n = 0
+                    for x in targetnames: n += len(x) + 1
+                    header.target_name = <char**>calloc(n, sizeof(char*))
+                    header.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
+                    for x from 0 <= x < header.n_targets:
+                        header.target_len[x] = targetlengths[x]
+                        name = targetnames[x]
+                        header.target_name[x] = <char*>calloc(len(name)+1, sizeof(char))
+                        strncpy( header.target_name[x], name, len(name) )
+
+                    header.l_text = 0
+                    header.text = NULL
+                    header.hash = NULL
+                    header.rg2lib = NULL
+                    
+            # open file. Header gets written to file at the same time
+            self.samfile = samopen( filename, mode, header )
+
+            # bam_header_destroy takes care of cleaning up of all the members
+            if not template and header != NULL:
+                bam_header_destroy( header )
+
+        elif mode[0] == "r":
+            # open file for reading
+            self.samfile = samopen( filename, mode, NULL )
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
 
-        self.index = bam_index_load(filename)
-
-        if self.index == NULL:
-            raise IOError("could not open index `%s` " % filename )
-
-        self.filename = filename
+        if mode[0] == "r" and self.isbam:
+            self.index = bam_index_load(filename)
+            if self.index == NULL:
+                raise IOError("could not open index `%s` " % filename )
 
     def getTarget( self, tid ):
         '''convert numerical :term:`tid` into target name.'''
@@ -250,12 +337,27 @@ cdef class Samfile:
         '''return the number of targets in file.'''
         return self.samfile.header.n_targets
 
+    def getTargets( self ):
+        '''return tuple of all targets.'''
+        l = []
+        for x from 0 <= x < self.samfile.header.n_targets:
+            l.append( self.samfile.header.target_name[x] )
+        return tuple(l)
+
+    def getTargetLengths( self ):
+        '''return tuple of all target lengths.'''
+        l = []
+        for x from 0 <= x < self.samfile.header.n_targets:
+            l.append( self.samfile.header.target_len[x] )
+        return tuple(l)
+
     def fetch(self, region, callback ):
         '''fetch a :term:`region` from the samfile.
 
         This method will execute a callback on each aligned read in
         a region.
         '''
+        assert self.isbam, "fetch is only available for bam files"
         assert self.hasIndex(), "no index available for fetch"
 
         cdef int tid
@@ -272,35 +374,51 @@ cdef class Samfile:
     def pileup( self, region, callback ):
         '''fetch a :term:`region` from the samfile and run a callback
         on each postition
-
         '''
-        assert self.hasIndex(), "no index available for pileup"
-
         cdef int tid
         cdef int start
         cdef int end
-
-        # parse the region
-        bam_parse_region( self.samfile.header, region, &tid, &start, &end)
-        if tid < 0: raise ValueError( "invalid region `%s`" % region )
-
         cdef bam_plbuf_t *buf
-        buf = bam_plbuf_init(pileup_callback, <void*>callback )
 
-        bam_fetch(self.samfile.x.bam, self.index, tid, start, end, buf, pileup_fetch_callback )
+        if self.isbam:
+            assert self.hasIndex(), "no index available for pileup"
 
-        # finalize pileup
-        bam_plbuf_push( NULL, buf)
-        bam_plbuf_destroy(buf);
+            # parse the region
+            bam_parse_region( self.samfile.header, region, &tid, &start, &end)
+            if tid < 0: raise ValueError( "invalid region `%s`" % region )
+
+            buf = bam_plbuf_init(pileup_callback, <void*>callback )
+
+            bam_fetch(self.samfile.x.bam, self.index, tid, start, end, buf, pileup_fetch_callback )
+
+            # finalize pileup
+            bam_plbuf_push( NULL, buf)
+            bam_plbuf_destroy(buf);
+
+        else:
+            raise NotImplementedError( "pileup of samfiles not wrapped" )
 
     def close( self ):
         '''close file.'''
-
+        
         if self.samfile != NULL:
             samclose( self.samfile )
             bam_index_destroy(self.index);
             self.samfile = NULL
-            
+
+    def __dealloc__( self ):
+        '''clean up.'''
+        # Note that __del__ is not called.
+        self.close()
+
+    def write( self, read ):
+        '''write read to file.
+
+        return the number of bytes written.
+        '''
+        cdef bam1_t dest
+        alignedReadToSamtools( &dest, read )
+        return bam_write1( self.samfile.x.bam, &dest)
 
 ## turning callbacks elegantly into iterators is an unsolved problem, see the following threads:
 ## http://groups.google.com/group/comp.lang.python/browse_frm/thread/0ce55373f128aa4e/1d27a78ca6408134?hl=en&pli=1
@@ -363,33 +481,25 @@ cdef class IteratorRow:
         '''remember: dealloc cannot call other methods!'''
         if self.bam_iter:
             bam_cleanup_fetch_iterator(self.bam_iter)
-
-        
         
 cdef class IteratorRowAll:
     """iterate over all mapped reads
     """
 
     cdef bam1_t *               b
-    cdef bamFile                fp
+    cdef samfile_t *            fp
 
     def __cinit__(self, Samfile samfile):
 
         assert samfile.isOpen()
-        assert samfile.hasIndex()
 
         # parse the region
-        self.fp = samfile.samfile.x.bam
+        self.fp = samfile.samfile
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
 
-        # seek past the header
-        bam_seek(self.fp, 0, SEEK_SET)
-        cdef bam_header_t *h
-        h = bam_header_read(self.fp)
-        bam_header_destroy(h)
-
+        # seek past the header not necessary for bam files
 
     def __iter__(self):
         return self 
@@ -403,7 +513,7 @@ cdef class IteratorRowAll:
         pyrex uses this non-standard name instead of next()
         """
         cdef int ret
-        ret = bam_read1(self.fp, self.b)
+        ret = samread(self.fp, self.b)
         if (ret > 0):
             return samtoolsToAlignedRead( AlignedRead(), self.b )
         else:
@@ -430,7 +540,7 @@ cdef class IteratorColumn:
 
     def __cinit__(self, Samfile samfile, region ):
 
-        self.iter = IteratorRow( samfile, "seq1:10-20")
+        self.iter = IteratorRow( samfile, region )
         self.buf = bam_plbuf_init(NULL, NULL )
         self.n_pu = 0
         self.eof = 0
@@ -647,6 +757,7 @@ class AlignedRead(object):
     is_qcfail = property( _getfqcfail, doc="true if QC failure" )
     def _getfdup( self ): return (self.flag & BAM_FDUP) != 0
     is_duplicate = property( _getfdup, doc="true if optical or PCR duplicate" )
+
 
 class FastAlignedRead(object):
     '''
