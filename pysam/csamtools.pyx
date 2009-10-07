@@ -1,8 +1,9 @@
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 
-# defines imported from samtools
+import tempfile, os, sys, types
 
+# defines imported from samtools
 DEF SEEK_SET = 0
 DEF SEEK_CUR = 1
 DEF SEEK_END = 2
@@ -32,20 +33,14 @@ DEF BAM_FQCFAIL      =512
 ## @abstract optical or PCR duplicate */
 DEF BAM_FDUP        =1024
 
-#####################################################################
-#####################################################################
-#####################################################################
-## private methods
-#####################################################################
-
-## there might a better way to build an Aligment object,
-## but I could not get the following to work, usually
-## getting a "can not convert to Python object"
-##   1. struct to dict conversion 
-##   2. using "cdef class AlignedRead" with __cinit__(self, bam1_t * )
 DEF BAM_CIGAR_SHIFT=4
 DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
 
+#####################################################################
+#####################################################################
+#####################################################################
+## private factory methods
+#####################################################################
 cdef class AlignedRead
 cdef makeAlignedRead( bam1_t * src):
     '''enter src into AlignedRead.'''
@@ -54,10 +49,13 @@ cdef makeAlignedRead( bam1_t * src):
     dest._delegate = bam_dup1(src)
     return dest
 
-cdef samtoolsToPileupRead( dest, bam_pileup1_t * src ):
+cdef class PileupRead
+cdef makePileupRead( bam_pileup1_t * src ):
     '''fill a  PileupRead object from a bam_pileup1_t * object.'''
+    cdef PileupRead dest
+    dest = PileupRead()
     dest.alignment = makeAlignedRead( src.b )
-    dest.qpol = src.qpos
+    dest.qpos = src.qpos
     dest.indel = src.indel
     dest.level = src.level
     dest.is_del = src.is_del
@@ -102,7 +100,7 @@ cdef int pileup_callback( uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, 
     pileups = []
 
     for x from 0 <= x < n:
-        pileups.append( samtoolsToPileupRead( PileupRead(), &(pl[x]) ) )
+        pileups.append( makePileupRead( &(pl[x]) ) )
     p.pileups = pileups
         
     (<object>f)(p)
@@ -116,6 +114,31 @@ cdef int pileup_fetch_callback( bam1_t *b, void *data):
     buf = <bam_plbuf_t*>data
     bam_plbuf_push(b, buf)
     return 0
+
+######################################################################
+######################################################################
+######################################################################
+# valid types for sam headers
+VALID_HEADER_TYPES = { "HD" : dict, 
+                       "SQ" : list, 
+                       "RG" : list, 
+                       "PG" : dict, 
+                       "CO" : list }
+
+# order of records within sam headers
+VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO" )
+
+# type conversions within sam header records
+VALID_HEADER_FIELDS = { "HD" : { "VN" : str, "SO" : str, "GO" : str },
+                        "SQ" : { "SN" : str, "LN" : int, "AS" : str, "M5" : str, "UR" : str, "SP" : str },
+                        "RG" : { "ID" : str, "SM" : str, "LB" : str, "DS" : str, "PU" : str, "PI" : str, "CN" : str, "DT" : str, "PL" : str, },
+                        "PG" : { "ID" : str, "VN" : str, "CL" : str }, }
+
+# output order of fields within records
+VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
+                       "SQ" : ( "SN", "LN", "AS", "M5" , "UR" , "SP" ),
+                       "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL" ),
+                       "PG" : ( "ID", "VN", "CL" ), }
 
 ######################################################################
 ######################################################################
@@ -135,12 +158,13 @@ cdef class Samfile:
     w for writing, 
     b for BAM I/O, i.e., input/output is in binary format 
     u for uncompressed BAM output 
-    h for outputing header in SAM 
+    h for outputing header in SAM. Without ``h``, the header is omitted.
          
     If ``b`` is present, it must immediately follow ``r`` or ``w``. 
-    Currently valid modes are ``r``, ``w``, ``rb``, ``wb``. 
+
+    Currently valid modes are ``r``, ``w``, ``rb``, ``wb`` and ``wh``. 
     
-    TODO: ``wh``,  and ``wbu``
+    TODO: ``wbu``
     '''
 
     cdef samfile_t * samfile
@@ -168,12 +192,25 @@ cdef class Samfile:
               Samfile template = None,
               targetnames = None,
               targetlengths = None,
+              char * text = NULL,
+              header = None,
               ):
         '''open a sam/bam file. If an index exists, it will be opened as well.
 
-        For writing, the names (*targetnames*) and lengths (*targetlengths*)
-        of targets need to be supplied or the header is taken from a *template*.
+        For writing, the header of a samfile/bamfile can be constituted from several
+        sources. 
 
+        1. If *template* is given, the header is copied from a another samfile.
+
+        2. If *header* is given, the header is build from a multi-level dictionary. The 
+           first level are the four types ('HD', 'SQ', ...). The second level is then 
+           a list of lines, with each line being a list of tag-value pairs.
+
+        3. If *text* is given, new header text is copied from raw text.
+
+        4. The names (*targetnames*) and lengths (*targetlengths*) are supplied
+           directly.
+      
         The *mode* corresponds to the syntax in samtools. Valid modes are
         ``/[rw](b?)(u?)(h?)/``: 
         
@@ -187,11 +224,11 @@ cdef class Samfile:
         Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.
         '''
         
-        assert mode in ("r","w","rb","wb"), "invalid file opening mode `%s`" % mode
+        assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
 
         ## TODO: implement automatic indexing
-        cdef bam_header_t * header
-        header = NULL
+        cdef bam_header_t * header_to_write
+        header_to_write = NULL
 
         if self.samfile != NULL: self.close()
         self.filename = filename
@@ -202,40 +239,46 @@ cdef class Samfile:
             # open file for writing
             
             # header structure (used for writing)
-            if self.isbam:
+            if template:
+                # copy header from another file
+                header_to_write = template.samfile.header
 
-                if template:
-                    # copy header from another file
-                    header = template.samfile.header
-                else:
-                    # build header from a target names and lengths
-                    assert targetnames and targetlengths, "supply names and lengths of targets for writing"
-                    assert len(targetnames) == len(targetlengths), "unequal names and lengths of targets"
+            elif header:
+                header_to_write = self._buildHeader( header )
+            else:
+                # build header from a target names and lengths
+                assert targetnames and targetlengths, "supply names and lengths of targets for writing"
+                assert len(targetnames) == len(targetlengths), "unequal names and lengths of targets"
 
-                    # allocate and fill header
-                    header = bam_header_init()
-                    header.n_targets = len(targetnames)
-                    n = 0
-                    for x in targetnames: n += len(x) + 1
-                    header.target_name = <char**>calloc(n, sizeof(char*))
-                    header.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
-                    for x from 0 <= x < header.n_targets:
-                        header.target_len[x] = targetlengths[x]
-                        name = targetnames[x]
-                        header.target_name[x] = <char*>calloc(len(name)+1, sizeof(char))
-                        strncpy( header.target_name[x], name, len(name) )
+                # allocate and fill header
+                header_to_write = bam_header_init()
+                header_to_write.n_targets = len(targetnames)
+                n = 0
+                for x in targetnames: n += len(x) + 1
+                header_to_write.target_name = <char**>calloc(n, sizeof(char*))
+                header_to_write.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
+                for x from 0 <= x < header_to_write.n_targets:
+                    header_to_write.target_len[x] = targetlengths[x]
+                    name = targetnames[x]
+                    header_to_write.target_name[x] = <char*>calloc(len(name)+1, sizeof(char))
+                    strncpy( header_to_write.target_name[x], name, len(name) )
 
-                    header.l_text = 0
-                    header.text = NULL
-                    header.hash = NULL
-                    header.rg2lib = NULL
+                if text != NULL:
+                    # copy without \0
+                    header_to_write.l_text = strlen(text)
+                    header_to_write.text = <char*>calloc( strlen(text), sizeof(char) )
+                    memcpy( header_to_write.text, text, strlen(text) )
+
+                header_to_write.hash = NULL
+                header_to_write.rg2lib = NULL
                     
-            # open file. Header gets written to file at the same time
-            self.samfile = samopen( filename, mode, header )
+            # open file. Header gets written to file at the same time for bam files
+            # and sam files (in the latter case, the mode needs to be wh)
+            self.samfile = samopen( filename, mode, header_to_write )
 
             # bam_header_destroy takes care of cleaning up of all the members
-            if not template and header != NULL:
-                bam_header_destroy( header )
+            if not template and header_to_write != NULL:
+                bam_header_destroy( header_to_write )
 
         elif mode[0] == "r":
             # open file for reading
@@ -338,7 +381,140 @@ cdef class Samfile:
 
         return the number of bytes written.
         '''
-        return bam_write1( self.samfile.x.bam, read._delegate )
+        return samwrite( self.samfile, read._delegate )
+
+    property targets:
+        """list of target sequences."""
+        def __get__(self): 
+            t = []
+            for x from 0 <= x < self.samfile.header.n_targets:
+                t.append( self.samfile.header.target_name[x] )
+            return tuple(t)
+
+    property lengths:
+        """lengths of target sequences."""
+        def __get__(self): 
+            t = []
+            for x from 0 <= x < self.samfile.header.n_targets:
+                t.append( self.samfile.header.target_len[x] )
+            return tuple(t)
+
+    property text:
+        '''header text'''
+        def __get__(self):
+            # create a temporary 0-terminated copy
+            cdef char * t
+            t = <char*>calloc( self.samfile.header.l_text + 1, sizeof(char) )
+            memcpy( t, self.samfile.header.text, self.samfile.header.l_text )
+            result = t
+            free(t)
+            return result
+
+    property header:
+        '''header information within samfile. The information is passed as a dictionary.'''
+        def __get__(self):
+            result = {}
+
+            if self.samfile.header.text != NULL:
+                # convert to python string (note: call self.text to create 0-terminated string)
+                t = self.text
+                for line in t.split("\n"):
+                    if not line.strip(): continue
+                    assert line.startswith("@"), "header line without '@': '%s'" % line
+                    fields = line[1:].split("\t")
+                    record = fields[0]
+                    assert record in VALID_HEADER_TYPES, "header line with invalid type '%s': '%s'" % (record, line)
+
+                    # treat comments
+                    if record == "CO":
+                        if record not in result: result[record] = []
+                        result[record].append( "\t".join( fields[1:] ) )
+                        continue
+
+                    # the following is clumsy as generators do not work?
+                    x = {}
+                    for field in fields[1:]: 
+                        key,value = field.split(":")
+                        if key not in VALID_HEADER_FIELDS[record]:
+                            raise ValueError( "unknown field code '%s' in record '%s'" % (key, record) )
+                        x[key] = VALID_HEADER_FIELDS[record][key](value)
+
+                    if VALID_HEADER_TYPES[record] == dict:
+                        if record in result:
+                            raise ValueError( "multiple '%s' lines are not permitted" % record )
+                        result[record] = x
+                    elif VALID_HEADER_TYPES[record] == list:
+                        if record not in result: result[record] = []
+                        result[record].append( x )
+
+            return result
+
+    def _buildLine( self, fields, record ):
+        '''build a header line from *fields* dictionary for *record*'''
+
+        # TODO: add checking for field and sort order
+        line = ["@%s" % record ]
+        if record == "CO":
+            line.append( fields )
+        else:
+            for key in VALID_HEADER_ORDER[record]:
+                if key in fields:
+                    line.append( "%s:%s" % (key, str(fields[key])))
+        return "\t".join( line ) 
+
+    cdef bam_header_t * _buildHeader( self, new_header ):
+        '''return a new header built from a dictionary in *new_header*.
+
+        This method inserts the text field, target_name and target_len.
+        '''
+
+        lines = []
+
+        # check if hash exists
+
+        # create new header and copy old data
+        cdef bam_header_t * dest
+
+        dest = bam_header_init()
+                
+        for record in VALID_HEADERS:
+            if record in new_header:
+                ttype = VALID_HEADER_TYPES[record]
+                data = new_header[record]
+                if type( data ) != type( ttype() ):
+                    raise ValueError( "invalid type for record %s: %s, expected %s" % (record, type(data), type(ttype()) ) )
+                if type( data ) == types.DictType:
+                    lines.append( self._buildLine( data, record ) )
+                else:
+                    for fields in new_header[record]:
+                        lines.append( self._buildLine( fields, record ) )
+
+        text = "\n".join(lines) + "\n"
+        if dest.text != NULL: free( dest.text )
+        dest.text = <char*>calloc( len(text), sizeof(char))
+        dest.l_text = len(text)
+        strncpy( dest.text, text, dest.l_text )
+
+        # collect targets
+        if "SQ" in new_header:
+            seqs = []
+            for fields in new_header["SQ"]:
+                try:
+                    seqs.append( (fields["SN"], fields["LN"] ) )
+                except KeyError:
+                    raise KeyError( "incomplete sequence information in '%s'" % str(fields))
+                
+            dest.n_targets = len(seqs)
+            dest.target_name = <char**>calloc( dest.n_targets, sizeof(char*) )
+            dest.target_len = <uint32_t*>calloc( dest.n_targets, sizeof(uint32_t) )
+            
+            for x from 0 <= x < dest.n_targets:
+                seqname, seqlen = seqs[x]
+                dest.target_name[x] = <char*>calloc( len( seqname ) + 1, sizeof(char) )
+                strncpy( dest.target_name[x], seqname, len(seqname) + 1 )
+                dest.target_len[x] = seqlen
+
+        return dest
 
 ## turning callbacks elegantly into iterators is an unsolved problem, see the following threads:
 ## http://groups.google.com/group/comp.lang.python/browse_frm/thread/0ce55373f128aa4e/1d27a78ca6408134?hl=en&pli=1
@@ -391,7 +567,7 @@ cdef class IteratorRow:
             raise ValueError( self.error_msg)
         
         self.b = bam_fetch_iterate(self.bam_iter)
-        if self.b <> NULL:
+        if self.b != NULL:
             return makeAlignedRead( self.b )
         else:
             raise StopIteration
@@ -511,7 +687,7 @@ cdef class IteratorColumn:
             pileups = []
             
             for x from 0 <= x < p.n:
-                pileups.append( samtoolsToPileupRead( PileupRead(), &pl[x]) )
+                pileups.append( makePileupRead( &pl[x]) )
             p.pileups = pileups
 
             return p
@@ -572,14 +748,12 @@ cdef class AlignedRead:
     def __str__(self):
         """todo"""
         return "\t".join(map(str, (self.qname,
-                                    self.rname,
-                                    self.pos,
-                                    self.qual,
-                                    self.flag,
-                                    self.seq,
-                                    self.mapq , self.opt('MF'), self.is_paired)))
-                                 
- 
+                                   self.rname,
+                                   self.pos,
+                                   self.qual,
+                                   self.flag,
+                                   self.seq,
+                                   self.mapq , self.opt('MF'), self.is_paired)))
                                     
     #For all the following we follow the samfile specification for field names, changing uppercase to  lowercase only
     
@@ -688,7 +862,7 @@ cdef class AlignedRead:
     
     def opt(self, tag):
         """retrieves optional data given a two-letter *tag*"""
-        #see bam_aux_get.c: bam_aux_get() and bam_aux2i() etc 
+        #see bam_aux.c: bam_aux_get() and bam_aux2i() etc 
         cdef uint8_t * v
         v = bam_aux_get(self._delegate, tag)
         type = chr(v[0])
@@ -767,7 +941,7 @@ class PileupColumn(object):
             "\n" +\
             "\n".join( map(str, self.pileups) )
 
-class PileupRead(object):
+cdef class PileupRead:
     '''A read aligned to a column.
 
     alignment
@@ -782,22 +956,20 @@ class PileupRead(object):
        the level of the read in the "viewer" mode 
     '''
 
-    def __init__(self, **kwargs ):
-        
-        ## there must be an easier way to construct this class, but it won't accept
-        ## a typed parameter.
-        self.alignment = kwargs.get( "alignment", AlignedRead() )
-        self.qpos      = kwargs.get("qpos", 0)
-        self.indel     = kwargs.get("indel", 0)
-        self.level     = kwargs.get("level", 0)
-        self.is_del    = kwargs.get("is_del", 0)
-        self.is_head   = kwargs.get("is_head", 0)
-        self.is_tail   = kwargs.get("is_tail", 0)
+    cdef:
+         AlignedRead alignment
+         int32_t qpos 
+         int indel
+         int level
+         uint32_t is_del
+         uint32_t is_head
+         uint32_t is_tail
+
+    def __cinit__( self ):
+        pass
 
     def __str__(self):
         return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )
-
-import tempfile, os, sys
 
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
@@ -818,9 +990,9 @@ class Outs:
     def setfd(self, fd):
         ofd = os.dup(self.id)      #  Save old stream on new unit.
         self.streams.append(ofd)
-        sys.stdout.flush()    #  Buffered data goes to old stream.
+        sys.stdout.flush()          #  Buffered data goes to old stream.
         os.dup2(fd, self.id)        #  Open unit 1 on new stream.
-        os.close(fd)          #  Close other unit (look out, caller.)
+        os.close(fd)                #  Close other unit (look out, caller.)
             
     def restore(self):
         '''restore previous output stream'''
@@ -862,6 +1034,13 @@ def _samtools_dispatch( method, args = () ):
     stderr_h, stderr_f = tempfile.mkstemp()
     stdout_h, stdout_f = tempfile.mkstemp()
 
+    # patch for `samtools view`
+    # samtools `view` closes stdout, from which I can not
+    # recover. Thus redirect output to file with -o option.
+    if method == "view":
+        if "-o" in args: raise ValueError("option -o is forbidden in samtools view")
+        args = ( "-o", stdout_f ) + args
+
     stdout_save = Outs( sys.stdout.fileno() )
     stdout_save.setfd( stdout_h )
     stderr_save = Outs( sys.stderr.fileno() )
@@ -870,6 +1049,7 @@ def _samtools_dispatch( method, args = () ):
     # do the function call to samtools
     cdef char ** cargs
     cdef int i, n, retval
+
 
     n = len(args)
     # allocate two more for first (dummy) argument (contains command)

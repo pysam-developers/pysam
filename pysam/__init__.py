@@ -46,9 +46,7 @@ class SamtoolsDispatcher(object):
         if retval: raise SamtoolsError( "\n".join( stderr ) )
         self.stderr = stderr
         # call parser for stdout:
-        
         if not kwargs.get("raw") and stdout and self.parsers:
-
             for options, parser in self.parsers:
                 for option in options: 
                     if option not in args: break
@@ -69,19 +67,20 @@ class SamtoolsDispatcher(object):
 # samtools command line options to export in python
 #
 # import is a python reserved word.
-SAMTOOLS_DISPATCH = { "view" : ( "view", None ),
-                      "sort" : ( "sort", None),
-                      "samimport": ( "import", None),
-                      "pileup" : ( "pileup", ( (("-c",), Pileup.iterate ), ), ),
-                      "faidx" : ("faidx", None),
-                      "tview" : ("tview", None),
-                      "index" : ("index", None),
-                      "fixmate" : ("fixmate", None),
-                      "glfview" : ("glfview", None),
-                      "flagstat" : ("flagstat", None),
-                      "calmd" : ("calmd", None),
-                      "merge" : ("merge", None),  
-                      "rmdup" : ("rmdup", None) }
+SAMTOOLS_DISPATCH = { 
+    "view" : ( "view", None ),
+    "sort" : ( "sort", None),
+    "samimport": ( "import", None),
+    "pileup" : ( "pileup", ( (("-c",), Pileup.iterate ), ), ),
+    "faidx" : ("faidx", None),
+    "tview" : ("tview", None),
+    "index" : ("index", None),
+    "fixmate" : ("fixmate", None),
+    "glfview" : ("glfview", None),
+    "flagstat" : ("flagstat", None),
+    "calmd" : ("calmd", None),
+    "merge" : ("merge", None),  
+    "rmdup" : ("rmdup", None) }
 
 # instantiate samtools commands as python functions
 for key, options in SAMTOOLS_DISPATCH.iteritems():

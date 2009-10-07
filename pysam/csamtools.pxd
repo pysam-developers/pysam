@@ -42,6 +42,7 @@ cdef extern from "string.h":
   char *strncpy(char *dest,char *src, size_t len)
   char *strdup(char *)
   char *strcat(char *,char *)
+  size_t strlen(char *s)
 
 cdef extern from "razf.h":
   pass
@@ -171,6 +172,7 @@ cdef extern from "bam.h":
   char bam_aux2A( uint8_t *s)
   char *bam_aux2Z( uint8_t *s)
   
+  void bam_init_header_hash(bam_header_t *header)
 
 cdef extern from "sam.h":
 

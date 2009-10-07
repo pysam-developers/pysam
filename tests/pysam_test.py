@@ -83,11 +83,16 @@ class BinaryTest(unittest.TestCase):
                 ("ex1.glfview", "samtools glfview ex1.glf > ex1.glfview"),
                 ("pysam_ex1.glfview", (pysam.glfview, "ex1.glf" ) ),
                 ),
+          "view" :
+        (
+                ("ex1.view", "samtools view ex1.bam > ex1.view"),
+                ("pysam_ex1.view", (pysam.view, "ex1.bam" ) ),
+                ),
         }
 
     # some tests depend on others. The order specifies in which order
     # the samtools commands are executed.
-    mOrder = ('faidx', 'import', 'index', 'pileup1', 'pileup2', 'glfview' )
+    mOrder = ('faidx', 'import', 'index', 'pileup1', 'pileup2', 'glfview', 'view' )
 
     def setUp( self ):
         '''setup tests. 
@@ -136,6 +141,9 @@ class BinaryTest(unittest.TestCase):
     def testGLFView( self ):
         self.checkCommand( "glfview" )
 
+    def testView( self ):
+        self.checkCommand( "view" )
+
     def __del__(self):
 
         for label, command in self.mCommands.iteritems():
@@ -145,26 +153,119 @@ class BinaryTest(unittest.TestCase):
             if os.path.exists( pysam_target): os.remove( pysam_target )
         if os.path.exists( "pysam_ex1.fa" ): os.remove( "pysam_ex1.fa" )
 
-
 class IOTest(unittest.TestCase):
-    '''check if reading a bam and writing a bam file are consistent.'''
+    '''check if reading samfile and writing a samfile are consistent.'''
 
-    def testReadWrite( self ):
+    def checkEcho( self, input_filename, reference_filename, 
+                   output_filename, 
+                   input_mode, output_mode, use_template = True):
+        '''iterate through *input_filename* writing to *output_filename* and
+        comparing the output to *reference_filename*. 
         
-        samtools_target = "ex1.bam"
-        pysam_target = "pysam_ex1.bam"
+        The files are opened according to the *input_mode* and *output_mode*.
 
-        infile = pysam.Samfile( samtools_target, "rb" )
-        outfile = pysam.Samfile( pysam_target, "wb", template = infile )
+        If *use_template* is set, the header is copied from infile using the
+        template mechanism, otherwise target names and lengths are passed explicitely. 
+        '''
+
+        infile = pysam.Samfile( input_filename, input_mode )
+        if use_template:
+            outfile = pysam.Samfile( output_filename, output_mode, template = infile )
+        else:
+            outfile = pysam.Samfile( output_filename, output_mode, 
+                                     targetnames = infile.getTargets(),
+                                     targetlengths = infile.getTargetLengths() )
 
         iter = pysam.IteratorRowAll( infile )
         for x in iter: outfile.write( x )
         infile.close()
         outfile.close()
 
-        self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 
-                         "files %s and %s are not the same" % (samtools_target, pysam_target) )
+        self.assertTrue( checkBinaryEqual( reference_filename, output_filename), 
+                         "files %s and %s are not the same" % (reference_filename, output_filename) )
+
+    def testReadWriteBam( self ):
         
+        input_filename = "ex1.bam"
+        output_filename = "pysam_ex1.bam"
+        reference_filename = "ex1.bam"
+
+        self.checkEcho( input_filename, reference_filename, output_filename,
+                        "rb", "wb" )
+
+    def testReadWriteBamWithTargetNames( self ):
+        
+        input_filename = "ex1.bam"
+        output_filename = "pysam_ex1.bam"
+        reference_filename = "ex1.bam"
+
+        self.checkEcho( input_filename, reference_filename, output_filename,
+                        "rb", "wb", use_template = False )
+
+    def testReadWriteSamWithHeader( self ):
+        
+        input_filename = "ex2.sam"
+        output_filename = "pysam_ex2.sam"
+        reference_filename = "ex2.sam"
+
+        self.checkEcho( input_filename, reference_filename, output_filename,
+                        "r", "wh" )
+
+    def testReadWriteSamWithoutHeader( self ):
+        
+        input_filename = "ex2.sam"
+        output_filename = "pysam_ex2.sam"
+        reference_filename = "ex1.sam"
+
+        self.checkEcho( input_filename, reference_filename, output_filename,
+                        "r", "w" )
+
+class TestIteratorRow(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+
+    def checkRange( self, rnge ):
+        '''compare results from iterator with those from samtools.'''
+        ps = list(pysam.IteratorRow(self.samfile, rnge))
+        sa = list(pysam.view( "ex1.bam", rnge , raw = True) )
+        self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
+        # check if the same reads are returned and in the same order
+        for line, pair in enumerate( zip( ps, sa ) ):
+            data = pair[1].split("\t")
+            self.assertEqual( pair[0].qname, data[0], "read id mismatch in line %i: %s != %s" % (line, pair[0].rname, data[0]) )
+
+    def testIteratePerContig(self):
+        '''check random access per contig'''
+        for contig in self.samfile.getTargets():
+            self.checkRange( contig )
+
+    def testIterateRanges(self):
+        '''check random access per range'''
+        for contig, length in zip(self.samfile.targets, self.samfile.lengths):
+            for start in range( 0, length, 100):
+                self.checkRange( "%s:%i-%i" % (contig, start, start + 100) )
+
+    def tearDown(self):
+        self.samfile.close()
+
+class TestIteratorRowAll(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+
+    def testIterate(self):
+        '''compare results from iterator with those from samtools.'''
+        ps = list(pysam.IteratorRowAll(self.samfile))
+        sa = list(pysam.view( "ex1.bam", raw = True) )
+        self.assertEqual( len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa) ))
+        # check if the same reads are returned
+        for line, pair in enumerate( zip( ps, sa ) ):
+            data = pair[1].split("\t")
+            self.assertEqual( pair[0].qname, data[0], "read id mismatch in line %i: %s != %s" % (line, pair[0].rname, data[0]) )
+
+    def tearDown(self):
+        self.samfile.close()
 
 if __name__ == "__main__":
     unittest.main()

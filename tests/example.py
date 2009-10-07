@@ -2,26 +2,28 @@ import pysam
 
 samfile = pysam.Samfile( "ex1.bam", "rb" )
 
-print "###########################"
+print "########### fetch with callback ################"
 def my_fetch_callback( alignment ):
-    print str(alignment)
-samfile.fetch( "seq1:10-20", my_fetch_callback )
+    print "here", str(alignment)
+samfile.fetch( "seq1:10-200", my_fetch_callback )
 
-print "###########################"
+print "########## pileup with callback ################"
 def my_pileup_callback( pileups ):    print str(pileups)
-samfile.pileup( "seq1:10-20", my_pileup_callback )
+samfile.pileup( "seq1:10-200", my_pileup_callback )
 
-print "###########################"
-iter = pysam.IteratorRow( samfile, "seq1:10-20")
+print "##########iterator row #################"
+iter = pysam.IteratorRow( samfile, "seq1:10-200")
 for x in iter: print str(x)
 
-print "###########################"
-iter = pysam.IteratorColumn( samfile, "seq1:10-20")
+print "##########iterator col #################"
+iter = pysam.IteratorColumn( samfile, "seq1:10-200")
 for x in iter: print str(x)
 
-print "###########################"
+print "#########row all##################"
 iter = pysam.IteratorRowAll( samfile )
 for x in iter: print str(x)
+
+print "###################"
 
 class Counter:
     mCounts = 0
@@ -29,7 +31,7 @@ class Counter:
         self.mCounts += 1
 
 c = Counter()
-samfile.fetch( "seq1:10-20", c )
+samfile.fetch( "seq1:10-200", c )
 print "counts=", c.mCounts
 
 print samfile.getTarget( 0 )
