@@ -606,8 +606,9 @@ cdef class IteratorColumn:
     def __dealloc__(self):
         bam_plbuf_destroy(self.buf);
 
-class AlignedRead(object):
+cdef class AlignedRead:
     '''
+    todo:update
     Python wrapper around an aligned read. The following
     fields are exported:
 
@@ -643,50 +644,151 @@ class AlignedRead(object):
         the insert size
     '''
 
-    tid = 0
-    pos = 0
-    bin = 0
-    qual = 0
-    l_qname = 0
-    flag = 0
-    n_cigar = 0
-    l_qseq = 0
-    qname = None
-    cigar = None
-    qseq = None
-    bqual = None
-    mtid = 0
-    mpos = 0
-    isize = 0
-
-    def __init__(self, **kwargs):
-        self.tid     = kwargs.get("tid",0)
-        self.pos     = kwargs.get("pos",0)
-        self.bin     = kwargs.get("bin",0)
-        self.qual    = kwargs.get("qual",0)
-        self.l_qname = kwargs.get("l_qname",0)
-        self.flag    = kwargs.get("flag",0)
-        self.n_cigar = kwargs.get("n_cigar",0)
-        self.l_qseq  = kwargs.get("l_qseq",0)
-        self.qname   = kwargs.get("qname", None)
-        self.cigar   = kwargs.get("cigar", None)
-        self.qseq    = kwargs.get("qseq", None)
-        self.qual    = kwargs.get("qual", None)
-        self.bqual   = kwargs.get("bqual", None)
-
+    def __dealloc__(self):
+        """todo is this enough or do we need to free() each string? eg 'qual' etc"""
+        bam_destroy1(self._delegate)
+            
+    cdef:
+         bam1_t * _delegate 
+         
+    
     def __str__(self):
-        return "\t".join( map(str, (self.qname,
-                                    self.tid,
+        """todo"""
+        return "\t".join(map(str, (self.qname,
+                                    self.rname,
                                     self.pos,
-                                    self.bin,
                                     self.qual,
-                                    self.l_qname,
-                                    self.flag, 
-                                    self.n_cigar,
-                                    self.l_qseq,
-                                    self.qseq,
-                                    self.cigar,
-                                    self.bqual, ) ) )
+                                    self.flag,
+                                    self.seq,
+                                    self.mapq , self.opt('MF'), self.is_paired)))
+                                 
+ 
+                                    
+                
+    #For all the following we follow the samfile specification for field names, changing uppercase to  lowercase only
+    
+    property cigar:
+        def __get__(self):
+            cdef uint32_t * cigar_p
+            cdef bam1_t * src 
+            cdef op, l, cigar
+            src = self._delegate
+            if src.core.n_cigar > 0:
+                cigar = []
+                cigar_p = < uint32_t *> (src.data + src.core.l_qname)
+                for k from 0 <= k < src.core.n_cigar:
+                    op = cigar_p[k] & BAM_CIGAR_MASK
+                    l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                    cigar.append((op, l))
+                return cigar
+            return None
+    property qname:
+        def __get__(self):
+            cdef bam1_t * src 
+            src = self._delegate
+            ## parse qname (bam1_qname)
+            return < char *> src.data
+    property seq:
+        def __get__(self):
+            cdef bam1_t * src
+            cdef uint8_t * seq_p 
+            cdef char * s
+            src = self._delegate
+            bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
+            ## parse qseq (bam1_seq)
+            if src.core.l_qseq: 
+                s = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
+                seq_p = < uint8_t *> (src.data + src.core.n_cigar * 4 + src.core.l_qname)
+                for k from 0 <= k < src.core.l_qseq:
+                ## equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
+                    s[k] = "=ACMGRSVTWYHKDBN"[((seq_p)[(k) / 2] >> 4 * (1 - (k) % 2) & 0xf)]
+                return s
+            return None
+    property qual:
+        def __get__(self):
+            #todo is this still needed
+            cdef bam1_t * src 
+            cdef uint8_t * qual_p
+            cdef char * q
+            src = self._delegate
+            qual_p = < uint8_t *> (src.data + src.core.n_cigar * 4 + src.core.l_qname + (src.core.l_qseq + 1) / 2)        
+            if qual_p[0] != 0xff:
+                q = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
+                for k from 0 <= k < src.core.l_qseq:
+                ## equivalent to t[i] + 33 (see bam.c)
+                    q[k] = qual_p[k] + 33
+                return q
+            return None
+
+
+    #todo check which of these are needed (see specification) do we need l_qseq, n_cigar etc? also check tid=rname
+    property flag: 
+        def __get__(self): 
+            return self._delegate.core.flag
+    property rname: 
+        def __get__(self): 
+            return self._delegate.core.tid
+    property pos: 
+        def __get__(self): 
+            return self._delegate.core.pos
+    property mapq: 
+        def __get__(self): 
+            return self._delegate.core.qual
+    property mrnm: 
+        def __get__(self): 
+            return self._delegate.core.mtid
+    property mpos: 
+        def __get__(self): 
+            return self._delegate.core.mpos
+    property isize: 
+        def __get__(self): 
+            return self._delegate.core.isize
+    
+    
+    #todo: finish these off
+    property is_paired: 
+        def __get__(self): 
+            """true if read is paired in sequencing"""
+            return (self._delegate.core.flag & BAM_FPAIRED) != 0
+    property is_proper_pair(self):
+        """true if read is mapped in a proper pair"""
+        def __get__(self): return (self.flag & BAM_FPROPER_PAIR) != 0
+    #def _getfunmap( self ): return (self.flag & BAM_FUNMAP) != 0
+    #is_unmapped = property( _getfunmap, doc="true if read itself is unmapped" )
+    #def _getfmunmap( self ): return (self.flag & BAM_FMUNMAP) != 0
+    #mate_is_unmapped = property( _getfmunmap, doc="true if the mate is unmapped" )
+    #def _getreverse( self ): return (self.flag & BAM_FREVERSE) != 0
+    #is_reverse = property( _getreverse, doc = "true if read is mapped to reverse strand" )
+    #def _getmreverse( self ): return (self.flag & BAM_FMREVERSE) != 0
+    #mate_is_reverse = property( _getmreverse, doc= "true is read is mapped to reverse strand" )
+    #def _getread1( self ): return (self.flag & BAM_FREAD1) != 0
+    #is_read1 = property( _getread1, doc = "true if this is read1" )
+    #def _getread2( self ): return (self.flag & BAM_FREAD2) != 0
+    #is_read2 = property( _getread2, doc = "true if this is read2" )
+    #def _getfsecondary( self ): return (self.flag & BAM_FSECONDARY) != 0
+    #is_secondary = property( _getfsecondary, doc="true if not primary alignment" )
+    #def _getfqcfail( self ): return (self.flag & BAM_FSECONDARY) != 0
+    #is_qcfail = property( _getfqcfail, doc="true if QC failure" )
+    #def _getfdup( self ): return (self.flag & BAM_FDUP) != 0
+    #is_duplicate = property( _getfdup, doc="true if optical or PCR duplicate" )
+    
+    def opt(self, tag):
+        """retrieves optional data given a two-letter *tag*"""
+        #see bam_aux_get.c: bam_aux_get() and bam_aux2i() etc 
+        cdef uint8_t * v
+        v = bam_aux_get(self._delegate, tag)
+        type = chr(v[0])
+        if type == 'c' or type == 'C' or type == 's' or type == 'S' or type == 'i':
+            return bam_aux2i(v)            
+        elif type == 'f':
+            return bam_aux2f(v)
+        elif type == 'd':
+            return bam_aux2d(v)
+        elif type == 'A':
+            return bam_aux2A(v)
+        elif type == 'Z':
+            return bam_aux2Z(v)
+    
     def fancy_str (self):
         """
         returns list of fieldnames/values in pretty format for debugging
@@ -732,184 +834,11 @@ class AlignedRead(object):
             if not f in field_names:
                 ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
         return ret_string
+
         
 
-    # @abstract the read is paired in sequencing, no matter whether it is mapped in a pair */
-    def _getfpaired( self ): return (self.fpaired & BAM_FPAIRED) != 0
-    is_paired = property( _getfpaired, doc="true if read is paired in sequencing" )
-    def _getfproper_pair( self ): return (self.flag & BAM_FPROPER_PAIR) != 0
-    is_proper_pair = property( _getfproper_pair, doc="true if read is mapped in a proper pair" )
-    def _getfunmap( self ): return (self.flag & BAM_FUNMAP) != 0
-    is_unmapped = property( _getfunmap, doc="true if read itself is unmapped" )
-    def _getfmunmap( self ): return (self.flag & BAM_FMUNMAP) != 0
-    mate_is_unmapped = property( _getfmunmap, doc="true if the mate is unmapped" )
-    def _getreverse( self ): return (self.flag & BAM_FREVERSE) != 0
-    is_reverse = property( _getreverse, doc = "true if read is mapped to reverse strand" )
-    def _getmreverse( self ): return (self.flag & BAM_FMREVERSE) != 0
-    mate_is_reverse = property( _getmreverse, doc= "true is read is mapped to reverse strand" )
-    def _getread1( self ): return (self.flag & BAM_FREAD1) != 0
-    is_read1 = property( _getread1, doc = "true if this is read1" )
-    def _getread2( self ): return (self.flag & BAM_FREAD2) != 0
-    is_read2 = property( _getread2, doc = "true if this is read2" )
-    def _getfsecondary( self ): return (self.flag & BAM_FSECONDARY) != 0
-    is_secondary = property( _getfsecondary, doc="true if not primary alignment" )
-    def _getfqcfail( self ): return (self.flag & BAM_FSECONDARY) != 0
-    is_qcfail = property( _getfqcfail, doc="true if QC failure" )
-    def _getfdup( self ): return (self.flag & BAM_FDUP) != 0
-    is_duplicate = property( _getfdup, doc="true if optical or PCR duplicate" )
+   
 
-
-class FastAlignedRead(object):
-    '''
-    Python wrapper around an aligned read. The following
-    fields are exported:
-
-    tid
-        chromosome/target ID
-    pos
-        0-based leftmost coordinate
-    bin
-        bin calculated by bam_reg2bin()
-    qual
-        mapping quality
-    l_qname
-        length of the query name
-    flag
-        bitwise flag
-    n_cigar
-        number of CIGAR operations
-    l_qseq
-        length of the query sequence (read)
-    qname
-        the query name (None if not present)
-    cigar
-        the :term:`cigar` alignment string (None if not present)
-    qseq
-        the query sequence (None if not present)
-    bqual
-        the base quality (None if not present)
-    mtid
-        the :term:`target` id of the mate 
-    mpos  
-        the position of the mate
-    izise
-        the insert size
-    '''
-
-    tid = 0
-    pos = 0
-    bin = 0
-    qual = 0
-    l_qname = 0
-    flag = 0
-    n_cigar = 0
-    l_qseq = 0
-    qname = None
-    cigar = None
-    qseq = None
-    bqual = None
-    mtid = 0
-    mpos = 0
-    isize = 0
-
-    def __init__(self, **kwargs):
-        self.tid     = kwargs.get("tid",0)
-        self.pos     = kwargs.get("pos",0)
-        self.bin     = kwargs.get("bin",0)
-        self.qual    = kwargs.get("qual",0)
-        self.l_qname = kwargs.get("l_qname",0)
-        self.flag    = kwargs.get("flag",0)
-        self.n_cigar = kwargs.get("n_cigar",0)
-        self.l_qseq  = kwargs.get("l_qseq",0)
-        self.qname   = kwargs.get("qname", None)
-        self.cigar   = kwargs.get("cigar", None)
-        self.qseq    = kwargs.get("qseq", None)
-        self.qual    = kwargs.get("qual", None)
-        self.bqual   = kwargs.get("bqual", None)
-
-    def __str__(self):
-        return "\t".join( map(str, (self.qname,
-                                    self.tid,
-                                    self.pos,
-                                    self.bin,
-                                    self.qual,
-                                    self.l_qname,
-                                    self.flag, 
-                                    self.n_cigar,
-                                    self.l_qseq,
-                                    self.qseq,
-                                    self.cigar,
-                                    self.bqual, ) ) )
-    def fancy_str (self):
-        """
-        returns list of fieldnames/values in pretty format for debugging
-        """
-        ret_string = []
-        field_names = {
-                        "tid":           "Contig index",
-                        "pos":           "Mapped position on contig",
-
-                        "mtid":          "Contig index for mate pair",
-                        "mpos":          "Position of mate pair",
-                        "isize":         "Insert size",
-
-                        "flag":          "Binary flag",
-                        "n_cigar":       "Count of cigar entries",
-                        "cigar":         "Cigar entries",
-                        "qual":          "Mapping quality",
-
-                        "bin":           "Bam index bin number",
-
-                        "l_qname":       "Length of query name",
-                        "qname":         "Query name",
-
-                        "l_qseq":        "Length of query sequence",
-                        "qseq":          "Query sequence",
-                        "bqual":         "Quality scores",
-
-
-                        "l_aux":         "Length of auxilary data",
-                        "m_data":        "Maximum data length",
-                        "data_len":      "Current data length",
-                        }
-        fields_names_in_order = ["tid", "pos", "mtid", "mpos", "isize", "flag", 
-                                 "n_cigar", "cigar", "qual", "bin", "l_qname", "qname", 
-                                 "l_qseq", "qseq", "bqual", "l_aux", "m_data", "data_len"]
-
-        for f in fields_names_in_order:
-            if not f in self.__dict__:
-                continue
-            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
-
-        for f in self.__dict__:
-            if not f in field_names:
-                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
-        return ret_string
-
-
-    # @abstract the read is paired in sequencing, no matter whether it is mapped in a pair */
-    def _getfpaired( self ): return (self.fpaired & BAM_FPAIRED) != 0
-    is_paired = property( _getfpaired, doc="true if read is paired in sequencing" )
-    def _getfproper_pair( self ): return (self.flag & BAM_FPROPER_PAIR) != 0
-    is_proper_pair = property( _getfproper_pair, doc="true if read is mapped in a proper pair" )
-    def _getfunmap( self ): return (self.flag & BAM_FUNMAP) != 0
-    is_unmapped = property( _getfunmap, doc="true if read itself is unmapped" )
-    def _getfmunmap( self ): return (self.flag & BAM_FMUNMAP) != 0
-    mate_is_unmapped = property( _getfmunmap, doc="true if the mate is unmapped" )
-    def _getreverse( self ): return (self.flag & BAM_FREVERSE) != 0
-    is_reverse = property( _getreverse, doc = "true if read is mapped to reverse strand" )
-    def _getmreverse( self ): return (self.flag & BAM_FMREVERSE) != 0
-    mate_is_reverse = property( _getmreverse, doc= "true is read is mapped to reverse strand" )
-    def _getread1( self ): return (self.flag & BAM_FREAD1) != 0
-    is_read1 = property( _getread1, doc = "true if this is read1" )
-    def _getread2( self ): return (self.flag & BAM_FREAD2) != 0
-    is_read2 = property( _getread2, doc = "true if this is read2" )
-    def _getfsecondary( self ): return (self.flag & BAM_FSECONDARY) != 0
-    is_secondary = property( _getfsecondary, doc="true if not primary alignment" )
-    def _getfqcfail( self ): return (self.flag & BAM_FSECONDARY) != 0
-    is_qcfail = property( _getfqcfail, doc="true if QC failure" )
-    def _getfdup( self ): return (self.flag & BAM_FDUP) != 0
-    is_duplicate = property( _getfdup, doc="true if optical or PCR duplicate" )
 
 class PileupColumn(object):
     '''A pileup column. A pileup column contains

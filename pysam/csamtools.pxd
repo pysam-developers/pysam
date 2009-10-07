@@ -117,6 +117,9 @@ cdef extern from "bam.h":
 
   int64_t bam_tell( bamFile fp )
 
+  bam1_t * bam_dup1( bam1_t *src ) 
+  
+  bam1_t * bam_copy1(bam1_t *bdst, bam1_t *bsrc)
   bam_index_t *bam_index_load(char *f )
 
   void bam_index_destroy(bam_index_t *idx)
