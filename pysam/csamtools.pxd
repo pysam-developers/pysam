@@ -50,7 +50,6 @@ cdef extern from "bam.h":
 
   # IF _IOLIB=2, bamFile = BGZF, see bgzf.h
   # samtools uses KNETFILE, check how this works
-
   ctypedef int int64_t
   ctypedef int int32_t
   ctypedef int uint32_t
@@ -164,6 +163,14 @@ cdef extern from "bam.h":
   bam1_t * bam_dup1( bam1_t *src ) 
   
   bam1_t * bam_copy1(bam1_t *bdst, bam1_t *bsrc)
+
+  uint8_t *bam_aux_get(bam1_t *b,  char tag[2])
+  int bam_aux2i(uint8_t *s)
+  float bam_aux2f(uint8_t *s)
+  double bam_aux2d(uint8_t *s)
+  char bam_aux2A( uint8_t *s)
+  char *bam_aux2Z( uint8_t *s)
+  
 
 cdef extern from "sam.h":
 

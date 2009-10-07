@@ -38,6 +38,7 @@ DEF BAM_FDUP        =1024
 ## private methods
 #####################################################################
 
+cdef class AlignedRead
 cdef samfile_t * openSam( char * filename, char * mode ):
     """open a samfile *filename*."""
     cdef samfile_t * fh
@@ -606,7 +607,6 @@ cdef class AlignedRead:
                                  
  
                                     
-    """qname, seq, cigar, qual, flag, rname, pos, mapq, mrnm, mpos, isize"""           
     #For all the following we follow the samfile specification for field names, changing uppercase to  lowercase only
     
     property cigar:
@@ -692,7 +692,7 @@ cdef class AlignedRead:
         def __get__(self): 
             """true if read is paired in sequencing"""
             return (self._delegate.core.flag & BAM_FPAIRED) != 0
-    property is_proper_pair(self):
+    property is_proper_pair:
         """true if read is mapped in a proper pair"""
         def __get__(self): return (self.flag & BAM_FPROPER_PAIR) != 0
     #def _getfunmap( self ): return (self.flag & BAM_FUNMAP) != 0
