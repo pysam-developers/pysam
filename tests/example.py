@@ -2,12 +2,13 @@ import pysam
 
 samfile = pysam.Samfile( "ex1.bam", "rb" )
 
+print "###########################"
 def my_fetch_callback( alignment ):
     print str(alignment)
 samfile.fetch( "seq1:10-20", my_fetch_callback )
 
-def my_pileup_callback( pileups ):
-    print str(pileups)
+print "###########################"
+def my_pileup_callback( pileups ):    print str(pileups)
 samfile.pileup( "seq1:10-20", my_pileup_callback )
 
 print "###########################"
@@ -16,6 +17,10 @@ for x in iter: print str(x)
 
 print "###########################"
 iter = pysam.IteratorColumn( samfile, "seq1:10-20")
+for x in iter: print str(x)
+
+print "###########################"
+iter = pysam.IteratorRowAll( samfile )
 for x in iter: print str(x)
 
 class Counter:
@@ -42,13 +47,14 @@ print "###########################"
 
 samfile = pysam.Samfile( "ex2.sam.gz", "r" )
 
-print samfile.getNumTargets()
+print "num targets=", samfile.getNumTargets()
 
 iter = pysam.IteratorRowAll( samfile )
 for x in iter: print str(x)
 
 samfile.close()
 
+print "###########################"
 samfile = pysam.Samfile( "ex2.sam.gz", "r" )
 def my_fetch_callback( alignment ):
     print str(alignment)
@@ -60,6 +66,7 @@ except AssertionError:
 
 samfile.close()
 
+print "###########################"
 samfile = pysam.Samfile( "ex2.sam.gz", "r" )
 def my_pileup_callback( pileups ):
     print str(pileups)
@@ -67,3 +74,4 @@ try:
     samfile.pileup( "seq1:10-20", my_pileup_callback )
 except NotImplementedError:
     print "caught pileup exception"
+

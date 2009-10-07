@@ -145,5 +145,26 @@ class BinaryTest(unittest.TestCase):
             if os.path.exists( pysam_target): os.remove( pysam_target )
         if os.path.exists( "pysam_ex1.fa" ): os.remove( "pysam_ex1.fa" )
 
+
+class IOTest(unittest.TestCase):
+    '''check if reading a bam and writing a bam file are consistent.'''
+
+    def testReadWrite( self ):
+        
+        samtools_target = "ex1.bam"
+        pysam_target = "pysam_ex1.bam"
+
+        infile = pysam.Samfile( samtools_target, "rb" )
+        outfile = pysam.Samfile( pysam_target, "wb", template = infile )
+
+        iter = pysam.IteratorRowAll( infile )
+        for x in iter: outfile.write( x )
+        infile.close()
+        outfile.close()
+
+        self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 
+                         "files %s and %s are not the same" % (samtools_target, pysam_target) )
+        
+
 if __name__ == "__main__":
     unittest.main()

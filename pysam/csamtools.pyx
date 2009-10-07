@@ -38,28 +38,6 @@ DEF BAM_FDUP        =1024
 ## private methods
 #####################################################################
 
-cdef class AlignedRead
-cdef samfile_t * openSam( char * filename, char * mode ):
-    """open a samfile *filename*."""
-    cdef samfile_t * fh
-    
-    fh = samopen( filename, mode, NULL)
-
-    if fh == NULL:
-        raise IOError("could not open file `%s`" % filename )
-
-    return fh
- 
-cdef bam_index_t * openIndex( filename ):
-    """open index for *filename*."""
-    cdef bam_index_t *idx
-    idx = bam_index_load(filename)
-
-    if idx == NULL:
-        raise IOError("could not open index `%s` " % filename )
-
-    return idx
-
 ## there might a better way to build an Aligment object,
 ## but I could not get the following to work, usually
 ## getting a "can not convert to Python object"
@@ -68,34 +46,17 @@ cdef bam_index_t * openIndex( filename ):
 DEF BAM_CIGAR_SHIFT=4
 DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
 
-cdef samtoolsToAlignedRead(AlignedRead dest, bam1_t * src):
+cdef class AlignedRead
+cdef makeAlignedRead( bam1_t * src):
     '''enter src into AlignedRead.'''
+    cdef AlignedRead dest
+    dest = AlignedRead()
     dest._delegate = bam_dup1(src)
-    return dest
-
-
-
-cdef bam1_t * alignedReadToSamtools( bam1_t * dest, src ):
-    '''convert to samtools data structure'''
-    dest.core.tid = src.tid
-    dest.core.pos = src.pos
-    dest.core.bin = src.bin
-    dest.core.qual = src.qual
-    dest.core.l_qname = src.l_qname
-    dest.core.flag = src.flag
-    dest.core.n_cigar = src.n_cigar
-    dest.core.l_qseq = src.l_qseq
-    dest.data_len = src.data_len
-    dest.l_aux = src.l_aux
-    dest.m_data = src.m_data
-    dest.core.mtid = src.mtid
-    dest.core.mpos = src.mpos
-    dest.core.isize = src.isize
     return dest
 
 cdef samtoolsToPileupRead( dest, bam_pileup1_t * src ):
     '''fill a  PileupRead object from a bam_pileup1_t * object.'''
-    dest.alignment = samtoolsToAlignedRead( AlignedRead(), src.b )
+    dest.alignment = makeAlignedRead( src.b )
     dest.qpol = src.qpos
     dest.indel = src.indel
     dest.level = src.level
@@ -114,7 +75,7 @@ cdef int fetch_callback( bam1_t *alignment, void *f):
     
     calls function in *f* with a new :class:`AlignedRead` object as parameter.
     '''
-    a = samtoolsToAlignedRead( AlignedRead(), alignment )
+    a = makeAlignedRead( alignment )
     (<object>f)(a)
 
 cdef int pileup_callback( uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, void *f):
@@ -162,7 +123,24 @@ cdef int pileup_fetch_callback( bam1_t *b, void *data):
 ## Public methods
 ######################################################################
 cdef class Samfile:
-    '''A bam/sam file
+    '''open a sam/bam file. If an index exists, it will be opened as well.
+
+    For writing, the names (*targetnames*) and lengths (*targetlengths*)
+    of targets need to be supplied or the header is taken from a *template*.
+
+    The *mode* corresponds to the syntax in samtools. Valid modes are
+    ``/[rw](b?)(u?)(h?)/``: 
+    
+    r for reading
+    w for writing, 
+    b for BAM I/O, i.e., input/output is in binary format 
+    u for uncompressed BAM output 
+    h for outputing header in SAM 
+         
+    If ``b`` is present, it must immediately follow ``r`` or ``w``. 
+    Currently valid modes are ``r``, ``w``, ``rb``, ``wb``. 
+    
+    TODO: ``wh``,  and ``wbu``
     '''
 
     cdef samfile_t * samfile
@@ -171,6 +149,7 @@ cdef class Samfile:
     cdef int isbam
 
     def __cinit__(self, *args, **kwargs ):
+        
        self.samfile = NULL
        self.isbam = False
        self.open( *args, **kwargs )
@@ -354,14 +333,12 @@ cdef class Samfile:
         # Note that __del__ is not called.
         self.close()
 
-    def write( self, read ):
+    def write( self, AlignedRead read ):
         '''write read to file.
 
         return the number of bytes written.
         '''
-        cdef bam1_t dest
-        alignedReadToSamtools( &dest, read )
-        return bam_write1( self.samfile.x.bam, &dest)
+        return bam_write1( self.samfile.x.bam, read._delegate )
 
 ## turning callbacks elegantly into iterators is an unsolved problem, see the following threads:
 ## http://groups.google.com/group/comp.lang.python/browse_frm/thread/0ce55373f128aa4e/1d27a78ca6408134?hl=en&pli=1
@@ -415,8 +392,7 @@ cdef class IteratorRow:
         
         self.b = bam_fetch_iterate(self.bam_iter)
         if self.b <> NULL:
-            dest = samtoolsToAlignedRead( AlignedRead(), self.b )
-            return dest
+            return makeAlignedRead( self.b )
         else:
             raise StopIteration
 
@@ -429,20 +405,17 @@ cdef class IteratorRowAll:
     """iterate over all mapped reads
     """
 
-    cdef bam1_t *               b
-    cdef samfile_t *            fp
+    cdef bam1_t * b
+    cdef samfile_t * fp
 
     def __cinit__(self, Samfile samfile):
 
         assert samfile.isOpen()
 
-        # parse the region
         self.fp = samfile.samfile
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
-
-        # seek past the header not necessary for bam files
 
     def __iter__(self):
         return self 
@@ -458,15 +431,14 @@ cdef class IteratorRowAll:
         cdef int ret
         ret = samread(self.fp, self.b)
         if (ret > 0):
-            return samtoolsToAlignedRead( AlignedRead(), self.b )
+            return makeAlignedRead( self.b )
         else:
             raise StopIteration
 
     def __dealloc__(self):
         '''remember: dealloc cannot call other methods!'''
-        bam_destroy1(self.b);
+        bam_destroy1(self.b)
         
-
 cdef class IteratorColumn:
     '''iterate over columns.
 
@@ -587,13 +559,15 @@ cdef class AlignedRead:
         the insert size
     '''
 
+    cdef:
+         bam1_t * _delegate 
+
+    def __cinit__( self ):
+        self._delegate = <bam1_t*>calloc( sizeof( bam1_t), 1 )
+
     def __dealloc__(self):
         """todo is this enough or do we need to free() each string? eg 'qual' etc"""
         bam_destroy1(self._delegate)
-            
-    cdef:
-         bam1_t * _delegate 
-         
     
     def __str__(self):
         """todo"""
@@ -662,7 +636,6 @@ cdef class AlignedRead:
                 return q
             return None
 
-
     #todo check which of these are needed (see specification) do we need l_qseq, n_cigar etc? also check tid=rname
     property flag: 
         def __get__(self): 
@@ -685,7 +658,6 @@ cdef class AlignedRead:
     property isize: 
         def __get__(self): 
             return self._delegate.core.isize
-    
     
     #todo: finish these off
     property is_paired: 
@@ -776,11 +748,6 @@ cdef class AlignedRead:
             if not f in field_names:
                 ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
         return ret_string
-
-        
-
-   
-
 
 class PileupColumn(object):
     '''A pileup column. A pileup column contains
