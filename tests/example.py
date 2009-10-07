@@ -77,3 +77,17 @@ try:
 except NotImplementedError:
     print "caught pileup exception"
 
+# playing arount with headers
+samfile = pysam.Samfile( "ex3.sam", "r" )
+print samfile.targets
+print samfile.lengths
+print samfile.text
+print samdile.header
+header = samfile.header
+samfile.close()
+
+header["HD"]["SO"] = "unsorted"
+outfile = pysam.Samfile( "out.sam", "wh", 
+                         header = header )
+
+outfile.close()
