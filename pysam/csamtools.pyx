@@ -67,70 +67,12 @@ cdef bam_index_t * openIndex( filename ):
 DEF BAM_CIGAR_SHIFT=4
 DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
 
-cdef samtoolsToAlignedRead( dest, bam1_t * src ):
+cdef samtoolsToAlignedRead(AlignedRead dest, bam1_t * src):
     '''enter src into AlignedRead.'''
-
-    dest.tid = src.core.tid
-    dest.pos = src.core.pos
-    dest.bin = src.core.bin
-    dest.qual = src.core.qual
-    dest.l_qname = src.core.l_qname
-    dest.flag = src.core.flag
-    dest.n_cigar = src.core.n_cigar
-    dest.l_qseq = src.core.l_qseq
-    dest.mtid = src.core.mtid
-    dest.mpos = src.core.mpos
-    dest.isize = src.core.isize
-
-    dest.l_aux = src.l_aux
-    dest.data_len = src.data_len
-    dest.m_data = src.m_data
-
-    ## for the following, see the definition on bam.h
-    ## parse cigar
-    cdef: 
-        int op
-        int l
-        uint32_t* cigar_p
-        uint8_t* seq_p
-        uint8_t* qual_p
-        int k
-        char * s
-        char * q
-
-    if src.core.n_cigar > 0:
-        cigar = []
-        cigar_p = <uint32_t*>(src.data + src.core.l_qname)
-        for k from 0 <= k < src.core.n_cigar:
-            op = cigar_p[k] & BAM_CIGAR_MASK
-            l = cigar_p[k] >> BAM_CIGAR_SHIFT
-            cigar.append( (op,l) )
-        dest.cigar = cigar
-            
-    ## parse qname (bam1_qname)
-    dest.qname = <char*>src.data
-
-    bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
-    ## parse qseq (bam1_seq)
-    if src.core.l_qseq: 
-        s = <char*>calloc( src.core.l_qseq + 1 , sizeof(char) )
-        seq_p = <uint8_t*>(src.data + src.core.n_cigar*4 + src.core.l_qname)
-        for k from 0 <= k < src.core.l_qseq:
-            ## equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
-            s[k] = "=ACMGRSVTWYHKDBN"[((seq_p)[(k)/2] >> 4*(1-(k)%2) & 0xf)]
-        dest.qseq = s
-        free(s)
-
-    qual_p = <uint8_t*>(src.data + src.core.n_cigar*4 + src.core.l_qname + (src.core.l_qseq + 1) / 2)        
-    if qual_p[0] != 0xff:
-        q = <char*>calloc( src.core.l_qseq + 1 , sizeof(char) )
-        for k from 0 <= k < src.core.l_qseq:
-            ## equivalent to t[i] + 33 (see bam.c)
-            q[k] = qual_p[k] + 33
-        dest.bqual = q
-        free(q)
-
+    dest._delegate = bam_dup1(src)
     return dest
+
+
 
 cdef bam1_t * alignedReadToSamtools( bam1_t * dest, src ):
     '''convert to samtools data structure'''
@@ -664,7 +606,7 @@ cdef class AlignedRead:
                                  
  
                                     
-                
+    """qname, seq, cigar, qual, flag, rname, pos, mapq, mrnm, mpos, isize"""           
     #For all the following we follow the samfile specification for field names, changing uppercase to  lowercase only
     
     property cigar:
