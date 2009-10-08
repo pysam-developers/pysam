@@ -146,34 +146,22 @@ VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
 ## Public methods
 ######################################################################
 cdef class Samfile:
-    '''open a sam/bam file. If an index exists, it will be opened as well.
+    '''A Sam or bam file.
 
-    For writing, the names (*targetnames*) and lengths (*targetlengths*)
-    of targets need to be supplied or the header is taken from a *template*.
+    The file is automatically opened.
 
-    The *mode* corresponds to the syntax in samtools. Valid modes are
-    ``/[rw](b?)(u?)(h?)/``: 
-    
-    r for reading
-    w for writing, 
-    b for BAM I/O, i.e., input/output is in binary format 
-    u for uncompressed BAM output 
-    h for outputing header in SAM. Without ``h``, the header is omitted.
-         
-    If ``b`` is present, it must immediately follow ``r`` or ``w``. 
-
-    Currently valid modes are ``r``, ``w``, ``rb``, ``wb`` and ``wh``. 
-    
-    TODO: ``wbu``
+    See :meth:`pysam.Samfile.open` for arguments.
     '''
 
-    cdef samfile_t * samfile
-    cdef bam_index_t *index
     cdef char * filename
+    # pointer to samfile
+    cdef samfile_t * samfile
+    # pointer to index
+    cdef bam_index_t *index
+    # true if file is a bam file
     cdef int isbam
 
     def __cinit__(self, *args, **kwargs ):
-        
        self.samfile = NULL
        self.isbam = False
        self.open( *args, **kwargs )
@@ -195,10 +183,13 @@ cdef class Samfile:
               char * text = NULL,
               header = None,
               ):
-        '''open a sam/bam file. If an index exists, it will be opened as well.
+        '''open a sam/bam file. In case of a :term:`bam` file, an index is required.
+
+        If a bam/sam file is already opened, it will be closed and the new file
+        will be opened.
 
         For writing, the header of a samfile/bamfile can be constituted from several
-        sources. 
+        sources:
 
         1. If *template* is given, the header is copied from a another samfile.
 
@@ -226,7 +217,9 @@ cdef class Samfile:
         
         assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
 
-        ## TODO: implement automatic indexing
+        # close a previously opened file
+        if self.samfile != NULL: self.close()
+
         cdef bam_header_t * header_to_write
         header_to_write = NULL
 
@@ -302,43 +295,55 @@ cdef class Samfile:
         '''return the number of targets in file.'''
         return self.samfile.header.n_targets
 
-    def getTargets( self ):
-        '''return tuple of all targets.'''
-        l = []
-        for x from 0 <= x < self.samfile.header.n_targets:
-            l.append( self.samfile.header.target_name[x] )
-        return tuple(l)
+    def fetch(self, region = None, callback = None):
+        '''fetch aligned reads in a :term:`region`.
 
-    def getTargetLengths( self ):
-        '''return tuple of all target lengths.'''
-        l = []
-        for x from 0 <= x < self.samfile.header.n_targets:
-            l.append( self.samfile.header.target_len[x] )
-        return tuple(l)
+        If *region* is empty, all reads will be fetched.
 
-    def fetch(self, region, callback ):
-        '''fetch a :term:`region` from the samfile.
+        If *callback* is given, the callback will be executed for each
+        read within the :term:`region`. If no callback is given,
+        an iterator of type :class:`pysam:IteratorRow` is returned.
 
-        This method will execute a callback on each aligned read in
-        a region.
+        Note that samfiles do not allow random access. If *region* is given,
+        an exception is raised.
         '''
-        assert self.isbam, "fetch is only available for bam files"
-        assert self.hasIndex(), "no index available for fetch"
-
         cdef int tid
         cdef int start
         cdef int end
 
-        # parse the region
-        bam_parse_region( self.samfile.header, region, &tid, &start, &end)
-        if tid < 0:
-            raise ValueError( "invalid region `%s`" % region )
-        
-        bam_fetch(self.samfile.x.bam, self.index, tid, start, end, <void*>callback, fetch_callback )
+        if self.isbam:
+            assert self.hasIndex(), "no index available for fetch"            
+            if callback:
+                # parse the region
+                bam_parse_region( self.samfile.header, region, &tid, &start, &end)
+                if tid < 0: raise ValueError( "invalid region `%s`" % region )
+                return bam_fetch(self.samfile.x.bam, self.index, tid, start, end, <void*>callback, fetch_callback )
+            else:
+                if region:
+                    return IteratorRow( self, region )
+                else:
+                    return IteratorRowAll( self )
+        else:                    
+            if region != None:
+                raise ValueError ("fetch for a region is not available for sam files" )
+            if callback:
+                raise NotImplementedError( "callback not implemented yet" )
+            else:
+                return IteratorRowAll( self )
 
     def pileup( self, region, callback ):
-        '''fetch a :term:`region` from the samfile and run a callback
-        on each postition
+        '''run a pileup within a :term:`region`.
+
+        If *region* is empty, all reads will be fetched.
+
+        If *callback* is given, the callback will be executed for each
+        position within the :term:`region`. 
+
+        If no callback is given, an iterator of type :class:`pysam.IteratorColumn` is 
+        returned.
+
+        Note that samfiles do not allow random access. If *region* is given,
+        an exception is raised.
         '''
         cdef int tid
         cdef int start
@@ -353,15 +358,14 @@ cdef class Samfile:
             if tid < 0: raise ValueError( "invalid region `%s`" % region )
 
             buf = bam_plbuf_init(pileup_callback, <void*>callback )
-
+ 
             bam_fetch(self.samfile.x.bam, self.index, tid, start, end, buf, pileup_fetch_callback )
 
             # finalize pileup
             bam_plbuf_push( NULL, buf)
             bam_plbuf_destroy(buf);
-
         else:
-            raise NotImplementedError( "pileup of samfiles not wrapped" )
+            raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
     def close( self ):
         '''close file.'''

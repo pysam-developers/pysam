@@ -173,8 +173,8 @@ class IOTest(unittest.TestCase):
             outfile = pysam.Samfile( output_filename, output_mode, template = infile )
         else:
             outfile = pysam.Samfile( output_filename, output_mode, 
-                                     targetnames = infile.getTargets(),
-                                     targetlengths = infile.getTargetLengths() )
+                                     targetnames = infile.targets,
+                                     targetlengths = infile.lengths )
 
         iter = pysam.IteratorRowAll( infile )
         for x in iter: outfile.write( x )
@@ -237,7 +237,7 @@ class TestIteratorRow(unittest.TestCase):
 
     def testIteratePerContig(self):
         '''check random access per contig'''
-        for contig in self.samfile.getTargets():
+        for contig in self.samfile.targets:
             self.checkRange( contig )
 
     def testIterateRanges(self):
