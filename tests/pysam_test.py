@@ -267,5 +267,16 @@ class TestIteratorRowAll(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
+# reads = samfile.fetch()
+# self.assertEqual( reads[0].is_paired, False )
+# TODOS
+# 1.check if parser works. 
+# Check both the fields in AlignedRead and header.
+# Check both for content and type (string, int, ...), including the optional fields
+# 1.1 take alignments from ex3.sam and check if all fields are correct.
+# 1.2 take ex3.bam and check if all fields are correct
+# 2. test iterator pileup
+# 3. check exceptions and bad input problems (missing files, ...)
+
 if __name__ == "__main__":
     unittest.main()
