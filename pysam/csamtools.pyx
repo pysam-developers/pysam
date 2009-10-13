@@ -1,7 +1,7 @@
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 
-import tempfile, os, sys, types
+import tempfile, os, sys, types, itertools
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -150,7 +150,27 @@ cdef class Samfile:
 
     The file is automatically opened.
 
-    See :meth:`pysam.Samfile.open` for arguments.
+    For writing, the header of a samfile/bamfile can be constituted from several
+    sources:
+
+    1. If *template* is given, the header is copied from a another samfile.
+
+    2. If *header* is given, the header is build from a multi-level dictionary. The 
+       first level are the four types ('HD', 'SQ', ...). The second level is then 
+       a list of lines, with each line being a list of tag-value pairs.
+
+    3. If *text* is given, new header text is copied from raw text.
+
+    4. The names (*targetnames*) and lengths (*targetlengths*) are supplied
+       directly.
+
+    The *mode* corresponds to the syntax in samtools. Valid modes are
+    ``/[rw](b?)(u?)(h?)/`` with ``r`` for reading, ``w`` for writing, 
+    ``b`` for BAM I/O, i.e., input/output is in binary format,
+    ``u`` for uncompressed BAM output, and ``h`` for outputing header in SAM 
+
+    If ``b`` is present, it must immediately follow ``r`` or ``w``. 
+    Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.
     '''
 
     cdef char * filename
@@ -162,19 +182,19 @@ cdef class Samfile:
     cdef int isbam
 
     def __cinit__(self, *args, **kwargs ):
-       self.samfile = NULL
-       self.isbam = False
-       self.open( *args, **kwargs )
+        self.samfile = NULL
+        self.isbam = False
+        self._open( *args, **kwargs )
 
-    def isOpen( self ):
+    def _isOpen( self ):
         '''return true if samfile has been opened.'''
         return self.samfile != NULL
 
-    def hasIndex( self ):
+    def _hasIndex( self ):
         '''return true if samfile has an existing (and opened) index.'''
         return self.index != NULL
 
-    def open( self, 
+    def _open( self, 
               char * filename, 
               mode,
               Samfile template = None,
@@ -183,38 +203,12 @@ cdef class Samfile:
               char * text = NULL,
               header = None,
               ):
-        '''open a sam/bam file. In case of a :term:`bam` file, an index is required.
+        '''open a sam/bam file.
 
-        If a bam/sam file is already opened, it will be closed and the new file
-        will be opened.
-
-        For writing, the header of a samfile/bamfile can be constituted from several
-        sources:
-
-        1. If *template* is given, the header is copied from a another samfile.
-
-        2. If *header* is given, the header is build from a multi-level dictionary. The 
-           first level are the four types ('HD', 'SQ', ...). The second level is then 
-           a list of lines, with each line being a list of tag-value pairs.
-
-        3. If *text* is given, new header text is copied from raw text.
-
-        4. The names (*targetnames*) and lengths (*targetlengths*) are supplied
-           directly.
-      
-        The *mode* corresponds to the syntax in samtools. Valid modes are
-        ``/[rw](b?)(u?)(h?)/``: 
-        
-        r for reading
-        w for writing, 
-        b for BAM I/O, i.e., input/output is in binary format 
-        u for uncompressed BAM output 
-        h for outputing header in SAM 
-         
-        If ``b`` is present, it must immediately follow ``r`` or ``w``. 
-        Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.
+        If _open is called on an existing bamfile, the current file will be
+        closed and a new file will be opened.
         '''
-        
+
         assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
 
         # close a previously opened file
@@ -292,37 +286,69 @@ cdef class Samfile:
         return self.samfile.header.target_name[tid]
 
     def getNumTargets( self ):
-        '''return the number of targets in file.'''
+        '''return the number of :ref:`target` s.'''
         return self.samfile.header.n_targets
 
-    def fetch(self, region = None, callback = None):
-        '''fetch aligned reads in a :term:`region`.
+    def fetch( self, 
+               reference = None, start = None, end = None, 
+               region = None, 
+               callback = None,
+               until_eof = False ):
+        '''fetch aligned reads in a :term:`region`. The region is specified by
+        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` can be supplied.
 
-        If *region* is empty, all reads will be fetched.
+        Without *reference* or *region* all reads will be fetched. The reads will be returned
+        ordered by reference sequence, which will not necessarily be the order within the file.
+        If *until_eof* is given, all reads from the current file position will be returned
+        as they are sorted within the file. To iterate over all reads within a file, thus
+        use::
 
-        If *callback* is given, the callback will be executed for each
-        read within the :term:`region`. If no callback is given,
-        an iterator of type :class:`pysam:IteratorRow` is returned.
+           samfile = Samfile.open( filename )
+           for x in samfile.fetch( until_eof = True ): 
+              print str(x)
 
-        Note that samfiles do not allow random access. If *region* is given,
+        If only *reference* is set, all reads matching on *reference* will be fetched.
+
+        The method returns an iterator of type :class:`pysam.IteratorRow` unless
+        a *callback is provided. If *callback* is given, the callback will be executed 
+        for each position within the :term:`region`. Note that callbacks currently work
+        only, if *region* or *reference* is given.
+
+        Note that a :term:`tam file` does not allow random access. If *region* or *reference* are given,
         an exception is raised.
         '''
-        cdef int tid
-        cdef int start
-        cdef int end
+        cdef int rtid
+        cdef int rstart
+        cdef int rend
+
+        # translate to a region
+        if reference:
+            if start and end:
+                region = "%s:%i-%i" % (reference, start, end)
+            else:
+                region = reference
+
+        if region:
+            bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
+            if rtid < 0: raise ValueError( "invalid region `%s`" % region )
 
         if self.isbam:
-            assert self.hasIndex(), "no index available for fetch"            
+            assert self._hasIndex(), "no index available for fetch"            
             if callback:
-                # parse the region
-                bam_parse_region( self.samfile.header, region, &tid, &start, &end)
-                if tid < 0: raise ValueError( "invalid region `%s`" % region )
-                return bam_fetch(self.samfile.x.bam, self.index, tid, start, end, <void*>callback, fetch_callback )
+                if not region:
+                    raise ValueError( "callback functionality requires a region/reference" )
+                return bam_fetch(self.samfile.x.bam, self.index, rtid, rstart, rend, <void*>callback, fetch_callback )
             else:
                 if region:
                     return IteratorRow( self, region )
                 else:
-                    return IteratorRowAll( self )
+                    if until_eof:
+                        return IteratorRowAll( self )
+                    else:
+                        # return all targets by chaining the individual targets together.
+                        i = []
+                        for x in self.targets: i.append( IteratorRow( self, x))
+                        return itertools.chain( *i )
         else:                    
             if region != None:
                 raise ValueError ("fetch for a region is not available for sam files" )
@@ -331,39 +357,60 @@ cdef class Samfile:
             else:
                 return IteratorRowAll( self )
 
-    def pileup( self, region, callback ):
-        '''run a pileup within a :term:`region`.
+    def pileup( self, reference = None, start = None, end = None, region = None, callback = None ):
+        '''run a pileup within a :term:`region`. The region is specified by
+        :term:`reference`, *start* and *end*. Alternatively, a samtools *region* can be supplied.
 
-        If *region* is empty, all reads will be fetched.
+        Without *reference* or *region* all reads will be fetched. The reads will be returned
+        ordered by reference sequence, which will not necessarily be the order within the file.
 
-        If *callback* is given, the callback will be executed for each
-        position within the :term:`region`. 
+        The method returns an iterator of type :class:`pysam.IteratorColumn` unless
+        a *callback is provided. If *callback* is given, the callback will be executed 
+        for each position within the :term:`region`. 
 
-        If no callback is given, an iterator of type :class:`pysam.IteratorColumn` is 
-        returned.
-
-        Note that samfiles do not allow random access. If *region* is given,
+        Note that samfiles do not allow random access. If *region* or *reference* are given,
         an exception is raised.
         '''
-        cdef int tid
-        cdef int start
-        cdef int end
+        cdef int rtid
+        cdef int rstart
+        cdef int rend
         cdef bam_plbuf_t *buf
 
+        # translate to a region
+        if reference:
+            if start and end:
+                region = "%s:%i-%i" % (reference, start, end)
+            else:
+                region = reference
+
+        if region:
+            bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
+            if rtid < 0: raise ValueError( "invalid region `%s`" % region )
+            
         if self.isbam:
-            assert self.hasIndex(), "no index available for pileup"
+            assert self._hasIndex(), "no index available for pileup"
 
-            # parse the region
-            bam_parse_region( self.samfile.header, region, &tid, &start, &end)
-            if tid < 0: raise ValueError( "invalid region `%s`" % region )
+            if callback:
+                if not region:
+                    raise ValueError( "callback functionality requires a region/reference" )
 
-            buf = bam_plbuf_init(pileup_callback, <void*>callback )
- 
-            bam_fetch(self.samfile.x.bam, self.index, tid, start, end, buf, pileup_fetch_callback )
+                buf = bam_plbuf_init(pileup_callback, <void*>callback )
+                bam_fetch(self.samfile.x.bam, 
+                          self.index, rtid, rstart, rend, 
+                          buf, pileup_fetch_callback )
+                
+                # finalize pileup
+                bam_plbuf_push( NULL, buf)
+                bam_plbuf_destroy(buf)
+            else:
+                if region:
+                    return IteratorColumn( self, region )
+                else:
+                    # return all targets by chaining the individual targets together.
+                    i = []
+                    for x in self.targets: i.append( IteratorColumn( self, x))
+                    return itertools.chain( *i )
 
-            # finalize pileup
-            bam_plbuf_push( NULL, buf)
-            bam_plbuf_destroy(buf);
         else:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
@@ -381,14 +428,14 @@ cdef class Samfile:
         self.close()
 
     def write( self, AlignedRead read ):
-        '''write read to file.
+        '''write a single :class:`pysam.AlignedRead`..
 
         return the number of bytes written.
         '''
         return samwrite( self.samfile, read._delegate )
 
     property targets:
-        """list of target sequences."""
+        """tuple with the names of :term:`target` sequences."""
         def __get__(self): 
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
@@ -396,7 +443,8 @@ cdef class Samfile:
             return tuple(t)
 
     property lengths:
-        """lengths of target sequences."""
+        """tuple of the lengths of the :term:`target` sequences. The lengths are in the same order as :attr:`pysam.Samfile.targets`
+        """
         def __get__(self): 
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
@@ -404,7 +452,7 @@ cdef class Samfile:
             return tuple(t)
 
     property text:
-        '''header text'''
+        '''full contents of the :term:`sam file` header as a string.'''
         def __get__(self):
             # create a temporary 0-terminated copy
             cdef char * t
@@ -415,7 +463,9 @@ cdef class Samfile:
             return result
 
     property header:
-        '''header information within samfile. The information is passed as a dictionary.'''
+        '''header information within the :term:`sam file`. The records and fields are returned as 
+        a two-level dictionary.
+        '''
         def __get__(self):
             result = {}
 
@@ -537,8 +587,8 @@ cdef class IteratorRow:
     def __cinit__(self, Samfile samfile, region ):
         self.bam_iter = NULL
 
-        assert samfile.isOpen()
-        assert samfile.hasIndex()
+        assert samfile._isOpen()
+        assert samfile._hasIndex()
 
         # parse the region
         cdef int      tid
@@ -561,6 +611,12 @@ cdef class IteratorRow:
 
     cdef bam1_t * getCurrent( self ):
         return self.b
+
+    cdef int cnext(self):
+        '''cversion of iterator. Used by IteratorColumn'''
+        self.b = bam_fetch_iterate(self.bam_iter)
+        if self.b == NULL: return 0
+        return 1
 
     def __next__(self): 
         """python version of next().
@@ -590,7 +646,7 @@ cdef class IteratorRowAll:
 
     def __cinit__(self, Samfile samfile):
 
-        assert samfile.isOpen()
+        assert samfile._isOpen()
 
         self.fp = samfile.samfile
 
@@ -602,6 +658,11 @@ cdef class IteratorRowAll:
 
     cdef bam1_t * getCurrent( self ):
         return self.b
+
+    cdef int cnext(self):
+        '''cversion of iterator. Used by IteratorColumn'''
+        cdef int ret
+        return samread(self.fp, self.b)
 
     def __next__(self): 
         """python version of next().
@@ -659,6 +720,7 @@ cdef class IteratorColumn:
         # an new column has finished
         while self.n_pu == 0:
             retval1 = self.iter.cnext()
+
             # wrap up if no more input
             if retval1 == 0: 
                 self.n_pu = pysam_bam_plbuf_push( NULL, self.buf, 0)            

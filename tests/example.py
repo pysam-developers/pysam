@@ -2,14 +2,36 @@ import pysam
 
 samfile = pysam.Samfile( "ex1.bam", "rb" )
 
+print "###################"
+# check different ways to iterate
+print len(list(samfile.fetch()))
+print len(list(samfile.fetch( "seq1", 10, 200 )))
+print len(list(samfile.fetch( region="seq1:10-200" )))
+print len(list(samfile.fetch( "seq1" )))
+print len(list(samfile.fetch( region="seq1")))
+print len(list(samfile.fetch( "seq2" )))
+print len(list(samfile.fetch( region="seq2")))
+print len(list(samfile.fetch()))
+print len(list(samfile.fetch( "seq1" )))
+print len(list(samfile.fetch( region="seq1")))
+print len(list(samfile.fetch()))
+
+print len(list(samfile.pileup( "seq1", 10, 200 )))
+print len(list(samfile.pileup( region="seq1:10-200" )))
+print len(list(samfile.pileup( "seq1" )))
+print len(list(samfile.pileup( region="seq1")))
+print len(list(samfile.pileup( "seq2" )))
+print len(list(samfile.pileup( region="seq2")))
+print len(list(samfile.pileup()))
+print len(list(samfile.pileup()))
+
 print "########### fetch with callback ################"
-def my_fetch_callback( alignment ):
-    print "here", str(alignment)
-samfile.fetch( "seq1:10-200", my_fetch_callback )
+def my_fetch_callback( alignment ): print str(alignment)
+samfile.fetch( region="seq1:10-200", callback=my_fetch_callback )
 
 print "########## pileup with callback ################"
-def my_pileup_callback( pileups ):    print str(pileups)
-samfile.pileup( "seq1:10-200", my_pileup_callback )
+def my_pileup_callback( pileups ): print str(pileups)
+samfile.pileup( region="seq1:10-200", callback=my_pileup_callback )
 
 print "##########iterator row #################"
 iter = pysam.IteratorRow( samfile, "seq1:10-200")
@@ -22,6 +44,7 @@ for x in iter: print str(x)
 print "#########row all##################"
 iter = pysam.IteratorRowAll( samfile )
 for x in iter: print str(x)
+
 
 print "###################"
 
@@ -44,6 +67,8 @@ print pysam.pileup.getMessages()
 
 for p in pysam.pileup( "-c", "ex1.bam", raw=True ):
     print str(p),
+
+
 
 print "###########################"
 
@@ -91,3 +116,4 @@ outfile = pysam.Samfile( "out.sam", "wh",
                          header = header )
 
 outfile.close()
+
