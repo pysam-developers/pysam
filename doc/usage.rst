@@ -15,8 +15,7 @@ The first operation is to open a :class:`pysam.Samfile`::
 
    import pysam
 
-   samfile = pysam.Samfile()
-   samfile.open( "ex1.bam", "rb" )
+   samfile = pysam.Samfile( "ex1.bam", "rb" )
 
 Fetching mapped reads in a :term:`region`
 -----------------------------------------
@@ -43,8 +42,9 @@ code below simply counts aligned reads::
    samfile.fetch( "seq1:10-20", c )
    print "counts=", c.mCounts
 
-The second method uses python iterators. The iterator
-:class:`pysam.IteratorRow` will iterate through mapped reads
+The second method uses python iterators. If you call :meth:`samtools.samfile.fetch`
+without a callback, an iterator of the type :class:`pysam.IteratorRow` is returned.
+It will iterate through mapped reads
 and return a :class:`pysam.AlignedRead` object for each::
 
    iter = pysam.IteratorRow( samfile, "seq1:10-20")
