@@ -54,13 +54,13 @@ cdef makePileupRead( bam_pileup1_t * src ):
     '''fill a  PileupRead object from a bam_pileup1_t * object.'''
     cdef PileupRead dest
     dest = PileupRead()
-    dest.alignment = makeAlignedRead( src.b )
-    dest.qpos = src.qpos
-    dest.indel = src.indel
-    dest.level = src.level
-    dest.is_del = src.is_del
-    dest.is_head = src.is_head
-    dest.is_tail = src.is_tail
+    dest._alignment = makeAlignedRead( src.b )
+    dest._qpos = src.qpos
+    dest._indel = src.indel
+    dest._level = src.level
+    dest._is_del = src.is_del
+    dest._is_head = src.is_head
+    dest._is_tail = src.is_tail
     return dest
 
 #####################################################################
@@ -294,7 +294,7 @@ cdef class Samfile:
                region = None, 
                callback = None,
                until_eof = False ):
-        '''fetch aligned reads in a :term:`region`. The region is specified by
+        '''fetch aligned reads in a :term:`region` using 0-based indexing. The region is specified by
         :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` can be supplied.
 
         Without *reference* or *region* all reads will be fetched. The reads will be returned
@@ -358,7 +358,7 @@ cdef class Samfile:
                 return IteratorRowAll( self )
 
     def pileup( self, reference = None, start = None, end = None, region = None, callback = None ):
-        '''run a pileup within a :term:`region`. The region is specified by
+        '''run a pileup within a :term:`region` using 0-based indexing. The region is specified by
         :term:`reference`, *start* and *end*. Alternatively, a samtools *region* can be supplied.
 
         Without *reference* or *region* all reads will be fetched. The reads will be returned
@@ -370,6 +370,9 @@ cdef class Samfile:
 
         Note that samfiles do not allow random access. If *region* or *reference* are given,
         an exception is raised.
+        
+        .. Note::
+            Note that *all* reads which overlap the region are returned. So the first base returned will be the first base of the first read *not* the first base of the region.
         '''
         cdef int rtid
         cdef int rstart
@@ -765,42 +768,9 @@ cdef class IteratorColumn:
 
 cdef class AlignedRead:
     '''
-    todo:update
-    Python wrapper around an aligned read. The following
-    fields are exported:
-
-    tid
-        chromosome/target ID
-    pos
-        0-based leftmost coordinate
-    bin
-        bin calculated by bam_reg2bin()
-    qual
-        mapping quality
-    l_qname
-        length of the query name
-    flag
-        bitwise flag
-    n_cigar
-        number of CIGAR operations
-    l_qseq
-        length of the query sequence (read)
-    qname
-        the query name (None if not present)
-    cigar
-        the :term:`cigar` alignment string (None if not present)
-    qseq
-        the query sequence (None if not present)
-    bqual
-        the base quality (None if not present)
-    mtid
-        the :term:`target` id of the mate 
-    mpos  
-        the position of the mate
-    izise
-        the insert size
+    Class representing an aligned read. see SAM format specification for meaning of fields (http://samtools.sourceforge.net/).
+        
     '''
-
     cdef:
          bam1_t * _delegate 
 
@@ -819,11 +789,10 @@ cdef class AlignedRead:
                                    self.qual,
                                    self.flag,
                                    self.seq,
-                                   self.mapq , self.opt('MF'), self.is_paired)))
-                                    
-    #For all the following we follow the samfile specification for field names, changing uppercase to  lowercase only
+                                   self.mapq )))
     
     property cigar:
+        """the :term:`cigar` alignment string (None if not present)"""
         def __get__(self):
             cdef uint32_t * cigar_p
             cdef bam1_t * src 
@@ -839,12 +808,14 @@ cdef class AlignedRead:
                 return cigar
             return None
     property qname:
+        """the query name (None if not present)"""
         def __get__(self):
             cdef bam1_t * src 
             src = self._delegate
             ## parse qname (bam1_qname)
             return < char *> src.data
     property seq:
+        """the query sequence (None if not present)"""
         def __get__(self):
             cdef bam1_t * src
             cdef uint8_t * seq_p 
@@ -858,9 +829,12 @@ cdef class AlignedRead:
                 for k from 0 <= k < src.core.l_qseq:
                 ## equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
                     s[k] = "=ACMGRSVTWYHKDBN"[((seq_p)[(k) / 2] >> 4 * (1 - (k) % 2) & 0xf)]
-                return s
+                retval=s
+                free(s)
+                return retval
             return None
     property qual:
+        """the base quality (None if not present)"""
         def __get__(self):
             #todo is this still needed
             cdef bam1_t * src 
@@ -873,58 +847,72 @@ cdef class AlignedRead:
                 for k from 0 <= k < src.core.l_qseq:
                 ## equivalent to t[i] + 33 (see bam.c)
                     q[k] = qual_p[k] + 33
-                return q
+                retval=q
+                free(q)
+                return retval
             return None
 
-    #todo check which of these are needed (see specification) do we need l_qseq, n_cigar etc? also check tid=rname
     property flag: 
+        """properties flag"""
         def __get__(self): 
             return self._delegate.core.flag
     property rname: 
+        """chromosome/target ID"""
         def __get__(self): 
             return self._delegate.core.tid
     property pos: 
+        """0-based leftmost coordinate"""
         def __get__(self): 
             return self._delegate.core.pos
     property mapq: 
+        """mapping quality"""
         def __get__(self): 
             return self._delegate.core.qual
-    property mrnm: 
+    property mrnm:
+        """the :term:`target` id of the mate """     
         def __get__(self): 
             return self._delegate.core.mtid
     property mpos: 
+        """the position of the mate"""
         def __get__(self): 
             return self._delegate.core.mpos
     property isize: 
+        """the insert size"""
         def __get__(self): 
             return self._delegate.core.isize
-    
-    #todo: finish these off
     property is_paired: 
-        def __get__(self): 
-            """true if read is paired in sequencing"""
-            return (self._delegate.core.flag & BAM_FPAIRED) != 0
+        """true if read is paired in sequencing"""
+        def __get__(self): return (self._delegate.core.flag & BAM_FPAIRED) != 0
     property is_proper_pair:
         """true if read is mapped in a proper pair"""
         def __get__(self): return (self.flag & BAM_FPROPER_PAIR) != 0
-    #def _getfunmap( self ): return (self.flag & BAM_FUNMAP) != 0
-    #is_unmapped = property( _getfunmap, doc="true if read itself is unmapped" )
-    #def _getfmunmap( self ): return (self.flag & BAM_FMUNMAP) != 0
-    #mate_is_unmapped = property( _getfmunmap, doc="true if the mate is unmapped" )
-    #def _getreverse( self ): return (self.flag & BAM_FREVERSE) != 0
-    #is_reverse = property( _getreverse, doc = "true if read is mapped to reverse strand" )
-    #def _getmreverse( self ): return (self.flag & BAM_FMREVERSE) != 0
-    #mate_is_reverse = property( _getmreverse, doc= "true is read is mapped to reverse strand" )
-    #def _getread1( self ): return (self.flag & BAM_FREAD1) != 0
-    #is_read1 = property( _getread1, doc = "true if this is read1" )
-    #def _getread2( self ): return (self.flag & BAM_FREAD2) != 0
-    #is_read2 = property( _getread2, doc = "true if this is read2" )
-    #def _getfsecondary( self ): return (self.flag & BAM_FSECONDARY) != 0
-    #is_secondary = property( _getfsecondary, doc="true if not primary alignment" )
-    #def _getfqcfail( self ): return (self.flag & BAM_FSECONDARY) != 0
-    #is_qcfail = property( _getfqcfail, doc="true if QC failure" )
-    #def _getfdup( self ): return (self.flag & BAM_FDUP) != 0
-    #is_duplicate = property( _getfdup, doc="true if optical or PCR duplicate" )
+    property is_unmapped:
+        """true if read itself is unmapped"""
+        def __get__(self): return (self.flag & BAM_FUNMAP) != 0
+    property mate_is_unmapped: 
+        """true if the mate is unmapped""" 
+        def __get__(self): return (self.flag & BAM_FMUNMAP) != 0
+    property is_reverse:
+        """true if read is mapped to reverse strand"""
+        def __get__(self):return (self.flag & BAM_FREVERSE) != 0
+    property mate_is_reverse:
+        """true is read is mapped to reverse strand"""
+        def __get__(self): return (self.flag & BAM_FMREVERSE) != 0
+    property is_read1: 
+        """true if this is read1"""
+        def __get__(self): return (self.flag & BAM_FREAD1) != 0
+    property is_read2:
+        """true if this is read2"""
+        def __get__(self): return (self.flag & BAM_FREAD2) != 0
+    property is_secondary:
+        """true if not primary alignment"""
+        def __get__(self): return (self.flag & BAM_FSECONDARY) != 0
+    property is_qcfail:
+        """true if QC failure"""
+        def __get__(self): return (self.flag & BAM_FSECONDARY) != 0
+    property is_duplicate:
+        """ true if optical or PCR duplicate"""
+        def __get__(self): return (self.flag & BAM_FDUP) != 0
     
     def opt(self, tag):
         """retrieves optional data given a two-letter *tag*"""
@@ -943,51 +931,51 @@ cdef class AlignedRead:
         elif type == 'Z':
             return bam_aux2Z(v)
     
-    def fancy_str (self):
-        """
-        returns list of fieldnames/values in pretty format for debugging
-        """
-        ret_string = []
-        field_names = {
-                        "tid":           "Contig index",
-                        "pos":           "Mapped position on contig",
-
-                        "mtid":          "Contig index for mate pair",
-                        "mpos":          "Position of mate pair",
-                        "isize":         "Insert size",
-
-                        "flag":          "Binary flag",
-                        "n_cigar":       "Count of cigar entries",
-                        "cigar":         "Cigar entries",
-                        "qual":          "Mapping quality",
-
-                        "bin":           "Bam index bin number",
-
-                        "l_qname":       "Length of query name",
-                        "qname":         "Query name",
-
-                        "l_qseq":        "Length of query sequence",
-                        "qseq":          "Query sequence",
-                        "bqual":         "Quality scores",
-
-
-                        "l_aux":         "Length of auxilary data",
-                        "m_data":        "Maximum data length",
-                        "data_len":      "Current data length",
-                        }
-        fields_names_in_order = ["tid", "pos", "mtid", "mpos", "isize", "flag", 
-                                 "n_cigar", "cigar", "qual", "bin", "l_qname", "qname", 
-                                 "l_qseq", "qseq", "bqual", "l_aux", "m_data", "data_len"]
-
-        for f in fields_names_in_order:
-            if not f in self.__dict__:
-                continue
-            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
-
-        for f in self.__dict__:
-            if not f in field_names:
-                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
-        return ret_string
+    #    def fancy_str (self):
+    #        """
+    #        returns list of fieldnames/values in pretty format for debugging
+    #        """
+    #        ret_string = []
+    #        field_names = {
+    #                        "tid":           "Contig index",
+    #                        "pos":           "Mapped position on contig",
+    #
+    #                        "mtid":          "Contig index for mate pair",
+    #                        "mpos":          "Position of mate pair",
+    #                        "isize":         "Insert size",
+    #
+    #                        "flag":          "Binary flag",
+    #                        "n_cigar":       "Count of cigar entries",
+    #                        "cigar":         "Cigar entries",
+    #                        "qual":          "Mapping quality",
+    #
+    #                        "bin":           "Bam index bin number",
+    #
+    #                        "l_qname":       "Length of query name",
+    #                        "qname":         "Query name",
+    #
+    #                        "l_qseq":        "Length of query sequence",
+    #                        "qseq":          "Query sequence",
+    #                        "bqual":         "Quality scores",
+    #
+    #
+    #                        "l_aux":         "Length of auxilary data",
+    #                        "m_data":        "Maximum data length",
+    #                        "data_len":      "Current data length",
+    #                        }
+    #        fields_names_in_order = ["tid", "pos", "mtid", "mpos", "isize", "flag", 
+    #                                 "n_cigar", "cigar", "qual", "bin", "l_qname", "qname", 
+    #                                 "l_qseq", "qseq", "bqual", "l_aux", "m_data", "data_len"]
+    #
+    #        for f in fields_names_in_order:
+    #            if not f in self.__dict__:
+    #                continue
+    #            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
+    #
+    #        for f in self.__dict__:
+    #            if not f in field_names:
+    #                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
+#        return ret_string
 
 class PileupColumn(object):
     '''A pileup column. A pileup column contains
@@ -1009,34 +997,52 @@ class PileupColumn(object):
 
 cdef class PileupRead:
     '''A read aligned to a column.
-
-    alignment
-       a :class:`pysam.AlignedRead` object of the aligned read
-    qpos
-       position of the read base at the pileup site, 0-based
-    indel
-       indel length; 0 for no indel, positive for ins and negative for del
-    is_del
-       1 iff the base on the padded read is a deletion
-    level
-       the level of the read in the "viewer" mode 
     '''
 
     cdef:
-         AlignedRead alignment
-         int32_t qpos 
-         int indel
-         int level
-         uint32_t is_del
-         uint32_t is_head
-         uint32_t is_tail
+         AlignedRead _alignment
+         int32_t  _qpos
+         int _indel
+         int _level
+         uint32_t _is_del
+         uint32_t _is_head
+         uint32_t _is_tail
 
     def __cinit__( self ):
         pass
 
     def __str__(self):
         return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )
-
+   
+    
+    property alignment:
+        """a :class:`pysam.AlignedRead` object of the aligned read"""
+        def __get__(self):
+            return self._alignment
+    property qpos:
+        """position of the read base at the pileup site, 0-based"""
+        def __get__(self):
+            return self._qpos
+    property indel:
+        """indel length; 0 for no indel, positive for ins and negative for del"""
+        def __get__(self):
+            return self._indel
+    property is_del:
+        """1 iff the base on the padded read is a deletion"""
+        def __get__(self):
+            return self._is_del
+    property head:
+        def __get__(self):
+            return self._is_head
+    property tail:
+        def __get__(self):
+            return self._is_tail
+    
+        
+        
+    
+            
+            
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
     def __init__(self, id = 1):
