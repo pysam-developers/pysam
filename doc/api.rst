@@ -8,13 +8,13 @@ Pysam is a python module that makes it easy to read and manipulate mapped short 
 To use the module to read a file in SAM format, just open the file with :class:`~pysam.Samfile`::
 
    import pysam
-   samfile = pysam.Samfile( "sample1.bam", "rb" )
+   samfile = pysam.Samfile( "ex1.bam", "rb" )
    
 
 Now the file is open you can iterate over all of the read mapping to a specified region using :meth:`~pysam.Samfile.fetch`.
 Each iteration returns a :class:`~pysam.AlignedRead` object which represents a single read along with its fields and optional tags::
 
-   for alignedreadread in samfile.fetch('chr1', 100, 120):
+   for alignedread in samfile.fetch('chr1', 100, 120):
 	print alignedread
    samfile.close()
 
@@ -29,7 +29,7 @@ Each iteration returns a :class:`~pysam.AlignedRead` object which represents a s
 You can also write to a :class:`~pysam.Samfile`::
 
    import pysam
-   samfile = pysam.Samfile("sample1.bam", "rb")
+   samfile = pysam.Samfile("ex1.bam", "rb")
    pairedreads = pysam.Samfile("allpaired.bam", "wb")
    for read in samfile.fetch():
 	if read.is_paired:
@@ -40,7 +40,7 @@ You can also write to a :class:`~pysam.Samfile`::
 
 An alternative way of accessing the data in a SAM file is by iterating over each base of a specified region using the :meth:`~pysam.Samfile.pileup` method. Each iteration returns a :class:`~pysam.PileupColumn` which represents all the reads in the SAM file that map to a single base in the reference sequence. The list of reads are represented as :class:`~pysam.PileupRead` objects in the :attr:`PileupColumn.pileups <pysam.PileupColumn.pileups>` property::
 
-    samfile = pysam.Samfile("/net/cpp-group/martin/projects/pysam/pysam/tests/ex1.bam", "rb" )
+    samfile = pysam.Samfile("ex1.bam", "rb" )
     for pileupcolumn in samfile.pileup( 'chr1', 100, 120):
 	print
 	print 'coverage at base %s = %s' % (pileupcolumn.pos , pileupcolumn.n)
