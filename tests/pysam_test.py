@@ -243,8 +243,8 @@ class TestIteratorRow(unittest.TestCase):
     def testIterateRanges(self):
         '''check random access per range'''
         for contig, length in zip(self.samfile.targets, self.samfile.lengths):
-            for start in range( 0, length, 100):
-                self.checkRange( "%s:%i-%i" % (contig, start, start + 100) )
+            for start in range( 0, length, 90):
+                self.checkRange( "%s:%i-%i" % (contig, start, start + 90) ) # this includes empty ranges
 
     def tearDown(self):
         self.samfile.close()
@@ -263,6 +263,36 @@ class TestIteratorRowAll(unittest.TestCase):
         for line, pair in enumerate( zip( ps, sa ) ):
             data = pair[1].split("\t")
             self.assertEqual( pair[0].qname, data[0], "read id mismatch in line %i: %s != %s" % (line, pair[0].rname, data[0]) )
+
+    def tearDown(self):
+        self.samfile.close()
+
+class TestParserBam(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex3.bam","rb" )
+
+    def testAlignedReadFields(self):
+        reads=list(pysam.IteratorRowAll(self.samfile))
+        self.assertEqual( reads[0].rname, 'chr2', "chromosome/target id mismatch in read 0: %s != %s" % (reads[0].rname, 'chr2') )
+
+#    def testHeaderFields(self):
+#        blah
+
+    def tearDown(self):
+        self.samfile.close()
+
+class TestParserSam(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex3.sam","r" )
+
+    def testAlignedReadFields(self):
+        reads=list(pysam.IteratorRowAll(self.samfile))
+        self.assertEqual( reads[0].rname, 'chr2', "chromosome/target id mismatch in read 0: %s != %s" % (reads[0].rname, 'chr2') )
+
+#    def testHeaderFields(self):
+#        blah
 
     def tearDown(self):
         self.samfile.close()

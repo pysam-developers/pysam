@@ -5,7 +5,7 @@ ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz
 
 ex3.bam: ex3.sam ex1.fa.fai
-	samtools import ex1.fa.fai ex1.sam.gz ex3.bam
+	samtools import ex1.fa.fai ex3.sam ex3.bam
 
 %.sam: %.sam.gz
 	gunzip < $< > $@
