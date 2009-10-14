@@ -335,7 +335,7 @@ class TestAlignedReadBam(unittest.TestCase):
 class TestAlignedReadSam(unittest.TestCase):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex3.bam","rb" )
+        self.samfile=pysam.Samfile( "ex3.sam","r" )
         self.reads=list(self.samfile.fetch())
 
     def testARqname(self):
@@ -397,18 +397,33 @@ class TestAlignedReadSam(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
+class TestHeaderSam(unittest.TestCase):
 
-# reads = samfile.fetch()
-# self.assertEqual( reads[0].is_paired, False )
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex3.sam","r" )
+
+    def testHeaders(self):
+        self.assertEqual( self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}, "mismatch in headers: %s != %s" % (self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}) )
+
+    def tearDown(self):
+        self.samfile.close()
+
+class TestHeaderBam(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex3.sam","r" )
+
+    def testHeaders(self):
+        self.assertEqual( self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}, "mismatch in headers: %s != %s" % (self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}) )
+
+    def tearDown(self):
+        self.samfile.close()
+
 # TODOS
-# test optional fields that are not present
 # 1.check if parser works. 
-# Check both the fields in AlignedRead and header.
 # Check both for content and type (string, int, ...), including the optional fields
-# 1.1 take alignments from ex3.sam and check if all fields are correct.
-# 1.2 take ex3.bam and check if all fields are correct
 # 2. test iterator pileup
-# 3. check exceptions and bad input problems (missing files, ...)
+# 3. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
 
 if __name__ == "__main__":
     unittest.main()
