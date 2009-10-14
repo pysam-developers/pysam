@@ -274,7 +274,7 @@ class TestParserBam(unittest.TestCase):
 
     def testAlignedReadFields(self):
         reads=list(pysam.IteratorRowAll(self.samfile))
-        self.assertEqual( reads[0].rname, 'chr2', "chromosome/target id mismatch in read 0: %s != %s" % (reads[0].rname, 'chr2') )
+        self.assertEqual( reads[0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (reads[0].rname, 0) )
 
 #    def testHeaderFields(self):
 #        blah
@@ -289,7 +289,7 @@ class TestParserSam(unittest.TestCase):
 
     def testAlignedReadFields(self):
         reads=list(pysam.IteratorRowAll(self.samfile))
-        self.assertEqual( reads[0].rname, 'chr2', "chromosome/target id mismatch in read 0: %s != %s" % (reads[0].rname, 'chr2') )
+        self.assertEqual( reads[0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (reads[0].rname, 0) )
 
 #    def testHeaderFields(self):
 #        blah
