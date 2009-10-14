@@ -68,8 +68,12 @@ To give::
         base in read EAS51_64:3:190:727:308 = G
     ...
 
+.. Note::
+    #. Coordinates in pysam are always 0-based (following the python convention). SAM text files use 1-based coordinates.
+    #. The above examples can be run in the /test directory of the installation directory. Type 'make' before running them.
 
 .. _samtools: http://samtools.sourceforge.net/ 
+
 
 C-API
 *****
