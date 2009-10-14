@@ -161,13 +161,13 @@ cdef class Samfile:
 
     3. If *text* is given, new header text is copied from raw text.
 
-    4. The names (*targetnames*) and lengths (*targetlengths*) are supplied
-       directly.
+    4. The names (*referencenames*) and lengths (*referencelengths*) are supplied
+       directly as lists.
 
     The *mode* corresponds to the syntax in samtools. Valid modes are
     ``/[rw](b?)(u?)(h?)/`` with ``r`` for reading, ``w`` for writing, 
     ``b`` for BAM I/O, i.e., input/output is in binary format,
-    ``u`` for uncompressed BAM output, and ``h`` for outputing header in SAM 
+    ``u`` for uncompressed BAM output, and ``h`` for outputting header in SAM 
 
     If ``b`` is present, it must immediately follow ``r`` or ``w``. 
     Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.

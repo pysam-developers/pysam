@@ -16,6 +16,7 @@ Each iteration returns a :class:`~pysam.AlignedRead` object which represents a s
 
    for alignedread in samfile.fetch('chr1', 100, 120):
 	print alignedread
+
    samfile.close()
 
 
@@ -30,10 +31,11 @@ You can also write to a :class:`~pysam.Samfile`::
 
    import pysam
    samfile = pysam.Samfile("ex1.bam", "rb")
-   pairedreads = pysam.Samfile("allpaired.bam", "wb")
+   pairedreads = pysam.Samfile("allpaired.bam", "wb", template=samfile)
    for read in samfile.fetch():
 	if read.is_paired:
 		pairedreads.write(read)
+
    pairedreads.close()
    samfile.close()
 
@@ -47,6 +49,7 @@ An alternative way of accessing the data in a SAM file is by iterating over each
 	for pileupread in pileupcolumn.pileups:
 	    print '\tbase in read %s = %s' % (pileupread.alignment.qname, pileupread.alignment.seq[pileupread.qpos])
 
+    samfile.close()
 
     coverage at base 99 = 1
         base in read EAS56_57:6:190:289:82 = A
