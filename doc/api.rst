@@ -16,8 +16,9 @@ Each iteration returns a :class:`~pysam.AlignedRead` object which represents a s
 
    for alignedread in samfile.fetch('chr1', 100, 120):
 	print alignedread
-   samfile.close()
 
+   samfile.close()
+To give::
 
     EAS56_57:6:190:289:82	0	99	<<<7<<<;<<<<<<<<8;;<7;4<;<;;;;;94<;	69	CTCAAGGTTGTTGCAAGGGGGTCTATGTGAACAAA	0	192	1
     EAS56_57:6:190:289:82	0	99	<<<<<<;<<<<<<<<<<;<<;<<<<;8<6;9;;2;	137	AGGGGTGCAGAGCCGAGTCACGGGGTTGCCAGCAC	73	64	1
@@ -30,16 +31,18 @@ You can also write to a :class:`~pysam.Samfile`::
 
    import pysam
    samfile = pysam.Samfile("ex1.bam", "rb")
-   pairedreads = pysam.Samfile("allpaired.bam", "wb")
+   pairedreads = pysam.Samfile("allpaired.bam", "wb", template=samfile)
    for read in samfile.fetch():
 	if read.is_paired:
 		pairedreads.write(read)
+
    pairedreads.close()
    samfile.close()
 
 
 An alternative way of accessing the data in a SAM file is by iterating over each base of a specified region using the :meth:`~pysam.Samfile.pileup` method. Each iteration returns a :class:`~pysam.PileupColumn` which represents all the reads in the SAM file that map to a single base in the reference sequence. The list of reads are represented as :class:`~pysam.PileupRead` objects in the :attr:`PileupColumn.pileups <pysam.PileupColumn.pileups>` property::
 
+    import pysam
     samfile = pysam.Samfile("ex1.bam", "rb" )
     for pileupcolumn in samfile.pileup( 'chr1', 100, 120):
 	print
@@ -47,6 +50,9 @@ An alternative way of accessing the data in a SAM file is by iterating over each
 	for pileupread in pileupcolumn.pileups:
 	    print '\tbase in read %s = %s' % (pileupread.alignment.qname, pileupread.alignment.seq[pileupread.qpos])
 
+    samfile.close()
+
+To give::
 
     coverage at base 99 = 1
         base in read EAS56_57:6:190:289:82 = A
@@ -62,8 +68,12 @@ An alternative way of accessing the data in a SAM file is by iterating over each
         base in read EAS51_64:3:190:727:308 = G
     ...
 
+.. Note::
+    #. Coordinates in pysam are always 0-based (following the python convention). SAM text files use 1-based coordinates.
+    #. The above examples can be run in the /test directory of the installation directory. Type 'make' before running them.
 
 .. _samtools: http://samtools.sourceforge.net/ 
+
 
 C-API
 *****
