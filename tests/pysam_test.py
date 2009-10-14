@@ -176,7 +176,7 @@ class IOTest(unittest.TestCase):
                                      targetnames = infile.targets,
                                      targetlengths = infile.lengths )
 
-        iter = pysam.IteratorRowAll( infile )
+        iter = infile.fetch()
         for x in iter: outfile.write( x )
         infile.close()
         outfile.close()
@@ -227,7 +227,7 @@ class TestIteratorRow(unittest.TestCase):
 
     def checkRange( self, rnge ):
         '''compare results from iterator with those from samtools.'''
-        ps = list(pysam.IteratorRow(self.samfile, rnge))
+        ps = list(self.samfile.fetch(rnge))
         sa = list(pysam.view( "ex1.bam", rnge , raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
         # check if the same reads are returned and in the same order
@@ -243,7 +243,7 @@ class TestIteratorRow(unittest.TestCase):
     def testIterateRanges(self):
         '''check random access per range'''
         for contig, length in zip(self.samfile.targets, self.samfile.lengths):
-            for start in range( 0, length, 90):
+            for start in range( 1, length, 90):
                 self.checkRange( "%s:%i-%i" % (contig, start, start + 90) ) # this includes empty ranges
 
     def tearDown(self):
@@ -256,7 +256,7 @@ class TestIteratorRowAll(unittest.TestCase):
 
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
-        ps = list(pysam.IteratorRowAll(self.samfile))
+        ps = list(self.samfile.fetch())
         sa = list(pysam.view( "ex1.bam", raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa) ))
         # check if the same reads are returned
@@ -267,90 +267,132 @@ class TestIteratorRowAll(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
-class TestParserBam(unittest.TestCase):
+class TestAlignedReadBam(unittest.TestCase):
 
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.bam","rb" )
-        self.reads=list(pysam.IteratorRowAll(self.samfile))
+        self.reads=list(self.samfile.fetch())
 
-    def testAlignedReadFields(self):
-        reads=self.reads
-        self.assertEqual( reads[0].qname, "read_28833_29006_6945", "read name mismatch in read 1: %s != %s" % (reads[0].qname, "read_28833_29006_6945") )
-        self.assertEqual( reads[1].qname, "read_28701_28881_323b", "read name mismatch in read 2: %s != %s" % (reads[1].qname, "read_28701_28881_323b") )
-        self.assertEqual( reads[0].flag, 99, "flag mismatch in read 1: %s != %s" % (reads[0].flag, 99) )
-        self.assertEqual( reads[1].flag, 147, "flag mismatch in read 2: %s != %s" % (reads[1].flag, 147) )
-        self.assertEqual( reads[0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (reads[0].rname, 0) )
-        self.assertEqual( reads[1].rname, 1, "chromosome/target id mismatch in read 2: %s != %s" % (reads[1].rname, 1) )
-        self.assertEqual( reads[0].pos, 33-1, "mapping position mismatch in read 1: %s != %s" % (reads[0].pos, 33-1) )
-        self.assertEqual( reads[1].pos, 88-1, "mapping position mismatch in read 2: %s != %s" % (reads[1].pos, 88-1) )
-        self.assertEqual( reads[0].mapq, 20, "mapping quality mismatch in read 1: %s != %s" % (reads[0].mapq, 20) )
-        self.assertEqual( reads[1].mapq, 30, "mapping quality mismatch in read 2: %s != %s" % (reads[1].mapq, 30) )
-        self.assertEqual( reads[0].cigar, [(0, 10), (2, 1), (0, 25)], "read name length mismatch in read 1: %s != %s" % (reads[0].cigar, [(0, 10), (2, 1), (0, 25)]) )
-        self.assertEqual( reads[1].cigar, [(0, 35)], "read name length mismatch in read 2: %s != %s" % (reads[1].cigar, [(0, 35)]) )
-        self.assertEqual( reads[0].mrnm, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (reads[0].mrnm, 0) )
-        self.assertEqual( reads[1].mrnm, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (reads[1].mrnm, 1) )
-        self.assertEqual( reads[0].mpos, 200-1, "mate mapping position mismatch in read 1: %s != %s" % (reads[0].mpos, 200-1) )
-        self.assertEqual( reads[1].mpos, 500-1, "mate mapping position mismatch in read 2: %s != %s" % (reads[1].mpos, 500-1) )
-        self.assertEqual( reads[0].isize, 167, "insert size mismatch in read 1: %s != %s" % (reads[0].isize, 167) )
-        self.assertEqual( reads[1].isize, 412, "insert size mismatch in read 2: %s != %s" % (reads[1].isize, 412) )
-        self.assertEqual( reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG") )
-        self.assertEqual( reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA") )
-        self.assertEqual( reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<", "quality string mismatch in read 1: %s != %s" % (reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<") )
-        self.assertEqual( reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<") )
+    def testARqname(self):
+        self.assertEqual( self.reads[0].qname, "read_28833_29006_6945", "read name mismatch in read 1: %s != %s" % (self.reads[0].qname, "read_28833_29006_6945") )
+        self.assertEqual( self.reads[1].qname, "read_28701_28881_323b", "read name mismatch in read 2: %s != %s" % (self.reads[1].qname, "read_28701_28881_323b") )
 
-    def testOptionalFields(self):
-        reads=self.reads
-        self.assertEqual( reads[0].opt('NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (reads[0].opt('NM'), 1) )
-        self.assertEqual( reads[0].opt('RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (reads[0].opt('RG'), 'L1') )
-        self.assertEqual( reads[1].opt('RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (reads[1].opt('RG'), 'L2') )
-        self.assertEqual( reads[1].opt('MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (reads[1].opt('MF'), 18) )
+    def testARflag(self):
+        self.assertEqual( self.reads[0].flag, 99, "flag mismatch in read 1: %s != %s" % (self.reads[0].flag, 99) )
+        self.assertEqual( self.reads[1].flag, 147, "flag mismatch in read 2: %s != %s" % (self.reads[1].flag, 147) )
 
-#    def testHeaderFields(self):
-#        
+    def testARrname(self):
+        self.assertEqual( self.reads[0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (self.reads[0].rname, 0) )
+        self.assertEqual( self.reads[1].rname, 1, "chromosome/target id mismatch in read 2: %s != %s" % (self.reads[1].rname, 1) )
+
+    def testARpos(self):
+        self.assertEqual( self.reads[0].pos, 33-1, "mapping position mismatch in read 1: %s != %s" % (self.reads[0].pos, 33-1) )
+        self.assertEqual( self.reads[1].pos, 88-1, "mapping position mismatch in read 2: %s != %s" % (self.reads[1].pos, 88-1) )
+
+    def testARmapq(self):
+        self.assertEqual( self.reads[0].mapq, 20, "mapping quality mismatch in read 1: %s != %s" % (self.reads[0].mapq, 20) )
+        self.assertEqual( self.reads[1].mapq, 30, "mapping quality mismatch in read 2: %s != %s" % (self.reads[1].mapq, 30) )
+
+    def testARcigar(self):
+        self.assertEqual( self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)], "read name length mismatch in read 1: %s != %s" % (self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)]) )
+        self.assertEqual( self.reads[1].cigar, [(0, 35)], "read name length mismatch in read 2: %s != %s" % (self.reads[1].cigar, [(0, 35)]) )
+
+    def testARmrnm(self):
+        self.assertEqual( self.reads[0].mrnm, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (self.reads[0].mrnm, 0) )
+        self.assertEqual( self.reads[1].mrnm, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (self.reads[1].mrnm, 1) )
+
+    def testARmpos(self):
+        self.assertEqual( self.reads[0].mpos, 200-1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].mpos, 200-1) )
+        self.assertEqual( self.reads[1].mpos, 500-1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].mpos, 500-1) )
+
+    def testARisize(self):
+        self.assertEqual( self.reads[0].isize, 167, "insert size mismatch in read 1: %s != %s" % (self.reads[0].isize, 167) )
+        self.assertEqual( self.reads[1].isize, 412, "insert size mismatch in read 2: %s != %s" % (self.reads[1].isize, 412) )
+
+    def testARseq(self):
+        self.assertEqual( self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG") )
+        self.assertEqual( self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA") )
+
+    def testARqual(self):
+        self.assertEqual( self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<", "quality string mismatch in read 1: %s != %s" % (self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<") )
+        self.assertEqual( self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<") )
+
+    def testPresentOptionalFields(self):
+        self.assertEqual( self.reads[0].opt('NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (self.reads[0].opt('NM'), 1) )
+        self.assertEqual( self.reads[0].opt('RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (self.reads[0].opt('RG'), 'L1') )
+        self.assertEqual( self.reads[1].opt('RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (self.reads[1].opt('RG'), 'L2') )
+        self.assertEqual( self.reads[1].opt('MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (self.reads[1].opt('MF'), 18) )
+
+    def testPairedBools(self):
+        self.assertEqual( self.reads[0].is_paired, True, "is paired mismatch in read 1: %s != %s" % (self.reads[0].is_paired, True) )
+        self.assertEqual( self.reads[1].is_paired, True, "is paired mismatch in read 2: %s != %s" % (self.reads[1].is_paired, True) )
+        self.assertEqual( self.reads[0].is_proper_pair, True, "is proper pair mismatch in read 1: %s != %s" % (self.reads[0].is_proper_pair, True) )
+        self.assertEqual( self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (self.reads[1].is_proper_pair, True) )
 
     def tearDown(self):
         self.samfile.close()
 
-class TestParserSam(unittest.TestCase):
+class TestAlignedReadSam(unittest.TestCase):
 
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.bam","rb" )
-        self.reads=list(pysam.IteratorRowAll(self.samfile))
+        self.reads=list(self.samfile.fetch())
 
-    def testAlignedReadFields(self):
-        reads=self.reads
-        self.assertEqual( reads[0].qname, "read_28833_29006_6945", "read name mismatch in read 1: %s != %s" % (reads[0].qname, "read_28833_29006_6945") )
-        self.assertEqual( reads[1].qname, "read_28701_28881_323b", "read name mismatch in read 2: %s != %s" % (reads[1].qname, "read_28701_28881_323b") )
-        self.assertEqual( reads[0].flag, 99, "flag mismatch in read 1: %s != %s" % (reads[0].flag, 99) )
-        self.assertEqual( reads[1].flag, 147, "flag mismatch in read 2: %s != %s" % (reads[1].flag, 147) )
-        self.assertEqual( reads[0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (reads[0].rname, 0) )
-        self.assertEqual( reads[1].rname, 1, "chromosome/target id mismatch in read 2: %s != %s" % (reads[1].rname, 1) )
-        self.assertEqual( reads[0].pos, 33-1, "mapping position mismatch in read 1: %s != %s" % (reads[0].pos, 33-1) )
-        self.assertEqual( reads[1].pos, 88-1, "mapping position mismatch in read 2: %s != %s" % (reads[1].pos, 88-1) )
-        self.assertEqual( reads[0].mapq, 20, "mapping quality mismatch in read 1: %s != %s" % (reads[0].mapq, 20) )
-        self.assertEqual( reads[1].mapq, 30, "mapping quality mismatch in read 2: %s != %s" % (reads[1].mapq, 30) )
-        self.assertEqual( reads[0].cigar, [(0, 10), (2, 1), (0, 25)], "read name length mismatch in read 1: %s != %s" % (reads[0].cigar, [(0, 10), (2, 1), (0, 25)]) )
-        self.assertEqual( reads[1].cigar, [(0, 35)], "read name length mismatch in read 2: %s != %s" % (reads[1].cigar, [(0, 35)]) )
-        self.assertEqual( reads[0].mrnm, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (reads[0].mrnm, 0) )
-        self.assertEqual( reads[1].mrnm, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (reads[1].mrnm, 1) )
-        self.assertEqual( reads[0].mpos, 200-1, "mate mapping position mismatch in read 1: %s != %s" % (reads[0].mpos, 200-1) )
-        self.assertEqual( reads[1].mpos, 500-1, "mate mapping position mismatch in read 2: %s != %s" % (reads[1].mpos, 500-1) )
-        self.assertEqual( reads[0].isize, 167, "insert size mismatch in read 1: %s != %s" % (reads[0].isize, 167) )
-        self.assertEqual( reads[1].isize, 412, "insert size mismatch in read 2: %s != %s" % (reads[1].isize, 412) )
-        self.assertEqual( reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG") )
-        self.assertEqual( reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA") )
-        self.assertEqual( reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<", "quality string mismatch in read 1: %s != %s" % (reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<") )
-        self.assertEqual( reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<") )
+    def testARqname(self):
+        self.assertEqual( self.reads[0].qname, "read_28833_29006_6945", "read name mismatch in read 1: %s != %s" % (self.reads[0].qname, "read_28833_29006_6945") )
+        self.assertEqual( self.reads[1].qname, "read_28701_28881_323b", "read name mismatch in read 2: %s != %s" % (self.reads[1].qname, "read_28701_28881_323b") )
 
-    def testOptionalFields(self):
-        reads=self.reads
-        self.assertEqual( reads[0].opt('NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (reads[0].opt('NM'), 1) )
-        self.assertEqual( reads[0].opt('RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (reads[0].opt('RG'), 'L1') )
-        self.assertEqual( reads[1].opt('RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (reads[1].opt('RG'), 'L2') )
-        self.assertEqual( reads[1].opt('MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (reads[1].opt('MF'), 18) )
+    def testARflag(self):
+        self.assertEqual( self.reads[0].flag, 99, "flag mismatch in read 1: %s != %s" % (self.reads[0].flag, 99) )
+        self.assertEqual( self.reads[1].flag, 147, "flag mismatch in read 2: %s != %s" % (self.reads[1].flag, 147) )
 
-#    def testHeaderFields(self):
-#        
+    def testARrname(self):
+        self.assertEqual( self.reads[0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (self.reads[0].rname, 0) )
+        self.assertEqual( self.reads[1].rname, 1, "chromosome/target id mismatch in read 2: %s != %s" % (self.reads[1].rname, 1) )
+
+    def testARpos(self):
+        self.assertEqual( self.reads[0].pos, 33-1, "mapping position mismatch in read 1: %s != %s" % (self.reads[0].pos, 33-1) )
+        self.assertEqual( self.reads[1].pos, 88-1, "mapping position mismatch in read 2: %s != %s" % (self.reads[1].pos, 88-1) )
+
+    def testARmapq(self):
+        self.assertEqual( self.reads[0].mapq, 20, "mapping quality mismatch in read 1: %s != %s" % (self.reads[0].mapq, 20) )
+        self.assertEqual( self.reads[1].mapq, 30, "mapping quality mismatch in read 2: %s != %s" % (self.reads[1].mapq, 30) )
+
+    def testARcigar(self):
+        self.assertEqual( self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)], "read name length mismatch in read 1: %s != %s" % (self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)]) )
+        self.assertEqual( self.reads[1].cigar, [(0, 35)], "read name length mismatch in read 2: %s != %s" % (self.reads[1].cigar, [(0, 35)]) )
+
+    def testARmrnm(self):
+        self.assertEqual( self.reads[0].mrnm, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (self.reads[0].mrnm, 0) )
+        self.assertEqual( self.reads[1].mrnm, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (self.reads[1].mrnm, 1) )
+
+    def testARmpos(self):
+        self.assertEqual( self.reads[0].mpos, 200-1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].mpos, 200-1) )
+        self.assertEqual( self.reads[1].mpos, 500-1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].mpos, 500-1) )
+
+    def testARisize(self):
+        self.assertEqual( self.reads[0].isize, 167, "insert size mismatch in read 1: %s != %s" % (self.reads[0].isize, 167) )
+        self.assertEqual( self.reads[1].isize, 412, "insert size mismatch in read 2: %s != %s" % (self.reads[1].isize, 412) )
+
+    def testARseq(self):
+        self.assertEqual( self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG") )
+        self.assertEqual( self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA") )
+
+    def testARqual(self):
+        self.assertEqual( self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<", "quality string mismatch in read 1: %s != %s" % (self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<") )
+        self.assertEqual( self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<") )
+
+    def testPresentOptionalFields(self):
+        self.assertEqual( self.reads[0].opt('NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (self.reads[0].opt('NM'), 1) )
+        self.assertEqual( self.reads[0].opt('RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (self.reads[0].opt('RG'), 'L1') )
+        self.assertEqual( self.reads[1].opt('RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (self.reads[1].opt('RG'), 'L2') )
+        self.assertEqual( self.reads[1].opt('MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (self.reads[1].opt('MF'), 18) )
+
+    def testPairedBools(self):
+        self.assertEqual( self.reads[0].is_paired, True, "is paired mismatch in read 1: %s != %s" % (self.reads[0].is_paired, True) )
+        self.assertEqual( self.reads[1].is_paired, True, "is paired mismatch in read 2: %s != %s" % (self.reads[1].is_paired, True) )
+        self.assertEqual( self.reads[0].is_proper_pair, True, "is proper pair mismatch in read 1: %s != %s" % (self.reads[0].is_proper_pair, True) )
+        self.assertEqual( self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (self.reads[1].is_proper_pair, True) )
 
     def tearDown(self):
         self.samfile.close()
@@ -359,6 +401,7 @@ class TestParserSam(unittest.TestCase):
 # reads = samfile.fetch()
 # self.assertEqual( reads[0].is_paired, False )
 # TODOS
+# test optional fields that are not present
 # 1.check if parser works. 
 # Check both the fields in AlignedRead and header.
 # Check both for content and type (string, int, ...), including the optional fields
