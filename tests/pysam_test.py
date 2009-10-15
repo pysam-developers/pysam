@@ -419,9 +419,24 @@ class TestHeaderBam(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
+class TestPileupObjects(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Bamfile( "ex1.bam","rb" )
+
+#    def properties():
+#        yield blah
+
+#    def testCallback(self):
+#        self.samfile.pileup(properties())
+
+    def tearDown(self):
+        self.samfile.close()
+
+# To test iterator pileup and the pileup object, create a pileup from a tiny region of another example sam file whose constituent reads are known
+# to test iterator pileup, get a pileup at a single base from ex1.bam and check all properties with a callback function
 # TODOS
-# 1.check if parser works. 
-# Check both for content and type (string, int, ...), including the optional fields
+# Check both for content and type (string, int, ...), including the optional fields - note that this testing implicitly tests type
 # 2. test iterator pileup
 # 3. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
 
