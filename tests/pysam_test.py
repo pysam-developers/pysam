@@ -422,23 +422,32 @@ class TestHeaderBam(unittest.TestCase):
 class TestPileupObjects(unittest.TestCase):
 
     def setUp(self):
-        self.samfile=pysam.Bamfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile( "ex1.bam","rb" )
 
-#    def properties():
-#        yield blah
+    def testPileupColumn(self):
+        for pcolumn1 in self.samfile.pileup( "chr1:105" ):
+            if pcolumn1.pos == 104:
+                self.assertEqual( pcolumn1.tid, 0, "chromosome/target id mismatch in position 1: %s != %s" % (pcolumn1.tid, 0) )
+                self.assertEqual( pcolumn1.pos, 105-1, "position mismatch in position 1: %s != %s" % (pcolumn1.pos, 105-1) )
+                self.assertEqual( pcolumn1.n, 2, "# reads mismatch in position 1: %s != %s" % (pcolumn1.n, 2) )
+        for pcolumn2 in self.samfile.pileup( "chr2:1480" ):
+            if pcolumn2.pos == 1479:
+                self.assertEqual( pcolumn2.tid, 1, "chromosome/target id mismatch in position 1: %s != %s" % (pcolumn2.tid, 1) )
+                self.assertEqual( pcolumn2.pos, 1480-1, "position mismatch in position 1: %s != %s" % (pcolumn2.pos, 1480-1) )
+                self.assertEqual( pcolumn2.n, 12, "# reads mismatch in position 1: %s != %s" % (pcolumn2.n, 12) )
 
-#    def testCallback(self):
-#        self.samfile.pileup(properties())
+    def testPileupRead(self):
+        for pcolumn1 in self.samfile.pileup( "chr1:105" ):
+            if pcolumn1.pos == 104:
+                self.assertEqual( len(pcolumn1.pileups), 2, "# reads aligned to column mismatch in position 1: %s != %s" % (len(pcolumn1.pileups), 2) )
+#                self.assertEqual( pcolumn1.pileups[0]  # need to test additional properties here
 
     def tearDown(self):
         self.samfile.close()
 
-# To test iterator pileup and the pileup object, create a pileup from a tiny region of another example sam file whose constituent reads are known
-# to test iterator pileup, get a pileup at a single base from ex1.bam and check all properties with a callback function
 # TODOS
-# Check both for content and type (string, int, ...), including the optional fields - note that this testing implicitly tests type
-# 2. test iterator pileup
-# 3. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
+# 1. finish testing all properties within pileup objects
+# 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
 
 if __name__ == "__main__":
     unittest.main()
