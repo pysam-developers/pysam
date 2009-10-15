@@ -72,6 +72,15 @@ To give::
     #. Coordinates in pysam are always 0-based (following the python convention). SAM text files use 1-based coordinates.
     #. The above examples can be run in the /test directory of the installation directory. Type 'make' before running them.
 
+
+.. seealso::
+
+    http://code.google.com/p/pysam/
+	The pysam Google code page, containing source code and download instructions
+
+    http://wwwfgu.anat.ox.ac.uk/~andreas/documentation/samtools/contents.html
+	The pysam website containing documentation
+
 .. _samtools: http://samtools.sourceforge.net/ 
 
 
