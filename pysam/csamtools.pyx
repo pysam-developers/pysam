@@ -146,31 +146,37 @@ VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
 ## Public methods
 ######################################################################
 cdef class Samfile:
-    '''A Sam or bam file.
+    '''*(filename, mode='r', template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
+              
+    A *SAM* file. The file is automatically opened.
 
-    The file is automatically opened.
-
-    For writing, the header of a samfile/bamfile can be constituted from several
-    sources:
-
-    1. If *template* is given, the header is copied from a another samfile.
-
-    2. If *header* is given, the header is build from a multi-level dictionary. The 
-       first level are the four types ('HD', 'SQ', ...). The second level is then 
-       a list of lines, with each line being a list of tag-value pairs.
-
-    3. If *text* is given, new header text is copied from raw text.
-
-    4. The names (*referencenames*) and lengths (*referencelengths*) are supplied
-       directly as lists.
-
-    The *mode* corresponds to the syntax in samtools. Valid modes are
-    ``/[rw](b?)(u?)(h?)/`` with ``r`` for reading, ``w`` for writing, 
-    ``b`` for BAM I/O, i.e., input/output is in binary format,
-    ``u`` for uncompressed BAM output, and ``h`` for outputting header in SAM 
+    
+    *mode* should be ``r`` for reading or ``w`` for writing. The default is text mode so for binary (:term:`BAM`) I/O you should append 
+    ``b`` for compressed or ``u`` for uncompressed :term:`BAM` output. Use ``h`` to output header information  in text (:term:`TAM`)  mode.
 
     If ``b`` is present, it must immediately follow ``r`` or ``w``. 
     Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.
+    
+    so to open a :term:`BAM` file for reading::
+
+        f=Samfile('ex1.bam','rb')
+    
+    
+
+    For writing, the header of a :term:`TAM` file/:term:`BAM` file can be constituted from several
+    sources:
+
+        1. If *template* is given, the header is copied from a another *Samfile* (*template* must be of type *Samfile*).
+
+        2. If *header* is given, the header is build from a multi-level dictionary. The first level are the four types ('HD', 'SQ', ...). The second level is then a list of lines, with each line being a list of tag-value pairs.
+
+        3. If *text* is given, new header text is copied from raw text.
+
+        4. The names (*referencenames*) and lengths (*referencelengths*) are supplied directly as lists. 
+
+    
+    
+
     '''
 
     cdef char * filename
@@ -196,10 +202,10 @@ cdef class Samfile:
 
     def _open( self, 
               char * filename, 
-              mode,
+              mode ='r',
               Samfile template = None,
-              targetnames = None,
-              targetlengths = None,
+              referencenames = None,
+              referencelengths = None,
               char * text = NULL,
               header = None,
               ):
@@ -234,19 +240,19 @@ cdef class Samfile:
                 header_to_write = self._buildHeader( header )
             else:
                 # build header from a target names and lengths
-                assert targetnames and targetlengths, "supply names and lengths of targets for writing"
-                assert len(targetnames) == len(targetlengths), "unequal names and lengths of targets"
+                assert referencenames and referencelengths, "supply names and lengths of reference sequences for writing"
+                assert len(referencenames) == len(referencelengths), "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
                 header_to_write = bam_header_init()
-                header_to_write.n_targets = len(targetnames)
+                header_to_write.n_targets = len(referencenames)
                 n = 0
-                for x in targetnames: n += len(x) + 1
+                for x in referencenames: n += len(x) + 1
                 header_to_write.target_name = <char**>calloc(n, sizeof(char*))
                 header_to_write.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
                 for x from 0 <= x < header_to_write.n_targets:
-                    header_to_write.target_len[x] = targetlengths[x]
-                    name = targetnames[x]
+                    header_to_write.target_len[x] = referencelengths[x]
+                    name = referencenames[x]
                     header_to_write.target_name[x] = <char*>calloc(len(name)+1, sizeof(char))
                     strncpy( header_to_write.target_name[x], name, len(name) )
 
@@ -279,14 +285,15 @@ cdef class Samfile:
             if self.index == NULL:
                 raise IOError("could not open index `%s` " % filename )
 
-    def getTarget( self, tid ):
-        '''convert numerical :term:`tid` into target name.'''
+    def _getTarget( self, tid ):
+        '''(tid )
+        convert numerical :term:`tid` into target name.'''
         if not 0 <= tid < self.samfile.header.n_targets:
             raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
         return self.samfile.header.target_name[tid]
 
-    def getNumTargets( self ):
-        '''return the number of :ref:`target` s.'''
+    def getNumReferences( self ):
+        """return the number of :ref:`reference` sequences."""
         return self.samfile.header.n_targets
 
     def fetch( self, 
@@ -294,19 +301,16 @@ cdef class Samfile:
                region = None, 
                callback = None,
                until_eof = False ):
-        '''fetch aligned reads in a :term:`region` using 0-based indexing. The region is specified by
-        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` can be supplied.
+        '''*(reference = None, start = None, end = None, region = None, callback = None, until_eof = False)*
+               
+        fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. The region is specified by
+        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
 
         Without *reference* or *region* all reads will be fetched. The reads will be returned
         ordered by reference sequence, which will not necessarily be the order within the file.
         If *until_eof* is given, all reads from the current file position will be returned
-        as they are sorted within the file. To iterate over all reads within a file, thus
-        use::
-
-           samfile = Samfile.open( filename )
-           for x in samfile.fetch( until_eof = True ): 
-              print str(x)
-
+        *as they are sorted within the file*.  
+        
         If only *reference* is set, all reads matching on *reference* will be fetched.
 
         The method returns an iterator of type :class:`pysam.IteratorRow` unless
@@ -314,7 +318,7 @@ cdef class Samfile:
         for each position within the :term:`region`. Note that callbacks currently work
         only, if *region* or *reference* is given.
 
-        Note that a :term:`tam file` does not allow random access. If *region* or *reference* are given,
+        Note that a :term:`TAM` file does not allow random access. If *region* or *reference* are given,
         an exception is raised.
         '''
         cdef int rtid
@@ -347,7 +351,7 @@ cdef class Samfile:
                     else:
                         # return all targets by chaining the individual targets together.
                         i = []
-                        for x in self.targets: i.append( IteratorRow( self, x))
+                        for x in self.references: i.append( IteratorRow( self, x))
                         return itertools.chain( *i )
         else:                    
             if region != None:
@@ -359,10 +363,10 @@ cdef class Samfile:
 
     def pileup( self, reference = None, start = None, end = None, region = None, callback = None ):
         '''run a pileup within a :term:`region` using 0-based indexing. The region is specified by
-        :term:`reference`, *start* and *end*. Alternatively, a samtools *region* can be supplied.
+        :term:`reference`, *start* and *end*. Alternatively, a samtools *region* string can be supplied.
 
         Without *reference* or *region* all reads will be fetched. The reads will be returned
-        ordered by reference sequence, which will not necessarily be the order within the file.
+        ordered by :term:`reference` sequence, which will not necessarily be the order within the file.
 
         The method returns an iterator of type :class:`pysam.IteratorColumn` unless
         a *callback is provided. If *callback* is given, the callback will be executed 
@@ -411,14 +415,14 @@ cdef class Samfile:
                 else:
                     # return all targets by chaining the individual targets together.
                     i = []
-                    for x in self.targets: i.append( IteratorColumn( self, x))
+                    for x in self.references: i.append( IteratorColumn( self, x))
                     return itertools.chain( *i )
 
         else:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
     def close( self ):
-        '''close file.'''
+        '''closes file.'''
         
         if self.samfile != NULL:
             samclose( self.samfile )
@@ -431,14 +435,15 @@ cdef class Samfile:
         self.close()
 
     def write( self, AlignedRead read ):
-        '''write a single :class:`pysam.AlignedRead`..
+        '''(AlignedRead read )
+        write a single :class:`pysam.AlignedRead`..
 
         return the number of bytes written.
         '''
         return samwrite( self.samfile, read._delegate )
 
-    property targets:
-        """tuple with the names of :term:`target` sequences."""
+    property references:
+        """tuple with the names of :term:`reference` sequences."""
         def __get__(self): 
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
@@ -446,7 +451,7 @@ cdef class Samfile:
             return tuple(t)
 
     property lengths:
-        """tuple of the lengths of the :term:`target` sequences. The lengths are in the same order as :attr:`pysam.Samfile.targets`
+        """tuple of the lengths of the :term:`reference` sequences. The lengths are in the same order as :attr:`pysam.Samfile.reference`
         """
         def __get__(self): 
             t = []
@@ -580,7 +585,7 @@ cdef class Samfile:
 ## changes, the changes have to be manually entered.
 
 cdef class IteratorRow:
-    """iterate over mapped reads in a region.
+    """iterates over mapped reads in a region.
     """
     
     cdef bam_fetch_iterator_t*  bam_iter # iterator state object
@@ -641,7 +646,7 @@ cdef class IteratorRow:
             bam_cleanup_fetch_iterator(self.bam_iter)
         
 cdef class IteratorRowAll:
-    """iterate over all mapped reads
+    """iterates over all mapped reads
     """
 
     cdef bam1_t * b
@@ -684,7 +689,7 @@ cdef class IteratorRowAll:
         bam_destroy1(self.b)
         
 cdef class IteratorColumn:
-    '''iterate over columns.
+    '''iterates over columns.
 
     This iterator wraps the pileup functionality of the samtools
     function bam_plbuf_push.

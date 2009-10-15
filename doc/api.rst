@@ -75,16 +75,10 @@ To give::
 .. _samtools: http://samtools.sourceforge.net/ 
 
 
-C-API
+API
 *****
 
 .. automodule:: pysam
    :members:
    :undoc-members:
 
-Pileup
-******
-
-.. automodule:: pysam.Pileup
-   :members:
-   :undoc-members:

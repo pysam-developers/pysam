@@ -12,23 +12,21 @@ Glossary
       and another 2 matches.
 
    region
-      A region string according to samtools convention, for example
-      ``chr1:10-200`` and ``chr1``. The region can not be empty.
+      A genomic region, stated relative to a reference sequence. Consists of reference name ('chr1'), start (100000), and end (200000). 0-based coordinates. Can be expressed as a string ('chr1:10000:20000')
 
    column
       Reads that are aligned to a base in the :term:`target` sequence.
      
-   target
-      The sequence that reads have been mapped onto. Synonymous to
-      :term:`reference`.
+   Reference
+      The sequence that reads have been mapped onto. For example ``chr1``, ``contig123``.
 
-   bam file
-       A file in bam format. Bam files are binary formatted, indexed and 
+   BAM
+       Binary SAM format. BAM files are binary formatted, indexed and 
        allow random access.
 
-   tam file
-       A file in tam format. Tam files are human readable files of 
-       tab-separated fields. Tam files do not allow random access.
+   TAM
+       Text SAM file. TAM files are human readable files of 
+       tab-separated fields. TAM files do not allow random access.
 
    sam file
        A file containing aligned reads. The :term:`sam file` can either
@@ -46,12 +44,5 @@ Glossary
    fetching
       Retrieving all mapped reads mapped to a :term:`region`.
 
-   tid
-      A :term:`target` id. This numerical identifier is used internally
-      by samtools and can be translated into a :term:`reference` using
-      the method :meth:`pysam.Samfile.getTarget`.
-
-   reference
-      A reference sequence id, for example ``chr1``, ``contig123``.
 
 .. _samtools: http://samtools.sourceforge.net
