@@ -445,6 +445,51 @@ class TestPileupObjects(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
+class TestExceptions(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+
+    def testBadFile(self):
+        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.bam", "rb" )
+        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.sam","r" )
+        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.bam", "r" )
+        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.sam","rb" )
+
+    def testBadContig(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr88" )
+
+    def testMeaninglessCrap(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "skljf" )
+
+    def testBackwardsOrderNewFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, 'chr1', 100, 10 )
+
+    def testBackwardsOrderOldFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1:100-10")
+
+    def testOutOfRangeNegativeNewFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, -10 )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, 0 )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", -5, -10 )
+
+    def testOutOfRangeNegativeOldFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1:-5-10" )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1:-5-0" )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1:-5--10" )
+
+    def testOutOfRangNewFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 9999999999, 99999999999 )
+
+    def testOutOfRangeLargeNewFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 99999999999999999, 999999999999999999 )
+
+    def testOutOfRangeLargeOldFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
+
+    def tearDown(self):
+        self.samfile.close()
+
 # TODOS
 # 1. finish testing all properties within pileup objects
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
