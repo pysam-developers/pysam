@@ -15,7 +15,7 @@ Glossary
       A genomic region, stated relative to a reference sequence. Consists of reference name ('chr1'), start (100000), and end (200000). 0-based coordinates. Can be expressed as a string ('chr1:10000:20000')
 
    column
-      Reads that are aligned to a base in the :term:`target` sequence.
+      Reads that are aligned to a base in the :term:`reference` sequence.
      
    Reference
       The sequence that reads have been mapped onto. For example ``chr1``, ``contig123``.
@@ -30,7 +30,7 @@ Glossary
 
    sam file
        A file containing aligned reads. The :term:`sam file` can either
-       be a :term:`bam file` or a :term:`tam file`.
+       be a :term:`BAM` file or a :term:`TAM` file.
 
    pileup
       Pileup     

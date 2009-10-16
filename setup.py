@@ -1,20 +1,10 @@
 #!/usr/bin/python
-"""\
+'''
 
-NCL
-***
+pysam
+*****
 
-Nested contained lists are a way to index segment data. See
-Alekseyenko & Lee (2007) 
-(http://bioinformatics.oxfordjournals.org/cgi/content/full/23/11/1386)
-
-The following code was taken from the author's implemetation
-in pygr (http://sourceforge.net/projects/pygr) and modified. The
-modifications include:
-
-1. remove target coordinates, only target_id is kept.
-
-"""\
+'''
 
 import os, sys, glob, shutil
 
@@ -47,7 +37,7 @@ name = "pysam"
 version = "0.1"
 
 classifiers = """
-Development Status :: 1 - Pre Alpha
+Development Status :: 2 - Alpha
 Operating System :: MacOS :: MacOS X
 Operating System :: Microsoft :: Windows :: Windows NT/2000
 Operating System :: OS Independent
@@ -81,7 +71,7 @@ metadata = {
     'author_email': "andreas.heger@gmail.com",
     'license': "GPL",
     'platforms': "ALL",
-    'url': "TBD",
+    'url': "http://code.google.com/p/pysam/",
     'py_modules': [
       "pysam/__init__", "pysam/Pileup"],
     'ext_modules': [pysam,],

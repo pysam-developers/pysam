@@ -227,7 +227,7 @@ class TestIteratorRow(unittest.TestCase):
 
     def checkRange( self, rnge ):
         '''compare results from iterator with those from samtools.'''
-        ps = list(self.samfile.fetch(rnge))
+        ps = list(self.samfile.fetch(region=rnge))
         sa = list(pysam.view( "ex1.bam", rnge , raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
         # check if the same reads are returned and in the same order
@@ -425,19 +425,19 @@ class TestPileupObjects(unittest.TestCase):
         self.samfile=pysam.Samfile( "ex1.bam","rb" )
 
     def testPileupColumn(self):
-        for pcolumn1 in self.samfile.pileup( "chr1:105" ):
+        for pcolumn1 in self.samfile.pileup( region="chr1:105" ):
             if pcolumn1.pos == 104:
                 self.assertEqual( pcolumn1.tid, 0, "chromosome/target id mismatch in position 1: %s != %s" % (pcolumn1.tid, 0) )
                 self.assertEqual( pcolumn1.pos, 105-1, "position mismatch in position 1: %s != %s" % (pcolumn1.pos, 105-1) )
                 self.assertEqual( pcolumn1.n, 2, "# reads mismatch in position 1: %s != %s" % (pcolumn1.n, 2) )
-        for pcolumn2 in self.samfile.pileup( "chr2:1480" ):
+        for pcolumn2 in self.samfile.pileup( region="chr2:1480" ):
             if pcolumn2.pos == 1479:
                 self.assertEqual( pcolumn2.tid, 1, "chromosome/target id mismatch in position 1: %s != %s" % (pcolumn2.tid, 1) )
                 self.assertEqual( pcolumn2.pos, 1480-1, "position mismatch in position 1: %s != %s" % (pcolumn2.pos, 1480-1) )
                 self.assertEqual( pcolumn2.n, 12, "# reads mismatch in position 1: %s != %s" % (pcolumn2.n, 12) )
 
     def testPileupRead(self):
-        for pcolumn1 in self.samfile.pileup( "chr1:105" ):
+        for pcolumn1 in self.samfile.pileup( region="chr1:105" ):
             if pcolumn1.pos == 104:
                 self.assertEqual( len(pcolumn1.pileups), 2, "# reads aligned to column mismatch in position 1: %s != %s" % (len(pcolumn1.pileups), 2) )
 #                self.assertEqual( pcolumn1.pileups[0]  # need to test additional properties here
@@ -466,26 +466,26 @@ class TestExceptions(unittest.TestCase):
         self.assertRaises( ValueError, self.samfile.fetch, 'chr1', 100, 10 )
 
     def testBackwardsOrderOldFormat(self):
-        self.assertRaises( ValueError, self.samfile.fetch, "chr1:100-10")
+        self.assertRaises( ValueError, self.samfile.fetch, region="chr1:100-10")
+        
+    def testOutOfRangeNegativeNewFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, -10 )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, 0 )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", -5, -10 )
 
-#    def testOutOfRangeNegativeNewFormat(self):
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, -10 )
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, 0 )
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1", -5, -10 )
-
-#    def testOutOfRangeNegativeOldFormat(self):
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1:-5-10" )
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1:-5-0" )
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1:-5--10" )
+    def testOutOfRangeNegativeOldFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5-10" )
+        self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5-0" )
+        self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5--10" )
 
     def testOutOfRangNewFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1", 9999999999, 99999999999 )
 
-#    def testOutOfRangeLargeNewFormat(self):
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 99999999999999999, 999999999999999999 )
+    def testOutOfRangeLargeNewFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
 
-#    def testOutOfRangeLargeOldFormat(self):
-#        self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
+    def testOutOfRangeLargeOldFormat(self):
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
 
     def tearDown(self):
         self.samfile.close()

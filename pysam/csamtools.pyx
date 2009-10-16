@@ -296,6 +296,40 @@ cdef class Samfile:
         """return the number of :ref:`reference` sequences."""
         return self.samfile.header.n_targets
 
+    def _parseRegion( self, reference = None, start = None, end = None, 
+                       region = None ):
+        '''parse region information.
+
+        raise Value for for invalid regions.
+
+        returns a tuple of region, tid, start and end. Region
+        is a valid samtools :term:`region` or None if the region
+        extends over the whole file.
+        '''
+        
+        cdef int rtid
+        cdef int rstart
+        cdef int rend
+
+        rtid = rstart = rend = 0
+
+        # translate to a region
+        if reference:
+            if start != None and end != None:
+                region = "%s:%i-%i" % (reference, start, end)
+            else:
+                region = reference
+
+        if region:
+            bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
+            if rtid < 0: raise ValueError( "invalid region `%s`" % region )
+
+            if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
+            if rstart < 0: raise ValueError( 'negative start coordinate (%i)' % rstart )
+            if rend < 0: raise ValueError( 'negative end coordinate (%i)' % rend )
+            
+        return region, rtid, rstart, rend
+
     def fetch( self, 
                reference = None, start = None, end = None, 
                region = None, 
@@ -325,16 +359,7 @@ cdef class Samfile:
         cdef int rstart
         cdef int rend
 
-        # translate to a region
-        if reference:
-            if start and end:
-                region = "%s:%i-%i" % (reference, start, end)
-            else:
-                region = reference
-
-        if region:
-            bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
-            if rtid < 0: raise ValueError( "invalid region `%s`" % region )
+        region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
         if self.isbam:
             assert self._hasIndex(), "no index available for fetch"            
@@ -383,17 +408,8 @@ cdef class Samfile:
         cdef int rend
         cdef bam_plbuf_t *buf
 
-        # translate to a region
-        if reference:
-            if start and end:
-                region = "%s:%i-%i" % (reference, start, end)
-            else:
-                region = reference
-
-        if region:
-            bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
-            if rtid < 0: raise ValueError( "invalid region `%s`" % region )
-            
+        region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
+        
         if self.isbam:
             assert self._hasIndex(), "no index available for pileup"
 
@@ -874,7 +890,7 @@ cdef class AlignedRead:
         def __get__(self): 
             return self._delegate.core.qual
     property mrnm:
-        """the :term:`target` id of the mate """     
+        """the :term:`reference` id of the mate """     
         def __get__(self): 
             return self._delegate.core.mtid
     property mpos: 

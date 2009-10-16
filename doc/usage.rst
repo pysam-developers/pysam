@@ -1,3 +1,5 @@
+.. _Usage: 
+
 *****
 Usage
 *****
@@ -50,12 +52,12 @@ and return a :class:`pysam.AlignedRead` object for each::
    iter = pysam.IteratorRow( samfile, "seq1:10-20")
    for x in iter: print str(x)
 
-Note that both methods iterate through a :term:`bam file`
+Note that both methods iterate through a :term:`BAM` file
 on a read-by-read basis. They need not load all data into
 memory.
 
 Fetching returns all reads overlapping a region sorted
-by the lowest aligned base in the :term:`target` sequence.
+by the lowest aligned base in the :term:`reference` sequence.
 Note that it will also return reads that are only partially
 overlapping with the :term:`region`. Thus the reads returned
 might span a region that is larger than the one queried.
@@ -66,7 +68,7 @@ Using the pileup-engine
 The :term:`pileup` engine of :term:`csamtools` iterates
 over all reads that are aligned to a :term:`region`. In
 contrast to :term:`fetching`, the :term:`pileup` engine 
-returns for each base in the target sequence the reads that
+returns for each base in the :term:`reference` sequence the reads that
 map to that particular position.
 
 Again, there are two principal methods to iterate.
@@ -78,7 +80,7 @@ The first works via a callback function::
 
 The second method uses python iterators. The iterator
 :class:`pysam.IteratorColumn` will iterate through each :term:`column`
-(target bases) and return a list of aligned reads::
+(reference bases) and return a list of aligned reads::
 
    iter = pysam.IteratorRow( samfile, "seq1:10-20")
    for x in iter: print str(x)

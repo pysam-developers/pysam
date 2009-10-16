@@ -8,7 +8,7 @@ pysam: samtools interface for python
 
 :Author: Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Leo Goodstad
 :Date: |today|
-:Revision: $Id$
+:Version: |version|
 
 The *SAM/BAM* format is a way to store efficiently large numbers of alignments
 [Li2009]_, such as those routinely are created by next-generation sequencing 
@@ -25,10 +25,11 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   api.rst
    usage.rst
    glossary.rst
-   api.rst
    developer.rst
+   release.rst
 
 Indices and tables
 ------------------

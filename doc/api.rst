@@ -1,7 +1,5 @@
 pysam - An interface for reading and writing SAM files
-=====================================================
-
-
+======================================================
 
 Pysam is a python module that makes it easy to read and manipulate mapped short read sequence data stored in SAM files. It's a lightweight wrapper of the samtools_ C-API.
 
@@ -18,6 +16,7 @@ Each iteration returns a :class:`~pysam.AlignedRead` object which represents a s
 	print alignedread
 
    samfile.close()
+
 To give::
 
     EAS56_57:6:190:289:82	0	99	<<<7<<<;<<<<<<<<8;;<7;4<;<;;;;;94<;	69	CTCAAGGTTGTTGCAAGGGGGTCTATGTGAACAAA	0	192	1
@@ -67,6 +66,14 @@ To give::
         base in read EAS56_57:6:190:289:82 = G
         base in read EAS51_64:3:190:727:308 = G
     ...
+
+Commands available in :term:`csamtools` are available as simple function calls. For example::
+
+   pysam.sort( "ex1.bam", "output" )
+
+corresponds to the command line::
+
+   samtools sort ex1.bam output
 
 .. Note::
     #. Coordinates in pysam are always 0-based (following the python convention). SAM text files use 1-based coordinates.
