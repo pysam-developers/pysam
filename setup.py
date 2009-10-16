@@ -32,7 +32,6 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
 from distutils.core import setup, Extension
 from Pyrex.Distutils import build_ext
 
-
 name = "pysam"
 version = "0.1"
 
@@ -49,10 +48,9 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
-
 pysam = Extension(
     "pysam/csamtools",                   # name of extension
-    [ "pysam/csamtools.pyx",]  +\
+    [ "pysam/csamtools.pyx" ]  +\
        [ "pysam/%s" % x for x in (
              "pysam_util.c", )] +\
        glob.glob( os.path.join( "samtools", "*.c" ) ),
@@ -69,7 +67,7 @@ metadata = {
     'long_description': __doc__,
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",
-    'license': "GPL",
+    'license': "MIT",
     'platforms': "ALL",
     'url': "http://code.google.com/p/pysam/",
     'py_modules': [

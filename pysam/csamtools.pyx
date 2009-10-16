@@ -293,7 +293,7 @@ cdef class Samfile:
         return self.samfile.header.target_name[tid]
 
     def getNumReferences( self ):
-        """return the number of :ref:`reference` sequences."""
+        """return the number of :term:`reference` sequences."""
         return self.samfile.header.n_targets
 
     def _parseRegion( self, reference = None, start = None, end = None, 

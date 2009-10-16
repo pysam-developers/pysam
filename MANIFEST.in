@@ -1,0 +1,14 @@
+#
+# Use .add_data_files and .add_data_dir methods in a appropriate
+# setup.py files to include non-python files such as documentation,
+# data, etc files to distribution. Avoid using MANIFEST.in for that.
+#
+include MANIFEST.in
+include COPYING
+include INSTALL
+include KNOWN_BUGS
+include THANKS
+include pysam/csamtools.pxd
+include pysam/pysam_util.h
+include samtools/*.h
+

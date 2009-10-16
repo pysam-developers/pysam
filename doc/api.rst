@@ -24,8 +24,6 @@ To give::
     EAS51_64:3:190:727:308	0	102	<<<<<<<<<<<<<<<<<<<<<<<<<<<::<<<844	99	GGTGCAGAGCCGAGTCACGGGGTTGCCAGCACAGG	99	18	1
     ...
 
-
-
 You can also write to a :class:`~pysam.Samfile`::
 
    import pysam
