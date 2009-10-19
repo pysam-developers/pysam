@@ -4,7 +4,7 @@
 Usage
 *****
 
-In order to follow the examples, execute::
+In order to follow the examples below, execute::
    
    make
 
@@ -30,7 +30,7 @@ alignment in a :term:`region`::
    def my_fetch_callback( alignment ):
        print str(alignment)
 
-   samfile.fetch( "seq1:10-20", my_fetch_callback )
+   samfile.fetch( 'seq1', 10, 20, callback = my_fetch_callback )
 
 Using a function object, work can be done on the alignments. The
 code below simply counts aligned reads::
@@ -41,7 +41,7 @@ code below simply counts aligned reads::
            self.mCounts += 1
    
    c = Counter()
-   samfile.fetch( "seq1:10-20", c )
+   samfile.fetch( 'seq1', 10, 20, callback = c )
    print "counts=", c.mCounts
 
 The second method uses python iterators. If you call :meth:`samtools.samfile.fetch`
@@ -49,7 +49,7 @@ without a callback, an iterator of the type :class:`pysam.IteratorRow` is return
 It will iterate through mapped reads
 and return a :class:`pysam.AlignedRead` object for each::
 
-   iter = pysam.IteratorRow( samfile, "seq1:10-20")
+   iter = samfile.fetch( 'seq1', 10, 20)
    for x in iter: print str(x)
 
 Note that both methods iterate through a :term:`BAM` file
@@ -76,13 +76,13 @@ The first works via a callback function::
 
    def my_pileup_callback( pileups ):
        print str(pileups)
-   samfile.pileup( "seq1:10-20", my_pileup_callback )
+   samfile.pileup( 'seq1', 10, 20, callback = my_pileup_callback )
 
 The second method uses python iterators. The iterator
 :class:`pysam.IteratorColumn` will iterate through each :term:`column`
 (reference bases) and return a list of aligned reads::
 
-   iter = pysam.IteratorRow( samfile, "seq1:10-20")
+   iter = samfile.pileup( 'seq1', 10, 20 )
    for x in iter: print str(x)
 
 Aligned reads are returned as a :class:`pysam.PileupColumn`.
