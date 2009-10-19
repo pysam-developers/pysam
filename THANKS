@@ -1,0 +1,3 @@
+We would like to thank Heng Li and the other samtools contributors for their support
+and their hard work. As a wrapper, pysam merely tries to make their code accessible 
+to the python community - the heavy lifting has been done by the samtools developers.
