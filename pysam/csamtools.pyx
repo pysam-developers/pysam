@@ -878,13 +878,17 @@ cdef class AlignedRead:
         def __get__(self): 
             return self._delegate.core.flag
     property rname: 
-        """chromosome/target ID"""
+        """:term:`reference` ID"""
         def __get__(self): 
             return self._delegate.core.tid
     property pos: 
         """0-based leftmost coordinate"""
         def __get__(self): 
             return self._delegate.core.pos
+    property rlen:
+        '''length of the read. Returns 0 if not given.'''
+        def __get__(self): 
+            return self._delegate.core.l_qseq
     property mapq: 
         """mapping quality"""
         def __get__(self): 
