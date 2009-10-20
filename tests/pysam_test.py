@@ -267,6 +267,36 @@ class TestIteratorRowAll(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
+class TestIteratorColumn(unittest.TestCase):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+
+    def checkRange( self, rnge ):
+        '''compare results from iterator with those from samtools.'''
+        ps = list(self.samfile.pileup(region=rnge))
+        sa = list(pysam.pileup( "ex1.bam", rnge , raw = True) )
+        self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
+        # check if the same reads are returned and in the same order
+        for line, pair in enumerate( zip( ps, sa ) ):
+            data = pair[1].split("\t")
+            self.assertEqual( pair[0].qname, data[0], "read id mismatch in line %i: %s != %s" % (line, pair[0].rname, data[0]) )
+
+    def testIteratePerContig(self):
+        '''check random access per contig'''
+        for contig in self.samfile.references:
+            self.checkRange( contig )
+
+    def testIterateRanges(self):
+        '''check random access per range'''
+        for contig, length in zip(self.samfile.references, self.samfile.lengths):
+            for start in range( 1, length, 90):
+                self.checkRange( "%s:%i-%i" % (contig, start, start + 90) ) # this includes empty ranges
+
+    def tearDown(self):
+        self.samfile.close()
+
+    
 class TestAlignedReadBam(unittest.TestCase):
 
     def setUp(self):

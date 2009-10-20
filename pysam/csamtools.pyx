@@ -160,8 +160,7 @@ cdef class Samfile:
     so to open a :term:`BAM` file for reading::
 
         f=Samfile('ex1.bam','rb')
-    
-    
+
 
     For writing, the header of a :term:`TAM` file/:term:`BAM` file can be constituted from several
     sources:
@@ -285,9 +284,9 @@ cdef class Samfile:
             if self.index == NULL:
                 raise IOError("could not open index `%s` " % filename )
 
-    def _getTarget( self, tid ):
+    def getrname( self, tid ):
         '''(tid )
-        convert numerical :term:`tid` into target name.'''
+        convert numerical :term:`tid` into :ref:`reference` name.'''
         if not 0 <= tid < self.samfile.header.n_targets:
             raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
         return self.samfile.header.target_name[tid]
@@ -439,7 +438,6 @@ cdef class Samfile:
 
     def close( self ):
         '''closes file.'''
-        
         if self.samfile != NULL:
             samclose( self.samfile )
             bam_index_destroy(self.index);
@@ -608,11 +606,16 @@ cdef class IteratorRow:
     cdef bam1_t *               b
     cdef                        error_msg
     cdef int                    error_state
+    cdef Samfile                samfile
     def __cinit__(self, Samfile samfile, region ):
         self.bam_iter = NULL
 
         assert samfile._isOpen()
         assert samfile._hasIndex()
+        
+        # makes sure that samfile stays alive as long as the
+        # iterator is alive.
+        self.samfile = samfile
 
         # parse the region
         cdef int      tid
@@ -1062,11 +1065,6 @@ cdef class PileupRead:
     property tail:
         def __get__(self):
             return self._is_tail
-    
-        
-        
-    
-            
             
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
