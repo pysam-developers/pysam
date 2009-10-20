@@ -268,19 +268,29 @@ class TestIteratorRowAll(unittest.TestCase):
         self.samfile.close()
 
 class TestIteratorColumn(unittest.TestCase):
+    '''test iterator column against contents of ex3.bam.'''
+    
+    # note that samfile contains 1-based coordinates
+    # 1D means deletion with respect to reference sequence
+    # 
+    mCoverages = { 'chr1' : [ 0 ] * 20 + [1] * 36 + [0] * (100 - 20 -35 ),
+                   'chr2' : [ 0 ] * 20 + [1] * 35 + [0] * (100 - 20 -35 ),
+                   }
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile( "ex4.bam","rb" )
 
     def checkRange( self, rnge ):
         '''compare results from iterator with those from samtools.'''
-        ps = list(self.samfile.pileup(region=rnge))
-        sa = list(pysam.pileup( "ex1.bam", rnge , raw = True) )
-        self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
         # check if the same reads are returned and in the same order
-        for line, pair in enumerate( zip( ps, sa ) ):
-            data = pair[1].split("\t")
-            self.assertEqual( pair[0].qname, data[0], "read id mismatch in line %i: %s != %s" % (line, pair[0].rname, data[0]) )
+        for column in self.samfile.pileup(region=rnge):
+            thiscov = len(column.pileups)
+            refcov = self.mCoverages[self.samfile.getrname(column.tid)][column.pos]
+            self.assertEqual( thiscov, refcov, "wrong coverage at pos %s:%i %i should be %i" % (self.samfile.getrname(column.tid), column.pos, thiscov, refcov))
+
+    def testIterateAll(self):
+        '''check random access per contig'''
+        self.checkRange( None )
 
     def testIteratePerContig(self):
         '''check random access per contig'''
@@ -293,6 +303,19 @@ class TestIteratorColumn(unittest.TestCase):
             for start in range( 1, length, 90):
                 self.checkRange( "%s:%i-%i" % (contig, start, start + 90) ) # this includes empty ranges
 
+    def testInverse( self ):
+        '''test the inverse, is point-wise pileup accurate.'''
+        for contig, refseq in self.mCoverages.items():
+            refcolumns = sum(refseq)
+            for pos, refcov in enumerate( refseq ):
+                columns = list(self.samfile.pileup( contig, pos, pos+1) )
+                if refcov == 0:
+                    # if no read, no coverage
+                    self.assertEqual( len(columns), refcov, "wrong number of pileup columns returned for position %s:%i, %i should be %i" %(contig,pos,len(columns), refcov) )
+                elif refcov == 1:
+                    # one read, all columns of the read are returned
+                    self.assertEqual( len(columns), refcolumns, "pileup incomplete - %i should be %i " % (len(columns), refcolumns))
+                    
     def tearDown(self):
         self.samfile.close()
 

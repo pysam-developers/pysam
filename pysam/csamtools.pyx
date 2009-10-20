@@ -291,10 +291,6 @@ cdef class Samfile:
             raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
         return self.samfile.header.target_name[tid]
 
-    def getNumReferences( self ):
-        """return the number of :term:`reference` sequences."""
-        return self.samfile.header.n_targets
-
     def _parseRegion( self, reference = None, start = None, end = None, 
                        region = None ):
         '''parse region information.
@@ -304,6 +300,8 @@ cdef class Samfile:
         returns a tuple of region, tid, start and end. Region
         is a valid samtools :term:`region` or None if the region
         extends over the whole file.
+
+        Note that regions are 1-based, while start,end are python coordinates.
         '''
         
         cdef int rtid
@@ -315,7 +313,7 @@ cdef class Samfile:
         # translate to a region
         if reference:
             if start != None and end != None:
-                region = "%s:%i-%i" % (reference, start, end)
+                region = "%s:%i-%i" % (reference, start+1, end)
             else:
                 region = reference
 
@@ -330,7 +328,9 @@ cdef class Samfile:
         return region, rtid, rstart, rend
 
     def fetch( self, 
-               reference = None, start = None, end = None, 
+               reference = None, 
+               start = None, 
+               end = None, 
                region = None, 
                callback = None,
                until_eof = False ):
@@ -368,14 +368,17 @@ cdef class Samfile:
                 return bam_fetch(self.samfile.x.bam, self.index, rtid, rstart, rend, <void*>callback, fetch_callback )
             else:
                 if region:
-                    return IteratorRow( self, region )
+                    return IteratorRow( self, rtid, rstart, rend )
                 else:
                     if until_eof:
                         return IteratorRowAll( self )
                     else:
                         # return all targets by chaining the individual targets together.
                         i = []
-                        for x in self.references: i.append( IteratorRow( self, x))
+                        rstart = 0
+                        rend = 1<<29
+                        for rtid from 0 <= rtid < self.nreferences: 
+                            i.append( IteratorRow( self, rtid, rstart, rend))
                         return itertools.chain( *i )
         else:                    
             if region != None:
@@ -426,11 +429,14 @@ cdef class Samfile:
                 bam_plbuf_destroy(buf)
             else:
                 if region:
-                    return IteratorColumn( self, region )
+                    return IteratorColumn( self, rtid, rstart, rend )
                 else:
                     # return all targets by chaining the individual targets together.
                     i = []
-                    for x in self.references: i.append( IteratorColumn( self, x))
+                    rstart = 0
+                    rend = 1<<29
+                    for rtid from 0 <= rtid < self.nreferences: 
+                        i.append( IteratorColumn( self, rtid, rstart, rend))
                     return itertools.chain( *i )
 
         else:
@@ -455,6 +461,11 @@ cdef class Samfile:
         return the number of bytes written.
         '''
         return samwrite( self.samfile, read._delegate )
+
+    property nreferences:
+        '''number of :term:`reference` sequences in the file.'''
+        def __get__(self):
+            return self.samfile.header.n_targets
 
     property references:
         """tuple with the names of :term:`reference` sequences."""
@@ -607,7 +618,7 @@ cdef class IteratorRow:
     cdef                        error_msg
     cdef int                    error_state
     cdef Samfile                samfile
-    def __cinit__(self, Samfile samfile, region ):
+    def __cinit__(self, Samfile samfile, int tid, int beg, int end ):
         self.bam_iter = NULL
 
         assert samfile._isOpen()
@@ -618,16 +629,8 @@ cdef class IteratorRow:
         self.samfile = samfile
 
         # parse the region
-        cdef int      tid
-        cdef int      beg
-        cdef int      end
         self.error_state = 0
         self.error_msg = None
-        bam_parse_region( samfile.samfile.header, region, &tid, &beg, &end)
-        if tid < 0: 
-            self.error_state = 1
-            self.error_msg = "invalid region `%s`" % region
-            return
 
         cdef bamFile  fp
         fp = samfile.samfile.x.bam
@@ -717,13 +720,14 @@ cdef class IteratorColumn:
 
     # check if first iteration
     cdef int notfirst
+    # result of the last plbuf_push
     cdef int n_pu
     cdef int eof 
     cdef IteratorRow iter
 
-    def __cinit__(self, Samfile samfile, region ):
+    def __cinit__(self, Samfile samfile, int tid, int start, int end ):
 
-        self.iter = IteratorRow( samfile, region )
+        self.iter = IteratorRow( samfile, tid, start, end )
         self.buf = bam_plbuf_init(NULL, NULL )
         self.n_pu = 0
         self.eof = 0
@@ -732,8 +736,17 @@ cdef class IteratorColumn:
         return self 
 
     cdef int cnext(self):
+        '''perform next iteration.
+        
+        return 1 if there is a buffer to emit. Return 0 for end of iteration.
+        '''
 
         cdef int retval1, retval2
+
+        # pysam bam_plbuf_push returns:
+        # 1: if buf is full and can be emitted
+        # 0: if b has been added
+        # -1: if there was an error
 
         # check if previous plbuf was incomplete. If so, continue within
         # the loop and yield if necessary
@@ -747,12 +760,11 @@ cdef class IteratorColumn:
         # an new column has finished
         while self.n_pu == 0:
             retval1 = self.iter.cnext()
-
             # wrap up if no more input
             if retval1 == 0: 
                 self.n_pu = pysam_bam_plbuf_push( NULL, self.buf, 0)            
                 self.eof = 1
-                return 1
+                return self.n_pu
 
             # submit to plbuf
             self.n_pu = pysam_bam_plbuf_push( self.iter.getCurrent(), self.buf, 0)            
@@ -1041,8 +1053,7 @@ cdef class PileupRead:
 
     def __str__(self):
         return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )
-   
-    
+       
     property alignment:
         """a :class:`pysam.AlignedRead` object of the aligned read"""
         def __get__(self):
@@ -1059,13 +1070,17 @@ cdef class PileupRead:
         """1 iff the base on the padded read is a deletion"""
         def __get__(self):
             return self._is_del
-    property head:
+    property is_head:
         def __get__(self):
             return self._is_head
-    property tail:
+    property is_tail:
         def __get__(self):
             return self._is_tail
-            
+    property level:
+        def __get__(self):
+            return self._level
+
+
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
     def __init__(self, id = 1):

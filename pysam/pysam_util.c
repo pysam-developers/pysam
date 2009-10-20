@@ -138,6 +138,11 @@ static inline int resolve_cigar(bam_pileup1_t *p, uint32_t pos)
 	return ret;
 }
 
+// the following code has been taken from bam_plbuf_push
+// and modified such that instead of a function call
+// the function returns and will continue (if cont is true).
+// from where it left off.
+
 // returns
 // 1: if buf is full and can be emitted
 // 0: if b has been added
