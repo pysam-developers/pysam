@@ -46,6 +46,9 @@ cdef makeAlignedRead( bam1_t * src):
     '''enter src into AlignedRead.'''
     cdef AlignedRead dest
     dest = AlignedRead()
+    # destroy dummy delegate created in constructor
+    # to prevent memory leak.
+    bam_destroy1(dest._delegate)
     dest._delegate = bam_dup1(src)
     return dest
 
