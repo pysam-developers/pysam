@@ -11,4 +11,13 @@ include THANKS
 include pysam/csamtools.pxd
 include pysam/pysam_util.h
 include samtools/*.h
+include tests/00README.txt
+include tests/Makefile
+include tests/ex1.fa
+include tests/ex1.sam.gz
+include tests/ex3.sam
+include tests/ex4.sam
+include tests/example.py
+include tests/pysam_test.py
+include tests/segfault_tests.py
 

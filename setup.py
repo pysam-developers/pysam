@@ -8,6 +8,9 @@ pysam
 
 import os, sys, glob, shutil
 
+name = "pysam"
+version = "0.1.1"
+
 samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
 samtools_dest = os.path.abspath( "samtools" )
 
@@ -31,9 +34,6 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
 
 from distutils.core import setup, Extension
 from Pyrex.Distutils import build_ext
-
-name = "pysam"
-version = "0.1"
 
 classifiers = """
 Development Status :: 2 - Alpha

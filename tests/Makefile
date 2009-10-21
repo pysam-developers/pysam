@@ -27,4 +27,4 @@ ex1.glfview.gz:ex1.glf
 		samtools glfview ex1.glf | gzip > ex1.glfview.gz
 
 clean:
-		rm -fr *.bam *.bai *.glf* *.fai *.pileup* *~ calDepth *.dSYM
+		rm -fr *.bam *.bai *.glf* *.fai *.pileup* *~ calDepth *.dSYM pysam_*.sam ex2.sam ex2.sam.gz ex1.sam
