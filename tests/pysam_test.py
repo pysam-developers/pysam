@@ -320,7 +320,6 @@ class TestIteratorColumn(unittest.TestCase):
                     
     def tearDown(self):
         self.samfile.close()
-
     
 class TestAlignedReadBam(unittest.TestCase):
 
@@ -473,6 +472,18 @@ class TestHeaderBam(unittest.TestCase):
 
     def tearDown(self):
         self.samfile.close()
+
+class TestUnmappedReads(unittest.TestCase):
+
+    def testSAM(self):
+        samfile=pysam.Samfile( "ex5.sam","r" )
+        self.assertEqual( len(list(samfile.fetch( until_eof = True))), 2 ) 
+        samfile.close()
+
+    def testBAM(self):
+        samfile=pysam.Samfile( "ex5.bam","rb" )
+        self.assertEqual( len(list(samfile.fetch( until_eof = True))), 2 ) 
+        samfile.close()
 
 class TestPileupObjects(unittest.TestCase):
 
