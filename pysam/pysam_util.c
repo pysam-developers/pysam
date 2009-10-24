@@ -241,10 +241,11 @@ bam_pileup1_t * pysam_get_pileup( const bam_plbuf_t *buf)
   return buf->pu;
 }
 
+///////////////////////////////////////////////////////////
 // pysam dispatch function to emulate the samtools
 // command line within python.
-// taken from the main function in bamtk.c
-// add code to reset getopt
+// * taken from the main function in bamtk.c
+// * added code to reset getopt
 int pysam_dispatch(int argc, char *argv[] )
 {
 

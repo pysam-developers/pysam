@@ -45,6 +45,14 @@ class SamtoolsDispatcher(object):
         retval, stderr, stdout = csamtools._samtools_dispatch( self.dispatch, args )
         if retval: raise SamtoolsError( "\n".join( stderr ) )
         self.stderr = stderr
+        # samtools commands do not propagate the return code correctly.
+        # I have thus added this patch to throw if there is output on stderr.
+        # Note that there is sometimes output on stderr that is not an error,
+        # for example: [sam_header_read2] 2 sequences loaded.
+        # Ignore messages like these
+        stderr = [ x for x in stderr if not x.startswith( "[sam_header_read2]" ) ]
+        if stderr: raise SamtoolsError( "\n".join( stderr ) )
+
         # call parser for stdout:
         if not kwargs.get("raw") and stdout and self.parsers:
             for options, parser in self.parsers:

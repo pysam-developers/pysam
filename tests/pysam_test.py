@@ -101,7 +101,6 @@ class BinaryTest(unittest.TestCase):
         executed. Individual tests will then just compare the output
         files.
         '''
-
         if BinaryTest.first_time:
             # copy the source 
             shutil.copy( "ex1.fa", "pysam_ex1.fa" )
@@ -143,6 +142,9 @@ class BinaryTest(unittest.TestCase):
 
     def testView( self ):
         self.checkCommand( "view" )
+
+    def testEmptyIndex( self ):
+        self.assertRaises( pysam.SamtoolsError, pysam.index, "exdoesntexist.bam" )
 
     def __del__(self):
 

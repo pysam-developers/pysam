@@ -1,6 +1,9 @@
 #ifndef PYSAM_UTIL_H
 #define PYSAM_UTIL_H
 
+// declarations for samtools c functions used in dispatcher
+
+
 // This file contains some of the definitions from bam_index.c
 
 #define BAM_MIN_CHUNK_GAP 32768

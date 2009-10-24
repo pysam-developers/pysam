@@ -1163,7 +1163,6 @@ def _samtools_dispatch( method, args = () ):
     cdef char ** cargs
     cdef int i, n, retval
 
-
     n = len(args)
     # allocate two more for first (dummy) argument (contains command)
     cargs = <char**>calloc( n+2, sizeof( char *) )
@@ -1185,7 +1184,7 @@ def _samtools_dispatch( method, args = () ):
     # clean up files
     os.remove( stderr_f )
     os.remove( stdout_f )
-
+    
     return retval, out_stderr, out_stdout
 
 __all__ = ["Samfile", "IteratorRow", "IteratorRowAll", "IteratorColumn", "AlignedRead", "PileupColumn", "PileupRead" ]
