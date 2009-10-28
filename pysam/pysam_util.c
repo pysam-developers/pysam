@@ -6,6 +6,7 @@
 #include "bam_endian.h"
 #include "knetfile.h"
 #include "pysam_util.h"
+#include "getopt.h"
 
 // #######################################################
 // utility routines to avoid using callbacks in bam_fetch
