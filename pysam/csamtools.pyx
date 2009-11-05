@@ -606,6 +606,87 @@ cdef class Samfile:
 
         return dest
 
+cdef class Fastafile:
+    '''*(filename)*
+              
+    A *FASTA* file. The file is automatically opened.
+
+    The file expects an indexed fasta file.
+
+    TODO: 
+        add automatic indexing.
+        add function to get sequence names.
+    '''
+
+    cdef char * filename
+    # pointer to fastafile
+    cdef faidx_t * fastafile
+
+    def __cinit__(self, *args, **kwargs ):
+        self.fastafile = NULL
+        self._open( *args, **kwargs )
+
+    def _isOpen( self ):
+        '''return true if samfile has been opened.'''
+        return self.fastafile != NULL
+
+    def _open( self, 
+               char * filename ):
+        '''open an indexed fasta file.
+
+        This method expects an indexed fasta file.
+        '''
+
+        # close a previously opened file
+        if self.fastafile != NULL: self.close()
+        self.filename = filename
+        self.fastafile = fai_load( filename )
+
+        if self.fastafile == NULL:
+            raise IOError("could not open file `%s`" % filename )
+
+    def close( self ):
+        if self.fastafile != NULL:
+            fai_destroy( self.fastafile )
+            self.fastafile == NULL
+
+    def fetch( self, 
+               reference = None, 
+               start = None, 
+               end = None,
+               region = None):
+               
+        '''*(reference = None, start = None, end = None, region = None)*
+               
+        fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. The region is specified by
+        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
+        '''
+        
+        assert self.fastafile != NULL
+
+        cdef int len
+        cdef char * seq
+        if not region:
+            if reference == None: raise ValueError( 'no sequence/region supplied.' )
+            if start == None and end == None:
+                region = "%s" % str(reference)
+            elif start == None or end == None:
+                raise ValueError( 'only start or only end of region supplied' )
+            else:
+                if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
+                if start < 0: raise ValueError( 'negative start coordinate (%i)' % start )
+                if end < 0: raise ValueError( 'negative end coordinate (%i)' % end )
+                region = "%s:%i-%i" % (reference, start+1, end )
+
+        # samtools adds a '\0' at the end
+        seq = fai_fetch( self.fastafile, region, &len )
+        # copy to python
+        result = seq
+        # clean up
+        free(seq)
+        
+        return result
+
 ## turning callbacks elegantly into iterators is an unsolved problem, see the following threads:
 ## http://groups.google.com/group/comp.lang.python/browse_frm/thread/0ce55373f128aa4e/1d27a78ca6408134?hl=en&pli=1
 ## http://www.velocityreviews.com/forums/t359277-turning-a-callback-function-into-a-generator.html
@@ -1187,7 +1268,14 @@ def _samtools_dispatch( method, args = () ):
     
     return retval, out_stderr, out_stdout
 
-__all__ = ["Samfile", "IteratorRow", "IteratorRowAll", "IteratorColumn", "AlignedRead", "PileupColumn", "PileupRead" ]
+__all__ = ["Samfile", 
+           "Fastafile",
+           "IteratorRow", 
+           "IteratorRowAll", 
+           "IteratorColumn", 
+           "AlignedRead", 
+           "PileupColumn", 
+           "PileupRead" ]
 
                
 

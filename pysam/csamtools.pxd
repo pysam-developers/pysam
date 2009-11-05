@@ -196,6 +196,19 @@ cdef extern from "sam.h":
 
   int samwrite(samfile_t *fp, bam1_t *b)
 
+cdef extern from "faidx.h":
+
+   ctypedef struct faidx_t:
+      pass
+
+   int fai_build(char *fn)
+
+   void fai_destroy(faidx_t *fai)
+
+   faidx_t *fai_load(char *fn)
+
+   char *fai_fetch(faidx_t *fai, char *reg, int *len)
+
 cdef extern from "pysam_util.h":
 
     ctypedef struct pair64_t:
