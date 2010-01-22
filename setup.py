@@ -9,7 +9,7 @@ pysam
 import os, sys, glob, shutil
 
 name = "pysam"
-version = "0.1.1"
+version = "0.1.2"
 
 samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
 samtools_dest = os.path.abspath( "samtools" )

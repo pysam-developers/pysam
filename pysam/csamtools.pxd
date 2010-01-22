@@ -113,9 +113,12 @@ cdef extern from "bam.h":
 
   bamFile razf_dopen(int data_fd, char *mode)
 
-  int64_t bam_seek( bamFile fp, uint64_t voffset, int where)
+  # removed - macros not found
 
-  int64_t bam_tell( bamFile fp )
+  # int64_t bam_seek( bamFile fp, uint64_t voffset, int where)
+  # int64_t bam_tell( bamFile fp )
+  # void bam_destroy1( bam1_t * b) 
+  # void bam_init_header_hash(bam_header_t *header)
 
   bam1_t * bam_dup1( bam1_t *src ) 
   
@@ -123,8 +126,6 @@ cdef extern from "bam.h":
   bam_index_t *bam_index_load(char *f )
 
   void bam_index_destroy(bam_index_t *idx)
-
-  void bam_destroy1( bam1_t * b) 
 
   int bam_parse_region(bam_header_t *header, char *str, int *ref_id, int *begin, int *end)
 
@@ -138,10 +139,6 @@ cdef extern from "bam.h":
   bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
   
   void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
-
-  bam_fetch_iterator_t* bam_init_fetchall_iterator(bamFile fp, bam_index_t *idx)
-
-  bam1_t * bam_fetchall_iterate(bam_fetch_iterator_t *iter)
 
   int bam_fetch(bamFile fp, bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
 
@@ -171,8 +168,7 @@ cdef extern from "bam.h":
   double bam_aux2d(uint8_t *s)
   char bam_aux2A( uint8_t *s)
   char *bam_aux2Z( uint8_t *s)
-  
-  void bam_init_header_hash(bam_header_t *header)
+
 
 cdef extern from "sam.h":
 
@@ -202,10 +198,6 @@ cdef extern from "pysam_util.h":
         uint64_t u
         uint64_t v
 
-    int pysam_bam_fetch_init(bamFile fp, bam_index_t *idx, int tid, int beg, int end, pair64_t ** offp )
-
-    int pysam_bam_fetch_is_overlap(uint32_t beg, uint32_t end, bam1_t *b)
-
     int pysam_bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf, int cont)
 
     int pysam_get_pos( bam_plbuf_t *buf)
@@ -216,4 +208,5 @@ cdef extern from "pysam_util.h":
 
     int pysam_dispatch(int argc, char *argv[] )
 
-
+    # stand-in functions for samtools macros
+    void pysam_bam_destroy1( bam1_t * b) 

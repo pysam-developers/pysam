@@ -6,7 +6,6 @@
 #include "bam_endian.h"
 #include "knetfile.h"
 #include "pysam_util.h"
-#include "getopt.h"
 
 // #######################################################
 // utility routines to avoid using callbacks in bam_fetch
@@ -242,11 +241,10 @@ bam_pileup1_t * pysam_get_pileup( const bam_plbuf_t *buf)
   return buf->pu;
 }
 
-///////////////////////////////////////////////////////////
 // pysam dispatch function to emulate the samtools
 // command line within python.
-// * taken from the main function in bamtk.c
-// * added code to reset getopt
+// taken from the main function in bamtk.c
+// add code to reset getopt
 int pysam_dispatch(int argc, char *argv[] )
 {
 
@@ -290,4 +288,10 @@ int pysam_dispatch(int argc, char *argv[] )
   return 0;
 }
 
+// standin for bam_destroy1 in bam.h
+void pysam_bam_destroy1( bam1_t * b )
+{
+  free((b)->data);
+  free(b);
+}
 

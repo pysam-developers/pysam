@@ -48,7 +48,7 @@ cdef makeAlignedRead( bam1_t * src):
     dest = AlignedRead()
     # destroy dummy delegate created in constructor
     # to prevent memory leak.
-    bam_destroy1(dest._delegate)
+    pysam_bam_destroy1(dest._delegate)
     dest._delegate = bam_dup1(src)
     return dest
 
@@ -711,7 +711,7 @@ cdef class IteratorRowAll:
 
     def __dealloc__(self):
         '''remember: dealloc cannot call other methods!'''
-        bam_destroy1(self.b)
+        pysam_bam_destroy1(self.b)
         
 cdef class IteratorColumn:
     '''iterates over columns.
@@ -818,7 +818,7 @@ cdef class AlignedRead:
 
     def __dealloc__(self):
         """todo is this enough or do we need to free() each string? eg 'qual' etc"""
-        bam_destroy1(self._delegate)
+        pysam_bam_destroy1(self._delegate)
     
     def __str__(self):
         """todo"""
@@ -1163,6 +1163,7 @@ def _samtools_dispatch( method, args = () ):
     cdef char ** cargs
     cdef int i, n, retval
 
+
     n = len(args)
     # allocate two more for first (dummy) argument (contains command)
     cargs = <char**>calloc( n+2, sizeof( char *) )
@@ -1184,7 +1185,7 @@ def _samtools_dispatch( method, args = () ):
     # clean up files
     os.remove( stderr_f )
     os.remove( stdout_f )
-    
+
     return retval, out_stderr, out_stdout
 
 __all__ = ["Samfile", "IteratorRow", "IteratorRowAll", "IteratorColumn", "AlignedRead", "PileupColumn", "PileupRead" ]

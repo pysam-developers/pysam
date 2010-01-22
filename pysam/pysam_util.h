@@ -1,9 +1,6 @@
 #ifndef PYSAM_UTIL_H
 #define PYSAM_UTIL_H
 
-// declarations for samtools c functions used in dispatcher
-
-
 // This file contains some of the definitions from bam_index.c
 
 #define BAM_MIN_CHUNK_GAP 32768
@@ -40,15 +37,9 @@ int pysam_get_pos( const bam_plbuf_t *buf);
 int pysam_get_tid( const bam_plbuf_t *buf);
 bam_pileup1_t * pysam_get_pileup( const bam_plbuf_t *buf);
 
-int pysam_bam_fetch_init(bamFile fp,
-			 const bam_index_t *idx,
-			 int tid, int beg, int end,
-			 pair64_t ** offp);
-
-int pysam_bam_fetch_is_overlap(uint32_t beg, uint32_t end, const bam1_t *b);
-
 int pysam_dispatch(int argc, char *argv[] );
-  
 
+// stand-in for macro - not wrappable in pyrex
+void pysam_bam_destroy1( bam1_t * b );
 
 #endif
