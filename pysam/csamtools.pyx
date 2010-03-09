@@ -889,16 +889,38 @@ cdef class IteratorColumn:
 cdef class AlignedRead:
     '''
     Class representing an aligned read. see SAM format specification for meaning of fields (http://samtools.sourceforge.net/).
-        
+
+    This class stores a handle to the samtools C-structure representing
+    an aligned read. Member read access is forwarded to the C-structure
+    and converted into python objects. This implementation should be fast,
+    as only the data needed is converted.
+
+    For write access, the C-structure is updated in-place. This is
+    not the most efficient way to build BAM entries, as the variable
+    length data is concatenated and thus needs to resized if
+    a field is updated. Furthermore, the BAM entry might be
+    in an inconsistent state. The :meth:`~validate` method can
+    be used to check if an entry is consistent.
+
+    One issue to look out for is that the sequence should always
+    be set *before* the quality scores. Setting the sequence will
+    also erase any quality scores that were set previously.
     '''
     cdef:
          bam1_t * _delegate 
 
     def __cinit__( self ):
-        self._delegate = <bam1_t*>calloc( sizeof( bam1_t), 1 )
+        # see bam_init1
+        self._delegate = <bam1_t*>calloc( 1, sizeof( bam1_t) )
+        # allocate some memory 
+        # If size is 0, calloc returns a pointer that can be passed to free()
+        # allocate 40 bytes for a new read
+        self._delegate.m_data = 40
+        self._delegate.data = <uint8_t *>calloc( self._delegate.m_data, 1 )
+        self._delegate.data_len = 0
 
     def __dealloc__(self):
-        """todo is this enough or do we need to free() each string? eg 'qual' etc"""
+        '''clear up memory.'''
         pysam_bam_destroy1(self._delegate)
     
     def __str__(self):
@@ -906,13 +928,46 @@ cdef class AlignedRead:
         return "\t".join(map(str, (self.qname,
                                    self.rname,
                                    self.pos,
+                                   self.cigar,
                                    self.qual,
                                    self.flag,
                                    self.seq,
                                    self.mapq )))
     
+       
+    property qname:
+        """the query name (None if not present)"""
+        def __get__(self):
+            cdef bam1_t * src 
+            src = self._delegate
+            return <char *>pysam_bam1_qname( src )
+        def __set__(self, qname ):
+            if qname == None or len(qname) == 0: return
+            cdef bam1_t * src 
+            cdef int l 
+            cdef char * p
+
+            src = self._delegate            
+            p = pysam_bam1_qname( src )
+
+            # the qname is \0 terminated
+            l = len(qname) + 1
+            pysam_bam_update( src, 
+                              src.core.l_qname, 
+                              l, 
+                              <uint8_t*>p )
+
+            src.core.l_qname = l
+
+            # re-acquire pointer to location in memory
+            # as it might have moved
+            p = pysam_bam1_qname(src)
+
+            strncpy( p, qname, l )
+            
     property cigar:
-        """the :term:`cigar` alignment string (None if not present)"""
+        """the :term:`cigar` alignment (None if not present).
+        """
         def __get__(self):
             cdef uint32_t * cigar_p
             cdef bam1_t * src 
@@ -920,90 +975,259 @@ cdef class AlignedRead:
             src = self._delegate
             if src.core.n_cigar > 0:
                 cigar = []
-                cigar_p = < uint32_t *> (src.data + src.core.l_qname)
+                cigar_p = pysam_bam1_cigar(src);
                 for k from 0 <= k < src.core.n_cigar:
                     op = cigar_p[k] & BAM_CIGAR_MASK
                     l = cigar_p[k] >> BAM_CIGAR_SHIFT
                     cigar.append((op, l))
                 return cigar
             return None
-    property qname:
-        """the query name (None if not present)"""
-        def __get__(self):
+
+        def __set__(self, values ):
+            if values == None or len(values) == 0: return
+            cdef uint32_t * p
             cdef bam1_t * src 
+            cdef op, l
+            cdef int k
+            k = 0
+
             src = self._delegate
-            ## parse qname (bam1_qname)
-            return < char *> src.data
+
+            # get location of cigar string
+            p = pysam_bam1_cigar(src)
+
+            # create space for cigar data within src.data
+            pysam_bam_update( src, 
+                              src.core.n_cigar * 4,
+                              len(values) * 4, 
+                              p )
+            
+            # length is number of cigar operations, not bytes
+            src.core.n_cigar = len(values)
+
+            # re-acquire pointer to location in memory
+            # as it might have moved
+            p = pysam_bam1_cigar(src)
+
+            # insert cigar operations
+            for op, l in values:
+                p[k] = l << BAM_CIGAR_SHIFT | op
+                k += 1
+
     property seq:
         """the query sequence (None if not present)"""
         def __get__(self):
             cdef bam1_t * src
-            cdef uint8_t * seq_p 
+            cdef uint8_t * p 
             cdef char * s
             src = self._delegate
             bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
             ## parse qseq (bam1_seq)
             if src.core.l_qseq: 
                 s = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
-                seq_p = < uint8_t *> (src.data + src.core.n_cigar * 4 + src.core.l_qname)
+                p = pysam_bam1_seq( src )
                 for k from 0 <= k < src.core.l_qseq:
                 ## equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
-                    s[k] = "=ACMGRSVTWYHKDBN"[((seq_p)[(k) / 2] >> 4 * (1 - (k) % 2) & 0xf)]
+                    s[k] = "=ACMGRSVTWYHKDBN"[((p)[(k) / 2] >> 4 * (1 - (k) % 2) & 0xf)]
                 retval=s
                 free(s)
                 return retval
             return None
+
+        def __set__(self,seq):
+            # samtools manages sequence and quality length memory together
+            # if no quality information is present, the first byte says 0xff.
+            
+            if seq == None or len(seq) == 0: return
+            cdef bam1_t * src
+            cdef uint8_t * p 
+            cdef char * s
+            src = self._delegate
+            cdef int l, k, nbytes_new, nbytes_old
+
+            l = len(seq)
+
+            # as the sequence is stored in half-bytes, the total length (sequence
+            # plus quality scores) is (l+1)/2 + l
+            nbytes_new = (l+1)/2 + l
+            nbytes_old = (src.core.l_qseq+1)/2 + src.core.l_qseq
+
+            # acquire pointer to location in memory
+            p = pysam_bam1_seq( src )
+
+            src.core.l_qseq = l
+
+            pysam_bam_update( src, 
+                              nbytes_old,
+                              nbytes_new,
+                              p)
+
+            # re-acquire pointer to location in memory
+            # as it might have moved
+            p = pysam_bam1_seq( src )
+
+            for k from 0 <= k < nbytes_new: p[k] = 0
+
+            # convert to C string
+            s = seq
+            for k from 0 <= k < l:
+                p[k/2] |= pysam_translate_sequence(s[k]) << 4 * (1 - k % 2)
+                
+            # erase qualities
+            p = pysam_bam1_qual( src )
+            p[0] = 0xff
+            
     property qual:
         """the base quality (None if not present)"""
         def __get__(self):
-            #todo is this still needed
             cdef bam1_t * src 
-            cdef uint8_t * qual_p
+            cdef uint8_t * p
             cdef char * q
             src = self._delegate
-            qual_p = < uint8_t *> (src.data + src.core.n_cigar * 4 + src.core.l_qname + (src.core.l_qseq + 1) / 2)        
-            if qual_p[0] != 0xff:
-                q = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
-                for k from 0 <= k < src.core.l_qseq:
-                ## equivalent to t[i] + 33 (see bam.c)
-                    q[k] = qual_p[k] + 33
-                retval=q
-                free(q)
-                return retval
-            return None
+            p = pysam_bam1_qual( src )
 
+            if p[0] == 0xff: return None
+
+            q = < char *>calloc(src.core.l_qseq + 1 , sizeof(char))
+            for k from 0 <= k < src.core.l_qseq:
+            ## equivalent to t[i] + 33 (see bam.c)
+                q[k] = p[k] + 33
+            # convert to python string
+            retval=q
+            # clean up
+            free(q)
+            return retval
+
+        def __set__(self,qual):
+            # note that space is already allocated via the sequences
+            cdef bam1_t * src
+            cdef uint8_t * p
+            cdef char * q 
+            src = self._delegate
+            p = pysam_bam1_qual( src )
+            if qual == None or len(qual) == 0:
+                # if absent - set to 0xff
+                p[0] = 0xff
+                return
+            cdef int l
+            # convert to C string
+            q = qual
+            l = len(qual)
+            assert src.core.l_qseq == l
+            for k from 0 <= k < l:
+                p[k] = <uint8_t>q[k] - 33
+    
+    property tags:
+        """the tags in the AUX field."""
+        def __get__(self):
+            cdef char * ctag
+            cdef bam1_t * src
+            cdef uint8_t * s
+            cdef char tpe
+
+            src = self._delegate
+            s = pysam_bam1_aux( src )
+            result = []
+            ctag = <char*>calloc( 3, sizeof(char) )
+            cdef int x
+            while s < (src.data + src.data_len):
+                # get tag
+                ctag[0] = s[0]
+                ctag[1] = s[1]
+                pytag = ctag
+                s += 2
+                
+                # get type and value 
+                # how do I do char literal comparison in cython?
+                # the code below works (i.e, is C comparison)
+                tpe = toupper(s[0])
+                if tpe == 'S'[0]:
+                    value = <int>bam_aux2i(s)            
+                    s += 2
+                elif tpe == 'I'[0]:
+                    value = <int>bam_aux2i(s)            
+                    s += 4
+                elif tpe == 'F'[0]:
+                    value = <float>bam_aux2f(s)
+                    s += 4
+                elif tpe == 'D'[0]:
+                    value = <double>bam_aux2d(s)
+                    s += 8
+                elif tpe == 'C'[0]:
+                    value = <int>bam_aux2i(s)
+                    s += 1
+                elif tpe == 'A'[0]:
+                    value = <char>bam_aux2A(s)
+                    s += 1
+                elif tpe == 'Z'[0]:
+                    value = <char*>bam_aux2Z(s)
+                    # +1 for NULL terminated string
+                    s += len(value) + 1
+
+                # skip over type
+                s += 1
+
+                # convert type - is there a better way?
+                ctag[0] = tpe
+                ctag[1] = 0
+                pytype = ctag
+
+                result.append( (pytag, pytype, value) )
+
+            free( ctag )
+            return result
+
+        # def __set__(self, tags):
+        #     cdef char * ctag
+        #     cdef bam1_t * src
+        #     cdef uint8_t * s
+        #     cdef char tpe
+
+        #     # delete the old data
+        #     pysam_bam_update( src, 
+        #                       src->l_aux,
+        #                       0, 
+        #                       pysam_bam1_seq( src ) )
+
+        #     for pytag, pytype, value in tags:
+        #         bam_aux_append( src, 
+        #                         pytag,
+        #                         pytype)
+                                
+            
+
+            
     property flag: 
         """properties flag"""
-        def __get__(self): 
-            return self._delegate.core.flag
+        def __get__(self): return self._delegate.core.flag
+        def __set__(self, flag): self._delegate.core.flag = flag
     property rname: 
         """:term:`reference` ID"""
-        def __get__(self): 
-            return self._delegate.core.tid
+        def __get__(self): return self._delegate.core.tid
+        def __set__(self, tid): self._delegate.core.tid = tid
     property pos: 
         """0-based leftmost coordinate"""
-        def __get__(self): 
-            return self._delegate.core.pos
+        def __get__(self): return self._delegate.core.pos
+        def __set__(self, pos): self._delegate.core.pos = pos
     property rlen:
-        '''length of the read. Returns 0 if not given.'''
-        def __get__(self): 
-            return self._delegate.core.l_qseq
+        '''length of the read (read only). Returns 0 if not given.'''
+        def __get__(self): return self._delegate.core.l_qseq
     property mapq: 
         """mapping quality"""
-        def __get__(self): 
-            return self._delegate.core.qual
+        def __get__(self): return self._delegate.core.qual
+        def __set__(self, qual): self._delegate.core.qual = qual
     property mrnm:
         """the :term:`reference` id of the mate """     
-        def __get__(self): 
-            return self._delegate.core.mtid
+        def __get__(self): return self._delegate.core.mtid
+        def __set__(self, mtid): self._delegate.core.mtid = mtid
     property mpos: 
         """the position of the mate"""
-        def __get__(self): 
-            return self._delegate.core.mpos
+        def __get__(self): return self._delegate.core.mpos
+        def __set__(self, mpos): self._delegate.core.mpos = mpos
     property isize: 
         """the insert size"""
-        def __get__(self): 
-            return self._delegate.core.isize
+        def __get__(self): return self._delegate.core.isize
+        def __set__(self, isize): self._delegate.core.isize = isize
     property is_paired: 
         """true if read is paired in sequencing"""
         def __get__(self): return (self._delegate.core.flag & BAM_FPAIRED) != 0

@@ -27,10 +27,15 @@ cdef extern from "stdio.h":
   FILE * stdout
   int fclose(FILE *)
   int sscanf(char *str,char *fmt,...)
+  int printf(char *str,char *fmt,...)
   int sprintf(char *str,char *fmt,...)
   int fprintf(FILE *ifile,char *fmt,...)
   char *fgets(char *str,int size,FILE *ifile)
 
+cdef extern from "ctype.h":
+  int toupper(int c)
+  int tolower(int c)
+  
 cdef extern from "unistd.h":
   char *ttyname(int fd)
   int isatty(int fd)  
@@ -163,6 +168,7 @@ cdef extern from "bam.h":
   bam1_t * bam_copy1(bam1_t *bdst, bam1_t *bsrc)
 
   uint8_t *bam_aux_get(bam1_t *b,  char tag[2])
+
   int bam_aux2i(uint8_t *s)
   float bam_aux2f(uint8_t *s)
   double bam_aux2d(uint8_t *s)
@@ -223,3 +229,19 @@ cdef extern from "pysam_util.h":
 
     # stand-in functions for samtools macros
     void pysam_bam_destroy1( bam1_t * b) 
+
+    # add *nbytes* into the variable length data of *src* at *pos*
+    bam1_t * pysam_bam_update( bam1_t * b, 
+                               uint8_t nbytes_old,
+                               uint8_t nbytes_new,
+                               uint8_t * pos )
+
+    # translate char to unsigned char
+    unsigned char pysam_translate_sequence( char s )
+
+    # stand-ins for samtools macros
+    uint32_t * pysam_bam1_cigar( bam1_t * b)
+    char * pysam_bam1_qname( bam1_t * b)
+    uint8_t * pysam_bam1_seq( bam1_t * b)
+    uint8_t * pysam_bam1_qual( bam1_t * b)
+    uint8_t * pysam_bam1_aux( bam1_t * b)

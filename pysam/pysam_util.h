@@ -42,4 +42,23 @@ int pysam_dispatch(int argc, char *argv[] );
 // stand-in for macro - not wrappable in pyrex
 void pysam_bam_destroy1( bam1_t * b );
 
+// update the variable length data within a bam1_t entry.
+// Adds *nbytes_new* - *nbytes_old* into the variable length data of *src* at *pos*.
+// Data within the bam1_t entry is moved so that it is
+// consistent with the data field lengths.
+bam1_t * pysam_bam_update( bam1_t * b,
+			   const uint8_t nbytes_old,
+			   const uint8_t nbytes_new,
+			   uint8_t * pos );
+
+// translate a nucleotide character to binary code
+unsigned char pysam_translate_sequence( const unsigned char s );
+
+// stand-in for other samtools macros
+uint32_t * pysam_bam1_cigar( const bam1_t * b);
+char * pysam_bam1_qname( const bam1_t * b);
+uint8_t * pysam_bam1_seq( const bam1_t * b);
+uint8_t * pysam_bam1_qual( const bam1_t * b);
+uint8_t * pysam_bam1_aux( const bam1_t * b);
+
 #endif

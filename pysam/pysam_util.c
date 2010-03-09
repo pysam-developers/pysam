@@ -289,9 +289,107 @@ int pysam_dispatch(int argc, char *argv[] )
 }
 
 // standin for bam_destroy1 in bam.h
+// deletes all variable length data
 void pysam_bam_destroy1( bam1_t * b )
 {
-  free((b)->data);
+  free(b->data);
   free(b);
 }
+
+// taken from samtools/bam_import.c
+static inline uint8_t *alloc_data(bam1_t *b, int size)
+{
+  if (b->m_data < size)
+    {
+      b->m_data = size;
+      kroundup32(b->m_data);
+      b->data = (uint8_t*)realloc(b->data, b->m_data);
+    }
+  return b->data;
+}
+
+// update the variable length data within a bam1_t entry.
+// Adds *nbytes_new* - *nbytes_old* into the variable length data of *src* at *pos*.
+// Data within the bam1_t entry is moved so that it is
+// consistent with the data field lengths.
+bam1_t * pysam_bam_update( bam1_t * b,
+			   const uint8_t nbytes_old,
+			   const uint8_t nbytes_new, 
+			   uint8_t * pos )
+{
+  int d = nbytes_new-nbytes_old;
+
+  // no change
+  if (d == 0) return b;
+
+  int new_size = d + b->data_len;
+  size_t offset = pos - b->data;
+
+  // printf("d=%i, old=%i, new=%i, old_size=%i, new_size=%i\n", d, nbytes_old, nbytes_new, b->data_len, new_size);
+  
+  // increase memory if required
+  if (d > 0)
+    {
+      alloc_data( b, new_size );
+      pos = b->data + offset;
+    }
+  
+  if (b->data_len != 0)
+    {
+      if (offset < 0 || offset > b->data_len)
+	fprintf(stderr, "[pysam_bam_insert] illegal offset: '%i'\n", offset);
+    }
+  
+  // printf("dest=%p, src=%p, n=%i\n", pos+nbytes_new, pos + nbytes_old, b->data_len - (offset+nbytes_old));
+  memmove( pos + nbytes_new,
+	   pos + nbytes_old,
+	   b->data_len - (offset + nbytes_old));
+    
+  b->data_len = new_size;
+      
+  return b;
+}
+
+// translate a nucleotide character to binary code
+unsigned char pysam_translate_sequence( const unsigned char s )
+{
+  return bam_nt16_table[s];
+}
+
+// standin for samtools macros in bam.h
+char * pysam_bam1_qname( const bam1_t * b)
+{
+  return (char*)b->data;
+}
+
+uint32_t * pysam_bam1_cigar( const bam1_t * b) 
+{
+  return (uint32_t*)(b->data + b->core.l_qname);
+}
+
+uint8_t * pysam_bam1_seq( const bam1_t * b) 
+{
+  return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname);
+}
+
+uint8_t * pysam_bam1_qual( const bam1_t * b)
+{
+  return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname + (b->core.l_qseq + 1)/2);
+}
+
+uint8_t * pysam_bam1_aux( const bam1_t * b)
+{
+  return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname + b->core.l_qseq + (b->core.l_qseq + 1)/2);
+}
+
+  
+
+
+  
+  
+
+  
+
+       
+
 

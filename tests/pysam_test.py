@@ -321,7 +321,7 @@ class TestIteratorColumn(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
     
-class TestAlignedReadBam(unittest.TestCase):
+class TestAlignedReadFromBam(unittest.TestCase):
 
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.bam","rb" )
@@ -383,10 +383,14 @@ class TestAlignedReadBam(unittest.TestCase):
         self.assertEqual( self.reads[0].is_proper_pair, True, "is proper pair mismatch in read 1: %s != %s" % (self.reads[0].is_proper_pair, True) )
         self.assertEqual( self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (self.reads[1].is_proper_pair, True) )
 
+    def testTags( self ):
+        self.assertEqual( self.reads[0].tags, [('NM', 'C', 1), ('RG', 'Z', 'L1')] )
+        self.assertEqual( self.reads[1].tags, [('MF', 'C', 18), ('RG', 'Z', 'L2')] )
+
     def tearDown(self):
         self.samfile.close()
 
-class TestAlignedReadSam(unittest.TestCase):
+class TestAlignedReadFromSam(unittest.TestCase):
 
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.sam","r" )
@@ -584,6 +588,102 @@ class TestFastaFile(unittest.TestCase):
 
     def tearDown(self):
         self.file.close()
+
+
+class TestAlignedRead(unittest.TestCase):
+    '''tests to check if aligned read can be constructed
+    and manipulated.
+    '''
+    
+    def testEmpty( self ):
+
+        a = pysam.AlignedRead()
+        print str(a)
+
+    def testRead( self ):
+        '''
+        read_28833_29006_6945	99	chr1	33	20	10M1D25M	=	200	167	AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG	<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<	NM:i:1	RG:Z:L1
+        read_28701_28881_323b	147	chr2	88	30	35M	=	500	412	ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA	<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<	MF:i:18	RG:Z:L2
+        '''
+        
+        a = pysam.AlignedRead()
+        a.qname = "read_28833_29006_6945"
+        a.seq="AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
+        a.flag = 99
+        a.rname = 0
+        a.pos = 33
+        a.mapq = 20
+        a.cigar = ( (0,10), (2,1), (0,25) )
+        a.mrnm = 0
+        a.mpos=200
+        a.isize=167
+	a.qual="<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"
+
+        print str(a)
+        #print len("AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG")
+        #print len(a.seq)
+	# a.tags = ( ("NM", "i", 1),
+        #          ("RG", "Z", "L1") )
+
+    def buildRead( self ):
+        '''build an example read.'''
+        
+        a = pysam.AlignedRead()
+        a.qname = "read_12345"
+        a.seq="ACGT" * 3
+        a.flag = 99
+        a.rname = 0
+        a.pos = 33
+        a.mapq = 20
+        a.cigar = ( (0,10), (2,1), (0,25) )
+        a.mrnm = 0
+        a.mpos=200
+        a.isize=167
+	a.qual="1234" * 3
+
+        return a
+
+    def isEqual( self, read1, read2, exclude = []):
+        for x in ("qname", "seq", "flag",
+                  "rname", "pos", "mapq", "cigar",
+                  "mrnm", "mpos", "isize", "qual" ):
+            if x in exclude: continue
+            self.assertEqual( getattr(read1, x), getattr(read2,x), "attribute mismatch for %s: %s != %s" % 
+                              (x, getattr(read1, x), getattr(read2,x)))
+
+    def testUpdate( self ):
+        '''check if updating fields affects other variable length data
+        '''
+        a = self.buildRead()
+        b = self.buildRead()
+
+        # check qname
+        b.qname = "read_123"
+        self.isEqual( a, b, "qname" )
+        b.qname = "read_12345678"
+        self.isEqual( a, b, "qname" )
+        b.qname = "read_12345"
+        self.isEqual( a, b)
+
+        # check cigar
+        b.cigar = ( (0,10), )
+        self.isEqual( a, b, "cigar" )
+        b.cigar = ( (0,10), (2,1), (0,25), (2,1), (0,25) )
+        self.isEqual( a, b, "cigar" )
+        b.cigar = ( (0,10), (2,1), (0,25) )
+        self.isEqual( a, b)
+
+        # check seq 
+        b.seq = "ACGT"
+        self.isEqual( a, b, ("seq", "qual") )
+        b.seq = "ACGT" * 10
+        self.isEqual( a, b, ("seq", "qual") )
+        b.seq = "ACGT" * 3
+        self.isEqual( a, b, ("qual",))
+        
+        
+
+        
 
 # TODOS
 # 1. finish testing all properties within pileup objects
