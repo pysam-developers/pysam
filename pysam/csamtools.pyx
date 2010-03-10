@@ -1,7 +1,7 @@
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 
-import tempfile, os, sys, types, itertools
+import tempfile, os, sys, types, itertools, struct
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -152,10 +152,10 @@ cdef class Samfile:
     '''*(filename, mode='r', template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
               
     A *SAM* file. The file is automatically opened.
-
     
-    *mode* should be ``r`` for reading or ``w`` for writing. The default is text mode so for binary (:term:`BAM`) I/O you should append 
-    ``b`` for compressed or ``u`` for uncompressed :term:`BAM` output. Use ``h`` to output header information  in text (:term:`TAM`)  mode.
+    *mode* should be ``r`` for reading or ``w`` for writing. The default is text mode so for binary 
+    (:term:`BAM`) I/O you should append ``b`` for compressed or ``u`` for uncompressed :term:`BAM` output. 
+    Use ``h`` to output header information  in text (:term:`TAM`)  mode.
 
     If ``b`` is present, it must immediately follow ``r`` or ``w``. 
     Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.
@@ -176,9 +176,8 @@ cdef class Samfile:
 
         4. The names (*referencenames*) and lengths (*referencelengths*) are supplied directly as lists. 
 
-    
-    
-
+    If an index for a BAM file exists (.bai), it will be opened automatically. Without an index random
+    access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
     '''
 
     cdef char * filename
@@ -189,10 +188,16 @@ cdef class Samfile:
     # true if file is a bam file
     cdef int isbam
 
+    # current read within iteration
+    cdef bam1_t * b
+
     def __cinit__(self, *args, **kwargs ):
         self.samfile = NULL
         self.isbam = False
         self._open( *args, **kwargs )
+
+        # allocate memory for iterator
+        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
 
     def _isOpen( self ):
         '''return true if samfile has been opened.'''
@@ -203,13 +208,13 @@ cdef class Samfile:
         return self.index != NULL
 
     def _open( self, 
-              char * filename, 
-              mode ='r',
-              Samfile template = None,
-              referencenames = None,
-              referencelengths = None,
-              char * text = NULL,
-              header = None,
+               char * filename, 
+               mode ='r',
+               Samfile template = None,
+               referencenames = None,
+               referencelengths = None,
+               char * text = NULL,
+               header = None,
               ):
         '''open a sam/bam file.
 
@@ -240,9 +245,10 @@ cdef class Samfile:
 
             elif header:
                 header_to_write = self._buildHeader( header )
+
             else:
                 # build header from a target names and lengths
-                assert referencenames and referencelengths, "supply names and lengths of reference sequences for writing"
+                assert referencenames and referencelengths, "either supply options `template`, `header` or  both `refernencenames` and `referencelengths` for writing"
                 assert len(referencenames) == len(referencelengths), "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
@@ -283,9 +289,13 @@ cdef class Samfile:
             raise IOError("could not open file `%s`" % filename )
 
         if mode[0] == "r" and self.isbam:
-            self.index = bam_index_load(filename)
-            if self.index == NULL:
-                raise IOError("could not open index `%s` " % filename )
+            if not os.path.exists(filename + ".bai"):
+                self.index = NULL
+            else:
+                # returns NULL if there is no index or index could not be opened
+                self.index = bam_index_load(filename)
+                if self.index == NULL:
+                    raise IOError("error while opening index `%s` " % filename )
 
     def getrname( self, tid ):
         '''(tid )
@@ -454,8 +464,10 @@ cdef class Samfile:
 
     def __dealloc__( self ):
         '''clean up.'''
+        # remember: dealloc cannot call other methods
         # Note that __del__ is not called.
         self.close()
+        pysam_bam_destroy1(self.b)
 
     def write( self, AlignedRead read ):
         '''(AlignedRead read )
@@ -605,6 +617,29 @@ cdef class Samfile:
                 dest.target_len[x] = seqlen
 
         return dest
+
+    def __iter__(self):
+        return self 
+
+    cdef bam1_t * getCurrent( self ):
+        return self.b
+
+    cdef int cnext(self):
+        '''cversion of iterator. Used by IteratorColumn'''
+        cdef int ret
+        return samread(self.samfile, self.b)
+
+    def __next__(self): 
+        """python version of next().
+
+        pyrex uses this non-standard name instead of next()
+        """
+        cdef int ret
+        ret = samread(self.samfile, self.b)
+        if (ret > 0):
+            return makeAlignedRead( self.b )
+        else:
+            raise StopIteration
 
 cdef class Fastafile:
     '''*(filename)*
@@ -932,15 +967,48 @@ cdef class AlignedRead:
                                    self.qual,
                                    self.flag,
                                    self.seq,
-                                   self.mapq )))
+                                   self.mapq,
+                                   self.tags)))
     
        
+    def __cmp__(self, AlignedRead other):
+        '''return true, if contents in this are binary equal to ``other``.'''
+        cdef int retval, x
+        cdef bam1_t *t, *o
+        cdef unsigned char * oo, * tt
+        t = self._delegate
+        o = other._delegate
+        retval = memcmp( &t.core, 
+                          &o.core, 
+                          sizeof( bam1_core_t ))
+        print "core", retval
+        tt = <unsigned char*>(&t.core)
+        oo = <unsigned char*>(&o.core)
+        for x from 0 <= x < sizeof( bam1_core_t): print x, tt[x], oo[x]
+        tt = <unsigned char*>(t.data)
+        oo = <unsigned char*>(o.data)
+        print t.core.l_qname, o.core.l_qname
+        for x from 0 <= x < max(t.data_len, o.data_len): print x, tt[x], oo[x], chr(tt[x]), chr(oo[x])
+
+        if retval: return retval
+        retval = cmp( t.data_len, o.data_len)
+        print "data_len", retval, t.data_len, o.data_len
+        print self.tags, other.tags
+        if retval: return retval
+        print "data"
+        return memcmp(
+            &t.data, 
+             &o.data, 
+             sizeof( t.data_len ))
+
     property qname:
         """the query name (None if not present)"""
         def __get__(self):
             cdef bam1_t * src 
             src = self._delegate
+            if src.core.l_qname == 0: return None
             return <char *>pysam_bam1_qname( src )
+
         def __set__(self, qname ):
             if qname == None or len(qname) == 0: return
             cdef bam1_t * src 
@@ -973,15 +1041,15 @@ cdef class AlignedRead:
             cdef bam1_t * src 
             cdef op, l, cigar
             src = self._delegate
-            if src.core.n_cigar > 0:
-                cigar = []
-                cigar_p = pysam_bam1_cigar(src);
-                for k from 0 <= k < src.core.n_cigar:
-                    op = cigar_p[k] & BAM_CIGAR_MASK
-                    l = cigar_p[k] >> BAM_CIGAR_SHIFT
-                    cigar.append((op, l))
-                return cigar
-            return None
+            if src.core.n_cigar == 0: return None
+            
+            cigar = []
+            cigar_p = pysam_bam1_cigar(src);
+            for k from 0 <= k < src.core.n_cigar:
+                op = cigar_p[k] & BAM_CIGAR_MASK
+                l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                cigar.append((op, l))
+            return cigar
 
         def __set__(self, values ):
             if values == None or len(values) == 0: return
@@ -989,6 +1057,7 @@ cdef class AlignedRead:
             cdef bam1_t * src 
             cdef op, l
             cdef int k
+
             k = 0
 
             src = self._delegate
@@ -1014,6 +1083,9 @@ cdef class AlignedRead:
                 p[k] = l << BAM_CIGAR_SHIFT | op
                 k += 1
 
+            ## setting the cigar string also updates the "bin" attribute
+            src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, p))
+
     property seq:
         """the query sequence (None if not present)"""
         def __get__(self):
@@ -1023,16 +1095,16 @@ cdef class AlignedRead:
             src = self._delegate
             bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
             ## parse qseq (bam1_seq)
-            if src.core.l_qseq: 
-                s = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
-                p = pysam_bam1_seq( src )
-                for k from 0 <= k < src.core.l_qseq:
-                ## equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
-                    s[k] = "=ACMGRSVTWYHKDBN"[((p)[(k) / 2] >> 4 * (1 - (k) % 2) & 0xf)]
-                retval=s
-                free(s)
-                return retval
-            return None
+            if src.core.l_qseq == 0: return None
+
+            s = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
+            p = pysam_bam1_seq( src )
+            for k from 0 <= k < src.core.l_qseq:
+            ## equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
+                s[k] = "=ACMGRSVTWYHKDBN"[((p)[(k) / 2] >> 4 * (1 - (k) % 2) & 0xf)]
+            retval=s
+            free(s)
+            return retval
 
         def __set__(self,seq):
             # samtools manages sequence and quality length memory together
@@ -1084,8 +1156,9 @@ cdef class AlignedRead:
             cdef uint8_t * p
             cdef char * q
             src = self._delegate
-            p = pysam_bam1_qual( src )
+            if src.core.l_qseq == 0: return None
 
+            p = pysam_bam1_qual( src )
             if p[0] == 0xff: return None
 
             q = < char *>calloc(src.core.l_qseq + 1 , sizeof(char))
@@ -1116,7 +1189,7 @@ cdef class AlignedRead:
             assert src.core.l_qseq == l
             for k from 0 <= k < l:
                 p[k] = <uint8_t>q[k] - 33
-    
+
     property tags:
         """the tags in the AUX field."""
         def __get__(self):
@@ -1124,8 +1197,10 @@ cdef class AlignedRead:
             cdef bam1_t * src
             cdef uint8_t * s
             cdef char tpe
-
+            
             src = self._delegate
+            if src.l_aux == 0: return None
+            
             s = pysam_bam1_aux( src )
             result = []
             ctag = <char*>calloc( 3, sizeof(char) )
@@ -1135,8 +1210,9 @@ cdef class AlignedRead:
                 ctag[0] = s[0]
                 ctag[1] = s[1]
                 pytag = ctag
+
                 s += 2
-                
+
                 # get type and value 
                 # how do I do char literal comparison in cython?
                 # the code below works (i.e, is C comparison)
@@ -1167,36 +1243,94 @@ cdef class AlignedRead:
                 # skip over type
                 s += 1
 
-                # convert type - is there a better way?
-                ctag[0] = tpe
-                ctag[1] = 0
-                pytype = ctag
-
-                result.append( (pytag, pytype, value) )
+                result.append( (pytag, value) )
 
             free( ctag )
             return result
 
-        # def __set__(self, tags):
-        #     cdef char * ctag
-        #     cdef bam1_t * src
-        #     cdef uint8_t * s
-        #     cdef char tpe
+        def __set__(self, tags):
+            cdef char * ctag
+            cdef bam1_t * src
+            cdef uint8_t * s
+            cdef uint8_t * new_data
+            cdef int guessed_size, control_size
+            src = self._delegate
 
-        #     # delete the old data
-        #     pysam_bam_update( src, 
-        #                       src->l_aux,
-        #                       0, 
-        #                       pysam_bam1_seq( src ) )
+            # map samtools code to python.struct code and byte size
+            # note that samtools does some implicit type conversion 
+            # for integer types based no the size of the integer.
+            code_map = {
+                'S' : ('h', 2),
+                's' : ('h', 2),
+                'I' : ('i', 4),
+                'i' : ('i', 4),
+                'F' : ('f', 4),
+                'f' : ('f', 4),
+                'C' : ('c', 1),
+                'c' : ('c', 1),
+                'D' : ('d', 8),
+                'd' : ('d', 8),
+                'Z' : ('s', 0),
+                'z' : ('s', 0),
+                'H' : ('s', 0),
+                'h' : ('s', 0) }
 
-        #     for pytag, pytype, value in tags:
-        #         bam_aux_append( src, 
-        #                         pytag,
-        #                         pytype)
-                                
+            # containers for the conversion
+            guessed_size = 0       
+     
+            # get total size of data
+            for pytag, pytype, value in tags:
+                # add 3 bytes for tag and type
+                guessed_size += 3
+                # get size of value
+                pytype = pytype.upper()
+                size = code_map[pytype][1]
+                if size == 0: size = len(value) + 1
+                guessed_size += size
+                
+            # delete the old data and allocate new
+            pysam_bam_update( src, 
+                              src.l_aux,
+                              guessed_size,
+                              pysam_bam1_aux( src ) )
             
+            src.l_aux = guessed_size
 
+            if guessed_size == 0: return
+            # get location of new data
+            s = pysam_bam1_aux( src )            
             
+            # save data
+            # see if PyBuffer can be used for this
+            import ctypes
+            buffer = ctypes.create_string_buffer(guessed_size)
+
+            offset = 0
+            for pytag, pytype, value in tags:
+                # samtools is little-endian
+                if pytype in ("ZzHh"): 
+                    # add +1 for \0
+                    fmt = "<ccc%i%s" % (len(value)+1,code_map[pytype][0])
+                else:
+                    fmt = "<ccc%s" % code_map[pytype][0]
+
+                struct.pack_into( fmt, 
+                                  buffer,
+                                  offset,
+                                  pytag[0],
+                                  pytag[1],
+                                  pytype[0],
+                                  value )
+                offset += struct.calcsize(fmt)
+
+            # copy over the data
+            assert offset == guessed_size, "offset (%i) != size (%i)" % (offset, guessed_size)
+
+            # check if there is direct path from buffer.raw to tmp
+            cdef char * temp 
+            temp = buffer.raw
+            memcpy( s, temp, guessed_size )            
+
     property flag: 
         """properties flag"""
         def __get__(self): return self._delegate.core.flag
@@ -1208,7 +1342,19 @@ cdef class AlignedRead:
     property pos: 
         """0-based leftmost coordinate"""
         def __get__(self): return self._delegate.core.pos
-        def __set__(self, pos): self._delegate.core.pos = pos
+        def __set__(self, pos): 
+            ## setting the cigar string also updates the "bin" attribute
+            cdef bam1_t * src
+            src = self._delegate
+            if src.core.n_cigar:
+                src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, pysam_bam1_cigar(src)) )
+            else:
+                src.core.bin = bam_reg2bin( src.core.pos, src.core.pos + 1)
+            self._delegate.core.pos = pos
+    property bin: 
+        """properties bin"""
+        def __get__(self): return self._delegate.core.bin
+        def __set__(self, bin): self._delegate.core.bin = bin
     property rlen:
         '''length of the read (read only). Returns 0 if not given.'''
         def __get__(self): return self._delegate.core.l_qseq
@@ -1231,36 +1377,69 @@ cdef class AlignedRead:
     property is_paired: 
         """true if read is paired in sequencing"""
         def __get__(self): return (self._delegate.core.flag & BAM_FPAIRED) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FPAIRED
+            else: self._delegate.core.flag &= ~BAM_FPAIRED
     property is_proper_pair:
         """true if read is mapped in a proper pair"""
         def __get__(self): return (self.flag & BAM_FPROPER_PAIR) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FPROPER_PAIR
+            else: self._delegate.core.flag &= ~BAM_FPROPER_PAIR
     property is_unmapped:
         """true if read itself is unmapped"""
         def __get__(self): return (self.flag & BAM_FUNMAP) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FUNMAP
+            else: self._delegate.core.flag &= ~BAM_FUNMAP
     property mate_is_unmapped: 
         """true if the mate is unmapped""" 
         def __get__(self): return (self.flag & BAM_FMUNMAP) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FMUNMAP
+            else: self._delegate.core.flag &= ~BAM_FMUNMAP
     property is_reverse:
         """true if read is mapped to reverse strand"""
         def __get__(self):return (self.flag & BAM_FREVERSE) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FREVERSE
+            else: self._delegate.core.flag &= ~BAM_FREVERSE
     property mate_is_reverse:
         """true is read is mapped to reverse strand"""
         def __get__(self): return (self.flag & BAM_FMREVERSE) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FMREVERSE
+            else: self._delegate.core.flag &= ~BAM_FMREVERSE
     property is_read1: 
         """true if this is read1"""
         def __get__(self): return (self.flag & BAM_FREAD1) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FREAD1
+            else: self._delegate.core.flag &= ~BAM_FREAD1
     property is_read2:
         """true if this is read2"""
         def __get__(self): return (self.flag & BAM_FREAD2) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FREAD2
+            else: self._delegate.core.flag &= ~BAM_FREAD2
     property is_secondary:
         """true if not primary alignment"""
         def __get__(self): return (self.flag & BAM_FSECONDARY) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FSECONDARY
+            else: self._delegate.core.flag &= ~BAM_FSECONDARY
     property is_qcfail:
         """true if QC failure"""
-        def __get__(self): return (self.flag & BAM_FSECONDARY) != 0
+        def __get__(self): return (self.flag & BAM_FQCFAIL) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FQCFAIL
+            else: self._delegate.core.flag &= ~BAM_FQCFAIL
     property is_duplicate:
         """ true if optical or PCR duplicate"""
         def __get__(self): return (self.flag & BAM_FDUP) != 0
+        def __set__(self,val): 
+            if val: self._delegate.core.flag |= BAM_FDUP
+            else: self._delegate.core.flag &= ~BAM_FDUP
     
     def opt(self, tag):
         """retrieves optional data given a two-letter *tag*"""

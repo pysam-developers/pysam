@@ -42,6 +42,7 @@ def runSamtools( cmd ):
     except OSError, e:
         print >>sys.stderr, "Execution failed:", e
 
+        
 class BinaryTest(unittest.TestCase):
     '''test samtools command line commands and compare
     against pysam commands.
@@ -594,36 +595,27 @@ class TestAlignedRead(unittest.TestCase):
     '''tests to check if aligned read can be constructed
     and manipulated.
     '''
+
+    def checkFieldEqual( self, read1, read2, exclude = []):
+        '''check if two reads are equal by comparing each field.'''
+
+        for x in ("qname", "seq", "flag",
+                  "rname", "pos", "mapq", "cigar",
+                  "mrnm", "mpos", "isize", "qual",
+                  "is_paired", "is_proper_pair",
+                  "is_unmapped", "mate_is_unmapped",
+                  "is_reverse", "mate_is_reverse",
+                  "is_read1", "is_read2",
+                  "is_secondary", "is_qcfail",
+                  "is_duplicate", "bin"):
+            if x in exclude: continue
+            self.assertEqual( getattr(read1, x), getattr(read2,x), "attribute mismatch for %s: %s != %s" % 
+                              (x, getattr(read1, x), getattr(read2,x)))
     
     def testEmpty( self ):
 
         a = pysam.AlignedRead()
         print str(a)
-
-    def testRead( self ):
-        '''
-        read_28833_29006_6945	99	chr1	33	20	10M1D25M	=	200	167	AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG	<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<	NM:i:1	RG:Z:L1
-        read_28701_28881_323b	147	chr2	88	30	35M	=	500	412	ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA	<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<	MF:i:18	RG:Z:L2
-        '''
-        
-        a = pysam.AlignedRead()
-        a.qname = "read_28833_29006_6945"
-        a.seq="AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
-        a.flag = 99
-        a.rname = 0
-        a.pos = 33
-        a.mapq = 20
-        a.cigar = ( (0,10), (2,1), (0,25) )
-        a.mrnm = 0
-        a.mpos=200
-        a.isize=167
-	a.qual="<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"
-
-        print str(a)
-        #print len("AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG")
-        #print len(a.seq)
-	# a.tags = ( ("NM", "i", 1),
-        #          ("RG", "Z", "L1") )
 
     def buildRead( self ):
         '''build an example read.'''
@@ -631,7 +623,7 @@ class TestAlignedRead(unittest.TestCase):
         a = pysam.AlignedRead()
         a.qname = "read_12345"
         a.seq="ACGT" * 3
-        a.flag = 99
+        a.flag = 0
         a.rname = 0
         a.pos = 33
         a.mapq = 20
@@ -643,14 +635,6 @@ class TestAlignedRead(unittest.TestCase):
 
         return a
 
-    def isEqual( self, read1, read2, exclude = []):
-        for x in ("qname", "seq", "flag",
-                  "rname", "pos", "mapq", "cigar",
-                  "mrnm", "mpos", "isize", "qual" ):
-            if x in exclude: continue
-            self.assertEqual( getattr(read1, x), getattr(read2,x), "attribute mismatch for %s: %s != %s" % 
-                              (x, getattr(read1, x), getattr(read2,x)))
-
     def testUpdate( self ):
         '''check if updating fields affects other variable length data
         '''
@@ -659,31 +643,155 @@ class TestAlignedRead(unittest.TestCase):
 
         # check qname
         b.qname = "read_123"
-        self.isEqual( a, b, "qname" )
+        self.checkFieldEqual( a, b, "qname" )
         b.qname = "read_12345678"
-        self.isEqual( a, b, "qname" )
+        self.checkFieldEqual( a, b, "qname" )
         b.qname = "read_12345"
-        self.isEqual( a, b)
+        self.checkFieldEqual( a, b)
 
         # check cigar
         b.cigar = ( (0,10), )
-        self.isEqual( a, b, "cigar" )
+        self.checkFieldEqual( a, b, "cigar" )
         b.cigar = ( (0,10), (2,1), (0,25), (2,1), (0,25) )
-        self.isEqual( a, b, "cigar" )
+        self.checkFieldEqual( a, b, "cigar" )
         b.cigar = ( (0,10), (2,1), (0,25) )
-        self.isEqual( a, b)
+        self.checkFieldEqual( a, b)
 
         # check seq 
         b.seq = "ACGT"
-        self.isEqual( a, b, ("seq", "qual") )
+        self.checkFieldEqual( a, b, ("seq", "qual") )
         b.seq = "ACGT" * 10
-        self.isEqual( a, b, ("seq", "qual") )
+        self.checkFieldEqual( a, b, ("seq", "qual") )
         b.seq = "ACGT" * 3
-        self.isEqual( a, b, ("qual",))
-        
-        
+        self.checkFieldEqual( a, b, ("qual",))
+
+        # reset qual
+        b = self.buildRead()
+
+        # check flags:
+        for x in (
+            "is_paired", "is_proper_pair",
+            "is_unmapped", "mate_is_unmapped",
+            "is_reverse", "mate_is_reverse",
+            "is_read1", "is_read2",
+            "is_secondary", "is_qcfail",
+            "is_duplicate"):
+            setattr( b, x, True )
+            self.assertEqual( getattr(b, x), True )
+            self.checkFieldEqual( a, b, ("flag", x,) )
+            setattr( b, x, False )
+            self.assertEqual( getattr(b, x), False )
+            self.checkFieldEqual( a, b )
+
+class TestDeNovoConstruction(unittest.TestCase):
+    '''check BAM/SAM file construction using ex3.sam
+    
+    (note these are +1 coordinates):
+    
+    read_28833_29006_6945	99	chr1	33	20	10M1D25M	=	200	167	AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG	<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<	NM:i:1	RG:Z:L1
+    read_28701_28881_323b	147	chr2	88	30	35M	=	500	412	ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA	<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<	MF:i:18	RG:Z:L2
+    '''
+
+    def checkFieldEqual( self, read1, read2, exclude = []):
+        '''check if two reads are equal by comparing each field.'''
+
+        for x in ("qname", "seq", "flag",
+                  "rname", "pos", "mapq", "cigar",
+                  "mrnm", "mpos", "isize", "qual",
+                  "bin",
+                  "is_paired", "is_proper_pair",
+                  "is_unmapped", "mate_is_unmapped",
+                  "is_reverse", "mate_is_reverse",
+                  "is_read1", "is_read2",
+                  "is_secondary", "is_qcfail",
+                  "is_duplicate"):
+            if x in exclude: continue
+            self.assertEqual( getattr(read1, x), getattr(read2,x), "attribute mismatch for %s: %s != %s" % 
+                              (x, getattr(read1, x), getattr(read2,x)))
+
+    def setUp( self ):
 
         
+        a = pysam.AlignedRead()
+        a.qname = "read_28833_29006_6945"
+        a.seq="AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
+        a.flag = 99
+        a.rname = 0
+        a.pos = 32
+        a.mapq = 20
+        a.cigar = ( (0,10), (2,1), (0,25) )
+        a.mrnm = 0
+        a.mpos=199
+        a.isize=167
+	a.qual="<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"
+	a.tags = ( ("NM", "i", 1),
+                   ("RG", "Z", "L1") )
+
+        b = pysam.AlignedRead()
+        b.qname = "read_28701_28881_323b"
+        b.seq="ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"
+        b.flag = 147
+        b.rname = 1
+        b.pos = 87
+        b.mapq = 30
+        b.cigar = ( (0,35), )
+        b.mrnm = 1
+        b.mpos=499
+        b.isize=412
+	b.qual="<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"
+	b.tags = ( ("MF", "i", 18),
+                   ("RG", "Z", "L2") )
+
+        self.reads = (a,b)
+
+    def testSAM( self ):
+        
+        tmpfilename = "tmp_%i.sam" % id(self)
+
+        outfile = pysam.Samfile( tmpfilename, "wh",
+                                 header = {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                                                  {'LN': 1584, 'SN': 'chr2'}], 
+                                           'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
+                                                  {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
+                                           'CO': ['this is a comment', 'this is another comment'], 
+                                           'HD': {'VN': '1.0'}})
+
+        for x in self.reads: outfile.write( x )
+        outfile.close()
+        
+        self.assertTrue( checkBinaryEqual( tmpfilename, "ex3.sam" ),
+                         "mismatch when construction SAM file, see %s versus %s" % (tmpfilename, "ex3.sam"))
+        
+        os.unlink( tmpfilename )
+
+    def testBAMPerRead( self ):
+        '''check if individual reads are binary equal.'''
+        infile = pysam.Samfile( "ex6.bam", "rb")
+
+        others = list(infile)
+        for denovo, other in zip( others, self.reads):
+            self.checkFieldEqual( other, denovo )
+            self.assertEqual( other, denovo)
+            
+    def testBAM( self ):
+        
+        tmpfilename = "tmp_%i.bam" % id(self)
+
+        outfile = pysam.Samfile( tmpfilename, "wb",
+                                 header = {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                                                  {'LN': 1584, 'SN': 'chr2'}], })
+                                           # 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
+                                           #        {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
+                                           # 'CO': ['this is a comment', 'this is another comment'], 
+                                           # 'HD': {'VN': '1.0'}})
+
+        for x in self.reads: outfile.write( x )
+        outfile.close()
+        
+        self.assertTrue( checkBinaryEqual( tmpfilename, "ex6.bam" ),
+                         "mismatch when construction BAM file, see %s versus %s" % (tmpfilename, "ex6.bam"))
+        
+        os.unlink( tmpfilename )
 
 # TODOS
 # 1. finish testing all properties within pileup objects

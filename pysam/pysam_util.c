@@ -383,8 +383,6 @@ uint8_t * pysam_bam1_aux( const bam1_t * b)
 }
 
   
-
-
   
   
 

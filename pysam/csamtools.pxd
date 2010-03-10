@@ -48,19 +48,22 @@ cdef extern from "string.h":
   char *strdup(char *)
   char *strcat(char *,char *)
   size_t strlen(char *s)
+  int memcmp( void * s1, void *s2, size_t len )
 
 cdef extern from "razf.h":
   pass
 
-cdef extern from "bam.h":
-
-  # IF _IOLIB=2, bamFile = BGZF, see bgzf.h
-  # samtools uses KNETFILE, check how this works
+cdef extern from "stdint.h":
   ctypedef int int64_t
   ctypedef int int32_t
   ctypedef int uint32_t
   ctypedef int uint8_t
   ctypedef int uint64_t
+
+cdef extern from "bam.h":
+
+  # IF _IOLIB=2, bamFile = BGZF, see bgzf.h
+  # samtools uses KNETFILE, check how this works
 
   ctypedef struct tamFile:
       pass
@@ -174,7 +177,10 @@ cdef extern from "bam.h":
   double bam_aux2d(uint8_t *s)
   char bam_aux2A( uint8_t *s)
   char *bam_aux2Z( uint8_t *s)
+  
+  int bam_reg2bin(uint32_t beg, uint32_t end)
 
+  uint32_t bam_calend(bam1_core_t *c, uint32_t *cigar)
 
 cdef extern from "sam.h":
 
