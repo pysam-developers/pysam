@@ -153,7 +153,54 @@ In order to get the unparsed output, use the *raw* argument::
    for p in pysam.pileup( "-c", "ex1.bam", raw=True ):
       print str(p),
 
+Creating de-novo files
+----------------------
+
+The following example shows how a new BAM file is constructed from scratch.
+The important part here is that the :class:`Samfile` class needs to receive
+the sequence identifiers. These can be given either as a dictionary in a
+header structure, as lists of names and sizes, or from a template file.
+Here, we use a header dictionary::
+
+    header = { 'HD': {'VN': '1.0'},
+               'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                      {'LN': 1584, 'SN': 'chr2'}] }
+
+   outfile = pysam.Samfile( tmpfilename, "wh", header = header )
+   a = pysam.AlignedRead()
+   a.qname = "read_28833_29006_6945"
+   a.seq="AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
+   a.flag = 99
+   a.rname = 0
+   a.pos = 32
+   a.mapq = 20
+   a.cigar = ( (0,10), (2,1), (0,25) )
+   a.mrnm = 0
+   a.mpos=199
+   a.isize=167
+   a.qual="<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"
+   a.tags = ( ("NM", 1),
+	      ("RG", "L1") )
+   outfile.write(a)
+   outfile.close()
+
+Using streams
+-------------
+
+Pysam does not support reading and writing from true python file objects, but
+it does support reading and writing from stdin and stdout. The following example reads 
+from stdin and writes to stdout::
+
+   infile = pysam.Samfile( "-", "r" )
+   outfile = pysam.Samfile( "-", "w", template = infile )
+   for s in infile: outfile.write(s)
+
+It will also work with BAM files. The following script converts a BAM formatted file
+on stdin to a SAM formatted file on stdout::
+
+   infile = pysam.Samfile( "-", "rb" )
+   outfile = pysam.Samfile( "-", "w", template = infile )
+   for s in infile: outfile.write(s)
 
 
-      
-
+Note that only the file open mode needs to changed from ``r`` to ``rb``.

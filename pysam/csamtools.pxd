@@ -60,6 +60,7 @@ cdef extern from "stdint.h":
   ctypedef int uint8_t
   ctypedef int uint64_t
 
+
 cdef extern from "bam.h":
 
   # IF _IOLIB=2, bamFile = BGZF, see bgzf.h

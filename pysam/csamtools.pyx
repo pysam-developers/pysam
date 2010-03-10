@@ -143,6 +143,7 @@ VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
                        "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL" ),
                        "PG" : ( "ID", "VN", "CL" ), }
 
+
 ######################################################################
 ######################################################################
 ######################################################################
@@ -283,7 +284,7 @@ cdef class Samfile:
 
         elif mode[0] == "r":
             # open file for reading
-            if not os.path.exists( filename ):
+            if strncmp( filename, "-", 1) != 0 and not os.path.exists( filename ):
                 raise IOError( "file `%s` not found" % filename)
             self.samfile = samopen( filename, mode, NULL )
             

@@ -807,6 +807,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         
         os.unlink( tmpfilename )
 
+
 # TODOS
 # 1. finish testing all properties within pileup objects
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
