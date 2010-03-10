@@ -1,7 +1,7 @@
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 
-import tempfile, os, sys, types, itertools, struct
+import tempfile, os, sys, types, itertools, struct, ctypes
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -226,11 +226,11 @@ cdef class Samfile:
 
         # close a previously opened file
         if self.samfile != NULL: self.close()
+        self.samfile == NULL
 
         cdef bam_header_t * header_to_write
         header_to_write = NULL
 
-        if self.samfile != NULL: self.close()
         self.filename = filename
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
@@ -283,8 +283,10 @@ cdef class Samfile:
 
         elif mode[0] == "r":
             # open file for reading
+            if not os.path.exists( filename ):
+                raise IOError( "file `%s` not found" % filename)
             self.samfile = samopen( filename, mode, NULL )
-
+            
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
 
@@ -304,8 +306,11 @@ cdef class Samfile:
             raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
         return self.samfile.header.target_name[tid]
 
-    def _parseRegion( self, reference = None, start = None, end = None, 
-                       region = None ):
+    def _parseRegion( self, 
+                      reference = None, 
+                      start = None, 
+                      end = None, 
+                      region = None ):
         '''parse region information.
 
         raise Value for for invalid regions.
@@ -333,7 +338,6 @@ cdef class Samfile:
         if region:
             bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
             if rtid < 0: raise ValueError( "invalid region `%s`" % region )
-
             if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
             if rstart < 0: raise ValueError( 'negative start coordinate (%i)' % rstart )
             if rend < 0: raise ValueError( 'negative end coordinate (%i)' % rend )
@@ -975,31 +979,28 @@ cdef class AlignedRead:
         '''return true, if contents in this are binary equal to ``other``.'''
         cdef int retval, x
         cdef bam1_t *t, *o
-        cdef unsigned char * oo, * tt
         t = self._delegate
         o = other._delegate
+
+        # uncomment for debugging purposes
+        # cdef unsigned char * oo, * tt
+        # tt = <unsigned char*>(&t.core)
+        # oo = <unsigned char*>(&o.core)
+        # for x from 0 <= x < sizeof( bam1_core_t): print x, tt[x], oo[x]
+        # tt = <unsigned char*>(t.data)
+        # oo = <unsigned char*>(o.data)
+        # for x from 0 <= x < max(t.data_len, o.data_len): print x, tt[x], oo[x], chr(tt[x]), chr(oo[x])
+
         retval = memcmp( &t.core, 
                           &o.core, 
                           sizeof( bam1_core_t ))
-        print "core", retval
-        tt = <unsigned char*>(&t.core)
-        oo = <unsigned char*>(&o.core)
-        for x from 0 <= x < sizeof( bam1_core_t): print x, tt[x], oo[x]
-        tt = <unsigned char*>(t.data)
-        oo = <unsigned char*>(o.data)
-        print t.core.l_qname, o.core.l_qname
-        for x from 0 <= x < max(t.data_len, o.data_len): print x, tt[x], oo[x], chr(tt[x]), chr(oo[x])
 
         if retval: return retval
         retval = cmp( t.data_len, o.data_len)
-        print "data_len", retval, t.data_len, o.data_len
-        print self.tags, other.tags
         if retval: return retval
-        print "data"
-        return memcmp(
-            &t.data, 
-             &o.data, 
-             sizeof( t.data_len ))
+        return memcmp( t.data, 
+                       o.data, 
+                       sizeof( t.data_len ))
 
     property qname:
         """the query name (None if not present)"""
@@ -1261,11 +1262,10 @@ cdef class AlignedRead:
             cdef uint8_t * new_data
             cdef int guessed_size, control_size
             src = self._delegate
-
-            int max_size = 1000
+            cdef int max_size, size
+            max_size = 4000
 
             # map samtools code to python.struct code and byte size
-            import ctypes
             buffer = ctypes.create_string_buffer(max_size)
 
             offset = 0
@@ -1275,103 +1275,52 @@ cdef class AlignedRead:
                     fmt = "<cccf"
                 elif t == types.IntType:
                     if value < 0:
-                        if x >= -127: fmt = "<cccb"
-                        elif x >= -32767: fmt = "<ccch"
-                        elif x < -2147483648: raise ValueError( "integer %s out of range of BAM/SAM specification" % value )
-                        else: fmt = "<ccci"
+                        if value >= -127: fmt, pytype = "<cccb", 'c'
+                        elif value >= -32767: fmt, pytype = "<ccch", 's'
+                        elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                        else: fmt, ctype = "<ccci", 'i'[0]
                     else:
-                        if x <= 255: fmt = "<cccB"
-                        elif x <= 65535: fmt = "<cccH"
-                        elif x > 4294967295: raise ValueError( "integer %s out of range of BAM/SAM specification" % value )
-                        else: fmt = "<cccI"
+                        if value <= 255: fmt, pytype = "<cccB", 'C'
+                        elif value <= 65535: fmt, pytype = "<cccH", 'S'
+                        elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                        else: fmt, pytype = "<cccI", 'I'
                 else:
+                    # Note: hex strings (H) are not supported yet
                     if len(value) == 1:
-                        fmt = "<ccc%ic" % (len(value)+1)
+                        fmt, pytype = "<cccc", 'A'
                     else:
-                        fmt = "<cccc" 
+                        fmt, pytype = "<ccc%is" % (len(value)+1), 'Z'
 
-                struct.pack_into( fmt, 
+                size = struct.calcsize(fmt)
+                if offset + size > max_size:
+                    raise NotImplementedError("tags field too large")
+
+                struct.pack_into( fmt,
                                   buffer,
                                   offset,
                                   pytag[0],
                                   pytag[1],
-                                  pytype[0],
+                                  pytype,
                                   value )
-                offset += struct.calcsize(fmt)
+                offset += size
             
-
-            # for integer types based no the size of the integer.
-            code_map = {
-                'S' : ('h', 2),
-                's' : ('h', 2),
-                'I' : ('i', 4),
-                'i' : ('i', 4),
-                'F' : ('f', 4),
-                'f' : ('f', 4),
-                'C' : ('c', 1),
-                'c' : ('c', 1),
-                'D' : ('d', 8),
-                'd' : ('d', 8),
-                'Z' : ('s', 0),
-                'z' : ('s', 0),
-                'H' : ('s', 0),
-                'h' : ('s', 0) }
-
-            # containers for the conversion
-            guessed_size = 0       
-     
-            # get total size of data
-            for pytag, pytype, value in tags:
-                # add 3 bytes for tag and type
-                guessed_size += 3
-                # get size of value
-                pytype = pytype.upper()
-                size = code_map[pytype][1]
-                if size == 0: size = len(value) + 1
-                guessed_size += size
-                
             # delete the old data and allocate new
             pysam_bam_update( src, 
                               src.l_aux,
-                              guessed_size,
+                              offset,
                               pysam_bam1_aux( src ) )
             
-            src.l_aux = guessed_size
+            src.l_aux = offset
 
-            if guessed_size == 0: return
+            if offset == 0: return
+
             # get location of new data
             s = pysam_bam1_aux( src )            
             
-            # save data
-            # see if PyBuffer can be used for this
-            import ctypes
-            buffer = ctypes.create_string_buffer(guessed_size)
-
-            offset = 0
-            for pytag, pytype, value in tags:
-                # samtools is little-endian
-                if pytype in ("ZzHh"): 
-                    # add +1 for \0
-                    fmt = "<ccc%i%s" % (len(value)+1,code_map[pytype][0])
-                else:
-                    fmt = "<ccc%s" % code_map[pytype][0]
-
-                struct.pack_into( fmt, 
-                                  buffer,
-                                  offset,
-                                  pytag[0],
-                                  pytag[1],
-                                  pytype[0],
-                                  value )
-                offset += struct.calcsize(fmt)
-
-            # copy over the data
-            assert offset == guessed_size, "offset (%i) != size (%i)" % (offset, guessed_size)
-
             # check if there is direct path from buffer.raw to tmp
             cdef char * temp 
             temp = buffer.raw
-            memcpy( s, temp, guessed_size )            
+            memcpy( s, temp, offset )            
 
     property flag: 
         """properties flag"""

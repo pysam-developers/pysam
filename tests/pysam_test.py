@@ -385,8 +385,8 @@ class TestAlignedReadFromBam(unittest.TestCase):
         self.assertEqual( self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (self.reads[1].is_proper_pair, True) )
 
     def testTags( self ):
-        self.assertEqual( self.reads[0].tags, [('NM', 'C', 1), ('RG', 'Z', 'L1')] )
-        self.assertEqual( self.reads[1].tags, [('MF', 'C', 18), ('RG', 'Z', 'L2')] )
+        self.assertEqual( self.reads[0].tags, [('NM', 1), ('RG', 'L1')] )
+        self.assertEqual( self.reads[1].tags, [('MF', 18), ('RG', 'L2')] )
 
     def tearDown(self):
         self.samfile.close()
@@ -521,11 +521,12 @@ class TestExceptions(unittest.TestCase):
     def setUp(self):
         self.samfile=pysam.Samfile( "ex1.bam","rb" )
 
-    def testBadFile(self):
+    def testMissingFile(self):
+
         self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.bam", "rb" )
-        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.sam","r" )
+        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.sam", "r" )
         self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.bam", "r" )
-        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.sam","rb" )
+        self.assertRaises( IOError, pysam.Samfile, "exdoesntexist.sam", "rb" )
 
     def testBadContig(self):
         self.assertRaises( ValueError, self.samfile.fetch, "chr88" )
@@ -613,9 +614,18 @@ class TestAlignedRead(unittest.TestCase):
                               (x, getattr(read1, x), getattr(read2,x)))
     
     def testEmpty( self ):
-
         a = pysam.AlignedRead()
-        print str(a)
+        self.assertEqual( a.qname, None )
+        self.assertEqual( a.seq, None )
+        self.assertEqual( a.qual, None )
+        self.assertEqual( a.flag, 0 )
+        self.assertEqual( a.rname, 0 )
+        self.assertEqual( a.mapq, 0 )
+        self.assertEqual( a.cigar, None )
+        self.assertEqual( a.tags, None )
+        self.assertEqual( a.mrnm, 0 )
+        self.assertEqual( a.mpos, 0 )
+        self.assertEqual( a.isize, 0 )
 
     def buildRead( self ):
         '''build an example read.'''
@@ -692,6 +702,13 @@ class TestDeNovoConstruction(unittest.TestCase):
     read_28701_28881_323b	147	chr2	88	30	35M	=	500	412	ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA	<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<	MF:i:18	RG:Z:L2
     '''
 
+    header = { 'HD': {'VN': '1.0'},
+               'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                      {'LN': 1584, 'SN': 'chr2'}], }
+
+    bamfile = "ex6.bam"
+    samfile = "ex6.sam"
+
     def checkFieldEqual( self, read1, read2, exclude = []):
         '''check if two reads are equal by comparing each field.'''
 
@@ -744,52 +761,49 @@ class TestDeNovoConstruction(unittest.TestCase):
 
         self.reads = (a,b)
 
-    def testSAM( self ):
+    def testSAMWholeFile( self ):
         
         tmpfilename = "tmp_%i.sam" % id(self)
 
-        outfile = pysam.Samfile( tmpfilename, "wh",
-                                 header = {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
-                                                  {'LN': 1584, 'SN': 'chr2'}], 
-                                           'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
-                                                  {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
-                                           'CO': ['this is a comment', 'this is another comment'], 
-                                           'HD': {'VN': '1.0'}})
+        outfile = pysam.Samfile( tmpfilename, "wh", header = self.header )
 
         for x in self.reads: outfile.write( x )
         outfile.close()
         
-        self.assertTrue( checkBinaryEqual( tmpfilename, "ex3.sam" ),
-                         "mismatch when construction SAM file, see %s versus %s" % (tmpfilename, "ex3.sam"))
+        self.assertTrue( checkBinaryEqual( tmpfilename, self.samfile ),
+                         "mismatch when construction SAM file, see %s %s" % (tmpfilename, self.samfile))
         
         os.unlink( tmpfilename )
 
     def testBAMPerRead( self ):
         '''check if individual reads are binary equal.'''
-        infile = pysam.Samfile( "ex6.bam", "rb")
+        infile = pysam.Samfile( self.bamfile, "rb")
+
+        others = list(infile)
+        for denovo, other in zip( others, self.reads):
+            self.checkFieldEqual( other, denovo )
+            self.assertEqual( other, denovo)
+
+    def testSAMPerRead( self ):
+        '''check if individual reads are binary equal.'''
+        infile = pysam.Samfile( self.samfile, "r")
 
         others = list(infile)
         for denovo, other in zip( others, self.reads):
             self.checkFieldEqual( other, denovo )
             self.assertEqual( other, denovo)
             
-    def testBAM( self ):
+    def testBAMWholeFile( self ):
         
         tmpfilename = "tmp_%i.bam" % id(self)
 
-        outfile = pysam.Samfile( tmpfilename, "wb",
-                                 header = {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
-                                                  {'LN': 1584, 'SN': 'chr2'}], })
-                                           # 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
-                                           #        {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
-                                           # 'CO': ['this is a comment', 'this is another comment'], 
-                                           # 'HD': {'VN': '1.0'}})
+        outfile = pysam.Samfile( tmpfilename, "wb", header = self.header )
 
         for x in self.reads: outfile.write( x )
         outfile.close()
         
-        self.assertTrue( checkBinaryEqual( tmpfilename, "ex6.bam" ),
-                         "mismatch when construction BAM file, see %s versus %s" % (tmpfilename, "ex6.bam"))
+        self.assertTrue( checkBinaryEqual( tmpfilename, self.bamfile ),
+                         "mismatch when construction BAM file, see %s %s" % (tmpfilename, self.bamfile))
         
         os.unlink( tmpfilename )
 

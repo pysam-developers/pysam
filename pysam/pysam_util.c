@@ -292,7 +292,8 @@ int pysam_dispatch(int argc, char *argv[] )
 // deletes all variable length data
 void pysam_bam_destroy1( bam1_t * b )
 {
-  free(b->data);
+  if (b == NULL) return;
+  if (b->data != NULL) free(b->data);
   free(b);
 }
 
