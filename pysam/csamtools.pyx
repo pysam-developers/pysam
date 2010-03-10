@@ -1213,6 +1213,11 @@ cdef class AlignedRead:
 
                 s += 2
 
+                # convert type - is there a better way?
+                ctag[0] = s[0]
+                ctag[1] = 0
+                pytype = ctag
+
                 # get type and value 
                 # how do I do char literal comparison in cython?
                 # the code below works (i.e, is C comparison)
@@ -1243,6 +1248,7 @@ cdef class AlignedRead:
                 # skip over type
                 s += 1
 
+                # ignore pytype
                 result.append( (pytag, value) )
 
             free( ctag )
@@ -1256,8 +1262,44 @@ cdef class AlignedRead:
             cdef int guessed_size, control_size
             src = self._delegate
 
+            int max_size = 1000
+
             # map samtools code to python.struct code and byte size
-            # note that samtools does some implicit type conversion 
+            import ctypes
+            buffer = ctypes.create_string_buffer(max_size)
+
+            offset = 0
+            for pytag, value in tags:
+                t = type(value)
+                if t == types.FloatType:
+                    fmt = "<cccf"
+                elif t == types.IntType:
+                    if value < 0:
+                        if x >= -127: fmt = "<cccb"
+                        elif x >= -32767: fmt = "<ccch"
+                        elif x < -2147483648: raise ValueError( "integer %s out of range of BAM/SAM specification" % value )
+                        else: fmt = "<ccci"
+                    else:
+                        if x <= 255: fmt = "<cccB"
+                        elif x <= 65535: fmt = "<cccH"
+                        elif x > 4294967295: raise ValueError( "integer %s out of range of BAM/SAM specification" % value )
+                        else: fmt = "<cccI"
+                else:
+                    if len(value) == 1:
+                        fmt = "<ccc%ic" % (len(value)+1)
+                    else:
+                        fmt = "<cccc" 
+
+                struct.pack_into( fmt, 
+                                  buffer,
+                                  offset,
+                                  pytag[0],
+                                  pytag[1],
+                                  pytype[0],
+                                  value )
+                offset += struct.calcsize(fmt)
+            
+
             # for integer types based no the size of the integer.
             code_map = {
                 'S' : ('h', 2),

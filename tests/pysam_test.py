@@ -724,8 +724,8 @@ class TestDeNovoConstruction(unittest.TestCase):
         a.mpos=199
         a.isize=167
 	a.qual="<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"
-	a.tags = ( ("NM", "i", 1),
-                   ("RG", "Z", "L1") )
+	a.tags = ( ("NM", 1),
+                   ("RG", "L1") )
 
         b = pysam.AlignedRead()
         b.qname = "read_28701_28881_323b"
@@ -739,8 +739,8 @@ class TestDeNovoConstruction(unittest.TestCase):
         b.mpos=499
         b.isize=412
 	b.qual="<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"
-	b.tags = ( ("MF", "i", 18),
-                   ("RG", "Z", "L2") )
+	b.tags = ( ("MF", 18),
+                   ("RG", "L2") )
 
         self.reads = (a,b)
 
