@@ -711,8 +711,6 @@ class TestAlignedRead(unittest.TestCase):
 
         return a
 
-
-
 class TestDeNovoConstruction(unittest.TestCase):
     '''check BAM/SAM file construction using ex3.sam
     
