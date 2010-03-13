@@ -298,7 +298,7 @@ void pysam_bam_destroy1( bam1_t * b )
 }
 
 // taken from samtools/bam_import.c
-static inline uint8_t *alloc_data(bam1_t *b, int size)
+static inline uint8_t *alloc_data(bam1_t *b, size_t size)
 {
   if (b->m_data < size)
     {
@@ -314,8 +314,8 @@ static inline uint8_t *alloc_data(bam1_t *b, int size)
 // Data within the bam1_t entry is moved so that it is
 // consistent with the data field lengths.
 bam1_t * pysam_bam_update( bam1_t * b,
-			   const uint8_t nbytes_old,
-			   const uint8_t nbytes_new, 
+			   const size_t nbytes_old,
+			   const size_t nbytes_new, 
 			   uint8_t * pos )
 {
   int d = nbytes_new-nbytes_old;
@@ -326,7 +326,8 @@ bam1_t * pysam_bam_update( bam1_t * b,
   int new_size = d + b->data_len;
   size_t offset = pos - b->data;
 
-  // printf("d=%i, old=%i, new=%i, old_size=%i, new_size=%i\n", d, nbytes_old, nbytes_new, b->data_len, new_size);
+  //printf("d=%i, old=%i, new=%i, old_size=%i, new_size=%i\n",
+  // d, nbytes_old, nbytes_new, b->data_len, new_size);
   
   // increase memory if required
   if (d > 0)

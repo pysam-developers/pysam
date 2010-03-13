@@ -693,6 +693,26 @@ class TestAlignedRead(unittest.TestCase):
             self.assertEqual( getattr(b, x), False )
             self.checkFieldEqual( a, b )
 
+    def testLargeRead( self ):
+        '''build an example read.'''
+        
+        a = pysam.AlignedRead()
+        a.qname = "read_12345"
+        a.seq="ACGT" * 200
+        a.flag = 0
+        a.rname = 0
+        a.pos = 33
+        a.mapq = 20
+        a.cigar = ( (0,10), (2,1), (0,25) )
+        a.mrnm = 0
+        a.mpos=200
+        a.isize=167
+	a.qual="1234" * 200
+
+        return a
+
+
+
 class TestDeNovoConstruction(unittest.TestCase):
     '''check BAM/SAM file construction using ex3.sam
     

@@ -1120,37 +1120,32 @@ cdef class AlignedRead:
             cdef int l, k, nbytes_new, nbytes_old
 
             l = len(seq)
-
+            
             # as the sequence is stored in half-bytes, the total length (sequence
             # plus quality scores) is (l+1)/2 + l
             nbytes_new = (l+1)/2 + l
             nbytes_old = (src.core.l_qseq+1)/2 + src.core.l_qseq
-
             # acquire pointer to location in memory
             p = pysam_bam1_seq( src )
-
             src.core.l_qseq = l
 
             pysam_bam_update( src, 
                               nbytes_old,
                               nbytes_new,
                               p)
-
             # re-acquire pointer to location in memory
             # as it might have moved
             p = pysam_bam1_seq( src )
-
             for k from 0 <= k < nbytes_new: p[k] = 0
-
             # convert to C string
             s = seq
             for k from 0 <= k < l:
                 p[k/2] |= pysam_translate_sequence(s[k]) << 4 * (1 - k % 2)
-                
+
             # erase qualities
             p = pysam_bam1_qual( src )
             p[0] = 0xff
-            
+
     property qual:
         """the base quality (None if not present)"""
         def __get__(self):
@@ -1188,6 +1183,8 @@ cdef class AlignedRead:
             # convert to C string
             q = qual
             l = len(qual)
+            if src.core.l_qseq != l:
+                raise ValueError("quality and sequence mismatch: %i != %i" % (l, src.core.l_qseq))
             assert src.core.l_qseq == l
             for k from 0 <= k < l:
                 p[k] = <uint8_t>q[k] - 33

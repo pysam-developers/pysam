@@ -47,8 +47,8 @@ void pysam_bam_destroy1( bam1_t * b );
 // Data within the bam1_t entry is moved so that it is
 // consistent with the data field lengths.
 bam1_t * pysam_bam_update( bam1_t * b,
-			   const uint8_t nbytes_old,
-			   const uint8_t nbytes_new,
+			   const size_t nbytes_old,
+			   const size_t nbytes_new,
 			   uint8_t * pos );
 
 // translate a nucleotide character to binary code
