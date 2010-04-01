@@ -140,15 +140,6 @@ cdef extern from "bam.h":
 
   bam_plbuf_t *bam_plbuf_init(bam_pileup_f func, void *data)
 
-  ctypedef struct bam_fetch_iterator_t:
-      pass
-  
-  bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, bam_index_t *idx, int tid, int beg, int end)
-  
-  bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
-  
-  void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
-
   int bam_fetch(bamFile fp, bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
 
   int bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf)
@@ -220,10 +211,6 @@ cdef extern from "faidx.h":
 
 cdef extern from "pysam_util.h":
 
-    ctypedef struct pair64_t:
-        uint64_t u
-        uint64_t v
-
     int pysam_bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf, int cont)
 
     int pysam_get_pos( bam_plbuf_t *buf)
@@ -252,3 +239,13 @@ cdef extern from "pysam_util.h":
     uint8_t * pysam_bam1_seq( bam1_t * b)
     uint8_t * pysam_bam1_qual( bam1_t * b)
     uint8_t * pysam_bam1_aux( bam1_t * b)
+
+    # iterator implemenation
+    ctypedef struct bam_fetch_iterator_t:
+        pass
+  
+    bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, bam_index_t *idx, int tid, int beg, int end)
+  
+    bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
+  
+    void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)

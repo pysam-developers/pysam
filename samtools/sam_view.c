@@ -2,26 +2,45 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <math.h>
+#include "sam_header.h"
 #include "sam.h"
 #include "faidx.h"
 
 static int g_min_mapQ = 0, g_flag_on = 0, g_flag_off = 0;
 static char *g_library, *g_rg;
+static int g_sol2sanger_tbl[128];
+
+static void sol2sanger(bam1_t *b)
+{
+	int l;
+	uint8_t *qual = bam1_qual(b);
+	if (g_sol2sanger_tbl[30] == 0) {
+		for (l = 0; l != 128; ++l) {
+			g_sol2sanger_tbl[l] = (int)(10.0 * log(1.0 + pow(10.0, (l - 64 + 33) / 10.0)) / log(10.0) + .499);
+			if (g_sol2sanger_tbl[l] >= 93) g_sol2sanger_tbl[l] = 93;
+		}
+	}
+	for (l = 0; l < b->core.l_qseq; ++l) {
+		int q = qual[l];
+		if (q > 127) q = 127;
+		qual[l] = g_sol2sanger_tbl[q];
+	}
+}
 
 static inline int __g_skip_aln(const bam_header_t *h, const bam1_t *b)
 {
 	if (b->core.qual < g_min_mapQ || ((b->core.flag & g_flag_on) != g_flag_on) || (b->core.flag & g_flag_off))
 		return 1;
-	if (g_library || g_rg) {
+	if (g_rg) {
 		uint8_t *s = bam_aux_get(b, "RG");
-		if (s) {
-			if (g_rg && strcmp(g_rg, (char*)(s + 1)) == 0) return 0;
-			if (g_library) {
-				const char *p = bam_strmap_get(h->rg2lib, (char*)(s + 1));
-				return (p && strcmp(p, g_library) == 0)? 0 : 1;
-			} return 1;
-		} else return 1;
-	} else return 0;
+		if (s && strcmp(g_rg, (char*)(s + 1)) == 0) return 0;
+	}
+	if (g_library) {
+		const char *p = bam_get_library((bam_header_t*)h, b);
+		return (p && strcmp(p, g_library) == 0)? 0 : 1;
+	}
+	return 0;
 }
 
 // callback function for bam_fetch()
@@ -36,15 +55,16 @@ static int usage(int is_long_help);
 
 int main_samview(int argc, char *argv[])
 {
-	int c, is_header = 0, is_header_only = 0, is_bamin = 1, ret = 0, is_uncompressed = 0, is_bamout = 0;
+	int c, is_header = 0, is_header_only = 0, is_bamin = 1, ret = 0, is_uncompressed = 0, is_bamout = 0, slx2sngr = 0;
 	int of_type = BAM_OFDEC, is_long_help = 0;
 	samfile_t *in = 0, *out = 0;
 	char in_mode[5], out_mode[5], *fn_out = 0, *fn_list = 0, *fn_ref = 0;
 
 	/* parse command-line options */
 	strcpy(in_mode, "r"); strcpy(out_mode, "w");
-	while ((c = getopt(argc, argv, "Sbt:hHo:q:f:F:ul:r:xX?T:")) >= 0) {
+	while ((c = getopt(argc, argv, "Sbt:hHo:q:f:F:ul:r:xX?T:C")) >= 0) {
 		switch (c) {
+		case 'C': slx2sngr = 1; break;
 		case 'S': is_bamin = 0; break;
 		case 'b': is_bamout = 1; break;
 		case 't': fn_list = strdup(optarg); is_bamin = 0; break;
@@ -96,9 +116,12 @@ int main_samview(int argc, char *argv[])
 	if (argc == optind + 1) { // convert/print the entire file
 		bam1_t *b = bam_init1();
 		int r;
-		while ((r = samread(in, b)) >= 0) // read one alignment from `in'
-			if (!__g_skip_aln(in->header, b))
+		while ((r = samread(in, b)) >= 0) { // read one alignment from `in'
+			if (!__g_skip_aln(in->header, b)) {
+				if (slx2sngr) sol2sanger(b);
 				samwrite(out, b); // write the alignment to `out'
+			}
+		}
 		if (r < -1) fprintf(stderr, "[main_samview] truncated file.\n");
 		bam_destroy1(b);
 	} else { // retrieve alignments in specified regions

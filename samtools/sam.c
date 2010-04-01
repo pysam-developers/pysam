@@ -12,7 +12,7 @@ bam_header_t *bam_header_dup(const bam_header_t *h0)
 	int i;
 	h = bam_header_init();
 	*h = *h0;
-	h->hash = 0;
+	h->hash = h->dict = h->rg2lib = 0;
 	h->text = (char*)calloc(h->l_text + 1, 1);
 	memcpy(h->text, h0->text, h->l_text);
 	h->target_len = (uint32_t*)calloc(h->n_targets, 4);
@@ -21,7 +21,6 @@ bam_header_t *bam_header_dup(const bam_header_t *h0)
 		h->target_len[i] = h0->target_len[i];
 		h->target_name[i] = strdup(h0->target_name[i]);
 	}
-	if (h0->rg2lib) h->rg2lib = bam_strmap_dup(h0->rg2lib);
 	return h;
 }
 static void append_header_text(bam_header_t *header, char* text, int len)
@@ -63,7 +62,6 @@ samfile_t *samopen(const char *fn, const char *mode, const void *aux)
 					fprintf(stderr, "[samopen] no @SQ lines in the header.\n");
 			} else fprintf(stderr, "[samopen] SAM header is present: %d sequences.\n", fp->header->n_targets);
 		}
-		sam_header_parse_rg(fp->header);
 	} else if (mode[0] == 'w') { // write
 		fp->header = bam_header_dup((const bam_header_t*)aux);
 		if (mode[1] == 'b') { // binary

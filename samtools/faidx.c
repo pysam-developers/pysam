@@ -28,6 +28,9 @@ extern int fseeko(FILE *stream, off_t offset, int whence);
 #define razf_seek(fp, offset, whence) fseeko(fp, offset, whence)
 #define razf_tell(fp) ftello(fp)
 #endif
+#ifdef _USE_KNETFILE
+#include "knetfile.h"
+#endif
 
 struct __faidx_t {
 	RAZF *rz;
@@ -194,7 +197,7 @@ int fai_build(const char *fn)
 	sprintf(str, "%s.fai", fn);
 	rz = razf_open(fn, "r");
 	if (rz == 0) {
-		fprintf(stderr, "[fai_build] fail to open the FASTA file.\n");
+		fprintf(stderr, "[fai_build] fail to open the FASTA file %s\n",str);
 		free(str);
 		return -1;
 	}
@@ -202,7 +205,7 @@ int fai_build(const char *fn)
 	razf_close(rz);
 	fp = fopen(str, "wb");
 	if (fp == 0) {
-		fprintf(stderr, "[fai_build] fail to write FASTA index.\n");
+		fprintf(stderr, "[fai_build] fail to write FASTA index %s\n",str);
 		fai_destroy(fai); free(str);
 		return -1;
 	}
@@ -213,6 +216,47 @@ int fai_build(const char *fn)
 	return 0;
 }
 
+#ifdef _USE_KNETFILE
+FILE *download_and_open(const char *fn)
+{
+    const int buf_size = 1 * 1024 * 1024;
+    uint8_t *buf;
+    FILE *fp;
+    knetFile *fp_remote;
+    const char *url = fn;
+    const char *p;
+    int l = strlen(fn);
+    for (p = fn + l - 1; p >= fn; --p)
+        if (*p == '/') break;
+    fn = p + 1;
+
+    // First try to open a local copy
+    fp = fopen(fn, "r");
+    if (fp)
+        return fp;
+
+    // If failed, download from remote and open
+    fp_remote = knet_open(url, "rb");
+    if (fp_remote == 0) {
+        fprintf(stderr, "[download_from_remote] fail to open remote file %s\n",url);
+        return NULL;
+    }
+    if ((fp = fopen(fn, "wb")) == 0) {
+        fprintf(stderr, "[download_from_remote] fail to create file in the working directory %s\n",fn);
+        knet_close(fp_remote);
+        return NULL;
+    }
+    buf = (uint8_t*)calloc(buf_size, 1);
+    while ((l = knet_read(fp_remote, buf, buf_size)) != 0)
+        fwrite(buf, 1, l, fp);
+    free(buf);
+    fclose(fp);
+    knet_close(fp_remote);
+
+    return fopen(fn, "r");
+}
+#endif
+
 faidx_t *fai_load(const char *fn)
 {
 	char *str;
@@ -220,19 +264,35 @@ faidx_t *fai_load(const char *fn)
 	faidx_t *fai;
 	str = (char*)calloc(strlen(fn) + 5, 1);
 	sprintf(str, "%s.fai", fn);
-	fp = fopen(str, "rb");
+
+#ifdef _USE_KNETFILE
+    if (strstr(fn, "ftp://") == fn || strstr(fn, "http://") == fn)
+    {
+        fp = download_and_open(str);
+        if ( !fp )
+        {
+            fprintf(stderr, "[fai_load] failed to open remote FASTA index %s\n", str);
+            free(str);
+            return 0;
+        }
+    }
+    else
+#endif
+        fp = fopen(str, "rb");
 	if (fp == 0) {
 		fprintf(stderr, "[fai_load] build FASTA index.\n");
 		fai_build(fn);
-		fp = fopen(str, "r");
+		fp = fopen(str, "rb");
 		if (fp == 0) {
 			fprintf(stderr, "[fai_load] fail to open FASTA index.\n");
 			free(str);
 			return 0;
 		}
 	}
+
 	fai = fai_read(fp);
 	fclose(fp);
+
 	fai->rz = razf_open(fn, "rb");
 	free(str);
 	if (fai->rz == 0) {
@@ -287,7 +347,7 @@ char *fai_fetch(const faidx_t *fai, const char *str, int *len)
 	l = 0;
 	s = (char*)malloc(end - beg + 2);
 	razf_seek(fai->rz, val.offset + beg / val.line_blen * val.line_len + beg % val.line_blen, SEEK_SET);
-	while (razf_read(fai->rz, &c, 1) == 1 && l < end - beg)
+	while (razf_read(fai->rz, &c, 1) == 1 && l < end - beg && !fai->rz->z_err)
 		if (isgraph(c)) s[l++] = c;
 	s[l] = '\0';
 	*len = l;
@@ -321,6 +381,40 @@ int faidx_main(int argc, char *argv[])
 		}
 	}
 	return 0;
+}
+
+int faidx_fetch_nseq(const faidx_t *fai) 
+{
+	return fai->n;
+}
+
+char *faidx_fetch_seq(const faidx_t *fai, char *c_name, int p_beg_i, int p_end_i, int *len)
+{
+	int l;
+	char c;
+    khiter_t iter;
+    faidx1_t val;
+	char *seq=NULL;
+
+    // Adjust position
+    iter = kh_get(s, fai->hash, c_name);
+    if(iter == kh_end(fai->hash)) return 0;
+    val = kh_value(fai->hash, iter);
+	if(p_end_i < p_beg_i) p_beg_i = p_end_i;
+    if(p_beg_i < 0) p_beg_i = 0;
+    else if(val.len <= p_beg_i) p_beg_i = val.len - 1;
+    if(p_end_i < 0) p_end_i = 0;
+    else if(val.len <= p_end_i) p_end_i = val.len - 1;
+
+    // Now retrieve the sequence 
+	l = 0;
+	seq = (char*)malloc(p_end_i - p_beg_i + 2);
+	razf_seek(fai->rz, val.offset + p_beg_i / val.line_blen * val.line_len + p_beg_i % val.line_blen, SEEK_SET);
+	while (razf_read(fai->rz, &c, 1) == 1 && l < p_end_i - p_beg_i + 1)
+		if (isgraph(c)) seq[l++] = c;
+	seq[l] = '\0';
+	*len = l;
+	return seq;
 }
 
 #ifdef FAIDX_MAIN

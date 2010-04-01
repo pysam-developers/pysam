@@ -121,9 +121,11 @@ static int glt3_func(uint32_t tid, uint32_t pos, int n, const bam_pileup1_t *pu,
 	g3->offset = pos - d->last_pos;
 	d->last_pos = pos;
 	glf3_write1(d->fp_glf, g3);
-	if (proposed_indels)
-		r = bam_maqindel(n, pos, d->ido, pu, d->ref, proposed_indels[0], proposed_indels+1);
-	else r = bam_maqindel(n, pos, d->ido, pu, d->ref, 0, 0);
+	if (pos < d->len) {
+		if (proposed_indels)
+			r = bam_maqindel(n, pos, d->ido, pu, d->ref, proposed_indels[0], proposed_indels+1);
+		else r = bam_maqindel(n, pos, d->ido, pu, d->ref, 0, 0);
+	}
 	if (r) { // then write indel line
 		int het = 3 * n, min;
 		min = het;
@@ -182,7 +184,7 @@ static int pileup_func(uint32_t tid, uint32_t pos, int n, const bam_pileup1_t *p
 	// call the consensus and indel
 	if (d->format & BAM_PLF_CNS) // call consensus
 		cns = bam_maqcns_call(n, pu, d->c);
-	if ((d->format & (BAM_PLF_CNS|BAM_PLF_INDEL_ONLY)) && d->ref) { // call indels
+	if ((d->format & (BAM_PLF_CNS|BAM_PLF_INDEL_ONLY)) && d->ref && pos < d->len) { // call indels
 		if (proposed_indels) // the first element gives the size of the array
 			r = bam_maqindel(n, pos, d->ido, pu, d->ref, proposed_indels[0], proposed_indels+1);
 		else r = bam_maqindel(n, pos, d->ido, pu, d->ref, 0, 0);
@@ -299,8 +301,9 @@ int bam_pileup(int argc, char *argv[])
 	d->tid = -1; d->mask = BAM_DEF_MASK;
 	d->c = bam_maqcns_init();
 	d->ido = bam_maqindel_opt_init();
-	while ((c = getopt(argc, argv, "st:f:cT:N:r:l:im:gI:G:vM:S2")) >= 0) {
+	while ((c = getopt(argc, argv, "st:f:cT:N:r:l:im:gI:G:vM:S2a")) >= 0) {
 		switch (c) {
+		case 'a': d->c->is_soap = 1; break;
 		case 's': d->format |= BAM_PLF_SIMPLE; break;
 		case 't': fn_list = strdup(optarg); break;
 		case 'l': fn_pos = strdup(optarg); break;
@@ -327,6 +330,7 @@ int bam_pileup(int argc, char *argv[])
 		fprintf(stderr, "Usage:  samtools pileup [options] <in.bam>|<in.sam>\n\n");
 		fprintf(stderr, "Option: -s        simple (yet incomplete) pileup format\n");
 		fprintf(stderr, "        -S        the input is in SAM\n");
+		fprintf(stderr, "        -a        use the SOAPsnp model for SNP calling\n");
 		fprintf(stderr, "        -2        output the 2nd best call and quality\n");
 		fprintf(stderr, "        -i        only show lines/consensus with indels\n");
 		fprintf(stderr, "        -m INT    filtering reads with bits in INT [%d]\n", d->mask);

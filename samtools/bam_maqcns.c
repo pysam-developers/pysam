@@ -1,10 +1,13 @@
 #include <math.h>
+#include <assert.h>
 #include "bam.h"
 #include "bam_maqcns.h"
 #include "ksort.h"
+#include "kaln.h"
 KSORT_INIT_GENERIC(uint32_t)
 
-#define MAX_WINDOW 33
+#define INDEL_WINDOW_SIZE 50
+#define INDEL_EXT_DEP 0.9
 
 typedef struct __bmc_aux_t {
 	int max;
@@ -22,14 +25,13 @@ char bam_nt16_nt4_table[] = { 4, 0, 1, 4, 2, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4 };
 /*
   P(<b1,b2>) = \theta \sum_{i=1}^{N-1} 1/i
   P(D|<b1,b2>) = \sum_{k=1}^{N-1} p_k 1/2 [(k/N)^n_2(1-k/N)^n_1 + (k/N)^n1(1-k/N)^n_2]
-  p_k = i/k / \sum_{i=1}^{N-1} 1/i
+  p_k = 1/k / \sum_{i=1}^{N-1} 1/i
  */
 static void cal_het(bam_maqcns_t *aa)
 {
 	int k, n1, n2;
 	double sum_harmo; // harmonic sum
 	double poly_rate;
-	double p1 = 0.0, p3 = 0.0; // just for testing
 
 	free(aa->lhet);
 	aa->lhet = (double*)calloc(256 * 256, sizeof(double));
@@ -39,7 +41,7 @@ static void cal_het(bam_maqcns_t *aa)
 	for (n1 = 0; n1 < 256; ++n1) {
 		for (n2 = 0; n2 < 256; ++n2) {
 			long double sum = 0.0;
-			double lC = lgamma(n1+n2+1) - lgamma(n1+1) - lgamma(n2+1); // \binom{n1+n2}{n1}
+			double lC = aa->is_soap? 0 : lgamma(n1+n2+1) - lgamma(n1+1) - lgamma(n2+1); // \binom{n1+n2}{n1}
 			for (k = 1; k <= aa->n_hap - 1; ++k) {
 				double pk = 1.0 / k / sum_harmo;
 				double log1 = log((double)k/aa->n_hap);
@@ -47,8 +49,6 @@ static void cal_het(bam_maqcns_t *aa)
 				sum += pk * 0.5 * (expl(log1*n2) * expl(log2*n1) + expl(log1*n1) * expl(log2*n2));
 			}
 			aa->lhet[n1<<8|n2] = lC + logl(sum);
-			if (n1 == 17 && n2 == 3) p3 = lC + logl(expl(logl(0.5) * 20));
-			if (n1 == 19 && n2 == 1) p1 = lC + logl(expl(logl(0.5) * 20));
 		}
 	}
 	poly_rate = aa->het_rate * sum_harmo;
@@ -62,16 +62,18 @@ static void cal_coef(bam_maqcns_t *aa)
 	long double sum_a[257], b[256], q_c[256], tmp[256], fk2[256];
 	double *lC;
 
-	lC = (double*)calloc(256 * 256, sizeof(double));
 	// aa->lhet will be allocated and initialized 
 	free(aa->fk); free(aa->coef);
+	aa->coef = 0;
 	aa->fk = (double*)calloc(256, sizeof(double));
-	aa->coef = (double*)calloc(256*256*64, sizeof(double));
 	aa->fk[0] = fk2[0] = 1.0;
 	for (n = 1; n != 256; ++n) {
 		aa->fk[n] = pow(aa->theta, n) * (1.0 - aa->eta) + aa->eta;
 		fk2[n] = aa->fk[n>>1]; // this is an approximation, assuming reads equally likely come from both strands
 	}
+	if (aa->is_soap) return;
+	aa->coef = (double*)calloc(256*256*64, sizeof(double));
+	lC = (double*)calloc(256 * 256, sizeof(double));
 	for (n = 1; n != 256; ++n)
 		for (k = 1; k <= n; ++k)
 			lC[n<<8|k] = lgamma(n+1) - lgamma(k+1) - lgamma(n-k+1);
@@ -170,7 +172,7 @@ glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam
 			if (w[k] < 0xff) ++w[k];
 			++b->c[k&3];
 		}
-		tmp = (int)(info&0x7f) < bm->cap_mapQ? (int)(info&0x7f) : bm->cap_mapQ;
+		tmp = (int)(info&0xff) < bm->cap_mapQ? (int)(info&0xff) : bm->cap_mapQ;
 		rms += tmp * tmp;
 	}
 	b->rms_mapQ = (uint8_t)(sqrt((double)rms / n) + .499);
@@ -180,56 +182,73 @@ glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam
 		for (j = 0; j != 4; ++j) b->c[j] = (int)(254.0 * b->c[j] / c + 0.5);
 		for (j = c = 0; j != 4; ++j) c += b->c[j];
 	}
-	// generate likelihood
-	for (j = 0; j != 4; ++j) {
-		// homozygous
-		float tmp1, tmp3;
-		int tmp2, bar_e;
-		for (k = 0, tmp1 = tmp3 = 0.0, tmp2 = 0; k != 4; ++k) {
-			if (j == k) continue;
-			tmp1 += b->esum[k]; tmp2 += b->c[k]; tmp3 += b->fsum[k];
-		}
-		if (tmp2) {
-			bar_e = (int)(tmp1 / tmp3 + 0.5);
-			if (bar_e < 4) bar_e = 4; // should not happen
-			if (bar_e > 63) bar_e = 63;
-			p[j<<2|j] = tmp1 + bm->coef[bar_e<<16|c<<8|tmp2];
-		} else p[j<<2|j] = 0.0; // all the bases are j
-		// heterozygous
-		for (k = j + 1; k < 4; ++k) {
-			for (i = 0, tmp2 = 0, tmp1 = tmp3 = 0.0; i != 4; ++i) {
-				if (i == j || i == k) continue;
-				tmp1 += b->esum[i]; tmp2 += b->c[i]; tmp3 += b->fsum[i];
+	if (!bm->is_soap) {
+		// generate likelihood
+		for (j = 0; j != 4; ++j) {
+			// homozygous
+			float tmp1, tmp3;
+			int tmp2, bar_e;
+			for (k = 0, tmp1 = tmp3 = 0.0, tmp2 = 0; k != 4; ++k) {
+				if (j == k) continue;
+				tmp1 += b->esum[k]; tmp2 += b->c[k]; tmp3 += b->fsum[k];
 			}
 			if (tmp2) {
 				bar_e = (int)(tmp1 / tmp3 + 0.5);
-				if (bar_e < 4) bar_e = 4;
+				if (bar_e < 4) bar_e = 4; // should not happen
 				if (bar_e > 63) bar_e = 63;
-				p[j<<2|k] = p[k<<2|j] = -4.343 * bm->lhet[b->c[j]<<8|b->c[k]] + tmp1 + bm->coef[bar_e<<16|c<<8|tmp2];
-			} else p[j<<2|k] = p[k<<2|j] = -4.343 * bm->lhet[b->c[j]<<8|b->c[k]]; // all the bases are either j or k
+				p[j<<2|j] = tmp1 + bm->coef[bar_e<<16|c<<8|tmp2];
+			} else p[j<<2|j] = 0.0; // all the bases are j
+			// heterozygous
+			for (k = j + 1; k < 4; ++k) {
+				for (i = 0, tmp2 = 0, tmp1 = tmp3 = 0.0; i != 4; ++i) {
+					if (i == j || i == k) continue;
+					tmp1 += b->esum[i]; tmp2 += b->c[i]; tmp3 += b->fsum[i];
+				}
+				if (tmp2) {
+					bar_e = (int)(tmp1 / tmp3 + 0.5);
+					if (bar_e < 4) bar_e = 4;
+					if (bar_e > 63) bar_e = 63;
+					p[j<<2|k] = p[k<<2|j] = -4.343 * bm->lhet[b->c[j]<<8|b->c[k]] + tmp1 + bm->coef[bar_e<<16|c<<8|tmp2];
+				} else p[j<<2|k] = p[k<<2|j] = -4.343 * bm->lhet[b->c[j]<<8|b->c[k]]; // all the bases are either j or k
+			}
+			//
+			for (k = 0; k != 4; ++k)
+				if (p[j<<2|k] < 0.0) p[j<<2|k] = 0.0;
 		}
-		//
-		for (k = 0; k != 4; ++k)
-			if (p[j<<2|k] < 0.0) p[j<<2|k] = 0.0;
-	}
 
-	{ // fix p[k<<2|k]
-		float max1, max2, min1, min2;
-		int max_k, min_k;
-		max_k = min_k = -1;
-		max1 = max2 = -1.0; min1 = min2 = 1e30;
-		for (k = 0; k < 4; ++k) {
-			if (b->esum[k] > max1) {
-				max2 = max1; max1 = b->esum[k]; max_k = k;
-			} else if (b->esum[k] > max2) max2 = b->esum[k];
+		{ // fix p[k<<2|k]
+			float max1, max2, min1, min2;
+			int max_k, min_k;
+			max_k = min_k = -1;
+			max1 = max2 = -1.0; min1 = min2 = 1e30;
+			for (k = 0; k < 4; ++k) {
+				if (b->esum[k] > max1) {
+					max2 = max1; max1 = b->esum[k]; max_k = k;
+				} else if (b->esum[k] > max2) max2 = b->esum[k];
+			}
+			for (k = 0; k < 4; ++k) {
+				if (p[k<<2|k] < min1) {
+					min2 = min1; min1 = p[k<<2|k]; min_k = k;
+				} else if (p[k<<2|k] < min2) min2 = p[k<<2|k];
+			}
+			if (max1 > max2 && (min_k != max_k || min1 + 1.0 > min2))
+				p[max_k<<2|max_k] = min1 > 1.0? min1 - 1.0 : 0.0;
 		}
-		for (k = 0; k < 4; ++k) {
-			if (p[k<<2|k] < min1) {
-				min2 = min1; min1 = p[k<<2|k]; min_k = k;
-			} else if (p[k<<2|k] < min2) min2 = p[k<<2|k];
+	} else { // apply the SOAP model
+		// generate likelihood
+		for (j = 0; j != 4; ++j) {
+			float tmp;
+			// homozygous
+			for (k = 0, tmp = 0.0; k != 4; ++k)
+				if (j != k) tmp += b->esum[k];
+			p[j<<2|j] = tmp;
+			// heterozygous
+			for (k = j + 1; k < 4; ++k) {
+				for (i = 0, tmp = 0.0; i != 4; ++i)
+					if (i != j && i != k) tmp += b->esum[i];
+				p[j<<2|k] = p[k<<2|j] = -4.343 * bm->lhet[b->c[j]<<8|b->c[k]] + tmp;
+			}
 		}
-		if (max1 > max2 && (min_k != max_k || min1 + 1.0 > min2))
-			p[max_k<<2|max_k] = min1 > 1.0? min1 - 1.0 : 0.0;
 	}
 
 	// convert necessary information to glf1_t
@@ -304,12 +323,40 @@ void bam_maqindel_ret_destroy(bam_maqindel_ret_t *mir)
 	free(mir->s[0]); free(mir->s[1]); free(mir);
 }
 
+int bam_tpos2qpos(const bam1_core_t *c, const uint32_t *cigar, int32_t tpos, int is_left, int32_t *_tpos)
+{
+	int k, x = c->pos, y = 0, last_y = 0;
+	*_tpos = c->pos;
+	for (k = 0; k < c->n_cigar; ++k) {
+		int op = cigar[k] & BAM_CIGAR_MASK;
+		int l = cigar[k] >> BAM_CIGAR_SHIFT;
+		if (op == BAM_CMATCH) {
+			if (c->pos > tpos) return y;
+			if (x + l > tpos) {
+				*_tpos = tpos;
+				return y + (tpos - x);
+			}
+			x += l; y += l;
+			last_y = y;
+		} else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) y += l;
+		else if (op == BAM_CDEL || op == BAM_CREF_SKIP) {
+			if (x + l > tpos) {
+				*_tpos = is_left? x : x + l;
+				return y;
+			}
+			x += l;
+		}
+	}
+	*_tpos = x;
+	return last_y;
+}
+
 #define MINUS_CONST 0x10000000
 
 bam_maqindel_ret_t *bam_maqindel(int n, int pos, const bam_maqindel_opt_t *mi, const bam_pileup1_t *pl, const char *ref,
 								 int _n_types, int *_types)
 {
-	int i, j, n_types, *types, left, right;
+	int i, j, n_types, *types, left, right, max_rd_len = 0;
 	bam_maqindel_ret_t *ret = 0;
 	// if there is no proposed indel, check if there is an indel from the alignment
 	if (_n_types == 0) {
@@ -329,6 +376,8 @@ bam_maqindel_ret_t *bam_maqindel(int n, int pos, const bam_maqindel_opt_t *mi, c
 			const bam_pileup1_t *p = pl + i;
 			if (!(p->b->core.flag&BAM_FUNMAP) && p->indel != 0)
 				aux[m++] = MINUS_CONST + p->indel;
+			j = bam_cigar2qlen(&p->b->core, bam1_cigar(p->b));
+			if (j > max_rd_len) max_rd_len = j;
 		}
 		if (_n_types) // then also add this to aux[]
 			for (i = 0; i < _n_types; ++i)
@@ -347,23 +396,17 @@ bam_maqindel_ret_t *bam_maqindel(int n, int pos, const bam_maqindel_opt_t *mi, c
 		free(aux);
 	}
 	{ // calculate left and right boundary
-		bam_segreg_t seg;
-		left = 0x7fffffff; right = 0;
-		for (i = 0; i < n; ++i) {
-			const bam_pileup1_t *p = pl + i;
-			if (!(p->b->core.flag&BAM_FUNMAP)) {
-				bam_segreg(pos, &p->b->core, bam1_cigar(p->b), &seg);
-				if (seg.tbeg < left) left = seg.tbeg;
-				if (seg.tend > right) right = seg.tend;
-			}
-		}
-		if (pos - left > MAX_WINDOW) left = pos - MAX_WINDOW;
-		if (right - pos> MAX_WINDOW) right = pos + MAX_WINDOW;
+		left = pos > INDEL_WINDOW_SIZE? pos - INDEL_WINDOW_SIZE : 0;
+		right = pos + INDEL_WINDOW_SIZE;
+		if (types[0] < 0) right -= types[0];
+		// in case the alignments stand out the reference
+		for (i = pos; i < right; ++i)
+			if (ref[i] == 0) break;
+		right = i;
 	}
 	{ // the core part
-		char *ref2, *inscns = 0;
+		char *ref2, *rs, *inscns = 0;
 		int k, l, *score, *pscore, max_ins = types[n_types-1];
-		ref2 = (char*)calloc(right - left + types[n_types-1] + 2, 1);
 		if (max_ins > 0) { // get the consensus of inserted sequences
 			int *inscns_aux = (int*)calloc(4 * n_types * max_ins, sizeof(int));
 			// count occurrences
@@ -396,52 +439,68 @@ bam_maqindel_ret_t *bam_maqindel(int n, int pos, const bam_maqindel_opt_t *mi, c
 			free(inscns_aux);
 		}
 		// calculate score
+		ref2 = (char*)calloc(right - left + types[n_types-1] + 2, 1);
+		rs   = (char*)calloc(right - left + max_rd_len + types[n_types-1] + 2, 1);
 		score = (int*)calloc(n_types * n, sizeof(int));
 		pscore = (int*)calloc(n_types * n, sizeof(int));
 		for (i = 0; i < n_types; ++i) {
+			ka_param_t ap = ka_param_blast;
+			ap.band_width = 2 * types[n_types - 1] + 2;
 			// write ref2
 			for (k = 0, j = left; j <= pos; ++j)
-				ref2[k++] = bam_nt16_table[(int)ref[j]];
+				ref2[k++] = bam_nt16_nt4_table[bam_nt16_table[(int)ref[j]]];
 			if (types[i] <= 0) j += -types[i];
 			else for (l = 0; l < types[i]; ++l)
-					 ref2[k++] = inscns[i*max_ins + l];
+					 ref2[k++] = bam_nt16_nt4_table[(int)inscns[i*max_ins + l]];
 			for (; j < right && ref[j]; ++j)
-				ref2[k++] = bam_nt16_table[(int)ref[j]];
+				ref2[k++] = bam_nt16_nt4_table[bam_nt16_table[(int)ref[j]]];
+			if (j < right) right = j;
 			// calculate score for each read
 			for (j = 0; j < n; ++j) {
 				const bam_pileup1_t *p = pl + j;
-				uint32_t *cigar;
-				bam1_core_t *c = &p->b->core;
-				int s, ps;
-				bam_segreg_t seg;
-				if (c->flag&BAM_FUNMAP) continue;
-				cigar = bam1_cigar(p->b);
-				bam_segreg(pos, c, cigar, &seg);
-				for (ps = s = 0, l = seg.qbeg; c->pos + l < right && l < seg.qend; ++l) {
-					int cq = bam1_seqi(bam1_seq(p->b), l), ct;
-					// in the following line, "<" will happen if reads are too long
-					ct = c->pos + l - seg.qbeg >= left? ref2[c->pos + l - seg.qbeg - left] : 15;
-					if (cq < 15 && ct < 15) {
-						s += cq == ct? 1 : -mi->mm_penalty;
-						if (cq != ct) ps += bam1_qual(p->b)[l];
+				int qbeg, qend, tbeg, tend;
+				if (p->b->core.flag & BAM_FUNMAP) continue;
+				qbeg = bam_tpos2qpos(&p->b->core, bam1_cigar(p->b), left,  0, &tbeg);
+				qend = bam_tpos2qpos(&p->b->core, bam1_cigar(p->b), right, 1, &tend);
+				assert(tbeg >= left);
+				for (l = qbeg; l < qend; ++l)
+					rs[l - qbeg] = bam_nt16_nt4_table[bam1_seqi(bam1_seq(p->b), l)];
+				{
+					int x, y, n_acigar, ps;
+					uint32_t *acigar;
+					ps = 0;
+					if (tend - tbeg + types[i] <= 0) {
+						score[i*n+j] = -(1<<20);
+						pscore[i*n+j] = 1<<20;
+						continue;
 					}
-				}
-				score[i*n + j] = s; pscore[i*n + j] = ps;
-				if (types[i] != 0) { // then try the other way to calculate the score
-					for (ps = s = 0, l = seg.qbeg; c->pos + l + types[i] < right && l < seg.qend; ++l) {
-						int cq = bam1_seqi(bam1_seq(p->b), l), ct;
-						ct = c->pos + l - seg.qbeg + types[i] >= left? ref2[c->pos + l - seg.qbeg + types[i] - left] : 15;
-						if (cq < 15 && ct < 15) {
-							s += cq == ct? 1 : -mi->mm_penalty;
-							if (cq != ct) ps += bam1_qual(p->b)[l];
+					acigar = ka_global_core((uint8_t*)ref2 + tbeg - left, tend - tbeg + types[i], (uint8_t*)rs, qend - qbeg, &ap, &score[i*n+j], &n_acigar);
+					x = tbeg - left; y = 0;
+					for (l = 0; l < n_acigar; ++l) {
+						int op = acigar[l]&0xf;
+						int len = acigar[l]>>4;
+						if (op == BAM_CMATCH) {
+							int k;
+							for (k = 0; k < len; ++k)
+								if (ref2[x+k] != rs[y+k]) ps += bam1_qual(p->b)[y+k];
+							x += len; y += len;
+						} else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) {
+							if (op == BAM_CINS) ps += mi->q_indel * len;
+							y += len;
+						} else if (op == BAM_CDEL) {
+							ps += mi->q_indel * len;
+							x += len;
 						}
 					}
+					pscore[i*n+j] = ps;
+					/*if (pos == 2618517) { // for debugging only
+						fprintf(stderr, "pos=%d, type=%d, j=%d, score=%d, psore=%d, %d, %d, %d, %d, ", pos+1, types[i], j, score[i*n+j], pscore[i*n+j], tbeg, tend, qbeg, qend);
+						for (l = 0; l < n_acigar; ++l) fprintf(stderr, "%d%c", acigar[l]>>4, "MIDS"[acigar[l]&0xf]); fprintf(stderr, "\n");
+						for (l = 0; l < tend - tbeg + types[i]; ++l) fputc("ACGTN"[ref2[l]], stderr); fputc('\n', stderr);
+						for (l = 0; l < qend - qbeg; ++l) fputc("ACGTN"[rs[l]], stderr); fputc('\n', stderr);
+						}*/
+					free(acigar);
 				}
-				if (score[i*n+j] < s) score[i*n+j] = s; // choose the higher of the two scores
-				if (pscore[i*n+j] > ps) pscore[i*n+j] = ps;
-				//if (types[i] != 0) score[i*n+j] -= mi->indel_err;
-				//printf("%d, %d, %d, %d, %d, %d, %d\n", p->b->core.pos + 1, seg.qbeg, i, types[i], j,
-				//	   score[i*n+j], pscore[i*n+j]);
 			}
 		}
 		{ // get final result
@@ -491,13 +550,20 @@ bam_maqindel_ret_t *bam_maqindel(int n, int pos, const bam_maqindel_opt_t *mi, c
 				else if (p->indel == ret->indel2) ++ret->cnt2;
 				else ++ret->cnt_anti;
 			}
-			// write gl[]
-			ret->gl[0] = ret->gl[1] = 0;
-			for (j = 0; j < n; ++j) {
-				int s1 = pscore[max1_i*n + j], s2 = pscore[max2_i*n + j];
-				//printf("%d, %d, %d, %d, %d\n", pl[j].b->core.pos+1, max1_i, max2_i, s1, s2);
-				if (s1 > s2) ret->gl[0] += s1 - s2 < mi->q_indel? s1 - s2 : mi->q_indel;
-				else ret->gl[1] += s2 - s1 < mi->q_indel? s2 - s1 : mi->q_indel;
+			{ // write gl[]
+				int tmp, seq_err = 0;
+				double x = 1.0;
+				tmp = max1_i - max2_i;
+				if (tmp < 0) tmp = -tmp;
+				for (j = 0; j < tmp + 1; ++j) x *= INDEL_EXT_DEP;
+				seq_err = mi->q_indel * (1.0 - x) / (1.0 - INDEL_EXT_DEP);
+				ret->gl[0] = ret->gl[1] = 0;
+				for (j = 0; j < n; ++j) {
+					int s1 = pscore[max1_i*n + j], s2 = pscore[max2_i*n + j];
+					//printf("%d, %d, %d, %d, %d\n", pl[j].b->core.pos+1, max1_i, max2_i, s1, s2);
+					if (s1 > s2) ret->gl[0] += s1 - s2 < seq_err? s1 - s2 : seq_err;
+					else ret->gl[1] += s2 - s1 < seq_err? s2 - s1 : seq_err;
+				}
 			}
 			// write cnt_ref and cnt_ambi
 			if (max1_i != 0 && max2_i != 0) {
@@ -509,7 +575,7 @@ bam_maqindel_ret_t *bam_maqindel(int n, int pos, const bam_maqindel_opt_t *mi, c
 				}
 			}
 		}
-		free(score); free(pscore); free(ref2); free(inscns);
+		free(score); free(pscore); free(ref2); free(rs); free(inscns);
 	}
 	{ // call genotype
 		int q[3], qr_indel = (int)(-4.343 * log(mi->r_indel) + 0.5);

@@ -118,6 +118,23 @@ cdef int pileup_fetch_callback( bam1_t *b, void *data):
     bam_plbuf_push(b, buf)
     return 0
 
+class StderrStore():
+    '''
+    stderr is captured. 
+    '''
+    def __init__(self):
+        self.stderr_h, self.stderr_f = tempfile.mkstemp()
+        self.stderr_save = Outs( sys.stderr.fileno() )
+        self.stderr_save.setfd( self.stderr_h )
+        
+    def release(self):
+        self.stderr_save.restore()
+        if os.path.exists(self.stderr_f):
+            os.remove( self.stderr_f )
+
+    def __del__(self):
+        self.release()
+
 ######################################################################
 ######################################################################
 ######################################################################
@@ -227,7 +244,7 @@ cdef class Samfile:
 
         # close a previously opened file
         if self.samfile != NULL: self.close()
-        self.samfile == NULL
+        self.samfile = NULL
 
         cdef bam_header_t * header_to_write
         header_to_write = NULL
@@ -276,7 +293,9 @@ cdef class Samfile:
                     
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
+            store = StderrStore()
             self.samfile = samopen( filename, mode, header_to_write )
+            store.release()
 
             # bam_header_destroy takes care of cleaning up of all the members
             if not template and header_to_write != NULL:
@@ -286,8 +305,11 @@ cdef class Samfile:
             # open file for reading
             if strncmp( filename, "-", 1) != 0 and not os.path.exists( filename ):
                 raise IOError( "file `%s` not found" % filename)
+
+            store = StderrStore()
             self.samfile = samopen( filename, mode, NULL )
-            
+            store.release()
+
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
 
@@ -337,7 +359,9 @@ cdef class Samfile:
                 region = reference
 
         if region:
+            store = StderrStore()
             bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
+            store.release()
             if rtid < 0: raise ValueError( "invalid region `%s`" % region )
             if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
             if rstart < 0: raise ValueError( 'negative start coordinate (%i)' % rstart )
@@ -383,7 +407,8 @@ cdef class Samfile:
             if callback:
                 if not region:
                     raise ValueError( "callback functionality requires a region/reference" )
-                return bam_fetch(self.samfile.x.bam, self.index, rtid, rstart, rend, <void*>callback, fetch_callback )
+                return bam_fetch(self.samfile.x.bam, 
+                                 self.index, rtid, rstart, rend, <void*>callback, fetch_callback )
             else:
                 if region:
                     return IteratorRow( self, rtid, rstart, rend )
@@ -437,7 +462,7 @@ cdef class Samfile:
                 if not region:
                     raise ValueError( "callback functionality requires a region/reference" )
 
-                buf = bam_plbuf_init(pileup_callback, <void*>callback )
+                buf = bam_plbuf_init( <bam_pileup_f>pileup_callback, <void*>callback )
                 bam_fetch(self.samfile.x.bam, 
                           self.index, rtid, rstart, rend, 
                           buf, pileup_fetch_callback )
@@ -688,7 +713,7 @@ cdef class Fastafile:
     def close( self ):
         if self.fastafile != NULL:
             fai_destroy( self.fastafile )
-            self.fastafile == NULL
+            self.fastafile = NULL
 
     def fetch( self, 
                reference = None, 
@@ -1635,7 +1660,6 @@ def _samtools_dispatch( method, args = () ):
     # do the function call to samtools
     cdef char ** cargs
     cdef int i, n, retval
-
 
     n = len(args)
     # allocate two more for first (dummy) argument (contains command)

@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <ctype.h>
+#include <errno.h>
 #include <assert.h>
 #include "bam.h"
 #include "bam_endian.h"
 #include "kstring.h"
+#include "sam_header.h"
 
 int bam_is_be = 0;
 char *bam_flag2char_table = "pPuUrR12sfd\0\0\0\0\0";
@@ -11,28 +13,6 @@ char *bam_flag2char_table = "pPuUrR12sfd\0\0\0\0\0";
 /**************************
  * CIGAR related routines *
  **************************/
-
-int bam_segreg(int32_t pos, const bam1_core_t *c, const uint32_t *cigar, bam_segreg_t *reg)
-{
-	unsigned k;
-	int32_t x = c->pos, y = 0;
-	int state = 0;
-	for (k = 0; k < c->n_cigar; ++k) {
-		int op = cigar[k] & BAM_CIGAR_MASK; // operation
-		int l = cigar[k] >> BAM_CIGAR_SHIFT; // length
-		if (state == 0 && (op == BAM_CMATCH || op == BAM_CDEL || op == BAM_CINS) && x + l > pos) {
-			reg->tbeg = x; reg->qbeg = y; reg->cbeg = k;
-			state = 1;
-		}
-		if (op == BAM_CMATCH) { x += l; y += l; }
-		else if (op == BAM_CDEL || op == BAM_CREF_SKIP) x += l;
-		else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) y += l;
-		if (state == 1 && (op == BAM_CSOFT_CLIP || op == BAM_CHARD_CLIP || op == BAM_CREF_SKIP || k == c->n_cigar - 1)) {
-			reg->tend = x; reg->qend = y; reg->cend = k;
-		}
-	}
-	return state? 0 : -1;
-}
 
 uint32_t bam_calend(const bam1_core_t *c, const uint32_t *cigar)
 {
@@ -80,10 +60,9 @@ void bam_header_destroy(bam_header_t *header)
 		free(header->target_len);
 	}
 	free(header->text);
-#ifndef BAM_NO_HASH
-	if (header->rg2lib) bam_strmap_destroy(header->rg2lib);
+	if (header->dict) sam_header_free(header->dict);
+	if (header->rg2lib) sam_tbl_destroy(header->rg2lib);
 	bam_destroy_header_hash(header);
-#endif
 	free(header);
 }
 
@@ -94,7 +73,11 @@ bam_header_t *bam_header_read(bamFile fp)
 	int32_t i = 1, name_len;
 	// check EOF
 	i = bgzf_check_EOF(fp);
-	if (i < 0) fprintf(stderr, "[bam_header_read] read from pipe; skip EOF checking.\n");
+	if (i < 0) {
+		// If the file is a pipe, checking the EOF marker will *always* fail
+		// with ESPIPE.  Suppress the error message in this case.
+		if (errno != ESPIPE) perror("[bam_header_read] bgzf_check_EOF");
+	}
 	else if (i == 0) fprintf(stderr, "[bam_header_read] EOF marker is absent.\n");
 	// read "BAM1"
 	if (bam_read(fp, buf, 4) != 4) return 0;
@@ -307,4 +290,14 @@ void bam_view1(const bam_header_t *header, const bam1_t *b)
 	char *s = bam_format1(header, b);
 	printf("%s\n", s);
 	free(s);
+}
+
+// FIXME: we should also check the LB tag associated with each alignment
+const char *bam_get_library(bam_header_t *h, const bam1_t *b)
+{
+	const uint8_t *rg;
+	if (h->dict == 0) h->dict = sam_header_parse2(h->text);
+	if (h->rg2lib == 0) h->rg2lib = sam_header2tbl(h->dict, "RG", "ID", "LB");
+	rg = bam_aux_get(b, "RG");
+	return (rg == 0)? 0 : sam_tbl_get(h->rg2lib, (const char*)(rg + 1));
 }

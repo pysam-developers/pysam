@@ -13,6 +13,11 @@
 // The order of the following declarations is important.
 // #######################################################
 
+typedef struct
+{
+  uint64_t u, v;
+} pair64_t;
+
 #define pair64_lt(a,b) ((a).u < (b).u)
 
 typedef struct {
@@ -138,6 +143,9 @@ static inline int resolve_cigar(bam_pileup1_t *p, uint32_t pos)
 	return ret;
 }
 
+
+
+
 // the following code has been taken from bam_plbuf_push
 // and modified such that instead of a function call
 // the function returns and will continue (if cont is true).
@@ -244,7 +252,20 @@ bam_pileup1_t * pysam_get_pileup( const bam_plbuf_t *buf)
 // pysam dispatch function to emulate the samtools
 // command line within python.
 // taken from the main function in bamtk.c
-// add code to reset getopt
+// added code to reset getopt
+extern int main_samview(int argc, char *argv[]);
+extern int main_import(int argc, char *argv[]);
+extern int bam_pileup(int argc, char *argv[]);
+extern int bam_merge(int argc, char *argv[]);
+extern int bam_sort(int argc, char *argv[]);
+extern int bam_index(int argc, char *argv[]);
+extern int faidx_main(int argc, char *argv[]);
+extern int bam_mating(int argc, char *argv[]);
+extern int bam_rmdup(int argc, char *argv[]);
+extern int glf3_view_main(int argc, char *argv[]);
+extern int bam_flagstat(int argc, char *argv[]);
+extern int bam_fillmd(int argc, char *argv[]);
+
 int pysam_dispatch(int argc, char *argv[] )
 {
 
@@ -270,10 +291,8 @@ int pysam_dispatch(int argc, char *argv[] )
   else if (strcmp(argv[1], "faidx") == 0) return faidx_main(argc-1, argv+1);
   else if (strcmp(argv[1], "fixmate") == 0) return bam_mating(argc-1, argv+1);
   else if (strcmp(argv[1], "rmdup") == 0) return bam_rmdup(argc-1, argv+1);
-  else if (strcmp(argv[1], "rmdupse") == 0) return bam_rmdupse(argc-1, argv+1);
   else if (strcmp(argv[1], "glfview") == 0) return glf3_view_main(argc-1, argv+1);
   else if (strcmp(argv[1], "flagstat") == 0) return bam_flagstat(argc-1, argv+1);
-  //  else if (strcmp(argv[1], "tagview") == 0) return bam_tagview(argc-1, argv+1);
   else if (strcmp(argv[1], "calmd") == 0) return bam_fillmd(argc-1, argv+1);
   else if (strcmp(argv[1], "fillmd") == 0) return bam_fillmd(argc-1, argv+1);
 
@@ -339,7 +358,7 @@ bam1_t * pysam_bam_update( bam1_t * b,
   if (b->data_len != 0)
     {
       if (offset < 0 || offset > b->data_len)
-	fprintf(stderr, "[pysam_bam_insert] illegal offset: '%i'\n", offset);
+	fprintf(stderr, "[pysam_bam_insert] illegal offset: '%i'\n", (int)offset);
     }
   
   // printf("dest=%p, src=%p, n=%i\n", pos+nbytes_new, pos + nbytes_old, b->data_len - (offset+nbytes_old));
@@ -358,7 +377,7 @@ unsigned char pysam_translate_sequence( const unsigned char s )
   return bam_nt16_table[s];
 }
 
-// standin for samtools macros in bam.h
+// stand-ins for samtools macros in bam.h
 char * pysam_bam1_qname( const bam1_t * b)
 {
   return (char*)b->data;
@@ -384,11 +403,94 @@ uint8_t * pysam_bam1_aux( const bam1_t * b)
   return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname + b->core.l_qseq + (b->core.l_qseq + 1)/2);
 }
 
-  
-  
-  
+// #######################################################
+// Iterator implementation
+// #######################################################
 
-  
+// functions defined in bam_index.c
+extern pair64_t * get_chunk_coordinates(const bam_index_t *idx, int tid, int beg, int end, int* cnt_off);
+
+static inline int is_overlap(uint32_t beg, uint32_t end, const bam1_t *b)
+{
+	uint32_t rbeg = b->core.pos;
+	uint32_t rend = b->core.n_cigar? bam_calend(&b->core, bam1_cigar(b)) : b->core.pos + 1;
+	return (rend > beg && rbeg < end);
+}
+
+struct __bam_fetch_iterator_t
+{
+  bam1_t *        b;
+  pair64_t *      off;
+  int             n_off;
+  uint64_t        curr_off;
+  int             curr_chunk;
+  bamFile 		fp;
+  int				tid;
+  int				beg;
+  int				end;
+  int             n_seeks;
+};
+ 
+bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, const bam_index_t *idx, int tid, int beg, int end)
+{
+	// iterator contains current alignment position
+	//      and will contain actual alignment during iterations
+	bam_fetch_iterator_t* iter  = (bam_fetch_iterator_t*)calloc(1, sizeof(bam_fetch_iterator_t));
+	iter->b                     = (bam1_t*)calloc(1, sizeof(bam1_t));
+		
+	// list of chunks containing our alignments
+	iter->off = get_chunk_coordinates(idx, tid, beg, end, &iter->n_off);
+	
+	// initialise other state variables in iterator
+	iter->fp                = fp;
+	iter->curr_chunk        = -1;   
+	iter->curr_off          =  0;
+	iter->n_seeks           =  0;    
+	iter->tid				= tid;
+	iter->beg				= beg;
+	iter->end				= end;
+	return iter;
+}
+
+bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
+{
+	if (!iter->off) {
+		return 0;
+	}
+
+	int ret;
+	// iterate through all alignments in chunks
+	for (;;) {
+		if (iter->curr_off == 0 || iter->curr_off >= iter->off[iter->curr_chunk].v) { // then jump to the next chunk
+			if (iter->curr_chunk == iter->n_off - 1) break; // no more chunks
+			if (iter->curr_chunk >= 0) assert(iter->curr_off == iter->off[iter->curr_chunk].v); // otherwise bug
+			if (iter->curr_chunk < 0 || iter->off[iter->curr_chunk].v != iter->off[iter->curr_chunk+1].u) { // not adjacent chunks; then seek
+				bam_seek(iter->fp, iter->off[iter->curr_chunk+1].u, SEEK_SET);
+				iter->curr_off = bam_tell(iter->fp);
+				++iter->n_seeks;
+			}
+			++iter->curr_chunk;
+		}
+		if ((ret = bam_read1(iter->fp, iter->b)) > 0) {
+			iter->curr_off = bam_tell(iter->fp);
+			if (iter->b->core.tid != iter->tid || iter->b->core.pos >= iter->end) break; // no need to proceed
+			else if (is_overlap(iter->beg, iter->end, iter->b)) 
+				//
+				//func(iter->b, data);
+				//
+				return iter->b;
+		} else 
+			return 0; // end of file
+	}
+	return 0;
+}
+
+void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
+{
+  //  fprintf(stderr, "[bam_fetch] # seek calls: %d\n", iter->n_seeks);
+  bam_destroy1(iter->b);
+  free(iter->off);
+}
 
        
 

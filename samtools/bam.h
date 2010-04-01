@@ -73,6 +73,7 @@ typedef gzFile bamFile;
   @field n_targets   number of reference sequences
   @field target_name names of the reference sequences
   @field target_len  lengths of the referene sequences
+  @field dict        header dictionary
   @field hash        hash table for fast name lookup
   @field rg2lib      hash table for @RG-ID -> LB lookup
   @field l_text      length of the plain text in the header
@@ -85,7 +86,7 @@ typedef struct {
 	int32_t n_targets;
 	char **target_name;
 	uint32_t *target_len;
-	void *hash, *rg2lib;
+	void *dict, *hash, *rg2lib;
 	int l_text;
 	char *text;
 } bam_header_t;
@@ -423,8 +424,8 @@ extern "C" {
 	  @abstract  Free the memory allocated for an alignment.
 	  @param  b  pointer to an alignment
 	 */
-#define bam_destroy1(b) do {		\
-		free((b)->data); free(b);	\
+#define bam_destroy1(b) do {					\
+		if (b) { free((b)->data); free(b); }	\
 	} while (0)
 
 	/*!
@@ -436,6 +437,8 @@ extern "C" {
 	char *bam_format1(const bam_header_t *header, const bam1_t *b);
 
 	char *bam_format1_core(const bam_header_t *header, const bam1_t *b, int of);
+
+	const char *bam_get_library(bam_header_t *header, const bam1_t *b);
 
 	/*! @typedef
 	  @abstract Structure for one alignment covering the pileup position.
@@ -579,51 +582,6 @@ extern "C" {
 	 */
 	int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func);
 
-	/*! @typedef
-	  @Structure for holding current state (current alignment etc.) for iterating through
-	  alignments overlapping a specified region.
-	  @field  b           pointer to the current alignment
-	  @field  off         pointer to an array of chunk loci (each with beg/end positions)
-	  @field  n_off       The number of chunks
-	  @field  curr_off    The current file positon
-	  @field  curr_chunk  The item in a list of chunk
-
-	  @discussion See also bam_fetch_iterate
-	 */
-	struct __bam_fetch_iterator_t;
-	typedef struct __bam_fetch_iterator_t bam_fetch_iterator_t;
-
-	
-
-	/*!
-	  @abstract Retrieve the alignments that are overlapped with the
-	  specified region.
-
-	  @discussion Returns iterator object to retrieve successive alignments ordered by
-	  start position. 
-	  @param  fp    BAM file handler
-	  @param  idx   pointer to the alignment index
-	  @param  tid   chromosome ID as is defined in the header
-	  @param  beg   start coordinate, 0-based
-	  @param  end   end coordinate, 0-based
-	 */
-	bam_fetch_iterator_t * bam_init_fetch_iterator(bamFile fp, const bam_index_t *idx, int tid, int beg, int end);
-	
-	
-	/*!
-	  @abstract Iterates through alignments overlapped the specified region.
-	  @discussion Returns pointer to successive alignments ordered by start position.
-	  Returns null pointer to signal the end of the iteration.
-	  The alignment data is nested within the iterator to avoid unnecessary allocations.
-	 */
-	bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter);
-
-	/*!
-	  @abstract Cleans up the iterator data
-	  @discussion Destroys data allocated on the heap
-	 */
-	void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter);
-
 	/*!
 	  @abstract       Parse a region in the format: "chr2:100,000-200,000".
 	  @discussion     bam_header_t::hash will be initialized if empty.
@@ -676,14 +634,6 @@ extern "C" {
 	  @return        length of the query sequence
 	*/
 	int32_t bam_cigar2qlen(const bam1_core_t *c, const uint32_t *cigar);
-
-	typedef struct {
-		int32_t qbeg, qend;
-		int32_t tbeg, tend;
-		int32_t cbeg, cend;
-	} bam_segreg_t;
-
-	int bam_segreg(int32_t pos, const bam1_core_t *c, const uint32_t *cigar, bam_segreg_t *reg);
 
 #ifdef __cplusplus
 }
@@ -743,8 +693,5 @@ static inline bam1_t *bam_dup1(const bam1_t *src)
 	memcpy(b->data, src->data, b->data_len);
 	return b;
 }
-
-bam_fetch_iterator_t* bam_init_fetchall_iterator(bamFile fp, const bam_index_t *idx);
-bam1_t * bam_fetchall_iterate(bam_fetch_iterator_t *iter);
 
 #endif
