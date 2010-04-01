@@ -1,3 +1,4 @@
+import sys
 import pysam
 
 samfile = pysam.Samfile( "ex1.bam", "rb" )
@@ -5,40 +6,40 @@ samfile = pysam.Samfile( "ex1.bam", "rb" )
 print "###################"
 # check different ways to iterate
 print len(list(samfile.fetch()))
-print len(list(samfile.fetch( "seq1", 10, 200 )))
-print len(list(samfile.fetch( region="seq1:10-200" )))
-print len(list(samfile.fetch( "seq1" )))
-print len(list(samfile.fetch( region="seq1")))
-print len(list(samfile.fetch( "seq2" )))
-print len(list(samfile.fetch( region="seq2")))
+print len(list(samfile.fetch( "chr1", 10, 200 )))
+print len(list(samfile.fetch( region="chr1:10-200" )))
+print len(list(samfile.fetch( "chr1" )))
+print len(list(samfile.fetch( region="chr1")))
+print len(list(samfile.fetch( "chr2" )))
+print len(list(samfile.fetch( region="chr2")))
 print len(list(samfile.fetch()))
-print len(list(samfile.fetch( "seq1" )))
-print len(list(samfile.fetch( region="seq1")))
+print len(list(samfile.fetch( "chr1" )))
+print len(list(samfile.fetch( region="chr1")))
 print len(list(samfile.fetch()))
 
-print len(list(samfile.pileup( "seq1", 10, 200 )))
-print len(list(samfile.pileup( region="seq1:10-200" )))
-print len(list(samfile.pileup( "seq1" )))
-print len(list(samfile.pileup( region="seq1")))
-print len(list(samfile.pileup( "seq2" )))
-print len(list(samfile.pileup( region="seq2")))
+print len(list(samfile.pileup( "chr1", 10, 200 )))
+print len(list(samfile.pileup( region="chr1:10-200" )))
+print len(list(samfile.pileup( "chr1" )))
+print len(list(samfile.pileup( region="chr1")))
+print len(list(samfile.pileup( "chr2" )))
+print len(list(samfile.pileup( region="chr2")))
 print len(list(samfile.pileup()))
 print len(list(samfile.pileup()))
 
 print "########### fetch with callback ################"
 def my_fetch_callback( alignment ): print str(alignment)
-samfile.fetch( region="seq1:10-200", callback=my_fetch_callback )
+samfile.fetch( region="chr1:10-200", callback=my_fetch_callback )
 
 print "########## pileup with callback ################"
-def my_pileup_callback( pileups ): print str(pileups)
-samfile.pileup( region="seq1:10-200", callback=my_pileup_callback )
+def my_pileup_callback( column ): print str(column)
+samfile.pileup( region="chr1:10-200", callback=my_pileup_callback )
 
 print "##########iterator row #################"
-iter = pysam.IteratorRow( samfile, "seq1:10-200")
+iter = pysam.IteratorRow( samfile, 0, 10, 200)
 for x in iter: print str(x)
 
 print "##########iterator col #################"
-iter = pysam.IteratorColumn( samfile, "seq1:10-200")
+iter = pysam.IteratorColumn( samfile, 0, 10, 200 )
 for x in iter: print str(x)
 
 print "#########row all##################"
@@ -54,9 +55,10 @@ class Counter:
         self.mCounts += 1
 
 c = Counter()
-samfile.fetch( "seq1:10-200", c )
+samfile.fetch( "chr1:10-200", c )
 print "counts=", c.mCounts
 
+sys.exit(0)
 print samfile.getTarget( 0 )
 print samfile.getTarget( 1 )
 
@@ -87,7 +89,7 @@ def my_fetch_callback( alignment ):
     print str(alignment)
 
 try:
-    samfile.fetch( "seq1:10-20", my_fetch_callback )
+    samfile.fetch( "chr1:10-20", my_fetch_callback )
 except AssertionError:
     print "caught fetch exception"
 
@@ -98,7 +100,7 @@ samfile = pysam.Samfile( "ex2.sam.gz", "r" )
 def my_pileup_callback( pileups ):
     print str(pileups)
 try:
-    samfile.pileup( "seq1:10-20", my_pileup_callback )
+    samfile.pileup( "chr1:10-20", my_pileup_callback )
 except NotImplementedError:
     print "caught pileup exception"
 

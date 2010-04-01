@@ -52,6 +52,14 @@ cdef makeAlignedRead( bam1_t * src):
     dest._delegate = bam_dup1(src)
     return dest
 
+cdef class PileupProxy
+cdef makePileupProxy( bam_plbuf_t * buf, int n ):
+     cdef PileupProxy dest
+     dest = PileupProxy()
+     dest.buf = buf
+     dest.n = n
+     return dest
+
 cdef class PileupRead
 cdef makePileupRead( bam_pileup1_t * src ):
     '''fill a  PileupRead object from a bam_pileup1_t * object.'''
@@ -78,6 +86,23 @@ cdef int fetch_callback( bam1_t *alignment, void *f):
     '''
     a = makeAlignedRead( alignment )
     (<object>f)(a)
+
+class PileupColumn(object):                       
+    '''A pileup column. A pileup column contains  
+    all the reads that map to a certain target base.
+
+    tid      
+        chromosome ID as is defined in the header      
+    pos      
+        the target base coordinate (0-based)    
+    n 
+        number of reads mapping to this column  
+    pileups  
+        list of reads (:class:`pysam.PileupRead`) aligned to this column    
+    '''      
+    def __str__(self):     
+        return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
+            "\n" + "\n".join( map(str, self.pileups) )
 
 cdef int pileup_callback( uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, void *f):
     '''callback for pileup.
@@ -862,8 +887,26 @@ cdef class IteratorRowAll:
 cdef class IteratorColumn:
     '''iterates over columns.
 
-    This iterator wraps the pileup functionality of the samtools
-    function bam_plbuf_push.
+    This iterator wraps the pileup functionality of samtools.
+    
+    For reasons of efficiency, the iterator returns the current 
+    pileup buffer. As this buffer is updated at every iteration, 
+    the contents of this iterator will change accordingly. Hence the conversion to
+    a list will not produce the expected result::
+    
+       f = Samfile("file.bam", "rb")
+       result = list( f.pileup() )
+
+    Here, result will contain ``n`` objects of type :class:`PileupProxy` for ``n`` columns, 
+    but each object will contain the same information.
+    
+    If the results of several columns are required at the same time, the results
+    need to be stored explicitely::
+
+       result = [ x.pileups() for x in f.pileup() ]
+
+    Here, result will be a list of ``n`` lists of objects of type :class:`PileupRead`.
+
     '''
     cdef bam_plbuf_t *buf
 
@@ -932,19 +975,7 @@ cdef class IteratorColumn:
         cdef bam_pileup1_t * pl
 
         if ret > 0 :
-            p = PileupColumn()
-            p.tid = pysam_get_tid( self.buf )
-            p.pos = pysam_get_pos( self.buf )
-            p.n = self.n_pu
-            pl = pysam_get_pileup( self.buf )
-
-            pileups = []
-            
-            for x from 0 <= x < p.n:
-                pileups.append( makePileupRead( &pl[x]) )
-            p.pileups = pileups
-
-            return p
+            return makePileupProxy( self.buf, self.n_pu )
         else:
             raise StopIteration
 
@@ -978,8 +1009,8 @@ cdef class AlignedRead:
         # see bam_init1
         self._delegate = <bam1_t*>calloc( 1, sizeof( bam1_t) )
         # allocate some memory 
-        # If size is 0, calloc returns a pointer that can be passed to free()
-        # allocate 40 bytes for a new read
+        # If size is 0, calloc does not return a pointer that can be passed to free()
+        # so allocate 40 bytes for a new read
         self._delegate.m_data = 40
         self._delegate.data = <uint8_t *>calloc( self._delegate.m_data, 1 )
         self._delegate.data_len = 0
@@ -1472,53 +1503,45 @@ cdef class AlignedRead:
         elif type == 'Z':
             return bam_aux2Z(v)
     
-    #    def fancy_str (self):
-    #        """
-    #        returns list of fieldnames/values in pretty format for debugging
-    #        """
-    #        ret_string = []
-    #        field_names = {
-    #                        "tid":           "Contig index",
-    #                        "pos":           "Mapped position on contig",
-    #
-    #                        "mtid":          "Contig index for mate pair",
-    #                        "mpos":          "Position of mate pair",
-    #                        "isize":         "Insert size",
-    #
-    #                        "flag":          "Binary flag",
-    #                        "n_cigar":       "Count of cigar entries",
-    #                        "cigar":         "Cigar entries",
-    #                        "qual":          "Mapping quality",
-    #
-    #                        "bin":           "Bam index bin number",
-    #
-    #                        "l_qname":       "Length of query name",
-    #                        "qname":         "Query name",
-    #
-    #                        "l_qseq":        "Length of query sequence",
-    #                        "qseq":          "Query sequence",
-    #                        "bqual":         "Quality scores",
-    #
-    #
-    #                        "l_aux":         "Length of auxilary data",
-    #                        "m_data":        "Maximum data length",
-    #                        "data_len":      "Current data length",
-    #                        }
-    #        fields_names_in_order = ["tid", "pos", "mtid", "mpos", "isize", "flag", 
-    #                                 "n_cigar", "cigar", "qual", "bin", "l_qname", "qname", 
-    #                                 "l_qseq", "qseq", "bqual", "l_aux", "m_data", "data_len"]
-    #
-    #        for f in fields_names_in_order:
-    #            if not f in self.__dict__:
-    #                continue
-    #            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
-    #
-    #        for f in self.__dict__:
-    #            if not f in field_names:
-    #                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
-#        return ret_string
+    def fancy_str (self):
+        """returns list of fieldnames/values in pretty format for debugging
+        """
+        ret_string = []
+        field_names = {
+           "tid":           "Contig index",
+           "pos":           "Mapped position on contig",
+           "mtid":          "Contig index for mate pair",
+           "mpos":          "Position of mate pair",
+           "isize":         "Insert size",
+           "flag":          "Binary flag",
+           "n_cigar":       "Count of cigar entries",
+           "cigar":         "Cigar entries",
+           "qual":          "Mapping quality",
+           "bin":           "Bam index bin number",
+           "l_qname":       "Length of query name",
+           "qname":         "Query name",
+           "l_qseq":        "Length of query sequence",
+           "qseq":          "Query sequence",
+           "bqual":         "Quality scores",
+           "l_aux":         "Length of auxilary data",
+           "m_data":        "Maximum data length",
+           "data_len":      "Current data length",
+           }
+        fields_names_in_order = ["tid", "pos", "mtid", "mpos", "isize", "flag", 
+                                 "n_cigar", "cigar", "qual", "bin", "l_qname", "qname", 
+                                 "l_qseq", "qseq", "bqual", "l_aux", "m_data", "data_len"]
+        
+        for f in fields_names_in_order:
+            if not f in self.__dict__:
+                continue
+            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
 
-class PileupColumn(object):
+        for f in self.__dict__:
+            if not f in field_names:
+                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
+        return ret_string
+
+cdef class PileupProxy:
     '''A pileup column. A pileup column contains
     all the reads that map to a certain target base.
 
@@ -1527,14 +1550,48 @@ class PileupColumn(object):
     pos
         the target base coordinate (0-based)
     n
-        number of reads mapping to this column
+        number of reads mapping to this column    
     pileups
         list of reads (:class:`pysam.PileupRead`) aligned to this column
+
+    This class is a proxy for results returned by the samtools pileup engine.
+    If the underlying engine iterator advances, the results of this column
+    will change.
     '''
+    cdef bam_plbuf_t * buf
+    cdef int n_pu
+
+    def __cinit__(self ):
+        pass
+
     def __str__(self):
         return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
             "\n" +\
             "\n".join( map(str, self.pileups) )
+
+    property tid:
+        '''the chromosome ID as is defined in the header'''
+        def __get__(self): return pysam_get_tid( self.buf )
+
+    property n:
+        '''number of reads mapping to this column.'''
+        def __get__(self): return self.n_pu
+        def __set__(self, n): self.n_pu = n
+
+    property pos:
+        def __get__(self): return pysam_get_pos( self.buf )
+
+    property pileups:
+        '''list of reads (:class:`pysam.PileupRead`) aligned to this column'''
+        def __get__(self):
+            cdef bam_pileup1_t * pl
+            pl = pysam_get_pileup( self.buf )
+            pileups = []
+            # warning: there could be problems if self.n and self.buf are
+            # out of sync.
+            for x from 0 <= x < self.n_pu:
+                pileups.append( makePileupRead( &pl[x]) )
+            return pileups
 
 cdef class PileupRead:
     '''A read aligned to a column.
@@ -1580,7 +1637,6 @@ cdef class PileupRead:
     property level:
         def __get__(self):
             return self._level
-
 
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
@@ -1692,6 +1748,7 @@ __all__ = ["Samfile",
            "IteratorColumn", 
            "AlignedRead", 
            "PileupColumn", 
+           "PileupProxy", 
            "PileupRead" ]
 
                
