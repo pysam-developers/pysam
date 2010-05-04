@@ -71,7 +71,7 @@ metadata = {
     'platforms': "ALL",
     'url': "http://code.google.com/p/pysam/",
     'py_modules': [
-      "pysam/__init__", "pysam/Pileup"],
+      "pysam/__init__", "pysam/Pileup", "pysam/namedtuple" ],
     'ext_modules': [pysam,],
     'cmdclass' : {'build_ext': build_ext} }
 

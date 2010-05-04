@@ -223,6 +223,32 @@ class IOTest(unittest.TestCase):
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "r", "w" )
 
+    def testFetchFromClosedFile( self ):
+
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile.close()
+        self.assertRaises( ValueError, samfile.fetch, 'chr1', 100, 120)
+
+    def testPileupFromClosedFile( self ):
+
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile.close()
+        self.assertRaises( ValueError, samfile.pileup, 'chr1', 100, 120)
+
+    def testBinaryReadFromSamfile( self ):
+        pass
+        # needs to re-activated, see issue 19
+        #samfile = pysam.Samfile( "ex1.bam", "r" )
+        #samfile.fetch().next()
+
+    def testReadingFromFileWithoutIndex( self ):
+        '''read from bam file without index.'''
+
+        assert not os.path.exists( "ex2.bam.bai" )
+        samfile = pysam.Samfile( "ex2.bam", "rb" )
+        self.assertRaises( ValueError, samfile.fetch )
+        self.assertEqual( len(list( samfile.fetch(until_eof = True) )), 3270 )
+
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):
@@ -385,76 +411,28 @@ class TestAlignedReadFromBam(unittest.TestCase):
         self.assertEqual( self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (self.reads[1].is_proper_pair, True) )
 
     def testTags( self ):
-        self.assertEqual( self.reads[0].tags, [('NM', 1), ('RG', 'L1')] )
-        self.assertEqual( self.reads[1].tags, [('MF', 18), ('RG', 'L2')] )
+        self.assertEqual( self.reads[0].tags, [('NM', 1), ('RG', 'L1'), ('XT', 'U')] )
+        self.assertEqual( self.reads[1].tags, [('MF', 18), ('RG', 'L2'), ('XT', 'R')] )
+
+    def testOpt( self ):
+        self.assertEqual( self.reads[0].opt("XT"), "U" )
+        self.assertEqual( self.reads[1].opt("XT"), "R" )
+
+    def testMissingOpt( self ):
+        self.assertRaises( KeyError, self.reads[0].opt, "XP" )
+
+    def testEmptyOpt( self ):
+        self.assertRaises( KeyError, self.reads[2].opt, "XT" )
 
     def tearDown(self):
         self.samfile.close()
 
-class TestAlignedReadFromSam(unittest.TestCase):
+class TestAlignedReadFromSam(TestAlignedReadFromBam):
 
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.sam","r" )
         self.reads=list(self.samfile.fetch())
 
-    def testARqname(self):
-        self.assertEqual( self.reads[0].qname, "read_28833_29006_6945", "read name mismatch in read 1: %s != %s" % (self.reads[0].qname, "read_28833_29006_6945") )
-        self.assertEqual( self.reads[1].qname, "read_28701_28881_323b", "read name mismatch in read 2: %s != %s" % (self.reads[1].qname, "read_28701_28881_323b") )
-
-    def testARflag(self):
-        self.assertEqual( self.reads[0].flag, 99, "flag mismatch in read 1: %s != %s" % (self.reads[0].flag, 99) )
-        self.assertEqual( self.reads[1].flag, 147, "flag mismatch in read 2: %s != %s" % (self.reads[1].flag, 147) )
-
-    def testARrname(self):
-        self.assertEqual( self.reads[0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (self.reads[0].rname, 0) )
-        self.assertEqual( self.reads[1].rname, 1, "chromosome/target id mismatch in read 2: %s != %s" % (self.reads[1].rname, 1) )
-
-    def testARpos(self):
-        self.assertEqual( self.reads[0].pos, 33-1, "mapping position mismatch in read 1: %s != %s" % (self.reads[0].pos, 33-1) )
-        self.assertEqual( self.reads[1].pos, 88-1, "mapping position mismatch in read 2: %s != %s" % (self.reads[1].pos, 88-1) )
-
-    def testARmapq(self):
-        self.assertEqual( self.reads[0].mapq, 20, "mapping quality mismatch in read 1: %s != %s" % (self.reads[0].mapq, 20) )
-        self.assertEqual( self.reads[1].mapq, 30, "mapping quality mismatch in read 2: %s != %s" % (self.reads[1].mapq, 30) )
-
-    def testARcigar(self):
-        self.assertEqual( self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)], "read name length mismatch in read 1: %s != %s" % (self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)]) )
-        self.assertEqual( self.reads[1].cigar, [(0, 35)], "read name length mismatch in read 2: %s != %s" % (self.reads[1].cigar, [(0, 35)]) )
-
-    def testARmrnm(self):
-        self.assertEqual( self.reads[0].mrnm, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (self.reads[0].mrnm, 0) )
-        self.assertEqual( self.reads[1].mrnm, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (self.reads[1].mrnm, 1) )
-
-    def testARmpos(self):
-        self.assertEqual( self.reads[0].mpos, 200-1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].mpos, 200-1) )
-        self.assertEqual( self.reads[1].mpos, 500-1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].mpos, 500-1) )
-
-    def testARisize(self):
-        self.assertEqual( self.reads[0].isize, 167, "insert size mismatch in read 1: %s != %s" % (self.reads[0].isize, 167) )
-        self.assertEqual( self.reads[1].isize, 412, "insert size mismatch in read 2: %s != %s" % (self.reads[1].isize, 412) )
-
-    def testARseq(self):
-        self.assertEqual( self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG") )
-        self.assertEqual( self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA") )
-
-    def testARqual(self):
-        self.assertEqual( self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<", "quality string mismatch in read 1: %s != %s" % (self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<") )
-        self.assertEqual( self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<") )
-
-    def testPresentOptionalFields(self):
-        self.assertEqual( self.reads[0].opt('NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (self.reads[0].opt('NM'), 1) )
-        self.assertEqual( self.reads[0].opt('RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (self.reads[0].opt('RG'), 'L1') )
-        self.assertEqual( self.reads[1].opt('RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (self.reads[1].opt('RG'), 'L2') )
-        self.assertEqual( self.reads[1].opt('MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (self.reads[1].opt('MF'), 18) )
-
-    def testPairedBools(self):
-        self.assertEqual( self.reads[0].is_paired, True, "is paired mismatch in read 1: %s != %s" % (self.reads[0].is_paired, True) )
-        self.assertEqual( self.reads[1].is_paired, True, "is paired mismatch in read 2: %s != %s" % (self.reads[1].is_paired, True) )
-        self.assertEqual( self.reads[0].is_proper_pair, True, "is proper pair mismatch in read 1: %s != %s" % (self.reads[0].is_proper_pair, True) )
-        self.assertEqual( self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (self.reads[1].is_proper_pair, True) )
-
-    def tearDown(self):
-        self.samfile.close()
 
 class TestHeaderSam(unittest.TestCase):
 
@@ -462,7 +440,21 @@ class TestHeaderSam(unittest.TestCase):
         self.samfile=pysam.Samfile( "ex3.sam","r" )
 
     def testHeaders(self):
-        self.assertEqual( self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}, "mismatch in headers: %s != %s" % (self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}) )
+        self.assertEqual( self.samfile.header, \
+                              {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                                      {'LN': 1584, 'SN': 'chr2'}], 
+                               'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10', "CN":"name:with:colon"}, 
+                                      {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12', "CN":"name:with:colon"}], 
+                               'CO': ['this is a comment', 'this is another comment'], 
+                               'HD': {'VN': '1.0'}}, 
+                          "mismatch in headers: %s != %s" % \
+                              (self.samfile.header, 
+                               {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                                       {'LN': 1584, 'SN': 'chr2'}], 
+                                'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
+                                       {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
+                                'CO': ['this is a comment', 'this is another comment'], 
+                                'HD': {'VN': '1.0'}}) )
 
     def tearDown(self):
         self.samfile.close()
@@ -473,7 +465,21 @@ class TestHeaderBam(unittest.TestCase):
         self.samfile=pysam.Samfile( "ex3.sam","r" )
 
     def testHeaders(self):
-        self.assertEqual( self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}, "mismatch in headers: %s != %s" % (self.samfile.header, {'SQ': [{'LN': 1575, 'SN': 'chr1'}, {'LN': 1584, 'SN': 'chr2'}], 'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 'CO': ['this is a comment', 'this is another comment'], 'HD': {'VN': '1.0'}}) )
+        self.assertEqual( self.samfile.header, \
+                              {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                                      {'LN': 1584, 'SN': 'chr2'}], 
+                               'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10', "CN":"name:with:colon"}, 
+                                      {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12', "CN":"name:with:colon"}], 
+                               'CO': ['this is a comment', 'this is another comment'], 
+                               'HD': {'VN': '1.0'}}, 
+                          "mismatch in headers: %s != %s" % \
+                              (self.samfile.header, 
+                               {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                                       {'LN': 1584, 'SN': 'chr2'}], 
+                                'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
+                                       {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
+                                'CO': ['this is a comment', 'this is another comment'], 
+                                'HD': {'VN': '1.0'}}) )
 
     def tearDown(self):
         self.samfile.close()

@@ -373,6 +373,8 @@ cdef class Samfile:
         cdef int rtid
         cdef int rstart
         cdef int rend
+        cdef int max_pos
+        max_pos = 2 << 29
 
         rtid = rstart = rend = 0
 
@@ -389,9 +391,9 @@ cdef class Samfile:
             store.release()
             if rtid < 0: raise ValueError( "invalid region `%s`" % region )
             if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
-            if rstart < 0: raise ValueError( 'negative start coordinate (%i)' % rstart )
-            if rend < 0: raise ValueError( 'negative end coordinate (%i)' % rend )
-            
+            if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
+            if not 0 <= rend < max_pos: raise ValueError( 'end out of range (%i)' % rend )
+
         return region, rtid, rstart, rend
 
     def fetch( self, 
@@ -425,13 +427,16 @@ cdef class Samfile:
         cdef int rstart
         cdef int rend
 
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
         region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
         if self.isbam:
-            assert self._hasIndex(), "no index available for fetch"            
             if callback:
                 if not region:
                     raise ValueError( "callback functionality requires a region/reference" )
+                if not self._hasIndex(): raise ValueError( "no index available for fetch" )
                 return bam_fetch(self.samfile.x.bam, 
                                  self.index, rtid, rstart, rend, <void*>callback, fetch_callback )
             else:
@@ -442,6 +447,7 @@ cdef class Samfile:
                         return IteratorRowAll( self )
                     else:
                         # return all targets by chaining the individual targets together.
+                        if not self._hasIndex(): raise ValueError( "no index available for fetch" )
                         i = []
                         rstart = 0
                         rend = 1<<29
@@ -478,10 +484,13 @@ cdef class Samfile:
         cdef int rend
         cdef bam_plbuf_t *buf
 
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
         region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
         
         if self.isbam:
-            assert self._hasIndex(), "no index available for pileup"
+            if not self._hasIndex(): raise ValueError( "no index available for pileup" )
 
             if callback:
                 if not region:
@@ -590,8 +599,8 @@ cdef class Samfile:
 
                     # the following is clumsy as generators do not work?
                     x = {}
-                    for field in fields[1:]: 
-                        key,value = field.split(":")
+                    for field in fields[1:]:
+                        key, value = field.split(":",1)
                         if key not in VALID_HEADER_FIELDS[record]:
                             raise ValueError( "unknown field code '%s' in record '%s'" % (key, record) )
                         x[key] = VALID_HEADER_FIELDS[record][key](value)
@@ -752,10 +761,13 @@ cdef class Fastafile:
         :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
         '''
         
-        assert self.fastafile != NULL
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
 
-        cdef int len
+        cdef int len, max_pos
         cdef char * seq
+        max_pos = 2 << 29
+
         if not region:
             if reference == None: raise ValueError( 'no sequence/region supplied.' )
             if start == None and end == None:
@@ -764,8 +776,9 @@ cdef class Fastafile:
                 raise ValueError( 'only start or only end of region supplied' )
             else:
                 if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
-                if start < 0: raise ValueError( 'negative start coordinate (%i)' % start )
-                if end < 0: raise ValueError( 'negative end coordinate (%i)' % end )
+		# valid ranges are from 0 to 2^29-1
+                if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
+                if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
                 region = "%s:%i-%i" % (reference, start+1, end )
 
         # samtools adds a '\0' at the end
@@ -1293,7 +1306,9 @@ cdef class AlignedRead:
                     value = <int>bam_aux2i(s)
                     s += 1
                 elif tpe == 'A'[0]:
-                    value = <char>bam_aux2A(s)
+                    # there might a more efficient way
+                    # to convert a char into a string
+                    value = "%c" % <char>bam_aux2A(s)
                     s += 1
                 elif tpe == 'Z'[0]:
                     value = <char*>bam_aux2Z(s)
@@ -1491,17 +1506,20 @@ cdef class AlignedRead:
         #see bam_aux.c: bam_aux_get() and bam_aux2i() etc 
         cdef uint8_t * v
         v = bam_aux_get(self._delegate, tag)
+        if v == NULL: raise KeyError( "tag '%s' not present" % tag )
         type = chr(v[0])
         if type == 'c' or type == 'C' or type == 's' or type == 'S' or type == 'i':
-            return bam_aux2i(v)            
+            return <int>bam_aux2i(v)            
         elif type == 'f':
-            return bam_aux2f(v)
+            return <float>bam_aux2f(v)
         elif type == 'd':
-            return bam_aux2d(v)
+            return <double>bam_aux2d(v)
         elif type == 'A':
-            return bam_aux2A(v)
+            # there might a more efficient way
+            # to convert a char into a string
+            return '%c' % <char>bam_aux2A(v)
         elif type == 'Z':
-            return bam_aux2Z(v)
+            return <char*>bam_aux2Z(v)
     
     def fancy_str (self):
         """returns list of fieldnames/values in pretty format for debugging

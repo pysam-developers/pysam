@@ -1,24 +1,16 @@
-all: ex1.glf ex1.pileup.gz ex1.bam.bai ex1.glfview.gz ex2.sam.gz ex2.sam ex1.sam \
+all: ex1.glf ex1.pileup.gz ex1.bam.bai ex1.glfview.gz \
+	ex2.sam.gz ex2.sam ex1.sam \
+	ex2.bam \
 	ex3.bam ex3.bam.bai \
 	ex4.bam ex4.bam.bai \
 	ex5.bam ex5.bam.bai \
 	ex6.bam 
-		@echo; echo \# You can now launch the viewer with: \'samtools tview ex1.bam ex1.fa\'; echo;
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz
 
-ex3.bam: ex3.sam ex1.fa.fai
-	samtools import ex1.fa.fai ex3.sam ex3.bam
-
-ex4.bam: ex4.sam ex1.fa.fai
-	samtools import ex1.fa.fai ex4.sam ex4.bam
-
-ex5.bam:  ex5.sam ex1.fa.fai
-	samtools import ex1.fa.fai ex5.sam ex5.bam
-
-ex6.bam:  ex6.sam ex1.fa.fai
-	samtools import ex1.fa.fai ex6.sam ex6.bam
+%.bam: %.sam ex1.fa.fai
+	samtools import ex1.fa.fai $< $@
 
 %.sam: %.sam.gz
 	gunzip < $< > $@

@@ -277,6 +277,8 @@ int pysam_dispatch(int argc, char *argv[] )
 #endif
 #endif
 
+  extern int optind;
+  
   // reset getop
   optind = 1;
 
