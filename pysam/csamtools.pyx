@@ -167,7 +167,7 @@ class StderrStore():
 VALID_HEADER_TYPES = { "HD" : dict, 
                        "SQ" : list, 
                        "RG" : list, 
-                       "PG" : dict, 
+                       "PG" : list, 
                        "CO" : list }
 
 # order of records within sam headers
