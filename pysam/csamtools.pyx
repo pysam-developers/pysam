@@ -476,7 +476,9 @@ cdef class Samfile:
         an exception is raised.
         
         .. Note::
-            Note that *all* reads which overlap the region are returned. So the first base returned will be the first base of the first read *not* the first base of the region.
+
+            *all* reads which overlap the region are returned. The first base returned will be the 
+            first base of the first read *not* necessarily the first base of the region used in the query.
         '''
         cdef int rtid
         cdef int rstart
@@ -1394,7 +1396,16 @@ cdef class AlignedRead:
         def __get__(self): return self._delegate.core.flag
         def __set__(self, flag): self._delegate.core.flag = flag
     property rname: 
-        """:term:`reference` ID"""
+        """
+        :term:`target` ID
+
+        .. note::
+
+            This field contains the index of the reference sequence 
+            in the sequence dictionary. To obtain the name
+            of the reference sequence, use :meth:`pysam.Samfile.getrname()`
+
+        """
         def __get__(self): return self._delegate.core.tid
         def __set__(self, tid): self._delegate.core.tid = tid
     property pos: 

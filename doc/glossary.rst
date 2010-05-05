@@ -12,13 +12,20 @@ Glossary
       and another 2 matches.
 
    region
-      A genomic region, stated relative to a reference sequence. Consists of reference name ('chr1'), start (100000), and end (200000). 0-based coordinates. Can be expressed as a string ('chr1:10000:20000')
+      A genomic region, stated relative to a reference sequence. A region consists of 
+      reference name ('chr1'), start (100000), and end (200000). 
+      0-based coordinates. Can be expressed as a string ('chr1:10000:20000')
 
    column
       Reads that are aligned to a base in the :term:`reference` sequence.
      
+   tid
+      The :term:`target` id. The target id is 0 or a positive integer mapping to
+      entries within the sequence dictionary in the header section of 
+      a :term:`TAM` file or :term:`BAM` file.
+
    Reference
-      The sequence that reads have been mapped onto. For example ``chr1``, ``contig123``.
+      The sequence that a :term:`tid` refers to. For example ``chr1``, ``contig123``.
 
    BAM
        Binary SAM format. BAM files are binary formatted, indexed and 
@@ -44,5 +51,10 @@ Glossary
    fetching
       Retrieving all mapped reads mapped to a :term:`region`.
 
+   target
+      The sequence that a read has been aligned to. Target
+      sequences have bot a numerical identifier (:term:`tid`) 
+      and an alphanumeric name (:term:`Reference`).
+      
 
 .. _samtools: http://samtools.sourceforge.net

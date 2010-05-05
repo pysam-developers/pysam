@@ -442,6 +442,12 @@ class TestAlignedReadFromSam(TestAlignedReadFromBam):
         self.samfile=pysam.Samfile( "ex3.sam","r" )
         self.reads=list(self.samfile.fetch())
 
+# needs to be implemented 
+# class TestAlignedReadFromSamWithoutHeader(TestAlignedReadFromBam):
+#
+#     def setUp(self):
+#         self.samfile=pysam.Samfile( "ex7.sam","r" )
+#         self.reads=list(self.samfile.fetch())
 
 class TestHeaderSam(unittest.TestCase):
 
