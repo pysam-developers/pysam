@@ -1,5 +1,9 @@
 #!/usr/bin/env python
-'''unit testing code for pysam.'''
+'''unit testing code for pysam.
+
+Execute in the :file:`tests` directory as it requires the Makefile
+and data files located there.
+'''
 
 import pysam
 import unittest
@@ -7,6 +11,7 @@ import os
 import itertools
 import subprocess
 import shutil
+
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -411,8 +416,12 @@ class TestAlignedReadFromBam(unittest.TestCase):
         self.assertEqual( self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (self.reads[1].is_proper_pair, True) )
 
     def testTags( self ):
-        self.assertEqual( self.reads[0].tags, [('NM', 1), ('RG', 'L1'), ('XT', 'U')] )
-        self.assertEqual( self.reads[1].tags, [('MF', 18), ('RG', 'L2'), ('XT', 'R')] )
+        self.assertEqual( self.reads[0].tags, 
+                          [('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U')] )
+        self.assertEqual( self.reads[1].tags, 
+                          [('MF', 18), ('RG', 'L2'), 
+                           ('PG', 'P2'),('XT', 'R') ] )
 
     def testOpt( self ):
         self.assertEqual( self.reads[0].opt("XT"), "U" )
@@ -436,53 +445,35 @@ class TestAlignedReadFromSam(TestAlignedReadFromBam):
 
 class TestHeaderSam(unittest.TestCase):
 
-    def setUp(self):
-        self.samfile=pysam.Samfile( "ex3.sam","r" )
+    header = {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                     {'LN': 1584, 'SN': 'chr2'}], 
+              'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10', "CN":"name:with:colon"}, 
+                     {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12', "CN":"name:with:colon"}],
+              'PG': [{'ID': 'P1', 'VN': '1.0'}, {'ID': 'P2', 'VN': '1.1'}], 
+              'HD': {'VN': '1.0'},
+              'CO' : [ 'this is a comment', 'this is another comment'],
+              }
 
-    def testHeaders(self):
-        self.assertEqual( self.samfile.header, \
-                              {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
-                                      {'LN': 1584, 'SN': 'chr2'}], 
-                               'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10', "CN":"name:with:colon"}, 
-                                      {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12', "CN":"name:with:colon"}], 
-                               'CO': ['this is a comment', 'this is another comment'], 
-                               'HD': {'VN': '1.0'}}, 
-                          "mismatch in headers: %s != %s" % \
-                              (self.samfile.header, 
-                               {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
-                                       {'LN': 1584, 'SN': 'chr2'}], 
-                                'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
-                                       {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
-                                'CO': ['this is a comment', 'this is another comment'], 
-                                'HD': {'VN': '1.0'}}) )
-
-    def tearDown(self):
-        self.samfile.close()
-
-class TestHeaderBam(unittest.TestCase):
+    def compareHeaders( self, a, b ):
+        '''compare two headers a and b.'''
+        for ak,av in a.iteritems():
+            self.assertTrue( ak in b, "key '%s' not in '%s' " % (ak,b) )
+            self.assertEqual( av, b[ak] )
 
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.sam","r" )
 
     def testHeaders(self):
-        self.assertEqual( self.samfile.header, \
-                              {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
-                                      {'LN': 1584, 'SN': 'chr2'}], 
-                               'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10', "CN":"name:with:colon"}, 
-                                      {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12', "CN":"name:with:colon"}], 
-                               'CO': ['this is a comment', 'this is another comment'], 
-                               'HD': {'VN': '1.0'}}, 
-                          "mismatch in headers: %s != %s" % \
-                              (self.samfile.header, 
-                               {'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
-                                       {'LN': 1584, 'SN': 'chr2'}], 
-                                'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10'}, 
-                                       {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12'}], 
-                                'CO': ['this is a comment', 'this is another comment'], 
-                                'HD': {'VN': '1.0'}}) )
-
+        self.compareHeaders( self.header, self.samfile.header )
+        self.compareHeaders( self.samfile.header, self.header )
+        
     def tearDown(self):
         self.samfile.close()
+
+class TestHeaderBam(TestHeaderSam):
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex3.bam","rb" )
 
 class TestUnmappedReads(unittest.TestCase):
 
@@ -521,7 +512,7 @@ class TestPileupObjects(unittest.TestCase):
 
     def tearDown(self):
         self.samfile.close()
-
+        
 class TestExceptions(unittest.TestCase):
 
     def setUp(self):
@@ -837,4 +828,8 @@ class TestDeNovoConstruction(unittest.TestCase):
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
 
 if __name__ == "__main__":
+    # build data files
+    print "building data files"
+    subprocess.call( "make", shell=True)
+    print "starting tests"
     unittest.main()

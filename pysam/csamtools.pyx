@@ -185,7 +185,6 @@ VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
                        "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL" ),
                        "PG" : ( "ID", "VN", "CL" ), }
 
-
 ######################################################################
 ######################################################################
 ######################################################################
@@ -1285,7 +1284,6 @@ cdef class AlignedRead:
                 ctag[0] = s[0]
                 ctag[1] = 0
                 pytype = ctag
-
                 # get type and value 
                 # how do I do char literal comparison in cython?
                 # the code below works (i.e, is C comparison)
