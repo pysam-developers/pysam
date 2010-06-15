@@ -86,6 +86,10 @@ cdef class Tabixfile:
         if reference:
             if start != None and end != None:
                 region = "%s:%i-%i" % (reference, start+1, end)
+            elif start == None and end != None:
+                region = "%s:%i-%i" % (reference, 1, end)
+            elif end == None and start != None:
+                region = "%s:%i-%i" % (reference, start+1, max_pos-1)
             else:
                 region = reference
 

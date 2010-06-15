@@ -64,7 +64,7 @@ class TestIteration( unittest.TestCase ):
         lines = gzip.open(self.filename).readlines()
         # creates index of contig, start, end, adds content without newline.
         self.compare = [ 
-            (x[0][0], int(x[0][3]), int(x[0][4]),x[1]) 
+            (x[0][0], int(x[0][3]), int(x[0][4]), x[1]) 
             for x in [ (y.split("\t"), y[:-1]) for y in lines ] ]
                          
     def getSubset( self, contig = None, start = None, end = None):
@@ -79,16 +79,28 @@ class TestIteration( unittest.TestCase ):
             elif start == None and end != None:
                 # from start of contig
                 subset = [ x[3] for x in self.compare if x[0] == contig and x[1] <= end ]
-            else:
-                # all within contig
+            elif start == None and end == None:
                 subset = [ x[3] for x in self.compare if x[0] == contig ]
+            else:
+                # all within interval
+                subset = [ x[3] for x in self.compare if x[0] == contig and \
+                               min( x[2], end) - max(x[1], start) > 0 ]
             
         return subset
 
     def checkPairwise( self, result, ref ):
 
+        result.sort()
+        ref.sort()
+
+        a = set(result)
+        b = set(ref)
+
         self.assertEqual( len(result), len(ref),
-                          "unexpected number of results: %i, expected %i" % (len(result), len(ref) ) )
+                          "unexpected number of results: %i, expected %i, differences are %s: %s" \
+                              % (len(result), len(ref),
+                                 a.difference(b), 
+                                 b.difference(a) ))
 
         for x, d in enumerate( zip( result, ref )):
             
@@ -109,25 +121,51 @@ class TestIteration( unittest.TestCase ):
             result = list(self.tabix.fetch( contig ))
             ref = self.getSubset( contig )
             self.checkPairwise( result, ref )
-
+            
     def testPerContigToEnd( self ):
         
+        end = None
         for contig in ("chr1", "chr2", "chr1", "chr2" ):
             for start in range( 0, 200000, 1000):
-                result = list(self.tabix.fetch( contig, start ))
-                ref = self.getSubset( contig, start )
+                result = list(self.tabix.fetch( contig, start, end ))
+                ref = self.getSubset( contig, start, end )
                 self.checkPairwise( result, ref )
+
+    def testPerContigFromStart( self ):
+        
+        start = None
+        for contig in ("chr1", "chr2", "chr1", "chr2" ):
+            for end in range( 0, 200000, 1000):
+                result = list(self.tabix.fetch( contig, start, end ))
+                ref = self.getSubset( contig, start, end )
+                self.checkPairwise( result, ref )
+
+    def testPerContig( self ):
+        
+        start, end  = None, None
+        for contig in ("chr1", "chr2", "chr1", "chr2" ):
+            result = list(self.tabix.fetch( contig, start, end ))
+            ref = self.getSubset( contig, start, end )
+            self.checkPairwise( result, ref )
                 
-# tabixfile = 
+    def testPerInterval( self ):
+        
+        start, end  = None, None
+        for contig in ("chr1", "chr2", "chr1", "chr2" ):
+            for start in range( 0, 200000, 2000):
+                for end in range( start, start + 2000, 500):
+                    result = list(self.tabix.fetch( contig, start, end ))
+                    ref = self.getSubset( contig, start, end )
+                    self.checkPairwise( result, ref )
+                
 
-# print "##########"
-# for l in tabixfile.fetch("chr2", 28814, 28900):
-#     print l
-
-# print "##########"
-
-# for l in tabixfile.fetch():
-#     print l
+    def testInvalidIntervals( self ):
+        
+        self.assertRaises( ValueError, self.tabix.fetch, "chr1", 0, -10)
+        self.assertRaises( ValueError, self.tabix.fetch, "chr1", -10, 200)
+        self.assertRaises( ValueError, self.tabix.fetch, "chr1", 200, 0)
+        self.assertRaises( ValueError, self.tabix.fetch, "chr1", -10, -20)
+        self.assertRaises( ValueError, self.tabix.fetch, "chrUn" )
 
 if __name__ == "__main__":
     unittest.main()
