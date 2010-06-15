@@ -1,4 +1,5 @@
 from csamtools import *
+from ctabix import *
 import Pileup
 import sys
 import os

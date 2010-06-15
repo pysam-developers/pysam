@@ -249,3 +249,7 @@ cdef extern from "pysam_util.h":
     bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
   
     void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
+
+# tabix support
+# cdef extern from "tabix.h":
+    

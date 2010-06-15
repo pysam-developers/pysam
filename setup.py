@@ -6,30 +6,45 @@ pysam
 
 '''
 
-import os, sys, glob, shutil
+import os, sys, glob, shutil, hashlib
 
 name = "pysam"
-version = "0.2"
+version = "0.3"
 
 samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
 samtools_dest = os.path.abspath( "samtools" )
+tabix_exclude = ( "main.c", )
+tabix_dest = os.path.abspath( "tabix" )
 
 # copy samtools source
 if len(sys.argv) >= 2 and sys.argv[1] == "import":
    if len(sys.argv) < 3: raise ValueError("missing PATH to samtools source directory")
-   samtools_src = os.path.abspath( sys.argv[2] )
-   if not os.path.exists( samtools_src ): raise IOError( "samtools src dir `%s` does not exist." % samtools_src )
+   if len(sys.argv) < 4: raise ValueError("missing PATH to tabix source directory")
 
-   cfiles = glob.glob( os.path.join( samtools_src, "*.c" ) )
-   hfiles = glob.glob( os.path.join( samtools_src, "*.h" ) )
-   ncopied = 0
-   for p in cfiles + hfiles:
-      f = os.path.basename(p)
-      if f in samtools_exclude: continue
-      if os.path.exists( os.path.join( samtools_dest, f )): continue
-      shutil.copy( p, samtools_dest )
-      ncopied += 1
-   print "installed latest source code from %s: %i files copied" % (samtools_src, ncopied)
+   for destdir, srcdir, exclude in zip( 
+      (samtools_dest, tabix_dest), 
+      sys.argv[2:4],
+      (samtools_exclude, tabix_exclude)):
+
+      srcdir = os.path.abspath( srcdir )
+      if not os.path.exists( srcdir ): raise IOError( "samtools src dir `%s` does not exist." % srcdir )
+
+      cfiles = glob.glob( os.path.join( srcdir, "*.c" ) )
+      hfiles = glob.glob( os.path.join( srcdir, "*.h" ) )
+      ncopied = 0
+      for new_file in cfiles + hfiles:
+         f = os.path.basename(new_file)
+         if f in exclude: continue
+         old_file = os.path.join( destdir, f )
+         if os.path.exists( old_file ):
+            md5_old = hashlib.md5("".join(open(old_file,"r").readlines())).digest()
+            md5_new = hashlib.md5("".join(open(new_file,"r").readlines())).digest()
+            if md5_old == md5_new: continue
+            raise ValueError( "incompatible files for %s and %s" % (old_file, new_file ))
+
+         shutil.copy( new_file, destdir )
+         ncopied += 1
+      print "installed latest source code from %s: %i files copied" % (srcdir, ncopied)
    sys.exit(0)
 
 from distutils.core import setup, Extension
@@ -48,7 +63,7 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
-pysam = Extension(
+samtools = Extension(
     "pysam/csamtools",                   # name of extension
     [ "pysam/csamtools.pyx" ]  +\
        [ "pysam/%s" % x for x in (
@@ -56,6 +71,17 @@ pysam = Extension(
        glob.glob( os.path.join( "samtools", "*.c" ) ),
     library_dirs=[],
     include_dirs=[ "samtools", ],
+    libraries=[ "z", ],
+    language="c",
+    )
+
+tabix = Extension(
+    "pysam/ctabix",                   # name of extension
+    [ "pysam/ctabix.pyx" ]  +\
+       [ "pysam/%s" % x for x in ()] +\
+       glob.glob( os.path.join( "tabix", "*.c" ) ),
+    library_dirs=[],
+    include_dirs=[ "tabix", ],
     libraries=[ "z", ],
     language="c",
     )
@@ -72,7 +98,7 @@ metadata = {
     'url': "http://code.google.com/p/pysam/",
     'py_modules': [
       "pysam/__init__", "pysam/Pileup", "pysam/namedtuple" ],
-    'ext_modules': [pysam,],
+    'ext_modules': [samtools,tabix],
     'cmdclass' : {'build_ext': build_ext} }
 
 if __name__=='__main__':
