@@ -54,6 +54,30 @@ class TestIndexing(unittest.TestCase):
         os.unlink( self.tmpfilename )
         os.unlink( self.tmpfilename + ".tbi" )
 
+class TestCompression(unittest.TestCase):
+    filename = "example.gtf.gz" 
+    filename_idx = "example.gtf.gz.tbi" 
+
+    def setUp( self ):
+        
+        self.tmpfilename = "tmp_%i.gtf" % id(self)
+        infile = gzip.open( self.filename, "r")
+        outfile = open( self.tmpfilename, "w" )
+        outfile.write( "".join(infile.readlines()) )
+        outfile.close()
+        infile.close()
+
+    def testIndexPreset( self ):
+        '''test indexing via preset.'''
+
+        pysam.tabix_index( self.tmpfilename, preset = "gff" )
+        checkBinaryEqual( self.tmpfilename + ".gz", self.filename )
+        checkBinaryEqual( self.tmpfilename + ".gz.tbi", self.filename_idx )
+
+    def tearDown( self ):
+        os.unlink( self.tmpfilename + ".gz" )
+        os.unlink( self.tmpfilename + ".gz.tbi" )
+
 class TestIteration( unittest.TestCase ):
 
     filename = "example.gtf.gz" 

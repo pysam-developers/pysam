@@ -34,10 +34,21 @@ cdef extern from "stdio.h":
 cdef extern from "ctype.h":
   int toupper(int c)
   int tolower(int c)
+
+cdef extern from "sys/types.h":
+  pass
+
+cdef extern from "sys/stat.h":
+  pass
+
+cdef extern from "fcntl.h":
+  int open(char *pathname, int flags)
   
 cdef extern from "unistd.h":
+  ctypedef int ssize_t
   char *ttyname(int fd)
   int isatty(int fd)  
+  ssize_t read(int fd, void *buf, size_t count)
 
 cdef extern from "string.h":
   int strcmp(char *s1, char *s2)
@@ -63,6 +74,12 @@ cdef extern from "bgzf.h":
     pass
 
   int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
+
+  BGZF * bgzf_open(char * path, char * mode)
+
+  int bgzf_write(BGZF * fp, void* data, int length)
+
+  int bgzf_close(BGZF* fp)
 
 # tabix support
 cdef extern from "tabix.h":

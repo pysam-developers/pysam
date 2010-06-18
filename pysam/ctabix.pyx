@@ -175,14 +175,55 @@ cdef class TabixIterator:
             ti_iter_destroy(self.iterator)
         
 
+def tabix_compress( filename_in, 
+              filename_out,
+              force = False ):
+
+    '''compress a file with bgzf.'''
+
+    if not force and os.path.exists(filename_out ):
+        raise IOError( "Filename '%s' already exists, use *force* to overwrite" % filename_out)
+
+    cdef int WINDOW_SIZE
+    cdef int c, r
+    cdef void * buffer
+    cdef BGZF * fp
+    cdef int fd_src
+
+    cdef int O_RDONLY
+    O_RDONLY = os.O_RDONLY
+
+    WINDOW_SIZE = 64 * 1024
+
+    fp = bgzf_open( filename_out, "w")
+    if fp == NULL:
+        raise IOError( "could not open '%s' for writing" )
+
+    fd_src = open(filename_in, O_RDONLY)
+    if fd_src == 0:
+        raise IOError( "could not open '%s' for reading" )
+
+    buffer = malloc(WINDOW_SIZE)
+
+    while c > 0:
+        c = read(fd_src, buffer, WINDOW_SIZE)
+        r = bgzf_write(fp, buffer, c)
+        if r < 0:
+            free( buffer )
+            raise OSError("writing failed")
+        
+    free( buffer )
+    r = bgzf_close(fp)
+    if r < 0: raise OSError("writing failed")
+
 def tabix_index( filename, 
-                force = False,
-                seq_col = None, 
-                start_col = None, 
-                end_col = None,
-                preset = None,
-                meta_char = "#",
-                line_skip = 0,
+                 force = False,
+                 seq_col = None, 
+                 start_col = None, 
+                 end_col = None,
+                 preset = None,
+                 meta_char = "#",
+              
                 ):
     '''index tab-separated *filename* using tabix.
 
@@ -191,28 +232,52 @@ def tabix_index( filename,
 
     The index will be built from coordinates
     in columns *seq_col*, *start_col* and *end_col*.
-    
-    Columns are 0-based.
+
+    The contents of *filename* have to be sorted by 
+    contig and position - the method does not check
+    if the file is sorted.
+
+    Column indices are 0-based.
 
     If *preset* is provided, the column coordinates
     are taken from a preset. Valid values for preset
-    are "gff", "bed", "sam", "vcf", psltbl".
+    are "gff", "bed", "sam", "vcf", psltbl", "pileup".
     
     Lines beginning with *meta_char* and the first
     *line_skip* lines will be skipped.
     
+    If *filename* does not end in ".gz", it will be automatically
+    compressed. The original file will be removed and only the 
+    compressed file will be retained. 
+
+    If *filename* ends in *gz*, the file is assumed to be already
+    compressed with bgzf.
+
+    returns the filename of the compressed data
     '''
     
-    if not os.path.exists(filename): raise IOError("No such file or directory '%s'" % filename)
+    if not os.path.exists(filename): raise IOError("No such file '%s'" % filename)
+
+    if not filename.endswith(".gz"): 
+        
+        tabix_compress( filename, filename + ".gz", force = force )
+        os.unlink( filename )
+        filename += ".gz"
+
     if not force and os.path.exists(filename + ".tbi" ):
         raise IOError( "Filename '%s.tbi' already exists, use *force* to overwrite" )
 
+    # columns (1-based)
+    # preset-code, contig, start, end, metachar for commends, lines to ignore at beginning
+    # 0 is a missing column
     preset2conf = {
         'gff' : ( 0, 1, 4, 5, ord('#'), 0 ),
         'bed' : ( 0x10000, 1, 2, 3, ord('#'), 0 ),
         'psltbl' : ( 0x10000, 15, 17, 18, ord('#'), 0 ),
         'sam' : ( 1, 3, 4, 0, ord('#'), 0 ),
-        'vcf' : ( 2, 1, 2, 0, ord('#'), 0 ) }
+        'vcf' : ( 2, 1, 2, 0, ord('#'), 0 ),
+        'pileup': (3, 1, 2, 0, ord('#'), 0 ),
+        }
 
     if preset:
         try:
@@ -228,4 +293,5 @@ def tabix_index( filename,
 
     ti_index_build( filename, &conf)
     
+    return filename
     
