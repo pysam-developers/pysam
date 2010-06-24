@@ -255,7 +255,7 @@ cdef class Samfile:
                Samfile template = None,
                referencenames = None,
                referencelengths = None,
-               char * text = NULL,
+               text = None,
                header = None,
               ):
         '''open a sam/bam file.
@@ -276,6 +276,8 @@ cdef class Samfile:
         self.filename = filename
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
+        cdef char * ctext
+        ctext = NULL
 
         if mode[0] == 'w':
             # open file for writing
@@ -306,11 +308,12 @@ cdef class Samfile:
                     header_to_write.target_name[x] = <char*>calloc(len(name)+1, sizeof(char))
                     strncpy( header_to_write.target_name[x], name, len(name) )
 
-                if text != NULL:
+                if text != None:
                     # copy without \0
-                    header_to_write.l_text = strlen(text)
-                    header_to_write.text = <char*>calloc( strlen(text), sizeof(char) )
-                    memcpy( header_to_write.text, text, strlen(text) )
+                    ctext = text
+                    header_to_write.l_text = strlen(ctext)
+                    header_to_write.text = <char*>calloc( strlen(ctext), sizeof(char) )
+                    memcpy( header_to_write.text, ctext, strlen(ctext) )
 
                 header_to_write.hash = NULL
                 header_to_write.rg2lib = NULL

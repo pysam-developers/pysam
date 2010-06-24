@@ -1,5 +1,7 @@
 from csamtools import *
 from ctabix import *
+import csamtools
+import ctabix
 import Pileup
 import sys
 import os

@@ -191,6 +191,34 @@ class TestIteration( unittest.TestCase ):
         self.assertRaises( ValueError, self.tabix.fetch, "chr1", -10, -20)
         self.assertRaises( ValueError, self.tabix.fetch, "chrUn" )
 
+    def testGetContigs( self ):
+        self.assertEqual( sorted(self.tabix.contigs), ["chr1", "chr2"] )
+        # check that contigs is read-only
+        self.assertRaises( AttributeError, setattr, self.tabix, "contigs", ["chr1", "chr2"] )
+
+class TestParser( unittest.TestCase ):
+
+    filename = "example.gtf.gz" 
+
+    def setUp( self ):
+
+        self.tabix = pysam.Tabixfile( self.filename )
+        self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") ]
+
+    def testGTF( self ):
+
+        for x, r in enumerate(self.tabix.fetch( parser = pysam.asGTF() )):
+            self.assertEqual( "\t".join( self.compare[x]), str(r) )
+
+    def testTuple( self ):
+
+        for x, r in enumerate(self.tabix.fetch( parser = pysam.asTuple() )):
+            self.assertEqual( self.compare[x], list(r) )
+
+            self.assertEqual( len(self.compare[x]), len(r) )
+            for c in range(0,len(r)):
+                self.assertEqual( self.compare[x][c], r[c] )
+
 if __name__ == "__main__":
     unittest.main()
 

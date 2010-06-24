@@ -1,17 +1,24 @@
+
 cdef extern from "string.h":
   ctypedef int size_t
   void *memcpy(void *dst,void *src,size_t len)
   void *memmove(void *dst,void *src,size_t len)
   void *memset(void *b,int c,size_t len)
+  char *strtok_r(char *str, char *delim, char **saveptr)
+  char *strncpy(char *dest, char *src, size_t n)
+  void *memchr(void *s, int c, size_t n)
 
 cdef extern from "stdlib.h":
   void free(void *)
   void *malloc(size_t)
   void *calloc(size_t,size_t)
   void *realloc(void *,size_t)
-  int c_abs "abs" (int)
   void qsort(void *base, size_t nmemb, size_t size,
              int (*compar)(void *,void *))
+  int c_abs "abs" (int)
+  int atoi( char *nptr)
+  long atol( char *nptr)
+  double atof( char *nptr)
 
 cdef extern from "stdio.h":
   ctypedef struct FILE:
@@ -67,6 +74,16 @@ cdef extern from "stdint.h":
   ctypedef int uint8_t
   ctypedef int uint64_t
 
+cdef extern from "Python.h":
+    ctypedef struct FILE
+    FILE* PyFile_AsFile(object)
+    char *fgets(char *str, int size, FILE *ifile)
+    int feof(FILE *stream)
+    size_t strlen(char *s)
+    size_t getline(char **lineptr, size_t *n, FILE *stream)
+    char *strstr(char *, char *)
+    char *strchr(char *string, int c)
+    int fileno(FILE *stream)
 
 cdef extern from "bgzf.h":
 
@@ -112,12 +129,12 @@ cdef extern from "tabix.h":
   ti_iter_t ti_querys(tabix_t *t, char *reg)
   char * ti_read(tabix_t *t, ti_iter_t iter, int *len)
 
-  #	/* Get the list of sequence names. Each "char*" pointer points to a
-#	 * internal member of the index, so DO NOT modify the returned
-#	 * pointer; otherwise the index will be corrupted. The returned
-	# * pointer should be freed by a single free() call by the routine
-#	 * calling this function. The number of sequences is returned at *n. */
-  # const char **ti_seqname(const ti_index_t *idx, int *n)
+  # Get the list of sequence names. Each "char*" pointer points to a
+  #	internal member of the index, so DO NOT modify the returned
+  #	 pointer; otherwise the index will be corrupted. The returned
+  #	pointer should be freed by a single free() call by the routine
+  #	calling this function. The number of sequences is returned at *n
+  char **ti_seqname(ti_index_t *idx, int *n)
 
   
   # Destroy the iterator

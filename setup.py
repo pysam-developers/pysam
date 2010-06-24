@@ -48,7 +48,7 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
    sys.exit(0)
 
 from distutils.core import setup, Extension
-from Pyrex.Distutils import build_ext
+from Cython.Distutils import build_ext
 
 classifiers = """
 Development Status :: 2 - Alpha
@@ -64,24 +64,24 @@ Topic :: Scientific/Engineering :: Bioinformatics
 """
 
 samtools = Extension(
-    "pysam/csamtools",                   # name of extension
+    "csamtools",                   # name of extension
     [ "pysam/csamtools.pyx" ]  +\
        [ "pysam/%s" % x for x in (
              "pysam_util.c", )] +\
        glob.glob( os.path.join( "samtools", "*.c" ) ),
     library_dirs=[],
-    include_dirs=[ "samtools", ],
+    include_dirs=[ "samtools", "pysam" ],
     libraries=[ "z", ],
     language="c",
     )
 
 tabix = Extension(
-    "pysam/ctabix",                   # name of extension
+    "ctabix",                   # name of extension
     [ "pysam/ctabix.pyx" ]  +\
        [ "pysam/%s" % x for x in ()] +\
        glob.glob( os.path.join( "tabix", "*.c" ) ),
     library_dirs=[],
-    include_dirs=[ "tabix", ],
+    include_dirs=[ "tabix", "pysam" ],
     libraries=[ "z", ],
     language="c",
     )
@@ -98,7 +98,7 @@ metadata = {
     'url': "http://code.google.com/p/pysam/",
     'py_modules': [
       "pysam/__init__", "pysam/Pileup", "pysam/namedtuple" ],
-    'ext_modules': [samtools,tabix],
+    'ext_modules': [samtools, tabix],
     'cmdclass' : {'build_ext': build_ext} }
 
 if __name__=='__main__':
