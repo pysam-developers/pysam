@@ -760,6 +760,8 @@ cdef class Fastafile:
                
         fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. The region is specified by
         :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
+
+        fetch returns an empty string if the region is out of range or addresses an unknown *reference*.
         '''
         
         if not self._isOpen():
@@ -784,10 +786,14 @@ cdef class Fastafile:
 
         # samtools adds a '\0' at the end
         seq = fai_fetch( self.fastafile, region, &len )
+
         # copy to python
-        result = seq
-        # clean up
-        free(seq)
+        if seq == NULL:
+            return ""
+        else:
+            result = seq
+            # clean up
+            free(seq)
         
         return result
 

@@ -582,14 +582,18 @@ class TestFastaFile(unittest.TestCase):
             for x in range( 0, len(seq), 10):
                 self.assertEqual( seq[x:x+10], self.file.fetch( id, x, x+10) )
 
+    def testOutOfRangeAccess( self ):
+        '''test out of range access.'''
+        # out of range access returns an empty string
+        self.assertEqual( self.file.fetch( "chr1", 10000, 12000), "" ) 
+        self.assertEqual( self.file.fetch( "chr2", 10000, 12000), "" ) 
+        self.assertEqual( self.file.fetch( "chr3", 0 , 100), "" ) 
+
     def testFetchErrors( self ):
         self.assertRaises( ValueError, self.file.fetch )
         self.assertRaises( ValueError, self.file.fetch, "chr1", 0 )
         self.assertRaises( ValueError, self.file.fetch, "chr1", -1, 10 )
         self.assertRaises( ValueError, self.file.fetch, "chr1", 20, 10 )
-        # the following segfaults:
-        # self.assertRaises( IndexError, self.file.fetch, "chr12", )
-        pass
 
     def tearDown(self):
         self.file.close()
