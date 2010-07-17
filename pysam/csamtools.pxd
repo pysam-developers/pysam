@@ -122,10 +122,9 @@ cdef extern from "bam.h":
 
   bamFile razf_dopen(int data_fd, char *mode)
 
+  int64_t bam_seek( bamFile fp, uint64_t voffset, int where)
+  int64_t bam_tell( bamFile fp )
   # removed - macros not found
-
-  # int64_t bam_seek( bamFile fp, uint64_t voffset, int where)
-  # int64_t bam_tell( bamFile fp )
   # void bam_destroy1( bam1_t * b) 
   # void bam_init_header_hash(bam_header_t *header)
 

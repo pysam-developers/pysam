@@ -1167,6 +1167,8 @@ cdef class AlignedRead:
             cdef bam1_t * src
             cdef uint8_t * p 
             cdef char * s
+            cdef char * bam_nt16_rev_table
+            cdef uint8_t k
             src = self._delegate
             bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
             ## parse qseq (bam1_seq)
@@ -1175,8 +1177,9 @@ cdef class AlignedRead:
             s = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
             p = pysam_bam1_seq( src )
             for k from 0 <= k < src.core.l_qseq:
-            ## equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
-                s[k] = "=ACMGRSVTWYHKDBN"[((p)[(k) / 2] >> 4 * (1 - (k) % 2) & 0xf)]
+                # equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
+                # note: do not use string literal as it will be a python string
+                s[k] = bam_nt16_rev_table[(p[k/2] >> 4 * (1 - k% 2) & 0xf)]
             retval=s
             free(s)
             return retval
