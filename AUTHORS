@@ -21,3 +21,4 @@ used in `faidx' for indexing RAZF compressed fasta files.
 
 Colin Hercus updated novo2sam.pl to support gapped alignment by
 novoalign.
+

@@ -397,6 +397,22 @@ cdef class Samfile:
             if not 0 <= rend < max_pos: raise ValueError( 'end out of range (%i)' % rend )
 
         return region, rtid, rstart, rend
+    
+    def seek( self, uint64_t offset, int where = 0):
+        '''move to current file to position *offset*'''
+
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+        if not self.isbam:
+            raise NotImplementedError("seek only available in bam files")
+        return bam_seek( self.samfile.x.bam, offset, where )
+
+    def tell( self ):
+        '''return current file position'''
+        if not self.isbam:
+            raise NotImplementedError("seek only available in bam files")
+
+        return bam_tell( self.samfile.x.bam )
 
     def fetch( self, 
                reference = None, 
@@ -431,7 +447,7 @@ cdef class Samfile:
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
-
+        
         region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
         if self.isbam:
@@ -733,6 +749,10 @@ cdef class Fastafile:
         '''return true if samfile has been opened.'''
         return self.fastafile != NULL
 
+    def __len__(self):
+        assert self.fastafile != NULL
+        return faidx_fetch_nseq(self.fastafile)
+
     def _open( self, 
                char * filename ):
         '''open an indexed fasta file.
@@ -761,8 +781,14 @@ cdef class Fastafile:
                
         '''*(reference = None, start = None, end = None, region = None)*
                
-        fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. The region is specified by
-        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
+        fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. 
+        The region is specified by :term:`reference`, *start* and *end*. 
+
+        If *reference* is given and *start* is None, the sequence from the 
+        first base is returned. Similarly, if *end* is None, the sequence 
+        until the last base is returned.
+        
+        Alternatively, a samtools :term:`region` string can be supplied.
         '''
         
         if not self._isOpen():
@@ -773,24 +799,30 @@ cdef class Fastafile:
         max_pos = 2 << 29
 
         if not region:
-            if reference == None: raise ValueError( 'no sequence/region supplied.' )
-            if start == None and end == None:
-                region = "%s" % str(reference)
-            elif start == None or end == None:
-                raise ValueError( 'only start or only end of region supplied' )
-            else:
-                if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
-		# valid ranges are from 0 to 2^29-1
-                if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
-                if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
-                region = "%s:%i-%i" % (reference, start+1, end )
+            if reference is None: raise ValueError( 'no sequence/region supplied.' )
+            if start is None: start = 0
+            if end is None: end = max_pos -1
 
-        # samtools adds a '\0' at the end
-        seq = fai_fetch( self.fastafile, region, &len )
+            if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
+            if start == end: return ""
+            # valid ranges are from 0 to 2^29-1
+            if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
+            if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
+
+            seq = faidx_fetch_seq(self.fastafile, reference, 
+                                  start,
+                                  end-1, &len)
+        else:
+            # samtools adds a '\0' at the end
+            seq = fai_fetch( self.fastafile, region, &len )
+
         # copy to python
-        result = seq
-        # clean up
-        free(seq)
+        if seq == NULL: 
+            return ""
+        else:
+            result = seq
+            # clean up
+            free(seq)
         
         return result
 
@@ -1296,27 +1328,27 @@ cdef class AlignedRead:
                 # how do I do char literal comparison in cython?
                 # the code below works (i.e, is C comparison)
                 tpe = toupper(s[0])
-                if tpe == 'S'[0]:
+                if tpe == 'S':
                     value = <int>bam_aux2i(s)            
                     s += 2
-                elif tpe == 'I'[0]:
+                elif tpe == 'I':
                     value = <int>bam_aux2i(s)            
                     s += 4
-                elif tpe == 'F'[0]:
+                elif tpe == 'F':
                     value = <float>bam_aux2f(s)
                     s += 4
-                elif tpe == 'D'[0]:
+                elif tpe == 'D':
                     value = <double>bam_aux2d(s)
                     s += 8
-                elif tpe == 'C'[0]:
+                elif tpe == 'C':
                     value = <int>bam_aux2i(s)
                     s += 1
-                elif tpe == 'A'[0]:
+                elif tpe == 'A':
                     # there might a more efficient way
                     # to convert a char into a string
                     value = "%c" % <char>bam_aux2A(s)
                     s += 1
-                elif tpe == 'Z'[0]:
+                elif tpe == 'Z':
                     value = <char*>bam_aux2Z(s)
                     # +1 for NULL terminated string
                     s += len(value) + 1
@@ -1433,6 +1465,27 @@ cdef class AlignedRead:
     property rlen:
         '''length of the read (read only). Returns 0 if not given.'''
         def __get__(self): return self._delegate.core.l_qseq
+    property aend:
+        '''aligned end position of the read (read only).  Returns
+        None if not available.'''
+        def __get__(self):
+            cdef bam1_t * src
+            src = self._delegate
+            if (self.flag & BAM_FUNMAP) or src.core.n_cigar == 0:
+                return None
+            return bam_calend(&src.core, pysam_bam1_cigar(src))
+    property alen:
+        '''aligned length of the read (read only).  Returns None if
+        not available.'''
+        def __get__(self):
+            cdef bam1_t * src
+            src = self._delegate
+            if (self.flag & BAM_FUNMAP) or src.core.n_cigar == 0:
+                return None
+            return bam_calend(&src.core, 
+                               pysam_bam1_cigar(src)) - \
+                               self._delegate.core.pos
+
     property mapq: 
         """mapping quality"""
         def __get__(self): return self._delegate.core.qual

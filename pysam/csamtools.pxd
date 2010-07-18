@@ -124,6 +124,7 @@ cdef extern from "bam.h":
 
   int64_t bam_seek( bamFile fp, uint64_t voffset, int where)
   int64_t bam_tell( bamFile fp )
+
   # removed - macros not found
   # void bam_destroy1( bam1_t * b) 
   # void bam_init_header_hash(bam_header_t *header)
@@ -207,6 +208,11 @@ cdef extern from "faidx.h":
    faidx_t *fai_load(char *fn)
 
    char *fai_fetch(faidx_t *fai, char *reg, int *len)
+
+   int faidx_fetch_nseq(faidx_t *fai)
+
+   char *faidx_fetch_seq(faidx_t *fai, char *c_name, 
+                         int p_beg_i, int p_end_i, int *len)
 
 cdef extern from "pysam_util.h":
 

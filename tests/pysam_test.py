@@ -130,7 +130,7 @@ class BinaryTest(unittest.TestCase):
             samtools_target, pysam_target = self.mCommands[command][0][0], self.mCommands[command][1][0]
             self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 
                              "%s failed: files %s and %s are not the same" % (command, samtools_target, pysam_target) )
-
+            
     def testImport( self ):
         self.checkCommand( "import" )
 
@@ -153,7 +153,7 @@ class BinaryTest(unittest.TestCase):
         self.assertRaises( pysam.SamtoolsError, pysam.index, "exdoesntexist.bam" )
 
     def __del__(self):
-
+        return
         for label, command in self.mCommands.iteritems():
             samtools_target, samtools_command = command[0]
             pysam_target, pysam_command = command[1]
@@ -581,19 +581,25 @@ class TestFastaFile(unittest.TestCase):
             self.assertEqual( seq, self.file.fetch( id ) )
             for x in range( 0, len(seq), 10):
                 self.assertEqual( seq[x:x+10], self.file.fetch( id, x, x+10) )
+                # test x:end
+                self.assertEqual( seq[x:], self.file.fetch( id, x) )
+                # test 0:x
+                self.assertEqual( seq[:x], self.file.fetch( id, None, x) )
+
+        
+        # unknown sequence returns ""
+        self.assertEqual( "", self.file.fetch("chr12") )
 
     def testFetchErrors( self ):
         self.assertRaises( ValueError, self.file.fetch )
-        self.assertRaises( ValueError, self.file.fetch, "chr1", 0 )
         self.assertRaises( ValueError, self.file.fetch, "chr1", -1, 10 )
         self.assertRaises( ValueError, self.file.fetch, "chr1", 20, 10 )
-        # the following segfaults:
-        # self.assertRaises( IndexError, self.file.fetch, "chr12", )
-        pass
 
+    def testLength( self ):
+        self.assertEqual( len(self.file), 2 )
+        
     def tearDown(self):
         self.file.close()
-
 
 class TestAlignedRead(unittest.TestCase):
     '''tests to check if aligned read can be constructed
