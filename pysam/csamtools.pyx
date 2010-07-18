@@ -561,6 +561,13 @@ cdef class Samfile:
         '''
         return samwrite( self.samfile, read._delegate )
 
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
+
     property nreferences:
         '''number of :term:`reference` sequences in the file.'''
         def __get__(self):
