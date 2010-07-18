@@ -343,7 +343,9 @@ cdef class Samfile:
             raise IOError("could not open file `%s`" % filename )
 
         if mode[0] == "r" and self.isbam:
-            if not os.path.exists(filename + ".bai"):
+            if strncmp(filename,"http:",5)!=0 and \
+                    strncmp(filename,"ftp:",4)!=0 and not \
+                    os.path.exists(filename +".bai"): 
                 self.index = NULL
             else:
                 # returns NULL if there is no index or index could not be opened
