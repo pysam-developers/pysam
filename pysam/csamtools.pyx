@@ -231,7 +231,8 @@ cdef class Samfile:
     cdef bam_index_t *index
     # true if file is a bam file
     cdef int isbam
-
+    # true if file is not on the local filesystem
+    cdef int isremote
     # current read within iteration
     cdef bam1_t * b
 
@@ -278,6 +279,10 @@ cdef class Samfile:
         self.filename = filename
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
+
+        self.isremote = strncmp(filename,"http:",5) or \
+            strncmp(filename,"ftp:",4) 
+
         cdef char * ctext
         ctext = NULL
 
@@ -332,7 +337,9 @@ cdef class Samfile:
 
         elif mode[0] == "r":
             # open file for reading
-            if strncmp( filename, "-", 1) != 0 and not os.path.exists( filename ):
+            if strncmp( filename, "-", 1) != 0 and \
+                    not self.isremote and \
+                    not os.path.exists( filename ):
                 raise IOError( "file `%s` not found" % filename)
 
             store = StderrStore()
@@ -343,8 +350,7 @@ cdef class Samfile:
             raise IOError("could not open file `%s`" % filename )
 
         if mode[0] == "r" and self.isbam:
-            if strncmp(filename,"http:",5)!=0 and \
-                    strncmp(filename,"ftp:",4)!=0 and not \
+            if not self.isremote and not \
                     os.path.exists(filename +".bai"): 
                 self.index = NULL
             else:
