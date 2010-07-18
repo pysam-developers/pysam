@@ -518,7 +518,14 @@ class TestPileupObjects(unittest.TestCase):
 
     def tearDown(self):
         self.samfile.close()
-        
+
+class TestContextManager(unittest.TestCase):
+
+    def testManager( self ):
+        with pysam.Samfile('ex1.bam', 'rb') as samfile:
+            samfile.fetch()
+        self.assertEqual( samfile._isOpen(), False )
+
 class TestExceptions(unittest.TestCase):
 
     def setUp(self):
@@ -834,6 +841,24 @@ class TestDeNovoConstruction(unittest.TestCase):
         
         os.unlink( tmpfilename )
 
+class TestDoubleFetch(unittest.TestCase):
+    '''check if two iterators on the same bamfile are independent.'''
+    
+    def testDoubleFetch( self ):
+
+        samfile1 = pysam.Samfile('ex1.bam', 'rb') 
+        samfile2 = pysam.Samfile('ex1.bam', 'rb') 
+
+        for a,b in zip(samfile1.fetch(), samfile2.fetch()):
+            self.assertEqual( a, b)
+
+    def testDoubleFetchWithRegion( self ):
+
+        samfile1 = pysam.Samfile('ex1.bam', 'rb') 
+        samfile2 = pysam.Samfile('ex1.bam', 'rb') 
+
+        for a,b in zip(samfile1.fetch( "chr1", 200, 300), samfile2.fetch( "chr1", 200, 300)):
+            self.assertEqual( a, b)
 
 # TODOS
 # 1. finish testing all properties within pileup objects

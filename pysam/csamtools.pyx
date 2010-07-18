@@ -1,4 +1,5 @@
 # cython: embedsignature=True
+# cython: profile=True
 # adds doc-strings for sphinx
 
 import tempfile, os, sys, types, itertools, struct, ctypes
@@ -184,6 +185,7 @@ VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
                        "SQ" : ( "SN", "LN", "AS", "M5" , "UR" , "SP" ),
                        "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL" ),
                        "PG" : ( "ID", "VN", "CL" ), }
+
 
 ######################################################################
 ######################################################################
@@ -833,6 +835,9 @@ cdef class Fastafile:
         
         return result
 
+###########################################################################
+###########################################################################
+###########################################################################
 ## turning callbacks elegantly into iterators is an unsolved problem, see the following threads:
 ## http://groups.google.com/group/comp.lang.python/browse_frm/thread/0ce55373f128aa4e/1d27a78ca6408134?hl=en&pli=1
 ## http://www.velocityreviews.com/forums/t359277-turning-a-callback-function-into-a-generator.html
@@ -1305,7 +1310,16 @@ cdef class AlignedRead:
                 p[k] = <uint8_t>q[k] - 33
 
     property tags:
-        """the tags in the AUX field."""
+        """the tags in the AUX field.
+        This property permits convenience access to 
+        the tags. Changes it the returned list will
+        not update the tags automatically. Instead,
+        the following is required for adding a 
+        new tag::
+
+            read.tags = read.tags + [("RG",0)]
+
+        """
         def __get__(self):
             cdef char * ctag
             cdef bam1_t * src
