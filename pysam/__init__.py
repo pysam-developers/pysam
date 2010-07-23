@@ -101,6 +101,8 @@ for key, options in SAMTOOLS_DISPATCH.iteritems():
     globals()[key] = SamtoolsDispatcher(cmd, parser)
 
 # hack to export all the symbols from csamtools
-__all__ = csamtools.__all__ + [ "SamtoolsError", "SamtoolsDispatcher" ] + list(SAMTOOLS_DISPATCH) +\
+__all__ = csamtools.__all__ + \
+    [ "SamtoolsError", "SamtoolsDispatcher" ] + list(SAMTOOLS_DISPATCH) +\
     ["Pileup",] 
 
+from version import __version__, __samtools_version__

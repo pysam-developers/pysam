@@ -7,7 +7,7 @@ and data files located there.
 
 import pysam
 import unittest
-import os
+import os, re
 import itertools
 import subprocess
 import shutil
@@ -47,7 +47,13 @@ def runSamtools( cmd ):
     except OSError, e:
         print >>sys.stderr, "Execution failed:", e
 
-        
+def getSamtoolsVersion():
+    '''return samtools version'''
+
+    pipe = subprocess.Popen("samtools", shell=True, stderr=subprocess.PIPE).stderr
+    lines = "".join(pipe.readlines())
+    return re.search( "Version:\s+(\S+)", lines).groups()[0]
+
 class BinaryTest(unittest.TestCase):
     '''test samtools command line commands and compare
     against pysam commands.
@@ -125,7 +131,14 @@ class BinaryTest(unittest.TestCase):
 
             BinaryTest.first_time = False
 
+        samtools_version = getSamtoolsVersion()
+        if samtools_version != pysam.__samtools_version__:
+            raise ValueError("versions of pysam/samtools and samtools differ: %s != %s" % \
+                                 (pysam.__samtools_version__,
+                                  samtools_version ))
+
     def checkCommand( self, command ):
+
         if command:
             samtools_target, pysam_target = self.mCommands[command][0][0], self.mCommands[command][1][0]
             self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 

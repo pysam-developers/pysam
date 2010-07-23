@@ -9,7 +9,12 @@ pysam
 import os, sys, glob, shutil, hashlib
 
 name = "pysam"
-version = "0.3"
+
+# collect pysam version
+sys.path.insert( 0, "pysam")
+import version
+
+version = version.__version__
 
 samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
 samtools_dest = os.path.abspath( "samtools" )
@@ -99,7 +104,10 @@ metadata = {
     'platforms': "ALL",
     'url': "http://code.google.com/p/pysam/",
     'py_modules': [
-      "pysam/__init__", "pysam/Pileup", "pysam/namedtuple" ],
+      "pysam/__init__", 
+      "pysam/Pileup", 
+      "pysam/namedtuple",
+      "pysam/version" ],
     'ext_modules': [samtools, tabix],
     'cmdclass' : {'build_ext': build_ext} }
 

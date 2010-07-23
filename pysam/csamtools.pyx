@@ -237,6 +237,8 @@ cdef class Samfile:
     cdef int isremote
     # current read within iteration
     cdef bam1_t * b
+    # file opening mode
+    cdef char * mode
 
     def __cinit__(self, *args, **kwargs ):
         self.samfile = NULL
@@ -256,7 +258,7 @@ cdef class Samfile:
 
     def _open( self, 
                char * filename, 
-               mode ='r',
+               mode = 'r',
                Samfile template = None,
                referencenames = None,
                referencelengths = None,
@@ -858,15 +860,25 @@ cdef class Fastafile:
 ## http://www.velocityreviews.com/forums/t359277-turning-a-callback-function-into-a-generator.html
 ## Thus I chose to rewrite the functions requiring callbacks. The downside is that if the samtools C-API or code
 ## changes, the changes have to be manually entered.
-
 cdef class IteratorRow:
     """iterates over mapped reads in a region.
+
+    The samtools iterators assume that the file
+    position between iterations do not change.
+    As a consequence, no two iterators can work
+    on the same file. To permit this, each iterator
+    creates its own file handle by re-opening the
+    file.
+
+    Note that the index will be shared between 
+    samfile and the iterator.
     """
     
     cdef bam_iter_t             iter # iterator state object
     cdef bam1_t *               b
-    cdef int                    error_state
+    cdef int                    retval
     cdef Samfile                samfile
+    cdef samfile_t              * samfile_proxy
 
     def __cinit__(self, Samfile samfile, int tid, int beg, int end ):
 
@@ -874,9 +886,18 @@ cdef class IteratorRow:
         assert samfile._hasIndex()
         
         # makes sure that samfile stays alive as long as the
-        # iterator is alive.
+        # iterator is alive
         self.samfile = samfile
-        self.error_state = 0
+
+        if samfile.isbam: mode = "rb"
+        else: mode = "r"
+
+        # reopen the file
+        store = StderrStore()
+        self.samfile_proxy = samopen( samfile.filename, mode, NULL )
+        store.release()
+
+        self.retval = 0
 
         self.iter = bam_iter_query(self.samfile.index, 
                                    tid, 
@@ -892,23 +913,21 @@ cdef class IteratorRow:
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        cdef int retval 
-        self.error_state = bam_iter_read( self.samfile.samfile.x.bam, 
-                                          self.iter, 
-                                          self.b)
+        self.retval = bam_iter_read( self.samfile_proxy.x.bam, 
+                                     self.iter, 
+                                     self.b)
         
     def __next__(self): 
         """python version of next().
         """
         self.cnext()
-        if self.error_state >= 0:
-            return makeAlignedRead( self.b )
-        else:
-            raise StopIteration
+        if self.retval < 0: raise StopIteration
+        return makeAlignedRead( self.b )
 
     def __dealloc__(self):
         bam_destroy1(self.b)
-        
+        samclose( self.samfile_proxy )
+
 cdef class IteratorRowAll:
     """iterates over all mapped reads
     """
