@@ -317,7 +317,6 @@ class TestIteratorColumn(unittest.TestCase):
     def checkRange( self, rnge ):
         '''compare results from iterator with those from samtools.'''
         # check if the same reads are returned and in the same order
-        print rnge
         for column in self.samfile.pileup(region=rnge):
             thiscov = len(column.pileups)
             refcov = self.mCoverages[self.samfile.getrname(column.tid)][column.pos]

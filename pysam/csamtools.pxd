@@ -27,7 +27,7 @@ cdef extern from "stdio.h":
   FILE * stdout
   int fclose(FILE *)
   int sscanf(char *str,char *fmt,...)
-  int printf(char *str,char *fmt,...)
+  int printf(char *fmt,...)
   int sprintf(char *str,char *fmt,...)
   int fprintf(FILE *ifile,char *fmt,...)
   char *fgets(char *str,int size,FILE *ifile)

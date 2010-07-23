@@ -49,7 +49,7 @@ cdef makeAlignedRead( bam1_t * src):
     dest = AlignedRead()
     # destroy dummy delegate created in constructor
     # to prevent memory leak.
-    pysam_bam_destroy1(dest._delegate)
+    bam_destroy1(dest._delegate)
     dest._delegate = bam_dup1(src)
     return dest
 
@@ -1012,8 +1012,7 @@ cdef class IteratorColumn:
     cdef int cnext(self):
         '''perform next iteration.
         '''
-        print "cnext", self.plp
-        self.plp = bam_plp_next( self.pileup_iter, 
+        self.plp = bam_plp_auto( self.pileup_iter, 
                                  &self.tid,
                                  &self.pos,
                                  &self.n_plp )
@@ -1024,6 +1023,9 @@ cdef class IteratorColumn:
         pyrex uses this non-standard name instead of next()
         """
         self.cnext()
+        if self.n_plp < 0:
+            raise ValueError("error during iteration" )
+        
         if self.plp == NULL:
             raise StopIteration
 
