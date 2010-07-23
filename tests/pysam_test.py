@@ -846,19 +846,20 @@ class TestDoubleFetch(unittest.TestCase):
     
     def testDoubleFetch( self ):
 
-        samfile1 = pysam.Samfile('ex1.bam', 'rb') 
-        samfile2 = pysam.Samfile('ex1.bam', 'rb') 
+        samfile1 = pysam.Samfile('ex1.bam', 'rb')
 
-        for a,b in zip(samfile1.fetch(), samfile2.fetch()):
+        for a,b in zip(samfile1.fetch(), samfile1.fetch()):
             self.assertEqual( a, b)
 
     def testDoubleFetchWithRegion( self ):
 
-        samfile1 = pysam.Samfile('ex1.bam', 'rb') 
-        samfile2 = pysam.Samfile('ex1.bam', 'rb') 
+        samfile1 = pysam.Samfile('ex1.bam', 'rb')
+        chr, start, stop = 'chr1', 200, 3000000
+        self.assertTrue(len(list(samfile1.fetch ( chr, start, stop))) > 0) #just making sure the test has something to catch
 
-        for a,b in zip(samfile1.fetch( "chr1", 200, 300), samfile2.fetch( "chr1", 200, 300)):
-            self.assertEqual( a, b)
+        for a,b in zip(samfile1.fetch( chr, start, stop), samfile1.fetch( chr, start, stop)):
+            self.assertEqual( a, b ) 
+
 
 # TODOS
 # 1. finish testing all properties within pileup objects
