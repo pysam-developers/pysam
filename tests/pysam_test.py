@@ -874,6 +874,13 @@ class TestDoubleFetch(unittest.TestCase):
         for a,b in zip(samfile1.fetch( chr, start, stop), samfile1.fetch( chr, start, stop)):
             self.assertEqual( a, b ) 
 
+    def testDoubleFetchUntilEOF( self ):
+
+        samfile1 = pysam.Samfile('ex1.bam', 'rb')
+
+        for a,b in zip(samfile1.fetch( until_eof = True), 
+                       samfile1.fetch( until_eof = True )):
+            self.assertEqual( a, b)
 
 # TODOS
 # 1. finish testing all properties within pileup objects

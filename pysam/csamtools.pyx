@@ -878,7 +878,7 @@ cdef class IteratorRow:
     cdef bam1_t *               b
     cdef int                    retval
     cdef Samfile                samfile
-    cdef samfile_t              * samfile_proxy
+    cdef samfile_t              * fp
 
     def __cinit__(self, Samfile samfile, int tid, int beg, int end ):
 
@@ -894,7 +894,7 @@ cdef class IteratorRow:
 
         # reopen the file
         store = StderrStore()
-        self.samfile_proxy = samopen( samfile.filename, mode, NULL )
+        self.fp = samopen( samfile.filename, mode, NULL )
         store.release()
 
         self.retval = 0
@@ -913,7 +913,7 @@ cdef class IteratorRow:
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        self.retval = bam_iter_read( self.samfile_proxy.x.bam, 
+        self.retval = bam_iter_read( self.fp.x.bam, 
                                      self.iter, 
                                      self.b)
         
@@ -926,7 +926,7 @@ cdef class IteratorRow:
 
     def __dealloc__(self):
         bam_destroy1(self.b)
-        samclose( self.samfile_proxy )
+        samclose( self.fp )
 
 cdef class IteratorRowAll:
     """iterates over all mapped reads
@@ -939,7 +939,13 @@ cdef class IteratorRowAll:
 
         assert samfile._isOpen()
 
-        self.fp = samfile.samfile
+        if samfile.isbam: mode = "rb"
+        else: mode = "r"
+
+        # reopen the file to avoid iterator conflict
+        store = StderrStore()
+        self.fp = samopen( samfile.filename, mode, NULL )
+        store.release()
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
@@ -969,7 +975,7 @@ cdef class IteratorRowAll:
 
     def __dealloc__(self):
         bam_destroy1(self.b)
-        
+        samclose( self.fp )
 
 ctypedef struct __iterdata:
     bamFile fp
