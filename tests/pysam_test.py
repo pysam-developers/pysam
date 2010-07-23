@@ -267,6 +267,12 @@ class IOTest(unittest.TestCase):
         self.assertRaises( ValueError, samfile.fetch )
         self.assertEqual( len(list( samfile.fetch(until_eof = True) )), 3270 )
 
+    def testReadingFromFileWithWrongMode( self ):
+
+        assert not os.path.exists( "ex2.bam.bai" )
+        samfile = pysam.Samfile( "ex2.bam", "r" )
+        self.assertRaises( ValueError, samfile.fetch )
+
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):
@@ -295,6 +301,7 @@ class TestIteratorRow(unittest.TestCase):
 
     def tearDown(self):
         self.samfile.close()
+
 
 class TestIteratorRowAll(unittest.TestCase):
 
@@ -881,6 +888,7 @@ class TestDoubleFetch(unittest.TestCase):
         for a,b in zip(samfile1.fetch( until_eof = True), 
                        samfile1.fetch( until_eof = True )):
             self.assertEqual( a, b)
+
 
 # TODOS
 # 1. finish testing all properties within pileup objects

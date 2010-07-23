@@ -354,6 +354,7 @@ cdef class Samfile:
             raise IOError("could not open file `%s`" % filename )
 
         if mode[0] == "r" and self.isbam:
+
             if not self.isremote:
                 if not os.path.exists(filename +".bai"): 
                     self.index = NULL
@@ -465,6 +466,9 @@ cdef class Samfile:
         region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
         if self.isbam:
+            if not until_eof and not self._hasIndex(): 
+                raise ValueError( "fetch called on bamfile without index" )
+
             if callback:
                 if not region:
                     raise ValueError( "callback functionality requires a region/reference" )
@@ -491,7 +495,12 @@ cdef class Samfile:
                         for rtid from 0 <= rtid < self.nreferences: 
                             i.append( IteratorRow( self, rtid, rstart, rend))
                         return itertools.chain( *i )
-        else:                    
+        else:   
+            # check if header is present - otherwise sam_read1 aborts
+            # this happens if a bamfile is opened with mode 'r'
+            if self.samfile.header.n_targets == 0:
+                raise ValueError( "fetch called for samfile without header")
+                  
             if region != None:
                 raise ValueError ("fetch for a region is not available for sam files" )
             if callback:
