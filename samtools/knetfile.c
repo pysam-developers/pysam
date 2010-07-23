@@ -38,9 +38,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-#ifdef _WIN32
-#include <winsock.h>
-#else
+#ifndef _WIN32
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -566,7 +564,7 @@ off_t knet_seek(knetFile *fp, int64_t off, int whence)
         else if (whence==SEEK_SET)
             fp->offset = off;
 		fp->is_ready = 0;
-		return fp->offset;
+		return 0;
 	}
 	errno = EINVAL;
     fprintf(stderr,"[knet_seek] %s\n", strerror(errno));

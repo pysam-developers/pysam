@@ -54,10 +54,12 @@ cdef makeAlignedRead( bam1_t * src):
     return dest
 
 cdef class PileupProxy
-cdef makePileupProxy( bam_plbuf_t * buf, int n ):
+cdef makePileupProxy( bam_pileup1_t * plp, int tid, int pos, int n ):
      cdef PileupProxy dest
      dest = PileupProxy()
-     dest.buf = buf
+     dest.plp = plp
+     dest.tid = tid
+     dest.pos = pos
      dest.n = n
      return dest
 
@@ -280,8 +282,8 @@ cdef class Samfile:
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
-        self.isremote = strncmp(filename,"http:",5) or \
-            strncmp(filename,"ftp:",4) 
+        self.isremote = strncmp(filename,"http:",5) == 0 or \
+            strncmp(filename,"ftp:",4) == 0 
 
         cdef char * ctext
         ctext = NULL
@@ -350,14 +352,14 @@ cdef class Samfile:
             raise IOError("could not open file `%s`" % filename )
 
         if mode[0] == "r" and self.isbam:
-            if not self.isremote and not \
-                    os.path.exists(filename +".bai"): 
-                self.index = NULL
-            else:
-                # returns NULL if there is no index or index could not be opened
-                self.index = bam_index_load(filename)
-                if self.index == NULL:
-                    raise IOError("error while opening index `%s` " % filename )
+            if not self.isremote:
+                if not os.path.exists(filename +".bai"): 
+                    self.index = NULL
+                else:
+                    # returns NULL if there is no index or index could not be opened
+                    self.index = bam_index_load(filename)
+                    if self.index == NULL:
+                        raise IOError("error while opening index `%s` " % filename )
 
     def getrname( self, tid ):
         '''(tid )
@@ -466,7 +468,12 @@ cdef class Samfile:
                     raise ValueError( "callback functionality requires a region/reference" )
                 if not self._hasIndex(): raise ValueError( "no index available for fetch" )
                 return bam_fetch(self.samfile.x.bam, 
-                                 self.index, rtid, rstart, rend, <void*>callback, fetch_callback )
+                                 self.index, 
+                                 rtid, 
+                                 rstart, 
+                                 rend, 
+                                 <void*>callback, 
+                                 fetch_callback )
             else:
                 if region:
                     return IteratorRow( self, rtid, rstart, rend )
@@ -557,11 +564,11 @@ cdef class Samfile:
             self.samfile = NULL
 
     def __dealloc__( self ):
-        '''clean up.'''
         # remember: dealloc cannot call other methods
-        # Note that __del__ is not called.
+        # note: no doc string
+        # note: __del__ is not called.
         self.close()
-        pysam_bam_destroy1(self.b)
+        bam_destroy1(self.b)
 
     def write( self, AlignedRead read ):
         '''(AlignedRead read )
@@ -856,13 +863,12 @@ cdef class IteratorRow:
     """iterates over mapped reads in a region.
     """
     
-    cdef bam_fetch_iterator_t*  bam_iter # iterator state object
+    cdef bam_iter_t             iter # iterator state object
     cdef bam1_t *               b
-    cdef                        error_msg
     cdef int                    error_state
     cdef Samfile                samfile
+
     def __cinit__(self, Samfile samfile, int tid, int beg, int end ):
-        self.bam_iter = NULL
 
         assert samfile._isOpen()
         assert samfile._hasIndex()
@@ -870,14 +876,13 @@ cdef class IteratorRow:
         # makes sure that samfile stays alive as long as the
         # iterator is alive.
         self.samfile = samfile
-
-        # parse the region
         self.error_state = 0
-        self.error_msg = None
 
-        cdef bamFile  fp
-        fp = samfile.samfile.x.bam
-        self.bam_iter = bam_init_fetch_iterator(fp, samfile.index, tid, beg, end)
+        self.iter = bam_iter_query(self.samfile.index, 
+                                   tid, 
+                                   beg, 
+                                   end)
+        self.b = bam_init1()
 
     def __iter__(self):
         return self 
@@ -887,28 +892,22 @@ cdef class IteratorRow:
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        self.b = bam_fetch_iterate(self.bam_iter)
-        if self.b == NULL: return 0
-        return 1
-
+        cdef int retval 
+        self.error_state = bam_iter_read( self.samfile.samfile.x.bam, 
+                                          self.iter, 
+                                          self.b)
+        
     def __next__(self): 
         """python version of next().
-
-        pyrex uses this non-standard name instead of next()
         """
-        if self.error_state:
-            raise ValueError( self.error_msg)
-        
-        self.b = bam_fetch_iterate(self.bam_iter)
-        if self.b != NULL:
+        self.cnext()
+        if self.error_state >= 0:
             return makeAlignedRead( self.b )
         else:
             raise StopIteration
 
     def __dealloc__(self):
-        '''remember: dealloc cannot call other methods!'''
-        if self.bam_iter:
-            bam_cleanup_fetch_iterator(self.bam_iter)
+        bam_destroy1(self.b)
         
 cdef class IteratorRowAll:
     """iterates over all mapped reads
@@ -950,9 +949,18 @@ cdef class IteratorRowAll:
             raise StopIteration
 
     def __dealloc__(self):
-        '''remember: dealloc cannot call other methods!'''
-        pysam_bam_destroy1(self.b)
+        bam_destroy1(self.b)
         
+
+ctypedef struct __iterdata:
+    bamFile fp
+    bam_iter_t iter
+
+cdef int __advance( void * data, bam1_t * b ):
+    cdef __iterdata * d
+    d = <__iterdata*>data
+    return bam_iter_read( d.fp, d.iter, b )
+
 cdef class IteratorColumn:
     '''iterates over columns.
 
@@ -977,79 +985,52 @@ cdef class IteratorColumn:
     Here, result will be a list of ``n`` lists of objects of type :class:`PileupRead`.
 
     '''
-    cdef bam_plbuf_t *buf
 
-    # check if first iteration
-    cdef int notfirst
     # result of the last plbuf_push
-    cdef int n_pu
-    cdef int eof 
     cdef IteratorRow iter
-
+    cdef int tid
+    cdef int pos
+    cdef int n_plp
+    cdef bam_pileup1_t * plp
+    cdef bam_plp_t pileup_iter
+    cdef __iterdata iterdata 
     def __cinit__(self, Samfile samfile, int tid, int start, int end ):
 
         self.iter = IteratorRow( samfile, tid, start, end )
-        self.buf = bam_plbuf_init(NULL, NULL )
-        self.n_pu = 0
-        self.eof = 0
+        self.iterdata.fp = samfile.samfile.x.bam
+        self.iterdata.iter = self.iter.iter
+
+        self.pileup_iter = bam_plp_init( &__advance, &self.iterdata )
+        self.n_plp = 0
+        self.tid = 0
+        self.pos = 0
+        self.plp = NULL
 
     def __iter__(self):
         return self 
 
     cdef int cnext(self):
         '''perform next iteration.
-        
-        return 1 if there is a buffer to emit. Return 0 for end of iteration.
         '''
-
-        cdef int retval1, retval2
-
-        # pysam bam_plbuf_push returns:
-        # 1: if buf is full and can be emitted
-        # 0: if b has been added
-        # -1: if there was an error
-
-        # check if previous plbuf was incomplete. If so, continue within
-        # the loop and yield if necessary
-        if self.n_pu > 0:
-            self.n_pu = pysam_bam_plbuf_push( self.iter.getCurrent(), self.buf, 1)
-            if self.n_pu > 0: return 1
-
-        if self.eof: return 0
-
-        # get next alignments and submit until plbuf indicates that
-        # an new column has finished
-        while self.n_pu == 0:
-            retval1 = self.iter.cnext()
-            # wrap up if no more input
-            if retval1 == 0: 
-                self.n_pu = pysam_bam_plbuf_push( NULL, self.buf, 0)            
-                self.eof = 1
-                return self.n_pu
-
-            # submit to plbuf
-            self.n_pu = pysam_bam_plbuf_push( self.iter.getCurrent(), self.buf, 0)            
-            if self.n_pu < 0: raise ValueError( "error while iterating" )
-
-        # plbuf has yielded
-        return 1
+        
+        self.plp = bam_plp_next( self.pileup_iter, 
+                                 &self.tid,
+                                 &self.pos,
+                                 &self.n_plp )
 
     def __next__(self): 
         """python version of next().
 
         pyrex uses this non-standard name instead of next()
         """
-        cdef int ret
-        ret = self.cnext()
-        cdef bam_pileup1_t * pl
-
-        if ret > 0 :
-            return makePileupProxy( self.buf, self.n_pu )
-        else:
+        self.cnext()
+        if self.plp == NULL:
             raise StopIteration
 
+        return makePileupProxy( self.plp, self.tid, self.pos, self.n_plp )
+
     def __dealloc__(self):
-        bam_plbuf_destroy(self.buf);
+        bam_plp_destroy(self.pileup_iter)
 
 cdef class AlignedRead:
     '''
@@ -1085,8 +1066,7 @@ cdef class AlignedRead:
         self._delegate.data_len = 0
 
     def __dealloc__(self):
-        '''clear up memory.'''
-        pysam_bam_destroy1(self._delegate)
+        bam_destroy1(self._delegate)
     
     def __str__(self):
         """todo"""
@@ -1102,7 +1082,7 @@ cdef class AlignedRead:
     
        
     def __cmp__(self, AlignedRead other):
-        '''return true, if contents in this are binary equal to ``other``.'''
+        # return true, if contents in this are binary equal to ``other``
         cdef int retval, x
         cdef bam1_t *t, *o
         t = self._delegate
@@ -1134,7 +1114,7 @@ cdef class AlignedRead:
             cdef bam1_t * src 
             src = self._delegate
             if src.core.l_qname == 0: return None
-            return <char *>pysam_bam1_qname( src )
+            return <char *>bam1_qname( src )
 
         def __set__(self, qname ):
             if qname == None or len(qname) == 0: return
@@ -1143,7 +1123,7 @@ cdef class AlignedRead:
             cdef char * p
 
             src = self._delegate            
-            p = pysam_bam1_qname( src )
+            p = bam1_qname( src )
 
             # the qname is \0 terminated
             l = len(qname) + 1
@@ -1156,7 +1136,7 @@ cdef class AlignedRead:
 
             # re-acquire pointer to location in memory
             # as it might have moved
-            p = pysam_bam1_qname(src)
+            p = bam1_qname(src)
 
             strncpy( p, qname, l )
             
@@ -1171,7 +1151,7 @@ cdef class AlignedRead:
             if src.core.n_cigar == 0: return None
             
             cigar = []
-            cigar_p = pysam_bam1_cigar(src);
+            cigar_p = bam1_cigar(src);
             for k from 0 <= k < src.core.n_cigar:
                 op = cigar_p[k] & BAM_CIGAR_MASK
                 l = cigar_p[k] >> BAM_CIGAR_SHIFT
@@ -1190,7 +1170,7 @@ cdef class AlignedRead:
             src = self._delegate
 
             # get location of cigar string
-            p = pysam_bam1_cigar(src)
+            p = bam1_cigar(src)
 
             # create space for cigar data within src.data
             pysam_bam_update( src, 
@@ -1203,7 +1183,7 @@ cdef class AlignedRead:
 
             # re-acquire pointer to location in memory
             # as it might have moved
-            p = pysam_bam1_cigar(src)
+            p = bam1_cigar(src)
 
             # insert cigar operations
             for op, l in values:
@@ -1227,7 +1207,7 @@ cdef class AlignedRead:
             if src.core.l_qseq == 0: return None
 
             s = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
-            p = pysam_bam1_seq( src )
+            p = bam1_seq( src )
             for k from 0 <= k < src.core.l_qseq:
                 # equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
                 # note: do not use string literal as it will be a python string
@@ -1254,7 +1234,7 @@ cdef class AlignedRead:
             nbytes_new = (l+1)/2 + l
             nbytes_old = (src.core.l_qseq+1)/2 + src.core.l_qseq
             # acquire pointer to location in memory
-            p = pysam_bam1_seq( src )
+            p = bam1_seq( src )
             src.core.l_qseq = l
 
             pysam_bam_update( src, 
@@ -1263,7 +1243,7 @@ cdef class AlignedRead:
                               p)
             # re-acquire pointer to location in memory
             # as it might have moved
-            p = pysam_bam1_seq( src )
+            p = bam1_seq( src )
             for k from 0 <= k < nbytes_new: p[k] = 0
             # convert to C string
             s = seq
@@ -1271,7 +1251,7 @@ cdef class AlignedRead:
                 p[k/2] |= pysam_translate_sequence(s[k]) << 4 * (1 - k % 2)
 
             # erase qualities
-            p = pysam_bam1_qual( src )
+            p = bam1_qual( src )
             p[0] = 0xff
 
     property qual:
@@ -1283,7 +1263,7 @@ cdef class AlignedRead:
             src = self._delegate
             if src.core.l_qseq == 0: return None
 
-            p = pysam_bam1_qual( src )
+            p = bam1_qual( src )
             if p[0] == 0xff: return None
 
             q = < char *>calloc(src.core.l_qseq + 1 , sizeof(char))
@@ -1302,7 +1282,7 @@ cdef class AlignedRead:
             cdef uint8_t * p
             cdef char * q 
             src = self._delegate
-            p = pysam_bam1_qual( src )
+            p = bam1_qual( src )
             if qual == None or len(qual) == 0:
                 # if absent - set to 0xff
                 p[0] = 0xff
@@ -1337,7 +1317,7 @@ cdef class AlignedRead:
             src = self._delegate
             if src.l_aux == 0: return None
             
-            s = pysam_bam1_aux( src )
+            s = bam1_aux( src )
             result = []
             ctag = <char*>calloc( 3, sizeof(char) )
             cdef int x
@@ -1444,14 +1424,14 @@ cdef class AlignedRead:
             pysam_bam_update( src, 
                               src.l_aux,
                               offset,
-                              pysam_bam1_aux( src ) )
+                              bam1_aux( src ) )
             
             src.l_aux = offset
 
             if offset == 0: return
 
             # get location of new data
-            s = pysam_bam1_aux( src )            
+            s = bam1_aux( src )            
             
             # check if there is direct path from buffer.raw to tmp
             cdef char * temp 
@@ -1483,7 +1463,7 @@ cdef class AlignedRead:
             cdef bam1_t * src
             src = self._delegate
             if src.core.n_cigar:
-                src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, pysam_bam1_cigar(src)) )
+                src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, bam1_cigar(src)) )
             else:
                 src.core.bin = bam_reg2bin( src.core.pos, src.core.pos + 1)
             self._delegate.core.pos = pos
@@ -1502,7 +1482,7 @@ cdef class AlignedRead:
             src = self._delegate
             if (self.flag & BAM_FUNMAP) or src.core.n_cigar == 0:
                 return None
-            return bam_calend(&src.core, pysam_bam1_cigar(src))
+            return bam_calend(&src.core, bam1_cigar(src))
     property alen:
         '''aligned length of the read (read only).  Returns None if
         not available.'''
@@ -1512,7 +1492,7 @@ cdef class AlignedRead:
             if (self.flag & BAM_FUNMAP) or src.core.n_cigar == 0:
                 return None
             return bam_calend(&src.core, 
-                               pysam_bam1_cigar(src)) - \
+                               bam1_cigar(src)) - \
                                self._delegate.core.pos
 
     property mapq: 
@@ -1673,9 +1653,11 @@ cdef class PileupProxy:
     If the underlying engine iterator advances, the results of this column
     will change.
     '''
-    cdef bam_plbuf_t * buf
+    cdef bam_pileup1_t * plp
+    cdef int tid
+    cdef int pos
     cdef int n_pu
-
+    
     def __cinit__(self ):
         pass
 
@@ -1686,7 +1668,7 @@ cdef class PileupProxy:
 
     property tid:
         '''the chromosome ID as is defined in the header'''
-        def __get__(self): return pysam_get_tid( self.buf )
+        def __get__(self): return self.tid
 
     property n:
         '''number of reads mapping to this column.'''
@@ -1694,18 +1676,17 @@ cdef class PileupProxy:
         def __set__(self, n): self.n_pu = n
 
     property pos:
-        def __get__(self): return pysam_get_pos( self.buf )
+        def __get__(self): return self.pos
 
     property pileups:
         '''list of reads (:class:`pysam.PileupRead`) aligned to this column'''
         def __get__(self):
-            cdef bam_pileup1_t * pl
-            pl = pysam_get_pileup( self.buf )
+            cdef int x
             pileups = []
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append( makePileupRead( &pl[x]) )
+                pileups.append( makePileupRead( &(self.plp[x])) )
             return pileups
 
 cdef class PileupRead:

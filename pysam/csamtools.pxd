@@ -120,14 +120,36 @@ cdef extern from "bam.h":
   ctypedef struct bam_plbuf_t:
       pass
 
+  ctypedef struct bam_iter_t:
+      pass
+
+  bam1_t * bam_init1()
+  void bam_destroy1(bam1_t *)
+
   bamFile razf_dopen(int data_fd, char *mode)
 
   int64_t bam_seek( bamFile fp, uint64_t voffset, int where)
   int64_t bam_tell( bamFile fp )
 
-  # removed - macros not found
-  # void bam_destroy1( bam1_t * b) 
   # void bam_init_header_hash(bam_header_t *header)
+
+  ###############################################
+  # stand-ins for samtools macros
+  uint32_t * bam1_cigar( bam1_t * b)
+  char * bam1_qname( bam1_t * b)
+  uint8_t * bam1_seq( bam1_t * b)
+  uint8_t * bam1_qual( bam1_t * b)
+  uint8_t * bam1_aux( bam1_t * b)
+
+  ###############################################
+  # bam iterator interface
+  bam_iter_t bam_iter_query( bam_index_t *idx, int tid, int beg, int end)
+
+  int bam_iter_read(bamFile fp, bam_iter_t iter, bam1_t *b)
+
+  void bam_iter_destroy(bam_iter_t iter)
+
+  ###############################################
 
   bam1_t * bam_dup1( bam1_t *src ) 
   
@@ -138,6 +160,7 @@ cdef extern from "bam.h":
 
   int bam_parse_region(bam_header_t *header, char *str, int *ref_id, int *begin, int *end)
 
+  ###############################################
   bam_plbuf_t *bam_plbuf_init(bam_pileup_f func, void *data)
 
   int bam_fetch(bamFile fp, bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func)
@@ -145,6 +168,22 @@ cdef extern from "bam.h":
   int bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf)
 
   void bam_plbuf_destroy(bam_plbuf_t *buf)
+  ########################################
+  # pileup iterator interface
+  ctypedef struct bam_plp_t:
+      pass
+
+  ctypedef int (*bam_plp_auto_f)(void *data, bam1_t *b)
+
+  bam_plp_t bam_plp_init( bam_plp_auto_f func, void *data)
+  int bam_plp_push( bam_plp_t iter,  bam1_t *b)
+  bam_pileup1_t *bam_plp_next( bam_plp_t iter, int *_tid, int *_pos, int *_n_plp)
+  bam_pileup1_t *bam_plp_auto( bam_plp_t iter, int *_tid, int *_pos, int *_n_plp)
+  void bam_plp_set_mask(bam_plp_t iter, int mask)
+  void bam_plp_reset(bam_plp_t iter)
+  void bam_plp_destroy(bam_plp_t iter)
+
+  ##################################################
 
   int bam_read1(bamFile fp, bam1_t *b)
 
@@ -216,13 +255,13 @@ cdef extern from "faidx.h":
 
 cdef extern from "pysam_util.h":
 
-    int pysam_bam_plbuf_push(bam1_t *b, bam_plbuf_t *buf, int cont)
+    int pysam_pileup_next(bam1_t *b, 
+                          bam_plbuf_t *buf, 
+                          bam_pileup1_t ** plp,
+                          int * tid,
+                          int * pos,
+                          int * n_plp )
 
-    int pysam_get_pos( bam_plbuf_t *buf)
-
-    int pysam_get_tid( bam_plbuf_t *buf)
-
-    bam_pileup1_t * pysam_get_pileup( bam_plbuf_t *buf)
 
     int pysam_dispatch(int argc, char *argv[] )
 
@@ -238,22 +277,15 @@ cdef extern from "pysam_util.h":
     # translate char to unsigned char
     unsigned char pysam_translate_sequence( char s )
 
-    # stand-ins for samtools macros
-    uint32_t * pysam_bam1_cigar( bam1_t * b)
-    char * pysam_bam1_qname( bam1_t * b)
-    uint8_t * pysam_bam1_seq( bam1_t * b)
-    uint8_t * pysam_bam1_qual( bam1_t * b)
-    uint8_t * pysam_bam1_aux( bam1_t * b)
-
-    # iterator implemenation
-    ctypedef struct bam_fetch_iterator_t:
-        pass
+    # # iterator implemenation
+    # ctypedef struct bam_fetch_iterator_t:
+    #     pass
   
-    bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, bam_index_t *idx, int tid, int beg, int end)
+    # bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, bam_index_t *idx, int tid, int beg, int end)
   
-    bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
+    # bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
   
-    void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
+    # void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
 
 # tabix support
 # cdef extern from "tabix.h":

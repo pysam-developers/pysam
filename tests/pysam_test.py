@@ -317,6 +317,7 @@ class TestIteratorColumn(unittest.TestCase):
     def checkRange( self, rnge ):
         '''compare results from iterator with those from samtools.'''
         # check if the same reads are returned and in the same order
+        print rnge
         for column in self.samfile.pileup(region=rnge):
             thiscov = len(column.pileups)
             refcov = self.mCoverages[self.samfile.getrname(column.tid)][column.pos]
@@ -348,7 +349,8 @@ class TestIteratorColumn(unittest.TestCase):
                     self.assertEqual( len(columns), refcov, "wrong number of pileup columns returned for position %s:%i, %i should be %i" %(contig,pos,len(columns), refcov) )
                 elif refcov == 1:
                     # one read, all columns of the read are returned
-                    self.assertEqual( len(columns), refcolumns, "pileup incomplete - %i should be %i " % (len(columns), refcolumns))
+                    self.assertEqual( len(columns), refcolumns, "pileup incomplete at position %i: got %i, expected %i " %\
+                                          (pos, len(columns), refcolumns))
                     
     def tearDown(self):
         self.samfile.close()

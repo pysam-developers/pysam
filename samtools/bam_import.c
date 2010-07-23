@@ -116,7 +116,7 @@ static bam_header_t *hash2header(const kh_ref_t *hash)
 bam_header_t *sam_header_read2(const char *fn)
 {
 	bam_header_t *header;
-	int c, dret, ret;
+	int c, dret, ret, error = 0;
 	gzFile fp;
 	kstream_t *ks;
 	kstring_t *str;
@@ -135,6 +135,10 @@ bam_header_t *sam_header_read2(const char *fn)
 		ks_getuntil(ks, 0, str, &dret);
 		len = atoi(str->s);
 		k = kh_put(ref, hash, s, &ret);
+		if (ret == 0) {
+			fprintf(stderr, "[sam_header_read2] duplicated sequence name: %s\n", s);
+			error = 1;
+		}
 		kh_value(hash, k) = (uint64_t)len<<32 | i;
 		if (dret != '\n')
 			while ((c = ks_getc(ks)) != '\n' && c != -1);
@@ -143,6 +147,7 @@ bam_header_t *sam_header_read2(const char *fn)
 	gzclose(fp);
 	free(str->s); free(str);
 	fprintf(stderr, "[sam_header_read2] %d sequences loaded.\n", kh_size(hash));
+	if (error) return 0;
 	header = hash2header(hash);
 	kh_destroy(ref, hash);
 	return header;
@@ -163,9 +168,24 @@ static inline void parse_error(int64_t n_lines, const char * __restrict msg)
 }
 static inline void append_text(bam_header_t *header, kstring_t *str)
 {
-	int x = header->l_text, y = header->l_text + str->l + 2; // 2 = 1 byte dret + 1 byte null
+	size_t x = header->l_text, y = header->l_text + str->l + 2; // 2 = 1 byte dret + 1 byte null
 	kroundup32(x); kroundup32(y);
-	if (x < y) header->text = (char*)realloc(header->text, y);
+	if (x < y) 
+    {
+        header->n_text = y;
+        header->text = (char*)realloc(header->text, y);
+        if ( !header->text ) 
+        {
+            fprintf(stderr,"realloc failed to alloc %ld bytes\n", y);
+            abort();
+        }
+    }
+    // Sanity check
+    if ( header->l_text+str->l+1 >= header->n_text )
+    {
+        fprintf(stderr,"append_text FIXME: %ld>=%ld, x=%ld,y=%ld\n",  header->l_text+str->l+1,header->n_text,x,y);
+        abort();
+    }
 	strncpy(header->text + header->l_text, str->s, str->l+1); // we cannot use strcpy() here.
 	header->l_text += str->l + 1;
 	header->text[header->l_text] = 0;
