@@ -1012,7 +1012,7 @@ cdef class IteratorColumn:
     cdef int cnext(self):
         '''perform next iteration.
         '''
-        
+        print "cnext", self.plp
         self.plp = bam_plp_next( self.pileup_iter, 
                                  &self.tid,
                                  &self.pos,

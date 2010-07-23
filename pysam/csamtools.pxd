@@ -277,16 +277,4 @@ cdef extern from "pysam_util.h":
     # translate char to unsigned char
     unsigned char pysam_translate_sequence( char s )
 
-    # # iterator implemenation
-    # ctypedef struct bam_fetch_iterator_t:
-    #     pass
-  
-    # bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, bam_index_t *idx, int tid, int beg, int end)
-  
-    # bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
-  
-    # void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
-
-# tabix support
-# cdef extern from "tabix.h":
     

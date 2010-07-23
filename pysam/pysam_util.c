@@ -224,15 +224,6 @@ int pysam_dispatch(int argc, char *argv[] )
   return 0;
 }
 
-// standin for bam_destroy1 in bam.h
-// deletes all variable length data
-void pysam_bam_destroy1( bam1_t * b )
-{
-  if (b == NULL) return;
-  if (b->data != NULL) free(b->data);
-  free(b);
-}
-
 // taken from samtools/bam_import.c
 static inline uint8_t *alloc_data(bam1_t *b, size_t size)
 {
@@ -294,31 +285,6 @@ unsigned char pysam_translate_sequence( const unsigned char s )
   return bam_nt16_table[s];
 }
 
-/* // stand-ins for samtools macros in bam.h */
-/* char * pysam_bam1_qname( const bam1_t * b) */
-/* { */
-/*   return (char*)b->data; */
-/* } */
-
-/* uint32_t * pysam_bam1_cigar( const bam1_t * b)  */
-/* { */
-/*   return (uint32_t*)(b->data + b->core.l_qname); */
-/* } */
-
-/* uint8_t * pysam_bam1_seq( const bam1_t * b)  */
-/* { */
-/*   return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname); */
-/* } */
-
-/* uint8_t * pysam_bam1_qual( const bam1_t * b) */
-/* { */
-/*   return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname + (b->core.l_qseq + 1)/2); */
-/* } */
-
-/* uint8_t * pysam_bam1_aux( const bam1_t * b) */
-/* { */
-/*   return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname + b->core.l_qseq + (b->core.l_qseq + 1)/2); */
-/* } */
 
 
 
