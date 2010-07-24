@@ -37,6 +37,14 @@ DEF BAM_FDUP        =1024
 DEF BAM_CIGAR_SHIFT=4
 DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
 
+DEF BAM_CMATCH     = 0
+DEF BAM_CINS       = 1
+DEF BAM_CDEL       = 2
+DEF BAM_CREF_SKIP  = 3
+DEF BAM_CSOFT_CLIP = 4
+DEF BAM_CHARD_CLIP = 5
+DEF BAM_CPAD       = 6
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -130,6 +138,7 @@ cdef int pileup_callback( uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, 
     p.n = n
     pileups = []
 
+    cdef int x
     for x from 0 <= x < n:
         pileups.append( makePileupRead( &(pl[x]) ) )
     p.pileups = pileups
@@ -1068,6 +1077,84 @@ cdef class IteratorColumn:
     def __dealloc__(self):
         bam_plp_destroy(self.pileup_iter)
 
+cdef inline uint32_t query_start(bam1_t *src):
+    cdef uint32_t * cigar_p, op
+    cdef uint32_t k
+    cdef uint32_t start_offset = 0
+
+    if src.core.n_cigar:
+        cigar_p = bam1_cigar(src);
+        for k from 0 <= k < src.core.n_cigar:
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            if op==BAM_CHARD_CLIP:
+                if start_offset:
+                    raise ValueError('Invalid clipping in CIGAR string')
+            elif op==BAM_CSOFT_CLIP:
+                start_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
+            else:
+                break
+
+    return start_offset
+
+
+cdef inline uint32_t query_end(bam1_t *src):
+    cdef uint32_t * cigar_p, op
+    cdef uint32_t k
+    cdef uint32_t end_offset = src.core.l_qseq
+
+    if src.core.n_cigar>1:
+        cigar_p = bam1_cigar(src);
+        for k from src.core.n_cigar > k >= 1:
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            if op==BAM_CHARD_CLIP:
+                if end_offset:
+                    raise ValueError('Invalid clipping in CIGAR string')
+            elif op==BAM_CSOFT_CLIP:
+                end_offset -= cigar_p[k] >> BAM_CIGAR_SHIFT
+            else:
+                break
+
+        if k==0:
+            end_offset = src.core.l_qseq
+
+    return end_offset
+
+
+cdef inline char * get_seq_range(bam1_t *src, uint32_t start, uint32_t end):
+    cdef uint8_t * p
+    cdef uint32_t k
+    cdef char * s
+    cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
+
+    if not src.core.l_qseq:
+        return NULL
+
+    s = <char *> calloc(end-start+1, sizeof(char))
+    p = bam1_seq(src)
+    for k from start <= k < end:
+        # equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
+        # note: do not use string literal as it will be a python string
+        s[k-start] = bam_nt16_rev_table[p[k/2] >> 4 * (1 - k%2) & 0xf]
+
+    return s
+
+
+cdef inline char * get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
+    cdef uint8_t * p
+    cdef uint32_t k
+    cdef char * q
+
+    p = bam1_qual(src)
+    if p[0] == 0xff:
+        return NULL
+
+    q = <char *>calloc(end-start+1, sizeof(char))
+    for k from start <= k < end:
+        ## equivalent to t[i] + 33 (see bam.c)
+        q[k-start] = p[k] + 33
+
+    return q
+
 cdef class AlignedRead:
     '''
     Class representing an aligned read. see SAM format specification for meaning of fields (http://samtools.sourceforge.net/).
@@ -1183,6 +1270,8 @@ cdef class AlignedRead:
             cdef uint32_t * cigar_p
             cdef bam1_t * src 
             cdef op, l, cigar
+            cdef int k
+
             src = self._delegate
             if src.core.n_cigar == 0: return None
             
@@ -1230,24 +1319,19 @@ cdef class AlignedRead:
             src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, p))
 
     property seq:
-        """the query sequence (None if not present)"""
+        """read sequence bases, including :term:`soft clipped` bases (None if not present)"""
         def __get__(self):
             cdef bam1_t * src
-            cdef uint8_t * p 
             cdef char * s
-            cdef char * bam_nt16_rev_table
-            cdef uint8_t k
+
             src = self._delegate
-            bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
-            ## parse qseq (bam1_seq)
+
             if src.core.l_qseq == 0: return None
 
-            s = < char *> calloc(src.core.l_qseq + 1 , sizeof(char))
-            p = bam1_seq( src )
-            for k from 0 <= k < src.core.l_qseq:
-                # equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
-                # note: do not use string literal as it will be a python string
-                s[k] = bam_nt16_rev_table[(p[k/2] >> 4 * (1 - k% 2) & 0xf)]
+            s = get_seq_range(src, 0, src.core.l_qseq)
+            if s==NULL:
+                return None
+
             retval=s
             free(s)
             return retval
@@ -1260,8 +1344,9 @@ cdef class AlignedRead:
             cdef bam1_t * src
             cdef uint8_t * p 
             cdef char * s
-            src = self._delegate
             cdef int l, k, nbytes_new, nbytes_old
+
+            src = self._delegate
 
             l = len(seq)
             
@@ -1290,25 +1375,22 @@ cdef class AlignedRead:
             p = bam1_qual( src )
             p[0] = 0xff
 
+
     property qual:
-        """the base quality (None if not present)"""
+        """read sequence base qualities, including :term:`soft clipped` bases (None if not present)"""
         def __get__(self):
-            cdef bam1_t * src 
-            cdef uint8_t * p
+            cdef bam1_t * src
             cdef char * q
+
             src = self._delegate
+
             if src.core.l_qseq == 0: return None
 
-            p = bam1_qual( src )
-            if p[0] == 0xff: return None
+            q = get_qual_range(src, 0, src.core.l_qseq)
+            if q==NULL:
+                return None
 
-            q = < char *>calloc(src.core.l_qseq + 1 , sizeof(char))
-            for k from 0 <= k < src.core.l_qseq:
-            ## equivalent to t[i] + 33 (see bam.c)
-                q[k] = p[k] + 33
-            # convert to python string
             retval=q
-            # clean up
             free(q)
             return retval
 
@@ -1317,6 +1399,8 @@ cdef class AlignedRead:
             cdef bam1_t * src
             cdef uint8_t * p
             cdef char * q 
+            cdef int k
+
             src = self._delegate
             p = bam1_qual( src )
             if qual == None or len(qual) == 0:
@@ -1332,6 +1416,75 @@ cdef class AlignedRead:
             assert src.core.l_qseq == l
             for k from 0 <= k < l:
                 p[k] = <uint8_t>q[k] - 33
+
+    property query:
+        """aligned portion of the read and excludes any flanking bases that were :term:`soft clipped` (None if not present)
+
+        SAM/BAM files may included extra flanking bases sequences that were
+        not part of the alignment.  These bases may be the result of the
+        Smith-Waterman or other algorithms, which may not require alignments
+        that begin at the first residue or end at the last.  In addition,
+        extra sequencing adapters, multiplex identifiers, and low-quality bases that
+        were not considered for alignment may have been retained."""
+
+        def __get__(self):
+            cdef bam1_t * src
+            cdef uint32_t start, end
+            cdef char * s
+
+            src = self._delegate
+
+            if src.core.l_qseq == 0: return None
+
+            start = query_start(src)
+            end   = query_end(src)
+
+            s = get_seq_range(src, start, end)
+            if s==NULL:
+                return None
+
+            retval=s
+            free(s)
+            return retval
+
+    property qqual:
+        """aligned query sequence quality values (None if not present)"""
+        def __get__(self):
+            cdef bam1_t * src
+            cdef uint32_t start, end
+            cdef char * q
+
+            src = self._delegate
+
+            if src.core.l_qseq == 0: return None
+
+            start = query_start(src)
+            end   = query_end(src)
+
+            q = get_qual_range(src, start, end)
+            if q==NULL:
+                return None
+
+            retval=q
+            free(q)
+            return retval
+
+    property qstart:
+        """start index of the aligned query portion of the sequence (0-based, inclusive)"""
+        def __get__(self):
+            return query_start(self._delegate)
+
+    property qend:
+        """end index of the aligned query portion of the sequence (0-based, exclusive)"""
+        def __get__(self):
+            return query_end(self._delegate)
+
+    property qlen:
+        """Length of the aligned query sequence"""
+        def __get__(self):
+            cdef bam1_t * src
+            src = self._delegate
+            return query_end(src)-query_start(src)
 
     property tags:
         """the tags in the AUX field.
