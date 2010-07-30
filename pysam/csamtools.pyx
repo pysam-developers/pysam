@@ -4,6 +4,8 @@
 
 import tempfile, os, sys, types, itertools, struct, ctypes
 
+from python_string cimport PyString_FromStringAndSize, PyString_AS_STRING
+
 # defines imported from samtools
 DEF SEEK_SET = 0
 DEF SEEK_CUR = 1
@@ -630,13 +632,7 @@ cdef class Samfile:
     property text:
         '''full contents of the :term:`sam file` header as a string.'''
         def __get__(self):
-            # create a temporary 0-terminated copy
-            cdef char * t
-            t = <char*>calloc( self.samfile.header.l_text + 1, sizeof(char) )
-            memcpy( t, self.samfile.header.text, self.samfile.header.l_text )
-            result = t
-            free(t)
-            return result
+            return PyString_FromStringAndSize(self.samfile.header.text, self.samfile.header.l_text)
 
     property header:
         '''header information within the :term:`sam file`. The records and fields are returned as 
@@ -1120,40 +1116,44 @@ cdef inline uint32_t query_end(bam1_t *src):
     return end_offset
 
 
-cdef inline char * get_seq_range(bam1_t *src, uint32_t start, uint32_t end):
+cdef inline object get_seq_range(bam1_t *src, uint32_t start, uint32_t end):
     cdef uint8_t * p
     cdef uint32_t k
     cdef char * s
     cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 
     if not src.core.l_qseq:
-        return NULL
+        return None
 
-    s = <char *> calloc(end-start+1, sizeof(char))
-    p = bam1_seq(src)
+    seq = PyString_FromStringAndSize(NULL, end-start)
+    s   = PyString_AS_STRING(seq)
+    p   = bam1_seq(src)
+
     for k from start <= k < end:
         # equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
         # note: do not use string literal as it will be a python string
         s[k-start] = bam_nt16_rev_table[p[k/2] >> 4 * (1 - k%2) & 0xf]
 
-    return s
+    return seq
 
 
-cdef inline char * get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
+cdef inline object get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
     cdef uint8_t * p
     cdef uint32_t k
     cdef char * q
 
     p = bam1_qual(src)
     if p[0] == 0xff:
-        return NULL
+        return None
 
-    q = <char *>calloc(end-start+1, sizeof(char))
+    qual = PyString_FromStringAndSize(NULL, end-start)
+    q    = PyString_AS_STRING(qual)
+
     for k from start <= k < end:
         ## equivalent to t[i] + 33 (see bam.c)
         q[k-start] = p[k] + 33
 
-    return q
+    return qual
 
 cdef class AlignedRead:
     '''
@@ -1328,13 +1328,7 @@ cdef class AlignedRead:
 
             if src.core.l_qseq == 0: return None
 
-            s = get_seq_range(src, 0, src.core.l_qseq)
-            if s==NULL:
-                return None
-
-            retval=s
-            free(s)
-            return retval
+            return get_seq_range(src, 0, src.core.l_qseq)
 
         def __set__(self,seq):
             # samtools manages sequence and quality length memory together
@@ -1379,6 +1373,7 @@ cdef class AlignedRead:
     property qual:
         """read sequence base qualities, including :term:`soft clipped` bases (None if not present)"""
         def __get__(self):
+
             cdef bam1_t * src
             cdef char * q
 
@@ -1386,13 +1381,7 @@ cdef class AlignedRead:
 
             if src.core.l_qseq == 0: return None
 
-            q = get_qual_range(src, 0, src.core.l_qseq)
-            if q==NULL:
-                return None
-
-            retval=q
-            free(q)
-            return retval
+            return get_qual_range(src, 0, src.core.l_qseq)
 
         def __set__(self,qual):
             # note that space is already allocated via the sequences
@@ -1439,13 +1428,7 @@ cdef class AlignedRead:
             start = query_start(src)
             end   = query_end(src)
 
-            s = get_seq_range(src, start, end)
-            if s==NULL:
-                return None
-
-            retval=s
-            free(s)
-            return retval
+            return get_seq_range(src, start, end)
 
     property qqual:
         """aligned query sequence quality values (None if not present)"""
@@ -1461,13 +1444,7 @@ cdef class AlignedRead:
             start = query_start(src)
             end   = query_end(src)
 
-            q = get_qual_range(src, start, end)
-            if q==NULL:
-                return None
-
-            retval=q
-            free(q)
-            return retval
+            return get_qual_range(src, start, end)
 
     property qstart:
         """start index of the aligned query portion of the sequence (0-based, inclusive)"""
