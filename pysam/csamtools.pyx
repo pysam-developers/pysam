@@ -275,6 +275,7 @@ cdef class Samfile:
                referencelengths = None,
                text = None,
                header = None,
+               port = None,
               ):
         '''open a sam/bam file.
 
@@ -364,6 +365,7 @@ cdef class Samfile:
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
 
+        # check for index and open if present
         if mode[0] == "r" and self.isbam:
 
             if not self.isremote:
@@ -374,7 +376,11 @@ cdef class Samfile:
                     self.index = bam_index_load(filename)
                     if self.index == NULL:
                         raise IOError("error while opening index `%s` " % filename )
-
+            else:
+                self.index = bam_index_load(filename)
+                if self.index == NULL:
+                    raise IOError("error while opening index `%s` " % filename )
+                                    
     def getrname( self, tid ):
         '''(tid )
         convert numerical :term:`tid` into :ref:`reference` name.'''
@@ -477,7 +483,7 @@ cdef class Samfile:
         region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
         if self.isbam:
-            if not until_eof and not self._hasIndex(): 
+            if not until_eof and not self._hasIndex() and not self.isremote: 
                 raise ValueError( "fetch called on bamfile without index" )
 
             if callback:

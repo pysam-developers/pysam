@@ -901,6 +901,55 @@ class TestDoubleFetch(unittest.TestCase):
                        samfile1.fetch( until_eof = True )):
             self.assertEqual( a, b)
 
+class TestRemoteFileFTP(unittest.TestCase):
+    '''test remote access.
+
+    '''
+
+    # Need to find an ftp server without password on standard
+    # port.
+
+    url = "ftp://ftp.sanger.ac.uk/pub/rd/humanSequences/CV.bam"
+    region = "1:1-1000"
+
+    def testFTPView( self ):
+        result = pysam.view( self.url, self.region )
+        self.assertEqual( len(result), 36 )
+        
+    def testFTPFetch( self ):
+        samfile = pysam.Samfile(self.url, "rb")  
+        result = list(samfile.fetch( region = self.region ))
+        self.assertEqual( len(result), 36 )
+
+class TestRemoteFileHTTP( unittest.TestCase):
+
+    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/ex1.bam"
+    region = "chr1:1-1000"
+    local = "ex1.bam"
+
+    def testView( self ):
+        self.assertRaises( pysam.SamtoolsError, pysam.view, self.url, self.region )
+        
+    def testFetch( self ):
+        samfile = pysam.Samfile(self.url, "rb")  
+        result = list(samfile.fetch( region = self.region ))
+        samfile_local = pysam.Samfile(self.local, "rb")  
+        ref = list(samfile_local.fetch( region = self.region ))
+
+        self.assertEqual( len(ref), len(result) )
+        for x, y in zip(result, ref):
+            self.assertEqual( x, y )
+
+    def testFetchAll( self ):
+        samfile = pysam.Samfile(self.url, "rb")  
+        result = list(samfile.fetch())
+        samfile_local = pysam.Samfile(self.local, "rb")  
+        ref = list(samfile_local.fetch() )
+
+        self.assertEqual( len(ref), len(result) )
+        for x, y in zip(result, ref):
+            self.assertEqual( x, y )
+
 
 # TODOS
 # 1. finish testing all properties within pileup objects
