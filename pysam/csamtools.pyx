@@ -5,6 +5,7 @@
 import tempfile, os, sys, types, itertools, struct, ctypes
 
 from python_string cimport PyString_FromStringAndSize, PyString_AS_STRING
+from python_exc    cimport PyErr_SetString
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -1079,7 +1080,7 @@ cdef class IteratorColumn:
     def __dealloc__(self):
         bam_plp_destroy(self.pileup_iter)
 
-cdef inline uint32_t query_start(bam1_t *src):
+cdef inline int32_t query_start(bam1_t *src) except -1:
     cdef uint32_t * cigar_p, op
     cdef uint32_t k
     cdef uint32_t start_offset = 0
@@ -1089,8 +1090,9 @@ cdef inline uint32_t query_start(bam1_t *src):
         for k from 0 <= k < src.core.n_cigar:
             op = cigar_p[k] & BAM_CIGAR_MASK
             if op==BAM_CHARD_CLIP:
-                if start_offset:
-                    raise ValueError('Invalid clipping in CIGAR string')
+                if start_offset!=0 and start_offset!=src.core.l_qseq:
+                    PyErr_SetString(ValueError, 'Invalid clipping in CIGAR string')
+                    return -1
             elif op==BAM_CSOFT_CLIP:
                 start_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
             else:
@@ -1099,7 +1101,7 @@ cdef inline uint32_t query_start(bam1_t *src):
     return start_offset
 
 
-cdef inline uint32_t query_end(bam1_t *src):
+cdef inline int32_t query_end(bam1_t *src) except -1:
     cdef uint32_t * cigar_p, op
     cdef uint32_t k
     cdef uint32_t end_offset = src.core.l_qseq
@@ -1109,15 +1111,16 @@ cdef inline uint32_t query_end(bam1_t *src):
         for k from src.core.n_cigar > k >= 1:
             op = cigar_p[k] & BAM_CIGAR_MASK
             if op==BAM_CHARD_CLIP:
-                if end_offset:
-                    raise ValueError('Invalid clipping in CIGAR string')
+                if end_offset!=0 and end_offset!=src.core.l_qseq:
+                    PyErr_SetString(ValueError, 'Invalid clipping in CIGAR string')
+                    return -1
             elif op==BAM_CSOFT_CLIP:
                 end_offset -= cigar_p[k] >> BAM_CIGAR_SHIFT
             else:
                 break
 
-        if k==0:
-            end_offset = src.core.l_qseq
+    if end_offset==0:
+        end_offset = src.core.l_qseq
 
     return end_offset
 
