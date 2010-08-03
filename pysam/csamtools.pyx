@@ -1214,9 +1214,10 @@ cdef class AlignedRead:
     
        
     def __cmp__(self, AlignedRead other):
-        # return true, if contents in this are binary equal to ``other``
+        # return -1,0,1, if contents in this are binary <,=,> to ``other``
         cdef int retval, x
         cdef bam1_t *t, *o
+
         t = self._delegate
         o = other._delegate
 
@@ -1229,16 +1230,20 @@ cdef class AlignedRead:
         # oo = <unsigned char*>(o.data)
         # for x from 0 <= x < max(t.data_len, o.data_len): print x, tt[x], oo[x], chr(tt[x]), chr(oo[x])
 
-        retval = memcmp( &t.core, 
-                          &o.core, 
-                          sizeof( bam1_core_t ))
+        # Fast-path test for object identity
+        if t==o:
+            return 0
+
+        retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
 
         if retval: return retval
-        retval = cmp( t.data_len, o.data_len)
+        retval = cmp(t.data_len, o.data_len)
         if retval: return retval
-        return memcmp( t.data, 
-                       o.data, 
-                       sizeof( t.data_len ))
+        return memcmp(t.data, o.data, t.data_len)
+
+    # Disabled so long as __cmp__ is a special method
+    #def __hash__(self):
+    #    return _Py_HashPointer(<void *>self)
 
     property qname:
         """the query name (None if not present)"""
