@@ -39,8 +39,8 @@ source_suffix = '.rst'
 master_doc = 'contents'
 
 # General information about the project.
-project = u'samtools'
-copyright = u'2009, Andreas Heger, Tildon Grant Belgrad, Martin Goodson'
+project = u'pysam'
+copyright = u'2009, Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Kevin Jacobs'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
