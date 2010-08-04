@@ -55,6 +55,16 @@ Glossary
       The sequence that a read has been aligned to. Target
       sequences have bot a numerical identifier (:term:`tid`) 
       and an alphanumeric name (:term:`Reference`).
+
+   tabix file
+      A sorted, compressed and indexed tab-separated file created
+      by the command line tool :file:`tabix` or the commands
+      :meth:`tabix_compress` and :meth:`tabix_index`. The file
+      is indexed by chromosomal coordinates.
+
+   tabix row
+      A row in a :term:`tabix file`. Fields within a row are 
+      tab-separated. 
       
 
 .. _samtools: http://samtools.sourceforge.net

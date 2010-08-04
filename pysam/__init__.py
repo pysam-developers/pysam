@@ -102,6 +102,7 @@ for key, options in SAMTOOLS_DISPATCH.iteritems():
 
 # hack to export all the symbols from csamtools
 __all__ = csamtools.__all__ + \
+    ctabix.__all__ + \
     [ "SamtoolsError", "SamtoolsDispatcher" ] + list(SAMTOOLS_DISPATCH) +\
     ["Pileup",] 
 

@@ -1235,7 +1235,7 @@ cdef class AlignedRead:
         if retval: return retval
         return memcmp( t.data, 
                        o.data, 
-                       sizeof( t.data_len ))
+                       t.data_len )
 
     property qname:
         """the query name (None if not present)"""

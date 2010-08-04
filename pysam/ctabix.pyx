@@ -4,7 +4,10 @@
 import tempfile, os, sys, types, itertools, struct, ctypes
 
 cdef class Tabixfile:
-    '''*(filename, mode='r', template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
+    '''*(filename, mode='r')*
+
+    opens a :term:`tabix file` for reading. A missing
+    index (*filename* + ".tbi") will raise an exception.
     '''
 
     cdef char * filename
@@ -24,10 +27,7 @@ cdef class Tabixfile:
                char * filename, 
                mode ='r',
               ):
-        '''open a sam/bam file.
-
-        If _open is called on an existing bamfile, the current file will be
-        closed and a new file will be opened.
+        '''open a :term:`tabix file` for reading.
         '''
 
         assert mode in ( "r",), "invalid file opening mode `%s`" % mode
@@ -108,19 +108,18 @@ cdef class Tabixfile:
                end = None, 
                region = None,
                parser = None ):
-        '''*(reference = None, start = None, end = None, region = None, callback = None, until_eof = False)*
+        '''
                
-        fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. The region is specified by
+        fetch one or more rows in a :term:`region` using 0-based indexing. The region is specified by
         :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
 
         Without *reference* or *region* all entries will be fetched. 
         
         If only *reference* is set, all reads matching on *reference* will be fetched.
 
-        If *parser* is None, the results are returned as a simple line.
-        Otherwise, *parser* is assumed to be a functor that will return
-        parsed data.
-
+        If *parser* is None, the results are returned as an unparsed string.
+        Otherwise, *parser* is assumed to be a functor that will return parsed 
+        data (see for example :meth:`asTuple` and :meth:`asGTF`).
         '''
         ti_lazy_index_load( self.tabixfile )
 
@@ -155,7 +154,8 @@ cdef class Tabixfile:
            return result
             
 cdef class TabixIterator:
-    """iterates over mapped reads in a region.
+    """iterates over rows in *tabixfile* in region
+    given by *tid*, *start* and *end*.
     """
     
     cdef ti_iter_t iterator
@@ -163,7 +163,7 @@ cdef class TabixIterator:
 
     def __cinit__(self, Tabixfile tabixfile, 
                   int tid, int start, int end ):
-
+        
         assert tabixfile._isOpen()
         
         # makes sure that samfile stays alive as long as the
@@ -669,6 +669,7 @@ cdef class Parser:
     pass
 
 cdef class asTuple(Parser):
+    '''converts a :term:`tabix row` into a python tuple.''' 
     def __call__(self, char * buffer, int len):
         cdef TupleProxy r
         r = TupleProxy()
@@ -678,6 +679,7 @@ cdef class asTuple(Parser):
         return r
 
 cdef class asGTF(Parser):
+    '''converts a :term:`tabix row` into a GTF record.''' 
     def __call__(self, char * buffer, int len):
         cdef GTFProxy r
         r = GTFProxy()
@@ -740,7 +742,11 @@ def tabix_compress( filename_in,
               filename_out,
               force = False ):
 
-    '''compress a file with bgzf.'''
+    '''
+    compress *filename_in* writing the output to *filename_out*.
+    
+    Raise an IOError if *filename_out* already exists, unless *force* is set.
+    '''
 
     if not force and os.path.exists(filename_out ):
         raise IOError( "Filename '%s' already exists, use *force* to overwrite" % filename_out)
@@ -786,7 +792,8 @@ def tabix_index( filename,
                  meta_char = "#",
                  zerobased = False,
                 ):
-    '''index tab-separated *filename* using tabix.
+    '''
+    index tab-separated *filename* using tabix.
 
     An existing index will not be overwritten unless
     *force* is set.
@@ -866,3 +873,9 @@ def tabix_index( filename,
     
     return filename
     
+__all__ = ["tabix_index", 
+           "tabix_compress",
+           "Tabixfile", 
+           "asTuple",
+           "asGTF",
+           ]
