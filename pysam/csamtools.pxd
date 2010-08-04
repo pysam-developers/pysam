@@ -50,6 +50,9 @@ cdef extern from "string.h":
   size_t strlen(char *s)
   int memcmp( void * s1, void *s2, size_t len )
 
+cdef extern from "Python.h":
+   long _Py_HashPointer(void*)
+
 cdef extern from "razf.h":
   pass
 

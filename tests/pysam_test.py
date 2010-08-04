@@ -849,7 +849,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         others = list(infile)
         for denovo, other in zip( others, self.reads):
             self.checkFieldEqual( other, denovo )
-            self.assertEqual( other, denovo)
+            self.assertEqual( other.compare( denovo ), 0 )
 
     def testSAMPerRead( self ):
         '''check if individual reads are binary equal.'''
@@ -858,7 +858,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         others = list(infile)
         for denovo, other in zip( others, self.reads):
             self.checkFieldEqual( other, denovo )
-            self.assertEqual( other, denovo)
+            self.assertEqual( other.compare( denovo), 0 )
             
     def testBAMWholeFile( self ):
         
@@ -882,7 +882,7 @@ class TestDoubleFetch(unittest.TestCase):
         samfile1 = pysam.Samfile('ex1.bam', 'rb')
 
         for a,b in zip(samfile1.fetch(), samfile1.fetch()):
-            self.assertEqual( a, b)
+            self.assertEqual( a.compare( b ), 0 )
 
     def testDoubleFetchWithRegion( self ):
 
@@ -891,7 +891,7 @@ class TestDoubleFetch(unittest.TestCase):
         self.assertTrue(len(list(samfile1.fetch ( chr, start, stop))) > 0) #just making sure the test has something to catch
 
         for a,b in zip(samfile1.fetch( chr, start, stop), samfile1.fetch( chr, start, stop)):
-            self.assertEqual( a, b ) 
+            self.assertEqual( a.compare( b ), 0 ) 
 
     def testDoubleFetchUntilEOF( self ):
 
@@ -899,7 +899,7 @@ class TestDoubleFetch(unittest.TestCase):
 
         for a,b in zip(samfile1.fetch( until_eof = True), 
                        samfile1.fetch( until_eof = True )):
-            self.assertEqual( a, b)
+            self.assertEqual( a.compare( b), 0 )
 
 class TestRemoteFileFTP(unittest.TestCase):
     '''test remote access.
@@ -938,7 +938,7 @@ class TestRemoteFileHTTP( unittest.TestCase):
 
         self.assertEqual( len(ref), len(result) )
         for x, y in zip(result, ref):
-            self.assertEqual( x, y )
+            self.assertEqual( x.compare( y ), 0 )
 
     def testFetchAll( self ):
         samfile = pysam.Samfile(self.url, "rb")  
@@ -948,7 +948,7 @@ class TestRemoteFileHTTP( unittest.TestCase):
 
         self.assertEqual( len(ref), len(result) )
         for x, y in zip(result, ref):
-            self.assertEqual( x, y )
+            self.assertEqual( x.compare( y ), 0 )
 
 
 # TODOS
