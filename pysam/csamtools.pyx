@@ -2,7 +2,7 @@
 # cython: profile=True
 # adds doc-strings for sphinx
 
-import tempfile, os, sys, types, itertools, struct, ctypes
+import tempfile, os, sys, types, struct, ctypes
 
 from python_string cimport PyString_FromStringAndSize, PyString_AS_STRING
 from python_exc    cimport PyErr_SetString
@@ -505,14 +505,7 @@ cdef class Samfile:
                     if until_eof:
                         return IteratorRowAll( self )
                     else:
-                        # return all targets by chaining the individual targets together.
-                        if not self._hasIndex(): raise ValueError( "no index available for fetch" )
-                        i = []
-                        rstart = 0
-                        rend = 1<<29
-                        for rtid from 0 <= rtid < self.nreferences: 
-                            i.append( IteratorRow( self, rtid, rstart, rend))
-                        return itertools.chain( *i )
+                        return IteratorRowAllRefs(self)
         else:   
             # check if header is present - otherwise sam_read1 aborts
             # this happens if a bamfile is opened with mode 'r'
@@ -574,13 +567,7 @@ cdef class Samfile:
                 if region:
                     return IteratorColumn( self, rtid, rstart, rend )
                 else:
-                    # return all targets by chaining the individual targets together.
-                    i = []
-                    rstart = 0
-                    rend = 1<<29
-                    for rtid from 0 <= rtid < self.nreferences: 
-                        i.append( IteratorColumn( self, rtid, rstart, rend))
-                    return itertools.chain( *i )
+                    return IteratorColumnAllRefs(self)
 
         else:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
@@ -950,7 +937,7 @@ cdef class IteratorRow:
         samclose( self.fp )
 
 cdef class IteratorRowAll:
-    """iterates over all mapped reads
+    """iterates over all reads
     """
 
     cdef bam1_t * b
@@ -997,6 +984,54 @@ cdef class IteratorRowAll:
     def __dealloc__(self):
         bam_destroy1(self.b)
         samclose( self.fp )
+
+
+cdef class IteratorRowAllRefs:
+    """iterates over all mapped reads by chaining iterators over each reference
+    """
+    cdef Samfile     samfile
+    cdef int         tid
+    cdef IteratorRow rowiter
+
+    def __cinit__(self, Samfile samfile):
+        assert samfile._isOpen()
+        if not samfile._hasIndex(): raise ValueError("no index available for fetch")
+        self.samfile = samfile
+        self.tid = -1
+
+    def nextiter(self):
+        self.rowiter = IteratorRow(self.samfile, self.tid, 0, 1<<29)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """python version of next().
+
+        pyrex uses this non-standard name instead of next()
+        """
+        # Create an initial iterator
+        if self.tid==-1:
+            if not self.samfile.nreferences:
+                raise StopIteration
+            self.tid = 0
+            self.nextiter()
+
+        while 1:
+            self.rowiter.cnext()
+
+            # If current iterator is not exhausted, return aligned read
+            if self.rowiter.retval>0:
+                return makeAlignedRead(self.rowiter.b)
+
+            self.tid += 1
+
+            # Otherwise, proceed to next reference or stop
+            if self.tid<self.samfile.nreferences:
+                self.nextiter()
+            else:
+                raise StopIteration
+
 
 ctypedef struct __iterdata:
     bamFile fp
@@ -1079,6 +1114,56 @@ cdef class IteratorColumn:
 
     def __dealloc__(self):
         bam_plp_destroy(self.pileup_iter)
+
+
+cdef class IteratorColumnAllRefs:
+    """iterates over all columns by chaining iterators over each reference
+    """
+    cdef Samfile        samfile
+    cdef int            tid
+    cdef IteratorColumn coliter
+
+    def __cinit__(self, Samfile samfile):
+        assert samfile._isOpen()
+        if not samfile._hasIndex(): raise ValueError("no index available for fetch")
+        self.samfile = samfile
+        self.tid = -1
+
+    def nextiter(self):
+        self.coliter = IteratorColumn(self.samfile, self.tid, 0, 1<<29)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """python version of next().
+
+        pyrex uses this non-standard name instead of next()
+        """
+        cdef IteratorColumn col
+
+        # Create an initial iterator
+        if self.tid==-1:
+            if not self.samfile.nreferences:
+                raise StopIteration
+            self.tid = 0
+            self.nextiter()
+
+        while 1:
+            col = self.coliter
+            col.cnext()
+
+            # If current iterator is not exhausted, return pileup
+            if col.plp:
+                return makePileupProxy(col.plp, col.tid, col.pos, col.n_plp)
+
+            self.tid += 1
+
+            # Otherwise, proceed to next reference or stop
+            if self.tid<self.samfile.nreferences:
+                self.nextiter()
+            else:
+                raise StopIteration
 
 cdef inline int32_t query_start(bam1_t *src) except -1:
     cdef uint32_t * cigar_p, op
