@@ -54,20 +54,15 @@ DEF BAM_CPAD       = 6
 ## private factory methods
 #####################################################################
 cdef class AlignedRead
-cdef makeAlignedRead( bam1_t * src):
+cdef makeAlignedRead(bam1_t * src):
     '''enter src into AlignedRead.'''
-    cdef AlignedRead dest
-    dest = AlignedRead()
-    # destroy dummy delegate created in constructor
-    # to prevent memory leak.
-    bam_destroy1(dest._delegate)
+    cdef AlignedRead dest = AlignedRead.__new__(AlignedRead)
     dest._delegate = bam_dup1(src)
     return dest
 
 cdef class PileupProxy
 cdef makePileupProxy( bam_pileup1_t * plp, int tid, int pos, int n ):
-     cdef PileupProxy dest
-     dest = PileupProxy()
+     cdef PileupProxy dest = PileupProxy.__new__(PileupProxy)
      dest.plp = plp
      dest.tid = tid
      dest.pos = pos
@@ -77,8 +72,7 @@ cdef makePileupProxy( bam_pileup1_t * plp, int tid, int pos, int n ):
 cdef class PileupRead
 cdef makePileupRead( bam_pileup1_t * src ):
     '''fill a  PileupRead object from a bam_pileup1_t * object.'''
-    cdef PileupRead dest
-    dest = PileupRead()
+    cdef PileupRead dest = PileupRead.__new__(PileupRead)
     dest._alignment = makeAlignedRead( src.b )
     dest._qpos = src.qpos
     dest._indel = src.indel
@@ -1272,7 +1266,8 @@ cdef class AlignedRead:
     cdef:
          bam1_t * _delegate 
 
-    def __cinit__( self ):
+    # Now only called when instances are created from Python
+    def __init__(self):
         # see bam_init1
         self._delegate = <bam1_t*>calloc( 1, sizeof( bam1_t) )
         # allocate some memory 
@@ -1924,8 +1919,8 @@ cdef class PileupProxy:
     cdef int pos
     cdef int n_pu
     
-    def __cinit__(self ):
-        pass
+    def __init__(self):
+        raise TypeError("This class cannot be instantiated from Python")
 
     def __str__(self):
         return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
@@ -1968,8 +1963,8 @@ cdef class PileupRead:
          uint32_t _is_head
          uint32_t _is_tail
 
-    def __cinit__( self ):
-        pass
+    def __init__(self):
+        raise TypeError("This class cannot be instantiated from Python")
 
     def __str__(self):
         return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )

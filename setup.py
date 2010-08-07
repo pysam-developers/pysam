@@ -108,6 +108,7 @@ metadata = {
       "pysam/Pileup", 
       "pysam/namedtuple",
       "pysam/version" ],
+    'requires' : ['cython (>=0.12)'],
     'ext_modules': [samtools, tabix],
     'cmdclass' : {'build_ext': build_ext} }
 
