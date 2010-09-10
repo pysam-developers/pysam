@@ -316,7 +316,7 @@ cdef class Samfile:
 
             else:
                 # build header from a target names and lengths
-                assert referencenames and referencelengths, "either supply options `template`, `header` or  both `refernencenames` and `referencelengths` for writing"
+                assert referencenames and referencelengths, "either supply options `template`, `header` or  both `referencenames` and `referencelengths` for writing"
                 assert len(referencenames) == len(referencelengths), "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
@@ -1480,6 +1480,7 @@ cdef class AlignedRead:
 
     property tags:
         """the tags in the AUX field.
+
         This property permits convenience access to 
         the tags. Changes it the returned list will
         not update the tags automatically. Instead,
@@ -1557,51 +1558,57 @@ cdef class AlignedRead:
             cdef bam1_t * src
             cdef uint8_t * s
             cdef uint8_t * new_data
+            cdef char * temp 
             cdef int guessed_size, control_size
+            cdef int max_size, size, offset
+
             src = self._delegate
-            cdef int max_size, size
             max_size = 4000
-
-            # map samtools code to python.struct code and byte size
-            buffer = ctypes.create_string_buffer(max_size)
-
             offset = 0
-            for pytag, value in tags:
-                t = type(value)
-                if t == types.FloatType:
-                    fmt = "<cccf"
-                elif t == types.IntType:
-                    if value < 0:
-                        if value >= -127: fmt, pytype = "<cccb", 'c'
-                        elif value >= -32767: fmt, pytype = "<ccch", 's'
-                        elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                        else: fmt, ctype = "<ccci", 'i'[0]
-                    else:
-                        if value <= 255: fmt, pytype = "<cccB", 'C'
-                        elif value <= 65535: fmt, pytype = "<cccH", 'S'
-                        elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                        else: fmt, pytype = "<cccI", 'I'
-                else:
-                    # Note: hex strings (H) are not supported yet
-                    if len(value) == 1:
-                        fmt, pytype = "<cccc", 'A'
-                    else:
-                        fmt, pytype = "<ccc%is" % (len(value)+1), 'Z'
 
-                size = struct.calcsize(fmt)
-                if offset + size > max_size:
-                    raise NotImplementedError("tags field too large")
+            if tags != None: 
 
-                struct.pack_into( fmt,
-                                  buffer,
-                                  offset,
-                                  pytag[0],
-                                  pytag[1],
-                                  pytype,
-                                  value )
-                offset += size
+                # map samtools code to python.struct code and byte size
+                buffer = ctypes.create_string_buffer(max_size)
+
+                for pytag, value in tags:
+                    t = type(value)
+                    if t == types.FloatType:
+                        fmt = "<cccf"
+                    elif t == types.IntType:
+                        if value < 0:
+                            if value >= -127: fmt, pytype = "<cccb", 'c'
+                            elif value >= -32767: fmt, pytype = "<ccch", 's'
+                            elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                            else: fmt, ctype = "<ccci", 'i'[0]
+                        else:
+                            if value <= 255: fmt, pytype = "<cccB", 'C'
+                            elif value <= 65535: fmt, pytype = "<cccH", 'S'
+                            elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                            else: fmt, pytype = "<cccI", 'I'
+                    else:
+                        # Note: hex strings (H) are not supported yet
+                        if len(value) == 1:
+                            fmt, pytype = "<cccc", 'A'
+                        else:
+                            fmt, pytype = "<ccc%is" % (len(value)+1), 'Z'
+
+                    size = struct.calcsize(fmt)
+                    if offset + size > max_size:
+                        raise NotImplementedError("tags field too large")
+
+                    struct.pack_into( fmt,
+                                      buffer,
+                                      offset,
+                                      pytag[0],
+                                      pytag[1],
+                                      pytype,
+                                      value )
+                    offset += size
             
             # delete the old data and allocate new
+            # if offset == 0, the aux field will be 
+            # empty
             pysam_bam_update( src, 
                               src.l_aux,
                               offset,
@@ -1609,15 +1616,15 @@ cdef class AlignedRead:
             
             src.l_aux = offset
 
-            if offset == 0: return
+            # copy data only if there is any
+            if offset != 0:
 
-            # get location of new data
-            s = bam1_aux( src )            
+                # get location of new data
+                s = bam1_aux( src )            
             
-            # check if there is direct path from buffer.raw to tmp
-            cdef char * temp 
-            temp = buffer.raw
-            memcpy( s, temp, offset )            
+                # check if there is direct path from buffer.raw to tmp
+                temp = buffer.raw
+                memcpy( s, temp, offset )            
 
     property flag: 
         """properties flag"""
