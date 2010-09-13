@@ -841,7 +841,7 @@ cdef class Fastafile:
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
-        cdef int len, max_pos
+        cdef int length, max_pos
         cdef char * seq
         max_pos = 2 << 29
 
@@ -855,23 +855,25 @@ cdef class Fastafile:
             # valid ranges are from 0 to 2^29-1
             if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
             if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
-
-            seq = faidx_fetch_seq(self.fastafile, reference, 
+            seq = faidx_fetch_seq(self.fastafile, 
+                                  reference, 
                                   start,
-                                  end-1, &len)
+                                  end-1, 
+                                  &length)
         else:
             # samtools adds a '\0' at the end
-            seq = fai_fetch( self.fastafile, region, &len )
+            seq = fai_fetch( self.fastafile, region, &length )
 
         # copy to python
         if seq == NULL: 
             return ""
         else:
-            result = seq
-            # clean up
-            free(seq)
-        
-        return result
+            try:
+                py_seq = PyString_FromStringAndSize(seq, length)
+            finally:
+                free(seq)
+
+        return py_seq
 
 ###########################################################################
 ###########################################################################
@@ -1512,9 +1514,9 @@ cdef class AlignedRead:
                 s += 2
 
                 # convert type - is there a better way?
-                ctag[0] = s[0]
-                ctag[1] = 0
-                pytype = ctag
+                # ctag[0] = s[0]
+                # ctag[1] = 0
+                # pytype = ctag
                 # get type and value 
                 # how do I do char literal comparison in cython?
                 # the code below works (i.e, is C comparison)

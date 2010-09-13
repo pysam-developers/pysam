@@ -691,7 +691,7 @@ class TestAlignedRead(unittest.TestCase):
         a.mpos=200
         a.isize=167
 	a.qual="1234" * 3
-
+        # todo: create tags
         return a
 
     def testUpdate( self ):
@@ -759,6 +759,19 @@ class TestAlignedRead(unittest.TestCase):
 	a.qual="1234" * 200
 
         return a
+
+    def testTagParsing( self ):
+        '''test for tag parsing
+
+        see http://groups.google.com/group/pysam-user-group/browse_thread/thread/67ca204059ea465a
+        '''
+        samfile=pysam.Samfile( "ex8.bam","rb" )
+
+        for entry in samfile:
+            before = entry.tags
+            entry.tags = entry.tags
+            after = entry.tags
+            self.assertEqual( after, before )
 
 class TestDeNovoConstruction(unittest.TestCase):
     '''check BAM/SAM file construction using ex3.sam
@@ -873,6 +886,7 @@ class TestDeNovoConstruction(unittest.TestCase):
                          "mismatch when construction BAM file, see %s %s" % (tmpfilename, self.bamfile))
         
         os.unlink( tmpfilename )
+
 
 class TestDoubleFetch(unittest.TestCase):
     '''check if two iterators on the same bamfile are independent.'''

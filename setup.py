@@ -109,7 +109,8 @@ metadata = {
       "pysam/namedtuple",
       "pysam/version" ],
     'ext_modules': [samtools, tabix],
-    'cmdclass' : {'build_ext': build_ext} }
+    'cmdclass' : {'build_ext': build_ext},
+    }
 
 if __name__=='__main__':
    dist = setup(**metadata)
