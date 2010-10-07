@@ -385,6 +385,7 @@ cdef class Samfile:
     def getrname( self, tid ):
         '''(tid )
         convert numerical :term:`tid` into :ref:`reference` name.'''
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         if not 0 <= tid < self.samfile.header.n_targets:
             raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
         return self.samfile.header.target_name[tid]
@@ -442,6 +443,8 @@ cdef class Samfile:
 
     def tell( self ):
         '''return current file position'''
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
         if not self.isbam:
             raise NotImplementedError("seek only available in bam files")
 
@@ -605,6 +608,9 @@ cdef class Samfile:
 
         return the number of bytes written.
         '''
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
         return samwrite( self.samfile, read._delegate )
 
     def __enter__(self):
@@ -617,11 +623,13 @@ cdef class Samfile:
     property nreferences:
         '''number of :term:`reference` sequences in the file.'''
         def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             return self.samfile.header.n_targets
 
     property references:
         """tuple with the names of :term:`reference` sequences."""
         def __get__(self): 
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
                 t.append( self.samfile.header.target_name[x] )
@@ -631,6 +639,7 @@ cdef class Samfile:
         """tuple of the lengths of the :term:`reference` sequences. The lengths are in the same order as :attr:`pysam.Samfile.reference`
         """
         def __get__(self): 
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
                 t.append( self.samfile.header.target_len[x] )
@@ -639,6 +648,7 @@ cdef class Samfile:
     property text:
         '''full contents of the :term:`sam file` header as a string.'''
         def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             return PyString_FromStringAndSize(self.samfile.header.text, self.samfile.header.l_text)
 
     property header:
@@ -646,6 +656,8 @@ cdef class Samfile:
         a two-level dictionary.
         '''
         def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+
             result = {}
 
             if self.samfile.header.text != NULL:
@@ -750,6 +762,7 @@ cdef class Samfile:
         return dest
 
     def __iter__(self):
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         return self 
 
     cdef bam1_t * getCurrent( self ):

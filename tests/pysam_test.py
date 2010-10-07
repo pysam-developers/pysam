@@ -247,11 +247,22 @@ class IOTest(unittest.TestCase):
         samfile.close()
         self.assertRaises( ValueError, samfile.fetch, 'chr1', 100, 120)
 
-    def testPileupFromClosedFile( self ):
+    def testClosedFile( self ):
+        '''test that access to a closed samfile raises ValueError.'''
 
         samfile = pysam.Samfile( "ex1.bam", "rb" )
         samfile.close()
+        self.assertRaises( ValueError, samfile.fetch, 'chr1', 100, 120)
         self.assertRaises( ValueError, samfile.pileup, 'chr1', 100, 120)
+        self.assertRaises( ValueError, samfile.getrname, 0 )
+        self.assertRaises( ValueError, samfile.tell )
+        self.assertRaises( ValueError, samfile.write, None )
+        self.assertRaises( ValueError, samfile.seek, 0 )
+        self.assertRaises( ValueError, getattr, samfile, "nreferences" )
+        self.assertRaises( ValueError, getattr, samfile, "references" )
+        self.assertRaises( ValueError, getattr, samfile, "lengths" )
+        self.assertRaises( ValueError, getattr, samfile, "text" )
+        self.assertRaises( ValueError, getattr, samfile, "header" )
 
     def testBinaryReadFromSamfile( self ):
         pass
