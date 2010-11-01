@@ -9,7 +9,7 @@ pysam
 import os, sys, glob, shutil
 
 name = "pysam"
-version = "0.2"
+version = "0.4"
 
 samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
 samtools_dest = os.path.abspath( "samtools" )
@@ -32,8 +32,15 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
    print "installed latest source code from %s: %i files copied" % (samtools_src, ncopied)
    sys.exit(0)
 
-from distutils.core import setup, Extension
-from Pyrex.Distutils import build_ext
+from ez_setup import use_setuptools
+use_setuptools()
+
+from setuptools import Extension, setup
+
+try:
+    from Cython.Distutils import build_ext
+except:
+    from setuptools.command.build_ext import build_ext
 
 classifiers = """
 Development Status :: 2 - Alpha
@@ -73,7 +80,10 @@ metadata = {
     'py_modules': [
       "pysam/__init__", "pysam/Pileup", "pysam/namedtuple" ],
     'ext_modules': [pysam,],
-    'cmdclass' : {'build_ext': build_ext} }
+    'cmdclass' : {'build_ext': build_ext},
+    'install_requires' : ['cython>=0.12.1',], 
+    }
+
 
 if __name__=='__main__':
    dist = setup(**metadata)

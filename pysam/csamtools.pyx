@@ -1777,12 +1777,39 @@ def _samtools_dispatch( method, args = () ):
 
     return retval, out_stderr, out_stdout
 
+cdef class IteratorPileupCalls:
+    """iterates over a IteratorColumn
+    """
+
+    def __cinit__(self, IteratorColumn iterator):
+
+        self.iter = iterator
+
+    def __iter__(self):
+        return self 
+
+    def __next__(self): 
+        """python version of next().
+        """
+
+        # the following code was adapted from bam_plcmd.c:pileup_func()
+        try:
+            p = self.iter.next()
+        except StopIteration:
+            # do clean-up here
+            raise 
+
+        cns = bam_maqcns_Call( n, pu, d.c )
+
+        return cns
+
 __all__ = ["Samfile", 
            "Fastafile",
            "IteratorRow", 
            "IteratorRowAll", 
            "IteratorColumn", 
            "AlignedRead", 
+           "IteratorPileupCalls",
            "PileupColumn", 
            "PileupProxy", 
            "PileupRead" ]
