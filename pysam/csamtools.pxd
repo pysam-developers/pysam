@@ -176,12 +176,14 @@ cdef extern from "bam.h":
   ctypedef struct bam_plp_t:
       pass
 
+  ctypedef bam_pileup1_t * const_bam_pileup1_t_ptr "const bam_pileup1_t *"
+
   ctypedef int (*bam_plp_auto_f)(void *data, bam1_t *b)
 
   bam_plp_t bam_plp_init( bam_plp_auto_f func, void *data)
   int bam_plp_push( bam_plp_t iter,  bam1_t *b)
-  bam_pileup1_t *bam_plp_next( bam_plp_t iter, int *_tid, int *_pos, int *_n_plp)
-  bam_pileup1_t *bam_plp_auto( bam_plp_t iter, int *_tid, int *_pos, int *_n_plp)
+  bam_pileup1_t * bam_plp_next( bam_plp_t iter, int *_tid, int *_pos, int *_n_plp)
+  bam_pileup1_t * bam_plp_auto( bam_plp_t iter, int *_tid, int *_pos, int *_n_plp)
   void bam_plp_set_mask(bam_plp_t iter, int mask)
   void bam_plp_reset(bam_plp_t iter)
   void bam_plp_destroy(bam_plp_t iter)
@@ -238,6 +240,21 @@ cdef extern from "sam.h":
 
   int samwrite(samfile_t *fp, bam1_t *b)
 
+cdef extern from "bam_maqcns.h":
+
+  ctypedef struct bam_maqcns_t:
+     float het_rate, theta
+     int n_hap, cap_mapQ, is_soap
+     float eta, q_r
+     double *fk, *coef
+     double *lhet
+     void *aux
+     
+  uint32_t bam_maqcns_call(int n, bam_pileup1_t *pl, bam_maqcns_t *bm)
+  bam_maqcns_t * bam_maqcns_init()
+  void bam_maqcns_destroy(bam_maqcns_t *bm)
+  void bam_maqcns_prepare(bam_maqcns_t *bm)
+
 cdef extern from "faidx.h":
 
    ctypedef struct faidx_t:
@@ -280,4 +297,4 @@ cdef extern from "pysam_util.h":
     # translate char to unsigned char
     unsigned char pysam_translate_sequence( char s )
 
-    
+    unsigned char * bam_nt16_table

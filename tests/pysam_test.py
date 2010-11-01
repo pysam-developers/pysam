@@ -984,6 +984,19 @@ class TestRemoteFileHTTP( unittest.TestCase):
             self.assertEqual( x.compare( y ), 0 )
 
 
+class TestSNPCalls( unittest.TestCase ):
+    '''test pysam SNP calling ability.'''
+
+    def testAll( self ):
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):    
+            print str(x)
+            i = samfile.pileup( x.chromosome, x.position, x.position + 1)
+            z = pysam.IteratorSnpCalls(i, fastafile )
+            for y in z: 
+                print y
+
 # TODOS
 # 1. finish testing all properties within pileup objects
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
