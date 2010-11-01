@@ -2,7 +2,7 @@
 # cython: profile=True
 # adds doc-strings for sphinx
 
-import tempfile, os, sys, types, struct, ctypes
+import tempfile, os, sys, types, struct, ctypes, collections
 
 from python_string cimport PyString_FromStringAndSize, PyString_AS_STRING
 from python_exc    cimport PyErr_SetString
@@ -47,6 +47,11 @@ DEF BAM_CREF_SKIP  = 3
 DEF BAM_CSOFT_CLIP = 4
 DEF BAM_CHARD_CLIP = 5
 DEF BAM_CPAD       = 6
+
+#####################################################################
+## hard-coded constants
+cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
+cdef int max_pos = 2 << 29
 
 #####################################################################
 #####################################################################
@@ -310,7 +315,7 @@ cdef class Samfile:
 
             else:
                 # build header from a target names and lengths
-                assert referencenames and referencelengths, "either supply options `template`, `header` or  both `refernencenames` and `referencelengths` for writing"
+                assert referencenames and referencelengths, "either supply options `template`, `header` or  both `referencenames` and `referencelengths` for writing"
                 assert len(referencenames) == len(referencelengths), "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
@@ -379,6 +384,7 @@ cdef class Samfile:
     def getrname( self, tid ):
         '''(tid )
         convert numerical :term:`tid` into :ref:`reference` name.'''
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         if not 0 <= tid < self.samfile.header.n_targets:
             raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
         return self.samfile.header.target_name[tid]
@@ -402,8 +408,6 @@ cdef class Samfile:
         cdef int rtid
         cdef int rstart
         cdef int rend
-        cdef int max_pos
-        max_pos = 2 << 29
 
         rtid = rstart = rend = 0
 
@@ -436,6 +440,8 @@ cdef class Samfile:
 
     def tell( self ):
         '''return current file position'''
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
         if not self.isbam:
             raise NotImplementedError("seek only available in bam files")
 
@@ -586,6 +592,9 @@ cdef class Samfile:
 
         return the number of bytes written.
         '''
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
         return samwrite( self.samfile, read._delegate )
 
     def __enter__(self):
@@ -598,11 +607,13 @@ cdef class Samfile:
     property nreferences:
         '''number of :term:`reference` sequences in the file.'''
         def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             return self.samfile.header.n_targets
 
     property references:
         """tuple with the names of :term:`reference` sequences."""
         def __get__(self): 
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
                 t.append( self.samfile.header.target_name[x] )
@@ -612,6 +623,7 @@ cdef class Samfile:
         """tuple of the lengths of the :term:`reference` sequences. The lengths are in the same order as :attr:`pysam.Samfile.reference`
         """
         def __get__(self): 
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
                 t.append( self.samfile.header.target_len[x] )
@@ -620,6 +632,7 @@ cdef class Samfile:
     property text:
         '''full contents of the :term:`sam file` header as a string.'''
         def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             return PyString_FromStringAndSize(self.samfile.header.text, self.samfile.header.l_text)
 
     property header:
@@ -627,6 +640,8 @@ cdef class Samfile:
         a two-level dictionary.
         '''
         def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+
             result = {}
 
             if self.samfile.header.text != NULL:
@@ -731,6 +746,7 @@ cdef class Samfile:
         return dest
 
     def __iter__(self):
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         return self 
 
     cdef bam1_t * getCurrent( self ):
@@ -810,7 +826,10 @@ cdef class Fastafile:
         '''*(reference = None, start = None, end = None, region = None)*
                
         fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. 
+        
         The region is specified by :term:`reference`, *start* and *end*. 
+        
+        fetch returns an empty string if the region is out of range or addresses an unknown *reference*.
 
         If *reference* is given and *start* is None, the sequence from the 
         first base is returned. Similarly, if *end* is None, the sequence 
@@ -822,9 +841,8 @@ cdef class Fastafile:
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
-        cdef int len, max_pos
+        cdef int length
         cdef char * seq
-        max_pos = 2 << 29
 
         if not region:
             if reference is None: raise ValueError( 'no sequence/region supplied.' )
@@ -836,23 +854,41 @@ cdef class Fastafile:
             # valid ranges are from 0 to 2^29-1
             if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
             if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
-
-            seq = faidx_fetch_seq(self.fastafile, reference, 
-                                  start,
-                                  end-1, &len)
+            # note: faidx_fetch_seq has a bug such that out-of-range access
+            # always returns the last residue. Hence do not use faidx_fetch_seq,
+            # but use fai_fetch instead 
+            # seq = faidx_fetch_seq(self.fastafile, 
+            #                       reference, 
+            #                       start,
+            #                       end-1, 
+            #                       &length)
+            region = "%s:%i-%i" % (reference, start+1, end)
+            seq = fai_fetch( self.fastafile, 
+                             region,
+                             &length )
         else:
             # samtools adds a '\0' at the end
-            seq = fai_fetch( self.fastafile, region, &len )
+            seq = fai_fetch( self.fastafile, region, &length )
 
         # copy to python
-        if seq == NULL: 
+        if seq == NULL:
             return ""
         else:
-            result = seq
-            # clean up
-            free(seq)
+            try:
+                py_seq = PyString_FromStringAndSize(seq, length)
+            finally:
+                free(seq)
+
+        return py_seq
+
+    cdef char * _fetch( self, char * reference, int start, int end, int * length ):
+        '''fetch sequence for reference, start and end'''
         
-        return result
+        return faidx_fetch_seq(self.fastafile, 
+                               reference, 
+                               start,
+                               end-1, 
+                               length )
 
 ###########################################################################
 ###########################################################################
@@ -1066,9 +1102,10 @@ cdef class IteratorColumn:
     cdef int tid
     cdef int pos
     cdef int n_plp
-    cdef bam_pileup1_t * plp
+    cdef const_bam_pileup1_t_ptr plp
     cdef bam_plp_t pileup_iter
     cdef __iterdata iterdata 
+
     def __cinit__(self, Samfile samfile, int tid, int start, int end ):
 
         self.iter = IteratorRow( samfile, tid, start, end )
@@ -1104,7 +1141,7 @@ cdef class IteratorColumn:
         if self.plp == NULL:
             raise StopIteration
 
-        return makePileupProxy( self.plp, self.tid, self.pos, self.n_plp )
+        return makePileupProxy( <bam_pileup1_t*>self.plp, self.tid, self.pos, self.n_plp )
 
     def __dealloc__(self):
         bam_plp_destroy(self.pileup_iter)
@@ -1208,7 +1245,6 @@ cdef inline object get_seq_range(bam1_t *src, uint32_t start, uint32_t end):
     cdef uint8_t * p
     cdef uint32_t k
     cdef char * s
-    cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 
     if not src.core.l_qseq:
         return None
@@ -1396,7 +1432,7 @@ cdef class AlignedRead:
             pysam_bam_update( src, 
                               src.core.n_cigar * 4,
                               len(values) * 4, 
-                              p )
+                              <uint8_t*>p )
             
             # length is number of cigar operations, not bytes
             src.core.n_cigar = len(values)
@@ -1418,7 +1454,6 @@ cdef class AlignedRead:
         def __get__(self):
             cdef bam1_t * src
             cdef char * s
-
             src = self._delegate
 
             if src.core.l_qseq == 0: return None
@@ -1560,6 +1595,7 @@ cdef class AlignedRead:
 
     property tags:
         """the tags in the AUX field.
+
         This property permits convenience access to 
         the tags. Changes it the returned list will
         not update the tags automatically. Instead,
@@ -1591,9 +1627,9 @@ cdef class AlignedRead:
                 s += 2
 
                 # convert type - is there a better way?
-                ctag[0] = s[0]
-                ctag[1] = 0
-                pytype = ctag
+                # ctag[0] = s[0]
+                # ctag[1] = 0
+                # pytype = ctag
                 # get type and value 
                 # how do I do char literal comparison in cython?
                 # the code below works (i.e, is C comparison)
@@ -1637,51 +1673,57 @@ cdef class AlignedRead:
             cdef bam1_t * src
             cdef uint8_t * s
             cdef uint8_t * new_data
+            cdef char * temp 
             cdef int guessed_size, control_size
+            cdef int max_size, size, offset
+
             src = self._delegate
-            cdef int max_size, size
             max_size = 4000
-
-            # map samtools code to python.struct code and byte size
-            buffer = ctypes.create_string_buffer(max_size)
-
             offset = 0
-            for pytag, value in tags:
-                t = type(value)
-                if t == types.FloatType:
-                    fmt = "<cccf"
-                elif t == types.IntType:
-                    if value < 0:
-                        if value >= -127: fmt, pytype = "<cccb", 'c'
-                        elif value >= -32767: fmt, pytype = "<ccch", 's'
-                        elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                        else: fmt, ctype = "<ccci", 'i'[0]
-                    else:
-                        if value <= 255: fmt, pytype = "<cccB", 'C'
-                        elif value <= 65535: fmt, pytype = "<cccH", 'S'
-                        elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                        else: fmt, pytype = "<cccI", 'I'
-                else:
-                    # Note: hex strings (H) are not supported yet
-                    if len(value) == 1:
-                        fmt, pytype = "<cccc", 'A'
-                    else:
-                        fmt, pytype = "<ccc%is" % (len(value)+1), 'Z'
 
-                size = struct.calcsize(fmt)
-                if offset + size > max_size:
-                    raise NotImplementedError("tags field too large")
+            if tags != None: 
 
-                struct.pack_into( fmt,
-                                  buffer,
-                                  offset,
-                                  pytag[0],
-                                  pytag[1],
-                                  pytype,
-                                  value )
-                offset += size
+                # map samtools code to python.struct code and byte size
+                buffer = ctypes.create_string_buffer(max_size)
+
+                for pytag, value in tags:
+                    t = type(value)
+                    if t == types.FloatType:
+                        fmt = "<cccf"
+                    elif t == types.IntType:
+                        if value < 0:
+                            if value >= -127: fmt, pytype = "<cccb", 'c'
+                            elif value >= -32767: fmt, pytype = "<ccch", 's'
+                            elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                            else: fmt, ctype = "<ccci", 'i'[0]
+                        else:
+                            if value <= 255: fmt, pytype = "<cccB", 'C'
+                            elif value <= 65535: fmt, pytype = "<cccH", 'S'
+                            elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                            else: fmt, pytype = "<cccI", 'I'
+                    else:
+                        # Note: hex strings (H) are not supported yet
+                        if len(value) == 1:
+                            fmt, pytype = "<cccc", 'A'
+                        else:
+                            fmt, pytype = "<ccc%is" % (len(value)+1), 'Z'
+
+                    size = struct.calcsize(fmt)
+                    if offset + size > max_size:
+                        raise NotImplementedError("tags field too large")
+
+                    struct.pack_into( fmt,
+                                      buffer,
+                                      offset,
+                                      pytag[0],
+                                      pytag[1],
+                                      pytype,
+                                      value )
+                    offset += size
             
             # delete the old data and allocate new
+            # if offset == 0, the aux field will be 
+            # empty
             pysam_bam_update( src, 
                               src.l_aux,
                               offset,
@@ -1689,15 +1731,15 @@ cdef class AlignedRead:
             
             src.l_aux = offset
 
-            if offset == 0: return
+            # copy data only if there is any
+            if offset != 0:
 
-            # get location of new data
-            s = bam1_aux( src )            
+                # get location of new data
+                s = bam1_aux( src )            
             
-            # check if there is direct path from buffer.raw to tmp
-            cdef char * temp 
-            temp = buffer.raw
-            memcpy( s, temp, offset )            
+                # check if there is direct path from buffer.raw to tmp
+                temp = buffer.raw
+                memcpy( s, temp, offset )            
 
     property flag: 
         """properties flag"""
@@ -2098,6 +2140,155 @@ def _samtools_dispatch( method, args = () ):
 
     return retval, out_stderr, out_stdout
 
+cdef class SNPCall:
+    cdef int _tid
+    cdef int _pos
+    cdef char _reference_base
+    cdef char _genotype
+    cdef int _consensus_quality
+    cdef int _snp_quality
+    cdef int _rms_mapping_quality
+    cdef int _coverage
+
+    property tid:
+        '''the chromosome ID as is defined in the header'''
+        def __get__(self): 
+            return self._tid
+    
+    property pos:
+       '''nucleotide position of SNP.'''
+       def __get__(self): return self._pos
+
+    property reference_base:
+       '''reference base at pos. ``N`` if no reference sequence supplied.'''
+       def __get__(self): return PyString_FromStringAndSize( &self._reference_base, 1 )
+
+    property genotype:
+       '''the genotype called.'''
+       def __get__(self): return PyString_FromStringAndSize( &self._genotype, 1 )
+
+    property consensus_quality:
+       '''the genotype quality (Phred-scaled).'''
+       def __get__(self): return self._consensus_quality
+
+    property snp_quality:
+       '''the snp quality (Phred scaled) - probability of consensus being identical to reference sequence.'''
+       def __get__(self): return self._snp_quality
+
+    property mapping_quality:
+       '''the root mean square (rms) of the mapping quality of all reads involved in the call.'''
+       def __get__(self): return self._rms_mapping_quality
+
+    property coverage:
+       '''coverage or read depth - the number of reads involved in the call.'''
+       def __get__(self): return self._coverage
+
+    def __str__(self):
+
+        return "\t".join( map(str, (
+                    self.tid,
+                    self.pos,
+                    self.reference_base,
+                    self.genotype,
+                    self.consensus_quality,
+                    self.snp_quality,
+                    self.mapping_quality,
+                    self.coverage ) ) )
+
+cdef class IteratorSnpCalls:
+    """call SNPs within a region.
+
+    .. todo:
+
+        * allow options similar to the samtools pileup command
+        * check for efficiency
+    """
+
+    cdef IteratorColumn iter
+    cdef Fastafile fasta
+    cdef bam_maqcns_t * c
+    cdef char * seq
+    cdef int tid 
+    cdef int length
+    def __cinit__(self, 
+                  IteratorColumn iterator_column,
+                  Fastafile fasta ):
+
+        self.iter = iterator_column
+        self.c =  bam_maqcns_init()
+        self.c.is_soap = 1
+        self.fasta = fasta
+        self.seq = NULL
+        self.tid = 0
+        self.length = 0
+        bam_maqcns_prepare( self.c )
+
+
+    def __iter__(self):
+        return self 
+
+    def __next__(self): 
+        """python version of next().
+        """
+        
+        # the following code was adapted from bam_plcmd.c:pileup_func()
+        self.iter.cnext()
+
+        if self.iter.n_plp < 0:
+            raise ValueError("error during iteration" )
+        
+        if self.iter.plp == NULL:
+            raise StopIteration
+
+        cdef int rb
+
+        # update sequence
+        if self.iter.tid != self.tid or self.seq == NULL:
+            self.tid = self.iter.tid
+            # TODO: look for a  shortcut 
+            self.seq = self.fasta._fetch( self.iter.iter.samfile.samfile.header.target_name[self.tid], 
+                                          0, max_pos, 
+                                          &self.length )
+            
+        # reference base
+        if self.seq != NULL and self.iter.pos < self.length:
+            rb = self.seq[self.iter.pos]
+        else:
+            rb = 'N' 
+
+        cdef uint32_t cns 
+        cns = bam_maqcns_call( self.iter.n_plp, 
+                               self.iter.plp, 
+                               self.c )
+
+        cdef int ref_q, rb4 
+        rb4 = bam_nt16_table[rb]
+        ref_q = 0
+        if rb4 != 15 and cns>>28 != 15 and cns>>28 != rb4:
+            # a SNP
+            if cns >> 24 & 0xf == rb4:
+                ref_q = cns >> 8 & 0xff 
+            else: 
+                ref_q = (cns >> 8 & 0xff) + (cns & 0xff)
+            
+            if ref_q > 255: ref_q = 255
+
+        cdef SNPCall call
+
+        call = SNPCall()
+        call._tid = self.iter.tid
+        call._pos = self.iter.pos
+        call._reference_base = rb
+        call._genotype = bam_nt16_rev_table[cns>>28]
+        call._snp_quality = ref_q
+        call._rms_mapping_quality = cns >> 16&0xff
+        call._coverage = self.iter.n_plp
+
+        return call 
+
+    def __dealloc__(self):
+        bam_maqcns_destroy( self.c )
+
 __all__ = ["Samfile", 
            "Fastafile",
            "IteratorRow", 
@@ -2106,7 +2297,8 @@ __all__ = ["Samfile",
            "AlignedRead", 
            "PileupColumn", 
            "PileupProxy", 
-           "PileupRead" ]
+           "PileupRead",
+           "IteratorSnpCalls" ]
 
                
 

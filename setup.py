@@ -52,8 +52,15 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
       print "installed latest source code from %s: %i files copied" % (srcdir, ncopied)
    sys.exit(0)
 
-from distutils.core import setup, Extension
-from Cython.Distutils import build_ext
+from ez_setup import use_setuptools
+use_setuptools()
+
+from setuptools import Extension, setup
+
+try:
+    from Cython.Distutils import build_ext
+except:
+    from setuptools.command.build_ext import build_ext
 
 classifiers = """
 Development Status :: 2 - Alpha
@@ -110,7 +117,9 @@ metadata = {
       "pysam/version" ],
     'requires' : ['cython (>=0.12)'],
     'ext_modules': [samtools, tabix],
-    'cmdclass' : {'build_ext': build_ext} }
+    'cmdclass' : {'build_ext': build_ext},
+    'install_requires' : ['cython>=0.12.1',], 
+    }
 
 if __name__=='__main__':
    dist = setup(**metadata)

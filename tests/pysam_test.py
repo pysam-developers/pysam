@@ -247,11 +247,22 @@ class IOTest(unittest.TestCase):
         samfile.close()
         self.assertRaises( ValueError, samfile.fetch, 'chr1', 100, 120)
 
-    def testPileupFromClosedFile( self ):
+    def testClosedFile( self ):
+        '''test that access to a closed samfile raises ValueError.'''
 
         samfile = pysam.Samfile( "ex1.bam", "rb" )
         samfile.close()
+        self.assertRaises( ValueError, samfile.fetch, 'chr1', 100, 120)
         self.assertRaises( ValueError, samfile.pileup, 'chr1', 100, 120)
+        self.assertRaises( ValueError, samfile.getrname, 0 )
+        self.assertRaises( ValueError, samfile.tell )
+        self.assertRaises( ValueError, samfile.write, None )
+        self.assertRaises( ValueError, samfile.seek, 0 )
+        self.assertRaises( ValueError, getattr, samfile, "nreferences" )
+        self.assertRaises( ValueError, getattr, samfile, "references" )
+        self.assertRaises( ValueError, getattr, samfile, "lengths" )
+        self.assertRaises( ValueError, getattr, samfile, "text" )
+        self.assertRaises( ValueError, getattr, samfile, "header" )
 
     def testBinaryReadFromSamfile( self ):
         pass
@@ -630,6 +641,14 @@ class TestFastaFile(unittest.TestCase):
         # unknown sequence returns ""
         self.assertEqual( "", self.file.fetch("chr12") )
 
+    def testOutOfRangeAccess( self ):
+        '''test out of range access.'''
+        # out of range access returns an empty string
+        for contig, s in self.mSequences.iteritems():
+            self.assertEqual( self.file.fetch( contig, len(s), len(s)+1), "" )
+
+        self.assertEqual( self.file.fetch( "chr3", 0 , 100), "" ) 
+
     def testFetchErrors( self ):
         self.assertRaises( ValueError, self.file.fetch )
         self.assertRaises( ValueError, self.file.fetch, "chr1", -1, 10 )
@@ -691,7 +710,7 @@ class TestAlignedRead(unittest.TestCase):
         a.mpos=200
         a.isize=167
 	a.qual="1234" * 3
-
+        # todo: create tags
         return a
 
     def testUpdate( self ):
@@ -759,6 +778,19 @@ class TestAlignedRead(unittest.TestCase):
 	a.qual="1234" * 200
 
         return a
+
+    def testTagParsing( self ):
+        '''test for tag parsing
+
+        see http://groups.google.com/group/pysam-user-group/browse_thread/thread/67ca204059ea465a
+        '''
+        samfile=pysam.Samfile( "ex8.bam","rb" )
+
+        for entry in samfile:
+            before = entry.tags
+            entry.tags = entry.tags
+            after = entry.tags
+            self.assertEqual( after, before )
 
 class TestDeNovoConstruction(unittest.TestCase):
     '''check BAM/SAM file construction using ex3.sam
@@ -874,6 +906,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         
         os.unlink( tmpfilename )
 
+
 class TestDoubleFetch(unittest.TestCase):
     '''check if two iterators on the same bamfile are independent.'''
     
@@ -950,6 +983,19 @@ class TestRemoteFileHTTP( unittest.TestCase):
         for x, y in zip(result, ref):
             self.assertEqual( x.compare( y ), 0 )
 
+
+class TestSNPCalls( unittest.TestCase ):
+    '''test pysam SNP calling ability.'''
+
+    def testAll( self ):
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):    
+            print str(x)
+            i = samfile.pileup( x.chromosome, x.position, x.position + 1)
+            z = pysam.IteratorSnpCalls(i, fastafile )
+            for y in z: 
+                print y
 
 # TODOS
 # 1. finish testing all properties within pileup objects

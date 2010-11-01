@@ -24,6 +24,7 @@ include tests/ex4.sam
 include tests/ex5.sam
 include tests/ex6.sam
 include tests/ex7.sam
+include/tests/ex8.sam
 include tests/example.py
 include tests/pysam_test.py
 include tests/segfault_tests.py

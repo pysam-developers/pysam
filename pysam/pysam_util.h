@@ -38,5 +38,8 @@ bam1_t * pysam_bam_update( bam1_t * b,
 // translate a nucleotide character to binary code
 unsigned char pysam_translate_sequence( const unsigned char s );
 
+// defined in bam_import.c
+extern unsigned char bam_nt16_table[256];
+
 
 #endif
