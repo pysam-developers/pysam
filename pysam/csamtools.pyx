@@ -871,11 +871,18 @@ cdef class Fastafile:
             # valid ranges are from 0 to 2^29-1
             if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
             if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
-            seq = faidx_fetch_seq(self.fastafile, 
-                                  reference, 
-                                  start,
-                                  end-1, 
-                                  &length)
+            # note: faidx_fetch_seq has a bug such that out-of-range access
+            # always returns the last residue. Hence do not use faidx_fetch_seq,
+            # but use fai_fetch instead 
+            # seq = faidx_fetch_seq(self.fastafile, 
+            #                       reference, 
+            #                       start,
+            #                       end-1, 
+            #                       &length)
+            region = "%s:%i-%i" % (reference, start+1, end)
+            seq = fai_fetch( self.fastafile, 
+                             region,
+                             &length )
         else:
             # samtools adds a '\0' at the end
             seq = fai_fetch( self.fastafile, region, &length )

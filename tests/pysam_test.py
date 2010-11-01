@@ -644,8 +644,9 @@ class TestFastaFile(unittest.TestCase):
     def testOutOfRangeAccess( self ):
         '''test out of range access.'''
         # out of range access returns an empty string
-        self.assertEqual( self.file.fetch( "chr1", 10000, 12000), "" ) 
-        self.assertEqual( self.file.fetch( "chr2", 10000, 12000), "" ) 
+        for contig, s in self.mSequences.iteritems():
+            self.assertEqual( self.file.fetch( contig, len(s), len(s)+1), "" )
+
         self.assertEqual( self.file.fetch( "chr3", 0 , 100), "" ) 
 
     def testFetchErrors( self ):
