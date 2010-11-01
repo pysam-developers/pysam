@@ -6,7 +6,7 @@
 pysam: samtools interface for python
 ====================================
 
-:Author: Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Leo Goodstad
+:Author: Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Leo Goodstad, Kevin Jacobs
 :Date: |today|
 :Version: |version|
 
@@ -16,8 +16,10 @@ methods.
 
 This module provides a low-level wrapper around the samtools_ C-API using `cython`_
 and a high-level API for convenient access to the data in *SAM/BAM* formatted files.
+Also included is an interface to the tabix_ C-API for reading compressed and
+indexed tabular data.
 
-The current version wraps *samtools-0.1.6*.
+The current version wraps *samtools-0.1.8* and *tabix-0.2.1*.
 
 Contents
 --------
@@ -35,7 +37,6 @@ Indices and tables
 ------------------
 
 Contents:
-
 
 * :ref:`genindex`
 * :ref:`modindex`
@@ -60,6 +61,8 @@ References
       http://www.python.org
 
 .. _samtools: http://samtools.sourceforge.net
+
+.. _tabix: http://samtools.sourceforge.net/tabix.shtml
 
 .. _cython: http://cython.org/
 

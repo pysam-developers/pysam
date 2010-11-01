@@ -9,8 +9,12 @@ include INSTALL
 include KNOWN_BUGS
 include THANKS
 include pysam/csamtools.pxd
+include pysam/ctabix.pxd
 include pysam/pysam_util.h
 include samtools/*.h
+include tabix/*.h
+
+# pysam tests
 include tests/00README.txt
 include tests/Makefile
 include tests/ex1.fa
@@ -20,7 +24,14 @@ include tests/ex4.sam
 include tests/ex5.sam
 include tests/ex6.sam
 include tests/ex7.sam
+include/tests/ex8.sam
 include tests/example.py
 include tests/pysam_test.py
 include tests/segfault_tests.py
+
+# tabix tests
+include tests/tabix_test.py
+include tests/example.gtf.gz
+include tests/example.gtf.gz.tbi
+
 

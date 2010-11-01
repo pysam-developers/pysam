@@ -1,5 +1,6 @@
-Andreas Heger, Martin Goodson, Tildon Grant Belgard, Leo Goodstadt
-all contributed to the code for pysam. Gerton Lunter advised.
+Andreas Heger, Martin Goodson, Tildon Grant Belgard, Leo Goodstadt,
+Kevin B. Jacobs all contributed to the code for pysam. Gerton Lunter 
+advised.
 
 The sources in the directory samtools are from the samtools project:
 http://samtools.sourceforge.net/. All of these are available under the
@@ -21,3 +22,4 @@ used in `faidx' for indexing RAZF compressed fasta files.
 
 Colin Hercus updated novo2sam.pl to support gapped alignment by
 novoalign.
+
