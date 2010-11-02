@@ -56,7 +56,9 @@ class SamtoolsDispatcher(object):
         stderr = [ x for x in stderr \
                        if not x.startswith( "[sam_header_read2]" ) or \
                        x.startswith("[bam_index_load]") or \
-                       x.startswith("[bam_sort_core]") ]
+                       x.startswith("[bam_sort_core]") or \
+                       x.startswith("[samopen] SAM header is present")
+                   ]
         if stderr: raise SamtoolsError( "\n".join( stderr ) )
 
         # call parser for stdout:
