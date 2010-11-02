@@ -419,6 +419,9 @@ cdef class Samfile:
 
         Note that regions are 1-based, while start,end are python coordinates.
         '''
+        # This method's main objective is to translate from a reference to a tid. 
+        # For now, it calls bam_parse_region, which is clumsy. Might be worth
+        # implementing it all in pysam (makes use of khash).
         
         cdef int rtid
         cdef int rstart
@@ -431,14 +434,15 @@ cdef class Samfile:
         # translate to a region
         if reference:
             if start != None and end != None:
+                if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
                 region = "%s:%i-%i" % (reference, start+1, end)
             else:
                 region = reference
 
         if region:
-            store = StderrStore()
+            # this function might be called often (multiprocessing)
+            # thus avoid using StderrStore, see issue 46.
             bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
-            store.release()
             if rtid < 0: raise ValueError( "invalid region `%s`" % region )
             if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
             if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
