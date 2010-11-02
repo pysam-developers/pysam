@@ -278,12 +278,6 @@ class IOTest(unittest.TestCase):
         self.assertRaises( ValueError, samfile.fetch )
         self.assertEqual( len(list( samfile.fetch(until_eof = True) )), 3270 )
 
-    def testReadingFromFileWithWrongMode( self ):
-
-        assert not os.path.exists( "ex2.bam.bai" )
-        samfile = pysam.Samfile( "ex2.bam", "r" )
-        self.assertRaises( ValueError, samfile.fetch )
-
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):
@@ -625,9 +619,16 @@ class TestWrongFormat(unittest.TestCase):
     '''test cases for opening files not in bam/sam format.'''
 
     def testOpenSamAsBam( self ):
-        samfile = pysam.Samfile('ex1.sam', 'rb')
-        samfile.fetch('chr1', 0, 100)
-         
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.sam', 'rb' )
+
+    def testOpenBamAsSam( self ):
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.bam', 'r' )
+
+    def testOpenFastaAsSam( self ):
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.fa', 'r' )
+
+    def testOpenFastaAsBam( self ):
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.fa', 'rb' )
 
 class TestFastaFile(unittest.TestCase):
 

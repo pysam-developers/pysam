@@ -167,6 +167,14 @@ class StderrStore():
         self.stderr_save = Outs( sys.stderr.fileno() )
         self.stderr_save.setfd( self.stderr_h )
         
+    def readAndRelease( self ):
+        self.stderr_save.restore()
+        lines = []
+        if os.path.exists(self.stderr_f):
+            lines = open( self.stderr_f, "r" ).readlines()
+            os.remove( self.stderr_f )
+        return lines
+
     def release(self):
         self.stderr_save.restore()
         if os.path.exists(self.stderr_f):
@@ -361,7 +369,13 @@ cdef class Samfile:
 
             store = StderrStore()
             self.samfile = samopen( filename, mode, NULL )
-            store.release()
+            result = store.readAndRelease()
+            # test for specific messages as open also outputs status messages
+            # that can be ignored.
+            if "[bam_header_read] invalid BAM binary header (this is not a BAM file).\n" in result:
+                raise ValueError( "invalid BAM binary header (is this a BAM file?)" )
+            elif '[samopen] no @SQ lines in the header.\n' in result:
+                raise ValueError( "no @SQ lines in the header (is this a SAM file?)")
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
