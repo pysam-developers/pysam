@@ -1527,63 +1527,49 @@ cdef class AlignedRead:
             cdef char * ctag
             cdef bam1_t * src
             cdef uint8_t * s
-            cdef char tpe
+            cdef char auxtag[3]
+            cdef char auxtype
             
             src = self._delegate
             if src.l_aux == 0: return None
             
             s = bam1_aux( src )
             result = []
-            ctag = <char*>calloc( 3, sizeof(char) )
-            cdef int x
+            auxtag[2] = 0
             while s < (src.data + src.data_len):
                 # get tag
-                ctag[0] = s[0]
-                ctag[1] = s[1]
-                pytag = ctag
-
+                auxtag[0] = s[0]
+                auxtag[1] = s[1]
                 s += 2
+                auxtype = s[0]
 
-                # convert type - is there a better way?
-                # ctag[0] = s[0]
-                # ctag[1] = 0
-                # pytype = ctag
-                # get type and value 
-                # how do I do char literal comparison in cython?
-                # the code below works (i.e, is C comparison)
-                tpe = toupper(s[0])
-                if tpe == 'S':
+                if auxtype in ('c', 'C'):
+                    value = <int>bam_aux2i(s)            
+                    s += 1
+                elif auxtype in ('s', 'S'):
                     value = <int>bam_aux2i(s)            
                     s += 2
-                elif tpe == 'I':
-                    value = <int>bam_aux2i(s)            
+                elif auxtype in ('i', 'I'):
+                    value = <float>bam_aux2i(s)
                     s += 4
-                elif tpe == 'F':
+                elif auxtype == 'f':
                     value = <float>bam_aux2f(s)
                     s += 4
-                elif tpe == 'D':
+                elif auxtype == 'd':
                     value = <double>bam_aux2d(s)
                     s += 8
-                elif tpe == 'C':
-                    value = <int>bam_aux2i(s)
-                    s += 1
-                elif tpe == 'A':
-                    # there might a more efficient way
-                    # to convert a char into a string
+                elif auxtype == 'A':
                     value = "%c" % <char>bam_aux2A(s)
                     s += 1
-                elif tpe == 'Z':
+                elif auxtype in ('Z', 'H'):
                     value = <char*>bam_aux2Z(s)
                     # +1 for NULL terminated string
                     s += len(value) + 1
-
-                # skip over type
+                 # 
                 s += 1
+  
+                result.append( (auxtag, value) )
 
-                # ignore pytype
-                result.append( (pytag, value) )
-
-            free( ctag )
             return result
 
         def __set__(self, tags):
