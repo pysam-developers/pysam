@@ -1188,8 +1188,10 @@ cdef class IteratorColumnRegion(IteratorColumn):
             return makePileupProxy( <bam_pileup1_t*>self.plp, self.tid, self.pos, self.n_plp )
 
     def __dealloc__(self):
+        # reset in order to avoid memory leak messages for iterators that have
+        # not been fully consumed
+        bam_plp_reset(self.pileup_iter)
         bam_plp_destroy(self.pileup_iter)
-
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
     """iterates over all columns by chaining iterators over each reference
@@ -1238,6 +1240,12 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                 self.pileup_iter = bam_plp_init( &__advance, &self.iterdata )
             else:
                 raise StopIteration
+
+    def __dealloc__(self):
+        # reset in order to avoid memory leak messages for iterators that have
+        # not been fully consumed
+        bam_plp_reset(self.pileup_iter)
+        bam_plp_destroy(self.pileup_iter)
 
 cdef inline int32_t query_start(bam1_t *src) except -1:
     cdef uint32_t * cigar_p, op
@@ -2224,10 +2232,118 @@ cdef class SNPCall:
                     self.mapping_quality,
                     self.coverage ) ) )
 
-cdef class IteratorSnpCalls:
+cdef class SNPCaller:
+    '''Proxy for samtools SNP caller.
+
+    This caller is fast for calling few SNPs in selected regions.
+
+    It is slow, if called over large genomic regions.
+     '''
+
+    cdef Fastafile fasta
+    cdef bam_maqcns_t * c
+    cdef char * seq
+    cdef int seq_tid 
+    cdef int seq_length
+    cdef Samfile samfile
+
+    def __cinit__(self, 
+                  Samfile samfile,
+                  Fastafile fasta ):
+
+        self.samfile = samfile
+        self.c =  bam_maqcns_init()
+        self.c.is_soap = 1
+        self.fasta = fasta
+        self.seq = NULL
+        self.seq_tid = -1
+        self.seq_length = 0
+        bam_maqcns_prepare( self.c )
+
+    def call(self, reference, int pos ): 
+        """return a :class:`SNPCall` object.
+        """
+
+        cdef int rb, tid
+
+        tid = self.samfile.gettid( reference )
+
+        # update sequence
+        if tid != self.seq_tid:
+            if self.seq != NULL: free( self.seq )
+            self.seq = NULL
+            self.seq_tid = tid
+     
+        # reload sequence if necessary
+        if self.seq == NULL:
+            # TODO: look for a  shortcut 
+            self.seq = self.fasta._fetch( self.samfile.samfile.header.target_name[self.seq_tid], 
+                                          0, max_pos, 
+                                          &self.seq_length )
+            if self.seq == NULL:
+                raise ValueError( "reference sequence for '%s' (tid=%i) not found" % \
+                                      (self.samfile.samfile.header.target_name[self.seq_tid], 
+                                       self.seq_tid))
+
+        # reference base
+        if pos >= self.seq_length:
+            raise ValueError( "position %i out of bounds on reference sequence (len=%i)" % (pos, self.seq_length) )
+
+        rb = self.seq[pos]
+
+        # initialize pileup engine
+        cdef IteratorColumn itr = IteratorColumnRegion( self.samfile, tid, pos, pos + 1 )
+
+        while 1:
+            itr.cnext()
+            
+            if itr.n_plp < 0:
+                raise ValueError("error during iteration" )
+
+            if itr.plp == NULL:
+                raise ValueError( "no reads in region - no call" )
+             
+            if itr.pos == pos: break
+
+        cdef uint32_t cns = bam_maqcns_call( itr.n_plp, 
+                                             itr.plp, 
+                                             self.c )
+
+        cdef int ref_q, rb4 
+        rb4 = bam_nt16_table[rb]
+        ref_q = 0
+        if rb4 != 15 and cns>>28 != 15 and cns>>28 != rb4:
+            # a SNP
+            if cns >> 24 & 0xf == rb4:
+                ref_q = cns >> 8 & 0xff 
+            else: 
+                ref_q = (cns >> 8 & 0xff) + (cns & 0xff)
+                
+            if ref_q > 255: ref_q = 255
+
+        cdef SNPCall call
+
+        call = SNPCall()
+        call._tid = itr.tid
+        call._pos = itr.pos
+        call._reference_base = rb
+        call._genotype = bam_nt16_rev_table[cns>>28]
+        call._consensus_quality = cns >> 8 & 0xff
+        call._snp_quality = ref_q
+        call._rms_mapping_quality = cns >> 16 & 0xff
+        call._coverage = itr.n_plp
+
+        return call 
+
+    def __dealloc__(self):
+        if self.seq != NULL: free( self.seq )
+        bam_maqcns_destroy( self.c )
+
+cdef class IteratorSNPCalls:
     """call SNPs within a region.
 
-    Note that this caller if instantiated if called repeatedly.
+    This caller is fast if SNPs are called over large continuous
+    regions. It is slow, if instantiated frequently.
 
     .. todo:
 
@@ -2260,13 +2376,13 @@ cdef class IteratorSnpCalls:
     def __next__(self): 
         """python version of next().
         """
-        
+
         # the following code was adapted from bam_plcmd.c:pileup_func()
         self.iter.cnext()
 
         if self.iter.n_plp < 0:
             raise ValueError("error during iteration" )
-        
+
         if self.iter.plp == NULL:
             raise StopIteration
 
@@ -2309,7 +2425,7 @@ cdef class IteratorSnpCalls:
                 ref_q = cns >> 8 & 0xff 
             else: 
                 ref_q = (cns >> 8 & 0xff) + (cns & 0xff)
-            
+
             if ref_q > 255: ref_q = 255
 
         cdef SNPCall call
@@ -2319,6 +2435,7 @@ cdef class IteratorSnpCalls:
         call._pos = self.iter.pos
         call._reference_base = rb
         call._genotype = bam_nt16_rev_table[cns>>28]
+        call._consensus_quality = cns >> 8 & 0xff
         call._snp_quality = ref_q
         call._rms_mapping_quality = cns >> 16&0xff
         call._coverage = self.iter.n_plp
@@ -2329,6 +2446,7 @@ cdef class IteratorSnpCalls:
         if self.seq != NULL: free( self.seq )
         bam_maqcns_destroy( self.c )
 
+         
 __all__ = ["Samfile", 
            "Fastafile",
            "IteratorRow", 
@@ -2337,7 +2455,8 @@ __all__ = ["Samfile",
            "PileupColumn", 
            "PileupProxy", 
            "PileupRead",
-           "IteratorSnpCalls" ]
+           "IteratorSNPCalls",
+           "SNPCaller" ]
 
                
 

@@ -1021,6 +1021,7 @@ class TestSNPCalls( unittest.TestCase ):
         for x in ("reference_base", 
                   "pos",
                   "genotype",
+                  "consensus_quality",
                   "snp_quality",
                   "mapping_quality",
                   "coverage" ):
@@ -1032,21 +1033,31 @@ class TestSNPCalls( unittest.TestCase ):
         fastafile = pysam.Fastafile( "ex1.fa" )
         i = samfile.pileup()
         for x,y in zip( [ x for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ) if x.reference_base != "*"], 
-                        pysam.IteratorSnpCalls(i, fastafile ) ):
+                        pysam.IteratorSNPCalls(i, fastafile ) ):
             if x.reference_base == "*": continue
             self.checkEqual( x, y )
 
-    def testPerPosition( self ):
+    def testPerPositionViaIterator( self ):
         # test pileup for each position. This is a slow operation
         samfile = pysam.Samfile( "ex1.bam", "rb")  
         fastafile = pysam.Fastafile( "ex1.fa" )
         for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):
             if x.reference_base == "*": continue
             i = samfile.pileup( x.chromosome, x.pos, x.pos+1 )
-            z = [ zz for zz in pysam.IteratorSnpCalls(i, fastafile ) if zz.pos == x.pos ]
+            z = [ zz for zz in pysam.IteratorSNPCalls(i, fastafile ) if zz.pos == x.pos ]
             self.assertEqual( len(z), 1 )
             self.checkEqual( x, z[0] )
 
+    def testPerPositionViaSNPCaller( self ):
+        # test pileup for each position. This is a slow operation
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        caller = pysam.SNPCaller( samfile, fastafile )
+
+        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):
+            if x.reference_base == "*": continue
+            call = caller.call( x.chromosome, x.pos )
+            self.checkEqual( x, call )
 
 # TODOS
 # 1. finish testing all properties within pileup objects
