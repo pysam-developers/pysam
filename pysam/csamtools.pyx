@@ -518,7 +518,7 @@ cdef class Samfile:
                                  fetch_callback )
             else:
                 if region:
-                    return IteratorRow( self, rtid, rstart, rend )
+                    return IteratorRowRegion( self, rtid, rstart, rend )
                 else:
                     if until_eof:
                         return IteratorRowAll( self )
@@ -583,7 +583,7 @@ cdef class Samfile:
                 bam_plbuf_destroy(buf)
             else:
                 if region:
-                    return IteratorColumn( self, rtid, rstart, rend )
+                    return IteratorColumnRegion( self, rtid, rstart, rend )
                 else:
                     return IteratorColumnAllRefs(self)
 
@@ -919,6 +919,11 @@ cdef class Fastafile:
 ## Thus I chose to rewrite the functions requiring callbacks. The downside is that if the samtools C-API or code
 ## changes, the changes have to be manually entered.
 cdef class IteratorRow:
+    '''abstract base class for iterators over mapped reads.'''
+
+    pass
+
+cdef class IteratorRowRegion(IteratorRow):
     """iterates over mapped reads in a region.
 
     The samtools iterators assume that the file
@@ -944,7 +949,7 @@ cdef class IteratorRow:
             raise ValueError( "I/O operation on closed file" )
         
         if not samfile._hasIndex():
-            raise ValueError( "no index available for pileup" )
+            raise ValueError( "no index available for iteration" )
         
         # makes sure that samfile stays alive as long as the
         # iterator is alive
@@ -953,7 +958,8 @@ cdef class IteratorRow:
         if samfile.isbam: mode = "rb"
         else: mode = "r"
 
-        # reopen the file
+        # reopen the file - note that this makes the iterator
+        # slow and causes pileup to slow down significantly.
         store = StderrStore()
         self.fp = samopen( samfile.filename, mode, NULL )
         store.release()
@@ -989,7 +995,7 @@ cdef class IteratorRow:
         bam_destroy1(self.b)
         samclose( self.fp )
 
-cdef class IteratorRowAll:
+cdef class IteratorRowAll(IteratorRow):
     """iterates over all reads
     """
 
@@ -1040,12 +1046,12 @@ cdef class IteratorRowAll:
         samclose( self.fp )
 
 
-cdef class IteratorRowAllRefs:
+cdef class IteratorRowAllRefs(IteratorRow):
     """iterates over all mapped reads by chaining iterators over each reference
     """
     cdef Samfile     samfile
     cdef int         tid
-    cdef IteratorRow rowiter
+    cdef IteratorRowRegion rowiter
 
     def __cinit__(self, Samfile samfile):
         assert samfile._isOpen()
@@ -1054,7 +1060,7 @@ cdef class IteratorRowAllRefs:
         self.tid = -1
 
     def nextiter(self):
-        self.rowiter = IteratorRow(self.samfile, self.tid, 0, 1<<29)
+        self.rowiter = IteratorRowRegion(self.samfile, self.tid, 0, 1<<29)
 
     def __iter__(self):
         return self
@@ -1086,7 +1092,6 @@ cdef class IteratorRowAllRefs:
             else:
                 raise StopIteration
 
-
 ctypedef struct __iterdata:
     bamFile fp
     bam_iter_t iter
@@ -1097,9 +1102,9 @@ cdef int __advance( void * data, bam1_t * b ):
     return bam_iter_read( d.fp, d.iter, b )
 
 cdef class IteratorColumn:
-    '''iterates over columns.
+    '''abstract base class for iterators over columns.
 
-    This iterator wraps the pileup functionality of samtools.
+    IteratorColumn objects wrap the pileup functionality of samtools.
     
     For reasons of efficiency, the iterator returns the current 
     pileup buffer. As this buffer is updated at every iteration, 
@@ -1118,29 +1123,17 @@ cdef class IteratorColumn:
        result = [ x.pileups() for x in f.pileup() ]
 
     Here, result will be a list of ``n`` lists of objects of type :class:`PileupRead`.
-
     '''
 
     # result of the last plbuf_push
-    cdef IteratorRow iter
+    cdef IteratorRowRegion iter
     cdef int tid
     cdef int pos
     cdef int n_plp
     cdef const_bam_pileup1_t_ptr plp
     cdef bam_plp_t pileup_iter
     cdef __iterdata iterdata 
-
-    def __cinit__(self, Samfile samfile, int tid, int start, int end ):
-
-        self.iter = IteratorRow( samfile, tid, start, end )
-        self.iterdata.fp = samfile.samfile.x.bam
-        self.iterdata.iter = self.iter.iter
-
-        self.pileup_iter = bam_plp_init( &__advance, &self.iterdata )
-        self.n_plp = 0
-        self.tid = 0
-        self.pos = 0
-        self.plp = NULL
+    cdef Samfile samfile
 
     def __iter__(self):
         return self 
@@ -1153,70 +1146,88 @@ cdef class IteratorColumn:
                                  &self.pos,
                                  &self.n_plp )
 
+cdef class IteratorColumnRegion(IteratorColumn):
+    '''iterates over a region only.
+    '''
+    def __cinit__(self, Samfile samfile, int tid, int start, int end ):
+
+        self.n_plp = 0
+        self.tid = 0
+        self.pos = 0
+        self.plp = NULL
+        self.samfile = samfile
+        
+        # initialize iterator
+        self.iter = IteratorRowRegion( samfile, tid, start, end )
+        self.iterdata.fp = samfile.samfile.x.bam
+        self.iterdata.iter = self.iter.iter
+        self.pileup_iter = bam_plp_init( &__advance, &self.iterdata )
+
     def __next__(self): 
         """python version of next().
 
         pyrex uses this non-standard name instead of next()
         """
-        self.cnext()
-        if self.n_plp < 0:
-            raise ValueError("error during iteration" )
-        
-        if self.plp == NULL:
-            raise StopIteration
 
-        return makePileupProxy( <bam_pileup1_t*>self.plp, self.tid, self.pos, self.n_plp )
+        while 1:
+            self.cnext()
+            if self.n_plp < 0:
+                raise ValueError("error during iteration" )
+        
+            if self.plp == NULL:
+                raise StopIteration
+            
+            return makePileupProxy( <bam_pileup1_t*>self.plp, self.tid, self.pos, self.n_plp )
 
     def __dealloc__(self):
         bam_plp_destroy(self.pileup_iter)
 
 
-cdef class IteratorColumnAllRefs:
+cdef class IteratorColumnAllRefs(IteratorColumn):
     """iterates over all columns by chaining iterators over each reference
     """
-    cdef Samfile        samfile
-    cdef int            tid
-    cdef IteratorColumn coliter
 
     def __cinit__(self, Samfile samfile):
-        assert samfile._isOpen()
-        if not samfile._hasIndex(): raise ValueError("no index available for fetch")
+
+        self.n_plp = 0
+        self.tid = 0
+        self.pos = 0
+        self.plp = NULL
         self.samfile = samfile
-        self.tid = -1
 
-    def nextiter(self):
-        self.coliter = IteratorColumn(self.samfile, self.tid, 0, 1<<29)
+        # no iteration over empty files
+        if not samfile.nreferences: 
+            raise StopIteration
 
-    def __iter__(self):
-        return self
+        # initialize iterator
+        self.iter = IteratorRowRegion( samfile, self.tid, 0, max_pos )
+        self.iterdata.fp = samfile.samfile.x.bam
+        self.iterdata.iter = self.iter.iter
+        self.pileup_iter = bam_plp_init( &__advance, &self.iterdata )
 
     def __next__(self):
         """python version of next().
 
         pyrex uses this non-standard name instead of next()
         """
-        cdef IteratorColumn col
-
-        # Create an initial iterator
-        if self.tid==-1:
-            if not self.samfile.nreferences:
-                raise StopIteration
-            self.tid = 0
-            self.nextiter()
-
+        
         while 1:
-            col = self.coliter
-            col.cnext()
+            self.cnext()
 
-            # If current iterator is not exhausted, return pileup
-            if col.plp:
-                return makePileupProxy(col.plp, col.tid, col.pos, col.n_plp)
-
-            self.tid += 1
+            if self.n_plp < 0:
+                raise ValueError("error during iteration" )
+        
+            # return result, if within same reference
+            if self.plp != NULL:
+                return makePileupProxy( <bam_pileup1_t*>self.plp, self.tid, self.pos, self.n_plp )
 
             # Otherwise, proceed to next reference or stop
-            if self.tid<self.samfile.nreferences:
-                self.nextiter()
+            self.tid += 1
+            if self.tid < self.samfile.nreferences:
+                self.iter = IteratorRowRegion( self.samfile, self.tid, 0, max_pos )
+                self.iterdata.fp = self.samfile.samfile.x.bam
+                self.iterdata.iter = self.iter.iter
+                self.pileup_iter = bam_plp_init( &__advance, &self.iterdata )
             else:
                 raise StopIteration
 
@@ -2233,7 +2244,6 @@ cdef class IteratorSnpCalls:
         self.length = 0
         bam_maqcns_prepare( self.c )
 
-
     def __iter__(self):
         return self 
 
@@ -2302,7 +2312,6 @@ cdef class IteratorSnpCalls:
 __all__ = ["Samfile", 
            "Fastafile",
            "IteratorRow", 
-           "IteratorRowAll", 
            "IteratorColumn", 
            "AlignedRead", 
            "PileupColumn", 
