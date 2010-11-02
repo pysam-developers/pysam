@@ -828,7 +828,9 @@ cdef class Fastafile:
         return self.fastafile != NULL
 
     def __len__(self):
-        assert self.fastafile != NULL
+        if self.fastafile == NULL:
+            raise ValueError( "calling len() on closed file" )
+
         return faidx_fetch_nseq(self.fastafile)
 
     def _open( self, 
@@ -936,8 +938,11 @@ cdef class IteratorRow:
 
     def __cinit__(self, Samfile samfile, int tid, int beg, int end ):
 
-        assert samfile._isOpen()
-        assert samfile._hasIndex()
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+        
+        if not samfile._hasIndex():
+            raise ValueError( "no index available for pileup" )
         
         # makes sure that samfile stays alive as long as the
         # iterator is alive
@@ -991,7 +996,8 @@ cdef class IteratorRowAll:
 
     def __cinit__(self, Samfile samfile):
 
-        assert samfile._isOpen()
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
 
         if samfile.isbam: mode = "rb"
         else: mode = "r"
