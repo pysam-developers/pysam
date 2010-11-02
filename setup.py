@@ -16,7 +16,7 @@ import version
 
 version = version.__version__
 
-samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c" )
+samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c", "errmod.c", "bam_reheader.c", "bam2bcf.c" )
 samtools_dest = os.path.abspath( "samtools" )
 tabix_exclude = ( "main.c", )
 tabix_dest = os.path.abspath( "tabix" )

@@ -166,6 +166,14 @@ class StderrStore():
         self.stderr_save = Outs( sys.stderr.fileno() )
         self.stderr_save.setfd( self.stderr_h )
         
+    def readAndRelease( self ):
+        self.stderr_save.restore()
+        lines = []
+        if os.path.exists(self.stderr_f):
+            lines = open( self.stderr_f, "r" ).readlines()
+            os.remove( self.stderr_f )
+        return lines
+
     def release(self):
         self.stderr_save.restore()
         if os.path.exists(self.stderr_f):
@@ -360,7 +368,13 @@ cdef class Samfile:
 
             store = StderrStore()
             self.samfile = samopen( filename, mode, NULL )
-            store.release()
+            result = store.readAndRelease()
+            # test for specific messages as open also outputs status messages
+            # that can be ignored.
+            if "[bam_header_read] invalid BAM binary header (this is not a BAM file).\n" in result:
+                raise ValueError( "invalid BAM binary header (is this a BAM file?)" )
+            elif '[samopen] no @SQ lines in the header.\n' in result:
+                raise ValueError( "no @SQ lines in the header (is this a SAM file?)")
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
@@ -404,6 +418,9 @@ cdef class Samfile:
 
         Note that regions are 1-based, while start,end are python coordinates.
         '''
+        # This method's main objective is to translate from a reference to a tid. 
+        # For now, it calls bam_parse_region, which is clumsy. Might be worth
+        # implementing it all in pysam (makes use of khash).
         
         cdef int rtid
         cdef int rstart
@@ -414,14 +431,15 @@ cdef class Samfile:
         # translate to a region
         if reference:
             if start != None and end != None:
+                if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
                 region = "%s:%i-%i" % (reference, start+1, end)
             else:
                 region = reference
 
         if region:
-            store = StderrStore()
+            # this function might be called often (multiprocessing)
+            # thus avoid using StderrStore, see issue 46.
             bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
-            store.release()
             if rtid < 0: raise ValueError( "invalid region `%s`" % region )
             if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
             if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
@@ -794,7 +812,9 @@ cdef class Fastafile:
         return self.fastafile != NULL
 
     def __len__(self):
-        assert self.fastafile != NULL
+        if self.fastafile == NULL:
+            raise ValueError( "calling len() on closed file" )
+
         return faidx_fetch_nseq(self.fastafile)
 
     def _open( self, 
@@ -920,8 +940,11 @@ cdef class IteratorRow:
 
     def __cinit__(self, Samfile samfile, int tid, int beg, int end ):
 
-        assert samfile._isOpen()
-        assert samfile._hasIndex()
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+        
+        if not samfile._hasIndex():
+            raise ValueError( "no index available for pileup" )
         
         # makes sure that samfile stays alive as long as the
         # iterator is alive
@@ -975,7 +998,8 @@ cdef class IteratorRowAll:
 
     def __cinit__(self, Samfile samfile):
 
-        assert samfile._isOpen()
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
 
         if samfile.isbam: mode = "rb"
         else: mode = "r"
@@ -1609,63 +1633,49 @@ cdef class AlignedRead:
             cdef char * ctag
             cdef bam1_t * src
             cdef uint8_t * s
-            cdef char tpe
+            cdef char auxtag[3]
+            cdef char auxtype
             
             src = self._delegate
             if src.l_aux == 0: return None
             
             s = bam1_aux( src )
             result = []
-            ctag = <char*>calloc( 3, sizeof(char) )
-            cdef int x
+            auxtag[2] = 0
             while s < (src.data + src.data_len):
                 # get tag
-                ctag[0] = s[0]
-                ctag[1] = s[1]
-                pytag = ctag
-
+                auxtag[0] = s[0]
+                auxtag[1] = s[1]
                 s += 2
+                auxtype = s[0]
 
-                # convert type - is there a better way?
-                # ctag[0] = s[0]
-                # ctag[1] = 0
-                # pytype = ctag
-                # get type and value 
-                # how do I do char literal comparison in cython?
-                # the code below works (i.e, is C comparison)
-                tpe = toupper(s[0])
-                if tpe == 'S':
+                if auxtype in ('c', 'C'):
+                    value = <int>bam_aux2i(s)            
+                    s += 1
+                elif auxtype in ('s', 'S'):
                     value = <int>bam_aux2i(s)            
                     s += 2
-                elif tpe == 'I':
-                    value = <int>bam_aux2i(s)            
+                elif auxtype in ('i', 'I'):
+                    value = <float>bam_aux2i(s)
                     s += 4
-                elif tpe == 'F':
+                elif auxtype == 'f':
                     value = <float>bam_aux2f(s)
                     s += 4
-                elif tpe == 'D':
+                elif auxtype == 'd':
                     value = <double>bam_aux2d(s)
                     s += 8
-                elif tpe == 'C':
-                    value = <int>bam_aux2i(s)
-                    s += 1
-                elif tpe == 'A':
-                    # there might a more efficient way
-                    # to convert a char into a string
+                elif auxtype == 'A':
                     value = "%c" % <char>bam_aux2A(s)
                     s += 1
-                elif tpe == 'Z':
+                elif auxtype in ('Z', 'H'):
                     value = <char*>bam_aux2Z(s)
                     # +1 for NULL terminated string
                     s += len(value) + 1
-
-                # skip over type
+                 # 
                 s += 1
+  
+                result.append( (auxtag, value) )
 
-                # ignore pytype
-                result.append( (pytag, value) )
-
-            free( ctag )
             return result
 
         def __set__(self, tags):

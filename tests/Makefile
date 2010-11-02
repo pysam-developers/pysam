@@ -4,7 +4,8 @@ all: ex1.glf ex1.pileup.gz ex1.bam.bai ex1.glfview.gz \
 	ex3.bam ex3.bam.bai \
 	ex4.bam ex4.bam.bai \
 	ex5.bam ex5.bam.bai \
-	ex6.bam ex8.bam ex8.bam.bai
+	ex6.bam \
+	ex8.bam ex8.bam.bai
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz

@@ -100,11 +100,17 @@ class BinaryTest(unittest.TestCase):
                 ("ex1.view", "samtools view ex1.bam > ex1.view"),
                 ("pysam_ex1.view", (pysam.view, "ex1.bam" ) ),
                 ),
+          "view2" :
+        (
+                ("ex1.view", "samtools view -bT ex1.fa -o ex1.view2 ex1.sam"),
+                # note that -o ex1.view2 throws exception.
+                ("pysam_ex1.view", (pysam.view, "-bT ex1.fa -oex1.view2 ex1.sam" ) ),
+                ),
         }
 
     # some tests depend on others. The order specifies in which order
     # the samtools commands are executed.
-    mOrder = ('faidx', 'import', 'index', 'pileup1', 'pileup2', 'glfview', 'view' )
+    mOrder = ('faidx', 'import', 'index', 'pileup1', 'pileup2', 'glfview', 'view', 'view2' )
 
     def setUp( self ):
         '''setup tests. 
@@ -277,12 +283,6 @@ class IOTest(unittest.TestCase):
         samfile = pysam.Samfile( "ex2.bam", "rb" )
         self.assertRaises( ValueError, samfile.fetch )
         self.assertEqual( len(list( samfile.fetch(until_eof = True) )), 3270 )
-
-    def testReadingFromFileWithWrongMode( self ):
-
-        assert not os.path.exists( "ex2.bam.bai" )
-        samfile = pysam.Samfile( "ex2.bam", "r" )
-        self.assertRaises( ValueError, samfile.fetch )
 
 class TestIteratorRow(unittest.TestCase):
 
@@ -613,8 +613,28 @@ class TestExceptions(unittest.TestCase):
     def testOutOfRangeLargeOldFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
 
+    def testZeroToZero(self):        
+        '''see issue 44'''
+        self.assertEqual( len(list(self.samfile.fetch('chr1', 0, 0))), 0)
+
     def tearDown(self):
         self.samfile.close()
+
+
+class TestWrongFormat(unittest.TestCase):
+    '''test cases for opening files not in bam/sam format.'''
+
+    def testOpenSamAsBam( self ):
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.sam', 'rb' )
+
+    def testOpenBamAsSam( self ):
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.bam', 'r' )
+
+    def testOpenFastaAsSam( self ):
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.fa', 'r' )
+
+    def testOpenFastaAsBam( self ):
+        self.assertRaises( ValueError, pysam.Samfile, 'ex1.fa', 'rb' )
 
 class TestFastaFile(unittest.TestCase):
 
