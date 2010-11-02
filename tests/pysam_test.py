@@ -987,15 +987,23 @@ class TestRemoteFileHTTP( unittest.TestCase):
 class TestSNPCalls( unittest.TestCase ):
     '''test pysam SNP calling ability.'''
 
+    def checkEqual( self, a, b ):
+        for x in ("reference_base", 
+                  "pos",
+                  "genotype",
+                  "snp_quality",
+                  "mapping_quality",
+                  "coverage" ):
+            self.assertEqual( getattr(a, x), getattr(b,x), "attribute mismatch for %s: %s != %s" % 
+                              (str(a), getattr(a, x), getattr(b,x)))
+
     def testAll( self ):
         samfile = pysam.Samfile( "ex1.bam", "rb")  
         fastafile = pysam.Fastafile( "ex1.fa" )
-        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):    
-            print str(x)
-            i = samfile.pileup( x.chromosome, x.position, x.position + 1)
-            z = pysam.IteratorSnpCalls(i, fastafile )
-            for y in z: 
-                print y
+        i = samfile.pileup()
+        for x,y in zip( pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ), pysam.IteratorSnpCalls(i, fastafile ) ):
+            if x.reference_base == "*": continue
+            self.checkEqual( x, y )
 
 # TODOS
 # 1. finish testing all properties within pileup objects
