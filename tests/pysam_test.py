@@ -613,8 +613,21 @@ class TestExceptions(unittest.TestCase):
     def testOutOfRangeLargeOldFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
 
+    def testZeroToZero(self):        
+        '''see issue 44'''
+        self.assertEqual( len(list(self.samfile.fetch('chr1', 0, 0))), 0)
+
     def tearDown(self):
         self.samfile.close()
+
+
+class TestWrongFormat(unittest.TestCase):
+    '''test cases for opening files not in bam/sam format.'''
+
+    def testOpenSamAsBam( self ):
+        samfile = pysam.Samfile('ex1.sam', 'rb')
+        samfile.fetch('chr1', 0, 100)
+         
 
 class TestFastaFile(unittest.TestCase):
 
