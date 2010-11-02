@@ -298,3 +298,5 @@ cdef extern from "pysam_util.h":
     unsigned char pysam_translate_sequence( char s )
 
     unsigned char * bam_nt16_table
+
+    int pysam_reference2tid( bam_header_t *header, char * s )

@@ -32,6 +32,7 @@ typedef struct {
 
 KSORT_INIT(my_off, pair64_t, pair64_lt);
 KHASH_MAP_INIT_INT(my_i, bam_binlist_t);
+KHASH_MAP_INIT_STR(s, int)
 
 struct __bam_index_t
 {
@@ -284,6 +285,32 @@ unsigned char pysam_translate_sequence( const unsigned char s )
 {
   return bam_nt16_table[s];
 }
+
+
+void bam_init_header_hash(bam_header_t *header);
+
+// translate a reference string *s* to a tid
+// code taken from bam_parse_region
+int pysam_reference2tid( bam_header_t *header, const char * s )
+{
+  
+  khiter_t iter;
+  khash_t(s) *h;
+  
+  bam_init_header_hash(header);
+  h = (khash_t(s)*)header->hash;
+
+  iter = kh_get(s, h, s); /* get the ref_id */
+  if (iter == kh_end(h)) { // name not found
+    return -1;
+  }
+
+  return kh_value(h, iter);
+}
+
+
+  
+
 
 
 

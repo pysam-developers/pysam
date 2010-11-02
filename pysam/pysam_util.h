@@ -41,5 +41,7 @@ unsigned char pysam_translate_sequence( const unsigned char s );
 // defined in bam_import.c
 extern unsigned char bam_nt16_table[256];
 
+// translate a reference string *s* to a tid
+int pysam_reference2tid( bam_header_t *header, const char * s );
 
 #endif

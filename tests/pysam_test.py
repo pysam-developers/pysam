@@ -516,7 +516,17 @@ class TestHeaderSam(unittest.TestCase):
     def testHeaders(self):
         self.compareHeaders( self.header, self.samfile.header )
         self.compareHeaders( self.samfile.header, self.header )
-        
+
+    def testNameMapping( self ):
+        for x, y in enumerate( ("chr1", "chr2")):
+            tid = self.samfile.gettid( y )
+            ref = self.samfile.getrname( x )
+            self.assertEqual( tid, x )
+            self.assertEqual( ref, y )
+
+        self.assertEqual( self.samfile.gettid("chr?"), -1 )
+        self.assertRaises( ValueError, self.samfile.getrname, 2 )
+
     def tearDown(self):
         self.samfile.close()
 

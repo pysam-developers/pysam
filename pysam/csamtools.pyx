@@ -403,6 +403,15 @@ cdef class Samfile:
             raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
         return self.samfile.header.target_name[tid]
 
+    def gettid( self, reference ):
+        '''(reference)
+        convert :ref:`reference` name into numerical :term:`tid`
+
+        returns -1 if reference is not known.
+        '''
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        return pysam_reference2tid( self.samfile.header, reference )
+
     def _parseRegion( self, 
                       reference = None, 
                       start = None, 
@@ -425,7 +434,6 @@ cdef class Samfile:
         cdef int rtid
         cdef int rstart
         cdef int rend
-
         rtid = rstart = rend = 0
 
         # translate to a region
@@ -2219,6 +2227,8 @@ cdef class SNPCall:
 cdef class IteratorSnpCalls:
     """call SNPs within a region.
 
+    Note that this caller if instantiated if called repeatedly.
+
     .. todo:
 
         * allow options similar to the samtools pileup command
@@ -2229,8 +2239,8 @@ cdef class IteratorSnpCalls:
     cdef Fastafile fasta
     cdef bam_maqcns_t * c
     cdef char * seq
-    cdef int tid 
-    cdef int length
+    cdef int seq_tid 
+    cdef int seq_length
     def __cinit__(self, 
                   IteratorColumn iterator_column,
                   Fastafile fasta ):
@@ -2240,8 +2250,8 @@ cdef class IteratorSnpCalls:
         self.c.is_soap = 1
         self.fasta = fasta
         self.seq = NULL
-        self.tid = 0
-        self.length = 0
+        self.seq_tid = -1
+        self.seq_length = 0
         bam_maqcns_prepare( self.c )
 
     def __iter__(self):
@@ -2263,18 +2273,27 @@ cdef class IteratorSnpCalls:
         cdef int rb
 
         # update sequence
-        if self.iter.tid != self.tid or self.seq == NULL:
-            self.tid = self.iter.tid
+        if self.iter.tid != self.seq_tid:
+            if self.seq != NULL: free( self.seq )
+            self.seq = NULL
+            self.seq_tid = self.iter.tid
+
+        # reload sequence if necessary
+        if self.seq == NULL:
             # TODO: look for a  shortcut 
-            self.seq = self.fasta._fetch( self.iter.iter.samfile.samfile.header.target_name[self.tid], 
+            self.seq = self.fasta._fetch( self.iter.iter.samfile.samfile.header.target_name[self.seq_tid], 
                                           0, max_pos, 
-                                          &self.length )
-            
+                                          &self.seq_length )
+            if self.seq == NULL:
+                raise ValueError( "reference sequence for '%s' (tid=%i) not found" % \
+                                       (self.iter.iter.samfile.samfile.header.target_name[self.seq_tid], 
+                                        self.seq_tid))
+
         # reference base
-        if self.seq != NULL and self.iter.pos < self.length:
-            rb = self.seq[self.iter.pos]
-        else:
-            rb = 'N' 
+        if self.iter.pos >= self.seq_length:
+            raise ValueError( "position %i out of bounds on reference sequence (len=%i)" % (self.iter.pos, self.seq_length) )
+
+        rb = self.seq[self.iter.pos]
 
         cdef uint32_t cns 
         cns = bam_maqcns_call( self.iter.n_plp, 
@@ -2307,6 +2326,7 @@ cdef class IteratorSnpCalls:
         return call 
 
     def __dealloc__(self):
+        if self.seq != NULL: free( self.seq )
         bam_maqcns_destroy( self.c )
 
 __all__ = ["Samfile", 
