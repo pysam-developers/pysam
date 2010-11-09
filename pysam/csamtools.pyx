@@ -2,7 +2,7 @@
 # cython: profile=True
 # adds doc-strings for sphinx
 
-import tempfile, os, sys, types, struct, ctypes, collections
+import tempfile, os, sys, types, struct, ctypes, collections, re
 
 from python_string cimport PyString_FromStringAndSize, PyString_AS_STRING
 from python_exc    cimport PyErr_SetString
@@ -415,15 +415,14 @@ cdef class Samfile:
     def _parseRegion( self, 
                       reference = None, 
                       start = None, 
-                      end = None, 
+                      end = None,
                       region = None ):
         '''parse region information.
 
-        raise Value for for invalid regions.
+        raise ValueError for for invalid regions.
 
-        returns a tuple of region, tid, start and end. Region
-        is a valid samtools :term:`region` or None if the region
-        extends over the whole file.
+        returns a tuple of flag, tid, start and end. Flag indicates
+        whether some coordinates were supplied.
 
         Note that regions are 1-based, while start,end are python coordinates.
         '''
@@ -434,26 +433,28 @@ cdef class Samfile:
         cdef int rtid
         cdef int rstart
         cdef int rend
-        rtid = rstart = rend = 0
 
-        # translate to a region
-        if reference:
-            if start != None and end != None:
-                if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
-                region = "%s:%i-%i" % (reference, start+1, end)
-            else:
-                region = reference
+        rtid = -1
+        rstart = 0
+        rend = max_pos
+        if start != None: rstart = start
+        if end != None: rend = end
 
         if region:
-            # this function might be called often (multiprocessing)
-            # thus avoid using StderrStore, see issue 46.
-            bam_parse_region( self.samfile.header, region, &rtid, &rstart, &rend)        
-            if rtid < 0: raise ValueError( "invalid region `%s`" % region )
-            if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
-            if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
-            if not 0 <= rend < max_pos: raise ValueError( 'end out of range (%i)' % rend )
+            parts = re.split( "[:-]", region )
+            reference = parts[0]
+            if len(parts) >= 2: rstart = int(parts[1]) - 1
+            if len(parts) >= 3: rend = int(parts[2])
 
-        return region, rtid, rstart, rend
+        if not reference: return 0, 0, 0, 0
+
+        rtid = self.gettid( reference )
+        if rtid < 0: raise ValueError( "invalid reference `%s`" % reference )
+        if rstart > rend: raise ValueError( 'invalid coordinates: start (%i) > end (%i)' % (rstart, rend) )
+        if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
+        if not 0 <= rend <= max_pos: raise ValueError( 'end out of range (%i)' % rend )
+
+        return 1, rtid, rstart, rend
     
     def seek( self, uint64_t offset, int where = 0):
         '''move to current file to position *offset*'''
@@ -500,22 +501,19 @@ cdef class Samfile:
         Note that a :term:`TAM` file does not allow random access. If *region* or *reference* are given,
         an exception is raised.
         '''
-        cdef int rtid
-        cdef int rstart
-        cdef int rend
+        cdef int rtid, rstart, rend, has_coord
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
-        
-        region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
+        has_coord, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
+        
         if self.isbam:
             if not until_eof and not self._hasIndex() and not self.isremote: 
                 raise ValueError( "fetch called on bamfile without index" )
 
             if callback:
-                if not region:
-                    raise ValueError( "callback functionality requires a region/reference" )
+                if not has_coord: raise ValueError( "callback functionality requires a region/reference" )
                 if not self._hasIndex(): raise ValueError( "no index available for fetch" )
                 return bam_fetch(self.samfile.x.bam, 
                                  self.index, 
@@ -525,7 +523,7 @@ cdef class Samfile:
                                  <void*>callback, 
                                  fetch_callback )
             else:
-                if region:
+                if has_coord:
                     return IteratorRowRegion( self, rtid, rstart, rend )
                 else:
                     if until_eof:
@@ -564,22 +562,19 @@ cdef class Samfile:
             *all* reads which overlap the region are returned. The first base returned will be the 
             first base of the first read *not* necessarily the first base of the region used in the query.
         '''
-        cdef int rtid
-        cdef int rstart
-        cdef int rend
+        cdef int rtid, rstart, rend, has_coord
         cdef bam_plbuf_t *buf
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
-        region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
+        has_coord, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
         
         if self.isbam:
             if not self._hasIndex(): raise ValueError( "no index available for pileup" )
 
             if callback:
-                if not region:
-                    raise ValueError( "callback functionality requires a region/reference" )
+                if not has_coord: raise ValueError( "callback functionality requires a region/reference" )
 
                 buf = bam_plbuf_init( <bam_pileup_f>pileup_callback, <void*>callback )
                 bam_fetch(self.samfile.x.bam, 
@@ -590,7 +585,7 @@ cdef class Samfile:
                 bam_plbuf_push( NULL, buf)
                 bam_plbuf_destroy(buf)
             else:
-                if region:
+                if has_coord:
                     return IteratorColumnRegion( self, rtid, rstart, rend )
                 else:
                     return IteratorColumnAllRefs(self)
@@ -2276,13 +2271,13 @@ cdef class SNPCaller:
      
         # reload sequence if necessary
         if self.seq == NULL:
-            # TODO: look for a  shortcut 
-            self.seq = self.fasta._fetch( self.samfile.samfile.header.target_name[self.seq_tid], 
+            rname = self.samfile.getrname( self.seq_tid )
+            self.seq = self.fasta._fetch( rname,
                                           0, max_pos, 
                                           &self.seq_length )
             if self.seq == NULL:
                 raise ValueError( "reference sequence for '%s' (tid=%i) not found" % \
-                                      (self.samfile.samfile.header.target_name[self.seq_tid], 
+                                      (rname,
                                        self.seq_tid))
 
         # reference base
