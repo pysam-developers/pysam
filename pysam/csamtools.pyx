@@ -162,11 +162,13 @@ class StderrStore():
     stderr is captured. 
     '''
     def __init__(self):
+        return
         self.stderr_h, self.stderr_f = tempfile.mkstemp()
         self.stderr_save = Outs( sys.stderr.fileno() )
         self.stderr_save.setfd( self.stderr_h )
         
     def readAndRelease( self ):
+        return
         self.stderr_save.restore()
         lines = []
         if os.path.exists(self.stderr_f):
@@ -175,6 +177,7 @@ class StderrStore():
         return lines
 
     def release(self):
+        return
         self.stderr_save.restore()
         if os.path.exists(self.stderr_f):
             os.remove( self.stderr_f )

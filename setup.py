@@ -6,7 +6,7 @@ pysam
 
 '''
 
-import os, sys, glob, shutil, hashlib
+import os, sys, glob, shutil, hashlib, re
 
 name = "pysam"
 
@@ -37,19 +37,50 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
       cfiles = glob.glob( os.path.join( srcdir, "*.c" ) )
       hfiles = glob.glob( os.path.join( srcdir, "*.h" ) )
       ncopied = 0
-      for new_file in cfiles + hfiles:
-         f = os.path.basename(new_file)
-         if f in exclude: continue
+      
+      def _compareAndCopy( src, destdir, exclude ):
+
+         f = os.path.basename(src)
+         if f in exclude: return None
          old_file = os.path.join( destdir, f )
          if os.path.exists( old_file ):
             md5_old = hashlib.md5("".join(open(old_file,"r").readlines())).digest()
             md5_new = hashlib.md5("".join(open(new_file,"r").readlines())).digest()
-            if md5_old == md5_new: continue
-            raise ValueError( "incompatible files for %s and %s" % (old_file, new_file ))
+            if md5_old != md5_new:
+               raise ValueError( "incompatible files for %s and %s" % (old_file, new_file ))
 
-         shutil.copy( new_file, destdir )
+         shutil.copy( src, destdir )
+         return old_file
+
+      for src_file in hfiles:
+         _compareAndCopy( src_file, destdir, exclude )
          ncopied += 1
+
+      cf = []
+      for src_file in cfiles:
+         cf.append( _compareAndCopy( src_file, destdir, exclude ) )
+         ncopied += 1
+         
       print "installed latest source code from %s: %i files copied" % (srcdir, ncopied)
+      # redirect stderr to pysamerr and replace bam.h with a stub.
+      print "applying stderr redirection"
+      
+      for filename in cf:
+         if not filename: continue
+         dest = filename + ".pysam.c"
+         with open( filename ) as infile:
+            with open( dest, "w" ) as outfile:
+               outfile.write( '#include "pysam.h"\n\n' )
+               outfile.write( re.sub( "stderr", "pysamerr", "".join(infile.readlines()) ) )
+      
+      with open( os.path.join( destdir, "pysam.h" ), "w" )as outfile:
+         outfile.write ("""#ifndef PYSAM_H
+#define PYSAM_H
+#include "stdio.h"
+extern FILE * pysamerr;
+#endif
+""")
+
    sys.exit(0)
 
 from ez_setup import use_setuptools
@@ -80,7 +111,7 @@ samtools = Extension(
     [ "pysam/csamtools.pyx" ]  +\
        [ "pysam/%s" % x for x in (
              "pysam_util.c", )] +\
-       glob.glob( os.path.join( "samtools", "*.c" ) ),
+       glob.glob( os.path.join( "samtools", "*.pysam.c" ) ),
     library_dirs=[],
     include_dirs=[ "samtools", "pysam" ],
     libraries=[ "z", ],
@@ -93,7 +124,7 @@ tabix = Extension(
     "ctabix",                   # name of extension
     [ "pysam/ctabix.pyx" ]  +\
        [ "pysam/%s" % x for x in ()] +\
-       glob.glob( os.path.join( "tabix", "*.c" ) ),
+       glob.glob( os.path.join( "tabix", "*.pysam.c" ) ),
     library_dirs=[],
     include_dirs=[ "tabix", "pysam" ],
     libraries=[ "z", ],
