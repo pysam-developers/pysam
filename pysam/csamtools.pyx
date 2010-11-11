@@ -53,6 +53,10 @@ DEF BAM_CPAD       = 6
 cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 cdef int max_pos = 2 << 29
 
+# redirect stderr to 0
+_logfile = open("/dev/null", "w")
+pysam_set_stderr( PyFile_AsFile( _logfile ) )
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -168,7 +172,7 @@ class StderrStore():
         self.stderr_save.setfd( self.stderr_h )
         
     def readAndRelease( self ):
-        return
+        return []
         self.stderr_save.restore()
         lines = []
         if os.path.exists(self.stderr_f):
@@ -369,15 +373,16 @@ cdef class Samfile:
                     not os.path.exists( filename ):
                 raise IOError( "file `%s` not found" % filename)
 
-            store = StderrStore()
+            # try to detect errors
             self.samfile = samopen( filename, mode, NULL )
-            result = store.readAndRelease()
-            # test for specific messages as open also outputs status messages
-            # that can be ignored.
-            if "[bam_header_read] invalid BAM binary header (this is not a BAM file).\n" in result:
-                raise ValueError( "invalid BAM binary header (is this a BAM file?)" )
-            elif '[samopen] no @SQ lines in the header.\n' in result:
-                raise ValueError( "no @SQ lines in the header (is this a SAM file?)")
+            if self.samfile == NULL:
+                raise ValueError( "could not open file - is it SAM/BAM format?")
+
+            if self.samfile.header == NULL:
+                raise ValueError( "could not open file - is it SAM/BAM format?")
+
+            if self.samfile.header.n_targets == 0:
+                raise ValueError( "could not open file - is it SAM/BAM format?")
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )

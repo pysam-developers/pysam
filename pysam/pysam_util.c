@@ -7,9 +7,14 @@
 #include "knetfile.h"
 #include "pysam_util.h"
 
-// Definition of pysam_err
+// Definition of pysamerr
 #include "stdio.h"
-FILE * pysam_err;
+FILE * pysamerr = NULL;
+
+FILE * pysam_set_stderr( FILE * f )
+{
+  pysamerr = f;
+}
 
 // #######################################################
 // utility routines to avoid using callbacks in bam_fetch
@@ -185,8 +190,6 @@ extern int bam_rmdup(int argc, char *argv[]);
 extern int glf3_view_main(int argc, char *argv[]);
 extern int bam_flagstat(int argc, char *argv[]);
 extern int bam_fillmd(int argc, char *argv[]);
-
-
 
 int pysam_dispatch(int argc, char *argv[] )
 {

@@ -52,6 +52,11 @@ cdef extern from "string.h":
 
 cdef extern from "Python.h":
    long _Py_HashPointer(void*)
+   FILE* PyFile_AsFile(object)
+
+cdef extern from "fileobject.h":
+    ctypedef class __builtin__.file [object PyFileObject]:
+        pass
 
 cdef extern from "razf.h":
   pass
@@ -300,3 +305,5 @@ cdef extern from "pysam_util.h":
     unsigned char * bam_nt16_table
 
     int pysam_reference2tid( bam_header_t *header, char * s )
+
+    void pysam_set_stderr( FILE * file )

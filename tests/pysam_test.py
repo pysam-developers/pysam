@@ -991,7 +991,11 @@ class TestRemoteFileHTTP( unittest.TestCase):
     local = "ex1.bam"
 
     def testView( self ):
-        self.assertRaises( pysam.SamtoolsError, pysam.view, self.url, self.region )
+        samfile_local = pysam.Samfile(self.local, "rb")  
+        ref = list(samfile_local.fetch( region = self.region ))
+
+        result = pysam.view( self.url, self.region )
+        self.assertEqual( len(result), len(ref) )
         
     def testFetch( self ):
         samfile = pysam.Samfile(self.url, "rb")  

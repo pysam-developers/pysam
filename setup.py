@@ -123,7 +123,7 @@ samtools = Extension(
 tabix = Extension(
     "ctabix",                   # name of extension
     [ "pysam/ctabix.pyx" ]  +\
-       [ "pysam/%s" % x for x in ()] +\
+       [ "pysam/%s" % x for x in ( "tabix_util.c", )] +\
        glob.glob( os.path.join( "tabix", "*.pysam.c" ) ),
     library_dirs=[],
     include_dirs=[ "tabix", "pysam" ],
