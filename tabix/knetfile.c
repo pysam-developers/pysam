@@ -38,7 +38,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <winsock.h>
+#else
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -564,7 +566,7 @@ off_t knet_seek(knetFile *fp, int64_t off, int whence)
         else if (whence==SEEK_SET)
             fp->offset = off;
 		fp->is_ready = 0;
-		return 0;
+		return fp->offset;
 	}
 	errno = EINVAL;
     fprintf(stderr,"[knet_seek] %s\n", strerror(errno));
@@ -582,7 +584,7 @@ int knet_close(knetFile *fp)
 		else netclose(fp->fd);
 	}
 	free(fp->host); free(fp->port);
-	free(fp->response); free(fp->retr); // FTP specific
+	free(fp->response); free(fp->retr); free(fp->size_cmd); // FTP specific
 	free(fp->path); free(fp->http_host); // HTTP specific
 	free(fp);
 	return 0;

@@ -141,11 +141,8 @@ static inline int resolve_cigar(bam_pileup1_t *p, uint32_t pos)
 	}
 	assert(x > pos); // otherwise a bug
 	return ret;
+
 }
-
-
-
-
 // the following code has been taken from bam_plbuf_push
 // and modified such that instead of a function call
 // the function returns and will continue (if cont is true).
@@ -155,98 +152,16 @@ static inline int resolve_cigar(bam_pileup1_t *p, uint32_t pos)
 // 1: if buf is full and can be emitted
 // 0: if b has been added
 // -1: if there was an error
-int pysam_bam_plbuf_push(const bam1_t *b, bam_plbuf_t *buf, int cont)
+int pysam_pileup_next(const bam1_t *b,
+		      bam_plbuf_t *buf,
+		      bam_pileup1_t ** plp,
+		      int * tid,
+		      int * pos,
+		      int * n_plp )
 {
-  if (!cont)
-    {
-      if (b) { // fill buffer
-	if (b->core.tid < 0) return 0;
-	if (b->core.flag & buf->flag_mask) return 0;
-	bam_copy1(&buf->tail->b, b);
-	buf->tail->beg = b->core.pos; buf->tail->end = bam_calend(&b->core, bam1_cigar(b));
-	if (!(b->core.tid >= buf->max_tid || (b->core.tid == buf->max_tid && buf->tail->beg >= buf->max_pos))) {
-	  fprintf(stderr, "[bam_pileup_core] the input is not sorted. Abort!\n");
-	  abort();
-	}
-	buf->max_tid = b->core.tid; buf->max_pos = buf->tail->beg;
-	if (buf->tail->end > buf->pos || buf->tail->b.core.tid > buf->tid) {
-	  buf->tail->next = mp_alloc(buf->mp);
-	  buf->tail = buf->tail->next;
-	}
-      } else buf->is_eof = 1;
-    }
-  else
-    // continue end of loop
-    {
-      // update tid and pos
-      if (buf->head->next) {
-	if (buf->tid > buf->head->b.core.tid) {
-	  fprintf(stderr, "[bam_plbuf_push] unsorted input. Pileup aborts.\n");
-	  return -1;
-	}
-      }
-      if (buf->tid < buf->head->b.core.tid) { // come to a new reference sequence
-	buf->tid = buf->head->b.core.tid; buf->pos = buf->head->beg; // jump to the next reference
-      } else if (buf->pos < buf->head->beg) { // here: tid == head->b.core.tid
-	buf->pos = buf->head->beg; // jump to the next position
-      } else ++buf->pos; // scan contiguously
-      if (buf->is_eof && buf->head->next == 0) return 0;
-    }
-
-  // enter yield loop
-  while (buf->is_eof || buf->max_tid > buf->tid || (buf->max_tid == buf->tid && buf->max_pos > buf->pos))
-    {
-      int n_pu = 0;
-      lbnode_t *p, *q;
-      buf->dummy->next = buf->head;
-      for (p = buf->head, q = buf->dummy; p->next; q = p, p = p->next) {
-	if (p->b.core.tid < buf->tid || (p->b.core.tid == buf->tid && p->end <= buf->pos)) { // then remove from the list
-	  q->next = p->next; mp_free(buf->mp, p); p = q;
-	} else if (p->b.core.tid == buf->tid && p->beg <= buf->pos) { // here: p->end > pos; then add to pileup
-	  if (n_pu == buf->max_pu) { // then double the capacity
-	    buf->max_pu = buf->max_pu? buf->max_pu<<1 : 256;
-	    buf->pu = (bam_pileup1_t*)realloc(buf->pu, sizeof(bam_pileup1_t) * buf->max_pu);
-	  }
-	  buf->pu[n_pu].b = &p->b;
-	  if (resolve_cigar(buf->pu + n_pu, buf->pos)) ++n_pu; // skip the read if we are looking at BAM_CREF_SKIP
-	}
-      }
-      buf->head = buf->dummy->next; // dummy->next may be changed
-
-      // exit if alignments need to be emitted
-      if (n_pu) { return n_pu; }
-      
-      // update tid and pos
-      if (buf->head->next) {
-	if (buf->tid > buf->head->b.core.tid) {
-	  fprintf(stderr, "[bam_plbuf_push] unsorted input. Pileup aborts.\n");
-	  return -2;
-	}
-      }
-      if (buf->tid < buf->head->b.core.tid) { // come to a new reference sequence
-	buf->tid = buf->head->b.core.tid; buf->pos = buf->head->beg; // jump to the next reference
-      } else if (buf->pos < buf->head->beg) { // here: tid == head->b.core.tid
-	buf->pos = buf->head->beg; // jump to the next position
-      } else ++buf->pos; // scan contiguously
-      if (buf->is_eof && buf->head->next == 0) break;
-    }
-  return 0;
-}
-
-int pysam_get_pos( const bam_plbuf_t *buf) 
-{
-  return buf->pos;
-}
-
-  
-int pysam_get_tid( const bam_plbuf_t *buf)
-{
-  return buf->tid;
-}
-
-bam_pileup1_t * pysam_get_pileup( const bam_plbuf_t *buf)
-{
-  return buf->pu;
+  *plp = bam_plp_next(buf->iter, tid, pos, n_plp);
+  if (plp == NULL) return 0;
+  return 1;
 }
 
 // pysam dispatch function to emulate the samtools
@@ -307,15 +222,6 @@ int pysam_dispatch(int argc, char *argv[] )
       return 1;
     }
   return 0;
-}
-
-// standin for bam_destroy1 in bam.h
-// deletes all variable length data
-void pysam_bam_destroy1( bam1_t * b )
-{
-  if (b == NULL) return;
-  if (b->data != NULL) free(b->data);
-  free(b);
 }
 
 // taken from samtools/bam_import.c
@@ -379,121 +285,6 @@ unsigned char pysam_translate_sequence( const unsigned char s )
   return bam_nt16_table[s];
 }
 
-// stand-ins for samtools macros in bam.h
-char * pysam_bam1_qname( const bam1_t * b)
-{
-  return (char*)b->data;
-}
 
-uint32_t * pysam_bam1_cigar( const bam1_t * b) 
-{
-  return (uint32_t*)(b->data + b->core.l_qname);
-}
-
-uint8_t * pysam_bam1_seq( const bam1_t * b) 
-{
-  return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname);
-}
-
-uint8_t * pysam_bam1_qual( const bam1_t * b)
-{
-  return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname + (b->core.l_qseq + 1)/2);
-}
-
-uint8_t * pysam_bam1_aux( const bam1_t * b)
-{
-  return (uint8_t*)(b->data + b->core.n_cigar*4 + b->core.l_qname + b->core.l_qseq + (b->core.l_qseq + 1)/2);
-}
-
-// #######################################################
-// Iterator implementation
-// #######################################################
-
-// functions defined in bam_index.c
-extern pair64_t * get_chunk_coordinates(const bam_index_t *idx, int tid, int beg, int end, int* cnt_off);
-
-static inline int is_overlap(uint32_t beg, uint32_t end, const bam1_t *b)
-{
-	uint32_t rbeg = b->core.pos;
-	uint32_t rend = b->core.n_cigar? bam_calend(&b->core, bam1_cigar(b)) : b->core.pos + 1;
-	return (rend > beg && rbeg < end);
-}
-
-struct __bam_fetch_iterator_t
-{
-  bam1_t *        b;
-  pair64_t *      off;
-  int             n_off;
-  uint64_t        curr_off;
-  int             curr_chunk;
-  bamFile 		fp;
-  int				tid;
-  int				beg;
-  int				end;
-  int             n_seeks;
-};
- 
-bam_fetch_iterator_t* bam_init_fetch_iterator(bamFile fp, const bam_index_t *idx, int tid, int beg, int end)
-{
-	// iterator contains current alignment position
-	//      and will contain actual alignment during iterations
-	bam_fetch_iterator_t* iter  = (bam_fetch_iterator_t*)calloc(1, sizeof(bam_fetch_iterator_t));
-	iter->b                     = (bam1_t*)calloc(1, sizeof(bam1_t));
-		
-	// list of chunks containing our alignments
-	iter->off = get_chunk_coordinates(idx, tid, beg, end, &iter->n_off);
-	
-	// initialise other state variables in iterator
-	iter->fp                = fp;
-	iter->curr_chunk        = -1;   
-	iter->curr_off          =  0;
-	iter->n_seeks           =  0;    
-	iter->tid				= tid;
-	iter->beg				= beg;
-	iter->end				= end;
-	return iter;
-}
-
-bam1_t * bam_fetch_iterate(bam_fetch_iterator_t *iter)
-{
-	if (!iter->off) {
-		return 0;
-	}
-
-	int ret;
-	// iterate through all alignments in chunks
-	for (;;) {
-		if (iter->curr_off == 0 || iter->curr_off >= iter->off[iter->curr_chunk].v) { // then jump to the next chunk
-			if (iter->curr_chunk == iter->n_off - 1) break; // no more chunks
-			if (iter->curr_chunk >= 0) assert(iter->curr_off == iter->off[iter->curr_chunk].v); // otherwise bug
-			if (iter->curr_chunk < 0 || iter->off[iter->curr_chunk].v != iter->off[iter->curr_chunk+1].u) { // not adjacent chunks; then seek
-				bam_seek(iter->fp, iter->off[iter->curr_chunk+1].u, SEEK_SET);
-				iter->curr_off = bam_tell(iter->fp);
-				++iter->n_seeks;
-			}
-			++iter->curr_chunk;
-		}
-		if ((ret = bam_read1(iter->fp, iter->b)) > 0) {
-			iter->curr_off = bam_tell(iter->fp);
-			if (iter->b->core.tid != iter->tid || iter->b->core.pos >= iter->end) break; // no need to proceed
-			else if (is_overlap(iter->beg, iter->end, iter->b)) 
-				//
-				//func(iter->b, data);
-				//
-				return iter->b;
-		} else 
-			return 0; // end of file
-	}
-	return 0;
-}
-
-void bam_cleanup_fetch_iterator(bam_fetch_iterator_t *iter)
-{
-  //  fprintf(stderr, "[bam_fetch] # seek calls: %d\n", iter->n_seeks);
-  bam_destroy1(iter->b);
-  free(iter->off);
-}
-
-       
 
 

@@ -87,7 +87,7 @@ typedef struct {
 	char **target_name;
 	uint32_t *target_len;
 	void *dict, *hash, *rg2lib;
-	int l_text;
+	size_t l_text, n_text;
 	char *text;
 } bam_header_t;
 
@@ -190,6 +190,8 @@ typedef struct {
 	uint8_t *data;
 } bam1_t;
 
+typedef struct __bam_iter_t *bam_iter_t;
+
 #define bam1_strand(b) (((b)->core.flag&BAM_FREVERSE) != 0)
 #define bam1_mstrand(b) (((b)->core.flag&BAM_FMREVERSE) != 0)
 
@@ -272,6 +274,10 @@ extern char bam_nt16_nt4_table[];
 extern "C" {
 #endif
 
+	/*********************
+	 * Low-level SAM I/O *
+	 *********************/
+
 	/*! @abstract TAM file handler */
 	typedef struct __tamFile_t *tamFile;
 
@@ -323,6 +329,7 @@ extern "C" {
 	  be destroyed in the first place.
 	 */
 	int sam_header_parse(bam_header_t *h);
+	int32_t bam_get_tid(const bam_header_t *header, const char *seq_name);
 
 	/*!
 	  @abstract       Parse @RG lines a update a header struct
@@ -336,11 +343,21 @@ extern "C" {
 
 #define sam_write1(header, b) bam_view1(header, b)
 
+
+	/********************************
+	 * APIs for string dictionaries *
+	 ********************************/
+
 	int bam_strmap_put(void *strmap, const char *rg, const char *lib);
 	const char *bam_strmap_get(const void *strmap, const char *rg);
 	void *bam_strmap_dup(const void*);
 	void *bam_strmap_init();
 	void bam_strmap_destroy(void *strmap);
+
+
+	/*********************
+	 * Low-level BAM I/O *
+	 *********************/
 
 	/*!
 	  @abstract Initialize a header structure.
@@ -440,6 +457,11 @@ extern "C" {
 
 	const char *bam_get_library(bam_header_t *header, const bam1_t *b);
 
+
+	/***************
+	 * pileup APIs *
+	 ***************/
+
 	/*! @typedef
 	  @abstract Structure for one alignment covering the pileup position.
 	  @field  b      pointer to the alignment
@@ -461,11 +483,25 @@ extern "C" {
 		uint32_t is_del:1, is_head:1, is_tail:1;
 	} bam_pileup1_t;
 
-	struct __bam_plbuf_t;
-	/*! @abstract pileup buffer */
-	typedef struct __bam_plbuf_t bam_plbuf_t;
+	typedef int (*bam_plp_auto_f)(void *data, bam1_t *b);
 
-	void bam_plbuf_set_mask(bam_plbuf_t *buf, int mask);
+	struct __bam_plp_t;
+	typedef struct __bam_plp_t *bam_plp_t;
+
+	bam_plp_t bam_plp_init(bam_plp_auto_f func, void *data);
+	int bam_plp_push(bam_plp_t iter, const bam1_t *b);
+	const bam_pileup1_t *bam_plp_next(bam_plp_t iter, int *_tid, int *_pos, int *_n_plp);
+	const bam_pileup1_t *bam_plp_auto(bam_plp_t iter, int *_tid, int *_pos, int *_n_plp);
+	void bam_plp_set_mask(bam_plp_t iter, int mask);
+	void bam_plp_reset(bam_plp_t iter);
+	void bam_plp_destroy(bam_plp_t iter);
+
+	struct __bam_mplp_t;
+	typedef struct __bam_mplp_t *bam_mplp_t;
+
+	bam_mplp_t bam_mplp_init(int n, bam_plp_auto_f func, void **data);
+	void bam_mplp_destroy(bam_mplp_t iter);
+	int bam_mplp_auto(bam_mplp_t iter, int *_tid, int *_pos, int *n_plp, const bam_pileup1_t **plp);
 
 	/*! @typedef
 	  @abstract    Type of function to be called by bam_plbuf_push().
@@ -478,44 +514,16 @@ extern "C" {
 	 */
 	typedef int (*bam_pileup_f)(uint32_t tid, uint32_t pos, int n, const bam_pileup1_t *pl, void *data);
 
-	/*!
-	  @abstract     Reset a pileup buffer for another pileup process
-	  @param  buf   the pileup buffer to be reset
-	 */
+	typedef struct {
+		bam_plp_t iter;
+		bam_pileup_f func;
+		void *data;
+	} bam_plbuf_t;
+
+	void bam_plbuf_set_mask(bam_plbuf_t *buf, int mask);
 	void bam_plbuf_reset(bam_plbuf_t *buf);
-
-	/*!
-	  @abstract     Initialize a buffer for pileup.
-	  @param  func  fucntion to be called by bam_pileup_core()
-	  @param  data  user provided data
-	  @return       pointer to the pileup buffer
-	 */
 	bam_plbuf_t *bam_plbuf_init(bam_pileup_f func, void *data);
-
-	/*!
-	  @abstract    Destroy a pileup buffer.
-	  @param  buf  pointer to the pileup buffer
-	 */
 	void bam_plbuf_destroy(bam_plbuf_t *buf);
-
-	/*!
-	  @abstract    Push an alignment to the pileup buffer.
-	  @param  b    alignment to be pushed
-	  @param  buf  pileup buffer
-	  @see         bam_plbuf_init()
-	  @return      always 0 currently
-
-	  @discussion If all the alignments covering a particular site have
-	  been collected, this function will call the user defined function
-	  as is provided to bam_plbuf_init(). The coordinate of the site and
-	  all the alignments will be transferred to the user defined
-	  function as function parameters.
-	 
-	  When all the alignments are pushed to the buffer, this function
-	  needs to be called with b equal to NULL. This will flush the
-	  buffer. A pileup buffer can only be reused when bam_plbuf_reset()
-	  is called.
-	 */
 	int bam_plbuf_push(const bam1_t *b, bam_plbuf_t *buf);
 
 	int bam_pileup_file(bamFile fp, int mask, bam_pileup_f func, void *func_data);
@@ -533,6 +541,11 @@ extern "C" {
 
 	/*! @abstract  bam_plbuf_push() equivalent with level calculated. */
 	int bam_lplbuf_push(const bam1_t *b, bam_lplbuf_t *buf);
+
+
+	/*********************
+	 * BAM indexing APIs *
+	 *********************/
 
 	struct __bam_index_t;
 	typedef struct __bam_index_t bam_index_t;
@@ -582,6 +595,10 @@ extern "C" {
 	 */
 	int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, void *data, bam_fetch_f func);
 
+	bam_iter_t bam_iter_query(const bam_index_t *idx, int tid, int beg, int end);
+	int bam_iter_read(bamFile fp, bam_iter_t iter, bam1_t *b);
+	void bam_iter_destroy(bam_iter_t iter);
+
 	/*!
 	  @abstract       Parse a region in the format: "chr2:100,000-200,000".
 	  @discussion     bam_header_t::hash will be initialized if empty.
@@ -593,6 +610,11 @@ extern "C" {
 	  @return         0 on success; -1 on failure
 	 */
 	int bam_parse_region(bam_header_t *header, const char *str, int *ref_id, int *begin, int *end);
+
+
+	/**************************
+	 * APIs for optional tags *
+	 **************************/
 
 	/*!
 	  @abstract       Retrieve data of a tag
@@ -616,6 +638,11 @@ extern "C" {
 	int bam_aux_del(bam1_t *b, uint8_t *s);
 	void bam_aux_append(bam1_t *b, const char tag[2], char type, int len, uint8_t *data);
 	uint8_t *bam_aux_get_core(bam1_t *b, const char tag[2]); // an alias of bam_aux_get()
+
+
+	/*****************
+	 * Miscellaneous *
+	 *****************/
 
 	/*!  
 	  @abstract Calculate the rightmost coordinate of an alignment on the
