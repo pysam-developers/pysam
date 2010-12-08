@@ -153,8 +153,8 @@ In order to get the unparsed output, use the *raw* argument::
    for p in pysam.pileup( "-c", "ex1.bam", raw=True ):
       print str(p),
 
-Creating de-novo files
-----------------------
+Creating SAM/BAM files from scratch
+-----------------------------------
 
 The following example shows how a new BAM file is constructed from scratch.
 The important part here is that the :class:`Samfile` class needs to receive
@@ -162,7 +162,7 @@ the sequence identifiers. These can be given either as a dictionary in a
 header structure, as lists of names and sizes, or from a template file.
 Here, we use a header dictionary::
 
-    header = { 'HD': {'VN': '1.0'},
+   header = { 'HD': {'VN': '1.0'},
                'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
                       {'LN': 1584, 'SN': 'chr2'}] }
 

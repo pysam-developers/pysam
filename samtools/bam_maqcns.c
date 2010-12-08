@@ -3,6 +3,7 @@
 #include "bam.h"
 #include "bam_maqcns.h"
 #include "ksort.h"
+#include "errmod.h"
 #include "kaln.h"
 KSORT_INIT_GENERIC(uint32_t)
 
@@ -12,12 +13,13 @@ KSORT_INIT_GENERIC(uint32_t)
 typedef struct __bmc_aux_t {
 	int max;
 	uint32_t *info;
+	uint16_t *info16;
+	errmod_t *em;
 } bmc_aux_t;
 
 typedef struct {
 	float esum[4], fsum[4];
 	uint32_t c[4];
-	uint32_t rms_mapQ;
 } glf_call_aux_t;
 
 char bam_nt16_nt4_table[] = { 4, 0, 1, 4, 2, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4 };
@@ -41,7 +43,7 @@ static void cal_het(bam_maqcns_t *aa)
 	for (n1 = 0; n1 < 256; ++n1) {
 		for (n2 = 0; n2 < 256; ++n2) {
 			long double sum = 0.0;
-			double lC = aa->is_soap? 0 : lgamma(n1+n2+1) - lgamma(n1+1) - lgamma(n2+1); // \binom{n1+n2}{n1}
+			double lC = aa->errmod == BAM_ERRMOD_SOAP? 0 : lgamma(n1+n2+1) - lgamma(n1+1) - lgamma(n2+1);
 			for (k = 1; k <= aa->n_hap - 1; ++k) {
 				double pk = 1.0 / k / sum_harmo;
 				double log1 = log((double)k/aa->n_hap);
@@ -62,6 +64,7 @@ static void cal_coef(bam_maqcns_t *aa)
 	long double sum_a[257], b[256], q_c[256], tmp[256], fk2[256];
 	double *lC;
 
+	if (aa->errmod == BAM_ERRMOD_MAQ2) return; // no need to do the following
 	// aa->lhet will be allocated and initialized 
 	free(aa->fk); free(aa->coef);
 	aa->coef = 0;
@@ -71,7 +74,7 @@ static void cal_coef(bam_maqcns_t *aa)
 		aa->fk[n] = pow(aa->theta, n) * (1.0 - aa->eta) + aa->eta;
 		fk2[n] = aa->fk[n>>1]; // this is an approximation, assuming reads equally likely come from both strands
 	}
-	if (aa->is_soap) return;
+	if (aa->errmod == BAM_ERRMOD_SOAP) return;
 	aa->coef = (double*)calloc(256*256*64, sizeof(double));
 	lC = (double*)calloc(256 * 256, sizeof(double));
 	for (n = 1; n != 256; ++n)
@@ -107,28 +110,31 @@ bam_maqcns_t *bam_maqcns_init()
 	bm = (bam_maqcns_t*)calloc(1, sizeof(bam_maqcns_t));
 	bm->aux = (bmc_aux_t*)calloc(1, sizeof(bmc_aux_t));
 	bm->het_rate = 0.001;
-	bm->theta = 0.85;
+	bm->theta = 0.83f;
 	bm->n_hap = 2;
 	bm->eta = 0.03;
 	bm->cap_mapQ = 60;
+	bm->min_baseQ = 13;
 	return bm;
 }
 
 void bam_maqcns_prepare(bam_maqcns_t *bm)
 {
+	if (bm->errmod == BAM_ERRMOD_MAQ2) bm->aux->em = errmod_init(1. - bm->theta);
 	cal_coef(bm); cal_het(bm);
 }
 
 void bam_maqcns_destroy(bam_maqcns_t *bm)
 {
 	if (bm == 0) return;
-	free(bm->lhet); free(bm->fk); free(bm->coef); free(bm->aux->info);
+	free(bm->lhet); free(bm->fk); free(bm->coef); free(bm->aux->info); free(bm->aux->info16);
+	if (bm->aux->em) errmod_destroy(bm->aux->em);
 	free(bm->aux); free(bm);
 }
 
 glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam_maqcns_t *bm)
 {
-	glf_call_aux_t *b;
+	glf_call_aux_t *b = 0;
 	int i, j, k, w[8], c, n;
 	glf1_t *g = (glf1_t*)calloc(1, sizeof(glf1_t));
 	float p[16], min_p = 1e30;
@@ -142,28 +148,39 @@ glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam
 		bm->aux->max = _n;
 		kroundup32(bm->aux->max);
 		bm->aux->info = (uint32_t*)realloc(bm->aux->info, 4 * bm->aux->max);
+		bm->aux->info16 = (uint16_t*)realloc(bm->aux->info16, 2 * bm->aux->max);
 	}
-	for (i = n = 0; i < _n; ++i) {
+	for (i = n = 0, rms = 0; i < _n; ++i) {
 		const bam_pileup1_t *p = pl + i;
 		uint32_t q, x = 0, qq;
-		if (p->is_del || (p->b->core.flag&BAM_FUNMAP)) continue;
+		uint16_t y = 0;
+		if (p->is_del || p->is_refskip || (p->b->core.flag&BAM_FUNMAP)) continue;
 		q = (uint32_t)bam1_qual(p->b)[p->qpos];
+		if (q < bm->min_baseQ) continue;
 		x |= (uint32_t)bam1_strand(p->b) << 18 | q << 8 | p->b->core.qual;
+		y |= bam1_strand(p->b)<<4;
 		if (p->b->core.qual < q) q = p->b->core.qual;
+		c = p->b->core.qual < bm->cap_mapQ? p->b->core.qual : bm->cap_mapQ;
+		rms += c * c;
 		x |= q << 24;
+		y |= q << 5;
 		qq = bam1_seqi(bam1_seq(p->b), p->qpos);
 		q = bam_nt16_nt4_table[qq? qq : ref_base];
-		if (!p->is_del && q < 4) x |= 1 << 21 | q << 16;
+		if (!p->is_del && !p->is_refskip && q < 4) x |= 1 << 21 | q << 16, y |= q;
+		bm->aux->info16[n] = y;
 		bm->aux->info[n++] = x;
+	}
+	rms = (uint8_t)(sqrt((double)rms / n) + .499);
+	if (bm->errmod == BAM_ERRMOD_MAQ2) {
+		errmod_cal(bm->aux->em, n, 4, bm->aux->info16, p);
+		goto goto_glf;
 	}
 	ks_introsort(uint32_t, n, bm->aux->info);
 	// generate esum and fsum
 	b = (glf_call_aux_t*)calloc(1, sizeof(glf_call_aux_t));
 	for (k = 0; k != 8; ++k) w[k] = 0;
-	rms = 0;
 	for (j = n - 1; j >= 0; --j) { // calculate esum and fsum
 		uint32_t info = bm->aux->info[j];
-		int tmp;
 		if (info>>24 < 4 && (info>>8&0x3f) != 0) info = 4<<24 | (info&0xffffff);
 		k = info>>16&7;
 		if (info>>24 > 0) {
@@ -172,17 +189,14 @@ glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam
 			if (w[k] < 0xff) ++w[k];
 			++b->c[k&3];
 		}
-		tmp = (int)(info&0xff) < bm->cap_mapQ? (int)(info&0xff) : bm->cap_mapQ;
-		rms += tmp * tmp;
 	}
-	b->rms_mapQ = (uint8_t)(sqrt((double)rms / n) + .499);
 	// rescale ->c[]
 	for (j = c = 0; j != 4; ++j) c += b->c[j];
 	if (c > 255) {
 		for (j = 0; j != 4; ++j) b->c[j] = (int)(254.0 * b->c[j] / c + 0.5);
 		for (j = c = 0; j != 4; ++j) c += b->c[j];
 	}
-	if (!bm->is_soap) {
+	if (bm->errmod == BAM_ERRMOD_MAQ) {
 		// generate likelihood
 		for (j = 0; j != 4; ++j) {
 			// homozygous
@@ -234,7 +248,7 @@ glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam
 			if (max1 > max2 && (min_k != max_k || min1 + 1.0 > min2))
 				p[max_k<<2|max_k] = min1 > 1.0? min1 - 1.0 : 0.0;
 		}
-	} else { // apply the SOAP model
+	} else if (bm->errmod == BAM_ERRMOD_SOAP) { // apply the SOAP model
 		// generate likelihood
 		for (j = 0; j != 4; ++j) {
 			float tmp;
@@ -251,8 +265,9 @@ glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam
 		}
 	}
 
+goto_glf:
 	// convert necessary information to glf1_t
-	g->ref_base = ref_base; g->max_mapQ = b->rms_mapQ;
+	g->ref_base = ref_base; g->max_mapQ = rms;
 	g->depth = n > 16777215? 16777215 : n;
 	for (j = 0; j != 4; ++j)
 		for (k = j; k < 4; ++k)
@@ -268,26 +283,25 @@ glf1_t *bam_maqcns_glfgen(int _n, const bam_pileup1_t *pl, uint8_t ref_base, bam
 
 uint32_t glf2cns(const glf1_t *g, int q_r)
 {
-	int i, j, k, tmp[16], min = 10000, min2 = 10000, min3 = 10000, min_g = -1, min_g2 = -1;
+	int i, j, k, p[10], ref4;
 	uint32_t x = 0;
+	ref4 = bam_nt16_nt4_table[g->ref_base];
 	for (i = k = 0; i < 4; ++i)
 		for (j = i; j < 4; ++j) {
-			tmp[j<<2|i] = -1;
-			tmp[i<<2|j] = g->lk[k++] + (i == j? 0 : q_r);
+			int prior = (i == ref4 && j == ref4? 0 : i == ref4 || j == ref4? q_r : q_r + 3);
+			p[k] = (g->lk[k] + prior)<<4 | i<<2 | j;
+			++k;
 		}
-	for (i = 0; i < 16; ++i) {
-		if (tmp[i] < 0) continue;
-		if (tmp[i] < min) {
-			min3 = min2; min2 = min; min = tmp[i]; min_g2 = min_g; min_g = i;
-		} else if (tmp[i] < min2) {
-			min3 = min2; min2 = tmp[i]; min_g2 = i;
-		} else if (tmp[i] < min3) min3 = tmp[i];
-	}
-	x = min_g >= 0? (1U<<(min_g>>2&3) | 1U<<(min_g&3)) << 28 : 0xf << 28;
-	x |= min_g2 >= 0? (1U<<(min_g2>>2&3) | 1U<<(min_g2&3)) << 24 : 0xf << 24;
-	x |= (uint32_t)g->max_mapQ << 16;
-	x |= min2 < 10000? (min2 - min < 256? min2 - min : 255) << 8 : 0xff << 8;
-	x |= min2 < 10000 && min3 < 10000? (min3 - min2 < 256? min3 - min2 : 255) : 0xff;
+	for (i = 1; i < 10; ++i) // insertion sort
+		for (j = i; j > 0 && p[j] < p[j-1]; --j)
+			k = p[j], p[j] = p[j-1], p[j-1] = k;
+	x = (1u<<(p[0]&3) | 1u<<(p[0]>>2&3)) << 28; // the best genotype
+	x |= (uint32_t)g->max_mapQ << 16; // rms mapQ
+	x |= ((p[1]>>4) - (p[0]>>4) < 256? (p[1]>>4) - (p[0]>>4) : 255) << 8; // consensus Q
+	for (k = 0; k < 10; ++k)
+		if ((p[k]&0xf) == (ref4<<2|ref4)) break;
+	if (k == 10) k = 9;
+	x |= (p[k]>>4) - (p[0]>>4) < 256? (p[k]>>4) - (p[0]>>4) : 255; // snp Q
 	return x;
 }
 
@@ -297,7 +311,7 @@ uint32_t bam_maqcns_call(int n, const bam_pileup1_t *pl, bam_maqcns_t *bm)
 	uint32_t x;
 	if (n) {
 		g = bam_maqcns_glfgen(n, pl, 0xf, bm);
-		x = glf2cns(g, (int)(bm->q_r + 0.5));
+		x = g->depth == 0? (0xfU<<28 | 0xfU<<24) : glf2cns(g, (int)(bm->q_r + 0.5));
 		free(g);
 	} else x = 0xfU<<28 | 0xfU<<24;
 	return x;
@@ -448,7 +462,7 @@ bam_maqindel_ret_t *bam_maqindel(int n, int pos, const bam_maqindel_opt_t *mi, c
 		for (i = 0; i < n_types; ++i) {
 			ka_param_t ap = ka_param_blast;
 			ap.band_width = 2 * types[n_types - 1] + 2;
-			ap.gap_end = 0;
+			ap.gap_end_ext = 0;
 			// write ref2
 			for (k = 0, j = left; j <= pos; ++j)
 				ref2[k++] = bam_nt16_nt4_table[bam_nt16_table[(int)ref[j]]];

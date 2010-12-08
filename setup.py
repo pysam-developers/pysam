@@ -6,7 +6,7 @@ pysam
 
 '''
 
-import os, sys, glob, shutil, hashlib, re
+import os, sys, glob, shutil, hashlib, re, fnmatch
 
 name = "pysam"
 
@@ -16,10 +16,21 @@ import version
 
 version = version.__version__
 
-samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c", "errmod.c", "bam_reheader.c", "bam2bcf.c" )
+samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c", 
+                     "bam_reheader.c", 
+                     "main.c", "calDepth.c", "bam2bed.c",
+                     "wgsim.c", "md5fa.c", "maq2sam.c",)
 samtools_dest = os.path.abspath( "samtools" )
 tabix_exclude = ( "main.c", )
 tabix_dest = os.path.abspath( "tabix" )
+
+def locate(pattern, root=os.curdir):
+    '''Locate all files matching supplied filename pattern in and below
+    supplied root directory.'''
+    for path, dirs, files in os.walk(os.path.abspath(root)):
+       for filename in fnmatch.filter(files, pattern):
+          yield os.path.join(path, filename)
+
 
 # copy samtools source
 if len(sys.argv) >= 2 and sys.argv[1] == "import":
@@ -34,31 +45,36 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
       srcdir = os.path.abspath( srcdir )
       if not os.path.exists( srcdir ): raise IOError( "samtools src dir `%s` does not exist." % srcdir )
 
-      cfiles = glob.glob( os.path.join( srcdir, "*.c" ) )
-      hfiles = glob.glob( os.path.join( srcdir, "*.h" ) )
+      cfiles = locate( "*.c", srcdir )
+      hfiles = locate( "*.h", srcdir )
       ncopied = 0
       
-      def _compareAndCopy( src, destdir, exclude ):
+      def _compareAndCopy( src, srcdir, destdir, exclude ):
 
-         f = os.path.basename(src)
+         d, f = os.path.split(src)
          if f in exclude: return None
-         old_file = os.path.join( destdir, f )
+         common_prefix = os.path.commonprefix( (d, srcdir ) )
+         subdir = re.sub( common_prefix, "", d )[1:]
+         targetdir = os.path.join( destdir, subdir )
+         if not os.path.exists( targetdir ):
+            os.makedirs( targetdir )
+         old_file = os.path.join( targetdir, f )
          if os.path.exists( old_file ):
             md5_old = hashlib.md5("".join(open(old_file,"r").readlines())).digest()
-            md5_new = hashlib.md5("".join(open(new_file,"r").readlines())).digest()
+            md5_new = hashlib.md5("".join(open(src,"r").readlines())).digest()
             if md5_old != md5_new:
-               raise ValueError( "incompatible files for %s and %s" % (old_file, new_file ))
+               raise ValueError( "incompatible files for %s and %s" % (old_file, src ))
 
-         shutil.copy( src, destdir )
+         shutil.copy( src, targetdir )
          return old_file
 
       for src_file in hfiles:
-         _compareAndCopy( src_file, destdir, exclude )
+         _compareAndCopy( src_file, srcdir,destdir, exclude )
          ncopied += 1
 
       cf = []
       for src_file in cfiles:
-         cf.append( _compareAndCopy( src_file, destdir, exclude ) )
+         cf.append( _compareAndCopy( src_file, srcdir, destdir, exclude ) )
          ncopied += 1
          
       print "installed latest source code from %s: %i files copied" % (srcdir, ncopied)
@@ -88,6 +104,10 @@ use_setuptools()
 
 from setuptools import Extension, setup
 
+## note that for automatic cythoning, 
+## both pyrex and cython need to be installed.
+## see http://mail.python.org/pipermail/distutils-sig/2007-September/008204.html
+
 try:
     from Cython.Distutils import build_ext
 except:
@@ -109,9 +129,10 @@ Topic :: Scientific/Engineering :: Bioinformatics
 samtools = Extension(
     "csamtools",                   # name of extension
     [ "pysam/csamtools.pyx" ]  +\
-       [ "pysam/%s" % x for x in (
-             "pysam_util.c", )] +\
-       glob.glob( os.path.join( "samtools", "*.pysam.c" ) ),
+        [ "pysam/%s" % x for x in (
+                "pysam_util.c", )] +\
+        glob.glob( os.path.join( "samtools", "*.pysam.c" )) +\
+        glob.glob( os.path.join( "samtools", "*", "*.pysam.c" ) ),
     library_dirs=[],
     include_dirs=[ "samtools", "pysam" ],
     libraries=[ "z", ],

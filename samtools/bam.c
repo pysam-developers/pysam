@@ -245,7 +245,11 @@ char *bam_format1_core(const bam_header_t *header, const bam1_t *b, int of)
 		kputc('\t', &str);
 	}
 	if (c->tid < 0) kputsn("*\t", 2, &str);
-	else { kputs(header->target_name[c->tid], &str); kputc('\t', &str); }
+	else {
+		if (header) kputs(header->target_name[c->tid] , &str);
+		else kputw(c->tid, &str);
+		kputc('\t', &str);
+	}
 	kputw(c->pos + 1, &str); kputc('\t', &str); kputw(c->qual, &str); kputc('\t', &str);
 	if (c->n_cigar == 0) kputc('*', &str);
 	else {
@@ -257,7 +261,11 @@ char *bam_format1_core(const bam_header_t *header, const bam1_t *b, int of)
 	kputc('\t', &str);
 	if (c->mtid < 0) kputsn("*\t", 2, &str);
 	else if (c->mtid == c->tid) kputsn("=\t", 2, &str);
-	else { kputs(header->target_name[c->mtid], &str); kputc('\t', &str); }
+	else {
+		if (header) kputs(header->target_name[c->mtid], &str);
+		else kputw(c->mtid, &str);
+		kputc('\t', &str);
+	}
 	kputw(c->mpos + 1, &str); kputc('\t', &str); kputw(c->isize, &str); kputc('\t', &str);
 	if (c->l_qseq) {
 		for (i = 0; i < c->l_qseq; ++i) kputc(bam_nt16_rev_table[bam1_seqi(s, i)], &str);
@@ -295,6 +303,22 @@ void bam_view1(const bam_header_t *header, const bam1_t *b)
 	char *s = bam_format1(header, b);
 	puts(s);
 	free(s);
+}
+
+int bam_validate1(const bam_header_t *header, const bam1_t *b)
+{
+	char *s;
+
+	if (b->core.tid < -1 || b->core.mtid < -1) return 0;
+	if (header && (b->core.tid >= header->n_targets || b->core.mtid >= header->n_targets)) return 0;
+
+	if (b->data_len < b->core.l_qname) return 0;
+	s = memchr(bam1_qname(b), '\0', b->core.l_qname);
+	if (s != &bam1_qname(b)[b->core.l_qname-1]) return 0;
+
+	// FIXME: Other fields could also be checked, especially the auxiliary data
+
+	return 1;
 }
 
 // FIXME: we should also check the LB tag associated with each alignment

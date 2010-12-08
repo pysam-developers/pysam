@@ -48,4 +48,12 @@ extern unsigned char bam_nt16_table[256];
 // translate a reference string *s* to a tid
 int pysam_reference2tid( bam_header_t *header, const char * s );
 
+// debugging functions
+#include "glf.h"
+uint32_t pysam_glf_depth( glf1_t * g);
+
+#include "bam_maqcns.h"
+void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c );
+
+
 #endif

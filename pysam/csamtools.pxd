@@ -14,6 +14,9 @@ cdef extern from "stdlib.h":
   void qsort(void *base, size_t nmemb, size_t size,
              int (*compar)(void *,void *))
 
+cdef extern from "math.h":
+   double sqrt(double x)
+
 cdef extern from "stdio.h":
   ctypedef struct FILE:
     pass
@@ -55,7 +58,7 @@ cdef extern from "Python.h":
    FILE* PyFile_AsFile(object)
 
 cdef extern from "fileobject.h":
-    ctypedef class __builtin__.file [object PyFileObject]:
+   ctypedef class __builtin__.file [object PyFileObject]:
         pass
 
 cdef extern from "razf.h":
@@ -71,6 +74,8 @@ cdef extern from "stdint.h":
 
 cdef extern from "bam.h":
 
+  # constants
+  int BAM_DEF_MASK
   # IF _IOLIB=2, bamFile = BGZF, see bgzf.h
   # samtools uses KNETFILE, check how this works
 
@@ -128,8 +133,16 @@ cdef extern from "bam.h":
   ctypedef struct bam_plbuf_t:
       pass
 
+  ctypedef struct pair64_t:
+      uint64_t u, v
+      
   ctypedef struct bam_iter_t:
-      pass
+      int from_first
+      int tid, beg, end, n_off, i, finished
+      uint64_t curr_off
+      pair64_t *off
+
+  # ctypedef __bam_iter_t * bam_iter_t
 
   bam1_t * bam_init1()
   void bam_destroy1(bam1_t *)
@@ -195,8 +208,8 @@ cdef extern from "bam.h":
 
   ##################################################
 
-  int bam_read1(bamFile fp, bam1_t *b)
-
+  int bam_read1( bamFile fp, bam1_t *b)
+  int bam_validate1( bam_header_t *header, bam1_t *b)
   int bam_write1( bamFile fp, bam1_t *b)
 
   bam_header_t *bam_header_init()
@@ -245,20 +258,55 @@ cdef extern from "sam.h":
 
   int samwrite(samfile_t *fp, bam1_t *b)
 
+  int bam_prob_realn(bam1_t *b, char *ref)
+  int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
+
+
+cdef extern from "glf.h":
+   ctypedef struct glf1_t:
+      pass
+
+#      unsigned char ref_base, dummy
+#      unsigned char max_mapQ 
+#      unsigned char lk[10]   
+#      unsigned int min_lk, depth
+#      unsigned char ref_base:4, dummy:4
+#      unsigned char max_mapQ 
+#      unsigned char lk[10]   
+#      unsigned min_lk:8, depth:24; 
+
+
 cdef extern from "bam_maqcns.h":
 
   ctypedef struct bam_maqcns_t:
      float het_rate, theta
-     int n_hap, cap_mapQ, is_soap
+     int n_hap, cap_mapQ, errmod, min_baseQ
      float eta, q_r
      double *fk, *coef
      double *lhet
      void *aux
+
+  glf1_t *bam_maqcns_glfgen(int n, 
+                            bam_pileup1_t *pl, 
+                            uint8_t ref_base, 
+                            bam_maqcns_t *bm)
+
+  ctypedef struct bam_maqindel_opt_t:
+      int q_indel
+      float r_indel
+      float r_snp
+      int mm_penalty, indel_err, ambi_thres
      
   uint32_t bam_maqcns_call(int n, bam_pileup1_t *pl, bam_maqcns_t *bm)
   bam_maqcns_t * bam_maqcns_init()
   void bam_maqcns_destroy(bam_maqcns_t *bm)
   void bam_maqcns_prepare(bam_maqcns_t *bm)
+  
+  uint32_t glf2cns(glf1_t *g, int q_r)
+
+  int BAM_ERRMOD_MAQ2
+  int BAM_ERRMOD_MAQ
+  int BAM_ERRMOD_SOAP
 
 cdef extern from "faidx.h":
 
@@ -277,6 +325,7 @@ cdef extern from "faidx.h":
 
    char *faidx_fetch_seq(faidx_t *fai, char *c_name, 
                          int p_beg_i, int p_end_i, int *len)
+
 
 cdef extern from "pysam_util.h":
 
@@ -307,3 +356,7 @@ cdef extern from "pysam_util.h":
     int pysam_reference2tid( bam_header_t *header, char * s )
 
     void pysam_set_stderr( FILE * file )
+
+    uint32_t pysam_glf_depth( glf1_t * g )
+
+    void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )

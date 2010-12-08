@@ -4,9 +4,16 @@
 #include <assert.h>
 #include "sam.h"
 
+typedef struct {
+	int k, x, y, end;
+} cstate_t;
+
+static cstate_t g_cstate_null = { -1, 0, 0, 0 };
+
 typedef struct __linkbuf_t {
 	bam1_t b;
 	uint32_t beg, end;
+	cstate_t s;
 	struct __linkbuf_t *next;
 } lbnode_t;
 
@@ -53,68 +60,86 @@ static inline void mp_free(mempool_t *mp, lbnode_t *p)
 
 /* --- BEGIN: Auxiliary functions */
 
-static inline int resolve_cigar(bam_pileup1_t *p, uint32_t pos)
+/* s->k: the index of the CIGAR operator that has just been processed.
+   s->x: the reference coordinate of the start of s->k
+   s->y: the query coordiante of the start of s->k
+ */
+static inline int resolve_cigar2(bam_pileup1_t *p, uint32_t pos, cstate_t *s)
 {
-	unsigned k;
+#define _cop(c) ((c)&BAM_CIGAR_MASK)
+#define _cln(c) ((c)>>BAM_CIGAR_SHIFT)
+
 	bam1_t *b = p->b;
 	bam1_core_t *c = &b->core;
-	uint32_t x = c->pos, y = 0;
-	int ret = 1, is_restart = 1;
-
-	if (c->flag&BAM_FUNMAP) return 0; // unmapped read
-	assert(x <= pos); // otherwise a bug
-	p->qpos = -1; p->indel = 0; p->is_del = p->is_head = p->is_tail = 0;
-	for (k = 0; k < c->n_cigar; ++k) {
-		int op = bam1_cigar(b)[k] & BAM_CIGAR_MASK; // operation
-		int l = bam1_cigar(b)[k] >> BAM_CIGAR_SHIFT; // length
-		if (op == BAM_CMATCH) { // NOTE: this assumes the first and the last operation MUST BE a match or a clip
-			if (x + l > pos) { // overlap with pos
-				p->indel = p->is_del = 0;
-				p->qpos = y + (pos - x);
-				if (x == pos && is_restart) p->is_head = 1;
-				if (x + l - 1 == pos) { // come to the end of a match
-					int has_next_match = 0;
-					unsigned i;
-					for (i = k + 1; i < c->n_cigar; ++i) {
-						uint32_t cigar = bam1_cigar(b)[i];
-						int opi = cigar&BAM_CIGAR_MASK;
-						if (opi == BAM_CMATCH) {
-							has_next_match = 1;
-							break;
-						} else if (opi == BAM_CSOFT_CLIP || opi == BAM_CREF_SKIP || opi == BAM_CHARD_CLIP) break;
-					}
-					if (!has_next_match) p->is_tail = 1;
-					if (k < c->n_cigar - 1 && has_next_match) { // there are additional operation(s)
-						uint32_t cigar = bam1_cigar(b)[k+1]; // next CIGAR
-						int op_next = cigar&BAM_CIGAR_MASK; // next CIGAR operation
-						if (op_next == BAM_CDEL) p->indel = -(int32_t)(cigar>>BAM_CIGAR_SHIFT); // del
-						else if (op_next == BAM_CINS) p->indel = cigar>>BAM_CIGAR_SHIFT; // ins
-						else if (op_next == BAM_CPAD && k + 2 < c->n_cigar) { // no working for adjacent padding
-							cigar = bam1_cigar(b)[k+2]; op_next = cigar&BAM_CIGAR_MASK;
-							if (op_next == BAM_CDEL) p->indel = -(int32_t)(cigar>>BAM_CIGAR_SHIFT); // del
-							else if (op_next == BAM_CINS) p->indel = cigar>>BAM_CIGAR_SHIFT; // ins
-						}
-					}
-				}
+	uint32_t *cigar = bam1_cigar(b);
+	int k, is_head = 0;
+	// determine the current CIGAR operation
+//	fprintf(stderr, "%s\tpos=%d\tend=%d\t(%d,%d,%d)\n", bam1_qname(b), pos, s->end, s->k, s->x, s->y);
+	if (s->k == -1) { // never processed
+		is_head = 1;
+		if (c->n_cigar == 1) { // just one operation, save a loop
+			if (_cop(cigar[0]) == BAM_CMATCH) s->k = 0, s->x = c->pos, s->y = 0;
+		} else { // find the first match
+			for (k = 0, s->x = c->pos, s->y = 0; k < c->n_cigar; ++k) {
+				int op = _cop(cigar[k]);
+				int l = _cln(cigar[k]);
+				if (op == BAM_CMATCH) break;
+				else if (op == BAM_CDEL || op == BAM_CREF_SKIP) s->x += l;
+				else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) s->y += l;
 			}
-			x += l; y += l;
-		} else if (op == BAM_CDEL) { // then set ->is_del
-			if (x + l > pos) {
-				p->indel = 0; p->is_del = 1;
-				p->qpos = y + (pos - x);
-			}
-			x += l;
-		} else if (op == BAM_CREF_SKIP) x += l;
-		else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) y += l;
-		if (is_restart) is_restart ^= (op == BAM_CMATCH);
-		else is_restart ^= (op == BAM_CREF_SKIP || op == BAM_CSOFT_CLIP || op == BAM_CHARD_CLIP);
-		if (x > pos) {
-			if (op == BAM_CREF_SKIP) ret = 0; // then do not put it into pileup at all
-			break;
+			assert(k < c->n_cigar);
+			s->k = k;
 		}
+	} else { // the read has been processed before
+		int op, l = _cln(cigar[s->k]);
+		if (pos - s->x >= l) { // jump to the next operation
+			assert(s->k < c->n_cigar); // otherwise a bug: this function should not be called in this case
+			op = _cop(cigar[s->k+1]);
+			if (op == BAM_CMATCH || op == BAM_CDEL || op == BAM_CREF_SKIP) { // jump to the next without a loop
+				if (_cop(cigar[s->k]) == BAM_CMATCH) s->y += l;
+				s->x += l;
+				++s->k;
+			} else { // find the next M/D/N
+				if (_cop(cigar[s->k]) == BAM_CMATCH) s->y += l;
+				s->x += l;
+				for (k = s->k + 1; k < c->n_cigar; ++k) {
+					op = _cop(cigar[k]), l = _cln(cigar[k]);
+					if (op == BAM_CMATCH || op == BAM_CDEL || op == BAM_CREF_SKIP) break;
+					else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) s->y += l;
+				}
+				s->k = k;
+			}
+			assert(s->k < c->n_cigar); // otherwise a bug
+		} // else, do nothing
 	}
-	assert(x > pos); // otherwise a bug
-	return ret;
+	{ // collect pileup information
+		int op, l;
+		op = _cop(cigar[s->k]); l = _cln(cigar[s->k]);
+		p->is_del = p->indel = p->is_refskip = 0;
+		if (s->x + l - 1 == pos && s->k + 1 < c->n_cigar) { // peek the next operation
+			int op2 = _cop(cigar[s->k+1]);
+			int l2 = _cln(cigar[s->k+1]);
+			if (op2 == BAM_CDEL) p->indel = -(int)l2;
+			else if (op2 == BAM_CINS) p->indel = l2;
+			else if (op2 == BAM_CPAD && s->k + 2 < c->n_cigar) { // no working for adjacent padding
+				int l3 = 0;
+				for (k = s->k + 2; k < c->n_cigar; ++k) {
+					op2 = _cop(cigar[k]); l2 = _cln(cigar[k]);
+					if (op2 == BAM_CINS) l3 += l2;
+					else if (op2 == BAM_CDEL || op2 == BAM_CMATCH || op2 == BAM_CREF_SKIP) break;
+				}
+				if (l3 > 0) p->indel = l3;
+			}
+		}
+		if (op == BAM_CMATCH) {
+			p->qpos = s->y + (pos - s->x);
+		} else if (op == BAM_CDEL || op == BAM_CREF_SKIP) {
+			p->is_del = 1; p->qpos = s->y; // FIXME: distinguish D and N!!!!!
+			p->is_refskip = (op == BAM_CREF_SKIP);
+		} // cannot be other operations; otherwise a bug
+		p->is_head = (pos == c->pos); p->is_tail = (pos == s->end);
+	}
+	return 1;
 }
 
 /* --- END: Auxiliary functions */
@@ -127,7 +152,7 @@ struct __bam_plp_t {
 	mempool_t *mp;
 	lbnode_t *head, *tail, *dummy;
 	int32_t tid, pos, max_tid, max_pos;
-	int is_eof, flag_mask, max_plp, error;
+	int is_eof, flag_mask, max_plp, error, maxcnt;
 	bam_pileup1_t *plp;
 	// for the "auto" interface only
 	bam1_t *b;
@@ -144,6 +169,7 @@ bam_plp_t bam_plp_init(bam_plp_auto_f func, void *data)
 	iter->dummy = mp_alloc(iter->mp);
 	iter->max_tid = iter->max_pos = -1;
 	iter->flag_mask = BAM_DEF_MASK;
+	iter->maxcnt = 8000;
 	if (func) {
 		iter->func = func;
 		iter->data = data;
@@ -183,7 +209,7 @@ const bam_pileup1_t *bam_plp_next(bam_plp_t iter, int *_tid, int *_pos, int *_n_
 					iter->plp = (bam_pileup1_t*)realloc(iter->plp, sizeof(bam_pileup1_t) * iter->max_plp);
 				}
 				iter->plp[n_plp].b = &p->b;
-				if (resolve_cigar(iter->plp + n_plp, iter->pos)) ++n_plp; // skip the read if we are looking at ref-skip
+				if (resolve_cigar2(iter->plp + n_plp, iter->pos, &p->s)) ++n_plp; // actually always true...
 			}
 		}
 		iter->head = iter->dummy->next; // dummy->next may be changed
@@ -215,8 +241,10 @@ int bam_plp_push(bam_plp_t iter, const bam1_t *b)
 	if (b) {
 		if (b->core.tid < 0) return 0;
 		if (b->core.flag & iter->flag_mask) return 0;
+		if (iter->tid == b->core.tid && iter->pos == b->core.pos && iter->mp->cnt > iter->maxcnt) return 0;
 		bam_copy1(&iter->tail->b, b);
 		iter->tail->beg = b->core.pos; iter->tail->end = bam_calend(&b->core, bam1_cigar(b));
+		iter->tail->s = g_cstate_null; iter->tail->s.end = iter->tail->end - 1; // initialize cstate_t
 		if (b->core.tid < iter->max_tid) {
 			fprintf(stderr, "[bam_pileup_core] the input is not sorted (chromosomes out of order)\n");
 			iter->error = 1;
@@ -241,7 +269,7 @@ const bam_pileup1_t *bam_plp_auto(bam_plp_t iter, int *_tid, int *_pos, int *_n_
 	const bam_pileup1_t *plp;
 	if (iter->func == 0 || iter->error) { *_n_plp = -1; return 0; }
 	if ((plp = bam_plp_next(iter, _tid, _pos, _n_plp)) != 0) return plp;
-	else {
+	else { // no pileup line can be obtained; read alignments
 		*_n_plp = 0;
 		if (iter->is_eof) return 0;
 		while (iter->func(iter->data, iter->b) >= 0) {
@@ -250,6 +278,7 @@ const bam_pileup1_t *bam_plp_auto(bam_plp_t iter, int *_tid, int *_pos, int *_n_
 				return 0;
 			}
 			if ((plp = bam_plp_next(iter, _tid, _pos, _n_plp)) != 0) return plp;
+			// otherwise no pileup line can be returned; read the next alignment.
 		}
 		bam_plp_push(iter, 0);
 		if ((plp = bam_plp_next(iter, _tid, _pos, _n_plp)) != 0) return plp;
@@ -274,6 +303,11 @@ void bam_plp_reset(bam_plp_t iter)
 void bam_plp_set_mask(bam_plp_t iter, int mask)
 {
 	iter->flag_mask = mask < 0? BAM_DEF_MASK : (BAM_FUNMAP | mask);
+}
+
+void bam_plp_set_maxcnt(bam_plp_t iter, int maxcnt)
+{
+	iter->maxcnt = maxcnt;
 }
 
 /*****************
@@ -363,6 +397,13 @@ bam_mplp_t bam_mplp_init(int n, bam_plp_auto_f func, void **data)
 	return iter;
 }
 
+void bam_mplp_set_maxcnt(bam_mplp_t iter, int maxcnt)
+{
+	int i;
+	for (i = 0; i < iter->n; ++i)
+		iter->iter[i]->maxcnt = maxcnt;
+}
+
 void bam_mplp_destroy(bam_mplp_t iter)
 {
 	int i;
@@ -387,7 +428,7 @@ int bam_mplp_auto(bam_mplp_t iter, int *_tid, int *_pos, int *n_plp, const bam_p
 	if (new_min == (uint64_t)-1) return 0;
 	*_tid = new_min>>32; *_pos = (uint32_t)new_min;
 	for (i = 0; i < iter->n; ++i) {
-		if (iter->pos[i] == iter->min) {
+		if (iter->pos[i] == iter->min) { // FIXME: valgrind reports "uninitialised value(s) at this line"
 			n_plp[i] = iter->n_plp[i], plp[i] = iter->plp[i];
 			++ret;
 		} else n_plp[i] = 0, plp[i] = 0;

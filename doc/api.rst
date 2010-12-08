@@ -37,7 +37,12 @@ You can also write to a :class:`~pysam.Samfile`::
    samfile.close()
 
 
-An alternative way of accessing the data in a SAM file is by iterating over each base of a specified region using the :meth:`~pysam.Samfile.pileup` method. Each iteration returns a :class:`~pysam.PileupColumn` which represents all the reads in the SAM file that map to a single base in the reference sequence. The list of reads are represented as :class:`~pysam.PileupRead` objects in the :attr:`PileupColumn.pileups <pysam.PileupColumn.pileups>` property::
+An alternative way of accessing the data in a SAM file is by iterating 
+over each base of a specified region using the :meth:`~pysam.Samfile.pileup` 
+method. Each iteration returns a :class:`~pysam.PileupColumn` which 
+represents all the reads in the SAM file that map to a single base in the 
+reference sequence. The list of reads are represented as :class:`~pysam.PileupRead` 
+objects in the :attr:`PileupColumn.pileups <pysam.PileupColumn.pileups>` property::
 
     import pysam
     samfile = pysam.Samfile("ex1.bam", "rb" )
@@ -73,9 +78,9 @@ corresponds to the command line::
 
    samtools sort ex1.bam output
 
-.. Note::
-    #. Coordinates in pysam are always 0-based (following the python convention). SAM text files use 1-based coordinates.
-    #. The above examples can be run in the /test directory of the installation directory. Type 'make' before running them.
+.. note::
+    Coordinates in pysam are always 0-based (following the python convention). SAM text files use 1-based coordinates.
+    The above examples can be run in the /test directory of the installation directory. Type 'make' before running them.
 
 
 .. seealso::

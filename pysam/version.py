@@ -2,6 +2,6 @@
 
 __version__ = "0.4"
 
-__samtools_version__ = "0.1.8"
+__samtools_version__ = "0.1.10"
 
 __tabix_version__ = "0.2.1"
