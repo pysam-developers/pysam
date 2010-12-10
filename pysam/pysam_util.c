@@ -6,7 +6,7 @@
 #include "bam_endian.h"
 #include "knetfile.h"
 #include "pysam_util.h"
-#include "errmod.h" // from pysam_dump 
+#include "errmod.h" // for pysam_dump 
 
 // Definition of pysamerr
 #include "stdio.h"
