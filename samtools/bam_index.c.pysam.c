@@ -214,7 +214,7 @@ bam_index_t *bam_index_core(bamFile fp)
 	}
 	if (save_tid >= 0) {
 		insert_offset(idx->index[save_tid], save_bin, save_off, bam_tell(fp));
-		insert_offset(idx->index[save_tid], BAM_MAX_BIN, off_beg, off_end);
+		insert_offset(idx->index[save_tid], BAM_MAX_BIN, off_beg, bam_tell(fp));
 		insert_offset(idx->index[save_tid], BAM_MAX_BIN, n_mapped, n_unmapped);
 	}
 	merge_chunks(idx);
@@ -610,6 +610,9 @@ bam_iter_t bam_iter_query(const bam_index_t *idx, int tid, int beg, int end)
 		}
 	}
 	free(bins);
+	if (n_off == 0) {
+		free(off); return iter;
+	}
 	{
 		bam1_t *b = (bam1_t*)calloc(1, sizeof(bam1_t));
 		int l;
@@ -697,6 +700,7 @@ int bam_fetch(bamFile fp, const bam_index_t *idx, int tid, int beg, int end, voi
 	b = bam_init1();
 	iter = bam_iter_query(idx, tid, beg, end);
 	while ((ret = bam_iter_read(fp, iter, b)) >= 0) func(b, data);
+	bam_iter_destroy(iter);
 	bam_destroy1(b);
 	return (ret == -1)? 0 : ret;
 }

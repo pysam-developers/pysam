@@ -240,7 +240,7 @@ static inline void insert_offset(khash_t(i) *h, int bin, uint64_t beg, uint64_t 
 	l->list[l->n].u = beg; l->list[l->n++].v = end;
 }
 
-static inline void insert_offset2(ti_lidx_t *index2, int _beg, int _end, uint64_t offset)
+static inline uint64_t insert_offset2(ti_lidx_t *index2, int _beg, int _end, uint64_t offset)
 {
 	int i, beg, end;
 	beg = _beg >> TAD_LIDX_SHIFT;
@@ -259,6 +259,7 @@ static inline void insert_offset2(ti_lidx_t *index2, int _beg, int _end, uint64_
 			if (index2->offset[i] == 0) index2->offset[i] = offset;
 	}
 	if (index2->n < end + 1) index2->n = end + 1;
+	return (uint64_t)beg<<32 | end;
 }
 
 static void merge_chunks(ti_index_t *idx)
@@ -299,7 +300,7 @@ ti_index_t *ti_index_core(BGZF *fp, const ti_conf_t *conf)
 	ti_index_t *idx;
 	uint32_t last_bin, save_bin;
 	int32_t last_coor, last_tid, save_tid;
-	uint64_t save_off, last_off, lineno = 0;
+	uint64_t save_off, last_off, lineno = 0, offset0 = (uint64_t)-1, tmp;
 	kstring_t *str;
 
 	str = calloc(1, sizeof(kstring_t));
@@ -322,13 +323,19 @@ ti_index_t *ti_index_core(BGZF *fp, const ti_conf_t *conf)
 		}
 		get_intv(idx, str, &intv);
 		if (last_tid != intv.tid) { // change of chromosomes
+            if (last_tid>intv.tid )
+            {
+                fprintf(stderr,"[ti_index_core] the chromosome blocks not continuous at line %llu, is the file sorted?\n",(unsigned long long)lineno);
+                exit(1);
+            }
 			last_tid = intv.tid;
 			last_bin = 0xffffffffu;
 		} else if (last_coor > intv.beg) {
 			fprintf(stderr, "[ti_index_core] the file out of order at line %llu\n", (unsigned long long)lineno);
 			exit(1);
 		}
-		insert_offset2(&idx->index2[intv.tid], intv.beg, intv.end, last_off);
+		tmp = insert_offset2(&idx->index2[intv.tid], intv.beg, intv.end, last_off);
+		if (last_off == 0) offset0 = tmp;
 		if (intv.bin != last_bin) { // then possibly write the binning index
 			if (save_bin != 0xffffffffu) // save_bin==0xffffffffu only happens to the first record
 				insert_offset(idx->index[save_tid], save_bin, save_off, last_off);
@@ -348,6 +355,10 @@ ti_index_t *ti_index_core(BGZF *fp, const ti_conf_t *conf)
 	if (save_tid >= 0) insert_offset(idx->index[save_tid], save_bin, save_off, bgzf_tell(fp));
 	merge_chunks(idx);
 	fill_missing(idx);
+	if (offset0 != (uint64_t)-1 && idx->n && idx->index2[0].offset) {
+		int i, beg = offset0>>32, end = offset0&0xffffffffu;
+		for (i = beg; i <= end; ++i) idx->index2[0].offset[i] = 0;
+	}
 
 	free(str->s); free(str);
 	return idx;
@@ -645,8 +656,8 @@ ti_index_t *ti_index_load(const char *fn)
     char *fname = get_local_version(fn);
 	if (fname == 0) return 0;
 	idx = ti_index_load_local(fname);
+	if (idx == 0) fprintf(stderr, "[ti_index_load] fail to load the index: %s\n", fname);
     free(fname);
-	if (idx == 0) fprintf(stderr, "[ti_index_load] fail to load BAM index.\n");
 	return idx;
 }
 
@@ -656,7 +667,7 @@ int ti_index_build2(const char *fn, const ti_conf_t *conf, const char *_fnidx)
 	BGZF *fp, *fpidx;
 	ti_index_t *idx;
 	if ((fp = bgzf_open(fn, "r")) == 0) {
-		fprintf(stderr, "[ti_index_build2] fail to open the BAM file.\n");
+		fprintf(stderr, "[ti_index_build2] fail to open the file: %s\n", fn);
 		return -1;
 	}
 	idx = ti_index_core(fp, conf);
@@ -802,6 +813,9 @@ ti_iter_t ti_iter_query(const ti_index_t *idx, int tid, int beg, int end)
 			for (j = 0; j < p->n; ++j)
 				if (p->list[j].v > min_off) off[n_off++] = p->list[j];
 		}
+	}
+	if (n_off == 0) {
+		free(bins); free(off); return iter;
 	}
 	free(bins);
 	{
