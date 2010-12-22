@@ -11,6 +11,7 @@ import os, re, sys
 import itertools
 import subprocess
 import shutil
+import logging
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -171,7 +172,7 @@ class BinaryTest(unittest.TestCase):
         self.checkCommand( "view" )
 
     def testEmptyIndex( self ):
-        self.assertRaises( pysam.SamtoolsError, pysam.index, "exdoesntexist.bam" )
+        self.assertRaises( IOError, pysam.index, "exdoesntexist.bam" )
 
     def __del__(self):
         return
@@ -1086,6 +1087,38 @@ class TestSNPCalls( unittest.TestCase ):
             call = caller.call( x.chromosome, x.pos )
             self.checkEqual( x, call )
 
+class TestLogging( unittest.TestCase ):
+    '''test around bug issue 42,
+
+    failed in versions < 0.4
+    '''
+
+    def check( self, bamfile, log ):
+
+        if log:
+            logger = logging.getLogger('franklin')
+            logger.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+            log_hand  = logging.FileHandler('log.txt')
+            log_hand.setFormatter(formatter)
+            logger.addHandler(log_hand)
+
+        bam  = pysam.Samfile(bamfile, 'rb')
+        cols = bam.pileup()
+        self.assert_( True )
+
+    def testFail1( self ):
+        self.check( "ex9_fail.bam", False )
+        self.check( "ex9_fail.bam", True )
+
+    def testNoFail1( self ):
+        self.check( "ex9_nofail.bam", False )
+        self.check( "ex9_nofail.bam", True )
+
+    def testNoFail2( self ):
+        self.check( "ex9_nofail.bam", True )
+        self.check( "ex9_nofail.bam", True )
+        
 # TODOS
 # 1. finish testing all properties within pileup objects
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)

@@ -2328,6 +2328,10 @@ def _samtools_dispatch( method,
     # note that debugging this module can be a problem
     # as stdout/stderr will not appear
 
+    # some special cases
+    if method == "index":
+        if not os.path.exists( args[0] ):
+            raise IOError( "No such file or directory: '%s'" % args[0] )
 
     # redirect stderr and stdout to file
     if catch_stderr:
@@ -2346,6 +2350,7 @@ def _samtools_dispatch( method,
         if method == "view":
             if "-o" in args: raise ValueError("option -o is forbidden in samtools view")
             args = ( "-o", stdout_f ) + args
+
 
     # do the function call to samtools
     cdef char ** cargs
