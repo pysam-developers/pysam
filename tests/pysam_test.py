@@ -390,7 +390,9 @@ class TestIteratorColumn(unittest.TestCase):
                     # one read, all columns of the read are returned
                     self.assertEqual( len(columns), refcolumns, "pileup incomplete at position %i: got %i, expected %i " %\
                                           (pos, len(columns), refcolumns))
+
                     
+    
     def tearDown(self):
         self.samfile.close()
     
@@ -1040,10 +1042,6 @@ class TestSNPCalls( unittest.TestCase ):
                   "snp_quality",
                   "mapping_quality",
                   "coverage" ):
-            # if getattr(a, x) != getattr(b,x): 
-            #      print "WARNING: %s mismatch at pos %i: %s != %s\n%s\n%s" % \
-            #          (x, a.pos, getattr(a, x), getattr(b,x), str(a), str(b))
-            
             self.assertEqual( getattr(a, x), getattr(b,x), "%s mismatch: %s != %s\n%s\n%s" % 
                               (x, getattr(a, x), getattr(b,x), str(a), str(b)))
 
@@ -1055,7 +1053,7 @@ class TestSNPCalls( unittest.TestCase ):
         except pysam.SamtoolsError:
             pass
 
-        i = samfile.pileup( select = "snpcalls", fastafile = fastafile )
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
         calls = list(pysam.IteratorSNPCalls(i))
         for x,y in zip( refs, calls ):
             self.checkEqual( x, y )
@@ -1070,8 +1068,8 @@ class TestSNPCalls( unittest.TestCase ):
             if x.reference_base == "*": continue
             i = samfile.pileup( x.chromosome, x.pos, x.pos+1,
                                 fastafile = fastafile,
-                                select = "snpcalls" )
-            z = [ zz for zz in pysam.IteratorSNPCalls(i) if zz.pos == x.pos ]
+                                stepper = "samtools" )
+            z = [ zz for zz in pysam.IteratorSamtools(i) if zz.pos == x.pos ]
             self.assertEqual( len(z), 1 )
             self.checkEqual( x, z[0] )
 
@@ -1079,7 +1077,7 @@ class TestSNPCalls( unittest.TestCase ):
         # test pileup for each position. This is a fast operation
         samfile = pysam.Samfile( "ex1.bam", "rb")  
         fastafile = pysam.Fastafile( "ex1.fa" )
-        i = samfile.pileup( select = "snpcalls", fastafile = fastafile )
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
         caller = pysam.SNPCaller( i )
 
         for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):

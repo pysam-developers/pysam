@@ -13,16 +13,23 @@ in the :file:`test` directory.
 Opening a sampfile
 ------------------
 
-The first operation is to open a :class:`pysam.Samfile`::
+The first operation is to import the pysam module and open a 
+:class:`pysam.Samfile`::
 
    import pysam
-
    samfile = pysam.Samfile( "ex1.bam", "rb" )
+
+The above command opens the file :file:`ex1.bam` for reading.
+The ``b`` qualifier indicates that this is a :term:`BAM` file. 
+To open a :term:`SAM` file, type::
+
+   import pysam
+   samfile = pysam.Samfile( "ex1.bam", "r" )
 
 Fetching mapped reads in a :term:`region`
 -----------------------------------------
 
-There are two ways to iterate through reads in a region. The
+There are two ways to obtain the reads mapped to a genomic region. The
 first method follows the :term:`csamtools` API and  works 
 via a callback function. The callback will be executed for each 
 alignment in a :term:`region`::
@@ -36,15 +43,15 @@ Using a function object, work can be done on the alignments. The
 code below simply counts aligned reads::
 
    class Counter:
-       mCounts = 0
+       cCounts = 0
        def __call__(self, alignment):
-           self.mCounts += 1
+           self.counts += 1
    
    c = Counter()
    samfile.fetch( 'seq1', 10, 20, callback = c )
-   print "counts=", c.mCounts
+   print "counts=", c.counts
 
-The second method uses python iterators. If you call :meth:`samtools.samfile.fetch`
+The second method uses python iterators. If you call :meth:`pysam.Samfile.fetch`
 without a callback, an iterator of the type :class:`pysam.IteratorRow` is returned.
 It will iterate through mapped reads
 and return a :class:`pysam.AlignedRead` object for each::
@@ -53,11 +60,10 @@ and return a :class:`pysam.AlignedRead` object for each::
    for x in iter: print str(x)
 
 Note that both methods iterate through a :term:`BAM` file
-on a read-by-read basis. They need not load all data into
-memory.
+on a read-by-read basis. 
 
-Fetching returns all reads overlapping a region sorted
-by the lowest aligned base in the :term:`reference` sequence.
+:meth:`pysam.Samfile.fetch` returns all reads overlapping a region sorted
+by the first aligned base in the :term:`reference` sequence.
 Note that it will also return reads that are only partially
 overlapping with the :term:`region`. Thus the reads returned
 might span a region that is larger than the one queried.
@@ -87,8 +93,8 @@ The second method uses python iterators. The iterator
 
 Aligned reads are returned as a :class:`pysam.PileupColumn`.
 
-Using samtools within python
-----------------------------
+Using samtools commands within python
+-------------------------------------
 
 Commands available in :term:`csamtools` are available
 as simple function calls. For example::
@@ -157,7 +163,7 @@ Creating SAM/BAM files from scratch
 -----------------------------------
 
 The following example shows how a new BAM file is constructed from scratch.
-The important part here is that the :class:`Samfile` class needs to receive
+The important part here is that the :class:`pysam.Samfile` class needs to receive
 the sequence identifiers. These can be given either as a dictionary in a
 header structure, as lists of names and sizes, or from a template file.
 Here, we use a header dictionary::
@@ -195,12 +201,43 @@ from stdin and writes to stdout::
    outfile = pysam.Samfile( "-", "w", template = infile )
    for s in infile: outfile.write(s)
 
-It will also work with BAM files. The following script converts a BAM formatted file
-on stdin to a SAM formatted file on stdout::
+It will also work with :term:`BAM` files. The following script converts a :term:`BAM` formatted file
+on stdin to a :term:`SAM` formatted file on stdout::
 
    infile = pysam.Samfile( "-", "rb" )
    outfile = pysam.Samfile( "-", "w", template = infile )
    for s in infile: outfile.write(s)
 
+Note, only the file open mode needs to changed from ``r`` to ``rb``.
 
-Note that only the file open mode needs to changed from ``r`` to ``rb``.
+Using the samtools SNP caller
+-----------------------------
+
+There are two ways to access the samtools SNP caller. The :class:`pysam.IteratorSNPCalls`
+is appropriate when calling many consecutive SNPs, while :class:`pysam.SNPCaller` is
+best when calling SNPs at random places in the genome. Each snp caller returns objects of
+type :class:`pysam.SNPCall`.
+
+To use :class:`pysam.IteratorSNPCalls`, associate it with a :class:`pysam.IteratorColumn`::
+
+    samfile = pysam.Samfile( "ex1.bam", "rb")  
+    fastafile = pysam.Fastafile( "ex1.fa" )
+    pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+    sncpall_iter = pysam.IteratorSNPCalls(pileup_iter)
+    for call in snpcall_iter:
+        print str(call)
+
+Usage of :class:`pysam.SNPCaller` is similar::
+
+    samfile = pysam.Samfile( "ex1.bam", "rb")  
+    fastafile = pysam.Fastafile( "ex1.fa" )
+    pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+    snpcaller = pysam.SNPCaller(pileup_iter)
+    print snpcaller( "chr1", 100 )
+
+Note the use of the option *stepper* to control which reads are included in the 
+in the :term:`pileup`. The ``samtools`` stepper implements the same read selection
+and processing as in the samtools pileup command.
+
+
+

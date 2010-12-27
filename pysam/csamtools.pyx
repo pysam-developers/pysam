@@ -3,8 +3,8 @@
 # adds doc-strings for sphinx
 import tempfile, os, sys, types, struct, ctypes, collections, re
 
-from python_string cimport PyString_FromStringAndSize, PyString_AS_STRING
-from python_exc    cimport PyErr_SetString
+from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
+from cpython cimport PyErr_SetString
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -348,33 +348,36 @@ cdef class Fastafile:
 cdef class Samfile:
     '''*(filename, mode='r', template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
               
-    A *SAM* file. The file is automatically opened.
+    A :term:`SAM`/:term:`BAM` formatted file. The file is automatically opened.
     
     *mode* should be ``r`` for reading or ``w`` for writing. The default is text mode so for binary 
     (:term:`BAM`) I/O you should append ``b`` for compressed or ``u`` for uncompressed :term:`BAM` output. 
     Use ``h`` to output header information  in text (:term:`TAM`)  mode.
 
     If ``b`` is present, it must immediately follow ``r`` or ``w``. 
-    Currently valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``.
-    
-    so to open a :term:`BAM` file for reading::
+    Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``. For instance, to open 
+    a :term:`BAM` formatted file for reading, type::
 
-        f=Samfile('ex1.bam','rb')
+        import pysam
+        f = pysam.Samfile('ex1.bam','rb')
 
+    If an index for a BAM file exists (.bai), it will be opened automatically. Without an index random
+    access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
 
-    For writing, the header of a :term:`TAM` file/:term:`BAM` file can be constituted from several
-    sources:
+    For writing, the header of a :term:`SAM` file/:term:`BAM` file can be constituted from several
+    sources (see also the samtools format specification):
 
-        1. If *template* is given, the header is copied from a another *Samfile* (*template* must be of type *Samfile*).
+        1. If *template* is given, the header is copied from a another *Samfile* 
+           (*template* must be of type *Samfile*).
 
-        2. If *header* is given, the header is build from a multi-level dictionary. The first level are the four types ('HD', 'SQ', ...). The second level is then a list of lines, with each line being a list of tag-value pairs.
+        2. If *header* is given, the header is built from a multi-level dictionary. The first level 
+           are the four types ('HD', 'SQ', ...). The second level are a list of lines, with each line 
+           being a list of tag-value pairs.
 
         3. If *text* is given, new header text is copied from raw text.
 
         4. The names (*referencenames*) and lengths (*referencelengths*) are supplied directly as lists. 
 
-    If an index for a BAM file exists (.bai), it will be opened automatically. Without an index random
-    access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
     '''
 
     cdef char * filename
@@ -529,7 +532,7 @@ cdef class Samfile:
                     raise IOError("error while opening index `%s` " % filename )
                                     
     def getrname( self, tid ):
-        '''(tid )
+        '''
         convert numerical :term:`tid` into :term:`reference` name.'''
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         if not 0 <= tid < self.samfile.header.n_targets:
@@ -537,7 +540,7 @@ cdef class Samfile:
         return self.samfile.header.target_name[tid]
 
     def gettid( self, reference ):
-        '''(reference)
+        '''
         convert :term:`reference` name into numerical :term:`tid`
 
         returns -1 if reference is not known.
@@ -550,7 +553,8 @@ cdef class Samfile:
                       start = None, 
                       end = None,
                       region = None ):
-        '''parse region information.
+        '''
+        parse region information.
 
         raise ValueError for for invalid regions.
 
@@ -590,7 +594,9 @@ cdef class Samfile:
         return 1, rtid, rstart, rend
     
     def seek( self, uint64_t offset, int where = 0):
-        '''move to current file to position *offset*'''
+        '''
+        move file pointer to position *offset*, see :meth:`pysam.Samfile.tell`.
+        '''
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
@@ -599,7 +605,9 @@ cdef class Samfile:
         return bam_seek( self.samfile.x.bam, offset, where )
 
     def tell( self ):
-        '''return current file position'''
+        '''
+        return current file position
+        '''
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
         if not self.isbam:
@@ -614,24 +622,24 @@ cdef class Samfile:
                region = None, 
                callback = None,
                until_eof = False ):
-        '''*(reference = None, start = None, end = None, region = None, callback = None, until_eof = False)*
-               
-        fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing. The region is specified by
-        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
+        '''
+        fetch aligned reads in a :term:`region` using 0-based indexing. The region is specified by
+        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can 
+        be supplied.
 
         Without *reference* or *region* all reads will be fetched. The reads will be returned
         ordered by reference sequence, which will not necessarily be the order within the file.
         If *until_eof* is given, all reads from the current file position will be returned
-        *as they are sorted within the file*.  
+        *in order as they are within the file*.  
         
-        If only *reference* is set, all reads matching on *reference* will be fetched.
+        If only *reference* is set, all reads aligned to *reference* will be fetched.
 
         The method returns an iterator of type :class:`pysam.IteratorRow` unless
         a *callback is provided. If *callback* is given, the callback will be executed 
         for each position within the :term:`region`. Note that callbacks currently work
         only, if *region* or *reference* is given.
 
-        Note that a :term:`TAM` file does not allow random access. If *region* or *reference* are given,
+        Note that a :term:`SAM` file does not allow random access. If *region* or *reference* are given,
         an exception is raised.
         '''
         cdef int rtid, rstart, rend, has_coord
@@ -682,36 +690,45 @@ cdef class Samfile:
                 end = None, 
                 region = None, 
                 callback = None,
-                select = None,
-                Fastafile fastafile = None ):
-        '''run a pileup within a :term:`region` using 0-based indexing. The region is specified by
-        :term:`reference`, *start* and *end*. Alternatively, a samtools *region* string can be supplied.
+                **kwargs ):
+        '''
+        perform a :term:`pileup` within a :term:`region`. The region is specified by
+        :term:`reference`, *start* and *end* (using 0-based indexing). 
+        Alternatively, a samtools *region* string can be supplied.
 
-        Without *reference* or *region* all reads will be fetched. The reads will be returned
+        Without *reference* or *region* all reads will be used for the pileup. The reads will be returned
         ordered by :term:`reference` sequence, which will not necessarily be the order within the file.
 
         The method returns an iterator of type :class:`pysam.IteratorColumn` unless
-        a *callback is provided. If *callback* is given, the callback will be executed 
-        for each position within the :term:`region`. 
+        a *callback is provided. If a *callback* is given, the callback will be executed 
+        for each column within the :term:`region`. 
 
-        Note that samfiles do not allow random access. If *region* or *reference* are given,
-        an exception is raised.
+        Note that :term:`SAM` formatted files do not allow random access. 
+        In these files, if a *region* or *reference* are given an exception is raised.
         
-        The *select* argument determines which reads are used for the pileup procedure.
-        Possible values are
+        Optional *kwargs* to the iterator:
 
-        ``None`` or ``all``
-           all reads are used
-        ``snpcall``
-           apply samtools filters for SNP calling
+        stepper
+           The stepper controlls how the iterator advances. 
+           Possible options for the stepper are 
+       
+           ``all``
+              use all reads for pileup.
+           ``samtools``
+              same filter and read processing as in :term:`csamtools` pileup
 
-        If set, *fastafile*, an object of type :class:`Fastafile`, will be attached to the 
-        returned iterator.
+        fastafile
+           A :class:`FastaFile` object
 
-        .. Note::
+         mask
+           Skip all reads with bits set in mask.
+
+
+        .. note::
 
             *all* reads which overlap the region are returned. The first base returned will be the 
             first base of the first read *not* necessarily the first base of the region used in the query.
+
         '''
         cdef int rtid, rstart, rend, has_coord
         cdef bam_plbuf_t *buf
@@ -720,7 +737,7 @@ cdef class Samfile:
             raise ValueError( "I/O operation on closed file" )
 
         has_coord, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
-        
+
         if self.isbam:
             if not self._hasIndex(): raise ValueError( "no index available for pileup" )
 
@@ -737,19 +754,20 @@ cdef class Samfile:
                 bam_plbuf_destroy(buf)
             else:
                 if has_coord:
-                    return IteratorColumnRegion( self, rtid, rstart, rend, 
-                                                 fastafile = fastafile,
-                                                 select = select )
+                    return IteratorColumnRegion( self, 
+                                                 tid = rtid, 
+                                                 start = rstart, 
+                                                 end = rend, 
+                                                 **kwargs )
                 else:
-                    return IteratorColumnAllRefs(self, 
-                                                 fastafile = fastafile,
-                                                 select = select)
+                    return IteratorColumnAllRefs(self, **kwargs )
 
         else:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
     def close( self ):
-        '''closes file.'''
+        '''
+        closes the :class:`pysam.Samfile`.'''
         if self.samfile != NULL:
             samclose( self.samfile )
             bam_index_destroy(self.index);
@@ -763,10 +781,10 @@ cdef class Samfile:
         bam_destroy1(self.b)
 
     def write( self, AlignedRead read ):
-        '''(AlignedRead read )
-        write a single :class:`pysam.AlignedRead`..
+        '''
+        write a single :class:`pysam.AlignedRead` to disk.
 
-        return the number of bytes written.
+        returns the number of bytes written.
         '''
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
@@ -796,7 +814,8 @@ cdef class Samfile:
             return tuple(t)
 
     property lengths:
-        """tuple of the lengths of the :term:`reference` sequences. The lengths are in the same order as :attr:`pysam.Samfile.reference`
+        """tuple of the lengths of the :term:`reference` sequences. The lengths are in the same order as 
+        :attr:`pysam.Samfile.references`
         """
         def __get__(self): 
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
@@ -929,14 +948,14 @@ cdef class Samfile:
         return self.b
 
     cdef int cnext(self):
-        '''cversion of iterator. Used by IteratorColumn'''
+        '''
+        cversion of iterator. Used by :class:`pysam.Samfile.IteratorColumn`.'''
         cdef int ret
         return samread(self.samfile, self.b)
 
     def __next__(self): 
-        """python version of next().
-
-        pyrex uses this non-standard name instead of next()
+        """
+        python version of next().
         """
         cdef int ret
         ret = samread(self.samfile, self.b)
@@ -949,8 +968,22 @@ cdef class Samfile:
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
 cdef class IteratorRow:
-    '''abstract base class for iterators over mapped reads.'''
+    '''abstract base class for iterators over mapped reads.
 
+    Various iterators implement different behaviours for wrapping around
+    contig boundaries. Examples include:
+
+    :class:`pysam.IteratorRowRegion`
+        iterate within a single contig and a defined region.
+
+    :class:`pysam.IteratorRowAll`
+        iterate until EOF. This iterator will also include unmapped reads.
+
+    :class:`pysam.IteratorRowAllRefs`
+        iterate over all reads in all reference sequences.
+        
+    The method :meth:`Samfile.fetch` returns an IteratorRow.
+    '''
     pass
 
 cdef class IteratorRowRegion(IteratorRow):
@@ -1209,27 +1242,42 @@ cdef class IteratorColumn:
 
     IteratorColumn objects wrap the pileup functionality of samtools.
     
-    For reasons of efficiency, the iterator returns the current 
-    pileup buffer. As this buffer is updated at every iteration, 
-    the contents of this iterator will change accordingly. Hence the conversion to
-    a list will not produce the expected result::
+    For reasons of efficiency, the iterator points to the current 
+    pileup buffer. The pileup buffer is updated at every iteration.
+    This might cause some unexpected behavious. For example,
+    consider the conversion to a list::
     
        f = Samfile("file.bam", "rb")
        result = list( f.pileup() )
 
-    Here, result will contain ``n`` objects of type :class:`PileupProxy` for ``n`` columns, 
-    but each object will contain the same information.
+    Here, ``result`` will contain ``n`` objects of type :class:`PileupProxy` for ``n`` columns, 
+    but each object in ``result`` will contain the same information.
     
-    If the results of several columns are required at the same time, the results
-    need to be stored explicitely::
+    The desired behaviour can be achieved by list comprehension::
 
        result = [ x.pileups() for x in f.pileup() ]
 
-    Here, result will be a list of ``n`` lists of objects of type :class:`PileupRead`.
+    ``result`` will be a list of ``n`` lists of objects of type :class:`PileupRead`.
 
     If the iterator is associated with a :class:`Fastafile` using the :meth:`addReference`
     method, then the iterator will export the current sequence via the methods :meth:`getSequence`
     and :meth:`seq_len`.
+
+    Optional kwargs to the iterator
+
+    stepper
+       The stepper controlls how the iterator advances. 
+       Possible options for the stepper are 
+       
+       all
+           use all reads for pileup.
+       samtools
+           same filter and read processing as in :term:`csamtools` pileup
+    fastafile
+       A :class:`FastaFile` object
+    mask
+       Skip all reads with bits set in mask.
+       
     
     '''
 
@@ -1244,7 +1292,19 @@ cdef class IteratorColumn:
     cdef __iterdata iterdata 
     cdef Samfile samfile
     cdef Fastafile fastafile
-    cdef select
+    cdef stepper
+
+    def __cinit__( self, Samfile samfile, **kwargs ):
+        self.samfile = samfile
+        self.mask = kwargs.get("mask", BAM_DEF_MASK )
+        self.fastafile = kwargs.get( "fastafile", None )
+        self.stepper = kwargs.get( "stepper", None )
+        self.iterdata.seq = NULL
+        self.tid = 0
+        self.pos = 0
+        self.n_plp = 0
+        self.plp = NULL
+        self.pileup_iter = <bam_plp_t>NULL
 
     def __iter__(self):
         return self 
@@ -1265,19 +1325,30 @@ cdef class IteratorColumn:
         '''
         return self.iterdata.seq
 
-
     property seq_len:
+        '''current sequence length.'''
         def __get__(self): return self.iterdata.seq_len
 
     def addReference( self, Fastafile fastafile ):
-       '''add reference sequence to iterator.'''
+       '''
+       add reference sequences in *fastafile* to iterator.'''
        self.fastafile = fastafile
        if self.iterdata.seq != NULL: free(self.iterdata.seq)
        self.iterdata.tid = -1
        self.iterdata.fastafile = self.fastafile.fastafile
 
     def hasReference( self ):
+        '''
+        return true if iterator is associated with a reference'''
         return self.fastafile
+
+    cdef setMask( self, mask ):
+        '''set masking flag in iterator.
+
+        reads with bits set in *mask* will be skipped.
+        '''
+        self.mask = mask
+        bam_plp_set_mask( self.pileup_iter, self.mask )
 
     cdef setupIteratorData( self, 
                             int tid, 
@@ -1297,12 +1368,12 @@ cdef class IteratorColumn:
         else:
             self.iterdata.fastafile = NULL
 
-        if self.select == None or self.select == "all":
+        if self.stepper == None or self.stepper == "all":
             self.pileup_iter = bam_plp_init( &__advance_all, &self.iterdata )
-        elif self.select == "snpcalls":        
+        elif self.stepper == "samtools":        
             self.pileup_iter = bam_plp_init( &__advance_snpcalls, &self.iterdata )
         else:
-            raise ValueError( "unknown select option `%s` in IteratorColumn" % self.select)
+            raise ValueError( "unknown stepper option `%s` in IteratorColumn" % self.stepper)
 
         bam_plp_set_mask( self.pileup_iter, self.mask )
 
@@ -1324,33 +1395,32 @@ cdef class IteratorColumn:
         # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
         bam_plp_reset(self.pileup_iter)
 
+    def __dealloc__(self):
+        # reset in order to avoid memory leak messages for iterators that have
+        # not been fully consumed
+        if self.pileup_iter != <bam_plp_t>NULL:
+            bam_plp_reset(self.pileup_iter)
+            bam_plp_destroy(self.pileup_iter)
+            self.pileup_iter = <bam_plp_t>NULL
+
+        if self.iterdata.seq != NULL: 
+            free(self.iterdata.seq)
+            self.iterdata.seq = NULL
+
 cdef class IteratorColumnRegion(IteratorColumn):
     '''iterates over a region only.
     '''
     def __cinit__(self, Samfile samfile, 
-                  int tid, int start, int end,
-                  int mask = BAM_DEF_MASK,
-                  Fastafile fastafile = None,
-                  select = None ):
-
-        self.n_plp = 0
-        self.tid = 0
-        self.pos = 0
-        self.plp = NULL
-        self.samfile = samfile
-        self.mask = mask
-        self.fastafile = fastafile
-        self.select = select
-
-        self.iterdata.seq = NULL
+                  int tid = 0, 
+                  int start = 0, 
+                  int end = max_pos,
+                  **kwargs ):
 
         # initialize iterator
         self.setupIteratorData( tid, start, end, 1 )
 
     def __next__(self): 
         """python version of next().
-
-        pyrex uses this non-standard name instead of next()
         """
 
         while 1:
@@ -1366,33 +1436,13 @@ cdef class IteratorColumnRegion(IteratorColumn):
                                      self.pos, 
                                      self.n_plp )
 
-    def __dealloc__(self):
-        # reset in order to avoid memory leak messages for iterators that have
-        # not been fully consumed
-        bam_plp_reset(self.pileup_iter)
-        bam_plp_destroy(self.pileup_iter)
-        if self.iterdata.seq != NULL: 
-            free(self.iterdata.seq)
-            self.iterdata.seq = NULL
-
 cdef class IteratorColumnAllRefs(IteratorColumn):
     """iterates over all columns by chaining iterators over each reference
     """
 
     def __cinit__(self, 
                   Samfile samfile,
-                  int mask = BAM_DEF_MASK,
-                  Fastafile fastafile = None,
-                  select = None ):
-
-        self.n_plp = 0
-        self.tid = 0
-        self.pos = 0
-        self.plp = NULL
-        self.samfile = samfile
-        self.mask = mask
-        self.fastafile = fastafile
-        self.select = select
+                  **kwargs ):
 
         # no iteration over empty files
         if not samfile.nreferences: raise StopIteration
@@ -1402,8 +1452,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 
     def __next__(self):
         """python version of next().
-
-        pyrex uses this non-standard name instead of next()
         """
         
         while 1:
@@ -1419,21 +1467,12 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                          self.pos, 
                                          self.n_plp )
 
-            # Otherwise, proceed to next reference or stop
+            # otherwise, proceed to next reference or stop
             self.tid += 1
             if self.tid < self.samfile.nreferences:
                 self.setupIteratorData( self.tid, 0, max_pos, 0 )
             else:
                 raise StopIteration
-
-    def __dealloc__(self):
-        # reset in order to avoid memory leak messages for iterators that have
-        # not been fully consumed
-        bam_plp_reset(self.pileup_iter)
-        bam_plp_destroy(self.pileup_iter)
-        if self.iterdata.seq != NULL: 
-            free(self.iterdata.seq)
-            self.iterdata.seq = NULL
 
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
@@ -1975,6 +2014,7 @@ cdef class AlignedRead:
         """properties flag"""
         def __get__(self): return self._delegate.core.flag
         def __set__(self, flag): self._delegate.core.flag = flag
+
     property rname: 
         """
         :term:`target` ID
@@ -1988,6 +2028,7 @@ cdef class AlignedRead:
         """
         def __get__(self): return self._delegate.core.tid
         def __set__(self, tid): self._delegate.core.tid = tid
+
     property pos: 
         """0-based leftmost coordinate"""
         def __get__(self): return self._delegate.core.pos
@@ -2440,247 +2481,50 @@ cdef class SNPCall:
                     self.coverage ) ) )
 
 
-cdef class SNPCallerOld:
-    '''*(Samfile samfile, Fastafile fastafile )*
+cdef class SNPCallerBase:
+    '''Base class for SNP callers.
 
-    The samtools SNP caller.
-
-    This object will call SNPs in *samfile* against the reference
-    sequence in *fasta*.
-
-    This caller is fast for calling few SNPs in selected regions.
-
-    It is slow, if called over large genomic regions.
-
-    This caller uses the old samtools model < 0.1.10
+    *min_baseQ*
+       minimum base quality (possibly capped by BAQ)
+    *capQ_threshold*
+       coefficient for adjusting mapQ of poor mappings
+    *theta*
+       theta in maq consensus calling model
+    *n_haplotypes*
+       number of haplotypes in the sample
+    *het_rate*
+       prior of a difference between two haplotypes
     '''
 
-    cdef Fastafile fasta
     cdef bam_maqcns_t * c
-    cdef char * seq
-    cdef int seq_tid 
-    cdef int seq_length
-    cdef Samfile samfile
-
-    def __cinit__(self, 
-                  Samfile samfile,
-                  Fastafile fasta ):
-
-        self.samfile = samfile
-        self.c =  bam_maqcns_init()
-        self.fasta = fasta
-        self.seq = NULL
-        self.seq_tid = -1
-        self.seq_length = 0
-        # new default mode for samtools >0.1.10
-        self.c.errmod = BAM_ERRMOD_MAQ2
-        self.c.theta += 0.02
-
-        bam_maqcns_prepare( self.c )
-
-    def call(self, reference, int pos ): 
-        """call a snp on chromosome *reference*
-        and position *pos*.
-
-        returns a :class:`SNPCall` object.
-        """
-
-        cdef int rb, tid
-
-        tid = self.samfile.gettid( reference )
-
-        # update sequence
-        if tid != self.seq_tid:
-            if self.seq != NULL: free( self.seq )
-            self.seq = NULL
-            self.seq_tid = tid
-     
-        # reload sequence if necessary
-        if self.seq == NULL:
-            rname = self.samfile.getrname( self.seq_tid )
-            self.seq = self.fasta._fetch( rname,
-                                          0, max_pos, 
-                                          &self.seq_length )
-            if self.seq == NULL:
-                raise ValueError( "reference sequence for '%s' (tid=%i) not found" % \
-                                      (rname,
-                                       self.seq_tid))
-
-        # reference base
-        if pos >= self.seq_length:
-            raise ValueError( "position %i out of bounds on reference sequence (len=%i)" % (pos, self.seq_length) )
-
-        rb = self.seq[pos]
-
-        # initialize pileup engine
-        cdef IteratorColumn itr = IteratorColumnRegion( self.samfile, tid, pos, pos + 1 )
-
-        while 1:
-            itr.cnext()
-            
-            if itr.n_plp < 0:
-                raise ValueError("error during iteration" )
-
-            if itr.plp == NULL:
-                raise ValueError( "no reads in region - no call" )
-             
-            if itr.pos == pos: break
-
-        cdef uint32_t cns = bam_maqcns_call( itr.n_plp, 
-                                             itr.plp, 
-                                             self.c )
-
-        cdef int ref_q, rb4 
-        rb4 = bam_nt16_table[rb]
-        ref_q = 0
-        if rb4 != 15 and cns>>28 != 15 and cns>>28 != rb4:
-            # a SNP
-            if cns >> 24 & 0xf == rb4:
-                ref_q = cns >> 8 & 0xff 
-            else: 
-                ref_q = (cns >> 8 & 0xff) + (cns & 0xff)
-                
-            if ref_q > 255: ref_q = 255
-
-        cdef SNPCall call
-
-        call = SNPCall()
-        call._tid = itr.tid
-        call._pos = itr.pos
-        call._reference_base = rb
-        call._genotype = bam_nt16_rev_table[cns>>28]
-        call._consensus_quality = cns >> 8 & 0xff
-        call._snp_quality = ref_q
-        call._rms_mapping_quality = cns >> 16 & 0xff
-        call._coverage = itr.n_plp
-
-        return call 
-
-    def __dealloc__(self):
-        if self.seq != NULL: free( self.seq )
-        self.seq = NULL
-        bam_maqcns_destroy( self.c )
-
-cdef class IteratorSNPCallsOld:
-    """*(IteratorColumn iterator)*
-
-    call SNPs within a region.
-
-    *iterator* is a pileup iterator. SNPs will be called
-    on all positions returned by this iterator.
-
-    *fasta* is a :class:`Fastafile` object. 
-
-    This caller is fast if SNPs are called over large continuous
-    regions. It is slow, if instantiated frequently.
-
-    This caller uses the old samtools model < 0.1.10
-
-    The region.
-
-    .. todo::
-
-        * allow options similar to the samtools pileup command
-        * check for efficiency
-    """
-
     cdef IteratorColumn iter
-    cdef Fastafile fasta
-    cdef bam_maqcns_t * c
-    cdef char * seq
-    cdef int seq_tid 
-    cdef int seq_length
+
     def __cinit__(self, 
-                  IteratorColumn iterator_column,
-                  Fastafile fasta ):
+                  IteratorColumn iterator_column, 
+                  **kwargs ):
 
         self.iter = iterator_column
         self.c =  bam_maqcns_init()
-        self.fasta = fasta
-        self.seq = NULL
-        self.seq_tid = -1
-        self.seq_length = 0
+
+        # set the default parameterization according to
+        # samtools
+
+        # new default mode for samtools >0.1.10
+        self.c.errmod = kwargs.get( "errmod", BAM_ERRMOD_MAQ2 )
+
+        self.c.min_baseQ = kwargs.get( "min_baseQ", 13 )
+        # self.c.capQ_thres = kwargs.get( "capQ_threshold", 60 )
+        self.c.n_hap = kwargs.get( "n_haplotypes", 2 )
+        self.c.het_rate = kwargs.get( "het_rate", 0.001 )
+        self.c.theta = kwargs.get( "theta", 0.83 )
+
+        if self.c.errmod != BAM_ERRMOD_MAQ2:
+            self.c.theta += 0.02
+
+        # call prepare AFTER setting parameters
         bam_maqcns_prepare( self.c )
-
-    def __iter__(self):
-        return self 
-
-    def __next__(self): 
-        """python version of next().
-        """
-
-        # the following code was adapted from bam_plcmd.c:pileup_func()
-        self.iter.cnext()
-
-        if self.iter.n_plp < 0:
-            raise ValueError("error during iteration" )
-
-        if self.iter.plp == NULL:
-            raise StopIteration
-
-        cdef int rb
-
-        # update sequence
-        if self.iter.tid != self.seq_tid:
-            if self.seq != NULL: free( self.seq )
-            self.seq = NULL
-            self.seq_tid = self.iter.tid
-
-        # reload sequence if necessary
-        if self.seq == NULL:
-            # TODO: look for a  shortcut 
-            self.seq = self.fasta._fetch( self.iter.iter.samfile.samfile.header.target_name[self.seq_tid], 
-                                          0, max_pos, 
-                                          &self.seq_length )
-            if self.seq == NULL:
-                raise ValueError( "reference sequence for '%s' (tid=%i) not found" % \
-                                       (self.iter.iter.samfile.samfile.header.target_name[self.seq_tid], 
-                                        self.seq_tid))
-
-        # reference base
-        if self.iter.pos >= self.seq_length:
-            raise ValueError( "position %i out of bounds on reference sequence (len=%i)" % (self.iter.pos, self.seq_length) )
-
-        rb = self.seq[self.iter.pos]
-
-        cdef uint32_t cns 
-        cdef int ref_q, rb4 
-
-        cns = bam_maqcns_call( self.iter.n_plp, 
-                               self.iter.plp, 
-                               self.c )
-
-
-        rb4 = bam_nt16_table[rb]
-        ref_q = 0
-        if rb4 != 15 and cns>>28 != 15 and cns>>28 != rb4:
-            # a SNP
-            if cns >> 24 & 0xf == rb4:
-                ref_q = cns >> 8 & 0xff 
-            else: 
-                ref_q = (cns >> 8 & 0xff) + (cns & 0xff)
-
-            if ref_q > 255: ref_q = 255
-                
-        cdef SNPCall call
-
-        call = SNPCall()
-        call._tid = self.iter.tid
-        call._pos = self.iter.pos
-        call._reference_base = rb
-        call._genotype = bam_nt16_rev_table[cns>>28]
-        call._consensus_quality = cns >> 8 & 0xff
-        call._snp_quality = ref_q
-        call._rms_mapping_quality = cns >> 16&0xff
-        call._coverage = self.iter.n_plp
-
-        return call 
-
-    def __dealloc__(self):
-        if self.seq != NULL: free( self.seq )
-        bam_maqcns_destroy( self.c )
-
-cdef class IteratorSNPCalls:
+                                    
+cdef class IteratorSNPCalls( SNPCallerBase ):
     """*(IteratorColumn iterator)*
 
     call SNPs within a region.
@@ -2692,33 +2536,13 @@ cdef class IteratorSNPCalls:
     regions. It is slow, if instantiated frequently and in random
     order as the sequence will have to be reloaded.
 
-    .. todo::
-
-        * allow options similar to the samtools pileup command
-        * check for efficiency
     """
-
-    cdef IteratorColumn iter
-    cdef Fastafile fasta
-    cdef bam_maqcns_t * c
     
     def __cinit__(self, 
-                  IteratorColumn iterator_column ):
-
-        self.iter = iterator_column
-        self.c =  bam_maqcns_init()
+                  IteratorColumn iterator_column,
+                  **kwargs ):
 
         assert self.iter.hasReference(), "IteratorSNPCalls requires an pileup iterator with reference sequence"
-
-        # set the default parameterization according to
-        # samtools
-        self.c.errmod = BAM_ERRMOD_MAQ2
-
-        if self.c.errmod != BAM_ERRMOD_MAQ2:
-            self.c.theta += 0.02
-
-        # call prepare AFTER setting parameters
-        bam_maqcns_prepare( self.c )
 
     def __iter__(self):
         return self 
@@ -2778,8 +2602,8 @@ cdef class IteratorSNPCalls:
     def __dealloc__(self):
         bam_maqcns_destroy( self.c )
 
-cdef class SNPCaller:
-    '''*(Samfile samfile, Fastafile fastafile )*
+cdef class SNPCaller( SNPCallerBase ):
+    '''*(IteratorColumn iterator_column )*
 
     The samtools SNP caller.
 
@@ -2792,53 +2616,11 @@ cdef class SNPCaller:
     '''
 
 
-    cdef IteratorColumn iter
-    cdef bam_maqcns_t * c
-
     def __cinit__(self, 
-                  IteratorColumn iterator_column ):
+                  IteratorColumn iterator_column, 
+                  **kwargs ):
 
-        self.iter = iterator_column
-        self.c =  bam_maqcns_init()
-
-        # set the default parameterization according to
-        # samtools
-
-        # new default mode for samtools >0.1.10
-        self.c.errmod = BAM_ERRMOD_MAQ2
-
-        if self.c.errmod != BAM_ERRMOD_MAQ2:
-            self.c.theta += 0.02
-
-        # call prepare AFTER setting parameters
-        bam_maqcns_prepare( self.c )
-
-    cdef __dump( self, glf1_t * g, uint32_t cns, int rb ):
-        '''debugging output.'''
-
-        pysam_dump_glf( g, self.c );
-        print ""
-        for x in range(self.iter.n_plp):
-            print "--> read %i %s %i" % (x, 
-                                         bam1_qname(self.iter.plp[x].b),
-                                         self.iter.plp[x].qpos,
-                                         )
-
-        print "pos=%i, cns=%i, q_r = %f, depth=%i, n=%i, rb=%i, cns-cq=%i %i %i %i" \
-            % (self.iter.pos, 
-               cns, 
-               self.c.q_r,
-               self.iter.n_plp,
-               self.iter.n_plp,
-               rb,
-               cns >> 8 & 0xff,
-               cns >> 16 & 0xff,
-               cns & 0xff,
-               cns >> 28,
-               )
-
-        printf("-------------------------------------\n");
-        sys.stdout.flush()
+        pass
 
     def call(self, reference, int pos ): 
         """call a snp on chromosome *reference*
@@ -2904,7 +2686,34 @@ cdef class SNPCaller:
 
     def __dealloc__(self):
         bam_maqcns_destroy( self.c )
-         
+
+    cdef __dump( self, glf1_t * g, uint32_t cns, int rb ):
+        '''debugging output.'''
+
+        pysam_dump_glf( g, self.c );
+        print ""
+        for x in range(self.iter.n_plp):
+            print "--> read %i %s %i" % (x, 
+                                         bam1_qname(self.iter.plp[x].b),
+                                         self.iter.plp[x].qpos,
+                                         )
+
+        print "pos=%i, cns=%i, q_r = %f, depth=%i, n=%i, rb=%i, cns-cq=%i %i %i %i" \
+            % (self.iter.pos, 
+               cns, 
+               self.c.q_r,
+               self.iter.n_plp,
+               self.iter.n_plp,
+               rb,
+               cns >> 8 & 0xff,
+               cns >> 16 & 0xff,
+               cns & 0xff,
+               cns >> 28,
+               )
+
+        printf("-------------------------------------\n");
+        sys.stdout.flush()
+
 __all__ = ["Samfile", 
            "Fastafile",
            "IteratorRow", 
