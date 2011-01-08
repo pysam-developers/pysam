@@ -2523,7 +2523,37 @@ cdef class SNPCallerBase:
 
         # call prepare AFTER setting parameters
         bam_maqcns_prepare( self.c )
-                                    
+
+    def __dealloc__(self):
+        bam_maqcns_destroy( self.c )
+
+    cdef __dump( self, glf1_t * g, uint32_t cns, int rb ):
+        '''debugging output.'''
+
+        pysam_dump_glf( g, self.c );
+        print ""
+        for x in range(self.iter.n_plp):
+            print "--> read %i %s %i" % (x, 
+                                         bam1_qname(self.iter.plp[x].b),
+                                         self.iter.plp[x].qpos,
+                                         )
+
+        print "pos=%i, cns=%i, q_r = %f, depth=%i, n=%i, rb=%i, cns-cq=%i %i %i %i" \
+            % (self.iter.pos, 
+               cns, 
+               self.c.q_r,
+               self.iter.n_plp,
+               self.iter.n_plp,
+               rb,
+               cns >> 8 & 0xff,
+               cns >> 16 & 0xff,
+               cns & 0xff,
+               cns >> 28,
+               )
+
+        printf("-------------------------------------\n");
+        sys.stdout.flush()
+
 cdef class IteratorSNPCalls( SNPCallerBase ):
     """*(IteratorColumn iterator)*
 
@@ -2558,7 +2588,7 @@ cdef class IteratorSNPCalls( SNPCallerBase ):
             raise ValueError("error during iteration" )
 
         if self.iter.plp == NULL:
-            raise StopIteration
+           raise StopIteration
 
         cdef char * seq = self.iter.getSequence()
         cdef int seq_len = self.iter.seq_len
@@ -2598,9 +2628,6 @@ cdef class IteratorSNPCalls( SNPCallerBase ):
         call._coverage = self.iter.n_plp
 
         return call 
-
-    def __dealloc__(self):
-        bam_maqcns_destroy( self.c )
 
 cdef class SNPCaller( SNPCallerBase ):
     '''*(IteratorColumn iterator_column )*
@@ -2684,35 +2711,270 @@ cdef class SNPCaller( SNPCallerBase ):
 
         return call 
 
+cdef class IndelCall:
+    '''the results of an indel call.'''
+    cdef int _tid
+    cdef int _pos
+    cdef int _coverage
+    cdef int _rms_mapping_quality
+    cdef bam_maqindel_ret_t * _r 
+
+    def __cinit__(self):
+        #assert r != NULL
+        #self._r = r
+        pass
+
+    property tid:
+        '''the chromosome ID as is defined in the header'''
+        def __get__(self): 
+            return self._tid
+    
+    property pos:
+       '''nucleotide position of SNP.'''
+       def __get__(self): return self._pos
+
+    property genotype:
+       '''the genotype called.'''
+       def __get__(self): 
+           if self._r.gt == 0:
+               s = PyString_FromStringAndSize( self._r.s[0], self._r.indel1 + 1)
+               return "%s/%s" % (s,s)
+           elif self._r.gt == 1:
+               s = PyString_FromStringAndSize( self._r.s[1], self._r.indel2 + 1)
+               return "%s/%s" % (s,s)
+           else:
+               return "%s/%s" % (self.first_allele, self.second_allele )
+
+    property consensus_quality:
+       '''the genotype quality (Phred-scaled).'''
+       def __get__(self): return self._r.q_cns
+
+    property snp_quality:
+       '''the snp quality (Phred scaled) - probability of consensus being identical to reference sequence.'''
+       def __get__(self): return self._r.q_ref
+
+    property mapping_quality:
+       '''the root mean square (rms) of the mapping quality of all reads involved in the call.'''
+       def __get__(self): return self._rms_mapping_quality
+
+    property coverage:
+       '''coverage or read depth - the number of reads involved in the call.'''
+       def __get__(self): return self._coverage
+
+    property first_allele:
+       '''sequence of first allele.'''
+       def __get__(self): return PyString_FromStringAndSize( self._r.s[0], self._r.indel1 + 1)
+
+    property second_allele:
+       '''sequence of second allele.'''
+       def __get__(self): return PyString_FromStringAndSize( self._r.s[1], self._r.indel2 + 1)
+
+    property reads_first:
+       '''reads supporting first allele.'''
+       def __get__(self): return self._r.cnt1
+
+    property reads_second:
+       '''reads supporting first allele.'''
+       def __get__(self): return self._r.cnt2
+
+    property reads_diff:
+       '''reads supporting first allele.'''
+       def __get__(self): return self._r.cnt_anti
+
+    def __str__(self):
+
+        return "\t".join( map(str, (
+                    self.tid,
+                    self.pos,
+                    self.genotype,
+                    self.consensus_quality,
+                    self.snp_quality,
+                    self.mapping_quality,
+                    self.coverage,
+                    self.first_allele,
+                    self.second_allele,
+                    self.reads_first,
+                    self.reads_second,
+                    self.reads_diff ) ) )
+
+    def __dealloc__(self ):
+        bam_maqindel_ret_destroy(self._r)
+
+cdef class IndelCallerBase:
+    '''Base class for SNP callers.
+
+    *min_baseQ*
+       minimum base quality (possibly capped by BAQ)
+    *capQ_threshold*
+       coefficient for adjusting mapQ of poor mappings
+    *theta*
+       theta in maq consensus calling model
+    *n_haplotypes*
+       number of haplotypes in the sample
+    *het_rate*
+       prior of a difference between two haplotypes
+    '''
+
+    cdef bam_maqindel_opt_t * options
+    cdef IteratorColumn iter
+    cdef int cap_mapQ
+    cdef int max_depth
+
+    def __cinit__(self, 
+                  IteratorColumn iterator_column, 
+                  **kwargs ):
+
+
+        self.iter = iterator_column
+
+        assert iterator_column.hasReference(), "IndelCallerBase requires an pileup iterator with reference sequence"
+
+        self.options = bam_maqindel_opt_init()
+
+        # set the default parameterization according to
+        # samtools
+
+        self.options.r_indel = kwargs.get( "r_indel", 0.00015 )
+        self.options.q_indel = kwargs.get( "q_indel", 40 )
+        self.cap_mapQ = kwargs.get( "cap_mapQ", 60 )
+        self.max_depth = kwargs.get( "max_depth", 1024 )
+
     def __dealloc__(self):
-        bam_maqcns_destroy( self.c )
+        free( self.options )
 
-    cdef __dump( self, glf1_t * g, uint32_t cns, int rb ):
-        '''debugging output.'''
+    def _call( self ):
 
-        pysam_dump_glf( g, self.c );
-        print ""
-        for x in range(self.iter.n_plp):
-            print "--> read %i %s %i" % (x, 
-                                         bam1_qname(self.iter.plp[x].b),
-                                         self.iter.plp[x].qpos,
-                                         )
+        cdef char * seq = self.iter.getSequence()
+        cdef int seq_len = self.iter.seq_len
 
-        print "pos=%i, cns=%i, q_r = %f, depth=%i, n=%i, rb=%i, cns-cq=%i %i %i %i" \
-            % (self.iter.pos, 
-               cns, 
-               self.c.q_r,
-               self.iter.n_plp,
-               self.iter.n_plp,
-               rb,
-               cns >> 8 & 0xff,
-               cns >> 16 & 0xff,
-               cns & 0xff,
-               cns >> 28,
-               )
+        assert seq != NULL
 
-        printf("-------------------------------------\n");
-        sys.stdout.flush()
+        # reference base
+        if self.iter.pos >= seq_len:
+            raise ValueError( "position %i out of bounds on reference sequence (len=%i)" % (self.iter.pos, seq_len) )
+
+        cdef bam_maqindel_ret_t * r 
+        
+        cdef int m = min( self.max_depth, self.iter.n_plp )
+
+        # printf("pysam: m=%i, q_indel=%i, r_indel=%f, r_snp=%i, mm_penalty=%i, indel_err=%i, ambi_thres=%i\n",
+        #        m, self.options.q_indel, self.options.r_indel, self.options.r_snp, self.options.mm_penalty,
+        #        self.options.indel_err, self.options.ambi_thres );
+
+        r = bam_maqindel(m, 
+                         self.iter.pos, 
+                         self.options,
+                         self.iter.plp, 
+                         seq,
+                         0, 
+                         NULL)
+        
+        if r == NULL: return None
+
+        cdef IndelCall call
+        call = IndelCall()
+        call._r = r
+        call._tid = self.iter.tid
+        call._pos = self.iter.pos
+        call._coverage = self.iter.n_plp
+
+        cdef uint64_t rms_aux = 0
+        cdef int i = 0
+        cdef bam_pileup1_t * p
+        cdef int tmp
+
+        for i from 0 <= i < self.iter.n_plp:
+            p = self.iter.plp + i
+            if p.b.core.qual < self.cap_mapQ:
+                tmp = p.b.core.qual 
+            else:
+                tmp = self.cap_mapQ
+            rms_aux += tmp * tmp
+
+        call._rms_mapping_quality = <uint64_t>(sqrt(<double>rms_aux / self.iter.n_plp) + .499)
+
+        return call 
+
+cdef class IndelCaller( IndelCallerBase ):
+    '''*(IteratorColumn iterator_column )*
+
+    The samtools SNP caller.
+
+    This object will call SNPs in *samfile* against the reference
+    sequence in *fasta*.
+
+    This caller is fast for calling few SNPs in selected regions.
+
+    It is slow, if called over large genomic regions.
+    '''
+
+    def __cinit__(self, 
+                  IteratorColumn iterator_column, 
+                  **kwargs ):
+
+        pass
+
+    def call(self, reference, int pos ): 
+        """call a snp on chromosome *reference*
+        and position *pos*.
+
+        returns a :class:`SNPCall` object or None, if no indel call could be made.
+        """
+
+        cdef int tid = self.iter.samfile.gettid( reference )
+
+        self.iter.reset( tid, pos, pos + 1 )
+
+        while 1:
+            self.iter.cnext()
+            
+            if self.iter.n_plp < 0:
+                raise ValueError("error during iteration" )
+
+            if self.iter.plp == NULL:
+                raise ValueError( "no reads in region - no call" )
+             
+            if self.iter.pos == pos: break
+
+        return self._call()
+
+cdef class IteratorIndelCalls( IndelCallerBase ):
+    """*(IteratorColumn iterator)*
+
+    call indels within a region.
+
+    *iterator* is a pileup iterator. SNPs will be called
+    on all positions returned by this iterator.
+
+    This caller is fast if SNPs are called over large continuous
+    regions. It is slow, if instantiated frequently and in random
+    order as the sequence will have to be reloaded.
+
+    """
+    
+    def __cinit__(self, 
+                  IteratorColumn iterator_column,
+                  **kwargs ):
+        pass
+
+
+    def __iter__(self):
+        return self 
+
+    def __next__(self): 
+        """python version of next().
+        """
+
+        # the following code was adapted from bam_plcmd.c:pileup_func()
+        self.iter.cnext()
+
+        if self.iter.n_plp < 0:
+            raise ValueError("error during iteration" )
+
+        if self.iter.plp == NULL:
+           raise StopIteration
+
+        return self._call()
 
 __all__ = ["Samfile", 
            "Fastafile",
@@ -2723,7 +2985,9 @@ __all__ = ["Samfile",
            "PileupProxy", 
            "PileupRead",
            "IteratorSNPCalls",
-           "SNPCaller" ]
+           "SNPCaller",
+           "IndelCaller",
+           "IteratorIndelCalls", ]
 
                
 

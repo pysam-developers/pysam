@@ -215,7 +215,7 @@ Using the samtools SNP caller
 
 There are two ways to access the samtools SNP caller. The :class:`pysam.IteratorSNPCalls`
 is appropriate when calling many consecutive SNPs, while :class:`pysam.SNPCaller` is
-best when calling SNPs at random places in the genome. Each snp caller returns objects of
+best when calling SNPs at non-consecutive genomic positions. Each snp caller returns objects of
 type :class:`pysam.SNPCall`.
 
 To use :class:`pysam.IteratorSNPCalls`, associate it with a :class:`pysam.IteratorColumn`::
@@ -239,5 +239,6 @@ Note the use of the option *stepper* to control which reads are included in the
 in the :term:`pileup`. The ``samtools`` stepper implements the same read selection
 and processing as in the samtools pileup command.
 
-
+Calling indels works along the same lines, using the :class:`pysam.IteratorIndelCalls`
+and :class:`pysam.IteratorIndelCaller`.
 

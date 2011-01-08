@@ -1085,6 +1085,54 @@ class TestSNPCalls( unittest.TestCase ):
             call = caller.call( x.chromosome, x.pos )
             self.checkEqual( x, call )
 
+class TestIndelCalls( unittest.TestCase ):
+    '''test pysam indel calling.'''
+
+    def checkEqual( self, a, b ):
+
+        for x in ("pos",
+                  "genotype",
+                  "consensus_quality",
+                  "snp_quality",
+                  "mapping_quality",
+                  "coverage",
+                  "first_allele",
+                  "second_allele",
+                  "reads_first",
+                  "reads_second",
+                  "reads_diff"):
+            if b.genotype == "*/*" and x == "second_allele":
+                # ignore test for second allele (positions chr2:439 and chr2:1512)
+                continue
+            self.assertEqual( getattr(a, x), getattr(b,x), "%s mismatch: %s != %s\n%s\n%s" % 
+                              (x, getattr(a, x), getattr(b,x), str(a), str(b)))
+
+    def testAllPositionsViaIterator( self ):
+
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        try: 
+            refs = [ x for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ) if x.reference_base == "*"]
+        except pysam.SamtoolsError:
+            pass
+
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+        calls = [ x for x in list(pysam.IteratorIndelCalls(i)) if x != None ]
+        for x,y in zip( refs, calls ):
+            self.checkEqual( x, y )
+
+    def testPerPositionViaCaller( self ):
+        # test pileup for each position. This is a fast operation
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+        caller = pysam.IndelCaller( i )
+
+        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):
+            if x.reference_base != "*": continue
+            call = caller.call( x.chromosome, x.pos )
+            self.checkEqual( x, call )
+
 class TestLogging( unittest.TestCase ):
     '''test around bug issue 42,
 

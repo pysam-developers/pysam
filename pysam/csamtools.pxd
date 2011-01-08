@@ -308,6 +308,33 @@ cdef extern from "bam_maqcns.h":
   int BAM_ERRMOD_MAQ
   int BAM_ERRMOD_SOAP
 
+  ctypedef struct bam_maqindel_ret_t: 
+    int indel1
+    int indel2        
+    int cnt1
+    int cnt2
+    int cnt_anti
+    int cnt_ref
+    int cnt_ambi
+    char *s[2]
+    int gt
+    int gl[2]
+    int q_cns
+    int q_ref
+    
+  void bam_maqindel_ret_destroy( bam_maqindel_ret_t * )
+
+  bam_maqindel_opt_t *bam_maqindel_opt_init()
+
+  bam_maqindel_ret_t * bam_maqindel(int n, 
+  		     int pos, 
+  		     bam_maqindel_opt_t * mi, 
+  		     bam_pileup1_t * pl, 
+		     char *ref,
+		     int _n_types, 
+		     int * _types )
+                                                               
+
 cdef extern from "faidx.h":
 
    ctypedef struct faidx_t:

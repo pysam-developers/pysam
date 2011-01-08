@@ -5,8 +5,8 @@ Release notes
 Release 0.4
 ===========
 
-   * switch to samtools 0.1.10
-   * added SNPcaller
+   * switch to samtools 0.1.12a
+   * added snp and indel calling.
    * improved tag parsing (TODO)
    * switch from pyrex to cython
    * changed handling of samtools stderr

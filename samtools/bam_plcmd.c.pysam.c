@@ -273,6 +273,7 @@ static int pileup_func(uint32_t tid, uint32_t pos, int n, const bam_pileup1_t *p
         if (proposed_indels) // the first element gives the size of the array
             r = bam_maqindel(m, pos, d->ido, pu, d->ref, proposed_indels[0], proposed_indels+1);
         else r = bam_maqindel(m, pos, d->ido, pu, d->ref, 0, 0);
+	
 	}
 	// when only variant sites are asked for, test if the site is a variant
 	if ((d->format & BAM_PLF_CNS) && (d->format & BAM_PLF_VAR_ONLY)) {
@@ -371,7 +372,7 @@ int bam_pileup(int argc, char *argv[])
 	int c, is_SAM = 0;
 	char *fn_list = 0, *fn_fa = 0, *fn_pos = 0;
 	pu_data_t *d = (pu_data_t*)calloc(1, sizeof(pu_data_t));
-    d->max_depth = 1024; d->tid = -1; d->mask = BAM_DEF_MASK; d->min_baseQ = 13;
+        d->max_depth = 1024; d->tid = -1; d->mask = BAM_DEF_MASK; d->min_baseQ = 13;
 	d->c = bam_maqcns_init();
 	d->c->errmod = BAM_ERRMOD_MAQ2; // change the default model
 	d->ido = bam_maqindel_opt_init();
