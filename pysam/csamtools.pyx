@@ -231,12 +231,13 @@ cdef class Fastafile:
         add function to get sequence names.
     '''
 
-    cdef char * filename
+    cdef char * _filename
     # pointer to fastafile
     cdef faidx_t * fastafile
 
     def __cinit__(self, *args, **kwargs ):
         self.fastafile = NULL
+        self._filename = NULL
         self._open( *args, **kwargs )
 
     def _isOpen( self ):
@@ -258,7 +259,8 @@ cdef class Fastafile:
 
         # close a previously opened file
         if self.fastafile != NULL: self.close()
-        self.filename = filename
+        if self._filename != NULL: free(self._filename)
+        self.filename = strdup(filename)
         self.fastafile = fai_load( filename )
 
         if self.fastafile == NULL:
@@ -268,6 +270,16 @@ cdef class Fastafile:
         if self.fastafile != NULL:
             fai_destroy( self.fastafile )
             self.fastafile = NULL
+
+    def __dealloc__(self):
+        self.close()
+        if self._filename != NULL: free(self._filename)
+
+    property filename:
+        '''number of :term:`filename` associated with this object.'''
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            return self._filename
 
     def fetch( self, 
                reference = None, 
@@ -380,7 +392,7 @@ cdef class Samfile:
 
     '''
 
-    cdef char * filename
+    cdef char * _filename
     # pointer to samfile
     cdef samfile_t * samfile
     # pointer to index
@@ -396,6 +408,7 @@ cdef class Samfile:
 
     def __cinit__(self, *args, **kwargs ):
         self.samfile = NULL
+        self._filename = NULL
         self.isbam = False
         self._open( *args, **kwargs )
 
@@ -427,6 +440,7 @@ cdef class Samfile:
         '''
 
         assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
+        assert filename != NULL
 
         # close a previously opened file
         if self.samfile != NULL: self.close()
@@ -434,8 +448,9 @@ cdef class Samfile:
 
         cdef bam_header_t * header_to_write
         header_to_write = NULL
-
-        self.filename = filename
+        
+        if self._filename != NULL: free(self._filename )
+        self._filename = strdup( filename )
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
@@ -779,6 +794,7 @@ cdef class Samfile:
         # note: __del__ is not called.
         self.close()
         bam_destroy1(self.b)
+        if self._filename != NULL: free( self._filename )
 
     def write( self, AlignedRead read ):
         '''
@@ -798,6 +814,12 @@ cdef class Samfile:
         self.close()
         return False
 
+    property filename:
+        '''number of :term:`filename` associated with this object.'''
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            return self._filename
+        
     property nreferences:
         '''number of :term:`reference` sequences in the file.'''
         def __get__(self):
@@ -1030,10 +1052,11 @@ cdef class IteratorRowRegion(IteratorRow):
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if reopen:
-            store = StderrStore()
-            self.fp = samopen( samfile.filename, mode, NULL )
+            store = StderrStore()            
+            self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
-        
+            assert self.fp != NULL
+
         self.retval = 0
 
         self.iter = bam_iter_query(self.samfile.index, 
@@ -1089,8 +1112,9 @@ cdef class IteratorRowAll(IteratorRow):
         # reopen the file to avoid iterator conflict
         if reopen:
             store = StderrStore()
-            self.fp = samopen( samfile.filename, mode, NULL )
+            self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
+            assert self.fp != NULL
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
