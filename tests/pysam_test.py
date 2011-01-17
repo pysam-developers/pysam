@@ -8,7 +8,7 @@ and data files located there.
 import pysam
 import unittest
 import os, re, sys
-import itertools
+import itertools, collections
 import subprocess
 import shutil
 import logging
@@ -141,7 +141,12 @@ class BinaryTest(unittest.TestCase):
             BinaryTest.first_time = False
 
         samtools_version = getSamtoolsVersion()
-        if samtools_version != pysam.__samtools_version__:
+
+        def _r( s ):
+            # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a -> 0.1.12
+            return re.sub( "[^0-9.]", "", s )
+
+        if _r(samtools_version) != _r( pysam.__samtools_version__):
             raise ValueError("versions of pysam/samtools and samtools differ: %s != %s" % \
                                  (pysam.__samtools_version__,
                                   samtools_version ))
@@ -620,19 +625,30 @@ class TestExceptions(unittest.TestCase):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, 0 )
         self.assertRaises( ValueError, self.samfile.fetch, "chr1", -5, -10 )
 
+        self.assertRaises( ValueError, self.samfile.count, "chr1", 5, -10 )
+        self.assertRaises( ValueError, self.samfile.count, "chr1", 5, 0 )        
+        self.assertRaises( ValueError, self.samfile.count, "chr1", -5, -10 )
+
     def testOutOfRangeNegativeOldFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5-10" )
         self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5-0" )
         self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5--10" )
 
+        self.assertRaises( ValueError, self.samfile.count, region="chr1:-5-10" )
+        self.assertRaises( ValueError, self.samfile.count, region="chr1:-5-0" )
+        self.assertRaises( ValueError, self.samfile.count, region="chr1:-5--10" )
+
     def testOutOfRangNewFormat(self):
         self.assertRaises( OverflowError, self.samfile.fetch, "chr1", 9999999999, 99999999999 )
+        self.assertRaises( OverflowError, self.samfile.count, "chr1", 9999999999, 99999999999 )
 
     def testOutOfRangeLargeNewFormat(self):
         self.assertRaises( OverflowError, self.samfile.fetch, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
+        self.assertRaises( OverflowError, self.samfile.count, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
 
     def testOutOfRangeLargeOldFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
+        self.assertRaises( ValueError, self.samfile.count, "chr1:99999999999999999-999999999999999999" )
 
     def testZeroToZero(self):        
         '''see issue 44'''
@@ -1169,6 +1185,51 @@ class TestLogging( unittest.TestCase ):
 # 1. finish testing all properties within pileup objects
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
 # 3. check: presence of sequence
+
+class TestSamfileUtilityFunctions( unittest.TestCase ):
+
+    def testCount( self ):
+
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+
+        for contig in ("chr1", "chr2" ):
+            for start in xrange( 0, 2000, 100 ):
+                end = start + 1
+                self.assertEqual( len( list( samfile.fetch( contig, start, end ) ) ),
+                                  samfile.count( contig, start, end ) )
+
+                # test empty intervals
+                self.assertEqual( len( list( samfile.fetch( contig, start, start ) ) ),
+                                  samfile.count( contig, start, start ) )
+
+                # test half empty intervals
+                self.assertEqual( len( list( samfile.fetch( contig, start ) ) ),
+                                  samfile.count( contig, start ) )
+
+    def testMate( self ):
+        '''test mate access.'''
+
+        readnames = [ x.split("\t")[0] for x in open( "ex1.sam", "r" ).readlines() ]
+        counts = collections.defaultdict( int )
+        for x in readnames: counts[x] += 1
+
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        for read in samfile.fetch():
+            if not read.is_paired:
+                self.assertRaises( ValueError, samfile.mate, read )
+            elif read.mate_is_unmapped:
+                self.assertRaises( ValueError, samfile.mate, read )
+            else:
+                if counts[read.qname] == 1:
+                    self.assertRaises( ValueError, samfile.mate, read )
+                else:
+                    mate = samfile.mate( read )
+                    self.assertEqual( read.qname, mate.qname )
+                    self.assertEqual( read.is_read1, mate.is_read2 )
+                    self.assertEqual( read.is_read2, mate.is_read1 )
+                    self.assertEqual( read.pos, mate.mpos )
+                    self.assertEqual( read.mpos, mate.pos )
+
 
 if __name__ == "__main__":
     # build data files
