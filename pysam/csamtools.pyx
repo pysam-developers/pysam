@@ -1558,7 +1558,7 @@ cdef class AlignedRead:
                     value = <int>bam_aux2i(s)            
                     s += 2
                 elif auxtype in ('i', 'I'):
-                    value = <float>bam_aux2i(s)
+                    value = <int32_t>bam_aux2i(s)
                     s += 4
                 elif auxtype == 'f':
                     value = <float>bam_aux2f(s)
