@@ -206,7 +206,7 @@ cdef extern from "bam.h":
 
   uint8_t *bam_aux_get(bam1_t *b,  char tag[2])
 
-  int bam_aux2i(uint8_t *s)
+  int32_t bam_aux2i(uint8_t *s)
   float bam_aux2f(uint8_t *s)
   double bam_aux2d(uint8_t *s)
   char bam_aux2A( uint8_t *s)

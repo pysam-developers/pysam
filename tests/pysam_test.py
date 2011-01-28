@@ -996,6 +996,41 @@ class TestRemoteFileHTTP( unittest.TestCase):
             self.assertEqual( x.compare( y ), 0 )
 
 
+class TestLargeOptValues( unittest.TestCase ):
+
+    expected = (
+        902346,
+        142618765,
+        142618765,
+        142618765,
+        32767,
+        2147483647,
+        65535,
+        65536,
+        902346,
+        142618765.0,
+        142618765.0,
+        1234.0,
+        142618765.0,
+        65535.0,
+        65536.0,
+        142618766.0,
+        142618765.0 )
+
+    def check( self, samfile ):
+        for exp, rr in zip( self.expected, samfile.fetch() ):
+            obs = rr.opt("ZP")
+            print rr.qname
+            self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
+
+    def testSAM( self ):
+        samfile = pysam.Samfile("ex10.sam", "r")
+        self.check( samfile )
+
+    def testBAM( self ):
+        samfile = pysam.Samfile("ex10.bam", "rb")
+        self.check( samfile )
+
 # TODOS
 # 1. finish testing all properties within pileup objects
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
