@@ -1000,42 +1000,6 @@ class TestRemoteFileHTTP( unittest.TestCase):
         for x, y in zip(result, ref):
             self.assertEqual( x.compare( y ), 0 )
 
-
-class TestLargeOptValues( unittest.TestCase ):
-
-    expected = (
-        902346,
-        142618765,
-        142618765,
-        142618765,
-        32767,
-        2147483647,
-        65535,
-        65536,
-        902346,
-        142618765.0,
-        142618765.0,
-        1234.0,
-        142618765.0,
-        65535.0,
-        65536.0,
-        142618766.0,
-        142618765.0 )
-
-    def check( self, samfile ):
-        for exp, rr in zip( self.expected, samfile.fetch() ):
-            obs = rr.opt("ZP")
-            print rr.qname
-            self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
-
-    def testSAM( self ):
-        samfile = pysam.Samfile("ex10.sam", "r")
-        self.check( samfile )
-
-    def testBAM( self ):
-        samfile = pysam.Samfile("ex10.bam", "rb")
-        self.check( samfile )
-
 class TestLargeOptValues( unittest.TestCase ):
 
     ints = ( 65536, 214748, 2147484, 2147483647 )
