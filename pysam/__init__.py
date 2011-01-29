@@ -54,10 +54,10 @@ class SamtoolsDispatcher(object):
         # for example: [sam_header_read2] 2 sequences loaded.
         # Ignore messages like these
         stderr = [ x for x in stderr \
-                       if not x.startswith( "[sam_header_read2]" ) or \
-                       x.startswith("[bam_index_load]") or \
-                       x.startswith("[bam_sort_core]") or \
-                       x.startswith("[samopen] SAM header is present")
+                       if not (x.startswith( "[sam_header_read2]" ) or \
+                                   x.startswith("[bam_index_load]") or \
+                                   x.startswith("[bam_sort_core]") or \
+                                   x.startswith("[samopen] SAM header is present") )
                    ]
         if stderr: raise SamtoolsError( "\n".join( stderr ) )
 

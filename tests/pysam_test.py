@@ -12,6 +12,7 @@ import itertools
 import subprocess
 import shutil
 
+SAMTOOLS="/usr/local/bin/samtools-0.1.8"
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -50,7 +51,7 @@ def runSamtools( cmd ):
 def getSamtoolsVersion():
     '''return samtools version'''
 
-    pipe = subprocess.Popen("samtools", shell=True, stderr=subprocess.PIPE).stderr
+    pipe = subprocess.Popen(SAMTOOLS, shell=True, stderr=subprocess.PIPE).stderr
     lines = "".join(pipe.readlines())
     return re.search( "Version:\s+(\S+)", lines).groups()[0]
 
@@ -67,42 +68,42 @@ class BinaryTest(unittest.TestCase):
     mCommands = \
         { "faidx" : \
         ( 
-            ("ex1.fa.fai", "samtools faidx ex1.fa"), 
+            ("ex1.fa.fai", "faidx ex1.fa"), 
             ("pysam_ex1.fa.fai", (pysam.faidx, "ex1.fa") ),
             ),
           "import" :
               (
-                ("ex1.bam", "samtools import ex1.fa.fai ex1.sam.gz ex1.bam" ),
+                ("ex1.bam", "import ex1.fa.fai ex1.sam.gz ex1.bam" ),
                 ("pysam_ex1.bam", (pysam.samimport, "ex1.fa.fai ex1.sam.gz pysam_ex1.bam") ),
                 ),
           "index":
               (
-                ("ex1.bam.bai", "samtools index ex1.bam" ),
+                ("ex1.bam.bai", "index ex1.bam" ),
                 ("pysam_ex1.bam.bai", (pysam.index, "pysam_ex1.bam" ) ),
                 ),
           "pileup1" :
           (
-                ("ex1.pileup", "samtools pileup -cf ex1.fa ex1.bam > ex1.pileup" ),
+                ("ex1.pileup", "pileup -cf ex1.fa ex1.bam > ex1.pileup" ),
                 ("pysam_ex1.pileup", (pysam.pileup, "-c -f ex1.fa ex1.bam" ) )
                 ),
           "pileup2" :
           (
-                ("ex1.glf", "samtools pileup -gf ex1.fa ex1.bam > ex1.glf" ),
+                ("ex1.glf", "pileup -gf ex1.fa ex1.bam > ex1.glf" ),
                 ("pysam_ex1.glf", (pysam.pileup, "-g -f ex1.fa ex1.bam" ) )
                 ),
           "glfview" :
         (
-                ("ex1.glfview", "samtools glfview ex1.glf > ex1.glfview"),
+                ("ex1.glfview", "glfview ex1.glf > ex1.glfview"),
                 ("pysam_ex1.glfview", (pysam.glfview, "ex1.glf" ) ),
                 ),
           "view" :
         (
-                ("ex1.view", "samtools view ex1.bam > ex1.view"),
+                ("ex1.view", "view ex1.bam > ex1.view"),
                 ("pysam_ex1.view", (pysam.view, "ex1.bam" ) ),
                 ),
           "view2" :
         (
-                ("ex1.view", "samtools view -bT ex1.fa -o ex1.view2 ex1.sam"),
+                ("ex1.view", "view -bT ex1.fa -o ex1.view2 ex1.sam"),
                 # note that -o ex1.view2 throws exception.
                 ("pysam_ex1.view", (pysam.view, "-bT ex1.fa -oex1.view2 ex1.sam" ) ),
                 ),
@@ -110,7 +111,7 @@ class BinaryTest(unittest.TestCase):
 
     # some tests depend on others. The order specifies in which order
     # the samtools commands are executed.
-    mOrder = ('faidx', 'import', 'index', 'pileup1', 'pileup2', 'glfview', 'view', 'view2' )
+    mOrder = ('faidx', 'import', 'index', 'pileup1', 'pileup2', 'view', 'view2' )
 
     def setUp( self ):
         '''setup tests. 
@@ -127,7 +128,7 @@ class BinaryTest(unittest.TestCase):
                 command = self.mCommands[label]
                 samtools_target, samtools_command = command[0]
                 pysam_target, pysam_command = command[1]
-                runSamtools( samtools_command )
+                runSamtools( " ".join( (SAMTOOLS, samtools_command )))
                 pysam_method, pysam_options = pysam_command
                 output = pysam_method( *pysam_options.split(" "), raw=True)
                 if ">" in samtools_command:
@@ -161,9 +162,6 @@ class BinaryTest(unittest.TestCase):
     
     def testPileup2( self ):
         self.checkCommand( "pileup2" )
-
-    def testGLFView( self ):
-        self.checkCommand( "glfview" )
 
     def testView( self ):
         self.checkCommand( "view" )
@@ -1002,6 +1000,77 @@ class TestRemoteFileHTTP( unittest.TestCase):
         for x, y in zip(result, ref):
             self.assertEqual( x.compare( y ), 0 )
 
+
+class TestLargeOptValues( unittest.TestCase ):
+
+    expected = (
+        902346,
+        142618765,
+        142618765,
+        142618765,
+        32767,
+        2147483647,
+        65535,
+        65536,
+        902346,
+        142618765.0,
+        142618765.0,
+        1234.0,
+        142618765.0,
+        65535.0,
+        65536.0,
+        142618766.0,
+        142618765.0 )
+
+    def check( self, samfile ):
+        for exp, rr in zip( self.expected, samfile.fetch() ):
+            obs = rr.opt("ZP")
+            print rr.qname
+            self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
+
+    def testSAM( self ):
+        samfile = pysam.Samfile("ex10.sam", "r")
+        self.check( samfile )
+
+    def testBAM( self ):
+        samfile = pysam.Samfile("ex10.bam", "rb")
+        self.check( samfile )
+
+class TestLargeOptValues( unittest.TestCase ):
+
+    ints = ( 65536, 214748, 2147484, 2147483647 )
+    floats = ( 65536.0, 214748.0, 2147484.0 )
+
+    def check( self, samfile ):
+        
+        i = samfile.fetch()
+        for exp in self.ints:
+            rr = i.next()
+            obs = rr.opt("ZP")
+            self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
+
+        for exp in [ -x for x in self.ints ]:
+            rr = i.next()
+            obs = rr.opt("ZP")
+            self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
+
+        for exp in self.floats:
+            rr = i.next()
+            obs = rr.opt("ZP")
+            self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
+
+        for exp in [ -x for x in self.floats ]:
+            rr = i.next()
+            obs = rr.opt("ZP")
+            self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
+
+    def testSAM( self ):
+        samfile = pysam.Samfile("ex10.sam", "r")
+        self.check( samfile )
+
+    def testBAM( self ):
+        samfile = pysam.Samfile("ex10.bam", "rb")
+        self.check( samfile )
 
 # TODOS
 # 1. finish testing all properties within pileup objects

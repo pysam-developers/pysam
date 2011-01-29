@@ -246,7 +246,7 @@ cdef class Samfile:
     access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
     '''
 
-    cdef char * filename
+    cdef char * _filename
     # pointer to samfile
     cdef samfile_t * samfile
     # pointer to index
@@ -296,12 +296,13 @@ cdef class Samfile:
 
         # close a previously opened file
         if self.samfile != NULL: self.close()
+        if self._filename != NULL: free(self._filename)
+        self._filename = strdup(filename)
+
         self.samfile = NULL
 
         cdef bam_header_t * header_to_write
         header_to_write = NULL
-
-        self.filename = filename
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
@@ -815,7 +816,7 @@ cdef class Fastafile:
         add function to get sequence names.
     '''
 
-    cdef char * filename
+    cdef char * _filename
     # pointer to fastafile
     cdef faidx_t * fastafile
 
@@ -842,7 +843,8 @@ cdef class Fastafile:
 
         # close a previously opened file
         if self.fastafile != NULL: self.close()
-        self.filename = filename
+        if self._filename != NULL: free(self._filename)
+        self._filename = strdup(filename)
         self.fastafile = fai_load( filename )
 
         if self.fastafile == NULL:
@@ -953,7 +955,7 @@ cdef class IteratorRow:
 
         # reopen the file
         store = StderrStore()
-        self.fp = samopen( samfile.filename, mode, NULL )
+        self.fp = samopen( samfile._filename, mode, NULL )
         store.release()
 
         self.retval = 0
@@ -1004,7 +1006,7 @@ cdef class IteratorRowAll:
 
         # reopen the file to avoid iterator conflict
         store = StderrStore()
-        self.fp = samopen( samfile.filename, mode, NULL )
+        self.fp = samopen( samfile._filename, mode, NULL )
         store.release()
 
         # allocate memory for alignment
@@ -1556,7 +1558,7 @@ cdef class AlignedRead:
                     value = <int>bam_aux2i(s)            
                     s += 2
                 elif auxtype in ('i', 'I'):
-                    value = <float>bam_aux2i(s)
+                    value = <int32_t>bam_aux2i(s)
                     s += 4
                 elif auxtype == 'f':
                     value = <float>bam_aux2f(s)
@@ -1798,11 +1800,13 @@ cdef class AlignedRead:
         v = bam_aux_get(self._delegate, tag)
         if v == NULL: raise KeyError( "tag '%s' not present" % tag )
         type = chr(v[0])
-        if type == 'c' or type == 'C' or type == 's' or type == 'S' or type == 'i':
+        if type == 'c' or type == 'C' or type == 's' or type == 'S':
             return <int>bam_aux2i(v)            
-        elif type == 'f':
+        elif type == 'i' or type == 'I':
+            return <int32_t>bam_aux2i(v)            
+        elif type == 'f' or type == 'F':
             return <float>bam_aux2f(v)
-        elif type == 'd':
+        elif type == 'd' or type == 'D':
             return <double>bam_aux2d(v)
         elif type == 'A':
             # there might a more efficient way
