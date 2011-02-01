@@ -890,11 +890,18 @@ cdef class Fastafile:
             # valid ranges are from 0 to 2^29-1
             if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
             if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
-            seq = faidx_fetch_seq(self.fastafile, 
-                                  reference, 
-                                  start,
-                                  end-1, 
-                                  &length)
+            # note: faidx_fetch_seq has a bug such that out-of-range access
+            # always returns the last residue. Hence do not use faidx_fetch_seq,
+            # but use fai_fetch instead 
+            # seq = faidx_fetch_seq(self.fastafile, 
+            #                       reference, 
+            #                       start,
+            #                       end-1, 
+            #                       &length)
+            region = "%s:%i-%i" % (reference, start+1, end)
+            seq = fai_fetch( self.fastafile, 
+                             region,
+                             &length )
         else:
             # samtools adds a '\0' at the end
             seq = fai_fetch( self.fastafile, region, &length )
@@ -1601,13 +1608,13 @@ cdef class AlignedRead:
                 for pytag, value in tags:
                     t = type(value)
                     if t == types.FloatType:
-                        fmt = "<cccf"
+                        fmt, pytype = "<cccf", 'f'
                     elif t == types.IntType:
                         if value < 0:
                             if value >= -127: fmt, pytype = "<cccb", 'c'
                             elif value >= -32767: fmt, pytype = "<ccch", 's'
                             elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, ctype = "<ccci", 'i'[0]
+                            else: fmt, pytype = "<ccci", 'i'[0]
                         else:
                             if value <= 255: fmt, pytype = "<cccB", 'C'
                             elif value <= 65535: fmt, pytype = "<cccH", 'S'
