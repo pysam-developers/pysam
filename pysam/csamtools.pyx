@@ -1,4 +1,4 @@
-# cython: embedsignature=True
+        # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
 import tempfile, os, sys, types, struct, ctypes, collections, re
@@ -1958,13 +1958,13 @@ cdef class AlignedRead:
                 for pytag, value in tags:
                     t = type(value)
                     if t == types.FloatType:
-                        fmt = "<cccf"
+                        fmt, pytype = "<cccf", 'f'
                     elif t == types.IntType:
                         if value < 0:
                             if value >= -127: fmt, pytype = "<cccb", 'c'
                             elif value >= -32767: fmt, pytype = "<ccch", 's'
                             elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, ctype = "<ccci", 'i'[0]
+                            else: fmt, pytype = "<ccci", 'i'[0]
                         else:
                             if value <= 255: fmt, pytype = "<cccB", 'C'
                             elif value <= 65535: fmt, pytype = "<cccH", 'S'
