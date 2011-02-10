@@ -1272,7 +1272,13 @@ class TestSamtoolsProxy( unittest.TestCase ):
     def testIndex( self ):
         self.assertRaises( IOError, pysam.index, "missing_file" )
 
-    
+    def testView( self ):
+        # note that view still echos "open: No such file or directory"
+        self.assertRaises( pysam.SamtoolsError, pysam.view, "missing_file" )
+
+    def testSort( self ):
+        self.assertRaises( pysam.SamtoolsError, pysam.sort, "missing_file" )
+
 if __name__ == "__main__":
     # build data files
     print "building data files"
