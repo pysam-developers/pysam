@@ -11,6 +11,8 @@ Release 0.4
    * switch from pyrex to cython
    * changed handling of samtools stderr
    * various bugfixes
+   * added Samfile.count and Samfile.mate
+   * deprecated AlignedRead.rname, added AlignedRead.tid
 
 Release 0.3
 ===========

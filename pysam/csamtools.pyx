@@ -231,12 +231,13 @@ cdef class Fastafile:
         add function to get sequence names.
     '''
 
-    cdef char * filename
+    cdef char * _filename
     # pointer to fastafile
     cdef faidx_t * fastafile
 
     def __cinit__(self, *args, **kwargs ):
         self.fastafile = NULL
+        self._filename = NULL
         self._open( *args, **kwargs )
 
     def _isOpen( self ):
@@ -258,7 +259,8 @@ cdef class Fastafile:
 
         # close a previously opened file
         if self.fastafile != NULL: self.close()
-        self.filename = filename
+        if self._filename != NULL: free(self._filename)
+        self._filename = strdup(filename)
         self.fastafile = fai_load( filename )
 
         if self.fastafile == NULL:
@@ -268,6 +270,16 @@ cdef class Fastafile:
         if self.fastafile != NULL:
             fai_destroy( self.fastafile )
             self.fastafile = NULL
+
+    def __dealloc__(self):
+        self.close()
+        if self._filename != NULL: free(self._filename)
+
+    property filename:
+        '''number of :term:`filename` associated with this object.'''
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            return self._filename
 
     def fetch( self, 
                reference = None, 
@@ -345,6 +357,39 @@ cdef class Fastafile:
 #------------------------------------------------------------------------
 #------------------------------------------------------------------------
 #------------------------------------------------------------------------
+cdef int count_callback( bam1_t *alignment, void *f):
+     '''callback for bam_fetch - count number of reads.
+     '''
+     cdef int* counter = (<int*>f)
+     counter[0] += 1;
+
+ctypedef struct MateData:
+     char * name
+     bam1_t * mate
+     uint32_t flag
+
+#------------------------------------------------------------------------
+#------------------------------------------------------------------------
+#------------------------------------------------------------------------
+cdef int mate_callback( bam1_t *alignment, void *f):
+     '''callback for bam_fetch = filter mate
+     '''
+     cdef MateData * d = (<MateData*>f)
+     # printf("mate = %p, name1 = %s, name2=%s\t%i\t%i\t%i\n", 
+     #        d.mate, d.name, bam1_qname(alignment),
+     #        d.flag, alignment.core.flag, alignment.core.flag & d.flag)
+
+     if d.mate == NULL: 
+         # could be sped up by comparing the lengths of query strings first
+         # using l_qname
+         #
+         # also, make sure that we get the other read by comparing 
+         # the flags
+         if alignment.core.flag & d.flag != 0 and \
+                 strcmp( bam1_qname( alignment ), d.name ) == 0:
+             d.mate = bam_dup1( alignment )
+
+
 cdef class Samfile:
     '''*(filename, mode='r', template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
               
@@ -380,7 +425,7 @@ cdef class Samfile:
 
     '''
 
-    cdef char * filename
+    cdef char * _filename
     # pointer to samfile
     cdef samfile_t * samfile
     # pointer to index
@@ -396,6 +441,7 @@ cdef class Samfile:
 
     def __cinit__(self, *args, **kwargs ):
         self.samfile = NULL
+        self._filename = NULL
         self.isbam = False
         self._open( *args, **kwargs )
 
@@ -427,6 +473,7 @@ cdef class Samfile:
         '''
 
         assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
+        assert filename != NULL
 
         # close a previously opened file
         if self.samfile != NULL: self.close()
@@ -434,8 +481,9 @@ cdef class Samfile:
 
         cdef bam_header_t * header_to_write
         header_to_write = NULL
-
-        self.filename = filename
+        
+        if self._filename != NULL: free(self._filename )
+        self._filename = strdup( filename )
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
@@ -684,6 +732,92 @@ cdef class Samfile:
             else:
                 return IteratorRowAll( self )
 
+    def mate( self, 
+              AlignedRead read ):
+        '''return the mate of :class:`AlignedRead` *read*.
+
+        Throws a ValueError if read is unpaired or the mate
+        is unmapped.
+
+        .. note::
+            Calling this method will change the file position.
+            This might interfere with any iterators that have
+            not re-opened the file.
+
+        '''
+        if not read.is_paired:
+            raise ValueError( "read is unpaired" )
+        if read.mate_is_unmapped:
+            raise ValueError( "mate is unmapped" )
+        
+        cdef MateData mate_data
+
+        mate_data.name = <char *>bam1_qname(read._delegate)
+        mate_data.mate = NULL
+        # xor flags to get the other mate
+        cdef int x = BAM_FREAD1 + BAM_FREAD2
+        mate_data.flag = ( read._delegate.core.flag ^ x) & x
+
+        bam_fetch(self.samfile.x.bam, 
+                  self.index, 
+                  read._delegate.core.mtid, 
+                  read._delegate.core.mpos,
+                  read._delegate.core.mpos + 1,
+                  <void*>&mate_data, 
+                  mate_callback )
+
+        if mate_data.mate == NULL:
+            raise ValueError( "mate not found" )
+
+        cdef AlignedRead dest = AlignedRead.__new__(AlignedRead)
+        dest._delegate = mate_data.mate
+        return dest
+
+    def count( self, 
+               reference = None, 
+               start = None, 
+               end = None, 
+               region = None, 
+               until_eof = False ):
+        '''*(reference = None, start = None, end = None, region = None, callback = None, until_eof = False)*
+               
+        count  reads :term:`region` using 0-based indexing. The region is specified by
+        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
+
+        Note that a :term:`TAM` file does not allow random access. If *region* or *reference* are given,
+        an exception is raised.
+        '''
+        cdef int rtid
+        cdef int rstart
+        cdef int rend
+
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+        
+        region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
+
+        cdef int counter
+        counter = 0;
+
+        if self.isbam:
+            if not until_eof and not self._hasIndex() and not self.isremote: 
+                raise ValueError( "fetch called on bamfile without index" )
+
+            if not region:
+                raise ValueError( "counting functionality requires a region/reference" )
+            if not self._hasIndex(): raise ValueError( "no index available for fetch" )
+            bam_fetch(self.samfile.x.bam, 
+                             self.index, 
+                             rtid, 
+                             rstart, 
+                             rend, 
+                             <void*>&counter, 
+                             count_callback )
+            return counter
+        else:   
+            raise ValueError ("count for a region is not available for sam files" )
+
+
     def pileup( self, 
                 reference = None, 
                 start = None, 
@@ -779,6 +913,7 @@ cdef class Samfile:
         # note: __del__ is not called.
         self.close()
         bam_destroy1(self.b)
+        if self._filename != NULL: free( self._filename )
 
     def write( self, AlignedRead read ):
         '''
@@ -798,6 +933,17 @@ cdef class Samfile:
         self.close()
         return False
 
+    ###############################################################
+    ###############################################################
+    ###############################################################
+    ## properties
+    ###############################################################
+    property filename:
+        '''number of :term:`filename` associated with this object.'''
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            return self._filename
+        
     property nreferences:
         '''number of :term:`reference` sequences in the file.'''
         def __get__(self):
@@ -940,6 +1086,14 @@ cdef class Samfile:
 
         return dest
 
+    ###############################################################
+    ###############################################################
+    ###############################################################
+    ## file-object like iterator access
+    ## note: concurrent access will cause errors (see IteratorRow
+    ## and reopen)
+    ## Possible solutions: deprecate or open new file handle
+    ###############################################################
     def __iter__(self):
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         return self 
@@ -949,7 +1103,8 @@ cdef class Samfile:
 
     cdef int cnext(self):
         '''
-        cversion of iterator. Used by :class:`pysam.Samfile.IteratorColumn`.'''
+        cversion of iterator. Used by :class:`pysam.Samfile.IteratorColumn`.
+        '''
         cdef int ret
         return samread(self.samfile, self.b)
 
@@ -1030,10 +1185,11 @@ cdef class IteratorRowRegion(IteratorRow):
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if reopen:
-            store = StderrStore()
-            self.fp = samopen( samfile.filename, mode, NULL )
+            store = StderrStore()            
+            self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
-        
+            assert self.fp != NULL
+
         self.retval = 0
 
         self.iter = bam_iter_query(self.samfile.index, 
@@ -1089,8 +1245,9 @@ cdef class IteratorRowAll(IteratorRow):
         # reopen the file to avoid iterator conflict
         if reopen:
             store = StderrStore()
-            self.fp = samopen( samfile.filename, mode, NULL )
+            self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
+            assert self.fp != NULL
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
@@ -2019,12 +2176,31 @@ cdef class AlignedRead:
         """
         :term:`target` ID
 
+        DEPRECATED from pysam-0.4 - use tid in the future.
+        The rname field caused a lot of confusion as it returns
+        the :term:`target` ID instead of the reference sequence
+        name.
+
         .. note::
 
             This field contains the index of the reference sequence 
             in the sequence dictionary. To obtain the name
             of the reference sequence, use :meth:`pysam.Samfile.getrname()`
+            
+        """
+        def __get__(self): return self._delegate.core.tid
+        def __set__(self, tid): self._delegate.core.tid = tid
 
+    property tid: 
+        """
+        :term:`target` ID
+
+        .. note::
+
+            This field contains the index of the reference sequence 
+            in the sequence dictionary. To obtain the name
+            of the reference sequence, use :meth:`pysam.Samfile.getrname()`
+            
         """
         def __get__(self): return self._delegate.core.tid
         def __set__(self, tid): self._delegate.core.tid = tid
