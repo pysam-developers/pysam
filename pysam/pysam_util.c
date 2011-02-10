@@ -6,6 +6,17 @@
 #include "bam_endian.h"
 #include "knetfile.h"
 #include "pysam_util.h"
+#include "errmod.h" // for pysam_dump 
+
+// Definition of pysamerr
+#include "stdio.h"
+FILE * pysamerr = NULL;
+
+FILE * pysam_set_stderr( FILE * f )
+{
+  pysamerr = f;
+  return f;
+}
 
 // #######################################################
 // utility routines to avoid using callbacks in bam_fetch
@@ -32,6 +43,7 @@ typedef struct {
 
 KSORT_INIT(my_off, pair64_t, pair64_lt);
 KHASH_MAP_INIT_INT(my_i, bam_binlist_t);
+KHASH_MAP_INIT_STR(s, int)
 
 struct __bam_index_t
 {
@@ -164,6 +176,60 @@ int pysam_pileup_next(const bam1_t *b,
   return 1;
 }
 
+typedef struct __bmc_aux_t {
+	int max;
+	uint32_t *info;
+	uint16_t *info16;
+	errmod_t *em;
+} bmc_aux_t;
+
+uint32_t pysam_glf_depth( glf1_t * g )
+{
+  return g->depth;
+}
+
+
+void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
+{
+  fprintf(stderr,
+	  "glf: ref_base=%i, max_mapQ=%i, min_lk=%i, depth=%i",
+	  g->ref_base,
+	  g->max_mapQ,
+	  g->min_lk,
+	  g->depth );
+
+  int x = 0;
+  for (x = 0; x < 10; ++x) 
+    fprintf(stderr, ", lk%x=%i, ", x, g->lk[x]);
+
+  fprintf(stderr,
+	  "maqcns: het_rate=%f, theta=%f, n_hap=%i, cap_mapQ=%i, errmod=%i, min_baseQ=%i, eta=%f, q_r=%f, aux_max=%i",
+	  c->het_rate,
+	  c->theta,
+	  c->n_hap,
+	  c->cap_mapQ,
+	  c->errmod,
+	  c->min_baseQ,
+	  c->eta,
+	  c->q_r,
+	  c->aux->max);
+  
+  for (x = 0; x < c->aux->max; ++x)
+    {
+      fprintf(stderr, ", info-%i=%i ", x, c->aux->info[x]);
+      if (c->aux->info[x] == 0) break;
+    }
+  
+  for (x = 0; x < c->aux->max; ++x)
+    {
+      fprintf(stderr, ", info16-%i=%i ", x, c->aux->info16[x]);
+      if (c->aux->info16[x] == 0) break;
+    }
+}
+
+
+  
+
 // pysam dispatch function to emulate the samtools
 // command line within python.
 // taken from the main function in bamtk.c
@@ -204,7 +270,7 @@ int pysam_dispatch(int argc, char *argv[] )
   else if (strcmp(argv[1], "pileup") == 0) return bam_pileup(argc-1, argv+1);
   else if (strcmp(argv[1], "merge") == 0) return bam_merge(argc-1, argv+1);
   else if (strcmp(argv[1], "sort") == 0) return bam_sort(argc-1, argv+1);
-  else if (strcmp(argv[1], "index") == 0) return bam_index(argc-1, argv+1);
+  else if (strcmp(argv[1], "index") == 0) return bam_index(argc-1, argv+1); 
   else if (strcmp(argv[1], "faidx") == 0) return faidx_main(argc-1, argv+1);
   else if (strcmp(argv[1], "fixmate") == 0) return bam_mating(argc-1, argv+1);
   else if (strcmp(argv[1], "rmdup") == 0) return bam_rmdup(argc-1, argv+1);
@@ -284,6 +350,32 @@ unsigned char pysam_translate_sequence( const unsigned char s )
 {
   return bam_nt16_table[s];
 }
+
+
+void bam_init_header_hash(bam_header_t *header);
+
+// translate a reference string *s* to a tid
+// code taken from bam_parse_region
+int pysam_reference2tid( bam_header_t *header, const char * s )
+{
+  
+  khiter_t iter;
+  khash_t(s) *h;
+  
+  bam_init_header_hash(header);
+  h = (khash_t(s)*)header->hash;
+
+  iter = kh_get(s, h, s); /* get the ref_id */
+  if (iter == kh_end(h)) { // name not found
+    return -1;
+  }
+
+  return kh_value(h, iter);
+}
+
+
+  
+
 
 
 

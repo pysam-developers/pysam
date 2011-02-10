@@ -2,6 +2,10 @@
 #define PYSAM_UTIL_H
 
 //////////////////////////////////////////////////////////////////
+// set pysam standard error to point to stream
+FILE * pysam_set_stderr( FILE * f );
+
+//////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////
 // various helper functions
@@ -37,6 +41,19 @@ bam1_t * pysam_bam_update( bam1_t * b,
 
 // translate a nucleotide character to binary code
 unsigned char pysam_translate_sequence( const unsigned char s );
+
+// defined in bam_import.c
+extern unsigned char bam_nt16_table[256];
+
+// translate a reference string *s* to a tid
+int pysam_reference2tid( bam_header_t *header, const char * s );
+
+// debugging functions
+#include "glf.h"
+uint32_t pysam_glf_depth( glf1_t * g);
+
+#include "bam_maqcns.h"
+void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c );
 
 
 #endif

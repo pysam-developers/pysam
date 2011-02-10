@@ -27,6 +27,9 @@ Glossary
    Reference
       The sequence that a :term:`tid` refers to. For example ``chr1``, ``contig123``.
 
+   SAM
+       A textual format for storing genomic alignment information.
+
    BAM
        Binary SAM format. BAM files are binary formatted, indexed and 
        allow random access.

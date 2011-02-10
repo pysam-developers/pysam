@@ -1,47 +1,63 @@
+'''benchmark pysam BAM/SAM access with the samtools commandline tools.
+
+samtools functions are called via the pysam interface to avoid the over-head
+of starting additional processes.
+'''
+
 import pysam
 import timeit 
 
 iterations = 10
 
-print "Samfile.fetch"
-s = '''
+def runBenchmark( test, 
+                  pysam_way,
+                  samtools_way = None):
+    print test
+    print timeit.repeat( pysam_way, number = iterations, setup="from __main__ import pysam" )
+    if samtools_way:
+        print timeit.repeat( samtools_way, number = iterations, setup="from __main__ import pysam" )
+
+runBenchmark( "Samfile.fetch",
+'''
 f = pysam.Samfile( "ex1.bam", "rb" )
 results = list(f.fetch())
+''',
 '''
-print timeit.repeat( s, number = iterations, setup="from __main__ import pysam" )
-
-print "pysam.view"
-s = '''
 f = pysam.view( "ex1.bam" )
 '''
-print timeit.repeat( s, number = iterations, setup="from __main__ import pysam" )
+)
 
-print "Samfile.pileup"
-s = '''
+runBenchmark( "Samfile.pileup",
+'''
 f = pysam.Samfile( "ex1.bam", "rb" )
 results = list(f.pileup())
+''',
 '''
-print timeit.repeat( s, number = iterations, setup="from __main__ import pysam" )
+f = pysam.pileup( "ex1.bam" )
+''')
 
-print "Samfile.pileup with coverage retrieval"
-s = '''
+runBenchmark( "Samfile.pileup with coverage retrieval",
+'''
 f = pysam.Samfile( "ex1.bam", "rb" )
 results = [ x.n for x in f.pileup() ]
+''' )
+
+runBenchmark( "Samfile.pileup with full retrieval",
 '''
-print timeit.repeat( s, number = iterations, setup="from __main__ import pysam" )
-
-
-print "Samfile.pileup with full retrieval"
-s = '''
 f = pysam.Samfile( "ex1.bam", "rb" )
 results = [ x.pileups for x in f.pileup() ]
-'''
-print timeit.repeat( s, number = iterations, setup="from __main__ import pysam" )
+''' )
 
-print "pysam.pileup"
-s = '''
-f = pysam.view( "ex1.bam" )
+runBenchmark( "Samfile.pileup - many references",
 '''
-print timeit.repeat( s, number = iterations, setup="from __main__ import pysam" )
+f = pysam.Samfile( "manyrefs.bam", "rb" )
+results = [ x.pileups for x in f.pileup() ]
+''',
+'''
+f = pysam.pileup( "manyrefs.bam" )
+'''
+ )
+
+
 
 

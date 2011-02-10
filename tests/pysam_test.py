@@ -7,12 +7,12 @@ and data files located there.
 
 import pysam
 import unittest
-import os, re
-import itertools
+import os, re, sys
+import itertools, collections
 import subprocess
 import shutil
-
-SAMTOOLS="/usr/local/bin/samtools-0.1.8"
+import logging
+SAMTOOLS="samtools"
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -111,7 +111,10 @@ class BinaryTest(unittest.TestCase):
 
     # some tests depend on others. The order specifies in which order
     # the samtools commands are executed.
-    mOrder = ('faidx', 'import', 'index', 'pileup1', 'pileup2', 'view', 'view2' )
+    mOrder = ('faidx', 'import', 'index', 
+              'pileup1', 'pileup2', 
+              # 'glfview', deprecated
+              'view', 'view2' )
 
     def setUp( self ):
         '''setup tests. 
@@ -139,13 +142,17 @@ class BinaryTest(unittest.TestCase):
             BinaryTest.first_time = False
 
         samtools_version = getSamtoolsVersion()
-        if samtools_version != pysam.__samtools_version__:
+
+        def _r( s ):
+            # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a -> 0.1.12
+            return re.sub( "[^0-9.]", "", s )
+
+        if _r(samtools_version) != _r( pysam.__samtools_version__):
             raise ValueError("versions of pysam/samtools and samtools differ: %s != %s" % \
                                  (pysam.__samtools_version__,
                                   samtools_version ))
 
     def checkCommand( self, command ):
-
         if command:
             samtools_target, pysam_target = self.mCommands[command][0][0], self.mCommands[command][1][0]
             self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 
@@ -163,11 +170,15 @@ class BinaryTest(unittest.TestCase):
     def testPileup2( self ):
         self.checkCommand( "pileup2" )
 
+    # deprecated
+    # def testGLFView( self ):
+    #     self.checkCommand( "glfview" )
+
     def testView( self ):
         self.checkCommand( "view" )
 
     def testEmptyIndex( self ):
-        self.assertRaises( pysam.SamtoolsError, pysam.index, "exdoesntexist.bam" )
+        self.assertRaises( IOError, pysam.index, "exdoesntexist.bam" )
 
     def __del__(self):
         return
@@ -290,12 +301,19 @@ class TestIteratorRow(unittest.TestCase):
     def checkRange( self, rnge ):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.view( "ex1.bam", rnge , raw = True) )
+        sa = list(pysam.view( "ex1.bam", rnge, raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
         # check if the same reads are returned and in the same order
         for line, pair in enumerate( zip( ps, sa ) ):
-            data = pair[1].split("\t")
-            self.assertEqual( pair[0].qname, data[0], "read id mismatch in line %i: %s != %s" % (line, pair[0].rname, data[0]) )
+            a,b = pair
+            d = b.split("\t")
+            self.assertEqual( a.qname, d[0], "line %i: read id mismatch: %s != %s" % (line, a.rname, d[0]) )
+            self.assertEqual( a.pos, int(d[3])-1, "line %i: read position mismatch: %s != %s, \n%s\n%s\n" % \
+                                  (line, a.pos, int(d[3])-1,
+                                   str(a), str(d) ) )
+            self.assertEqual( a.qual, d[10], "line %i: quality mismatch: %s != %s, \n%s\n%s\n" % \
+                                  (line, a.qual, d[10],
+                                   str(a), str(d) ) )
 
     def testIteratePerContig(self):
         '''check random access per contig'''
@@ -310,7 +328,6 @@ class TestIteratorRow(unittest.TestCase):
 
     def tearDown(self):
         self.samfile.close()
-
 
 class TestIteratorRowAll(unittest.TestCase):
 
@@ -379,7 +396,9 @@ class TestIteratorColumn(unittest.TestCase):
                     # one read, all columns of the read are returned
                     self.assertEqual( len(columns), refcolumns, "pileup incomplete at position %i: got %i, expected %i " %\
                                           (pos, len(columns), refcolumns))
+
                     
+    
     def tearDown(self):
         self.samfile.close()
     
@@ -514,7 +533,17 @@ class TestHeaderSam(unittest.TestCase):
     def testHeaders(self):
         self.compareHeaders( self.header, self.samfile.header )
         self.compareHeaders( self.samfile.header, self.header )
-        
+
+    def testNameMapping( self ):
+        for x, y in enumerate( ("chr1", "chr2")):
+            tid = self.samfile.gettid( y )
+            ref = self.samfile.getrname( x )
+            self.assertEqual( tid, x )
+            self.assertEqual( ref, y )
+
+        self.assertEqual( self.samfile.gettid("chr?"), -1 )
+        self.assertRaises( ValueError, self.samfile.getrname, 2 )
+
     def tearDown(self):
         self.samfile.close()
 
@@ -597,19 +626,30 @@ class TestExceptions(unittest.TestCase):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1", 5, 0 )
         self.assertRaises( ValueError, self.samfile.fetch, "chr1", -5, -10 )
 
+        self.assertRaises( ValueError, self.samfile.count, "chr1", 5, -10 )
+        self.assertRaises( ValueError, self.samfile.count, "chr1", 5, 0 )        
+        self.assertRaises( ValueError, self.samfile.count, "chr1", -5, -10 )
+
     def testOutOfRangeNegativeOldFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5-10" )
         self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5-0" )
         self.assertRaises( ValueError, self.samfile.fetch, region="chr1:-5--10" )
 
+        self.assertRaises( ValueError, self.samfile.count, region="chr1:-5-10" )
+        self.assertRaises( ValueError, self.samfile.count, region="chr1:-5-0" )
+        self.assertRaises( ValueError, self.samfile.count, region="chr1:-5--10" )
+
     def testOutOfRangNewFormat(self):
-        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 9999999999, 99999999999 )
+        self.assertRaises( OverflowError, self.samfile.fetch, "chr1", 9999999999, 99999999999 )
+        self.assertRaises( OverflowError, self.samfile.count, "chr1", 9999999999, 99999999999 )
 
     def testOutOfRangeLargeNewFormat(self):
-        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
+        self.assertRaises( OverflowError, self.samfile.fetch, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
+        self.assertRaises( OverflowError, self.samfile.count, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
 
     def testOutOfRangeLargeOldFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
+        self.assertRaises( ValueError, self.samfile.count, "chr1:99999999999999999-999999999999999999" )
 
     def testZeroToZero(self):        
         '''see issue 44'''
@@ -662,8 +702,9 @@ class TestFastaFile(unittest.TestCase):
     def testOutOfRangeAccess( self ):
         '''test out of range access.'''
         # out of range access returns an empty string
-        self.assertEqual( self.file.fetch( "chr1", 10000, 12000), "" ) 
-        self.assertEqual( self.file.fetch( "chr2", 10000, 12000), "" ) 
+        for contig, s in self.mSequences.iteritems():
+            self.assertEqual( self.file.fetch( contig, len(s), len(s)+1), "" )
+
         self.assertEqual( self.file.fetch( "chr3", 0 , 100), "" ) 
 
     def testFetchErrors( self ):
@@ -963,10 +1004,12 @@ class TestRemoteFileFTP(unittest.TestCase):
     region = "1:1-1000"
 
     def testFTPView( self ):
+        return
         result = pysam.view( self.url, self.region )
         self.assertEqual( len(result), 36 )
         
     def testFTPFetch( self ):
+        return
         samfile = pysam.Samfile(self.url, "rb")  
         result = list(samfile.fetch( region = self.region ))
         self.assertEqual( len(result), 36 )
@@ -978,7 +1021,11 @@ class TestRemoteFileHTTP( unittest.TestCase):
     local = "ex1.bam"
 
     def testView( self ):
-        self.assertRaises( pysam.SamtoolsError, pysam.view, self.url, self.region )
+        samfile_local = pysam.Samfile(self.local, "rb")  
+        ref = list(samfile_local.fetch( region = self.region ))
+        
+        result = pysam.view( self.url, self.region )
+        self.assertEqual( len(result), len(ref) )
         
     def testFetch( self ):
         samfile = pysam.Samfile(self.url, "rb")  
@@ -1036,9 +1083,201 @@ class TestLargeOptValues( unittest.TestCase ):
         samfile = pysam.Samfile("ex10.bam", "rb")
         self.check( samfile )
 
+class TestSNPCalls( unittest.TestCase ):
+    '''test pysam SNP calling ability.'''
+
+    def checkEqual( self, a, b ):
+        for x in ("reference_base", 
+                  "pos",
+                  "genotype",
+                  "consensus_quality",
+                  "snp_quality",
+                  "mapping_quality",
+                  "coverage" ):
+            self.assertEqual( getattr(a, x), getattr(b,x), "%s mismatch: %s != %s\n%s\n%s" % 
+                              (x, getattr(a, x), getattr(b,x), str(a), str(b)))
+
+    def testAllPositionsViaIterator( self ):
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        try: 
+            refs = [ x for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ) if x.reference_base != "*"]
+        except pysam.SamtoolsError:
+            pass
+
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+        calls = list(pysam.IteratorSNPCalls(i))
+        for x,y in zip( refs, calls ):
+            self.checkEqual( x, y )
+
+    def testPerPositionViaIterator( self ):
+        # test pileup for each position. This is a slow operation
+        # so this test is disabled 
+        return
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):
+            if x.reference_base == "*": continue
+            i = samfile.pileup( x.chromosome, x.pos, x.pos+1,
+                                fastafile = fastafile,
+                                stepper = "samtools" )
+            z = [ zz for zz in pysam.IteratorSamtools(i) if zz.pos == x.pos ]
+            self.assertEqual( len(z), 1 )
+            self.checkEqual( x, z[0] )
+
+    def testPerPositionViaCaller( self ):
+        # test pileup for each position. This is a fast operation
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+        caller = pysam.SNPCaller( i )
+
+        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):
+            if x.reference_base == "*": continue
+            call = caller.call( x.chromosome, x.pos )
+            self.checkEqual( x, call )
+
+class TestIndelCalls( unittest.TestCase ):
+    '''test pysam indel calling.'''
+
+    def checkEqual( self, a, b ):
+
+        for x in ("pos",
+                  "genotype",
+                  "consensus_quality",
+                  "snp_quality",
+                  "mapping_quality",
+                  "coverage",
+                  "first_allele",
+                  "second_allele",
+                  "reads_first",
+                  "reads_second",
+                  "reads_diff"):
+            if b.genotype == "*/*" and x == "second_allele":
+                # ignore test for second allele (positions chr2:439 and chr2:1512)
+                continue
+            self.assertEqual( getattr(a, x), getattr(b,x), "%s mismatch: %s != %s\n%s\n%s" % 
+                              (x, getattr(a, x), getattr(b,x), str(a), str(b)))
+
+    def testAllPositionsViaIterator( self ):
+
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        try: 
+            refs = [ x for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ) if x.reference_base == "*"]
+        except pysam.SamtoolsError:
+            pass
+
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+        calls = [ x for x in list(pysam.IteratorIndelCalls(i)) if x != None ]
+        for x,y in zip( refs, calls ):
+            self.checkEqual( x, y )
+
+    def testPerPositionViaCaller( self ):
+        # test pileup for each position. This is a fast operation
+        samfile = pysam.Samfile( "ex1.bam", "rb")  
+        fastafile = pysam.Fastafile( "ex1.fa" )
+        i = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+        caller = pysam.IndelCaller( i )
+
+        for x in pysam.pileup( "-c", "-f", "ex1.fa", "ex1.bam" ):
+            if x.reference_base != "*": continue
+            call = caller.call( x.chromosome, x.pos )
+            self.checkEqual( x, call )
+
+class TestLogging( unittest.TestCase ):
+    '''test around bug issue 42,
+
+    failed in versions < 0.4
+    '''
+
+    def check( self, bamfile, log ):
+
+        if log:
+            logger = logging.getLogger('franklin')
+            logger.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+            log_hand  = logging.FileHandler('log.txt')
+            log_hand.setFormatter(formatter)
+            logger.addHandler(log_hand)
+
+        bam  = pysam.Samfile(bamfile, 'rb')
+        cols = bam.pileup()
+        self.assert_( True )
+
+    def testFail1( self ):
+        self.check( "ex9_fail.bam", False )
+        self.check( "ex9_fail.bam", True )
+
+    def testNoFail1( self ):
+        self.check( "ex9_nofail.bam", False )
+        self.check( "ex9_nofail.bam", True )
+
+    def testNoFail2( self ):
+        self.check( "ex9_nofail.bam", True )
+        self.check( "ex9_nofail.bam", True )
+        
 # TODOS
 # 1. finish testing all properties within pileup objects
 # 2. check exceptions and bad input problems (missing files, optional fields that aren't present, etc...)
+# 3. check: presence of sequence
+
+class TestSamfileUtilityFunctions( unittest.TestCase ):
+
+    def testCount( self ):
+
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+
+        for contig in ("chr1", "chr2" ):
+            for start in xrange( 0, 2000, 100 ):
+                end = start + 1
+                self.assertEqual( len( list( samfile.fetch( contig, start, end ) ) ),
+                                  samfile.count( contig, start, end ) )
+
+                # test empty intervals
+                self.assertEqual( len( list( samfile.fetch( contig, start, start ) ) ),
+                                  samfile.count( contig, start, start ) )
+
+                # test half empty intervals
+                self.assertEqual( len( list( samfile.fetch( contig, start ) ) ),
+                                  samfile.count( contig, start ) )
+
+    def testMate( self ):
+        '''test mate access.'''
+
+        readnames = [ x.split("\t")[0] for x in open( "ex1.sam", "r" ).readlines() ]
+        counts = collections.defaultdict( int )
+        for x in readnames: counts[x] += 1
+
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        for read in samfile.fetch():
+            if not read.is_paired:
+                self.assertRaises( ValueError, samfile.mate, read )
+            elif read.mate_is_unmapped:
+                self.assertRaises( ValueError, samfile.mate, read )
+            else:
+                if counts[read.qname] == 1:
+                    self.assertRaises( ValueError, samfile.mate, read )
+                else:
+                    mate = samfile.mate( read )
+                    self.assertEqual( read.qname, mate.qname )
+                    self.assertEqual( read.is_read1, mate.is_read2 )
+                    self.assertEqual( read.is_read2, mate.is_read1 )
+                    self.assertEqual( read.pos, mate.mpos )
+                    self.assertEqual( read.mpos, mate.pos )
+
+class TestSamtoolsProxy( unittest.TestCase ):
+    '''tests for sanity checking access to samtools functions.'''
+
+    def testIndex( self ):
+        self.assertRaises( IOError, pysam.index, "missing_file" )
+
+    def testView( self ):
+        # note that view still echos "open: No such file or directory"
+        self.assertRaises( pysam.SamtoolsError, pysam.view, "missing_file" )
+
+    def testSort( self ):
+        self.assertRaises( pysam.SamtoolsError, pysam.sort, "missing_file" )
 
 if __name__ == "__main__":
     # build data files

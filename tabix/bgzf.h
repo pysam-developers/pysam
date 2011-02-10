@@ -62,6 +62,13 @@ typedef struct {
 extern "C" {
 #endif
 
+/* 
+ * Checks the magic string of the file. Returns 1
+ *  for bgzipped files, -1 on errors and 0 for files
+ *  without the bgzip magic string.
+ */
+int is_bgzipped(const char *path);
+
 /*
  * Open an existing file descriptor for reading or writing.
  * Mode must be either "r" or "w".

@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2008 Genome Research Ltd (GRL).
+   Copyright (c) 2008-2010 Genome Research Ltd (GRL).
 
    Permission is hereby granted, free of charge, to any person obtaining
    a copy of this software and associated documentation files (the
@@ -230,7 +230,7 @@ typedef struct __bam_iter_t *bam_iter_t;
   @param  b  pointer to an alignment
   @return    pointer to quality string
  */
-#define bam1_qual(b) ((b)->data + (b)->core.n_cigar*4 + (b)->core.l_qname + ((b)->core.l_qseq + 1)/2)
+#define bam1_qual(b) ((b)->data + (b)->core.n_cigar*4 + (b)->core.l_qname + (((b)->core.l_qseq + 1)>>1))
 
 /*! @function
   @abstract  Get a base on read
@@ -455,6 +455,21 @@ extern "C" {
 
 	char *bam_format1_core(const bam_header_t *header, const bam1_t *b, int of);
 
+	/*!
+	  @abstract       Check whether a BAM record is plausibly valid
+	  @param  header  associated header structure, or NULL if unavailable
+	  @param  b       alignment to validate
+	  @return         0 if the alignment is invalid; non-zero otherwise
+
+	  @discussion  Simple consistency check of some of the fields of the
+	  alignment record.  If the header is provided, several additional checks
+	  are made.  Not all fields are checked, so a non-zero result is not a
+	  guarantee that the record is valid.  However it is usually good enough
+	  to detect when bam_seek() has been called with a virtual file offset
+	  that is not the offset of an alignment record.
+	 */
+	int bam_validate1(const bam_header_t *header, const bam1_t *b);
+
 	const char *bam_get_library(bam_header_t *header, const bam1_t *b);
 
 
@@ -480,7 +495,7 @@ extern "C" {
 		bam1_t *b;
 		int32_t qpos;
 		int indel, level;
-		uint32_t is_del:1, is_head:1, is_tail:1;
+		uint32_t is_del:1, is_head:1, is_tail:1, is_refskip:1, aux:28;
 	} bam_pileup1_t;
 
 	typedef int (*bam_plp_auto_f)(void *data, bam1_t *b);
@@ -493,6 +508,7 @@ extern "C" {
 	const bam_pileup1_t *bam_plp_next(bam_plp_t iter, int *_tid, int *_pos, int *_n_plp);
 	const bam_pileup1_t *bam_plp_auto(bam_plp_t iter, int *_tid, int *_pos, int *_n_plp);
 	void bam_plp_set_mask(bam_plp_t iter, int mask);
+	void bam_plp_set_maxcnt(bam_plp_t iter, int maxcnt);
 	void bam_plp_reset(bam_plp_t iter);
 	void bam_plp_destroy(bam_plp_t iter);
 
@@ -501,6 +517,7 @@ extern "C" {
 
 	bam_mplp_t bam_mplp_init(int n, bam_plp_auto_f func, void **data);
 	void bam_mplp_destroy(bam_mplp_t iter);
+	void bam_mplp_set_maxcnt(bam_mplp_t iter, int maxcnt);
 	int bam_mplp_auto(bam_mplp_t iter, int *_tid, int *_pos, int *n_plp, const bam_pileup1_t **plp);
 
 	/*! @typedef
@@ -693,8 +710,8 @@ static inline bam1_t *bam_copy1(bam1_t *bdst, const bam1_t *bsrc)
 {
 	uint8_t *data = bdst->data;
 	int m_data = bdst->m_data;   // backup data and m_data
-	if (m_data < bsrc->m_data) { // double the capacity
-		m_data = bsrc->m_data; kroundup32(m_data);
+	if (m_data < bsrc->data_len) { // double the capacity
+		m_data = bsrc->data_len; kroundup32(m_data);
 		data = (uint8_t*)realloc(data, m_data);
 	}
 	memcpy(data, bsrc->data, bsrc->data_len); // copy var-len data

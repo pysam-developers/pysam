@@ -42,8 +42,8 @@ class SamtoolsDispatcher(object):
         self.parsers = parsers
         self.stderr = []
 
-    def __call__(self,*args, **kwargs):
-        '''execute the samtools command
+    def __call__(self, *args, **kwargs):
+        '''execute a samtools command
         '''
         retval, stderr, stdout = csamtools._samtools_dispatch( self.dispatch, args )
         if retval: raise SamtoolsError( "\n".join( stderr ) )
