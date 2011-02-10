@@ -2335,11 +2335,13 @@ cdef class AlignedRead:
         v = bam_aux_get(self._delegate, tag)
         if v == NULL: raise KeyError( "tag '%s' not present" % tag )
         type = chr(v[0])
-        if type == 'c' or type == 'C' or type == 's' or type == 'S' or type == 'i':
+        if type == 'c' or type == 'C' or type == 's' or type == 'S':
             return <int>bam_aux2i(v)            
-        elif type == 'f':
+        elif type == 'i' or type == 'I':
+            return <int32_t>bam_aux2i(v)            
+        elif type == 'f' or type == 'F':
             return <float>bam_aux2f(v)
-        elif type == 'd':
+        elif type == 'd' or type == 'D':
             return <double>bam_aux2d(v)
         elif type == 'A':
             # there might a more efficient way

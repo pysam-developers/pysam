@@ -12,7 +12,7 @@ import itertools, collections
 import subprocess
 import shutil
 import logging
-SAMTOOLS="/usr/local/bin/samtools-0.1.8"
+SAMTOOLS="samtools"
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
