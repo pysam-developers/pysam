@@ -1266,6 +1266,12 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
                     self.assertEqual( read.pos, mate.mpos )
                     self.assertEqual( read.mpos, mate.pos )
 
+class TestSamtoolsProxy( unittest.TestCase ):
+    '''tests for sanity checking access to samtools functions.'''
+
+    def testIndex( self ):
+        self.assertRaises( IOError, pysam.index, "missing_file" )
+
     
 if __name__ == "__main__":
     # build data files
