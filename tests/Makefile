@@ -6,8 +6,8 @@ all: ex1.pileup.gz ex1.bam.bai \
 	ex5.bam ex5.bam.bai \
 	ex6.bam \
 	ex8.bam ex8.bam.bai \
-	ex9_nofail.bam ex9_nofail.bam.bai \
-	ex9_fail.bam ex9_fail.bam.bai \
+	ex9_nofail.bam.bai \
+	ex9_fail.bam.bai \
         ex10.bam ex10.bam.bai
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
