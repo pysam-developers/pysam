@@ -1266,7 +1266,7 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
                     self.assertEqual( read.pos, mate.mpos )
                     self.assertEqual( read.mpos, mate.pos )
 
-
+    
 if __name__ == "__main__":
     # build data files
     print "building data files"
