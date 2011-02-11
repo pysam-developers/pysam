@@ -5,9 +5,8 @@ Release notes
 Release 0.4
 ===========
 
-   * switch to samtools 0.1.12a
+   * switch to samtools 0.1.12a and tabix 0.2.3
    * added snp and indel calling.
-   * improved tag parsing (TODO)
    * switch from pyrex to cython
    * changed handling of samtools stderr
    * various bugfixes
