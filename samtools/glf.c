@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include "glf.h"
 
+#ifndef inline
+#define inline __inline
+#endif
+
 #ifdef _NO_BGZF
 // then alias bgzf_*() functions
 #endif

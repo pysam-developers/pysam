@@ -62,7 +62,7 @@ typedef struct _gz_header_s _gz_header;
 #define RZ_COMPRESS_LEVEL 6
 #endif
 
-#define RZ_BIN_SIZE ((1LLU << 32) / RZ_BLOCK_SIZE)
+#define RZ_BIN_SIZE ((1ULL << 32) / RZ_BLOCK_SIZE)
 
 typedef struct {
 	uint32_t *cell_offsets; // i

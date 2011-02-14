@@ -1,6 +1,12 @@
 #include "pysam.h"
 
 #include <math.h>
+#ifndef M_LN10
+#define 	M_LN10   2.30258509299404568402
+#endif
+#ifndef M_LN2
+#define 	M_LN2   0.69314718055994530942
+#endif
 #include "errmod.h"
 #include "ksort.h"
 KSORT_INIT_GENERIC(uint16_t)

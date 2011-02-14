@@ -16,8 +16,16 @@
 #include "kseq.h"
 #include "khash.h"
 
+#ifndef inline
+#define inline __inline
+#endif
+
 KSTREAM_INIT(gzFile, gzread, 8192)
 KHASH_MAP_INIT_STR(ref, uint64_t)
+
+#ifdef _MSC_VER
+#define atoll _atoi64
+#endif
 
 void bam_init_header_hash(bam_header_t *header);
 void bam_destroy_header_hash(bam_header_t *header);
@@ -75,7 +83,11 @@ char **__bam_get_lines(const char *fn, int *_n) // for bam_plcmd.c only
 {
 	char **list = 0, *s;
 	int n = 0, dret, m = 0;
+#ifdef _MSC_VER
+	gzFile fp = (strcmp(fn, "-") == 0)? gzdopen(_fileno(stdin), "r") : gzopen(fn, "r");
+#else
 	gzFile fp = (strcmp(fn, "-") == 0)? gzdopen(fileno(stdin), "r") : gzopen(fn, "r");
+#endif
 	kstream_t *ks;
 	kstring_t *str;
 	str = (kstring_t*)calloc(1, sizeof(kstring_t));

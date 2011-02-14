@@ -60,6 +60,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef inline
+#define inline __inline
+#endif
+
 typedef struct {
 	void *left, *right;
 	int depth;

@@ -13,6 +13,8 @@ include pysam/csamtools.pxd
 include pysam/csamtools.pyx
 include pysam/csamtools.c
 include pysam/ctabix.pxd
+include pysam/ctabix.c
+include pysam/ctabix.pyx
 include pysam/pysam_util.h
 include samtools/*.h
 include samtools/*/*.h

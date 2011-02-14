@@ -29,9 +29,15 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#ifndef _MSC_VER
 #include <sys/select.h>
 #include <sys/stat.h>
+#endif
 #include "bgzf.h"
+
+#ifndef __func__
+#define __func __FUNCTION__
+#endif
 
 static const int WINDOW_SIZE = 64 * 1024;
 
@@ -147,6 +153,8 @@ int main(int argc, char **argv)
 	} else {
 		struct stat sbuf;
 		int f_dst;
+		char *name;
+		int len;
 
 		if ( argc>optind )
 		{
@@ -155,8 +163,7 @@ int main(int argc, char **argv)
 				fprintf(pysamerr, "[bgzip] %s: %s\n", strerror(errno), argv[optind]);
 				return 1;
 			}
-			char *name;
-			int len = strlen(argv[optind]);
+			len = strlen(argv[optind]);
 			if ( strcmp(argv[optind]+len-3,".gz") )
 			{
 				fprintf(pysamerr, "[bgzip] %s: unknown suffix -- ignored\n", argv[optind]);

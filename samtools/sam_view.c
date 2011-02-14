@@ -9,6 +9,10 @@
 #include "khash.h"
 KHASH_SET_INIT_STR(rg)
 
+#ifndef inline
+#define inline __inline
+#endif
+
 // When counting records instead of printing them,
 // data passed to the bam_fetch callback is encapsulated in this struct.
 typedef struct {

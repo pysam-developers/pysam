@@ -10,6 +10,18 @@
 #endif
 #include "tabix.h"
 
+#ifndef __func__
+#define __func__ __FUNCTION__
+#endif
+
+#ifndef inline
+#define inline __inline
+#endif
+
+#ifndef ftello
+#define ftello ftell
+#endif
+
 #define TAD_MIN_CHUNK_GAP 32768
 // 1<<14 is the size of minimum bin.
 #define TAD_LIDX_SHIFT    14

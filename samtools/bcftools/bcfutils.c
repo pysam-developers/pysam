@@ -3,6 +3,10 @@
 #include "khash.h"
 KHASH_MAP_INIT_STR(str2id, int)
 
+#ifndef alloca
+#define alloca _alloca
+#endif
+
 void *bcf_build_refhash(bcf_hdr_t *h)
 {
 	khash_t(str2id) *hash;

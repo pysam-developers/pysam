@@ -3,6 +3,10 @@
 #include "khash.h"
 #include "klist.h"
 
+#ifndef inline
+#define inline __inline
+#endif
+
 #define QUEUE_CLEAR_SIZE 0x100000
 #define MAX_POS 0x7fffffff
 

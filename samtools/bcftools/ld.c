@@ -3,6 +3,11 @@
 #include <math.h>
 #include "bcf.h"
 
+#ifdef _MSC_VER
+#include <float.h>
+#define isnan _isnan
+#endif
+
 static double g_q2p[256];
 
 #define LD_ITER_MAX 50

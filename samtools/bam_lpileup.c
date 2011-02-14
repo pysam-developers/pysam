@@ -4,6 +4,10 @@
 #include "bam.h"
 #include "ksort.h"
 
+#ifndef inline
+#define __inline
+#endif
+
 #define TV_GAP 2
 
 typedef struct __freenode_t {

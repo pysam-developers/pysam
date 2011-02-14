@@ -5,6 +5,10 @@
 #include <unistd.h>
 #include "sam.h"
 
+#ifndef inline
+#define inline __inline
+#endif
+
 typedef bam1_t *bam1_p;
 
 #include "khash.h"
@@ -178,6 +182,8 @@ void bam_rmdupse_core(samfile_t *in, samfile_t *out, int force_se);
 
 int bam_rmdup(int argc, char *argv[])
 {
+    extern int optind;
+    
 	int c, is_se = 0, force_se = 0;
 	samfile_t *in, *out;
 	while ((c = getopt(argc, argv, "sS")) >= 0) {

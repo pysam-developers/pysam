@@ -40,6 +40,9 @@
 #include <unistd.h>
 #include "razf.h"
 
+#ifndef inline
+#define inline __inline
+#endif
 
 #if ZLIB_VERNUM < 0x1221
 struct _gz_header_s {
@@ -57,7 +60,11 @@ struct _gz_header_s {
     int     hcrc;
     int     done;
 };
+#ifdef _MSC_VER
+#pragma message ( "zlib < 1.2.2.1; RAZF writing is disabled." )
+#else
 #warning "zlib < 1.2.2.1; RAZF writing is disabled."
+#endif
 #endif
 
 #define DEF_MEM_LEVEL 8
@@ -68,9 +75,9 @@ static inline uint32_t byte_swap_4(uint32_t v){
 }
 
 static inline uint64_t byte_swap_8(uint64_t v){
-	v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
-	v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
-	return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
+	v = ((v & 0x00000000FFFFFFFFULL) << 32) | (v >> 32);
+	v = ((v & 0x0000FFFF0000FFFFULL) << 16) | ((v & 0xFFFF0000FFFF0000ULL) >> 16);
+	return ((v & 0x00FF00FF00FF00FFULL) << 8) | ((v & 0xFF00FF00FF00FF00ULL) >> 8);
 }
 
 static inline int is_big_endian(){
@@ -282,7 +289,7 @@ static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 			n = RZ_BUFFER_SIZE - rz->buf_len;
 			for(i=0;i<n;i++) ((char*)rz->inbuf + rz->buf_len)[i] = ((char*)data)[i];
 			size -= n;
-			data += n;
+			(char *)data += n;
 			rz->buf_len += n;
 		}
 	}
@@ -296,7 +303,7 @@ int razf_write(RAZF* rz, const void *data, int size){
 	while(rz->in + rz->buf_len + size >= next_block){
 		n = next_block - rz->in - rz->buf_len;
 		_razf_buffered_write(rz, data, n);
-		data += n;
+		(char *)data += n;
 		size -= n;
 		razf_flush(rz);
 		add_zindex(rz, rz->in, rz->out);
@@ -391,7 +398,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	ret = inflateInit2(rz->stream, -WINDOW_BITS);
 	if(ret != Z_OK){ inflateEnd(rz->stream); goto PLAIN_FILE;}
 	rz->stream->avail_in = n - rz->header_size;
-	rz->stream->next_in  = rz->inbuf + rz->header_size;
+	rz->stream->next_in  = (char *)rz->inbuf + rz->header_size;
 	rz->stream->avail_out = RZ_BUFFER_SIZE;
 	rz->stream->next_out  = rz->outbuf;
 	rz->file_type = FILE_TYPE_GZ;
@@ -399,7 +406,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	rz->block_pos = rz->header_size;
 	rz->next_block_pos = rz->header_size;
 	rz->block_off = 0;
-	if(ext_len < 7 || memcmp(rz->inbuf + ext_off, c, 4) != 0) return rz;
+	if(ext_len < 7 || memcmp((char*)rz->inbuf + ext_off, c, 4) != 0) return rz;
 	if(((((unsigned char*)rz->inbuf)[ext_off + 5] << 8) | ((unsigned char*)rz->inbuf)[ext_off + 6]) != RZ_BLOCK_SIZE){
 		fprintf(pysamerr, " -- WARNING: RZ_BLOCK_SIZE is not %d, treat source as gz file.  in %s -- %s:%d --\n", RZ_BLOCK_SIZE, __FUNCTION__, __FILE__, __LINE__);
 		return rz;
@@ -630,13 +637,13 @@ int razf_read(RAZF *rz, void *data, int size){
 				for(i=0;i<size;i++) ((char*)data)[i] = ((char*)rz->outbuf + rz->buf_off)[i];
 				rz->buf_off += size;
 				rz->buf_len -= size;
-				data += size;
+				(char *)data += size;
 				rz->block_off += size;
 				size = 0;
 				break;
 			} else {
 				for(i=0;i<rz->buf_len;i++) ((char*)data)[i] = ((char*)rz->outbuf + rz->buf_off)[i];
-				data += rz->buf_len;
+				(char *)data += rz->buf_len;
 				size -= rz->buf_len;
 				rz->block_off += rz->buf_len;
 				rz->buf_off = 0;

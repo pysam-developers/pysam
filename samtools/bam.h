@@ -45,6 +45,10 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifndef inline
+#define inline __inline
+#endif
+
 #ifndef BAM_LITE
 #define BAM_VIRTUAL_OFFSET16
 #include "bgzf.h"

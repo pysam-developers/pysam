@@ -9,6 +9,10 @@
 #include "prob1.h"
 #include "kstring.h"
 
+#ifndef __func__
+#define __func__ __FUNCTION__
+#endif
+
 #include "khash.h"
 KHASH_SET_INIT_INT64(set64)
 

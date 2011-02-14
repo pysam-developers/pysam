@@ -9,6 +9,11 @@
 #include "khash.h"
 KHASH_SET_INIT_STR(rg)
 
+#ifdef _MSC_VER
+#include <float.h>
+#define alloca _alloca
+#endif
+
 #define MINUS_CONST 0x10000000
 #define INDEL_WINDOW_SIZE 50
 #define MIN_SUPPORT_COEF 500

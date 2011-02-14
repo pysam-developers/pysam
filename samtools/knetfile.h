@@ -10,6 +10,9 @@
 #define netclose(fd) close(fd)
 #else
 #include <winsock2.h>
+#ifdef _MSC_VER
+#pragma comment(lib, "Ws2_32.lib")
+#endif
 #define netread(fd, ptr, len) recv(fd, ptr, len, 0)
 #define netwrite(fd, ptr, len) send(fd, ptr, len, 0)
 #define netclose(fd) closesocket(fd)

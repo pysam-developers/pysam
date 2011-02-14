@@ -198,9 +198,10 @@ static HeaderTag *new_tag(const char *name, const char *value_from, const char *
 static HeaderTag *header_line_has_tag(HeaderLine *hline, const char *key)
 {
     list_t *tags = hline->tags;
+	HeaderTag *tag;
     while (tags)
     {
-        HeaderTag *tag = tags->data;
+        tag = tags->data;
         if ( tag->key[0]==key[0] && tag->key[1]==key[1] ) return tag;
         tags = tags->next;
     }
@@ -216,11 +217,13 @@ static HeaderTag *header_line_has_tag(HeaderLine *hline, const char *key)
 static int sam_header_compare_lines(HeaderLine *hline1, HeaderLine *hline2)
 {
     HeaderTag *t1, *t2;
+	int itype;
+	int missing=0, itag=0;
 
     if ( hline1->type[0]!=hline2->type[0] || hline1->type[1]!=hline2->type[1] )
         return 0;
 
-    int itype = tag_exists(hline1->type,types);
+    itype = tag_exists(hline1->type,types);
     if ( itype==-1 ) {
 		debug("[sam_header_compare_lines] Unknown type [%c%c]\n", hline1->type[0],hline1->type[1]);
 		return -1; // FIXME (lh3): error; I do not know how this will be handled in Petr's code
@@ -244,7 +247,6 @@ static int sam_header_compare_lines(HeaderLine *hline1, HeaderLine *hline2)
         return 0;
     }
 
-    int missing=0, itag=0;
     while ( required_tags[itype] && required_tags[itype][itag] )
     {
         t1 = header_line_has_tag(hline1,required_tags[itype][itag]);
@@ -304,7 +306,11 @@ static HeaderLine *sam_header_line_clone(const HeaderLine *hline)
         HeaderTag *new = malloc(sizeof(HeaderTag));
         new->key[0] = old->key[0];
         new->key[1] = old->key[1];
-        new->value  = strdup(old->value);
+#ifdef _MSC_VER
+        new->value  = _strdup(old->value);
+#else
+		new->value  = strdup(old->value);
+#endif
         out->tags = list_append(out->tags, new);
 
         tags = tags->next;
@@ -343,6 +349,7 @@ static HeaderLine *sam_header_line_parse(const char *headerLine)
     HeaderLine *hline;
     HeaderTag *tag;
     const char *from, *to;
+	int itype;
     from = headerLine;
 
     if ( *from != '@' ) {
@@ -362,7 +369,7 @@ static HeaderLine *sam_header_line_parse(const char *headerLine)
     hline->type[1] = from[1];
     hline->tags = NULL;
 
-    int itype = tag_exists(hline->type, types);
+    itype = tag_exists(hline->type, types);
     
     from = to;
     while (*to && *to=='\t') to++;
@@ -470,9 +477,10 @@ static void print_header_line(FILE *fp, HeaderLine *hline)
 static void sam_header_line_free(HeaderLine *hline)
 {
     list_t *tags = hline->tags;
+	HeaderTag* tag;
     while (tags)
     {
-        HeaderTag *tag = tags->data;
+        tag = tags->data;
         free(tag->value);
         free(tag);
         tags = tags->next;
@@ -512,6 +520,9 @@ char *sam_header_write(const void *_header)
     char *out = NULL;
     int len=0, nout=0;
     const list_t *hlines;
+	HeaderLine* hline;
+	list_t* tags;
+	HeaderTag* tag;
 
     // Calculate the length of the string to allocate
     hlines = header;
@@ -519,11 +530,11 @@ char *sam_header_write(const void *_header)
     {
         len += 4;   // @XY and \n
 
-        HeaderLine *hline = hlines->data;
-        list_t *tags = hline->tags;
+        hline = hlines->data;
+        tags = hline->tags;
         while (tags)
         {
-            HeaderTag *tag = tags->data;
+            tag = tags->data;
             len += strlen(tag->value) + 1;                  // \t
             if ( tag->key[0]!=' ' || tag->key[1]!=' ' )
                 len += strlen(tag->value) + 3;              // XY:
@@ -541,10 +552,10 @@ char *sam_header_write(const void *_header)
 
         nout += sprintf(out+nout,"@%c%c",hline->type[0],hline->type[1]);
 
-        list_t *tags = hline->tags;
+        tags = hline->tags;
         while (tags)
         {
-            HeaderTag *tag = tags->data;
+            tag = tags->data;
             nout += sprintf(out+nout,"\t");
             if ( tag->key[0]!=' ' || tag->key[1]!=' ' )
                 nout += sprintf(out+nout,"%c%c:", tag->key[0],tag->key[1]);
@@ -596,6 +607,7 @@ void *sam_header2tbl(const void *_dict, char type[2], char key_tag[2], char valu
     khash_t(str) *tbl = kh_init(str);
     khiter_t k;
     int ret;
+	HeaderTag *key, *value;
 
 	if (_dict == 0) return tbl; // return an empty (not null) hash table
     while (l)
@@ -607,7 +619,6 @@ void *sam_header2tbl(const void *_dict, char type[2], char key_tag[2], char valu
             continue;
         }
         
-        HeaderTag *key, *value;
         key   = header_line_has_tag(hline,key_tag);
         value = header_line_has_tag(hline,value_tag); 
         if ( !key || !value )
@@ -633,6 +644,7 @@ char **sam_header2list(const void *_dict, char type[2], char key_tag[2], int *_n
     const list_t *l   = dict;
     int max, n;
 	char **ret;
+	HeaderTag *key;
 
 	ret = 0; *_n = max = n = 0;
     while (l)
@@ -644,7 +656,6 @@ char **sam_header2list(const void *_dict, char type[2], char key_tag[2], int *_n
             continue;
         }
         
-        HeaderTag *key;
         key   = header_line_has_tag(hline,key_tag);
         if ( !key )
         {

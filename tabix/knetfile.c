@@ -39,7 +39,7 @@
 #include <sys/types.h>
 
 #ifdef _WIN32
-#include <winsock.h>
+#include <winsock2.h>
 #else
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -189,7 +189,7 @@ static off_t my_netread(int fd, void *buf, off_t len)
 	 * one call. They have to be called repeatedly. */
 	while (rest) {
 		if (socket_wait(fd, 1) <= 0) break; // socket is not ready for reading
-		curr = netread(fd, buf + l, rest);
+		curr = netread(fd, (char *)buf + l, rest);
 		/* According to the glibc manual, section 13.2, a zero returned
 		 * value indicates end-of-file (EOF), which should mean that
 		 * read() will not return zero if EOF has not been met but data
@@ -320,6 +320,7 @@ knetFile *kftp_parse_url(const char *fn, const char *mode)
 // place ->fd at offset off
 int kftp_connect_file(knetFile *fp)
 {
+	const char *p;
 	int ret;
 	long long file_size;
 	if (fp->fd != -1) {
@@ -335,7 +336,7 @@ int kftp_connect_file(knetFile *fp)
         return -1;
     }
 #else
-	const char *p = fp->response;
+	p = fp->response;
 	while (*p != ' ') ++p;
 	while (*p < '0' || *p > '9') ++p;
 	file_size = strtoint64(p);
@@ -519,7 +520,7 @@ off_t knet_read(knetFile *fp, void *buf, off_t len)
 	if (fp->type == KNF_TYPE_LOCAL) { // on Windows, the following block is necessary; not on UNIX
 		off_t rest = len, curr;
 		while (rest) {
-			curr = read(fp->fd, buf + l, rest);
+			curr = read(fp->fd, (char*)buf + l, rest);
 			if (curr == 0) break;
 			l += curr; rest -= curr;
 		}

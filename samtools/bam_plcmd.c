@@ -11,6 +11,10 @@
 #include "glf.h"
 #include "kstring.h"
 
+#ifndef __func__
+#define __func__ __FUNCTION__
+#endif
+
 typedef int *indel_list_t;
 KHASH_MAP_INIT_INT64(64, indel_list_t)
 

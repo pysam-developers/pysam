@@ -8,6 +8,10 @@
 #include "pysam_util.h"
 #include "errmod.h" // for pysam_dump 
 
+#ifndef inline
+#define inline __inline
+#endif
+
 // Definition of pysamerr
 #include "stdio.h"
 FILE * pysamerr = NULL;
@@ -191,6 +195,7 @@ uint32_t pysam_glf_depth( glf1_t * g )
 
 void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
 {
+  int x = 0;
   fprintf(stderr,
 	  "glf: ref_base=%i, max_mapQ=%i, min_lk=%i, depth=%i",
 	  g->ref_base,
@@ -198,7 +203,6 @@ void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
 	  g->min_lk,
 	  g->depth );
 
-  int x = 0;
   for (x = 0; x < 10; ++x) 
     fprintf(stderr, ", lk%x=%i, ", x, g->lk[x]);
 
@@ -249,7 +253,7 @@ extern int bam_fillmd(int argc, char *argv[]);
 
 int pysam_dispatch(int argc, char *argv[] )
 {
-
+  extern int optind;
 #ifdef _WIN32
   setmode(fileno(stdout), O_BINARY);
   setmode(fileno(stdin),  O_BINARY);
@@ -257,8 +261,6 @@ int pysam_dispatch(int argc, char *argv[] )
   knet_win32_init();
 #endif
 #endif
-
-  extern int optind;
   
   // reset getop
   optind = 1;
@@ -312,12 +314,14 @@ bam1_t * pysam_bam_update( bam1_t * b,
 			   uint8_t * pos )
 {
   int d = nbytes_new-nbytes_old;
+  int new_size;
+  size_t offset;
 
   // no change
   if (d == 0) return b;
 
-  int new_size = d + b->data_len;
-  size_t offset = pos - b->data;
+  new_size = d + b->data_len;
+  offset = pos - b->data;
 
   //printf("d=%i, old=%i, new=%i, old_size=%i, new_size=%i\n",
   // d, nbytes_old, nbytes_new, b->data_len, new_size);

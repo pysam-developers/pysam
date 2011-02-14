@@ -1,10 +1,20 @@
-        # cython: embedsignature=True
+# cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
-import tempfile, os, sys, types, struct, ctypes, collections, re
-
+import tempfile
+import os
+import sys
+import types
+import itertools
+import struct
+import ctypes
+import collections
+import re
+import platform
 from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython cimport PyErr_SetString
+#from cpython.string cimport PyString_FromStringAndSize, PyString_AS_STRING
+#from cpython.exc    cimport PyErr_SetString, PyErr_NoMemory
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -53,7 +63,7 @@ cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 cdef int max_pos = 2 << 29
 
 # redirect stderr to 0
-_logfile = open("/dev/null", "w")
+_logfile = open(os.path.devnull, "w")
 pysam_set_stderr( PyFile_AsFile( _logfile ) )
 
 #####################################################################
@@ -187,6 +197,17 @@ class StderrStore():
 
     def __del__(self):
         self.release()
+
+class StderrStoreWindows():
+    '''does nothing. stderr can't be redirected on windows'''
+    def __init__(self): pass
+    def readAndRelease(self): return []
+    def release(self): pass
+
+if platform.system()=='Windows':
+    del StderrStore
+    StderrStore = StderrStoreWindows
+
 
 ######################################################################
 ######################################################################
@@ -2506,6 +2527,7 @@ class Outs:
         ofd = os.dup(self.id)      #  Save old stream on new unit.
         self.streams.append(ofd)
         sys.stdout.flush()          #  Buffered data goes to old stream.
+        sys.stderr.flush()          #  Buffered data goes to old stream.
         os.dup2(fd, self.id)        #  Open unit 1 on new stream.
         os.close(fd)                #  Close other unit (look out, caller.)
             

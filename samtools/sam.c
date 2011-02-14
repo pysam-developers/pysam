@@ -38,8 +38,7 @@ static void append_header_text(bam_header_t *header, char* text, int len)
 
 samfile_t *samopen(const char *fn, const char *mode, const void *aux)
 {
-	samfile_t *fp;
-	fp = (samfile_t*)calloc(1, sizeof(samfile_t));
+	samfile_t *fp = (samfile_t*)calloc(1, sizeof(samfile_t));
 	if (mode[0] == 'r') { // read
 		fp->type |= TYPE_READ;
 		if (mode[1] == 'b') { // binary
@@ -160,8 +159,13 @@ char *samfaipath(const char *fn_ref)
 	if (fn_ref == 0) return 0;
 	fn_list = calloc(strlen(fn_ref) + 5, 1);
 	strcat(strcpy(fn_list, fn_ref), ".fai");
+#ifdef _MSC_VER
+	if (access(fn_list, 4) == -1) { // fn_list is unreadable
+		if (access(fn_ref, 4) == -1) {
+#else
 	if (access(fn_list, R_OK) == -1) { // fn_list is unreadable
 		if (access(fn_ref, R_OK) == -1) {
+#endif
 			fprintf(stderr, "[samfaipath] fail to read file %s.\n", fn_ref);
 		} else {
 			fprintf(stderr, "[samfaipath] build FASTA index...\n");
