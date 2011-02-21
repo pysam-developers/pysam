@@ -412,7 +412,7 @@ cdef int mate_callback( bam1_t *alignment, void *f):
 
 
 cdef class Samfile:
-    '''*(filename, mode='r', template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
+    '''*(filename, mode=None, template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
               
     A :term:`SAM`/:term:`BAM` formatted file. The file is automatically opened.
     
@@ -426,6 +426,8 @@ cdef class Samfile:
 
         import pysam
         f = pysam.Samfile('ex1.bam','rb')
+
+    If mode is not specified, we will try to auto-detect in the order 'r', 'rb'.
 
     If an index for a BAM file exists (.bai), it will be opened automatically. Without an index random
     access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
@@ -479,7 +481,7 @@ cdef class Samfile:
 
     def _open( self, 
                char * filename, 
-               mode = 'r',
+               mode = None,
                Samfile template = None,
                referencenames = None,
                referencelengths = None,
@@ -492,6 +494,22 @@ cdef class Samfile:
         If _open is called on an existing bamfile, the current file will be
         closed and a new file will be opened.
         '''
+
+        # read mode autodetection
+        if mode is None:
+            try:
+                self._open(filename, 'r', template=template,
+                           referencenames=referencenames,
+                           referencelengths=referencelengths,
+                           text=text, header=header, port=port)
+                return
+            except ValueError:
+                pass
+            self._open(filename, 'rb', template=template,
+                       referencenames=referencenames,
+                       referencelengths=referencelengths,
+                       text=text, header=header, port=port)
+            return
 
         assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
         assert filename != NULL
