@@ -272,6 +272,7 @@ static void razf_end_flush(RAZF *rz){
 
 static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 	int i, n;
+	char *in_fn_data = (char *)data;
 	while(1){
 		if(rz->buf_len == RZ_BUFFER_SIZE){
 			_razf_write(rz, rz->inbuf, rz->buf_len);
@@ -285,7 +286,7 @@ static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 			n = RZ_BUFFER_SIZE - rz->buf_len;
 			for(i=0;i<n;i++) ((char*)rz->inbuf + rz->buf_len)[i] = ((char*)data)[i];
 			size -= n;
-			(char *)data += n;
+			in_fn_data += n;
 			rz->buf_len += n;
 		}
 	}
@@ -360,6 +361,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	int n, is_be, ret;
 	int64_t end;
 	unsigned char c[] = "RAZF";
+	char *inbuf = (char *)rz->inbuf;
 	rz = calloc(1, sizeof(RAZF));
 	rz->mode = 'r';
 #ifdef _USE_KNETFILE
@@ -394,7 +396,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	ret = inflateInit2(rz->stream, -WINDOW_BITS);
 	if(ret != Z_OK){ inflateEnd(rz->stream); goto PLAIN_FILE;}
 	rz->stream->avail_in = n - rz->header_size;
-	rz->stream->next_in  = (char *)rz->inbuf + rz->header_size;
+	rz->stream->next_in  = inbuf + rz->header_size;
 	rz->stream->avail_out = RZ_BUFFER_SIZE;
 	rz->stream->next_out  = rz->outbuf;
 	rz->file_type = FILE_TYPE_GZ;
@@ -402,7 +404,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	rz->block_pos = rz->header_size;
 	rz->next_block_pos = rz->header_size;
 	rz->block_off = 0;
-	if(ext_len < 7 || memcmp((char*)rz->inbuf + ext_off, c, 4) != 0) return rz;
+	if(ext_len < 7 || memcmp(inbuf + ext_off, c, 4) != 0) return rz;
 	if(((((unsigned char*)rz->inbuf)[ext_off + 5] << 8) | ((unsigned char*)rz->inbuf)[ext_off + 6]) != RZ_BLOCK_SIZE){
 		fprintf(pysamerr, " -- WARNING: RZ_BLOCK_SIZE is not %d, treat source as gz file.  in %s -- %s:%d --\n", RZ_BLOCK_SIZE, __FUNCTION__, __FILE__, __LINE__);
 		return rz;

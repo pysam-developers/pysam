@@ -270,6 +270,7 @@ static void razf_end_flush(RAZF *rz){
 
 static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 	int i, n;
+	char *in_fn_data = (char *)data;
 	while(1){
 		if(rz->buf_len == RZ_BUFFER_SIZE){
 			_razf_write(rz, rz->inbuf, rz->buf_len);
@@ -283,7 +284,7 @@ static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 			n = RZ_BUFFER_SIZE - rz->buf_len;
 			for(i=0;i<n;i++) ((char*)rz->inbuf + rz->buf_len)[i] = ((char*)data)[i];
 			size -= n;
-			(char *)data += n;
+			in_fn_data += n;
 			rz->buf_len += n;
 		}
 	}
@@ -292,12 +293,13 @@ static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 int razf_write(RAZF* rz, const void *data, int size){
 	int ori_size, n;
 	int64_t next_block;
+	char *in_fn_data = (char *)data; //REQD FOR MSVC
 	ori_size = size;
 	next_block = ((rz->in / RZ_BLOCK_SIZE) + 1) * RZ_BLOCK_SIZE;
 	while(rz->in + rz->buf_len + size >= next_block){
 		n = next_block - rz->in - rz->buf_len;
 		_razf_buffered_write(rz, data, n);
-		(char *)data += n;
+		in_fn_data += n;
 		size -= n;
 		razf_flush(rz);
 		add_zindex(rz, rz->in, rz->out);
@@ -358,6 +360,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	int n, is_be, ret;
 	int64_t end;
 	unsigned char c[] = "RAZF";
+	char *inbuf = (char *)rz->inbuf;
 	rz = calloc(1, sizeof(RAZF));
 	rz->mode = 'r';
 #ifdef _USE_KNETFILE
@@ -392,7 +395,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	ret = inflateInit2(rz->stream, -WINDOW_BITS);
 	if(ret != Z_OK){ inflateEnd(rz->stream); goto PLAIN_FILE;}
 	rz->stream->avail_in = n - rz->header_size;
-	rz->stream->next_in  = (char *)rz->inbuf + rz->header_size;
+	rz->stream->next_in  = inbuf + rz->header_size;
 	rz->stream->avail_out = RZ_BUFFER_SIZE;
 	rz->stream->next_out  = rz->outbuf;
 	rz->file_type = FILE_TYPE_GZ;
@@ -400,7 +403,7 @@ static RAZF* razf_open_r(int fd, int _load_index){
 	rz->block_pos = rz->header_size;
 	rz->next_block_pos = rz->header_size;
 	rz->block_off = 0;
-	if(ext_len < 7 || memcmp((char*)rz->inbuf + ext_off, c, 4) != 0) return rz;
+	if(ext_len < 7 || memcmp(inbuf + ext_off, c, 4) != 0) return rz;
 	if(((((unsigned char*)rz->inbuf)[ext_off + 5] << 8) | ((unsigned char*)rz->inbuf)[ext_off + 6]) != RZ_BLOCK_SIZE){
 		fprintf(stderr, " -- WARNING: RZ_BLOCK_SIZE is not %d, treat source as gz file.  in %s -- %s:%d --\n", RZ_BLOCK_SIZE, __FUNCTION__, __FILE__, __LINE__);
 		return rz;
@@ -625,19 +628,20 @@ static int _razf_read(RAZF* rz, void *data, int size){
 int razf_read(RAZF *rz, void *data, int size){
 	int ori_size, i;
 	ori_size = size;
+	char *in_fn_data = (char *)data; //	REQD FOR MSVC
 	while(size > 0){
 		if(rz->buf_len){
 			if(size < rz->buf_len){
 				for(i=0;i<size;i++) ((char*)data)[i] = ((char*)rz->outbuf + rz->buf_off)[i];
 				rz->buf_off += size;
 				rz->buf_len -= size;
-				(char *)data += size;
+				in_fn_data += size;
 				rz->block_off += size;
 				size = 0;
 				break;
 			} else {
 				for(i=0;i<rz->buf_len;i++) ((char*)data)[i] = ((char*)rz->outbuf + rz->buf_off)[i];
-				(char *)data += rz->buf_len;
+				in_fn_data += rz->buf_len;
 				size -= rz->buf_len;
 				rz->block_off += rz->buf_len;
 				rz->buf_off = 0;

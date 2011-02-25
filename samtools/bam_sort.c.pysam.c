@@ -253,7 +253,6 @@ int bam_merge_core(int by_qname, const char *out, const char *headers, int n, ch
 
 int bam_merge(int argc, char *argv[])
 {
-    extern int optind;
 	int c, is_by_qname = 0, flag = 0, ret = 0;
 	char *fn_headers = NULL, *reg = 0;
 
@@ -403,7 +402,6 @@ void bam_sort_core(int is_by_qname, const char *fn, const char *prefix, size_t m
 
 int bam_sort(int argc, char *argv[])
 {
-    extern int optind;
 	size_t max_mem = 500000000;
 	int c, is_by_qname = 0, is_stdout = 0;
 	while ((c = getopt(argc, argv, "nom:")) >= 0) {
