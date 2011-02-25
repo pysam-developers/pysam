@@ -12,6 +12,10 @@ typedef struct {
 #include "bgzf.h"
 typedef BGZF *glfFile;
 
+#ifdef _MSC_VER
+#include <msvc_compat.h>
+#endif
+
 #define GLF3_RTYPE_END   0
 #define GLF3_RTYPE_SUB   1
 #define GLF3_RTYPE_INDEL 2

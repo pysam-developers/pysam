@@ -5,10 +5,6 @@
 #include "faidx.h"
 #include "khash.h"
 
-#ifndef inline
-#define inline __inline
-#endif
-
 typedef struct {
 	uint64_t len:32, line_len:16, line_blen:16;
 	uint64_t offset;

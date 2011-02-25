@@ -8,14 +8,6 @@
 #include "bam.h"
 #include "ksort.h"
 
-#ifndef inline
-#define inline __inline
-#endif
-
-#ifndef __func__
-#define __func__ __FUNCTION__
-#endif
-
 static int g_is_by_qname = 0;
 
 static inline int strnum_cmp(const char *a, const char *b)

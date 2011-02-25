@@ -6,14 +6,6 @@
 #include <assert.h>
 #include "sam.h"
  
-#ifndef __func__
-#define __func__ __FUNCTION__
-#endif
-
-#ifndef inline
-#define inline __inline
-#endif
-
 typedef struct {
 	int k, x, y, end;
 } cstate_t;

@@ -16,16 +16,8 @@
 #include "kseq.h"
 #include "khash.h"
 
-#ifndef inline
-#define inline __inline
-#endif
-
 KSTREAM_INIT(gzFile, gzread, 8192)
 KHASH_MAP_INIT_STR(ref, uint64_t)
-
-#ifdef _MSC_VER
-#define atoll _atoi64
-#endif
 
 void bam_init_header_hash(bam_header_t *header);
 void bam_destroy_header_hash(bam_header_t *header);

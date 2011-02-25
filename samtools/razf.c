@@ -38,10 +38,6 @@
 #include <unistd.h>
 #include "razf.h"
 
-#ifndef inline
-#define inline __inline
-#endif
-
 #if ZLIB_VERNUM < 0x1221
 struct _gz_header_s {
     int     text;

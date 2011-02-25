@@ -1,7 +1,5 @@
 #include "pysam.h"
 
-#include "pysam.h"
-
 /*	@(#)drand48.c	2.2	*/
 /*LINTLIBRARY*/
 /*

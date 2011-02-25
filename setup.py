@@ -31,6 +31,21 @@ def locate(pattern, root=os.curdir):
        for filename in fnmatch.filter(files, pattern):
           yield os.path.join(path, filename)
 
+def _update_pysam_files(cf, destdir):
+  for filename in cf:
+     if not filename: continue
+     dest = filename + ".pysam.c"
+     with open( filename ) as infile:
+        with open( dest, "w" ) as outfile:
+           outfile.write( '#include "pysam.h"\n\n' )
+           outfile.write( re.sub( "stderr", "pysamerr", "".join(infile.readlines()) ) )
+  with open( os.path.join( destdir, "pysam.h" ), "w" )as outfile:
+     outfile.write ("""#ifndef PYSAM_H
+#define PYSAM_H
+#include "stdio.h"
+extern FILE * pysamerr;
+#endif
+""")
 
 # copy samtools source
 if len(sys.argv) >= 2 and sys.argv[1] == "import":
@@ -80,24 +95,25 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
       print "installed latest source code from %s: %i files copied" % (srcdir, ncopied)
       # redirect stderr to pysamerr and replace bam.h with a stub.
       print "applying stderr redirection"
+     
+      _update_pysam_files(cf, destdir)
       
-      for filename in cf:
-         if not filename: continue
-         dest = filename + ".pysam.c"
-         with open( filename ) as infile:
-            with open( dest, "w" ) as outfile:
-               outfile.write( '#include "pysam.h"\n\n' )
-               outfile.write( re.sub( "stderr", "pysamerr", "".join(infile.readlines()) ) )
-      
-      with open( os.path.join( destdir, "pysam.h" ), "w" )as outfile:
-         outfile.write ("""#ifndef PYSAM_H
-#define PYSAM_H
-#include "stdio.h"
-extern FILE * pysamerr;
-#endif
-""")
 
    sys.exit(0)
+
+if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
+    print "refreshing latest source code from .c to .pysam.c"
+# redirect stderr to pysamerr and replace bam.h with a stub.
+    print "applying stderr redirection"
+    for destdir in 'samtools', 'tabix':
+        pysamcfiles = locate( "*.pysam.c", destdir )
+        for f in pysamcfiles: os.remove(f)
+        cfiles = locate( "*.c", destdir )
+        _update_pysam_files(cfiles, destdir)
+
+    sys.exit(0)
+
+
 
 from ez_setup import use_setuptools
 use_setuptools()

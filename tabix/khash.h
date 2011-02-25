@@ -94,8 +94,8 @@ int main() {
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef inline
-#define inline __inline
+#ifdef _MSC_VER
+#include <msvc_compat.h>
 #endif
 
 typedef uint32_t khint_t;

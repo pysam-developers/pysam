@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-#ifndef inline
-#define inline __inline
+#ifdef _MSC_VER
+#include <msvc_compat.h>
 #endif
 
 static inline int bam_is_big_endian()

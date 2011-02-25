@@ -5,8 +5,8 @@
 #include <string.h>
 #include <stdint.h>
 
-#ifndef inline
-#define inline __inline
+#ifdef _MSC_VER
+#include <msvc_compat.h>
 #endif
 
 #ifndef kroundup32

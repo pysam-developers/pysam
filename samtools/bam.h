@@ -45,8 +45,8 @@
 #include <string.h>
 #include <stdio.h>
 
-#ifndef inline
-#define inline __inline
+#ifdef _MSC_VER
+#include <msvc_compat.h>
 #endif
 
 #ifndef BAM_LITE

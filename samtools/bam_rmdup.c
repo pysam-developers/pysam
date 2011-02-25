@@ -5,10 +5,6 @@
 #include <unistd.h>
 #include "sam.h"
 
-#ifndef inline
-#define inline __inline
-#endif
-
 typedef bam1_t *bam1_p;
 
 #include "khash.h"

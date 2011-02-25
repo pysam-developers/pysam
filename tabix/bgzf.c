@@ -35,17 +35,6 @@
 #include <sys/stat.h>
 #include "bgzf.h"
 
-#ifndef inline
-#define inline __inline
-#endif
-
-#ifndef crc32
-    #include "crc.h"
-    static uint32_t crc32(uint32_t crc, unsigned char *buf, size_t len) {
-        return crcFast(buf, len);
-    };
-#endif
-
 #include "khash.h"
 typedef struct {
 	int size;

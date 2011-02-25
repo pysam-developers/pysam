@@ -10,10 +10,6 @@
 #include "knetfile.h"
 #endif
 
-#ifndef __func__
-#define __func__ __FUNCTION__
-#endif
-
 #define TAD_LIDX_SHIFT 13
 
 typedef struct {

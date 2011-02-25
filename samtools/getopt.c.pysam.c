@@ -1,3 +1,5 @@
+#include "pysam.h"
+
 /* Getopt for GNU.
    NOTE: getopt is now part of the C library, so if you don't know what
    "Keep this file name-space clean" means, talk to drepper@gnu.org
@@ -690,14 +692,14 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
               __asprintf (&buf, _("%s: option `%s' is ambiguous\n"),
                           argv[0], argv[optind]);
 
-              if (_IO_fwide (stderr, 0) > 0)
-                __fwprintf (stderr, L"%s", buf);
+              if (_IO_fwide (pysamerr, 0) > 0)
+                __fwprintf (pysamerr, L"%s", buf);
               else
-                fputs (buf, stderr);
+                fputs (buf, pysamerr);
 
               free (buf);
 #else
-              fprintf (stderr, _("%s: option `%s' is ambiguous\n"),
+              fprintf (pysamerr, _("%s: option `%s' is ambiguous\n"),
                        argv[0], argv[optind]);
 #endif
             }
@@ -733,7 +735,7 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
 %s: option `--%s' doesn't allow an argument\n"),
                                       argv[0], pfound->name);
 #else
-                          fprintf (stderr, _("\
+                          fprintf (pysamerr, _("\
 %s: option `--%s' doesn't allow an argument\n"),
                                    argv[0], pfound->name);
 #endif
@@ -747,17 +749,17 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                                       argv[0], argv[optind - 1][0],
                                       pfound->name);
 #else
-                          fprintf (stderr, _("\
+                          fprintf (pysamerr, _("\
 %s: option `%c%s' doesn't allow an argument\n"),
                                    argv[0], argv[optind - 1][0], pfound->name);
 #endif
                         }
 
 #if defined _LIBC && defined USE_IN_LIBIO
-                      if (_IO_fwide (stderr, 0) > 0)
-                        __fwprintf (stderr, L"%s", buf);
+                      if (_IO_fwide (pysamerr, 0) > 0)
+                        __fwprintf (pysamerr, L"%s", buf);
                       else
-                        fputs (buf, stderr);
+                        fputs (buf, pysamerr);
 
                       free (buf);
 #endif
@@ -784,14 +786,14 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                                   _("%s: option `%s' requires an argument\n"),
                                   argv[0], argv[optind - 1]);
 
-                      if (_IO_fwide (stderr, 0) > 0)
-                        __fwprintf (stderr, L"%s", buf);
+                      if (_IO_fwide (pysamerr, 0) > 0)
+                        __fwprintf (pysamerr, L"%s", buf);
                       else
-                        fputs (buf, stderr);
+                        fputs (buf, pysamerr);
 
                       free (buf);
 #else
-                      fprintf (stderr,
+                      fprintf (pysamerr,
                                _("%s: option `%s' requires an argument\n"),
                                argv[0], argv[optind - 1]);
 #endif
@@ -832,7 +834,7 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                   __asprintf (&buf, _("%s: unrecognized option `--%s'\n"),
                               argv[0], nextchar);
 #else
-                  fprintf (stderr, _("%s: unrecognized option `--%s'\n"),
+                  fprintf (pysamerr, _("%s: unrecognized option `--%s'\n"),
                            argv[0], nextchar);
 #endif
                 }
@@ -843,16 +845,16 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                   __asprintf (&buf, _("%s: unrecognized option `%c%s'\n"),
                               argv[0], argv[optind][0], nextchar);
 #else
-                  fprintf (stderr, _("%s: unrecognized option `%c%s'\n"),
+                  fprintf (pysamerr, _("%s: unrecognized option `%c%s'\n"),
                            argv[0], argv[optind][0], nextchar);
 #endif
                 }
 
 #if defined _LIBC && defined USE_IN_LIBIO
-              if (_IO_fwide (stderr, 0) > 0)
-                __fwprintf (stderr, L"%s", buf);
+              if (_IO_fwide (pysamerr, 0) > 0)
+                __fwprintf (pysamerr, L"%s", buf);
               else
-                fputs (buf, stderr);
+                fputs (buf, pysamerr);
 
               free (buf);
 #endif
@@ -889,7 +891,7 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                 __asprintf (&buf, _("%s: illegal option -- %c\n"),
                             argv[0], c);
 #else
-                fprintf (stderr, _("%s: illegal option -- %c\n"), argv[0], c);
+                fprintf (pysamerr, _("%s: illegal option -- %c\n"), argv[0], c);
 #endif
               }
             else
@@ -898,15 +900,15 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                 __asprintf (&buf, _("%s: invalid option -- %c\n"),
                             argv[0], c);
 #else
-                fprintf (stderr, _("%s: invalid option -- %c\n"), argv[0], c);
+                fprintf (pysamerr, _("%s: invalid option -- %c\n"), argv[0], c);
 #endif
               }
 
 #if defined _LIBC && defined USE_IN_LIBIO
-            if (_IO_fwide (stderr, 0) > 0)
-              __fwprintf (stderr, L"%s", buf);
+            if (_IO_fwide (pysamerr, 0) > 0)
+              __fwprintf (pysamerr, L"%s", buf);
             else
-              fputs (buf, stderr);
+              fputs (buf, pysamerr);
 
             free (buf);
 #endif
@@ -944,14 +946,14 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                 __asprintf (&buf, _("%s: option requires an argument -- %c\n"),
                             argv[0], c);
 
-                if (_IO_fwide (stderr, 0) > 0)
-                  __fwprintf (stderr, L"%s", buf);
+                if (_IO_fwide (pysamerr, 0) > 0)
+                  __fwprintf (pysamerr, L"%s", buf);
                 else
-                  fputs (buf, stderr);
+                  fputs (buf, pysamerr);
 
                 free (buf);
 #else
-                fprintf (stderr, _("%s: option requires an argument -- %c\n"),
+                fprintf (pysamerr, _("%s: option requires an argument -- %c\n"),
                          argv[0], c);
 #endif
               }
@@ -1006,14 +1008,14 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                 __asprintf (&buf, _("%s: option `-W %s' is ambiguous\n"),
                             argv[0], argv[optind]);
 
-                if (_IO_fwide (stderr, 0) > 0)
-                  __fwprintf (stderr, L"%s", buf);
+                if (_IO_fwide (pysamerr, 0) > 0)
+                  __fwprintf (pysamerr, L"%s", buf);
                 else
-                  fputs (buf, stderr);
+                  fputs (buf, pysamerr);
 
                 free (buf);
 #else
-                fprintf (stderr, _("%s: option `-W %s' is ambiguous\n"),
+                fprintf (pysamerr, _("%s: option `-W %s' is ambiguous\n"),
                          argv[0], argv[optind]);
 #endif
               }
@@ -1041,14 +1043,14 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
 %s: option `-W %s' doesn't allow an argument\n"),
                                     argv[0], pfound->name);
 
-                        if (_IO_fwide (stderr, 0) > 0)
-                          __fwprintf (stderr, L"%s", buf);
+                        if (_IO_fwide (pysamerr, 0) > 0)
+                          __fwprintf (pysamerr, L"%s", buf);
                         else
-                          fputs (buf, stderr);
+                          fputs (buf, pysamerr);
 
                         free (buf);
 #else
-                        fprintf (stderr, _("\
+                        fprintf (pysamerr, _("\
 %s: option `-W %s' doesn't allow an argument\n"),
                                  argv[0], pfound->name);
 #endif
@@ -1073,14 +1075,14 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
 %s: option `%s' requires an argument\n"),
                                     argv[0], argv[optind - 1]);
 
-                        if (_IO_fwide (stderr, 0) > 0)
-                          __fwprintf (stderr, L"%s", buf);
+                        if (_IO_fwide (pysamerr, 0) > 0)
+                          __fwprintf (pysamerr, L"%s", buf);
                         else
-                          fputs (buf, stderr);
+                          fputs (buf, pysamerr);
 
                         free (buf);
 #else
-                        fprintf (stderr,
+                        fprintf (pysamerr,
                                  _("%s: option `%s' requires an argument\n"),
                                  argv[0], argv[optind - 1]);
 #endif
@@ -1138,14 +1140,14 @@ _getopt_internal (argc, argv, optstring, longopts, longind, long_only)
                                 _("%s: option requires an argument -- %c\n"),
                                 argv[0], c);
 
-                    if (_IO_fwide (stderr, 0) > 0)
-                      __fwprintf (stderr, L"%s", buf);
+                    if (_IO_fwide (pysamerr, 0) > 0)
+                      __fwprintf (pysamerr, L"%s", buf);
                     else
-                      fputs (buf, stderr);
+                      fputs (buf, pysamerr);
 
                     free (buf);
 #else
-                    fprintf (stderr,
+                    fprintf (pysamerr,
                              _("%s: option requires an argument -- %c\n"),
                              argv[0], c);
 #endif

@@ -35,10 +35,6 @@
 #endif
 #include "bgzf.h"
 
-#ifndef __func__
-#define __func __FUNCTION__
-#endif
-
 static const int WINDOW_SIZE = 64 * 1024;
 
 static int bgzip_main_usage()

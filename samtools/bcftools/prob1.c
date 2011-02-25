@@ -8,24 +8,6 @@
 #include "kseq.h"
 KSTREAM_INIT(gzFile, gzread, 16384)
 
-#ifndef __func__
-#define __func__ __FUNCTION__
-#endif
-
-#ifdef _MSC_VER
-#include <float.h>
-#define isnan _isnan
-int isinf(double x) {
-    int y = _finite(x);
-    if(y == 0) {
-       return 0;
-    } else {
-       return 1;
-    }
-}
-#define alloca _alloca
-#endif
-
 #define MC_MAX_EM_ITER 16
 #define MC_EM_EPS 1e-4
 #define MC_DEF_INDEL 0.15

@@ -9,10 +9,6 @@
 #include "kstring.h"
 #include "sam_header.h"
 
-#ifndef inline
-#define inline __inline
-#endif
-
 int bam_is_be = 0;
 char *bam_flag2char_table = "pPuUrR12sfd\0\0\0\0\0";
 

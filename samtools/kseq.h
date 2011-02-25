@@ -38,8 +38,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifndef inline
-#define inline __inline
+#ifdef _MSC_VER
+#include <msvc_compat.h>
 #endif
 
 #define KS_SEP_SPACE 0 // isspace(): \t, \n, \v, \f, \r

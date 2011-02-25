@@ -37,6 +37,10 @@
 #include <stdio.h>
 #include "zlib.h"
 
+#ifdef _MSC_VER
+#include <msvc_compat.h>
+#endif
+
 #ifdef _USE_KNETFILE
 #include "knetfile.h"
 #endif

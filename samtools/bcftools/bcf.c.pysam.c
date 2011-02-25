@@ -6,10 +6,6 @@
 #include "kstring.h"
 #include "bcf.h"
 
-#ifndef __func__
-#define __func__ __FUNCTION__
-#endif
-
 bcf_t *bcf_open(const char *fn, const char *mode)
 {
 	bcf_t *b;

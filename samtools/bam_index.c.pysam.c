@@ -10,14 +10,6 @@
 #include "knetfile.h"
 #endif
 
-#ifndef inline
-#define __inline
-#endif
-
-#ifndef __func__
-#define __func__ __FUNCTION__
-#endif
-
 /*!
   @header
 

@@ -37,17 +37,6 @@
 
 #include "khash.h"
 
-#ifndef crc32
-    #include "crc.h"
-    static uint32_t crc32(uint32_t crc, unsigned char *buf, size_t len) {
-        return crcFast(buf, len);
-    };
-#endif
-
-#ifndef inline
-#define inline __inline
-#endif
-
 typedef struct {
 	int size;
 	uint8_t *block;

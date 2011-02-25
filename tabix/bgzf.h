@@ -26,9 +26,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#ifdef _MSC_VER
-typedef int8_t bool;
-#else
+#ifndef _MSC_VER
 #include <stdbool.h>
 #endif
 #include <zlib.h>
@@ -36,12 +34,8 @@ typedef int8_t bool;
 #include "knetfile.h"
 #endif
 
-#ifndef __func__
-#define __func __FUNCTION__
-#endif
-
-#ifndef inline
-#define inline __inline
+#ifdef _MSC_VER
+#include <msvc_compat.h>
 #endif
 
 typedef struct {
