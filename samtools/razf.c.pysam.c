@@ -295,12 +295,13 @@ static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 int razf_write(RAZF* rz, const void *data, int size){
 	int ori_size, n;
 	int64_t next_block;
+	char *in_fn_data = (char *)data; //REQD FOR MSVC
 	ori_size = size;
 	next_block = ((rz->in / RZ_BLOCK_SIZE) + 1) * RZ_BLOCK_SIZE;
 	while(rz->in + rz->buf_len + size >= next_block){
 		n = next_block - rz->in - rz->buf_len;
 		_razf_buffered_write(rz, data, n);
-		(char *)data += n;
+		in_fn_data += n;
 		size -= n;
 		razf_flush(rz);
 		add_zindex(rz, rz->in, rz->out);
@@ -628,6 +629,7 @@ static int _razf_read(RAZF* rz, void *data, int size){
 
 int razf_read(RAZF *rz, void *data, int size){
 	int ori_size, i;
+	char *in_fn_data = (char *)data; //	REQD FOR MSVC
 	ori_size = size;
 	while(size > 0){
 		if(rz->buf_len){
@@ -635,13 +637,13 @@ int razf_read(RAZF *rz, void *data, int size){
 				for(i=0;i<size;i++) ((char*)data)[i] = ((char*)rz->outbuf + rz->buf_off)[i];
 				rz->buf_off += size;
 				rz->buf_len -= size;
-				(char *)data += size;
+				in_fn_data += size;
 				rz->block_off += size;
 				size = 0;
 				break;
 			} else {
 				for(i=0;i<rz->buf_len;i++) ((char*)data)[i] = ((char*)rz->outbuf + rz->buf_off)[i];
-				(char *)data += rz->buf_len;
+				in_fn_data += rz->buf_len;
 				size -= rz->buf_len;
 				rz->block_off += rz->buf_len;
 				rz->buf_off = 0;

@@ -627,8 +627,8 @@ static int _razf_read(RAZF* rz, void *data, int size){
 
 int razf_read(RAZF *rz, void *data, int size){
 	int ori_size, i;
-	ori_size = size;
 	char *in_fn_data = (char *)data; //	REQD FOR MSVC
+	ori_size = size;
 	while(size > 0){
 		if(rz->buf_len){
 			if(size < rz->buf_len){
