@@ -71,7 +71,6 @@ cdef extern from "stdint.h":
   ctypedef int uint8_t
   ctypedef int uint64_t
 
-
 cdef extern from "bam.h":
 
   # constants
@@ -387,3 +386,5 @@ cdef extern from "pysam_util.h":
     uint32_t pysam_glf_depth( glf1_t * g )
 
     void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
+
+

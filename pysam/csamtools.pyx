@@ -1,5 +1,5 @@
 # cython: embedsignature=True
-# cython: profile=True
+# cython: profile=False
 # adds doc-strings for sphinx
 import tempfile, os, sys, types, struct, ctypes, collections, re
 
@@ -745,9 +745,11 @@ cdef class Samfile:
             not re-opened the file.
 
         '''
-        if not read.is_paired:
+        cdef uint32_t flag = read._delegate.core.flag
+
+        if flag & BAM_FPAIRED == 0:
             raise ValueError( "read is unpaired" )
-        if read.mate_is_unmapped:
+        if flag & BAM_FUNMAP != 0:
             raise ValueError( "mate is unmapped" )
         
         cdef MateData mate_data
@@ -756,7 +758,7 @@ cdef class Samfile:
         mate_data.mate = NULL
         # xor flags to get the other mate
         cdef int x = BAM_FREAD1 + BAM_FREAD2
-        mate_data.flag = ( read._delegate.core.flag ^ x) & x
+        mate_data.flag = ( flag ^ x) & x
 
         bam_fetch(self.samfile.x.bam, 
                   self.index, 
@@ -816,7 +818,6 @@ cdef class Samfile:
             return counter
         else:   
             raise ValueError ("count for a region is not available for sam files" )
-
 
     def pileup( self, 
                 reference = None, 
@@ -1146,8 +1147,8 @@ cdef class IteratorRowRegion(IteratorRow):
 
     iterate over mapped reads in a region.
 
-    By default, the file is re-openend to avoid conflicts if
-    multiple operators work on the same file. Set *reopen* = False
+    By default, the file is re-openend to avoid conflicts between
+    multiple iterators working on the same file. Set *reopen* = False
     to not re-open *samfile*.
 
     The samtools iterators assume that the file
@@ -1189,6 +1190,8 @@ cdef class IteratorRowRegion(IteratorRow):
             self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
             assert self.fp != NULL
+        else:
+            self.fp = self.samfile.samfile
 
         self.retval = 0
 
@@ -1226,8 +1229,8 @@ cdef class IteratorRowAll(IteratorRow):
 
     iterate over all reads in *samfile*
 
-    By default, the file is re-openend to avoid conflicts if
-    multiple operators work on the same file. Set *reopen* = False
+    By default, the file is re-openend to avoid conflicts between
+    multiple iterators working on the same file. Set *reopen* = False
     to not re-open *samfile*.
     """
 
@@ -1248,6 +1251,8 @@ cdef class IteratorRowAll(IteratorRow):
             self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
             assert self.fp != NULL
+        else:
+            self.fp = samfile.samfile
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
@@ -1278,7 +1283,6 @@ cdef class IteratorRowAll(IteratorRow):
     def __dealloc__(self):
         bam_destroy1(self.b)
         samclose( self.fp )
-
 
 cdef class IteratorRowAllRefs(IteratorRow):
     """iterates over all mapped reads by chaining iterators over each reference
@@ -1325,6 +1329,74 @@ cdef class IteratorRowAllRefs(IteratorRow):
                 self.nextiter()
             else:
                 raise StopIteration
+
+cdef class IteratorRowSelection(IteratorRow):
+    """*(Samfile samfile)*
+
+    iterate over reads in *samfile* at a given list of file positions.
+    """
+
+    cdef bam1_t * b
+    cdef int current_pos 
+    cdef samfile_t * fp
+    cdef positions
+
+    def __cinit__(self, Samfile samfile, positions, int reopen = True ):
+
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
+        assert samfile.isbam, "can only use this iterator on bam files"
+        mode = "rb"
+
+        # reopen the file to avoid iterator conflict
+        if reopen:
+            store = StderrStore()
+            self.fp = samopen( samfile._filename, mode, NULL )
+            store.release()
+            assert self.fp != NULL
+        else:
+            self.fp = samfile.samfile
+
+        # allocate memory for alignment
+        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
+
+        self.positions = positions
+        self.current_pos = 0
+
+    def __iter__(self):
+        return self 
+
+    cdef bam1_t * getCurrent( self ):
+        return self.b
+
+    cdef int cnext(self):
+        '''cversion of iterator'''
+
+        # end iteration if out of positions
+        if self.current_pos >= len(self.positions): return -1
+
+        bam_seek( self.fp.x.bam, self.positions[self.current_pos], 0 ) 
+        self.current_pos += 1
+        return samread(self.fp, self.b)
+
+    def __next__(self): 
+        """python version of next().
+
+        pyrex uses this non-standard name instead of next()
+        """
+
+        cdef int ret = self.cnext()
+        if (ret > 0):
+            return makeAlignedRead( self.b )
+        else:
+            raise StopIteration
+
+    def __dealloc__(self):
+        bam_destroy1(self.b)
 
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
@@ -3152,6 +3224,63 @@ cdef class IteratorIndelCalls( IndelCallerBase ):
 
         return self._call()
 
+
+
+cdef class IndexedReads:
+    """index a bamfile by read.
+
+    By default, the file is re-openend to avoid conflicts if
+    multiple operators work on the same file. Set *reopen* = False
+    to not re-open *samfile*.
+    """
+
+    cdef Samfile samfile
+    cdef samfile_t * fp
+    cdef index
+
+    def __init__(self, Samfile samfile, int reopen = True ):
+        self.samfile = samfile
+
+        if samfile.isbam: mode = "rb"
+        else: mode = "r"
+
+        # reopen the file - note that this makes the iterator
+        # slow and causes pileup to slow down significantly.
+        if reopen:
+            store = StderrStore()            
+            self.fp = samopen( samfile._filename, mode, NULL )
+            store.release()
+            assert self.fp != NULL
+
+        assert samfile.isbam, "can only IndexReads on bam files"
+
+    def build( self ):
+        '''build index.'''
+        
+        self.index = collections.defaultdict( list )
+
+        # this method will start indexing from the current file position
+        # if you decide
+        cdef int ret = 1
+        cdef bam1_t * b = <bam1_t*> calloc(1, sizeof( bam1_t) )
+        
+        cdef uint64_t pos
+
+        while ret > 0:
+            pos = bam_tell( self.fp.x.bam ) 
+            ret = samread( self.fp, b)
+            if ret > 0:
+                qname = bam1_qname( b )
+                self.index[qname].append( pos )                
+            
+        bam_destroy1( b )
+
+    def find( self, qname ):
+        if qname in self.index:
+            return IteratorRowSelection( self.samfile, self.index[qname], reopen = False )
+        else:
+            raise KeyError( "read %s not found" % qname )
+
 __all__ = ["Samfile", 
            "Fastafile",
            "IteratorRow", 
@@ -3163,7 +3292,8 @@ __all__ = ["Samfile",
            "IteratorSNPCalls",
            "SNPCaller",
            "IndelCaller",
-           "IteratorIndelCalls", ]
+           "IteratorIndelCalls", 
+           "IndexedReads" ]
 
                
 
