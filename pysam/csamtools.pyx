@@ -655,8 +655,8 @@ cdef class Samfile:
         # implementing it all in pysam (makes use of khash).
         
         cdef int rtid
-        cdef int rstart
-        cdef int rend
+        cdef long long rstart
+        cdef long long rend
 
         rtid = -1
         rstart = 0
