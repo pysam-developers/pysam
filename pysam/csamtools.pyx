@@ -594,10 +594,10 @@ cdef class Samfile:
                 raise ValueError( "could not open file - is it SAM/BAM format?")
 
             if self.samfile.header == NULL:
-                raise ValueError( "could not open file - is it SAM/BAM format?")
+                raise ValueError( "file does not have valid header - is it SAM/BAM format?")
 
             if self.samfile.header.n_targets == 0:
-                raise ValueError( "could not open file - is it SAM/BAM format?")
+                raise ValueError( "file header is empty - is it SAM/BAM format?")
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )

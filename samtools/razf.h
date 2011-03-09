@@ -101,7 +101,7 @@ typedef struct RandomAccessZFile  {
 	int64_t block_pos, block_off, next_block_pos;
 	/* block_pos: the start postiion of current block  in compressed file */
 	/* block_off: tell how many bytes have been read from current block */
-	void *inbuf, *outbuf;
+	char *inbuf, *outbuf;
 	int header_size;
 	gz_header *header;
 	/* header is used to transfer inflate_state->mode from HEAD to TYPE after call inflateReset */
@@ -119,8 +119,8 @@ extern "C" {
 
 	RAZF* razf_dopen(int data_fd, const char *mode);
 	RAZF *razf_open(const char *fn, const char *mode);
-	int razf_write(RAZF* rz, const void *data, int size);
-	int razf_read(RAZF* rz, void *data, int size);
+	int razf_write(RAZF* rz, const char *data, int size);
+	int razf_read(RAZF* rz, char *data, int size);
 	int64_t razf_seek(RAZF* rz, int64_t pos, int where);
 	void razf_close(RAZF* rz);
 

@@ -135,7 +135,7 @@ class BinaryTest(unittest.TestCase):
                 pysam_method, pysam_options = pysam_command
                 output = pysam_method( *pysam_options.split(" "), raw=True)
                 if ">" in samtools_command:
-                    outfile = open( pysam_target, "w" )
+                    outfile = open( pysam_target, "wb" )
                     for line in output: outfile.write( line )
                     outfile.close()
 
@@ -145,6 +145,7 @@ class BinaryTest(unittest.TestCase):
 
         def _r( s ):
             # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a -> 0.1.12
+            if s.count('-') > 0: s = s[0:s.find('-')]
             return re.sub( "[^0-9.]", "", s )
 
         if _r(samtools_version) != _r( pysam.__samtools_version__):
@@ -1245,7 +1246,7 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
     def testMate( self ):
         '''test mate access.'''
 
-        readnames = [ x.split("\t")[0] for x in open( "ex1.sam", "r" ).readlines() ]
+        readnames = [ x.split("\t")[0] for x in open( "ex1.sam", "rb" ).readlines() ]
         counts = collections.defaultdict( int )
         for x in readnames: counts[x] += 1
 
@@ -1282,6 +1283,6 @@ class TestSamtoolsProxy( unittest.TestCase ):
 if __name__ == "__main__":
     # build data files
     print "building data files"
-    subprocess.call( "make", shell=True)
+    subprocess.call( "mingw32-make", shell=True)
     print "starting tests"
     unittest.main()
