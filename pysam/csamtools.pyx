@@ -584,7 +584,7 @@ cdef class Samfile:
         convert numerical :term:`tid` into :term:`reference` name.'''
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         if not 0 <= tid < self.samfile.header.n_targets:
-            raise ValueError( "tid out of range 0<=tid<%i" % self.samfile.header.n_targets )
+            raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.samfile.header.n_targets ) )
         return self.samfile.header.target_name[tid]
 
     def gettid( self, reference ):
@@ -3228,6 +3228,8 @@ cdef class IteratorIndelCalls( IndelCallerBase ):
 
 cdef class IndexedReads:
     """index a bamfile by read.
+
+    The index is kept in memory.
 
     By default, the file is re-openend to avoid conflicts if
     multiple operators work on the same file. Set *reopen* = False
