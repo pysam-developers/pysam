@@ -137,7 +137,7 @@ samtools = Extension(
     include_dirs=[ "samtools", "pysam" ],
     libraries=[ "z", ],
     language="c",
-    define_macros = [('FILE_OFFSET_BITS','64'),
+    define_macros = [('_FILE_OFFSET_BITS','64'),
                      ('_USE_KNETFILE','')], 
     )
 

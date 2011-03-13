@@ -205,13 +205,13 @@ VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO" )
 VALID_HEADER_FIELDS = { "HD" : { "VN" : str, "SO" : str, "GO" : str },
                         "SQ" : { "SN" : str, "LN" : int, "AS" : str, "M5" : str, "UR" : str, "SP" : str },
                         "RG" : { "ID" : str, "SM" : str, "LB" : str, "DS" : str, "PU" : str, "PI" : str, "CN" : str, "DT" : str, "PL" : str, },
-                        "PG" : { "ID" : str, "VN" : str, "CL" : str }, }
+                        "PG" : { "PN" : str, "ID" : str, "VN" : str, "CL" : str }, }
 
 # output order of fields within records
 VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
                        "SQ" : ( "SN", "LN", "AS", "M5" , "UR" , "SP" ),
                        "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL" ),
-                       "PG" : ( "ID", "VN", "CL" ), }
+                       "PG" : ( "PN", "ID", "VN", "CL" ), }
 
 
 ######################################################################
@@ -2187,13 +2187,13 @@ cdef class AlignedRead:
                 for pytag, value in tags:
                     t = type(value)
                     if t == types.FloatType:
-                        fmt = "<cccf"
+                        fmt, pytype = "<cccf", 'f'
                     elif t == types.IntType:
                         if value < 0:
                             if value >= -127: fmt, pytype = "<cccb", 'c'
                             elif value >= -32767: fmt, pytype = "<ccch", 's'
                             elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, ctype = "<ccci", 'i'[0]
+                            else: fmt, pytype = "<ccci", 'i'[0]
                         else:
                             if value <= 255: fmt, pytype = "<cccB", 'C'
                             elif value <= 65535: fmt, pytype = "<cccH", 'S'
@@ -2407,11 +2407,13 @@ cdef class AlignedRead:
         v = bam_aux_get(self._delegate, tag)
         if v == NULL: raise KeyError( "tag '%s' not present" % tag )
         type = chr(v[0])
-        if type == 'c' or type == 'C' or type == 's' or type == 'S' or type == 'i':
+        if type == 'c' or type == 'C' or type == 's' or type == 'S':
             return <int>bam_aux2i(v)            
-        elif type == 'f':
+        elif type == 'i' or type == 'I':
+            return <int32_t>bam_aux2i(v)            
+        elif type == 'f' or type == 'F':
             return <float>bam_aux2f(v)
-        elif type == 'd':
+        elif type == 'd' or type == 'D':
             return <double>bam_aux2d(v)
         elif type == 'A':
             # there might a more efficient way

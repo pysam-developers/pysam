@@ -8,10 +8,14 @@ include COPYING
 include INSTALL
 include KNOWN_BUGS
 include THANKS
+include ez_setup.py
 include pysam/csamtools.pxd
+include pysam/csamtools.pyx
+include pysam/csamtools.c
 include pysam/ctabix.pxd
 include pysam/pysam_util.h
 include samtools/*.h
+include samtools/*/*.h
 include tabix/*.h
 
 # pysam tests
