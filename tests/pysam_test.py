@@ -1279,6 +1279,23 @@ class TestSamtoolsProxy( unittest.TestCase ):
     def testSort( self ):
         self.assertRaises( pysam.SamtoolsError, pysam.sort, "missing_file" )
 
+class TestSamfileIndex( unittest.TestCase):
+    
+    def testIndex( self ):
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        index = pysam.IndexedReads( samfile )
+        index.build()
+
+        reads = collections.defaultdict( int )
+
+        for read in samfile: reads[read.qname] += 1
+            
+        for qname, counts in reads.iteritems():
+            found = list(index.find( qname ))
+            self.assertEqual( len(found), counts )
+            for x in found: self.assertEqual( x.qname, qname )
+            
+
 if __name__ == "__main__":
     # build data files
     print "building data files"
