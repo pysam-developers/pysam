@@ -73,7 +73,11 @@ char **__bam_get_lines(const char *fn, int *_n) // for bam_plcmd.c only
 {
 	char **list = 0, *s;
 	int n = 0, dret, m = 0;
+#ifdef _MSC_VER
+	gzFile fp = (strcmp(fn, "-") == 0)? gzdopen(_fileno(stdin), "r") : gzopen(fn, "r");
+#else
 	gzFile fp = (strcmp(fn, "-") == 0)? gzdopen(fileno(stdin), "r") : gzopen(fn, "r");
+#endif
 	kstream_t *ks;
 	kstring_t *str;
 	str = (kstring_t*)calloc(1, sizeof(kstring_t));

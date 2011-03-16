@@ -60,6 +60,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _MSC_VER
+#include <msvc_compat.h>
+#endif
+
 typedef struct {
 	void *left, *right;
 	int depth;

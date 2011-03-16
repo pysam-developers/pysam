@@ -45,6 +45,10 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef _MSC_VER
+#include <msvc_compat.h>
+#endif
+
 #ifndef BAM_LITE
 #define BAM_VIRTUAL_OFFSET16
 #include "bgzf.h"

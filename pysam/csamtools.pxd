@@ -235,6 +235,9 @@ cdef extern from "bam.h":
 
   uint32_t bam_calend(bam1_core_t *c, uint32_t *cigar)
 
+cdef extern from *:
+    ctypedef char* const_char_ptr "const char*"
+
 cdef extern from "sam.h":
 
   ctypedef struct samfile_t_un:
@@ -247,7 +250,7 @@ cdef extern from "sam.h":
      samfile_t_un x
      bam_header_t *header
 
-  samfile_t *samopen( char *fn, char * mode, void *aux)
+  samfile_t *samopen( const_char_ptr fn, char * mode, void *aux)
 
   int sampileup( samfile_t *fp, int mask, bam_pileup_f func, void *data)
 

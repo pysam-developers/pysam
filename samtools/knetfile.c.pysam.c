@@ -189,7 +189,7 @@ static off_t my_netread(int fd, void *buf, off_t len)
 	 * one call. They have to be called repeatedly. */
 	while (rest) {
 		if (socket_wait(fd, 1) <= 0) break; // socket is not ready for reading
-		curr = netread(fd, buf + l, rest);
+		curr = netread(fd, (char *)buf + l, rest);
 		/* According to the glibc manual, section 13.2, a zero returned
 		 * value indicates end-of-file (EOF), which should mean that
 		 * read() will not return zero if EOF has not been met but data
@@ -322,6 +322,7 @@ int kftp_connect_file(knetFile *fp)
 {
 	int ret;
 	long long file_size;
+	const char *p;
 	if (fp->fd != -1) {
 		netclose(fp->fd);
 		if (fp->no_reconnect) kftp_get_response(fp);
@@ -335,7 +336,7 @@ int kftp_connect_file(knetFile *fp)
         return -1;
     }
 #else
-	const char *p = fp->response;
+	p = fp->response;
 	while (*p != ' ') ++p;
 	while (*p < '0' || *p > '9') ++p;
 	file_size = strtoint64(p);
@@ -520,7 +521,7 @@ off_t knet_read(knetFile *fp, void *buf, off_t len)
 		off_t rest = len, curr;
 		while (rest) {
 			do {
-				curr = read(fp->fd, buf + l, rest);
+				curr = read(fp->fd, (char *)buf + l, rest);
 			} while (curr < 0 && EINTR == errno);
 			if (curr < 0) return -1;
 			if (curr == 0) break;

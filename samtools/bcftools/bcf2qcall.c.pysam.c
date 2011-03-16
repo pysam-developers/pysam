@@ -69,7 +69,7 @@ int bcf_2qcall(bcf_hdr_t *h, bcf1_t *b)
 		if (map[k] < 0) map[k] = k1;
 	for (i = 0; i < h->n_smpl; ++i) {
 		int d;
-		uint8_t *p = b->gi[i0].data + i * b->gi[i0].len;
+		uint8_t *p = (uint8_t *)b->gi[i0].data + i * b->gi[i0].len;
 		for (j = 0; j < b->gi[i0].len; ++j)
 			if (p[j]) break;
 		d = (int)((double)d_rest / (h->n_smpl - i) + .499);

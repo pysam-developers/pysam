@@ -58,7 +58,11 @@ typedef int8_t bgzf_byte_t;
 static const int DEFAULT_BLOCK_SIZE = 64 * 1024;
 static const int MAX_BLOCK_SIZE = 64 * 1024;
 
+#ifdef _MSC_VER
+#define BLOCK_HEADER_LENGTH 18
+#else
 static const int BLOCK_HEADER_LENGTH = 18;
+#endif
 static const int BLOCK_FOOTER_LENGTH = 8;
 
 static const int GZIP_ID1 = 31;
@@ -259,6 +263,11 @@ deflate_block(BGZF* fp, int block_length)
 
     bgzf_byte_t* buffer = fp->compressed_block;
     int buffer_size = fp->compressed_block_size;
+    int input_length = block_length;
+    int compressed_length = 0;
+    int status;
+    uint32_t crc = crc32(0L, NULL, 0L);
+    int remaining;
 
     // Init gzip header
     buffer[0] = GZIP_ID1;
@@ -281,8 +290,6 @@ deflate_block(BGZF* fp, int block_length)
     buffer[17] = 0;
 
     // loop to retry for blocks that do not compress enough
-    int input_length = block_length;
-    int compressed_length = 0;
     while (1) {
 		int compress_level = fp->is_uncompressed? 0 : Z_DEFAULT_COMPRESSION;
         z_stream zs;
@@ -293,7 +300,7 @@ deflate_block(BGZF* fp, int block_length)
         zs.next_out = (void*)&buffer[BLOCK_HEADER_LENGTH];
         zs.avail_out = buffer_size - BLOCK_HEADER_LENGTH - BLOCK_FOOTER_LENGTH;
 
-        int status = deflateInit2(&zs, compress_level, Z_DEFLATED,
+        status = deflateInit2(&zs, compress_level, Z_DEFLATED,
                                   GZIP_WINDOW_BITS, Z_DEFAULT_MEM_LEVEL, Z_DEFAULT_STRATEGY);
         if (status != Z_OK) {
             report_error(fp, "deflate init failed");
@@ -333,12 +340,11 @@ deflate_block(BGZF* fp, int block_length)
     }
 
     packInt16((uint8_t*)&buffer[16], compressed_length-1);
-    uint32_t crc = crc32(0L, NULL, 0L);
     crc = crc32(crc, fp->uncompressed_block, input_length);
     packInt32((uint8_t*)&buffer[compressed_length-8], crc);
     packInt32((uint8_t*)&buffer[compressed_length-4], input_length);
 
-    int remaining = block_length - input_length;
+    remaining = block_length - input_length;
     if (remaining > 0) {
         if (remaining > input_length) {
             // should never happen (check so we can use memcpy)
@@ -346,8 +352,8 @@ deflate_block(BGZF* fp, int block_length)
             return -1;
         }
         memcpy(fp->uncompressed_block,
-               fp->uncompressed_block + input_length,
-               remaining);
+               (bgzf_byte_t *)fp->uncompressed_block + input_length,
+               (int *)remaining);
     }
     fp->block_offset = remaining;
     return compressed_length;
@@ -360,14 +366,15 @@ inflate_block(BGZF* fp, int block_length)
     // Inflate the block in fp->compressed_block into fp->uncompressed_block
 
     z_stream zs;
+	int status;
     zs.zalloc = NULL;
     zs.zfree = NULL;
-    zs.next_in = fp->compressed_block + 18;
+    zs.next_in = (bgzf_byte_t *)fp->compressed_block + 18;
     zs.avail_in = block_length - 16;
     zs.next_out = fp->uncompressed_block;
     zs.avail_out = fp->uncompressed_block_size;
 
-    int status = inflateInit2(&zs, GZIP_WINDOW_BITS);
+    status = inflateInit2(&zs, GZIP_WINDOW_BITS);
     if (status != Z_OK) {
         report_error(fp, "inflate init failed");
         return -1;
@@ -461,15 +468,18 @@ int
 bgzf_read_block(BGZF* fp)
 {
     bgzf_byte_t header[BLOCK_HEADER_LENGTH];
-	int size = 0;
+	int count, size = 0;
+    int block_length;
+    int remaining;
+    bgzf_byte_t* compressed_block = (bgzf_byte_t*) fp->compressed_block;
 #ifdef _USE_KNETFILE
     int64_t block_address = knet_tell(fp->x.fpr);
 	if (load_block_from_cache(fp, block_address)) return 0;
-    int count = knet_read(fp->x.fpr, header, sizeof(header));
+    count = knet_read(fp->x.fpr, header, sizeof(header));
 #else
     int64_t block_address = ftello(fp->file);
 	if (load_block_from_cache(fp, block_address)) return 0;
-    int count = fread(header, 1, sizeof(header), fp->file);
+    count = fread(header, 1, sizeof(header), fp->file);
 #endif
     if (count == 0) {
         fp->block_length = 0;
@@ -484,10 +494,10 @@ bgzf_read_block(BGZF* fp)
         report_error(fp, "invalid block header");
         return -1;
     }
-    int block_length = unpackInt16((uint8_t*)&header[16]) + 1;
-    bgzf_byte_t* compressed_block = (bgzf_byte_t*) fp->compressed_block;
+    block_length = unpackInt16((uint8_t*)&header[16]) + 1;
+    compressed_block = (bgzf_byte_t*) fp->compressed_block;
     memcpy(compressed_block, header, BLOCK_HEADER_LENGTH);
-    int remaining = block_length - BLOCK_HEADER_LENGTH;
+    remaining = block_length - BLOCK_HEADER_LENGTH;
 #ifdef _USE_KNETFILE
     count = knet_read(fp->x.fpr, &compressed_block[BLOCK_HEADER_LENGTH], remaining);
 #else
@@ -515,6 +525,11 @@ bgzf_read_block(BGZF* fp)
 int
 bgzf_read(BGZF* fp, void* data, int length)
 {
+    int bytes_read = 0;
+    bgzf_byte_t* buffer;
+    bgzf_byte_t* output = data;
+    int available;
+    int copy_length;
     if (length <= 0) {
         return 0;
     }
@@ -523,10 +538,8 @@ bgzf_read(BGZF* fp, void* data, int length)
         return -1;
     }
 
-    int bytes_read = 0;
-    bgzf_byte_t* output = data;
     while (bytes_read < length) {
-        int available = fp->block_length - fp->block_offset;
+        available = fp->block_length - fp->block_offset;
         if (available <= 0) {
             if (bgzf_read_block(fp) != 0) {
                 return -1;
@@ -536,8 +549,8 @@ bgzf_read(BGZF* fp, void* data, int length)
                 break;
             }
         }
-        int copy_length = bgzf_min(length-bytes_read, available);
-        bgzf_byte_t* buffer = fp->uncompressed_block;
+        copy_length = bgzf_min(length-bytes_read, available);
+        buffer = fp->uncompressed_block;
         memcpy(output, buffer + fp->block_offset, copy_length);
         fp->block_offset += copy_length;
         output += copy_length;
@@ -559,15 +572,16 @@ static
 int
 flush_block(BGZF* fp)
 {
+	int count,block_length;
     while (fp->block_offset > 0) {
-        int block_length = deflate_block(fp, fp->block_offset);
+        block_length = deflate_block(fp, fp->block_offset);
         if (block_length < 0) {
             return -1;
         }
 #ifdef _USE_KNETFILE
-        int count = fwrite(fp->compressed_block, 1, block_length, fp->x.fpw);
+        count = fwrite(fp->compressed_block, 1, block_length, fp->x.fpw);
 #else
-        int count = fwrite(fp->compressed_block, 1, block_length, fp->file);
+        count = fwrite(fp->compressed_block, 1, block_length, fp->file);
 #endif
         if (count != block_length) {
             report_error(fp, "write failed");
@@ -581,6 +595,9 @@ flush_block(BGZF* fp)
 int
 bgzf_write(BGZF* fp, const void* data, int length)
 {
+	const bgzf_byte_t* input = data;
+    int block_length;
+    int bytes_written = 0;
     if (fp->open_mode != 'w') {
         report_error(fp, "file not open for writing");
         return -1;
@@ -590,9 +607,7 @@ bgzf_write(BGZF* fp, const void* data, int length)
         fp->uncompressed_block = malloc(fp->uncompressed_block_size);
     }
 
-    const bgzf_byte_t* input = data;
-    int block_length = fp->uncompressed_block_size;
-    int bytes_written = 0;
+    block_length = fp->uncompressed_block_size;
     while (bytes_written < length) {
         int copy_length = bgzf_min(block_length - fp->block_offset, length - bytes_written);
         bgzf_byte_t* buffer = fp->uncompressed_block;
@@ -679,6 +694,8 @@ int bgzf_check_EOF(BGZF *fp)
 int64_t
 bgzf_seek(BGZF* fp, int64_t pos, int where)
 {
+	int block_offset = pos & 0xFFFF;
+    int64_t block_address = (pos >> 16) & 0xFFFFFFFFFFFFLL;
     if (fp->open_mode != 'r') {
         report_error(fp, "file not open for read");
         return -1;
@@ -687,8 +704,6 @@ bgzf_seek(BGZF* fp, int64_t pos, int where)
         report_error(fp, "unimplemented seek option");
         return -1;
     }
-    int block_offset = pos & 0xFFFF;
-    int64_t block_address = (pos >> 16) & 0xFFFFFFFFFFFFLL;
 #ifdef _USE_KNETFILE
     if (knet_seek(fp->x.fpr, block_address, SEEK_SET) != 0) {
 #else

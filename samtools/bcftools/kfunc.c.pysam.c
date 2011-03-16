@@ -1,7 +1,9 @@
 #include "pysam.h"
 
 #include <math.h>
-
+#ifndef M_SQRT2
+#define 	M_SQRT2   1.41421356237309504880
+#endif
 
 /* Log gamma function
  * \log{\Gamma(z)}

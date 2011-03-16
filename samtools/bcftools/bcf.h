@@ -35,6 +35,9 @@
 #include "bgzf.h"
 typedef BGZF *bcfFile;
 #else
+#ifdef _MSC_VER
+#include <msvc_compat.h>
+#endif
 typedef gzFile bcfFile;
 #define bgzf_open(fn, mode) gzopen(fn, mode)
 #define bgzf_fdopen(fd, mode) gzdopen(fd, mode)

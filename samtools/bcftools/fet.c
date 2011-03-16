@@ -1,6 +1,8 @@
 #include <math.h>
 #include <stdlib.h>
-
+#ifdef _MSC_VER
+#include <msvc_compat.h>
+#endif
 /* This program is implemented with ideas from this web page:
  *
  *   http://www.langsrud.com/fisher.htm

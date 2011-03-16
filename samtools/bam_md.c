@@ -254,6 +254,7 @@ int bam_prob_realn(bam1_t *b, const char *ref)
 
 int bam_fillmd(int argc, char *argv[])
 {
+    extern int optind;    
 	int c, is_equal, tid = -2, ret, len, is_bam_out, is_sam_in, is_uncompressed, max_nm, is_realn, capQ, apply_baq;
 	samfile_t *fp, *fpout = 0;
 	faidx_t *fai;

@@ -1,10 +1,20 @@
 # cython: embedsignature=True
 # cython: profile=False
 # adds doc-strings for sphinx
-import tempfile, os, sys, types, struct, ctypes, collections, re
-
+import tempfile
+import os
+import sys
+import types
+import itertools
+import struct
+import ctypes
+import collections
+import re
+import platform
 from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython cimport PyErr_SetString
+#from cpython.string cimport PyString_FromStringAndSize, PyString_AS_STRING
+#from cpython.exc    cimport PyErr_SetString, PyErr_NoMemory
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -53,7 +63,7 @@ cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 cdef int max_pos = 2 << 29
 
 # redirect stderr to 0
-_logfile = open("/dev/null", "w")
+_logfile = open(os.path.devnull, "w")
 pysam_set_stderr( PyFile_AsFile( _logfile ) )
 
 #####################################################################
@@ -187,6 +197,17 @@ class StderrStore():
 
     def __del__(self):
         self.release()
+
+class StderrStoreWindows():
+    '''does nothing. stderr can't be redirected on windows'''
+    def __init__(self): pass
+    def readAndRelease(self): return []
+    def release(self): pass
+
+if platform.system()=='Windows':
+    del StderrStore
+    StderrStore = StderrStoreWindows
+
 
 ######################################################################
 ######################################################################
@@ -391,7 +412,7 @@ cdef int mate_callback( bam1_t *alignment, void *f):
 
 
 cdef class Samfile:
-    '''*(filename, mode='r', template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
+    '''*(filename, mode=None, template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
               
     A :term:`SAM`/:term:`BAM` formatted file. The file is automatically opened.
     
@@ -405,6 +426,8 @@ cdef class Samfile:
 
         import pysam
         f = pysam.Samfile('ex1.bam','rb')
+
+    If mode is not specified, we will try to auto-detect in the order 'r', 'rb'.
 
     If an index for a BAM file exists (.bai), it will be opened automatically. Without an index random
     access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
@@ -458,7 +481,7 @@ cdef class Samfile:
 
     def _open( self, 
                char * filename, 
-               mode = 'r',
+               mode = None,
                Samfile template = None,
                referencenames = None,
                referencelengths = None,
@@ -471,6 +494,22 @@ cdef class Samfile:
         If _open is called on an existing bamfile, the current file will be
         closed and a new file will be opened.
         '''
+
+        # read mode autodetection
+        if mode is None:
+            try:
+                self._open(filename, 'r', template=template,
+                           referencenames=referencenames,
+                           referencelengths=referencelengths,
+                           text=text, header=header, port=port)
+                return
+            except ValueError:
+                pass
+            self._open(filename, 'rb', template=template,
+                       referencenames=referencenames,
+                       referencelengths=referencelengths,
+                       text=text, header=header, port=port)
+            return
 
         assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
         assert filename != NULL
@@ -555,10 +594,10 @@ cdef class Samfile:
                 raise ValueError( "could not open file - is it SAM/BAM format?")
 
             if self.samfile.header == NULL:
-                raise ValueError( "could not open file - is it SAM/BAM format?")
+                raise ValueError( "file does not have valid header - is it SAM/BAM format?")
 
             if self.samfile.header.n_targets == 0:
-                raise ValueError( "could not open file - is it SAM/BAM format?")
+                raise ValueError( "file header is empty - is it SAM/BAM format?")
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
@@ -616,8 +655,8 @@ cdef class Samfile:
         # implementing it all in pysam (makes use of khash).
         
         cdef int rtid
-        cdef int rstart
-        cdef int rend
+        cdef long long rstart
+        cdef long long rend
 
         rtid = -1
         rstart = 0
@@ -2590,6 +2629,7 @@ class Outs:
         ofd = os.dup(self.id)      #  Save old stream on new unit.
         self.streams.append(ofd)
         sys.stdout.flush()          #  Buffered data goes to old stream.
+        sys.stderr.flush()          #  Buffered data goes to old stream.
         os.dup2(fd, self.id)        #  Open unit 1 on new stream.
         os.close(fd)                #  Close other unit (look out, caller.)
             
