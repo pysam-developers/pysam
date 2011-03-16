@@ -748,9 +748,9 @@ cdef class Samfile:
         cdef uint32_t flag = read._delegate.core.flag
 
         if flag & BAM_FPAIRED == 0:
-            raise ValueError( "read is unpaired" )
-        if flag & BAM_FUNMAP != 0:
-            raise ValueError( "mate is unmapped" )
+            raise ValueError( "read %s: is unpaired" % (read.qname))
+        if flag & BAM_FMUNMAP != 0:
+            raise ValueError( "mate %s: is unmapped" % (read.qname))
         
         cdef MateData mate_data
 
@@ -1167,6 +1167,8 @@ cdef class IteratorRowRegion(IteratorRow):
     cdef int                    retval
     cdef Samfile                samfile
     cdef samfile_t              * fp
+    # true if samfile belongs to this object
+    cdef int owns_samfile
 
     def __cinit__(self, Samfile samfile, int tid, int beg, int end, int reopen = True ):
 
@@ -1190,8 +1192,10 @@ cdef class IteratorRowRegion(IteratorRow):
             self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
             assert self.fp != NULL
+            self.owns_samfile = True
         else:
             self.fp = self.samfile.samfile
+            self.owns_samfile = False
 
         self.retval = 0
 
@@ -1222,7 +1226,7 @@ cdef class IteratorRowRegion(IteratorRow):
 
     def __dealloc__(self):
         bam_destroy1(self.b)
-        samclose( self.fp )
+        if self.owns_samfile: samclose( self.fp )
 
 cdef class IteratorRowAll(IteratorRow):
     """*(Samfile samfile, int reopen = True)*
@@ -1236,6 +1240,8 @@ cdef class IteratorRowAll(IteratorRow):
 
     cdef bam1_t * b
     cdef samfile_t * fp
+    # true if samfile belongs to this object
+    cdef int owns_samfile
 
     def __cinit__(self, Samfile samfile, int reopen = True ):
 
@@ -1251,8 +1257,10 @@ cdef class IteratorRowAll(IteratorRow):
             self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
             assert self.fp != NULL
+            self.owns_samfile = True
         else:
             self.fp = samfile.samfile
+            self.owns_samfile = False
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
@@ -1282,7 +1290,7 @@ cdef class IteratorRowAll(IteratorRow):
 
     def __dealloc__(self):
         bam_destroy1(self.b)
-        samclose( self.fp )
+        if self.owns_samfile: samclose( self.fp )
 
 cdef class IteratorRowAllRefs(IteratorRow):
     """iterates over all mapped reads by chaining iterators over each reference
@@ -1340,6 +1348,8 @@ cdef class IteratorRowSelection(IteratorRow):
     cdef int current_pos 
     cdef samfile_t * fp
     cdef positions
+    # true if samfile belongs to this object
+    cdef int owns_samfile
 
     def __cinit__(self, Samfile samfile, positions, int reopen = True ):
 
@@ -1358,8 +1368,10 @@ cdef class IteratorRowSelection(IteratorRow):
             self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
             assert self.fp != NULL
+            self.owns_samfile = True
         else:
             self.fp = samfile.samfile
+            self.owns_samfile = False
 
         # allocate memory for alignment
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
@@ -1397,6 +1409,7 @@ cdef class IteratorRowSelection(IteratorRow):
 
     def __dealloc__(self):
         bam_destroy1(self.b)
+        if self.owns_samfile: samclose( self.fp )
 
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
@@ -1433,12 +1446,11 @@ cdef int __advance_snpcalls( void * data, bam1_t * b ):
     # reload sequence
     if d.fastafile != NULL and b.core.tid != d.tid:
         if d.seq != NULL: free(d.seq)
-        d.tid = b.core.tid;
+        d.tid = b.core.tid
         d.seq = faidx_fetch_seq(d.fastafile, 
                                 d.samfile.header.target_name[d.tid],
                                 0, max_pos, 
                                 &d.seq_len)
-
         if d.seq == NULL:
             raise ValueError( "reference sequence for '%s' (tid=%i) not found" % \
                                   (d.samfile.header.target_name[d.tid], 
@@ -3241,6 +3253,8 @@ cdef class IndexedReads:
     cdef Samfile samfile
     cdef samfile_t * fp
     cdef index
+    # true if samfile belongs to this object
+    cdef int owns_samfile
 
     def __init__(self, Samfile samfile, int reopen = True ):
         self.samfile = samfile
@@ -3255,6 +3269,10 @@ cdef class IndexedReads:
             self.fp = samopen( samfile._filename, mode, NULL )
             store.release()
             assert self.fp != NULL
+            self.owns_samfile = True
+        else:
+            self.fp = samfile.samfile
+            self.owns_samfile = False
 
         assert samfile.isbam, "can only IndexReads on bam files"
 
@@ -3284,6 +3302,9 @@ cdef class IndexedReads:
             return IteratorRowSelection( self.samfile, self.index[qname], reopen = False )
         else:
             raise KeyError( "read %s not found" % qname )
+
+    def __dealloc__(self):
+        if self.owns_samfile: samclose( self.fp )
 
 __all__ = ["Samfile", 
            "Fastafile",
