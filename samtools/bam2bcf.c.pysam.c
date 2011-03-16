@@ -13,6 +13,7 @@ extern	void ks_introsort_uint32_t(size_t n, uint32_t a[]);
 #define CALL_ETA 0.03f
 #define CALL_MAX 256
 #define CALL_DEFTHETA 0.83f
+#define DEF_MAPQ 20
 
 #define CAP_DIST 25
 
@@ -25,6 +26,8 @@ bcf_callaux_t *bcf_call_init(double theta, int min_baseQ)
 	bca->openQ = 40; bca->extQ = 20; bca->tandemQ = 100;
 	bca->min_baseQ = min_baseQ;
 	bca->e = errmod_init(1. - theta);
+	bca->min_frac = 0.002;
+	bca->min_support = 1;
 	return bca;
 }
 
@@ -63,7 +66,8 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
 		seqQ = is_indel? (p->aux>>8&0xff) : 99;
 		if (q < bca->min_baseQ) continue;
 		if (q > seqQ) q = seqQ;
-		mapQ = p->b->core.qual < bca->capQ? p->b->core.qual : bca->capQ;
+		mapQ = p->b->core.qual < 255? p->b->core.qual : DEF_MAPQ; // special case for mapQ==255
+		mapQ = mapQ < bca->capQ? mapQ : bca->capQ;
 		if (q > mapQ) q = mapQ;
 		if (q > 63) q = 63;
 		if (q < 4) q = 4;
@@ -77,7 +81,7 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
 		}
 		bca->bases[n++] = q<<5 | (int)bam1_strand(p->b)<<4 | b;
 		// collect annotations
-		r->qsum[b] += q;
+		if (b < 4) r->qsum[b] += q;
 		++r->anno[0<<2|is_diff<<1|bam1_strand(p->b)];
 		min_dist = p->b->core.l_qseq - 1 - p->qpos;
 		if (min_dist > p->qpos) min_dist = p->qpos;
@@ -142,8 +146,8 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, int ref_base /*4-bit*/,
 		x = call->n_alleles * (call->n_alleles + 1) / 2;
 		// get the possible genotypes
 		for (i = z = 0; i < call->n_alleles; ++i)
-			for (j = i; j < call->n_alleles; ++j)
-				g[z++] = call->a[i] * 5 + call->a[j];
+			for (j = 0; j <= i; ++j)
+				g[z++] = call->a[j] * 5 + call->a[i];
 		for (i = 0; i < n; ++i) {
 			uint8_t *PL = call->PL + x * i;
 			const bcf_callret1_t *r = calls + i;

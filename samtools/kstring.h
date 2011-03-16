@@ -5,10 +5,6 @@
 #include <string.h>
 #include <stdint.h>
 
-#ifdef _MSC_VER
-#include <msvc_compat.h>
-#endif
-
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
 #endif
@@ -23,6 +19,7 @@ typedef struct __kstring_t {
 
 typedef struct {
 	uint64_t tab[4];
+	int sep, finished;
 	const char *p; // end of the current token
 } ks_tokaux_t;
 

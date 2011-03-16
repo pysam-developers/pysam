@@ -3,7 +3,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include "sam.h"
- 
+
 typedef struct {
 	int k, x, y, end;
 } cstate_t;

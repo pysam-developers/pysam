@@ -13,7 +13,6 @@ KHASH_SET_INIT_STR(rg)
 
 #define MINUS_CONST 0x10000000
 #define INDEL_WINDOW_SIZE 50
-#define MIN_SUPPORT_COEF 500
 
 void *bcf_call_add_rg(void *_hash, const char *hdtext, const char *list)
 {
@@ -116,7 +115,7 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 	extern void ks_introsort_uint32_t(int, uint32_t*);
 	int i, s, j, k, t, n_types, *types, max_rd_len, left, right, max_ins, *score1, *score2, max_ref2;
 	int N, K, l_run, ref_type, n_alt;
-	char *inscns = 0, *ref2, *query;
+	char *inscns = 0, *ref2, *query, **ref_sample;
 	khash_t(rg) *hash = (khash_t(rg)*)rghash;
 	if (ref == 0 || bca == 0) return -1;
 	// mark filtered reads
@@ -167,7 +166,7 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 		// squeeze out identical types
 		for (i = 1, n_types = 1; i < m; ++i)
 			if (aux[i] != aux[i-1]) ++n_types;
-		if (n_types == 1 || n_alt * MIN_SUPPORT_COEF < n_tot) { // no indels or too few supporting reads
+		if (n_types == 1 || (double)n_alt / n_tot < bca->min_frac || n_alt < bca->min_support) { // then skip
 			free(aux); return -1;
 		}
 		types = (int*)calloc(n_types, sizeof(int));
@@ -190,6 +189,58 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 		for (i = pos; i < right; ++i)
 			if (ref[i] == 0) break;
 		right = i;
+	}
+	/* The following block fixes a long-existing flaw in the INDEL
+	 * calling model: the interference of nearby SNPs. However, it also
+	 * reduces the power because sometimes, substitutions caused by
+	 * indels are not distinguishable from true mutations. Multiple
+	 * sequence realignment helps to increase the power.
+	 */
+	{ // construct per-sample consensus
+		int L = right - left + 1, max_i, max2_i;
+		uint32_t *cns, max, max2;
+		char *ref0, *r;
+		ref_sample = calloc(n, sizeof(void*));
+		cns = calloc(L, 4);
+		ref0 = calloc(L, 1);
+		for (i = 0; i < right - left; ++i)
+			ref0[i] = bam_nt16_table[(int)ref[i+left]];
+		for (s = 0; s < n; ++s) {
+			r = ref_sample[s] = calloc(L, 1);
+			memset(cns, 0, sizeof(int) * L);
+			// collect ref and non-ref counts
+			for (i = 0; i < n_plp[s]; ++i) {
+				bam_pileup1_t *p = plp[s] + i;
+				bam1_t *b = p->b;
+				uint32_t *cigar = bam1_cigar(b);
+				uint8_t *seq = bam1_seq(b);
+				int x = b->core.pos, y = 0;
+				for (k = 0; k < b->core.n_cigar; ++k) {
+					int op = cigar[k]&0xf;
+					int j, l = cigar[k]>>4;
+					if (op == BAM_CMATCH) {
+						for (j = 0; j < l; ++j)
+							if (x + j >= left && x + j < right)
+								cns[x+j-left] += (bam1_seqi(seq, y+j) == ref0[x+j-left])? 1 : 0x10000;
+						x += l; y += l;
+					} else if (op == BAM_CDEL || op == BAM_CREF_SKIP) x += l;
+					else if (op == BAM_CINS || op == BAM_CSOFT_CLIP) y += l;
+				}
+			}
+			// determine the consensus
+			for (i = 0; i < right - left; ++i) r[i] = ref0[i];
+			max = max2 = 0; max_i = max2_i = -1;
+			for (i = 0; i < right - left; ++i) {
+				if (cns[i]>>16 >= max>>16) max2 = max, max2_i = max_i, max = cns[i], max_i = i;
+				else if (cns[i]>>16 >= max2>>16) max2 = cns[i], max2_i = i;
+			}
+			if ((double)(max&0xffff) / ((max&0xffff) + (max>>16)) >= 0.7) max_i = -1;
+			if ((double)(max2&0xffff) / ((max2&0xffff) + (max2>>16)) >= 0.7) max2_i = -1;
+			if (max_i >= 0) r[max_i] = 15;
+			if (max2_i >= 0) r[max2_i] = 15;
+//			for (i = 0; i < right - left; ++i) fputc("=ACMGRSVTWYHKDBN"[(int)r[i]], pysamerr); fputc('\n', pysamerr);
+		}
+		free(ref0); free(cns);
 	}
 	{ // the length of the homopolymer run around the current position
 		int c = bam_nt16_table[(int)ref[pos + 1]];
@@ -254,27 +305,29 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 		else ir = est_indelreg(pos, ref, -types[t], 0);
 		if (ir > bca->indelreg) bca->indelreg = ir;
 //		fprintf(pysamerr, "%d, %d, %d\n", pos, types[t], ir);
-		// write ref2
-		for (k = 0, j = left; j <= pos; ++j)
-			ref2[k++] = bam_nt16_nt4_table[bam_nt16_table[(int)ref[j]]];
-		if (types[t] <= 0) j += -types[t];
-		else for (l = 0; l < types[t]; ++l)
-				 ref2[k++] = inscns[t*max_ins + l];
-		if (types[0] < 0) { // mask deleted sequences to avoid a particular error in the model.
-			int jj, tmp = types[t] >= 0? -types[0] : -types[0] + types[t];
-			for (jj = 0; jj < tmp && j < right && ref[j]; ++jj, ++j)
-				ref2[k++] = 4;
-		}
-		for (; j < right && ref[j]; ++j)
-			ref2[k++] = bam_nt16_nt4_table[bam_nt16_table[(int)ref[j]]];
-		for (; k < max_ref2; ++k) ref2[k] = 4;
-		if (j < right) right = j;
-		// align each read to ref2
+		// realignment
 		for (s = K = 0; s < n; ++s) {
+			// write ref2
+			for (k = 0, j = left; j <= pos; ++j)
+				ref2[k++] = bam_nt16_nt4_table[(int)ref_sample[s][j-left]];
+			if (types[t] <= 0) j += -types[t];
+			else for (l = 0; l < types[t]; ++l)
+					 ref2[k++] = inscns[t*max_ins + l];
+			for (; j < right && ref[j]; ++j)
+				ref2[k++] = bam_nt16_nt4_table[(int)ref_sample[s][j-left]];
+			for (; k < max_ref2; ++k) ref2[k] = 4;
+			if (j < right) right = j;
+			// align each read to ref2
 			for (i = 0; i < n_plp[s]; ++i, ++K) {
 				bam_pileup1_t *p = plp[s] + i;
-				int qbeg, qend, tbeg, tend, sc;
+				int qbeg, qend, tbeg, tend, sc, kk;
 				uint8_t *seq = bam1_seq(p->b);
+				uint32_t *cigar = bam1_cigar(p->b);
+				if (p->b->core.flag&4) continue; // unmapped reads
+				// FIXME: the following loop should be better moved outside; nonetheless, realignment should be much slower anyway.
+				for (kk = 0; kk < p->b->core.n_cigar; ++kk)
+					if ((cigar[kk]&BAM_CIGAR_MASK) == BAM_CREF_SKIP) break;
+				if (kk < p->b->core.n_cigar) continue;
 				// FIXME: the following skips soft clips, but using them may be more sensitive.
 				// determine the start and end of sequences for alignment
 				qbeg = tpos2qpos(&p->b->core, bam1_cigar(p->b), left,  0, &tbeg);
@@ -369,9 +422,11 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 				indelQ2 = tmp > 111? 0 : (int)((1. - tmp/111.) * indelQ2 + .499);
 				// pick the smaller between indelQ1 and indelQ2
 				indelQ = indelQ1 < indelQ2? indelQ1 : indelQ2;
-				p->aux = (sc[0]&0x3f)<<16 | seqQ<<8 | indelQ;
+				if (indelQ > 255) indelQ = 255;
+				if (seqQ > 255) seqQ = 255;
+				p->aux = (sc[0]&0x3f)<<16 | seqQ<<8 | indelQ; // use 22 bits in total
 				sumq[sc[0]&0x3f] += indelQ < seqQ? indelQ : seqQ;
-//				fprintf(pysamerr, "pos=%d read=%d:%d name=%s call=%d q=%d\n", pos, s, i, bam1_qname(p->b), types[sc[0]&0x3f], indelQ);
+//				fprintf(pysamerr, "pos=%d read=%d:%d name=%s call=%d indelQ=%d seqQ=%d\n", pos, s, i, bam1_qname(p->b), types[sc[0]&0x3f], indelQ, seqQ);
 			}
 		}
 		// determine bca->indel_types[] and bca->inscns
@@ -409,6 +464,8 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 	}
 	free(score1); free(score2);
 	// free
+	for (i = 0; i < n; ++i) free(ref_sample[i]);
+	free(ref_sample);
 	free(types); free(inscns);
 	return n_alt > 0? 0 : -1;
 }

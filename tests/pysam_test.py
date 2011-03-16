@@ -641,12 +641,12 @@ class TestExceptions(unittest.TestCase):
         self.assertRaises( ValueError, self.samfile.count, region="chr1:-5--10" )
 
     def testOutOfRangNewFormat(self):
-        self.assertRaises( OverflowError, self.samfile.fetch, "chr1", 9999999999, 99999999999 )
-        self.assertRaises( OverflowError, self.samfile.count, "chr1", 9999999999, 99999999999 )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 9999999999, 99999999999 )
+        self.assertRaises( ValueError, self.samfile.count, "chr1", 9999999999, 99999999999 )
 
     def testOutOfRangeLargeNewFormat(self):
-        self.assertRaises( OverflowError, self.samfile.fetch, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
-        self.assertRaises( OverflowError, self.samfile.count, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
+        self.assertRaises( ValueError, self.samfile.fetch, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
+        self.assertRaises( ValueError, self.samfile.count, "chr1", 9999999999999999999999999999999, 9999999999999999999999999999999999999999 )
 
     def testOutOfRangeLargeOldFormat(self):
         self.assertRaises( ValueError, self.samfile.fetch, "chr1:99999999999999999-999999999999999999" )
@@ -1300,6 +1300,6 @@ class TestSamfileIndex( unittest.TestCase):
 if __name__ == "__main__":
     # build data files
     print "building data files"
-    subprocess.call( "mingw32-make", shell=True)
+    subprocess.call( "make", shell=True)
     print "starting tests"
     unittest.main()

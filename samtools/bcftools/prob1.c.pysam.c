@@ -34,7 +34,7 @@ unsigned char seq_nt4_table[256] = {
 };
 
 struct __bcf_p1aux_t {
-	int n, M, n1, is_indel, is_folded;
+	int n, M, n1, is_indel;
 	double *q2p, *pdg; // pdg -> P(D|g)
 	double *phi, *phi_indel;
 	double *z, *zswap; // aux for afs
@@ -44,13 +44,6 @@ struct __bcf_p1aux_t {
 	const uint8_t *PL; // point to PL
 	int PL_len;
 };
-
-static void fold_array(int M, double *x)
-{
-	int k;
-	for (k = 0; k < M/2; ++k)
-		x[k] = x[M-k] = (x[k] + x[M-k]) / 2.;
-}
 
 void bcf_p1_indel_prior(bcf_p1aux_t *ma, double x)
 {
@@ -164,15 +157,6 @@ int bcf_p1_set_n1(bcf_p1aux_t *b, int n1)
 	return 0;
 }
 
-void bcf_p1_set_folded(bcf_p1aux_t *p1a)
-{
-	if (p1a->n1 < 0) {
-		p1a->is_folded = 1;
-		fold_array(p1a->M, p1a->phi);
-		fold_array(p1a->M, p1a->phi_indel);
-	}
-}
-
 void bcf_p1_destroy(bcf_p1aux_t *ma)
 {
 	if (ma) {
@@ -186,18 +170,16 @@ void bcf_p1_destroy(bcf_p1aux_t *ma)
 
 static int cal_pdg(const bcf1_t *b, bcf_p1aux_t *ma)
 {
-	int i, j, k;
+	int i, j;
 	long *p, tmp;
 	p = alloca(b->n_alleles * sizeof(long));
 	memset(p, 0, sizeof(long) * b->n_alleles);
 	for (j = 0; j < ma->n; ++j) {
 		const uint8_t *pi = ma->PL + j * ma->PL_len;
 		double *pdg = ma->pdg + j * 3;
-		pdg[0] = ma->q2p[pi[b->n_alleles]]; pdg[1] = ma->q2p[pi[1]]; pdg[2] = ma->q2p[pi[0]];
-		for (i = k = 0; i < b->n_alleles; ++i) {
-			p[i] += (int)pi[k];
-			k += b->n_alleles - i;
-		}
+		pdg[0] = ma->q2p[pi[2]]; pdg[1] = ma->q2p[pi[1]]; pdg[2] = ma->q2p[pi[0]];
+		for (i = 0; i < b->n_alleles; ++i)
+			p[i] += (int)pi[(i+1)*(i+2)/2-1];
 	}
 	for (i = 0; i < b->n_alleles; ++i) p[i] = p[i]<<4 | i;
 	for (i = 1; i < b->n_alleles; ++i) // insertion sort
@@ -328,19 +310,28 @@ static void contrast(bcf_p1aux_t *ma, double pc[4]) // mc_cal_y() must be called
 	pc[1] = pc[1] == 1.? 99 : (int)(-4.343 * log(1. - pc[1]) + .499);
 }
 
-static double mc_cal_afs(bcf_p1aux_t *ma)
+static double mc_cal_afs(bcf_p1aux_t *ma, double *p_ref_folded, double *p_var_folded)
 {
 	int k;
-	long double sum = 0.;
+	long double sum = 0., sum2;
 	double *phi = ma->is_indel? ma->phi_indel : ma->phi;
 	memset(ma->afs1, 0, sizeof(double) * (ma->M + 1));
 	mc_cal_y(ma);
+	// compute AFS
 	for (k = 0, sum = 0.; k <= ma->M; ++k)
 		sum += (long double)phi[k] * ma->z[k];
 	for (k = 0; k <= ma->M; ++k) {
 		ma->afs1[k] = phi[k] * ma->z[k] / sum;
 		if (isnan(ma->afs1[k]) || isinf(ma->afs1[k])) return -1.;
 	}
+	// compute folded variant probability
+	for (k = 0, sum = 0.; k <= ma->M; ++k)
+		sum += (long double)(phi[k] + phi[ma->M - k]) / 2. * ma->z[k];
+	for (k = 1, sum2 = 0.; k < ma->M; ++k)
+		sum2 += (long double)(phi[k] + phi[ma->M - k]) / 2. * ma->z[k];
+	*p_var_folded = sum2 / sum;
+	*p_ref_folded = (phi[k] + phi[ma->M - k]) / 2. * (ma->z[ma->M] + ma->z[0]) / sum;
+	// the expected frequency
 	for (k = 0, sum = 0.; k <= ma->M; ++k) {
 		ma->afs[k] += ma->afs1[k];
 		sum += k * ma->afs1[k];
@@ -374,7 +365,7 @@ long double bcf_p1_cal_g3(bcf_p1aux_t *p1a, double g[3])
 	return pd;
 }
 
-int bcf_p1_cal(bcf1_t *b, bcf_p1aux_t *ma, bcf_p1rst_t *rst)
+int bcf_p1_cal(const bcf1_t *b, bcf_p1aux_t *ma, bcf_p1rst_t *rst)
 {
 	int i, k;
 	long double sum = 0.;
@@ -390,8 +381,11 @@ int bcf_p1_cal(bcf1_t *b, bcf_p1aux_t *ma, bcf_p1rst_t *rst)
 	if (b->n_alleles < 2) return -1; // FIXME: find a better solution
 	// 
 	rst->rank0 = cal_pdg(b, ma);
-	rst->f_exp = mc_cal_afs(ma);
-	rst->p_ref = ma->is_folded? ma->afs1[ma->M] + ma->afs1[0] : ma->afs1[ma->M];
+	rst->f_exp = mc_cal_afs(ma, &rst->p_ref_folded, &rst->p_var_folded);
+	rst->p_ref = ma->afs1[ma->M];
+	for (k = 0, sum = 0.; k < ma->M; ++k)
+		sum += ma->afs1[k];
+	rst->p_var = (double)sum;
 	// calculate f_flat and f_em
 	for (k = 0, sum = 0.; k <= ma->M; ++k)
 		sum += (long double)ma->z[k];
@@ -430,7 +424,6 @@ int bcf_p1_cal(bcf1_t *b, bcf_p1aux_t *ma, bcf_p1rst_t *rst)
 void bcf_p1_dump_afs(bcf_p1aux_t *ma)
 {
 	int k;
-	if (ma->is_folded) fold_array(ma->M, ma->afs);
 	fprintf(pysamerr, "[afs]");
 	for (k = 0; k <= ma->M; ++k)
 		fprintf(pysamerr, " %d:%.3lf", k, ma->afs[ma->M - k]);

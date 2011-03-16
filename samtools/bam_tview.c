@@ -4,11 +4,7 @@
 #elif _CURSES_LIB == 1
 #include <curses.h>
 #ifndef NCURSES_VERSION
-#ifdef _MSC_VER
-#pragma message ("_CURSES_LIB=1 but NCURSES_VERSION not defined; tview is NOT compiled")
-#else
 #warning "_CURSES_LIB=1 but NCURSES_VERSION not defined; tview is NOT compiled"
-#endif
 #else
 #define _HAVE_CURSES
 #endif
@@ -16,13 +12,8 @@
 #include <xcurses.h>
 #define _HAVE_CURSES
 #else
-#ifdef _MSC_VER
-#pragma message ("_CURSES_LIB is not 0, 1 or 2; tview is NOT compiled")
-#else
 #warning "_CURSES_LIB is not 0, 1 or 2; tview is NOT compiled"
 #endif
-#endif
-
 
 #ifdef _HAVE_CURSES
 #include <ctype.h>
@@ -39,6 +30,7 @@ char bam_aux_getCQi(bam1_t *b, int i);
 #define TV_MIN_ALNROW 2
 #define TV_MAX_GOTO  40
 #define TV_LOW_MAPQ  10
+
 #define TV_COLOR_MAPQ   0
 #define TV_COLOR_BASEQ  1
 #define TV_COLOR_NUCL   2
@@ -191,12 +183,12 @@ tview_t *tv_init(const char *fn, const char *fn_fa)
 {
 	tview_t *tv = (tview_t*)calloc(1, sizeof(tview_t));
 	tv->is_dot = 1;
-	tv->idx = bam_index_load(fn);
-	if (tv->idx == 0) exit(1);
 	tv->fp = bam_open(fn, "r");
 	bgzf_set_cache_size(tv->fp, 8 * 1024 *1024);
 	assert(tv->fp);
 	tv->header = bam_header_read(tv->fp);
+	tv->idx = bam_index_load(fn);
+	if (tv->idx == 0) exit(1);
 	tv->lplbuf = bam_lplbuf_init(tv_pl_func, tv);
 	if (fn_fa) tv->fai = fai_load(fn_fa);
 	tv->bmc = bam_maqcns_init();
@@ -423,11 +415,7 @@ int bam_tview_main(int argc, char *argv[])
 }
 #else // #ifdef _HAVE_CURSES
 #include <stdio.h>
-#ifdef _MSC_VER
-#pragma message ( "No curses library is available; tview is disabled." )
-#else
 #warning "No curses library is available; tview is disabled."
-#endif
 int bam_tview_main(int argc, char *argv[])
 {
 	fprintf(stderr, "[bam_tview_main] The ncurses library is unavailable; tview is not compiled.\n");

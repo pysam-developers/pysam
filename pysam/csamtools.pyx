@@ -661,8 +661,17 @@ cdef class Samfile:
         rtid = -1
         rstart = 0
         rend = max_pos
-        if start != None: rstart = start
-        if end != None: rend = end
+        if start != None: 
+            try:
+                rstart = start
+            except OverflowError:
+                raise ValueError( 'start out of range (%i)' % start )
+            
+        if end != None: 
+            try:
+                rend = end
+            except OverflowError:
+                raise ValueError( 'end out of range (%i)' % end )
 
         if region:
             parts = re.split( "[:-]", region )

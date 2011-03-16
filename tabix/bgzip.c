@@ -27,10 +27,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-#ifndef _MSC_VER
 #include <sys/select.h>
 #include <sys/stat.h>
-#endif
 #include "bgzf.h"
 
 static const int WINDOW_SIZE = 64 * 1024;
@@ -147,8 +145,6 @@ int main(int argc, char **argv)
 	} else {
 		struct stat sbuf;
 		int f_dst;
-		char *name;
-		int len;
 
 		if ( argc>optind )
 		{
@@ -157,7 +153,8 @@ int main(int argc, char **argv)
 				fprintf(stderr, "[bgzip] %s: %s\n", strerror(errno), argv[optind]);
 				return 1;
 			}
-			len = strlen(argv[optind]);
+			char *name;
+			int len = strlen(argv[optind]);
 			if ( strcmp(argv[optind]+len-3,".gz") )
 			{
 				fprintf(stderr, "[bgzip] %s: unknown suffix -- ignored\n", argv[optind]);

@@ -108,7 +108,7 @@ int bcf_sync(bcf1_t *b)
 	for (p = b->str, n = 0; p < b->str + b->l_str; ++p)
 		if (*p == 0 && p+1 != b->str + b->l_str) tmp[n++] = p + 1;
 	if (n != 5) {
-		fprintf(pysamerr, "[%s] incorrect number of fields (%d != 5). Corrupted file?\n", __func__, n);
+		fprintf(pysamerr, "[%s] incorrect number of fields (%d != 5) at %d:%d\n", __func__, n, b->tid, b->pos);
 		return -1;
 	}
 	b->ref = tmp[0]; b->alt = tmp[1]; b->flt = tmp[2]; b->info = tmp[3]; b->fmt = tmp[4];
@@ -138,10 +138,10 @@ int bcf_sync(bcf1_t *b)
 			b->gi[i].len = b->n_alleles * (b->n_alleles + 1) / 2;
 		} else if (b->gi[i].fmt == bcf_str2int("DP", 2) || b->gi[i].fmt == bcf_str2int("HQ", 2)) {
 			b->gi[i].len = 2;
-		} else if (b->gi[i].fmt == bcf_str2int("GQ", 2) || b->gi[i].fmt == bcf_str2int("GT", 2)
-				   || b->gi[i].fmt == bcf_str2int("SP", 2))
-		{
+		} else if (b->gi[i].fmt == bcf_str2int("GQ", 2) || b->gi[i].fmt == bcf_str2int("GT", 2)) {
 			b->gi[i].len = 1;
+		} else if (b->gi[i].fmt == bcf_str2int("SP", 2)) {
+			b->gi[i].len = 4;
 		} else if (b->gi[i].fmt == bcf_str2int("GL", 2)) {
 			b->gi[i].len = b->n_alleles * (b->n_alleles + 1) / 2 * 4;
 		}
@@ -242,8 +242,10 @@ void bcf_fmt_core(const bcf_hdr_t *h, bcf1_t *b, kstring_t *s)
 				}
 			} else if (b->gi[i].fmt == bcf_str2int("DP", 2)) {
 				kputw(((uint16_t*)b->gi[i].data)[j], s);
-			} else if (b->gi[i].fmt == bcf_str2int("GQ", 2) || b->gi[i].fmt == bcf_str2int("SP", 2)) {
+			} else if (b->gi[i].fmt == bcf_str2int("GQ", 2)) {
 				kputw(((uint8_t*)b->gi[i].data)[j], s);
+			} else if (b->gi[i].fmt == bcf_str2int("SP", 2)) {
+				kputw(((int32_t*)b->gi[i].data)[j], s);
 			} else if (b->gi[i].fmt == bcf_str2int("GT", 2)) {
 				int y = ((uint8_t*)b->gi[i].data)[j];
 				if (y>>7&1) {
@@ -261,7 +263,7 @@ void bcf_fmt_core(const bcf_hdr_t *h, bcf1_t *b, kstring_t *s)
 					if (k > 0) kputc(',', s);
 					ksprintf(s, "%.2f", d[k]);
 				}
-			}
+			} else kputc('.', s); // custom fields
 		}
 	}
 }

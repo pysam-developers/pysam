@@ -4,20 +4,12 @@
 #include <stdint.h>
 #include <fcntl.h>
 
-#ifdef _MSC_VER
-#include <winsock2.h>
-#pragma comment(lib, "Ws2_32.lib")
-#else
-#ifdef _WIN32
-#include <winsock2.h>
-#endif
-#endif
-
 #ifndef _WIN32
 #define netread(fd, ptr, len) read(fd, ptr, len)
 #define netwrite(fd, ptr, len) write(fd, ptr, len)
 #define netclose(fd) close(fd)
 #else
+#include <winsock2.h>
 #define netread(fd, ptr, len) recv(fd, ptr, len, 0)
 #define netwrite(fd, ptr, len) send(fd, ptr, len, 0)
 #define netclose(fd) closesocket(fd)

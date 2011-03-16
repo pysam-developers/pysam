@@ -35,9 +35,6 @@
 #include "bgzf.h"
 typedef BGZF *bcfFile;
 #else
-#ifdef _MSC_VER
-#include <msvc_compat.h>
-#endif
 typedef gzFile bcfFile;
 #define bgzf_open(fn, mode) gzopen(fn, mode)
 #define bgzf_fdopen(fd, mode) gzdopen(fd, mode)
@@ -132,6 +129,8 @@ extern "C" {
 	int vcf_close(bcf_t *bp);
 	// read the VCF/BCF header
 	bcf_hdr_t *vcf_hdr_read(bcf_t *bp);
+	// read the sequence dictionary from a separate file; required for VCF->BCF conversion
+	int vcf_dictread(bcf_t *bp, bcf_hdr_t *h, const char *fn);
 	// read a VCF/BCF record; return -1 on end-of-file and <-1 for errors
 	int vcf_read(bcf_t *bp, bcf_hdr_t *h, bcf1_t *b);
 	// write the VCF header
@@ -145,10 +144,13 @@ extern "C" {
 	int bcf_gl2pl(bcf1_t *b);
 	// if the site is an indel
 	int bcf_is_indel(const bcf1_t *b);
+	bcf_hdr_t *bcf_hdr_subsam(const bcf_hdr_t *h0, int n, char *const* samples, int *list);
+	int bcf_subsam(int n_smpl, int *list, bcf1_t *b);
 
 	// string hash table
 	void *bcf_build_refhash(bcf_hdr_t *h);
 	void bcf_str2id_destroy(void *_hash);
+	void bcf_str2id_thorough_destroy(void *_hash);
 	int bcf_str2id_add(void *_hash, const char *str);
 	int bcf_str2id(void *_hash, const char *str);
 	void *bcf_str2id_init();

@@ -3,10 +3,6 @@
 
 #include <stdint.h>
 
-#ifdef _MSC_VER
-#include <msvc_compat.h>
-#endif
-
 static inline int bam_is_big_endian()
 {
 	long one= 1;
@@ -33,9 +29,9 @@ static inline void *bam_swap_endian_4p(void *x)
 }
 static inline uint64_t bam_swap_endian_8(uint64_t v)
 {
-	v = ((v & 0x00000000FFFFFFFFULL) << 32) | (v >> 32);
-	v = ((v & 0x0000FFFF0000FFFFULL) << 16) | ((v & 0xFFFF0000FFFF0000ULL) >> 16);
-	return ((v & 0x00FF00FF00FF00FFULL) << 8) | ((v & 0xFF00FF00FF00FF00ULL) >> 8);
+	v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
+	v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
+	return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
 }
 static inline void *bam_swap_endian_8p(void *x)
 {

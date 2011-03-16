@@ -69,7 +69,7 @@ int bcf_2qcall(bcf_hdr_t *h, bcf1_t *b)
 		if (map[k] < 0) map[k] = k1;
 	for (i = 0; i < h->n_smpl; ++i) {
 		int d;
-		uint8_t *p = (uint8_t *)b->gi[i0].data + i * b->gi[i0].len;
+		uint8_t *p = b->gi[i0].data + i * b->gi[i0].len;
 		for (j = 0; j < b->gi[i0].len; ++j)
 			if (p[j]) break;
 		d = (int)((double)d_rest / (h->n_smpl - i) + .499);
@@ -79,8 +79,8 @@ int bcf_2qcall(bcf_hdr_t *h, bcf1_t *b)
 		for (k = j = 0; k < 4; ++k) {
 			for (l = k; l < 4; ++l) {
 				int t, x = map[k], y = map[l];
-				if (x > y) t = x, x = y, y = t;
-				g[j++] = p[x * b->n_alleles - x * (x-1) / 2 + (y - x)];
+				if (x > y) t = x, x = y, y = t; // swap
+				g[j++] = p[y * (y+1) / 2 + x];
 			}
 		}
 		printf("%s\t%d\t%c", h->ns[b->tid], b->pos+1, *b->ref);

@@ -533,20 +533,24 @@ int bam_pileup(int argc, char *argv[])
 #define MPLP_FMT_DP 0x100
 #define MPLP_FMT_SP 0x200
 #define MPLP_NO_INDEL 0x400
+#define MPLP_EXT_BAQ 0x800
 
 typedef struct {
 	int max_mq, min_mq, flag, min_baseQ, capQ_thres, max_depth;
-	int openQ, extQ, tandemQ;
+	int openQ, extQ, tandemQ, min_support; // for indels
+	double min_frac; // for indels
 	char *reg, *fn_pos, *pl_list;
 	faidx_t *fai;
 	kh_64_t *hash;
+	void *rghash;
 } mplp_conf_t;
 
 typedef struct {
 	bamFile fp;
 	bam_iter_t iter;
-	int min_mq, flag, ref_id, capQ_thres;
+	int ref_id;
 	char *ref;
+	const mplp_conf_t *conf;
 } mplp_aux_t;
 
 typedef struct {
@@ -566,16 +570,21 @@ static int mplp_func(void *data, bam1_t *b)
 		int has_ref;
 		ret = ma->iter? bam_iter_read(ma->fp, ma->iter, b) : bam_read1(ma->fp, b);
 		if (ret < 0) break;
+		if (ma->conf->rghash) { // exclude read groups
+			uint8_t *rg = bam_aux_get(b, "RG");
+			skip = (rg && bcf_str2id(ma->conf->rghash, (const char*)(rg+1)) >= 0);
+			if (skip) continue;
+		}
 		has_ref = (ma->ref && ma->ref_id == b->core.tid)? 1 : 0;
 		skip = 0;
-		if (has_ref && (ma->flag&MPLP_REALN)) bam_prob_realn_core(b, ma->ref, 1);
-		if (has_ref && ma->capQ_thres > 10) {
-			int q = bam_cap_mapQ(b, ma->ref, ma->capQ_thres);
+		if (has_ref && (ma->conf->flag&MPLP_REALN)) bam_prob_realn_core(b, ma->ref, (ma->conf->flag & MPLP_EXT_BAQ)? 3 : 1);
+		if (has_ref && ma->conf->capQ_thres > 10) {
+			int q = bam_cap_mapQ(b, ma->ref, ma->conf->capQ_thres);
 			if (q < 0) skip = 1;
 			else if (b->core.qual > q) b->core.qual = q;
 		} else if (b->core.flag&BAM_FUNMAP) skip = 1;
-		else if (b->core.qual < ma->min_mq) skip = 1; 
-		else if ((ma->flag&MPLP_NO_ORPHAN) && (b->core.flag&1) && !(b->core.flag&2)) skip = 1;
+		else if (b->core.qual < ma->conf->min_mq) skip = 1; 
+		else if ((ma->conf->flag&MPLP_NO_ORPHAN) && (b->core.flag&1) && !(b->core.flag&2)) skip = 1;
 	} while (skip);
 	return ret;
 }
@@ -638,10 +647,8 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
 	for (i = 0; i < n; ++i) {
 		bam_header_t *h_tmp;
 		data[i] = calloc(1, sizeof(mplp_aux_t));
-		data[i]->min_mq = conf->min_mq;
-		data[i]->flag = conf->flag;
-		data[i]->capQ_thres = conf->capQ_thres;
 		data[i]->fp = strcmp(fn[i], "-") == 0? bam_dopen(fileno(stdin), "r") : bam_open(fn[i], "r");
+		data[i]->conf = conf;
 		h_tmp = bam_header_read(data[i]->fp);
 		bam_smpl_add(sm, fn[i], h_tmp->text);
 		rghash = bcf_call_add_rg(rghash, h_tmp->text, conf->pl_list);
@@ -694,7 +701,8 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
 		bh->l_smpl = s.l;
 		bh->sname = malloc(s.l);
 		memcpy(bh->sname, s.s, s.l);
-		bh->l_txt = 0;
+		bh->txt = malloc(strlen(BAM_VERSION) + 64);
+		bh->l_txt = 1 + sprintf(bh->txt, "##samtoolsVersion=%s\n", BAM_VERSION);
 		free(s.s);
 		bcf_hdr_sync(bh);
 		bcf_hdr_write(bp, bh);
@@ -702,6 +710,8 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
 		bcr = calloc(sm->n, sizeof(bcf_callret1_t));
 		bca->rghash = rghash;
 		bca->openQ = conf->openQ, bca->extQ = conf->extQ, bca->tandemQ = conf->tandemQ;
+		bca->min_frac = conf->min_frac;
+		bca->min_support = conf->min_support;
 	}
 	ref_tid = -1; ref = 0;
 	iter = bam_mplp_init(n, mplp_func, (void**)data);
@@ -797,7 +807,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
 }
 
 #define MAX_PATH_LEN 1024
-int read_file_list(const char *file_list,int *n,char **argv[])
+static int read_file_list(const char *file_list,int *n,char **argv[])
 {
     char buf[MAX_PATH_LEN];
     int len, nfiles;
@@ -850,7 +860,7 @@ int bam_mpileup(int argc, char *argv[])
 	int c;
     const char *file_list = NULL;
     char **fn = NULL;
-    int nfiles = 0;
+    int nfiles = 0, use_orphan = 0;
 	mplp_conf_t mplp;
 	memset(&mplp, 0, sizeof(mplp_conf_t));
 	mplp.max_mq = 60;
@@ -858,8 +868,9 @@ int bam_mpileup(int argc, char *argv[])
 	mplp.capQ_thres = 0;
 	mplp.max_depth = 250;
 	mplp.openQ = 40; mplp.extQ = 20; mplp.tandemQ = 100;
+	mplp.min_frac = 0.002; mplp.min_support = 1;
 	mplp.flag = MPLP_NO_ORPHAN | MPLP_REALN;
-	while ((c = getopt(argc, argv, "gf:r:l:M:q:Q:uaORC:BDSd:b:P:o:e:h:I")) >= 0) {
+	while ((c = getopt(argc, argv, "Agf:r:l:M:q:Q:uaRC:BDSd:b:P:o:e:h:Im:F:EG:")) >= 0) {
 		switch (c) {
 		case 'f':
 			mplp.fai = fai_load(optarg);
@@ -872,12 +883,12 @@ int bam_mpileup(int argc, char *argv[])
 		case 'g': mplp.flag |= MPLP_GLF; break;
 		case 'u': mplp.flag |= MPLP_NO_COMP | MPLP_GLF; break;
 		case 'a': mplp.flag |= MPLP_NO_ORPHAN | MPLP_REALN; break;
-		case 'B': mplp.flag &= ~MPLP_REALN & ~MPLP_NO_ORPHAN; break;
-		case 'O': mplp.flag |= MPLP_NO_ORPHAN; break;
+		case 'B': mplp.flag &= ~MPLP_REALN; break;
 		case 'R': mplp.flag |= MPLP_REALN; break;
 		case 'D': mplp.flag |= MPLP_FMT_DP; break;
 		case 'S': mplp.flag |= MPLP_FMT_SP; break;
 		case 'I': mplp.flag |= MPLP_NO_INDEL; break;
+		case 'E': mplp.flag |= MPLP_EXT_BAQ; break;
 		case 'C': mplp.capQ_thres = atoi(optarg); break;
 		case 'M': mplp.max_mq = atoi(optarg); break;
 		case 'q': mplp.min_mq = atoi(optarg); break;
@@ -886,8 +897,23 @@ int bam_mpileup(int argc, char *argv[])
 		case 'o': mplp.openQ = atoi(optarg); break;
 		case 'e': mplp.extQ = atoi(optarg); break;
 		case 'h': mplp.tandemQ = atoi(optarg); break;
+		case 'A': use_orphan = 1; break;
+		case 'F': mplp.min_frac = atof(optarg); break;
+		case 'm': mplp.min_support = atoi(optarg); break;
+		case 'G': {
+				FILE *fp_rg;
+				char buf[1024];
+				mplp.rghash = bcf_str2id_init();
+				if ((fp_rg = fopen(optarg, "r")) == 0)
+					fprintf(stderr, "(%s) Fail to open file %s. Continue anyway.\n", __func__, optarg);
+				while (!feof(fp_rg) && fscanf(fp_rg, "%s", buf) > 0) // this is not a good style, but forgive me...
+					bcf_str2id_add(mplp.rghash, strdup(buf));
+				fclose(fp_rg);
+			}
+			break;
 		}
 	}
+	if (use_orphan) mplp.flag &= ~MPLP_NO_ORPHAN;
 	if (argc == 1) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Usage:   samtools mpileup [options] in1.bam [in2.bam [...]]\n\n");
@@ -903,8 +929,13 @@ int bam_mpileup(int argc, char *argv[])
 		fprintf(stderr, "         -o INT      Phred-scaled gap open sequencing error probability [%d]\n", mplp.openQ);
 		fprintf(stderr, "         -e INT      Phred-scaled gap extension seq error probability [%d]\n", mplp.extQ);
 		fprintf(stderr, "         -h INT      coefficient for homopolyer errors [%d]\n", mplp.tandemQ);
+		fprintf(stderr, "         -m INT      minimum gapped reads for indel candidates [%d]\n", mplp.min_support);
+		fprintf(stderr, "         -F FLOAT    minimum fraction of gapped reads for candidates [%g]\n", mplp.min_frac);
+		fprintf(stderr, "         -G FILE     exclude read groups listed in FILE [null]\n");
+		fprintf(stderr, "         -A          use anomalous read pairs in SNP/INDEL calling\n");
 		fprintf(stderr, "         -g          generate BCF output\n");
 		fprintf(stderr, "         -u          do not compress BCF output\n");
+		fprintf(stderr, "         -E          extended BAQ for higher sensitivity but lower specificity\n");
 		fprintf(stderr, "         -B          disable BAQ computation\n");
 		fprintf(stderr, "         -D          output per-sample DP\n");
 		fprintf(stderr, "         -S          output per-sample SP (strand bias P-value, slow)\n");
@@ -913,15 +944,13 @@ int bam_mpileup(int argc, char *argv[])
 		fprintf(stderr, "Notes: Assuming diploid individuals.\n\n");
 		return 1;
 	}
-    if ( file_list )
-    {
+    if (file_list) {
         if ( read_file_list(file_list,&nfiles,&fn) ) return 1;
         mpileup(&mplp,nfiles,fn);
         for (c=0; c<nfiles; c++) free(fn[c]);
         free(fn);
-    }
-    else
-	    mpileup(&mplp, argc - optind, argv + optind);
+    } else mpileup(&mplp, argc - optind, argv + optind);
+	if (mplp.rghash) bcf_str2id_thorough_destroy(mplp.rghash);
 	free(mplp.reg); free(mplp.pl_list);
 	if (mplp.fai) fai_destroy(mplp.fai);
 	return 0;

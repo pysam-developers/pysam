@@ -40,6 +40,7 @@
 #include <unistd.h>
 #include "razf.h"
 
+
 #if ZLIB_VERNUM < 0x1221
 struct _gz_header_s {
     int     text;
@@ -56,11 +57,7 @@ struct _gz_header_s {
     int     hcrc;
     int     done;
 };
-#ifdef _MSC_VER
-#pragma message ( "zlib < 1.2.2.1; RAZF writing is disabled." )
-#else
 #warning "zlib < 1.2.2.1; RAZF writing is disabled."
-#endif
 #endif
 
 #define DEF_MEM_LEVEL 8
@@ -71,9 +68,9 @@ static inline uint32_t byte_swap_4(uint32_t v){
 }
 
 static inline uint64_t byte_swap_8(uint64_t v){
-	v = ((v & 0x00000000FFFFFFFFULL) << 32) | (v >> 32);
-	v = ((v & 0x0000FFFF0000FFFFULL) << 16) | ((v & 0xFFFF0000FFFF0000ULL) >> 16);
-	return ((v & 0x00FF00FF00FF00FFULL) << 8) | ((v & 0xFF00FF00FF00FF00ULL) >> 8);
+	v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
+	v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
+	return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
 }
 
 static inline int is_big_endian(){
@@ -270,7 +267,7 @@ static void razf_end_flush(RAZF *rz){
 	}
 }
 
-static void _razf_buffered_write(RAZF *rz, const char *data, int size){
+static void _razf_buffered_write(RAZF *rz, const void *data, int size){
 	int i, n;
 	while(1){
 		if(rz->buf_len == RZ_BUFFER_SIZE){
@@ -291,7 +288,7 @@ static void _razf_buffered_write(RAZF *rz, const char *data, int size){
 	}
 }
 
-int razf_write(RAZF* rz, const char *data, int size){
+int razf_write(RAZF* rz, const void *data, int size){
 	int ori_size, n;
 	int64_t next_block;
 	ori_size = size;
@@ -624,7 +621,7 @@ static int _razf_read(RAZF* rz, void *data, int size){
 	return size - rz->stream->avail_out;
 }
 
-int razf_read(RAZF *rz, char *data, int size){
+int razf_read(RAZF *rz, void *data, int size){
 	int ori_size, i;
 	ori_size = size;
 	while(size > 0){

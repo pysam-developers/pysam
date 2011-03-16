@@ -40,7 +40,8 @@ static void append_header_text(bam_header_t *header, char* text, int len)
 
 samfile_t *samopen(const char *fn, const char *mode, const void *aux)
 {
-	samfile_t *fp = (samfile_t*)calloc(1, sizeof(samfile_t));
+	samfile_t *fp;
+	fp = (samfile_t*)calloc(1, sizeof(samfile_t));
 	if (mode[0] == 'r') { // read
 		fp->type |= TYPE_READ;
 		if (mode[1] == 'b') { // binary

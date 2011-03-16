@@ -26,17 +26,13 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#ifndef _MSC_VER
 #include <stdbool.h>
-#endif
 #include <zlib.h>
 #ifdef _USE_KNETFILE
 #include "knetfile.h"
 #endif
 
-#ifdef _MSC_VER
-#include <msvc_compat.h>
-#endif
+//typedef int8_t bool;
 
 typedef struct {
     int file_descriptor;
