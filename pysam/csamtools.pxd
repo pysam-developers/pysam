@@ -1,4 +1,3 @@
-
 cdef extern from "string.h":
   ctypedef int size_t
   void *memcpy(void *dst,void *src,size_t len)
@@ -268,16 +267,6 @@ cdef extern from "glf.h":
    ctypedef struct glf1_t:
       pass
 
-#      unsigned char ref_base, dummy
-#      unsigned char max_mapQ 
-#      unsigned char lk[10]   
-#      unsigned int min_lk, depth
-#      unsigned char ref_base:4, dummy:4
-#      unsigned char max_mapQ 
-#      unsigned char lk[10]   
-#      unsigned min_lk:8, depth:24; 
-
-
 cdef extern from "bam_maqcns.h":
 
   ctypedef struct bam_maqcns_t:
@@ -390,4 +379,33 @@ cdef extern from "pysam_util.h":
 
     void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
 
+# need to declare all C fields and methods here
+cdef class AlignedRead:
+
+    # object that this AlignedRead represents
+    cdef bam1_t * _delegate
+
+cdef class Samfile:
+    cdef char * _filename
+    # pointer to samfile
+    cdef samfile_t * samfile
+    # pointer to index
+    cdef bam_index_t *index
+    # true if file is a bam file
+    cdef int isbam
+    # true if file is not on the local filesystem
+    cdef int isremote
+    # current read within iteration
+    cdef bam1_t * b
+    # file opening mode
+    cdef char * mode
+
+    cdef bam_header_t * _buildHeader( self, new_header )
+    cdef bam1_t * getCurrent( self )
+    cdef int cnext(self)
+
+    # write an aligned read
+    cpdef int write( self, AlignedRead read )
+
+    cdef char * _getrname( self, int tid )
 

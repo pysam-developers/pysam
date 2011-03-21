@@ -1,5 +1,5 @@
 # cython: embedsignature=True
-# cython: profile=False
+# cython: profile=True
 # adds doc-strings for sphinx
 import tempfile
 import os
@@ -13,6 +13,8 @@ import re
 import platform
 from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython cimport PyErr_SetString
+from cutils cimport *
+
 #from cpython.string cimport PyString_FromStringAndSize, PyString_AS_STRING
 #from cpython.exc    cimport PyErr_SetString, PyErr_NoMemory
 
@@ -448,20 +450,6 @@ cdef class Samfile:
 
     '''
 
-    cdef char * _filename
-    # pointer to samfile
-    cdef samfile_t * samfile
-    # pointer to index
-    cdef bam_index_t *index
-    # true if file is a bam file
-    cdef int isbam
-    # true if file is not on the local filesystem
-    cdef int isremote
-    # current read within iteration
-    cdef bam1_t * b
-    # file opening mode
-    cdef char * mode
-
     def __cinit__(self, *args, **kwargs ):
         self.samfile = NULL
         self._filename = NULL
@@ -618,14 +606,6 @@ cdef class Samfile:
                 if self.index == NULL:
                     raise IOError("error while opening index `%s` " % filename )
                                     
-    def getrname( self, tid ):
-        '''
-        convert numerical :term:`tid` into :term:`reference` name.'''
-        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
-        if not 0 <= tid < self.samfile.header.n_targets:
-            raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.samfile.header.n_targets ) )
-        return self.samfile.header.target_name[tid]
-
     def gettid( self, reference ):
         '''
         convert :term:`reference` name into numerical :term:`tid`
@@ -634,6 +614,22 @@ cdef class Samfile:
         '''
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         return pysam_reference2tid( self.samfile.header, reference )
+
+    def getrname( self, tid ):
+        '''
+        convert numerical :term:`tid` into :term:`reference` name.'''
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not 0 <= tid < self.samfile.header.n_targets:
+            raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.samfile.header.n_targets ) )
+        return self.samfile.header.target_name[tid]
+
+    cdef char * _getrname( self, int tid ):
+        '''
+        convert numerical :term:`tid` into :term:`reference` name.'''
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not 0 <= tid < self.samfile.header.n_targets:
+            raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.samfile.header.n_targets ) )
+        return self.samfile.header.target_name[tid]
 
     def _parseRegion( self, 
                       reference = None, 
@@ -964,7 +960,7 @@ cdef class Samfile:
         bam_destroy1(self.b)
         if self._filename != NULL: free( self._filename )
 
-    def write( self, AlignedRead read ):
+    cpdef int write( self, AlignedRead read ):
         '''
         write a single :class:`pysam.AlignedRead` to disk.
 
@@ -1871,8 +1867,6 @@ cdef class AlignedRead:
     be set *before* the quality scores. Setting the sequence will
     also erase any quality scores that were set previously.
     '''
-    cdef:
-         bam1_t * _delegate 
 
     # Now only called when instances are created from Python
     def __init__(self):

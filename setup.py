@@ -198,6 +198,8 @@ metadata = {
     'ext_modules': [samtools, tabix],
     'cmdclass' : {'build_ext': build_ext},
     'install_requires' : ['cython>=0.12.1',], 
+    # do not pack into access in order to permit linking to csamtools.so
+    'zip_safe' :False,
     }
 
 if __name__=='__main__':
