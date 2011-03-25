@@ -13,7 +13,6 @@ import re
 import platform
 from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython cimport PyErr_SetString
-from cutils cimport *
 
 #from cpython.string cimport PyString_FromStringAndSize, PyString_AS_STRING
 #from cpython.exc    cimport PyErr_SetString, PyErr_NoMemory
