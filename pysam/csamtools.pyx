@@ -1848,7 +1848,8 @@ cdef inline object get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
 
 cdef class AlignedRead:
     '''
-    Class representing an aligned read. see SAM format specification for meaning of fields (http://samtools.sourceforge.net/).
+    Class representing an aligned read. see SAM format specification for 
+    the meaning of fields (http://samtools.sourceforge.net/).
 
     This class stores a handle to the samtools C-structure representing
     an aligned read. Member read access is forwarded to the C-structure
@@ -2447,12 +2448,66 @@ cdef class AlignedRead:
             if val: self._delegate.core.flag |= BAM_FQCFAIL
             else: self._delegate.core.flag &= ~BAM_FQCFAIL
     property is_duplicate:
-        """ true if optical or PCR duplicate"""
+        """true if optical or PCR duplicate"""
         def __get__(self): return (self.flag & BAM_FDUP) != 0
         def __set__(self,val): 
             if val: self._delegate.core.flag |= BAM_FDUP
             else: self._delegate.core.flag &= ~BAM_FDUP
-    
+    property positions:
+        """a list of reference positions that this read aligns to."""
+        def __get__(self):
+            cdef uint32_t k, i, pos
+            cdef int op
+            cdef uint32_t * cigar_p
+            cdef bam1_t * src 
+
+            result = []
+            src = self._delegate
+            if src.core.n_cigar == 0: return []
+
+            pos = src.core.pos
+
+            cigar_p = bam1_cigar(src)
+            for k from 0 <= k < src.core.n_cigar:
+                op = cigar_p[k] & BAM_CIGAR_MASK
+                l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                if op == BAM_CMATCH:
+                    for i from pos <= i < pos + l:
+                        result.append( i )
+
+                if op == BAM_CMATCH or op == BAM_CDEL or op == BAM_CREF_SKIP:
+                    pos += l
+
+            return result
+    def overlap( self, uint32_t start, uint32_t end ):
+        """return number of bases on reference overlapping *start* and *end*
+        """
+        cdef uint32_t k, i, pos, overlap
+        cdef int op, o
+        cdef uint32_t * cigar_p
+        cdef bam1_t * src 
+
+        overlap = 0
+
+        src = self._delegate
+        if src.core.n_cigar == 0: return 0
+        pos = src.core.pos
+        o = 0
+
+        cigar_p = bam1_cigar(src)
+        for k from 0 <= k < src.core.n_cigar:
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+
+            if op == BAM_CMATCH:
+                o = min( pos + l, end) - max( pos, start )
+                if o > 0: overlap += o
+
+            if op == BAM_CMATCH or op == BAM_CDEL or op == BAM_CREF_SKIP:
+                pos += l
+
+        return overlap
+
     def opt(self, tag):
         """retrieves optional data given a two-letter *tag*"""
         #see bam_aux.c: bam_aux_get() and bam_aux2i() etc 
