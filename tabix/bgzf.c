@@ -111,7 +111,7 @@ report_error(BGZF* fp, const char* message) {
     fp->error = message;
 }
 
-int is_bgzipped(const char *fn)
+int bgzf_check_bgzf(const char *fn)
 {
     BGZF *fp;
     uint8_t buf[10],magic[10]="\037\213\010\4\0\0\0\0\0\377";
@@ -119,7 +119,7 @@ int is_bgzipped(const char *fn)
 
     if ((fp = bgzf_open(fn, "r")) == 0) 
     {
-        fprintf(stderr, "[is_bgzipped] failed to open the file: %s\n",fn);
+        fprintf(stderr, "[bgzf_check_bgzf] failed to open the file: %s\n",fn);
         return -1;
     }
 
@@ -174,7 +174,7 @@ open_read(int fd)
 
 static
 BGZF*
-open_write(int fd, bool is_uncompressed)
+open_write(int fd, int compress_level) // compress_level==-1 for the default level
 {
     FILE* file = fdopen(fd, "w");
     BGZF* fp;
@@ -182,7 +182,9 @@ open_write(int fd, bool is_uncompressed)
 	fp = malloc(sizeof(BGZF));
     fp->file_descriptor = fd;
     fp->open_mode = 'w';
-    fp->owned_file = 0; fp->is_uncompressed = is_uncompressed;
+    fp->owned_file = 0;
+	fp->compress_level = compress_level < 0? Z_DEFAULT_COMPRESSION : compress_level; // Z_DEFAULT_COMPRESSION==-1
+	if (fp->compress_level > 9) fp->compress_level = Z_DEFAULT_COMPRESSION;
 #ifdef _USE_KNETFILE
     fp->x.fpw = file;
 #else
@@ -203,7 +205,7 @@ BGZF*
 bgzf_open(const char* __restrict path, const char* __restrict mode)
 {
     BGZF* fp = NULL;
-    if (mode[0] == 'r' || mode[0] == 'R') { /* The reading mode is preferred. */
+    if (strchr(mode, 'r') || strchr(mode, 'R')) { /* The reading mode is preferred. */
 #ifdef _USE_KNETFILE
 		knetFile *file = knet_open(path, mode);
 		if (file == 0) return 0;
@@ -220,18 +222,23 @@ bgzf_open(const char* __restrict path, const char* __restrict mode)
 		if (fd == -1) return 0;
         fp = open_read(fd);
 #endif
-    } else if (mode[0] == 'w' || mode[0] == 'W') {
-		int fd, oflag = O_WRONLY | O_CREAT | O_TRUNC;
+    } else if (strchr(mode, 'w') || strchr(mode, 'W')) {
+		int fd, compress_level = -1, oflag = O_WRONLY | O_CREAT | O_TRUNC;
 #ifdef _WIN32
 		oflag |= O_BINARY;
 #endif
 		fd = open(path, oflag, 0666);
 		if (fd == -1) return 0;
-        fp = open_write(fd, strstr(mode, "u")? 1 : 0);
+		{ // set compress_level
+			int i;
+			for (i = 0; mode[i]; ++i)
+				if (mode[i] >= '0' && mode[i] <= '9') break;
+			if (mode[i]) compress_level = (int)mode[i] - '0';
+			if (strchr(mode, 'u')) compress_level = 0;
+		}
+        fp = open_write(fd, compress_level);
     }
-    if (fp != NULL) {
-        fp->owned_file = 1;
-    }
+    if (fp != NULL) fp->owned_file = 1;
     return fp;
 }
 
@@ -242,7 +249,12 @@ bgzf_fdopen(int fd, const char * __restrict mode)
     if (mode[0] == 'r' || mode[0] == 'R') {
         return open_read(fd);
     } else if (mode[0] == 'w' || mode[0] == 'W') {
-        return open_write(fd, strstr(mode, "u")? 1 : 0);
+		int i, compress_level = -1;
+		for (i = 0; mode[i]; ++i)
+			if (mode[i] >= '0' && mode[i] <= '9') break;
+		if (mode[i]) compress_level = (int)mode[i] - '0';
+		if (strchr(mode, 'u')) compress_level = 0;
+        return open_write(fd, compress_level);
     } else {
         return NULL;
     }
@@ -282,7 +294,6 @@ deflate_block(BGZF* fp, int block_length)
     int input_length = block_length;
     int compressed_length = 0;
     while (1) {
-		int compress_level = fp->is_uncompressed? 0 : Z_DEFAULT_COMPRESSION;
         z_stream zs;
         zs.zalloc = NULL;
         zs.zfree = NULL;
@@ -291,7 +302,7 @@ deflate_block(BGZF* fp, int block_length)
         zs.next_out = (void*)&buffer[BLOCK_HEADER_LENGTH];
         zs.avail_out = buffer_size - BLOCK_HEADER_LENGTH - BLOCK_FOOTER_LENGTH;
 
-        int status = deflateInit2(&zs, compress_level, Z_DEFLATED,
+        int status = deflateInit2(&zs, fp->compress_level, Z_DEFLATED,
                                   GZIP_WINDOW_BITS, Z_DEFAULT_MEM_LEVEL, Z_DEFAULT_STRATEGY);
         if (status != Z_OK) {
             report_error(fp, "deflate init failed");
@@ -358,6 +369,7 @@ inflate_block(BGZF* fp, int block_length)
     // Inflate the block in fp->compressed_block into fp->uncompressed_block
 
     z_stream zs;
+	int status;
     zs.zalloc = NULL;
     zs.zfree = NULL;
     zs.next_in = fp->compressed_block + 18;
@@ -365,7 +377,7 @@ inflate_block(BGZF* fp, int block_length)
     zs.next_out = fp->uncompressed_block;
     zs.avail_out = fp->uncompressed_block_size;
 
-    int status = inflateInit2(&zs, GZIP_WINDOW_BITS);
+    status = inflateInit2(&zs, GZIP_WINDOW_BITS);
     if (status != Z_OK) {
         report_error(fp, "inflate init failed");
         return -1;
@@ -459,15 +471,15 @@ int
 bgzf_read_block(BGZF* fp)
 {
     bgzf_byte_t header[BLOCK_HEADER_LENGTH];
-	int size = 0;
+	int count, size = 0, block_length, remaining;
 #ifdef _USE_KNETFILE
     int64_t block_address = knet_tell(fp->x.fpr);
 	if (load_block_from_cache(fp, block_address)) return 0;
-    int count = knet_read(fp->x.fpr, header, sizeof(header));
+    count = knet_read(fp->x.fpr, header, sizeof(header));
 #else
     int64_t block_address = ftello(fp->file);
 	if (load_block_from_cache(fp, block_address)) return 0;
-    int count = fread(header, 1, sizeof(header), fp->file);
+    count = fread(header, 1, sizeof(header), fp->file);
 #endif
     if (count == 0) {
         fp->block_length = 0;
@@ -482,10 +494,10 @@ bgzf_read_block(BGZF* fp)
         report_error(fp, "invalid block header");
         return -1;
     }
-    int block_length = unpackInt16((uint8_t*)&header[16]) + 1;
+    block_length = unpackInt16((uint8_t*)&header[16]) + 1;
     bgzf_byte_t* compressed_block = (bgzf_byte_t*) fp->compressed_block;
     memcpy(compressed_block, header, BLOCK_HEADER_LENGTH);
-    int remaining = block_length - BLOCK_HEADER_LENGTH;
+    remaining = block_length - BLOCK_HEADER_LENGTH;
 #ifdef _USE_KNETFILE
     count = knet_read(fp->x.fpr, &compressed_block[BLOCK_HEADER_LENGTH], remaining);
 #else
@@ -497,9 +509,7 @@ bgzf_read_block(BGZF* fp)
     }
 	size += count;
     count = inflate_block(fp, block_length);
-    if (count < 0) {
-        return -1;
-    }
+    if (count < 0) return -1;
     if (fp->block_length != 0) {
         // Do not reset offset if this read follows a seek.
         fp->block_offset = 0;
@@ -524,7 +534,8 @@ bgzf_read(BGZF* fp, void* data, int length)
     int bytes_read = 0;
     bgzf_byte_t* output = data;
     while (bytes_read < length) {
-        int available = fp->block_length - fp->block_offset;
+        int copy_length, available = fp->block_length - fp->block_offset;
+		bgzf_byte_t *buffer;
         if (available <= 0) {
             if (bgzf_read_block(fp) != 0) {
                 return -1;
@@ -534,8 +545,8 @@ bgzf_read(BGZF* fp, void* data, int length)
                 break;
             }
         }
-        int copy_length = bgzf_min(length-bytes_read, available);
-        bgzf_byte_t* buffer = fp->uncompressed_block;
+        copy_length = bgzf_min(length-bytes_read, available);
+        buffer = fp->uncompressed_block;
         memcpy(output, buffer + fp->block_offset, copy_length);
         fp->block_offset += copy_length;
         output += copy_length;
@@ -553,19 +564,16 @@ bgzf_read(BGZF* fp, void* data, int length)
     return bytes_read;
 }
 
-static
-int
-flush_block(BGZF* fp)
+int bgzf_flush(BGZF* fp)
 {
     while (fp->block_offset > 0) {
-        int block_length = deflate_block(fp, fp->block_offset);
-        if (block_length < 0) {
-            return -1;
-        }
+        int count, block_length;
+		block_length = deflate_block(fp, fp->block_offset);
+        if (block_length < 0) return -1;
 #ifdef _USE_KNETFILE
-        int count = fwrite(fp->compressed_block, 1, block_length, fp->x.fpw);
+        count = fwrite(fp->compressed_block, 1, block_length, fp->x.fpw);
 #else
-        int count = fwrite(fp->compressed_block, 1, block_length, fp->file);
+        count = fwrite(fp->compressed_block, 1, block_length, fp->file);
 #endif
         if (count != block_length) {
             report_error(fp, "write failed");
@@ -576,21 +584,28 @@ flush_block(BGZF* fp)
     return 0;
 }
 
-int
-bgzf_write(BGZF* fp, const void* data, int length)
+int bgzf_flush_try(BGZF *fp, int size)
 {
+	if (fp->block_offset + size > fp->uncompressed_block_size)
+		return bgzf_flush(fp);
+	return -1;
+}
+
+int bgzf_write(BGZF* fp, const void* data, int length)
+{
+	const bgzf_byte_t *input = data;
+	int block_length, bytes_written;
     if (fp->open_mode != 'w') {
         report_error(fp, "file not open for writing");
         return -1;
     }
 
-    if (fp->uncompressed_block == NULL) {
+    if (fp->uncompressed_block == NULL)
         fp->uncompressed_block = malloc(fp->uncompressed_block_size);
-    }
 
-    const bgzf_byte_t* input = data;
-    int block_length = fp->uncompressed_block_size;
-    int bytes_written = 0;
+    input = data;
+    block_length = fp->uncompressed_block_size;
+    bytes_written = 0;
     while (bytes_written < length) {
         int copy_length = bgzf_min(block_length - fp->block_offset, length - bytes_written);
         bgzf_byte_t* buffer = fp->uncompressed_block;
@@ -599,7 +614,7 @@ bgzf_write(BGZF* fp, const void* data, int length)
         input += copy_length;
         bytes_written += copy_length;
         if (fp->block_offset == block_length) {
-            if (flush_block(fp) != 0) {
+            if (bgzf_flush(fp) != 0) {
                 break;
             }
         }
@@ -607,13 +622,10 @@ bgzf_write(BGZF* fp, const void* data, int length)
     return bytes_written;
 }
 
-int
-bgzf_close(BGZF* fp)
+int bgzf_close(BGZF* fp)
 {
     if (fp->open_mode == 'w') {
-        if (flush_block(fp) != 0) {
-            return -1;
-        }
+        if (bgzf_flush(fp) != 0) return -1;
 		{ // add an empty block
 			int count, block_length = deflate_block(fp, 0);
 #ifdef _USE_KNETFILE
@@ -638,9 +650,7 @@ bgzf_close(BGZF* fp)
 		else ret = knet_close(fp->x.fpr);
         if (ret != 0) return -1;
 #else
-        if (fclose(fp->file) != 0) {
-            return -1;
-        }
+        if (fclose(fp->file) != 0) return -1;
 #endif
     }
     free(fp->uncompressed_block);
@@ -674,9 +684,11 @@ int bgzf_check_EOF(BGZF *fp)
 	return (memcmp(magic, buf, 28) == 0)? 1 : 0;
 }
 
-int64_t
-bgzf_seek(BGZF* fp, int64_t pos, int where)
+int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
 {
+	int block_offset;
+	int64_t block_address;
+
     if (fp->open_mode != 'r') {
         report_error(fp, "file not open for read");
         return -1;
@@ -685,8 +697,8 @@ bgzf_seek(BGZF* fp, int64_t pos, int where)
         report_error(fp, "unimplemented seek option");
         return -1;
     }
-    int block_offset = pos & 0xFFFF;
-    int64_t block_address = (pos >> 16) & 0xFFFFFFFFFFFFLL;
+    block_offset = pos & 0xFFFF;
+    block_address = (pos >> 16) & 0xFFFFFFFFFFFFLL;
 #ifdef _USE_KNETFILE
     if (knet_seek(fp->x.fpr, block_address, SEEK_SET) != 0) {
 #else

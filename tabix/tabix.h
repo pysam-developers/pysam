@@ -58,6 +58,11 @@ typedef struct {
 	int32_t meta_char, line_skip;
 } ti_conf_t;
 
+typedef struct {
+	int beg, end;
+	char *ss, *se;
+} ti_interval_t;
+
 extern ti_conf_t ti_conf_gff, ti_conf_bed, ti_conf_psltbl, ti_conf_vcf, ti_conf_sam; // preset
 
 #ifdef __cplusplus
@@ -119,6 +124,9 @@ extern "C" {
 
 	/* Get the data line pointed by the iterator and iterate to the next record. */
 	const char *ti_iter_read(BGZF *fp, ti_iter_t iter, int *len);
+
+	const ti_conf_t *ti_get_conf(ti_index_t *idx);
+	int ti_get_intv(const ti_conf_t *conf, int len, char *line, ti_interval_t *intv);
 
 	/*******************
 	 * Deprecated APIs *

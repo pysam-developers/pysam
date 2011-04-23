@@ -70,6 +70,8 @@ static void swap_header_text(bam_header_t *h1, bam_header_t *h2)
 
 #define MERGE_RG     1
 #define MERGE_UNCOMP 2
+#define MERGE_LEVEL1 4
+#define MERGE_FORCE  8
 
 /*!
   @abstract    Merge multiple sorted BAM.
@@ -202,16 +204,14 @@ int bam_merge_core(int by_qname, const char *out, const char *headers, int n, ch
 		h->i = i;
 		h->b = (bam1_t*)calloc(1, sizeof(bam1_t));
 		if (bam_iter_read(fp[i], iter[i], h->b) >= 0) {
-			h->pos = ((uint64_t)h->b->core.tid<<32) | (uint32_t)h->b->core.pos<<1 | bam1_strand(h->b);
+			h->pos = ((uint64_t)h->b->core.tid<<32) | (uint32_t)((int32_t)h->b->core.pos+1)<<1 | bam1_strand(h->b);
 			h->idx = idx++;
 		}
 		else h->pos = HEAP_EMPTY;
 	}
-	if (flag & MERGE_UNCOMP) {
-		fpout = strcmp(out, "-")? bam_open(out, "wu") : bam_dopen(fileno(stdout), "wu");
-	} else {
-		fpout = strcmp(out, "-")? bam_open(out, "w") : bam_dopen(fileno(stdout), "w");
-	}
+	if (flag & MERGE_UNCOMP) fpout = strcmp(out, "-")? bam_open(out, "wu") : bam_dopen(fileno(stdout), "wu");
+	else if (flag & MERGE_LEVEL1) fpout = strcmp(out, "-")? bam_open(out, "w1") : bam_dopen(fileno(stdout), "w1");
+	else fpout = strcmp(out, "-")? bam_open(out, "w") : bam_dopen(fileno(stdout), "w");
 	if (fpout == 0) {
 		fprintf(stderr, "[%s] fail to create the output file.\n", __func__);
 		return -1;
@@ -229,7 +229,7 @@ int bam_merge_core(int by_qname, const char *out, const char *headers, int n, ch
 		}
 		bam_write1_core(fpout, &b->core, b->data_len, b->data);
 		if ((j = bam_iter_read(fp[heap->i], iter[heap->i], b)) >= 0) {
-			heap->pos = ((uint64_t)b->core.tid<<32) | (uint32_t)b->core.pos<<1 | bam1_strand(b);
+			heap->pos = ((uint64_t)b->core.tid<<32) | (uint32_t)((int)b->core.pos+1)<<1 | bam1_strand(b);
 			heap->idx = idx++;
 		} else if (j == -1) {
 			heap->pos = HEAP_EMPTY;
@@ -257,11 +257,13 @@ int bam_merge(int argc, char *argv[])
 	int c, is_by_qname = 0, flag = 0, ret = 0;
 	char *fn_headers = NULL, *reg = 0;
 
-	while ((c = getopt(argc, argv, "h:nruR:")) >= 0) {
+	while ((c = getopt(argc, argv, "h:nru1R:f")) >= 0) {
 		switch (c) {
 		case 'r': flag |= MERGE_RG; break;
+		case 'f': flag |= MERGE_FORCE; break;
 		case 'h': fn_headers = strdup(optarg); break;
 		case 'n': is_by_qname = 1; break;
+		case '1': flag |= MERGE_LEVEL1; break;
 		case 'u': flag |= MERGE_UNCOMP; break;
 		case 'R': reg = strdup(optarg); break;
 		}
@@ -272,12 +274,22 @@ int bam_merge(int argc, char *argv[])
 		fprintf(stderr, "Options: -n       sort by read names\n");
 		fprintf(stderr, "         -r       attach RG tag (inferred from file names)\n");
 		fprintf(stderr, "         -u       uncompressed BAM output\n");
+		fprintf(stderr, "         -f       overwrite the output BAM if exist\n");
+		fprintf(stderr, "         -1       compress level 1\n");
 		fprintf(stderr, "         -R STR   merge file in the specified region STR [all]\n");
 		fprintf(stderr, "         -h FILE  copy the header in FILE to <out.bam> [in1.bam]\n\n");
 		fprintf(stderr, "Note: Samtools' merge does not reconstruct the @RG dictionary in the header. Users\n");
 		fprintf(stderr, "      must provide the correct header with -h, or uses Picard which properly maintains\n");
 		fprintf(stderr, "      the header dictionary in merging.\n\n");
 		return 1;
+	}
+	if (!(flag & MERGE_FORCE) && strcmp(argv[optind], "-")) {
+		FILE *fp = fopen(argv[optind], "rb");
+		if (fp != NULL) {
+			fclose(fp);
+			fprintf(stderr, "[%s] File '%s' exists. Please apply '-f' to overwrite. Abort.\n", __func__, argv[optind]);
+			return 1;
+		}
 	}
 	if (bam_merge_core(is_by_qname, argv[optind], fn_headers, argc - optind - 1, argv + optind + 1, flag, reg) < 0) ret = 1;
 	free(reg);
@@ -291,21 +303,26 @@ static inline int bam1_lt(const bam1_p a, const bam1_p b)
 {
 	if (g_is_by_qname) {
 		int t = strnum_cmp(bam1_qname(a), bam1_qname(b));
-		return (t < 0 || (t == 0 && (((uint64_t)a->core.tid<<32|a->core.pos) < ((uint64_t)b->core.tid<<32|b->core.pos))));
-	} else return (((uint64_t)a->core.tid<<32|a->core.pos) < ((uint64_t)b->core.tid<<32|b->core.pos));
+		return (t < 0 || (t == 0 && (((uint64_t)a->core.tid<<32|(a->core.pos+1)) < ((uint64_t)b->core.tid<<32|(b->core.pos+1)))));
+	} else return (((uint64_t)a->core.tid<<32|(a->core.pos+1)) < ((uint64_t)b->core.tid<<32|(b->core.pos+1)));
 }
 KSORT_INIT(sort, bam1_p, bam1_lt)
 
 static void sort_blocks(int n, int k, bam1_p *buf, const char *prefix, const bam_header_t *h, int is_stdout)
 {
-	char *name;
+	char *name, mode[3];
 	int i;
 	bamFile fp;
 	ks_mergesort(sort, k, buf, 0);
 	name = (char*)calloc(strlen(prefix) + 20, 1);
-	if (n >= 0) sprintf(name, "%s.%.4d.bam", prefix, n);
-	else sprintf(name, "%s.bam", prefix);
-	fp = is_stdout? bam_dopen(fileno(stdout), "w") : bam_open(name, "w");
+	if (n >= 0) {
+		sprintf(name, "%s.%.4d.bam", prefix, n);
+		strcpy(mode, "w1");
+	} else {
+		sprintf(name, "%s.bam", prefix);
+		strcpy(mode, "w");
+	}
+	fp = is_stdout? bam_dopen(fileno(stdout), mode) : bam_open(name, mode);
 	if (fp == 0) {
 		fprintf(stderr, "[sort_blocks] fail to create file %s.\n", name);
 		free(name);

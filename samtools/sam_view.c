@@ -6,6 +6,7 @@
 #include "sam_header.h"
 #include "sam.h"
 #include "faidx.h"
+#include "kstring.h"
 #include "khash.h"
 KHASH_SET_INIT_STR(rg)
 
@@ -18,10 +19,15 @@ typedef struct {
 
 typedef khash_t(rg) *rghash_t;
 
-rghash_t g_rghash = 0;
+static rghash_t g_rghash = 0;
 static int g_min_mapQ = 0, g_flag_on = 0, g_flag_off = 0;
 static char *g_library, *g_rg;
 static int g_sol2sanger_tbl[128];
+static void *g_bed;
+
+void *bed_read(const char *fn);
+void bed_destroy(void *_h);
+int bed_overlap(const void *_h, const char *chr, int beg, int end);
 
 static void sol2sanger(bam1_t *b)
 {
@@ -44,6 +50,8 @@ static inline int __g_skip_aln(const bam_header_t *h, const bam1_t *b)
 {
 	if (b->core.qual < g_min_mapQ || ((b->core.flag & g_flag_on) != g_flag_on) || (b->core.flag & g_flag_off))
 		return 1;
+	if (g_bed && b->core.tid >= 0 && !bed_overlap(g_bed, h->target_name[b->core.tid], b->core.pos, bam_calend(&b->core, bam1_cigar(b))))
+		return 1;
 	if (g_rg || g_rghash) {
 		uint8_t *s = bam_aux_get(b, "RG");
 		if (s) {
@@ -59,6 +67,37 @@ static inline int __g_skip_aln(const bam_header_t *h, const bam1_t *b)
 		return (p && strcmp(p, g_library) == 0)? 0 : 1;
 	}
 	return 0;
+}
+
+static char *drop_rg(char *hdtxt, rghash_t h, int *len)
+{
+	char *p = hdtxt, *q, *r, *s;
+	kstring_t str;
+	memset(&str, 0, sizeof(kstring_t));
+	while (1) {
+		int toprint = 0;
+		q = strchr(p, '\n');
+		if (q == 0) q = p + strlen(p);
+		if (q - p < 3) break; // the line is too short; then stop
+		if (strncmp(p, "@RG\t", 4) == 0) {
+			int c;
+			khint_t k;
+			if ((r = strstr(p, "\tID:")) != 0) {
+				r += 4;
+				for (s = r; *s != '\0' && *s != '\n' && *s != '\t'; ++s);
+				c = *s; *s = '\0';
+				k = kh_get(rg, h, r);
+				*s = c;
+				if (k != kh_end(h)) toprint = 1;
+			}
+		} else toprint = 1;
+		if (toprint) {
+			kputsn(p, q - p, &str); kputc('\n', &str);
+		}
+		p = q + 1;
+	}
+	*len = str.l;
+	return str.s;
 }
 
 // callback function for bam_fetch() that prints nonskipped records
@@ -82,7 +121,7 @@ static int usage(int is_long_help);
 
 int main_samview(int argc, char *argv[])
 {
-	int c, is_header = 0, is_header_only = 0, is_bamin = 1, ret = 0, is_uncompressed = 0, is_bamout = 0, slx2sngr = 0, is_count = 0;
+	int c, is_header = 0, is_header_only = 0, is_bamin = 1, ret = 0, compress_level = -1, is_bamout = 0, slx2sngr = 0, is_count = 0;
 	int of_type = BAM_OFDEC, is_long_help = 0;
 	int count = 0;
 	samfile_t *in = 0, *out = 0;
@@ -90,7 +129,7 @@ int main_samview(int argc, char *argv[])
 
 	/* parse command-line options */
 	strcpy(in_mode, "r"); strcpy(out_mode, "w");
-	while ((c = getopt(argc, argv, "Sbct:hHo:q:f:F:ul:r:xX?T:CR:")) >= 0) {
+	while ((c = getopt(argc, argv, "Sbct:h1Ho:q:f:F:ul:r:xX?T:CR:L:")) >= 0) {
 		switch (c) {
 		case 'c': is_count = 1; break;
 		case 'C': slx2sngr = 1; break;
@@ -103,8 +142,10 @@ int main_samview(int argc, char *argv[])
 		case 'f': g_flag_on = strtol(optarg, 0, 0); break;
 		case 'F': g_flag_off = strtol(optarg, 0, 0); break;
 		case 'q': g_min_mapQ = atoi(optarg); break;
-		case 'u': is_uncompressed = 1; break;
+		case 'u': compress_level = 0; break;
+		case '1': compress_level = 1; break;
 		case 'l': g_library = strdup(optarg); break;
+		case 'L': g_bed = bed_read(optarg); break;
 		case 'r': g_rg = strdup(optarg); break;
 		case 'R': fn_rg = strdup(optarg); break;
 		case 'x': of_type = BAM_OFHEX; break;
@@ -114,7 +155,7 @@ int main_samview(int argc, char *argv[])
 		default: return usage(is_long_help);
 		}
 	}
-	if (is_uncompressed) is_bamout = 1;
+	if (compress_level >= 0) is_bamout = 1;
 	if (is_header_only) is_header = 1;
 	if (is_bamout) strcat(out_mode, "b");
 	else {
@@ -123,7 +164,11 @@ int main_samview(int argc, char *argv[])
 	}
 	if (is_bamin) strcat(in_mode, "b");
 	if (is_header) strcat(out_mode, "h");
-	if (is_uncompressed) strcat(out_mode, "u");
+	if (compress_level >= 0) {
+		char tmp[2];
+		tmp[0] = compress_level + '0'; tmp[1] = '\0';
+		strcat(out_mode, tmp);
+	}
 	if (argc == optind) return usage(is_long_help); // potential memory leak...
 
 	// read the list of read groups
@@ -150,6 +195,14 @@ int main_samview(int argc, char *argv[])
 		fprintf(stderr, "[main_samview] fail to read the header from \"%s\".\n", argv[optind]);
 		ret = 1;
 		goto view_end;
+	}
+	if (g_rghash) { // FIXME: I do not know what "bam_header_t::n_text" is for...
+		char *tmp;
+		int l;
+		tmp = drop_rg(in->header->text, g_rghash, &l);
+		free(in->header->text);
+		in->header->text = tmp;
+		in->header->l_text = l;
 	}
 	if (!is_count && (out = samopen(fn_out? fn_out : "-", out_mode, in->header)) == 0) {
 		fprintf(stderr, "[main_samview] fail to open \"%s\" for writing.\n", fn_out? fn_out : "standard output");
@@ -210,6 +263,7 @@ view_end:
 	}
 	// close files, free and return
 	free(fn_list); free(fn_ref); free(fn_out); free(g_library); free(g_rg); free(fn_rg);
+	if (g_bed) bed_destroy(g_bed);
 	if (g_rghash) {
 		khint_t k;
 		for (k = 0; k < kh_end(g_rghash); ++k)
@@ -231,9 +285,11 @@ static int usage(int is_long_help)
 	fprintf(stderr, "         -H       print header only (no alignments)\n");
 	fprintf(stderr, "         -S       input is SAM\n");
 	fprintf(stderr, "         -u       uncompressed BAM output (force -b)\n");
+	fprintf(stderr, "         -1       fast compression (force -b)\n");
 	fprintf(stderr, "         -x       output FLAG in HEX (samtools-C specific)\n");
 	fprintf(stderr, "         -X       output FLAG in string (samtools-C specific)\n");
 	fprintf(stderr, "         -c       print only the count of matching records\n");
+	fprintf(stderr, "         -L FILE  output alignments overlapping the input BED FILE [null]\n");
 	fprintf(stderr, "         -t FILE  list of reference names and lengths (force -S) [null]\n");
 	fprintf(stderr, "         -T FILE  reference sequence file (force -S) [null]\n");
 	fprintf(stderr, "         -o FILE  output file name [stdout]\n");

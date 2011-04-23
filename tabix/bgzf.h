@@ -26,7 +26,6 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <zlib.h>
 #ifdef _USE_KNETFILE
 #include "knetfile.h"
@@ -37,7 +36,7 @@
 typedef struct {
     int file_descriptor;
     char open_mode;  // 'r' or 'w'
-    bool owned_file, is_uncompressed;
+    int16_t owned_file, compress_level;
 #ifdef _USE_KNETFILE
 	union {
 		knetFile *fpr;
@@ -61,13 +60,6 @@ typedef struct {
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* 
- * Checks the magic string of the file. Returns 1
- *  for bgzipped files, -1 on errors and 0 for files
- *  without the bgzip magic string.
- */
-int is_bgzipped(const char *path);
 
 /*
  * Open an existing file descriptor for reading or writing.
@@ -133,8 +125,10 @@ int64_t bgzf_seek(BGZF* fp, int64_t pos, int where);
 void bgzf_set_cache_size(BGZF *fp, int cache_size);
 
 int bgzf_check_EOF(BGZF *fp);
-
 int bgzf_read_block(BGZF* fp);
+int bgzf_flush(BGZF* fp);
+int bgzf_flush_try(BGZF *fp, int size);
+int bgzf_check_bgzf(const char *fn);
 
 #ifdef __cplusplus
 }

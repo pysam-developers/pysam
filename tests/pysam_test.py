@@ -272,13 +272,15 @@ class IOTest(unittest.TestCase):
         self.assertRaises( ValueError, samfile.pileup, 'chr1', 100, 120)
         self.assertRaises( ValueError, samfile.getrname, 0 )
         self.assertRaises( ValueError, samfile.tell )
-        self.assertRaises( ValueError, samfile.write, None )
         self.assertRaises( ValueError, samfile.seek, 0 )
         self.assertRaises( ValueError, getattr, samfile, "nreferences" )
         self.assertRaises( ValueError, getattr, samfile, "references" )
         self.assertRaises( ValueError, getattr, samfile, "lengths" )
         self.assertRaises( ValueError, getattr, samfile, "text" )
         self.assertRaises( ValueError, getattr, samfile, "header" )
+
+        # write on closed file 
+        self.assertEqual( 0, samfile.write(None) )
 
     def testBinaryReadFromSamfile( self ):
         pass

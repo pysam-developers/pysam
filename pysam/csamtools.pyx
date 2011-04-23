@@ -959,14 +959,14 @@ cdef class Samfile:
         bam_destroy1(self.b)
         if self._filename != NULL: free( self._filename )
 
-    cpdef int write( self, AlignedRead read ):
+    cpdef int write( self, AlignedRead read ) except -1:
         '''
         write a single :class:`pysam.AlignedRead` to disk.
 
         returns the number of bytes written.
         '''
         if not self._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+            return 0
 
         return samwrite( self.samfile, read._delegate )
 

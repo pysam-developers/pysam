@@ -38,7 +38,7 @@ const char *o_sq_tags[] = {"AS","M5","UR","SP",NULL};
 const char *r_sq_tags[] = {"SN","LN",NULL};
 const char *u_sq_tags[] = {"SN",NULL};
 
-const char *o_rg_tags[] = {"LB","DS","PU","PI","CN","DT","PL",NULL};
+const char *o_rg_tags[] = {"CN","DS","DT","FO","KS","LB","PG","PI","PL","PU","SM",NULL};
 const char *r_rg_tags[] = {"ID",NULL};
 const char *u_rg_tags[] = {"ID",NULL};
 
@@ -563,6 +563,7 @@ void *sam_header_parse2(const char *headerText)
     const char *text;
     char *buf=NULL;
     size_t nbuf = 0;
+	int tovalidate = 0;
 
     if ( !headerText )
 		return 0;
@@ -571,7 +572,7 @@ void *sam_header_parse2(const char *headerText)
     while ( (text=nextline(&buf, &nbuf, text)) )
     {
         hline = sam_header_line_parse(buf);
-        if ( hline && sam_header_line_validate(hline) )
+        if ( hline && (!tovalidate || sam_header_line_validate(hline)) )
             // With too many (~250,000) reference sequences the header parsing was too slow with list_append.
             hlines = list_append_to_end(hlines, hline);
         else

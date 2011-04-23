@@ -2,6 +2,7 @@
 # adds doc-strings for sphinx
 
 import tempfile, os, sys, types, itertools, struct, ctypes
+from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 
 cdef class Tabixfile:
     '''*(filename, mode='r')*
@@ -595,10 +596,11 @@ cdef class GTFProxy:
                  self.attributes ) )
         else: 
             cpy = <char*>calloc( sizeof(char), self.nbytes+1 )
+            assert cpy != NULL
             memcpy( cpy, self.data, self.nbytes+1)
             for x from 0 <= x < self.nbytes:
                 if cpy[x] == '\0': cpy[x] = '\t'
-            result = cpy
+            result = PyString_FromStringAndSize(cpy, self.nbytes)
             free(cpy)
             return result
 

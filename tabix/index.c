@@ -156,32 +156,31 @@ static int get_tid(ti_index_t *idx, const char *ss)
 	return tid;
 }
 
-static int get_intv(ti_index_t *idx, kstring_t *str, ti_intv_t *intv)
+int ti_get_intv(const ti_conf_t *conf, int len, char *line, ti_interval_t *intv)
 {
-	int i, b = 0, id = 1;
+	int i, b = 0, id = 1, ncols = 0;
 	char *s;
-	intv->tid = intv->beg = intv->end = intv->bin = -1;
-	for (i = 0; i <= str->l; ++i) {
-		if (str->s[i] == '\t' || str->s[i] == 0) {
-			if (id == idx->conf.sc) {
-				str->s[i] = 0;
-				intv->tid = get_tid(idx, str->s + b);
-				if (i != str->l) str->s[i] = '\t';
-			} else if (id == idx->conf.bc) {
+	intv->ss = intv->se = 0; intv->beg = intv->end = -1;
+	for (i = 0; i <= len; ++i) {
+		if (line[i] == '\t' || line[i] == 0) {
+            ++ncols;
+			if (id == conf->sc) {
+				intv->ss = line + b; intv->se = line + i;
+			} else if (id == conf->bc) {
 				// here ->beg is 0-based.
-				intv->beg = intv->end = strtol(str->s + b, &s, 0);
-				if (!(idx->conf.preset&TI_FLAG_UCSC)) --intv->beg;
+				intv->beg = intv->end = strtol(line + b, &s, 0);
+				if (!(conf->preset&TI_FLAG_UCSC)) --intv->beg;
 				else ++intv->end;
 				if (intv->beg < 0) intv->beg = 0;
 				if (intv->end < 1) intv->end = 1;
 			} else {
-				if ((idx->conf.preset&0xffff) == TI_PRESET_GENERIC) {
-					if (id == idx->conf.ec) intv->end = strtol(str->s + b, &s, 0);
-				} else if ((idx->conf.preset&0xffff) == TI_PRESET_SAM) {
+				if ((conf->preset&0xffff) == TI_PRESET_GENERIC) {
+					if (id == conf->ec) intv->end = strtol(line + b, &s, 0);
+				} else if ((conf->preset&0xffff) == TI_PRESET_SAM) {
 					if (id == 6) { // CIGAR
 						int l = 0, op;
 						char *t;
-						for (s = str->s + b; s < str->s + i;) {
+						for (s = line + b; s < line + i;) {
 							long x = strtol(s, &t, 10);
 							op = toupper(*t);
 							if (op == 'M' || op == 'D' || op == 'N') l += x;
@@ -190,21 +189,21 @@ static int get_intv(ti_index_t *idx, kstring_t *str, ti_intv_t *intv)
 						if (l == 0) l = 1;
 						intv->end = intv->beg + l;
 					}
-				} else if ((idx->conf.preset&0xffff) == TI_PRESET_VCF) {
+				} else if ((conf->preset&0xffff) == TI_PRESET_VCF) {
 					// FIXME: the following is NOT tested and is likely to be buggy
 					if (id == 4) {
 						if (b < i) intv->end = intv->beg + (i - b);
 					} else if (id == 8) { // look for "END="
-						int c = str->s[i];
-						str->s[i] = 0;
-						s = strstr(str->s + b, "END=");
-						if (s == str->s + b) s += 4;
+						int c = line[i];
+						line[i] = 0;
+						s = strstr(line + b, "END=");
+						if (s == line + b) s += 4;
 						else if (s) {
-							s = strstr(str->s + b, ";END=");
+							s = strstr(line + b, ";END=");
 							if (s) s += 5;
 						}
 						if (s) intv->end = strtol(s, &s, 0);
-						str->s[i] = c;
+						line[i] = c;
 					}
 				}
 			}
@@ -212,9 +211,31 @@ static int get_intv(ti_index_t *idx, kstring_t *str, ti_intv_t *intv)
 			++id;
 		}
 	}
-	if (intv->tid < 0 || intv->beg < 0 || intv->end < 0) return -1;
-	intv->bin = ti_reg2bin(intv->beg, intv->end);
+/*
+	if (ncols < conf->sc || ncols < conf->bc || ncols < conf->ec) {
+		if (ncols == 1) fprintf(stderr,"[get_intv] Is the file tab-delimited? The line has %d field only: %s\n", ncols, line);
+		else fprintf(stderr,"[get_intv] The line has %d field(s) only: %s\n", ncols, line);
+		exit(1);
+	}
+*/
+	if (intv->ss == 0 || intv->se == 0 || intv->beg < 0 || intv->end < 0) return -1;
 	return 0;
+}
+
+static int get_intv(ti_index_t *idx, kstring_t *str, ti_intv_t *intv)
+{
+	ti_interval_t x;
+	intv->tid = intv->beg = intv->end = intv->bin = -1;
+	if (ti_get_intv(&idx->conf, str->l, str->s, &x) == 0) {
+		int c = *x.se;
+		*x.se = '\0'; intv->tid = get_tid(idx, x.ss); *x.se = c;
+		intv->beg = x.beg; intv->end = x.end;
+		intv->bin = ti_reg2bin(intv->beg, intv->end);
+		return (intv->tid >= 0 && intv->beg >= 0 && intv->end >= 0)? 0 : -1;
+	} else {
+		fprintf(stderr, "[%s] the following line cannot be parsed and skipped: %s\n", __func__, str->s);
+		return -1;
+	}
 }
 
 /************
@@ -322,10 +343,15 @@ ti_index_t *ti_index_core(BGZF *fp, const ti_conf_t *conf)
 			continue;
 		}
 		get_intv(idx, str, &intv);
+        if ( intv.beg<0 || intv.end<0 )
+        {
+            fprintf(stderr,"[ti_index_core] the indexes overlap or are out of bounds\n");
+            exit(1);
+        }
 		if (last_tid != intv.tid) { // change of chromosomes
             if (last_tid>intv.tid )
             {
-                fprintf(stderr,"[ti_index_core] the chromosome blocks not continuous at line %llu, is the file sorted?\n",(unsigned long long)lineno);
+                fprintf(stderr,"[ti_index_core] the chromosome blocks not continuous at line %llu, is the file sorted? [pos %d]\n",(unsigned long long)lineno,intv.beg+1);
                 exit(1);
             }
 			last_tid = intv.tid;
@@ -901,6 +927,8 @@ int ti_fetch(BGZF *fp, const ti_index_t *idx, int tid, int beg, int end, void *d
 	ti_iter_destroy(iter);
 	return 0;
 }
+
+const ti_conf_t *ti_get_conf(ti_index_t *idx) { return idx? &idx->conf : 0; }
 
 /*******************
  * High-level APIs *
