@@ -101,9 +101,14 @@ cdef extern from "bgzf.h":
 # tabix support
 cdef extern from "tabix.h":
 
-  ctypedef struct ti_index_t:
-    pass
+  ctypedef struct ti_conf_t:
+    int32_t preset
+    int32_t sc, bc, ec
+    int32_t meta_char, line_skip
 
+  ctypedef struct ti_index_t:
+     pass
+      
   ctypedef struct tabix_t: 
     BGZF *fp
     ti_index_t *idx
@@ -112,11 +117,6 @@ cdef extern from "tabix.h":
 
   ctypedef struct ti_iter_t:
     pass
-
-  ctypedef struct ti_conf_t:
-    int32_t preset
-    int32_t sc, bc, ec
-    int32_t meta_char, line_skip
 
   tabix_t *ti_open(char *fn, char *fnidx)
 
@@ -135,7 +135,6 @@ cdef extern from "tabix.h":
   #	pointer should be freed by a single free() call by the routine
   #	calling this function. The number of sequences is returned at *n
   char **ti_seqname(ti_index_t *idx, int *n)
-
   
   # Destroy the iterator
   void ti_iter_destroy(ti_iter_t iter)

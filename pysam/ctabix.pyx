@@ -195,8 +195,16 @@ cdef class TabixIterator:
     
         cdef char * s
         cdef int len
-        s = ti_read(self.tabixfile, self.iterator, &len)
-        if s == NULL: raise StopIteration
+        # metachar filtering does not work within tabix 
+        # though it should. Getting the metachar is a pain
+        # as ti_index_t is incomplete type.
+
+        # simply use '#' for now.
+        while 1:
+            s = ti_read(self.tabixfile, self.iterator, &len)
+            if s == NULL: raise StopIteration
+            if s[0] != '#': break
+
         return s
 
     def __dealloc__(self):
@@ -229,25 +237,12 @@ cdef class asGTF(Parser):
 
 cdef class asVCF( Parser ): 
     '''converts a :term:`tabix row` into a VCF record.'''
-    cdef vcffile
-
-    def __init__(self, filename ):
-        '''read header from filename.'''
-        # note: an additional file handle will be opened
-        self.vcffile = pysam.VCF.VCFFile()
-        self.vcffile._parse_header( gzip.open( filename ) )
-
     def __call__(self, char * buffer, int len ):
-        # for later: use proxies - now - parse full data
         cdef TabProxies.VCFProxy r
         r = TabProxies.VCFProxy()
         r.copy( buffer, len )
         return r
-        # return self.vcffile.parse_data( buffer )
     
-    def __dealloc__(self ):
-        self.vcffile.close()
-
 #########################################################
 #########################################################
 #########################################################
@@ -297,8 +292,12 @@ cdef class TabixIteratorParsed:
     
         cdef char * s
         cdef int len
-        s = ti_read(self.tabixfile, self.iterator, &len)
-        if s == NULL: raise StopIteration
+        while 1:
+            s = ti_read(self.tabixfile, self.iterator, &len)
+            if s == NULL: raise StopIteration
+            # todo: read metachar from configuration
+            if s[0] != '#': break
+            
         return self.parser(s, len)
 
     def __dealloc__(self):

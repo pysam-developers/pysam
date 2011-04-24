@@ -85,7 +85,7 @@ class TestIteration( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename )
-        lines = gzip.open(self.filename).readlines()
+        lines = [ x for x in gzip.open(self.filename).readlines() if not x.startswith("#") ]
         # creates index of contig, start, end, adds content without newline.
         self.compare = [ 
             (x[0][0], int(x[0][3]), int(x[0][4]), x[1]) 
@@ -203,14 +203,9 @@ class TestParser( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename )
-        self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") ]
+        self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") if not x.startswith("#") ]
 
-    def testGTF( self ):
-
-        for x, r in enumerate(self.tabix.fetch( parser = pysam.asGTF() )):
-            self.assertEqual( "\t".join( self.compare[x]), str(r) )
-
-    def testTuple( self ):
+    def testParser( self ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asTuple() )):
             self.assertEqual( self.compare[x], list(r) )
@@ -218,6 +213,37 @@ class TestParser( unittest.TestCase ):
             self.assertEqual( len(self.compare[x]), len(r) )
             for c in range(0,len(r)):
                 self.assertEqual( self.compare[x][c], r[c] )
+
+class TestGTF( TestParser ):
+    def testParser( self ):
+
+        for x, r in enumerate(self.tabix.fetch( parser = pysam.asGTF() )):
+            self.assertEqual( "\t".join( self.compare[x]), str(r) )
+
+
+class TestVCF( TestParser ):
+
+    filename = "test_40.vcf.gz"
+    columns = ("contig", "pos", "id", "ref", "alt", "qual", "filter", 
+               "info", "format", "genotypes" )
+    
+    def testParser( self ):
+        
+        # ignore genotypes
+        ncolumns = len(self.columns) - 1
+
+        for x, r in enumerate(self.tabix.fetch( parser = pysam.asVCF() )):
+            for y, field in enumerate( self.columns ):
+                if field == "pos":
+                    self.assertEqual( int(self.compare[x][y])-1, getattr( r, field ) )
+                else:
+                    self.assertEqual( self.compare[x][y], getattr( r, field ), 
+                                      "mismatch in field %s: %s != %s" %\
+                                          ( field,self.compare[x][y], getattr( r, field ) ) )
+            self.assertEqual( len(self.compare[x]), len( r ) + ncolumns )
+            
+            for y in range(len(self.compare[x]) - ncolumns):
+                self.assertEqual( self.compare[x][ncolumns+y], r[y] )
 
 if __name__ == "__main__":
     unittest.main()

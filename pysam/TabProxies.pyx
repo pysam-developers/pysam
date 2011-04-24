@@ -59,7 +59,12 @@ cdef class TupleProxy:
         self.update( self.data, nbytes )
 
     cdef update( self, char * buffer, size_t nbytes ):
-        '''update internal data.'''
+        '''update internal data.
+
+        Update starts work in buffer, thus can be used
+        to collect any number of fields until nbytes
+        is exhausted.
+        '''
         cdef char * pos
         cdef char * old_pos
         cdef int field
@@ -74,9 +79,9 @@ cdef class TupleProxy:
         
         max_fields = nbytes / 4
         self.fields = <char **>calloc( max_fields, sizeof(char *) ) 
-        
-        pos = buffer
-        self.fields[0] = pos
+
+        self.fields[0] = pos = buffer
+
         field += 1
         old_pos = pos
         
@@ -119,6 +124,18 @@ cdef class TupleProxy:
             raise StopIteration
         self.index += 1
         return self.fields[self.index-1]
+
+    def __str__(self):
+        '''return original data'''
+        # copy and replace \0 bytes with \t characters
+        cpy = <char*>calloc( sizeof(char), self.nbytes+1 )
+        assert cpy != NULL
+        memcpy( cpy, self.data, self.nbytes+1)
+        for x from 0 <= x < self.nbytes:
+            if cpy[x] == '\0': cpy[x] = '\t'
+        result = PyString_FromStringAndSize(cpy, self.nbytes)
+        free(cpy)
+        return result
 
 def toDot( v ):
     '''convert value to '.' if None'''
@@ -193,53 +210,15 @@ cdef class GTFProxy( TupleProxy ):
         if buffer[nbytes] != 0:
             raise ValueError( "incomplete line at %s" % buffer )
         
-        pos = strchr( buffer, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        self.source = pos
+        self.source = pos = nextItem( buffer )
+        self.feature = pos = nextItem( pos )
+        cstart = pos = nextItem( pos )
+        cend = pos = nextItem( pos )
+        self.score = pos = nextItem( pos )
+        self.strand = pos = nextItem( pos )
+        self.frame = pos = nextItem( pos )
+        self.attributes = pos = nextItem( pos )
 
-        pos = strchr( pos, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        self.feature = pos
-
-        pos = strchr( pos, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        cstart = pos
-
-        pos = strchr( pos, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        cend = pos
-
-        pos = strchr( pos, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        self.score = pos
-
-        pos = strchr( pos, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        self.strand = pos
-
-        pos = strchr( pos, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        self.frame = pos
-
-        pos = strchr( pos, '\t' )
-        if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
-        pos[0] = '\0'
-        pos += 1
-        self.attributes = pos
         self.start = atoi( cstart ) - 1
         self.end = atoi( cend )
                       
@@ -386,14 +365,7 @@ cdef class GTFProxy( TupleProxy ):
                  self.frame,
                  self.attributes ) )
         else: 
-            cpy = <char*>calloc( sizeof(char), self.nbytes+1 )
-            assert cpy != NULL
-            memcpy( cpy, self.data, self.nbytes+1)
-            for x from 0 <= x < self.nbytes:
-                if cpy[x] == '\0': cpy[x] = '\t'
-            result = PyString_FromStringAndSize(cpy, self.nbytes)
-            free(cpy)
-            return result
+            return TupleProxy.__str__(self)
 
     def invert( self, int lcontig ):
         '''invert coordinates to negative strand coordinates
@@ -487,8 +459,52 @@ cdef class VCFProxy( TupleProxy ):
         self.info = pos = nextItem( pos )
         self.format = pos = nextItem( pos )
         self.genotypes = pos = nextItem( pos )
+
+        # collect the rest of the genotypes
+        TupleProxy.update( self, pos, nbytes - (pos - buffer) )
+
         # vcf counts from 1 - correct here
         self.pos = atoi( cpos ) - 1
+
+    property contig:
+       '''contig of variant.'''
+       def __get__( self ): return self.contig
+
+    property pos:
+       '''position of variant.'''
+       def __get__( self ): return self.pos
+
+    property id:
+       '''position of variant.'''
+       def __get__( self ): return self.id
+
+    property ref:
+       '''position of variant.'''
+       def __get__( self ): return self.ref
+
+    property alt:
+       '''position of variant.'''
+       def __get__( self ): return self.alt
+
+    property qual:
+       '''position of variant.'''
+       def __get__( self ): return self.qual
+
+    property filter:
+       '''position of variant.'''
+       def __get__( self ): return self.filter
+
+    property info:
+       '''position of variant.'''
+       def __get__( self ): return self.info
+
+    property format:
+       '''position of variant.'''
+       def __get__( self ): return self.format
+
+    property genotypes:
+       '''position of variant.'''
+       def __get__( self ): return self.genotypes
 
     def __str__(self):
         cdef char * cpy
@@ -506,13 +522,7 @@ cdef class VCFProxy( TupleProxy ):
                  self.frame,
                  self.attributes ) )
         else: 
-            cpy = <char*>calloc( sizeof(char), self.nbytes+1 )
-            assert cpy != NULL
-            memcpy( cpy, self.data, self.nbytes+1)
-            for x from 0 <= x < self.nbytes:
-                if cpy[x] == '\0': cpy[x] = '\t'
-            result = PyString_FromStringAndSize(cpy, self.nbytes)
-            free(cpy)
-            return result
+            return TupleProxy.__str__(self)
+
 
 
