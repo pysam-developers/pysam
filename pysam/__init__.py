@@ -107,6 +107,6 @@ for key, options in SAMTOOLS_DISPATCH.iteritems():
 __all__ = csamtools.__all__ + \
     ctabix.__all__ + \
     [ "SamtoolsError", "SamtoolsDispatcher" ] + list(SAMTOOLS_DISPATCH) +\
-    ["Pileup",] 
+    ["Pileup", "VCF" ] 
 
 from version import __version__, __samtools_version__

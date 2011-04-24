@@ -72,3 +72,22 @@ cdef class GTFProxy( TupleProxy) :
     cdef present( self, char * buffer, size_t nbytes )
     cdef copy( self, char * buffer, size_t nbytes )
     cdef update( self, char * buffer, size_t nbytes )
+
+cdef class VCFProxy( TupleProxy) :
+
+    cdef:
+        char * contig
+        uint32_t pos
+        char * id
+        char * ref
+        char * alt
+        char * qual
+        char * filter
+        char * info 
+        char * format
+        char * genotypes	     
+
+    cdef take( self, char * buffer, size_t nbytes )
+    cdef present( self, char * buffer, size_t nbytes )
+    cdef copy( self, char * buffer, size_t nbytes )
+    cdef update( self, char * buffer, size_t nbytes )

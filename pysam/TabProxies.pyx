@@ -1,6 +1,14 @@
 import types
 from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 
+cdef char * nextItem( char * buffer ):
+    cdef char * pos
+    pos = strchr( buffer, '\t' )
+    if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
+    pos[0] = '\0'
+    pos += 1
+    return pos
+
 cdef class TupleProxy:
     '''Proxy class for access to parsed row as a tuple.
 
@@ -444,3 +452,67 @@ cdef class GTFProxy( TupleProxy ):
         r = self.asDict()
         r[name] = value
         self.fromDict( r )
+
+cdef class VCFProxy( TupleProxy ):
+    '''Proxy class for access to VCF fields.
+    '''
+
+    def __cinit__(self ): 
+        # automatically calls TupleProxy.__cinit__
+        pass
+
+    def __dealloc__(self):
+        # automatically calls TupleProxy.__dealloc__
+        pass
+
+    cdef update( self, char * buffer, size_t nbytes ):
+        '''update internal data.
+
+        nbytes does not include the terminal '\0'.
+        '''
+        cdef int end
+        cdef char * cpos
+        self.contig = buffer
+        cdef char * pos
+
+        if buffer[nbytes] != 0:
+            raise ValueError( "incomplete line at %s" % buffer )
+        
+        cpos = pos = nextItem( buffer )
+        self.id = pos = nextItem( pos )
+        self.ref = pos = nextItem( pos )
+        self.alt = pos = nextItem( pos )
+        self.qual = pos = nextItem( pos )
+        self.filter = pos = nextItem( pos )
+        self.info = pos = nextItem( pos )
+        self.format = pos = nextItem( pos )
+        self.genotypes = pos = nextItem( pos )
+        # vcf counts from 1 - correct here
+        self.pos = atoi( cpos ) - 1
+
+    def __str__(self):
+        cdef char * cpy
+        cdef int x
+
+        if self.isModified:
+            return "\t".join( 
+                (self.contig, 
+                 self.source, 
+                 self.feature, 
+                 str(self.start+1),
+                 str(self.end),
+                 toDot(self.score),
+                 self.strand,
+                 self.frame,
+                 self.attributes ) )
+        else: 
+            cpy = <char*>calloc( sizeof(char), self.nbytes+1 )
+            assert cpy != NULL
+            memcpy( cpy, self.data, self.nbytes+1)
+            for x from 0 <= x < self.nbytes:
+                if cpy[x] == '\0': cpy[x] = '\t'
+            result = PyString_FromStringAndSize(cpy, self.nbytes)
+            free(cpy)
+            return result
+
+

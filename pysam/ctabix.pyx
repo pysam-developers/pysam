@@ -1,9 +1,10 @@
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 
-import tempfile, os, sys, types, itertools, struct, ctypes
+import tempfile, os, sys, types, itertools, struct, ctypes, gzip
 from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 cimport TabProxies
+import pysam.VCF
 
 cdef class Tabixfile:
     '''*(filename, mode='r')*
@@ -226,23 +227,26 @@ cdef class asGTF(Parser):
         r.copy( buffer, len )
         return r
 
-# cdef class asVCF( Parser ):                                                                                                                                                                                        
-#     '''converts a :term:`tabix row` into a VCF record.'''                                                                                                                                                          
-#     cdef vcffile                                                                                                                                                                                                   
-                                                                                                                                                                                                                   
-#     def __init__(self, filename ):                                                                                                                                                                                 
-#         '''read header from filename.'''                                                                                                                                                                           
-#         # note: two file handles will be open                                                                                                                                                                      
-#         self.vcffile = pysam.VCF.VCFFile()                                                                                                                                                                         
-#         self.vcffile._parse_header( gzip.open( filename ) )                                                                                                                                                        
-                                                                                                                                                                                                                   
-#     def __call__(self, char * buffer, int len ):                                                                                                                                                                   
-#         # for later: use proxies - now - parse full data                                                                                                                                                           
-#         #cdef VCFProxy r                                                                                                                                                                                           
-#         #r = VCFProxy()                                                                                                                                                                                            
-#         #r.copy( buffer, len )                                                                                                                                                                                     
-#         # return r                                                                                                                                                                                                 
-#         return self.vcffile.parse_data( buffer )
+cdef class asVCF( Parser ): 
+    '''converts a :term:`tabix row` into a VCF record.'''
+    cdef vcffile
+
+    def __init__(self, filename ):
+        '''read header from filename.'''
+        # note: an additional file handle will be opened
+        self.vcffile = pysam.VCF.VCFFile()
+        self.vcffile._parse_header( gzip.open( filename ) )
+
+    def __call__(self, char * buffer, int len ):
+        # for later: use proxies - now - parse full data
+        cdef TabProxies.VCFProxy r
+        r = TabProxies.VCFProxy()
+        r.copy( buffer, len )
+        return r
+        # return self.vcffile.parse_data( buffer )
+    
+    def __dealloc__(self ):
+        self.vcffile.close()
 
 #########################################################
 #########################################################
@@ -252,7 +256,7 @@ cdef class TabixIteratorParsed:
 
     Returns parsed data.
     """
-    
+
     cdef ti_iter_t iterator
     cdef tabix_t * tabixfile
     cdef Parser parser
@@ -441,4 +445,5 @@ __all__ = ["tabix_index",
            "Tabixfile", 
            "asTuple",
            "asGTF",
+           "asVCF",
            ]

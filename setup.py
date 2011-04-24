@@ -200,6 +200,7 @@ metadata = {
     'py_modules': [
       "pysam/__init__", 
       "pysam/Pileup", 
+      "pysam/VCF", 
       "pysam/namedtuple",
       "pysam/version" ],
     'requires' : ['cython (>=0.12)'],
