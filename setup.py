@@ -168,7 +168,7 @@ samtools = Extension(
 
 tabix = Extension(
     "ctabix",                   # name of extension
-    [ "pysam/ctabix.pyx" ]  +\
+    [ "pysam/ctabix.pyx", ]  +\
        [ "pysam/%s" % x for x in ( "tabix_util.c", )] +\
         os_c_files + \
        glob.glob( os.path.join( "tabix", "*.pysam.c" ) ),
@@ -178,6 +178,14 @@ tabix = Extension(
     language="c",
     )
 
+tabproxies = Extension(
+    "TabProxies",                   # name of extension
+    [ "pysam/TabProxies.pyx", ] + os_c_files,
+    library_dirs=[],
+    include_dirs= include_os,
+    libraries=[ "z", ],
+    language="c",
+    )
 
 metadata = {
     'name': name,
@@ -195,7 +203,7 @@ metadata = {
       "pysam/namedtuple",
       "pysam/version" ],
     'requires' : ['cython (>=0.12)'],
-    'ext_modules': [samtools, tabix],
+    'ext_modules': [samtools, tabix, tabproxies ],
     'cmdclass' : {'build_ext': build_ext},
     'install_requires' : ['cython>=0.12.1',], 
     # do not pack into access in order to permit linking to csamtools.so
