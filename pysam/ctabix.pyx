@@ -235,6 +235,14 @@ cdef class asGTF(Parser):
         r.copy( buffer, len )
         return r
 
+cdef class asBed( Parser ):
+    '''converts a :term:`tabix row` into a GTF record.''' 
+    def __call__(self, char * buffer, int len):
+        cdef TabProxies.BedProxy r
+        r = TabProxies.BedProxy()
+        r.copy( buffer, len )
+        return r
+
 cdef class asVCF( Parser ): 
     '''converts a :term:`tabix row` into a VCF record.'''
     def __call__(self, char * buffer, int len ):
@@ -445,4 +453,5 @@ __all__ = ["tabix_index",
            "asTuple",
            "asGTF",
            "asVCF",
+           "asBed",
            ]

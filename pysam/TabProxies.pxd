@@ -47,6 +47,10 @@ cdef class TupleProxy:
         int nfields
         int index
         int nbytes
+        int offset
+        cdef bint is_modified
+
+    cdef int getMaxFields( self, size_t nbytes )
 
     cdef take( self, char * buffer, size_t nbytes )
     cdef present( self, char * buffer, size_t nbytes )
@@ -65,29 +69,29 @@ cdef class GTFProxy( TupleProxy) :
         char * strand
         char * frame
         char * attributes
-        cdef bint isModified
         cdef bint hasOwnAttributes
 
-    cdef take( self, char * buffer, size_t nbytes )
-    cdef present( self, char * buffer, size_t nbytes )
-    cdef copy( self, char * buffer, size_t nbytes )
+    cdef int getMaxFields( self, size_t nbytes )
     cdef update( self, char * buffer, size_t nbytes )
 
-cdef class VCFProxy( TupleProxy) :
+cdef class NamedTupleProxy( TupleProxy) :
+    pass
+
+cdef class BedProxy( NamedTupleProxy) :
+
+    cdef:
+        char * contig
+        uint32_t start
+        uint32_t end
+        int bedfields
+
+    cdef int getMaxFields( self, size_t nbytes )
+    cdef update( self, char * buffer, size_t nbytes )
+
+cdef class VCFProxy( NamedTupleProxy) :
 
     cdef:
         char * contig
         uint32_t pos
-        char * id
-        char * ref
-        char * alt
-        char * qual
-        char * filter
-        char * info 
-        char * format
-        char * genotypes	     
 
-    cdef take( self, char * buffer, size_t nbytes )
-    cdef present( self, char * buffer, size_t nbytes )
-    cdef copy( self, char * buffer, size_t nbytes )
     cdef update( self, char * buffer, size_t nbytes )
