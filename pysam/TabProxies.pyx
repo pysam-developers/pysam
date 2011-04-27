@@ -39,9 +39,12 @@ cdef class TupleProxy:
 
     def __dealloc__(self):
         cdef int x
-        for x from 0 <= x < self.nfields:
-            if isNew( self.fields[x], self.data, self.nbytes ):
-                free(self.fields[x])
+        if self.is_modified:
+            for x from 0 <= x < self.nfields:
+                if isNew( self.fields[x], self.data, self.nbytes ):
+                    free( self.fields[x] )
+                    self.fields[x] = NULL
+
         if self.data != NULL: free(self.data)
         if self.fields != NULL: free( self.fields )
 
@@ -78,7 +81,7 @@ cdef class TupleProxy:
 
     cdef int getMaxFields( self, size_t nbytes ):
         '''initialize fields.'''
-        return nbytes / 4
+        return nbytes / 2
 
     cdef update( self, char * buffer, size_t nbytes ):
         '''update internal data.
@@ -520,14 +523,6 @@ cdef class BedProxy( NamedTupleProxy ):
         'blockSizes': (10,str),
         'blockStarts': (11,str), } 
 
-    def __cinit__(self ): 
-        # automatically calls TupleProxy.__cinit__
-        pass
-
-    def __dealloc__(self):
-        # automatically calls TupleProxy.__dealloc__
-        pass
-
     cdef int getMaxFields( self, size_t nbytes ):
         '''return max number of fields.'''
         return 12
@@ -550,26 +545,30 @@ cdef class BedProxy( NamedTupleProxy ):
         self.start = atoi( self.fields[1] ) 
         self.end = atoi( self.fields[2] )
 
+    # __setattr__ in base class seems to take precedence
+    # hence implement setters in __setattr__
+    #property start:
+    #    def __get__( self ): return self.start
+    #property end:
+    #    def __get__( self ): return self.end
+
     def __str__(self):
 
         cdef int save_fields = self.nfields
-        # restrict fields to bed format
+        # ensure fields to use correct format
         self.nfields = self.bedfields
         retval = TupleProxy.__str__( self )
         self.nfields = save_fields
         return retval
 
-    def invert( self, int lcontig ):
-        '''invert coordinates to negative strand coordinates
-        
-        This method will only act if the feature is on the
-        negative strand.'''
+    def __setattr__(self, key, value ):
+        '''set attribute.'''
+        if key == "start": self.start = value
+        elif key == "end": self.end = value
 
-        if self.strand[0] == '-':
-            start = min(self.start, self.end)
-            end = max(self.start, self.end)
-            self.start, self.end = lcontig - end, lcontig - start
-
+        cdef int idx
+        idx, f = self.map_key2field[key]
+        TupleProxy._setindex(self, idx, str(value) )
 
 cdef class VCFProxy( NamedTupleProxy ):
     '''Proxy class for access to VCF fields.
@@ -590,14 +589,10 @@ cdef class VCFProxy( NamedTupleProxy ):
         # start indexed access at genotypes
         self.offset = 9
 
-    def __dealloc__(self):
-        # automatically calls TupleProxy.__dealloc__
-        pass
-
     # __setattr__ in base class seems to take precedence
     # hence implement setters in __setattr__
-    property pos:
-        def __get__( self ): return self.pos
+    #property pos:
+    #    def __get__( self ): return self.pos
         
     cdef update( self, char * buffer, size_t nbytes ):
         '''update internal data.
