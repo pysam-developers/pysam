@@ -91,87 +91,108 @@ FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue
 # 
 ###########################################################################################################
 
-cdef class VCFRecord:
+cdef class VCFRecord( TabProxies.TupleProxy):
     '''vcf record.
 
     initialized from data and vcf meta 
     '''
     
     cdef vcf
-    cdef data
-    def __init__(self, data, vcf):
+    cdef char * contig
+    cdef uint32_t pos
+
+    def __init__(self, vcf):
         self.vcf = vcf
-        self.data = data
-        if len(data) != len(self.vcf._samples):
-            self.error(str(data),
-                       self.BAD_NUMBER_OF_COLUMNS, 
-                       "expected %s for %s samples (%s), got %s" % \
-                           (len(self.vcf._samples), 
-                            len(self.vcf._samples), 
-                            self.vcf._samples, 
-                            len(data)))
+        # if len(data) != len(self.vcf._samples):
+        #     self.error(str(data),
+        #                self.BAD_NUMBER_OF_COLUMNS, 
+        #                "expected %s for %s samples (%s), got %s" % \
+        #                    (len(self.vcf._samples), 
+        #                     len(self.vcf._samples), 
+        #                     self.vcf._samples, 
+        #                     len(data)))
+    
+    def __cinit__(self, vcf ): 
+        # start indexed access at genotypes
+        self.offset = 9
         
+        self.vcf = vcf
+    
+    cdef update( self, char * buffer, size_t nbytes ):
+        '''update internal data.
+        
+        nbytes does not include the terminal '\0'.
+        '''
+        TabProxies.TupleProxy.update( self, buffer, nbytes )
+
+        self.contig = self.fields[0]
+        # vcf counts from 1 - correct here
+        self.pos = atoi( self.fields[1] ) - 1
+
+    def __len__(self):
+        return max(0, self.nfields - 9)
+
     property contig:
-        def __get__( self ): return self.data[0]
+        def __get__(self): return self.contig
 
     property pos:
-        def __get__( self ): 
-            return self.data.pos
-        
+        def __get__(self): return self.pos
+
     property id:
-        def __get__( self ): return self.data[2]
+        def __get__(self): return self.fields[2]
 
     property ref:
-        def __get__(self ): 
-            # note: gerton substitutes reference if it can be fixed.
-            return self.data[3].upper()
+        def __get__(self): return self.fields[3]
 
     property alt:
         def __get__(self):
             # convert v3.3 to v4.0 alleles below
-            alt = self.data[4] 
+            alt = self.fields[4] 
             if alt == ".": alt = []
             else: alt = alt.upper().split(',')
             return alt
 
     property qual:
         def __get__(self):
-            qual = self.data[5]
-            if qual == ".": qual = -1
+            qual = self.fields[5]
+            if qual == b".": qual = -1
             else: 
                 try:    qual = float(qual)
-                except: self.error(str(self.data),self.QUAL_NOT_NUMERICAL)
+                except: self.vcf.error(str(self),self.QUAL_NOT_NUMERICAL)
 
     property filter:
         def __get__(self):
+            f = self.fields[6]
             # postpone checking that filters exist.  Encode missing filter or no filtering as empty list
-            if self.data[6] == "." or self.data[6] == "PASS" or self.data[6] == "0": filter = []
-            else: filter = self.data[6].split(';')
-
-            return filter
+            if f == b"." or f == b"PASS" or f == b"0": return []
+            else: return f.split(';')
 
     property info:
         def __get__(self):
-            col = self.data[7]
+            col = self.fields[7]
             # dictionary of keys, and list of values
             info = {}
-            if col != ".":
+            if col != b".":
                 for blurp in col.split(';'):
                     elts = blurp.split('=')
                     if len(elts) == 1: v = None
                     elif len(elts) == 2: v = elts[1]
-                    else: self.error(str(self.data),self.ERROR_INFO_STRING)
-                    info[elts[0]] = self.parse_formatdata(elts[0], v, self.vcf._info, str(self.data))
+                    else: self.vcf.error(str(self),self.ERROR_INFO_STRING)
+                    info[elts[0]] = self.vcf.parse_formatdata(elts[0], v, self.vcf._info, str(self))
             return info
 
     property format:
          def __get__(self):
-             return self.data[8].split(':')
+             return self.fields[8].split(':')
+
+    property samples:
+        def __get__(self):
+            return self.vcf._samples
 
     def __getitem__(self, key):
         
         # parse sample columns
-        values = self.data[self.vcf._sample2column[key]].split(':')
+        values = self.fields[self.vcf._sample2column[key]].split(':')
         alt = self.alt
         format = self.format
 
@@ -196,8 +217,6 @@ cdef class VCFRecord:
 
         return result
  
-    def __str__(self):
-        return str(self.data)
 
 cdef class asVCFRecord( ctabix.Parser ): 
     '''converts a :term:`tabix row` into a VCF record.'''
@@ -205,10 +224,10 @@ cdef class asVCFRecord( ctabix.Parser ):
     def __init__(self, vcffile ):
         self.vcffile = vcffile
     def __call__(self, char * buffer, int len ):
-        cdef TabProxies.VCFProxy r
-        r = TabProxies.VCFProxy()
+        cdef VCFRecord r
+        r = VCFRecord( self.vcffile )
         r.copy( buffer, len )
-        return VCFRecord( r, self.vcffile )
+        return r
 
 class VCF:
 
@@ -529,7 +548,7 @@ class VCF:
                     self.error(line,self.BADLY_FORMATTED_HEADING,err)
 
         self._samples = headings[9:]
-        self._sample2column = dict( [(y,x) for x,y in enumerate( self._samples ) ] )
+        self._sample2column = dict( [(y,x+9) for x,y in enumerate( self._samples ) ] )
                            
     def write_heading( self, stream ):
         stream.write("#" + "\t".join(self._required + self._samples) + "\n")
@@ -976,6 +995,8 @@ class VCF:
 
         returns a validated record.
         '''
+        
+        raise NotImplementedError( "needs to be checked" )
 
         chrom, pos = record.chrom, record.pos
 

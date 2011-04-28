@@ -24,7 +24,17 @@ class TestVCFIterator( unittest.TestCase ):
         
         for x in self.vcf.fetch():
             print str(x)
-                
+            print x.pos
+            print x.alt
+            print x.id
+            print x.qual
+            print x.filter
+            print x.info
+            print x.format
+
+            for s in x.samples:
+                print s, x[s]
+        
 if __name__ == "__main__":
 
     unittest.main()
