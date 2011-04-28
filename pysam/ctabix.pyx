@@ -4,7 +4,6 @@
 import tempfile, os, sys, types, itertools, struct, ctypes, gzip
 from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 cimport TabProxies
-import pysam.VCF
 
 cdef class Tabixfile:
     '''*(filename, mode='r')*
@@ -12,11 +11,6 @@ cdef class Tabixfile:
     opens a :term:`tabix file` for reading. A missing
     index (*filename* + ".tbi") will raise an exception.
     '''
-
-    cdef char * filename
-
-    # pointer to tabixfile
-    cdef tabix_t * tabixfile
 
     def __cinit__(self, *args, **kwargs ):
         self.tabixfile = NULL

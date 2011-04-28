@@ -2,6 +2,8 @@ from csamtools import *
 from ctabix import *
 import csamtools
 import ctabix
+from cvcf import *
+import cvcf
 import Pileup
 import sys
 import os
@@ -104,9 +106,11 @@ for key, options in SAMTOOLS_DISPATCH.iteritems():
     globals()[key] = SamtoolsDispatcher(cmd, parser)
 
 # hack to export all the symbols from csamtools
-__all__ = csamtools.__all__ + \
+__all__ = \
+    csamtools.__all__ + \
     ctabix.__all__ + \
+    cvcf.__all__ +\
     [ "SamtoolsError", "SamtoolsDispatcher" ] + list(SAMTOOLS_DISPATCH) +\
-    ["Pileup", "VCF" ] 
+    ["Pileup" ] 
 
 from version import __version__, __samtools_version__

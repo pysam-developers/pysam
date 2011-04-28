@@ -1,7 +1,6 @@
 '''Tools for working with files in the samtools pileup -c format.'''
 import collections
 import pysam
-import pysam.VCF
 
 PileupSubstitution = collections.namedtuple( "PileupSubstitution",
                                     " ".join( (\

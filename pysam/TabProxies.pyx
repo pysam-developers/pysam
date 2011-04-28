@@ -572,6 +572,8 @@ cdef class BedProxy( NamedTupleProxy ):
 
 cdef class VCFProxy( NamedTupleProxy ):
     '''Proxy class for access to VCF fields.
+
+    The genotypes are accessed via index.
     '''
     map_key2field = { 
         'contig' : (0, str),
@@ -589,14 +591,9 @@ cdef class VCFProxy( NamedTupleProxy ):
         # start indexed access at genotypes
         self.offset = 9
 
-    # __setattr__ in base class seems to take precedence
-    # hence implement setters in __setattr__
-    #property pos:
-    #    def __get__( self ): return self.pos
-        
     cdef update( self, char * buffer, size_t nbytes ):
         '''update internal data.
-
+        
         nbytes does not include the terminal '\0'.
         '''
         TupleProxy.update( self, buffer, nbytes )

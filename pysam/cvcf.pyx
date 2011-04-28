@@ -47,6 +47,8 @@ from collections import namedtuple, defaultdict
 from operator import itemgetter
 import sys, re, copy, bisect
 
+cimport ctabix
+cimport TabProxies
 import pysam
 
 gtsRegEx = re.compile("[|/\\\\]")
@@ -89,18 +91,17 @@ FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue
 # 
 ###########################################################################################################
 
-class VCFRecord:
+cdef class VCFRecord:
     '''vcf record.
 
     initialized from data and vcf meta 
     '''
     
-    data = None
-    vcf = None
-
+    cdef vcf
+    cdef data
     def __init__(self, data, vcf):
-        self.data, self.vcf = data, vcf
-
+        self.vcf = vcf
+        self.data = data
         if len(data) != len(self.vcf._samples):
             self.error(str(data),
                        self.BAD_NUMBER_OF_COLUMNS, 
@@ -111,10 +112,10 @@ class VCFRecord:
                             len(data)))
         
     property contig:
-    def contig( self ): return self.data[0]
+        def __get__( self ): return self.data[0]
 
     property pos:
-    def __get__( self ): 
+        def __get__( self ): 
             return self.data.pos
         
     property id:
@@ -139,13 +140,13 @@ class VCFRecord:
             if qual == ".": qual = -1
             else: 
                 try:    qual = float(qual)
-                except: self.error(line,self.QUAL_NOT_NUMERICAL)
+                except: self.error(str(self.data),self.QUAL_NOT_NUMERICAL)
 
     property filter:
         def __get__(self):
             # postpone checking that filters exist.  Encode missing filter or no filtering as empty list
-            if cols[6] == "." or cols[6] == "PASS" or cols[6] == "0": filter = []
-            else: filter = cols[6].split(';')
+            if self.data[6] == "." or self.data[6] == "PASS" or self.data[6] == "0": filter = []
+            else: filter = self.data[6].split(';')
 
             return filter
 
@@ -160,7 +161,7 @@ class VCFRecord:
                     if len(elts) == 1: v = None
                     elif len(elts) == 2: v = elts[1]
                     else: self.error(str(self.data),self.ERROR_INFO_STRING)
-                    info[elts[0]] = self.parse_formatdata(elts[0], v, self.vcf._info, line)
+                    info[elts[0]] = self.parse_formatdata(elts[0], v, self.vcf._info, str(self.data))
             return info
 
     property format:
@@ -175,7 +176,8 @@ class VCFRecord:
         format = self.format
 
         if len(values) > len(format):
-            self.error(line,self.BAD_NUMBER_OF_VALUES,"(found %s values in element %s; expected %s)" % (len(values),sample,len(format)))
+            self.error(str(self.line),self.BAD_NUMBER_OF_VALUES,"(found %s values in element %s; expected %s)" %\
+                           (len(values),key,len(format)))
 
         result = {}
         for idx in range(len(format)):
@@ -185,7 +187,7 @@ class VCFRecord:
                 if expected == -1: value = "."
                 else: value = ",".join(["."]*expected)
 
-            result[format[idx]] = self.vcf.parse_formatdata(format[idx], value, self.vcf._format, line)
+            result[format[idx]] = self.vcf.parse_formatdata(format[idx], value, self.vcf._format, str(self.data))
             if expected != -1 and len(result[format[idx]]) != expected:
                 self.error(str(self.data),self.BAD_NUMBER_OF_PARAMETERS,
                            "id=%s, expected %s parameters, got %s" % (format[idx],expected,result[format[idx]]))
@@ -196,6 +198,17 @@ class VCFRecord:
  
     def __str__(self):
         return str(self.data)
+
+cdef class asVCFRecord( ctabix.Parser ): 
+    '''converts a :term:`tabix row` into a VCF record.'''
+    cdef vcffile
+    def __init__(self, vcffile ):
+        self.vcffile = vcffile
+    def __call__(self, char * buffer, int len ):
+        cdef TabProxies.VCFProxy r
+        r = TabProxies.VCFProxy()
+        r.copy( buffer, len )
+        return VCFRecord( r, self.vcffile )
 
 class VCF:
 
@@ -378,9 +391,9 @@ class VCF:
             values.append( ('Type', fmt.type) )
         values.append( ('Description', '"' + fmt.description + '"') )
         if self._version == 33:
-            format = ",".join(v for k,v in values)
+            format = ",".join([v for k,v in values])
         else:
-            format = "<" + (",".join( "%s=%s" % (k,v) for (k,v) in values )) + ">"
+            format = "<" + (",".join( ["%s=%s" % (k,v) for (k,v) in values] )) + ">"
         return format
 
     def get_expected(self, format, formatdict, alt):
@@ -745,7 +758,7 @@ class VCF:
                     break
                 ref = ref[:-1]
                 alt = [allele[:-1] for allele in alt]
-                if min(len(allele) for allele in alt) == 0 or len(ref) == 0:
+                if min([len(allele) for allele in alt]) == 0 or len(ref) == 0:
                     ref = faref_leftflank[pos-left-1] + ref
                     alt = [faref_leftflank[pos-left-1] + allele for allele in alt]
                     pos -= 1
@@ -832,12 +845,12 @@ class VCF:
     def _parse(self, line, stream):
         if len(line.strip()) > 0:
             d = self.parse_data( line.strip() )
-            if d: yield d
+            #if d: yield d
         for line in stream:
             self._lineno += 1
             if self._lines and self._lineno > self._lines: raise StopIteration
             d = self.parse_data( line.strip() )
-            if d: yield d
+            #if d: yield d
 
     ######################################################################################################
     #
@@ -956,9 +969,7 @@ class VCF:
               region = None ):
         """ Parse a stream of VCF-formatted lines.  Initializes class instance and return generator """
 
-        iter = self.tabixfile.fetch( reference, start, end, region, parser = pysam.asVCF() )
-        for x in iter:
-            yield VCFRecord( x, self )
+        return self.tabixfile.fetch( reference, start, end, region, parser = asVCFRecord( self ) )
 
     def validate( self, record ):
         '''validate vcf record.
@@ -987,7 +998,7 @@ class VCF:
             left = max(0,self.pos-100)
             faref_leftflank = get_sequence(chrom,left,self.pos+len(ref),self._reference)
             faref = faref_leftflank[pos-left:]
-            if faref != ref: self.error(line,self.WRONG_REF,"(reference is %s, VCF says %s)" % (faref,ref))
+            if faref != ref: self.error(str(record),self.WRONG_REF,"(reference is %s, VCF says %s)" % (faref,ref))
             ref = faref
             
         # check: format fields are defined
@@ -1000,7 +1011,7 @@ class VCF:
 
         # convert v3.3 alleles
         if self._version == 33:
-            if len(ref) != 1: self.error(line,self.V33_BAD_REF)
+            if len(ref) != 1: self.error(str(record),self.V33_BAD_REF)
             newalts = []
             have_deletions = False
             for a in alt:
@@ -1020,13 +1031,13 @@ class VCF:
                         if len(ref) < len(s):   # add Ns to reference if necessary
                             addns = get_sequence(chrom,pos+len(ref),pos+len(s),self._reference)
                             if not s.endswith(addns) and addns != 'N'*len(addns):
-                                self.error(line,self.V33_UNMATCHED_DELETION,
+                                self.error(str(record),self.V33_UNMATCHED_DELETION,
                                            "(deletion is %s, reference is %s)" % (a,get_sequence(chrom,pos,pos+len(s),self._reference)))
                             ref += addns
                             for i,na in enumerate(newalts): newalts[i] = na+addns
                         a = ref[len(s):]        # new deletion, deleting from pos
                 else:
-                    self.error(line,self.V33_BAD_ALLELE)
+                    self.error(str(record),self.V33_BAD_ALLELE)
                 newalts.append(a)
             alt = newalts
             # deletion alleles exist, add dummy 1st reference allele, and account for leading base
@@ -1045,15 +1056,15 @@ class VCF:
             # format v4.0 -- just check for nucleotides
             for allele in alt:
                 if not alleleRegEx.match(allele):
-                    self.error(line,self.V40_BAD_ALLELE,allele)
+                    self.error(str(record),self.V40_BAD_ALLELE,allele)
                     
 
         # check for leading nucleotide in indel calls
         for allele in alt:
             if len(allele) != len(ref):
-                if len(allele) == 0: self.error(line,self.ZERO_LENGTH_ALLELE)
+                if len(allele) == 0: self.error(str(record),self.ZERO_LENGTH_ALLELE)
                 if ref[0].upper() != allele[0].upper() and "N" not in (ref[0]+allele[0]).upper():
-                    self.error(line,self.MISSING_INDEL_ALLELE_REF_BASE)
+                    self.error(str(record),self.MISSING_INDEL_ALLELE_REF_BASE)
 
         # trim trailing bases in alleles
         for i in range(1,min(len(ref),min(map(len,alt)))):
@@ -1078,11 +1089,12 @@ class VCF:
                     break
                 ref = ref[:-1]
                 alt = [allele[:-1] for allele in alt]
-                if min(len(allele) for allele in alt) == 0 or len(ref) == 0:
+                if min([len(allele) for allele in alt]) == 0 or len(ref) == 0:
                     ref = faref_leftflank[pos-left-1] + ref
                     alt = [faref_leftflank[pos-left-1] + allele for allele in alt]
                     pos -= 1
 
-
+__all__ = [
+    "VCF", "VCFRecord", ]
 
 

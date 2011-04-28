@@ -187,6 +187,15 @@ tabproxies = Extension(
     language="c",
     )
 
+cvcf = Extension(
+    "cvcf",                   # name of extension
+    [ "pysam/cvcf.pyx", ] + os_c_files,
+    library_dirs=[],
+    include_dirs= ["tabix",] + include_os,
+    libraries=[ "z", ],
+    language="c",
+    )
+
 metadata = {
     'name': name,
     'version': version,
@@ -200,11 +209,10 @@ metadata = {
     'py_modules': [
       "pysam/__init__", 
       "pysam/Pileup", 
-      "pysam/VCF", 
       "pysam/namedtuple",
       "pysam/version" ],
     'requires' : ['cython (>=0.12)'],
-    'ext_modules': [samtools, tabix, tabproxies ],
+    'ext_modules': [samtools, tabix, tabproxies, cvcf ],
     'cmdclass' : {'build_ext': build_ext},
     'install_requires' : ['cython>=0.12.1',], 
     # do not pack in order to permit linking to csamtools.so
