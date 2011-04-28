@@ -142,19 +142,27 @@ cdef class Tabixfile:
             else:
                 return TabixIteratorParsed( self, -1, 0, 0, parser )
 
+    property header:
+        def __get__( self ):
+            '''return header lines as an iterator.
+
+            Note that the header lines do not contain the newline '\n' character.
+            '''
+            return TabixHeaderIterator( self )
+
     property contigs:
-       '''chromosome names'''
-       def __get__(self):
-           cdef char ** sequences
-           cdef int nsequences
+        '''chromosome names'''
+        def __get__(self):
+            cdef char ** sequences
+            cdef int nsequences
            
-           ti_lazy_index_load( self.tabixfile )
-           sequences = ti_seqname( self.tabixfile.idx, &nsequences ) 
-           cdef int x
-           result = []
-           for x from 0 <= x < nsequences:
-               result.append( sequences[x] )
-           return result
+            ti_lazy_index_load( self.tabixfile )
+            sequences = ti_seqname( self.tabixfile.idx, &nsequences ) 
+            cdef int x
+            result = []
+            for x from 0 <= x < nsequences:
+                result.append( sequences[x] )
+            return result
             
 cdef class TabixIterator:
     """iterates over rows in *tabixfile* in region
@@ -204,6 +212,51 @@ cdef class TabixIterator:
             s = ti_read(self.tabixfile, self.iterator, &len)
             if s == NULL: raise StopIteration
             if s[0] != '#': break
+
+        return s
+
+    def __dealloc__(self):
+        if <void*>self.iterator != NULL:
+            ti_iter_destroy(self.iterator)
+
+cdef class TabixHeaderIterator:
+    """return header lines.
+    """
+    
+    cdef ti_iter_t iterator
+    cdef tabix_t * tabixfile
+
+    def __cinit__(self, Tabixfile tabixfile ):
+        
+        assert tabixfile._isOpen()
+        
+        # makes sure that samfile stays alive as long as the
+        # iterator is alive.
+        self.tabixfile = tabixfile.tabixfile
+
+        self.iterator = ti_query(self.tabixfile, NULL, 0, 0) 
+
+        if <void*>self.iterator == NULL:
+            raise ValueError("can't open header.\n")
+
+    def __iter__(self):
+        return self 
+
+    def __next__(self): 
+        """python version of next().
+
+        pyrex uses this non-standard name instead of next()
+        """
+    
+        cdef char * s
+        cdef int len
+
+        # Getting the metachar is a pain as ti_index_t is incomplete type.
+        # simply use '#' for now.
+        s = ti_read(self.tabixfile, self.iterator, &len)
+        if s == NULL: raise StopIteration
+        # stop at first non-header line
+        if s[0] != '#': raise StopIteration
 
         return s
 

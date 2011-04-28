@@ -196,6 +196,14 @@ class TestIteration( unittest.TestCase ):
         # check that contigs is read-only
         self.assertRaises( AttributeError, setattr, self.tabix, "contigs", ["chr1", "chr2"] )
 
+    def testHeader( self ):
+        ref = []
+        for x in gzip.open( self.filename ):
+            if not x.startswith("#"): break
+            ref.append( x[:-1] )
+        header = list( self.tabix.header )
+        self.assertEqual( ref, header )
+
 class TestParser( unittest.TestCase ):
 
     filename = "example.gtf.gz" 
@@ -284,14 +292,13 @@ class TestBed( unittest.TestCase ):
             self.assertEqual( int(c[2]) + 1, r.end )
             self.assertEqual( str(int(c[2]) + 1), r[2] )
 
-
 class TestVCF( TestParser ):
 
-    filename = "example_40.vcf.gz"
+    filename = "example.vcf40.gz"
     columns = ("contig", "pos", "id", 
                "ref", "alt", "qual", 
                "filter", "info", "format" )
-    
+
     def testRead( self ):
         
         ncolumns = len(self.columns) 
