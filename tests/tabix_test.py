@@ -287,7 +287,7 @@ class TestBed( unittest.TestCase ):
 
 class TestVCF( TestParser ):
 
-    filename = "test_40.vcf.gz"
+    filename = "example_40.vcf.gz"
     columns = ("contig", "pos", "id", 
                "ref", "alt", "qual", 
                "filter", "info", "format" )
