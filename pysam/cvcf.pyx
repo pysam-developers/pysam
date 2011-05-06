@@ -229,7 +229,7 @@ cdef class asVCFRecord( ctabix.Parser ):
         r.copy( buffer, len )
         return r
 
-class VCF:
+class VCF(object):
 
     # types
     NT_UNKNOWN = 0
