@@ -1049,9 +1049,14 @@ cdef class Samfile:
                     x = {}
                     for field in fields[1:]:
                         key, value = field.split(":",1)
-                        if key not in VALID_HEADER_FIELDS[record]:
+                        # uppercase keys must be valid
+                        # lowercase are permitted for user fields
+                        if key in VALID_HEADER_FIELDS[record]:
+                            x[key] = VALID_HEADER_FIELDS[record][key](value)
+                        elif not key.isupper():
+                            x[key] = value
+                        else:
                             raise ValueError( "unknown field code '%s' in record '%s'" % (key, record) )
-                        x[key] = VALID_HEADER_FIELDS[record][key](value)
 
                     if VALID_HEADER_TYPES[record] == dict:
                         if record in result:
@@ -1071,9 +1076,15 @@ cdef class Samfile:
         if record == "CO":
             line.append( fields )
         else:
+            # write fields of the specification
             for key in VALID_HEADER_ORDER[record]:
                 if key in fields:
                     line.append( "%s:%s" % (key, str(fields[key])))
+            # write user fields
+            for key in fields:
+                if not key.isupper():
+                    line.append( "%s:%s" % (key, str(fields[key])))
+
         return "\t".join( line ) 
 
     cdef bam_header_t * _buildHeader( self, new_header ):
