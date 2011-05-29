@@ -15,6 +15,12 @@ include pysam/csamtools.c
 include pysam/ctabix.pxd
 include pysam/ctabix.c
 include pysam/ctabix.pyx
+include pysam/TabProxies.c
+include pysam/TabProxies.pyx
+include pysam/TabProxies.pxd
+include pysam/cvcf.pyx
+include pysam/cvcf.pxd
+include pysam/cvcf.c
 include pysam/pysam_util.h
 include samtools/*.h
 include samtools/*/*.h
