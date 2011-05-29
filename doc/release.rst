@@ -2,6 +2,15 @@
 Release notes
 =============
 
+Release 0.5
+===========
+
+   * switch to samtools 0.1.16 and tabix 0.2.5
+   * improved tabix parsing, added vcf support
+   * re-organized code to permit linking againts pysam
+   * various bugfixes
+   * added Samfile.positions and Samfile.overlap
+
 Release 0.4
 ===========
 
