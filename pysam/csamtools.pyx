@@ -907,6 +907,9 @@ cdef class Samfile:
             *all* reads which overlap the region are returned. The first base returned will be the 
             first base of the first read *not* necessarily the first base of the region used in the query.
 
+            The maximum number of reads considered for pileup is *8000*. This limit is set by
+            :term:`csamtools`.
+
         '''
         cdef int rtid, rstart, rend, has_coord
         cdef bam_plbuf_t *buf
