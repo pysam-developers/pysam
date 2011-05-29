@@ -1894,17 +1894,29 @@ cdef class AlignedRead:
         bam_destroy1(self._delegate)
     
     def __str__(self):
-        """todo"""
+        """return string representation of alignment.
+
+        The representation is an approximate :term:`sam` format.
+
+        An aligned read might not be associated with a :term:`Samfile`.
+        As a result :term:`tid` is shown instead of the reference name.
+
+        Similarly, the tags field is returned in its parsed state.
+        """
+        # sam-parsing is done in sam.c/bam_format1_core which
+        # requires a valid header.
         return "\t".join(map(str, (self.qname,
+                                   self.flag,
                                    self.rname,
                                    self.pos,
-                                   self.cigar,
-                                   self.qual,
-                                   self.flag,
-                                   self.seq,
                                    self.mapq,
-                                   self.tags)))
-    
+                                   self.cigar,
+                                   self.mrnm,
+                                   self.mpos,
+                                   self.rlen,
+                                   self.seq,
+                                   self.qual,
+                                   self.tags )))
        
     def compare(self, AlignedRead other):
         '''return -1,0,1, if contents in this are binary <,=,> to *other*'''
