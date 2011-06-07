@@ -282,11 +282,14 @@ class IOTest(unittest.TestCase):
         # write on closed file 
         self.assertEqual( 0, samfile.write(None) )
 
-    def testBinaryReadFromSamfile( self ):
-        pass
-        # needs to re-activated, see issue 19
-        #samfile = pysam.Samfile( "ex1.bam", "r" )
-        #samfile.fetch().next()
+    def testAutoDetection( self ):
+        samfile = pysam.Samfile( "ex3.bam" )
+        samfile.fetch()
+        samfile.close()
+
+        samfile = pysam.Samfile( "ex3.sam")
+        samfile.fetch()
+        samfile.close()
 
     def testReadingFromFileWithoutIndex( self ):
         '''read from bam file without index.'''
@@ -660,7 +663,6 @@ class TestExceptions(unittest.TestCase):
 
     def tearDown(self):
         self.samfile.close()
-
 
 class TestWrongFormat(unittest.TestCase):
     '''test cases for opening files not in bam/sam format.'''

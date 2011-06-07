@@ -417,18 +417,21 @@ cdef class Samfile:
               
     A :term:`SAM`/:term:`BAM` formatted file. The file is automatically opened.
     
-    *mode* should be ``r`` for reading or ``w`` for writing. The default is text mode so for binary 
+    *mode* should be ``r`` for reading or ``w`` for writing. The default is text mode (:term:`SAM`). For binary 
     (:term:`BAM`) I/O you should append ``b`` for compressed or ``u`` for uncompressed :term:`BAM` output. 
-    Use ``h`` to output header information  in text (:term:`TAM`)  mode.
+    Use ``h`` to output header information in text (:term:`TAM`)  mode.
 
     If ``b`` is present, it must immediately follow ``r`` or ``w``. 
     Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and ``wbu``. For instance, to open 
     a :term:`BAM` formatted file for reading, type::
 
-        import pysam
         f = pysam.Samfile('ex1.bam','rb')
 
-    If mode is not specified, we will try to auto-detect in the order 'r', 'rb'.
+    If mode is not specified, we will try to auto-detect in the order 'r', 'rb', thus both the following
+    should work::
+
+        f1 = pysam.Samfile('ex1.bam' )
+        f2 = pysam.Samfile('ex1.bam' )
 
     If an index for a BAM file exists (.bai), it will be opened automatically. Without an index random
     access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
@@ -490,7 +493,7 @@ cdef class Samfile:
                            referencelengths=referencelengths,
                            text=text, header=header, port=port)
                 return
-            except ValueError:
+            except ValueError, msg:
                 pass
             self._open(filename, 'rb', template=template,
                        referencenames=referencenames,
@@ -578,13 +581,14 @@ cdef class Samfile:
             # try to detect errors
             self.samfile = samopen( filename, mode, NULL )
             if self.samfile == NULL:
-                raise ValueError( "could not open file - is it SAM/BAM format?")
+                raise ValueError( "could not open file (mode='%s') - is it SAM/BAM format?" % mode)
 
             if self.samfile.header == NULL:
-                raise ValueError( "file does not have valid header - is it SAM/BAM format?")
-
+                raise ValueError( "file does not have valid header (mode='%s') - is it SAM/BAM format?" % mode )
+            
+            #disabled for autodetection to work
             if self.samfile.header.n_targets == 0:
-                raise ValueError( "file header is empty - is it SAM/BAM format?")
+                raise ValueError( "file header is empty (mode='%s') - is it SAM/BAM format?" % mode)
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
