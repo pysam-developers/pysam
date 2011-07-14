@@ -456,6 +456,7 @@ cdef class Samfile:
         self.samfile = NULL
         self._filename = NULL
         self.isbam = False
+        self.isstream = False
         self._open( *args, **kwargs )
 
         # allocate memory for iterator
@@ -513,6 +514,7 @@ cdef class Samfile:
         
         if self._filename != NULL: free(self._filename )
         self._filename = strdup( filename )
+        self.isstream = strcmp( filename, "-" ) == 0
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
@@ -587,8 +589,9 @@ cdef class Samfile:
                 raise ValueError( "file does not have valid header (mode='%s') - is it SAM/BAM format?" % mode )
             
             #disabled for autodetection to work
-            if self.samfile.header.n_targets == 0:
-                raise ValueError( "file header is empty (mode='%s') - is it SAM/BAM format?" % mode)
+            # needs to be disabled so that reading from sam-files without headers works
+            #if self.samfile.header.n_targets == 0:
+            #    raise ValueError( "file header is empty (mode='%s') - is it SAM/BAM format?" % mode)
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
@@ -744,6 +747,9 @@ cdef class Samfile:
 
         has_coord, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
         
+        if self.isstream: reopen = False
+        else: reopen = True
+
         if self.isbam:
             if not until_eof and not self._hasIndex() and not self.isremote: 
                 raise ValueError( "fetch called on bamfile without index" )
@@ -760,12 +766,12 @@ cdef class Samfile:
                                  fetch_callback )
             else:
                 if has_coord:
-                    return IteratorRowRegion( self, rtid, rstart, rend )
+                    return IteratorRowRegion( self, rtid, rstart, rend, reopen=reopen )
                 else:
                     if until_eof:
-                        return IteratorRowAll( self )
+                        return IteratorRowAll( self, reopen=reopen )
                     else:
-                        return IteratorRowAllRefs(self)
+                        return IteratorRowAllRefs(self, reopen=reopen )
         else:   
             # check if header is present - otherwise sam_read1 aborts
             # this happens if a bamfile is opened with mode 'r'
@@ -777,7 +783,7 @@ cdef class Samfile:
             if callback:
                 raise NotImplementedError( "callback not implemented yet" )
             else:
-                return IteratorRowAll( self )
+                return IteratorRowAll( self, reopen=reopen )
 
     def mate( self, 
               AlignedRead read ):
@@ -1299,10 +1305,10 @@ cdef class IteratorRowAll(IteratorRow):
     to not re-open *samfile*.
     """
 
-    cdef bam1_t * b
-    cdef samfile_t * fp
-    # true if samfile belongs to this object
-    cdef int owns_samfile
+    # cdef bam1_t * b
+    # cdef samfile_t * fp
+    # # true if samfile belongs to this object
+    # cdef int owns_samfile
 
     def __cinit__(self, Samfile samfile, int reopen = True ):
 
@@ -2200,6 +2206,9 @@ cdef class AlignedRead:
 
             read.tags = read.tags + [("RG",0)]
 
+
+        This method will happily write the same tag
+        multiple times.
         """
         def __get__(self):
             cdef char * ctag

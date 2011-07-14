@@ -393,6 +393,8 @@ cdef class Samfile:
     cdef bam_index_t *index
     # true if file is a bam file
     cdef int isbam
+    # true if not a file but a stream
+    cdef int isstream
     # true if file is not on the local filesystem
     cdef int isremote
     # current read within iteration
@@ -408,4 +410,18 @@ cdef class Samfile:
     cpdef int write( self, AlignedRead read )
 
     cdef char * _getrname( self, int tid )
+
+cdef class IteratorRow:
+    pass
+
+cdef class IteratorRowAll(IteratorRow):
+    cdef bam1_t * b
+    cdef samfile_t * fp
+    # true if samfile belongs to this object
+    cdef int owns_samfile
+
+    cdef bam1_t * getCurrent( self )
+
+    cdef int cnext(self)
+
 

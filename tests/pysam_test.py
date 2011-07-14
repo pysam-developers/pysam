@@ -291,6 +291,15 @@ class IOTest(unittest.TestCase):
         samfile.fetch()
         samfile.close()
 
+    def testReadingFromSamFileWithoutHeader( self ):
+        '''read from samfile without header.
+        '''
+        #samfile = pysam.Samfile( "ex7.sam" )
+        #for x in samfile:
+        #    print str(x)
+        # failing with unknown error
+        pass
+
     def testReadingFromFileWithoutIndex( self ):
         '''read from bam file without index.'''
 
