@@ -283,12 +283,14 @@ class IOTest(unittest.TestCase):
         self.assertEqual( 0, samfile.write(None) )
 
     def testAutoDetection( self ):
-        samfile = pysam.Samfile( "ex3.bam" )
-        samfile.fetch()
+        '''test if autodetection works.'''
+
+        samfile = pysam.Samfile( "ex3.sam" )
+        self.assertRaises( ValueError, samfile.fetch, 'chr1' )
         samfile.close()
 
-        samfile = pysam.Samfile( "ex3.sam")
-        samfile.fetch()
+        samfile = pysam.Samfile( "ex3.bam" )
+        samfile.fetch('chr1')
         samfile.close()
 
     def testReadingFromSamFileWithoutHeader( self ):

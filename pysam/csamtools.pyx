@@ -427,11 +427,11 @@ cdef class Samfile:
 
         f = pysam.Samfile('ex1.bam','rb')
 
-    If mode is not specified, we will try to auto-detect in the order 'r', 'rb', thus both the following
+    If mode is not specified, we will try to auto-detect in the order 'rb', 'r', thus both the following
     should work::
 
         f1 = pysam.Samfile('ex1.bam' )
-        f2 = pysam.Samfile('ex1.bam' )
+        f2 = pysam.Samfile('ex1.sam' )
 
     If an index for a BAM file exists (.bai), it will be opened automatically. Without an index random
     access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
@@ -489,14 +489,15 @@ cdef class Samfile:
         # read mode autodetection
         if mode is None:
             try:
-                self._open(filename, 'r', template=template,
+                self._open(filename, 'rb', template=template,
                            referencenames=referencenames,
                            referencelengths=referencelengths,
                            text=text, header=header, port=port)
                 return
             except ValueError, msg:
                 pass
-            self._open(filename, 'rb', template=template,
+            
+            self._open(filename, 'r', template=template,
                        referencenames=referencenames,
                        referencelengths=referencelengths,
                        text=text, header=header, port=port)
@@ -611,7 +612,10 @@ cdef class Samfile:
                 self.index = bam_index_load(filename)
                 if self.index == NULL:
                     raise IOError("error while opening index `%s` " % filename )
-                                    
+
+            if not self.isstream:
+                self.start_offset = bam_tell( self.samfile.x.bam )
+
     def gettid( self, reference ):
         '''
         convert :term:`reference` name into numerical :term:`tid`
@@ -691,6 +695,10 @@ cdef class Samfile:
 
         return 1, rtid, rstart, rend
     
+    def reset( self ):
+        '''reset file position to beginning of read section.'''
+        return self.seek( self.start_offset, 0 )
+
     def seek( self, uint64_t offset, int where = 0):
         '''
         move file pointer to position *offset*, see :meth:`pysam.Samfile.tell`.
@@ -700,6 +708,9 @@ cdef class Samfile:
             raise ValueError( "I/O operation on closed file" )
         if not self.isbam:
             raise NotImplementedError("seek only available in bam files")
+        if self.isstream:
+            raise OSError("seek no available in streams")
+        
         return bam_seek( self.samfile.x.bam, offset, where )
 
     def tell( self ):
@@ -725,10 +736,11 @@ cdef class Samfile:
         :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can 
         be supplied.
 
-        Without *reference* or *region* all reads will be fetched. The reads will be returned
+        Without *reference* or *region* all mapped reads will be fetched. The reads will be returned
         ordered by reference sequence, which will not necessarily be the order within the file.
+
         If *until_eof* is given, all reads from the current file position will be returned
-        *in order as they are within the file*.  
+        in order as they are within the file. Using this option will also fetch unmapped reads. 
         
         If only *reference* is set, all reads aligned to *reference* will be fetched.
 
@@ -771,15 +783,17 @@ cdef class Samfile:
                     if until_eof:
                         return IteratorRowAll( self, reopen=reopen )
                     else:
-                        return IteratorRowAllRefs(self, reopen=reopen )
+                        # AH: check - reason why no reopen for AllRefs?
+                        return IteratorRowAllRefs(self ) # , reopen=reopen )
         else:   
             # check if header is present - otherwise sam_read1 aborts
             # this happens if a bamfile is opened with mode 'r'
             if self.samfile.header.n_targets == 0:
                 raise ValueError( "fetch called for samfile without header")
                   
-            if region != None:
-                raise ValueError ("fetch for a region is not available for sam files" )
+            if has_coord:
+                raise ValueError ("fetching by region is not available for sam files" )
+
             if callback:
                 raise NotImplementedError( "callback not implemented yet" )
             else:
@@ -2390,7 +2404,7 @@ cdef class AlignedRead:
         '''length of the read (read only). Returns 0 if not given.'''
         def __get__(self): return self._delegate.core.l_qseq
     property aend:
-        '''aligned end position of the read (read only).  Returns
+        '''aligned end position of the read on the reference genome.  Returns
         None if not available.'''
         def __get__(self):
             cdef bam1_t * src
@@ -2399,7 +2413,7 @@ cdef class AlignedRead:
                 return None
             return bam_calend(&src.core, bam1_cigar(src))
     property alen:
-        '''aligned length of the read (read only).  Returns None if
+        '''aligned length of the read on the reference genome.  Returns None if
         not available.'''
         def __get__(self):
             cdef bam1_t * src
@@ -2518,8 +2532,10 @@ cdef class AlignedRead:
                     pos += l
 
             return result
+
     def overlap( self, uint32_t start, uint32_t end ):
-        """return number of bases on reference overlapping *start* and *end*
+        """return number of aligned bases of read overlapping the interval *start* and *end*
+        on the reference sequence.
         """
         cdef uint32_t k, i, pos, overlap
         cdef int op, o

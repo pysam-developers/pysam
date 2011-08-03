@@ -402,6 +402,9 @@ cdef class Samfile:
     # file opening mode
     cdef char * mode
 
+    # beginning of read section
+    cdef int64_t start_offset 
+
     cdef bam_header_t * _buildHeader( self, new_header )
     cdef bam1_t * getCurrent( self )
     cdef int cnext(self)
