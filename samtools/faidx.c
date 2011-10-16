@@ -7,7 +7,8 @@
 #include "khash.h"
 
 typedef struct {
-	uint64_t len:32, line_len:16, line_blen:16;
+	int32_t line_len, line_blen;
+	int64_t len;
 	uint64_t offset;
 } faidx1_t;
 KHASH_MAP_INIT_STR(s, faidx1_t)
@@ -64,10 +65,11 @@ faidx_t *fai_build_core(RAZF *rz)
 {
 	char c, *name;
 	int l_name, m_name, ret;
-	int len, line_len, line_blen, state;
+	int line_len, line_blen, state;
 	int l1, l2;
 	faidx_t *idx;
 	uint64_t offset;
+	int64_t len;
 
 	idx = (faidx_t*)calloc(1, sizeof(faidx_t));
 	idx->hash = kh_init(s);
@@ -119,11 +121,6 @@ faidx_t *fai_build_core(RAZF *rz)
 				return 0;
 			}
 			++l1; len += l2;
-			if (l2 >= 0x10000) {
-				fprintf(stderr, "[fai_build_core] line length exceeds 65535 in sequence '%s'.\n", name);
-				free(name); fai_destroy(idx);
-				return 0;
-			}
 			if (state == 1) line_len = l1, line_blen = l2, state = 0;
 			else if (state == 0) {
 				if (l1 != line_len || l2 != line_blen) state = 2;
@@ -305,8 +302,8 @@ faidx_t *fai_load(const char *fn)
 
 char *fai_fetch(const faidx_t *fai, const char *str, int *len)
 {
-	char *s, *p, c;
-	int i, l, k;
+	char *s, c;
+	int i, l, k, name_end;
 	khiter_t iter;
 	faidx1_t val;
 	khash_t(s) *h;
@@ -314,31 +311,43 @@ char *fai_fetch(const faidx_t *fai, const char *str, int *len)
 
 	beg = end = -1;
 	h = fai->hash;
-	l = strlen(str);
-	p = s = (char*)malloc(l+1);
-	/* squeeze out "," */
-	for (i = k = 0; i != l; ++i)
-		if (str[i] != ',' && !isspace(str[i])) s[k++] = str[i];
-	s[k] = 0;
-	for (i = 0; i != k; ++i) if (s[i] == ':') break;
-	s[i] = 0;
-	iter = kh_get(s, h, s); /* get the ref_id */
-	if (iter == kh_end(h)) {
-		*len = 0;
-		free(s); return 0;
-	}
+	name_end = l = strlen(str);
+	s = (char*)malloc(l+1);
+	// remove space
+	for (i = k = 0; i < l; ++i)
+		if (!isspace(str[i])) s[k++] = str[i];
+	s[k] = 0; l = k;
+	// determine the sequence name
+	for (i = l - 1; i >= 0; --i) if (s[i] == ':') break; // look for colon from the end
+	if (i >= 0) name_end = i;
+	if (name_end < l) { // check if this is really the end
+		int n_hyphen = 0;
+		for (i = name_end + 1; i < l; ++i) {
+			if (s[i] == '-') ++n_hyphen;
+			else if (!isdigit(s[i]) && s[i] != ',') break;
+		}
+		if (i < l || n_hyphen > 1) name_end = l; // malformated region string; then take str as the name
+		s[name_end] = 0;
+		iter = kh_get(s, h, s);
+		if (iter == kh_end(h)) { // cannot find the sequence name
+			iter = kh_get(s, h, str); // try str as the name
+			if (iter == kh_end(h)) {
+				*len = 0;
+			free(s); return 0;
+			} else s[name_end] = ':', name_end = l;
+		}
+	} else iter = kh_get(s, h, str);
 	val = kh_value(h, iter);
-	if (i == k) { /* dump the whole sequence */
-		beg = 0; end = val.len;
-	} else {
-		for (p = s + i + 1; i != k; ++i) if (s[i] == '-') break;
-		beg = atoi(p);
-		if (i < k) {
-			p = s + i + 1;
-			end = atoi(p);
-		} else end = val.len;
-	}
-	if (beg > 0) --beg;
+	// parse the interval
+	if (name_end < l) {
+		for (i = k = name_end + 1; i < l; ++i)
+			if (s[i] != ',') s[k++] = s[i];
+		s[k] = 0;
+		beg = atoi(s + name_end + 1);
+		for (i = name_end + 1; i != k; ++i) if (s[i] == '-') break;
+		end = i < k? atoi(s + i + 1) : val.len;
+		if (beg > 0) --beg;
+	} else beg = 0, end = val.len;
 	if (beg >= val.len) beg = val.len;
 	if (end >= val.len) end = val.len;
 	if (beg > end) beg = end;

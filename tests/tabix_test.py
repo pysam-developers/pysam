@@ -307,8 +307,8 @@ class TestVCF( TestParser ):
             c = self.compare[x]
             for y, field in enumerate( self.columns ):
                 if field == "pos":
-                    self.assertEqual( int(c[y])-1, getattr( r, field ) )
-                    self.assertEqual( int(c[y])-1, r.pos )
+                    self.assertEqual( int(c[y]) - 1, getattr( r, field ) )
+                    self.assertEqual( int(c[y]) - 1, r.pos )
                 else:
                     self.assertEqual( c[y], getattr( r, field ), 
                                       "mismatch in field %s: %s != %s" %\
@@ -326,9 +326,8 @@ class TestVCF( TestParser ):
             c = self.compare[x]
             for y, field in enumerate( self.columns ):
                 if field == "pos":
-                    r.pos += 1
-                    self.assertEqual( int(c[y]), getattr( r, field ) )
-                    self.assertEqual( int(c[y]), r.pos )
+                    self.assertEqual( int(c[y]) - 1, getattr( r, field ) )
+                    self.assertEqual( int(c[y]) - 1, r.pos )
                 else:
                     setattr( r, field, "test_%i" % y)
                     c[y] = "test_%i" % y

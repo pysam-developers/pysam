@@ -187,49 +187,49 @@ typedef struct __bmc_aux_t {
 	errmod_t *em;
 } bmc_aux_t;
 
-uint32_t pysam_glf_depth( glf1_t * g )
-{
-  return g->depth;
-}
+/* uint32_t pysam_glf_depth( glf1_t * g ) */
+/* { */
+/*   return g->depth; */
+/* } */
 
 
-void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
-{
-  int x = 0;
-  fprintf(stderr,
-	  "glf: ref_base=%i, max_mapQ=%i, min_lk=%i, depth=%i",
-	  g->ref_base,
-	  g->max_mapQ,
-	  g->min_lk,
-	  g->depth );
+/* void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c ) */
+/* { */
+/*   int x = 0; */
+/*   fprintf(stderr, */
+/* 	  "glf: ref_base=%i, max_mapQ=%i, min_lk=%i, depth=%i", */
+/* 	  g->ref_base, */
+/* 	  g->max_mapQ, */
+/* 	  g->min_lk, */
+/* 	  g->depth ); */
 
-  for (x = 0; x < 10; ++x) 
-    fprintf(stderr, ", lk%x=%i, ", x, g->lk[x]);
+/*   for (x = 0; x < 10; ++x)  */
+/*     fprintf(stderr, ", lk%x=%i, ", x, g->lk[x]); */
 
-  fprintf(stderr,
-	  "maqcns: het_rate=%f, theta=%f, n_hap=%i, cap_mapQ=%i, errmod=%i, min_baseQ=%i, eta=%f, q_r=%f, aux_max=%i",
-	  c->het_rate,
-	  c->theta,
-	  c->n_hap,
-	  c->cap_mapQ,
-	  c->errmod,
-	  c->min_baseQ,
-	  c->eta,
-	  c->q_r,
-	  c->aux->max);
+/*   fprintf(stderr, */
+/* 	  "maqcns: het_rate=%f, theta=%f, n_hap=%i, cap_mapQ=%i, errmod=%i, min_baseQ=%i, eta=%f, q_r=%f, aux_max=%i", */
+/* 	  c->het_rate, */
+/* 	  c->theta, */
+/* 	  c->n_hap, */
+/* 	  c->cap_mapQ, */
+/* 	  c->errmod, */
+/* 	  c->min_baseQ, */
+/* 	  c->eta, */
+/* 	  c->q_r, */
+/* 	  c->aux->max); */
   
-  for (x = 0; x < c->aux->max; ++x)
-    {
-      fprintf(stderr, ", info-%i=%i ", x, c->aux->info[x]);
-      if (c->aux->info[x] == 0) break;
-    }
+/*   for (x = 0; x < c->aux->max; ++x) */
+/*     { */
+/*       fprintf(stderr, ", info-%i=%i ", x, c->aux->info[x]); */
+/*       if (c->aux->info[x] == 0) break; */
+/*     } */
   
-  for (x = 0; x < c->aux->max; ++x)
-    {
-      fprintf(stderr, ", info16-%i=%i ", x, c->aux->info16[x]);
-      if (c->aux->info16[x] == 0) break;
-    }
-}
+/*   for (x = 0; x < c->aux->max; ++x) */
+/*     { */
+/*       fprintf(stderr, ", info16-%i=%i ", x, c->aux->info16[x]); */
+/*       if (c->aux->info16[x] == 0) break; */
+/*     } */
+/* } */
 
 
   
@@ -238,7 +238,7 @@ void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
 // command line within python.
 // taken from the main function in bamtk.c
 // added code to reset getopt
-extern int main_samview(int argc, char *argv[]);
+/*extern int main_samview(int argc, char *argv[]);
 extern int main_import(int argc, char *argv[]);
 extern int bam_pileup(int argc, char *argv[]);
 extern int bam_merge(int argc, char *argv[]);
@@ -250,6 +250,27 @@ extern int bam_rmdup(int argc, char *argv[]);
 extern int glf3_view_main(int argc, char *argv[]);
 extern int bam_flagstat(int argc, char *argv[]);
 extern int bam_fillmd(int argc, char *argv[]);
+*/
+int bam_taf2baf(int argc, char *argv[]);
+int bam_mpileup(int argc, char *argv[]);
+int bam_merge(int argc, char *argv[]);
+int bam_index(int argc, char *argv[]);
+int bam_sort(int argc, char *argv[]);
+int bam_tview_main(int argc, char *argv[]);
+int bam_mating(int argc, char *argv[]);
+int bam_rmdup(int argc, char *argv[]);
+int bam_flagstat(int argc, char *argv[]);
+int bam_fillmd(int argc, char *argv[]);
+int bam_idxstats(int argc, char *argv[]);
+int main_samview(int argc, char *argv[]);
+int main_import(int argc, char *argv[]);
+int main_reheader(int argc, char *argv[]);
+int main_cut_target(int argc, char *argv[]);
+int main_phase(int argc, char *argv[]);
+int main_cat(int argc, char *argv[]);
+int main_depth(int argc, char *argv[]);
+int main_bam2fq(int argc, char *argv[]);
+int faidx_main(int argc, char *argv[]);
 
 int pysam_dispatch(int argc, char *argv[] )
 {
@@ -269,18 +290,23 @@ int pysam_dispatch(int argc, char *argv[] )
 
   if (strcmp(argv[1], "view") == 0) return main_samview(argc-1, argv+1);
   else if (strcmp(argv[1], "import") == 0) return main_import(argc-1, argv+1);
-  else if (strcmp(argv[1], "pileup") == 0) return bam_pileup(argc-1, argv+1);
+  else if (strcmp(argv[1], "mpileup") == 0) return bam_mpileup(argc-1, argv+1);
   else if (strcmp(argv[1], "merge") == 0) return bam_merge(argc-1, argv+1);
   else if (strcmp(argv[1], "sort") == 0) return bam_sort(argc-1, argv+1);
-  else if (strcmp(argv[1], "index") == 0) return bam_index(argc-1, argv+1); 
+  else if (strcmp(argv[1], "index") == 0) return bam_index(argc-1, argv+1);
   else if (strcmp(argv[1], "faidx") == 0) return faidx_main(argc-1, argv+1);
   else if (strcmp(argv[1], "fixmate") == 0) return bam_mating(argc-1, argv+1);
   else if (strcmp(argv[1], "rmdup") == 0) return bam_rmdup(argc-1, argv+1);
-  else if (strcmp(argv[1], "glfview") == 0) return glf3_view_main(argc-1, argv+1);
   else if (strcmp(argv[1], "flagstat") == 0) return bam_flagstat(argc-1, argv+1);
   else if (strcmp(argv[1], "calmd") == 0) return bam_fillmd(argc-1, argv+1);
   else if (strcmp(argv[1], "fillmd") == 0) return bam_fillmd(argc-1, argv+1);
-
+  else if (strcmp(argv[1], "reheader") == 0) return main_reheader(argc-1, argv+1);
+  else if (strcmp(argv[1], "cat") == 0) return main_cat(argc-1, argv+1);
+  else if (strcmp(argv[1], "targetcut") == 0) return main_cut_target(argc-1, argv+1);
+  else if (strcmp(argv[1], "phase") == 0) return main_phase(argc-1, argv+1);
+  else if (strcmp(argv[1], "depth") == 0) return main_depth(argc-1, argv+1);
+  else if (strcmp(argv[1], "bam2fq") == 0) return main_bam2fq(argc-1, argv+1);
+  
 #if _CURSES_LIB != 0
   else if (strcmp(argv[1], "tview") == 0) return bam_tview_main(argc-1, argv+1);
 #endif

@@ -3,11 +3,13 @@
 #include <string.h>
 #include "bam.h"
 #include "bam2bcf.h"
-#include "ksort.h"
 #include "kaln.h"
 #include "kprobaln.h"
 #include "khash.h"
 KHASH_SET_INIT_STR(rg)
+
+#include "ksort.h"
+KSORT_INIT_GENERIC(uint32_t)
 
 #define MINUS_CONST 0x10000000
 #define INDEL_WINDOW_SIZE 50
@@ -64,7 +66,7 @@ static int tpos2qpos(const bam1_core_t *c, const uint32_t *cigar, int32_t tpos, 
 	for (k = 0; k < c->n_cigar; ++k) {
 		int op = cigar[k] & BAM_CIGAR_MASK;
 		int l = cigar[k] >> BAM_CIGAR_SHIFT;
-		if (op == BAM_CMATCH) {
+		if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {
 			if (c->pos > tpos) return y;
 			if (x + l > tpos) {
 				*_tpos = tpos;
@@ -110,7 +112,6 @@ static inline int est_indelreg(int pos, const char *ref, int l, char *ins4)
 int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_callaux_t *bca, const char *ref,
 					  const void *rghash)
 {
-	extern void ks_introsort_uint32_t(int, uint32_t*);
 	int i, s, j, k, t, n_types, *types, max_rd_len, left, right, max_ins, *score1, *score2, max_ref2;
 	int N, K, l_run, ref_type, n_alt;
 	char *inscns = 0, *ref2, *query, **ref_sample;
@@ -167,6 +168,12 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 		if (n_types == 1 || (double)n_alt / n_tot < bca->min_frac || n_alt < bca->min_support) { // then skip
 			free(aux); return -1;
 		}
+		if (n_types >= 64) {
+			free(aux);
+			if (bam_verbose >= 2) 
+				fprintf(stderr, "[%s] excessive INDEL alleles at position %d. Skip the position.\n", __func__, pos + 1);
+			return -1;
+		}
 		types = (int*)calloc(n_types, sizeof(int));
 		t = 0;
 		types[t++] = aux[0] - MINUS_CONST; 
@@ -177,7 +184,6 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 		for (t = 0; t < n_types; ++t)
 			if (types[t] == 0) break;
 		ref_type = t; // the index of the reference type (0)
-		assert(n_types < 64);
 	}
 	{ // calculate left and right boundary
 		left = pos > INDEL_WINDOW_SIZE? pos - INDEL_WINDOW_SIZE : 0;
@@ -216,7 +222,7 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 				for (k = 0; k < b->core.n_cigar; ++k) {
 					int op = cigar[k]&0xf;
 					int j, l = cigar[k]>>4;
-					if (op == BAM_CMATCH) {
+					if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {
 						for (j = 0; j < l; ++j)
 							if (x + j >= left && x + j < right)
 								cns[x+j-left] += (bam1_seqi(seq, y+j) == ref0[x+j-left])? 1 : 0x10000;

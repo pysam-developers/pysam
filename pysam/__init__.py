@@ -89,16 +89,23 @@ SAMTOOLS_DISPATCH = {
     "view" : ( "view", None ),
     "sort" : ( "sort", None),
     "samimport": ( "import", None),
-    "pileup" : ( "pileup", ( (("-c",), Pileup.iterate ), ), ),
+    # "pileup" : ( "pileup", ( (("-c",), Pileup.iterate ), ), ),
+    "mpileup" : ( "mpileup", None),
     "faidx" : ("faidx", None),
     "tview" : ("tview", None),
     "index" : ("index", None),
     "fixmate" : ("fixmate", None),
-    "glfview" : ("glfview", None),
     "flagstat" : ("flagstat", None),
     "calmd" : ("calmd", None),
     "merge" : ("merge", None),  
-    "rmdup" : ("rmdup", None) }
+    "rmdup" : ("rmdup", None),
+    "reheader" : ("reheader", None),
+    "cat" : ("cat", None),
+    "targetcut" : ("targetcut", None),
+    "phase" : ("phase", None),
+    "depth" : ("depth", None),
+    "bam2fq" : ("bam2fq", None),
+ }
 
 # instantiate samtools commands as python functions
 for key, options in SAMTOOLS_DISPATCH.iteritems():

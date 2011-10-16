@@ -18,7 +18,6 @@ import version
 version = version.__version__
 
 samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c", 
-                     "bam_reheader.c", 
                      "main.c", "calDepth.c", "bam2bed.c",
                      "wgsim.c", "md5fa.c", "maq2sam.c",)
 samtools_dest = os.path.abspath( "samtools" )

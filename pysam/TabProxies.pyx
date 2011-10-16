@@ -601,9 +601,18 @@ cdef class VCFProxy( NamedTupleProxy ):
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here
         self.pos = atoi( self.fields[1] ) - 1
-
+                             
     def __len__(self):
         return max(0, self.nfields - 9)
+
+    property pos:
+       '''feature end (in 0-based open/closed coordinates).'''
+       def __get__( self ): 
+           return self.pos
+
+       def __set__( self, value ): 
+           self.is_modified = True
+           self.pos = value
 
     def __setattr__(self, key, value ):
         '''set attribute.'''
@@ -614,4 +623,4 @@ cdef class VCFProxy( NamedTupleProxy ):
         cdef int idx
         idx, f = self.map_key2field[key]
         TupleProxy._setindex(self, idx, str(value) )
-    
+

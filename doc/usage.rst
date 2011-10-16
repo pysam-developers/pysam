@@ -210,37 +210,38 @@ on stdin to a :term:`SAM` formatted file on stdout::
 
 Note, only the file open mode needs to changed from ``r`` to ``rb``.
 
-Using the samtools SNP caller
------------------------------
+.. Currently inactivated as pileup deprecated
+.. Using the samtools SNP caller
+.. -----------------------------
 
-There are two ways to access the samtools SNP caller. The :class:`pysam.IteratorSNPCalls`
-is appropriate when calling many consecutive SNPs, while :class:`pysam.SNPCaller` is
-best when calling SNPs at non-consecutive genomic positions. Each snp caller returns objects of
-type :class:`pysam.SNPCall`.
+.. There are two ways to access the samtools SNP caller. The :class:`pysam.IteratorSNPCalls`
+.. is appropriate when calling many consecutive SNPs, while :class:`pysam.SNPCaller` is
+.. best when calling SNPs at non-consecutive genomic positions. Each snp caller returns objects of
+.. type :class:`pysam.SNPCall`.
 
-To use :class:`pysam.IteratorSNPCalls`, associate it with a :class:`pysam.IteratorColumn`::
+.. To use :class:`pysam.IteratorSNPCalls`, associate it with a :class:`pysam.IteratorColumn`::
 
-    samfile = pysam.Samfile( "ex1.bam", "rb")  
-    fastafile = pysam.Fastafile( "ex1.fa" )
-    pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
-    sncpall_iter = pysam.IteratorSNPCalls(pileup_iter)
-    for call in snpcall_iter:
-        print str(call)
+..     samfile = pysam.Samfile( "ex1.bam", "rb")  
+..     fastafile = pysam.Fastafile( "ex1.fa" )
+..     pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+..     sncpall_iter = pysam.IteratorSNPCalls(pileup_iter)
+..     for call in snpcall_iter:
+..         print str(call)
 
-Usage of :class:`pysam.SNPCaller` is similar::
+.. Usage of :class:`pysam.SNPCaller` is similar::
 
-    samfile = pysam.Samfile( "ex1.bam", "rb")  
-    fastafile = pysam.Fastafile( "ex1.fa" )
-    pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
-    snpcaller = pysam.SNPCaller(pileup_iter)
-    print snpcaller( "chr1", 100 )
+..     samfile = pysam.Samfile( "ex1.bam", "rb")  
+..     fastafile = pysam.Fastafile( "ex1.fa" )
+..     pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
+..     snpcaller = pysam.SNPCaller(pileup_iter)
+..     print snpcaller( "chr1", 100 )
 
-Note the use of the option *stepper* to control which reads are included in the 
-in the :term:`pileup`. The ``samtools`` stepper implements the same read selection
-and processing as in the samtools pileup command.
+.. Note the use of the option *stepper* to control which reads are included in the 
+.. in the :term:`pileup`. The ``samtools`` stepper implements the same read selection
+.. and processing as in the samtools pileup command.
 
-Calling indels works along the same lines, using the :class:`pysam.IteratorIndelCalls`
-and :class:`pysam.IteratorIndelCaller`.
+.. Calling indels works along the same lines, using the :class:`pysam.IteratorIndelCalls`
+.. and :class:`pysam.IteratorIndelCaller`.
 
 Extending pysam
 ---------------

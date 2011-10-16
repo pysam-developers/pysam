@@ -1,4 +1,11 @@
-import sys
+## This script contains some example code 
+## illustrating ways to to use the pysam 
+## interface to samtools.
+##
+## The unit tests in the script pysam_test.py
+## contain more examples.
+##
+
 import pysam
 
 samfile = pysam.Samfile( "ex1.bam", "rb" )
@@ -34,20 +41,8 @@ print "########## pileup with callback ################"
 def my_pileup_callback( column ): print str(column)
 samfile.pileup( region="chr1:10-200", callback=my_pileup_callback )
 
-print "##########iterator row #################"
-iter = pysam.IteratorRow( samfile, 0, 10, 200)
-for x in iter: print str(x)
 
-print "##########iterator col #################"
-iter = pysam.IteratorColumn( samfile, 0, 10, 200 )
-for x in iter: print str(x)
-
-print "#########row all##################"
-iter = pysam.IteratorRowAll( samfile )
-for x in iter: print str(x)
-
-
-print "###################"
+print "########### Using a callback object ###### "
 
 class Counter:
     mCounts = 0
@@ -55,61 +50,24 @@ class Counter:
         self.mCounts += 1
 
 c = Counter()
-samfile.fetch( "chr1:10-200", c )
+samfile.fetch( region = "chr1:10-200", callback = c )
 print "counts=", c.mCounts
 
-sys.exit(0)
-print samfile.getTarget( 0 )
-print samfile.getTarget( 1 )
+print "########### Calling a samtools command line function ############"
 
-for p in pysam.pileup( "-c", "ex1.bam" ):
+for p in pysam.mpileup( "-c", "ex1.bam" ):
     print str(p)
 
-print pysam.pileup.getMessages()
+print pysam.mpileup.getMessages()
 
-for p in pysam.pileup( "-c", "ex1.bam", raw=True ):
-    print str(p),
-
-
-
-print "###########################"
-
-samfile = pysam.Samfile( "ex2.sam.gz", "r" )
-
-print "num targets=", samfile.getNumTargets()
-
-iter = pysam.IteratorRowAll( samfile )
-for x in iter: print str(x)
-
-samfile.close()
-
-print "###########################"
-samfile = pysam.Samfile( "ex2.sam.gz", "r" )
-def my_fetch_callback( alignment ):
-    print str(alignment)
-
-try:
-    samfile.fetch( "chr1:10-20", my_fetch_callback )
-except AssertionError:
-    print "caught fetch exception"
-
-samfile.close()
-
-print "###########################"
-samfile = pysam.Samfile( "ex2.sam.gz", "r" )
-def my_pileup_callback( pileups ):
-    print str(pileups)
-try:
-    samfile.pileup( "chr1:10-20", my_pileup_callback )
-except NotImplementedError:
-    print "caught pileup exception"
+print "########### Investigating headers #######################"
 
 # playing arount with headers
 samfile = pysam.Samfile( "ex3.sam", "r" )
-print samfile.targets
+print samfile.references
 print samfile.lengths
 print samfile.text
-print samdile.header
+print samfile.header
 header = samfile.header
 samfile.close()
 
