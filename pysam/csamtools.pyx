@@ -2232,7 +2232,7 @@ cdef class AlignedRead:
             cdef char auxtype
             
             src = self._delegate
-            if src.l_aux == 0: return None
+            if src.l_aux == 0: return []
             
             s = bam1_aux( src )
             result = []

@@ -761,7 +761,7 @@ class TestAlignedRead(unittest.TestCase):
         self.assertEqual( a.rname, 0 )
         self.assertEqual( a.mapq, 0 )
         self.assertEqual( a.cigar, None )
-        self.assertEqual( a.tags, None )
+        self.assertEqual( a.tags, [] )
         self.assertEqual( a.mrnm, 0 )
         self.assertEqual( a.mpos, 0 )
         self.assertEqual( a.isize, 0 )
