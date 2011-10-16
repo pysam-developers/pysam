@@ -2,6 +2,15 @@
 Release notes
 =============
 
+Release 0.6
+===========
+
+   * switch to samtools 0.1.18
+   * various bugfixes
+   * removed references to deprecated 'samtools pileup' functionality
+   * AlignedRead.tags now returns an empty list if there are no tags.
+   
+
 Release 0.5
 ===========
 

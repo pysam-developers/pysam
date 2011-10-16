@@ -186,7 +186,7 @@ class IOTest(unittest.TestCase):
 
     def checkEcho( self, input_filename, reference_filename, 
                    output_filename, 
-                   input_mode, output_mode, use_template = True):
+                   input_mode, output_mode, use_template = True ):
         '''iterate through *input_filename* writing to *output_filename* and
         comparing the output to *reference_filename*. 
         
@@ -194,6 +194,7 @@ class IOTest(unittest.TestCase):
 
         If *use_template* is set, the header is copied from infile using the
         template mechanism, otherwise target names and lengths are passed explicitely. 
+
         '''
 
         infile = pysam.Samfile( input_filename, input_mode )
@@ -247,6 +248,18 @@ class IOTest(unittest.TestCase):
 
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "r", "w" )
+
+    def testReadSamWithoutHeaderWriteSamWithoutHeader( self ):
+        
+        input_filename = "ex1.sam"
+        output_filename = "pysam_ex1.sam"
+        reference_filename = "ex1.sam"
+
+        # disabled - reading from a samfile without header
+        # is not implemented.
+        
+        # self.checkEcho( input_filename, reference_filename, output_filename,
+        #                 "r", "w" )
 
     def testFetchFromClosedFile( self ):
 

@@ -588,7 +588,7 @@ cdef class Samfile:
 
             if self.samfile.header == NULL:
                 raise ValueError( "file does not have valid header (mode='%s') - is it SAM/BAM format?" % mode )
-
+            
             #disabled for autodetection to work
             # needs to be disabled so that reading from sam-files without headers works
             #if self.samfile.header.n_targets == 0:
@@ -788,11 +788,11 @@ cdef class Samfile:
         else:   
             # check if header is present - otherwise sam_read1 aborts
             # this happens if a bamfile is opened with mode 'r'
-            if self.samfile.header.n_targets == 0:
-                raise ValueError( "fetch called for samfile without header")
-                  
             if has_coord:
                 raise ValueError ("fetching by region is not available for sam files" )
+
+            if self.samfile.header.n_targets == 0:
+                raise ValueError( "fetch called for samfile without header")
 
             if callback:
                 raise NotImplementedError( "callback not implemented yet" )
