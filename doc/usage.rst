@@ -233,7 +233,7 @@ Note, only the file open mode needs to changed from ``r`` to ``rb``.
 ..     samfile = pysam.Samfile( "ex1.bam", "rb")  
 ..     fastafile = pysam.Fastafile( "ex1.fa" )
 ..     pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
-..     snpcaller = pysam.SNPCaller(pileup_iter)
+..     snpcaller = pysam.SNPCaller.call(pileup_iter)
 ..     print snpcaller( "chr1", 100 )
 
 .. Note the use of the option *stepper* to control which reads are included in the 
