@@ -300,11 +300,8 @@ class IOTest(unittest.TestCase):
     def testReadingFromSamFileWithoutHeader( self ):
         '''read from samfile without header.
         '''
-        #samfile = pysam.Samfile( "ex7.sam" )
-        #for x in samfile:
-        #    print str(x)
-        # failing with unknown error
-        pass
+        samfile = pysam.Samfile( "ex7.sam" )
+        self.assertRaises( NotImplementedError, samfile.__iter__ )
 
     def testReadingFromFileWithoutIndex( self ):
         '''read from bam file without index.'''
@@ -313,6 +310,17 @@ class IOTest(unittest.TestCase):
         samfile = pysam.Samfile( "ex2.bam", "rb" )
         self.assertRaises( ValueError, samfile.fetch )
         self.assertEqual( len(list( samfile.fetch(until_eof = True) )), 3270 )
+
+    def testReadingUniversalFileMode( self ):
+        '''read from samfile without header.
+        '''
+
+        input_filename = "ex2.sam"
+        output_filename = "pysam_ex2.sam"
+        reference_filename = "ex1.sam"
+
+        self.checkEcho( input_filename, reference_filename, output_filename,
+                        "rU", "w" )
 
 class TestIteratorRow(unittest.TestCase):
 

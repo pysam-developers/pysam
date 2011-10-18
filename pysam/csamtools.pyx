@@ -503,7 +503,7 @@ cdef class Samfile:
                        text=text, header=header, port=port)
             return
 
-        assert mode in ( "r","w","rb","wb", "wh", "wbu" ), "invalid file opening mode `%s`" % mode
+        assert mode in ( "r","w","rb","wb", "wh", "wbu", "rU" ), "invalid file opening mode `%s`" % mode
         assert filename != NULL
 
         # close a previously opened file
@@ -1178,6 +1178,8 @@ cdef class Samfile:
     ###############################################################
     def __iter__(self):
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not self.isbam and self.samfile.header.n_targets == 0:
+                raise NotImplementedError( "can not iterate over samfile without header")
         return self 
 
     cdef bam1_t * getCurrent( self ):
