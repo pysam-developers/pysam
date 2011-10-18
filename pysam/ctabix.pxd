@@ -170,7 +170,7 @@ cdef extern from "tabix.h":
   # char *ti_iter_read(BGZF *fp, ti_iter_t iter, int *len)
 
 cdef class Tabixfile:
-    cdef char * filename
+    cdef char * _filename
 
     # pointer to tabixfile
     cdef tabix_t * tabixfile

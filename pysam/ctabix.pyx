@@ -33,7 +33,9 @@ cdef class Tabixfile:
         if self.tabixfile != NULL: self.close()
         self.tabixfile = NULL
 
-        self.filename = filename
+        if self._filename != NULL: free(self._filename )
+        self._filename = strdup( filename )
+
         filename_index = filename + ".tbi"
 
         if mode[0] == 'w':
@@ -42,14 +44,14 @@ cdef class Tabixfile:
 
         elif mode[0] == "r":
             # open file for reading
-            if not os.path.exists( self.filename ):
-                raise IOError( "file `%s` not found" % self.filename)
+            if not os.path.exists( self._filename ):
+                raise IOError( "file `%s` not found" % self._filename)
 
             if not os.path.exists( filename_index ):
                 raise IOError( "index `%s` not found" % filename_index)
 
             # open file and load index
-            self.tabixfile = ti_open( self.filename, filename_index )
+            self.tabixfile = ti_open( self._filename, filename_index )
 
         if self.tabixfile == NULL:
             raise IOError("could not open file `%s`" % filename )
@@ -136,6 +138,17 @@ cdef class Tabixfile:
             else:
                 return TabixIteratorParsed( self, -1, 0, 0, parser )
 
+    ###############################################################
+    ###############################################################
+    ###############################################################
+    ## properties
+    ###############################################################
+    property filename:
+        '''number of :term:`filename` associated with this object.'''
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            return self._filename
+
     property header:
         def __get__( self ):
             '''return header lines as an iterator.
@@ -158,6 +171,20 @@ cdef class Tabixfile:
                 result.append( sequences[x] )
             return result
             
+    def close( self ):
+        '''
+        closes the :class:`pysam.Tabixfile`.'''
+        if self.tabixfile != NULL:
+            ti_close( self.tabixfile )
+            self.tabixfile = NULL
+
+    def __dealloc__( self ):
+        # remember: dealloc cannot call other methods
+        # note: no doc string
+        # note: __del__ is not called.
+        self.close()
+        if self._filename != NULL: free( self._filename )
+
 cdef class TabixIterator:
     """iterates over rows in *tabixfile* in region
     given by *tid*, *start* and *end*.

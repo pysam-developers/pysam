@@ -204,6 +204,18 @@ class TestIteration( unittest.TestCase ):
         header = list( self.tabix.header )
         self.assertEqual( ref, header )
 
+
+    def testReopening( self ):
+        '''test repeated opening of the same file.'''
+        def func1():
+            # opens any tabix file
+            inf = pysam.Tabixfile(self.filename)
+            return
+
+        for i in range(10000):
+            func1()
+
+
 class TestParser( unittest.TestCase ):
 
     filename = "example.gtf.gz" 
