@@ -2429,14 +2429,30 @@ cdef class AlignedRead:
         def __get__(self): return self._delegate.core.qual
         def __set__(self, qual): self._delegate.core.qual = qual
     property mrnm:
+        """the :term:`reference` id of the mate 
+        deprecated, use RNEXT instead.
+        """     
+        def __get__(self): return self._delegate.core.mtid
+        def __set__(self, mtid): self._delegate.core.mtid = mtid
+    property rnext:
         """the :term:`reference` id of the mate """     
         def __get__(self): return self._delegate.core.mtid
         def __set__(self, mtid): self._delegate.core.mtid = mtid
     property mpos: 
+        """the position of the mate
+        deprecated, use PNEXT instead."""
+        def __get__(self): return self._delegate.core.mpos
+        def __set__(self, mpos): self._delegate.core.mpos = mpos
+    property pnext: 
         """the position of the mate"""
         def __get__(self): return self._delegate.core.mpos
         def __set__(self, mpos): self._delegate.core.mpos = mpos
     property isize: 
+        """the insert size
+        deprecated: use tlen instead"""
+        def __get__(self): return self._delegate.core.isize
+        def __set__(self, isize): self._delegate.core.isize = isize
+    property tlen: 
         """the insert size"""
         def __get__(self): return self._delegate.core.isize
         def __set__(self, isize): self._delegate.core.isize = isize

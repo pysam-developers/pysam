@@ -9,7 +9,7 @@ Release 0.6
    * various bugfixes
    * removed references to deprecated 'samtools pileup' functionality
    * AlignedRead.tags now returns an empty list if there are no tags.
-   
+   * added pnext, rnext and tlen
 
 Release 0.5
 ===========
