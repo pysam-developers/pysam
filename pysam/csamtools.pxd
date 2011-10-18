@@ -203,6 +203,7 @@ cdef extern from "bam.h":
   void bam_plp_set_mask(bam_plp_t iter, int mask)
   void bam_plp_reset(bam_plp_t iter)
   void bam_plp_destroy(bam_plp_t iter)
+  void bam_plp_set_maxcnt(bam_plp_t iter, int maxcnt)
 
   ##################################################
 

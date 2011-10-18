@@ -925,14 +925,13 @@ cdef class Samfile:
          mask
            Skip all reads with bits set in mask.
 
+         max_depth
+           Maximum read depth permitted. The default limit is *8000*.
 
         .. note::
 
             *all* reads which overlap the region are returned. The first base returned will be the 
             first base of the first read *not* necessarily the first base of the region used in the query.
-
-            The maximum number of reads considered for pileup is *8000*. This limit is set by
-            :term:`csamtools`.
 
         '''
         cdef int rtid, rstart, rend, has_coord
@@ -1601,8 +1600,8 @@ cdef class IteratorColumn:
        A :class:`FastaFile` object
     mask
        Skip all reads with bits set in mask.
-       
-    
+    max_depth
+       maximum read depth. The default is 8000.
     '''
 
     # result of the last plbuf_push
@@ -1617,18 +1616,21 @@ cdef class IteratorColumn:
     cdef Samfile samfile
     cdef Fastafile fastafile
     cdef stepper
+    cdef int max_depth
 
     def __cinit__( self, Samfile samfile, **kwargs ):
         self.samfile = samfile
         self.mask = kwargs.get("mask", BAM_DEF_MASK )
         self.fastafile = kwargs.get( "fastafile", None )
         self.stepper = kwargs.get( "stepper", None )
+        self.max_depth = kwargs.get( "max_depth", 8000 )
         self.iterdata.seq = NULL
         self.tid = 0
         self.pos = 0
         self.n_plp = 0
         self.plp = NULL
         self.pileup_iter = <bam_plp_t>NULL
+
 
     def __iter__(self):
         return self 
@@ -1698,6 +1700,9 @@ cdef class IteratorColumn:
             self.pileup_iter = bam_plp_init( &__advance_snpcalls, &self.iterdata )
         else:
             raise ValueError( "unknown stepper option `%s` in IteratorColumn" % self.stepper)
+
+        if self.max_depth:
+            bam_plp_set_maxcnt( self.pileup_iter, self.max_depth )
 
         bam_plp_set_mask( self.pileup_iter, self.mask )
 
