@@ -27,13 +27,17 @@ FILE * pysam_set_stderr( FILE * f )
 // taken from bam_index.c
 // The order of the following declarations is important.
 // #######################################################
+#define BAM_MAX_BIN 37450 // =(8^6-1)/7+1
 
+// initialize hashes
 typedef struct
 {
   uint64_t u, v;
 } pair64_t;
 
 #define pair64_lt(a,b) ((a).u < (b).u)
+
+KSORT_INIT(myoff, pair64_t, pair64_lt);
 
 typedef struct {
 	uint32_t m, n;
@@ -45,14 +49,16 @@ typedef struct {
 	uint64_t *offset;
 } bam_lidx_t;
 
-KSORT_INIT(my_off, pair64_t, pair64_lt);
-KHASH_MAP_INIT_INT(my_i, bam_binlist_t);
+
+// initialize hashes ('i' and 's' are idenditifiers)
+KHASH_MAP_INIT_INT(i, bam_binlist_t);
 KHASH_MAP_INIT_STR(s, int)
 
 struct __bam_index_t
 {
   int32_t n;
-  khash_t(my_i) **index;
+  uint64_t n_no_coor; // unmapped reads without coordinate
+  khash_t(i) **index;
   bam_lidx_t *index2;
 };
 
@@ -77,7 +83,7 @@ struct __bam_plbuf_t {
 	bam_pileup1_t *pu;
 	int flag_mask;
 };
-
+  
 static mempool_t *mp_init()
 {
 	mempool_t *mp;
@@ -187,6 +193,44 @@ typedef struct __bmc_aux_t {
 	errmod_t *em;
 } bmc_aux_t;
 
+// Return number of mapped reads on tid.
+// If tid < 0, return mapped reads without a coordinate (0)
+uint32_t pysam_get_mapped( const bam_index_t *idx, const int tid )
+{
+
+  if (tid >= 0)
+    {
+      khint_t k;
+      khash_t(i) *h = idx->index[tid];
+      k = kh_get(i, h, BAM_MAX_BIN);
+
+      if (k != kh_end(h))
+	return kh_val(h, k).list[1].u;
+      else
+	return 0;
+    }
+
+  return 0;
+}
+
+uint32_t pysam_get_unmapped( const bam_index_t *idx, const int tid )
+{
+
+  if (tid >= 0)
+    {
+      khint_t k;
+      khash_t(i) *h = idx->index[tid];
+      k = kh_get(i, h, BAM_MAX_BIN);
+
+      if (k != kh_end(h))
+	return kh_val(h, k).list[1].v;
+      else
+	return 0;
+    }
+
+  return idx->n_no_coor;
+}
+
 /* uint32_t pysam_glf_depth( glf1_t * g ) */
 /* { */
 /*   return g->depth; */
@@ -238,19 +282,6 @@ typedef struct __bmc_aux_t {
 // command line within python.
 // taken from the main function in bamtk.c
 // added code to reset getopt
-/*extern int main_samview(int argc, char *argv[]);
-extern int main_import(int argc, char *argv[]);
-extern int bam_pileup(int argc, char *argv[]);
-extern int bam_merge(int argc, char *argv[]);
-extern int bam_sort(int argc, char *argv[]);
-extern int bam_index(int argc, char *argv[]);
-extern int faidx_main(int argc, char *argv[]);
-extern int bam_mating(int argc, char *argv[]);
-extern int bam_rmdup(int argc, char *argv[]);
-extern int glf3_view_main(int argc, char *argv[]);
-extern int bam_flagstat(int argc, char *argv[]);
-extern int bam_fillmd(int argc, char *argv[]);
-*/
 int bam_taf2baf(int argc, char *argv[]);
 int bam_mpileup(int argc, char *argv[]);
 int bam_merge(int argc, char *argv[]);

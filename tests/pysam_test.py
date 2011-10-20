@@ -1306,6 +1306,13 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
                     self.assertEqual( read.pos, mate.mpos )
                     self.assertEqual( read.mpos, mate.pos )
 
+    def testIndexStats( self ):
+        '''test if total number of mapped/unmapped reads is correct.'''
+
+        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        self.assertEqual( samfile.mapped, 3235 )
+        self.assertEqual( samfile.unmapped, 35 )
+
 class TestSamtoolsProxy( unittest.TestCase ):
     '''tests for sanity checking access to samtools functions.'''
 

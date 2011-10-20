@@ -1040,6 +1040,34 @@ cdef class Samfile:
                 t.append( self.samfile.header.target_len[x] )
             return tuple(t)
 
+    property mapped:
+        """total number of mapped reads in file.
+        """
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self.isbam: raise AttributeError( "Samfile.mapped only available in bam files" )
+            
+            cdef int tid
+            cdef uint32_t total = 0
+            for tid from 0 <= tid < self.samfile.header.n_targets:
+                total += pysam_get_mapped( self.index, tid )
+            return total
+
+    property unmapped:
+        """total number of unmapped reads in file.
+        """
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self.isbam: raise AttributeError( "Samfile.unmapped only available in bam files" )
+            cdef int tid
+            cdef uint32_t total = 0
+            for tid from 0 <= tid < self.samfile.header.n_targets:
+                total += pysam_get_unmapped( self.index, tid )
+            # get unmapped reads without coordinates
+            total += pysam_get_unmapped( self.index, -1 )
+            return total
+        
+
     property text:
         '''full contents of the :term:`sam file` header as a string.'''
         def __get__(self):

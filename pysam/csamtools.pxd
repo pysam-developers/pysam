@@ -126,7 +126,8 @@ cdef extern from "bam.h":
      char *text
 
   ctypedef struct bam_index_t:
-      pass
+      int32_t n
+      uint64_t n_no_coor
 
   ctypedef struct bam_plbuf_t:
       pass
@@ -375,6 +376,10 @@ cdef extern from "pysam_util.h":
     int pysam_reference2tid( bam_header_t *header, char * s )
 
     void pysam_set_stderr( FILE * file )
+
+    # return mapped/unmapped reads on tid
+    uint32_t pysam_get_mapped( bam_index_t *idx, int tid )
+    uint32_t pysam_get_unmapped( bam_index_t *idx, int tid )
 
 #    uint32_t pysam_glf_depth( glf1_t * g )
 
