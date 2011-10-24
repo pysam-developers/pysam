@@ -1,10 +1,10 @@
 .. _Usage: 
 
-*****
-Usage
-*****
+*************************************
+Working with BAM/SAM-formatted files
+*************************************
 
-In order to follow the examples below, execute::
+In order to follow the examples below, execute
    
    make
 
@@ -26,7 +26,7 @@ To open a :term:`SAM` file, type::
    import pysam
    samfile = pysam.Samfile( "ex1.bam", "r" )
 
-Fetching mapped reads in a :term:`region`
+Fetching reads mapped to a :term:`region`
 -----------------------------------------
 
 There are two ways to obtain the reads mapped to a genomic region. The
@@ -128,36 +128,13 @@ Argument errors raise a :class:`pysam.SamtoolsError`::
      if retval: raise SamtoolsError( "\n".join( stderr ) )
    pysam.SamtoolsError: 'Usage: samtools sort [-n] [-m <maxMem>] <in.bam> <out.prefix>\n'
 
-Some samtools commands that create output on stdout are 
-associated with parsers. For example, the pysam equivalent of
-calling "samtools pileup -c"::
-
-   for p in pysam.pileup( "-c", "ex1.bam" ):
-      print str(p)
-      
-returns an iterator over SNP calls. The iterator return objects of
-type :class:`pysam.PileupEntry`. The output of the two lines of code above 
-is::
-
-   PileupEntry(chromosome='seq1', position=2, reference_base='N', consensus_base='A', consensus_quality=27, snp_quality=0, rms_mapping_quality=60, coverage=1, read_bases='A', base_qualities='<')
-   PileupEntry(chromosome='seq1', position=3, reference_base='N', consensus_base='C', consensus_quality=33, snp_quality=0, rms_mapping_quality=60, coverage=2, read_bases='C^~C', base_qualities='<<')
-   PileupEntry(chromosome='seq1', position=4, reference_base='N', consensus_base='T', consensus_quality=33, snp_quality=0, rms_mapping_quality=60, coverage=2, read_bases='TT', base_qualities='<<')
-   PileupEntry(chromosome='seq1', position=5, reference_base='N', consensus_base='A', consensus_quality=36, snp_quality=0, rms_mapping_quality=60, coverage=3, read_bases='AA^~A', base_qualities='<<<')
-   PileupEntry(chromosome='seq1', position=6, reference_base='N', consensus_base='G', consensus_quality=39, snp_quality=0, rms_mapping_quality=60, coverage=4, read_bases='GGG^`G', base_qualities='<<<(')
-   ...
-
 Messages from :term:`csamtools` on stderr are captured and are
 available using the :meth:`getMessages` method::
 
-   pysam.pileup.getMessage()
+   pysam.sort.getMessage()
 
 Note that only the output from the last invocation of a command
 is stored.
-
-In order to get the unparsed output, use the *raw* argument::
-
-   for p in pysam.pileup( "-c", "ex1.bam", raw=True ):
-      print str(p),
 
 Creating SAM/BAM files from scratch
 -----------------------------------

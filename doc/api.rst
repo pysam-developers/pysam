@@ -4,13 +4,16 @@ pysam - An interface for reading and writing SAM files
 Pysam is a python module that makes it easy to read and manipulate mapped short read sequence data stored in SAM/BAM files. 
 It is a lightweight wrapper of the samtools_ C-API.
 
-To use the module to read a file in BAM format, open the file with :class:`~pysam.Samfile`::
+This page provides a quick introduction in using pysam followed by the API. 
+See :ref:`usage` for more detailed usage instructions.
+
+To use the module to read a file in BAM format, create a :class:`~pysam.Samfile` object::
 
    import pysam
    samfile = pysam.Samfile( "ex1.bam", "rb" )
    
 
-Now the file is open you can iterate over all of the read mapping to a specified region using :meth:`~pysam.Samfile.fetch`.
+Once a file is opened you can iterate over all of the read mapping to a specified region using :meth:`~pysam.Samfile.fetch`.
 Each iteration returns a :class:`~pysam.AlignedRead` object which represents a single read along with its fields and optional tags::
 
    for alignedread in samfile.fetch('chr1', 100, 120):
@@ -37,7 +40,6 @@ You can also write to a :class:`~pysam.Samfile`::
    pairedreads.close()
    samfile.close()
 
-
 An alternative way of accessing the data in a SAM file is by iterating 
 over each base of a specified region using the :meth:`~pysam.Samfile.pileup` 
 method. Each iteration returns a :class:`~pysam.PileupColumn` which 
@@ -55,7 +57,7 @@ objects in the :attr:`PileupColumn.pileups <pysam.PileupColumn.pileups>` propert
 
     samfile.close()
 
-To give::
+The above code outputs::
 
     coverage at base 99 = 1
         base in read EAS56_57:6:190:289:82 = A
@@ -79,10 +81,23 @@ corresponds to the command line::
 
    samtools sort ex1.bam output
 
+Analogous to :class:`~pysam.Samfile`, a :class:`~pysam.Tabixfile` allows fast random access to compressed
+and tabix indexed tab-separated file formats with genomic data::
+
+   import pysam
+   tabixfile = pysam.Tabixfile( "example.gtf.gz" )
+   
+   for gtf in tabixfile.fetch('chr1', 1000, 2000):
+       print gtf.contig, gtf.start, gtf.end, gtf.gene_id
+
+:class:`~pysam.Tabixfile` implements lazy parsing in order to iterate over large tables efficiently.
+
 More detailed usage instructions is at :ref:`usage`.
 
 .. note::
     Coordinates in pysam are always 0-based (following the python convention). SAM text files use 1-based coordinates.
+
+.. note::
     The above examples can be run in the :file:`tests` directory of the installation directory. Type 'make' before 
     running them.
 
