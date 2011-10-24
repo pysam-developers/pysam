@@ -127,7 +127,6 @@ class TestIteration( unittest.TestCase ):
                                  b.difference(a) ))
 
         for x, d in enumerate( zip( result, ref )):
-            
             self.assertEqual( d[0], d[1],
                               "unexpected results in pair %i: '%s', expected '%s'" % \
                                   (x, 
@@ -204,7 +203,6 @@ class TestIteration( unittest.TestCase ):
         header = list( self.tabix.header )
         self.assertEqual( ref, header )
 
-
     def testReopening( self ):
         '''test repeated opening of the same file.'''
         def func1():
@@ -231,8 +229,15 @@ class TestParser( unittest.TestCase ):
             self.assertEqual( self.compare[x], list(r) )
             self.assertEqual( len(self.compare[x]), len(r) )
 
+            # test indexing
             for c in range(0,len(r)):
                 self.assertEqual( self.compare[x][c], r[c] )
+
+            # test slicing access
+            for c in range(0, len(r)-1):
+                for cc in range(c+1, len(r)):
+                    self.assertEqual( self.compare[x][c:cc],
+                                      r[c:cc] )
 
     def testWrite( self ):
         
@@ -270,7 +275,8 @@ class TestGTF( TestParser ):
             self.assertTrue( r.gene_id.startswith("ENSG") )
             if r.feature != "gene":
                 self.assertTrue( r.transcript_id.startswith("ENST") )
- 
+            self.assertEqual( r[0], r.contig )
+
 class TestBed( unittest.TestCase ):
     filename = "example.bed.gz"
 

@@ -51,6 +51,7 @@ cdef class TupleProxy:
         cdef bint is_modified
 
     cdef int getMaxFields( self, size_t nbytes )
+#    cdef char * _getindex( self, int idx )
 
     cdef take( self, char * buffer, size_t nbytes )
     cdef present( self, char * buffer, size_t nbytes )

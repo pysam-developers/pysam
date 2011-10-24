@@ -141,15 +141,24 @@ cdef class TupleProxy:
 
         self.nfields = field
 
-    def __getitem__( self, key ):
-
-        cdef int i = key
+    def _getindex( self, int index ):
+        '''return item at idx index'''
+        cdef int i = index
         if i < 0: i += self.nfields
         if i < 0: raise IndexError( "list index out of range" )
         i += self.offset
         if i >= self.nfields:
             raise IndexError( "list index out of range" )
         return self.fields[i]
+
+    def __getitem__( self, key ):
+        if type(key) == int: return self._getindex( key )
+        # slice object
+        start, end, step = key.indices( self.nfields )
+        result = []
+        for index in range( start, end, step ):
+            result.append( self._getindex( index ) )
+        return result
 
     def _setindex( self, index, value ):
         '''set item at idx index.'''
