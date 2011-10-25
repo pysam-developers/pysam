@@ -1066,7 +1066,6 @@ cdef class Samfile:
             # get unmapped reads without coordinates
             total += pysam_get_unmapped( self.index, -1 )
             return total
-        
 
     property text:
         '''full contents of the :term:`sam file` header as a string.'''

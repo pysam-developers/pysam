@@ -463,18 +463,13 @@ cdef class GTFProxy( TupleProxy ):
 
         start += strlen(query) + 1
         # skip gaps before
-        while start[0] == " ": start += 1
+        while start[0] == ' ': start += 1
         if start[0] == '"':
             start += 1
             end = start
             while end[0] != '\0' and end[0] != '"': end += 1
-            l = end - start + 1
-            cpy = <char*>calloc( l, sizeof(char ) )
-            if cpy == NULL: raise ValueError("out of memory" )
-            memcpy( cpy, start, l )
-            cpy[l-1] = '\0'
-            result = cpy
-            free(cpy)
+            l = end - start
+            result = PyString_FromStringAndSize( start, l )
             return result
         else:
             return start

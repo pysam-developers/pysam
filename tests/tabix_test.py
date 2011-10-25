@@ -262,11 +262,15 @@ class TestParser( unittest.TestCase ):
                 self.assertEqual( "\t".join(e), str(r) )
 
 class TestGTF( TestParser ):
+
     def testRead( self ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asGTF() )):
             self.assertEqual( "\t".join( self.compare[x]), str(r) )
-
+            self.assertTrue( r.gene_id.startswith("ENSG") )
+            if r.feature != "gene":
+                self.assertTrue( r.transcript_id.startswith("ENST") )
+ 
 class TestBed( unittest.TestCase ):
     filename = "example.bed.gz"
 
