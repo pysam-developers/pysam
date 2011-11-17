@@ -148,7 +148,7 @@ cdef class TupleProxy:
         if i < 0: raise IndexError( "list index out of range" )
         i += self.offset
         if i >= self.nfields:
-            raise IndexError( "list index out of range" )
+            raise IndexError( "list index out of range %i >= %i" % (i, self.nfields ))
         return self.fields[i]
 
     def __getitem__( self, key ):
@@ -288,7 +288,8 @@ cdef class GTFProxy( TupleProxy ):
 
         self.start = atoi( cstart ) - 1
         self.end = atoi( cend )
-                      
+        self.nfields = 9
+       
     property contig:
        '''contig of feature.'''
        def __get__( self ): return self.contig
@@ -452,8 +453,8 @@ cdef class GTFProxy( TupleProxy ):
         r = self.attributes
         return [ x.strip().split(" ")[0] for x in r.split(";") if x.strip() != '' ]
 
-    def __getitem__(self, item):
-        return self.__getattr__( item )
+    def __getitem__(self, key):
+        return self.__getattr__( key )
 
     def __getattr__(self, item ):
         """Generic lookup of attribute from GFF/GTF attributes 
@@ -613,10 +614,6 @@ cdef class VCFProxy( NamedTupleProxy ):
        '''feature end (in 0-based open/closed coordinates).'''
        def __get__( self ): 
            return self.pos
-
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.pos = value
 
     def __setattr__(self, key, value ):
         '''set attribute.'''

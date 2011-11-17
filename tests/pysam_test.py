@@ -322,6 +322,54 @@ class IOTest(unittest.TestCase):
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "rU", "w" )
 
+class TestFloatTagBug( unittest.TestCase ):
+    '''see issue 71'''
+
+    def testFloatTagBug( self ): 
+        '''a float tag before another exposed a parsing bug in bam_aux_get
+        '''
+        samfile = pysam.Samfile("tag_bug.bam")
+        read = samfile.fetch(until_eof=True).next()
+        self.assertTrue( ('XC',1) in read.tags )
+        self.assertEqual(read.opt('XC'), 1)
+
+class TestTagParsing( unittest.TestCase ):
+    '''tests checking the accuracy of tag setting and retrieval.'''
+
+    def makeRead( self ):
+        a = pysam.AlignedRead()
+        a.qname = "read_12345"
+        a.tid = 0
+        a.seq="ACGT" * 3
+        a.flag = 0
+        a.rname = 0
+        a.pos = 1
+        a.mapq = 20
+        a.cigar = ( (0,10), (2,1), (0,25) )
+        a.mrnm = 0
+        a.mpos=200
+        a.isize = 0
+	a.qual ="1234" * 3
+        # todo: create tags
+        return a
+
+    def testNegativeIntegers( self ):
+        x = -2
+        aligned_read = self.makeRead()
+        aligned_read.tags = [("XD", int(x) ) ]
+        print aligned_read.tags
+
+    def testNegativeIntegers2( self ):
+        x = -2
+        r = self.makeRead()
+        r.tags = [("XD", int(x) ) ]
+        outfile = pysam.Samfile( "test.bam",
+                                 "wb",
+                                 referencenames = ("chr1",),
+                                 referencelengths = (1000,) )
+        outfile.write (r )
+        outfile.close()
+
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):

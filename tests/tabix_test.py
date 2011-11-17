@@ -271,11 +271,14 @@ class TestGTF( TestParser ):
     def testRead( self ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asGTF() )):
-            self.assertEqual( "\t".join( self.compare[x]), str(r) )
+            c =  self.compare[x]
+            
+            self.assertEqual( len(c), len(r) )
+            self.assertEqual( "\t".join(c), str(r) )
             self.assertTrue( r.gene_id.startswith("ENSG") )
             if r.feature != "gene":
                 self.assertTrue( r.transcript_id.startswith("ENST") )
-            self.assertEqual( r[0], r.contig )
+            self.assertEqual( c[0], r.contig )
 
 class TestBed( unittest.TestCase ):
     filename = "example.bed.gz"
@@ -345,11 +348,24 @@ class TestVCF( TestParser ):
         ncolumns = len(self.columns) 
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asVCF() )):
+
             c = self.compare[x]
+
+            # check unmodified string
+            ref_string = "\t".join( c )
+            cmp_string = str(r)
+            self.assertEqual( ref_string, cmp_string )
+
+            # set fields and compare field-wise
             for y, field in enumerate( self.columns ):
                 if field == "pos":
-                    self.assertEqual( int(c[y]) - 1, getattr( r, field ) )
+                    rpos = getattr( r, field )
+                    self.assertEqual( int(c[y]) - 1, rpos )
                     self.assertEqual( int(c[y]) - 1, r.pos )
+                    # increment pos by 1
+                    setattr( r, field, rpos + 1 )
+                    self.assertEqual( getattr( r, field ), rpos + 1 )
+                    c[y] = str(int(c[y]) + 1 ) 
                 else:
                     setattr( r, field, "test_%i" % y)
                     c[y] = "test_%i" % y
@@ -364,6 +380,12 @@ class TestVCF( TestParser ):
                 r[y] = "test_%i" % y
                 self.assertEqual( c[ncolumns+y], r[y] )
                 
+            # check strings
+            ref_string = "\t".join( c )
+            cmp_string = str(r)
+            
+            self.assertEqual( ref_string, cmp_string )
+
 if __name__ == "__main__":
 
     unittest.main()
