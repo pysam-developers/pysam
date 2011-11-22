@@ -179,10 +179,12 @@ cdef class Tabixfile:
             self.tabixfile = NULL
 
     def __dealloc__( self ):
-        # remember: dealloc cannot call other methods
+        # remember: dealloc cannot call other python methods
         # note: no doc string
         # note: __del__ is not called.
-        self.close()
+        if self.tabixfile != NULL:
+            ti_close( self.tabixfile )
+            self.tabixfile = NULL
         if self._filename != NULL: free( self._filename )
 
 cdef class TabixIterator:
