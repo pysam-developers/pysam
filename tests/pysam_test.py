@@ -82,8 +82,8 @@ class BinaryTest(unittest.TestCase):
                 ),
           "sort" :
               (
-                ( "ex1.sort", "sort ex1.bam > ex1.sort" ),
-                ( "pysam_ex1.sort", (pysam.sort, "ex1.bam pysam_ex1.sort" ) ),
+                ( "ex1.sort.bam", "sort ex1.bam ex1.sort" ),
+                ( "pysam_ex1.sort.bam", (pysam.sort, "ex1.bam pysam_ex1.sort" ) ),
                 ),
           "mpileup" :
               (
@@ -215,8 +215,9 @@ class BinaryTest(unittest.TestCase):
             shutil.copy( "ex1.sam", os.path.join( WORKDIR, "ex1.sam" ) )
 
             # cd to workdir
+            savedir = os.getcwd()
             os.chdir( WORKDIR )
-
+            
             for label in self.order:
                 command = self.commands[label]
                 samtools_target, samtools_command = command[0]
@@ -236,8 +237,11 @@ class BinaryTest(unittest.TestCase):
                     outfile = open( pysam_target, "wb" )
                     for line in output: outfile.write( line )
                     outfile.close()
-
+                    
+            os.chdir( savedir )
             BinaryTest.first_time = False
+
+            
 
         samtools_version = getSamtoolsVersion()
 
@@ -255,6 +259,8 @@ class BinaryTest(unittest.TestCase):
     def checkCommand( self, command ):
         if command:
             samtools_target, pysam_target = self.commands[command][0][0], self.commands[command][1][0]
+            samtools_target = os.path.join( WORKDIR, samtools_target )
+            pysam_target = os.path.join( WORKDIR, pysam_target )
             self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 
                              "%s failed: files %s and %s are not the same" % (command, samtools_target, pysam_target) )
             
@@ -335,7 +341,8 @@ class IOTest(unittest.TestCase):
         The files are opened according to the *input_mode* and *output_mode*.
 
         If *use_template* is set, the header is copied from infile using the
-        template mechanism, otherwise target names and lengths are passed explicitely. 
+        template mechanism, otherwise target names and lengths are passed 
+        explicitely. 
 
         '''
 
@@ -345,7 +352,8 @@ class IOTest(unittest.TestCase):
         else:
             outfile = pysam.Samfile( output_filename, output_mode, 
                                      referencenames = infile.references,
-                                     referencelengths = infile.lengths )
+                                     referencelengths = infile.lengths,
+                                     add_sq_text = False )
 
         iter = infile.fetch()
         for x in iter: outfile.write( x )
@@ -468,7 +476,9 @@ class TestFloatTagBug( unittest.TestCase ):
     '''see issue 71'''
 
     def testFloatTagBug( self ): 
-        '''a float tag before another exposed a parsing bug in bam_aux_get
+        '''a float tag before another exposed a parsing bug in bam_aux_get - expected to fail
+
+        This test is expected to fail until samtools is fixed.
         '''
         samfile = pysam.Samfile("tag_bug.bam")
         read = samfile.fetch(until_eof=True).next()

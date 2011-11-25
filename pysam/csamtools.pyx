@@ -413,7 +413,8 @@ cdef int mate_callback( bam1_t *alignment, void *f):
 
 
 cdef class Samfile:
-    '''*(filename, mode=None, template = None, referencenames = None, referencelengths = None, text = NULL, header = None)*
+    '''*(filename, mode=None, template = None, referencenames = None, referencelengths = None, text = NULL, header = None,
+         add_sq_text = False )*
               
     A :term:`SAM`/:term:`BAM` formatted file. The file is automatically opened.
     
@@ -449,6 +450,8 @@ cdef class Samfile:
         3. If *text* is given, new header text is copied from raw text.
 
         4. The names (*referencenames*) and lengths (*referencelengths*) are supplied directly as lists. 
+           By default, 'SQ' and 'LN' tags will be added to the header text. This option can be
+           changed by unsetting the flag *add_sq_text*. 
 
     '''
 
@@ -479,6 +482,7 @@ cdef class Samfile:
                text = None,
                header = None,
                port = None,
+               add_sq_text = True,
               ):
         '''open a sam/bam file.
 
@@ -553,6 +557,13 @@ cdef class Samfile:
                     name = referencenames[x]
                     header_to_write.target_name[x] = <char*>calloc(len(name)+1, sizeof(char))
                     strncpy( header_to_write.target_name[x], name, len(name) )
+
+                # Optionally, if there is no text, add a SAM compatible header to output
+                # file.
+                if text is None and add_sq_text:
+                    text = ''
+                    for x from 0 <= x < header_to_write.n_targets:
+                        text += "@SQ\tSN:%s\tLN:%s\n" % (referencenames[x], referencelengths[x] )
 
                 if text != None:
                     # copy without \0
