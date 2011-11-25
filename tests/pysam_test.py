@@ -12,7 +12,9 @@ import itertools, collections
 import subprocess
 import shutil
 import logging
+
 SAMTOOLS="samtools"
+WORKDIR="pysam_test_work"
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -65,47 +67,131 @@ class BinaryTest(unittest.TestCase):
     first_time = True
 
     # a list of commands to test
-    mCommands = \
-        { "faidx" : \
-        ( 
-            ("ex1.fa.fai", "faidx ex1.fa"), 
-            ("pysam_ex1.fa.fai", (pysam.faidx, "ex1.fa") ),
-            ),
-          "import" :
+    commands = \
+        { 
+          "view" :
               (
-                ("ex1.bam", "import ex1.fa.fai ex1.sam.gz ex1.bam" ),
-                ("pysam_ex1.bam", (pysam.samimport, "ex1.fa.fai ex1.sam.gz pysam_ex1.bam") ),
+                ("ex1.view", "view ex1.bam > ex1.view"),
+                ("pysam_ex1.view", (pysam.view, "ex1.bam" ) ),
+                ),
+          "view2" :
+              (
+                ("ex1.view", "view -bT ex1.fa -o ex1.view2 ex1.sam"),
+                # note that -o ex1.view2 throws exception.
+                ("pysam_ex1.view", (pysam.view, "-bT ex1.fa -oex1.view2 ex1.sam" ) ),
+                ),
+          "sort" :
+              (
+                ( "ex1.sort", "sort ex1.bam > ex1.sort" ),
+                ( "pysam_ex1.sort", (pysam.sort, "ex1.bam pysam_ex1.sort" ) ),
+                ),
+          "mpileup" :
+              (
+                ("ex1.pileup", "mpileup ex1.bam > ex1.pileup" ),
+                ("pysam_ex1.mpileup", (pysam.mpileup, "ex1.bam" ) ),
+                ),
+          "depth" :
+              (
+                ("ex1.depth", "depth ex1.bam > ex1.depth" ),
+                ("pysam_ex1.depth", (pysam.depth, "ex1.bam" ) ),
+                ),
+          "faidx" : 
+              ( 
+                ("ex1.fa.fai", "faidx ex1.fa"), 
+                ("pysam_ex1.fa.fai", (pysam.faidx, "ex1.fa") ),
                 ),
           "index":
               (
                 ("ex1.bam.bai", "index ex1.bam" ),
                 ("pysam_ex1.bam.bai", (pysam.index, "pysam_ex1.bam" ) ),
                 ),
-          "mpileup" :
-          (
-                ("ex1.pileup", "mpileup ex1.bam > ex1.pileup" ),
-                ("pysam_ex1.mpileup", (pysam.mpileup, "ex1.bam" ) )
+          "idxstats" :
+              ( 
+                ("ex1.idxstats", "idxstats ex1.bam > ex1.idxstats" ),
+                ("pysam_ex1.idxstats", (pysam.idxstats, "pysam_ex1.bam" ) ),
                 ),
-          "view" :
-        (
-                ("ex1.view", "view ex1.bam > ex1.view"),
-                ("pysam_ex1.view", (pysam.view, "ex1.bam" ) ),
+          "fixmate" :
+              (
+                ("ex1.fixmate", "fixmate ex1.bam ex1.fixmate" ),
+                ("pysam_ex1.fixmate", (pysam.fixmate, "pysam_ex1.bam pysam_ex1.fixmate") ),
                 ),
-          "view2" :
-        (
-                ("ex1.view", "view -bT ex1.fa -o ex1.view2 ex1.sam"),
-                # note that -o ex1.view2 throws exception.
-                ("pysam_ex1.view", (pysam.view, "-bT ex1.fa -oex1.view2 ex1.sam" ) ),
+          "flagstat" :
+              (
+                ("ex1.flagstat", "flagstat ex1.bam > ex1.flagstat" ),
+                ("pysam_ex1.flagstat", (pysam.flagstat, "pysam_ex1.bam") ),
+                ),
+          "calmd" :
+              (
+                ("ex1.calmd", "calmd ex1.bam ex1.fa > ex1.calmd" ),
+                ("pysam_ex1.calmd", (pysam.calmd, "pysam_ex1.bam ex1.fa") ),
+                ),
+          "merge" :
+              (
+                ("ex1.merge", "merge -f ex1.merge ex1.bam ex1.bam" ),
+                # -f option does not work - following command will cause the subsequent
+                # command to fail
+                ("pysam_ex1.merge", (pysam.merge, "pysam_ex1.merge pysam_ex1.bam pysam_ex1.bam") ),
+                ),
+          "rmdup" :
+              (
+                ("ex1.rmdup", "rmdup ex1.bam ex1.rmdup" ),
+                ("pysam_ex1.rmdup", (pysam.rmdup, "pysam_ex1.bam pysam_ex1.rmdup" )),
+                ),
+          "reheader" :
+              (
+                ( "ex1.reheader", "reheader ex1.bam ex1.bam > ex1.reheader"),
+                ( "pysam_ex1.reheader", (pysam.reheader, "ex1.bam ex1.bam" ) ),
+                ),
+          "cat":
+              (
+                ( "ex1.cat", "cat ex1.bam ex1.bam > ex1.cat"),
+                ( "pysam_ex1.cat", (pysam.cat, "ex1.bam ex1.bam" ) ),
+                ),
+          "targetcut":
+              (
+                ("ex1.targetcut", "targetcut ex1.bam > ex1.targetcut" ),
+                ("pysam_ex1.targetcut", (pysam.targetcut, "pysam_ex1.bam") ),
+                ),
+          "phase":
+              (
+                ("ex1.phase", "phase ex1.bam > ex1.phase" ),
+                ("pysam_ex1.phase", (pysam.phase, "pysam_ex1.bam") ),
+                ),
+          "import" :
+              (
+                ("ex1.bam", "import ex1.fa.fai ex1.sam.gz ex1.bam" ),
+                ("pysam_ex1.bam", (pysam.samimport, "ex1.fa.fai ex1.sam.gz pysam_ex1.bam") ),
+                ),
+          "bam2fq":
+              (
+                ("ex1.bam2fq", "bam2fq ex1.bam > ex1.bam2fq" ),
+                ("pysam_ex1.bam2fq", (pysam.bam2fq, "pysam_ex1.bam") ),
                 ),
         }
 
     # some tests depend on others. The order specifies in which order
     # the samtools commands are executed.
-    mOrder = ('faidx', 'import', 'index', 
-              'mpileup',
+    # The first three (faidx, import, index) need to be in that order, 
+    # the rest is arbitrary.
+    order = ('faidx', 'import', 'index', 
               # 'pileup1', 'pileup2', deprecated
               # 'glfview', deprecated
-              'view', 'view2' )
+              'view', 'view2',
+              'sort',
+              'mpileup',
+              'depth',
+              'idxstats',
+              'fixmate',
+              'flagstat',
+              # 'calmd',
+              'merge',
+              'rmdup',
+              'reheader',
+              'cat',
+              'targetcut',
+              'phase',
+              'bam2fq',
+              )
 
     def setUp( self ):
         '''setup tests. 
@@ -115,16 +201,37 @@ class BinaryTest(unittest.TestCase):
         files.
         '''
         if BinaryTest.first_time:
-            # copy the source 
-            shutil.copy( "ex1.fa", "pysam_ex1.fa" )
 
-            for label in self.mOrder:
-                command = self.mCommands[label]
+            # remove previous files
+            if os.path.exists( WORKDIR ):
+                shutil.rmtree( WORKDIR )
+                
+            # copy the source files to WORKDIR
+            os.makedirs( WORKDIR )
+
+            shutil.copy( "ex1.fa", os.path.join( WORKDIR, "pysam_ex1.fa" ) )
+            shutil.copy( "ex1.fa", os.path.join( WORKDIR, "ex1.fa" ) )
+            shutil.copy( "ex1.sam.gz", os.path.join( WORKDIR, "ex1.sam.gz" ) )
+            shutil.copy( "ex1.sam", os.path.join( WORKDIR, "ex1.sam" ) )
+
+            # cd to workdir
+            os.chdir( WORKDIR )
+
+            for label in self.order:
+                command = self.commands[label]
                 samtools_target, samtools_command = command[0]
-                pysam_target, pysam_command = command[1]
+                try:
+                    pysam_target, pysam_command = command[1]
+                except ValueError, msg:
+                    raise ValueError( "error while setting up %s=%s: %s" %\
+                                          (label, command, msg) )
                 runSamtools( " ".join( (SAMTOOLS, samtools_command )))
                 pysam_method, pysam_options = pysam_command
-                output = pysam_method( *pysam_options.split(" "), raw=True)
+                try:
+                    output = pysam_method( *pysam_options.split(" "), raw=True)
+                except pysam.SamtoolsError, msg:
+                    raise pysam.SamtoolsError( "error while executing %s: options=%s: msg=%s" %\
+                                                   (label, pysam_options, msg) )
                 if ">" in samtools_command:
                     outfile = open( pysam_target, "wb" )
                     for line in output: outfile.write( line )
@@ -134,6 +241,7 @@ class BinaryTest(unittest.TestCase):
 
         samtools_version = getSamtoolsVersion()
 
+        
         def _r( s ):
             # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a -> 0.1.12
             if s.count('-') > 0: s = s[0:s.find('-')]
@@ -146,7 +254,7 @@ class BinaryTest(unittest.TestCase):
 
     def checkCommand( self, command ):
         if command:
-            samtools_target, pysam_target = self.mCommands[command][0][0], self.mCommands[command][1][0]
+            samtools_target, pysam_target = self.commands[command][0][0], self.commands[command][1][0]
             self.assertTrue( checkBinaryEqual( samtools_target, pysam_target ), 
                              "%s failed: files %s and %s are not the same" % (command, samtools_target, pysam_target) )
             
@@ -155,7 +263,46 @@ class BinaryTest(unittest.TestCase):
 
     def testIndex( self ):
         self.checkCommand( "index" )
+
+    def testSort( self ):
+        self.checkCommand( "sort" )
+
+    def testMpileup( self ):
+        self.checkCommand( "mpileup" )
+
+    def testDepth( self ):
+        self.checkCommand( "depth" )
+
+    def testIdxstats( self ):
+        self.checkCommand( "idxstats" )
+
+    def testFixmate( self ):
+        self.checkCommand( "fixmate" )
+
+    def testFlagstat( self ):
+        self.checkCommand( "flagstat" )
         
+    def testMerge( self ):
+        self.checkCommand( "merge" )
+
+    def testRmdup( self ):
+        self.checkCommand( "rmdup" )
+
+    def testReheader( self ):
+        self.checkCommand( "reheader" )
+
+    def testCat( self ):
+        self.checkCommand( "cat" )
+
+    def testTargetcut( self ):
+        self.checkCommand( "targetcut" )
+
+    def testPhase( self ):
+        self.checkCommand( "phase" )
+
+    def testBam2fq( self ):
+        self.checkCommand( "bam2fq" )
+
     # def testPileup1( self ):
     #     self.checkCommand( "pileup1" )
     
@@ -173,13 +320,8 @@ class BinaryTest(unittest.TestCase):
         self.assertRaises( IOError, pysam.index, "exdoesntexist.bam" )
 
     def __del__(self):
-        return
-        for label, command in self.mCommands.iteritems():
-            samtools_target, samtools_command = command[0]
-            pysam_target, pysam_command = command[1]
-            if os.path.exists( samtools_target): os.remove( samtools_target )
-            if os.path.exists( pysam_target): os.remove( pysam_target )
-        if os.path.exists( "pysam_ex1.fa" ): os.remove( "pysam_ex1.fa" )
+        if os.path.exists( WORKDIR ):
+            shutil.rmtree( WORKDIR )
 
 class IOTest(unittest.TestCase):
     '''check if reading samfile and writing a samfile are consistent.'''

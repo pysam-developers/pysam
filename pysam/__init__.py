@@ -86,14 +86,15 @@ class SamtoolsDispatcher(object):
 #
 # import is a python reserved word.
 SAMTOOLS_DISPATCH = { 
+    # samtools 'documented' commands
     "view" : ( "view", None ),
     "sort" : ( "sort", None),
-    "samimport": ( "import", None),
-    # "pileup" : ( "pileup", ( (("-c",), Pileup.iterate ), ), ),
     "mpileup" : ( "mpileup", None),
+    "depth" : ("depth", None),
     "faidx" : ("faidx", None),
     "tview" : ("tview", None),
     "index" : ("index", None),
+    "idxstats" : ("idxstats", None),
     "fixmate" : ("fixmate", None),
     "flagstat" : ("flagstat", None),
     "calmd" : ("calmd", None),
@@ -103,8 +104,12 @@ SAMTOOLS_DISPATCH = {
     "cat" : ("cat", None),
     "targetcut" : ("targetcut", None),
     "phase" : ("phase", None),
-    "depth" : ("depth", None),
+    # others
+    "samimport": ( "import", None),
     "bam2fq" : ("bam2fq", None),
+    # obsolete
+    # "pileup" : ( "pileup", ( (("-c",), Pileup.iterate ), ), ),
+
  }
 
 # instantiate samtools commands as python functions

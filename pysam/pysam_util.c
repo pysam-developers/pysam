@@ -314,7 +314,7 @@ int pysam_dispatch(int argc, char *argv[] )
 #endif
 #endif
   
-  // reset getop
+  // reset getopt
   optind = 1;
 
   if (argc < 2) return 1;
@@ -326,6 +326,7 @@ int pysam_dispatch(int argc, char *argv[] )
   else if (strcmp(argv[1], "sort") == 0) return bam_sort(argc-1, argv+1);
   else if (strcmp(argv[1], "index") == 0) return bam_index(argc-1, argv+1);
   else if (strcmp(argv[1], "faidx") == 0) return faidx_main(argc-1, argv+1);
+  else if (strcmp(argv[1], "idxstats") == 0) return bam_idxstats(argc-1, argv+1);
   else if (strcmp(argv[1], "fixmate") == 0) return bam_mating(argc-1, argv+1);
   else if (strcmp(argv[1], "rmdup") == 0) return bam_rmdup(argc-1, argv+1);
   else if (strcmp(argv[1], "flagstat") == 0) return bam_flagstat(argc-1, argv+1);

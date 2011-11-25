@@ -2814,7 +2814,7 @@ def _samtools_dispatch( method,
     '''call ``method`` in samtools providing arguments in args.
     
     .. note:: 
-       This method redirects stdout and stderr to capture it 
+       This method redirects stdout and (optionally) stderr to capture it 
        from samtools. If for some reason stdout/stderr disappears
        the reason might be in this method.
 
@@ -2831,8 +2831,8 @@ def _samtools_dispatch( method,
     '''
 
     # note that debugging this module can be a problem
-    # as stdout/stderr will not appear
-
+    # as stdout/stderr will not appear on the terminal
+    
     # some special cases
     if method == "index":
         if not os.path.exists( args[0] ):
@@ -2856,7 +2856,6 @@ def _samtools_dispatch( method,
             if "-o" in args: raise ValueError("option -o is forbidden in samtools view")
             args = ( "-o", stdout_f ) + args
 
-
     # do the function call to samtools
     cdef char ** cargs
     cdef int i, n, retval
@@ -2867,6 +2866,7 @@ def _samtools_dispatch( method,
     cargs[0] = "samtools"
     cargs[1] = method
     for i from 0 <= i < n: cargs[i+2] = args[i]
+
     retval = pysam_dispatch(n+2, cargs)
     free( cargs )
 
