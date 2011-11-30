@@ -349,7 +349,7 @@ class TestTagParsing( unittest.TestCase ):
         a.mrnm = 0
         a.mpos=200
         a.isize = 0
-	a.qual ="1234" * 3
+        a.qual ="1234" * 3
         # todo: create tags
         return a
 
@@ -855,7 +855,7 @@ class TestAlignedRead(unittest.TestCase):
         a.mrnm = 0
         a.mpos=200
         a.isize=167
-	a.qual="1234" * 3
+        a.qual="1234" * 3
         # todo: create tags
         return a
 
@@ -921,7 +921,7 @@ class TestAlignedRead(unittest.TestCase):
         a.mrnm = 0
         a.mpos=200
         a.isize=167
-	a.qual="1234" * 200
+        a.qual="1234" * 200
 
         return a
 
@@ -985,8 +985,8 @@ class TestDeNovoConstruction(unittest.TestCase):
         a.mrnm = 0
         a.mpos=199
         a.isize=167
-	a.qual="<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"
-	a.tags = ( ("NM", 1),
+        a.qual="<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"
+        a.tags = ( ("NM", 1),
                    ("RG", "L1") )
 
         b = pysam.AlignedRead()
@@ -1000,8 +1000,8 @@ class TestDeNovoConstruction(unittest.TestCase):
         b.mrnm = 1
         b.mpos=499
         b.isize=412
-	b.qual="<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"
-	b.tags = ( ("MF", 18),
+        b.qual="<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"
+        b.tags = ( ("MF", 18),
                    ("RG", "L2") )
 
         self.reads = (a,b)
