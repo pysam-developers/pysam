@@ -63,9 +63,9 @@ DEF BAM_CPAD       = 6
 cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 cdef int max_pos = 2 << 29
 
-# redirect stderr to 0
+# redirect stderr to /dev/null
 _logfile = open(os.path.devnull, "w")
-pysam_set_stderr( PyFile_AsFile( _logfile ) )
+pysam_set_stderr( _logfile.fileno() )
 
 
 cdef from_string_and_size(char* s, size_t length):
