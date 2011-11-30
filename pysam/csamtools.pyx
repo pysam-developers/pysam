@@ -11,8 +11,8 @@ import ctypes
 import collections
 import re
 import platform
-from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython cimport PyErr_SetString
+from cpython.version cimport PY_MAJOR_VERSION
 
 #from cpython.string cimport PyString_FromStringAndSize, PyString_AS_STRING
 #from cpython.exc    cimport PyErr_SetString, PyErr_NoMemory
@@ -66,6 +66,13 @@ cdef int max_pos = 2 << 29
 # redirect stderr to 0
 _logfile = open(os.path.devnull, "w")
 pysam_set_stderr( PyFile_AsFile( _logfile ) )
+
+
+cdef from_string_and_size(char* s, size_t length):
+    if PY_MAJOR_VERSION < 3:
+      return s[:length]
+    else:
+      return s[:length].decode("ascii")
 
 #####################################################################
 #####################################################################
@@ -361,7 +368,7 @@ cdef class Fastafile:
             return ""
         else:
             try:
-                py_seq = PyString_FromStringAndSize(seq, length)
+                py_seq = seq[:length]
             finally:
                 free(seq)
 
@@ -1071,7 +1078,7 @@ cdef class Samfile:
         '''full contents of the :term:`sam file` header as a string.'''
         def __get__(self):
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
-            return PyString_FromStringAndSize(self.samfile.header.text, self.samfile.header.l_text)
+            return from_string_and_size(self.samfile.header.text, self.samfile.header.l_text)
 
     property header:
         '''header information within the :term:`sam file`. The records and fields are returned as 
@@ -1888,8 +1895,8 @@ cdef inline object get_seq_range(bam1_t *src, uint32_t start, uint32_t end):
     if not src.core.l_qseq:
         return None
 
-    seq = PyString_FromStringAndSize(NULL, end-start)
-    s   = PyString_AS_STRING(seq)
+    seq = from_string_and_size(NULL, end-start)
+    s   = <char*>seq
     p   = bam1_seq(src)
 
     for k from start <= k < end:
@@ -1909,8 +1916,8 @@ cdef inline object get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
     if p[0] == 0xff:
         return None
 
-    qual = PyString_FromStringAndSize(NULL, end-start)
-    q    = PyString_AS_STRING(qual)
+    qual = from_string_and_size(NULL, end-start)
+    q    = <char*>qual
 
     for k from start <= k < end:
         ## equivalent to t[i] + 33 (see bam.c)
@@ -2004,7 +2011,7 @@ cdef class AlignedRead:
         retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
 
         if retval: return retval
-        retval = cmp(t.data_len, o.data_len)
+        retval = (t.data_len > o.data_len) - (t.data_len < o.data_len) # cmp(t.data_len, o.data_len)
         if retval: return retval
         return memcmp(t.data, o.data, t.data_len)
 
@@ -2910,11 +2917,11 @@ cdef class SNPCall:
 
     property reference_base:
        '''reference base at pos. ``N`` if no reference sequence supplied.'''
-       def __get__(self): return PyString_FromStringAndSize( &self._reference_base, 1 )
+       def __get__(self): return from_string_and_size( &self._reference_base, 1 )
 
     property genotype:
        '''the genotype called.'''
-       def __get__(self): return PyString_FromStringAndSize( &self._genotype, 1 )
+       def __get__(self): return from_string_and_size( &self._genotype, 1 )
 
     property consensus_quality:
        '''the genotype quality (Phred-scaled).'''
