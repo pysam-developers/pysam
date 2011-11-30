@@ -200,7 +200,6 @@ metadata = {
     'py_modules': [
       "pysam/__init__", 
       "pysam/Pileup", 
-      "pysam/namedtuple",
       "pysam/version" ],
     'requires' : ['cython (>=0.12)'],
     'ext_modules': [samtools, tabix, tabproxies, cvcf ],
@@ -208,7 +207,11 @@ metadata = {
     'install_requires' : ['cython>=0.12.1',], 
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
+    'use_2to3': True,
     }
+
+if sys.version_info[0] < 3:
+    metadata['py_modules'].append("pysam/namedtuple")
 
 if __name__=='__main__':
    dist = setup(**metadata)
