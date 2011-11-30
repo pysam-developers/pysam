@@ -115,19 +115,11 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 
 
 
-from ez_setup import use_setuptools
+from distribute_setup import use_setuptools
 use_setuptools()
 
 from setuptools import Extension, setup
-
-## note that for automatic cythoning, 
-## both pyrex and cython need to be installed.
-## see http://mail.python.org/pipermail/distutils-sig/2007-September/008204.html
-
-try:
-    from Cython.Distutils import build_ext
-except:
-    from setuptools.command.build_ext import build_ext
+from Cython.Distutils import build_ext
 
 classifiers = """
 Development Status :: 2 - Alpha
