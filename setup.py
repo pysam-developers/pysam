@@ -92,9 +92,9 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
          cf.append( _compareAndCopy( src_file, srcdir, destdir, exclude ) )
          ncopied += 1
          
-      print "installed latest source code from %s: %i files copied" % (srcdir, ncopied)
+      sys.stdout.write("installed latest source code from %s: %i files copied" % (srcdir, ncopied))
       # redirect stderr to pysamerr and replace bam.h with a stub.
-      print "applying stderr redirection"
+      sys.stdout.write("applying stderr redirection")
      
       _update_pysam_files(cf, destdir)
       
@@ -102,9 +102,9 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
    sys.exit(0)
 
 if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
-    print "refreshing latest source code from .c to .pysam.c"
+    sys.stdout.write("refreshing latest source code from .c to .pysam.c")
 # redirect stderr to pysamerr and replace bam.h with a stub.
-    print "applying stderr redirection"
+    sys.stdout.write("applying stderr redirection")
     for destdir in ('samtools', 'tabix'):
         pysamcfiles = locate( "*.pysam.c", destdir )
         for f in pysamcfiles: os.remove(f)
