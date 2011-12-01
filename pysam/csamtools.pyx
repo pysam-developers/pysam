@@ -11,7 +11,7 @@ import ctypes
 import collections
 import re
 import platform
-from cpython cimport PyErr_SetString
+from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check
 from cpython.version cimport PY_MAJOR_VERSION
 
 #from cpython.string cimport PyString_FromStringAndSize, PyString_AS_STRING
@@ -73,6 +73,31 @@ cdef from_string_and_size(char* s, size_t length):
       return s[:length]
     else:
       return s[:length].decode("ascii")
+
+# filename encoding (copied from lxml.etree.pyx)
+cdef str _FILENAME_ENCODING
+_FILENAME_ENCODING = sys.getfilesystemencoding()
+if _FILENAME_ENCODING is None:
+    _FILENAME_ENCODING = sys.getdefaultencoding()
+if _FILENAME_ENCODING is None:
+    _FILENAME_ENCODING = 'ascii'
+
+#cdef char* _C_FILENAME_ENCODING
+#_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
+      
+      
+cdef bytes _my_encodeFilename(object filename):
+    u"""Make sure a filename is 8-bit encoded (or None).
+    """
+    if filename is None:
+        return None
+    elif PyBytes_Check(filename):
+        return filename
+    elif PyUnicode_Check(filename):
+    
+        return filename.encode(_FILENAME_ENCODING)
+    else:
+        raise TypeError, u"Argument must be string or unicode."
 
 #####################################################################
 #####################################################################
@@ -478,7 +503,7 @@ cdef class Samfile:
         return self.index != NULL
 
     def _open( self, 
-               char * filename, 
+               filename, 
                mode = None,
                Samfile template = None,
                referencenames = None,
@@ -511,7 +536,8 @@ cdef class Samfile:
             return
 
         assert mode in ( "r","w","rb","wb", "wh", "wbu", "rU" ), "invalid file opening mode `%s`" % mode
-        assert filename != NULL
+        
+        #assert filename != NULL
 
         # close a previously opened file
         if self.samfile != NULL: self.close()
@@ -521,13 +547,17 @@ cdef class Samfile:
         header_to_write = NULL
         
         if self._filename != NULL: free(self._filename )
-        self._filename = strdup( filename )
-        self.isstream = strcmp( filename, "-" ) == 0
+        cdef bytes bfilename = _my_encodeFilename(filename)
+        cdef bytes bmode = mode.encode('ascii')
+        #cdef char* cfilename
+        #cfilename = filename.encode(_FILENAME_ENCODING)
+        self._filename = strdup(bfilename)
+        self.isstream = strcmp( bfilename, "-" ) == 0
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
-        self.isremote = strncmp(filename,"http:",5) == 0 or \
-            strncmp(filename,"ftp:",4) == 0 
+        self.isremote = strncmp(bfilename,"http:",5) == 0 or \
+            strncmp(bfilename,"ftp:",4) == 0 
 
         cdef char * ctext
         ctext = NULL
@@ -574,7 +604,7 @@ cdef class Samfile:
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
             store = StderrStore()
-            self.samfile = samopen( filename, mode, header_to_write )
+            self.samfile = samopen( bfilename, bmode, header_to_write ) 
             store.release()
 
             # bam_header_destroy takes care of cleaning up of all the members
@@ -583,13 +613,13 @@ cdef class Samfile:
 
         elif mode[0] == "r":
             # open file for reading
-            if strncmp( filename, "-", 1) != 0 and \
+            if strncmp( bfilename, "-", 1) != 0 and \
                     not self.isremote and \
                     not os.path.exists( filename ):
                 raise IOError( "file `%s` not found" % filename)
 
             # try to detect errors
-            self.samfile = samopen( filename, mode, NULL )
+            self.samfile = samopen( bfilename, bmode, NULL )
             if self.samfile == NULL:
                 raise ValueError( "could not open file (mode='%s') - is it SAM/BAM format?" % mode)
 
@@ -1168,7 +1198,7 @@ cdef class Samfile:
                 data = new_header[record]
                 if type( data ) != type( ttype() ):
                     raise ValueError( "invalid type for record %s: %s, expected %s" % (record, type(data), type(ttype()) ) )
-                if type( data ) == types.DictType:
+                if type( data ) is dict:
                     lines.append( self._buildLine( data, record ) )
                 else:
                     for fields in new_header[record]:
@@ -1178,8 +1208,10 @@ cdef class Samfile:
         if dest.text != NULL: free( dest.text )
         dest.text = <char*>calloc( len(text), sizeof(char))
         dest.l_text = len(text)
-        strncpy( dest.text, text, dest.l_text )
+        cdef bytes btext = text.encode('ascii')
+        strncpy( dest.text, btext, dest.l_text )
 
+        cdef bytes bseqname
         # collect targets
         if "SQ" in new_header:
             seqs = []
@@ -1196,7 +1228,8 @@ cdef class Samfile:
             for x from 0 <= x < dest.n_targets:
                 seqname, seqlen = seqs[x]
                 dest.target_name[x] = <char*>calloc( len( seqname ) + 1, sizeof(char) )
-                strncpy( dest.target_name[x], seqname, len(seqname) + 1 )
+                bseqname = seqname.encode('ascii')
+                strncpy( dest.target_name[x], bseqname, len(seqname) + 1 )
                 dest.target_len[x] = seqlen
 
         return dest
@@ -2315,13 +2348,13 @@ cdef class AlignedRead:
             return result
 
         def __set__(self, tags):
-            cdef char * ctag
             cdef bam1_t * src
             cdef uint8_t * s
             cdef uint8_t * new_data
             cdef char * temp 
             cdef int guessed_size, control_size
             cdef int max_size, size, offset
+            
 
             src = self._delegate
             max_size = 4000
@@ -2333,37 +2366,40 @@ cdef class AlignedRead:
                 buffer = ctypes.create_string_buffer(max_size)
 
                 for pytag, value in tags:
+                    if not type(pytag) is bytes:
+                        pytag = pytag.encode('ascii')
                     t = type(value)
-                    if t == types.FloatType:
-                        fmt, pytype = "<cccf", 'f'
-                    elif t == types.IntType:
+                    if t is float:
+                        fmt, pytype = "<2scf", 'f'
+                    elif t is int:
                         if value < 0:
-                            if value >= -127: fmt, pytype = "<cccb", 'c'
-                            elif value >= -32767: fmt, pytype = "<ccch", 's'
+                            if value >= -127: fmt, pytype = "<2scb", 'c'
+                            elif value >= -32767: fmt, pytype = "<2sch", 's'
                             elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "<ccci", 'i'[0]
+                            else: fmt, pytype = "<2sci", 'i'
                         else:
-                            if value <= 255: fmt, pytype = "<cccB", 'C'
-                            elif value <= 65535: fmt, pytype = "<cccH", 'S'
+                            if value <= 255: fmt, pytype = "<2scB", 'C'
+                            elif value <= 65535: fmt, pytype = "<2scH", 'S'
                             elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "<cccI", 'I'
+                            else: fmt, pytype = "<2scI", 'I'
                     else:
                         # Note: hex strings (H) are not supported yet
+                        if t is not bytes:
+                            value = value.encode('ascii')
                         if len(value) == 1:
-                            fmt, pytype = "<cccc", 'A'
+                            fmt, pytype = "<2scc", 'A'
                         else:
-                            fmt, pytype = "<ccc%is" % (len(value)+1), 'Z'
+                            fmt, pytype = "<2sc%is" % (len(value)+1), 'Z'
 
                     size = struct.calcsize(fmt)
                     if offset + size > max_size:
                         raise NotImplementedError("tags field too large")
-
+                    
                     struct.pack_into( fmt,
                                       buffer,
                                       offset,
-                                      pytag[0],
-                                      pytag[1],
-                                      pytype,
+                                      pytag[:2],
+                                      pytype.encode('ascii'),
                                       value )
                     offset += size
             
