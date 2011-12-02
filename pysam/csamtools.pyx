@@ -1,7 +1,6 @@
 # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
-# kate: syntax Python; space-indent on; indent-width 4; replace-trailing-space-save off;
 import tempfile
 import os
 import sys
