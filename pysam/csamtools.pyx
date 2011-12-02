@@ -99,11 +99,13 @@ cdef bytes _my_encodeFilename(object filename):
         raise TypeError, u"Argument must be string or unicode."
 
 
-cdef bytes _force_cmdline_bytes(object s):
+cdef bytes _force_bytes(object s):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     This should be used when s is going to be passed to
     """
-    if s is None:
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif s is None:
         return None
     elif PyBytes_Check(s):
         return s
@@ -111,6 +113,9 @@ cdef bytes _force_cmdline_bytes(object s):
         return s.encode('ascii')
     else:
         raise TypeError, u"Argument must be string, bytes or unicode."
+
+cdef inline bytes _force_cmdline_bytes(object s):
+    return _force_bytes(s)
 
 #####################################################################
 #####################################################################
@@ -560,17 +565,17 @@ cdef class Samfile:
         header_to_write = NULL
         
         if self._filename != NULL: free(self._filename )
-        cdef bytes bfilename = _my_encodeFilename(filename)
+        filename = _my_encodeFilename(filename)
         cdef bytes bmode = mode.encode('ascii')
         #cdef char* cfilename
         #cfilename = filename.encode(_FILENAME_ENCODING)
-        self._filename = strdup(bfilename)
-        self.isstream = strcmp( bfilename, "-" ) == 0
+        self._filename = strdup(filename)
+        self.isstream = strcmp( filename, "-" ) == 0
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
-        self.isremote = strncmp(bfilename,"http:",5) == 0 or \
-            strncmp(bfilename,"ftp:",4) == 0 
+        self.isremote = strncmp(filename,"http:",5) == 0 or \
+            strncmp(filename,"ftp:",4) == 0 
 
         cdef char * ctext
         ctext = NULL
@@ -617,7 +622,7 @@ cdef class Samfile:
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
             store = StderrStore()
-            self.samfile = samopen( bfilename, bmode, header_to_write ) 
+            self.samfile = samopen( filename, bmode, header_to_write ) 
             store.release()
 
             # bam_header_destroy takes care of cleaning up of all the members
@@ -626,13 +631,13 @@ cdef class Samfile:
 
         elif mode[0] == "r":
             # open file for reading
-            if strncmp( bfilename, "-", 1) != 0 and \
+            if strncmp( filename, "-", 1) != 0 and \
                     not self.isremote and \
                     not os.path.exists( filename ):
                 raise IOError( "file `%s` not found" % filename)
 
             # try to detect errors
-            self.samfile = samopen( bfilename, bmode, NULL )
+            self.samfile = samopen( filename, bmode, NULL )
             if self.samfile == NULL:
                 raise ValueError( "could not open file (mode='%s') - is it SAM/BAM format?" % mode)
 
@@ -651,7 +656,7 @@ cdef class Samfile:
         if mode[0] == "r" and self.isbam:
 
             if not self.isremote:
-                if not os.path.exists(filename +".bai"): 
+                if not os.path.exists(filename + b".bai"): 
                     self.index = NULL
                 else:
                     # returns NULL if there is no index or index could not be opened
@@ -673,6 +678,7 @@ cdef class Samfile:
         returns -1 if reference is not known.
         '''
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        reference = _force_bytes(reference)
         return pysam_reference2tid( self.samfile.header, reference )
 
     def getrname( self, tid ):
