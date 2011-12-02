@@ -2082,10 +2082,11 @@ cdef class AlignedRead:
             cdef bam1_t * src 
             src = self._delegate
             if src.core.l_qname == 0: return None
-            return <char *>bam1_qname( src )
+            return _charptr_to_str(<char *>bam1_qname( src ))
 
         def __set__(self, qname ):
             if qname == None or len(qname) == 0: return
+            qname = _force_bytes(qname)
             cdef bam1_t * src 
             cdef int l 
             cdef char * p
