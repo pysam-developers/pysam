@@ -1,6 +1,7 @@
 # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
+# kate: syntax Python; space-indent on; indent-width 4; replace-trailing-space-save off;
 import tempfile
 import os
 import sys
@@ -94,10 +95,23 @@ cdef bytes _my_encodeFilename(object filename):
     elif PyBytes_Check(filename):
         return filename
     elif PyUnicode_Check(filename):
-    
         return filename.encode(_FILENAME_ENCODING)
     else:
         raise TypeError, u"Argument must be string or unicode."
+
+
+cdef bytes _force_cmdline_bytes(object s):
+    u"""convert string or unicode object to bytes, assuming ascii encoding.
+    This should be used when s is going to be passed to
+    """
+    if s is None:
+        return None
+    elif PyBytes_Check(s):
+        return s
+    elif PyUnicode_Check(s):
+        return s.encode('ascii')
+    else:
+        raise TypeError, u"Argument must be string, bytes or unicode."
 
 #####################################################################
 #####################################################################
@@ -1397,8 +1411,8 @@ cdef class IteratorRowAll(IteratorRow):
         if not samfile._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
-        if samfile.isbam: mode = "rb"
-        else: mode = "r"
+        if samfile.isbam: mode = b"rb"
+        else: mode = b"r"
 
         # reopen the file to avoid iterator conflict
         if reopen:
@@ -2255,7 +2269,6 @@ cdef class AlignedRead:
         def __get__(self):
             cdef bam1_t * src
             cdef uint32_t start, end
-            cdef char * q
 
             src = self._delegate
 
@@ -2905,6 +2918,9 @@ def _samtools_dispatch( method,
     cdef int i, n, retval
 
     n = len(args)
+    method = _force_cmdline_bytes(method)
+    args = [ _force_cmdline_bytes(a) for a in args ]
+
     # allocate two more for first (dummy) argument (contains command)
     cargs = <char**>calloc( n+2, sizeof( char *) )
     cargs[0] = "samtools"
