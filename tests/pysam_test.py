@@ -128,7 +128,6 @@ class BinaryTest(unittest.TestCase):
                 pysam_method, pysam_options = pysam_command
                 output = pysam_method( *pysam_options.split(" "), raw=True)
                 if ">" in samtools_command:
-                    print "output", output, "TYPE:", type(output[0])
                     outfile = open( pysam_target, "wb" )
                     if sys.version_info[0] < 3:
                         for line in output: outfile.write( line )

@@ -101,7 +101,6 @@ cdef bytes _my_encodeFilename(object filename):
 
 cdef bytes _force_bytes(object s):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
-    This should be used when s is going to be passed to
     """
     if PY_MAJOR_VERSION < 3:
         return s
@@ -116,6 +115,12 @@ cdef bytes _force_bytes(object s):
 
 cdef inline bytes _force_cmdline_bytes(object s):
     return _force_bytes(s)
+
+cdef _charptr_to_str(char* s):
+    if PY_MAJOR_VERSION < 3:
+      return s
+    else:
+      return s.decode("ascii")
 
 #####################################################################
 #####################################################################
@@ -687,9 +692,9 @@ cdef class Samfile:
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         if not 0 <= tid < self.samfile.header.n_targets:
             raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.samfile.header.n_targets ) )
-        return self.samfile.header.target_name[tid]
+        return _charptr_to_str(self.samfile.header.target_name[tid])
 
-    cdef char * _getrname( self, int tid ):
+    cdef char * _getrname( self, int tid ): # TODO unused
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
@@ -1350,8 +1355,8 @@ cdef class IteratorRowRegion(IteratorRow):
         # iterator is alive
         self.samfile = samfile
 
-        if samfile.isbam: mode = "rb"
-        else: mode = "r"
+        if samfile.isbam: mode = b"rb"
+        else: mode = b"r"
 
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
@@ -1528,7 +1533,7 @@ cdef class IteratorRowSelection(IteratorRow):
             raise ValueError( "I/O operation on closed file" )
 
         assert samfile.isbam, "can only use this iterator on bam files"
-        mode = "rb"
+        mode = b"rb"
 
         # reopen the file to avoid iterator conflict
         if reopen:
@@ -3525,8 +3530,8 @@ cdef class IndexedReads:
     def __init__(self, Samfile samfile, int reopen = True ):
         self.samfile = samfile
 
-        if samfile.isbam: mode = "rb"
-        else: mode = "r"
+        if samfile.isbam: mode = b"rb"
+        else: mode = b"r"
 
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
