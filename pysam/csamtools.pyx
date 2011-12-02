@@ -2180,6 +2180,7 @@ cdef class AlignedRead:
             # if no quality information is present, the first byte says 0xff.
             
             if seq == None or len(seq) == 0: return
+            seq = _force_bytes(seq)
             cdef bam1_t * src
             cdef uint8_t * p 
             cdef char * s
