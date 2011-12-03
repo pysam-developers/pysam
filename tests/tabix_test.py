@@ -357,6 +357,16 @@ class TestVCF( TestParser ):
                 c[ncolumns+y] = "test_%i" % y
                 r[y] = "test_%i" % y
                 self.assertEqual( c[ncolumns+y], r[y] )
+
+class TestVCF( TestParser ):
+
+    filename = "example.vcf40.gz"
+
+    def testOpening( self ):
+        while 1:
+            infile = pysam.Tabixfile( self.filename )
+            infile.close()
+
                 
 if __name__ == "__main__":
 
