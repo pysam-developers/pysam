@@ -121,9 +121,9 @@ cdef inline bytes _force_cmdline_bytes(object s):
 
 cdef _charptr_to_str(char* s):
     if PY_MAJOR_VERSION < 3:
-      return s
+        return s
     else:
-      return s.decode("ascii")
+        return s.decode("ascii")
 
 #####################################################################
 #####################################################################
@@ -331,7 +331,7 @@ cdef class Fastafile:
         return faidx_fetch_nseq(self.fastafile)
 
     def _open( self, 
-               char * filename ):
+               filename ):
         '''open an indexed fasta file.
 
         This method expects an indexed fasta file.
@@ -340,6 +340,7 @@ cdef class Fastafile:
         # close a previously opened file
         if self.fastafile != NULL: self.close()
         if self._filename != NULL: free(self._filename)
+        filename = _my_encodeFilename(filename)
         self._filename = strdup(filename)
         self.fastafile = fai_load( filename )
 
@@ -2366,13 +2367,13 @@ cdef class AlignedRead:
                     value = "%c" % <char>bam_aux2A(s)
                     s += 1
                 elif auxtype in ('Z', 'H'):
-                    value = <char*>bam_aux2Z(s)
+                    value = _charptr_to_str(<char*>bam_aux2Z(s))
                     # +1 for NULL terminated string
                     s += len(value) + 1
                  # 
                 s += 1
   
-                result.append( (auxtag, value) )
+                result.append( (_charptr_to_str(auxtag), value) )
 
             return result
 
@@ -2706,7 +2707,7 @@ cdef class AlignedRead:
             # to convert a char into a string
             return '%c' % <char>bam_aux2A(v)
         elif type == 'Z':
-            return <char*>bam_aux2Z(v)
+            return _charptr_to_str(<char*>bam_aux2Z(v))
     
     def fancy_str (self):
         """returns list of fieldnames/values in pretty format for debugging
