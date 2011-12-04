@@ -125,6 +125,18 @@ cdef _charptr_to_str(char* s):
     else:
         return s.decode("ascii")
 
+cdef _force_str(object s):
+    """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
+    if s is None:
+        return None
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif PyBytes_Check(s):
+        return s.decode('ascii')
+    else:
+        # assume unicode
+        return s
+        
 #####################################################################
 #####################################################################
 #####################################################################
@@ -608,6 +620,7 @@ cdef class Samfile:
                 assert len(referencenames) == len(referencelengths), "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
+                referencenames = [ _force_bytes(ref) for ref in referencenames ]
                 header_to_write = bam_header_init()
                 header_to_write.n_targets = len(referencenames)
                 n = 0
@@ -747,6 +760,7 @@ cdef class Samfile:
                 raise ValueError( 'end out of range (%i)' % end )
 
         if region:
+            region = _force_str(region)
             parts = re.split( "[:-]", region )
             reference = parts[0]
             if len(parts) >= 2: rstart = int(parts[1]) - 1
@@ -1093,7 +1107,7 @@ cdef class Samfile:
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.samfile.header.n_targets:
-                t.append( self.samfile.header.target_name[x] )
+                t.append( _charptr_to_str(self.samfile.header.target_name[x]) )
             return tuple(t)
 
     property lengths:
