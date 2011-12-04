@@ -70,9 +70,12 @@ pysam_set_stderr( _logfile.fileno() )
 
 cdef from_string_and_size(char* s, size_t length):
     if PY_MAJOR_VERSION < 3:
-      return s[:length]
+        return s[:length]
     else:
-      return s[:length].decode("ascii")
+        if s == NULL:
+            return s[:length]
+        else:
+            return s[:length].decode("ascii")
 
 # filename encoding (copied from lxml.etree.pyx)
 cdef str _FILENAME_ENCODING
@@ -2242,6 +2245,7 @@ cdef class AlignedRead:
                 # if absent - set to 0xff
                 p[0] = 0xff
                 return
+            qual = _force_bytes(qual)
             cdef int l
             # convert to C string
             q = qual
@@ -2685,7 +2689,8 @@ cdef class AlignedRead:
         """retrieves optional data given a two-letter *tag*"""
         #see bam_aux.c: bam_aux_get() and bam_aux2i() etc 
         cdef uint8_t * v
-        v = bam_aux_get(self._delegate, tag)
+        btag = _force_bytes(tag)
+        v = bam_aux_get(self._delegate, btag)
         if v == NULL: raise KeyError( "tag '%s' not present" % tag )
         type = chr(v[0])
         if type == 'c' or type == 'C' or type == 's' or type == 'S':
