@@ -395,7 +395,7 @@ cdef class Fastafile:
             if end is None: end = max_pos -1
 
             if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
-            if start == end: return ""
+            if start == end: return b""
             # valid ranges are from 0 to 2^29-1
             if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
             if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
@@ -408,6 +408,8 @@ cdef class Fastafile:
             #                       end-1, 
             #                       &length)
             region = "%s:%i-%i" % (reference, start+1, end)
+            if PY_MAJOR_VERSION >= 3:
+                region = region.encode('ascii')
             seq = fai_fetch( self.fastafile, 
                              region,
                              &length )
@@ -417,7 +419,7 @@ cdef class Fastafile:
 
         # copy to python
         if seq == NULL:
-            return ""
+            return b""
         else:
             try:
                 py_seq = seq[:length]
