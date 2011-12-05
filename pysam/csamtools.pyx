@@ -2022,6 +2022,13 @@ cdef class AlignedRead:
     One issue to look out for is that the sequence should always
     be set *before* the quality scores. Setting the sequence will
     also erase any quality scores that were set previously.
+    
+    In Python 3, the fields containing sequence and quality 
+    (seq, query, qual and qqual) data are of type bytes. Other 
+    string data, such as the qname field and strings in the
+    tags tuple, is represented as unicode strings. On assignment,
+    both bytes and unicode objects are allowed, but unicode strings
+    must contain only ASCII characters.
     '''
 
     # Now only called when instances are created from Python
@@ -2185,7 +2192,9 @@ cdef class AlignedRead:
             src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, p))
 
     property seq:
-        """read sequence bases, including :term:`soft clipped` bases (None if not present)"""
+        """read sequence bases, including :term:`soft clipped` bases (None if not present).
+        
+        In Python 3, this property is of type bytes and assigning a unicode string to it consisting of ASCII characters only will work, but is inefficient."""
         def __get__(self):
             cdef bam1_t * src
             cdef char * s
@@ -2237,7 +2246,9 @@ cdef class AlignedRead:
 
 
     property qual:
-        """read sequence base qualities, including :term:`soft clipped` bases (None if not present)"""
+        """read sequence base qualities, including :term:`soft clipped` bases (None if not present).
+        
+        In Python 3, this property is of type bytes and assigning a unicode string to it consisting of ASCII characters only will work, but is inefficient."""
         def __get__(self):
 
             cdef bam1_t * src
@@ -2274,7 +2285,9 @@ cdef class AlignedRead:
                 p[k] = <uint8_t>q[k] - 33
 
     property query:
-        """aligned portion of the read and excludes any flanking bases that were :term:`soft clipped` (None if not present)
+        """aligned portion of the read and excludes any flanking bases that were :term:`soft clipped` (None if not present).
+        
+        In Python 3, this property is of type bytes. Assigning a unicode string to it consisting of ASCII characters only will work, but is inefficient.
 
         SAM/BAM files may included extra flanking bases sequences that were
         not part of the alignment.  These bases may be the result of the
@@ -2298,7 +2311,9 @@ cdef class AlignedRead:
             return get_seq_range(src, start, end)
 
     property qqual:
-        """aligned query sequence quality values (None if not present)"""
+        """aligned query sequence quality values (None if not present). This property is read-only.
+        
+        In Python 3, this property is of type bytes."""
         def __get__(self):
             cdef bam1_t * src
             cdef uint32_t start, end
@@ -2551,6 +2566,7 @@ cdef class AlignedRead:
         """mapping quality"""
         def __get__(self): return self._delegate.core.qual
         def __set__(self, qual): self._delegate.core.qual = qual
+
     property mrnm:
         """the :term:`reference` id of the mate 
         deprecated, use RNEXT instead.
@@ -3587,7 +3603,7 @@ cdef class IndexedReads:
             pos = bam_tell( self.fp.x.bam ) 
             ret = samread( self.fp, b)
             if ret > 0:
-                qname = bam1_qname( b )
+                qname = _charptr_to_str(bam1_qname( b ))
                 self.index[qname].append( pos )                
             
         bam_destroy1( b )

@@ -386,15 +386,18 @@ class TestIteratorRow(unittest.TestCase):
         sa = list(pysam.view( "ex1.bam", rnge, raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
         # check if the same reads are returned and in the same order
-        for line, pair in enumerate( zip( ps, sa ) ):
-            a,b = pair
+        for line, (a, b) in enumerate( zip( ps, sa ) ):
             d = b.split("\t")
             self.assertEqual( a.qname, d[0], "line %i: read id mismatch: %s != %s" % (line, a.rname, d[0]) )
             self.assertEqual( a.pos, int(d[3])-1, "line %i: read position mismatch: %s != %s, \n%s\n%s\n" % \
                                   (line, a.pos, int(d[3])-1,
                                    str(a), str(d) ) )
-            self.assertEqual( a.qual, d[10], "line %i: quality mismatch: %s != %s, \n%s\n%s\n" % \
-                                  (line, a.qual, d[10],
+            if sys.version_info[0] < 3:
+                qual = d[10]
+            else:
+                qual = d[10].encode('ascii')
+            self.assertEqual( a.qual, qual, "line %i: quality mismatch: %s != %s, \n%s\n%s\n" % \
+                                  (line, a.qual, qual,
                                    str(a), str(d) ) )
 
     def testIteratePerContig(self):
@@ -1338,7 +1341,10 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
     def testMate( self ):
         '''test mate access.'''
 
-        readnames = [ x.split("\t")[0] for x in open( "ex1.sam", "rb" ).readlines() ]
+        readnames = [ x.split(b"\t")[0] for x in open( "ex1.sam", "rb" ).readlines() ]
+        if sys.version_info[0] >= 3:
+            readnames = [ name.decode('ascii') for name in readnames ]
+            
         counts = collections.defaultdict( int )
         for x in readnames: counts[x] += 1
 
