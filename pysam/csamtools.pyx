@@ -69,13 +69,10 @@ pysam_set_stderr( _logfile.fileno() )
 
 
 cdef from_string_and_size(char* s, size_t length):
-    if PY_MAJOR_VERSION < 3:
+    if PY_MAJOR_VERSION < 3 or s == NULL:
         return s[:length]
     else:
-        if s == NULL:
-            return s[:length]
-        else:
-            return s[:length].decode("ascii")
+        return s[:length].decode("ascii")
 
 # filename encoding (copied from lxml.etree.pyx)
 cdef str _FILENAME_ENCODING
