@@ -396,6 +396,23 @@ class TestVCF( TestParser ):
             
             self.assertEqual( ref_string, cmp_string )
 
+class TestRemoteFileHTTP( unittest.TestCase):
+
+    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example.gtf.gz"
+    region = "chr1:1-1000"
+    local = "example.gtf.gz"
+
+    def testFetchAll( self ):
+        remote_file = pysam.Tabixfile(self.url, "r")  
+        remote_result = list(remote_file.fetch())
+        local_file = pysam.Tabixfile(self.local, "r")  
+        local_result = list(local_file.fetch())
+
+        self.assertEqual( len(remote_result), len(local_result) )
+        for x, y in zip(remote_result, local_result):
+            self.assertEqual( x, y )
+
+
 if __name__ == "__main__":
 
     unittest.main()

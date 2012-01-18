@@ -38,17 +38,22 @@ cdef class Tabixfile:
 
         filename_index = filename + ".tbi"
 
+        self.isremote = strncmp(filename,"http:",5) == 0 or \
+            strncmp(filename,"ftp:",4) == 0 
+
         if mode[0] == 'w':
             # open file for writing
             pass
 
         elif mode[0] == "r":
             # open file for reading
-            if not os.path.exists( self._filename ):
-                raise IOError( "file `%s` not found" % self._filename)
 
-            if not os.path.exists( filename_index ):
-                raise IOError( "index `%s` not found" % filename_index)
+            if not self.isremote:
+                if not os.path.exists( self._filename ):
+                    raise IOError( "file `%s` not found" % self._filename)
+
+                if not os.path.exists( filename_index ):
+                    raise IOError( "index `%s` not found" % filename_index)
 
             # open file and load index
             self.tabixfile = ti_open( self._filename, filename_index )

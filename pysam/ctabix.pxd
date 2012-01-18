@@ -170,10 +170,17 @@ cdef extern from "tabix.h":
   # char *ti_iter_read(BGZF *fp, ti_iter_t iter, int *len)
 
 cdef class Tabixfile:
+    # filename
     cdef char * _filename
 
     # pointer to tabixfile
     cdef tabix_t * tabixfile
      
+    # flag indicating whether file is remote
+    cdef int isremote
+
+
+
+
 cdef class Parser:
      pass

@@ -175,6 +175,8 @@ tabix = Extension(
     include_dirs=[ "tabix", "pysam" ] + include_os,
     libraries=[ "z", ],
     language="c",
+    define_macros = [('_FILE_OFFSET_BITS','64'),
+                     ('_USE_KNETFILE','')], 
     )
 
 tabproxies = Extension(
