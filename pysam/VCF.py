@@ -302,7 +302,7 @@ class VCF:
         raise ValueError(errorstring)
 
     def parse_format(self,line,format,filter=False):
-        if self._version == 40:
+        if self._version >= 40:
             if not format.startswith('<'): 
                 self.error(line,self.V40_MISSING_ANGLE_BRACKETS)
                 format = "<"+format
@@ -316,7 +316,7 @@ class VCF:
             elts = format.strip().split(',')
             first, rest = elts[0], ','.join(elts[1:])
             if first.find('=') == -1 or (first.find('"')>=0 and first.find('=') > first.find('"')):
-                if self._version == 40: self.error(line,self.V40_FORMAT_MUST_HAVE_NAMED_FIELDS)
+                if self._version >= 40: self.error(line,self.V40_FORMAT_MUST_HAVE_NAMED_FIELDS)
                 if idx == 4: self.error(line,self.BADLY_FORMATTED_FORMAT_STRING)
                 first = ["ID=","Number=","Type=","Description="][idx] + first
             if first.startswith('ID='):            data['id'] = first.split('=')[1]
@@ -465,8 +465,7 @@ class VCF:
             elif value == "VCFv4.0":
                 self._version = 40
             elif value == "VCFv4.1":
-                # AH - for testing
-                self._version = 40
+                self._version = 41
             else:
                 self.error(line,self.UNKNOWN_FORMAT_STRING)
         elif key == "INFO":
@@ -886,7 +885,7 @@ class VCF:
         self._filter = filter
 
     def setversion(self, version):
-        if version != 33 and version != 40: raise ValueError("Can only handle v3.3 and v4.0 VCF files")
+        if version not in [33,40,41]: raise ValueError("Can only handle v3.3, v4.0 and v4.1 VCF files")
         self._version = version
 
     def setregions(self, regions):
