@@ -242,6 +242,7 @@ class StderrStore():
     stderr is captured.
     '''
     def __init__(self):
+        return
         self.stderr_h, self.stderr_f = tempfile.mkstemp()
         self.stderr_save = Outs( sys.stderr.fileno() )
         self.stderr_save.setfd( self.stderr_h )
@@ -1426,6 +1427,7 @@ cdef class IteratorRowRegion(IteratorRow):
 
     def __dealloc__(self):
         bam_destroy1(self.b)
+        bam_iter_destroy( self.iter )
         if self.owns_samfile: samclose( self.fp )
 
 cdef class IteratorRowAll(IteratorRow):

@@ -359,7 +359,7 @@ class IOTest(unittest.TestCase):
                                      referencenames = infile.references,
                                      referencelengths = infile.lengths,
                                      add_sq_text = False )
-
+            
         iter = infile.fetch()
         for x in iter: outfile.write( x )
         infile.close()
@@ -367,6 +367,7 @@ class IOTest(unittest.TestCase):
 
         self.assertTrue( checkBinaryEqual( reference_filename, output_filename), 
                          "files %s and %s are not the same" % (reference_filename, output_filename) )
+
 
     def testReadWriteBam( self ):
         
@@ -376,6 +377,7 @@ class IOTest(unittest.TestCase):
 
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "rb", "wb" )
+
 
     def testReadWriteBamWithTargetNames( self ):
         
@@ -1560,3 +1562,4 @@ if __name__ == "__main__":
     subprocess.call( "make", shell=True)
     print "starting tests"
     unittest.main()
+    print "completed tests"
