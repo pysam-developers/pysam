@@ -292,13 +292,14 @@ VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO" )
 # type conversions within sam header records
 VALID_HEADER_FIELDS = { "HD" : { "VN" : str, "SO" : str, "GO" : str },
                         "SQ" : { "SN" : str, "LN" : int, "AS" : str, "M5" : str, "UR" : str, "SP" : str },
-                        "RG" : { "ID" : str, "SM" : str, "LB" : str, "DS" : str, "PU" : str, "PI" : str, "CN" : str, "DT" : str, "PL" : str, },
+                        "RG" : { "ID" : str, "SM" : str, "LB" : str, "DS" : str, "PU" : str, "PI" : str, 
+                                 "CN" : str, "DT" : str, "PL" : str, "FO" : str, "KS" : str },
                         "PG" : { "PN" : str, "ID" : str, "VN" : str, "CL" : str }, }
 
 # output order of fields within records
 VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
                        "SQ" : ( "SN", "LN", "AS", "M5" , "UR" , "SP" ),
-                       "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL" ),
+                       "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL", "FO", "KS" ),
                        "PG" : ( "PN", "ID", "VN", "CL" ), }
 
 
