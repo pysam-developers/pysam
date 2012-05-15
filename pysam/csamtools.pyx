@@ -2557,14 +2557,17 @@ cdef class AlignedRead:
         '''length of the read (read only). Returns 0 if not given.'''
         def __get__(self): return self._delegate.core.l_qseq
     property aend:
-        '''aligned end position of the read on the reference genome.  Returns
-        None if not available.'''
+        '''aligned reference position of the read on the reference genome.  
+        
+        aend points to one past the last aligned residue.
+        Returns None if not available.'''
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
             if (self.flag & BAM_FUNMAP) or src.core.n_cigar == 0:
                 return None
             return bam_calend(&src.core, bam1_cigar(src))
+
     property alen:
         '''aligned length of the read on the reference genome.  Returns None if
         not available.'''
@@ -2684,13 +2687,13 @@ cdef class AlignedRead:
             cdef uint32_t * cigar_p
             cdef bam1_t * src
 
-            result = []
             src = self._delegate
             if src.core.n_cigar == 0: return []
 
+            result = []
             pos = src.core.pos
-
             cigar_p = bam1_cigar(src)
+
             for k from 0 <= k < src.core.n_cigar:
                 op = cigar_p[k] & BAM_CIGAR_MASK
                 l = cigar_p[k] >> BAM_CIGAR_SHIFT
@@ -2702,6 +2705,48 @@ cdef class AlignedRead:
                     pos += l
 
             return result
+
+    property aligned_pairs:
+       """a list of aligned read and reference positions.
+
+       Unaligned position are marked by None.
+       """
+       def __get__(self):
+           cdef uint32_t k, i, pos, qpos
+           cdef int op
+           cdef uint32_t * cigar_p
+           cdef bam1_t * src 
+
+           src = self._delegate
+           if src.core.n_cigar == 0: return []
+
+           result = []
+           pos = src.core.pos
+           qpos = 0
+           cigar_p = bam1_cigar(src)
+
+           for k from 0 <= k < src.core.n_cigar:
+               op = cigar_p[k] & BAM_CIGAR_MASK
+               l = cigar_p[k] >> BAM_CIGAR_SHIFT
+
+               if op == BAM_CMATCH:
+                   for i from pos <= i < pos + l:
+                       result.append( (qpos, i) )
+                       qpos += 1
+                   pos += l
+
+               elif op == BAM_CINS:
+                   for i from pos <= i < pos + l:
+                       result.append( (qpos, None) )
+                       qpos += 1
+
+               elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                   for i from pos <= i < pos + l:
+                       result.append( (None, i) )
+                   pos += l
+                       
+           return result
+
 
     def overlap( self, uint32_t start, uint32_t end ):
         """return number of aligned bases of read overlapping the interval *start* and *end*

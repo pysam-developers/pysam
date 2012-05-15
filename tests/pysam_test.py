@@ -529,6 +529,7 @@ class TestTagParsing( unittest.TestCase ):
         outfile.write (r )
         outfile.close()
 
+
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):
@@ -1008,16 +1009,16 @@ class TestAlignedRead(unittest.TestCase):
         
         a = pysam.AlignedRead()
         a.qname = "read_12345"
-        a.seq="ACGT" * 3
+        a.seq="ACGT" * 10
         a.flag = 0
         a.rname = 0
-        a.pos = 33
+        a.pos = 20
         a.mapq = 20
-        a.cigar = ( (0,10), (2,1), (0,25) )
+        a.cigar = ( (0,10), (2,1), (0,9), (1,1), (0,20) )
         a.mrnm = 0
         a.mpos=200
         a.isize=167
-        a.qual="1234" * 3
+        a.qual="1234" * 10
         # todo: create tags
         return a
 
@@ -1038,17 +1039,17 @@ class TestAlignedRead(unittest.TestCase):
         # check cigar
         b.cigar = ( (0,10), )
         self.checkFieldEqual( a, b, "cigar" )
-        b.cigar = ( (0,10), (2,1), (0,25), (2,1), (0,25) )
+        b.cigar = ( (0,10), (2,1), (0,10) )
         self.checkFieldEqual( a, b, "cigar" )
-        b.cigar = ( (0,10), (2,1), (0,25) )
+        b.cigar = ( (0,10), (2,1), (0,9), (1,1), (0,20) )
         self.checkFieldEqual( a, b)
 
         # check seq 
         b.seq = "ACGT"
         self.checkFieldEqual( a, b, ("seq", "qual") )
-        b.seq = "ACGT" * 10
-        self.checkFieldEqual( a, b, ("seq", "qual") )
         b.seq = "ACGT" * 3
+        self.checkFieldEqual( a, b, ("seq", "qual") )
+        b.seq = "ACGT" * 10
         self.checkFieldEqual( a, b, ("qual",))
 
         # reset qual
@@ -1077,9 +1078,9 @@ class TestAlignedRead(unittest.TestCase):
         a.seq="ACGT" * 200
         a.flag = 0
         a.rname = 0
-        a.pos = 33
+        a.pos = 20
         a.mapq = 20
-        a.cigar = ( (0,10), (2,1), (0,25) )
+        a.cigar = ( (0, 4 * 200), )
         a.mrnm = 0
         a.mpos=200
         a.isize=167
@@ -1099,6 +1100,39 @@ class TestAlignedRead(unittest.TestCase):
             entry.tags = entry.tags
             after = entry.tags
             self.assertEqual( after, before )
+
+    def testUpdateTlen( self ):
+        '''check if updating tlen works'''
+        a = self.buildRead()
+        oldlen = a.tlen
+        oldlen *= 2
+        a.tlen = oldlen
+        self.assertEqual( a.tlen, oldlen )
+
+    def testPositions( self ):
+        a = self.buildRead()
+        self.assertEqual( a.positions,
+                          [20L, 21L, 22L, 23L, 24L, 25L, 26L, 27L, 28L, 29L, 
+                                31L, 32L, 33L, 34L, 35L, 36L, 37L, 38L, 39L, 
+                           40L, 41L, 42L, 43L, 44L, 45L, 46L, 47L, 48L, 49L, 
+                           50L, 51L, 52L, 53L, 54L, 55L, 56L, 57L, 58L, 59L] )
+
+        self.assertEqual( a.aligned_pairs,
+                          [(0L, 20L), (1L, 21L), (2L, 22L), (3L, 23L), (4L, 24L), 
+                           (5L, 25L), (6L, 26L), (7L, 27L), (8L, 28L), (9L, 29L), 
+                           (None, 30L), 
+                           (10L, 31L), (11L, 32L), (12L, 33L), (13L, 34L), (14L, 35L), 
+                           (15L, 36L), (16L, 37L), (17L, 38L), (18L, 39L), (19L, None), 
+                           (20L, 40L), (21L, 41L), (22L, 42L), (23L, 43L), (24L, 44L), 
+                           (25L, 45L), (26L, 46L), (27L, 47L), (28L, 48L), (29L, 49L), 
+                           (30L, 50L), (31L, 51L), (32L, 52L), (33L, 53L), (34L, 54L), 
+                           (35L, 55L), (36L, 56L), (37L, 57L), (38L, 58L), (39L, 59L)] )
+
+        self.assertEqual( a.positions, [x[1] for x in a.aligned_pairs if x[0] != None and x[1] != None] )
+        # alen is the length of the aligned read in genome
+        self.assertEqual( a.alen, a.aligned_pairs[-1][0] + 1 )
+        # aend points to one beyond last aligned base in ref
+        self.assertEqual( a.positions[-1], a.aend - 1 )
 
 class TestDeNovoConstruction(unittest.TestCase):
     '''check BAM/SAM file construction using ex3.sam
