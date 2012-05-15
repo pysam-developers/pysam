@@ -8,7 +8,7 @@ include COPYING
 include INSTALL
 include KNOWN_BUGS
 include THANKS
-include ez_setup.py
+include distribute_setup.py
 include pysam/csamtools.pxd
 include pysam/csamtools.pyx
 include pysam/csamtools.c

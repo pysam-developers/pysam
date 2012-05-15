@@ -56,10 +56,6 @@ cdef extern from "Python.h":
    long _Py_HashPointer(void*)
    FILE* PyFile_AsFile(object)
 
-cdef extern from "fileobject.h":
-   ctypedef class __builtin__.file [object PyFileObject]:
-        pass
-
 cdef extern from "razf.h":
   pass
 
@@ -375,7 +371,7 @@ cdef extern from "pysam_util.h":
 
     int pysam_reference2tid( bam_header_t *header, char * s )
 
-    void pysam_set_stderr( FILE * file )
+    void pysam_set_stderr( int fd )
 
     # return mapped/unmapped reads on tid
     uint32_t pysam_get_mapped( bam_index_t *idx, int tid )

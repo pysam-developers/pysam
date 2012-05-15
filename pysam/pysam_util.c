@@ -16,10 +16,10 @@
 #include "stdio.h"
 FILE * pysamerr = NULL;
 
-FILE * pysam_set_stderr( FILE * f )
+FILE * pysam_set_stderr(int fd)
 {
-  pysamerr = f;
-  return f;
+  pysamerr = fdopen(fd, "w");
+  return pysamerr;
 }
 
 // #######################################################

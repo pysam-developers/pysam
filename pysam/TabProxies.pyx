@@ -1,5 +1,4 @@
 import types
-from cpython cimport PyString_FromStringAndSize, PyString_AsString, PyString_AS_STRING
 
 cdef char * nextItem( char * buffer ):
     cdef char * pos
@@ -177,7 +176,7 @@ cdef class TupleProxy:
             return
 
         # conversion with error checking
-        cdef char * tmp = PyString_AsString( value )
+        cdef char * tmp = <char*>value
         self.fields[idx] = <char*>malloc( (strlen( tmp ) + 1) * sizeof(char) )
         if self.fields[idx] == NULL:
             raise ValueError("out of memory" )
@@ -221,7 +220,7 @@ cdef class TupleProxy:
             memcpy( cpy, self.data, self.nbytes+1)
             for x from 0 <= x < self.nbytes:
                 if cpy[x] == '\0': cpy[x] = '\t'
-            result = PyString_FromStringAndSize(cpy, self.nbytes)
+            result = str(cpy[:self.nbytes])
             free(cpy)
             return result
 
@@ -479,7 +478,7 @@ cdef class GTFProxy( TupleProxy ):
             end = start
             while end[0] != '\0' and end[0] != '"': end += 1
             l = end - start
-            result = PyString_FromStringAndSize( start, l )
+            result = start[:l].decode("ascii")
             return result
         else:
             return start
