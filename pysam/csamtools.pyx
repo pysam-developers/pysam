@@ -242,7 +242,6 @@ class StderrStore():
     stderr is captured.
     '''
     def __init__(self):
-        return
         self.stderr_h, self.stderr_f = tempfile.mkstemp()
         self.stderr_save = Outs( sys.stderr.fileno() )
         self.stderr_save.setfd( self.stderr_h )
@@ -636,9 +635,10 @@ cdef class Samfile:
                 # Optionally, if there is no text, add a SAM compatible header to output
                 # file.
                 if text is None and add_sq_text:
-                    text = ''
+                    text = []
                     for x from 0 <= x < header_to_write.n_targets:
-                        text += "@SQ\tSN:%s\tLN:%s\n" % (referencenames[x], referencelengths[x] )
+                        text.append( "@SQ\tSN:%s\tLN:%s\n" % (referencenames[x], referencelengths[x] ) )
+                    text = ''.join(text)
 
                 if text != None:
                     # copy without \0
@@ -1169,7 +1169,7 @@ cdef class Samfile:
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
 
             result = {}
-
+            
             if self.samfile.header.text != NULL:
                 # convert to python string (note: call self.text to create 0-terminated string)
                 t = self.text
