@@ -10,6 +10,8 @@ import pysam
 import unittest
 import itertools
 import subprocess
+import glob
+import re
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -317,12 +319,27 @@ class TestBed( unittest.TestCase ):
             self.assertEqual( int(c[2]) + 1, r.end )
             self.assertEqual( str(int(c[2]) + 1), r[2] )
 
-class TestVCF( TestParser ):
+class TestVCFFromTabix( TestParser ):
 
-    filename = "example.vcf40.gz"
+    filename = "example.vcf40"
+
     columns = ("contig", "pos", "id", 
                "ref", "alt", "qual", 
                "filter", "info", "format" )
+
+    def setUp( self ):
+        
+        self.tmpfilename = "tmp_%s.vcf" % id(self)
+        shutil.copyfile( self.filename, self.tmpfilename )
+        pysam.tabix_index( self.tmpfilename, preset = "vcf" )
+
+        self.tabix = pysam.Tabixfile( self.tmpfilename + ".gz" )
+        self.compare = [ x[:-1].split("\t") for x in open( self.filename, "r") if not x.startswith("#") ]
+
+    def tearDown( self ):
+
+        os.unlink( self.tmpfilename + ".gz" )
+        os.unlink( self.tmpfilename + ".gz.tbi" )
 
     def testRead( self ):
         
@@ -380,22 +397,68 @@ class TestVCF( TestParser ):
                 r[y] = "test_%i" % y
                 self.assertEqual( c[ncolumns+y], r[y] )
 
-class TestVCF( TestParser ):
 
-    filename = "example.vcf40.gz"
+class TestVCFFromVCF( unittest.TestCase ):
 
-    def testOpening( self ):
-        while 1:
-            infile = pysam.Tabixfile( self.filename )
-            infile.close()
+    filename = "example.vcf40"
 
-                
-            # check strings
-            ref_string = "\t".join( c )
-            cmp_string = str(r)
-            
-            self.assertEqual( ref_string, cmp_string )
+    columns = ("contig", "pos", "id", 
+               "ref", "alt", "qual", 
+               "filter", "info", "format" )
 
+    # tests failing while parsing
+    fail_on_parsing = ( (5, "Flag fields should not have a value"),
+                       (9, "aouao" ),
+                       (13, "aoeu" ),
+                       (18, "Error BAD_NUMBER_OF_PARAMETERS" ),
+                       (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ) )
+
+    # tests failing on opening
+    fail_on_opening = ( (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ),
+                     )
+
+    def setUp( self ):
+        
+        self.vcf = pysam.VCF()
+        self.compare = [ x[:-1].split("\t") for x in open( self.filename, "r") if not x.startswith("#") ]
+
+    def testParsing( self ):
+
+        f = open(self.filename)
+        fn = os.path.basename( self.filename )
+
+        
+        for x, msg in self.fail_on_opening:
+            if "%i.vcf" % x == fn:
+                self.assertRaises( ValueError, self.vcf.parse, f )
+                return
+        else:
+            iter = self.vcf.parse(f)
+
+        for x, msg in self.fail_on_parsing:
+            if "%i.vcf" % x == fn:
+                self.assertRaises( ValueError, list, iter )
+                break
+                # python 2.7
+                # self.assertRaisesRegexp( ValueError, re.compile(msg), self.vcf.parse, f )
+        else:
+            for ln in iter:
+                pass
+
+############################################################################                   
+# create a test class for each example vcf file.
+# Two samples are created - 
+# 1. Testing pysam/tabix access
+# 2. Testing the VCF class
+vcf_files = glob.glob( "vcf-examples/*.vcf" )
+
+for vcf_file in vcf_files:
+    n = "VCFFromTabixTest_%s" % os.path.basename( vcf_file[:-4] )
+    globals()[n] = type( n, (TestVCFFromTabix,), dict( filename=vcf_file,) )
+    n = "VCFFromVCFTest_%s" % os.path.basename( vcf_file[:-4] )
+    globals()[n] = type( n, (TestVCFFromVCF,), dict( filename=vcf_file,) )
+
+############################################################################                   
 class TestRemoteFileHTTP( unittest.TestCase):
 
     url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example.gtf.gz"

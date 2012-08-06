@@ -78,7 +78,7 @@
 ##INFO=<ID=MNP,Number=0,Type=Flag,Description="MNP allele">
 ##INFO=<ID=MQ,Number=1,Type=Float,Description="RMS Mapping Quality">
 ##INFO=<ID=MQ0,Number=1,Type=Integer,Description="Total Mapping Quality Zero Reads">
-##INFO=<ID=MQ0Fraction,Number=1,Type=Integer,Description="Fraction of Mapping Quality Zero Reads">
+##INFO=<ID=MQ0Fraction,Number=1,Type=Float,Description="Fraction of Mapping Quality Zero Reads">
 ##INFO=<ID=MQM,Number=1,Type=Float,Description="Mean mapping quality of observed alternate alleles">
 ##INFO=<ID=MQRankSum,Number=1,Type=Float,Description="Z-score From Wilcoxon rank sum test of Alt vs. Ref read mapping qualities">
 ##INFO=<ID=NF,Number=0,Type=Integer,Description="Total number of forward reads containing this variant">

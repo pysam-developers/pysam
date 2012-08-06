@@ -435,6 +435,48 @@ int pysam_reference2tid( bam_header_t *header, const char * s )
   return kh_value(h, iter);
 }
 
+// Auxiliary functions for B support
+void bam_aux_appendB(bam1_t *b, const char tag[2], char type, char subtype, int len, uint8_t *data)
+{
+
+  int ori_len;
+
+  int data_len;
+
+  // check that type is 'B'
+  if('B' != type) return;
+
+  ori_len = b->data_len;
+
+  data_len = len * bam_aux_type2size(subtype);
+  // infer the data length from the sub-type
+  b->data_len += 8 + data_len;
+
+  b->l_aux += 8 + data_len;
+
+  if (b->m_data < b->data_len) 
+    {
+
+      b->m_data = b->data_len;
+
+      kroundup32(b->m_data);
+
+      b->data = (uint8_t*)realloc(b->data, b->m_data);
+
+    }
+
+  b->data[ori_len] = tag[0];
+  b->data[ori_len + 1] = tag[1];
+  // tag
+  b->data[ori_len + 2] = type;
+  // type
+  b->data[ori_len + 3] = subtype;
+  // subtype
+  (*(int32_t*)(b->data + ori_len + 4)) = len;
+  // size
+  memcpy(b->data + ori_len + 8, data, data_len);
+  // data
+}
 
   
 
