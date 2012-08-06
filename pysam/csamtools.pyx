@@ -320,10 +320,6 @@ cdef class Fastafile:
         add function to get sequence names.
     '''
 
-    cdef char * _filename
-    # pointer to fastafile
-    cdef faidx_t * fastafile
-
     def __cinit__(self, *args, **kwargs ):
         self.fastafile = NULL
         self._filename = NULL
@@ -1363,14 +1359,6 @@ cdef class IteratorRowRegion(IteratorRow):
     samfile and the iterator.
     """
 
-    cdef bam_iter_t             iter # iterator state object
-    cdef bam1_t *               b
-    cdef int                    retval
-    cdef Samfile                samfile
-    cdef samfile_t              * fp
-    # true if samfile belongs to this object
-    cdef int owns_samfile
-
     def __cinit__(self, Samfile samfile, int tid, int beg, int end, int reopen = True ):
 
         if not samfile._isOpen():
@@ -1440,11 +1428,6 @@ cdef class IteratorRowAll(IteratorRow):
     to not re-open *samfile*.
     """
 
-    # cdef bam1_t * b
-    # cdef samfile_t * fp
-    # # true if samfile belongs to this object
-    # cdef int owns_samfile
-
     def __cinit__(self, Samfile samfile, int reopen = True ):
 
         if not samfile._isOpen():
@@ -1497,9 +1480,6 @@ cdef class IteratorRowAll(IteratorRow):
 cdef class IteratorRowAllRefs(IteratorRow):
     """iterates over all mapped reads by chaining iterators over each reference
     """
-    cdef Samfile     samfile
-    cdef int         tid
-    cdef IteratorRowRegion rowiter
 
     def __cinit__(self, Samfile samfile):
         assert samfile._isOpen()
@@ -1545,13 +1525,6 @@ cdef class IteratorRowSelection(IteratorRow):
 
     iterate over reads in *samfile* at a given list of file positions.
     """
-
-    cdef bam1_t * b
-    cdef int current_pos
-    cdef samfile_t * fp
-    cdef positions
-    # true if samfile belongs to this object
-    cdef int owns_samfile
 
     def __cinit__(self, Samfile samfile, positions, int reopen = True ):
 
@@ -1616,14 +1589,6 @@ cdef class IteratorRowSelection(IteratorRow):
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
-ctypedef struct __iterdata:
-    samfile_t * samfile
-    bam_iter_t iter
-    faidx_t * fastafile
-    int tid
-    char * seq
-    int seq_len
-
 cdef int __advance_all( void * data, bam1_t * b ):
     '''advance without any read filtering.
     '''
@@ -1723,20 +1688,6 @@ cdef class IteratorColumn:
     max_depth
        maximum read depth. The default is 8000.
     '''
-
-    # result of the last plbuf_push
-    cdef IteratorRowRegion iter
-    cdef int tid
-    cdef int pos
-    cdef int n_plp
-    cdef int mask
-    cdef const_bam_pileup1_t_ptr plp
-    cdef bam_plp_t pileup_iter
-    cdef __iterdata iterdata
-    cdef Samfile samfile
-    cdef Fastafile fastafile
-    cdef stepper
-    cdef int max_depth
 
     def __cinit__( self, Samfile samfile, **kwargs ):
         self.samfile = samfile
@@ -2856,11 +2807,6 @@ cdef class PileupProxy:
     If the underlying engine iterator advances, the results of this column
     will change.
     '''
-    cdef bam_pileup1_t * plp
-    cdef int tid
-    cdef int pos
-    cdef int n_pu
-
     def __init__(self):
         raise TypeError("This class cannot be instantiated from Python")
 
@@ -2895,15 +2841,6 @@ cdef class PileupProxy:
 cdef class PileupRead:
     '''A read aligned to a column.
     '''
-
-    cdef:
-         AlignedRead _alignment
-         int32_t  _qpos
-         int _indel
-         int _level
-         uint32_t _is_del
-         uint32_t _is_head
-         uint32_t _is_tail
 
     def __init__(self):
         raise TypeError("This class cannot be instantiated from Python")
@@ -3620,12 +3557,6 @@ cdef class IndexedReads:
     multiple operators work on the same file. Set *reopen* = False
     to not re-open *samfile*.
     """
-
-    cdef Samfile samfile
-    cdef samfile_t * fp
-    cdef index
-    # true if samfile belongs to this object
-    cdef int owns_samfile
 
     def __init__(self, Samfile samfile, int reopen = True ):
         self.samfile = samfile
