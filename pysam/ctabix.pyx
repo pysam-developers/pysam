@@ -200,9 +200,6 @@ cdef class TabixIterator:
     given by *tid*, *start* and *end*.
     """
     
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-
     def __cinit__(self, Tabixfile tabixfile, 
                   int tid, int start, int end ):
         
@@ -254,9 +251,6 @@ cdef class TabixHeaderIterator:
     """return header lines.
     """
     
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-
     def __cinit__(self, Tabixfile tabixfile ):
         
         assert tabixfile._isOpen()
@@ -435,10 +429,6 @@ cdef class TabixIteratorParsed:
 
     Returns parsed data.
     """
-
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-    cdef Parser parser
 
     def __cinit__(self, 
                   Tabixfile tabixfile, 

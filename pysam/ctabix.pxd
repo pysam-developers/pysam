@@ -180,7 +180,31 @@ cdef class Tabixfile:
     cdef int isremote
 
 
+cdef class TabixIterator:
+    cdef ti_iter_t iterator
+    cdef tabix_t * tabixfile
 
+cdef class TabixHeaderIterator:
+    cdef ti_iter_t iterator
+    cdef tabix_t * tabixfile
 
 cdef class Parser:
      pass
+
+cdef class asTuple(Parser):
+     pass
+
+cdef class asGTF(Parser):
+     pass
+
+cdef class asBed(Parser):
+     pass
+
+cdef class asVCF(Parser):
+     pass
+
+cdef class TabixIteratorParsed:
+    cdef ti_iter_t iterator
+    cdef tabix_t * tabixfile
+    cdef Parser parser
+
