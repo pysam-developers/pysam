@@ -56,10 +56,6 @@ cdef extern from "Python.h":
    long _Py_HashPointer(void*)
    FILE* PyFile_AsFile(object)
 
-cdef extern from "fileobject.h":
-   ctypedef class __builtin__.file [object PyFileObject]:
-        pass
-
 cdef extern from "razf.h":
   pass
 
@@ -375,7 +371,7 @@ cdef extern from "pysam_util.h":
 
     int pysam_reference2tid( bam_header_t *header, char * s )
 
-    void pysam_set_stderr( FILE * file )
+    void pysam_set_stderr( int fd )
 
     # return mapped/unmapped reads on tid
     uint32_t pysam_get_mapped( bam_index_t *idx, int tid )
@@ -385,7 +381,31 @@ cdef extern from "pysam_util.h":
 
 #    void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
 
-# need to declare all C fields and methods here
+####################################################################
+# Utility types
+
+ctypedef struct __iterdata:
+    samfile_t * samfile
+    bam_iter_t iter
+    faidx_t * fastafile
+    int tid
+    char * seq
+    int seq_len
+
+
+####################################################################
+#
+# Exposing pysam extension classes
+#
+# Note: need to declare all C fields and methods here
+#
+cdef class Fastafile:
+    cdef char * _filename
+    # pointer to fastafile
+    cdef faidx_t * fastafile
+
+    cdef char * _fetch( self, char * reference, int start, int end, int * length )
+
 cdef class AlignedRead:
 
     # object that this AlignedRead represents
@@ -420,17 +440,99 @@ cdef class Samfile:
 
     cdef char * _getrname( self, int tid )
 
+cdef class PileupProxy:
+    cdef bam_pileup1_t * plp
+    cdef int tid
+    cdef int pos
+    cdef int n_pu
+
+cdef class PileupRead:
+    cdef AlignedRead _alignment
+    cdef int32_t  _qpos
+    cdef int _indel
+    cdef int _level
+    cdef uint32_t _is_del
+    cdef uint32_t _is_head
+    cdef uint32_t _is_tail
+
 cdef class IteratorRow:
     pass
 
-cdef class IteratorRowAll(IteratorRow):
-    cdef bam1_t * b
-    cdef samfile_t * fp
+cdef class IteratorRowRegion(IteratorRow):
+    cdef bam_iter_t             iter # iterator state object
+    cdef bam1_t *               b
+    cdef int                    retval
+    cdef Samfile                samfile
+    cdef samfile_t              * fp
     # true if samfile belongs to this object
     cdef int owns_samfile
 
     cdef bam1_t * getCurrent( self )
 
     cdef int cnext(self)
+
+cdef class IteratorRowAll(IteratorRow):
+    cdef bam1_t * b
+    cdef samfile_t * fp
+    cdef int owns_samfile
+    cdef bam1_t * getCurrent( self )
+    cdef int cnext(self)
+
+cdef class IteratorRowAllRefs(IteratorRow):
+    cdef Samfile     samfile
+    cdef int         tid
+    cdef IteratorRowRegion rowiter
+
+cdef class IteratorRowSelection(IteratorRow):
+    cdef bam1_t * b
+    cdef int current_pos
+    cdef samfile_t * fp
+    cdef positions
+    # true if samfile belongs to this object
+    cdef int owns_samfile
+
+    cdef bam1_t * getCurrent( self )
+
+    cdef int cnext(self)
+
+cdef class IteratorColumn:
+
+    # result of the last plbuf_push
+    cdef IteratorRowRegion iter
+    cdef int tid
+    cdef int pos
+    cdef int n_plp
+    cdef int mask
+    cdef const_bam_pileup1_t_ptr plp
+    cdef bam_plp_t pileup_iter
+    cdef __iterdata iterdata
+    cdef Samfile samfile
+    cdef Fastafile fastafile
+    cdef stepper
+    cdef int max_depth
+
+    cdef int cnext(self)
+    cdef char * getSequence( self )
+    cdef setMask( self, mask )
+    cdef setupIteratorData( self,
+                            int tid,
+                            int start,
+                            int end,
+                            int reopen = ? )
+
+    cdef reset( self, tid, start, end )
+
+cdef class IteratorColumnRegion(IteratorColumn):
+    pass
+
+cdef class IteratorColumnAllRefs(IteratorColumn):
+    pass
+
+cdef class IndexedReads:
+    cdef Samfile samfile
+    cdef samfile_t * fp
+    cdef index
+    # true if samfile belongs to this object
+    cdef int owns_samfile
 
 

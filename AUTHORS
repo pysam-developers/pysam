@@ -2,6 +2,9 @@ Andreas Heger, Martin Goodson, Tildon Grant Belgard, Leo Goodstadt,
 Kevin B. Jacobs all contributed to the code for pysam. Gerton Lunter 
 advised.
 
+Marcel Martin implented python 3 compabitility. 
+Ben Schiller contributed a windows compabtible clone.
+
 The sources in the directory samtools are from the samtools project:
 http://samtools.sourceforge.net/. All of these are available under the
 MIT licence. The attributions for this code are as follows:

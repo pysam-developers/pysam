@@ -32,15 +32,16 @@ def locate(pattern, root=os.curdir):
           yield os.path.join(path, filename)
 
 def _update_pysam_files(cf, destdir):
-  for filename in cf:
-     if not filename: continue
-     dest = filename + ".pysam.c"
-     with open( filename ) as infile:
-        with open( dest, "w" ) as outfile:
-           outfile.write( '#include "pysam.h"\n\n' )
-           outfile.write( re.sub( "stderr", "pysamerr", "".join(infile.readlines()) ) )
-  with open( os.path.join( destdir, "pysam.h" ), "w" )as outfile:
-     outfile.write ("""#ifndef PYSAM_H
+    '''update pysam files applying redirection of ouput'''
+    for filename in cf:
+        if not filename: continue
+        dest = filename + ".pysam.c"
+        with open( filename ) as infile:
+            with open( dest, "w" ) as outfile:
+                outfile.write( '#include "pysam.h"\n\n' )
+                outfile.write( re.sub( "stderr", "pysamerr", "".join(infile.readlines()) ) )
+            with open( os.path.join( destdir, "pysam.h" ), "w" )as outfile:
+                outfile.write ("""#ifndef PYSAM_H
 #define PYSAM_H
 #include "stdio.h"
 extern FILE * pysamerr;
@@ -92,9 +93,9 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
          cf.append( _compareAndCopy( src_file, srcdir, destdir, exclude ) )
          ncopied += 1
          
-      print "installed latest source code from %s: %i files copied" % (srcdir, ncopied)
+      sys.stdout.write("installed latest source code from %s: %i files copied" % (srcdir, ncopied))
       # redirect stderr to pysamerr and replace bam.h with a stub.
-      print "applying stderr redirection"
+      sys.stdout.write("applying stderr redirection")
      
       _update_pysam_files(cf, destdir)
       
@@ -102,9 +103,9 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
    sys.exit(0)
 
 if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
-    print "refreshing latest source code from .c to .pysam.c"
+    sys.stdout.write("refreshing latest source code from .c to .pysam.c")
 # redirect stderr to pysamerr and replace bam.h with a stub.
-    print "applying stderr redirection"
+    sys.stdout.write("applying stderr redirection")
     for destdir in ('samtools', 'tabix'):
         pysamcfiles = locate( "*.pysam.c", destdir )
         for f in pysamcfiles: os.remove(f)
@@ -115,19 +116,11 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 
 
 
-from ez_setup import use_setuptools
+from distribute_setup import use_setuptools
 use_setuptools()
 
 from setuptools import Extension, setup
-
-## note that for automatic cythoning, 
-## both pyrex and cython need to be installed.
-## see http://mail.python.org/pipermail/distutils-sig/2007-September/008204.html
-
-try:
-    from Cython.Distutils import build_ext
-except:
-    from setuptools.command.build_ext import build_ext
+from Cython.Distutils import build_ext
 
 classifiers = """
 Development Status :: 2 - Alpha
@@ -175,6 +168,8 @@ tabix = Extension(
     include_dirs=[ "tabix", "pysam" ] + include_os,
     libraries=[ "z", ],
     language="c",
+    define_macros = [('_FILE_OFFSET_BITS','64'),
+                     ('_USE_KNETFILE','')], 
     )
 
 tabproxies = Extension(
@@ -208,7 +203,6 @@ metadata = {
     'py_modules': [
       "pysam/__init__", 
       "pysam/Pileup", 
-      "pysam/namedtuple",
       "pysam/version" ],
     'requires' : ['cython (>=0.12)'],
     'ext_modules': [samtools, tabix, tabproxies, cvcf ],
@@ -216,7 +210,11 @@ metadata = {
     'install_requires' : ['cython>=0.12.1',], 
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
+    'use_2to3': True,
     }
+
+if sys.version_info[0] < 3:
+    metadata['py_modules'].append("pysam/namedtuple")
 
 if __name__=='__main__':
    dist = setup(**metadata)

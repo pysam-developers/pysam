@@ -11,7 +11,6 @@ cdef extern from "stdlib.h":
 
 cdef extern from "Python.h":
     ctypedef struct FILE
-    FILE* PyFile_AsFile(object)
     char *fgets(char *str, int size, FILE *ifile)
     int feof(FILE *stream)
     size_t strlen(char *s)

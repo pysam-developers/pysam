@@ -10,6 +10,8 @@ import pysam
 import unittest
 import itertools
 import subprocess
+import glob
+import re
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -26,7 +28,7 @@ def checkBinaryEqual( filename1, filename2 ):
             yield c
 
     found = False
-    for c1,c2 in itertools.izip( chariter( infile1), chariter( infile2) ):
+    for c1,c2 in zip( chariter( infile1), chariter( infile2) ):
         if c1 != c2: break
     else:
         found = True
@@ -85,10 +87,15 @@ class TestIteration( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename )
-        lines = [ x for x in gzip.open(self.filename).readlines() if not x.startswith("#") ]
+        lines = []
+        with gzip.open( self.filename, "rb") as inf:
+            for line in inf:
+                line = line.decode('ascii')
+                if line.startswith("#"): continue
+                lines.append( line )
         # creates index of contig, start, end, adds content without newline.
         self.compare = [ 
-            (x[0][0], int(x[0][3]), int(x[0][4]), x[1]) 
+            (x[0][0], int(x[0][3]), int(x[0][4]), x[1])
             for x in [ (y.split("\t"), y[:-1]) for y in lines ] ]
                          
     def getSubset( self, contig = None, start = None, end = None):
@@ -113,7 +120,8 @@ class TestIteration( unittest.TestCase ):
         return subset
 
     def checkPairwise( self, result, ref ):
-
+        '''check pairwise results.
+        '''
         result.sort()
         ref.sort()
 
@@ -121,14 +129,14 @@ class TestIteration( unittest.TestCase ):
         b = set(ref)
 
         self.assertEqual( len(result), len(ref),
-                          "unexpected number of results: %i, expected %i, differences are %s: %s" \
+                          "unexpected number of results: result=%i, expected ref=%i, differences are %s: %s" \
                               % (len(result), len(ref),
                                  a.difference(b), 
                                  b.difference(a) ))
 
-        for x, d in enumerate( zip( result, ref )):
+        for x, d in enumerate( list(zip( result, ref ))):
             self.assertEqual( d[0], d[1],
-                              "unexpected results in pair %i: '%s', expected '%s'" % \
+                              "unexpected results in pair %i:\n'%s', expected\n'%s'" % \
                                   (x, 
                                    d[0], 
                                    d[1]) )
@@ -141,6 +149,8 @@ class TestIteration( unittest.TestCase ):
 
     def testPerContig( self ):
         for contig in ("chr1", "chr2", "chr1", "chr2" ):
+            print ("getting")
+            print ( contig)
             result = list(self.tabix.fetch( contig ))
             ref = self.getSubset( contig )
             self.checkPairwise( result, ref )
@@ -191,15 +201,17 @@ class TestIteration( unittest.TestCase ):
         self.assertRaises( ValueError, self.tabix.fetch, "chrUn" )
 
     def testGetContigs( self ):
-        self.assertEqual( sorted(self.tabix.contigs), ["chr1", "chr2"] )
+        self.assertEqual( sorted(self.tabix.contigs), [b"chr1", b"chr2"] )
         # check that contigs is read-only
         self.assertRaises( AttributeError, setattr, self.tabix, "contigs", ["chr1", "chr2"] )
 
     def testHeader( self ):
         ref = []
-        for x in gzip.open( self.filename ):
-            if not x.startswith("#"): break
-            ref.append( x[:-1] )
+        with gzip.open( self.filename ) as inf:
+            for x in inf:
+                x = x.decode("ascii")
+                if not x.startswith("#"): break
+                ref.append( x[:-1].encode('ascii') )
         header = list( self.tabix.header )
         self.assertEqual( ref, header )
 
@@ -213,7 +225,7 @@ class TestIteration( unittest.TestCase ):
         for i in range(10000):
             func1()
 
-
+import io
 class TestParser( unittest.TestCase ):
 
     filename = "example.gtf.gz" 
@@ -221,7 +233,12 @@ class TestParser( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename )
-        self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") if not x.startswith("#") ]
+        self.compare = []
+        with gzip.open( self.filename, "rb") as inf:
+            for line in inf:
+                line = line.decode('ascii')
+                if line.startswith("#"): continue
+                self.compare.append( [ x.encode('ascii') for x in line[:-1].split("\t")] )
 
     def testRead( self ):
 
@@ -247,21 +264,22 @@ class TestParser( unittest.TestCase ):
             for y in range(len(r)):
                 r[y] = "test_%05i" % y
                 c[y] = "test_%05i" % y
-            self.assertEqual( c, list(r) )
+            self.assertEqual( [x.encode("ascii") for x in c], list(r) )
             self.assertEqual( "\t".join( c ), str(r) )
             # check second assignment
             for y in range(len(r)):
                 r[y] = "test_%05i" % y
-            self.assertEqual( c, list(r) )
+            self.assertEqual( [x.encode("ascii") for x in c], list(r) )
             self.assertEqual( "\t".join( c ), str(r) )
 
     def testUnset( self ):
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asTuple() )):
             self.assertEqual( self.compare[x], list(r) )
             c = list(r)
-            e = list(r)
+            e = [ x.decode('ascii') for x in r ]
             for y in range(len(r)):
-                r[y] = c[y] = None
+                r[y] = None
+                c[y] = None
                 e[y] = ""
                 self.assertEqual( c, list(r) )
                 self.assertEqual( "\t".join(e), str(r) )
@@ -285,7 +303,7 @@ class TestBed( unittest.TestCase ):
 
     def setUp( self ):
 
-        self.tabix = pysam.Tabixfile( self.filename )
+        self.tabix = pysam.Tabixfile( self.filename)
         self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") if not x.startswith("#") ]
 
     def testRead( self ):
@@ -317,12 +335,27 @@ class TestBed( unittest.TestCase ):
             self.assertEqual( int(c[2]) + 1, r.end )
             self.assertEqual( str(int(c[2]) + 1), r[2] )
 
-class TestVCF( TestParser ):
+class TestVCFFromTabix( TestParser ):
 
-    filename = "example.vcf40.gz"
+    filename = "example.vcf40"
+
     columns = ("contig", "pos", "id", 
                "ref", "alt", "qual", 
                "filter", "info", "format" )
+
+    def setUp( self ):
+        
+        self.tmpfilename = "tmp_%s.vcf" % id(self)
+        shutil.copyfile( self.filename, self.tmpfilename )
+        pysam.tabix_index( self.tmpfilename, preset = "vcf" )
+
+        self.tabix = pysam.Tabixfile( self.tmpfilename + ".gz" )
+        self.compare = [ x[:-1].split("\t") for x in open( self.filename, "r") if not x.startswith("#") ]
+
+    def tearDown( self ):
+
+        os.unlink( self.tmpfilename + ".gz" )
+        os.unlink( self.tmpfilename + ".gz.tbi" )
 
     def testRead( self ):
         
@@ -380,21 +413,85 @@ class TestVCF( TestParser ):
                 r[y] = "test_%i" % y
                 self.assertEqual( c[ncolumns+y], r[y] )
 
-class TestVCF( TestParser ):
 
-    filename = "example.vcf40.gz"
+class TestVCFFromVCF( unittest.TestCase ):
 
-    def testOpening( self ):
-        while 1:
-            infile = pysam.Tabixfile( self.filename )
-            infile.close()
+    filename = "example.vcf40"
 
-                
-            # check strings
-            ref_string = "\t".join( c )
-            cmp_string = str(r)
-            
-            self.assertEqual( ref_string, cmp_string )
+    columns = ("contig", "pos", "id", 
+               "ref", "alt", "qual", 
+               "filter", "info", "format" )
+
+    # tests failing while parsing
+    fail_on_parsing = ( (5, "Flag fields should not have a value"),
+                       (9, "aouao" ),
+                       (13, "aoeu" ),
+                       (18, "Error BAD_NUMBER_OF_PARAMETERS" ),
+                       (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ) )
+
+    # tests failing on opening
+    fail_on_opening = ( (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ),
+                     )
+
+    def setUp( self ):
+        
+        self.vcf = pysam.VCF()
+        with open( self.filename, "r") as inf:
+            self.compare = [ x[:-1].split("\t") for x in inf if not x.startswith("#") ]
+
+    def testParsing( self ):
+
+        f = open(self.filename)
+        fn = os.path.basename( self.filename )
+
+        
+        for x, msg in self.fail_on_opening:
+            if "%i.vcf" % x == fn:
+                self.assertRaises( ValueError, self.vcf.parse, f )
+                return
+        else:
+            iter = self.vcf.parse(f)
+
+        for x, msg in self.fail_on_parsing:
+            if "%i.vcf" % x == fn:
+                self.assertRaises( ValueError, list, iter )
+                break
+                # python 2.7
+                # self.assertRaisesRegexp( ValueError, re.compile(msg), self.vcf.parse, f )
+        else:
+            for ln in iter:
+                pass
+
+############################################################################                   
+# create a test class for each example vcf file.
+# Two samples are created - 
+# 1. Testing pysam/tabix access
+# 2. Testing the VCF class
+vcf_files = glob.glob( "vcf-examples/*.vcf" )
+
+for vcf_file in vcf_files:
+    n = "VCFFromTabixTest_%s" % os.path.basename( vcf_file[:-4] )
+    globals()[n] = type( n, (TestVCFFromTabix,), dict( filename=vcf_file,) )
+    n = "VCFFromVCFTest_%s" % os.path.basename( vcf_file[:-4] )
+    globals()[n] = type( n, (TestVCFFromVCF,), dict( filename=vcf_file,) )
+
+############################################################################                   
+class TestRemoteFileHTTP( unittest.TestCase):
+
+    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example.gtf.gz"
+    region = "chr1:1-1000"
+    local = "example.gtf.gz"
+
+    def testFetchAll( self ):
+        remote_file = pysam.Tabixfile(self.url, "r")  
+        remote_result = list(remote_file.fetch())
+        local_file = pysam.Tabixfile(self.local, "r")  
+        local_result = list(local_file.fetch())
+
+        self.assertEqual( len(remote_result), len(local_result) )
+        for x, y in zip(remote_result, local_result):
+            self.assertEqual( x, y )
+
 
 if __name__ == "__main__":
 

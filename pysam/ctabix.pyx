@@ -1,9 +1,80 @@
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 
+# Helper functions for python 3 compatibility - taken
+# from csamtools.pyx
 import tempfile, os, sys, types, itertools, struct, ctypes, gzip
-from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
+
 cimport TabProxies
+
+from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+# from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
+from cpython.version cimport PY_MAJOR_VERSION
+
+cdef from_string_and_size(char* s, size_t length):
+    if PY_MAJOR_VERSION < 3:
+        return s[:length]
+    else:
+        return s[:length].decode("ascii")
+
+# filename encoding (copied from lxml.etree.pyx)
+cdef str _FILENAME_ENCODING
+_FILENAME_ENCODING = sys.getfilesystemencoding()
+if _FILENAME_ENCODING is None:
+    _FILENAME_ENCODING = sys.getdefaultencoding()
+if _FILENAME_ENCODING is None:
+    _FILENAME_ENCODING = 'ascii'
+
+#cdef char* _C_FILENAME_ENCODING
+#_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
+
+cdef bytes _my_encodeFilename(object filename):
+    u"""Make sure a filename is 8-bit encoded (or None).
+    """
+    if filename is None:
+        return None
+    elif PyBytes_Check(filename):
+        return filename
+    elif PyUnicode_Check(filename):
+        return filename.encode(_FILENAME_ENCODING)
+    else:
+        raise TypeError, u"Argument must be string or unicode."
+
+cdef bytes _force_bytes(object s):
+    u"""convert string or unicode object to bytes, assuming ascii encoding.
+    """
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif s is None:
+        return None
+    elif PyBytes_Check(s):
+        return s
+    elif PyUnicode_Check(s):
+        return s.encode('ascii')
+    else:
+        raise TypeError, u"Argument must be string, bytes or unicode."
+
+cdef inline bytes _force_cmdline_bytes(object s):
+    return _force_bytes(s)
+
+cdef _charptr_to_str(char* s):
+    if PY_MAJOR_VERSION < 3:
+        return s
+    else:
+        return s.decode("ascii")
+
+cdef _force_str(object s):
+    """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
+    if s is None:
+        return None
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif PyBytes_Check(s):
+        return s.decode('ascii')
+    else:
+        # assume unicode
+        return s
+
 
 cdef class Tabixfile:
     '''*(filename, mode='r')*
@@ -11,17 +82,16 @@ cdef class Tabixfile:
     opens a :term:`tabix file` for reading. A missing
     index (*filename* + ".tbi") will raise an exception.
     '''
-
-    def __cinit__(self, *args, **kwargs ):
+    def __cinit__(self, filename, mode = 'r', *args, **kwargs ):
         self.tabixfile = NULL
-        self._open( *args, **kwargs )
+        self._open( filename, mode, *args, **kwargs )
 
     def _isOpen( self ):
         '''return true if samfile has been opened.'''
         return self.tabixfile != NULL
 
     def _open( self, 
-               char * filename, 
+               filename,
                mode ='r',
               ):
         '''open a :term:`tabix file` for reading.
@@ -33,25 +103,34 @@ cdef class Tabixfile:
         if self.tabixfile != NULL: self.close()
         self.tabixfile = NULL
 
-        if self._filename != NULL: free(self._filename )
-        self._filename = strdup( filename )
-
         filename_index = filename + ".tbi"
+        self.isremote = filename.startswith( "http:") or filename.startswith( "ftp:" )
+
+        # encode all the strings
+        filename = _my_encodeFilename(filename)
+        filename_index = _my_encodeFilename(filename_index)
+        cdef bytes bmode = mode.encode('ascii')
+
+        if self._filename != NULL: free(self._filename )
+
+        self._filename = strdup(filename)
 
         if mode[0] == 'w':
             # open file for writing
-            pass
+            raise NotImplementedError("writing to tabix files not implemented" )
 
         elif mode[0] == "r":
             # open file for reading
-            if not os.path.exists( self._filename ):
-                raise IOError( "file `%s` not found" % self._filename)
+            
+            if not self.isremote:
+                if not os.path.exists( filename ):
+                    raise IOError( "file `%s` not found" % filename)
 
-            if not os.path.exists( filename_index ):
-                raise IOError( "index `%s` not found" % filename_index)
+                if not os.path.exists( filename_index ):
+                    raise IOError( "index `%s` not found" % filename_index)
 
             # open file and load index
-            self.tabixfile = ti_open( self._filename, filename_index )
+            self.tabixfile = ti_open( filename, filename_index )
 
         if self.tabixfile == NULL:
             raise IOError("could not open file `%s`" % filename )
@@ -93,7 +172,9 @@ cdef class Tabixfile:
                 region = reference
 
         if region:
-            ti_parse_region( self.tabixfile.idx, region, &rtid, &rstart, &rend)        
+            region = _force_bytes(region)
+            ti_parse_region( self.tabixfile.idx, region, 
+                             &rtid, &rstart, &rend)        
             if rtid < 0: raise ValueError( "invalid region `%s`" % region )
             if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
             if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
@@ -195,9 +276,6 @@ cdef class TabixIterator:
     given by *tid*, *start* and *end*.
     """
     
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-
     def __cinit__(self, Tabixfile tabixfile, 
                   int tid, int start, int end ):
         
@@ -239,7 +317,8 @@ cdef class TabixIterator:
             if s == NULL: raise StopIteration
             if s[0] != '#': break
 
-        return s
+        retval = _charptr_to_str( s )
+        return retval
 
     def __dealloc__(self):
         if <void*>self.iterator != NULL:
@@ -249,9 +328,6 @@ cdef class TabixHeaderIterator:
     """return header lines.
     """
     
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-
     def __cinit__(self, Tabixfile tabixfile ):
         
         assert tabixfile._isOpen()
@@ -430,10 +506,6 @@ cdef class TabixIteratorParsed:
 
     Returns parsed data.
     """
-
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-    cdef Parser parser
 
     def __cinit__(self, 
                   Tabixfile tabixfile, 

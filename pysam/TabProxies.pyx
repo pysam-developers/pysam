@@ -1,5 +1,69 @@
-import types
-from cpython cimport PyString_FromStringAndSize, PyString_AsString, PyString_AS_STRING
+import types, sys
+
+from cpython.version cimport PY_MAJOR_VERSION
+
+from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+
+cdef from_string_and_size(char* s, size_t length):
+    if PY_MAJOR_VERSION < 3:
+        return s[:length]
+    else:
+        return s[:length].decode("ascii")
+
+# filename encoding (copied from lxml.etree.pyx)
+cdef str _FILENAME_ENCODING
+_FILENAME_ENCODING = sys.getfilesystemencoding()
+if _FILENAME_ENCODING is None:
+    _FILENAME_ENCODING = sys.getdefaultencoding()
+if _FILENAME_ENCODING is None:
+    _FILENAME_ENCODING = 'ascii'
+
+cdef bytes _my_encodeFilename(object filename):
+    u"""Make sure a filename is 8-bit encoded (or None).
+    """
+    if filename is None:
+        return None
+    elif PyBytes_Check(filename):
+        return filename
+    elif PyUnicode_Check(filename):
+        return filename.encode(_FILENAME_ENCODING)
+    else:
+        raise TypeError, u"Argument must be string or unicode."
+
+cdef bytes _force_bytes(object s):
+    u"""convert string or unicode object to bytes, assuming ascii encoding.
+    """
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif s is None:
+        return None
+    elif PyBytes_Check(s):
+        return s
+    elif PyUnicode_Check(s):
+        return s.encode('ascii')
+    else:
+        raise TypeError, u"Argument must be string, bytes or unicode."
+
+cdef inline bytes _force_cmdline_bytes(object s):
+    return _force_bytes(s)
+
+cdef _charptr_to_str(char* s):
+    if PY_MAJOR_VERSION < 3:
+        return s
+    else:
+        return s.decode("ascii")
+
+cdef _force_str(object s):
+    """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
+    if s is None:
+        return None
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif PyBytes_Check(s):
+        return s.decode('ascii')
+    else:
+        # assume unicode
+        return s
 
 cdef char * nextItem( char * buffer ):
     cdef char * pos
@@ -149,7 +213,7 @@ cdef class TupleProxy:
         i += self.offset
         if i >= self.nfields:
             raise IndexError( "list index out of range %i >= %i" % (i, self.nfields ))
-        return self.fields[i]
+        return self.fields[i] 
 
     def __getitem__( self, key ):
         if type(key) == int: return self._getindex( key )
@@ -177,7 +241,8 @@ cdef class TupleProxy:
             return
 
         # conversion with error checking
-        cdef char * tmp = PyString_AsString( value )
+        value = _force_bytes(value)
+        cdef char * tmp = <char*>value
         self.fields[idx] = <char*>malloc( (strlen( tmp ) + 1) * sizeof(char) )
         if self.fields[idx] == NULL:
             raise ValueError("out of memory" )
@@ -213,7 +278,10 @@ cdef class TupleProxy:
         # copy and replace \0 bytes with \t characters
         if self.is_modified:
             # todo: treat NULL values
-            return "\t".join( [StrOrEmpty( self.fields[x]) for x in xrange(0, self.nfields ) ] )
+            result = []
+            for x in xrange( 0, self.nfields ):
+                result.append( StrOrEmpty( self.fields[x]).decode('ascii') )
+            return "\t".join( result )
         else:
             cpy = <char*>calloc( sizeof(char), self.nbytes+1 )
             if cpy == NULL:
@@ -221,7 +289,7 @@ cdef class TupleProxy:
             memcpy( cpy, self.data, self.nbytes+1)
             for x from 0 <= x < self.nbytes:
                 if cpy[x] == '\0': cpy[x] = '\t'
-            result = PyString_FromStringAndSize(cpy, self.nbytes)
+            result = str(cpy[:self.nbytes])
             free(cpy)
             return result
 
@@ -479,7 +547,7 @@ cdef class GTFProxy( TupleProxy ):
             end = start
             while end[0] != '\0' and end[0] != '"': end += 1
             l = end - start
-            result = PyString_FromStringAndSize( start, l )
+            result = start[:l].decode("ascii")
             return result
         else:
             return start
