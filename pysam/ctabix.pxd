@@ -207,3 +207,16 @@ cdef class TabixIteratorParsed:
     cdef tabix_t * tabixfile
     cdef Parser parser
 
+ctypedef class tabix_inplace_iterator:
+    cdef FILE * infile
+    cdef char * buffer
+    cdef size_t size
+    cdef Parser parser
+
+    cdef __cnext__(self)
+
+ctypedef class tabix_copy_iterator:
+    cdef FILE * infile  
+    cdef Parser parser
+    cdef __cnext__(self)
+

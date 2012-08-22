@@ -89,6 +89,7 @@ cdef class TupleProxy:
     Access to individual fields is via the [] operator.
     
     Only read-only access is implemented.
+
     '''
 
     def __cinit__(self ): 
@@ -197,7 +198,7 @@ cdef class TupleProxy:
             pos += 1
             self.fields[field] = pos
             field += 1
-            if field >= max_fields:
+            if field > max_fields:
                 raise ValueError("row too large - more than %i fields" % max_fields )
             nbytes -= pos - old_pos
             if nbytes < 0: break
@@ -316,114 +317,81 @@ cdef class GTFProxy( TupleProxy ):
 
     The only exception is the attributes field when set from
     a dictionary - this field will manage its own memory.
-
     '''
 
     def __cinit__(self ): 
         # automatically calls TupleProxy.__cinit__
         self.hasOwnAttributes = False
+        self._attributes = NULL
 
     def __dealloc__(self):
         # automatically calls TupleProxy.__dealloc__
         if self.hasOwnAttributes:
-            free(self.attributes)
+            free(self._attributes)
 
     cdef int getMaxFields( self, size_t nbytes ):
         '''return max number of fields.'''
         return 9
 
-    cdef update( self, char * buffer, size_t nbytes ):
-        '''update internal data.
-
-        nbytes does not include the terminal '\0'.
-        '''
-        cdef int end
-        cdef char * cstart, * cend, * cscore
-        self.contig = buffer
-        cdef char * pos
-
-        if buffer[nbytes] != 0:
-            raise ValueError( "incomplete line at %s" % buffer )
-        
-        self.source = pos = nextItem( buffer )
-        self.feature = pos = nextItem( pos )
-        cstart = pos = nextItem( pos )
-        cend = pos = nextItem( pos )
-        self.score = pos = nextItem( pos )
-        self.strand = pos = nextItem( pos )
-        self.frame = pos = nextItem( pos )
-        self.attributes = pos = nextItem( pos )
-
-        self.start = atoi( cstart ) - 1
-        self.end = atoi( cend )
-        self.nfields = 9
-       
     property contig:
        '''contig of feature.'''
-       def __get__( self ): return self.contig
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.contig = value
-
-    property feature:
-       '''feature name.'''
-       def __get__( self ): return self.feature
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.feature = value
+       def __get__( self ): return self._getindex( 0 )
+       def __set__( self, value ): self._setindex( 0, value )
 
     property source:
        '''feature source.'''
-       def __get__( self ): return self.source
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.source = value
+       def __get__( self ): return self._getindex( 1 )
+       def __set__( self, value ): self._setindex( 1, value )
+
+    property feature:
+       '''feature name.'''
+       def __get__( self ): return self._getindex( 2 )
+       def __set__( self, value ): self._setindex( 2, value )
 
     property start:
        '''feature start (in 0-based open/closed coordinates).'''
-       def __get__( self ): return self.start
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.start = value
+       def __get__( self ): return int( self._getindex( 3 )) - 1
+       def __set__( self, value ): self._setindex( 3, str(value+1) )
 
     property end:
        '''feature end (in 0-based open/closed coordinates).'''
-       def __get__( self ): return self.end
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.end = value
+       def __get__( self ): return int( self._getindex( 4 ) )
+       def __set__( self, value ): self._setindex( 4, str(value) )
 
     property score:
        '''feature score.'''
        def __get__( self ): 
-           if self.score[0] == '.' and self.score[1] == '\0' :
+           v = self._getindex(5)
+           if v == "" or v[0] == '.':
                return None
            else:
-               return atof(self.score)
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.score = value
+               return float(v)
+
+       def __set__( self, value ): self._setindex( 5, value )
 
     property strand:
        '''feature strand.'''
-       def __get__( self ): return self.strand
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.strand = value
+       def __get__( self ): return self._getindex( 6 )
+       def __set__( self, value ): self._setindex( 6, value )
 
     property frame:
        '''feature frame.'''
-       def __get__( self ): return self.frame
-       def __set__( self, value ): 
-           self.is_modified = True
-           self.frame = value
+       def __get__( self ): return self._getindex( 7 )
+       def __set__( self, value ): self._setindex( 7, value )
 
     property attributes:
        '''feature attributes (as a string).'''
-       def __get__( self ): return self.attributes
+       def __get__( self ): 
+           if self.hasOwnAttributes:
+               return self._attributes
+           else:
+               return self._getindex( 8 )
        def __set__( self, value ): 
-           self.is_modified = True
-           self.attributes = value
+           if self.hasOwnAttributes:
+               free(self._attributes)
+               self._attributes = NULL
+               self.hasOwnAttributes = False
+           self._setindex(8, value )
 
     def asDict( self ):
         """parse attributes - return as dict
@@ -466,12 +434,12 @@ cdef class GTFProxy( TupleProxy ):
         cdef int l
 
         # clean up if this field is set twice
-        if self.hasOwnAttributes:
-            free(self.attributes)
+        if self.hasOwnAttributes: 
+            free(self._attributes)
 
         aa = []
         for k,v in d.items():
-            if type(v) == types.StringType:
+            if type(v) in types.StringTypes:
                 aa.append( '%s "%s"' % (k,v) )
             else:
                 aa.append( '%s %s' % (k,str(v)) )
@@ -479,10 +447,10 @@ cdef class GTFProxy( TupleProxy ):
         a = "; ".join( aa ) + ";"
         p = a
         l = len(a)
-        self.attributes = <char *>calloc( l + 1, sizeof(char) )
-        if self.attributes == NULL:
+        self._attributes = <char *>calloc( l + 1, sizeof(char) )
+        if self._attributes == NULL:
             raise ValueError("out of memory" )
-        memcpy( self.attributes, p, l )
+        memcpy( self._attributes, p, l )
 
         self.hasOwnAttributes = True
         self.is_modified = True
