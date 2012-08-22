@@ -118,6 +118,11 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         
         self.vcf = vcf
     
+    def error(self,line,error,opt=None):
+        '''raise error.'''
+        # pass to vcf file for error handling
+        return self.vcf.error( line, error, opt )
+
     cdef update( self, char * buffer, size_t nbytes ):
         '''update internal data.
         
