@@ -2980,14 +2980,28 @@ def _samtools_dispatch( method,
     # needs to be before reading back the file contents
     if catch_stdout:
         stdout_save.restore()
-        out_stdout = open( stdout_f, "r").readlines()
-        os.remove( stdout_f )
+        try:
+            with open( stdout_f, "r") as inf:
+                out_stdout = inf.readlines()
+        except UnicodeDecodeError:
+            with open( stdout_f, "rb") as inf:
+                # read binary output
+                out_stdout = inf.read()
+
+        # os.remove( stdout_f )
     else:
         out_stdout = []
 
     if catch_stderr:
         stderr_save.restore()
-        out_stderr = open( stderr_f, "r").readlines()
+        try:
+            with open( stderr_f, "r") as inf:
+                out_stderr = inf.readlines()
+        except UnicodeDecodeError:
+            with open( stderr_f, "rb") as inf:
+                # read binary output
+                out_stderr = inf.read()
+            
         os.remove( stderr_f )
     else:
         out_stderr = []

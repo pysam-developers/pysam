@@ -28,7 +28,7 @@ def checkBinaryEqual( filename1, filename2 ):
             yield c
 
     found = False
-    for c1,c2 in itertools.izip( chariter( infile1), chariter( infile2) ):
+    for c1,c2 in zip( chariter( infile1), chariter( infile2) ):
         if c1 != c2: break
     else:
         found = True
@@ -87,10 +87,15 @@ class TestIteration( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename )
-        lines = [ x for x in gzip.open(self.filename).readlines() if not x.startswith("#") ]
+        lines = []
+        with gzip.open( self.filename, "rb") as inf:
+            for line in inf:
+                line = line.decode('ascii')
+                if line.startswith("#"): continue
+                lines.append( line )
         # creates index of contig, start, end, adds content without newline.
         self.compare = [ 
-            (x[0][0], int(x[0][3]), int(x[0][4]), x[1]) 
+            (x[0][0], int(x[0][3]), int(x[0][4]), x[1])
             for x in [ (y.split("\t"), y[:-1]) for y in lines ] ]
                          
     def getSubset( self, contig = None, start = None, end = None):
@@ -115,7 +120,8 @@ class TestIteration( unittest.TestCase ):
         return subset
 
     def checkPairwise( self, result, ref ):
-
+        '''check pairwise results.
+        '''
         result.sort()
         ref.sort()
 
@@ -123,14 +129,14 @@ class TestIteration( unittest.TestCase ):
         b = set(ref)
 
         self.assertEqual( len(result), len(ref),
-                          "unexpected number of results: %i, expected %i, differences are %s: %s" \
+                          "unexpected number of results: result=%i, expected ref=%i, differences are %s: %s" \
                               % (len(result), len(ref),
                                  a.difference(b), 
                                  b.difference(a) ))
 
-        for x, d in enumerate( zip( result, ref )):
+        for x, d in enumerate( list(zip( result, ref ))):
             self.assertEqual( d[0], d[1],
-                              "unexpected results in pair %i: '%s', expected '%s'" % \
+                              "unexpected results in pair %i:\n'%s', expected\n'%s'" % \
                                   (x, 
                                    d[0], 
                                    d[1]) )
@@ -143,6 +149,8 @@ class TestIteration( unittest.TestCase ):
 
     def testPerContig( self ):
         for contig in ("chr1", "chr2", "chr1", "chr2" ):
+            print ("getting")
+            print ( contig)
             result = list(self.tabix.fetch( contig ))
             ref = self.getSubset( contig )
             self.checkPairwise( result, ref )
@@ -193,15 +201,17 @@ class TestIteration( unittest.TestCase ):
         self.assertRaises( ValueError, self.tabix.fetch, "chrUn" )
 
     def testGetContigs( self ):
-        self.assertEqual( sorted(self.tabix.contigs), ["chr1", "chr2"] )
+        self.assertEqual( sorted(self.tabix.contigs), [b"chr1", b"chr2"] )
         # check that contigs is read-only
         self.assertRaises( AttributeError, setattr, self.tabix, "contigs", ["chr1", "chr2"] )
 
     def testHeader( self ):
         ref = []
-        for x in gzip.open( self.filename ):
-            if not x.startswith("#"): break
-            ref.append( x[:-1] )
+        with gzip.open( self.filename ) as inf:
+            for x in inf:
+                x = x.decode("ascii")
+                if not x.startswith("#"): break
+                ref.append( x[:-1].encode('ascii') )
         header = list( self.tabix.header )
         self.assertEqual( ref, header )
 
@@ -215,7 +225,7 @@ class TestIteration( unittest.TestCase ):
         for i in range(10000):
             func1()
 
-
+import io
 class TestParser( unittest.TestCase ):
 
     filename = "example.gtf.gz" 
@@ -223,7 +233,12 @@ class TestParser( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename )
-        self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") if not x.startswith("#") ]
+        self.compare = []
+        with gzip.open( self.filename, "rb") as inf:
+            for line in inf:
+                line = line.decode('ascii')
+                if line.startswith("#"): continue
+                self.compare.append( [ x.encode('ascii') for x in line[:-1].split("\t")] )
 
     def testRead( self ):
 
@@ -249,21 +264,22 @@ class TestParser( unittest.TestCase ):
             for y in range(len(r)):
                 r[y] = "test_%05i" % y
                 c[y] = "test_%05i" % y
-            self.assertEqual( c, list(r) )
+            self.assertEqual( [x.encode("ascii") for x in c], list(r) )
             self.assertEqual( "\t".join( c ), str(r) )
             # check second assignment
             for y in range(len(r)):
                 r[y] = "test_%05i" % y
-            self.assertEqual( c, list(r) )
+            self.assertEqual( [x.encode("ascii") for x in c], list(r) )
             self.assertEqual( "\t".join( c ), str(r) )
 
     def testUnset( self ):
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asTuple() )):
             self.assertEqual( self.compare[x], list(r) )
             c = list(r)
-            e = list(r)
+            e = [ x.decode('ascii') for x in r ]
             for y in range(len(r)):
-                r[y] = c[y] = None
+                r[y] = None
+                c[y] = None
                 e[y] = ""
                 self.assertEqual( c, list(r) )
                 self.assertEqual( "\t".join(e), str(r) )
@@ -287,7 +303,7 @@ class TestBed( unittest.TestCase ):
 
     def setUp( self ):
 
-        self.tabix = pysam.Tabixfile( self.filename )
+        self.tabix = pysam.Tabixfile( self.filename)
         self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") if not x.startswith("#") ]
 
     def testRead( self ):
@@ -420,7 +436,8 @@ class TestVCFFromVCF( unittest.TestCase ):
     def setUp( self ):
         
         self.vcf = pysam.VCF()
-        self.compare = [ x[:-1].split("\t") for x in open( self.filename, "r") if not x.startswith("#") ]
+        with open( self.filename, "r") as inf:
+            self.compare = [ x[:-1].split("\t") for x in inf if not x.startswith("#") ]
 
     def testParsing( self ):
 
