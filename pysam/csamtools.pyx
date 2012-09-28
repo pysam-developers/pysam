@@ -639,6 +639,7 @@ cdef class Samfile:
 
                 if text != None:
                     # copy without \0
+                    text = _force_bytes(text)
                     ctext = text
                     header_to_write.l_text = strlen(ctext)
                     header_to_write.text = <char*>calloc( strlen(ctext), sizeof(char) )
@@ -2972,22 +2973,34 @@ def _samtools_dispatch( method,
     cargs[0] = "samtools"
     cargs[1] = method
     for i from 0 <= i < n: cargs[i+2] = args[i]
-
+    
     retval = pysam_dispatch(n+2, cargs)
     free( cargs )
-
+    
     # restore stdout/stderr. This will also flush, so
     # needs to be before reading back the file contents
     if catch_stdout:
         stdout_save.restore()
-        out_stdout = open( stdout_f, "r").readlines()
+        try:
+            with open( stdout_f, "r") as inf:
+                out_stdout = inf.readlines()
+        except UnicodeDecodeError:
+            with open( stdout_f, "rb") as inf:
+                # read binary output
+                out_stdout = inf.read()
         os.remove( stdout_f )
     else:
         out_stdout = []
 
     if catch_stderr:
         stderr_save.restore()
-        out_stderr = open( stderr_f, "r").readlines()
+        try:
+            with open( stderr_f, "r") as inf:
+                out_stderr = inf.readlines()
+        except UnicodeDecodeError:
+            with open( stderr_f, "rb") as inf:
+                # read binary output
+                out_stderr = inf.read()
         os.remove( stderr_f )
     else:
         out_stderr = []

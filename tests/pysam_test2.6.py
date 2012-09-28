@@ -14,12 +14,11 @@ import subprocess
 import shutil
 import logging
 
-IS_PYTHON3 = sys.version_info[0] >= 3
 
-if IS_PYTHON3:
-    from itertools import zip_longest
-else:
+if sys.version_info[0] < 3:
     from itertools import izip as zip_longest
+else:
+    from itertools import zip_longest
 
 
 SAMTOOLS="samtools"
@@ -55,17 +54,16 @@ def runSamtools( cmd ):
     try:
         retcode = subprocess.call(cmd, shell=True)
         if retcode < 0:
-            print("Child was terminated by signal", -retcode)
+            print >>sys.stderr, "Child was terminated by signal", -retcode
     except OSError as e:
-        print("Execution failed:", e)
+        print >>sys.stderr, "Execution failed:", e
 
 def getSamtoolsVersion():
     '''return samtools version'''
 
-    with subprocess.Popen(SAMTOOLS, shell=True, stderr=subprocess.PIPE).stderr as pipe:
-        lines = b"".join(pipe.readlines())
-
-    if IS_PYTHON3:
+    pipe = subprocess.Popen(SAMTOOLS, shell=True, stderr=subprocess.PIPE).stderr
+    lines = b"".join(pipe.readlines())
+    if sys.version_info[0] >= 3:
         lines = lines.decode('ascii')
     return re.search( "Version:\s+(\S+)", lines).groups()[0]
 
@@ -217,8 +215,7 @@ class BinaryTest(unittest.TestCase):
             # remove previous files
             if os.path.exists( WORKDIR ):
                 shutil.rmtree( WORKDIR )
-                pass
-
+                
             # copy the source files to WORKDIR
             os.makedirs( WORKDIR )
 
@@ -233,39 +230,31 @@ class BinaryTest(unittest.TestCase):
             
             for label in self.order:
                 command = self.commands[label]
-                # build samtools command and target and run
                 samtools_target, samtools_command = command[0]
-                runSamtools( " ".join( (SAMTOOLS, samtools_command )))
-
-                # get pysam command and run
                 try:
                     pysam_target, pysam_command = command[1]
                 except ValueError as msg:
                     raise ValueError( "error while setting up %s=%s: %s" %\
                                           (label, command, msg) )
-
+                runSamtools( " ".join( (SAMTOOLS, samtools_command )))
                 pysam_method, pysam_options = pysam_command
                 try:
                     output = pysam_method( *pysam_options.split(" "), raw=True)
                 except pysam.SamtoolsError as msg:
                     raise pysam.SamtoolsError( "error while executing %s: options=%s: msg=%s" %\
                                                    (label, pysam_options, msg) )
-
-                
-
                 if ">" in samtools_command:
-                    with open( pysam_target, "wb" ) as outfile:
-                        if type(output) == list:
-                            if IS_PYTHON3:
-                                for line in output: 
-                                    outfile.write( line.encode('ascii') )
-                            else:
-                                for line in output: outfile.write( line )
-                        else:
-                            outfile.write(output)
-
+                    outfile = open( pysam_target, "wb" )
+                    if sys.version_info[0] < 3:
+                        for line in output: outfile.write( line )
+                    else:
+                        for line in output: outfile.write(line.encode('ascii'))
+                    outfile.close()
+                    
             os.chdir( savedir )
             BinaryTest.first_time = False
+
+            
 
         samtools_version = getSamtoolsVersion()
 
@@ -351,8 +340,7 @@ class BinaryTest(unittest.TestCase):
 
     def __del__(self):
         if os.path.exists( WORKDIR ):
-            pass
-        # shutil.rmtree( WORKDIR )
+            shutil.rmtree( WORKDIR )
 
 class IOTest(unittest.TestCase):
     '''check if reading samfile and writing a samfile are consistent.'''
@@ -508,7 +496,7 @@ class TestFloatTagBug( unittest.TestCase ):
         This test is expected to fail until samtools is fixed.
         '''
         samfile = pysam.Samfile("tag_bug.bam")
-        read = next(samfile.fetch(until_eof=True))
+        read = samfile.fetch(until_eof=True).next()
         self.assertTrue( ('XC',1) in read.tags )
         self.assertEqual(read.opt('XC'), 1)
 
@@ -561,7 +549,7 @@ class TestIteratorRow(unittest.TestCase):
         sa = list(pysam.view( "ex1.bam", rnge, raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
         # check if the same reads are returned and in the same order
-        for line, (a, b) in enumerate( list(zip( ps, sa )) ):
+        for line, (a, b) in enumerate( zip( ps, sa ) ):
             d = b.split("\t")
             self.assertEqual( a.qname, d[0], "line %i: read id mismatch: %s != %s" % (line, a.rname, d[0]) )
             self.assertEqual( a.pos, int(d[3])-1, "line %i: read position mismatch: %s != %s, \n%s\n%s\n" % \
@@ -600,7 +588,7 @@ class TestIteratorRowAll(unittest.TestCase):
         sa = list(pysam.view( "ex1.bam", raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa) ))
         # check if the same reads are returned
-        for line, pair in enumerate( list(zip( ps, sa )) ):
+        for line, pair in enumerate( zip( ps, sa ) ):
             data = pair[1].split("\t")
             self.assertEqual( pair[0].qname, data[0], "read id mismatch in line %i: %s != %s" % (line, pair[0].rname, data[0]) )
 
@@ -645,7 +633,7 @@ class TestIteratorColumn(unittest.TestCase):
 
     def testInverse( self ):
         '''test the inverse, is point-wise pileup accurate.'''
-        for contig, refseq in list(self.mCoverages.items()):
+        for contig, refseq in self.mCoverages.items():
             refcolumns = sum(refseq)
             for pos, refcov in enumerate( refseq ):
                 columns = list(self.samfile.pileup( contig, pos, pos+1) )
@@ -789,7 +777,7 @@ class TestHeaderSam(unittest.TestCase):
 
     def compareHeaders( self, a, b ):
         '''compare two headers a and b.'''
-        for ak,av in a.items():
+        for ak,av in a.iteritems():
             self.assertTrue( ak in b, "key '%s' not in '%s' " % (ak,b) )
             self.assertEqual( av, b[ak] )
 
@@ -957,7 +945,7 @@ class TestFastaFile(unittest.TestCase):
         self.file=pysam.Fastafile( "ex1.fa" )
 
     def testFetch(self):
-        for id, seq in list(self.mSequences.items()):
+        for id, seq in self.mSequences.items():
             self.assertEqual( seq, self.file.fetch( id ) )
             for x in range( 0, len(seq), 10):
                 self.assertEqual( seq[x:x+10], self.file.fetch( id, x, x+10) )
@@ -973,7 +961,7 @@ class TestFastaFile(unittest.TestCase):
     def testOutOfRangeAccess( self ):
         '''test out of range access.'''
         # out of range access returns an empty string
-        for contig, s in self.mSequences.items():
+        for contig, s in self.mSequences.iteritems():
             self.assertEqual( self.file.fetch( contig, len(s), len(s)+1), b"" )
 
         self.assertEqual( self.file.fetch( "chr3", 0 , 100), b"" ) 
@@ -1360,22 +1348,22 @@ class TestLargeOptValues( unittest.TestCase ):
         
         i = samfile.fetch()
         for exp in self.ints:
-            rr = next(i)
+            rr = i.next()
             obs = rr.opt("ZP")
             self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
 
         for exp in [ -x for x in self.ints ]:
-            rr = next(i)
+            rr = i.next()
             obs = rr.opt("ZP")
             self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
 
         for exp in self.floats:
-            rr = next(i)
+            rr = i.next()
             obs = rr.opt("ZP")
             self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
 
         for exp in [ -x for x in self.floats ]:
-            rr = next(i)
+            rr = i.next()
             obs = rr.opt("ZP")
             self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
 
@@ -1507,7 +1495,7 @@ class TestLogging( unittest.TestCase ):
 
         bam  = pysam.Samfile(bamfile, 'rb')
         cols = bam.pileup()
-        self.assertTrue( True )
+        self.assert_( True )
 
     def testFail1( self ):
         self.check( "ex9_fail.bam", False )
@@ -1533,7 +1521,7 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
         samfile = pysam.Samfile( "ex1.bam", "rb" )
 
         for contig in ("chr1", "chr2" ):
-            for start in range( 0, 2000, 100 ):
+            for start in xrange( 0, 2000, 100 ):
                 end = start + 1
                 self.assertEqual( len( list( samfile.fetch( contig, start, end ) ) ),
                                   samfile.count( contig, start, end ) )
@@ -1549,8 +1537,7 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
     def testMate( self ):
         '''test mate access.'''
 
-        with open( "ex1.sam", "rb" ) as inf:
-            readnames = [ x.split(b"\t")[0] for x in inf.readlines() ]
+        readnames = [ x.split(b"\t")[0] for x in open( "ex1.sam", "rb" ).readlines() ]
         if sys.version_info[0] >= 3:
             readnames = [ name.decode('ascii') for name in readnames ]
             
@@ -1605,7 +1592,7 @@ class TestSamfileIndex( unittest.TestCase):
 
         for read in samfile: reads[read.qname] += 1
             
-        for qname, counts in reads.items():
+        for qname, counts in reads.iteritems():
             found = list(index.find( qname ))
             self.assertEqual( len(found), counts )
             for x in found: self.assertEqual( x.qname, qname )

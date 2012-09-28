@@ -32,15 +32,16 @@ def locate(pattern, root=os.curdir):
           yield os.path.join(path, filename)
 
 def _update_pysam_files(cf, destdir):
-  for filename in cf:
-     if not filename: continue
-     dest = filename + ".pysam.c"
-     with open( filename ) as infile:
-        with open( dest, "w" ) as outfile:
-           outfile.write( '#include "pysam.h"\n\n' )
-           outfile.write( re.sub( "stderr", "pysamerr", "".join(infile.readlines()) ) )
-  with open( os.path.join( destdir, "pysam.h" ), "w" )as outfile:
-     outfile.write ("""#ifndef PYSAM_H
+    '''update pysam files applying redirection of ouput'''
+    for filename in cf:
+        if not filename: continue
+        dest = filename + ".pysam.c"
+        with open( filename ) as infile:
+            with open( dest, "w" ) as outfile:
+                outfile.write( '#include "pysam.h"\n\n' )
+                outfile.write( re.sub( "stderr", "pysamerr", "".join(infile.readlines()) ) )
+            with open( os.path.join( destdir, "pysam.h" ), "w" )as outfile:
+                outfile.write ("""#ifndef PYSAM_H
 #define PYSAM_H
 #include "stdio.h"
 extern FILE * pysamerr;
