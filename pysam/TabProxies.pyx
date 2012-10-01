@@ -515,7 +515,7 @@ cdef class GTFProxy( TupleProxy ):
             end = start
             while end[0] != '\0' and end[0] != '"': end += 1
             l = end - start
-            result = start[:l].decode("ascii")
+            result = _force_str(start[:l])
             return result
         else:
             return start
