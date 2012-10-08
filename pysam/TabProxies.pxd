@@ -64,6 +64,7 @@ cdef class GTFProxy( TupleProxy) :
         cdef bint hasOwnAttributes
 
     cdef int getMaxFields( self, size_t nbytes )
+    cdef char * getAttributes( self )
 
 cdef class NamedTupleProxy( TupleProxy) :
     pass
