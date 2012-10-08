@@ -163,7 +163,6 @@ cdef class TupleProxy:
         cdef int field
         cdef int max_fields, x
 
-        print "buffer", buffer
         if buffer[nbytes] != 0:
             raise ValueError( "incomplete line at %s" % buffer )
 

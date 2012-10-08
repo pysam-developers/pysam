@@ -517,7 +517,6 @@ class TestLargeFieldBug( unittest.TestCase ):
         new_read.tags = read.tags
         self.assertEqual( new_read.tags, read.tags )
 
-
 class TestTagParsing( unittest.TestCase ):
     '''tests checking the accuracy of tag setting and retrieval.'''
 
