@@ -503,6 +503,21 @@ class TestFloatTagBug( unittest.TestCase ):
         self.assertTrue( ('XC',1) in read.tags )
         self.assertEqual(read.opt('XC'), 1)
 
+class TestLargeFieldBug( unittest.TestCase ):
+    '''see issue 100'''
+
+    def testLargeFileBug( self ): 
+        '''when creating a read with a large entry in the tag field
+        causes an errror:
+            NotImplementedError: tags field too large
+        '''
+        samfile = pysam.Samfile("issue100.bam")
+        read = next(samfile.fetch(until_eof=True))
+        new_read = pysam.AlignedRead()
+        new_read.tags = read.tags
+        self.assertEqual( new_read.tags, read.tags )
+
+
 class TestTagParsing( unittest.TestCase ):
     '''tests checking the accuracy of tag setting and retrieval.'''
 

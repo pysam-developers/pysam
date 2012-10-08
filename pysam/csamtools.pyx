@@ -2379,76 +2379,73 @@ cdef class AlignedRead:
             cdef uint8_t * s
             cdef uint8_t * new_data
             cdef char * temp
-            cdef int guessed_size, control_size
-            cdef int max_size, size, offset
-
 
             src = self._delegate
-            max_size = 4000
-            offset = 0
 
+            fmts, args = ["<"], []
+            
             if tags != None:
 
                 # map samtools code to python.struct code and byte size
-                buffer = ctypes.create_string_buffer(max_size)
-
                 for pytag, value in tags:
                     if not type(pytag) is bytes:
                         pytag = pytag.encode('ascii')
                     t = type(value)
                     if t is float:
-                        fmt, pytype = "<2scf", 'f'
+                        fmt, pytype = "2scf", 'f'
                     elif t is int:
                         if value < 0:
-                            if value >= -127: fmt, pytype = "<2scb", 'c'
-                            elif value >= -32767: fmt, pytype = "<2sch", 's'
+                            if value >= -127: fmt, pytype = "2scb", 'c'
+                            elif value >= -32767: fmt, pytype = "2sch", 's'
                             elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "<2sci", 'i'
+                            else: fmt, pytype = "2sci", 'i'
                         else:
-                            if value <= 255: fmt, pytype = "<2scB", 'C'
-                            elif value <= 65535: fmt, pytype = "<2scH", 'S'
+                            if value <= 255: fmt, pytype = "2scB", 'C'
+                            elif value <= 65535: fmt, pytype = "2scH", 'S'
                             elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "<2scI", 'I'
+                            else: fmt, pytype = "2scI", 'I'
                     else:
                         # Note: hex strings (H) are not supported yet
                         if t is not bytes:
                             value = value.encode('ascii')
                         if len(value) == 1:
-                            fmt, pytype = "<2scc", 'A'
+                            fmt, pytype = "2scc", 'A'
                         else:
-                            fmt, pytype = "<2sc%is" % (len(value)+1), 'Z'
+                            fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
 
-                    size = struct.calcsize(fmt)
-                    if offset + size > max_size:
-                        raise NotImplementedError("tags field too large")
+                    args.extend( [pytag[:2],
+                                  pytype.encode('ascii'),
+                                  value ] )
+                    
+                    fmts.append( fmt )
 
-                    struct.pack_into( fmt,
-                                      buffer,
-                                      offset,
-                                      pytag[:2],
-                                      pytype.encode('ascii'),
-                                      value )
-                    offset += size
+                fmt = "".join(fmts)
+                total_size = struct.calcsize(fmt)
+                buffer = ctypes.create_string_buffer(total_size)
+                struct.pack_into( fmt,
+                                  buffer,
+                                  0, 
+                                  *args )
 
-            # delete the old data and allocate new
-            # if offset == 0, the aux field will be
+            # delete the old data and allocate new space.
+            # If total_size == 0, the aux field will be
             # empty
             pysam_bam_update( src,
                               src.l_aux,
-                              offset,
+                              total_size,
                               bam1_aux( src ) )
 
-            src.l_aux = offset
+            src.l_aux = total_size
 
             # copy data only if there is any
-            if offset != 0:
-
+            if total_size != 0:
+                
                 # get location of new data
                 s = bam1_aux( src )
 
                 # check if there is direct path from buffer.raw to tmp
                 temp = buffer.raw
-                memcpy( s, temp, offset )
+                memcpy( s, temp, total_size )
 
     property flag:
         """properties flag"""
