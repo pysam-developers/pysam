@@ -1674,13 +1674,16 @@ cdef class IteratorColumn:
     Optional kwargs to the iterator
 
     stepper
-       The stepper controlls how the iterator advances.
+       The stepper controls how the iterator advances.
        Possible options for the stepper are
 
        all
            use all reads for pileup.
        samtools
            same filter and read processing as in :term:`csamtools` pileup
+
+       The default is to use "all" if no stepper is given.
+
     fastafile
        A :class:`FastaFile` object
     mask
