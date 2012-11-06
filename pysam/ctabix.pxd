@@ -76,7 +76,6 @@ cdef extern from "stdint.h":
 
 cdef extern from "Python.h":
     ctypedef struct FILE
-    FILE* PyFile_AsFile(object)
     char *fgets(char *str, int size, FILE *ifile)
     int feof(FILE *stream)
     size_t strlen(char *s)
@@ -84,6 +83,7 @@ cdef extern from "Python.h":
     char *strstr(char *, char *)
     char *strchr(char *string, int c)
     int fileno(FILE *stream)
+    FILE *fdopen(int fd, char *mode)
 
 cdef extern from "bgzf.h":
 
@@ -206,4 +206,17 @@ cdef class TabixIteratorParsed:
     cdef ti_iter_t iterator
     cdef tabix_t * tabixfile
     cdef Parser parser
+
+ctypedef class tabix_inplace_iterator:
+    cdef FILE * infile
+    cdef char * buffer
+    cdef size_t size
+    cdef Parser parser
+
+    cdef __cnext__(self)
+
+ctypedef class tabix_copy_iterator:
+    cdef FILE * infile  
+    cdef Parser parser
+    cdef __cnext__(self)
 

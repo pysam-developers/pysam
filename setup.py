@@ -204,7 +204,8 @@ metadata = {
       "pysam/__init__", 
       "pysam/Pileup", 
       "pysam/version" ],
-    'requires' : ['cython (>=0.12)'],
+    # cython larger that 0.16 for yield support
+    'requires' : ['cython (>=0.16)'],
     'ext_modules': [samtools, tabix, tabproxies, cvcf ],
     'cmdclass' : {'build_ext': build_ext},
     'install_requires' : ['cython>=0.12.1',], 

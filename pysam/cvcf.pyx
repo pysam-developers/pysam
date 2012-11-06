@@ -118,6 +118,11 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         
         self.vcf = vcf
     
+    def error(self,line,error,opt=None):
+        '''raise error.'''
+        # pass to vcf file for error handling
+        return self.vcf.error( line, error, opt )
+
     cdef update( self, char * buffer, size_t nbytes ):
         '''update internal data.
         
@@ -616,7 +621,7 @@ class VCF(object):
             return values
         elif f.type == "String":
             self._line = line
-            if f.id == "GT": values = map( self.convertGT, values )
+            if f.id == "GT": values = list(map( self.convertGT, values ))
             return values
         elif f.type == "Character":
             for v in values: 
@@ -625,7 +630,7 @@ class VCF(object):
         elif f.type == "Float":
             for idx,v in enumerate(values):
                 if v == ".": values[idx] = f.missingvalue
-            try: return map(float,values)
+            try: return list(map(float,values))
             except:
                 self.error(line,self.ERROR_FORMAT_NOT_NUMERICAL,"%s=%s" % (key, str(values)))
                 return [0.0] * len(values)
@@ -705,7 +710,10 @@ class VCF(object):
                 if len(elts) == 1: v = None
                 elif len(elts) == 2: v = elts[1]
                 else: self.error(line,self.ERROR_INFO_STRING)
-                info[elts[0]] = self.parse_formatdata(elts[0], v, self._info, line)
+                info[elts[0]] = self.parse_formatdata(elts[0], 
+                                                      v, 
+                                                      self._info, 
+                                                      line)
 
         # Gracefully deal with absent FORMAT column
         if cols[8] == "": format = []
@@ -818,7 +826,11 @@ class VCF(object):
                 else:
                     if expected == -1: value = "."
                     else: value = ",".join(["."]*expected)
-                dict[format[idx]] = self.parse_formatdata(format[idx], value, self._format, line)
+                    
+                dict[format[idx]] = self.parse_formatdata(format[idx], 
+                                                          value, 
+                                                          self._format, 
+                                                          line)
                 if expected != -1 and len(dict[format[idx]]) != expected:
                     self.error(line,self.BAD_NUMBER_OF_PARAMETERS,
                                "id=%s, expected %s parameters, got %s" % (format[idx],expected,dict[format[idx]]))

@@ -13,6 +13,43 @@ import subprocess
 import glob
 import re
 
+IS_PYTHON3 = sys.version_info[0] >= 3
+
+def myzip_open( infile, mode = "r" ):
+    '''open compressed file and decode.'''
+
+    def _convert(f):
+        for l in f:
+            yield l.decode("ascii")
+
+    if IS_PYTHON3:
+        if mode == "r":
+            return _convert(gzip.open(infile,"r"))
+    else:
+        return gzip.open( mode )
+
+def loadAndConvert( infile ):
+    '''load and convert all fields to bytes'''
+    data = []
+    if infile.endswith(".gz"):
+        for line in gzip.open( infile ):
+            line = line.decode("ascii")
+            if line.startswith("#"): continue
+            d = line[:-1].split("\t")
+            data.append( [x.encode("ascii") for x in d ] )
+    else:
+        with open(infile) as f:
+            for line in f:
+                if line.startswith("#"): continue
+                d = line[:-1].split("\t")
+                data.append( [x.encode("ascii") for x in d ] )
+
+    return data
+
+def splitToBytes( s ):
+    '''split string and return list of bytes.'''
+    return [x.encode("ascii") for x in s.split("\t")]
+
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
     if os.path.getsize( filename1 ) !=  os.path.getsize( filename2 ):
@@ -21,14 +58,9 @@ def checkBinaryEqual( filename1, filename2 ):
     infile1 = open(filename1, "rb")
     infile2 = open(filename2, "rb")
 
-    def chariter( infile ):
-        while 1:
-            c = infile.read(1)
-            if c == "": break
-            yield c
-
+    d1, d2 = infile1.read(), infile2.read()
     found = False
-    for c1,c2 in zip( chariter( infile1), chariter( infile2) ):
+    for c1,c2 in zip( d1, d2 ):
         if c1 != c2: break
     else:
         found = True
@@ -65,7 +97,7 @@ class TestCompression(unittest.TestCase):
         self.tmpfilename = "tmp_%i.gtf" % id(self)
         infile = gzip.open( self.filename, "r")
         outfile = open( self.tmpfilename, "w" )
-        outfile.write( "".join(infile.readlines()) )
+        outfile.write( str(infile.read()) )
         outfile.close()
         infile.close()
 
@@ -88,11 +120,12 @@ class TestIteration( unittest.TestCase ):
 
         self.tabix = pysam.Tabixfile( self.filename )
         lines = []
-        with gzip.open( self.filename, "rb") as inf:
-            for line in inf:
-                line = line.decode('ascii')
-                if line.startswith("#"): continue
-                lines.append( line )
+        inf = gzip.open( self.filename, "rb")
+        for line in inf:
+            line = line.decode('ascii')
+            if line.startswith("#"): continue
+            lines.append( line )
+        inf.close()
         # creates index of contig, start, end, adds content without newline.
         self.compare = [ 
             (x[0][0], int(x[0][3]), int(x[0][4]), x[1])
@@ -207,11 +240,13 @@ class TestIteration( unittest.TestCase ):
 
     def testHeader( self ):
         ref = []
-        with gzip.open( self.filename ) as inf:
-            for x in inf:
-                x = x.decode("ascii")
-                if not x.startswith("#"): break
-                ref.append( x[:-1].encode('ascii') )
+        inf = gzip.open( self.filename )
+        for x in inf:
+            x = x.decode("ascii")
+            if not x.startswith("#"): break
+            ref.append( x[:-1].encode('ascii') )
+        inf.close()
+
         header = list( self.tabix.header )
         self.assertEqual( ref, header )
 
@@ -225,7 +260,6 @@ class TestIteration( unittest.TestCase ):
         for i in range(10000):
             func1()
 
-import io
 class TestParser( unittest.TestCase ):
 
     filename = "example.gtf.gz" 
@@ -233,12 +267,7 @@ class TestParser( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename )
-        self.compare = []
-        with gzip.open( self.filename, "rb") as inf:
-            for line in inf:
-                line = line.decode('ascii')
-                if line.startswith("#"): continue
-                self.compare.append( [ x.encode('ascii') for x in line[:-1].split("\t")] )
+        self.compare = loadAndConvert( self.filename )
 
     def testRead( self ):
 
@@ -289,12 +318,12 @@ class TestGTF( TestParser ):
     def testRead( self ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asGTF() )):
-            c =  self.compare[x]
-            
+            c = self.compare[x]
             self.assertEqual( len(c), len(r) )
-            self.assertEqual( "\t".join(c), str(r) )
+            self.assertEqual( list(c), list(r) )
+            self.assertEqual( c, splitToBytes( str(r) ) )
             self.assertTrue( r.gene_id.startswith("ENSG") )
-            if r.feature != "gene":
+            if r.feature != b'gene':
                 self.assertTrue( r.transcript_id.startswith("ENST") )
             self.assertEqual( c[0], r.contig )
 
@@ -304,13 +333,14 @@ class TestBed( unittest.TestCase ):
     def setUp( self ):
 
         self.tabix = pysam.Tabixfile( self.filename)
-        self.compare = [ x[:-1].split("\t") for x in gzip.open( self.filename, "r") if not x.startswith("#") ]
+        self.compare = loadAndConvert( self.filename )
 
     def testRead( self ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asBed() )):
             c = self.compare[x]
-            self.assertEqual( "\t".join( c ), str(r) )
+            self.assertEqual( len(c), len(r) )
+            self.assertEqual( c, splitToBytes( str(r) ) )
             self.assertEqual( list(c), list(r) )
             self.assertEqual( c[0], r.contig)
             self.assertEqual( int(c[1]), r.start)
@@ -320,20 +350,20 @@ class TestBed( unittest.TestCase ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asBed() )):
             c = self.compare[x]
-            self.assertEqual( "\t".join( c ), str(r) )
+            self.assertEqual( c, splitToBytes(str(r) ))
             self.assertEqual( list(c), list(r) )
 
             r.contig = "test"
-            self.assertEqual( "test", r.contig)
-            self.assertEqual( "test", r[0])
+            self.assertEqual( b"test", r.contig)
+            self.assertEqual( b"test", r[0])
 
             r.start += 1
             self.assertEqual( int(c[1]) + 1, r.start )
-            self.assertEqual( str(int(c[1]) + 1), r[1] )
+            self.assertEqual( str(int(c[1]) + 1), r[1].decode("ascii" ))
 
             r.end += 1
             self.assertEqual( int(c[2]) + 1, r.end )
-            self.assertEqual( str(int(c[2]) + 1), r[2] )
+            self.assertEqual( str(int(c[2]) + 1), r[2].decode("ascii") )
 
 class TestVCFFromTabix( TestParser ):
 
@@ -350,7 +380,7 @@ class TestVCFFromTabix( TestParser ):
         pysam.tabix_index( self.tmpfilename, preset = "vcf" )
 
         self.tabix = pysam.Tabixfile( self.tmpfilename + ".gz" )
-        self.compare = [ x[:-1].split("\t") for x in open( self.filename, "r") if not x.startswith("#") ]
+        self.compare = loadAndConvert( self.filename )
 
     def tearDown( self ):
 
@@ -436,31 +466,29 @@ class TestVCFFromVCF( unittest.TestCase ):
     def setUp( self ):
         
         self.vcf = pysam.VCF()
-        with open( self.filename, "r") as inf:
-            self.compare = [ x[:-1].split("\t") for x in inf if not x.startswith("#") ]
+        self.compare = loadAndConvert( self.filename )
 
     def testParsing( self ):
 
-        f = open(self.filename)
         fn = os.path.basename( self.filename )
+        with open(self.filename) as f:
 
-        
-        for x, msg in self.fail_on_opening:
-            if "%i.vcf" % x == fn:
-                self.assertRaises( ValueError, self.vcf.parse, f )
-                return
-        else:
-            iter = self.vcf.parse(f)
+            for x, msg in self.fail_on_opening:
+                if "%i.vcf" % x == fn:
+                    self.assertRaises( ValueError, self.vcf.parse, f )
+                    return
+            else:
+                iter = self.vcf.parse(f)
 
-        for x, msg in self.fail_on_parsing:
-            if "%i.vcf" % x == fn:
-                self.assertRaises( ValueError, list, iter )
-                break
-                # python 2.7
-                # self.assertRaisesRegexp( ValueError, re.compile(msg), self.vcf.parse, f )
-        else:
-            for ln in iter:
-                pass
+            for x, msg in self.fail_on_parsing:
+                if "%i.vcf" % x == fn:
+                    self.assertRaises( ValueError, list, iter )
+                    break
+                    # python 2.7
+                    # self.assertRaisesRegexp( ValueError, re.compile(msg), self.vcf.parse, f )
+            else:
+                for ln in iter:
+                    pass
 
 ############################################################################                   
 # create a test class for each example vcf file.

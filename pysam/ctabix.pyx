@@ -4,10 +4,14 @@
 # Helper functions for python 3 compatibility - taken
 # from csamtools.pyx
 import tempfile, os, sys, types, itertools, struct, ctypes, gzip
-
+import io
 cimport TabProxies
 
-from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython cimport PyErr_SetString, PyBytes_Check, \
+    PyUnicode_Check, PyBytes_FromStringAndSize, \
+    PyObject_AsFileDescriptor
+
+
 # from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -366,6 +370,7 @@ cdef class TabixHeaderIterator:
         if <void*>self.iterator != NULL:
             ti_iter_destroy(self.iterator)
 
+
 #########################################################
 #########################################################
 #########################################################
@@ -556,9 +561,8 @@ cdef class TabixIteratorParsed:
             ti_iter_destroy(self.iterator)
         
 def tabix_compress( filename_in, 
-              filename_out,
-              force = False ):
-
+                    filename_out,
+                    force = False ):
     '''
     compress *filename_in* writing the output to *filename_out*.
     
@@ -579,11 +583,13 @@ def tabix_compress( filename_in,
 
     WINDOW_SIZE = 64 * 1024
 
-    fp = bgzf_open( filename_out, "w")
+    fn = _force_bytes(filename_out)
+    fp = bgzf_open( fn, "w")
     if fp == NULL:
         raise IOError( "could not open '%s' for writing" )
 
-    fd_src = open(filename_in, O_RDONLY)
+    fn = _force_bytes(filename_in)
+    fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
         raise IOError( "could not open '%s' for reading" )
 
@@ -686,9 +692,198 @@ def tabix_index( filename,
     cdef ti_conf_t conf
     conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
 
-    ti_index_build( filename, &conf)
+    fn = _my_encodeFilename( filename )
+    ti_index_build( fn, &conf)
     
     return filename
+
+#########################################################
+#########################################################
+#########################################################
+## Iterators for parsing through unindexed files.
+#########################################################
+ctypedef class tabix_inplace_iterator:
+    '''iterate over ``infile``.
+
+    This iterator is not safe. If the :meth:`__next__()` method is called 
+    after ``infile`` is closed, the result is undefined (see ``fclose()``).
+
+    The iterator might either raise a StopIteration or segfault.
+    '''
+
+
+    def __cinit__(self, infile, int buffer_size = 65536 ):
+
+        cdef int fd = PyObject_AsFileDescriptor( infile )
+        if fd == -1: raise ValueError( "I/O operation on closed file." )
+        self.infile = fdopen( fd, 'r')
+
+        if self.infile == NULL: raise ValueError( "I/O operation on closed file." )
+
+        self.buffer = <char*>malloc( buffer_size )        
+        self.size = buffer_size
+
+    def __iter__(self):
+        return self
+
+    cdef __cnext__(self):
+
+        cdef char * b
+        cdef size_t nbytes
+        b = self.buffer
+        r = self.Parser()
+
+        while not feof( self.infile ):
+            nbytes = getline( &b, &self.size, self.infile)
+
+            # stop at first error or eof
+            if (nbytes == -1): break
+            # skip comments
+            if (b[0] == '#'): continue
+
+            # skip empty lines
+            if b[0] == '\0' or b[0] == '\n': continue
+
+            # make sure that entry is complete
+            if b[nbytes-1] != '\n':
+                result = b
+                raise ValueError( "incomplete line at %s" % result )
+
+            # make sure that this goes fully through C
+            # otherwise buffer is copied to/from a
+            # Python object causing segfaults as
+            # the wrong memory is freed
+
+            # -1 to remove the new-line character
+            b[nbytes-1] = '\0'
+            r.present( b, nbytes-1 )
+            return r 
+
+        raise StopIteration
+
+    def __dealloc__(self):
+        free(self.buffer)
+
+    def __next__(self):
+        return self.__cnext__()
+
+ctypedef class tabix_copy_iterator:
+    '''iterate over ``infile``.
+
+    This iterator is not save. If the :meth:`__next__()` method is called 
+    after ``infile`` is closed, the result is undefined (see ``fclose()``).
+
+    The iterator might either raise a StopIteration or segfault.
+    '''
+
+    def __cinit__(self, infile, Parser parser ):
+
+        cdef int fd = PyObject_AsFileDescriptor( infile )
+        if fd == -1: raise ValueError( "I/O operation on closed file." )
+        self.infile = fdopen( fd, 'r')
+        if self.infile == NULL: raise ValueError( "I/O operation on closed file." )
+        self.parser = parser
+
+    def __iter__(self):
+        return self
+
+    cdef __cnext__(self):
+
+        cdef char * b
+        cdef size_t nbytes
+
+        b = NULL        
+
+        while not feof( self.infile ):
+
+            # getline allocates on demand
+            nbytes = getline( &b, &nbytes, self.infile)
+            # stop at first error
+            if (nbytes == -1): break
+            # skip comments
+            if (b[0] == '#'): continue
+
+            # skip empty lines
+            if b[0] == '\0' or b[0] == '\n': continue
+
+            # make sure that entry is complete
+            if b[nbytes-1] != '\n':
+                result = b
+                free(b)
+                raise ValueError( "incomplete line at %s" % result )
+
+            # make sure that this goes fully through C
+            # otherwise buffer is copied to/from a
+            # Python object causing segfaults as
+            # the wrong memory is freed
+            # -1 to remove the new-line character
+            b[nbytes-1] = '\0'
+            return self.parser(b, nbytes-1)
+
+        free(b)
+        raise StopIteration
+
+    def __next__(self):
+        return self.__cnext__()
+
+class tabix_generic_iterator:
+    '''iterate over ``infile``.
+    
+    Permits the use of file-like objects for example from the gzip module.
+    '''
+    def __init__(self, infile, parser ):
+
+        self.infile = infile
+        if self.infile.closed: raise ValueError( "I/O operation on closed file." )
+        self.parser = parser
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        
+        cdef char * b, * cpy
+        
+        cdef size_t nbytes
+
+        while 1:
+
+            line = self.infile.readline()
+            if not line: break
+            
+            b = line
+            nbytes = len( line )
+
+            # skip comments
+            if (b[0] == '#'): continue
+
+            # skip empty lines
+            if b[0] == '\0' or b[0] == '\n': continue
+
+            # make sure that entry is complete
+            if b[nbytes-1] != '\n':
+                raise ValueError( "incomplete line at %s" % line )
+            
+            # create a copy
+            cpy = <char*>malloc( nbytes )        
+            memcpy( cpy, b, nbytes )
+
+            # -1 to remove the new-line character
+            cpy[nbytes-1] = '\0'
+
+            return self.parser(cpy, nbytes-1)            
+
+        raise StopIteration
+    
+def tabix_iterator( infile, parser ):
+    """return an iterator over all entries in a file."""
+
+    # file objects can use C stdio
+    # used to be: isinstance( infile, file):
+    if isinstance( infile, io.IOBase ):
+        return tabix_copy_iterator( infile, parser )
+    else:
+        return tabix_generic_iterator( infile, parser )
     
 __all__ = ["tabix_index", 
            "tabix_compress",
@@ -697,4 +892,6 @@ __all__ = ["tabix_index",
            "asGTF",
            "asVCF",
            "asBed",
+           "tabix_iterator", 
+           "tabix_inplace_iterator"
            ]

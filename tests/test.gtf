@@ -1,0 +1,10 @@
+X	pseudogene	exon	170410	170513	.	+	.	 gene_id "ENSG00000228572"; transcript_id "ENST00000431238"; exon_number "1"; gene_name "NCRNA00108"; transcript_name "NCRNA00108-001";
+X	pseudogene	exon	171604	171758	.	+	.	 gene_id "ENSG00000228572"; transcript_id "ENST00000431238"; exon_number "2"; gene_name "NCRNA00108"; transcript_name "NCRNA00108-001";
+X	pseudogene	exon	172682	172712	.	+	.	 gene_id "ENSG00000228572"; transcript_id "ENST00000431238"; exon_number "3"; gene_name "NCRNA00108"; transcript_name "NCRNA00108-001";
+X	protein_coding	exon	192989	193061	.	+	.	 gene_id "ENSG00000182378"; transcript_id "ENST00000399012"; exon_number "1"; gene_name "PLCXD1"; transcript_name "PLCXD1-001";
+X	protein_coding	exon	198149	198351	.	+	.	 gene_id "ENSG00000182378"; transcript_id "ENST00000399012"; exon_number "2"; gene_name "PLCXD1"; transcript_name "PLCXD1-001";
+X	protein_coding	exon	200834	200981	.	+	.	 gene_id "ENSG00000182378"; transcript_id "ENST00000399012"; exon_number "3"; gene_name "PLCXD1"; transcript_name "PLCXD1-001";
+X	protein_coding	CDS	200855	200981	.	+	0	 gene_id "ENSG00000182378"; transcript_id "ENST00000399012"; exon_number "3"; gene_name "PLCXD1"; transcript_name "PLCXD1-001"; protein_id "ENSP00000381976";
+X	protein_coding	start_codon	200855	200857	.	+	0	 gene_id "ENSG00000182378"; transcript_id "ENST00000399012"; exon_number "3"; gene_name "PLCXD1"; transcript_name "PLCXD1-001";
+X	protein_coding	exon	205400	205536	.	+	.	 gene_id "ENSG00000182378"; transcript_id "ENST00000399012"; exon_number "4"; gene_name "PLCXD1"; transcript_name "PLCXD1-001";
+X	protein_coding	CDS	205400	205536	.	+	2	 gene_id "ENSG00000182378"; transcript_id "ENST00000399012"; exon_number "4"; gene_name "PLCXD1"; transcript_name "PLCXD1-001"; protein_id "ENSP00000381976";
