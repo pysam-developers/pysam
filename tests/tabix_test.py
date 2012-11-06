@@ -109,6 +109,7 @@ class TestCompression(unittest.TestCase):
         checkBinaryEqual( self.tmpfilename + ".gz.tbi", self.filename_idx )
 
     def testCompression( self ):
+        '''see also issue 106'''
         pysam.tabix_compress( self.tmpfilename, self.tmpfilename + ".gz" )
         checkBinaryEqual( self.tmpfilename, self.tmpfilename + ".gz" )
         

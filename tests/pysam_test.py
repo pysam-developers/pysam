@@ -357,7 +357,8 @@ class BinaryTest(unittest.TestCase):
 class IOTest(unittest.TestCase):
     '''check if reading samfile and writing a samfile are consistent.'''
 
-    def checkEcho( self, input_filename, reference_filename, 
+    def checkEcho( self, input_filename, 
+                   reference_filename, 
                    output_filename, 
                    input_mode, output_mode, use_template = True ):
         '''iterate through *input_filename* writing to *output_filename* and
@@ -381,6 +382,7 @@ class IOTest(unittest.TestCase):
                                      add_sq_text = False )
             
         iter = infile.fetch()
+
         for x in iter: outfile.write( x )
         infile.close()
         outfile.close()
@@ -397,7 +399,6 @@ class IOTest(unittest.TestCase):
 
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "rb", "wb" )
-
 
     def testReadWriteBamWithTargetNames( self ):
         
@@ -426,17 +427,58 @@ class IOTest(unittest.TestCase):
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "r", "w" )
 
-    def testReadSamWithoutHeaderWriteSamWithoutHeader( self ):
-        
+    def testReadSamWithoutTargetNames( self ):
+        '''see issue 104.'''
+        input_filename = "example_unmapped_reads_no_sq.sam"
+
+        # raise exception in default mode
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+
+        # raise exception if no SQ files
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r",
+                           check_header = True)
+
+        infile = pysam.Samfile( input_filename, check_header = False, check_sq = False )
+        result = list(infile.fetch())
+
+    def testReadBamWithoutTargetNames( self ):
+        '''see issue 104.'''
+        input_filename = "example_unmapped_reads_no_sq.bam"
+
+        # raise exception in default mode
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+
+        # raise exception if no SQ files
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r",
+                           check_header = True)
+
+
+        infile = pysam.Samfile( input_filename, check_header = False, check_sq = False )
+        result = list(infile.fetch( until_eof = True))
+
+    def testReadSamWithoutHeader( self ):
         input_filename = "ex1.sam"
         output_filename = "pysam_ex1.sam"
         reference_filename = "ex1.sam"
 
-        # disabled - reading from a samfile without header
-        # is not implemented.
+        # reading from a samfile without header is not implemented.
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r",
+                           check_header = False )
+
+    def testReadUnformattedFile( self ):
+        '''test reading from a file that is not bam/sam formatted'''
+        input_filename = "example.vcf40"
+
+        # bam - file raise error
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "rb" )
+
+        # sam - file error, but can't fetch
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
         
-        # self.checkEcho( input_filename, reference_filename, output_filename,
-        #                 "r", "w" )
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r", 
+                           check_header = False)
 
     def testFetchFromClosedFile( self ):
 
@@ -477,7 +519,7 @@ class IOTest(unittest.TestCase):
     def testReadingFromSamFileWithoutHeader( self ):
         '''read from samfile without header.
         '''
-        samfile = pysam.Samfile( "ex7.sam" )
+        samfile = pysam.Samfile( "ex7.sam", check_header = False, check_sq = False )
         self.assertRaises( NotImplementedError, samfile.__iter__ )
 
     def testReadingFromFileWithoutIndex( self ):
@@ -548,7 +590,6 @@ class TestTagParsing( unittest.TestCase ):
                                  referencelengths = (1000,) )
         outfile.write (r )
         outfile.close()
-
 
 class TestIteratorRow(unittest.TestCase):
 
