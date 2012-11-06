@@ -594,6 +594,7 @@ def tabix_compress( filename_in,
         raise IOError( "could not open '%s' for reading" )
 
     buffer = malloc(WINDOW_SIZE)
+    c = 1
 
     while c > 0:
         c = read(fd_src, buffer, WINDOW_SIZE)

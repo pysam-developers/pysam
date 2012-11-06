@@ -108,9 +108,14 @@ class TestCompression(unittest.TestCase):
         checkBinaryEqual( self.tmpfilename + ".gz", self.filename )
         checkBinaryEqual( self.tmpfilename + ".gz.tbi", self.filename_idx )
 
+    def testCompression( self ):
+        pysam.tabix_compress( self.tmpfilename, self.tmpfilename + ".gz" )
+        checkBinaryEqual( self.tmpfilename, self.tmpfilename + ".gz" )
+        
     def tearDown( self ):
         os.unlink( self.tmpfilename + ".gz" )
-        os.unlink( self.tmpfilename + ".gz.tbi" )
+        if os.path.exists( self.tmpfilename + ".gz.tbi" ):
+            os.unlink( self.tmpfilename + ".gz.tbi" )
 
 class TestIteration( unittest.TestCase ):
 
