@@ -11,6 +11,7 @@ import ctypes
 import collections
 import re
 import platform
+import warnings
 from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -480,7 +481,7 @@ cdef int mate_callback( bam1_t *alignment, void *f):
 
 cdef class Samfile:
     '''*(filename, mode=None, template = None, referencenames = None, referencelengths = None, text = NULL, header = None,
-         add_sq_text = False )*
+         add_sq_text = False, check_header = True, check_sq = True )*
 
     A :term:`SAM`/:term:`BAM` formatted file. The file is automatically opened.
 
@@ -518,6 +519,10 @@ cdef class Samfile:
         4. The names (*referencenames*) and lengths (*referencelengths*) are supplied directly as lists. 
            By default, 'SQ' and 'LN' tags will be added to the header text. This option can be
            changed by unsetting the flag *add_sq_text*. 
+
+    By default, if file a file is opened in mode 'r', it is checked for a valid header
+    (*check_header* = True) and a definition of chromosome names (*check_sq* = True). 
+    
     '''
 
     def __cinit__(self, *args, **kwargs ):
@@ -548,6 +553,8 @@ cdef class Samfile:
                header = None,
                port = None,
                add_sq_text = True,
+               check_header = True,
+               check_sq = True,
               ):
         '''open a sam/bam file.
 
@@ -561,7 +568,9 @@ cdef class Samfile:
                 self._open(filename, 'rb', template=template,
                            referencenames=referencenames,
                            referencelengths=referencelengths,
-                           text=text, header=header, port=port)
+                           text=text, header=header, port=port,
+                           check_header=check_header,
+                           check_sq=check_sq)
                 return
             except ValueError, msg:
                 pass
@@ -569,7 +578,9 @@ cdef class Samfile:
             self._open(filename, 'r', template=template,
                        referencenames=referencenames,
                        referencelengths=referencelengths,
-                       text=text, header=header, port=port)
+                       text=text, header=header, port=port,
+                       check_header=check_header,
+                       check_sq=check_sq)
             return
 
         assert mode in ( "r","w","rb","wb", "wh", "wbu", "rU" ), "invalid file opening mode `%s`" % mode
@@ -639,6 +650,7 @@ cdef class Samfile:
 
                 if text != None:
                     # copy without \0
+                    text = _force_bytes(text)
                     ctext = text
                     header_to_write.l_text = strlen(ctext)
                     header_to_write.text = <char*>calloc( strlen(ctext), sizeof(char) )
@@ -669,13 +681,19 @@ cdef class Samfile:
             if self.samfile == NULL:
                 raise ValueError( "could not open file (mode='%s') - is it SAM/BAM format?" % mode)
 
-            if self.samfile.header == NULL:
-                raise ValueError( "file does not have valid header (mode='%s') - is it SAM/BAM format?" % mode )
+            # bam files require a valid header
+            if self.isbam:
+                if self.samfile.header == NULL:
+                    raise ValueError( "file does not have valid header (mode='%s') - is it BAM format?" % mode )
+            else:
+                # in sam files it is optional (samfile full of unmapped reads)
+                if check_header and self.samfile.header == NULL:
+                    raise ValueError( "file does not have valid header (mode='%s') - is it SAM format?" % mode )
 
-            #disabled for autodetection to work
+            # disabled for autodetection to work
             # needs to be disabled so that reading from sam-files without headers works
-            #if self.samfile.header.n_targets == 0:
-            #    raise ValueError( "file header is empty (mode='%s') - is it SAM/BAM format?" % mode)
+            if check_sq and self.samfile.header.n_targets == 0:
+                raise ValueError( "file header is empty (mode='%s') - is it SAM/BAM format?" % mode)
 
         if self.samfile == NULL:
             raise IOError("could not open file `%s`" % filename )
@@ -871,18 +889,21 @@ cdef class Samfile:
                         # AH: check - reason why no reopen for AllRefs?
                         return IteratorRowAllRefs(self ) # , reopen=reopen )
         else:
-            # check if header is present - otherwise sam_read1 aborts
-            # this happens if a bamfile is opened with mode 'r'
             if has_coord:
                 raise ValueError ("fetching by region is not available for sam files" )
 
-            if self.samfile.header.n_targets == 0:
-                raise ValueError( "fetch called for samfile without header")
-
             if callback:
                 raise NotImplementedError( "callback not implemented yet" )
-            else:
-                return IteratorRowAll( self, reopen=reopen )
+
+            if self.samfile.header == NULL:
+                raise ValueError( "fetch called for samfile without header")
+
+            # check if targets are defined
+            # give warning, sam_read1 segfaults
+            if self.samfile.header.n_targets == 0:
+                warnings.warn( "fetch called for samfile without header")
+                
+            return IteratorRowAll( self, reopen=reopen )
 
     def mate( self,
               AlignedRead read ):
@@ -1339,6 +1360,7 @@ cdef class IteratorRow:
     '''
     pass
 
+
 cdef class IteratorRowRegion(IteratorRow):
     """*(Samfile samfile, int tid, int beg, int end, int reopen = True )*
 
@@ -1458,7 +1480,6 @@ cdef class IteratorRowAll(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        cdef int ret
         return samread(self.fp, self.b)
 
     def __next__(self):
@@ -2972,10 +2993,10 @@ def _samtools_dispatch( method,
     cargs[0] = "samtools"
     cargs[1] = method
     for i from 0 <= i < n: cargs[i+2] = args[i]
-
+    
     retval = pysam_dispatch(n+2, cargs)
     free( cargs )
-
+    
     # restore stdout/stderr. This will also flush, so
     # needs to be before reading back the file contents
     if catch_stdout:
@@ -2987,8 +3008,7 @@ def _samtools_dispatch( method,
             with open( stdout_f, "rb") as inf:
                 # read binary output
                 out_stdout = inf.read()
-
-        # os.remove( stdout_f )
+        os.remove( stdout_f )
     else:
         out_stdout = []
 
@@ -3001,7 +3021,6 @@ def _samtools_dispatch( method,
             with open( stderr_f, "rb") as inf:
                 # read binary output
                 out_stderr = inf.read()
-            
         os.remove( stderr_f )
     else:
         out_stderr = []

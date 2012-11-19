@@ -290,9 +290,9 @@ cdef class TupleProxy:
             memcpy( cpy, self.data, self.nbytes+1)
             for x from 0 <= x < self.nbytes:
                 if cpy[x] == '\0': cpy[x] = '\t'
-            result = str(cpy[:self.nbytes])
+            result = cpy[:self.nbytes]
             free(cpy)
-            return result
+            return result.decode('ascii')
 
 def toDot( v ):
     '''convert value to '.' if None'''
@@ -508,6 +508,7 @@ cdef class GTFProxy( TupleProxy ):
         cdef char * cpy
         cdef char * end
         cdef int l
+
         #
         # important to use the getAttributes function.
         # Using the self.attributes property to access
@@ -523,7 +524,10 @@ cdef class GTFProxy( TupleProxy ):
         # directly and so did the bug.
         cdef char * attributes = self.getAttributes()
 
+        r = _force_bytes(item)
+        query = r
         start = strstr( attributes, query)
+
         if start == NULL:
             raise AttributeError("'GTFProxy' has no attribute '%s'" % item )
 
@@ -572,18 +576,18 @@ cdef class BedProxy( NamedTupleProxy ):
     This class represents a GTF entry for fast read-access.
     '''
     map_key2field = { 
-        'contig' : (0, str),
+        'contig' : (0, bytes),
         'start' : (1, int),
         'end' : (2, int),
-        'name' : (3, str),
+        'name' : (3, bytes),
         'score' : (4, float),
-        'strand' : (5, str),
-        'thickStart' : (6,int ),
-        'thickEnd' : (7,int),
-        'itemRGB' : (8,str),
-        'blockCount': (9,int),
-        'blockSizes': (10,str),
-        'blockStarts': (11,str), } 
+        'strand' : (5, bytes),
+        'thickStart' : (6, int ),
+        'thickEnd' : (7, int),
+        'itemRGB' : (8, bytes),
+        'blockCount': (9, int),
+        'blockSizes': (10, bytes),
+        'blockStarts': (11, bytes), } 
 
     cdef int getMaxFields( self, size_t nbytes ):
         '''return max number of fields.'''
@@ -638,15 +642,15 @@ cdef class VCFProxy( NamedTupleProxy ):
     The genotypes are accessed via index.
     '''
     map_key2field = { 
-        'contig' : (0, str),
+        'contig' : (0, bytes),
         'pos' : (1, int),
-        'id' : (2, str),
-        'ref' : (3, str),
-        'alt' : (4, str),
-        'qual' : (5, str),
-        'filter' : (6,str),
-        'info' : (7,str),
-        'format' : (8,str) }
+        'id' : (2, bytes),
+        'ref' : (3, bytes),
+        'alt' : (4, bytes),
+        'qual' : (5, bytes),
+        'filter' : (6, bytes),
+        'info' : (7, bytes),
+        'format' : (8, bytes) }
 
     def __cinit__(self ): 
         # automatically calls TupleProxy.__cinit__

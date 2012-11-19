@@ -4,10 +4,14 @@
 # Helper functions for python 3 compatibility - taken
 # from csamtools.pyx
 import tempfile, os, sys, types, itertools, struct, ctypes, gzip
-
+import io
 cimport TabProxies
 
-from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython cimport PyErr_SetString, PyBytes_Check, \
+    PyUnicode_Check, PyBytes_FromStringAndSize, \
+    PyObject_AsFileDescriptor
+
+
 # from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -557,9 +561,8 @@ cdef class TabixIteratorParsed:
             ti_iter_destroy(self.iterator)
         
 def tabix_compress( filename_in, 
-              filename_out,
-              force = False ):
-
+                    filename_out,
+                    force = False ):
     '''
     compress *filename_in* writing the output to *filename_out*.
     
@@ -580,15 +583,18 @@ def tabix_compress( filename_in,
 
     WINDOW_SIZE = 64 * 1024
 
-    fp = bgzf_open( filename_out, "w")
+    fn = _force_bytes(filename_out)
+    fp = bgzf_open( fn, "w")
     if fp == NULL:
         raise IOError( "could not open '%s' for writing" )
 
-    fd_src = open(filename_in, O_RDONLY)
+    fn = _force_bytes(filename_in)
+    fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
         raise IOError( "could not open '%s' for reading" )
 
     buffer = malloc(WINDOW_SIZE)
+    c = 1
 
     while c > 0:
         c = read(fd_src, buffer, WINDOW_SIZE)
@@ -687,7 +693,8 @@ def tabix_index( filename,
     cdef ti_conf_t conf
     conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
 
-    ti_index_build( filename, &conf)
+    fn = _my_encodeFilename( filename )
+    ti_index_build( fn, &conf)
     
     return filename
 
@@ -708,7 +715,10 @@ ctypedef class tabix_inplace_iterator:
 
     def __cinit__(self, infile, int buffer_size = 65536 ):
 
-        self.infile = PyFile_AsFile(infile)
+        cdef int fd = PyObject_AsFileDescriptor( infile )
+        if fd == -1: raise ValueError( "I/O operation on closed file." )
+        self.infile = fdopen( fd, 'r')
+
         if self.infile == NULL: raise ValueError( "I/O operation on closed file." )
 
         self.buffer = <char*>malloc( buffer_size )        
@@ -769,7 +779,9 @@ ctypedef class tabix_copy_iterator:
 
     def __cinit__(self, infile, Parser parser ):
 
-        self.infile = PyFile_AsFile(infile)
+        cdef int fd = PyObject_AsFileDescriptor( infile )
+        if fd == -1: raise ValueError( "I/O operation on closed file." )
+        self.infile = fdopen( fd, 'r')
         if self.infile == NULL: raise ValueError( "I/O operation on closed file." )
         self.parser = parser
 
@@ -868,7 +880,8 @@ def tabix_iterator( infile, parser ):
     """return an iterator over all entries in a file."""
 
     # file objects can use C stdio
-    if isinstance( infile, file ):
+    # used to be: isinstance( infile, file):
+    if isinstance( infile, io.IOBase ):
         return tabix_copy_iterator( infile, parser )
     else:
         return tabix_generic_iterator( infile, parser )

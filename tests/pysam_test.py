@@ -55,15 +55,16 @@ def runSamtools( cmd ):
     try:
         retcode = subprocess.call(cmd, shell=True)
         if retcode < 0:
-            sys.stderr.write("Child was terminated by signal: %i" %( -retcode ))
-    except OSError as msg:
-        sys.stderr.write("Execution failed: msg=%s" %( msg ))
+            print("Child was terminated by signal", -retcode)
+    except OSError as e:
+        print("Execution failed:", e)
 
 def getSamtoolsVersion():
     '''return samtools version'''
 
-    pipe = subprocess.Popen(SAMTOOLS, shell=True, stderr=subprocess.PIPE).stderr
-    lines = b"".join(pipe.readlines())
+    with subprocess.Popen(SAMTOOLS, shell=True, stderr=subprocess.PIPE).stderr as pipe:
+        lines = b"".join(pipe.readlines())
+
     if IS_PYTHON3:
         lines = lines.decode('ascii')
     return re.search( "Version:\s+(\S+)", lines).groups()[0]
@@ -216,7 +217,8 @@ class BinaryTest(unittest.TestCase):
             # remove previous files
             if os.path.exists( WORKDIR ):
                 shutil.rmtree( WORKDIR )
-                
+                pass
+
             # copy the source files to WORKDIR
             os.makedirs( WORKDIR )
 
@@ -231,13 +233,17 @@ class BinaryTest(unittest.TestCase):
             
             for label in self.order:
                 command = self.commands[label]
+                # build samtools command and target and run
                 samtools_target, samtools_command = command[0]
+                runSamtools( " ".join( (SAMTOOLS, samtools_command )))
+
+                # get pysam command and run
                 try:
                     pysam_target, pysam_command = command[1]
                 except ValueError as msg:
                     raise ValueError( "error while setting up %s=%s: %s" %\
                                           (label, command, msg) )
-                runSamtools( " ".join( (SAMTOOLS, samtools_command )))
+
                 pysam_method, pysam_options = pysam_command
                 try:
                     output = pysam_method( *pysam_options.split(" "), raw=True)
@@ -245,12 +251,14 @@ class BinaryTest(unittest.TestCase):
                     raise pysam.SamtoolsError( "error while executing %s: options=%s: msg=%s" %\
                                                    (label, pysam_options, msg) )
 
+                
+
                 if ">" in samtools_command:
                     with open( pysam_target, "wb" ) as outfile:
                         if type(output) == list:
                             if IS_PYTHON3:
                                 for line in output: 
-                                    outfile.write( line.encode('ascii'))
+                                    outfile.write( line.encode('ascii') )
                             else:
                                 for line in output: outfile.write( line )
                         else:
@@ -343,12 +351,14 @@ class BinaryTest(unittest.TestCase):
 
     def __del__(self):
         if os.path.exists( WORKDIR ):
-            shutil.rmtree( WORKDIR )
+            pass
+        # shutil.rmtree( WORKDIR )
 
 class IOTest(unittest.TestCase):
     '''check if reading samfile and writing a samfile are consistent.'''
 
-    def checkEcho( self, input_filename, reference_filename, 
+    def checkEcho( self, input_filename, 
+                   reference_filename, 
                    output_filename, 
                    input_mode, output_mode, use_template = True ):
         '''iterate through *input_filename* writing to *output_filename* and
@@ -372,6 +382,7 @@ class IOTest(unittest.TestCase):
                                      add_sq_text = False )
             
         iter = infile.fetch()
+
         for x in iter: outfile.write( x )
         infile.close()
         outfile.close()
@@ -388,7 +399,6 @@ class IOTest(unittest.TestCase):
 
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "rb", "wb" )
-
 
     def testReadWriteBamWithTargetNames( self ):
         
@@ -417,17 +427,58 @@ class IOTest(unittest.TestCase):
         self.checkEcho( input_filename, reference_filename, output_filename,
                         "r", "w" )
 
-    def testReadSamWithoutHeaderWriteSamWithoutHeader( self ):
-        
+    def testReadSamWithoutTargetNames( self ):
+        '''see issue 104.'''
+        input_filename = "example_unmapped_reads_no_sq.sam"
+
+        # raise exception in default mode
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+
+        # raise exception if no SQ files
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r",
+                           check_header = True)
+
+        infile = pysam.Samfile( input_filename, check_header = False, check_sq = False )
+        result = list(infile.fetch())
+
+    def testReadBamWithoutTargetNames( self ):
+        '''see issue 104.'''
+        input_filename = "example_unmapped_reads_no_sq.bam"
+
+        # raise exception in default mode
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+
+        # raise exception if no SQ files
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r",
+                           check_header = True)
+
+
+        infile = pysam.Samfile( input_filename, check_header = False, check_sq = False )
+        result = list(infile.fetch( until_eof = True))
+
+    def testReadSamWithoutHeader( self ):
         input_filename = "ex1.sam"
         output_filename = "pysam_ex1.sam"
         reference_filename = "ex1.sam"
 
-        # disabled - reading from a samfile without header
-        # is not implemented.
+        # reading from a samfile without header is not implemented.
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r",
+                           check_header = False )
+
+    def testReadUnformattedFile( self ):
+        '''test reading from a file that is not bam/sam formatted'''
+        input_filename = "example.vcf40"
+
+        # bam - file raise error
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "rb" )
+
+        # sam - file error, but can't fetch
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
         
-        # self.checkEcho( input_filename, reference_filename, output_filename,
-        #                 "r", "w" )
+        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r", 
+                           check_header = False)
 
     def testFetchFromClosedFile( self ):
 
@@ -468,7 +519,7 @@ class IOTest(unittest.TestCase):
     def testReadingFromSamFileWithoutHeader( self ):
         '''read from samfile without header.
         '''
-        samfile = pysam.Samfile( "ex7.sam" )
+        samfile = pysam.Samfile( "ex7.sam", check_header = False, check_sq = False )
         self.assertRaises( NotImplementedError, samfile.__iter__ )
 
     def testReadingFromFileWithoutIndex( self ):
@@ -553,7 +604,6 @@ class TestTagParsing( unittest.TestCase ):
                                  referencelengths = (1000,) )
         outfile.write (r )
         outfile.close()
-
 
 class TestIteratorRow(unittest.TestCase):
 
@@ -1512,7 +1562,7 @@ class TestLogging( unittest.TestCase ):
 
         bam  = pysam.Samfile(bamfile, 'rb')
         cols = bam.pileup()
-        self.assert_( True )
+        self.assertTrue( True )
 
     def testFail1( self ):
         self.check( "ex9_fail.bam", False )
@@ -1554,7 +1604,8 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
     def testMate( self ):
         '''test mate access.'''
 
-        readnames = [ x.split(b"\t")[0] for x in open( "ex1.sam", "rb" ).readlines() ]
+        with open( "ex1.sam", "rb" ) as inf:
+            readnames = [ x.split(b"\t")[0] for x in inf.readlines() ]
         if sys.version_info[0] >= 3:
             readnames = [ name.decode('ascii') for name in readnames ]
             

@@ -318,36 +318,43 @@ int pysam_dispatch(int argc, char *argv[] )
   optind = 1;
 
   if (argc < 2) return 1;
-
-  if (strcmp(argv[1], "view") == 0) return main_samview(argc-1, argv+1);
-  else if (strcmp(argv[1], "import") == 0) return main_import(argc-1, argv+1);
-  else if (strcmp(argv[1], "mpileup") == 0) return bam_mpileup(argc-1, argv+1);
-  else if (strcmp(argv[1], "merge") == 0) return bam_merge(argc-1, argv+1);
-  else if (strcmp(argv[1], "sort") == 0) return bam_sort(argc-1, argv+1);
-  else if (strcmp(argv[1], "index") == 0) return bam_index(argc-1, argv+1);
-  else if (strcmp(argv[1], "faidx") == 0) return faidx_main(argc-1, argv+1);
-  else if (strcmp(argv[1], "idxstats") == 0) return bam_idxstats(argc-1, argv+1);
-  else if (strcmp(argv[1], "fixmate") == 0) return bam_mating(argc-1, argv+1);
-  else if (strcmp(argv[1], "rmdup") == 0) return bam_rmdup(argc-1, argv+1);
-  else if (strcmp(argv[1], "flagstat") == 0) return bam_flagstat(argc-1, argv+1);
-  else if (strcmp(argv[1], "calmd") == 0) return bam_fillmd(argc-1, argv+1);
-  else if (strcmp(argv[1], "fillmd") == 0) return bam_fillmd(argc-1, argv+1);
-  else if (strcmp(argv[1], "reheader") == 0) return main_reheader(argc-1, argv+1);
-  else if (strcmp(argv[1], "cat") == 0) return main_cat(argc-1, argv+1);
-  else if (strcmp(argv[1], "targetcut") == 0) return main_cut_target(argc-1, argv+1);
-  else if (strcmp(argv[1], "phase") == 0) return main_phase(argc-1, argv+1);
-  else if (strcmp(argv[1], "depth") == 0) return main_depth(argc-1, argv+1);
-  else if (strcmp(argv[1], "bam2fq") == 0) return main_bam2fq(argc-1, argv+1);
+  int retval = 0;
+  
+  if (strcmp(argv[1], "view") == 0) retval = main_samview(argc-1, argv+1);
+  else if (strcmp(argv[1], "import") == 0) retval = main_import(argc-1, argv+1);
+  else if (strcmp(argv[1], "mpileup") == 0) retval = bam_mpileup(argc-1, argv+1);
+  else if (strcmp(argv[1], "merge") == 0) retval = bam_merge(argc-1, argv+1);
+  else if (strcmp(argv[1], "sort") == 0) retval = bam_sort(argc-1, argv+1);
+  else if (strcmp(argv[1], "index") == 0) retval = bam_index(argc-1, argv+1);
+  else if (strcmp(argv[1], "faidx") == 0) retval = faidx_main(argc-1, argv+1);
+  else if (strcmp(argv[1], "idxstats") == 0) retval = bam_idxstats(argc-1, argv+1);
+  else if (strcmp(argv[1], "fixmate") == 0) retval = bam_mating(argc-1, argv+1);
+  else if (strcmp(argv[1], "rmdup") == 0) retval = bam_rmdup(argc-1, argv+1);
+  else if (strcmp(argv[1], "flagstat") == 0) retval = bam_flagstat(argc-1, argv+1);
+  else if (strcmp(argv[1], "calmd") == 0) retval = bam_fillmd(argc-1, argv+1);
+  else if (strcmp(argv[1], "fillmd") == 0) retval = bam_fillmd(argc-1, argv+1);
+  else if (strcmp(argv[1], "reheader") == 0) retval = main_reheader(argc-1, argv+1);
+  else if (strcmp(argv[1], "cat") == 0) retval = main_cat(argc-1, argv+1);
+  else if (strcmp(argv[1], "targetcut") == 0) retval = main_cut_target(argc-1, argv+1);
+  else if (strcmp(argv[1], "phase") == 0) retval = main_phase(argc-1, argv+1);
+  else if (strcmp(argv[1], "depth") == 0)
+    {
+      retval = main_depth(argc-1, argv+1);
+    }
+  
+  else if (strcmp(argv[1], "bam2fq") == 0) retval = main_bam2fq(argc-1, argv+1);
   
 #if _CURSES_LIB != 0
-  else if (strcmp(argv[1], "tview") == 0) return bam_tview_main(argc-1, argv+1);
+  else if (strcmp(argv[1], "tview") == 0) retval = bam_tview_main(argc-1, argv+1);
 #endif
   else 
     {
       fprintf(stderr, "[main] unrecognized command '%s'\n", argv[1]);
       return 1;
     }
-  return 0;
+  fflush( stdout );
+  
+  return retval;
 }
 
 // taken from samtools/bam_import.c
