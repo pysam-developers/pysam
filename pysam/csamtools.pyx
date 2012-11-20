@@ -1225,6 +1225,18 @@ cdef class Samfile:
                         if record not in result: result[record] = []
                         result[record].append( x )
 
+                # if there are no SQ lines in the header, add the reference names
+                # from the information in the bam file.
+                # Background: c-samtools keeps the textual part of the header separate from
+                # the list of reference names and lengths. Thus, if a header contains only 
+                # SQ lines, the SQ information is not part of the textual header and thus
+                # are missing from the output. See issue 84.
+                if "SQ" not in result:
+                    sq = []
+                    for ref, length in zip( self.references, self.lengths ):
+                        sq.append( {'LN': length, 'SN': ref } )
+                    result["SQ"] = sq
+
             return result
 
     def _buildLine( self, fields, record ):
