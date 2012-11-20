@@ -11,6 +11,7 @@ from cpython cimport PyErr_SetString, PyBytes_Check, \
     PyUnicode_Check, PyBytes_FromStringAndSize, \
     PyObject_AsFileDescriptor
 
+PYTHON3 = PY_MAJOR_VERSION >= 3
 
 # from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
 from cpython.version cimport PY_MAJOR_VERSION
@@ -652,7 +653,6 @@ def tabix_index( filename,
     if not os.path.exists(filename): raise IOError("No such file '%s'" % filename)
 
     if not filename.endswith(".gz"): 
-        
         tabix_compress( filename, filename + ".gz", force = force )
         os.unlink( filename )
         filename += ".gz"
@@ -743,10 +743,10 @@ ctypedef class tabix_inplace_iterator:
             if (b[0] == '#'): continue
 
             # skip empty lines
-            if b[0] == '\0' or b[0] == '\n': continue
+            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
 
             # make sure that entry is complete
-            if b[nbytes-1] != '\n':
+            if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
                 result = b
                 raise ValueError( "incomplete line at %s" % result )
 
@@ -754,10 +754,7 @@ ctypedef class tabix_inplace_iterator:
             # otherwise buffer is copied to/from a
             # Python object causing segfaults as
             # the wrong memory is freed
-
-            # -1 to remove the new-line character
-            b[nbytes-1] = '\0'
-            r.present( b, nbytes-1 )
+            r.present( b, nbytes )
             return r 
 
         raise StopIteration
@@ -792,12 +789,14 @@ ctypedef class tabix_copy_iterator:
 
         cdef char * b
         cdef size_t nbytes
+        cdef int x
 
         b = NULL        
 
         while not feof( self.infile ):
 
             # getline allocates on demand
+            # return number of characters read excluding null byte
             nbytes = getline( &b, &nbytes, self.infile)
             # stop at first error
             if (nbytes == -1): break
@@ -805,10 +804,10 @@ ctypedef class tabix_copy_iterator:
             if (b[0] == '#'): continue
 
             # skip empty lines
-            if b[0] == '\0' or b[0] == '\n': continue
+            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
 
             # make sure that entry is complete
-            if b[nbytes-1] != '\n':
+            if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
                 result = b
                 free(b)
                 raise ValueError( "incomplete line at %s" % result )
@@ -818,15 +817,14 @@ ctypedef class tabix_copy_iterator:
             # Python object causing segfaults as
             # the wrong memory is freed
             # -1 to remove the new-line character
-            b[nbytes-1] = '\0'
-            return self.parser(b, nbytes-1)
+            return self.parser(b, nbytes)
 
         free(b)
         raise StopIteration
 
     def __next__(self):
         return self.__cnext__()
-
+    
 class tabix_generic_iterator:
     '''iterate over ``infile``.
     
@@ -841,50 +839,59 @@ class tabix_generic_iterator:
     def __iter__(self):
         return self
 
-    def next(self):
+    # cython version - required for python 3
+    def __next__(self):
         
         cdef char * b, * cpy
-        
         cdef size_t nbytes
-
         while 1:
 
             line = self.infile.readline()
             if not line: break
             
-            b = line
+            s = _force_bytes( line )
+            b = s
             nbytes = len( line )
+            assert b[nbytes] == '\0'
 
             # skip comments
             if (b[0] == '#'): continue
 
             # skip empty lines
-            if b[0] == '\0' or b[0] == '\n': continue
-
+            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
+            
             # make sure that entry is complete
-            if b[nbytes-1] != '\n':
+            if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
                 raise ValueError( "incomplete line at %s" % line )
             
             # create a copy
-            cpy = <char*>malloc( nbytes )        
-            memcpy( cpy, b, nbytes )
+            cpy = <char*>malloc(nbytes+1)        
+            if cpy == NULL: raise MemoryError()
+            memcpy( cpy, b, nbytes+1)
 
-            # -1 to remove the new-line character
-            cpy[nbytes-1] = '\0'
-
-            return self.parser(cpy, nbytes-1)            
+            return self.parser(cpy, nbytes)            
 
         raise StopIteration
+
+    # python version - required for python 2.7
+    def next(self):
+        return self.__next__()
     
 def tabix_iterator( infile, parser ):
     """return an iterator over all entries in a file."""
-
+    return tabix_generic_iterator( infile, parser )
     # file objects can use C stdio
     # used to be: isinstance( infile, file):
-    if isinstance( infile, io.IOBase ):
-        return tabix_copy_iterator( infile, parser )
-    else:
-        return tabix_generic_iterator( infile, parser )
+    # if PYTHON3:
+    #     if isinstance( infile, io.IOBase ):
+    #         return tabix_copy_iterator( infile, parser )
+    #     else:
+    #         return tabix_generic_iterator( infile, parser )
+    # else:
+#        if isinstance( infile, file ):
+#            return tabix_copy_iterator( infile, parser )
+#        else:
+#            return tabix_generic_iterator( infile, parser )
     
 __all__ = ["tabix_index", 
            "tabix_compress",

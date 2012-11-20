@@ -35,13 +35,13 @@ def loadAndConvert( infile ):
         for line in gzip.open( infile ):
             line = line.decode("ascii")
             if line.startswith("#"): continue
-            d = line[:-1].split("\t")
+            d = line.strip().split("\t")
             data.append( [x.encode("ascii") for x in d ] )
     else:
         with open(infile) as f:
             for line in f:
                 if line.startswith("#"): continue
-                d = line[:-1].split("\t")
+                d = line.strip().split("\t")
                 data.append( [x.encode("ascii") for x in d ] )
 
     return data
@@ -95,15 +95,15 @@ class TestCompression(unittest.TestCase):
     def setUp( self ):
         
         self.tmpfilename = "tmp_%i.gtf" % id(self)
-        infile = gzip.open( self.filename, "r")
-        outfile = open( self.tmpfilename, "w" )
-        outfile.write( str(infile.read()) )
+        infile = gzip.open( self.filename, "rb")
+        outfile = open( self.tmpfilename, "wb" )
+        outfile.write( infile.read() )
         outfile.close()
         infile.close()
 
     def testIndexPreset( self ):
         '''test indexing via preset.'''
-
+        
         pysam.tabix_index( self.tmpfilename, preset = "gff" )
         checkBinaryEqual( self.tmpfilename + ".gz", self.filename )
         checkBinaryEqual( self.tmpfilename + ".gz.tbi", self.filename_idx )
@@ -188,8 +188,6 @@ class TestIteration( unittest.TestCase ):
 
     def testPerContig( self ):
         for contig in ("chr1", "chr2", "chr1", "chr2" ):
-            print ("getting")
-            print ( contig)
             result = list(self.tabix.fetch( contig ))
             ref = self.getSubset( contig )
             self.checkPairwise( result, ref )
@@ -319,6 +317,49 @@ class TestParser( unittest.TestCase ):
                 self.assertEqual( c, list(r) )
                 self.assertEqual( "\t".join(e), str(r) )
 
+    def testIteratorCompressed( self ):
+        '''test iteration from compressed file.'''
+        with gzip.open( self.filename ) as infile:
+            for x, r in enumerate(pysam.tabix_iterator( infile, pysam.asTuple() )):
+                self.assertEqual( self.compare[x], list(r) )
+                self.assertEqual( len(self.compare[x]), len(r) )
+
+                # test indexing
+                for c in range(0,len(r)):
+                    self.assertEqual( self.compare[x][c], r[c] )
+
+                # test slicing access
+                for c in range(0, len(r)-1):
+                    for cc in range(c+1, len(r)):
+                        self.assertEqual( self.compare[x][c:cc],
+                                          r[c:cc] )
+
+    def testIteratorUncompressed( self ):
+        '''test iteration from uncompressed file.'''
+        tmpfilename = 'tmp_testIteratorUncompressed'
+        infile = gzip.open( self.filename, "rb")
+        outfile = open( tmpfilename, "wb" )
+        outfile.write( infile.read() )
+        outfile.close()
+        infile.close()
+
+        with open( tmpfilename ) as infile:
+            for x, r in enumerate(pysam.tabix_iterator( infile, pysam.asTuple() )):
+                self.assertEqual( self.compare[x], list(r) )
+                self.assertEqual( len(self.compare[x]), len(r) )
+
+                # test indexing
+                for c in range(0,len(r)):
+                    self.assertEqual( self.compare[x][c], r[c] )
+
+                # test slicing access
+                for c in range(0, len(r)-1):
+                    for cc in range(c+1, len(r)):
+                        self.assertEqual( self.compare[x][c:cc],
+                                          r[c:cc] )
+
+        os.unlink( tmpfilename )
+
 class TestGTF( TestParser ):
 
     def testRead( self ):
@@ -371,7 +412,7 @@ class TestBed( unittest.TestCase ):
             self.assertEqual( int(c[2]) + 1, r.end )
             self.assertEqual( str(int(c[2]) + 1), r[2].decode("ascii") )
 
-class TestVCFFromTabix( TestParser ):
+class TestVCFFromTabix( unittest.TestCase ):
 
     filename = "example.vcf40"
 
@@ -399,7 +440,11 @@ class TestVCFFromTabix( TestParser ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asVCF() )):
             c = self.compare[x]
+
             for y, field in enumerate( self.columns ):
+                # it is ok to have a missing format column
+                if y == 8 and y == len(c): continue
+
                 if field == "pos":
                     self.assertEqual( int(c[y]) - 1, getattr( r, field ) )
                     self.assertEqual( int(c[y]) - 1, r.pos )
@@ -407,7 +452,10 @@ class TestVCFFromTabix( TestParser ):
                     self.assertEqual( c[y], getattr( r, field ), 
                                       "mismatch in field %s: %s != %s" %\
                                           ( field,c[y], getattr( r, field ) ) )
-            self.assertEqual( len(c), len( r ) + ncolumns )
+            if len(c) == 8:
+                self.assertEqual( 0, len(r) )
+            else:
+                self.assertEqual( len(c), len( r ) + ncolumns )
             
             for y in range(len(c) - ncolumns):
                 self.assertEqual( c[ncolumns+y], r[y] )
@@ -417,16 +465,17 @@ class TestVCFFromTabix( TestParser ):
         ncolumns = len(self.columns) 
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asVCF() )):
-
             c = self.compare[x]
-
             # check unmodified string
-            ref_string = "\t".join( c )
             cmp_string = str(r)
-            self.assertEqual( ref_string, cmp_string )
+            ref_string = "\t".join( [x.decode() for x in c] )
 
+            self.assertEqual( ref_string, cmp_string )
+            
             # set fields and compare field-wise
             for y, field in enumerate( self.columns ):
+                # it is ok to have a missing format column
+                if y == 8 and y == len(c): continue
                 if field == "pos":
                     rpos = getattr( r, field )
                     self.assertEqual( int(c[y]) - 1, rpos )
@@ -437,16 +486,19 @@ class TestVCFFromTabix( TestParser ):
                     c[y] = str(int(c[y]) + 1 ) 
                 else:
                     setattr( r, field, "test_%i" % y)
-                    c[y] = "test_%i" % y
+                    c[y] = ("test_%i" % y).encode('ascii')
                     self.assertEqual( c[y], getattr( r, field ), 
                                       "mismatch in field %s: %s != %s" %\
                                           ( field,c[y], getattr( r, field ) ) )
 
-            self.assertEqual( len(c), len( r ) + ncolumns )
+            if len(c) == 8:
+                self.assertEqual( 0, len(r) )
+            else:
+                self.assertEqual( len(c), len( r ) + ncolumns )
             
             for y in range(len(c) - ncolumns):
-                c[ncolumns+y] = "test_%i" % y
-                r[y] = "test_%i" % y
+                c[ncolumns+y] = ("test_%i" % y).encode('ascii')
+                r[y] = ("test_%i" % y).encode('ascii')
                 self.assertEqual( c[ncolumns+y], r[y] )
 
 

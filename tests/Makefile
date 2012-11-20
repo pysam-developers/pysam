@@ -31,7 +31,7 @@ ex1.pileup.gz:ex1.bam ex1.fa
 
 example_unmapped_reads_no_sq.bam: example_unmapped_reads_no_sq.sam
 	touch tmp.list
-	samtools import x $* $@
+	samtools import tmp.list $< $@
 	rm -f tmp.list
 
 clean:

@@ -130,7 +130,9 @@ cdef class TupleProxy:
         self.update( buffer, nbytes )
 
     cdef copy( self, char * buffer, size_t nbytes ):
-        '''start presenting buffer.
+        '''start presenting buffer of size *nbytes*.
+
+        Buffer is a '\0'-terminated string without the '\n'.
 
         Take a copy of buffer.
         '''
@@ -151,20 +153,35 @@ cdef class TupleProxy:
     cdef update( self, char * buffer, size_t nbytes ):
         '''update internal data.
 
+        *buffer* is a \0 terminated string.
+
+        *nbytes* is the number of bytes in buffer (excluding
+        the \0)
+
         Update starts work in buffer, thus can be used
         to collect any number of fields until nbytes
         is exhausted.
 
-        If max_fields is set, the number of fields is initialized to max_fields.
-
+        If max_fields is set, the number of fields is initialized to 
+        max_fields.
         '''
         cdef char * pos
         cdef char * old_pos
         cdef int field
         cdef int max_fields, x
+        
+        assert strlen(buffer) == nbytes
 
         if buffer[nbytes] != 0:
             raise ValueError( "incomplete line at %s" % buffer )
+
+        #################################
+        # remove line breaks and feeds and update number of bytes
+        x = nbytes - 1
+        while x > 0 and (buffer[x] == '\n' or buffer[x] == '\r'): 
+            buffer[x] = '\0'
+            x -= 1
+        self.nbytes = x + 1
 
         #################################
         # clear data
@@ -504,7 +521,7 @@ cdef class GTFProxy( TupleProxy ):
         Only called if there *isn't* an attribute with this name
         """
         cdef char * start
-        cdef char * query = item
+        cdef char * query
         cdef char * cpy
         cdef char * end
         cdef int l
@@ -669,6 +686,7 @@ cdef class VCFProxy( NamedTupleProxy ):
         self.pos = atoi( self.fields[1] ) - 1
                              
     def __len__(self):
+        '''return number of genotype fields.'''
         return max(0, self.nfields - 9)
 
     property pos:
