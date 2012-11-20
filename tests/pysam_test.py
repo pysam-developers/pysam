@@ -873,6 +873,7 @@ class TestHeaderBam(TestHeaderSam):
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.bam","rb" )
 
+
 class TestUnmappedReads(unittest.TestCase):
 
     def testSAM(self):
@@ -1210,7 +1211,7 @@ class TestAlignedRead(unittest.TestCase):
         self.assertEqual( a.positions[-1], a.aend - 1 )
 
 class TestDeNovoConstruction(unittest.TestCase):
-    '''check BAM/SAM file construction using ex3.sam
+    '''check BAM/SAM file construction using ex6.sam
     
     (note these are +1 coordinates):
     
@@ -1244,7 +1245,6 @@ class TestDeNovoConstruction(unittest.TestCase):
 
     def setUp( self ):
 
-        
         a = pysam.AlignedRead()
         a.qname = "read_28833_29006_6945"
         a.seq="AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
@@ -1285,7 +1285,6 @@ class TestDeNovoConstruction(unittest.TestCase):
 
         for x in self.reads: outfile.write( x )
         outfile.close()
-        
         self.assertTrue( checkBinaryEqual( tmpfilename, self.samfile ),
                          "mismatch when construction SAM file, see %s %s" % (tmpfilename, self.samfile))
         
@@ -1322,6 +1321,19 @@ class TestDeNovoConstruction(unittest.TestCase):
                          "mismatch when construction BAM file, see %s %s" % (tmpfilename, self.bamfile))
         
         os.unlink( tmpfilename )
+
+class TestDeNovoConstructionUserTags(TestDeNovoConstruction):
+    '''test de novo construction with a header that contains lower-case tags.'''
+
+    header = { 'HD': {'VN': '1.0'},
+               'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
+                      {'LN': 1584, 'SN': 'chr2'}],
+               'x1': {'A': 2, 'B': 5 },
+               'x3': {'A': 6, 'B': 5 },
+               'x2': {'A': 4, 'B': 5 } }
+
+    bamfile = "example_user_header.bam"
+    samfile = "example_user_header.sam"
 
 
 class TestDoubleFetch(unittest.TestCase):

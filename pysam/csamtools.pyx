@@ -511,7 +511,8 @@ cdef class Samfile:
 
         2. If *header* is given, the header is built from a multi-level dictionary. The first level
            are the four types ('HD', 'SQ', ...). The second level are a list of lines, with each line
-           being a list of tag-value pairs.
+           being a list of tag-value pairs. The header is constructed first from all the defined fields,
+           followed by user tags in alphabetical order.
 
         3. If *text* is given, new header text is copied from raw text.
 
@@ -1231,8 +1232,14 @@ cdef class Samfile:
 
         # TODO: add checking for field and sort order
         line = ["@%s" % record ]
+        # comment
         if record == "CO":
             line.append( fields )
+        # user tags
+        elif record.islower():
+            for key in sorted(fields):
+                line.append( "%s:%s" % (key, str(fields[key])))
+        # defined tags
         else:
             # write fields of the specification
             for key in VALID_HEADER_ORDER[record]:
@@ -1260,6 +1267,7 @@ cdef class Samfile:
 
         dest = bam_header_init()
 
+        # first: defined tags
         for record in VALID_HEADERS:
             if record in new_header:
                 ttype = VALID_HEADER_TYPES[record]
@@ -1271,6 +1279,15 @@ cdef class Samfile:
                 else:
                     for fields in new_header[record]:
                         lines.append( self._buildLine( fields, record ) )
+
+        # then: user tags (lower case), sorted alphabetically
+        for record, data in sorted(new_header.items()):
+            if record in VALID_HEADERS: continue
+            if type( data ) is dict:
+                lines.append( self._buildLine( data, record ) )
+            else:
+                for fields in new_header[record]:
+                    lines.append( self._buildLine( fields, record ) )
 
         text = "\n".join(lines) + "\n"
         if dest.text != NULL: free( dest.text )

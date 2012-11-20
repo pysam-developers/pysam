@@ -9,7 +9,8 @@ all: ex1.pileup.gz ex1.bam.bai \
 	ex9_nofail.bam.bai \
 	ex9_fail.bam.bai \
         ex10.bam ex10.bam.bai \
-	example_unmapped_reads_no_sq.bam 
+	example_unmapped_reads_no_sq.bam \
+	example_user_header.bam 
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz
