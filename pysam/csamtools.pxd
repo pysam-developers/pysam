@@ -372,6 +372,7 @@ cdef extern from "pysam_util.h":
     int pysam_reference2tid( bam_header_t *header, char * s )
 
     void pysam_set_stderr( int fd )
+    void pysam_unset_stderr()
 
     # return mapped/unmapped reads on tid
     uint32_t pysam_get_mapped( bam_index_t *idx, int tid )

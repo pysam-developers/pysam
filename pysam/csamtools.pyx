@@ -60,14 +60,13 @@ DEF BAM_CHARD_CLIP = 5
 DEF BAM_CPAD       = 6
 
 #####################################################################
+## set pysam stderr to /dev/null
+pysam_unset_stderr()
+
+#####################################################################
 # hard-coded constants
 cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 cdef int max_pos = 2 << 29
-
-# redirect stderr to /dev/null
-_logfile = open(os.path.devnull, "w")
-pysam_set_stderr( _logfile.fileno() )
-
 
 cdef from_string_and_size(char* s, size_t length):
     if PY_MAJOR_VERSION < 3:
@@ -2932,14 +2931,12 @@ class Outs:
 
 def _samtools_dispatch( method,
                         args = (),
-                        catch_stdout = True,
-                        catch_stderr = False,
-                        ):
+                        catch_stdout = True ):
     '''call ``method`` in samtools providing arguments in args.
     
     .. note:: 
-       This method redirects stdout and (optionally) stderr to capture it 
-       from samtools. If for some reason stdout/stderr disappears
+       This method redirects stdout to capture it 
+       from samtools. If for some reason stdout disappears
        the reason might be in this method.
 
     .. note::
@@ -2963,11 +2960,9 @@ def _samtools_dispatch( method,
             raise IOError( "No such file or directory: '%s'" % args[0] )
 
     # redirect stderr and stdout to file
-    if catch_stderr:
-        stderr_h, stderr_f = tempfile.mkstemp()
-        stderr_save = Outs( sys.stderr.fileno() )
-        stderr_save.setfd( stderr_h )
-
+    stderr_h, stderr_f = tempfile.mkstemp()
+    pysam_set_stderr( stderr_h )
+        
     if catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
         stdout_save = Outs( sys.stdout.fileno() )
@@ -3012,15 +3007,15 @@ def _samtools_dispatch( method,
     else:
         out_stdout = []
 
-    if catch_stderr:
-        stderr_save.restore()
-        try:
-            with open( stderr_f, "r") as inf:
-                out_stderr = inf.readlines()
-        except UnicodeDecodeError:
-            with open( stderr_f, "rb") as inf:
-                # read binary output
-                out_stderr = inf.read()
+    # get error messages
+    pysam_unset_stderr()
+    try:
+        with open( stderr_f, "r") as inf:
+            out_stderr = inf.readlines()
+    except UnicodeDecodeError:
+        with open( stderr_f, "rb") as inf:
+            # read binary output
+            out_stderr = inf.read()
         os.remove( stderr_f )
     else:
         out_stderr = []

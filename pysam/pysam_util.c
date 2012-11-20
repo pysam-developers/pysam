@@ -18,8 +18,17 @@ FILE * pysamerr = NULL;
 
 FILE * pysam_set_stderr(int fd)
 {
+  if (pysamerr != NULL)
+    fclose(pysamerr);
   pysamerr = fdopen(fd, "w");
   return pysamerr;
+}
+
+void pysam_unset_stderr()
+{
+  if (pysamerr != NULL)
+    fclose(pysamerr);
+  pysamerr = fopen("/dev/null", "w");
 }
 
 // #######################################################
@@ -313,7 +322,7 @@ int pysam_dispatch(int argc, char *argv[] )
   knet_win32_init();
 #endif
 #endif
-  
+
   // reset getopt
   optind = 1;
 

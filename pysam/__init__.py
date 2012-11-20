@@ -48,7 +48,7 @@ class SamtoolsDispatcher(object):
         '''execute a samtools command
         '''
         retval, stderr, stdout = csamtools._samtools_dispatch( self.dispatch, args )
-        if retval: raise SamtoolsError( "\n".join( stderr ) )
+        if retval: raise SamtoolsError( 'csamtools returned with error %i: %s' % (retval, "\n".join( stderr ) ))
         self.stderr = stderr
         # samtools commands do not propagate the return code correctly.
         # I have thus added this patch to throw if there is output on stderr.
