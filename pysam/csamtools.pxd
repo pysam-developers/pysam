@@ -442,7 +442,7 @@ cdef class Samfile:
     cdef char * _getrname( self, int tid )
 
 cdef class PileupProxy:
-    cdef bam_pileup1_t * plp
+    cdef bam_pileup1_t ** plp
     cdef int tid
     cdef int pos
     cdef int n_pu

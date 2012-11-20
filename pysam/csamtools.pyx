@@ -146,7 +146,7 @@ cdef makeAlignedRead(bam1_t * src):
     return dest
 
 cdef class PileupProxy
-cdef makePileupProxy( bam_pileup1_t * plp, int tid, int pos, int n ):
+cdef makePileupProxy( bam_pileup1_t ** plp, int tid, int pos, int n ):
      cdef PileupProxy dest = PileupProxy.__new__(PileupProxy)
      dest.plp = plp
      dest.tid = tid
@@ -1883,7 +1883,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
             if self.plp == NULL:
                 raise StopIteration
 
-            return makePileupProxy( <bam_pileup1_t*>self.plp,
+            return makePileupProxy( &self.plp,
                                      self.tid,
                                      self.pos,
                                      self.n_plp )
@@ -1914,7 +1914,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 
             # return result, if within same reference
             if self.plp != NULL:
-                return makePileupProxy( <bam_pileup1_t*>self.plp,
+                return makePileupProxy( &self.plp,
                                          self.tid,
                                          self.pos,
                                          self.n_plp )
@@ -2881,10 +2881,14 @@ cdef class PileupProxy:
         def __get__(self):
             cdef int x
             pileups = []
+
+            if self.plp[0] == NULL:
+                raise ValueError("PileupProxy accessed after iterator finished")
+
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append( makePileupRead( &(self.plp[x])) )
+                pileups.append( makePileupRead( &(self.plp[0][x])) )
             return pileups
 
 cdef class PileupRead:

@@ -644,6 +644,7 @@ class TestIteratorRow(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
+
 class TestIteratorRowAll(unittest.TestCase):
 
     def setUp(self):
@@ -911,6 +912,14 @@ class TestPileupObjects(unittest.TestCase):
 
     def tearDown(self):
         self.samfile.close()
+
+    def testIteratorOutOfScope( self ):
+        '''test if exception is raised if pileup col is accessed after iterator is exhausted.'''
+
+        for pileupcol in self.samfile.pileup():
+            pass
+        
+        self.assertRaises( ValueError, getattr, pileupcol, "pileups" )
 
 class TestContextManager(unittest.TestCase):
 
