@@ -15,59 +15,12 @@ import warnings
 from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
 from cpython.version cimport PY_MAJOR_VERSION
 
-#from cpython.string cimport PyString_FromStringAndSize, PyString_AS_STRING
-#from cpython.exc    cimport PyErr_SetString, PyErr_NoMemory
-
-# defines imported from samtools
-DEF SEEK_SET = 0
-DEF SEEK_CUR = 1
-DEF SEEK_END = 2
-
-## These are bits set in the flag.
-## have to put these definitions here, in csamtools.pxd they got ignored
-## @abstract the read is paired in sequencing, no matter whether it is mapped in a pair */
-DEF BAM_FPAIRED       =1
-## @abstract the read is mapped in a proper pair */
-DEF BAM_FPROPER_PAIR  =2
-## @abstract the read itself is unmapped; conflictive with BAM_FPROPER_PAIR */
-DEF BAM_FUNMAP        =4
-## @abstract the mate is unmapped */
-DEF BAM_FMUNMAP       =8
-## @abstract the read is mapped to the reverse strand */
-DEF BAM_FREVERSE      =16
-## @abstract the mate is mapped to the reverse strand */
-DEF BAM_FMREVERSE     =32
-## @abstract this is read1 */
-DEF BAM_FREAD1        =64
-## @abstract this is read2 */
-DEF BAM_FREAD2       =128
-## @abstract not primary alignment */
-DEF BAM_FSECONDARY   =256
-## @abstract QC failure */
-DEF BAM_FQCFAIL      =512
-## @abstract optical or PCR duplicate */
-DEF BAM_FDUP        =1024
-
-DEF BAM_CIGAR_SHIFT=4
-DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
-
-DEF BAM_CMATCH     = 0
-DEF BAM_CINS       = 1
-DEF BAM_CDEL       = 2
-DEF BAM_CREF_SKIP  = 3
-DEF BAM_CSOFT_CLIP = 4
-DEF BAM_CHARD_CLIP = 5
-DEF BAM_CPAD       = 6
-
-#####################################################################
-## set pysam stderr to /dev/null
-pysam_unset_stderr()
-
-#####################################################################
-# hard-coded constants
-cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
-cdef int max_pos = 2 << 29
-
+########################################################################
+########################################################################
+########################################################################
+## Python 3 compatibility functions
+########################################################################
+IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 cdef from_string_and_size(char* s, size_t length):
     if PY_MAJOR_VERSION < 3:
         return s[:length]
@@ -132,6 +85,71 @@ cdef _force_str(object s):
     else:
         # assume unicode
         return s
+########################################################################
+########################################################################
+########################################################################
+## Constants and global variables
+########################################################################
+# defines imported from samtools
+DEF SEEK_SET = 0
+DEF SEEK_CUR = 1
+DEF SEEK_END = 2
+
+## These are bits set in the flag.
+## have to put these definitions here, in csamtools.pxd they got ignored
+## @abstract the read is paired in sequencing, no matter whether it is mapped in a pair */
+DEF BAM_FPAIRED       =1
+## @abstract the read is mapped in a proper pair */
+DEF BAM_FPROPER_PAIR  =2
+## @abstract the read itself is unmapped; conflictive with BAM_FPROPER_PAIR */
+DEF BAM_FUNMAP        =4
+## @abstract the mate is unmapped */
+DEF BAM_FMUNMAP       =8
+## @abstract the read is mapped to the reverse strand */
+DEF BAM_FREVERSE      =16
+## @abstract the mate is mapped to the reverse strand */
+DEF BAM_FMREVERSE     =32
+## @abstract this is read1 */
+DEF BAM_FREAD1        =64
+## @abstract this is read2 */
+DEF BAM_FREAD2       =128
+## @abstract not primary alignment */
+DEF BAM_FSECONDARY   =256
+## @abstract QC failure */
+DEF BAM_FQCFAIL      =512
+## @abstract optical or PCR duplicate */
+DEF BAM_FDUP        =1024
+
+#####################################################################
+# CIGAR operations
+DEF BAM_CIGAR_SHIFT=4
+DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
+
+DEF BAM_CMATCH     = 0
+DEF BAM_CINS       = 1
+DEF BAM_CDEL       = 2
+DEF BAM_CREF_SKIP  = 3
+DEF BAM_CSOFT_CLIP = 4
+DEF BAM_CHARD_CLIP = 5
+DEF BAM_CPAD       = 6
+DEF BAM_CEQUAL     = 7
+DEF BAM_CDIFF      = 8
+
+cdef char* CODE2CIGAR= "MIDNSHP=X"
+if IS_PYTHON3:
+    CIGAR2CODE = dict( [y,x] for x,y in enumerate( CODE2CIGAR) )
+else:
+    CIGAR2CODE = dict( [ord(y),x] for x,y in enumerate( CODE2CIGAR) )
+CIGAR_REGEX = re.compile( "([MIDNSHP=X])(\d+)" )
+
+#####################################################################
+## set pysam stderr to /dev/null
+pysam_unset_stderr()
+
+#####################################################################
+# hard-coded constants
+cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
+cdef int max_pos = 2 << 29
 
 #####################################################################
 #####################################################################
@@ -2201,7 +2219,29 @@ cdef class AlignedRead:
             strncpy( p, qname, l )
 
     property cigar:
-        """the :term:`cigar` alignment (None if not present).
+        """the :term:`cigar` alignment (None if not present). The alignment
+        is returned as a list of operations. The operations are:
+
+        +-----+--------------+-----+
+        |M    |BAM_CMATCH    |0    |
+        +-----+--------------+-----+
+        |I    |BAM_CINS      |1    |
+        +-----+--------------+-----+
+        |D    |BAM_CDEL      |2    |
+        +-----+--------------+-----+
+        |N    |BAM_CREF_SKIP |3    |
+        +-----+--------------+-----+
+        |S    |BAM_CSOFT_CLIP|4    |
+        +-----+--------------+-----+
+        |H    |BAM_CHARD_CLIP|5    |
+        +-----+--------------+-----+
+        |P    |BAM_CPAD      |6    |
+        +-----+--------------+-----+
+        |=    |BAM_CEQUAL    |7    |
+        +-----+--------------+-----+
+        |X    |BAM_CDIFF     |8    |
+        +-----+--------------+-----+
+
         """
         def __get__(self):
             cdef uint32_t * cigar_p
@@ -2254,6 +2294,21 @@ cdef class AlignedRead:
 
             ## setting the cigar string also updates the "bin" attribute
             src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, p))
+
+    property cigarstring:
+        '''the :term:`cigar` alignment as a string.
+        
+        Returns the empty string if not present.
+        '''
+        def __get__(self):
+            c = self.cigar
+            if c == None: return ""
+            else: return "".join([ "%c%i" % (CODE2CIGAR[x],y) for x,y in c])
+            
+        def __set__(self, cigar):
+            if cigar == None or len(cigar) == 0: self.cigar = []
+            parts = CIGAR_REGEX.findall( cigar )
+            self.cigar = [ (CIGAR2CODE[ord(x)], int(y)) for x,y in parts ]
 
     property seq:
         """read sequence bases, including :term:`soft clipped` bases (None if not present).

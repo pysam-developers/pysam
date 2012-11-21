@@ -605,6 +605,12 @@ class TestTagParsing( unittest.TestCase ):
         outfile.write (r )
         outfile.close()
 
+    def testCigarString( self ):
+        r = self.makeRead()
+        self.assertEqual( r.cigarstring, "M10D1M25" )
+        r.cigarstring = "M20D10M20"
+        self.assertEqual( r.cigar, [(0,20), (2,10), (0,20)])
+
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):

@@ -2,6 +2,18 @@
 Release notes
 =============
 
+Release 0.7
+===========
+
+   * switch to tabix 0.2.6
+   * added cigarstring field
+   * python3 compatibility
+   * added B tag handling
+   * added check_sq and check_header options to Samfile.__init__
+   * added lazy GTF parsing to tabix
+   * reworked support for VCF format parsing
+   * bugfixes
+
 Release 0.6
 ===========
 
