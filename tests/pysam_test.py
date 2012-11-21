@@ -1350,7 +1350,7 @@ class TestEmptyHeader( unittest.TestCase ):
     def testEmptyHeader( self ):
 
         s = pysam.Samfile('example_empty_header.bam')
-        self.assertEqual( s.header, {'SQ': [{'LN': 1000L, 'SN': 'chr1'}]} )
+        self.assertEqual( s.header, {'SQ': [{'LN': 1000, 'SN': 'chr1'}]} )
 
 class TestDoubleFetch(unittest.TestCase):
     '''check if two iterators on the same bamfile are independent.'''
