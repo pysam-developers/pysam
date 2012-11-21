@@ -3145,8 +3145,12 @@ def _samtools_dispatch( method,
         
     if catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
-        stdout_save = Outs( sys.stdout.fileno() )
-        stdout_save.setfd( stdout_h )
+        try:
+            stdout_save = Outs( sys.stdout.fileno() )
+            stdout_save.setfd( stdout_h )
+        except AttributeError:
+            # stdout has already been redirected
+            catch_stdout = False
 
         # patch for `samtools view`
         # samtools `view` closes stdout, from which I can not
