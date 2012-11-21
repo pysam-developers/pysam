@@ -60,10 +60,13 @@ cdef extern from "razf.h":
   pass
 
 cdef extern from "stdint.h":
-  ctypedef int int64_t
+  ctypedef int int8_t
+  ctypedef int int16_t
   ctypedef int int32_t
-  ctypedef int uint32_t
+  ctypedef int int64_t
   ctypedef int uint8_t
+  ctypedef int uint16_t
+  ctypedef int uint32_t
   ctypedef int uint64_t
 
 cdef extern from "bam.h":
@@ -232,6 +235,9 @@ cdef extern from "bam.h":
 
   uint32_t bam_calend(bam1_core_t *c, uint32_t *cigar)
 
+  int bam_aux_type2size( int )
+    
+
 cdef extern from *:
     ctypedef char* const_char_ptr "const char*"
 
@@ -392,7 +398,6 @@ ctypedef struct __iterdata:
     int tid
     char * seq
     int seq_len
-
 
 ####################################################################
 #

@@ -167,6 +167,52 @@ cdef makePileupRead( bam_pileup1_t * src ):
     dest._is_tail = src.is_tail
     return dest
 
+cdef convertBinaryTagToList( uint8_t * s ):
+    """return bytesize, number of values list of values in s."""
+    cdef char auxtype
+    cdef uint8_t byte_size
+    cdef int32_t nvalues
+
+    # get byte size
+    auxtype = s[0]
+    byte_size = bam_aux_type2size( auxtype )
+    s += 1
+    # get number of values in array
+    nvalues = (<int32_t*>s)[0]
+    s += 4
+    # get values
+    values = []
+    if auxtype == 'c':
+        for x from 0 <= x < nvalues:
+            values.append((<int8_t*>s)[0])
+            s += 1
+    elif auxtype == 'C':
+        for x from 0 <= x < nvalues:
+            values.append((<uint8_t*>s)[0])
+            s += 1
+    elif auxtype == 's':
+        for x from 0 <= x < nvalues:
+            values.append((<int16_t*>s)[0])
+            s += 2
+    elif auxtype == 'S':
+        for x from 0 <= x < nvalues:
+            values.append((<uint16_t*>s)[0])
+            s += 2
+    elif auxtype == 'i':
+        for x from 0 <= x < nvalues:
+            values.append((<int32_t*>s)[0])
+            s += 4
+    elif auxtype == 'I':
+        for x from 0 <= x < nvalues:
+            values.append((<uint32_t*>s)[0])
+            s += 4
+    elif auxtype == 'f':
+        for x from 0 <= x < nvalues:
+            values.append((<float*>s)[0])
+            s += 4
+
+    return byte_size, nvalues, values
+
 #####################################################################
 #####################################################################
 #####################################################################
@@ -2383,10 +2429,11 @@ cdef class AlignedRead:
             cdef uint8_t * s
             cdef char auxtag[3]
             cdef char auxtype
+            cdef uint8_t byte_size
+            cdef int32_t nvalues
 
             src = self._delegate
             if src.l_aux == 0: return []
-
             s = bam1_aux( src )
             result = []
             auxtag[2] = 0
@@ -2396,7 +2443,6 @@ cdef class AlignedRead:
                 auxtag[1] = s[1]
                 s += 2
                 auxtype = s[0]
-
                 if auxtype in ('c', 'C'):
                     value = <int>bam_aux2i(s)
                     s += 1
@@ -2419,7 +2465,12 @@ cdef class AlignedRead:
                     value = _charptr_to_str(<char*>bam_aux2Z(s))
                     # +1 for NULL terminated string
                     s += len(value) + 1
-                 #
+                elif auxtype == 'B':
+                    s += 1
+                    byte_size, nvalues, value = convertBinaryTagToList( s )
+                    # 5 for 1 char and 1 int
+                    s += 5 + ( nvalues * byte_size) - 1
+
                 s += 1
 
                 result.append( (_charptr_to_str(auxtag), value) )
@@ -2443,14 +2494,48 @@ cdef class AlignedRead:
                     if not type(pytag) is bytes:
                         pytag = pytag.encode('ascii')
                     t = type(value)
+
+                    if t is tuple or t is list:
+                        # binary tags - treat separately
+                        pytype = 'B'
+                        # get data type - first value determines type
+                        if type(value[0]) is float:
+                            datafmt, datatype = "f", "f"
+                        else:
+                            mi, ma = min(value), max(value)
+                            absmax = max( abs(mi), abs(ma) )
+                            # signed ints
+                            if mi < 0: 
+                                if mi >= -127: datafmt, datatype = "b", 'c'
+                                elif mi >= -32767: datafmt, datatype = "h", 's'
+                                elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                                else: datafmt, datatype = "i", 'i'
+
+                            # unsigned ints
+                            else:
+                                if absmax <= 255: datafmt, datatype = "B", 'C'
+                                elif absmax <= 65535: datafmt, datatype = "H", 'S'
+                                elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                                else: datafmt, datatype = "I", 'I'
+                                
+                        datafmt = "2sccI%i%s" % (len(value), datafmt)
+                        args.extend( [pytag[:2], 
+                                      pytype.encode('ascii'),
+                                      datatype.encode('ascii'),
+                                      len(value)] + list(value) )
+                        fmts.append( datafmt )
+                        continue
+
                     if t is float:
                         fmt, pytype = "2scf", 'f'
                     elif t is int:
+                        # negative values
                         if value < 0:
                             if value >= -127: fmt, pytype = "2scb", 'c'
                             elif value >= -32767: fmt, pytype = "2sch", 's'
                             elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
                             else: fmt, pytype = "2sci", 'i'
+                        # positive values
                         else:
                             if value <= 255: fmt, pytype = "2scB", 'C'
                             elif value <= 65535: fmt, pytype = "2scH", 'S'
@@ -2782,24 +2867,31 @@ cdef class AlignedRead:
         """retrieves optional data given a two-letter *tag*"""
         #see bam_aux.c: bam_aux_get() and bam_aux2i() etc
         cdef uint8_t * v
+        cdef int nvalues
         btag = _force_bytes(tag)
         v = bam_aux_get(self._delegate, btag)
         if v == NULL: raise KeyError( "tag '%s' not present" % tag )
-        type = chr(v[0])
-        if type == 'c' or type == 'C' or type == 's' or type == 'S':
+        auxtype = chr(v[0])
+        if auxtype == 'c' or auxtype == 'C' or auxtype == 's' or auxtype == 'S':
             return <int>bam_aux2i(v)
-        elif type == 'i' or type == 'I':
+        elif auxtype == 'i' or auxtype == 'I':
             return <int32_t>bam_aux2i(v)
-        elif type == 'f' or type == 'F':
+        elif auxtype == 'f' or auxtype == 'F':
             return <float>bam_aux2f(v)
-        elif type == 'd' or type == 'D':
+        elif auxtype == 'd' or auxtype == 'D':
             return <double>bam_aux2d(v)
-        elif type == 'A':
+        elif auxtype == 'A':
             # there might a more efficient way
             # to convert a char into a string
             return '%c' % <char>bam_aux2A(v)
-        elif type == 'Z':
+        elif auxtype == 'Z':
             return _charptr_to_str(<char*>bam_aux2Z(v))
+        elif auxtype == 'B':
+            bytesize, nvalues, values = convertBinaryTagToList( v + 1 )
+            return values
+        else:
+            raise ValueError("unknown auxilliary type '%s'" % auxtype)
+
 
     def fancy_str (self):
         """returns list of fieldnames/values in pretty format for debugging

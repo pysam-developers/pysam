@@ -72,4 +72,7 @@ uint32_t pysam_get_unmapped( const bam_index_t *idx, const int tid );
 /* void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c ); */
 
 
+// return size of auxilliary type
+// int bam_aux_type2size(int x);
+
 #endif
