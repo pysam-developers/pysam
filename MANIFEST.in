@@ -43,10 +43,17 @@ include tests/ex10.sam
 include tests/example.py
 include tests/pysam_test.py
 include tests/segfault_tests.py
+include tests/example_*.sam
+include tests/tag_bug.bam
+include tests/example.vcf40
+include tests/example_empty_header.bam
+include tests/issue100.bam
 
 # tabix tests
 include tests/tabix_test.py
 include tests/example.gtf.gz
 include tests/example.gtf.gz.tbi
-
+include tests/example.bed.gz
+include tests/example.bed.gz.tbi
+include tests/vcf-examples/*.vcf
 
