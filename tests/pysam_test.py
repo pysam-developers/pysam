@@ -682,10 +682,13 @@ class TestIteratorColumn(unittest.TestCase):
     def setUp(self):
         self.samfile=pysam.Samfile( "ex4.bam","rb" )
 
-    def checkRange( self, rnge ):
+    def checkRange( self, contig, start, end, truncate = False ):
         '''compare results from iterator with those from samtools.'''
         # check if the same reads are returned and in the same order
-        for column in self.samfile.pileup(region=rnge):
+        for column in self.samfile.pileup(contig, start, end, truncate = truncate):
+            if truncate:
+                self.assertGreaterEqual( column.pos, start )
+                self.assertLess( column.pos, end )
             thiscov = len(column.pileups)
             refcov = self.mCoverages[self.samfile.getrname(column.tid)][column.pos]
             self.assertEqual( thiscov, refcov, "wrong coverage at pos %s:%i %i should be %i" % (self.samfile.getrname(column.tid), column.pos, thiscov, refcov))
@@ -703,7 +706,7 @@ class TestIteratorColumn(unittest.TestCase):
         '''check random access per range'''
         for contig, length in zip(self.samfile.references, self.samfile.lengths):
             for start in range( 1, length, 90):
-                self.checkRange( "%s:%i-%i" % (contig, start, start + 90) ) # this includes empty ranges
+                self.checkRange( contig, start, start + 90 ) # this includes empty ranges
 
     def testInverse( self ):
         '''test the inverse, is point-wise pileup accurate.'''
@@ -719,10 +722,17 @@ class TestIteratorColumn(unittest.TestCase):
                     self.assertEqual( len(columns), refcolumns, "pileup incomplete at position %i: got %i, expected %i " %\
                                           (pos, len(columns), refcolumns))
 
-                    
-    
+    def testIterateTruncate( self ):
+        '''check random access per range'''
+        for contig, length in zip(self.samfile.references, self.samfile.lengths):
+            for start in range( 1, length, 90):
+                self.checkRange( contig, start, start + 90, truncate = True ) # this includes empty ranges
+                
+        
+        
     def tearDown(self):
         self.samfile.close()
+
     
 class TestAlignedReadFromBam(unittest.TestCase):
 

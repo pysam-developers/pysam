@@ -529,7 +529,9 @@ cdef class IteratorColumn:
     cdef reset( self, tid, start, end )
 
 cdef class IteratorColumnRegion(IteratorColumn):
-    pass
+    cdef int start
+    cdef int end
+    cdef int truncate
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
     pass

@@ -1093,10 +1093,15 @@ cdef class Samfile:
            A :class:`FastaFile` object
 
          mask
-           Skip all reads with bits set in mask.
+           Skip all reads with bits set in mask if mask=True.
 
          max_depth
            Maximum read depth permitted. The default limit is *8000*.
+
+         truncate
+           By default, the samtools pileup engine outputs all reads overlapping a region (see note below).
+           If truncate is True and a region is given, only output columns in the exact region
+           specificied.
 
         .. note::
 
@@ -1930,10 +1935,14 @@ cdef class IteratorColumnRegion(IteratorColumn):
                   int tid = 0,
                   int start = 0,
                   int end = max_pos,
+                  int truncate = False,
                   **kwargs ):
 
         # initialize iterator
         self.setupIteratorData( tid, start, end, 1 )
+        self.start = start
+        self.end = end
+        self.truncate = truncate
 
     def __next__(self):
         """python version of next().
@@ -1946,6 +1955,10 @@ cdef class IteratorColumnRegion(IteratorColumn):
 
             if self.plp == NULL:
                 raise StopIteration
+            
+            if self.truncate:
+                if self.start < self.pos: continue
+                if self.pos >= self.end: raise StopIteration
 
             return makePileupProxy( &self.plp,
                                      self.tid,
