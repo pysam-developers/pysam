@@ -682,7 +682,7 @@ class TestIteratorColumn(unittest.TestCase):
     def setUp(self):
         self.samfile=pysam.Samfile( "ex4.bam","rb" )
 
-    def checkRange( self, contig, start, end, truncate = False ):
+    def checkRange( self, contig, start = None, end = None, truncate = False ):
         '''compare results from iterator with those from samtools.'''
         # check if the same reads are returned and in the same order
         for column in self.samfile.pileup(contig, start, end, truncate = truncate):
