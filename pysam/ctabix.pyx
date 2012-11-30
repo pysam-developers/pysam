@@ -652,6 +652,9 @@ def tabix_index( filename,
     
     if not os.path.exists(filename): raise IOError("No such file '%s'" % filename)
 
+    if preset == None and (seq_col == None or start_col == None or end_col == None):
+        raise ValueError("neither preset nor seq_col,start_col and end_col given" )
+
     if not filename.endswith(".gz"): 
         tabix_compress( filename, filename + ".gz", force = force )
         os.unlink( filename )
