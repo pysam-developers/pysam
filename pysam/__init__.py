@@ -113,7 +113,7 @@ SAMTOOLS_DISPATCH = {
  }
 
 # instantiate samtools commands as python functions
-for key, options in SAMTOOLS_DISPATCH.iteritems():
+for key, options in SAMTOOLS_DISPATCH.items():
     cmd, parser = options
     globals()[key] = SamtoolsDispatcher(cmd, parser)
 
