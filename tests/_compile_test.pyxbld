@@ -1,0 +1,10 @@
+import sys
+# link against pysam
+def make_ext(modname, pyxfilename):
+    from distutils.extension import Extension
+    import pysam, os
+    dirname = os.path.dirname( pysam.__file__ )
+    return Extension( name = modname,
+                      sources = [pyxfilename],
+                      include_dirs = pysam.get_include(),
+                      define_macros = pysam.get_defines() ) 
