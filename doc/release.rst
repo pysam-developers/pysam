@@ -2,6 +2,11 @@
 Release notes
 =============
 
+Release 0.7.4
+=============
+	
+   * further bugfixes to setup.py and package layout
+
 Release 0.7.3
 =============
 	
