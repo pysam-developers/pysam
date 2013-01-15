@@ -131,10 +131,10 @@ from pysam.version import __version__, __samtools_version__
 # Utility functions for compilation
 def get_include():
     '''return a list of include directories.'''
-    dirname = os.path.abspath(os.path.dirname(__file__)[:-len("pysam")])
-    return [ os.path.join(dirname, "pysam"),
-             os.path.join(dirname, "samtools"),
-             os.path.join(dirname, "tabix") ]
+    dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+    return [ dirname,
+             os.path.join(dirname, 'include', 'samtools'),
+             os.path.join(dirname, 'include', 'tabix') ]
 
 def get_defines():
     '''return a list of defined compilation parameters.'''

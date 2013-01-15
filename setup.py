@@ -137,7 +137,7 @@ except ImportError:
     cmdclass = { }
     csamtools_sources = [ "pysam/csamtools.c" ]
     tabix_sources = [ "pysam/ctabix.c" ]
-    tabproxies_sourcess = ["pysam/TabProxies.c" ]
+    tabproxies_sources = ["pysam/TabProxies.c" ]
     cvcf_sources = ["pysam/cvcf.c" ]
 else:
     cmdclass = { 'build_ext' : build_ext }
@@ -228,14 +228,20 @@ metadata = {
     'license': "MIT",
     'platforms': "ALL",
     'url': "http://code.google.com/p/pysam/",
-    'packages' : find_packages(),
+    'packages' : ['pysam',
+                  'pysam.include',
+                  'pysam.include.samtools',
+                  'pysam.include.samtools.bcftools',
+                  'pysam.include.samtools.win32',
+                  'pysam.include.tabix'],
     'requires' : ['cython (>=0.17)'],
     'ext_modules': [samtools, tabix, tabproxies, cvcf ],
     'cmdclass' : cmdclass,
     'install_requires' : ['cython>=0.17',], 
-    'package_data' : {'tabix' : ['*.pxd', '*.h'], 
-                      'pysam' : ['*.pxd', '*.h'],
-                      'samtools' : ['*.pxd', '*.h'] },
+    'package_dir' : { 'pysam'                  : 'pysam',
+                      'pysam.include.samtools' : 'samtools',
+                      'pysam.include.tabix'    : 'tabix' },
+    'package_data' : { '' : ['*.pxd', '*.h'],  },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
     'use_2to3': True,
