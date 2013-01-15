@@ -2,6 +2,12 @@
 Release notes
 =============
 
+Release 0.7.3
+=============
+	
+   * further bugfixes to setup.py
+   * upgraded distribute_setup.py to 0.6.34
+
 Release 0.7.2
 =============
   
