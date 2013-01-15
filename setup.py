@@ -127,8 +127,8 @@ except ImportError:
     # no Cython available - use existing C code
     cmdclass = { }
     csamtools_sources = [ "pysam/csamtools.c" ]
-    tabix_sources = [ "pysam/tabix.c" ]
-    tabproxies_sources = ["pysam/TabProxies.c" ]
+    tabix_sources = [ "pysam/ctabix.c" ]
+    tabproxies_sourcess = ["pysam/TabProxies.c" ]
     cvcf_sources = ["pysam/cvcf.c" ]
 else:
     cmdclass = { 'build_ext' : build_ext }
@@ -242,4 +242,3 @@ if sys.version_info[0] < 3:
 
 if __name__=='__main__':
    dist = setup(**metadata)
-

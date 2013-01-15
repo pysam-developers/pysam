@@ -125,7 +125,7 @@ __all__ = \
     [ "SamtoolsError", "SamtoolsDispatcher" ] + list(SAMTOOLS_DISPATCH) +\
     ["Pileup" ] 
 
-from version import __version__, __samtools_version__
+from pysam.version import __version__, __samtools_version__
 
 def get_include():
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'include'))

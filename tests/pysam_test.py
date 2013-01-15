@@ -891,6 +891,16 @@ class TestHeaderBam(TestHeaderSam):
         self.samfile=pysam.Samfile( "ex3.bam","rb" )
 
 
+class TestHeader1000Genomes( unittest.TestCase ):
+
+    bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase2b_alignment/data/NA07048/exome_alignment/NA07048.unmapped.ILLUMINA.bwa.CEU.exome.20120522_p2b.bam"
+        
+    def testRead( self ):
+
+        f = pysam.Samfile( self.bamfile, "rb" )
+        data = f.header.copy()
+        self.assertTrue( data )
+
 class TestUnmappedReads(unittest.TestCase):
 
     def testSAM(self):

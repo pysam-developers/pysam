@@ -10,8 +10,9 @@ Release 0.7.2
 
 Release 0.7.1
 =============
-  
-   * bugfix in header parsing
+
+   * bugfix: missing PP tag PG records in header
+   * added pre-built .c files to distribution
 
 Release 0.7
 ===========

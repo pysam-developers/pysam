@@ -5,7 +5,7 @@
 # from csamtools.pyx
 import tempfile, os, sys, types, itertools, struct, ctypes, gzip
 import io
-cimport TabProxies
+from pysam cimport TabProxies
 
 from cpython cimport PyErr_SetString, PyBytes_Check, \
     PyUnicode_Check, PyBytes_FromStringAndSize, \
