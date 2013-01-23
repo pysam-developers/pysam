@@ -1,10 +1,10 @@
-from csamtools import *
-from ctabix import *
-import csamtools
-import ctabix
-from cvcf import *
-import cvcf
-import Pileup
+from pysam.csamtools import *
+from pysam.ctabix import *
+import pysam.csamtools as csamtools
+import pysam.ctabix as ctabix
+from pysam.cvcf import *
+import pysam.cvcf as cvcf
+import pysam.Pileup as Pileup
 import sys
 import os
 
@@ -126,3 +126,10 @@ __all__ = \
     ["Pileup" ] 
 
 from version import __version__, __samtools_version__
+
+def get_include():
+    base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'include'))
+    return [os.path.join(base, 'samtools'), os.path.join(base, 'pysam')]
+
+def get_defines():
+    return [('_FILE_OFFSET_BITS','64'), ('_USE_KNETFILE','')]

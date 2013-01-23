@@ -2,6 +2,17 @@
 Release notes
 =============
 
+Release 0.7.2
+=============
+  
+   * bugfix in installer - failed when cython not present
+   * changed installation locations of shared libraries
+
+Release 0.7.1
+=============
+  
+   * bugfix in header parsing
+
 Release 0.7
 ===========
 

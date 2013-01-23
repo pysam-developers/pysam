@@ -114,14 +114,30 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 
     sys.exit(0)
 
-
-
 from distribute_setup import use_setuptools
 use_setuptools()
 
 from setuptools import Extension, setup
-from Cython.Distutils import build_ext
 
+#######################################################
+#######################################################
+try:
+    from Cython.Distutils import build_ext
+except ImportError:
+    # no Cython available - use existing C code
+    cmdclass = { }
+    csamtools_sources = [ "pysam/csamtools.c" ]
+    tabix_sources = [ "pysam/tabix.c" ]
+    tabproxies_sources = ["pysam/TabProxies.c" ]
+    cvcf_sources = ["pysam/cvcf.c" ]
+else:
+    cmdclass = { 'build_ext' : build_ext }
+    csamtools_sources = [ "pysam/csamtools.pyx" ]
+    tabix_sources = [ "pysam/ctabix.pyx" ]
+    tabproxies_sources = ["pysam/TabProxies.pyx" ]
+    cvcf_sources = ["pysam/cvcf.pyx" ]
+
+#######################################################
 classifiers = """
 Development Status :: 2 - Alpha
 Operating System :: MacOS :: MacOS X
@@ -135,6 +151,8 @@ Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
 
+#######################################################
+## Windows compatibility
 if platform.system()=='Windows':
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
@@ -142,9 +160,10 @@ else:
     include_os = []
     os_c_files = []
 
+#######################################################
 samtools = Extension(
-    "csamtools",                   # name of extension
-    [ "pysam/csamtools.pyx" ]  +\
+    "pysam.csamtools",              
+    csamtools_sources +\
         [ "pysam/%s" % x for x in (
                 "pysam_util.c", )] +\
         glob.glob( os.path.join( "samtools", "*.pysam.c" )) +\
@@ -159,8 +178,8 @@ samtools = Extension(
     )
 
 tabix = Extension(
-    "ctabix",                   # name of extension
-    [ "pysam/ctabix.pyx", ]  +\
+    "pysam.ctabix",                   
+    tabix_sources +\
        [ "pysam/%s" % x for x in ( "tabix_util.c", )] +\
         os_c_files + \
        glob.glob( os.path.join( "tabix", "*.pysam.c" ) ),
@@ -173,8 +192,8 @@ tabix = Extension(
     )
 
 tabproxies = Extension(
-    "TabProxies",                   # name of extension
-    [ "pysam/TabProxies.pyx", ] + os_c_files,
+    "pysam.TabProxies",               
+    tabproxies_sources + os_c_files,
     library_dirs=[],
     include_dirs= include_os,
     libraries=[ "z", ],
@@ -182,8 +201,8 @@ tabproxies = Extension(
     )
 
 cvcf = Extension(
-    "cvcf",                   # name of extension
-    [ "pysam/cvcf.pyx", ] + os_c_files,
+    "pysam.cvcf",                   
+    cvcf_sources + os_c_files,
     library_dirs=[],
     include_dirs= ["tabix",] + include_os,
     libraries=[ "z", ],
@@ -207,8 +226,12 @@ metadata = {
     # cython larger that 0.16 for yield support
     'requires' : ['cython (>=0.16)'],
     'ext_modules': [samtools, tabix, tabproxies, cvcf ],
-    'cmdclass' : {'build_ext': build_ext},
-    'install_requires' : ['cython>=0.12.1',], 
+    'cmdclass' : cmdclass,
+    'install_requires' : ['cython>=0.16',], 
+    'data_files' : [('pysam',                  glob.glob('pysam/*.pxd')),
+                    ('include/pysam',          glob.glob('pysam/*.h')),
+                    ('include/samtools',       glob.glob('samtools/*.h')),
+                    ('include/samtools/win32', glob.glob('samtools/win32/*.h'))],
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
     'use_2to3': True,
@@ -219,3 +242,4 @@ if sys.version_info[0] < 3:
 
 if __name__=='__main__':
    dist = setup(**metadata)
+
