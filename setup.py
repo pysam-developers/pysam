@@ -114,10 +114,19 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 
     sys.exit(0)
 
+
+###################
+# populate headers
+# mkdir pysam/include pysam/include/win32
+# touch pysam/include/__init__.py pysam/include/win32/__init__.py
+# cp samtools/*.h pysam/*.h pysam/include
+# cp samtools/win32/*.h pysam/include/win32
+
+
 from distribute_setup import use_setuptools
 use_setuptools()
 
-from setuptools import Extension, setup
+from setuptools import Extension, setup, find_packages
 
 #######################################################
 #######################################################
@@ -219,26 +228,16 @@ metadata = {
     'license': "MIT",
     'platforms': "ALL",
     'url': "http://code.google.com/p/pysam/",
-    'py_modules': [
-      "pysam/__init__", 
-      "pysam/Pileup", 
-      "pysam/version" ],
-    # cython larger that 0.16 for yield support
-    'requires' : ['cython (>=0.16)'],
+    'packages' : find_packages(),
+    'requires' : ['cython (>=0.17)'],
     'ext_modules': [samtools, tabix, tabproxies, cvcf ],
     'cmdclass' : cmdclass,
-    'install_requires' : ['cython>=0.16',], 
-    'data_files' : [('pysam',                  glob.glob('pysam/*.pxd')),
-                    ('include/pysam',          glob.glob('pysam/*.h')),
-                    ('include/samtools',       glob.glob('samtools/*.h')),
-                    ('include/samtools/win32', glob.glob('samtools/win32/*.h'))],
+    'install_requires' : ['cython>=0.17',], 
+    'package_data' : { '' : ['*.pxd', '*.h'],  },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
     'use_2to3': True,
     }
-
-if sys.version_info[0] < 3:
-    metadata['py_modules'].append("pysam/namedtuple")
 
 if __name__=='__main__':
    dist = setup(**metadata)

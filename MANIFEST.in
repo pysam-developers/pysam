@@ -22,6 +22,7 @@ include pysam/cvcf.pyx
 include pysam/cvcf.pxd
 include pysam/cvcf.c
 include pysam/*.c
+include pysam/*.h
 include pysam/pysam_util.h
 include samtools/*.h
 include samtools/*/*.h

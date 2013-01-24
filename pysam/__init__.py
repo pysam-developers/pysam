@@ -128,8 +128,7 @@ __all__ = \
 from pysam.version import __version__, __samtools_version__
 
 def get_include():
-    base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'include'))
-    return [os.path.join(base, 'samtools'), os.path.join(base, 'pysam')]
+    return [os.path.abspath(os.path.join(os.path.dirname(__file__), 'include'))]
 
 def get_defines():
     return [('_FILE_OFFSET_BITS','64'), ('_USE_KNETFILE','')]
