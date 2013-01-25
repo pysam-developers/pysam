@@ -231,7 +231,9 @@ metadata = {
     'data_files' : [('pysam',                  glob.glob('pysam/*.pxd')),
                     ('include/pysam',          glob.glob('pysam/*.h')),
                     ('include/samtools',       glob.glob('samtools/*.h')),
-                    ('include/samtools/win32', glob.glob('samtools/win32/*.h'))],
+                    ('include/samtools/win32', glob.glob('samtools/win32/*.h')),
+                    ('include/tabix',       glob.glob('tabix/*.h')),
+                    ],
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
     'use_2to3': True,
