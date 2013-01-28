@@ -233,6 +233,15 @@ metadata = {
     'ext_modules': [samtools, tabix, tabproxies, cvcf ],
     'cmdclass' : cmdclass,
     'install_requires' : ['cython>=0.17',], 
+    'py_modules': [
+        "pysam/__init__",
+        "pysam/Pileup",
+        "pysam/version" ],
+    'data_files' : [('pysam',                  glob.glob('pysam/*.pxd')),
+                    ('include/pysam',          glob.glob('pysam/*.h')),
+                    ('include/tabix',          glob.glob('tabix/*.h')),
+                    ('include/samtools',       glob.glob('samtools/*.h')),
+                    ('include/samtools/win32', glob.glob('samtools/win32/*.h'))],
     'package_data' : { '' : ['*.pxd', '*.h'],  },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe' :False,
