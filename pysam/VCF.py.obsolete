@@ -89,7 +89,7 @@ FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue
 # 
 ###########################################################################################################
 
-class VCFRecord:
+class VCFRecord(object):
     '''vcf record.
 
     initialized from data and vcf meta 
@@ -111,10 +111,10 @@ class VCFRecord:
                             len(data)))
         
     property contig:
-    def contig( self ): return self.data[0]
+        def __get__( self ): return self.data[0]
 
     property pos:
-    def __get__( self ): 
+        def __get__( self ): 
             return self.data.pos
         
     property id:
