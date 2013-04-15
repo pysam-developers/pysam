@@ -28,6 +28,7 @@ include samtools/*.h
 include samtools/*/*.h
 include tabix/*.c
 include tabix/*.h
+include pysam.py
 
 # pysam tests
 include tests/00README.txt
