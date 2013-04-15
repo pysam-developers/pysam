@@ -104,7 +104,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
     def __init__(self, vcf):
         self.vcf = vcf
         # if len(data) != len(self.vcf._samples):
-        #     self.error(str(data),
+        #     self.vcf.error(str(data),
         #                self.BAD_NUMBER_OF_COLUMNS, 
         #                "expected %s for %s samples (%s), got %s" % \
         #                    (len(self.vcf._samples), 
@@ -202,7 +202,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         format = self.format
 
         if len(values) > len(format):
-            self.error(str(self.line),self.BAD_NUMBER_OF_VALUES,"(found %s values in element %s; expected %s)" %\
+            self.vcf.error(str(self.line),self.BAD_NUMBER_OF_VALUES,"(found %s values in element %s; expected %s)" %\
                            (len(values),key,len(format)))
 
         result = {}
@@ -215,8 +215,8 @@ cdef class VCFRecord( TabProxies.TupleProxy):
 
             result[format[idx]] = self.vcf.parse_formatdata(format[idx], value, self.vcf._format, str(self.data))
             if expected != -1 and len(result[format[idx]]) != expected:
-                self.error(str(self.data),self.BAD_NUMBER_OF_PARAMETERS,
-                           "id=%s, expected %s parameters, got %s" % (format[idx],expected,result[format[idx]]))
+                self.vcf.error(str(self.data),self.BAD_NUMBER_OF_PARAMETERS,
+                               "id=%s, expected %s parameters, got %s" % (format[idx],expected,result[format[idx]]))
                 if len(result[format[idx]] ) < expected: result[format[idx]] += [result[format[idx]][-1]]*(expected-len(result[format[idx]]))
                 result[format[idx]] = result[format[idx]][:expected]
 
