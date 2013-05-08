@@ -47,8 +47,9 @@ from collections import namedtuple, defaultdict
 from operator import itemgetter
 import sys, re, copy, bisect
 
-from pysam cimport ctabix
-from pysam cimport TabProxies
+cimport ctabix
+cimport TabProxies
+
 import pysam
 
 gtsRegEx = re.compile("[|/\\\\]")
