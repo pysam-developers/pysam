@@ -1221,6 +1221,8 @@ cdef class Samfile:
         def __get__(self):
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             if not self.isbam: raise AttributeError( "Samfile.mapped only available in bam files" )
+            if self.index == NULL:
+                raise ValueError( "mapping information not recorded in index or index not available")
 
             cdef int tid
             cdef uint32_t total = 0

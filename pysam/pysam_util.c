@@ -206,7 +206,9 @@ typedef struct __bmc_aux_t {
 // If tid < 0, return mapped reads without a coordinate (0)
 uint32_t pysam_get_mapped( const bam_index_t *idx, const int tid )
 {
-
+  // return no values if index data not present
+  if (idx==NULL) return 0;
+  
   if (tid >= 0)
     {
       khint_t k;
