@@ -412,13 +412,9 @@ class TestBed( unittest.TestCase ):
             self.assertEqual( int(c[2]) + 1, r.end )
             self.assertEqual( str(int(c[2]) + 1), r[2].decode("ascii") )
 
-class TestVCFFromTabix( unittest.TestCase ):
+class TestVCF( unittest.TestCase ):
 
     filename = "example.vcf40"
-
-    columns = ("contig", "pos", "id", 
-               "ref", "alt", "qual", 
-               "filter", "info", "format" )
 
     def setUp( self ):
         
@@ -426,13 +422,19 @@ class TestVCFFromTabix( unittest.TestCase ):
         shutil.copyfile( self.filename, self.tmpfilename )
         pysam.tabix_index( self.tmpfilename, preset = "vcf" )
 
+class TestVCFFromTabix( TestVCF ):
+
+    columns = ("contig", "pos", "id", 
+               "ref", "alt", "qual", 
+               "filter", "info", "format" )
+
+
+    def setUp( self ):
+
+        TestVCF.setUp( self )
+
         self.tabix = pysam.Tabixfile( self.tmpfilename + ".gz" )
         self.compare = loadAndConvert( self.filename )
-
-    def tearDown( self ):
-
-        os.unlink( self.tmpfilename + ".gz" )
-        os.unlink( self.tmpfilename + ".gz.tbi" )
 
     def testRead( self ):
         
@@ -440,11 +442,9 @@ class TestVCFFromTabix( unittest.TestCase ):
 
         for x, r in enumerate(self.tabix.fetch( parser = pysam.asVCF() )):
             c = self.compare[x]
-
             for y, field in enumerate( self.columns ):
                 # it is ok to have a missing format column
                 if y == 8 and y == len(c): continue
-
                 if field == "pos":
                     self.assertEqual( int(c[y]) - 1, getattr( r, field ) )
                     self.assertEqual( int(c[y]) - 1, r.pos )
@@ -456,10 +456,10 @@ class TestVCFFromTabix( unittest.TestCase ):
                 self.assertEqual( 0, len(r) )
             else:
                 self.assertEqual( len(c), len( r ) + ncolumns )
-            
+
             for y in range(len(c) - ncolumns):
                 self.assertEqual( c[ncolumns+y], r[y] )
-                
+   
     def testWrite( self ):
 
         ncolumns = len(self.columns) 
@@ -501,12 +501,9 @@ class TestVCFFromTabix( unittest.TestCase ):
                 r[y] = ("test_%i" % y).encode('ascii')
                 self.assertEqual( c[ncolumns+y], r[y] )
 
+class TestVCFFromVCF( TestVCF ):
 
-class TestVCFFromVCF( unittest.TestCase ):
-
-    filename = "example.vcf40"
-
-    columns = ("contig", "pos", "id", 
+    columns = ("chrom", "pos", "id", 
                "ref", "alt", "qual", 
                "filter", "info", "format" )
 
@@ -520,13 +517,17 @@ class TestVCFFromVCF( unittest.TestCase ):
     # tests failing on opening
     fail_on_opening = ( (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ),
                      )
-
     def setUp( self ):
         
+        TestVCF.setUp( self )
+
         self.vcf = pysam.VCF()
         self.compare = loadAndConvert( self.filename )
 
     def testParsing( self ):
+
+        # self.vcf.connect( self.tmpfilename + ".gz" )
+        ncolumns = len(self.columns) 
 
         fn = os.path.basename( self.filename )
         with open(self.filename) as f:
@@ -545,10 +546,71 @@ class TestVCFFromVCF( unittest.TestCase ):
                     # python 2.7
                     # self.assertRaisesRegexp( ValueError, re.compile(msg), self.vcf.parse, f )
             else:
-                for ln in iter:
-                    pass
+                # do the actual parsing
+                for x, r in enumerate(iter):
+                    c = self.compare[x]
+                    for y, field in enumerate( self.columns ):
+                        # it is ok to have a missing format column
+                        if y == 8 and y == len(c): continue
 
-############################################################################                   
+                        val = r[field] 
+                        if field == "pos":
+                            self.assertEqual( int(c[y]) - 1, val )
+                        elif field == "alt":
+                            if c[y] == ".":
+                                # convert . to empty list
+                                self.assertEqual( [], val, 
+                                                  "mismatch in field %s: expected %s, got %s" %\
+                                                      ( field,c[y], val ) )
+                            else:
+                                # convert to list
+                                self.assertEqual( c[y].split(","), val, 
+                                                  "mismatch in field %s: expected %s, got %s" %\
+                                                      ( field,c[y], val ) )
+
+                        elif field == "filter":
+                            if c[y] == "PASS" or c[y] == ".":
+                                # convert PASS to empty list
+                                self.assertEqual( [], val, 
+                                                  "mismatch in field %s: expected %s, got %s" %\
+                                                      ( field,c[y], val ) )
+                            else:
+                                # convert to list
+                                self.assertEqual( c[y].split(";"), val, 
+                                                  "mismatch in field %s: expected %s, got %s" %\
+                                                      ( field,c[y], val ) )
+
+                        elif field == "info":
+                            # tests for info field not implemented
+                            pass
+                        elif field == "qual" and c[y] == ".":
+                            self.assertEqual( -1, val,
+                                               "mismatch in field %s: expected %s, got %s" %\
+                                                   ( field,c[y], val ) )
+                        elif field == "format":
+                            # format field converted to list
+                            self.assertEqual( c[y].split(":"), val,
+                                              "mismatch in field %s: expected %s, got %s" %\
+                                                  ( field,c[y], val ) )
+
+                        elif type(val) in (int, float):
+                            if c[y] == ".":
+                                self.assertEqual( None, val, 
+                                                  "mismatch in field %s: expected %s, got %s" %\
+                                                      ( field,c[y], val ) )
+
+                            else:
+                                self.assertEqual( float( c[y]), float(val), 
+                                                  "mismatch in field %s: expected %s, got %s" %\
+                                                      ( field,c[y], val ) )
+
+                        else:
+                            self.assertEqual( c[y], val, 
+                                              "mismatch in field %s: expected %s, got %s" %\
+                                                  ( field,c[y], val ) )
+
+
+############################################################################ 
 # create a test class for each example vcf file.
 # Two samples are created - 
 # 1. Testing pysam/tabix access

@@ -148,7 +148,8 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         def __get__(self): return self.fields[2]
 
     property ref:
-        def __get__(self): return self.fields[3]
+        def __get__(self): 
+            return self.fields[3]
 
     property alt:
         def __get__(self):
@@ -165,6 +166,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
             else: 
                 try:    qual = float(qual)
                 except: self.vcf.error(str(self),self.QUAL_NOT_NUMERICAL)
+            return qual
 
     property filter:
         def __get__(self):
@@ -681,7 +683,7 @@ class VCF(object):
             for c in ref:
                 if c not in "ACGTN": self.error(line,self.UNKNOWN_CHAR_IN_REF)
             if "N" in ref: ref = get_sequence(chrom,pos,pos+len(ref),self._reference)
-
+            
         # make sure reference is sane
         if self._reference:
             left = max(0,pos-100)
