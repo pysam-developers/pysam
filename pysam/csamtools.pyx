@@ -1960,7 +1960,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
                 raise StopIteration
             
             if self.truncate:
-                if self.start < self.pos: continue
+                if self.start > self.pos: continue
                 if self.pos >= self.end: raise StopIteration
 
             return makePileupProxy( &self.plp,

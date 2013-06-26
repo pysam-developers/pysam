@@ -480,6 +480,12 @@ class IOTest(unittest.TestCase):
         self.assertRaises( ValueError, pysam.Samfile, input_filename, "r", 
                            check_header = False)
 
+    def testBAMWithoutAlignedReads( self ):
+        '''see issue 117'''
+        input_filename = "test_unaligned.bam"
+        samfile = pysam.Samfile( input_filename, "rb", check_sq = False )
+        samfile.fetch( until_eof = True )
+
     def testFetchFromClosedFile( self ):
 
         samfile = pysam.Samfile( "ex1.bam", "rb" )
@@ -670,7 +676,7 @@ class TestIteratorRowAll(unittest.TestCase):
         self.samfile.close()
 
 class TestIteratorColumn(unittest.TestCase):
-    '''test iterator column against contents of ex3.bam.'''
+    '''test iterator column against contents of ex4.bam.'''
     
     # note that samfile contains 1-based coordinates
     # 1D means deletion with respect to reference sequence
@@ -728,12 +734,31 @@ class TestIteratorColumn(unittest.TestCase):
             for start in range( 1, length, 90):
                 self.checkRange( contig, start, start + 90, truncate = True ) # this includes empty ranges
                 
-        
-        
     def tearDown(self):
         self.samfile.close()
 
+
+
+class TestIteratorColumn2(unittest.TestCase):
+    '''test iterator column against contents of ex1.bam.'''
+
+    def setUp(self):
+        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+
+    def testTruncate( self ):
+        '''see issue 107.'''
+        # note that ranges in regions start from 1
+        p = self.samfile.pileup(region='chr1:170:172', truncate=True)
+        columns = [ x.pos for x in p ]
+        self.assertEqual( len(columns), 3)
+        self.assertEqual( columns, [169,170,171] )
+
+        p = self.samfile.pileup( 'chr1', 169, 172, truncate=True)
+        columns = [ x.pos for x in p ]
     
+        self.assertEqual( len(columns), 3)
+        self.assertEqual( columns, [169,170,171] )
+
 class TestAlignedReadFromBam(unittest.TestCase):
 
     def setUp(self):
