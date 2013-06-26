@@ -2670,7 +2670,10 @@ cdef class AlignedRead:
                 s = bam1_aux( src )
 
                 # check if there is direct path from buffer.raw to tmp
-                temp = buffer.raw
+                p = buffer.raw
+                # create handle to make sure buffer stays alive long 
+                # enough for memcpy, see issue 129
+                temp = p
                 memcpy( s, temp, total_size )
 
     property flag:
