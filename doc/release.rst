@@ -2,6 +2,11 @@
 Release notes
 =============
 
+Release 0.7.5
+   * bugfix release
+   * issue 122: MACOSX getline missing
+   
+
 Release 0.7.4
 =============
 	

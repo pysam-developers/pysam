@@ -220,3 +220,5 @@ cdef class tabix_copy_iterator:
     cdef Parser parser
     cdef __cnext__(self)
 
+cdef extern from "tabix_util.h":
+     pass

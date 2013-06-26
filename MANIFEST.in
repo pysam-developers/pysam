@@ -24,6 +24,7 @@ include pysam/cvcf.c
 include pysam/*.c
 include pysam/*.h
 include pysam/pysam_util.h
+include pysam/tabix_util.h
 include samtools/*.h
 include samtools/*/*.h
 include tabix/*.c
