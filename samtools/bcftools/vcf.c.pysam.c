@@ -32,7 +32,12 @@ bcf_hdr_t *vcf_hdr_read(bcf_t *bp)
 	memset(&smpl, 0, sizeof(kstring_t));
 	while (ks_getuntil(v->ks, '\n', &v->line, &dret) >= 0) {
 		if (v->line.l < 2) continue;
-		if (v->line.s[0] != '#') return 0; // no sample line
+		if (v->line.s[0] != '#') {
+            free(meta.s);
+            free(smpl.s);
+            free(h);
+            return 0; // no sample line
+        }
 		if (v->line.s[0] == '#' && v->line.s[1] == '#') {
 			kputsn(v->line.s, v->line.l, &meta); kputc('\n', &meta);
 		} else if (v->line.s[0] == '#') {
@@ -188,7 +193,7 @@ int vcf_read(bcf_t *bp, bcf_hdr_t *h, bcf1_t *b)
 						((uint8_t*)b->gi[i].data)[k-9] = 0;
 					} else if (b->gi[i].fmt == bcf_str2int("SP", 2)) {
 						((int32_t*)b->gi[i].data)[k-9] = 0;
-					} else if (b->gi[i].fmt == bcf_str2int("DP", 2)) {
+					} else if (b->gi[i].fmt == bcf_str2int("DP", 2) || b->gi[i].fmt == bcf_str2int("DV", 2)) {
 						((uint16_t*)b->gi[i].data)[k-9] = 0;
 					} else if (b->gi[i].fmt == bcf_str2int("PL", 2)) {
 						int y = b->n_alleles * (b->n_alleles + 1) / 2;
@@ -212,7 +217,7 @@ int vcf_read(bcf_t *bp, bcf_hdr_t *h, bcf1_t *b)
 					int x = strtol(q, &q, 10);
 					if (x > 0xffff) x = 0xffff;
 					((uint32_t*)b->gi[i].data)[k-9] = x;
-				} else if (b->gi[i].fmt == bcf_str2int("DP", 2)) {
+				} else if (b->gi[i].fmt == bcf_str2int("DP", 2) || b->gi[i].fmt == bcf_str2int("DV", 2)) {
 					int x = strtol(q, &q, 10);
 					if (x > 0xffff) x = 0xffff;
 					((uint16_t*)b->gi[i].data)[k-9] = x;

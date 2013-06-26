@@ -545,9 +545,9 @@ class TestFloatTagBug( unittest.TestCase ):
     '''see issue 71'''
 
     def testFloatTagBug( self ): 
-        '''a float tag before another exposed a parsing bug in bam_aux_get - expected to fail
+        '''a float tag before another exposed a parsing bug in bam_aux_get.
 
-        This test is expected to fail until samtools is fixed.
+        Fixed in 0.1.19
         '''
         samfile = pysam.Samfile("tag_bug.bam")
         read = next(samfile.fetch(until_eof=True))

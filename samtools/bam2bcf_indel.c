@@ -109,6 +109,9 @@ static inline int est_indelreg(int pos, const char *ref, int l, char *ins4)
 	return max_i - pos;
 }
 
+/*
+ *  @n:  number of samples
+ */
 int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_callaux_t *bca, const char *ref,
 					  const void *rghash)
 {
@@ -142,32 +145,48 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 	if (s == n) return -1; // there is no indel at this position.
 	for (s = N = 0; s < n; ++s) N += n_plp[s]; // N is the total number of reads
 	{ // find out how many types of indels are present
-		int m, n_alt = 0, n_tot = 0;
+        bca->max_support = bca->max_frac = 0;
+		int m, n_alt = 0, n_tot = 0, indel_support_ok = 0;
 		uint32_t *aux;
 		aux = calloc(N + 1, 4);
 		m = max_rd_len = 0;
 		aux[m++] = MINUS_CONST; // zero indel is always a type
 		for (s = 0; s < n; ++s) {
+            int na = 0, nt = 0; 
 			for (i = 0; i < n_plp[s]; ++i) {
 				const bam_pileup1_t *p = plp[s] + i;
 				if (rghash == 0 || p->aux == 0) {
-					++n_tot;
+					++nt;
 					if (p->indel != 0) {
-						++n_alt;
+						++na;
 						aux[m++] = MINUS_CONST + p->indel;
 					}
 				}
 				j = bam_cigar2qlen(&p->b->core, bam1_cigar(p->b));
 				if (j > max_rd_len) max_rd_len = j;
 			}
+            float frac = (float)na/nt;
+            if ( !indel_support_ok && na >= bca->min_support && frac >= bca->min_frac )
+                indel_support_ok = 1;
+            if ( na > bca->max_support && frac > 0 ) bca->max_support = na, bca->max_frac = frac;
+            n_alt += na; 
+            n_tot += nt;
 		}
+        // To prevent long stretches of N's to be mistaken for indels (sometimes thousands of bases),
+        //  check the number of N's in the sequence and skip places where half or more reference bases are Ns.
+        int nN=0; for (i=pos; i-pos<max_rd_len && ref[i]; i++) if ( ref[i]=='N' ) nN++;
+        if ( nN*2>i ) { free(aux); return -1; }
+
 		ks_introsort(uint32_t, m, aux);
 		// squeeze out identical types
 		for (i = 1, n_types = 1; i < m; ++i)
 			if (aux[i] != aux[i-1]) ++n_types;
-		if (n_types == 1 || (double)n_alt / n_tot < bca->min_frac || n_alt < bca->min_support) { // then skip
-			free(aux); return -1;
-		}
+        // Taking totals makes it hard to call rare indels
+        if ( !bca->per_sample_flt )
+            indel_support_ok = ( (float)n_alt / n_tot < bca->min_frac || n_alt < bca->min_support ) ? 0 : 1;
+        if ( n_types == 1 || !indel_support_ok ) { // then skip
+            free(aux); return -1;
+        }
 		if (n_types >= 64) {
 			free(aux);
 			if (bam_verbose >= 2) 
@@ -199,6 +218,8 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 	 * reduces the power because sometimes, substitutions caused by
 	 * indels are not distinguishable from true mutations. Multiple
 	 * sequence realignment helps to increase the power.
+     *
+     * Masks mismatches present in at least 70% of the reads with 'N'.
 	 */
 	{ // construct per-sample consensus
 		int L = right - left + 1, max_i, max2_i;
@@ -242,7 +263,7 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 			if ((double)(max2&0xffff) / ((max2&0xffff) + (max2>>16)) >= 0.7) max2_i = -1;
 			if (max_i >= 0) r[max_i] = 15;
 			if (max2_i >= 0) r[max2_i] = 15;
-//			for (i = 0; i < right - left; ++i) fputc("=ACMGRSVTWYHKDBN"[(int)r[i]], stderr); fputc('\n', stderr);
+			//for (i = 0; i < right - left; ++i) fputc("=ACMGRSVTWYHKDBN"[(int)r[i]], stderr); fputc('\n', stderr);
 		}
 		free(ref0); free(cns);
 	}
@@ -259,9 +280,9 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 		}
 	}
 	// construct the consensus sequence
-	max_ins = types[n_types - 1]; // max_ins is at least 0
+	max_ins = types[n_types - 1];   // max_ins is at least 0
 	if (max_ins > 0) {
-		int *inscns_aux = calloc(4 * n_types * max_ins, sizeof(int));
+		int *inscns_aux = calloc(5 * n_types * max_ins, sizeof(int));
 		// count the number of occurrences of each base at each position for each type of insertion
 		for (t = 0; t < n_types; ++t) {
 			if (types[t] > 0) {
@@ -272,7 +293,8 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 							uint8_t *seq = bam1_seq(p->b);
 							for (k = 1; k <= p->indel; ++k) {
 								int c = bam_nt16_nt4_table[bam1_seqi(seq, p->qpos + k)];
-								if (c < 4) ++inscns_aux[(t*max_ins+(k-1))*4 + c];
+                                assert(c<5);
+								++inscns_aux[(t*max_ins+(k-1))*5 + c];
 							}
 						}
 					}
@@ -283,11 +305,12 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
 		inscns = calloc(n_types * max_ins, 1);
 		for (t = 0; t < n_types; ++t) {
 			for (j = 0; j < types[t]; ++j) {
-				int max = 0, max_k = -1, *ia = &inscns_aux[(t*max_ins+j)*4];
-				for (k = 0; k < 4; ++k)
+				int max = 0, max_k = -1, *ia = &inscns_aux[(t*max_ins+j)*5];
+				for (k = 0; k < 5; ++k)
 					if (ia[k] > max)
 						max = ia[k], max_k = k;
 				inscns[t*max_ins + j] = max? max_k : 4;
+                if ( max_k==4 ) { types[t] = 0; break; } // discard insertions which contain N's
 			}
 		}
 		free(inscns_aux);

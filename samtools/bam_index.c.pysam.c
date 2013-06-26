@@ -161,9 +161,14 @@ bam_index_t *bam_index_core(bamFile fp)
 	bam1_core_t *c;
 	uint64_t save_off, last_off, n_mapped, n_unmapped, off_beg, off_end, n_no_coor;
 
+	h = bam_header_read(fp);
+	if(h == 0) {
+	    fprintf(pysamerr, "[bam_index_core] Invalid BAM header.");
+	    return NULL;
+	}
+
 	idx = (bam_index_t*)calloc(1, sizeof(bam_index_t));
 	b = (bam1_t*)calloc(1, sizeof(bam1_t));
-	h = bam_header_read(fp);
 	c = &b->core;
 
 	idx->n = h->n_targets;
@@ -461,6 +466,7 @@ bam_index_t *bam_index_load(const char *fn)
 		strcat(strcpy(fnidx, fn), ".bai");
 		fprintf(pysamerr, "[bam_index_load] attempting to download the remote index file.\n");
 		download_from_remote(fnidx);
+        free(fnidx);
 		idx = bam_index_load_local(fn);
 	}
 	if (idx == 0) fprintf(pysamerr, "[bam_index_load] fail to load BAM index.\n");
@@ -491,6 +497,7 @@ int bam_index_build2(const char *fn, const char *_fnidx)
 	if (fpidx == 0) {
 		fprintf(pysamerr, "[bam_index_build2] fail to create the index file.\n");
 		free(fnidx);
+        bam_index_destroy(idx);
 		return -1;
 	}
 	bam_index_save(idx, fpidx);

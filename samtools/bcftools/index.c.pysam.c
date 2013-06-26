@@ -261,6 +261,7 @@ int bcf_idx_build2(const char *fn, const char *_fnidx)
 	if (fpidx == 0) {
 		fprintf(pysamerr, "[bcf_idx_build2] fail to create the index file.\n");
 		free(fnidx);
+        bcf_idx_destroy(idx);
 		return -1;
 	}
 	bcf_idx_save(idx, fpidx);

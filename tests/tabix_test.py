@@ -422,6 +422,11 @@ class TestVCF( unittest.TestCase ):
         shutil.copyfile( self.filename, self.tmpfilename )
         pysam.tabix_index( self.tmpfilename, preset = "vcf" )
 
+    def tearDown( self ):
+        os.unlink( self.tmpfilename + ".gz" )
+        if os.path.exists( self.tmpfilename + ".gz.tbi" ):
+            os.unlink( self.tmpfilename + ".gz.tbi" )
+
 class TestVCFFromTabix( TestVCF ):
 
     columns = ("contig", "pos", "id", 

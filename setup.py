@@ -19,7 +19,9 @@ version = version.__version__
 
 samtools_exclude = ( "bamtk.c", "razip.c", "bgzip.c", 
                      "main.c", "calDepth.c", "bam2bed.c",
-                     "wgsim.c", "md5fa.c", "maq2sam.c",)
+                     "wgsim.c", "md5fa.c", "maq2sam.c",
+                     "bamcheck.c",
+                     "chk_indel.c" )
 samtools_dest = os.path.abspath( "samtools" )
 tabix_exclude = ( "main.c", )
 tabix_dest = os.path.abspath( "tabix" )

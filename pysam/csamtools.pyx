@@ -945,7 +945,8 @@ cdef class Samfile:
                                  fetch_callback )
             else:
                 if has_coord:
-                    return IteratorRowRegion( self, rtid, rstart, rend, reopen=reopen )
+                    return IteratorRowRegion( self, rtid, rstart, rend, 
+                                              reopen=reopen )
                 else:
                     if until_eof:
                         return IteratorRowAll( self, reopen=reopen )
@@ -3215,9 +3216,10 @@ def _samtools_dispatch( method,
         with open( stderr_f, "rb") as inf:
             # read binary output
             out_stderr = inf.read()
-        os.remove( stderr_f )
     else:
         out_stderr = []
+    finally:
+        os.remove( stderr_f )
 
     return retval, out_stderr, out_stdout
 
