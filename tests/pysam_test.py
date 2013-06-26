@@ -789,6 +789,10 @@ class TestAlignedReadFromBam(unittest.TestCase):
         self.assertEqual( self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)], "read name length mismatch in read 1: %s != %s" % (self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)]) )
         self.assertEqual( self.reads[1].cigar, [(0, 35)], "read name length mismatch in read 2: %s != %s" % (self.reads[1].cigar, [(0, 35)]) )
 
+    def testARcigarstring(self):
+        self.assertEqual( self.reads[0].cigarstring, '10M1D25M' )
+        self.assertEqual( self.reads[1].cigarstring, '35M' )
+
     def testARmrnm(self):
         self.assertEqual( self.reads[0].mrnm, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (self.reads[0].mrnm, 0) )
         self.assertEqual( self.reads[1].mrnm, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (self.reads[1].mrnm, 1) )

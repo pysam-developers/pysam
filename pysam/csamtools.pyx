@@ -2236,7 +2236,8 @@ cdef class AlignedRead:
 
     property cigar:
         """the :term:`cigar` alignment (None if not present). The alignment
-        is returned as a list of operations. The operations are:
+        is returned as a list of tuples of (operation, length). 
+        The operations are:
 
         +-----+--------------+-----+
         |M    |BAM_CMATCH    |0    |
@@ -2257,6 +2258,13 @@ cdef class AlignedRead:
         +-----+--------------+-----+
         |X    |BAM_CDIFF     |8    |
         +-----+--------------+-----+
+
+        .. note::
+            The output is a list of (operation, length) tuples, such as
+            ``[ (0, 30) ]``.
+            This is different from the SAM specification and the
+            the :meth:`cigarstring` property, which uses a
+            (length,operation order, for example: ``30M``.
 
         """
         def __get__(self):
@@ -2314,17 +2322,26 @@ cdef class AlignedRead:
     property cigarstring:
         '''the :term:`cigar` alignment as a string.
         
+        The cigar string is a string of alternating integers
+        and characters denoting the length and the type of
+        an operation.
+
+        .. note::
+            The order length,operation is specified in the
+            SAM format. It is different from the order of
+            the :meth:`cigar` property.
+
         Returns the empty string if not present.
         '''
         def __get__(self):
             c = self.cigar
             if c == None: return ""
-            else: return "".join([ "%c%i" % (CODE2CIGAR[x],y) for x,y in c])
+            else: return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
             
         def __set__(self, cigar):
             if cigar == None or len(cigar) == 0: self.cigar = []
             parts = CIGAR_REGEX.findall( cigar )
-            self.cigar = [ (CIGAR2CODE[ord(x)], int(y)) for x,y in parts ]
+            self.cigar = [ (int(y),CIGAR2CODE[ord(x)]) for x,y in parts ]
 
     property seq:
         """read sequence bases, including :term:`soft clipped` bases (None if not present).
