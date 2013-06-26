@@ -9,10 +9,11 @@ all: ex1.pileup.gz ex1.bam.bai \
 	ex9_nofail.bam.bai \
 	ex9_fail.bam.bai \
         ex10.bam ex10.bam.bai \
-	ex11.bam \
 	example_unmapped_reads_no_sq.bam \
 	example_user_header.bam \
-	example_btag.bam
+	example_btag.bam \
+	example_bai.bam 
+	
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz
@@ -36,6 +37,14 @@ example_unmapped_reads_no_sq.bam: example_unmapped_reads_no_sq.sam
 	touch tmp.list
 	samtools import tmp.list $< $@
 	rm -f tmp.list
+
+example_bai.bam: ex1.bam
+	cp ex1.bam $@
+	samtools index $@
+	mv $@.bai example_bai.bai
+
+
+
 
 clean:
 	rm -fr *.bam *.bai *.fai *.pileup* \

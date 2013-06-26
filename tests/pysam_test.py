@@ -486,6 +486,12 @@ class IOTest(unittest.TestCase):
         samfile = pysam.Samfile( input_filename, "rb", check_sq = False )
         samfile.fetch( until_eof = True )
 
+    def testBAMWithShortBAI( self ):
+        '''see issue 116'''
+        input_filename = "example_bai.bam"
+        samfile = pysam.Samfile( input_filename, "rb", check_sq = False )
+        samfile.fetch( 'chr2' )
+
     def testFetchFromClosedFile( self ):
 
         samfile = pysam.Samfile( "ex1.bam", "rb" )
@@ -737,13 +743,16 @@ class TestIteratorColumn(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
-
-
 class TestIteratorColumn2(unittest.TestCase):
     '''test iterator column against contents of ex1.bam.'''
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile( "x.bam","rb" )
+
+    def testStart( self ):
+        print self.samfile.fetch().next().pos
+        print self.samfile.pileup().next().pos
+
 
     def testTruncate( self ):
         '''see issue 107.'''

@@ -766,7 +766,8 @@ cdef class Samfile:
         if mode[0] == "r" and self.isbam:
 
             if not self.isremote:
-                if not os.path.exists(filename + b".bai"):
+                if not os.path.exists(filename + b".bai") \
+                        and not os.path.exists( filename[:-4] + b".bai"):
                     self.index = NULL
                 else:
                     # returns NULL if there is no index or index could not be opened
