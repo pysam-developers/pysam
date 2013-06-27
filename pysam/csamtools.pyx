@@ -140,7 +140,7 @@ if IS_PYTHON3:
     CIGAR2CODE = dict( [y,x] for x,y in enumerate( CODE2CIGAR) )
 else:
     CIGAR2CODE = dict( [ord(y),x] for x,y in enumerate( CODE2CIGAR) )
-CIGAR_REGEX = re.compile( "([MIDNSHP=X])(\d+)" )
+CIGAR_REGEX = re.compile( "(\d+)([MIDNSHP=X])" )
 
 #####################################################################
 ## set pysam stderr to /dev/null
@@ -1276,10 +1276,11 @@ cdef class Samfile:
                         if record not in result: result[record] = []
                         result[record].append( "\t".join( fields[1:] ) )
                         continue
-
                     # the following is clumsy as generators do not work?
                     x = {}
                     for field in fields[1:]:
+                        if ":" not in field: 
+                            raise ValueError("malformatted header: no ':' in field" )
                         key, value = field.split(":",1)
                         # uppercase keys must be valid
                         # lowercase are permitted for user fields
@@ -2337,12 +2338,14 @@ cdef class AlignedRead:
         def __get__(self):
             c = self.cigar
             if c == None: return ""
+            # reverse order
             else: return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
             
         def __set__(self, cigar):
             if cigar == None or len(cigar) == 0: self.cigar = []
             parts = CIGAR_REGEX.findall( cigar )
-            self.cigar = [ (int(y),CIGAR2CODE[ord(x)]) for x,y in parts ]
+            # reverse order
+            self.cigar = [ (CIGAR2CODE[ord(y)], int(x)) for x,y in parts ]
 
     property seq:
         """read sequence bases, including :term:`soft clipped` bases (None if not present).

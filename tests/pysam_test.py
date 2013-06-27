@@ -619,8 +619,8 @@ class TestTagParsing( unittest.TestCase ):
 
     def testCigarString( self ):
         r = self.makeRead()
-        self.assertEqual( r.cigarstring, "M10D1M25" )
-        r.cigarstring = "M20D10M20"
+        self.assertEqual( r.cigarstring, "10M1D25M" )
+        r.cigarstring = "20M10D20M"
         self.assertEqual( r.cigar, [(0,20), (2,10), (0,20)])
 
 class TestIteratorRow(unittest.TestCase):
@@ -747,12 +747,12 @@ class TestIteratorColumn2(unittest.TestCase):
     '''test iterator column against contents of ex1.bam.'''
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "x.bam","rb" )
+        self.samfile=pysam.Samfile( "ex1.bam","rb" )
 
     def testStart( self ):
-        print self.samfile.fetch().next().pos
-        print self.samfile.pileup().next().pos
-
+        #print self.samfile.fetch().next().pos
+        #print self.samfile.pileup().next().pos
+        pass
 
     def testTruncate( self ):
         '''see issue 107.'''
