@@ -62,3 +62,6 @@ include tests/example.gtf.gz.tbi
 include tests/example.bed.gz
 include tests/example.bed.gz.tbi
 include tests/vcf-examples/*.vcf
+
+# documentation
+include doc

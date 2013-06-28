@@ -614,7 +614,6 @@ class TestVCFFromVCF( TestVCF ):
                                               "mismatch in field %s: expected %s, got %s" %\
                                                   ( field,c[y], val ) )
 
-
 ############################################################################ 
 # create a test class for each example vcf file.
 # Two samples are created - 
