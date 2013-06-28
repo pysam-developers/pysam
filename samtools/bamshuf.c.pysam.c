@@ -100,7 +100,12 @@ static void bamshuf(const char *fn, int n_files, const char *pre, int clevel, in
 		a = (elem_t*)calloc(c, sizeof(elem_t));
 		for (j = 0; j < c; ++j) {
 			a[j].b = bam_init1();
-			assert(bam_read1(fp, a[j].b) >= 0);
+			// added by pysam to prevent seg-fault
+			// was: assert( bam_read1(fp, a[j].b );
+			// Assume that assertion was optimized out
+			// and a[j].b not set.
+			int _l = bam_read1(fp, a[j].b);
+			assert( _l >= 0 );
 			a[j].key = hash_X31_Wang(bam_get_qname(a[j].b));
 		}
 		bgzf_close(fp);

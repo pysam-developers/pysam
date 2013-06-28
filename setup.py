@@ -11,6 +11,8 @@ import platform
 
 name = "pysam"
 
+IS_PYTHON3 = sys.version_info[0] >= 3
+
 # collect pysam version
 sys.path.insert( 0, "pysam")
 import version
@@ -142,6 +144,18 @@ except ImportError:
     tabproxies_sources = ["pysam/TabProxies.c" ]
     cvcf_sources = ["pysam/cvcf.c" ]
 else:
+    # remove existing files to recompute
+    # necessary to be both compatible for python 2.7 and 3.3
+    if IS_PYTHON3:
+        for f in ( "pysam/csamtools.c", 
+                   "pysam/ctabix.c",
+                   "pysam/TabProxies.c",
+                   "pysam/cvcf.c" ):
+            try:
+                os.unlink( f )
+            except:
+                pass
+    
     cmdclass = { 'build_ext' : build_ext }
     csamtools_sources = [ "pysam/csamtools.pyx" ]
     tabix_sources = [ "pysam/ctabix.pyx" ]

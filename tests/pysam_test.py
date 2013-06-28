@@ -53,7 +53,8 @@ def runSamtools( cmd ):
     '''run a samtools command'''
 
     try:
-        retcode = subprocess.call(cmd, shell=True)
+        retcode = subprocess.call(cmd, shell=True,
+                                  stderr = subprocess.PIPE)
         if retcode < 0:
             print("Child was terminated by signal", -retcode)
     except OSError as e:
@@ -78,7 +79,9 @@ class BinaryTest(unittest.TestCase):
 
     first_time = True
 
-    # a list of commands to test
+    # a dictionary of commands to test
+    # first entry: (samtools output file, samtools command)
+    # second entry: (pysam output file, (pysam function, pysam options) )
     commands = \
         { 
           "view" :
@@ -179,6 +182,21 @@ class BinaryTest(unittest.TestCase):
                 ("ex1.bam2fq", "bam2fq ex1.bam > ex1.bam2fq" ),
                 ("pysam_ex1.bam2fq", (pysam.bam2fq, "pysam_ex1.bam") ),
                 ),
+          "pad2unpad":
+              (
+                ("ex2.unpad", "pad2unpad -T ex1.fa ex2.bam > ex2.unpad" ),
+                ("pysam_ex2.unpad", (pysam.pad2unpad, "-T ex1.fa ex2.bam") ),
+                ),
+          "bamshuf":
+              (
+                ("ex1.bamshuf.bam", "bamshuf ex1.bam ex1.bamshuf" ),
+                ("pysam_ex1.bamshuf.bam", (pysam.bamshuf, "ex1.bam pysam_ex1.bamshuf") ),
+                ),
+          "bedcov":
+              (
+                ("ex1.bedcov", "bedcov ex1.bed ex1.bam > ex1.bedcov" ),
+                ("pysam_ex1.bedcov", (pysam.bedcov, "ex1.bed ex1.bam") ),
+                ),
         }
 
     # some tests depend on others. The order specifies in which order
@@ -186,23 +204,26 @@ class BinaryTest(unittest.TestCase):
     # The first three (faidx, import, index) need to be in that order, 
     # the rest is arbitrary.
     order = ('faidx', 'import', 'index', 
-              # 'pileup1', 'pileup2', deprecated
-              # 'glfview', deprecated
-              'view', 'view2',
-              'sort',
-              'mpileup',
-              'depth',
-              'idxstats',
-              'fixmate',
-              'flagstat',
-              # 'calmd',
-              'merge',
-              'rmdup',
-              'reheader',
-              'cat',
-              'targetcut',
-              'phase',
-              'bam2fq',
+             # 'pileup1', 'pileup2', deprecated
+             # 'glfview', deprecated
+             'view', 'view2',
+             'sort',
+             'mpileup',
+             'depth',
+             'idxstats',
+             'fixmate',
+             'flagstat',
+              ## 'calmd',
+             'merge',
+             'rmdup',
+             'reheader',
+             'cat',
+             'bedcov',
+             'targetcut',
+             'phase',
+             'bamshuf',
+             'bam2fq',
+              'pad2unpad',
               )
 
     def setUp( self ):
@@ -226,12 +247,14 @@ class BinaryTest(unittest.TestCase):
             shutil.copy( "ex1.fa", os.path.join( WORKDIR, "ex1.fa" ) )
             shutil.copy( "ex1.sam.gz", os.path.join( WORKDIR, "ex1.sam.gz" ) )
             shutil.copy( "ex1.sam", os.path.join( WORKDIR, "ex1.sam" ) )
+            shutil.copy( "ex2.bam", os.path.join( WORKDIR, "ex2.bam" ) )
 
             # cd to workdir
             savedir = os.getcwd()
             os.chdir( WORKDIR )
             
             for label in self.order:
+                # print ("command=", label)
                 command = self.commands[label]
                 # build samtools command and target and run
                 samtools_target, samtools_command = command[0]
@@ -252,7 +275,6 @@ class BinaryTest(unittest.TestCase):
                                                    (label, pysam_options, msg) )
 
                 
-
                 if ">" in samtools_command:
                     with open( pysam_target, "wb" ) as outfile:
                         if type(output) == list:
@@ -332,6 +354,15 @@ class BinaryTest(unittest.TestCase):
 
     def testBam2fq( self ):
         self.checkCommand( "bam2fq" )
+
+    def testBedcov( self ):
+        self.checkCommand( "bedcov" )
+
+    def testBamshuf( self ):
+        self.checkCommand( "bamshuf" )
+
+    def testPad2Unpad( self ):
+        self.checkCommand( "pad2unpad" )
 
     # def testPileup1( self ):
     #     self.checkCommand( "pileup1" )

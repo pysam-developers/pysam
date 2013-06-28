@@ -107,6 +107,10 @@ SAMTOOLS_DISPATCH = {
     # others
     "samimport": ( "import", None),
     "bam2fq" : ("bam2fq", None),
+    "pad2unpad" : ("pad2unpad", None),
+    "depad" : ("pad2unpad", None),
+    "bedcov" : ("bedcov", None),
+    "bamshuf" : ("bamshuf", None),
     # obsolete
     # "pileup" : ( "pileup", ( (("-c",), Pileup.iterate ), ), ),
 

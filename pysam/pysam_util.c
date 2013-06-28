@@ -312,7 +312,12 @@ int main_phase(int argc, char *argv[]);
 int main_cat(int argc, char *argv[]);
 int main_depth(int argc, char *argv[]);
 int main_bam2fq(int argc, char *argv[]);
+int main_pad2unpad(int argc, char *argv[]);
+int main_bedcov(int argc, char *argv[]);
+int main_bamshuf(int argc, char *argv[]);
+
 int faidx_main(int argc, char *argv[]);
+
 
 int pysam_dispatch(int argc, char *argv[] )
 {
@@ -348,12 +353,12 @@ int pysam_dispatch(int argc, char *argv[] )
   else if (strcmp(argv[1], "cat") == 0) retval = main_cat(argc-1, argv+1);
   else if (strcmp(argv[1], "targetcut") == 0) retval = main_cut_target(argc-1, argv+1);
   else if (strcmp(argv[1], "phase") == 0) retval = main_phase(argc-1, argv+1);
-  else if (strcmp(argv[1], "depth") == 0)
-    {
-      retval = main_depth(argc-1, argv+1);
-    }
-  
+  else if (strcmp(argv[1], "depth") == 0) retval = main_depth(argc-1, argv+1);
   else if (strcmp(argv[1], "bam2fq") == 0) retval = main_bam2fq(argc-1, argv+1);
+  else if (strcmp(argv[1], "pad2unpad") == 0) retval = main_pad2unpad(argc-1, argv+1);
+  else if (strcmp(argv[1], "depad") == 0) retval = main_pad2unpad(argc-1, argv+1);
+  else if (strcmp(argv[1], "bedcov") == 0) retval = main_bedcov(argc-1, argv+1);
+  else if (strcmp(argv[1], "bamshuf") == 0) retval = main_bamshuf(argc-1, argv+1);
   
 #if _CURSES_LIB != 0
   else if (strcmp(argv[1], "tview") == 0) retval = bam_tview_main(argc-1, argv+1);
