@@ -3,10 +3,12 @@ Release notes
 =============
 
 Release 0.7.5
-   * bugfix release
+=============
+
+   * switch to samtools 0.1.19
    * issue 122: MACOSX getline missing
    * issue 130: clean up tempfiles
-   * switch to samtools 0.1.19
+   * bugfix release
 
 Release 0.7.4
 =============
