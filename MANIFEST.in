@@ -53,6 +53,7 @@ include tests/example_btag.bam
 include tests/tag_bug.bam
 include tests/example.vcf40
 include tests/example_empty_header.bam
+include tests/test_unaligned.bam
 include tests/issue100.bam
 
 # tabix tests
@@ -64,4 +65,4 @@ include tests/example.bed.gz.tbi
 include tests/vcf-examples/*.vcf
 
 # documentation
-include doc
+include doc/*
