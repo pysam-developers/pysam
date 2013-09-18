@@ -1459,6 +1459,11 @@ cdef class IteratorRow:
         iterate over all reads in all reference sequences.
 
     The method :meth:`Samfile.fetch` returns an IteratorRow.
+
+    .. note::
+        It is usually not necessary to create an object of this class
+        explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
+
     '''
     pass
 
@@ -1481,6 +1486,11 @@ cdef class IteratorRowRegion(IteratorRow):
 
     Note that the index will be shared between
     samfile and the iterator.
+
+    .. note::
+        It is usually not necessary to create an object of this class
+        explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
+
     """
 
     def __cinit__(self, Samfile samfile, int tid, int beg, int end, int reopen = True ):
@@ -1550,6 +1560,12 @@ cdef class IteratorRowAll(IteratorRow):
     By default, the file is re-openend to avoid conflicts between
     multiple iterators working on the same file. Set *reopen* = False
     to not re-open *samfile*.
+
+    .. note::
+        It is usually not necessary to create an object of this class
+        explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
+        
+
     """
 
     def __cinit__(self, Samfile samfile, int reopen = True ):
@@ -1602,6 +1618,10 @@ cdef class IteratorRowAll(IteratorRow):
 
 cdef class IteratorRowAllRefs(IteratorRow):
     """iterates over all mapped reads by chaining iterators over each reference
+
+    .. note::
+        It is usually not necessary to create an object of this class
+        explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
     """
 
     def __cinit__(self, Samfile samfile):
@@ -1647,6 +1667,10 @@ cdef class IteratorRowSelection(IteratorRow):
     """*(Samfile samfile)*
 
     iterate over reads in *samfile* at a given list of file positions.
+
+    .. note::
+        It is usually not necessary to create an object of this class
+        explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
     """
 
     def __cinit__(self, Samfile samfile, positions, int reopen = True ):
@@ -1828,15 +1852,11 @@ cdef class IteratorColumn:
         self.plp = NULL
         self.pileup_iter = <bam_plp_t>NULL
 
-
     def __iter__(self):
         return self
 
     cdef int cnext(self):
         '''perform next iteration.
-
-        This method is analogous to the samtools bam_plp_auto method.
-        It has been re-implemented to permit for filtering.
         '''
         self.plp = bam_plp_auto( self.pileup_iter,
                                  &self.tid,
@@ -1922,12 +1942,13 @@ cdef class IteratorColumn:
         bam_plp_reset(self.pileup_iter)
 
     def __dealloc__(self):
-        # reset in order to avoid memory leak messages for iterators that have
-        # not been fully consumed
+        # reset in order to avoid memory leak messages for iterators 
+        # that have not been fully consumed
         if self.pileup_iter != <bam_plp_t>NULL:
             bam_plp_reset(self.pileup_iter)
             bam_plp_destroy(self.pileup_iter)
             self.pileup_iter = <bam_plp_t>NULL
+            self.plp = <const_bam_pileup1_t_ptr>NULL
 
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
@@ -2348,9 +2369,22 @@ cdef class AlignedRead:
             self.cigar = [ (CIGAR2CODE[ord(y)], int(x)) for x,y in parts ]
 
     property seq:
-        """read sequence bases, including :term:`soft clipped` bases (None if not present).
+        """read sequence bases, including :term:`soft clipped` bases 
+        (None if not present).
 
-        In Python 3, this property is of type bytes and assigning a unicode string to it consisting of ASCII characters only will work, but is inefficient."""
+        In Python 3, this property is of type bytes and assigning a
+        unicode string to it consisting of ASCII characters only will
+        work, but is inefficient.
+
+        Note that assigning to seq will invalidate any quality scores.
+        Thus, to in-place edit the sequence and quality scores, copies of
+        the quality scores need to be taken. Consider trimming for example::
+
+           q = read.qual
+           read.seq = read.seq[5:10]
+           read.qual = q[5:10]
+
+        """
         def __get__(self):
             cdef bam1_t * src
             cdef char * s
@@ -2400,11 +2434,21 @@ cdef class AlignedRead:
             p = bam1_qual( src )
             p[0] = 0xff
 
-
     property qual:
-        """read sequence base qualities, including :term:`soft clipped` bases (None if not present).
+        """read sequence base qualities, including :term:`soft
+        clipped` bases (None if not present).
 
-        In Python 3, this property is of type bytes and assigning a unicode string to it consisting of ASCII characters only will work, but is inefficient."""
+        In Python 3, this property is of type bytes and assigning a
+        unicode string to it consisting of ASCII characters only will
+        work, but is inefficient.
+
+        Note that to set quality scores the sequence has to be set
+        previously as this will determine the permitted length of
+        the quality score array.
+
+        This method raises a ValueError if the length of the 
+        quality scores and the sequence are not the same.
+        """
         def __get__(self):
 
             cdef bam1_t * src
@@ -3069,7 +3113,7 @@ cdef class PileupProxy:
             cdef int x
             pileups = []
 
-            if self.plp[0] == NULL:
+            if self.plp == NULL or self.plp[0] == NULL:
                 raise ValueError("PileupProxy accessed after iterator finished")
 
             # warning: there could be problems if self.n and self.buf are

@@ -812,6 +812,14 @@ class TestIteratorColumn2(unittest.TestCase):
         self.assertEqual( len(columns), 3)
         self.assertEqual( columns, [169,170,171] )
 
+    def testAccessOnClosedIterator( self ):
+        '''see issue 131
+
+        Accessing pileup data after iterator has closed.
+        '''
+        pcolumn = self.samfile.pileup( 'chr1', 170, 180).next()
+        self.assertRaises( ValueError, getattr, pcolumn, "pileups" )
+
 class TestAlignedReadFromBam(unittest.TestCase):
 
     def setUp(self):
@@ -1263,6 +1271,23 @@ class TestAlignedRead(unittest.TestCase):
             setattr( b, x, False )
             self.assertEqual( getattr(b, x), False )
             self.checkFieldEqual( a, b )
+
+    def testUpdate( self ):
+        '''issue 135: inplace update of sequence and quality score.
+        
+        This does not work as setting the sequence will erase
+        the quality scores.
+        '''
+        a = self.buildRead()
+        a.seq = a.seq[5:10]
+        self.assertEqual( a.qual, None )
+        
+        a = self.buildRead()
+        s = a.qual
+        a.seq = a.seq[5:10]
+        a.qual = s[5:10]
+        
+        self.assertEqual( a.qual, s[5:10])
 
     def testLargeRead( self ):
         '''build an example read.'''
