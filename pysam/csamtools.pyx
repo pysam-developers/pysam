@@ -2397,42 +2397,47 @@ cdef class AlignedRead:
         def __set__(self,seq):
             # samtools manages sequence and quality length memory together
             # if no quality information is present, the first byte says 0xff.
-
-            if seq == None or len(seq) == 0: return
-            seq = _force_bytes(seq)
             cdef bam1_t * src
             cdef uint8_t * p
             cdef char * s
             cdef int l, k, nbytes_new, nbytes_old
 
-            src = self._delegate
+            if seq == None:
+                l = 0
+            else:
+                l = len(seq)                
+                seq = _force_bytes(seq)
 
-            l = len(seq)
+            src = self._delegate
 
             # as the sequence is stored in half-bytes, the total length (sequence
             # plus quality scores) is (l+1)/2 + l
             nbytes_new = (l+1)/2 + l
             nbytes_old = (src.core.l_qseq+1)/2 + src.core.l_qseq
+
             # acquire pointer to location in memory
             p = bam1_seq( src )
             src.core.l_qseq = l
 
+            # change length of data field
             pysam_bam_update( src,
                               nbytes_old,
                               nbytes_new,
                               p)
-            # re-acquire pointer to location in memory
-            # as it might have moved
-            p = bam1_seq( src )
-            for k from 0 <= k < nbytes_new: p[k] = 0
-            # convert to C string
-            s = seq
-            for k from 0 <= k < l:
-                p[k/2] |= pysam_translate_sequence(s[k]) << 4 * (1 - k % 2)
 
-            # erase qualities
-            p = bam1_qual( src )
-            p[0] = 0xff
+            if l > 0:
+                # re-acquire pointer to location in memory
+                # as it might have moved
+                p = bam1_seq( src )
+                for k from 0 <= k < nbytes_new: p[k] = 0
+                # convert to C string
+                s = seq
+                for k from 0 <= k < l:
+                    p[k/2] |= pysam_translate_sequence(s[k]) << 4 * (1 - k % 2)
+
+                # erase qualities
+                p = bam1_qual( src )
+                p[0] = 0xff
 
     property qual:
         """read sequence base qualities, including :term:`soft
