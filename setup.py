@@ -126,11 +126,12 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 # cp samtools/*.h pysam/*.h pysam/include
 # cp samtools/win32/*.h pysam/include/win32
 
-
-from distribute_setup import use_setuptools
-use_setuptools()
-
-from setuptools import Extension, setup, find_packages
+try:
+    from setuptools import Extension, setup, find_packages
+except ImportError:
+    from ez_setup import use_setuptools
+    use_setuptools()
+    from setuptools import Extension, setup, find_packages
 
 #######################################################
 #######################################################
