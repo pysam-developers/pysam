@@ -169,7 +169,7 @@ cdef class TupleProxy:
         cdef char * old_pos
         cdef int field
         cdef int max_fields, x
-        
+
         assert strlen(buffer) == nbytes
 
         if buffer[nbytes] != 0:

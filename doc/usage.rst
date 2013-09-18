@@ -267,11 +267,8 @@ and consists of three files:
 	 return Extension(name = modname,
 			  sources=[pyxfilename],
 			  extra_link_args=[ os.path.join( dirname, "csamtools.so")],
-			  include_dirs = ['../samtools', 
-					  '../pysam',
-					  ] )
-
-
+			  include_dirs =  pysam.get_include(),
+			  define_macros = pysam.get_defines() )
 
 If the script :file:`pysam_flagstat.py` is called the first time, pyximport_ will 
 compile the cython_ extension :file:`_pysam_flagstat.pyx` and make it available 
