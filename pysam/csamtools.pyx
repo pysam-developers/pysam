@@ -566,6 +566,9 @@ cdef class Fastqfile:
         This method expects an indexed fasta file.
         '''
 
+        if not os.path.exists( filename ):
+            raise IOError( "No such file or directory: %s" % filename )
+
         # close a previously opened file
         # if self.fastqfile != NULL: self.close()
         if self._filename != NULL: free(self._filename)
@@ -612,22 +615,6 @@ cdef class Fastqfile:
             return makeFastqProxy( self.entry )
         else:
             raise StopIteration
-
-    def test( self ):
-
-        cdef int l
-
-        while 1:
-            l = kseq_read(self.entry)
-            if l <= 0: break
-            printf( "name: %s\n", self.entry.name.s)  
-            if self.entry.comment.l:
-                printf("comment: %s\n", self.entry.comment.s)
-            printf("seq: %s\n", self.entry.seq.s)
-            if (self.entry.qual.l):
-                printf("qual: %s\n", self.entry.qual.s);  
-
-        printf("return value: %d\n", l);
 
 #------------------------------------------------------------------------
 #------------------------------------------------------------------------
@@ -2347,6 +2334,10 @@ cdef class AlignedRead:
     def __hash__(self):
         return _Py_HashPointer(<void *>self)
 
+    #######################################################################
+    #######################################################################
+    ## Basic properties
+    #######################################################################
     property qname:
         """the query name (None if not present)"""
         def __get__(self):
@@ -2956,6 +2947,10 @@ cdef class AlignedRead:
         """the position of the mate"""
         def __get__(self): return self._delegate.core.mpos
         def __set__(self, mpos): self._delegate.core.mpos = mpos
+    #######################################################################
+    #######################################################################
+    ## Flags
+    #######################################################################
     property isize:
         """the insert size
         deprecated: use tlen instead"""
@@ -3031,6 +3026,11 @@ cdef class AlignedRead:
         def __set__(self,val):
             if val: self._delegate.core.flag |= BAM_FDUP
             else: self._delegate.core.flag &= ~BAM_FDUP
+
+    #######################################################################
+    #######################################################################
+    ## Derived properties
+    #######################################################################
     property positions:
         """a list of reference positions that this read aligns to."""
         def __get__(self):
@@ -3057,6 +3057,32 @@ cdef class AlignedRead:
                     pos += l
 
             return result
+
+    property inferred_length:
+        """inferred read length from CIGAR string.
+
+        Returns 0 if CIGAR string is not present.
+        """
+        def __get__(self):
+           cdef uint32_t k, qpos
+           cdef int op
+           cdef uint32_t * cigar_p
+           cdef bam1_t * src 
+
+           src = self._delegate
+           if src.core.n_cigar == 0: return 0
+
+           qpos = 0
+           cigar_p = bam1_cigar(src)
+
+           for k from 0 <= k < src.core.n_cigar:
+               op = cigar_p[k] & BAM_CIGAR_MASK
+
+               if op == BAM_CMATCH or op == BAM_CINS or op == BAM_CSOFT_CLIP:
+                   qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
+
+           return qpos
+            
 
     property aligned_pairs:
        """a list of aligned read and reference positions.
@@ -3099,7 +3125,10 @@ cdef class AlignedRead:
                        
            return result
 
-
+    #######################################################################
+    #######################################################################
+    ## 
+    #######################################################################
     def overlap( self, uint32_t start, uint32_t end ):
         """return number of aligned bases of read overlapping the interval *start* and *end*
         on the reference sequence.

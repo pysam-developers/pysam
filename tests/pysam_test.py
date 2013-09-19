@@ -817,7 +817,7 @@ class TestIteratorColumn2(unittest.TestCase):
 
         Accessing pileup data after iterator has closed.
         '''
-        pcolumn = self.samfile.pileup( 'chr1', 170, 180).next()
+        pcolumn = self.samfile.pileup( 'chr1', 170, 180).__next__()
         self.assertRaises( ValueError, getattr, pcolumn, "pileups" )
 
 class TestAlignedReadFromBam(unittest.TestCase):
@@ -1178,6 +1178,22 @@ class TestFastqFile(unittest.TestCase):
 
     def testCounts( self ):
         self.assertEqual( len( [ x for x in self.file ] ), 3270 )
+
+    def testMissingFile( self ):
+        self.assertRaises( IOError, pysam.Fastqfile, "nothere.fq" )
+
+    def testSequence( self ):
+        s = self.file.__next__()
+        # test first entry
+        self.assertEqual( s.sequence, b"GGGAACAGGGGGGTGCACTAATGCGCTCCACGCCC")
+        self.assertEqual( s.quality, b"<<86<<;<78<<<)<;4<67<;<;<74-7;,;8,;")
+        self.assertEqual( s.name, b"B7_589:1:101:825:28" )
+
+        for s in self.file: pass
+        # test last entry
+        self.assertEqual( s.sequence, b"TAATTGAAAAATTCATTTAAGAAATTACAAAATAT")
+        self.assertEqual( s.quality, b"<<<<<;<<<<<<<<<<<<<<<;;;<<<;<<8;<;<")
+        self.assertEqual( s.name, b"EAS56_65:8:64:507:478" )
 
 class TestAlignedRead(unittest.TestCase):
     '''tests to check if aligned read can be constructed
