@@ -8,6 +8,7 @@ Release 0.7.6
    * added inferred_length property
    * issue 122: MACOSX getline missing, now it works?
    * seq and qual can be set None
+   * added Fastqfile
 
 Release 0.7.5
 =============
