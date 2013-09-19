@@ -8,6 +8,9 @@
 #include "pysam_util.h"
 #include "errmod.h" // for pysam_dump 
 
+// for sequence parsing
+#include "kseq.h"
+
 #ifndef inline
 #define inline __inline
 #endif

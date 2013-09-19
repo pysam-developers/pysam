@@ -388,6 +388,26 @@ cdef extern from "pysam_util.h":
 
 #    void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
 
+    ctypedef struct gzFile:
+        pass  
+
+    ctypedef struct kstring_t:
+        size_t l
+        size_t m
+        char *s
+
+    ctypedef struct kseq_t:
+        kstring_t name
+        kstring_t comment
+        kstring_t seq
+        kstring_t qual
+
+    gzFile gzopen( char *, char * )
+    kseq_t * kseq_init( gzFile )
+    int kseq_read( kseq_t * )
+    void kseq_destroy( kseq_t * )
+    void gzclose( gzFile )
+
 ####################################################################
 # Utility types
 
@@ -411,6 +431,17 @@ cdef class Fastafile:
     cdef faidx_t * fastafile
 
     cdef char * _fetch( self, char * reference, int start, int end, int * length )
+
+cdef class FastqProxy:
+    cdef kseq_t * _delegate
+
+cdef class Fastqfile:
+    cdef char * _filename
+    cdef gzFile fastqfile
+    cdef kseq_t * entry 
+
+    cdef kseq_t * getCurrent( self )
+    cdef int cnext(self)
 
 cdef class AlignedRead:
 
