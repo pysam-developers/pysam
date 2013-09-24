@@ -185,6 +185,13 @@ cdef makePileupRead( bam_pileup1_t * src ):
     dest._is_tail = src.is_tail
     return dest
 
+cdef class FastqProxy
+cdef makeFastqProxy( kseq_t * src):
+    '''enter src into AlignedRead.'''
+    cdef FastqProxy dest = FastqProxy.__new__(FastqProxy)
+    dest._delegate = src
+    return dest
+
 cdef convertBinaryTagToList( uint8_t * s ):
     """return bytesize, number of values list of values in s."""
     cdef char auxtype
@@ -505,6 +512,122 @@ cdef class Fastafile:
                                start,
                                end-1,
                                length )
+
+
+######################################################################
+######################################################################
+######################################################################
+## Fastq file
+######################################################################
+
+cdef class FastqProxy:
+    def __init__(self): pass
+
+    property name:
+        def __get__(self):
+            return self._delegate.name.s
+
+    property sequence:
+        def __get__(self):
+            return self._delegate.seq.s
+
+    property comment:
+        def __get__(self):
+            if self._delegate.comment.l:
+                return self._delegate.comment.s
+            else: return None
+
+    property quality:
+        def __get__(self):
+            if self._delegate.qual.l:
+                return self._delegate.qual.s
+            else: return None
+
+cdef class Fastqfile:
+    '''*(filename)*
+
+    A *FASTQ* file. The file is automatically opened.
+
+    '''
+
+    def __cinit__(self, *args, **kwargs ):
+        # self.fastqfile = NULL
+        self._filename = NULL
+        self._open( *args, **kwargs )
+
+    def _isOpen( self ):
+        '''return true if samfile has been opened.'''
+        return self._filename != NULL
+
+    def _open( self,
+               filename ):
+        '''open an indexed fasta file.
+
+        This method expects an indexed fasta file.
+        '''
+
+        # close a previously opened file
+        # if self.fastqfile != NULL: self.close()
+        if self._filename != NULL: free(self._filename)
+        filename = _my_encodeFilename(filename)
+        self._filename = strdup(filename)
+        self.fastqfile = gzopen( filename, "r" )
+        self.entry = kseq_init( self.fastqfile )
+
+    def close( self ):
+        '''close file.'''
+        if self._filename != NULL:
+            gzclose( self.fastqfile )
+            free(self._filename)
+
+    def __dealloc__(self):
+        kseq_destroy(self.entry)
+        self.close()
+
+    property filename:
+        '''number of :term:`filename` associated with this object.'''
+        def __get__(self):
+            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            return self._filename
+
+    def __iter__(self):
+        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        return self
+
+    cdef kseq_t * getCurrent( self ):
+        return self.entry
+
+    cdef int cnext(self):
+        '''C version of iterator
+        '''
+        return kseq_read(self.entry)
+
+    def __next__(self):
+        """
+        python version of next().
+        """
+        cdef int l
+        l = kseq_read( self.entry)
+        if (l > 0):
+            return makeFastqProxy( self.entry )
+        else:
+            raise StopIteration
+
+    def test( self ):
+
+        cdef int l
+
+        while 1:
+            l = kseq_read(self.entry)
+            if l <= 0: break
+            printf( "name: %s\n", self.entry.name.s)  
+            if self.entry.comment.l:
+                printf("comment: %s\n", self.entry.comment.s)
+            printf("seq: %s\n", self.entry.seq.s)
+            if (self.entry.qual.l):
+                printf("qual: %s\n", self.entry.qual.s);  
+
+        printf("return value: %d\n", l);
 
 #------------------------------------------------------------------------
 #------------------------------------------------------------------------
@@ -3912,6 +4035,7 @@ cdef class IndexedReads:
 
 __all__ = ["Samfile",
            "Fastafile",
+           "Fastqfile",
            "IteratorRow",
            "IteratorColumn",
            "AlignedRead",

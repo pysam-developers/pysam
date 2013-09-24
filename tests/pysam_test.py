@@ -1171,6 +1171,14 @@ class TestFastaFile(unittest.TestCase):
     def tearDown(self):
         self.file.close()
 
+class TestFastqFile(unittest.TestCase):
+
+    def setUp(self):
+        self.file=pysam.Fastqfile( "ex1.fq" )
+
+    def testCounts( self ):
+        self.assertEqual( len( [ x for x in self.file ] ), 3270 )
+
 class TestAlignedRead(unittest.TestCase):
     '''tests to check if aligned read can be constructed
     and manipulated.
