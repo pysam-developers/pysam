@@ -1,5 +1,6 @@
 // Definition of pysamerr
 #include "stdio.h"
+#include "unistd.h"
 FILE * pysamerr = NULL;
 
 #if !(_POSIX_C_SOURCE >= 200809L || _XOPEN_SOURCE >= 700)
