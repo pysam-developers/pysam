@@ -13,6 +13,7 @@ all: ex1.pileup.gz ex1.bam.bai \
 	example_user_header.bam \
 	example_btag.bam \
 	example_bai.bam \
+	softclip.bam
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz
@@ -42,8 +43,8 @@ example_bai.bam: ex1.bam
 	samtools index $@
 	mv $@.bai example_bai.bai
 
-
-
+softclip.bam: softclip.sam
+	samtools view -bS $< > $@
 
 clean:
 	rm -fr *.bam *.bai *.fai *.pileup* \
