@@ -82,13 +82,20 @@ cdef _force_str(object s):
 
 
 cdef class Tabixfile:
-    '''*(filename, mode='r')*
+    '''*(filename, mode='r', parser = None)*
 
     opens a :term:`tabix file` for reading. A missing
     index (*filename* + ".tbi") will raise an exception.
+
+    *parser* sets the default parser for this tabix file. If *parser*
+    is None, the results are returned as an unparsed string.
+    Otherwise, *parser* is assumed to be a functor that will return
+    parsed data (see for example :meth:`asTuple` and :meth:`asGTF`).
     '''
-    def __cinit__(self, filename, mode = 'r', *args, **kwargs ):
+    def __cinit__(self, filename, mode = 'r', 
+                  parser = None, *args, **kwargs ):
         self.tabixfile = NULL
+        self.parser = parser
         self._open( filename, mode, *args, **kwargs )
 
     def _isOpen( self ):
@@ -202,9 +209,7 @@ cdef class Tabixfile:
         
         If only *reference* is set, all reads matching on *reference* will be fetched.
 
-        If *parser* is None, the results are returned as an unparsed string.
-        Otherwise, *parser* is assumed to be a functor that will return parsed 
-        data (see for example :meth:`asTuple` and :meth:`asGTF`).
+        If *parser* is None, the default parser will be used for parsing.
         '''
         ti_lazy_index_load( self.tabixfile )
 
@@ -213,14 +218,18 @@ cdef class Tabixfile:
 
         region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
-        if parser == None:
+        # use default parser if no parser is specified
+        if parser == None: parser = self.parser
+
+        if parser == None: 
             if region:
                 return TabixIterator( self, rtid, rstart, rend )
             else:
                 return TabixIterator( self, -1, 0, 0 )
         else:
             if region:
-                return TabixIteratorParsed( self, rtid, rstart, rend, parser )
+                return TabixIteratorParsed( self, rtid, rstart, 
+                                            rend, parser )
             else:
                 return TabixIteratorParsed( self, -1, 0, 0, parser )
 
@@ -376,7 +385,9 @@ cdef class TabixHeaderIterator:
 #########################################################
 #########################################################
 cdef class Parser:
-    pass
+
+    def __call__(self, char * buffer, int len):
+        raise NotImplementedError
 
 cdef class asTuple(Parser):
     '''converts a :term:`tabix row` into a python tuple.
@@ -462,7 +473,7 @@ cdef class asBed( Parser ):
     need to be defined as well.
 
     ''' 
-    def __call__(self, char * buffer, int len):
+    cdef __call__(self, char * buffer, int len):
         cdef TabProxies.BedProxy r
         r = TabProxies.BedProxy()
         r.copy( buffer, len )

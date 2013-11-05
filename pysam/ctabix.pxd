@@ -179,6 +179,8 @@ cdef class Tabixfile:
 
     cdef char * _filename
 
+    cdef Parser parser
+    
 cdef class TabixIterator:
     cdef ti_iter_t iterator
     cdef tabix_t * tabixfile

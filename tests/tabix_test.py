@@ -236,6 +236,7 @@ class TestIteration( unittest.TestCase ):
         self.assertRaises( ValueError, self.tabix.fetch, "chr1", 200, 0)
         self.assertRaises( ValueError, self.tabix.fetch, "chr1", -10, -20)
         self.assertRaises( ValueError, self.tabix.fetch, "chrUn" )
+        print list(self.tabix.fetch( "chr1, 1000000, 2000000" ) )
 
     def testGetContigs( self ):
         self.assertEqual( sorted(self.tabix.contigs), [b"chr1", b"chr2"] )
