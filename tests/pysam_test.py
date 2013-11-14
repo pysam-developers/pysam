@@ -1184,6 +1184,7 @@ class TestFastaFile(unittest.TestCase):
 
         
         # unknown sequence returns ""
+        # change: should be an IndexError
         self.assertEqual( b"", self.file.fetch("chr12") )
 
     def testOutOfRangeAccess( self ):
@@ -1196,12 +1197,19 @@ class TestFastaFile(unittest.TestCase):
 
     def testFetchErrors( self ):
         self.assertRaises( ValueError, self.file.fetch )
-        self.assertRaises( ValueError, self.file.fetch, "chr1", -1, 10 )
+        self.assertRaises( IndexError, self.file.fetch, "chr1", -1, 10 )
         self.assertRaises( ValueError, self.file.fetch, "chr1", 20, 10 )
+        
+        # does not work yet
+        # self.assertRaises( KeyError, self.file.fetch, "chrX" )
 
     def testLength( self ):
         self.assertEqual( len(self.file), 2 )
         
+    def testSequenceLengths( self ):
+        self.assertEqual( 1575, self.file.getReferenceLength( "chr1" ) )
+        self.assertEqual( 1584, self.file.getReferenceLength( "chr2" ) )
+
     def tearDown(self):
         self.file.close()
 
