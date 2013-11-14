@@ -394,6 +394,7 @@ cdef class Fastafile:
     def __cinit__(self, *args, **kwargs ):
         self.fastafile = NULL
         self._filename = NULL
+        self.reference2length = None
         self._open( *args, **kwargs )
 
     def _isOpen( self ):
@@ -423,6 +424,14 @@ cdef class Fastafile:
         if self.fastafile == NULL:
             raise IOError("could not open file `%s`" % filename )
 
+        # read index
+        if not os.path.exists( filename + ".fai" ):
+            raise ValueError("could not locate index file")
+
+        with open( filename + ".fai" ) as inf:
+            data = [ x.split("\t") for x in inf ]
+            self.reference2length = dict( [ (x[0],int(x[1])) for x in data ] )
+            
     def close( self ):
         if self.fastafile != NULL:
             fai_destroy( self.fastafile )
@@ -473,8 +482,8 @@ cdef class Fastafile:
             if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
             if start == end: return b""
             # valid ranges are from 0 to 2^29-1
-            if not 0 <= start < max_pos: raise ValueError( 'start out of range (%i)' % start )
-            if not 0 <= end < max_pos: raise ValueError( 'end out of range (%i)' % end )
+            if not 0 <= start < max_pos: raise IndexError( 'start out of range (%i)' % start )
+            if not 0 <= end < max_pos: raise IndexError( 'end out of range (%i)' % end )
             # note: faidx_fetch_seq has a bug such that out-of-range access
             # always returns the last residue. Hence do not use faidx_fetch_seq,
             # but use fai_fetch instead
@@ -513,6 +522,13 @@ cdef class Fastafile:
                                end-1,
                                length )
 
+    def getReferenceLength( self, reference ):
+        '''return the length of reference.'''
+        return self.reference2length[reference]
+
+    def __contains__( self, reference ):
+        '''return true if reference in fasta file.'''
+        return reference in self.reference2length
 
 ######################################################################
 ######################################################################
