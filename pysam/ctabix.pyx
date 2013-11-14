@@ -11,6 +11,11 @@ from cpython cimport PyErr_SetString, PyBytes_Check, \
     PyUnicode_Check, PyBytes_FromStringAndSize, \
     PyObject_AsFileDescriptor
 
+from libc.stdio cimport printf, fprintf, stderr
+from libc.string cimport strerror
+from libc.errno cimport errno
+from libc.stdint cimport int64_t
+
 PYTHON3 = PY_MAJOR_VERSION >= 3
 
 # from cpython cimport PyString_FromStringAndSize, PyString_AS_STRING
@@ -187,10 +192,10 @@ cdef class Tabixfile:
             region = _force_bytes(region)
             ti_parse_region( self.tabixfile.idx, region, 
                              &rtid, &rstart, &rend)        
-            if rtid < 0: raise ValueError( "invalid region `%s`" % region )
+            if rtid < 0: raise KeyError( reference )
             if rstart > rend: raise ValueError( 'invalid region: start (%i) > end (%i)' % (rstart, rend) )
-            if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
-            if not 0 <= rend < max_pos: raise ValueError( 'end out of range (%i)' % rend )
+            if not 0 <= rstart < max_pos: raise IndexError( 'start out of range (%i)' % rstart )
+            if not 0 <= rend < max_pos: raise IndexError( 'end out of range (%i)' % rend )
 
         return region, rtid, rstart, rend
 
@@ -216,6 +221,7 @@ cdef class Tabixfile:
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
+        # the following will raise errors for invalid regions
         region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
 
         # use default parser if no parser is specified
@@ -324,7 +330,6 @@ cdef class TabixIterator:
         # metachar filtering does not work within tabix 
         # though it should. Getting the metachar is a pain
         # as ti_index_t is incomplete type.
-
         # simply use '#' for now.
         while 1:
             s = ti_read(self.tabixfile, self.iterator, &len)
@@ -386,15 +391,18 @@ cdef class TabixHeaderIterator:
 #########################################################
 cdef class Parser:
 
-    def __call__(self, char * buffer, int len):
+    cdef parse(self, char * buffer, int length):
         raise NotImplementedError
+
+    def __call__(self, char * buffer, int length):
+        return self.parse( buffer, length )
 
 cdef class asTuple(Parser):
     '''converts a :term:`tabix row` into a python tuple.
 
     Access is by numeric index.
     ''' 
-    def __call__(self, char * buffer, int len):
+    cdef parse(self, char * buffer, int len):
         cdef TabProxies.TupleProxy r
         r = TabProxies.TupleProxy()
         # need to copy - there were some
@@ -433,7 +441,7 @@ cdef class asGTF(Parser):
        the transcript identifier
     
     ''' 
-    def __call__(self, char * buffer, int len):
+    cdef parse(self, char * buffer, int len):
         cdef TabProxies.GTFProxy r
         r = TabProxies.GTFProxy()
         r.copy( buffer, len )
@@ -473,7 +481,7 @@ cdef class asBed( Parser ):
     need to be defined as well.
 
     ''' 
-    cdef __call__(self, char * buffer, int len):
+    cdef parse(self, char * buffer, int len):
         cdef TabProxies.BedProxy r
         r = TabProxies.BedProxy()
         r.copy( buffer, len )
@@ -509,7 +517,7 @@ cdef class asVCF( Parser ):
         second_sample_genotype = vcf[1]
 
     '''
-    def __call__(self, char * buffer, int len ):
+    cdef parse(self, char * buffer, int len ):
         cdef TabProxies.VCFProxy r
         r = TabProxies.VCFProxy()
         r.copy( buffer, len )
@@ -563,10 +571,9 @@ cdef class TabixIteratorParsed:
         while 1:
             s = ti_read(self.tabixfile, self.iterator, &len)
             if s == NULL: raise StopIteration
-            # todo: read metachar from configuration
             if s[0] != '#': break
             
-        return self.parser(s, len)
+        return self.parser.parse(s, len)
 
     def __dealloc__(self):
         if <void*>self.iterator != NULL:
@@ -712,88 +719,117 @@ def tabix_index( filename,
     
     return filename
 
+# #########################################################
+# #########################################################
+# #########################################################
+# ## Iterators for parsing through unindexed files.
+# #########################################################
+# cdef class tabix_file_iterator_old:
+#     '''iterate over ``infile``.
+
+#     This iterator is not safe. If the :meth:`__next__()` method is called 
+#     after ``infile`` is closed, the result is undefined (see ``fclose()``).
+
+#     The iterator might either raise a StopIteration or segfault.
+#     '''
+
+
+#     def __cinit__(self, 
+#                   infile, 
+#                   Parser parser,
+#                   int buffer_size = 65536 ):
+
+#         cdef int fd = PyObject_AsFileDescriptor( infile )
+#         if fd == -1: raise ValueError( "I/O operation on closed file." )
+#         self.infile = fdopen( fd, 'r')
+
+#         if self.infile == NULL: raise ValueError( "I/O operation on closed file." )
+
+#         self.buffer = <char*>malloc( buffer_size )        
+#         self.size = buffer_size
+#         self.parser = parser
+
+#     def __iter__(self):
+#         return self
+
+#     cdef __cnext__(self):
+
+#         cdef char * b
+#         cdef size_t nbytes
+#         b = self.buffer
+
+#         while not feof( self.infile ):
+#             nbytes = getline( &b, &self.size, self.infile)
+
+#             # stop at first error or eof
+#             if (nbytes == -1): break
+#             # skip comments
+#             if (b[0] == '#'): continue
+
+#             # skip empty lines
+#             if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
+
+#             # make sure that entry is complete
+#             if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
+#                 result = b
+#                 raise ValueError( "incomplete line at %s" % result )
+
+#             # make sure that this goes fully through C
+#             # otherwise buffer is copied to/from a
+#             # Python object causing segfaults as
+#             # the wrong memory is freed
+#             return self.parser.parse( b, nbytes )
+
+#         raise StopIteration
+
+#     def __dealloc__(self):
+#         free(self.buffer)
+
+#     def __next__(self):
+#         return self.__cnext__()
+
 #########################################################
 #########################################################
 #########################################################
 ## Iterators for parsing through unindexed files.
 #########################################################
-ctypedef class tabix_inplace_iterator:
-    '''iterate over ``infile``.
+cdef buildGzipError(void *gzfp):
+    cdef int errnum = 0
+    cdef const char *s = gzerror(gzfp, &errnum)
+    return "error (%d): %s (%d: %s)" % (errno, strerror(errno), errnum, s)
 
-    This iterator is not safe. If the :meth:`__next__()` method is called 
-    after ``infile`` is closed, the result is undefined (see ``fclose()``).
 
-    The iterator might either raise a StopIteration or segfault.
+cdef class tabix_file_iterator:
+    '''iterate over a compressed or uncompressed ``infile``.
     '''
 
+    def __cinit__(self, 
+                  infile, 
+                  Parser parser,
+                  int buffer_size = 65536 ):
 
-    def __cinit__(self, infile, int buffer_size = 65536 ):
+        if infile.closed:
+            raise ValueError( "I/O operation on closed file." )
+
+        self.infile = infile
 
         cdef int fd = PyObject_AsFileDescriptor( infile )
         if fd == -1: raise ValueError( "I/O operation on closed file." )
-        self.infile = fdopen( fd, 'r')
 
-        if self.infile == NULL: raise ValueError( "I/O operation on closed file." )
+        # From the manual:
+        # gzopen can be used to read a file which is not in gzip format; 
+        # in this case gzread will directly read from the file without decompression. 
+        # When reading, this will be detected automatically by looking 
+        # for the magic two-byte gzip header. 
+        self.fh = gzdopen( fd, 'r')
 
+        if self.fh == NULL: 
+            raise IOError('%s' % strerror(errno))
+        
         self.buffer = <char*>malloc( buffer_size )        
+        if self.buffer == NULL:
+            raise MemoryError( "tabix_file_iterator: could not allocate %i bytes" % buffer_size)
         self.size = buffer_size
-
-    def __iter__(self):
-        return self
-
-    cdef __cnext__(self):
-
-        cdef char * b
-        cdef size_t nbytes
-        b = self.buffer
-        r = self.Parser()
-
-        while not feof( self.infile ):
-            nbytes = getline( &b, &self.size, self.infile)
-
-            # stop at first error or eof
-            if (nbytes == -1): break
-            # skip comments
-            if (b[0] == '#'): continue
-
-            # skip empty lines
-            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
-
-            # make sure that entry is complete
-            if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
-                result = b
-                raise ValueError( "incomplete line at %s" % result )
-
-            # make sure that this goes fully through C
-            # otherwise buffer is copied to/from a
-            # Python object causing segfaults as
-            # the wrong memory is freed
-            r.present( b, nbytes )
-            return r 
-
-        raise StopIteration
-
-    def __dealloc__(self):
-        free(self.buffer)
-
-    def __next__(self):
-        return self.__cnext__()
-
-ctypedef class tabix_copy_iterator:
-    '''iterate over ``infile``.
-
-    This iterator is not save. If the :meth:`__next__()` method is called 
-    after ``infile`` is closed, the result is undefined (see ``fclose()``).
-
-    The iterator might either raise a StopIteration or segfault.
-    '''
-
-    def __cinit__(self, infile, Parser parser ):
-
-        cdef int fd = PyObject_AsFileDescriptor( infile )
-        if fd == -1: raise ValueError( "I/O operation on closed file." )
-        self.infile = fdopen( fd, 'r')
-        if self.infile == NULL: raise ValueError( "I/O operation on closed file." )
         self.parser = parser
 
     def __iter__(self):
@@ -801,40 +837,35 @@ ctypedef class tabix_copy_iterator:
 
     cdef __cnext__(self):
 
-        cdef char * b
-        cdef size_t nbytes
-        cdef int x
+        if self.infile.closed:
+            raise ValueError( "I/O operation on closed file." )
+    
+        cdef char * b = self.buffer
 
-        b = NULL        
+        while not gzeof( self.fh ):
 
-        while not feof( self.infile ):
+            b = gzgets( self.fh, b, self.size )
 
-            # getline allocates on demand
-            # return number of characters read excluding null byte
-            nbytes = getline( &b, &nbytes, self.infile)
-            # stop at first error
-            if (nbytes == -1): break
+            if b == NULL: 
+                if gzeof( self.fh ): break
+                raise IOError('gzip error: %s' % buildGzipError( self.fh ))
+
             # skip comments
             if (b[0] == '#'): continue
 
             # skip empty lines
             if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
 
-            # make sure that entry is complete
-            if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
-                result = b
-                free(b)
-                raise ValueError( "incomplete line at %s" % result )
+            # gzgets terminates at \n, no need to test
 
-            # make sure that this goes fully through C
-            # otherwise buffer is copied to/from a
-            # Python object causing segfaults as
-            # the wrong memory is freed
-            # -1 to remove the new-line character
-            return self.parser(b, nbytes)
+            # parser creates a copy
+            return self.parser.parse( b, strlen(b ) )
 
-        free(b)
         raise StopIteration
+
+    def __dealloc__(self):
+        free(self.buffer)
+        
 
     def __next__(self):
         return self.__cnext__()
@@ -858,6 +889,11 @@ class tabix_generic_iterator:
         
         cdef char * b, * cpy
         cdef size_t nbytes
+
+        # note that GzipFile.close() does not close the file
+        # reading is still possible.
+        if self.infile.closed: raise ValueError( "I/O operation on closed file." )
+
         while 1:
 
             line = self.infile.readline()
@@ -890,10 +926,14 @@ class tabix_generic_iterator:
     # python version - required for python 2.7
     def next(self):
         return self.__next__()
-    
+
 def tabix_iterator( infile, parser ):
     """return an iterator over all entries in a file."""
-    return tabix_generic_iterator( infile, parser )
+    if PYTHON3:
+        return tabix_generic_iterator( infile, parser )
+    else:
+        return tabix_file_iterator( infile, parser )
+        
     # file objects can use C stdio
     # used to be: isinstance( infile, file):
     # if PYTHON3:
@@ -915,5 +955,6 @@ __all__ = ["tabix_index",
            "asVCF",
            "asBed",
            "tabix_iterator", 
-           "tabix_inplace_iterator"
+           "tabix_generic_iterator", 
+           "tabix_file_iterator", 
            ]

@@ -74,6 +74,19 @@ cdef extern from "stdint.h":
   ctypedef int uint8_t
   ctypedef int uint64_t
 
+cdef extern from "zlib.h":
+  ctypedef void * gzFile
+  ctypedef int64_t z_off_t
+
+  int gzclose(gzFile fp)
+  int gzread(gzFile fp, void *buf, unsigned int n)
+  char *gzerror(gzFile fp, int *errnum)
+
+  gzFile gzopen( char *path, char *mode)
+  gzFile gzdopen (int fd, char *mode)
+  char * gzgets(gzFile file, char *buf, int len)
+  int gzeof( gzFile file )
+
 cdef extern from "Python.h":
     ctypedef struct FILE
     char *fgets(char *str, int size, FILE *ifile)
@@ -190,10 +203,11 @@ cdef class TabixHeaderIterator:
     cdef tabix_t * tabixfile
 
 cdef class Parser:
-     pass
+     cdef parse( self, char * buffer, int len )
 
 cdef class asTuple(Parser):
-     pass
+     cdef parse( self, char * buffer, int len )
+
 
 cdef class asGTF(Parser):
      pass
@@ -209,17 +223,14 @@ cdef class TabixIteratorParsed:
     cdef tabix_t * tabixfile
     cdef Parser parser
 
-cdef class tabix_inplace_iterator:
-    cdef FILE * infile
+cdef class tabix_file_iterator:
+    cdef gzFile fh
     cdef char * buffer
     cdef size_t size
     cdef Parser parser
+    cdef int fd
+    cdef infile
 
-    cdef __cnext__(self)
-
-cdef class tabix_copy_iterator:
-    cdef FILE * infile  
-    cdef Parser parser
     cdef __cnext__(self)
 
 cdef extern from "tabix_util.h":

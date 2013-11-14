@@ -231,12 +231,23 @@ class TestIteration( unittest.TestCase ):
 
     def testInvalidIntervals( self ):
         
+        # invalid intervals (start > end)
         self.assertRaises( ValueError, self.tabix.fetch, "chr1", 0, -10)
-        self.assertRaises( ValueError, self.tabix.fetch, "chr1", -10, 200)
         self.assertRaises( ValueError, self.tabix.fetch, "chr1", 200, 0)
-        self.assertRaises( ValueError, self.tabix.fetch, "chr1", -10, -20)
-        self.assertRaises( ValueError, self.tabix.fetch, "chrUn" )
-        print list(self.tabix.fetch( "chr1, 1000000, 2000000" ) )
+
+        # out of range intervals
+        self.assertRaises( IndexError, self.tabix.fetch, "chr1", -10, 200)
+        self.assertRaises( IndexError, self.tabix.fetch, "chr1", -10, -20)
+
+        # unknown chromosome
+        self.assertRaises( KeyError, self.tabix.fetch, "chrUn" )
+
+        # out of range access
+        # to be implemented
+        # self.assertRaises( IndexError, self.tabix.fetch, "chr1", 1000000, 2000000 )
+
+        # raise no error for invalid intervals
+        self.tabix.fetch( "chr1", 100,100)
 
     def testGetContigs( self ):
         self.assertEqual( sorted(self.tabix.contigs), [b"chr1", b"chr2"] )
@@ -360,6 +371,84 @@ class TestParser( unittest.TestCase ):
                                           r[c:cc] )
 
         os.unlink( tmpfilename )
+
+class TestIterators( unittest.TestCase ):
+
+    filename = "example.gtf.gz" 
+
+    iterator = pysam.tabix_generic_iterator
+    parser = pysam.asTuple
+    is_compressed = False
+
+    def setUp( self ):
+
+        self.tabix = pysam.Tabixfile( self.filename )
+        self.compare = loadAndConvert( self.filename )
+        self.tmpfilename_uncompressed = 'tmp_TestIterators'
+        infile = gzip.open( self.filename, "rb")
+        outfile = open( self.tmpfilename_uncompressed, "wb" )
+        outfile.write( infile.read() )
+        outfile.close()
+        infile.close()
+
+    def open( self ):
+
+        if self.is_compressed:
+            infile = gzip.open( self.filename )
+        else:
+            infile = open( self.tmpfilename_uncompressed ) 
+        return infile
+
+    def testIteration( self ):
+
+        infile = self.open()
+
+        for x, r in enumerate(self.iterator( infile, self.parser())):
+            self.assertEqual( self.compare[x], list(r) )
+            self.assertEqual( len(self.compare[x]), len(r) )
+
+            # test indexing
+            for c in range(0,len(r)):
+                self.assertEqual( self.compare[x][c], r[c] )
+
+            # test slicing access
+            for c in range(0, len(r)-1):
+                for cc in range(c+1, len(r)):
+                    self.assertEqual( self.compare[x][c:cc],
+                                      r[c:cc] )
+
+    def testClosedFile( self ):
+        '''test for error when iterating from closed file.'''
+        infile = self.open()
+        infile.close()
+
+        # iterating from a closed file should raise a value error
+        self.assertRaises( ValueError, self.iterator, infile, self.parser())
+
+    def testClosedFileIteration( self ):
+        '''test for error when iterating from file that has been closed'''
+        
+        infile = self.open()
+
+        i = self.iterator( infile, self.parser())
+        x = i.next()
+        infile.close()
+        self.assertRaises( ValueError, i.next )
+
+    def tearUp( self ):
+        os.unlink( self.tmpfilename_uncompressed )
+
+class TestIteratorsGenericCompressed( TestIterators ):
+    is_compressed = True
+
+class TestIteratorsFileCompressed( TestIterators ):
+    iterator = pysam.tabix_file_iterator
+    is_compressed = True
+
+class TestIteratorsFileUncompressed( TestIterators ):
+    iterator = pysam.tabix_file_iterator
+    is_compressed = False
+                      
 
 class TestGTF( TestParser ):
 
