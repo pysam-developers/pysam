@@ -870,6 +870,9 @@ cdef class tabix_file_iterator:
         
     def __next__(self):
         return self.__cnext__()
+
+    def next(self):
+        return self.__cnext__()
     
 class tabix_generic_iterator:
     '''iterate over ``infile``.

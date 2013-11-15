@@ -28,22 +28,32 @@ def myzip_open( infile, mode = "r" ):
     else:
         return gzip.open( mode )
 
-def loadAndConvert( infile ):
-    '''load and convert all fields to bytes'''
+def loadAndConvert( infile, encode = True ):
+    '''load data from infile and convert all fields to bytes.
+
+    infile can be either plain or compressed (ending in .gz).
+    '''
     data = []
     if infile.endswith(".gz"):
         for line in gzip.open( infile ):
             line = line.decode("ascii")
             if line.startswith("#"): continue
             d = line.strip().split("\t")
-            data.append( [x.encode("ascii") for x in d ] )
+            if encode:
+                data.append( [x.encode("ascii") for x in d ] )
+            else:
+                data.append( d )
+
     else:
         with open(infile) as f:
             for line in f:
                 if line.startswith("#"): continue
                 d = line.strip().split("\t")
-                data.append( [x.encode("ascii") for x in d ] )
-
+                if encode:
+                    data.append( [x.encode("ascii") for x in d ] )
+                else:
+                    data.append( d )
+                
     return data
 
 def splitToBytes( s ):
@@ -618,7 +628,7 @@ class TestVCFFromVCF( TestVCF ):
         TestVCF.setUp( self )
 
         self.vcf = pysam.VCF()
-        self.compare = loadAndConvert( self.filename )
+        self.compare = loadAndConvert( self.filename, encode = False )
 
     def testParsing( self ):
 
@@ -703,7 +713,7 @@ class TestVCFFromVCF( TestVCF ):
                         else:
                             self.assertEqual( c[y], val, 
                                               "mismatch in field %s: expected %s, got %s" %\
-                                                  ( field,c[y], val ) )
+                                                  ( field, c[y], val ) )
 
 ############################################################################ 
 # create a test class for each example vcf file.

@@ -425,10 +425,10 @@ cdef class Fastafile:
             raise IOError("could not open file `%s`" % filename )
 
         # read index
-        if not os.path.exists( filename + ".fai" ):
+        if not os.path.exists( filename + b".fai" ):
             raise ValueError("could not locate index file")
 
-        with open( filename + ".fai" ) as inf:
+        with open( filename + b".fai" ) as inf:
             data = [ x.split("\t") for x in inf ]
             self.reference2length = dict( [ (x[0],int(x[1])) for x in data ] )
             
