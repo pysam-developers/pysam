@@ -667,6 +667,40 @@ class TestTagParsing( unittest.TestCase ):
         
         self.assertEqual( tags, r.tags )
 
+class TestClipping(unittest.TestCase):
+    
+    def testClipping( self ):
+        
+        self.samfile = pysam.Samfile("softclip.bam", "rb" )
+        for read in self.samfile:
+
+            if read.qname == "r001":
+                self.assertEqual( read.seq, 'AAAAGATAAGGATA' )
+                self.assertEqual( read.query, 'AGATAAGGATA' )
+                self.assertEqual( read.qual, None )
+                self.assertEqual( read.qqual, None )
+                
+            elif read.qname == "r002":
+                
+                self.assertEqual( read.seq, 'GCCTAAGCTAA' )
+                self.assertEqual( read.query, 'AGCTAA' )
+                self.assertEqual( read.qual, '01234567890' )
+                self.assertEqual( read.qqual, '567890' )
+            
+            elif read.qname == "r003":
+                
+                self.assertEqual( read.seq, 'GCCTAAGCTAA' )
+                self.assertEqual( read.query, 'GCCTAA' )
+                self.assertEqual( read.qual, '01234567890' )
+                self.assertEqual( read.qqual, '012345' )
+
+            elif read.qname == "r004":
+                
+                self.assertEqual( read.seq, 'TAGGC' )
+                self.assertEqual( read.query, 'TAGGC' )
+                self.assertEqual( read.qual, '01234' )
+                self.assertEqual( read.qqual, '01234' )
+                
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):
@@ -1150,6 +1184,7 @@ class TestFastaFile(unittest.TestCase):
 
         
         # unknown sequence returns ""
+        # change: should be an IndexError
         self.assertEqual( b"", self.file.fetch("chr12") )
 
     def testOutOfRangeAccess( self ):
@@ -1162,12 +1197,19 @@ class TestFastaFile(unittest.TestCase):
 
     def testFetchErrors( self ):
         self.assertRaises( ValueError, self.file.fetch )
-        self.assertRaises( ValueError, self.file.fetch, "chr1", -1, 10 )
+        self.assertRaises( IndexError, self.file.fetch, "chr1", -1, 10 )
         self.assertRaises( ValueError, self.file.fetch, "chr1", 20, 10 )
+        
+        # does not work yet
+        # self.assertRaises( KeyError, self.file.fetch, "chrX" )
 
     def testLength( self ):
         self.assertEqual( len(self.file), 2 )
         
+    def testSequenceLengths( self ):
+        self.assertEqual( 1575, self.file.getReferenceLength( "chr1" ) )
+        self.assertEqual( 1584, self.file.getReferenceLength( "chr2" ) )
+
     def tearDown(self):
         self.file.close()
 

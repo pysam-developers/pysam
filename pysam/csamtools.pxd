@@ -430,6 +430,9 @@ cdef class Fastafile:
     # pointer to fastafile
     cdef faidx_t * fastafile
 
+    # length dictionary
+    cdef reference2length
+
     cdef char * _fetch( self, char * reference, int start, int end, int * length )
 
 cdef class FastqProxy:
