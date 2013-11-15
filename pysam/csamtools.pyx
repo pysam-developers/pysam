@@ -2604,9 +2604,12 @@ cdef class AlignedRead:
                 p[k] = <uint8_t>q[k] - 33
 
     property query:
-        """aligned portion of the read and excludes any flanking bases that were :term:`soft clipped` (None if not present).
+        """aligned portion of the read and excludes any flanking bases
+        that were :term:`soft clipped` (None if not present).
 
-        In Python 3, this property is of type bytes. Assigning a unicode string to it consisting of ASCII characters only will work, but is inefficient.
+        In Python 3, this property is of type bytes. Assigning a
+        unicode string to it consisting of ASCII characters only will
+        work, but is inefficient.
 
         SAM/BAM files may included extra flanking bases sequences that were
         not part of the alignment.  These bases may be the result of the
@@ -2630,7 +2633,8 @@ cdef class AlignedRead:
             return get_seq_range(src, start, end)
 
     property qqual:
-        """aligned query sequence quality values (None if not present). This property is read-only.
+        """aligned query sequence quality values (None if not
+        present). This property is read-only.
 
         In Python 3, this property is of type bytes."""
         def __get__(self):
