@@ -837,12 +837,12 @@ cdef class tabix_file_iterator:
 
     cdef __cnext__(self):
 
-        if self.infile.closed:
-            raise ValueError( "I/O operation on closed file." )
+        #if self.infile.closed:
+        #    raise ValueError( "I/O operation on closed file." )
     
         cdef char * b = self.buffer
 
-        while not gzeof( self.fh ):
+        while 1:
 
             b = gzgets( self.fh, b, self.size )
 
@@ -866,7 +866,6 @@ cdef class tabix_file_iterator:
     def __dealloc__(self):
         free(self.buffer)
         
-
     def __next__(self):
         return self.__cnext__()
     

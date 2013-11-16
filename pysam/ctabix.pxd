@@ -182,6 +182,20 @@ cdef extern from "tabix.h":
   #  /* Get the data line pointed by the iterator and iterate to the next record. */
   # char *ti_iter_read(BGZF *fp, ti_iter_t iter, int *len)
 
+cdef extern from "tabix_util.h":
+    pass
+     
+cdef class tabix_file_iterator:
+    cdef gzFile fh
+    kstream_t * ks
+    cdef char * buffer
+    cdef size_t size
+    cdef Parser parser
+    cdef int fd
+    cdef infile
+
+    cdef __cnext__(self)
+
 cdef class Tabixfile:
 
     # pointer to tabixfile
@@ -222,16 +236,3 @@ cdef class TabixIteratorParsed:
     cdef ti_iter_t iterator
     cdef tabix_t * tabixfile
     cdef Parser parser
-
-cdef class tabix_file_iterator:
-    cdef gzFile fh
-    cdef char * buffer
-    cdef size_t size
-    cdef Parser parser
-    cdef int fd
-    cdef infile
-
-    cdef __cnext__(self)
-
-cdef extern from "tabix_util.h":
-     pass
