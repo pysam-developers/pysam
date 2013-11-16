@@ -840,7 +840,9 @@ cdef class Samfile:
                 if text is None and add_sq_text:
                     text = []
                     for x from 0 <= x < header_to_write.n_targets:
-                        text.append( "@SQ\tSN:%s\tLN:%s\n" % (referencenames[x], referencelengths[x] ) )
+                        text.append( "@SQ\tSN:%s\tLN:%s\n" % \
+                                         (_force_str(referencenames[x]), 
+                                          referencelengths[x] ) )
                     text = ''.join(text)
 
                 if text != None:

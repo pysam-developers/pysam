@@ -1014,7 +1014,24 @@ class TestHeaderBam(TestHeaderSam):
     def setUp(self):
         self.samfile=pysam.Samfile( "ex3.bam","rb" )
 
+class TestHeaderFromRefs( unittest.TestCase ):
+    '''see issue 144
 
+    reference names need to be converted to string for python 3
+    '''
+
+    def testHeader( self ):
+        refs = ['chr1', 'chr2']
+        tmpfile = "tmp_%i" % id(self)
+        s = pysam.Samfile(tmpfile, 'wb', 
+                          referencenames=refs, 
+                          referencelengths=[100]*len(refs))
+        s.close()
+        
+        self.assertTrue( checkBinaryEqual( 'issue144.bam', tmpfile ),
+                         'bam files differ')
+        os.unlink( tmpfile )
+        
 class TestHeader1000Genomes( unittest.TestCase ):
 
     # bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase2b_alignment/data/NA07048/exome_alignment/NA07048.unmapped.ILLUMINA.bwa.CEU.exome.20120522_p2b.bam"
