@@ -825,11 +825,13 @@ cdef class tabix_file_iterator:
 
         if self.fh == NULL: 
             raise IOError('%s' % strerror(errno))
+
+        self.ks = ks_init( self.fh) 
         
-        self.buffer = <char*>malloc( buffer_size )        
-        if self.buffer == NULL:
-            raise MemoryError( "tabix_file_iterator: could not allocate %i bytes" % buffer_size)
-        self.size = buffer_size
+        self.buffer.s = <char*>malloc( buffer_size )
+        #if self.buffer == NULL:
+        #    raise MemoryError( "tabix_file_iterator: could not allocate %i bytes" % buffer_size)
+        #self.size = buffer_size
         self.parser = parser
 
     def __iter__(self):
@@ -837,19 +839,19 @@ cdef class tabix_file_iterator:
 
     cdef __cnext__(self):
 
-        #if self.infile.closed:
-        #    raise ValueError( "I/O operation on closed file." )
-    
-        cdef char * b = self.buffer
-
+        cdef char * b
+        cdef int dret = 0
+        cdef int retval = 0
         while 1:
+            
+            retval = ks_getuntil(self.ks, '\n', &self.buffer, &dret)
+            
+            if retval < 0: 
+                break
+                #raise IOError('gzip error: %s' % buildGzipError( self.fh ))
 
-            b = gzgets( self.fh, b, self.size )
-
-            if b == NULL: 
-                if gzeof( self.fh ): break
-                raise IOError('gzip error: %s' % buildGzipError( self.fh ))
-
+            b = self.buffer.s
+            
             # skip comments
             if (b[0] == '#'): continue
 
@@ -859,12 +861,12 @@ cdef class tabix_file_iterator:
             # gzgets terminates at \n, no need to test
 
             # parser creates a copy
-            return self.parser.parse( b, strlen(b ) )
+            return self.parser.parse( b, self.buffer.l )
 
         raise StopIteration
 
     def __dealloc__(self):
-        free(self.buffer)
+        free(self.buffer.s)
         
     def __next__(self):
         return self.__cnext__()

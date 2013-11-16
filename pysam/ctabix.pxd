@@ -183,12 +183,25 @@ cdef extern from "tabix.h":
   # char *ti_iter_read(BGZF *fp, ti_iter_t iter, int *len)
 
 cdef extern from "tabix_util.h":
-    pass
-     
+
+    ctypedef struct kstring_t:
+        size_t l
+        size_t m
+        char * s
+
+    ctypedef struct kstream_t:
+        pass
+
+    kstream_t * ks_init( gzFile )
+
+    int ks_read( kstream_t * )
+    void ks_destroy( kstream_t * )
+    int ks_getuntil( kstream_t *, int, kstring_t *, int * ) 
+
 cdef class tabix_file_iterator:
     cdef gzFile fh
-    kstream_t * ks
-    cdef char * buffer
+    cdef kstream_t * ks
+    cdef kstring_t buffer
     cdef size_t size
     cdef Parser parser
     cdef int fd
