@@ -2,6 +2,12 @@
 Release notes
 =============
 
+Release 0.7.7
+=============
+
+   * added Fastafile.references, .nreferences and .lengths
+   * tabix_iterator now uses kseq.h for python 2.7
+
 Release 0.7.6
 =============
 
