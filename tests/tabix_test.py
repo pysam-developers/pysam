@@ -101,32 +101,62 @@ class TestIndexing(unittest.TestCase):
 class TestCompression(unittest.TestCase):
     filename = "example.gtf.gz" 
     filename_idx = "example.gtf.gz.tbi" 
+    preset = "gff"
 
     def setUp( self ):
         
-        self.tmpfilename = "tmp_%i.gtf" % id(self)
+        self.tmpfilename = "tmp_%i" % id(self)
         infile = gzip.open( self.filename, "rb")
         outfile = open( self.tmpfilename, "wb" )
         outfile.write( infile.read() )
         outfile.close()
         infile.close()
 
-    def testIndexPreset( self ):
-        '''test indexing via preset.'''
-        
-        pysam.tabix_index( self.tmpfilename, preset = "gff" )
-        checkBinaryEqual( self.tmpfilename + ".gz", self.filename )
-        checkBinaryEqual( self.tmpfilename + ".gz.tbi", self.filename_idx )
-
     def testCompression( self ):
         '''see also issue 106'''
         pysam.tabix_compress( self.tmpfilename, self.tmpfilename + ".gz" )
         checkBinaryEqual( self.tmpfilename, self.tmpfilename + ".gz" )
+
+    def testIndexPresetUncompressed( self ):
+        '''test indexing via preset.'''
+        
+        pysam.tabix_index( self.tmpfilename, preset = self.preset )
+        # check if uncompressed file has been removed
+        self.assertEqual( os.path.exists( self.tmpfilename ), False )
+        checkBinaryEqual( self.tmpfilename + ".gz", self.filename )
+        checkBinaryEqual( self.tmpfilename + ".gz.tbi", self.filename_idx )
+
+    def testIndexPresetCompressed( self ):
+        '''test indexing via preset.'''
+
+        pysam.tabix_compress( self.tmpfilename, self.tmpfilename + ".gz" )
+        pysam.tabix_index( self.tmpfilename + ".gz", preset = self.preset )
+        checkBinaryEqual( self.tmpfilename + ".gz", self.filename )
+        checkBinaryEqual( self.tmpfilename + ".gz.tbi", self.filename_idx )
         
     def tearDown( self ):
-        os.unlink( self.tmpfilename + ".gz" )
-        if os.path.exists( self.tmpfilename + ".gz.tbi" ):
+
+        try: 
+            os.unlink( self.tmpfilename )
+            os.unlink( self.tmpfilename + ".gz" )
             os.unlink( self.tmpfilename + ".gz.tbi" )
+        except OSError:
+            pass
+
+class TestCompressionSam( TestCompression ):
+    filename = "example.sam.gz"
+    filename_index = "example.sam.gz.tbi"
+    preset = "sam"
+
+class TestCompressionBed( TestCompression ):
+    filename = "example.bed.gz"
+    filename_index = "example.bed.gz.tbi"
+    preset = "bed"
+
+class TestCompressionVCF( TestCompression ):
+    filename = "example.vcf.gz"
+    filename_index = "example.vcf.gz.tbi"
+    preset = "vcf"
 
 class TestIteration( unittest.TestCase ):
 
