@@ -426,20 +426,15 @@ ctypedef struct __iterdata:
 # Note: need to declare all C fields and methods here
 #
 cdef class Fastafile:
-    cdef char * _filename
-    # pointer to fastafile
-    cdef faidx_t * fastafile
-
-    # length dictionary
-    cdef reference2length
-
-    cdef char * _fetch( self, char * reference, int start, int end, int * length )
+    cdef object _filename, _references, _lengths, reference2length
+    cdef faidx_t* fastafile
+    cdef char* _fetch(self, char* reference, int start, int end, int* length)
 
 cdef class FastqProxy:
     cdef kseq_t * _delegate
 
 cdef class Fastqfile:
-    cdef char * _filename
+    cdef object _filename
     cdef gzFile fastqfile
     cdef kseq_t * entry 
 
@@ -452,7 +447,7 @@ cdef class AlignedRead:
     cdef bam1_t * _delegate
 
 cdef class Samfile:
-    cdef char * _filename
+    cdef object _filename
     # pointer to samfile
     cdef samfile_t * samfile
     # pointer to index

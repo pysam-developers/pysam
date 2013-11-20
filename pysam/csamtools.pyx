@@ -38,9 +38,8 @@ if _FILENAME_ENCODING is None:
 #cdef char* _C_FILENAME_ENCODING
 #_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
 
-cdef bytes _my_encodeFilename(object filename):
-    u"""Make sure a filename is 8-bit encoded (or None).
-    """
+cdef bytes _encodeFilename(object filename):
+    """Make sure a filename is 8-bit encoded (or None)."""
     if filename is None:
         return None
     elif PyBytes_Check(filename):
@@ -393,7 +392,9 @@ cdef class Fastafile:
 
     def __cinit__(self, *args, **kwargs ):
         self.fastafile = NULL
-        self._filename = NULL
+        self._filename = None
+        self._references = None
+        self._lengths = None
         self.reference2length = None
         self._open( *args, **kwargs )
 
@@ -407,8 +408,7 @@ cdef class Fastafile:
 
         return faidx_fetch_nseq(self.fastafile)
 
-    def _open( self,
-               filename ):
+    def _open(self, filename):
         '''open an indexed fasta file.
 
         This method expects an indexed fasta file.
@@ -416,22 +416,22 @@ cdef class Fastafile:
 
         # close a previously opened file
         if self.fastafile != NULL: self.close()
-        if self._filename != NULL: free(self._filename)
-        filename = _my_encodeFilename(filename)
-        self._filename = strdup(filename)
-        self.fastafile = fai_load( filename )
+        self._filename = _encodeFilename(filename)
+        self.fastafile = fai_load(self._filename)
 
         if self.fastafile == NULL:
-            raise IOError("could not open file `%s`" % filename )
+            raise IOError("could not open file `%s`" % filename)
 
         # read index
-        if not os.path.exists( filename + b".fai" ):
+        if not os.path.exists( self._filename + b".fai" ):
             raise ValueError("could not locate index file")
 
-        with open( filename + b".fai" ) as inf:
+        with open( self._filename + b".fai" ) as inf:
             data = [ x.split("\t") for x in inf ]
-            self.reference2length = dict( [ (x[0],int(x[1])) for x in data ] )
-            
+            self._references = tuple(x[0] for x in data)
+            self._lengths = tuple(int(x[1]) for x in data)
+            self.reference2length = dict(zip(self._references, self._lengths))
+
     def close( self ):
         if self.fastafile != NULL:
             fai_destroy( self.fastafile )
@@ -439,13 +439,26 @@ cdef class Fastafile:
 
     def __dealloc__(self):
         self.close()
-        if self._filename != NULL: free(self._filename)
 
     property filename:
         '''number of :term:`filename` associated with this object.'''
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             return self._filename
+
+    property references:
+        '''tuple with the names of :term:`reference` sequences.'''
+        def __get__(self):
+            return self._references
+
+    property nreferences:
+        '''number of :term:`reference` sequences in the file.'''
+        def __get__(self):
+            return len(self._references) if self.references else None
+
+    property lengths:
+        '''tuple with the lengths of :term:`reference` sequences.'''
+        def __get__(self):
+            return self._lengths
 
     def fetch( self,
                reference = None,
@@ -526,6 +539,9 @@ cdef class Fastafile:
         '''return the length of reference.'''
         return self.reference2length[reference]
 
+    def __getitem__(self, reference):
+        return self.fetch(reference)
+
     def __contains__( self, reference ):
         '''return true if reference in fasta file.'''
         return reference in self.reference2length
@@ -565,48 +581,45 @@ cdef class Fastqfile:
     A *FASTQ* file. The file is automatically opened.
 
     '''
-
     def __cinit__(self, *args, **kwargs ):
-        # self.fastqfile = NULL
-        self._filename = NULL
+        # self.fastqfile = <gzFile*>NULL
+        self._filename = None
+        self.entry = NULL
         self._open( *args, **kwargs )
 
     def _isOpen( self ):
         '''return true if samfile has been opened.'''
-        return self._filename != NULL
+        return self.entry != NULL
 
-    def _open( self,
-               filename ):
+    def _open(self, filename):
         '''open an indexed fasta file.
 
         This method expects an indexed fasta file.
         '''
+        self.close()
 
         if not os.path.exists( filename ):
             raise IOError( "No such file or directory: %s" % filename )
 
-        # close a previously opened file
-        # if self.fastqfile != NULL: self.close()
-        if self._filename != NULL: free(self._filename)
-        filename = _my_encodeFilename(filename)
-        self._filename = strdup(filename)
+        filename = _encodeFilename(filename)
         self.fastqfile = gzopen( filename, "r" )
         self.entry = kseq_init( self.fastqfile )
+        self._filename = filename
 
     def close( self ):
         '''close file.'''
-        if self._filename != NULL:
+        if self.entry != NULL:
             gzclose( self.fastqfile )
-            free(self._filename)
+            if self.entry:
+                kseq_destroy(self.entry)
+                self.entry = NULL
 
     def __dealloc__(self):
-        kseq_destroy(self.entry)
         self.close()
 
     property filename:
         '''number of :term:`filename` associated with this object.'''
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             return self._filename
 
     def __iter__(self):
@@ -717,7 +730,7 @@ cdef class Samfile:
 
     def __cinit__(self, *args, **kwargs ):
         self.samfile = NULL
-        self._filename = NULL
+        self._filename = None
         self.isbam = False
         self.isstream = False
         self._open( *args, **kwargs )
@@ -775,27 +788,19 @@ cdef class Samfile:
 
         assert mode in ( "r","w","rb","wb", "wh", "wbu", "rU" ), "invalid file opening mode `%s`" % mode
 
-        #assert filename != NULL
-
         # close a previously opened file
         if self.samfile != NULL: self.close()
-        self.samfile = NULL
 
         cdef bam_header_t * header_to_write
         header_to_write = NULL
 
-        if self._filename != NULL: free(self._filename )
-        filename = _my_encodeFilename(filename)
         cdef bytes bmode = mode.encode('ascii')
-        #cdef char* cfilename
-        #cfilename = filename.encode(_FILENAME_ENCODING)
-        self._filename = strdup(filename)
-        self.isstream = strcmp( filename, "-" ) == 0
+        self._filename = filename = _encodeFilename(filename)
+        self.isstream = filename == b"-"
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
-        self.isremote = strncmp(filename,"http:",5) == 0 or \
-            strncmp(filename,"ftp:",4) == 0
+        self.isremote = filename.startswith(b"http:") or filename.startswith(b"ftp:")
 
         cdef char * ctext
         ctext = NULL
@@ -861,9 +866,7 @@ cdef class Samfile:
 
         elif mode[0] == "r":
             # open file for reading
-            if strncmp( filename, "-", 1) != 0 and \
-                    not self.isremote and \
-                    not os.path.exists( filename ):
+            if filename != b"-" and not self.isremote and not os.path.exists( filename ):
                 raise IOError( "file `%s` not found" % filename)
 
             # try to detect errors
@@ -1286,7 +1289,6 @@ cdef class Samfile:
         # note: __del__ is not called.
         self.close()
         bam_destroy1(self.b)
-        if self._filename != NULL: free( self._filename )
 
     cpdef int write( self, AlignedRead read ) except -1:
         '''
@@ -1314,7 +1316,6 @@ cdef class Samfile:
     property filename:
         '''number of :term:`filename` associated with this object.'''
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             return self._filename
 
     property nreferences:
