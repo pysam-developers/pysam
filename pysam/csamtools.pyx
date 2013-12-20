@@ -2353,6 +2353,74 @@ cdef class AlignedRead:
     def __hash__(self):
         return _Py_HashPointer(<void *>self)
 
+    def _convert_python_tag(self, pytag, value, fmts, args):
+
+        if not type(pytag) is bytes:
+            pytag = pytag.encode('ascii')
+        t = type(value)
+
+        if t is tuple or t is list:
+            # binary tags - treat separately
+            pytype = 'B'
+            # get data type - first value determines type
+            if type(value[0]) is float:
+                datafmt, datatype = "f", "f"
+            else:
+                mi, ma = min(value), max(value)
+                absmax = max( abs(mi), abs(ma) )
+                # signed ints
+                if mi < 0: 
+                    if mi >= -127: datafmt, datatype = "b", 'c'
+                    elif mi >= -32767: datafmt, datatype = "h", 's'
+                    elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                    else: datafmt, datatype = "i", 'i'
+
+                # unsigned ints
+                else:
+                    if absmax <= 255: datafmt, datatype = "B", 'C'
+                    elif absmax <= 65535: datafmt, datatype = "H", 'S'
+                    elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                    else: datafmt, datatype = "I", 'I'
+                    
+            datafmt = "2sccI%i%s" % (len(value), datafmt)
+            args.extend( [pytag[:2], 
+                          pytype.encode('ascii'),
+                          datatype.encode('ascii'),
+                          len(value)] + list(value) )
+            fmts.append( datafmt )
+            return
+
+        if t is float:
+            fmt, pytype = "2scf", 'f'
+        elif t is int:
+            # negative values
+            if value < 0:
+                if value >= -127: fmt, pytype = "2scb", 'c'
+                elif value >= -32767: fmt, pytype = "2sch", 's'
+                elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: fmt, pytype = "2sci", 'i'
+            # positive values
+            else:
+                if value <= 255: fmt, pytype = "2scB", 'C'
+                elif value <= 65535: fmt, pytype = "2scH", 'S'
+                elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: fmt, pytype = "2scI", 'I'
+        else:
+            # Note: hex strings (H) are not supported yet
+            if t is not bytes:
+                value = value.encode('ascii')
+            if len(value) == 1:
+                fmt, pytype = "2scc", 'A'
+            else:
+                fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
+
+        args.extend( [pytag[:2],
+                      pytype.encode('ascii'),
+                      value ] )
+        
+        fmts.append( fmt )
+
+
     #######################################################################
     #######################################################################
     ## Basic properties
@@ -2686,6 +2754,7 @@ cdef class AlignedRead:
             src = self._delegate
             return query_end(src)-query_start(src)
 
+
     property tags:
         """the tags in the AUX field.
 
@@ -2696,7 +2765,6 @@ cdef class AlignedRead:
         new tag::
 
             read.tags = read.tags + [("RG",0)]
-
 
         This method will happily write the same tag
         multiple times.
@@ -2758,82 +2826,14 @@ cdef class AlignedRead:
         def __set__(self, tags):
             cdef bam1_t * src
             cdef uint8_t * s
-            cdef uint8_t * new_data
             cdef char * temp
 
             src = self._delegate
-
             fmts, args = ["<"], []
             
             if tags != None:
-
-                # map samtools code to python.struct code and byte size
                 for pytag, value in tags:
-                    if not type(pytag) is bytes:
-                        pytag = pytag.encode('ascii')
-                    t = type(value)
-
-                    if t is tuple or t is list:
-                        # binary tags - treat separately
-                        pytype = 'B'
-                        # get data type - first value determines type
-                        if type(value[0]) is float:
-                            datafmt, datatype = "f", "f"
-                        else:
-                            mi, ma = min(value), max(value)
-                            absmax = max( abs(mi), abs(ma) )
-                            # signed ints
-                            if mi < 0: 
-                                if mi >= -127: datafmt, datatype = "b", 'c'
-                                elif mi >= -32767: datafmt, datatype = "h", 's'
-                                elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                                else: datafmt, datatype = "i", 'i'
-
-                            # unsigned ints
-                            else:
-                                if absmax <= 255: datafmt, datatype = "B", 'C'
-                                elif absmax <= 65535: datafmt, datatype = "H", 'S'
-                                elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                                else: datafmt, datatype = "I", 'I'
-                                
-                        datafmt = "2sccI%i%s" % (len(value), datafmt)
-                        args.extend( [pytag[:2], 
-                                      pytype.encode('ascii'),
-                                      datatype.encode('ascii'),
-                                      len(value)] + list(value) )
-                        fmts.append( datafmt )
-                        continue
-
-                    if t is float:
-                        fmt, pytype = "2scf", 'f'
-                    elif t is int:
-                        # negative values
-                        if value < 0:
-                            if value >= -127: fmt, pytype = "2scb", 'c'
-                            elif value >= -32767: fmt, pytype = "2sch", 's'
-                            elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "2sci", 'i'
-                        # positive values
-                        else:
-                            if value <= 255: fmt, pytype = "2scB", 'C'
-                            elif value <= 65535: fmt, pytype = "2scH", 'S'
-                            elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "2scI", 'I'
-                    else:
-                        # Note: hex strings (H) are not supported yet
-                        if t is not bytes:
-                            value = value.encode('ascii')
-                        if len(value) == 1:
-                            fmt, pytype = "2scc", 'A'
-                        else:
-                            fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
-
-                    args.extend( [pytag[:2],
-                                  pytype.encode('ascii'),
-                                  value ] )
-                    
-                    fmts.append( fmt )
-
+                    self._convert_python_tag(pytag, value, fmts, args)
                 fmt = "".join(fmts)
                 total_size = struct.calcsize(fmt)
                 buffer = ctypes.create_string_buffer(total_size)
@@ -2864,6 +2864,50 @@ cdef class AlignedRead:
                 # enough for memcpy, see issue 129
                 temp = p
                 memcpy( s, temp, total_size )
+
+    def add_tag(self, new_tag, new_value):
+            cdef bam1_t * src
+            cdef uint8_t * s
+            cdef char * temp
+            cdef char * temp2
+            cdef uint32_t total_size
+
+            src = self._delegate
+
+            fmts, args = ["<"], []
+        
+            # map samtools code to python.struct code and byte size
+            self._convert_python_tag(new_tag, new_value, fmts, args)
+            s = bam1_aux( src )
+            fmt = "".join(fmts)
+            total_size = struct.calcsize(fmt) 
+            buffer = struct.pack( fmt, *args ) # a python string
+
+            # copy that into a c char array (new array - we still need to pull out the old data, and that's gone after pysam_bam_update)
+            temp = <char*> calloc(total_size + src.l_aux + 1, sizeof(char))
+            p = buffer
+            temp2 = p
+            for i from 0 <= i <= total_size:
+                temp[i] = <char>temp2[i]
+            # copy the old data
+            for i from total_size <= i <= src.l_aux + total_size:
+                temp[i] = s[i - total_size]
+            
+            # delete the old data and allocate new space.
+            # If total_size == 0, the aux field will be
+            # empty
+            pysam_bam_update( src,
+                              src.l_aux,
+                              total_size + src.l_aux,
+                              bam1_aux( src ) )
+            src.l_aux = total_size + src.l_aux
+            
+                
+            # get location of new data
+            s = bam1_aux( src )
+            # store new data
+            memcpy( s, temp, total_size + src.l_aux )
+            free(temp);
 
     property flag:
         """properties flag"""

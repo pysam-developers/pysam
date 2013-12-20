@@ -946,6 +946,40 @@ class TestAlignedReadFromBam(unittest.TestCase):
                           [('MF', 18), ('RG', 'L2'), 
                            ('PG', 'P2'),('XT', 'R') ] )
 
+    def testAddTags( self ):
+        self.reads[1].tags = [('X1', 'C')]
+        self.assertEqual( self.reads[0].tags, 
+                          [('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U')])
+        self.reads[0].add_tag('X1', 'C')
+        self.assertEqual( self.reads[0].tags, 
+                          [('X1', 'C'), ('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U'), ])
+        self.reads[0].add_tag('X2', 5)
+        self.assertEqual( self.reads[0].tags, 
+                           [ ('X2', 5),('X1', 'C'), 
+                          ('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U'), ])
+
+    def testAddTagsFloat( self ):
+        self.reads[0].tags = [('X1', 5.0)]
+        self.reads[0].add_tag('X1', 5.0)
+        self.assertEqual( self.reads[0].tags, 
+                          [  ('X1', 5.0), ('X1', 5.00),
+                             ])
+        self.reads[0].add_tag('X4', "5.6")
+        self.assertEqual( self.reads[0].tags, 
+                           [ ("X4", "5.6"), ('X1', 5.0),('X1', 5.0) ] )
+
+    def testTagsUpdatingFloat( self ):
+        self.assertEqual( self.reads[0].tags, 
+                          [('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U')] )
+        self.reads[0].tags += [('XC', 5.0)]
+        self.assertEqual( self.reads[0].tags, 
+                          [('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U'), ('XC', 5.0)] )
+
     def testOpt( self ):
         self.assertEqual( self.reads[0].opt("XT"), "U" )
         self.assertEqual( self.reads[1].opt("XT"), "R" )
