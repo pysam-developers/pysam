@@ -2585,6 +2585,10 @@ cdef class AlignedRead:
            read.seq = read.seq[5:10]
            read.qual = q[5:10]
 
+        The sequence is as it is returned in the bam file. Some mappers
+        might have stored a reverse complement of the original read 
+        sequence.
+
         """
         def __get__(self):
             cdef bam1_t * src
