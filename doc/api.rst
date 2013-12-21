@@ -1,3 +1,4 @@
+======================================================
 pysam - An interface for reading and writing SAM files
 ======================================================
 
@@ -113,7 +114,7 @@ More detailed usage instructions is at :ref:`usage`.
 
 
 API
-*****
+===
 
 .. automodule:: pysam
    :members:
