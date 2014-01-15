@@ -6,7 +6,7 @@
 pysam: samtools interface for python
 ====================================
 
-:Author: Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Leo Goodstad, Kevin Jacobs
+:Author: Andreas Heger and contributors
 :Date: |today|
 :Version: |version|
 

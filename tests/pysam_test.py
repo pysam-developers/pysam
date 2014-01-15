@@ -659,7 +659,10 @@ class TestTagParsing( unittest.TestCase ):
         
         r = self.makeRead()
         rg = 'HS2000-899_199.L3'
-        tags = [('XC', 85), ('XT', 'M'), ('NM', 5), ('SM', 29), ('AM', 29), ('XM', 1), ('XO', 1), ('XG', 4), ('MD', '37^ACCC29T18'), ('XA','5,+11707,36M1I48M,2;21,-48119779,46M1I38M,2;hs37d5,-10060835,40M1D45M,3;5,+11508,36M1I48M,3;hs37d5,+6743812,36M1I48M,3;19,-59118894,46M1I38M,3;4,-191044002,6M1I78M,3;')]
+        tags = [('XC', 85), ('XT', 'M'), ('NM', 5), 
+                ('SM', 29), ('AM', 29), ('XM', 1), 
+                ('XO', 1), ('XG', 4), ('MD', '37^ACCC29T18'), 
+                ('XA','5,+11707,36M1I48M,2;21,-48119779,46M1I38M,2;hs37d5,-10060835,40M1D45M,3;5,+11508,36M1I48M,3;hs37d5,+6743812,36M1I48M,3;19,-59118894,46M1I38M,3;4,-191044002,6M1I78M,3;')]
 
         r.tags = tags
         r.tags += [("RG",rg)] * 100
@@ -947,29 +950,65 @@ class TestAlignedReadFromBam(unittest.TestCase):
                            ('PG', 'P2'),('XT', 'R') ] )
 
     def testAddTags( self ):
-        self.reads[1].tags = [('X1', 'C')]
-        self.assertEqual( self.reads[0].tags, 
-                          [('NM', 1), ('RG', 'L1'), 
-                           ('PG', 'P1'), ('XT', 'U')])
-        self.reads[0].add_tag('X1', 'C')
-        self.assertEqual( self.reads[0].tags, 
-                          [('X1', 'C'), ('NM', 1), ('RG', 'L1'), 
-                           ('PG', 'P1'), ('XT', 'U'), ])
-        self.reads[0].add_tag('X2', 5)
-        self.assertEqual( self.reads[0].tags, 
-                           [ ('X2', 5),('X1', 'C'), 
-                          ('NM', 1), ('RG', 'L1'), 
-                           ('PG', 'P1'), ('XT', 'U'), ])
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U')]))
+        
+        self.reads[0].setTag('X1', 'C')
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([('X1', 'C'), ('NM', 1), ('RG', 'L1'), 
+                           ('PG', 'P1'), ('XT', 'U'), ]))
+        self.reads[0].setTag('X2', 5)
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([ ('X2', 5),('X1', 'C'), 
+                                   ('NM', 1), ('RG', 'L1'), 
+                                   ('PG', 'P1'), ('XT', 'U'), ]))
+        # add with replacement 
+        self.reads[0].setTag('X2', 10)
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([ ('X2', 10),('X1', 'C'), 
+                                   ('NM', 1), ('RG', 'L1'), 
+                                   ('PG', 'P1'), ('XT', 'U'), ]))
 
-    def testAddTagsFloat( self ):
-        self.reads[0].tags = [('X1', 5.0)]
-        self.reads[0].add_tag('X1', 5.0)
-        self.assertEqual( self.reads[0].tags, 
-                          [  ('X1', 5.0), ('X1', 5.00),
-                             ])
-        self.reads[0].add_tag('X4', "5.6")
-        self.assertEqual( self.reads[0].tags, 
-                           [ ("X4", "5.6"), ('X1', 5.0),('X1', 5.0) ] )
+        # add without replacement 
+        self.reads[0].setTag('X2', 5, replace = False)
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([ ('X2', 10),('X1', 'C'), 
+                                   ('X2', 5),
+                                   ('NM', 1), ('RG', 'L1'), 
+                                   ('PG', 'P1'), ('XT', 'U'), ]))
+
+    def testAddTagsType( self ):
+        self.reads[0].tags = None
+        self.reads[0].setTag('X1', 5.0)
+        self.reads[0].setTag('X2', "5.0")
+        self.reads[0].setTag('X3', 5)
+        
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([ ('X1', 5.0), 
+                                   ('X2', "5.0"),
+                                   ('X3', 5) ]))
+
+        # test setting float for int value
+        self.reads[0].setTag('X4', 5, value_type = 'd')
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([ ('X1', 5.0), 
+                                   ('X2', "5.0"),
+                                   ('X3', 5),
+                                   ('X4', 5.0) ]))
+
+        # test setting int for float value - the
+        # value will be rounded.
+        self.reads[0].setTag('X5', 5.2, value_type = 'i')
+        self.assertEqual( sorted(self.reads[0].tags), 
+                          sorted([ ('X1', 5.0), 
+                                   ('X2', "5.0"),
+                                   ('X3', 5),
+                                   ('X4', 5.0),
+                                   ('X5', 5)]))
+
+        # test setting invalid type code
+        self.assertRaises( ValueError, self.reads[0].setTag, 'X6', 5.2, 'g')
 
     def testTagsUpdatingFloat( self ):
         self.assertEqual( self.reads[0].tags, 

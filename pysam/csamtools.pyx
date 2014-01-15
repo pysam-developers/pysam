@@ -2246,6 +2246,100 @@ cdef inline object get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
 
     return qual
 
+cdef inline uint8_t get_type_code( value, value_type = None ):
+    '''guess type code for a *value*. If *value_type* is None,
+    the type code will be inferred based on the Python type of
+    *value*'''
+    cdef uint8_t  type_code    
+    cdef char * _char_type
+
+    if value_type is None:
+        if isinstance(value, int):
+            type_code = 'i'
+        elif isinstance(value, float):
+            type_code = 'd'
+        elif isinstance(value, str):
+            type_code = 'Z'
+        else:
+            return 0
+    else:
+        if value_type not in 'Zidf':
+            return 0
+        _char_type = value_type
+        type_code = (<uint8_t*>_char_type)[0]
+
+    return type_code
+
+cdef inline convert_python_tag(pytag, value, fmts, args):
+    
+    if not type(pytag) is bytes:
+        pytag = pytag.encode('ascii')
+    t = type(value)
+
+    if t is tuple or t is list:
+        # binary tags - treat separately
+        pytype = 'B'
+        # get data type - first value determines type
+        if type(value[0]) is float:
+            datafmt, datatype = "f", "f"
+        else:
+            mi, ma = min(value), max(value)
+            absmax = max( abs(mi), abs(ma) )
+            # signed ints
+            if mi < 0: 
+                if mi >= -127: datafmt, datatype = "b", 'c'
+                elif mi >= -32767: datafmt, datatype = "h", 's'
+                elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: datafmt, datatype = "i", 'i'
+
+            # unsigned ints
+            else:
+                if absmax <= 255: datafmt, datatype = "B", 'C'
+                elif absmax <= 65535: datafmt, datatype = "H", 'S'
+                elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: datafmt, datatype = "I", 'I'
+
+        datafmt = "2sccI%i%s" % (len(value), datafmt)
+        args.extend( [pytag[:2], 
+                      pytype.encode('ascii'),
+                      datatype.encode('ascii'),
+                      len(value)] + list(value) )
+        fmts.append( datafmt )
+        return
+
+    if t is float:
+        fmt, pytype = "2scf", 'f'
+    elif t is int:
+        # negative values
+        if value < 0:
+            if value >= -127: fmt, pytype = "2scb", 'c'
+            elif value >= -32767: fmt, pytype = "2sch", 's'
+            elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+            else: fmt, pytype = "2sci", 'i'
+        # positive values
+        else:
+            if value <= 255: fmt, pytype = "2scB", 'C'
+            elif value <= 65535: fmt, pytype = "2scH", 'S'
+            elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+            else: fmt, pytype = "2scI", 'I'
+    else:
+        # Note: hex strings (H) are not supported yet
+        if t is not bytes:
+            value = value.encode('ascii')
+        if len(value) == 1:
+            fmt, pytype = "2scc", 'A'
+        else:
+            fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
+
+    args.extend( [pytag[:2],
+                  pytype.encode('ascii'),
+                  value ] )
+
+    fmts.append( fmt )
+    
+###########################################################
+###########################################################
+###########################################################
 cdef class AlignedRead:
     '''
     Class representing an aligned read. see SAM format specification for
@@ -2758,7 +2852,6 @@ cdef class AlignedRead:
             src = self._delegate
             return query_end(src)-query_start(src)
 
-
     property tags:
         """the tags in the AUX field.
 
@@ -2831,13 +2924,13 @@ cdef class AlignedRead:
             cdef bam1_t * src
             cdef uint8_t * s
             cdef char * temp
-
+            cdef uint32_t total_size = 0
             src = self._delegate
             fmts, args = ["<"], []
             
-            if tags != None:
+            if tags != None and len(tags) > 0:
                 for pytag, value in tags:
-                    self._convert_python_tag(pytag, value, fmts, args)
+                    convert_python_tag(pytag, value, fmts, args)
                 fmt = "".join(fmts)
                 total_size = struct.calcsize(fmt)
                 buffer = ctypes.create_string_buffer(total_size)
@@ -2869,49 +2962,60 @@ cdef class AlignedRead:
                 temp = p
                 memcpy( s, temp, total_size )
 
-    def add_tag(self, new_tag, new_value):
-            cdef bam1_t * src
-            cdef uint8_t * s
-            cdef char * temp
-            cdef char * temp2
-            cdef uint32_t total_size
+    cpdef setTag(self, bytes tag, value, 
+                 value_type = None, 
+                 replace = True):
+        '''
+        Set optional field of alignment *tag* to *value*.  *value_type* may be specified,
+        but if not the type will be inferred based on the Python type of *value*
 
-            src = self._delegate
+        An existing value of the same tag will be overwritten unless
+        *replace* is set to False.
+        '''
 
-            fmts, args = ["<"], []
+        cdef int      value_size
+        cdef uint8_t* value_ptr, *existing_ptr
+        cdef uint8_t  type_code
+        cdef float    float_value
+        cdef double   double_value
+        cdef int32_t  int_value
+        cdef bam1_t * src = self._delegate
+        cdef char * _value_type
+
+        if len(tag) != 2:
+            raise ValueError('Invalid tag: %s' % tag)
         
-            # map samtools code to python.struct code and byte size
-            self._convert_python_tag(new_tag, new_value, fmts, args)
-            s = bam1_aux( src )
-            fmt = "".join(fmts)
-            total_size = struct.calcsize(fmt) 
-            buffer = struct.pack( fmt, *args ) # a python string
+        type_code = get_type_code( value, value_type )
 
-            # copy that into a c char array (new array - we still need to pull out the old data, and that's gone after pysam_bam_update)
-            temp = <char*> calloc(total_size + src.l_aux + 1, sizeof(char))
-            p = buffer
-            temp2 = p
-            for i from 0 <= i <= total_size:
-                temp[i] = <char>temp2[i]
-            # copy the old data
-            for i from total_size <= i <= src.l_aux + total_size:
-                temp[i] = s[i - total_size]
-            
-            # delete the old data and allocate new space.
-            # If total_size == 0, the aux field will be
-            # empty
-            pysam_bam_update( src,
-                              src.l_aux,
-                              total_size + src.l_aux,
-                              bam1_aux( src ) )
-            src.l_aux = total_size + src.l_aux
-            
-                
-            # get location of new data
-            s = bam1_aux( src )
-            # store new data
-            memcpy( s, temp, total_size + src.l_aux )
-            free(temp);
+        if type_code == 0:
+            raise ValueError("can't guess type or invalid type code specified")
+
+        # Not Endian-safe, but then again neither is samtools!
+        if type_code == 'Z':
+            value_ptr    = <uint8_t*><char*>value
+            value_size   = len(value)+1
+        elif type_code == 'i':
+            int_value    = value
+            value_ptr    = <uint8_t*>&int_value
+            value_size   = sizeof(int32_t)
+        elif type_code == 'd':
+            double_value = value
+            value_ptr    = <uint8_t*>&double_value
+            value_size   = sizeof(double)
+        elif type_code == 'f':
+            float_value  = value
+            value_ptr    = <uint8_t*>&float_value
+            value_size   = sizeof(float)
+        else:
+            raise ValueError('Unsupported value_type in set_option')
+
+        if replace:
+            existing_ptr = bam_aux_get(src, tag)
+            if existing_ptr:
+                bam_aux_del(src, existing_ptr)
+
+        bam_aux_append(src, tag, type_code, 
+                       value_size, value_ptr)
 
     property flag:
         """properties flag"""

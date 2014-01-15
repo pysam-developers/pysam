@@ -2,6 +2,11 @@
 Release notes
 =============
 
+Release 0.7.8
+=============
+
+   * added AlignedRead.setTag method
+
 Release 0.7.7
 =============
 

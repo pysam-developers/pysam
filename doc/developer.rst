@@ -39,7 +39,20 @@ Unit testing
 
 Unit tests are in the scripts :file:`pysam_test.py` and :file:`tabix_test.py`. 
 
+Contributors
+============
 
+The following people have contributed to pysam:
+
+* Andreas Heger
+* Tildon Grant Belgrad
+* Kevin Jacobs
+* Florian Finkernagel
+* Ben Schiller
+* Marcel Martin
+* Gerton Lunter
+* Martin Goodson
+* Leo Goodstadt
 
 
 
