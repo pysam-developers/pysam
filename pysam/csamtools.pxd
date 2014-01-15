@@ -457,7 +457,7 @@ cdef class AlignedRead:
 
     # add an alignment tag with value to the AlignedRead 
     # an existing tag of the same name will be replaced.
-    cpdef setTag( self, bytes tag, value, value_type = ?, replace = ? )
+    cpdef setTag( self, tag, value, value_type = ?, replace = ? )
 
 cdef class Samfile:
     cdef object _filename

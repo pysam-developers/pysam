@@ -313,18 +313,18 @@ class StderrStore():
     '''
     def __init__(self):
         return
-        self.stderr_h, self.stderr_f = tempfile.mkstemp()
-        self.stderr_save = Outs( sys.stderr.fileno() )
-        self.stderr_save.setfd( self.stderr_h )
+        # self.stderr_h, self.stderr_f = tempfile.mkstemp()
+        # self.stderr_save = Outs( sys.stderr.fileno() )
+        # self.stderr_save.setfd( self.stderr_h )
 
     def readAndRelease( self ):
         return []
-        self.stderr_save.restore()
-        lines = []
-        if os.path.exists(self.stderr_f):
-            lines = open( self.stderr_f, "r" ).readlines()
-            os.remove( self.stderr_f )
-        return lines
+        # self.stderr_save.restore()
+        # lines = []
+        # if os.path.exists(self.stderr_f):
+        #     lines = open( self.stderr_f, "r" ).readlines()
+        #     os.remove( self.stderr_f )
+        # return lines
 
     def release(self):
         return
@@ -2260,11 +2260,14 @@ cdef inline uint8_t get_type_code( value, value_type = None ):
             type_code = 'd'
         elif isinstance(value, str):
             type_code = 'Z'
+        elif isinstance(value, bytes):
+            type_code = 'Z'
         else:
             return 0
     else:
         if value_type not in 'Zidf':
             return 0
+        value_type = _force_bytes( value_type )
         _char_type = value_type
         type_code = (<uint8_t*>_char_type)[0]
 
@@ -2962,7 +2965,7 @@ cdef class AlignedRead:
                 temp = p
                 memcpy( s, temp, total_size )
 
-    cpdef setTag(self, bytes tag, value, 
+    cpdef setTag(self, tag, value, 
                  value_type = None, 
                  replace = True):
         '''
@@ -2981,7 +2984,7 @@ cdef class AlignedRead:
         cdef int32_t  int_value
         cdef bam1_t * src = self._delegate
         cdef char * _value_type
-
+        
         if len(tag) != 2:
             raise ValueError('Invalid tag: %s' % tag)
         
@@ -2992,6 +2995,7 @@ cdef class AlignedRead:
 
         # Not Endian-safe, but then again neither is samtools!
         if type_code == 'Z':
+            value = _force_bytes( value )
             value_ptr    = <uint8_t*><char*>value
             value_size   = len(value)+1
         elif type_code == 'i':
@@ -3009,6 +3013,7 @@ cdef class AlignedRead:
         else:
             raise ValueError('Unsupported value_type in set_option')
 
+        tag = _force_bytes( tag )
         if replace:
             existing_ptr = bam_aux_get(src, tag)
             if existing_ptr:
