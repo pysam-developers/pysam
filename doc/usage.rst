@@ -1,8 +1,8 @@
 .. _Usage: 
 
-*************************************
+====================================
 Working with BAM/SAM-formatted files
-*************************************
+====================================
 
 In order to follow the examples below, execute
    
@@ -11,7 +11,7 @@ In order to follow the examples below, execute
 in the :file:`test` directory.
 
 Opening a sampfile
-------------------
+==================
 
 The first operation is to import the pysam module and open a 
 :class:`pysam.Samfile`::
@@ -27,7 +27,7 @@ To open a :term:`SAM` file, type::
    samfile = pysam.Samfile( "ex1.bam", "r" )
 
 Fetching reads mapped to a :term:`region`
------------------------------------------
+=========================================
 
 There are two ways to obtain the reads mapped to a genomic region. The
 first method follows the :term:`csamtools` API and  works 
@@ -69,7 +69,7 @@ overlapping with the :term:`region`. Thus the reads returned
 might span a region that is larger than the one queried.
 
 Using the pileup-engine
------------------------
+=======================
 
 The :term:`pileup` engine of :term:`csamtools` iterates
 over all reads that are aligned to a :term:`region`. In
@@ -94,7 +94,7 @@ The second method uses python iterators. The iterator
 Aligned reads are returned as a :class:`pysam.PileupColumn`.
 
 Using samtools commands within python
--------------------------------------
+=====================================
 
 Commands available in :term:`csamtools` are available
 as simple function calls. For example::
@@ -137,7 +137,7 @@ Note that only the output from the last invocation of a command
 is stored.
 
 Creating SAM/BAM files from scratch
------------------------------------
+===================================
 
 The following example shows how a new BAM file is constructed from scratch.
 The important part here is that the :class:`pysam.Samfile` class needs to receive
@@ -168,7 +168,7 @@ Here, we use a header dictionary::
    outfile.close()
 
 Using streams
--------------
+=============
 
 Pysam does not support reading and writing from true python file objects, but
 it does support reading and writing from stdin and stdout. The following example reads 
@@ -221,7 +221,7 @@ Note, only the file open mode needs to changed from ``r`` to ``rb``.
 .. and :class:`pysam.IteratorIndelCaller`.
 
 Extending pysam
----------------
+===============
 
 Using pyximport_, it is (relatively) straight-forward to access pysam
 internals and the underlying samtools library. An example is provided

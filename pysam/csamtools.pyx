@@ -49,8 +49,7 @@ cdef bytes _encodeFilename(object filename):
     else:
         raise TypeError, u"Argument must be string or unicode."
 
-
-cdef bytes _force_bytes(object s):
+cdef bytes _forceBytes(object s):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     """
     if PY_MAJOR_VERSION < 3:
@@ -64,8 +63,8 @@ cdef bytes _force_bytes(object s):
     else:
         raise TypeError, u"Argument must be string, bytes or unicode."
 
-cdef inline bytes _force_cmdline_bytes(object s):
-    return _force_bytes(s)
+cdef inline bytes _forceCmdlineBytes(object s):
+    return _forceBytes(s)
 
 cdef _charptr_to_str(char* s):
     if PY_MAJOR_VERSION < 3:
@@ -73,7 +72,7 @@ cdef _charptr_to_str(char* s):
     else:
         return s.decode("ascii")
 
-cdef _force_str(object s):
+cdef _forceStr(object s):
     """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
     if s is None:
         return None
@@ -84,6 +83,7 @@ cdef _force_str(object s):
     else:
         # assume unicode
         return s
+
 ########################################################################
 ########################################################################
 ########################################################################
@@ -306,45 +306,6 @@ cdef int pileup_fetch_callback( bam1_t *b, void *data):
     buf = <bam_plbuf_t*>data
     bam_plbuf_push(b, buf)
     return 0
-
-class StderrStore():
-    '''
-    stderr is captured.
-    '''
-    def __init__(self):
-        return
-        self.stderr_h, self.stderr_f = tempfile.mkstemp()
-        self.stderr_save = Outs( sys.stderr.fileno() )
-        self.stderr_save.setfd( self.stderr_h )
-
-    def readAndRelease( self ):
-        return []
-        self.stderr_save.restore()
-        lines = []
-        if os.path.exists(self.stderr_f):
-            lines = open( self.stderr_f, "r" ).readlines()
-            os.remove( self.stderr_f )
-        return lines
-
-    def release(self):
-        return
-        self.stderr_save.restore()
-        if os.path.exists(self.stderr_f):
-            os.remove( self.stderr_f )
-
-    def __del__(self):
-        self.release()
-
-class StderrStoreWindows():
-    '''does nothing. stderr can't be redirected on windows'''
-    def __init__(self): pass
-    def readAndRelease(self): return []
-    def release(self): pass
-
-if platform.system()=='Windows':
-    del StderrStore
-    StderrStore = StderrStoreWindows
-
 
 ######################################################################
 ######################################################################
@@ -822,7 +783,7 @@ cdef class Samfile:
                 assert len(referencenames) == len(referencelengths), "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
-                referencenames = [ _force_bytes(ref) for ref in referencenames ]
+                referencenames = [ _forceBytes(ref) for ref in referencenames ]
                 header_to_write = bam_header_init()
                 header_to_write.n_targets = len(referencenames)
                 n = 0
@@ -841,13 +802,13 @@ cdef class Samfile:
                     text = []
                     for x from 0 <= x < header_to_write.n_targets:
                         text.append( "@SQ\tSN:%s\tLN:%s\n" % \
-                                         (_force_str(referencenames[x]), 
+                                         (_forceStr(referencenames[x]), 
                                           referencelengths[x] ) )
                     text = ''.join(text)
 
                 if text != None:
                     # copy without \0
-                    text = _force_bytes(text)
+                    text = _forceBytes(text)
                     ctext = text
                     header_to_write.l_text = strlen(ctext)
                     header_to_write.text = <char*>calloc( strlen(ctext), sizeof(char) )
@@ -858,9 +819,7 @@ cdef class Samfile:
 
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
-            store = StderrStore()
             self.samfile = samopen( filename, bmode, header_to_write )
-            store.release()
 
             # bam_header_destroy takes care of cleaning up of all the members
             if not template and header_to_write != NULL:
@@ -920,7 +879,7 @@ cdef class Samfile:
         returns -1 if reference is not known.
         '''
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
-        reference = _force_bytes(reference)
+        reference = _forceBytes(reference)
         return pysam_reference2tid( self.samfile.header, reference )
 
     def getrname( self, tid ):
@@ -978,7 +937,7 @@ cdef class Samfile:
                 raise ValueError( 'end out of range (%i)' % end )
 
         if region:
-            region = _force_str(region)
+            region = _forceStr(region)
             parts = re.split( "[:-]", region )
             reference = parts[0]
             if len(parts) >= 2: rstart = int(parts[1]) - 1
@@ -1640,9 +1599,7 @@ cdef class IteratorRowRegion(IteratorRow):
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if reopen:
-            store = StderrStore()
             self.fp = samopen( samfile._filename, mode, NULL )
-            store.release()
             assert self.fp != NULL
             self.owns_samfile = True
         else:
@@ -1707,9 +1664,7 @@ cdef class IteratorRowAll(IteratorRow):
 
         # reopen the file to avoid iterator conflict
         if reopen:
-            store = StderrStore()
             self.fp = samopen( samfile._filename, mode, NULL )
-            store.release()
             assert self.fp != NULL
             self.owns_samfile = True
         else:
@@ -1815,9 +1770,7 @@ cdef class IteratorRowSelection(IteratorRow):
 
         # reopen the file to avoid iterator conflict
         if reopen:
-            store = StderrStore()
             self.fp = samopen( samfile._filename, mode, NULL )
-            store.release()
             assert self.fp != NULL
             self.owns_samfile = True
         else:
@@ -1905,7 +1858,8 @@ cdef int __advance_snpcalls( void * data, bam1_t * b ):
         skip = 0
 
         # realign read - changes base qualities
-        if d.seq != NULL and is_cns and not is_nobaq: bam_prob_realn( b, d.seq )
+        if d.seq != NULL and is_cns and not is_nobaq: 
+            bam_prob_realn( b, d.seq )
 
         if d.seq != NULL and capQ_thres > 10:
             q = bam_cap_mapQ(b, d.seq, capQ_thres)
@@ -2246,6 +2200,103 @@ cdef inline object get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
 
     return qual
 
+cdef inline uint8_t get_type_code( value, value_type = None ):
+    '''guess type code for a *value*. If *value_type* is None,
+    the type code will be inferred based on the Python type of
+    *value*'''
+    cdef uint8_t  type_code    
+    cdef char * _char_type
+
+    if value_type is None:
+        if isinstance(value, int):
+            type_code = 'i'
+        elif isinstance(value, float):
+            type_code = 'd'
+        elif isinstance(value, str):
+            type_code = 'Z'
+        elif isinstance(value, bytes):
+            type_code = 'Z'
+        else:
+            return 0
+    else:
+        if value_type not in 'Zidf':
+            return 0
+        value_type = _forceBytes( value_type )
+        _char_type = value_type
+        type_code = (<uint8_t*>_char_type)[0]
+
+    return type_code
+
+cdef inline convert_python_tag(pytag, value, fmts, args):
+    
+    if not type(pytag) is bytes:
+        pytag = pytag.encode('ascii')
+    t = type(value)
+
+    if t is tuple or t is list:
+        # binary tags - treat separately
+        pytype = 'B'
+        # get data type - first value determines type
+        if type(value[0]) is float:
+            datafmt, datatype = "f", "f"
+        else:
+            mi, ma = min(value), max(value)
+            absmax = max( abs(mi), abs(ma) )
+            # signed ints
+            if mi < 0: 
+                if mi >= -127: datafmt, datatype = "b", 'c'
+                elif mi >= -32767: datafmt, datatype = "h", 's'
+                elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: datafmt, datatype = "i", 'i'
+
+            # unsigned ints
+            else:
+                if absmax <= 255: datafmt, datatype = "B", 'C'
+                elif absmax <= 65535: datafmt, datatype = "H", 'S'
+                elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: datafmt, datatype = "I", 'I'
+
+        datafmt = "2sccI%i%s" % (len(value), datafmt)
+        args.extend( [pytag[:2], 
+                      pytype.encode('ascii'),
+                      datatype.encode('ascii'),
+                      len(value)] + list(value) )
+        fmts.append( datafmt )
+        return
+
+    if t is float:
+        fmt, pytype = "2scf", 'f'
+    elif t is int:
+        # negative values
+        if value < 0:
+            if value >= -127: fmt, pytype = "2scb", 'c'
+            elif value >= -32767: fmt, pytype = "2sch", 's'
+            elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+            else: fmt, pytype = "2sci", 'i'
+        # positive values
+        else:
+            if value <= 255: fmt, pytype = "2scB", 'C'
+            elif value <= 65535: fmt, pytype = "2scH", 'S'
+            elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+            else: fmt, pytype = "2scI", 'I'
+    else:
+        # Note: hex strings (H) are not supported yet
+        if t is not bytes:
+            value = value.encode('ascii')
+        if len(value) == 1:
+            fmt, pytype = "2scc", 'A'
+        else:
+            fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
+
+    args.extend( [pytag[:2],
+                  pytype.encode('ascii'),
+                  value ] )
+
+    fmts.append( fmt )
+    
+###########################################################
+###########################################################
+###########################################################
 cdef class AlignedRead:
     '''
     Class representing an aligned read. see SAM format specification for
@@ -2353,6 +2404,74 @@ cdef class AlignedRead:
     def __hash__(self):
         return _Py_HashPointer(<void *>self)
 
+    def _convert_python_tag(self, pytag, value, fmts, args):
+
+        if not type(pytag) is bytes:
+            pytag = pytag.encode('ascii')
+        t = type(value)
+
+        if t is tuple or t is list:
+            # binary tags - treat separately
+            pytype = 'B'
+            # get data type - first value determines type
+            if type(value[0]) is float:
+                datafmt, datatype = "f", "f"
+            else:
+                mi, ma = min(value), max(value)
+                absmax = max( abs(mi), abs(ma) )
+                # signed ints
+                if mi < 0: 
+                    if mi >= -127: datafmt, datatype = "b", 'c'
+                    elif mi >= -32767: datafmt, datatype = "h", 's'
+                    elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                    else: datafmt, datatype = "i", 'i'
+
+                # unsigned ints
+                else:
+                    if absmax <= 255: datafmt, datatype = "B", 'C'
+                    elif absmax <= 65535: datafmt, datatype = "H", 'S'
+                    elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                    else: datafmt, datatype = "I", 'I'
+                    
+            datafmt = "2sccI%i%s" % (len(value), datafmt)
+            args.extend( [pytag[:2], 
+                          pytype.encode('ascii'),
+                          datatype.encode('ascii'),
+                          len(value)] + list(value) )
+            fmts.append( datafmt )
+            return
+
+        if t is float:
+            fmt, pytype = "2scf", 'f'
+        elif t is int:
+            # negative values
+            if value < 0:
+                if value >= -127: fmt, pytype = "2scb", 'c'
+                elif value >= -32767: fmt, pytype = "2sch", 's'
+                elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: fmt, pytype = "2sci", 'i'
+            # positive values
+            else:
+                if value <= 255: fmt, pytype = "2scB", 'C'
+                elif value <= 65535: fmt, pytype = "2scH", 'S'
+                elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                else: fmt, pytype = "2scI", 'I'
+        else:
+            # Note: hex strings (H) are not supported yet
+            if t is not bytes:
+                value = value.encode('ascii')
+            if len(value) == 1:
+                fmt, pytype = "2scc", 'A'
+            else:
+                fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
+
+        args.extend( [pytag[:2],
+                      pytype.encode('ascii'),
+                      value ] )
+        
+        fmts.append( fmt )
+
+
     #######################################################################
     #######################################################################
     ## Basic properties
@@ -2367,7 +2486,7 @@ cdef class AlignedRead:
 
         def __set__(self, qname ):
             if qname == None or len(qname) == 0: return
-            qname = _force_bytes(qname)
+            qname = _forceBytes(qname)
             cdef bam1_t * src
             cdef int l
             cdef char * p
@@ -2517,6 +2636,10 @@ cdef class AlignedRead:
            read.seq = read.seq[5:10]
            read.qual = q[5:10]
 
+        The sequence is as it is returned in the bam file. Some mappers
+        might have stored a reverse complement of the original read 
+        sequence.
+
         """
         def __get__(self):
             cdef bam1_t * src
@@ -2539,7 +2662,7 @@ cdef class AlignedRead:
                 l = 0
             else:
                 l = len(seq)                
-                seq = _force_bytes(seq)
+                seq = _forceBytes(seq)
 
             src = self._delegate
 
@@ -2611,7 +2734,7 @@ cdef class AlignedRead:
                 # if absent - set to 0xff
                 p[0] = 0xff
                 return
-            qual = _force_bytes(qual)
+            qual = _forceBytes(qual)
             cdef int l
             # convert to C string
             q = qual
@@ -2697,7 +2820,6 @@ cdef class AlignedRead:
 
             read.tags = read.tags + [("RG",0)]
 
-
         This method will happily write the same tag
         multiple times.
         """
@@ -2758,82 +2880,14 @@ cdef class AlignedRead:
         def __set__(self, tags):
             cdef bam1_t * src
             cdef uint8_t * s
-            cdef uint8_t * new_data
             cdef char * temp
-
+            cdef uint32_t total_size = 0
             src = self._delegate
-
             fmts, args = ["<"], []
             
-            if tags != None:
-
-                # map samtools code to python.struct code and byte size
+            if tags != None and len(tags) > 0:
                 for pytag, value in tags:
-                    if not type(pytag) is bytes:
-                        pytag = pytag.encode('ascii')
-                    t = type(value)
-
-                    if t is tuple or t is list:
-                        # binary tags - treat separately
-                        pytype = 'B'
-                        # get data type - first value determines type
-                        if type(value[0]) is float:
-                            datafmt, datatype = "f", "f"
-                        else:
-                            mi, ma = min(value), max(value)
-                            absmax = max( abs(mi), abs(ma) )
-                            # signed ints
-                            if mi < 0: 
-                                if mi >= -127: datafmt, datatype = "b", 'c'
-                                elif mi >= -32767: datafmt, datatype = "h", 's'
-                                elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                                else: datafmt, datatype = "i", 'i'
-
-                            # unsigned ints
-                            else:
-                                if absmax <= 255: datafmt, datatype = "B", 'C'
-                                elif absmax <= 65535: datafmt, datatype = "H", 'S'
-                                elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                                else: datafmt, datatype = "I", 'I'
-                                
-                        datafmt = "2sccI%i%s" % (len(value), datafmt)
-                        args.extend( [pytag[:2], 
-                                      pytype.encode('ascii'),
-                                      datatype.encode('ascii'),
-                                      len(value)] + list(value) )
-                        fmts.append( datafmt )
-                        continue
-
-                    if t is float:
-                        fmt, pytype = "2scf", 'f'
-                    elif t is int:
-                        # negative values
-                        if value < 0:
-                            if value >= -127: fmt, pytype = "2scb", 'c'
-                            elif value >= -32767: fmt, pytype = "2sch", 's'
-                            elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "2sci", 'i'
-                        # positive values
-                        else:
-                            if value <= 255: fmt, pytype = "2scB", 'C'
-                            elif value <= 65535: fmt, pytype = "2scH", 'S'
-                            elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                            else: fmt, pytype = "2scI", 'I'
-                    else:
-                        # Note: hex strings (H) are not supported yet
-                        if t is not bytes:
-                            value = value.encode('ascii')
-                        if len(value) == 1:
-                            fmt, pytype = "2scc", 'A'
-                        else:
-                            fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
-
-                    args.extend( [pytag[:2],
-                                  pytype.encode('ascii'),
-                                  value ] )
-                    
-                    fmts.append( fmt )
-
+                    convert_python_tag(pytag, value, fmts, args)
                 fmt = "".join(fmts)
                 total_size = struct.calcsize(fmt)
                 buffer = ctypes.create_string_buffer(total_size)
@@ -2864,6 +2918,63 @@ cdef class AlignedRead:
                 # enough for memcpy, see issue 129
                 temp = p
                 memcpy( s, temp, total_size )
+
+    cpdef setTag(self, tag, value, 
+                 value_type = None, 
+                 replace = True):
+        '''
+        Set optional field of alignment *tag* to *value*.  *value_type* may be specified,
+        but if not the type will be inferred based on the Python type of *value*
+
+        An existing value of the same tag will be overwritten unless
+        *replace* is set to False.
+        '''
+
+        cdef int      value_size
+        cdef uint8_t* value_ptr, *existing_ptr
+        cdef uint8_t  type_code
+        cdef float    float_value
+        cdef double   double_value
+        cdef int32_t  int_value
+        cdef bam1_t * src = self._delegate
+        cdef char * _value_type
+        
+        if len(tag) != 2:
+            raise ValueError('Invalid tag: %s' % tag)
+        
+        type_code = get_type_code( value, value_type )
+
+        if type_code == 0:
+            raise ValueError("can't guess type or invalid type code specified")
+
+        # Not Endian-safe, but then again neither is samtools!
+        if type_code == 'Z':
+            value = _forceBytes( value )
+            value_ptr    = <uint8_t*><char*>value
+            value_size   = len(value)+1
+        elif type_code == 'i':
+            int_value    = value
+            value_ptr    = <uint8_t*>&int_value
+            value_size   = sizeof(int32_t)
+        elif type_code == 'd':
+            double_value = value
+            value_ptr    = <uint8_t*>&double_value
+            value_size   = sizeof(double)
+        elif type_code == 'f':
+            float_value  = value
+            value_ptr    = <uint8_t*>&float_value
+            value_size   = sizeof(float)
+        else:
+            raise ValueError('Unsupported value_type in set_option')
+
+        tag = _forceBytes( tag )
+        if replace:
+            existing_ptr = bam_aux_get(src, tag)
+            if existing_ptr:
+                bam_aux_del(src, existing_ptr)
+
+        bam_aux_append(src, tag, type_code, 
+                       value_size, value_ptr)
 
     property flag:
         """properties flag"""
@@ -3187,7 +3298,7 @@ cdef class AlignedRead:
         #see bam_aux.c: bam_aux_get() and bam_aux2i() etc
         cdef uint8_t * v
         cdef int nvalues
-        btag = _force_bytes(tag)
+        btag = _forceBytes(tag)
         v = bam_aux_get(self._delegate, btag)
         if v == NULL: raise KeyError( "tag '%s' not present" % tag )
         auxtype = chr(v[0])
@@ -3428,8 +3539,8 @@ def _samtools_dispatch( method,
     cdef int i, n, retval
 
     n = len(args)
-    method = _force_cmdline_bytes(method)
-    args = [ _force_cmdline_bytes(a) for a in args ]
+    method = _forceCmdlineBytes(method)
+    args = [ _forceCmdlineBytes(a) for a in args ]
 
     # allocate two more for first (dummy) argument (contains command)
     cargs = <char**>calloc( n+2, sizeof( char *) )

@@ -1,6 +1,10 @@
-Andreas Heger, Martin Goodson, Tildon Grant Belgard, Leo Goodstadt,
-Kevin B. Jacobs all contributed to the code for pysam. Gerton Lunter 
-advised.
+List of contributors:
+
+Andreas Heger, Tildon Grant Belgard, Kevin B. Jacobs, Florian
+Finkernagel, Leo Goodstadt, Martin Goodson all contributed code
+to pysam.
+
+Gerton Lunter provide a VCF parser.
 
 Marcel Martin implented python 3 compabitility. 
 Ben Schiller contributed a windows compabtible clone.

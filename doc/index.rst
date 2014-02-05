@@ -6,7 +6,7 @@
 pysam: samtools interface for python
 ====================================
 
-:Author: Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Leo Goodstad, Kevin Jacobs
+:Author: Andreas Heger and contributors
 :Date: |today|
 :Version: |version|
 
@@ -19,7 +19,7 @@ and a high-level API for convenient access to the data in *SAM/BAM* formatted fi
 Also included is an interface to the tabix_ C-API for reading compressed and
 indexed tabular data.
 
-The current version wraps *samtools-0.1.18* and *tabix-0.2.6*.
+The current version wraps *samtools-0.1.19* and *tabix-0.2.6*.
 
 Contents
 --------

@@ -1,3 +1,7 @@
+===
+FAQ
+===
+
 pysam coordinates are wrong
 ===========================
 

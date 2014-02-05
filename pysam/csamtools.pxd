@@ -223,19 +223,28 @@ cdef extern from "bam.h":
   
   bam1_t * bam_copy1(bam1_t *bdst, bam1_t *bsrc)
 
+  # functions for dealing with the auxillary string
   uint8_t *bam_aux_get(bam1_t *b,  char tag[2])
 
+  void bam_aux_append(bam1_t *b, char tag[2], char type, int len, uint8_t *data)
+
+  int bam_aux_del(bam1_t *b, uint8_t *s)
+
+  # type conversion functions
   int32_t bam_aux2i(uint8_t *s)
   float bam_aux2f(uint8_t *s)
   double bam_aux2d(uint8_t *s)
   char bam_aux2A( uint8_t *s)
   char *bam_aux2Z( uint8_t *s)
+  int bam_aux_type2size( int )
   
+  # determine indexing bin for a region
   int bam_reg2bin(uint32_t beg, uint32_t end)
 
+  # calculate alignment end position from a cigar string
   uint32_t bam_calend(bam1_core_t *c, uint32_t *cigar)
 
-  int bam_aux_type2size( int )
+
     
 
 cdef extern from *:
@@ -263,8 +272,9 @@ cdef extern from "sam.h":
 
   int samwrite(samfile_t *fp, bam1_t *b)
 
-  int bam_prob_realn(bam1_t *b, char *ref)
-  int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
+  # functions not declared in sam.h but available as extern
+  #  int bam_prob_realn(bam1_t *b, char *ref)
+  # int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
 
 
 #cdef extern from "glf.h":
@@ -445,6 +455,10 @@ cdef class AlignedRead:
 
     # object that this AlignedRead represents
     cdef bam1_t * _delegate
+
+    # add an alignment tag with value to the AlignedRead 
+    # an existing tag of the same name will be replaced.
+    cpdef setTag( self, tag, value, value_type = ?, replace = ? )
 
 cdef class Samfile:
     cdef object _filename
