@@ -11,13 +11,13 @@ pysam lightweight wrapper of the samtools_ C-API. Pysam also includes an
 interface for tabix_.
 
 The latest version is available through 
-`pypi <https://pypi.python.org/pypi/pysam`_. To install, simply
+`pypi <https://pypi.python.org/pypi/pysam>`_. To install, simply
 type::
   
    pip install pysam
                                                       .
 Pysam documentation is available through https://readthedocs.org/ from
-`here <http://pysam.readthedocs.org/en/latest/`_
+`here <http://pysam.readthedocs.org/en/latest/>`_
 
 Questions and comments are very welcome and should be sent to the
 `pysam user group <http://groups.google.com/group/pysam-user-group>`_
