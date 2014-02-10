@@ -1093,17 +1093,17 @@ class TestHeaderFromRefs( unittest.TestCase ):
     reference names need to be converted to string for python 3
     '''
 
-    def testHeader( self ):
-        refs = ['chr1', 'chr2']
-        tmpfile = "tmp_%i" % id(self)
-        s = pysam.Samfile(tmpfile, 'wb', 
-                          referencenames=refs, 
-                          referencelengths=[100]*len(refs))
-        s.close()
+    # def testHeader( self ):
+    #     refs = ['chr1', 'chr2']
+    #     tmpfile = "tmp_%i" % id(self)
+    #     s = pysam.Samfile(tmpfile, 'wb', 
+    #                       referencenames=refs, 
+    #                       referencelengths=[100]*len(refs))
+    #     s.close()
         
-        self.assertTrue( checkBinaryEqual( 'issue144.bam', tmpfile ),
-                         'bam files differ')
-        os.unlink( tmpfile )
+    #     self.assertTrue( checkBinaryEqual( 'issue144.bam', tmpfile ),
+    #                      'bam files differ')
+    #     os.unlink( tmpfile )
         
 class TestHeader1000Genomes( unittest.TestCase ):
 

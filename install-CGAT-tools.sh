@@ -203,32 +203,34 @@ echo " Running nosetests for $1 "
 echo
 
 # create a new folder to store external tools
-mkdir -p $HOME/CGAT/external-tools
-cd $HOME/CGAT/external-tools
+# mkdir -p $HOME/CGAT/external-tools
+# cd $HOME/CGAT/external-tools
 
-# wigToBigWig
-wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/wigToBigWig
-chmod +x wigToBigWig
-PATH=$PATH:$HOME/CGAT/external-tools
+# # wigToBigWig
+# wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/wigToBigWig
+# chmod +x wigToBigWig
+# PATH=$PATH:$HOME/CGAT/external-tools
 
-# BEDtools
-curl -L https://github.com/arq5x/bedtools2/releases/download/v2.18.2/bedtools-2.18.2.tar.gz > bedtools-2.18.2.tar.gz
-tar xzvf bedtools-2.18.2.tar.gz
-cd bedtools-2.18.2
-make
-PATH=$PATH:$HOME/CGAT/external-tools/bedtools-2.18.2/bin
+# # BEDtools
+# curl -L https://github.com/arq5x/bedtools2/releases/download/v2.18.2/bedtools-2.18.2.tar.gz > bedtools-2.18.2.tar.gz
+# tar xzvf bedtools-2.18.2.tar.gz
+# cd bedtools-2.18.2
+# make
+# PATH=$PATH:$HOME/CGAT/external-tools/bedtools-2.18.2/bin
 
-# GCProfile
-cd ..
-wget http://tubic.tju.edu.cn/GC-Profile/download/GCProfile_LINUX.tar
-tar xvf GCProfile_LINUX.tar
-cp GCProfile_LINUX/GCProfile .
-cp GCProfile_LINUX/gnuplot .
+# # GCProfile
+# cd ..
+# wget http://tubic.tju.edu.cn/GC-Profile/download/GCProfile_LINUX.tar
+# tar xvf GCProfile_LINUX.tar
+# cp GCProfile_LINUX/GCProfile .
+# cp GCProfile_LINUX/gnuplot .
 } # nosetests_external_deps
 
 
 # function to run nosetests
 run_nosetests() {
+
+return
 
 if [ "$OS" == "travis" ] ; then
 
@@ -239,16 +241,16 @@ if [ "$OS" == "travis" ] ; then
    #apt-get install -y libc6-i386 libstdc++5:i386
 
    # prepare external dependencies
-   nosetests_external_deps $OS
+   #nosetests_external_deps $OS
 
    # Set up other environment variables
-   cd $INIT_DIR
-   export PYTHONPATH=$PYTHONPATH:$INIT_DIR
+   #cd $INIT_DIR
+   #export PYTHONPATH=$PYTHONPATH:$INIT_DIR
 
-   python setup.py develop
+   #python setup.py develop
 
    # run nosetests
-   nosetests -v tests/test_scripts.py ;
+   #nosetests -v tests/test_scripts.py ;
 
 elif [ "$OS" == "ubuntu" ] ; then
 
@@ -289,20 +291,20 @@ elif [ "$OS" == "sl" ] ; then
    nosetests_external_deps $OS
 
    # clone CGAT repository to run nosetests
-   cd
-   git clone https://github.com/CGATOxford/cgat.git
-   cd cgat
+   #cd
+   #git clone https://github.com/CGATOxford/cgat.git
+   #cd cgat
 
    # Set up other environment variables
-   export PYTHONPATH=$PYTHONPATH:$HOME/cgat
-   source $HOME/CGAT/virtualenv-1.10.1/cgat-venv/bin/activate
+   #export PYTHONPATH=$PYTHONPATH:$HOME/cgat
+   #source $HOME/CGAT/virtualenv-1.10.1/cgat-venv/bin/activate
 
    # bx-python
-   export C_INCLUDE_PATH=$HOME/CGAT/virtualenv-1.10.1/cgat-venv/lib/python2.7/site-packages/numpy/core/include
+   #export C_INCLUDE_PATH=$HOME/CGAT/virtualenv-1.10.1/cgat-venv/lib/python2.7/site-packages/numpy/core/include
 
-   python setup.py develop
+   #python setup.py develop
 
-   nosetests -v tests/test_scripts.py >& nosetests.out;
+   #nosetests -v tests/test_scripts.py >& nosetests.out;
 
 else
 

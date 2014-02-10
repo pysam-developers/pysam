@@ -273,8 +273,8 @@ cdef extern from "sam.h":
   int samwrite(samfile_t *fp, bam1_t *b)
 
   # functions not declared in sam.h but available as extern
-  #  int bam_prob_realn(bam1_t *b, char *ref)
-  # int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
+  int bam_prob_realn(bam1_t *b, char *ref)
+  int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
 
 
 #cdef extern from "glf.h":

@@ -4155,9 +4155,7 @@ cdef class IndexedReads:
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if reopen:
-            store = StderrStore()
             self.fp = samopen( samfile._filename, mode, NULL )
-            store.release()
             assert self.fp != NULL
             self.owns_samfile = True
         else:
