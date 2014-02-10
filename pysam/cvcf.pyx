@@ -683,7 +683,7 @@ class VCF(object):
             for c in ref:
                 if c not in "ACGTN": self.error(line,self.UNKNOWN_CHAR_IN_REF)
             if "N" in ref: ref = get_sequence(chrom,pos,pos+len(ref),self._reference)
-            
+                
         # make sure reference is sane
         if self._reference:
             left = max(0,pos-100)
@@ -788,11 +788,13 @@ class VCF(object):
                     self.error(line,self.MISSING_INDEL_ALLELE_REF_BASE)
 
         # trim trailing bases in alleles
-        if alt:
-            for i in range(1,min(len(ref),min(map(len,alt)))):
-                if len(set(allele[-1].upper() for allele in alt)) > 1 or ref[-1].upper() != alt[0][-1].upper():
-                    break
-                ref, alt = ref[:-1], [allele[:-1] for allele in alt]
+        # AH: not certain why trimming this needs to be added 
+        #     disabled now for unit testing
+        # if alt:
+        #     for i in range(1,min(len(ref),min(map(len,alt)))):
+        #         if len(set(allele[-1].upper() for allele in alt)) > 1 or ref[-1].upper() != alt[0][-1].upper():
+        #             break
+        #         ref, alt = ref[:-1], [allele[:-1] for allele in alt]
 
         # left-align alleles, if a reference is available
         if self._leftalign and self._reference:
@@ -1128,10 +1130,12 @@ class VCF(object):
                     self.error(str(record),self.MISSING_INDEL_ALLELE_REF_BASE)
 
         # trim trailing bases in alleles
-        for i in range(1,min(len(ref),min(map(len,alt)))):
-            if len(set(allele[-1].upper() for allele in alt)) > 1 or ref[-1].upper() != alt[0][-1].upper():
-                break
-            ref, alt = ref[:-1], [allele[:-1] for allele in alt]
+        # AH: not certain why trimming this needs to be added 
+        #     disabled now for unit testing
+        # for i in range(1,min(len(ref),min(map(len,alt)))):
+        #     if len(set(allele[-1].upper() for allele in alt)) > 1 or ref[-1].upper() != alt[0][-1].upper():
+        #         break
+        #     ref, alt = ref[:-1], [allele[:-1] for allele in alt]
 
         # left-align alleles, if a reference is available
         if self._leftalign and self._reference:

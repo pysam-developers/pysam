@@ -644,12 +644,13 @@ class TestVCFFromVCF( TestVCF ):
                "filter", "info", "format" )
 
     # tests failing while parsing
-    fail_on_parsing = ( (5, "Flag fields should not have a value"),
-                       (9, "aouao" ),
-                       (13, "aoeu" ),
-                       (18, "Error BAD_NUMBER_OF_PARAMETERS" ),
-                       (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ) )
-
+    fail_on_parsing = ( 
+        (5, "Flag fields should not have a value"),
+        (9, "aouao" ),
+        (13, "aoeu" ),
+        (18, "Error BAD_NUMBER_OF_PARAMETERS" ),
+        (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ) )
+    
     # tests failing on opening
     fail_on_opening = ( (24, "Error HEADING_NOT_SEPARATED_BY_TABS" ),
                      )
@@ -688,7 +689,7 @@ class TestVCFFromVCF( TestVCF ):
                     for y, field in enumerate( self.columns ):
                         # it is ok to have a missing format column
                         if y == 8 and y == len(c): continue
-
+                        
                         val = r[field] 
                         if field == "pos":
                             self.assertEqual( int(c[y]) - 1, val )
@@ -743,7 +744,7 @@ class TestVCFFromVCF( TestVCF ):
                         else:
                             self.assertEqual( c[y], val, 
                                               "mismatch in field %s: expected %s, got %s" %\
-                                                  ( field, c[y], val ) )
+                                              ( field, c[y], val ) )
 
 ############################################################################ 
 # create a test class for each example vcf file.
