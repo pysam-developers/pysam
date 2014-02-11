@@ -110,6 +110,7 @@ elif [ "$OS" == "travis" ] ; then
 
    # Install Python prerequisites
    pip install cython
+   pip install nose
 
 else
 
