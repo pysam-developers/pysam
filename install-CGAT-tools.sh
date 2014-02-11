@@ -150,13 +150,28 @@ echo
 echo " Running nosetests for $1 "
 echo
 
+# create a new folder to store external tools
+mkdir -p $HOME/CGAT/external-tools
+cd $HOME/CGAT/external-tools
+
+# install samtools
+# BEDtools
+curl -L http://downloads.sourceforge.net/project/samtools/samtools/0.1.19/samtools-0.1.19.tar.bz2 > samtools-0.1.19.tar.bz2
+tar xjvf samtools-0.1.19.tar.bz2 
+cd samtools-0.1.19
+make
+PATH=$PATH:$HOME/CGAT/external-tools/samtools-0.1.19
+
 } # nosetests_external_deps
 
 
 # function to run nosetests
 run_nosetests() {
 
-python setup.py develop
+python setup.py install
+# create auxilliary data
+make -C tests
+
 
 if [ "$OS" == "travis" ] ; then
 

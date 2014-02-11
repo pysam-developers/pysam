@@ -1,12 +1,6 @@
 #ifndef PYSAM_UTIL_H
 #define PYSAM_UTIL_H
 
-#include "kseq.h"
-
-// #######################################################
-// fastq parsing
-KSEQ_INIT(gzFile, gzread)
-
 //////////////////////////////////////////////////////////////////
 /*! set pysam standard error to point to file descriptor
 

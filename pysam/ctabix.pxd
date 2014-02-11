@@ -182,7 +182,7 @@ cdef extern from "tabix.h":
   #  /* Get the data line pointed by the iterator and iterate to the next record. */
   # char *ti_iter_read(BGZF *fp, ti_iter_t iter, int *len)
 
-cdef extern from "tabix_util.h":
+cdef extern from "pysam_stream.h":
 
     ctypedef struct kstring_t:
         size_t l

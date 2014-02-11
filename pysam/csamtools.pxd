@@ -56,8 +56,6 @@ cdef extern from "Python.h":
    long _Py_HashPointer(void*)
    FILE* PyFile_AsFile(object)
 
-cdef extern from "razf.h":
-  pass
 
 cdef extern from "stdint.h":
   ctypedef int int8_t
@@ -68,6 +66,22 @@ cdef extern from "stdint.h":
   ctypedef int uint16_t
   ctypedef int uint32_t
   ctypedef int uint64_t
+
+cdef extern from "zlib.h":
+  ctypedef void * gzFile
+  ctypedef int64_t z_off_t
+
+  int gzclose(gzFile fp)
+  int gzread(gzFile fp, void *buf, unsigned int n)
+  char *gzerror(gzFile fp, int *errnum)
+
+  gzFile gzopen( char *path, char *mode)
+  gzFile gzdopen (int fd, char *mode)
+  char * gzgets(gzFile file, char *buf, int len)
+  int gzeof( gzFile file )
+
+cdef extern from "razf.h":
+  pass
 
 cdef extern from "bam.h":
 
@@ -244,9 +258,6 @@ cdef extern from "bam.h":
   # calculate alignment end position from a cigar string
   uint32_t bam_calend(bam1_core_t *c, uint32_t *cigar)
 
-
-    
-
 cdef extern from *:
     ctypedef char* const_char_ptr "const char*"
 
@@ -398,19 +409,18 @@ cdef extern from "pysam_util.h":
 
 #    void pysam_dump_glf( glf1_t * g, bam_maqcns_t * c )
 
-    ctypedef struct gzFile:
-        pass  
+cdef extern from "pysam_stream.h":
 
     ctypedef struct kstring_t:
-        size_t l
-        size_t m
-        char *s
+      size_t l
+      size_t m
+      char *s
 
     ctypedef struct kseq_t:
-        kstring_t name
-        kstring_t comment
-        kstring_t seq
-        kstring_t qual
+      kstring_t name
+      kstring_t comment
+      kstring_t seq
+      kstring_t qual
 
     gzFile gzopen( char *, char * )
     kseq_t * kseq_init( gzFile )
