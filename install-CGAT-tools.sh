@@ -182,6 +182,10 @@ python setup.py install
 # create auxilliary data
 make -C tests
 
+# run nosetests
+
+nosetests -v tests
+
 } # run_nosetests
 
 # function to display help message
