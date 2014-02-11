@@ -91,6 +91,7 @@ if [ "$OS" == "ubuntu" -o "$OS" == "sl" ] ; then
 
    # Create virtual environment
    cd
+   mkdir CGAT
    cd CGAT
    wget --no-check-certificate https://pypi.python.org/packages/source/v/virtualenv/virtualenv-1.10.1.tar.gz
    tar xvfz virtualenv-1.10.1.tar.gz
@@ -121,17 +122,14 @@ fi # if-OS
 
 install_nosetests_deps() {
 
+return
+
 if [ "$OS" == "ubuntu" -o "$OS" == "travis" ] ; then
 
    # GCProfile
    apt-get install -y libc6-i386 libstdc++5:i386
 
 elif [ "$OS" == "sl" ] ; then
-
-   # libpq
-   #wget http://yum.postgresql.org/9.3/redhat/rhel-6-x86_64/pgdg-sl93-9.3-1.noarch.rpm
-   #rpm -i pgdg-sl93-9.3-1.noarch.rpm
-   #yum install -y postgresql93-devel
 
    # GCProfile
    yum install -y glibc.i686 compat-libstdc++-33.i686
@@ -150,17 +148,20 @@ echo
 echo " Running nosetests for $1 "
 echo
 
+pushd .
+
 # create a new folder to store external tools
 mkdir -p $HOME/CGAT/external-tools
 cd $HOME/CGAT/external-tools
 
 # install samtools
-# BEDtools
 curl -L http://downloads.sourceforge.net/project/samtools/samtools/0.1.19/samtools-0.1.19.tar.bz2 > samtools-0.1.19.tar.bz2
 tar xjvf samtools-0.1.19.tar.bz2 
 cd samtools-0.1.19
 make
 PATH=$PATH:$HOME/CGAT/external-tools/samtools-0.1.19
+
+popd
 
 } # nosetests_external_deps
 
@@ -168,39 +169,18 @@ PATH=$PATH:$HOME/CGAT/external-tools/samtools-0.1.19
 # function to run nosetests
 run_nosetests() {
 
+echo
+echo " Running nosetests for $1 "
+echo
+
+# prepare external dependencies
+nosetests_external_deps $OS
+
+# install code
 python setup.py install
+
 # create auxilliary data
 make -C tests
-
-
-if [ "$OS" == "travis" ] ; then
-
-   # installation where CGAT code collection is cloned
-   INIT_DIR=`pwd`
-
-   # prepare external dependencies
-   nosetests_external_deps $OS
-
-   # run nosetests
-   nosetests -v tests ;
-
-elif [ "$OS" == "ubuntu" ] ; then
-
-   # run nosetests
-   nosetests -v tests ;
-
-elif [ "$OS" == "sl" ] ; then
-
-   # prepare external dependencies
-   nosetests_external_deps $OS
-
-   nosetests -v tests >& nosetests.out;
-
-else
-
-   sanity_check_os
-
-fi # if-OS
 
 } # run_nosetests
 
