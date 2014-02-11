@@ -178,17 +178,8 @@ if [ "$OS" == "travis" ] ; then
    # installation where CGAT code collection is cloned
    INIT_DIR=`pwd`
 
-   # GCProfile
-   #apt-get install -y libc6-i386 libstdc++5:i386
-
    # prepare external dependencies
-   #nosetests_external_deps $OS
-
-   # Set up other environment variables
-   #cd $INIT_DIR
-   #export PYTHONPATH=$PYTHONPATH:$INIT_DIR
-
-   #python setup.py develop
+   nosetests_external_deps $OS
 
    # run nosetests
    nosetests -v tests ;
@@ -200,32 +191,10 @@ elif [ "$OS" == "ubuntu" ] ; then
 
 elif [ "$OS" == "sl" ] ; then
 
-   # libpq
-   #wget http://yum.postgresql.org/9.3/redhat/rhel-6-x86_64/pgdg-sl93-9.3-1.noarch.rpm
-   #rpm -i pgdg-sl93-9.3-1.noarch.rpm 
-   #yum install -y postgresql93-devel
-
-   # GCProfile
-   #yum install -y glibc.i686 compat-libstdc++-33.i686
-
    # prepare external dependencies
    nosetests_external_deps $OS
 
-   # clone CGAT repository to run nosetests
-   #cd
-   #git clone https://github.com/CGATOxford/cgat.git
-   #cd cgat
-
-   # Set up other environment variables
-   #export PYTHONPATH=$PYTHONPATH:$HOME/cgat
-   #source $HOME/CGAT/virtualenv-1.10.1/cgat-venv/bin/activate
-
-   # bx-python
-   #export C_INCLUDE_PATH=$HOME/CGAT/virtualenv-1.10.1/cgat-venv/lib/python2.7/site-packages/numpy/core/include
-
-   #python setup.py develop
-
-   #nosetests -v tests/test_scripts.py >& nosetests.out;
+   nosetests -v tests >& nosetests.out;
 
 else
 
