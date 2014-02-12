@@ -213,7 +213,7 @@ class BinaryTest(unittest.TestCase):
              'idxstats',
              'fixmate',
              'flagstat',
-              ## 'calmd',
+             ## 'calmd',
              'merge',
              'rmdup',
              'reheader',
@@ -223,7 +223,7 @@ class BinaryTest(unittest.TestCase):
              'phase',
              'bamshuf',
              'bam2fq',
-              'pad2unpad',
+             'pad2unpad',
               )
 
     def setUp( self ):
@@ -265,9 +265,10 @@ class BinaryTest(unittest.TestCase):
                     pysam_target, pysam_command = command[1]
                 except ValueError as msg:
                     raise ValueError( "error while setting up %s=%s: %s" %\
-                                          (label, command, msg) )
+                                      (label, command, msg) )
 
                 pysam_method, pysam_options = pysam_command
+
                 try:
                     output = pysam_method( *pysam_options.split(" "), raw=True)
                 except pysam.SamtoolsError as msg:
