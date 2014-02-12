@@ -182,6 +182,11 @@ python setup.py install
 # create auxilliary data
 make -C tests
 
+# change into tests directory. Otherwise,
+# 'import pysam' will import the repository,
+# not the installed version.
+cd tests
+
 # check for pysam paths
 echo 'checking includes start'
 python -c 'import pysam; print pysam.get_include()'
@@ -191,7 +196,7 @@ echo 'checking includes end'
 find /usr/local/lib/python2.7/dist-packages/
 
 # run nosetests
-nosetests -v tests
+nosetests -v 
 
 } # run_nosetests
 
