@@ -182,8 +182,12 @@ python setup.py install
 # create auxilliary data
 make -C tests
 
-# run nosetests
+# check for pysam paths
+python -c 'import pysam; print pysam.get_include()'
 
+find /ifs/devel/andreas/python/lib/python2.7/site-packages
+
+# run nosetests
 nosetests -v tests
 
 } # run_nosetests
