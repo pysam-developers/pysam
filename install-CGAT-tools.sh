@@ -183,9 +183,12 @@ python setup.py install
 make -C tests
 
 # check for pysam paths
+echo 'checking includes start'
 python -c 'import pysam; print pysam.get_include()'
 
-find /ifs/devel/andreas/python/lib/python2.7/site-packages
+echo 'checking includes end'
+
+find /usr/local/lib/python2.7/dist-packages/
 
 # run nosetests
 nosetests -v tests
