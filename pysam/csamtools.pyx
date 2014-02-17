@@ -2311,8 +2311,7 @@ cdef class AlignedRead:
     not the most efficient way to build BAM entries, as the variable
     length data is concatenated and thus needs to be resized if
     a field is updated. Furthermore, the BAM entry might be
-    in an inconsistent state. The :meth:`~validate` method can
-    be used to check if an entry is consistent.
+    in an inconsistent state.
 
     One issue to look out for is that the sequence should always
     be set *before* the quality scores. Setting the sequence will
