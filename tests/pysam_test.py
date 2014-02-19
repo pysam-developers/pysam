@@ -24,6 +24,7 @@ else:
 
 SAMTOOLS="samtools"
 WORKDIR="pysam_test_work"
+DATADIR="data"
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -243,11 +244,16 @@ class BinaryTest(unittest.TestCase):
             # copy the source files to WORKDIR
             os.makedirs( WORKDIR )
 
-            shutil.copy( "ex1.fa", os.path.join( WORKDIR, "pysam_ex1.fa" ) )
-            shutil.copy( "ex1.fa", os.path.join( WORKDIR, "ex1.fa" ) )
-            shutil.copy( "ex1.sam.gz", os.path.join( WORKDIR, "ex1.sam.gz" ) )
-            shutil.copy( "ex1.sam", os.path.join( WORKDIR, "ex1.sam" ) )
-            shutil.copy( "ex2.bam", os.path.join( WORKDIR, "ex2.bam" ) )
+            shutil.copy(os.path.join(DATADIR,"ex1.fa"), 
+                        os.path.join(WORKDIR, "pysam_ex1.fa"))
+            shutil.copy(os.path.join(DATADIR,"ex1.fa"),
+                        os.path.join( WORKDIR, "ex1.fa"))
+            shutil.copy(os.path.join(DATADIR,"ex1.sam.gz"),
+                        os.path.join(WORKDIR, "ex1.sam.gz"))
+            shutil.copy(os.path.join(DATADIR,"ex1.sam"),
+                        os.path.join( WORKDIR, "ex1.sam"))
+            shutil.copy(os.path.join(DATADIR,"ex2.bam"),
+                        os.path.join( WORKDIR, "ex2.bam"))
 
             # cd to workdir
             savedir = os.getcwd()
@@ -389,7 +395,8 @@ class BinaryTest(unittest.TestCase):
 class IOTest(unittest.TestCase):
     '''check if reading samfile and writing a samfile are consistent.'''
 
-    def checkEcho( self, input_filename, 
+    def checkEcho( self, 
+                   input_filename, 
                    reference_filename, 
                    output_filename, 
                    input_mode, output_mode, use_template = True ):
@@ -404,14 +411,18 @@ class IOTest(unittest.TestCase):
 
         '''
 
-        infile = pysam.Samfile( input_filename, input_mode )
+        infile = pysam.Samfile(os.path.join(DATADIR,input_filename),
+                               input_mode )
         if use_template:
-            outfile = pysam.Samfile( output_filename, output_mode, template = infile )
+            outfile = pysam.Samfile(output_filename, 
+                                    output_mode, 
+                                    template=infile)
         else:
-            outfile = pysam.Samfile( output_filename, output_mode, 
-                                     referencenames = infile.references,
-                                     referencelengths = infile.lengths,
-                                     add_sq_text = False )
+            outfile = pysam.Samfile(output_filename, 
+                                    output_mode, 
+                                    referencenames = infile.references,
+                                    referencelengths = infile.lengths,
+                                    add_sq_text = False)
             
         iter = infile.fetch()
 
@@ -419,8 +430,11 @@ class IOTest(unittest.TestCase):
         infile.close()
         outfile.close()
 
-        self.assertTrue( checkBinaryEqual( reference_filename, output_filename), 
-                         "files %s and %s are not the same" % (reference_filename, output_filename) )
+        self.assertTrue(
+            checkBinaryEqual(os.path.join(DATADIR, reference_filename),
+                             output_filename), 
+            "files %s and %s are not the same" % (reference_filename,
+                                                  output_filename))
 
 
     def testReadWriteBam( self ):
@@ -461,7 +475,8 @@ class IOTest(unittest.TestCase):
 
     def testReadSamWithoutTargetNames( self ):
         '''see issue 104.'''
-        input_filename = "example_unmapped_reads_no_sq.sam"
+        input_filename = os.path.join(DATADIR,
+                                      "example_unmapped_reads_no_sq.sam")
 
         # raise exception in default mode
         self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
@@ -475,7 +490,7 @@ class IOTest(unittest.TestCase):
 
     def testReadBamWithoutTargetNames( self ):
         '''see issue 104.'''
-        input_filename = "example_unmapped_reads_no_sq.bam"
+        input_filename = os.path.join(DATADIR,"example_unmapped_reads_no_sq.bam")
 
         # raise exception in default mode
         self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
@@ -489,19 +504,23 @@ class IOTest(unittest.TestCase):
         result = list(infile.fetch( until_eof = True))
 
     def testReadSamWithoutHeader( self ):
-        input_filename = "ex1.sam"
-        output_filename = "pysam_ex1.sam"
-        reference_filename = "ex1.sam"
+        input_filename = os.path.join(DATADIR,"ex1.sam")
 
         # reading from a samfile without header is not implemented.
-        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+        self.assertRaises( ValueError,
+                           pysam.Samfile,
+                           input_filename, 
+                           "r" )
 
-        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r",
+        self.assertRaises( ValueError,
+                           pysam.Samfile,
+                           input_filename,
+                           "r",
                            check_header = False )
 
     def testReadUnformattedFile( self ):
         '''test reading from a file that is not bam/sam formatted'''
-        input_filename = "example.vcf40"
+        input_filename = os.path.join(DATADIR,"example.vcf40")
 
         # bam - file raise error
         self.assertRaises( ValueError, pysam.Samfile, input_filename, "rb" )
@@ -514,26 +533,28 @@ class IOTest(unittest.TestCase):
 
     def testBAMWithoutAlignedReads( self ):
         '''see issue 117'''
-        input_filename = "test_unaligned.bam"
+        input_filename = os.path.join(DATADIR,"test_unaligned.bam")
         samfile = pysam.Samfile( input_filename, "rb", check_sq = False )
         samfile.fetch( until_eof = True )
 
     def testBAMWithShortBAI( self ):
         '''see issue 116'''
-        input_filename = "example_bai.bam"
+        input_filename = os.path.join(DATADIR,"example_bai.bam")
         samfile = pysam.Samfile( input_filename, "rb", check_sq = False )
         samfile.fetch( 'chr2' )
 
     def testFetchFromClosedFile( self ):
 
-        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile = pysam.Samfile( os.path.join(DATADIR,"ex1.bam"),
+                                 "rb")
         samfile.close()
         self.assertRaises( ValueError, samfile.fetch, 'chr1', 100, 120)
 
     def testClosedFile( self ):
         '''test that access to a closed samfile raises ValueError.'''
 
-        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex1.bam"), 
+                                "rb")
         samfile.close()
         self.assertRaises( ValueError, samfile.fetch, 'chr1', 100, 120)
         self.assertRaises( ValueError, samfile.pileup, 'chr1', 100, 120)
@@ -552,27 +573,31 @@ class IOTest(unittest.TestCase):
     def testAutoDetection( self ):
         '''test if autodetection works.'''
 
-        samfile = pysam.Samfile( "ex3.sam" )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex3.sam"))
         self.assertRaises( ValueError, samfile.fetch, 'chr1' )
         samfile.close()
 
-        samfile = pysam.Samfile( "ex3.bam" )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex3.bam"))
         samfile.fetch('chr1')
         samfile.close()
 
     def testReadingFromSamFileWithoutHeader( self ):
         '''read from samfile without header.
         '''
-        samfile = pysam.Samfile( "ex7.sam", check_header = False, check_sq = False )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex7.sam"),
+                                check_header = False, 
+                                check_sq = False)
         self.assertRaises( NotImplementedError, samfile.__iter__ )
 
     def testReadingFromFileWithoutIndex( self ):
         '''read from bam file without index.'''
 
-        assert not os.path.exists( "ex2.bam.bai" )
-        samfile = pysam.Samfile( "ex2.bam", "rb" )
+        assert not os.path.exists(os.path.join(DATADIR,"ex2.bam.bai"))
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex2.bam"),
+                                "rb")
         self.assertRaises( ValueError, samfile.fetch )
-        self.assertEqual( len(list( samfile.fetch(until_eof = True) )), 3270 )
+        self.assertEqual(len(list(samfile.fetch(until_eof = True))), 
+                         3270)
 
     def testReadingUniversalFileMode( self ):
         '''read from samfile without header.
@@ -593,7 +618,7 @@ class TestFloatTagBug( unittest.TestCase ):
 
         Fixed in 0.1.19
         '''
-        samfile = pysam.Samfile("tag_bug.bam")
+        samfile = pysam.Samfile(os.path.join(DATADIR,"tag_bug.bam"))
         read = next(samfile.fetch(until_eof=True))
         self.assertTrue( ('XC',1) in read.tags )
         self.assertEqual(read.opt('XC'), 1)
@@ -606,7 +631,7 @@ class TestLargeFieldBug( unittest.TestCase ):
         causes an errror:
             NotImplementedError: tags field too large
         '''
-        samfile = pysam.Samfile("issue100.bam")
+        samfile = pysam.Samfile(os.path.join(DATADIR,"issue100.bam"))
         read = next(samfile.fetch(until_eof=True))
         new_read = pysam.AlignedRead()
         new_read.tags = read.tags
@@ -675,7 +700,8 @@ class TestClipping(unittest.TestCase):
     
     def testClipping( self ):
         
-        self.samfile = pysam.Samfile("softclip.bam", "rb" )
+        self.samfile = pysam.Samfile(os.path.join(DATADIR,"softclip.bam"),
+                                     "rb")
         for read in self.samfile:
 
             if read.qname == "r001":
@@ -708,12 +734,15 @@ class TestClipping(unittest.TestCase):
 class TestIteratorRow(unittest.TestCase):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                   "rb")
 
     def checkRange( self, rnge ):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.view( "ex1.bam", rnge, raw = True) )
+        sa = list(pysam.view( os.path.join(DATADIR,"ex1.bam"),
+                              rnge,
+                              raw = True) )
         self.assertEqual( len(ps), len(sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa) ))
         # check if the same reads are returned and in the same order
         for line, (a, b) in enumerate( list(zip( ps, sa )) ):
@@ -748,12 +777,14 @@ class TestIteratorRow(unittest.TestCase):
 class TestIteratorRowAll(unittest.TestCase):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                   "rb" )
 
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch())
-        sa = list(pysam.view( "ex1.bam", raw = True) )
+        sa = list(pysam.view(os.path.join(DATADIR,"ex1.bam"),
+                             raw = True))
         self.assertEqual( len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa) ))
         # check if the same reads are returned
         for line, pair in enumerate( list(zip( ps, sa )) ):
@@ -774,7 +805,8 @@ class TestIteratorColumn(unittest.TestCase):
                    }
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex4.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex4.bam"),
+                                   "rb" )
 
     def checkRange( self, contig, start = None, end = None, truncate = False ):
         '''compare results from iterator with those from samtools.'''
@@ -829,7 +861,8 @@ class TestIteratorColumn2(unittest.TestCase):
     '''test iterator column against contents of ex1.bam.'''
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                   "rb")
 
     def testStart( self ):
         #print self.samfile.fetch().next().pos
@@ -855,13 +888,14 @@ class TestIteratorColumn2(unittest.TestCase):
 
         Accessing pileup data after iterator has closed.
         '''
-        pcolumn = self.samfile.pileup( 'chr1', 170, 180).__next__()
+        pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
         self.assertRaises( ValueError, getattr, pcolumn, "pileups" )
 
 class TestAlignedReadFromBam(unittest.TestCase):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex3.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex3.bam"),
+                                   "rb" )
         self.reads=list(self.samfile.fetch())
 
     def testARqname(self):
@@ -1036,7 +1070,8 @@ class TestAlignedReadFromBam(unittest.TestCase):
 class TestAlignedReadFromSam(TestAlignedReadFromBam):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex3.sam","r" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex3.sam"),
+                                   "r")
         self.reads=list(self.samfile.fetch())
 
 # needs to be implemented 
@@ -1064,7 +1099,8 @@ class TestHeaderSam(unittest.TestCase):
             self.assertEqual( av, b[ak] )
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex3.sam","r" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex3.sam"),
+                                   "r")
 
     def testHeaders(self):
         self.compareHeaders( self.header, self.samfile.header )
@@ -1086,7 +1122,8 @@ class TestHeaderSam(unittest.TestCase):
 class TestHeaderBam(TestHeaderSam):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex3.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex3.bam"),
+                                   "rb" )
 
 class TestHeaderFromRefs( unittest.TestCase ):
     '''see issue 144
@@ -1107,7 +1144,7 @@ class TestHeaderFromRefs( unittest.TestCase ):
     #     os.unlink( tmpfile )
         
 class TestHeader1000Genomes( unittest.TestCase ):
-
+    '''see issue 110'''
     # bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase2b_alignment/data/NA07048/exome_alignment/NA07048.unmapped.ILLUMINA.bwa.CEU.exome.20120522_p2b.bam"
     bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase3_EX_or_LC_only_alignment/data/HG00104/alignment/HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"
         
@@ -1120,19 +1157,22 @@ class TestHeader1000Genomes( unittest.TestCase ):
 class TestUnmappedReads(unittest.TestCase):
 
     def testSAM(self):
-        samfile=pysam.Samfile( "ex5.sam","r" )
+        samfile=pysam.Samfile(os.path.join(DATADIR,"ex5.sam"),
+                              "r")
         self.assertEqual( len(list(samfile.fetch( until_eof = True))), 2 ) 
         samfile.close()
 
     def testBAM(self):
-        samfile=pysam.Samfile( "ex5.bam","rb" )
+        samfile=pysam.Samfile(os.path.join(DATADIR,"ex5.bam"),
+                              "rb" )
         self.assertEqual( len(list(samfile.fetch( until_eof = True))), 2 ) 
         samfile.close()
 
 class TestPileupObjects(unittest.TestCase):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                   "rb")
 
     def testPileupColumn(self):
         for pcolumn1 in self.samfile.pileup( region="chr1:105" ):
@@ -1166,14 +1206,16 @@ class TestPileupObjects(unittest.TestCase):
 class TestContextManager(unittest.TestCase):
 
     def testManager( self ):
-        with pysam.Samfile('ex1.bam', 'rb') as samfile:
+        with pysam.Samfile(os.path.join(DATADIR,'ex1.bam'),
+                           'rb') as samfile:
             samfile.fetch()
         self.assertEqual( samfile._isOpen(), False )
 
 class TestExceptions(unittest.TestCase):
 
     def setUp(self):
-        self.samfile=pysam.Samfile( "ex1.bam","rb" )
+        self.samfile=pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                   "rb")
 
     def testMissingFile(self):
 
@@ -1235,7 +1277,10 @@ class TestWrongFormat(unittest.TestCase):
     '''test cases for opening files not in bam/sam format.'''
 
     def testOpenSamAsBam( self ):
-        self.assertRaises( ValueError, pysam.Samfile, 'ex1.sam', 'rb' )
+        self.assertRaises( ValueError,
+                           pysam.Samfile,
+                           os.path.join(DATADIR,'ex1.sam'),
+                           'rb' )
 
     def testOpenBamAsSam( self ):
         # test fails, needs to be implemented.
@@ -1250,7 +1295,10 @@ class TestWrongFormat(unittest.TestCase):
         pass
 
     def testOpenFastaAsBam( self ):
-        self.assertRaises( ValueError, pysam.Samfile, 'ex1.fa', 'rb' )
+        self.assertRaises( ValueError, 
+                           pysam.Samfile,
+                           os.path.join(DATADIR,'ex1.fa'),
+                           'rb' )
 
 class TestFastaFile(unittest.TestCase):
 
@@ -1261,7 +1309,7 @@ class TestFastaFile(unittest.TestCase):
                    }
 
     def setUp(self):
-        self.file=pysam.Fastafile( "ex1.fa" )
+        self.file=pysam.Fastafile(os.path.join(DATADIR,"ex1.fa"))
 
     def testFetch(self):
         for id, seq in list(self.mSequences.items()):
@@ -1307,7 +1355,7 @@ class TestFastaFile(unittest.TestCase):
 class TestFastqFile(unittest.TestCase):
 
     def setUp(self):
-        self.file=pysam.Fastqfile( "ex1.fq" )
+        self.file=pysam.Fastqfile(os.path.join(DATADIR,"ex1.fq"))
 
     def testCounts( self ):
         self.assertEqual( len( [ x for x in self.file ] ), 3270 )
@@ -1469,7 +1517,8 @@ class TestAlignedRead(unittest.TestCase):
 
         see http://groups.google.com/group/pysam-user-group/browse_thread/thread/67ca204059ea465a
         '''
-        samfile=pysam.Samfile( "ex8.bam","rb" )
+        samfile=pysam.Samfile(os.path.join(DATADIR,"ex8.bam"),
+                              "rb")
 
         for entry in samfile:
             before = entry.tags
@@ -1523,8 +1572,8 @@ class TestDeNovoConstruction(unittest.TestCase):
                'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
                       {'LN': 1584, 'SN': 'chr2'}], }
 
-    bamfile = "ex6.bam"
-    samfile = "ex6.sam"
+    bamfile = os.path.join(DATADIR, "ex6.bam")
+    samfile = os.path.join(DATADIR, "ex6.sam")
 
     def checkFieldEqual( self, read1, read2, exclude = []):
         '''check if two reads are equal by comparing each field.'''
@@ -1581,7 +1630,9 @@ class TestDeNovoConstruction(unittest.TestCase):
         
         tmpfilename = "tmp_%i.sam" % id(self)
 
-        outfile = pysam.Samfile( tmpfilename, "wh", header = self.header )
+        outfile = pysam.Samfile(tmpfilename, 
+                                "wh", 
+                                header = self.header )
 
         for x in self.reads: outfile.write( x )
         outfile.close()
@@ -1592,21 +1643,21 @@ class TestDeNovoConstruction(unittest.TestCase):
 
     def testBAMPerRead( self ):
         '''check if individual reads are binary equal.'''
-        infile = pysam.Samfile( self.bamfile, "rb")
+        infile = pysam.Samfile(self.bamfile, "rb")
 
         others = list(infile)
         for denovo, other in zip( others, self.reads):
             self.checkFieldEqual( other, denovo )
-            self.assertEqual( other.compare( denovo ), 0 )
+            self.assertEqual(other.compare( denovo ), 0 )
 
     def testSAMPerRead( self ):
         '''check if individual reads are binary equal.'''
-        infile = pysam.Samfile( self.samfile, "r")
+        infile = pysam.Samfile(self.samfile, "r")
 
         others = list(infile)
         for denovo, other in zip( others, self.reads):
-            self.checkFieldEqual( other, denovo )
-            self.assertEqual( other.compare( denovo), 0 )
+            self.checkFieldEqual(other, denovo )
+            self.assertEqual(other.compare( denovo), 0 )
             
     def testBAMWholeFile( self ):
         
@@ -1632,15 +1683,15 @@ class TestDeNovoConstructionUserTags(TestDeNovoConstruction):
                'x3': {'A': 6, 'B': 5 },
                'x2': {'A': 4, 'B': 5 } }
 
-    bamfile = "example_user_header.bam"
-    samfile = "example_user_header.sam"
+    bamfile = os.path.join(DATADIR,"example_user_header.bam")
+    samfile = os.path.join(DATADIR,"example_user_header.sam")
 
 class TestEmptyHeader( unittest.TestCase ):
     '''see issue 84.'''
     
     def testEmptyHeader( self ):
 
-        s = pysam.Samfile('example_empty_header.bam')
+        s = pysam.Samfile(os.path.join(DATADIR,'example_empty_header.bam'))
         self.assertEqual( s.header, {'SQ': [{'LN': 1000, 'SN': 'chr1'}]} )
 
 class TestBTagSam( unittest.TestCase ):
@@ -1652,7 +1703,7 @@ class TestBTagSam( unittest.TestCase ):
                 [12,15],
                 [-1.0,5.0,2.5] ]
             
-    filename = 'example_btag.sam'
+    filename = os.path.join(DATADIR,'example_btag.sam')
 
     def testRead( self ):
 
@@ -1676,21 +1727,23 @@ class TestBTagSam( unittest.TestCase ):
             self.assertEqual( after, before )
 
 class TestBTagBam( TestBTagSam ):
-    filename = 'example_btag.bam'
+    filename = os.path.join(DATADIR,'example_btag.bam')
 
 class TestDoubleFetch(unittest.TestCase):
     '''check if two iterators on the same bamfile are independent.'''
     
+    filename = os.path.join(DATADIR, 'ex1.bam')
+
     def testDoubleFetch( self ):
 
-        samfile1 = pysam.Samfile('ex1.bam', 'rb')
+        samfile1 = pysam.Samfile(self.filename, 'rb')
 
         for a,b in zip(samfile1.fetch(), samfile1.fetch()):
             self.assertEqual( a.compare( b ), 0 )
 
     def testDoubleFetchWithRegion( self ):
 
-        samfile1 = pysam.Samfile('ex1.bam', 'rb')
+        samfile1 = pysam.Samfile(self.filename, 'rb')
         chr, start, stop = 'chr1', 200, 3000000
         self.assertTrue(len(list(samfile1.fetch ( chr, start, stop))) > 0) #just making sure the test has something to catch
 
@@ -1699,7 +1752,7 @@ class TestDoubleFetch(unittest.TestCase):
 
     def testDoubleFetchUntilEOF( self ):
 
-        samfile1 = pysam.Samfile('ex1.bam', 'rb')
+        samfile1 = pysam.Samfile(self.filename, 'rb')
 
         for a,b in zip(samfile1.fetch( until_eof = True), 
                        samfile1.fetch( until_eof = True )):
@@ -1731,7 +1784,7 @@ class TestRemoteFileHTTP( unittest.TestCase):
 
     url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/ex1.bam"
     region = "chr1:1-1000"
-    local = "ex1.bam"
+    local = os.path.join(DATADIR,"ex1.bam")
 
     def testView( self ):
         samfile_local = pysam.Samfile(self.local, "rb")  
@@ -1789,11 +1842,13 @@ class TestLargeOptValues( unittest.TestCase ):
             self.assertEqual( exp, obs, "expected %s, got %s\n%s" % (str(exp), str(obs), str(rr)))
 
     def testSAM( self ):
-        samfile = pysam.Samfile("ex10.sam", "r")
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex10.sam"),
+                                "r")
         self.check( samfile )
 
     def testBAM( self ):
-        samfile = pysam.Samfile("ex10.bam", "rb")
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex10.bam"),
+                                "rb")
         self.check( samfile )
 
 # class TestSNPCalls( unittest.TestCase ):
@@ -1918,17 +1973,23 @@ class TestLogging( unittest.TestCase ):
         cols = bam.pileup()
         self.assertTrue( True )
 
-    def testFail1( self ):
-        self.check( "ex9_fail.bam", False )
-        self.check( "ex9_fail.bam", True )
+    def testFail1(self):
+        self.check(os.path.join(DATADIR,"ex9_fail.bam"),
+                   False)
+        self.check(os.path.join(DATADIR,"ex9_fail.bam"),
+                   True)
 
-    def testNoFail1( self ):
-        self.check( "ex9_nofail.bam", False )
-        self.check( "ex9_nofail.bam", True )
+    def testNoFail1(self):
+        self.check(os.path.join(DATADIR, "ex9_nofail.bam"),
+                   False)
+        self.check(os.path.join(DATADIR,"ex9_nofail.bam"),
+                   True)
 
     def testNoFail2( self ):
-        self.check( "ex9_nofail.bam", True )
-        self.check( "ex9_nofail.bam", True )
+        self.check(os.path.join(DATADIR,"ex9_nofail.bam"),
+                   True)
+        self.check(os.path.join(DATADIR,"ex9_nofail.bam"),
+                   True)
         
 # TODOS
 # 1. finish testing all properties within pileup objects
@@ -1939,26 +2000,27 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
 
     def testCount( self ):
 
-        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                "rb")
 
         for contig in ("chr1", "chr2" ):
             for start in range( 0, 2000, 100 ):
                 end = start + 1
-                self.assertEqual( len( list( samfile.fetch( contig, start, end ) ) ),
-                                  samfile.count( contig, start, end ) )
+                self.assertEqual(len( list( samfile.fetch( contig, start, end ) ) ),
+                                 samfile.count( contig, start, end ) )
 
                 # test empty intervals
-                self.assertEqual( len( list( samfile.fetch( contig, start, start ) ) ),
-                                  samfile.count( contig, start, start ) )
+                self.assertEqual(len( list( samfile.fetch( contig, start, start ) ) ),
+                                 samfile.count( contig, start, start ) )
 
                 # test half empty intervals
-                self.assertEqual( len( list( samfile.fetch( contig, start ) ) ),
-                                  samfile.count( contig, start ) )
+                self.assertEqual(len( list( samfile.fetch( contig, start ) ) ),
+                                 samfile.count(contig, start))
 
     def testMate( self ):
         '''test mate access.'''
 
-        with open( "ex1.sam", "rb" ) as inf:
+        with open(os.path.join(DATADIR,"ex1.sam"), "rb") as inf:
             readnames = [ x.split(b"\t")[0] for x in inf.readlines() ]
         if sys.version_info[0] >= 3:
             readnames = [ name.decode('ascii') for name in readnames ]
@@ -1966,7 +2028,8 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
         counts = collections.defaultdict( int )
         for x in readnames: counts[x] += 1
 
-        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                "rb" )
         for read in samfile.fetch():
             if not read.is_paired:
                 self.assertRaises( ValueError, samfile.mate, read )
@@ -1986,7 +2049,8 @@ class TestSamfileUtilityFunctions( unittest.TestCase ):
     def testIndexStats( self ):
         '''test if total number of mapped/unmapped reads is correct.'''
 
-        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                "rb")
         self.assertEqual( samfile.mapped, 3235 )
         self.assertEqual( samfile.unmapped, 35 )
 
@@ -2006,7 +2070,8 @@ class TestSamtoolsProxy( unittest.TestCase ):
 class TestSamfileIndex( unittest.TestCase):
     
     def testIndex( self ):
-        samfile = pysam.Samfile( "ex1.bam", "rb" )
+        samfile = pysam.Samfile(os.path.join(DATADIR,"ex1.bam"),
+                                "rb")
         index = pysam.IndexedReads( samfile )
         index.build()
 
@@ -2023,7 +2088,7 @@ class TestSamfileIndex( unittest.TestCase):
 if __name__ == "__main__":
     # build data files
     print ("building data files")
-    subprocess.call( "make", shell=True)
+    subprocess.call( "make -C %s" % DATADIR, shell=True)
     print ("starting tests")
     unittest.main()
     print ("completed tests")

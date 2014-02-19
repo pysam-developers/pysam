@@ -329,7 +329,7 @@ VALID_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                                "LB" : str, "PG" : str, "PI" : str,
                                "PL" : str, "PU" : str, "SM" : str,},
                        "PG" : {"ID" : str, "PN" : str, "CL" : str, 
-                                "PP" : str, "DS" : str, "VN" : str,},}
+                               "PP" : str, "DS" : str, "VN" : str,},}
 
 # output order of fields within records
 VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
