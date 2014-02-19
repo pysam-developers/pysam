@@ -311,28 +311,35 @@ cdef int pileup_fetch_callback( bam1_t *b, void *data):
 ######################################################################
 ######################################################################
 # valid types for sam headers
-VALID_HEADER_TYPES = { "HD" : dict,
-                       "SQ" : list,
-                       "RG" : list,
-                       "PG" : list,
-                       "CO" : list }
+VALID_HEADER_TYPES = {"HD" : dict,
+                      "SQ" : list,
+                      "RG" : list,
+                      "PG" : list,
+                      "CO" : list}
 
 # order of records within sam headers
-VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO" )
+VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
 
 # type conversions within sam header records
-VALID_HEADER_FIELDS = { "HD" : { "VN" : str, "SO" : str, "GO" : str },
-                        "SQ" : { "SN" : str, "LN" : int, "AS" : str, "M5" : str, "UR" : str, "SP" : str },
-                        "RG" : { "ID" : str, "SM" : str, "LB" : str, "DS" : str, "PU" : str, "PI" : str, 
-                                 "CN" : str, "DT" : str, "PL" : str, "FO" : str, "KS" : str, "PG" : str,},
-                        "PG" : { "PN" : str, "ID" : str, "VN" : str, "CL" : str, "PP" : str }, }
+VALID_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
+                       "SQ" : {"SN" : str, "LN" : int, "AS" : str, 
+                               "M5" : str, "SP" : str, "UR" : str,},
+                       "RG" : {"ID" : str, "CN" : str, "DS" : str,
+                               "DT" : str, "FO" : str, "KS" : str,
+                               "LB" : str, "PG" : str, "PI" : str,
+                               "PL" : str, "PU" : str, "SM" : str,},
+                       "PG" : {"ID" : str, "PN" : str, "CL" : str, 
+                                "PP" : str, "DS" : str, "VN" : str,},}
 
 # output order of fields within records
-VALID_HEADER_ORDER = { "HD" : ( "VN", "SO", "GO" ),
-                       "SQ" : ( "SN", "LN", "AS", "M5" , "UR" , "SP" ),
-                       "RG" : ( "ID", "SM", "LB", "DS" , "PU" , "PI" , "CN" , "DT", "PL", "FO", "KS", "PG" ),
-                       "PG" : ( "PN", "ID", "VN", "CL", "PP" ), }
-
+VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
+                      "SQ" : ("SN", "LN", "AS", "M5",
+                               "UR", "SP"),
+                      "RG" : ("ID", "SM", "LB", "DS", 
+                              "PU", "PI", "CN", "DT",
+                              "PL", "FO", "KS", "PG"),
+                      "PG" : ("PN", "ID", "VN", "CL", 
+                              "PP"),}
 
 ######################################################################
 ######################################################################
