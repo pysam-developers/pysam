@@ -24,7 +24,7 @@ else:
 
 SAMTOOLS="samtools"
 WORKDIR="pysam_test_work"
-DATADIR="data"
+DATADIR="pysam_data"
 
 def checkBinaryEqual( filename1, filename2 ):
     '''return true if the two files are binary equal.'''
@@ -520,15 +520,24 @@ class IOTest(unittest.TestCase):
 
     def testReadUnformattedFile( self ):
         '''test reading from a file that is not bam/sam formatted'''
-        input_filename = os.path.join(DATADIR,"example.vcf40")
+        input_filename = os.path.join(DATADIR,'Makefile')
 
         # bam - file raise error
-        self.assertRaises( ValueError, pysam.Samfile, input_filename, "rb" )
+        self.assertRaises( ValueError, 
+                           pysam.Samfile, 
+                           input_filename, 
+                           "rb" )
 
         # sam - file error, but can't fetch
-        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r" )
+        self.assertRaises( ValueError, 
+                           pysam.Samfile,
+                           input_filename, 
+                           "r" )
         
-        self.assertRaises( ValueError, pysam.Samfile, input_filename, "r", 
+        self.assertRaises( ValueError, 
+                           pysam.Samfile, 
+                           input_filename, 
+                           "r", 
                            check_header = False)
 
     def testBAMWithoutAlignedReads( self ):

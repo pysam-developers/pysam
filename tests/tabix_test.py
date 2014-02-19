@@ -13,6 +13,8 @@ import subprocess
 import glob
 import re
 
+DATADIR='tabix_data'
+
 IS_PYTHON3 = sys.version_info[0] >= 3
 
 def myzip_open( infile, mode = "r" ):
@@ -80,8 +82,8 @@ def checkBinaryEqual( filename1, filename2 ):
     return found
 
 class TestIndexing(unittest.TestCase):
-    filename = "example.gtf.gz" 
-    filename_idx = "example.gtf.gz.tbi" 
+    filename = os.path.join(DATADIR,"example.gtf.gz")
+    filename_idx = os.path.join(DATADIR,"example.gtf.gz.tbi")
 
     def setUp( self ):
         
@@ -99,8 +101,8 @@ class TestIndexing(unittest.TestCase):
         os.unlink( self.tmpfilename + ".tbi" )
 
 class TestCompression(unittest.TestCase):
-    filename = "example.gtf.gz" 
-    filename_idx = "example.gtf.gz.tbi" 
+    filename = os.path.join(DATADIR,"example.gtf.gz")
+    filename_idx = os.path.join(DATADIR,"example.gtf.gz.tbi")
     preset = "gff"
 
     def setUp( self ):
@@ -144,23 +146,23 @@ class TestCompression(unittest.TestCase):
             pass
 
 class TestCompressionSam( TestCompression ):
-    filename = "example.sam.gz"
-    filename_index = "example.sam.gz.tbi"
+    filename = os.path.join(DATADIR,"example.sam.gz")
+    filename_index = os.path.join(DATADIR,"example.sam.gz.tbi")
     preset = "sam"
 
 class TestCompressionBed( TestCompression ):
-    filename = "example.bed.gz"
-    filename_index = "example.bed.gz.tbi"
+    filename = os.path.join(DATADIR,"example.bed.gz")
+    filename_index = os.path.join(DATADIR,"example.bed.gz.tbi")
     preset = "bed"
 
 class TestCompressionVCF( TestCompression ):
-    filename = "example.vcf.gz"
-    filename_index = "example.vcf.gz.tbi"
+    filename = os.path.join(DATADIR,"example.vcf.gz")
+    filename_index = os.path.join(DATADIR,"example.vcf.gz.tbi")
     preset = "vcf"
 
 class TestIteration( unittest.TestCase ):
 
-    filename = "example.gtf.gz" 
+    filename = os.path.join(DATADIR,"example.gtf.gz")
 
     def setUp( self ):
 
@@ -318,7 +320,7 @@ class TestIteration( unittest.TestCase ):
 
 class TestParser( unittest.TestCase ):
 
-    filename = "example.gtf.gz" 
+    filename = os.path.join(DATADIR,"example.gtf.gz")
 
     def setUp( self ):
 
@@ -414,7 +416,7 @@ class TestParser( unittest.TestCase ):
 
 class TestIterators( unittest.TestCase ):
 
-    filename = "example.gtf.gz" 
+    filename = os.path.join(DATADIR,"example.gtf.gz")
 
     iterator = pysam.tabix_generic_iterator
     parser = pysam.asTuple
@@ -506,7 +508,7 @@ class TestGTF( TestParser ):
             self.assertEqual( c[0], r.contig )
 
 class TestBed( unittest.TestCase ):
-    filename = "example.bed.gz"
+    filename = os.path.join(DATADIR,"example.bed.gz")
 
     def setUp( self ):
 
@@ -545,7 +547,7 @@ class TestBed( unittest.TestCase ):
 
 class TestVCF( unittest.TestCase ):
 
-    filename = "example.vcf40"
+    filename = os.path.join(DATADIR,"example.vcf40")
 
     def setUp( self ):
         
@@ -751,7 +753,7 @@ class TestVCFFromVCF( TestVCF ):
 # Two samples are created - 
 # 1. Testing pysam/tabix access
 # 2. Testing the VCF class
-vcf_files = glob.glob( "vcf-examples/*.vcf" )
+vcf_files = glob.glob(os.path.join(DATADIR, "vcf", "*.vcf"))
 
 for vcf_file in vcf_files:
     n = "VCFFromTabixTest_%s" % os.path.basename( vcf_file[:-4] )
@@ -764,7 +766,7 @@ class TestRemoteFileHTTP( unittest.TestCase):
 
     url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example.gtf.gz"
     region = "chr1:1-1000"
-    local = "example.gtf.gz"
+    local = os.path.join(DATADIR,"example.gtf.gz")
 
     def testFetchAll( self ):
         remote_file = pysam.Tabixfile(self.url, "r")  
