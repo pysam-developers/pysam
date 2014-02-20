@@ -180,7 +180,7 @@ nosetests_external_deps $OS
 python setup.py install
 
 # create auxilliary data
-make -C tests
+make -C pysam_data/tests
 
 # change into tests directory. Otherwise,
 # 'import pysam' will import the repository,
