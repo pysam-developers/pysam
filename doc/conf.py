@@ -18,7 +18,7 @@ import sys, os, glob
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 _libdir = "../build/lib.%s-%s-%s.%s" % (os.uname()[0].lower(), os.uname()[4],sys.version_info[0], sys.version_info[1] )
 if os.path.exists( _libdir ):
-    sys.path.append( os.path.abspath( _libdir ) )
+    sys.path.insert(0, os.path.abspath( _libdir ) )
 
 # -- General configuration -----------------------------------------------------
 
@@ -51,11 +51,9 @@ copyright = u'2009, Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Kevin J
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
-sys.path.insert( 0, "../pysam")
-import version
-
+import pysam.version
 # The short X.Y version.
-version = version.__version__
+version = pysam.version.__version__
 # The full version, including alpha/beta/rc tags.
 release = version
 
