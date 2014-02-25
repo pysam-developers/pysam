@@ -436,7 +436,7 @@ cdef class Fastafile:
 
         '''*(reference = None, start = None, end = None, region = None)*
 
-        fetch :meth:`AlignedRead` objects in a :term:`region` using 0-based indexing.
+        fetch :class:`AlignedRead` objects in a :term:`region` using 0-based indexing.
 
         The region is specified by :term:`reference`, *start* and *end*.
 
@@ -2306,7 +2306,7 @@ cdef inline convert_python_tag(pytag, value, fmts, args):
 ###########################################################
 cdef class AlignedRead:
     '''
-    Class representing an aligned read. see SAM format specification for
+    Class representing an aligned read. See the SAM format specification for
     the meaning of fields (http://samtools.sourceforge.net/).
 
     This class stores a handle to the samtools C-structure representing
@@ -2316,10 +2316,9 @@ cdef class AlignedRead:
 
     For write access, the C-structure is updated in-place. This is
     not the most efficient way to build BAM entries, as the variable
-    length data is concatenated and thus needs to resized if
+    length data is concatenated and thus needs to be resized if
     a field is updated. Furthermore, the BAM entry might be
-    in an inconsistent state. The :meth:`~validate` method can
-    be used to check if an entry is consistent.
+    in an inconsistent state.
 
     One issue to look out for is that the sequence should always
     be set *before* the quality scores. Setting the sequence will
@@ -2544,9 +2543,9 @@ cdef class AlignedRead:
         .. note::
             The output is a list of (operation, length) tuples, such as
             ``[ (0, 30) ]``.
-            This is different from the SAM specification and the
-            the :meth:`cigarstring` property, which uses a
-            (length,operation order, for example: ``30M``.
+            This is different from the SAM specification and
+            the :attr:`cigarstring` property, which uses a
+            (length, operation) order, for example: ``30M``.
 
         """
         def __get__(self):
@@ -2611,7 +2610,7 @@ cdef class AlignedRead:
         .. note::
             The order length,operation is specified in the
             SAM format. It is different from the order of
-            the :meth:`cigar` property.
+            the :attr:`cigar` property.
 
         Returns the empty string if not present.
         '''
@@ -2643,10 +2642,9 @@ cdef class AlignedRead:
            read.seq = read.seq[5:10]
            read.qual = q[5:10]
 
-        The sequence is as it is returned in the bam file. Some mappers
+        The sequence is returned as it is stored in the BAM file. Some mappers
         might have stored a reverse complement of the original read 
         sequence.
-
         """
         def __get__(self):
             cdef bam1_t * src
@@ -2753,14 +2751,16 @@ cdef class AlignedRead:
                 p[k] = <uint8_t>q[k] - 33
 
     property query:
-        """aligned portion of the read and excludes any flanking bases
-        that were :term:`soft clipped` (None if not present).
+        """aligned portion of the read.
+
+        This is a substring of :attr:`seq` that excludes flanking bases that were
+        :term:`soft clipped` (None if not present). It is equal to ``seq[qstart:qend]``.
 
         In Python 3, this property is of type bytes. Assigning a
         unicode string to it consisting of ASCII characters only will
         work, but is inefficient.
 
-        SAM/BAM files may included extra flanking bases sequences that were
+        SAM/BAM files may include extra flanking bases that are
         not part of the alignment.  These bases may be the result of the
         Smith-Waterman or other algorithms, which may not require alignments
         that begin at the first residue or end at the last.  In addition,
@@ -2783,7 +2783,11 @@ cdef class AlignedRead:
 
     property qqual:
         """aligned query sequence quality values (None if not
-        present). This property is read-only.
+        present). These are the quality values that correspond to :attr:`query`, that is,
+        they exclude qualities of :term:`soft clipped` bases. This is equal to
+        ``qual[qstart:qend]``.
+
+        This property is read-only.
 
         In Python 3, this property is of type bytes."""
         def __get__(self):
@@ -2800,7 +2804,10 @@ cdef class AlignedRead:
             return get_qual_range(src, start, end)
 
     property qstart:
-        """start index of the aligned query portion of the sequence (0-based, inclusive)"""
+        """start index of the aligned query portion of the sequence (0-based, inclusive).
+
+        This the index of the first base in :attr:`seq` that is not soft-clipped.
+        """
         def __get__(self):
             return query_start(self._delegate)
 
@@ -2810,7 +2817,9 @@ cdef class AlignedRead:
             return query_end(self._delegate)
 
     property qlen:
-        """Length of the aligned query sequence"""
+        """length of the aligned query sequence.
+
+        This is equal to :attr:`qend` - :attr:`qstart`"""
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
@@ -3037,9 +3046,15 @@ cdef class AlignedRead:
         """properties bin"""
         def __get__(self): return self._delegate.core.bin
         def __set__(self, bin): self._delegate.core.bin = bin
+
     property rlen:
-        '''length of the read (read only). Returns 0 if not given.'''
+        """length of the read. This includes soft-clipped bases and is equal to ``len(seq)``.
+
+        This property is read-only.
+
+        Returns 0 if not available."""
         def __get__(self): return self._delegate.core.l_qseq
+
     property aend:
         '''aligned reference position of the read on the reference genome.  
         
@@ -3053,8 +3068,9 @@ cdef class AlignedRead:
             return bam_calend(&src.core, bam1_cigar(src))
 
     property alen:
-        '''aligned length of the read on the reference genome.  Returns None if
-        not available.'''
+        '''aligned length of the read on the reference genome.
+
+        This is equal to `aend - pos`. Returns None if not available.'''
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate

@@ -39,6 +39,19 @@ distribution. Type
 
 for more options.
 
+Build the documentation
+=======================
+
+Install a version of Sphinx that matches your Python version (2 or 3) and run
+
+    python setup.py build_sphinx
+
+or
+
+    python3 setup.py build_sphinx
+
+The documentation will be put into build/sphinx.
+
 Architecture specific options
 =============================
 
