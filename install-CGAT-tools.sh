@@ -179,14 +179,14 @@ nosetests_external_deps $OS
 # install code
 python setup.py install
 
-# create auxilliary data
-make -C pysam_data/tests
-
 # change into tests directory. Otherwise,
 # 'import pysam' will import the repository,
 # not the installed version. This causes
 # problems in the compilation test.
 cd tests
+
+# create auxilliary data
+make -C pysam_data/tests
 
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch
