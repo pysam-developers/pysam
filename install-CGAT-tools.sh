@@ -186,7 +186,10 @@ python setup.py install
 cd tests
 
 # create auxilliary data
-make -C pysam_data/tests
+echo
+echo 'building test data'
+echo 
+make -C pysam_data
 
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch
