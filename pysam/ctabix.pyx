@@ -97,11 +97,11 @@ cdef class Tabixfile:
     Otherwise, *parser* is assumed to be a functor that will return
     parsed data (see for example :meth:`asTuple` and :meth:`asGTF`).
     '''
-    def __cinit__(self, filename, mode = 'r', 
-                  parser = None, *args, **kwargs ):
+    def __cinit__(self, filename, mode = 'r',
+                  parser = None, index = None, *args, **kwargs ):
         self.tabixfile = NULL
         self.parser = parser
-        self._open( filename, mode, *args, **kwargs )
+        self._open( filename, mode, index, *args, **kwargs )
 
     def _isOpen( self ):
         '''return true if samfile has been opened.'''
@@ -110,6 +110,7 @@ cdef class Tabixfile:
     def _open( self, 
                filename,
                mode ='r',
+               index = None,
               ):
         '''open a :term:`tabix file` for reading.
         '''
@@ -120,7 +121,7 @@ cdef class Tabixfile:
         if self.tabixfile != NULL: self.close()
         self.tabixfile = NULL
 
-        filename_index = filename + ".tbi"
+        filename_index = index or (filename + ".tbi")
         self.isremote = filename.startswith( "http:") or filename.startswith( "ftp:" )
 
         # encode all the strings
