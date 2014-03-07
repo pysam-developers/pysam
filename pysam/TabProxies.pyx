@@ -1,4 +1,6 @@
-import types, sys
+import types
+import sys
+import string
 
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -425,24 +427,26 @@ cdef class GTFProxy( TupleProxy ):
         attributes = self.attributes
 
         # separate into fields
-        fields = [ x.strip() for x in attributes.split(";")[:-1]]
+        fields = [x.strip() for x in attributes.split(";")[:-1]]
         
         result = {}
 
         for f in fields:
-            
-            d = [ x.strip() for x in f.split(" ")]
-            
+            # split at most once in order to avoid separating
+            # multi-word values
+            d = [x.strip() for x in string.split(f, " ", maxsplit=1)]
+
             n,v = d[0], d[1]
-            if len(d) > 2: v = d[1:]
+            if len(d) > 2:
+                v = d[1:]
 
             if v[0] == '"' and v[-1] == '"':
                 v = v[1:-1]
             else:
                 ## try to convert to a value
                 try:
-                    v = float( v )
-                    v = int( v )
+                    v = float(v)
+                    v = int(v)
                 except ValueError:
                     pass
                 except TypeError:
