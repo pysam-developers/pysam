@@ -3240,47 +3240,84 @@ cdef class AlignedRead:
 
            return qpos
             
-
     property aligned_pairs:
-       """a list of aligned read and reference positions.
+        """a list of aligned read and reference positions.
 
-       Unaligned position are marked by None.
-       """
-       def __get__(self):
-           cdef uint32_t k, i, pos, qpos
-           cdef int op
-           cdef uint32_t * cigar_p
-           cdef bam1_t * src 
+        Unaligned position are marked by None.
+        """
+        def __get__(self):
+            cdef uint32_t k, i, pos, qpos
+            cdef int op
+            cdef uint32_t * cigar_p
+            cdef bam1_t * src 
 
-           src = self._delegate
-           if src.core.n_cigar == 0: return []
+            src = self._delegate
+            if src.core.n_cigar == 0: return []
 
-           result = []
-           pos = src.core.pos
-           qpos = 0
-           cigar_p = bam1_cigar(src)
+            result = []
+            pos = src.core.pos
+            qpos = 0
+            cigar_p = bam1_cigar(src)
 
-           for k from 0 <= k < src.core.n_cigar:
-               op = cigar_p[k] & BAM_CIGAR_MASK
-               l = cigar_p[k] >> BAM_CIGAR_SHIFT
+            for k from 0 <= k < src.core.n_cigar:
+                op = cigar_p[k] & BAM_CIGAR_MASK
+                l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
-               if op == BAM_CMATCH:
-                   for i from pos <= i < pos + l:
-                       result.append( (qpos, i) )
-                       qpos += 1
-                   pos += l
+                if op == BAM_CMATCH:
+                    for i from pos <= i < pos + l:
+                        result.append( (qpos, i) )
+                        qpos += 1
+                    pos += l
 
-               elif op == BAM_CINS:
-                   for i from pos <= i < pos + l:
-                       result.append( (qpos, None) )
-                       qpos += 1
+                elif op == BAM_CINS:
+                    for i from pos <= i < pos + l:
+                        result.append( (qpos, None) )
+                        qpos += 1
 
-               elif op == BAM_CDEL or op == BAM_CREF_SKIP:
-                   for i from pos <= i < pos + l:
-                       result.append( (None, i) )
-                   pos += l
+                elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                    for i from pos <= i < pos + l:
+                        result.append( (None, i) )
+                    pos += l
                        
-           return result
+            return result
+
+    property blocks:
+        """ a list of start and end positions of
+        aligned gapless blocks.
+
+        The start and end positions are in genomic 
+        coordinates. 
+      
+        Blocks are not normalized, i.e. two blocks 
+        might be directly adjacent. This happens if
+        the two blocks are separated by an insertion 
+        in the read.
+        """
+
+        def __get__(self):
+            cdef uint32_t k, pos
+            cdef int op
+            cdef uint32_t * cigar_p
+            cdef bam1_t * src
+
+            src = self._delegate
+            if src.core.n_cigar == 0: return []
+            
+            result = []
+            pos = src.core.pos
+            cigar_p = bam1_cigar(src)
+
+            for k from 0 <= k < src.core.n_cigar:
+                op = cigar_p[k] & BAM_CIGAR_MASK
+                l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                if op == BAM_CMATCH:
+                    result.append((pos, pos + l))
+                    pos += l
+
+                elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                    pos += l
+
+            return result
 
     #######################################################################
     #######################################################################
