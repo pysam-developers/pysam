@@ -874,7 +874,7 @@ cdef class Samfile:
             else:
                 self.index = bam_index_load(filename)
                 if self.index == NULL:
-                    raise IOError("error while opening index `%s` " % filename )
+                    warnings.warn("unable to open index for `%s` " % filename)
 
             if not self.isstream:
                 self.start_offset = bam_tell( self.samfile.x.bam )
