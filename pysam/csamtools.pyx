@@ -2123,8 +2123,8 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
 cdef inline int32_t query_start(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p, op
-    cdef uint32_t k
+    cdef uint32_t * cigar_p
+    cdef uint32_t k, op
     cdef uint32_t start_offset = 0
 
     if src.core.n_cigar:
@@ -2146,8 +2146,8 @@ cdef inline int32_t query_start(bam1_t *src) except -1:
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
 cdef inline int32_t query_end(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p, op
-    cdef uint32_t k
+    cdef uint32_t * cigar_p
+    cdef uint32_t k, op
     cdef uint32_t end_offset = src.core.l_qseq
 
     if src.core.n_cigar>1:
@@ -2381,7 +2381,8 @@ cdef class AlignedRead:
         '''return -1,0,1, if contents in this are binary <,=,> to *other*'''
 
         cdef int retval, x
-        cdef bam1_t *t, *o
+        cdef bam1_t *t
+        cdef bam1_t *o
 
         t = self._delegate
         o = other._delegate
@@ -2516,8 +2517,12 @@ cdef class AlignedRead:
             strncpy( p, qname, l )
 
     property cigar:
-        """the :term:`cigar` alignment (None if not present). The alignment
+        """the :term:`cigar` alignment. The alignment
         is returned as a list of tuples of (operation, length). 
+
+        If the alignment is not present, an empty list is
+        returned.
+
         The operations are:
 
         +-----+--------------+-----+
@@ -2542,22 +2547,25 @@ cdef class AlignedRead:
 
         .. note::
             The output is a list of (operation, length) tuples, such as
-            ``[ (0, 30) ]``.
+            ``[(0, 30)]``.
             This is different from the SAM specification and
             the :attr:`cigarstring` property, which uses a
             (length, operation) order, for example: ``30M``.
 
+        To unset the cigar property, assign an empty list
+        or None.
         """
         def __get__(self):
             cdef uint32_t * cigar_p
             cdef bam1_t * src
             cdef op, l, cigar
             cdef int k
+            cigar = []
 
             src = self._delegate
-            if src.core.n_cigar == 0: return None
+            if src.core.n_cigar == 0:
+                return cigar
 
-            cigar = []
             cigar_p = bam1_cigar(src);
             for k from 0 <= k < src.core.n_cigar:
                 op = cigar_p[k] & BAM_CIGAR_MASK
@@ -2565,12 +2573,11 @@ cdef class AlignedRead:
                 cigar.append((op, l))
             return cigar
 
-        def __set__(self, values ):
-            if values == None or len(values) == 0: return
+        def __set__(self, values):
             cdef uint32_t * p
             cdef bam1_t * src
             cdef op, l
-            cdef int k
+            cdef int k, ncigar
 
             k = 0
 
@@ -2579,14 +2586,19 @@ cdef class AlignedRead:
             # get location of cigar string
             p = bam1_cigar(src)
 
+            # empty values for cigar string
+            if values is None:
+                values = []
+
+            ncigar = len(values)
             # create space for cigar data within src.data
             pysam_bam_update( src,
                               src.core.n_cigar * 4,
-                              len(values) * 4,
+                              ncigar * 4,
                               <uint8_t*>p )
 
             # length is number of cigar operations, not bytes
-            src.core.n_cigar = len(values)
+            src.core.n_cigar = ncigar
 
             # re-acquire pointer to location in memory
             # as it might have moved
@@ -2598,7 +2610,9 @@ cdef class AlignedRead:
                 k += 1
 
             ## setting the cigar string also updates the "bin" attribute
-            src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, p))
+            src.core.bin = bam_reg2bin(
+                src.core.pos,
+                bam_calend(&src.core, p))
 
     property cigarstring:
         '''the :term:`cigar` alignment as a string.
@@ -2613,6 +2627,9 @@ cdef class AlignedRead:
             the :attr:`cigar` property.
 
         Returns the empty string if not present.
+
+        To unset the cigarstring, assign None or the
+        empty string.
         '''
         def __get__(self):
             c = self.cigar
@@ -2621,10 +2638,12 @@ cdef class AlignedRead:
             else: return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
             
         def __set__(self, cigar):
-            if cigar == None or len(cigar) == 0: self.cigar = []
-            parts = CIGAR_REGEX.findall( cigar )
-            # reverse order
-            self.cigar = [ (CIGAR2CODE[ord(y)], int(x)) for x,y in parts ]
+            if cigar is None or len(cigar) == 0:
+                self.cigar = []
+            else:
+                parts = CIGAR_REGEX.findall(cigar)
+                # reverse order
+                self.cigar = [(CIGAR2CODE[ord(y)], int(x)) for x,y in parts]
 
     property seq:
         """read sequence bases, including :term:`soft clipped` bases 
@@ -2947,7 +2966,8 @@ cdef class AlignedRead:
         '''
 
         cdef int      value_size
-        cdef uint8_t* value_ptr, *existing_ptr
+        cdef uint8_t * value_ptr
+        cdef uint8_t *existing_ptr
         cdef uint8_t  type_code
         cdef float    float_value
         cdef double   double_value
