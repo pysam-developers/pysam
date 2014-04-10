@@ -1568,6 +1568,12 @@ class TestAlignedRead(unittest.TestCase):
         # aend points to one beyond last aligned base in ref
         self.assertEqual( a.positions[-1], a.aend - 1 )
 
+    def testBlocks( self ):
+        a = self.buildRead()
+        self.assertEqual( a.blocks,
+                          [(20,30),
+                           (31,60)])
+        
 class TestDeNovoConstruction(unittest.TestCase):
     '''check BAM/SAM file construction using ex6.sam
     
