@@ -530,6 +530,20 @@ cdef class IteratorRowRegion(IteratorRow):
 
     cdef int cnext(self)
 
+cdef class IteratorRowHead(IteratorRow):
+    cdef bam_iter_t             iter # iterator state object
+    cdef bam1_t *               b
+    cdef int                    retval
+    cdef Samfile                samfile
+    cdef samfile_t              * fp
+    # true if samfile belongs to this object
+    cdef int owns_samfile
+    cdef int max_rows
+    cdef int current_row
+    cdef bam1_t * getCurrent( self )
+
+    cdef int cnext(self)
+
 cdef class IteratorRowAll(IteratorRow):
     cdef bam1_t * b
     cdef samfile_t * fp

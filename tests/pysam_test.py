@@ -1616,7 +1616,7 @@ class TestAlignedRead(unittest.TestCase):
             self.assertEqual(getattr(b, x), False)
             self.checkFieldEqual(a, b)
 
-    def testUpdate(self):
+    def testUpdate2(self):
         '''issue 135: inplace update of sequence and quality score.
 
         This does not work as setting the sequence will erase
@@ -1693,19 +1693,19 @@ class TestAlignedRead(unittest.TestCase):
                           (35, 55), (36, 56), (37, 57), (38, 58), (39, 59)])
 
         self.assertEqual(
-            a.positions, [x[1] for x in a.aligned_pairs if x[0] != None and x[1] != None])
+            a.positions,
+            [x[1] for x in a.aligned_pairs
+             if x[0] is not None and x[1] is not None])
         # alen is the length of the aligned read in genome
         self.assertEqual(a.alen, a.aligned_pairs[-1][0] + 1)
         # aend points to one beyond last aligned base in ref
         self.assertEqual(a.positions[-1], a.aend - 1)
 
-
-    def testBlocks( self ):
+    def testBlocks(self):
         a = self.buildRead()
-        self.assertEqual( a.blocks,
-                          [(20,30),
-                           (31,60)])
-        
+        self.assertEqual(a.blocks,
+                         [(20, 30), (31, 40), (40, 60)])
+
 class TestDeNovoConstruction(unittest.TestCase):
 
     '''check BAM/SAM file construction using ex6.sam
