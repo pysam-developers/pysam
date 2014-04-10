@@ -420,13 +420,13 @@ class IOTest(unittest.TestCase):
                   output_filename,
                   input_mode, output_mode, use_template=True):
         '''iterate through *input_filename* writing to *output_filename* and
-        comparing the output to *reference_filename*. 
+        comparing the output to *reference_filename*.
 
         The files are opened according to the *input_mode* and *output_mode*.
 
-        If *use_template* is set, the header is copied from infile using the
-        template mechanism, otherwise target names and lengths are passed 
-        explicitely. 
+        If *use_template* is set, the header is copied from infile
+        using the template mechanism, otherwise target names and
+        lengths are passed explicitely.
 
         '''
 
@@ -639,6 +639,16 @@ class IOTest(unittest.TestCase):
 
         self.checkEcho(input_filename, reference_filename, output_filename,
                        "rU", "w")
+
+    def testHead(self):
+        '''test the head iterator'''
+        samfile = pysam.Samfile(os.path.join(DATADIR, "ex1.bam"),
+                                "rb")
+        l10 = list(samfile.head(10))
+        l100 = list(samfile.head(100))
+        self.assertEqual(len(l10), 10)
+        self.assertEqual(len(l100), 100)
+        self.assertEqual(map(str, l10), map(str, l100[:10]))
 
 
 class TestFloatTagBug(unittest.TestCase):
@@ -1705,6 +1715,7 @@ class TestAlignedRead(unittest.TestCase):
         a = self.buildRead()
         self.assertEqual(a.blocks,
                          [(20, 30), (31, 40), (40, 60)])
+
 
 class TestDeNovoConstruction(unittest.TestCase):
 

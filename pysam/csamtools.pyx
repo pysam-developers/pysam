@@ -1056,20 +1056,28 @@ cdef class Samfile:
                 raise ValueError ("fetching by region is not available for sam files" )
 
             if callback:
-                raise NotImplementedError( "callback not implemented yet" )
+                raise NotImplementedError("callback not implemented yet")
 
             if self.samfile.header == NULL:
-                raise ValueError( "fetch called for samfile without header")
+                raise ValueError("fetch called for samfile without header")
 
             # check if targets are defined
             # give warning, sam_read1 segfaults
             if self.samfile.header.n_targets == 0:
                 warnings.warn( "fetch called for samfile without header")
                 
-            return IteratorRowAll( self, reopen=reopen )
+            return IteratorRowAll(self, reopen=reopen )
 
-    def mate( self,
-              AlignedRead read ):
+    def head(self, n):
+        '''
+        return iterator over the first n alignments. 
+
+        This is useful for inspecting the bam-file.
+        '''
+        return IteratorRowHead(self, n)
+
+    def mate(self,
+             AlignedRead read):
         '''return the mate of :class:`AlignedRead` *read*.
 
         Throws a ValueError if read is unpaired or the mate
@@ -1500,14 +1508,6 @@ cdef class Samfile:
 
         return dest
 
-    def head(self, n):
-        '''
-        return iterator over the first n alignments. 
-
-        This is useful for inspecting the bam-file.
-        '''
-        return IteratorRowHead(n)
-
     ###############################################################
     ###############################################################
     ###############################################################
@@ -1706,7 +1706,7 @@ cdef class IteratorRowHead(IteratorRow):
 
         pyrex uses this non-standard name instead of next()
         """
-        if self.current_row > self.max_rows:
+        if self.current_row >= self.max_rows:
             raise StopIteration
 
         cdef int ret
