@@ -3147,7 +3147,8 @@ cdef class AlignedRead:
         def __set__(self, bin): self._delegate.core.bin = bin
 
     property rlen:
-        """length of the read. This includes soft-clipped bases and is equal to ``len(seq)``.
+        """length of the read. This includes soft-clipped bases
+        and is equal to ``len(seq)``.
 
         This property is read-only.
 
@@ -3217,7 +3218,7 @@ cdef class AlignedRead:
         def __get__(self): return self._delegate.core.isize
         def __set__(self, isize): self._delegate.core.isize = isize
     property tlen:
-        """the insert size"""
+        """the template length"""
         def __get__(self): return self._delegate.core.isize
         def __set__(self, isize): self._delegate.core.isize = isize
     property is_paired:

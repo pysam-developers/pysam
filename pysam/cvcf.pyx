@@ -226,7 +226,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         return result
  
 
-cdef class asVCFRecord( ctabix.Parser ): 
+cdef class asVCFRecord(ctabix.Parser): 
     '''converts a :term:`tabix row` into a VCF record.'''
     cdef vcffile
     def __init__(self, vcffile ):
@@ -891,6 +891,7 @@ class VCF(object):
     def _parse_header(self, stream):
         self._lineno = 0
         for line in stream:
+            line = ctabix._force_str(line)
             self._lineno += 1
             if line.startswith('##'):
                 self.parse_header( line.strip() )
@@ -1018,7 +1019,7 @@ class VCF(object):
 ## API functions added by Andreas
 ###########################################################################################################
 
-    def connect( self, filename ):
+    def connect(self, filename):
         '''connect to tabix file.'''
         self.tabixfile = pysam.Tabixfile( filename )
         self._parse_header(self.tabixfile.header)

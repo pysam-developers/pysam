@@ -648,7 +648,8 @@ class IOTest(unittest.TestCase):
         l100 = list(samfile.head(100))
         self.assertEqual(len(l10), 10)
         self.assertEqual(len(l100), 100)
-        self.assertEqual(map(str, l10), map(str, l100[:10]))
+        self.assertEqual(list(map(str, l10)),
+                         list(map(str, l100[:10])))
 
 
 class TestFloatTagBug(unittest.TestCase):

@@ -230,11 +230,10 @@ cdef class TabixHeaderIterator:
     cdef tabix_t * tabixfile
 
 cdef class Parser:
-     cdef parse( self, char * buffer, int len )
+     cdef parse(self, char * buffer, int len)
 
 cdef class asTuple(Parser):
-     cdef parse( self, char * buffer, int len )
-
+     cdef parse(self, char * buffer, int len)
 
 cdef class asGTF(Parser):
      pass
@@ -249,3 +248,5 @@ cdef class TabixIteratorParsed:
     cdef ti_iter_t iterator
     cdef tabix_t * tabixfile
     cdef Parser parser
+
+cdef _force_str(object s)

@@ -692,10 +692,12 @@ class TestVCFFromVCF(TestVCF):
 
         self.vcf = pysam.VCF()
         self.compare = loadAndConvert(self.filename, encode=False)
+    
+    def testConnecting(self):
+        self.vcf.connect(self.tmpfilename + ".gz")
 
     def testParsing(self):
 
-        # self.vcf.connect( self.tmpfilename + ".gz" )
         ncolumns = len(self.columns)
 
         fn = os.path.basename(self.filename)
