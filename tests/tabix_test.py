@@ -694,7 +694,15 @@ class TestVCFFromVCF(TestVCF):
         self.compare = loadAndConvert(self.filename, encode=False)
     
     def testConnecting(self):
-        self.vcf.connect(self.tmpfilename + ".gz")
+
+        fn = os.path.basename(self.filename)
+        for x, msg in self.fail_on_opening:
+            if "%i.vcf" % x == fn:
+                self.assertRaises(ValueError,
+                                  self.vcf.connect,
+                                  self.tmpfilename + ".gz")
+            else:
+                self.vcf.connect(self.tmpfilename + ".gz")
 
     def testParsing(self):
 
