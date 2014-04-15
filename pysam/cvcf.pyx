@@ -113,27 +113,27 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         #                     self.vcf._samples, 
         #                     len(data)))
     
-    def __cinit__(self, vcf ): 
+    def __cinit__(self, vcf): 
         # start indexed access at genotypes
         self.offset = 9
         
         self.vcf = vcf
     
-    def error(self,line,error,opt=None):
+    def error(self, line, error, opt=None):
         '''raise error.'''
         # pass to vcf file for error handling
         return self.vcf.error( line, error, opt )
 
-    cdef update( self, char * buffer, size_t nbytes ):
+    cdef update(self, char * buffer, size_t nbytes):
         '''update internal data.
         
         nbytes does not include the terminal '\0'.
         '''
-        TabProxies.TupleProxy.update( self, buffer, nbytes )
+        TabProxies.TupleProxy.update(self, buffer, nbytes)
 
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here
-        self.pos = atoi( self.fields[1] ) - 1
+        self.pos = atoi(self.fields[1]) - 1
 
     def __len__(self):
         return max(0, self.nfields - 9)
@@ -229,12 +229,13 @@ cdef class VCFRecord( TabProxies.TupleProxy):
 cdef class asVCFRecord(ctabix.Parser): 
     '''converts a :term:`tabix row` into a VCF record.'''
     cdef vcffile
-    def __init__(self, vcffile ):
+    def __init__(self, vcffile):
         self.vcffile = vcffile
-    def __call__(self, char * buffer, int len ):
+
+    cdef parse(self, char * buffer, int len):
         cdef VCFRecord r
-        r = VCFRecord( self.vcffile )
-        r.copy( buffer, len )
+        r = VCFRecord(self.vcffile)
+        r.copy(buffer, len)
         return r
 
 class VCF(object):
@@ -1029,9 +1030,14 @@ class VCF(object):
               start = None, 
               end = None, 
               region = None ):
-        """ Parse a stream of VCF-formatted lines.  Initializes class instance and return generator """
-
-        return self.tabixfile.fetch( reference, start, end, region, parser = asVCFRecord( self ) )
+        """ Parse a stream of VCF-formatted lines.  
+        Initializes class instance and return generator """
+        return self.tabixfile.fetch(
+            reference,
+            start,
+            end,
+            region,
+            parser = asVCFRecord(self))
 
     def validate( self, record ):
         '''validate vcf record.

@@ -393,10 +393,11 @@ cdef class TabixHeaderIterator:
 cdef class Parser:
 
     cdef parse(self, char * buffer, int length):
-        raise NotImplementedError
+        raise NotImplementedError(
+            'parse method of %s not implemented' % str(self))
 
     def __call__(self, char * buffer, int length):
-        return self.parse( buffer, length )
+        return self.parse(buffer, length)
 
 cdef class asTuple(Parser):
     '''converts a :term:`tabix row` into a python tuple.
@@ -408,7 +409,7 @@ cdef class asTuple(Parser):
         r = TabProxies.TupleProxy()
         # need to copy - there were some
         # persistence issues with "present"
-        r.copy( buffer, len )
+        r.copy(buffer, len)
         return r
 
 cdef class asGTF(Parser):
