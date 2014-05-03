@@ -84,7 +84,7 @@ the C-samtools package. Thus, some attention must be paid at the
 lifetime of objects. The following to code snippets will cause an
 error::
 
-    s = Samfile( 'ex1.bam' )
+    s = Samfile('ex1.bam')
     for p in s.pileup('chr1', 1000,1010):
         pass
     
@@ -94,7 +94,7 @@ error::
 The iteration has finished, thus the contents of p are invalid. A
 variation of this::
 
-    p = Samfile( 'ex1.bam' ).pileup( 'chr1', 1000, 1010).next()
+    p = next(Samfile('ex1.bam').pileup('chr1', 1000, 1010))
     for pp in p.pileups:
         print pp
 
@@ -103,7 +103,7 @@ by pileup goes out of scope. The solution is to keep a handle
 to the iterator that remains alive::
 
     i = Samfile( 'ex1.bam' ).pileup( 'chr1', 1000, 1010)
-    p = i.next()
+    p = next(i)
     for pp in p.pileups:
         print pp
 

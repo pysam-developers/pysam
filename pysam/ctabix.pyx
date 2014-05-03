@@ -797,7 +797,7 @@ def tabix_index( filename,
 #########################################################
 cdef buildGzipError(void *gzfp):
     cdef int errnum = 0
-    cdef const char *s = gzerror(gzfp, &errnum)
+    cdef char *s = gzerror(gzfp, &errnum)
     return "error (%d): %s (%d: %s)" % (errno, strerror(errno), errnum, s)
 
 
