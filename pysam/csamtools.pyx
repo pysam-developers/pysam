@@ -3675,12 +3675,12 @@ def _samtools_dispatch( method,
     
     # some special cases
     if method == "index":
-        if not os.path.exists( args[0] ):
-            raise IOError( "No such file or directory: '%s'" % args[0] )
+        if not os.path.exists(args[0]):
+            raise IOError("No such file or directory: '%s'" % args[0])
 
     # redirect stderr and stdout to file
     stderr_h, stderr_f = tempfile.mkstemp()
-    pysam_set_stderr( stderr_h )
+    pysam_set_stderr(stderr_h)
         
     if catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
@@ -3695,7 +3695,8 @@ def _samtools_dispatch( method,
         # samtools `view` closes stdout, from which I can not
         # recover. Thus redirect output to file with -o option.
         if method == "view":
-            if "-o" in args: raise ValueError("option -o is forbidden in samtools view")
+            if "-o" in args:
+                raise ValueError("option -o is forbidden in samtools view")
             args = ( "-o", stdout_f ) + args
 
     # do the function call to samtools

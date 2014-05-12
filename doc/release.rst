@@ -9,6 +9,7 @@ Release 0.7.8
    * added AlignedRead.blocks
    * unsetting CIGAR strings is now possible
    * empty CIGAR string returns empty list
+   * various bugfixes
 
 Release 0.7.7
 =============
