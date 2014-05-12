@@ -990,42 +990,61 @@ cdef class Samfile:
         return bam_tell( self.samfile.x.bam )
 
     def fetch(self,
-              reference = None,
-              start = None,
-              end = None,
-              region = None,
-              callback = None,
-              until_eof = False ):
-        '''
-        fetch aligned reads in a :term:`region` using 0-based indexing. The region is specified by
-        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can
-        be supplied.
+              reference=None,
+              start=None,
+              end=None,
+              region=None,
+              callback=None,
+              until_eof=False,
+              reopen=True):
+        '''fetch aligned reads in a :term:`region` using 0-based indexing. The
+        region is specified by :term:`reference`, *start* and
+        *end*. Alternatively, a samtools :term:`region` string can be
+        supplied.
 
-        Without *reference* or *region* all mapped reads will be fetched. The reads will be returned
-        ordered by reference sequence, which will not necessarily be the order within the file.
+        Without *reference* or *region* all mapped reads will be
+        fetched. The reads will be returned ordered by reference
+        sequence, which will not necessarily be the order within the
+        file.
 
-        If *until_eof* is given, all reads from the current file position will be returned
-        in order as they are within the file. Using this option will also fetch unmapped reads.
+        If *until_eof* is given, all reads from the current file
+        position will be returned in order as they are within the
+        file. Using this option will also fetch unmapped reads.
 
-        If only *reference* is set, all reads aligned to *reference* will be fetched.
+        If *reopen* is set to true, the iterator returned will receive
+        its own filehandle to the samfile effectively opening its own
+        copy of the file. The default behaviour is to re-open in order
+        to safely work with multiple concurrent iterators on the same
+        file. Re-opening a samfile creates some overhead, so when
+        using many calls to fetch() *reopen* can be set to False to
+        gain some speed. Also, the tell() method will only work if
+        *reopen* is set to False.
+
+        If only *reference* is set, all reads aligned to *reference*
+        will be fetched.
 
         The method returns an iterator of type :class:`pysam.IteratorRow` unless
         a *callback is provided. If *callback* is given, the callback will be executed
         for each position within the :term:`region`. Note that callbacks currently work
         only, if *region* or *reference* is given.
 
-        Note that a :term:`SAM` file does not allow random access. If *region* or *reference* are given,
-        an exception is raised.
+        Note that a :term:`SAM` file does not allow random access. If
+        *region* or *reference* are given, an exception is raised.
+
         '''
         cdef int rtid, rstart, rend, has_coord
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
-        has_coord, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
+        has_coord, rtid, rstart, rend = self._parseRegion(reference,
+                                                          start,
+                                                          end,
+                                                          region)
 
-        if self.isstream: reopen = False
-        else: reopen = True
+        # Turn of re-opening if samfile is a stream
+        if self.isstream:
+            reopen = False
 
         if self.isbam:
             if not until_eof and not self._hasIndex() and not self.isremote:
