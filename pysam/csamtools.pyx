@@ -1218,13 +1218,13 @@ cdef class Samfile:
         fastafile
            A :class:`FastaFile` object
 
-         mask
+        mask
            Skip all reads with bits set in mask if mask=True.
 
-         max_depth
+        max_depth
            Maximum read depth permitted. The default limit is *8000*.
 
-         truncate
+        truncate
            By default, the samtools pileup engine outputs all reads overlapping a region (see note below).
            If truncate is True and a region is given, only output columns in the exact region
            specificied.
