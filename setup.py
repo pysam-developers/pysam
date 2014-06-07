@@ -160,6 +160,7 @@ except ImportError:
     # no Cython available - use existing C code
     cmdclass = {}
     csamtools_sources = ["pysam/csamtools.c"]
+    chtslib_sources = ["pysam/chtslib.c"]
     tabix_sources = ["pysam/ctabix.c"]
     tabproxies_sources = ["pysam/TabProxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
@@ -168,6 +169,7 @@ else:
     # necessary to be both compatible for python 2.7 and 3.3
     if IS_PYTHON3:
         for f in ("pysam/csamtools.c",
+                  "pysam/chtslib.c",
                   "pysam/ctabix.c",
                   "pysam/TabProxies.c",
                   "pysam/cvcf.c"):
@@ -178,6 +180,7 @@ else:
 
     cmdclass = {'build_ext': build_ext}
     csamtools_sources = ["pysam/csamtools.pyx"]
+    chtslib_sources = ["pysam/chtslib.pyx"]
     tabix_sources = ["pysam/ctabix.pyx"]
     tabproxies_sources = ["pysam/TabProxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
@@ -217,6 +220,24 @@ samtools = Extension(
     library_dirs=[],
     include_dirs=["samtools", "pysam"] + include_os,
     libraries=["z", ],
+    language="c",
+    extra_compile_args=["-Wno-error=declaration-after-statement"],
+    define_macros=[('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')],
+)
+
+#######################################################
+htslib = Extension(
+    "pysam.chtslib",
+    chtslib_sources +
+    ["pysam/%s" % x for x in (
+        "htslib_util.c", )] +
+    # glob.glob(os.path.join("samtools", "*.pysam.c")) +
+    os_c_files,
+    # glob.glob(os.path.join("samtools", "*", "*.pysam.c")),
+    library_dirs=["/home/andreas/devel/htslib"],
+    include_dirs=["htslib/htslib", "pysam"] + include_os,
+    libraries=["z", "hts"],
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement"],
     define_macros=[('_FILE_OFFSET_BITS', '64'),
@@ -268,18 +289,18 @@ metadata = {
     'license': "MIT",
     'platforms': "ALL",
     'url': "http://code.google.com/p/pysam/",
-    'packages': ['pysam',
-                 'pysam.include',
-                 'pysam.include.samtools',
-                 'pysam.include.samtools.bcftools',
-                 'pysam.include.samtools.win32',
-                 'pysam.include.tabix'],
+    'packages': ['pysam'],
+                 # 'pysam.include',
+                 # 'pysam.include.samtools',
+                 # 'pysam.include.samtools.bcftools',
+                 # 'pysam.include.samtools.win32',
+                 # 'pysam.include.tabix'],
     'requires': ['cython (>=0.17)'],
-    'ext_modules': [samtools, tabix, tabproxies, cvcf],
+    'ext_modules': [samtools, htslib, tabix, tabproxies, cvcf],
     'cmdclass': cmdclass,
     'install_requires': ['cython>=0.17', ],
     'package_dir': {'pysam': 'pysam',
-                    'pysam.include.samtools': 'samtools',
+                    # 'pysam.include.samtools': 'samtools',
                     'pysam.include.tabix': 'tabix'},
     'package_data': {'': ['*.pxd', '*.h'], },
     # do not pack in order to permit linking to csamtools.so

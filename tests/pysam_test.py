@@ -29,388 +29,286 @@ WORKDIR = "pysam_test_work"
 DATADIR = "pysam_data"
 
 
-def checkBinaryEqual(filename1, filename2):
-    '''return true if the two files are binary equal.'''
-    if os.path.getsize(filename1) != os.path.getsize(filename2):
-        return False
+class TestAlignedReadFromBAM(unittest.TestCase):
 
-    infile1 = open(filename1, "rb")
-    infile2 = open(filename2, "rb")
-
-    def chariter(infile):
-        while 1:
-            c = infile.read(1)
-            if c == b"":
-                break
-            yield c
-
-    found = False
-    for c1, c2 in zip_longest(chariter(infile1), chariter(infile2)):
-        if c1 != c2:
-            break
-    else:
-        found = True
-
-    infile1.close()
-    infile2.close()
-    return found
-
-
-def runSamtools(cmd):
-    '''run a samtools command'''
-
-    try:
-        retcode = subprocess.call(cmd, shell=True,
-                                  stderr=subprocess.PIPE)
-        if retcode < 0:
-            print("Child was terminated by signal", -retcode)
-    except OSError as e:
-        print("Execution failed:", e)
-
-
-def getSamtoolsVersion():
-    '''return samtools version'''
-
-    with subprocess.Popen(SAMTOOLS, shell=True, stderr=subprocess.PIPE).stderr as pipe:
-        lines = b"".join(pipe.readlines())
-
-    if IS_PYTHON3:
-        lines = lines.decode('ascii')
-    return re.search("Version:\s+(\S+)", lines).groups()[0]
-
-
-class BinaryTest(unittest.TestCase):
-
-    '''test samtools command line commands and compare
-    against pysam commands.
-
-    Tests fail, if the output is not binary identical.
-    '''
-
-    first_time = True
-
-    # a dictionary of commands to test
-    # first entry: (samtools output file, samtools command)
-    # second entry: (pysam output file, (pysam function, pysam options) )
-    commands = \
-        {
-            "view":
-            (
-                ("ex1.view", "view ex1.bam > ex1.view"),
-                ("pysam_ex1.view", (pysam.view, "ex1.bam")),
-            ),
-            "view2":
-            (
-                ("ex1.view", "view -bT ex1.fa -o ex1.view2 ex1.sam"),
-                # note that -o ex1.view2 throws exception.
-                ("pysam_ex1.view",
-                 (pysam.view, "-bT ex1.fa -oex1.view2 ex1.sam")),
-            ),
-            "sort":
-            (
-                ("ex1.sort.bam", "sort ex1.bam ex1.sort"),
-                ("pysam_ex1.sort.bam", (pysam.sort, "ex1.bam pysam_ex1.sort")),
-            ),
-            "mpileup":
-            (
-                ("ex1.pileup", "mpileup ex1.bam > ex1.pileup"),
-                ("pysam_ex1.mpileup", (pysam.mpileup, "ex1.bam")),
-            ),
-            "depth":
-            (
-                ("ex1.depth", "depth ex1.bam > ex1.depth"),
-                ("pysam_ex1.depth", (pysam.depth, "ex1.bam")),
-            ),
-            "faidx":
-            (
-                ("ex1.fa.fai", "faidx ex1.fa"),
-                ("pysam_ex1.fa.fai", (pysam.faidx, "ex1.fa")),
-            ),
-            "index":
-            (
-                ("ex1.bam.bai", "index ex1.bam"),
-                ("pysam_ex1.bam.bai", (pysam.index, "pysam_ex1.bam")),
-            ),
-            "idxstats":
-            (
-                ("ex1.idxstats", "idxstats ex1.bam > ex1.idxstats"),
-                ("pysam_ex1.idxstats", (pysam.idxstats, "pysam_ex1.bam")),
-            ),
-            "fixmate":
-            (
-                ("ex1.fixmate", "fixmate ex1.bam ex1.fixmate"),
-                ("pysam_ex1.fixmate",
-                 (pysam.fixmate, "pysam_ex1.bam pysam_ex1.fixmate")),
-            ),
-            "flagstat":
-            (
-                ("ex1.flagstat", "flagstat ex1.bam > ex1.flagstat"),
-                ("pysam_ex1.flagstat", (pysam.flagstat, "pysam_ex1.bam")),
-            ),
-            "calmd":
-            (
-                ("ex1.calmd", "calmd ex1.bam ex1.fa > ex1.calmd"),
-                ("pysam_ex1.calmd", (pysam.calmd, "pysam_ex1.bam ex1.fa")),
-            ),
-            "merge":
-            (
-                ("ex1.merge", "merge -f ex1.merge ex1.bam ex1.bam"),
-                # -f option does not work - following command will cause the subsequent
-                # command to fail
-                ("pysam_ex1.merge",
-                 (pysam.merge, "pysam_ex1.merge pysam_ex1.bam pysam_ex1.bam")),
-            ),
-            "rmdup":
-            (
-                ("ex1.rmdup", "rmdup ex1.bam ex1.rmdup"),
-                ("pysam_ex1.rmdup",
-                 (pysam.rmdup, "pysam_ex1.bam pysam_ex1.rmdup")),
-            ),
-            "reheader":
-            (
-                ("ex1.reheader", "reheader ex1.bam ex1.bam > ex1.reheader"),
-                ("pysam_ex1.reheader", (pysam.reheader, "ex1.bam ex1.bam")),
-            ),
-            "cat":
-            (
-                ("ex1.cat", "cat ex1.bam ex1.bam > ex1.cat"),
-                ("pysam_ex1.cat", (pysam.cat, "ex1.bam ex1.bam")),
-            ),
-            "targetcut":
-            (
-                ("ex1.targetcut", "targetcut ex1.bam > ex1.targetcut"),
-                ("pysam_ex1.targetcut", (pysam.targetcut, "pysam_ex1.bam")),
-            ),
-            "phase":
-            (
-                ("ex1.phase", "phase ex1.bam > ex1.phase"),
-                ("pysam_ex1.phase", (pysam.phase, "pysam_ex1.bam")),
-            ),
-            "import":
-            (
-                ("ex1.bam", "import ex1.fa.fai ex1.sam.gz ex1.bam"),
-                ("pysam_ex1.bam",
-                 (pysam.samimport, "ex1.fa.fai ex1.sam.gz pysam_ex1.bam")),
-            ),
-            "bam2fq":
-            (
-                ("ex1.bam2fq", "bam2fq ex1.bam > ex1.bam2fq"),
-                ("pysam_ex1.bam2fq", (pysam.bam2fq, "pysam_ex1.bam")),
-            ),
-            "pad2unpad":
-            (
-                ("ex2.unpad", "pad2unpad -T ex1.fa ex2.bam > ex2.unpad"),
-                ("pysam_ex2.unpad", (pysam.pad2unpad, "-T ex1.fa ex2.bam")),
-            ),
-            "bamshuf":
-            (
-                ("ex1.bamshuf.bam", "bamshuf ex1.bam ex1.bamshuf"),
-                ("pysam_ex1.bamshuf.bam",
-                 (pysam.bamshuf, "ex1.bam pysam_ex1.bamshuf")),
-            ),
-            "bedcov":
-            (
-                ("ex1.bedcov", "bedcov ex1.bed ex1.bam > ex1.bedcov"),
-                ("pysam_ex1.bedcov", (pysam.bedcov, "ex1.bed ex1.bam")),
-            ),
-        }
-
-    # some tests depend on others. The order specifies in which order
-    # the samtools commands are executed.
-    # The first three (faidx, import, index) need to be in that order,
-    # the rest is arbitrary.
-    order = ('faidx', 'import', 'index',
-             # 'pileup1', 'pileup2', deprecated
-             # 'glfview', deprecated
-             'view', 'view2',
-             'sort',
-             'mpileup',
-             'depth',
-             'idxstats',
-             'fixmate',
-             'flagstat',
-             # 'calmd',
-             'merge',
-             'rmdup',
-             'reheader',
-             'cat',
-             'bedcov',
-             'targetcut',
-             'phase',
-             'bamshuf',
-             'bam2fq',
-             'pad2unpad',
-             )
+    '''basic first test - detailed testing
+    if information in file is consistent
+    with information in AlignedRead object.'''
 
     def setUp(self):
-        '''setup tests. 
+        self.samfile = pysam.Samfile(
+            os.path.join(DATADIR, "ex3.bam"),
+            "rb")
+        self.reads = list(self.samfile.fetch())
 
-        For setup, all commands will be run before the first test is
-        executed. Individual tests will then just compare the output
-        files.
-        '''
-        if BinaryTest.first_time:
+    def testARqname(self):
+        self.assertEqual(
+            self.reads[0].qname,
+            "read_28833_29006_6945",
+            "read name mismatch in read 1: %s != %s" % (
+                self.reads[0].qname, "read_28833_29006_6945"))
+        self.assertEqual(
+            self.reads[1].qname,
+            "read_28701_28881_323b",
+            "read name mismatch in read 2: %s != %s" % (
+                self.reads[1].qname, "read_28701_28881_323b"))
 
-            # remove previous files
-            if os.path.exists(WORKDIR):
-                shutil.rmtree(WORKDIR)
-                pass
+    def testARflag(self):
+        self.assertEqual(
+            self.reads[0].flag, 99,
+            "flag mismatch in read 1: %s != %s" % (
+                self.reads[0].flag, 99))
+        self.assertEqual(
+            self.reads[1].flag, 147,
+            "flag mismatch in read 2: %s != %s" % (
+                self.reads[1].flag, 147))
 
-            # copy the source files to WORKDIR
-            os.makedirs(WORKDIR)
+    def testARrname(self):
+        self.assertEqual(
+            self.reads[0].rname, 0,
+            "chromosome/target id mismatch in read 1: %s != %s" %
+            (self.reads[0].rname, 0))
+        self.assertEqual(
+            self.reads[1].rname, 1,
+            "chromosome/target id mismatch in read 2: %s != %s" %
+            (self.reads[1].rname, 1))
 
-            shutil.copy(os.path.join(DATADIR, "ex1.fa"),
-                        os.path.join(WORKDIR, "pysam_ex1.fa"))
-            shutil.copy(os.path.join(DATADIR, "ex1.fa"),
-                        os.path.join(WORKDIR, "ex1.fa"))
-            shutil.copy(os.path.join(DATADIR, "ex1.sam.gz"),
-                        os.path.join(WORKDIR, "ex1.sam.gz"))
-            shutil.copy(os.path.join(DATADIR, "ex1.sam"),
-                        os.path.join(WORKDIR, "ex1.sam"))
-            shutil.copy(os.path.join(DATADIR, "ex2.bam"),
-                        os.path.join(WORKDIR, "ex2.bam"))
+    def testARpos(self):
+        self.assertEqual(
+            self.reads[0].pos, 33 - 1,
+            "mapping position mismatch in read 1: %s != %s" %
+            (self.reads[0].pos, 33 - 1))
+        self.assertEqual(
+            self.reads[1].pos, 88 - 1,
+            "mapping position mismatch in read 2: %s != %s" %
+            (self.reads[1].pos, 88 - 1))
 
-            # cd to workdir
-            savedir = os.getcwd()
-            os.chdir(WORKDIR)
+    def testARmapq(self):
+        self.assertEqual(
+            self.reads[0].mapq, 20,
+            "mapping quality mismatch in read 1: %s != %s" %
+            (self.reads[0].mapq, 20))
+        self.assertEqual(
+            self.reads[1].mapq, 30,
+            "mapping quality mismatch in read 2: %s != %s" % (
+                self.reads[1].mapq, 30))
 
-            for label in self.order:
-                # print ("command=", label)
-                command = self.commands[label]
-                # build samtools command and target and run
-                samtools_target, samtools_command = command[0]
-                runSamtools(" ".join((SAMTOOLS, samtools_command)))
+    def testARcigar(self):
+        self.assertEqual(
+            self.reads[0].cigar,
+            [(0, 10), (2, 1), (0, 25)],
+            "read name length mismatch in read 1: %s != %s" %
+            (self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)]))
+        self.assertEqual(
+            self.reads[1].cigar, [(0, 35)],
+            "read name length mismatch in read 2: %s != %s" %
+            (self.reads[1].cigar, [(0, 35)]))
 
-                # get pysam command and run
-                try:
-                    pysam_target, pysam_command = command[1]
-                except ValueError as msg:
-                    raise ValueError("error while setting up %s=%s: %s" %
-                                     (label, command, msg))
+    def testARcigarstring(self):
+        self.assertEqual(self.reads[0].cigarstring, '10M1D25M')
+        self.assertEqual(self.reads[1].cigarstring, '35M')
 
-                pysam_method, pysam_options = pysam_command
+    def testARmrnm(self):
+        self.assertEqual(
+            self.reads[0].mrnm, 0,
+            "mate reference sequence name mismatch in read 1: %s != %s" %
+            (self.reads[0].mrnm, 0))
+        self.assertEqual(
+            self.reads[1].mrnm, 1,
+            "mate reference sequence name mismatch in read 2: %s != %s" %
+            (self.reads[1].mrnm, 1))
+        self.assertEqual(
+            self.reads[0].rnext, 0,
+            "mate reference sequence name mismatch in read 1: %s != %s" %
+            (self.reads[0].rnext, 0))
+        self.assertEqual(
+            self.reads[1].rnext, 1,
+            "mate reference sequence name mismatch in read 2: %s != %s" %
+            (self.reads[1].rnext, 1))
 
-                try:
-                    output = pysam_method(*pysam_options.split(" "), raw=True)
-                except pysam.SamtoolsError as msg:
-                    raise pysam.SamtoolsError("error while executing %s: options=%s: msg=%s" %
-                                              (label, pysam_options, msg))
+    def testARmpos(self):
+        self.assertEqual(self.reads[
+                         0].mpos, 200 - 1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].mpos, 200 - 1))
+        self.assertEqual(self.reads[
+                         1].mpos, 500 - 1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].mpos, 500 - 1))
+        self.assertEqual(self.reads[
+                         0].pnext, 200 - 1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].pnext, 200 - 1))
+        self.assertEqual(self.reads[
+                         1].pnext, 500 - 1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].pnext, 500 - 1))
 
-                if ">" in samtools_command:
-                    with open(pysam_target, "wb") as outfile:
-                        if type(output) == list:
-                            if IS_PYTHON3:
-                                for line in output:
-                                    outfile.write(line.encode('ascii'))
-                            else:
-                                for line in output:
-                                    outfile.write(line)
-                        else:
-                            outfile.write(output)
+    def testARisize(self):
+        self.assertEqual(self.reads[0].isize, 167, "insert size mismatch in read 1: %s != %s" % (
+            self.reads[0].isize, 167))
+        self.assertEqual(self.reads[1].isize, 412, "insert size mismatch in read 2: %s != %s" % (
+            self.reads[1].isize, 412))
+        self.assertEqual(self.reads[0].tlen, 167, "insert size mismatch in read 1: %s != %s" % (
+            self.reads[0].tlen, 167))
+        self.assertEqual(self.reads[1].tlen, 412, "insert size mismatch in read 2: %s != %s" % (
+            self.reads[1].tlen, 412))
 
-            os.chdir(savedir)
-            BinaryTest.first_time = False
+    def testARseq(self):
+        self.assertEqual(self.reads[0].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (
+            self.reads[0].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
+        self.assertEqual(self.reads[1].seq, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (
+            self.reads[1].seq, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
+        self.assertEqual(self.reads[3].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 4: %s != %s" % (
+            self.reads[3].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
 
-        samtools_version = getSamtoolsVersion()
+    def testARqual(self):
+        self.assertEqual(self.reads[0].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "quality string mismatch in read 1: %s != %s" % (self.reads[0].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(self.reads[1].qual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (
+            self.reads[1].qual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
+        self.assertEqual(self.reads[3].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "quality string mismatch in read 3: %s != %s" % (self.reads[3].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
 
-        def _r(s):
-            # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a ->
-            # 0.1.12
-            if s.count('-') > 0:
-                s = s[0:s.find('-')]
-            return re.sub("[^0-9.]", "", s)
+    def testARquery(self):
+        self.assertEqual(self.reads[0].query, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "query mismatch in read 1: %s != %s" % (
+            self.reads[0].query, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
+        self.assertEqual(self.reads[1].query, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "query size mismatch in read 2: %s != %s" % (
+            self.reads[1].query, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
+        self.assertEqual(self.reads[3].query, b"TAGCTAGCTACCTATATCTTGGTCTT", "query mismatch in read 4: %s != %s" % (
+            self.reads[3].query, b"TAGCTAGCTACCTATATCTTGGTCTT"))
 
-        if _r(samtools_version) != _r(pysam.__samtools_version__):
-            raise ValueError("versions of pysam/samtools and samtools differ: %s != %s" %
-                             (pysam.__samtools_version__,
-                              samtools_version))
+    def testARqqual(self):
+        self.assertEqual(self.reads[0].qqual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "qquality string mismatch in read 1: %s != %s" % (self.reads[0].qqual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(self.reads[1].qqual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "qquality string mismatch in read 2: %s != %s" % (
+            self.reads[1].qqual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
+        self.assertEqual(self.reads[3].qqual, b"<<<<<<<<<<<<<<<<<:<9/,&,22",
+                         "qquality string mismatch in read 3: %s != %s" % (self.reads[3].qqual, b"<<<<<<<<<<<<<<<<<:<9/,&,22"))
 
-    def checkCommand(self, command):
-        if command:
-            samtools_target, pysam_target = self.commands[
-                command][0][0], self.commands[command][1][0]
-            samtools_target = os.path.join(WORKDIR, samtools_target)
-            pysam_target = os.path.join(WORKDIR, pysam_target)
-            self.assertTrue(checkBinaryEqual(samtools_target, pysam_target),
-                            "%s failed: files %s and %s are not the same" % (command, samtools_target, pysam_target))
+    def testPresentOptionalFields(self):
+        self.assertEqual(self.reads[0].opt(
+            'NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (self.reads[0].opt('NM'), 1))
+        self.assertEqual(self.reads[0].opt(
+            'RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (self.reads[0].opt('RG'), 'L1'))
+        self.assertEqual(self.reads[1].opt(
+            'RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (self.reads[1].opt('RG'), 'L2'))
+        self.assertEqual(self.reads[1].opt(
+            'MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (self.reads[1].opt('MF'), 18))
 
-    def testImport(self):
-        self.checkCommand("import")
+    def testPairedBools(self):
+        self.assertEqual(self.reads[0].is_paired, True, "is paired mismatch in read 1: %s != %s" % (
+            self.reads[0].is_paired, True))
+        self.assertEqual(self.reads[1].is_paired, True, "is paired mismatch in read 2: %s != %s" % (
+            self.reads[1].is_paired, True))
+        self.assertEqual(self.reads[0].is_proper_pair, True, "is proper pair mismatch in read 1: %s != %s" % (
+            self.reads[0].is_proper_pair, True))
+        self.assertEqual(self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (
+            self.reads[1].is_proper_pair, True))
 
-    def testIndex(self):
-        self.checkCommand("index")
+    def testTags(self):
+        self.assertEqual(self.reads[0].tags,
+                         [('NM', 1), ('RG', 'L1'),
+                          ('PG', 'P1'), ('XT', 'U')])
+        self.assertEqual(self.reads[1].tags,
+                         [('MF', 18), ('RG', 'L2'),
+                          ('PG', 'P2'), ('XT', 'R')])
 
-    def testSort(self):
-        self.checkCommand("sort")
+    def testAddTags(self):
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('NM', 1), ('RG', 'L1'),
+                                 ('PG', 'P1'), ('XT', 'U')]))
 
-    def testMpileup(self):
-        self.checkCommand("mpileup")
+        self.reads[0].setTag('X1', 'C')
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('X1', 'C'), ('NM', 1), ('RG', 'L1'),
+                                 ('PG', 'P1'), ('XT', 'U'), ]))
+        self.reads[0].setTag('X2', 5)
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('X2', 5), ('X1', 'C'),
+                                 ('NM', 1), ('RG', 'L1'),
+                                 ('PG', 'P1'), ('XT', 'U'), ]))
+        # add with replacement
+        self.reads[0].setTag('X2', 10)
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('X2', 10), ('X1', 'C'),
+                                 ('NM', 1), ('RG', 'L1'),
+                                 ('PG', 'P1'), ('XT', 'U'), ]))
 
-    def testDepth(self):
-        self.checkCommand("depth")
+        # add without replacement
+        self.reads[0].setTag('X2', 5, replace=False)
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('X2', 10), ('X1', 'C'),
+                                 ('X2', 5),
+                                 ('NM', 1), ('RG', 'L1'),
+                                 ('PG', 'P1'), ('XT', 'U'), ]))
 
-    def testIdxstats(self):
-        self.checkCommand("idxstats")
+    def testAddTagsType(self):
+        self.reads[0].tags = None
+        self.assertEqual(self.reads[0].tags, [])
 
-    def testFixmate(self):
-        self.checkCommand("fixmate")
+        self.reads[0].setTag('X1', 5.0)
+        self.reads[0].setTag('X2', "5.0")
+        self.reads[0].setTag('X3', 5)
 
-    def testFlagstat(self):
-        self.checkCommand("flagstat")
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('X1', 5.0),
+                                 ('X2', "5.0"),
+                                 ('X3', 5)]))
 
-    def testMerge(self):
-        self.checkCommand("merge")
+        # test setting float for int value
+        self.reads[0].setTag('X4', 5, value_type='d')
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('X1', 5.0),
+                                 ('X2', "5.0"),
+                                 ('X3', 5),
+                                 ('X4', 5.0)]))
 
-    def testRmdup(self):
-        self.checkCommand("rmdup")
+        # test setting int for float value - the
+        # value will be rounded.
+        self.reads[0].setTag('X5', 5.2, value_type='i')
+        self.assertEqual(sorted(self.reads[0].tags),
+                         sorted([('X1', 5.0),
+                                 ('X2', "5.0"),
+                                 ('X3', 5),
+                                 ('X4', 5.0),
+                                 ('X5', 5)]))
 
-    def testReheader(self):
-        self.checkCommand("reheader")
+        # test setting invalid type code
+        self.assertRaises(ValueError, self.reads[0].setTag, 'X6', 5.2, 'g')
 
-    def testCat(self):
-        self.checkCommand("cat")
+    def testTagsUpdatingFloat(self):
+        self.assertEqual(self.reads[0].tags,
+                         [('NM', 1), ('RG', 'L1'),
+                          ('PG', 'P1'), ('XT', 'U')])
+        self.reads[0].tags += [('XC', 5.0)]
+        self.assertEqual(self.reads[0].tags,
+                         [('NM', 1), ('RG', 'L1'),
+                          ('PG', 'P1'), ('XT', 'U'), ('XC', 5.0)])
 
-    def testTargetcut(self):
-        self.checkCommand("targetcut")
+    def testOpt(self):
+        self.assertEqual(self.reads[0].opt("XT"), "U")
+        self.assertEqual(self.reads[1].opt("XT"), "R")
 
-    def testPhase(self):
-        self.checkCommand("phase")
+    def testMissingOpt(self):
+        self.assertRaises(KeyError, self.reads[0].opt, "XP")
 
-    def testBam2fq(self):
-        self.checkCommand("bam2fq")
+    def testEmptyOpt(self):
+        self.assertRaises(KeyError, self.reads[2].opt, "XT")
 
-    def testBedcov(self):
-        self.checkCommand("bedcov")
-
-    def testBamshuf(self):
-        self.checkCommand("bamshuf")
-
-    def testPad2Unpad(self):
-        self.checkCommand("pad2unpad")
-
-    # def testPileup1( self ):
-    #     self.checkCommand( "pileup1" )
-
-    # def testPileup2( self ):
-    #     self.checkCommand( "pileup2" )
-
-    # deprecated
-    # def testGLFView( self ):
-    #     self.checkCommand( "glfview" )
-
-    def testView(self):
-        self.checkCommand("view")
-
-    def testEmptyIndex(self):
-        self.assertRaises(IOError, pysam.index, "exdoesntexist.bam")
-
-    def __del__(self):
-        if os.path.exists(WORKDIR):
-            pass
-        # shutil.rmtree( WORKDIR )
+    def tearDown(self):
+        self.samfile.close()
 
 
-class IOTest(unittest.TestCase):
+class TestAlignedReadFromSAM(TestAlignedReadFromBAM):
+
+    def setUp(self):
+        self.samfile = pysam.Samfile(
+            os.path.join(DATADIR, "ex3.sam"),
+            "r")
+        self.reads = list(self.samfile.fetch())
+
+# needs to be implemented
+# class TestAlignedReadFromSamWithoutHeader(TestAlignedReadFromBam):
+#
+#     def setUp(self):
+#         self.samfile=pysam.Samfile( "ex7.sam","r" )
+#         self.reads=list(self.samfile.fetch())
+
+
+class TestIO(unittest.TestCase):
 
     '''check if reading samfile and writing a samfile are consistent.'''
 
@@ -729,7 +627,7 @@ class TestTagParsing(unittest.TestCase):
         # unsetting cigar string
         r.cigarstring = None
         self.assertEqual(r.cigarstring, '')
-        
+
     def testCigar(self):
         r = self.makeRead()
         self.assertEqual(r.cigar, [(0, 10), (2, 1), (0, 25)])
@@ -963,242 +861,6 @@ class TestIteratorColumn2(unittest.TestCase):
         '''
         pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
         self.assertRaises(ValueError, getattr, pcolumn, "pileups")
-
-
-class TestAlignedReadFromBam(unittest.TestCase):
-
-    def setUp(self):
-        self.samfile = pysam.Samfile(os.path.join(DATADIR, "ex3.bam"),
-                                     "rb")
-        self.reads = list(self.samfile.fetch())
-
-    def testARqname(self):
-        self.assertEqual(self.reads[0].qname, "read_28833_29006_6945", "read name mismatch in read 1: %s != %s" % (
-            self.reads[0].qname, "read_28833_29006_6945"))
-        self.assertEqual(self.reads[1].qname, "read_28701_28881_323b", "read name mismatch in read 2: %s != %s" % (
-            self.reads[1].qname, "read_28701_28881_323b"))
-
-    def testARflag(self):
-        self.assertEqual(self.reads[0].flag, 99, "flag mismatch in read 1: %s != %s" % (
-            self.reads[0].flag, 99))
-        self.assertEqual(self.reads[1].flag, 147, "flag mismatch in read 2: %s != %s" % (
-            self.reads[1].flag, 147))
-
-    def testARrname(self):
-        self.assertEqual(self.reads[
-                         0].rname, 0, "chromosome/target id mismatch in read 1: %s != %s" % (self.reads[0].rname, 0))
-        self.assertEqual(self.reads[
-                         1].rname, 1, "chromosome/target id mismatch in read 2: %s != %s" % (self.reads[1].rname, 1))
-
-    def testARpos(self):
-        self.assertEqual(self.reads[
-                         0].pos, 33 - 1, "mapping position mismatch in read 1: %s != %s" % (self.reads[0].pos, 33 - 1))
-        self.assertEqual(self.reads[
-                         1].pos, 88 - 1, "mapping position mismatch in read 2: %s != %s" % (self.reads[1].pos, 88 - 1))
-
-    def testARmapq(self):
-        self.assertEqual(self.reads[0].mapq, 20, "mapping quality mismatch in read 1: %s != %s" % (
-            self.reads[0].mapq, 20))
-        self.assertEqual(self.reads[1].mapq, 30, "mapping quality mismatch in read 2: %s != %s" % (
-            self.reads[1].mapq, 30))
-
-    def testARcigar(self):
-        self.assertEqual(self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)], "read name length mismatch in read 1: %s != %s" % (
-            self.reads[0].cigar, [(0, 10), (2, 1), (0, 25)]))
-        self.assertEqual(self.reads[1].cigar, [
-                         (0, 35)], "read name length mismatch in read 2: %s != %s" % (self.reads[1].cigar, [(0, 35)]))
-
-    def testARcigarstring(self):
-        self.assertEqual(self.reads[0].cigarstring, '10M1D25M')
-        self.assertEqual(self.reads[1].cigarstring, '35M')
-
-    def testARmrnm(self):
-        self.assertEqual(self.reads[0].mrnm, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (
-            self.reads[0].mrnm, 0))
-        self.assertEqual(self.reads[1].mrnm, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (
-            self.reads[1].mrnm, 1))
-        self.assertEqual(self.reads[0].rnext, 0, "mate reference sequence name mismatch in read 1: %s != %s" % (
-            self.reads[0].rnext, 0))
-        self.assertEqual(self.reads[1].rnext, 1, "mate reference sequence name mismatch in read 2: %s != %s" % (
-            self.reads[1].rnext, 1))
-
-    def testARmpos(self):
-        self.assertEqual(self.reads[
-                         0].mpos, 200 - 1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].mpos, 200 - 1))
-        self.assertEqual(self.reads[
-                         1].mpos, 500 - 1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].mpos, 500 - 1))
-        self.assertEqual(self.reads[
-                         0].pnext, 200 - 1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].pnext, 200 - 1))
-        self.assertEqual(self.reads[
-                         1].pnext, 500 - 1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].pnext, 500 - 1))
-
-    def testARisize(self):
-        self.assertEqual(self.reads[0].isize, 167, "insert size mismatch in read 1: %s != %s" % (
-            self.reads[0].isize, 167))
-        self.assertEqual(self.reads[1].isize, 412, "insert size mismatch in read 2: %s != %s" % (
-            self.reads[1].isize, 412))
-        self.assertEqual(self.reads[0].tlen, 167, "insert size mismatch in read 1: %s != %s" % (
-            self.reads[0].tlen, 167))
-        self.assertEqual(self.reads[1].tlen, 412, "insert size mismatch in read 2: %s != %s" % (
-            self.reads[1].tlen, 412))
-
-    def testARseq(self):
-        self.assertEqual(self.reads[0].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (
-            self.reads[0].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
-        self.assertEqual(self.reads[1].seq, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (
-            self.reads[1].seq, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
-        self.assertEqual(self.reads[3].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 4: %s != %s" % (
-            self.reads[3].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
-
-    def testARqual(self):
-        self.assertEqual(self.reads[0].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 1: %s != %s" % (self.reads[0].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(self.reads[1].qual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (
-            self.reads[1].qual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(self.reads[3].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 3: %s != %s" % (self.reads[3].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-
-    def testARquery(self):
-        self.assertEqual(self.reads[0].query, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "query mismatch in read 1: %s != %s" % (
-            self.reads[0].query, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
-        self.assertEqual(self.reads[1].query, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "query size mismatch in read 2: %s != %s" % (
-            self.reads[1].query, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
-        self.assertEqual(self.reads[3].query, b"TAGCTAGCTACCTATATCTTGGTCTT", "query mismatch in read 4: %s != %s" % (
-            self.reads[3].query, b"TAGCTAGCTACCTATATCTTGGTCTT"))
-
-    def testARqqual(self):
-        self.assertEqual(self.reads[0].qqual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "qquality string mismatch in read 1: %s != %s" % (self.reads[0].qqual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(self.reads[1].qqual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "qquality string mismatch in read 2: %s != %s" % (
-            self.reads[1].qqual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(self.reads[3].qqual, b"<<<<<<<<<<<<<<<<<:<9/,&,22",
-                         "qquality string mismatch in read 3: %s != %s" % (self.reads[3].qqual, b"<<<<<<<<<<<<<<<<<:<9/,&,22"))
-
-    def testPresentOptionalFields(self):
-        self.assertEqual(self.reads[0].opt(
-            'NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (self.reads[0].opt('NM'), 1))
-        self.assertEqual(self.reads[0].opt(
-            'RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (self.reads[0].opt('RG'), 'L1'))
-        self.assertEqual(self.reads[1].opt(
-            'RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (self.reads[1].opt('RG'), 'L2'))
-        self.assertEqual(self.reads[1].opt(
-            'MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (self.reads[1].opt('MF'), 18))
-
-    def testPairedBools(self):
-        self.assertEqual(self.reads[0].is_paired, True, "is paired mismatch in read 1: %s != %s" % (
-            self.reads[0].is_paired, True))
-        self.assertEqual(self.reads[1].is_paired, True, "is paired mismatch in read 2: %s != %s" % (
-            self.reads[1].is_paired, True))
-        self.assertEqual(self.reads[0].is_proper_pair, True, "is proper pair mismatch in read 1: %s != %s" % (
-            self.reads[0].is_proper_pair, True))
-        self.assertEqual(self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (
-            self.reads[1].is_proper_pair, True))
-
-    def testTags(self):
-        self.assertEqual(self.reads[0].tags,
-                         [('NM', 1), ('RG', 'L1'),
-                          ('PG', 'P1'), ('XT', 'U')])
-        self.assertEqual(self.reads[1].tags,
-                         [('MF', 18), ('RG', 'L2'),
-                          ('PG', 'P2'), ('XT', 'R')])
-
-    def testAddTags(self):
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U')]))
-
-        self.reads[0].setTag('X1', 'C')
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 'C'), ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-        self.reads[0].setTag('X2', 5)
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X2', 5), ('X1', 'C'),
-                                 ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-        # add with replacement
-        self.reads[0].setTag('X2', 10)
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X2', 10), ('X1', 'C'),
-                                 ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-
-        # add without replacement
-        self.reads[0].setTag('X2', 5, replace=False)
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X2', 10), ('X1', 'C'),
-                                 ('X2', 5),
-                                 ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-
-    def testAddTagsType(self):
-        self.reads[0].tags = None
-        self.reads[0].setTag('X1', 5.0)
-        self.reads[0].setTag('X2', "5.0")
-        self.reads[0].setTag('X3', 5)
-
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 5.0),
-                                 ('X2', "5.0"),
-                                 ('X3', 5)]))
-
-        # test setting float for int value
-        self.reads[0].setTag('X4', 5, value_type='d')
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 5.0),
-                                 ('X2', "5.0"),
-                                 ('X3', 5),
-                                 ('X4', 5.0)]))
-
-        # test setting int for float value - the
-        # value will be rounded.
-        self.reads[0].setTag('X5', 5.2, value_type='i')
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 5.0),
-                                 ('X2', "5.0"),
-                                 ('X3', 5),
-                                 ('X4', 5.0),
-                                 ('X5', 5)]))
-
-        # test setting invalid type code
-        self.assertRaises(ValueError, self.reads[0].setTag, 'X6', 5.2, 'g')
-
-    def testTagsUpdatingFloat(self):
-        self.assertEqual(self.reads[0].tags,
-                         [('NM', 1), ('RG', 'L1'),
-                          ('PG', 'P1'), ('XT', 'U')])
-        self.reads[0].tags += [('XC', 5.0)]
-        self.assertEqual(self.reads[0].tags,
-                         [('NM', 1), ('RG', 'L1'),
-                          ('PG', 'P1'), ('XT', 'U'), ('XC', 5.0)])
-
-    def testOpt(self):
-        self.assertEqual(self.reads[0].opt("XT"), "U")
-        self.assertEqual(self.reads[1].opt("XT"), "R")
-
-    def testMissingOpt(self):
-        self.assertRaises(KeyError, self.reads[0].opt, "XP")
-
-    def testEmptyOpt(self):
-        self.assertRaises(KeyError, self.reads[2].opt, "XT")
-
-    def tearDown(self):
-        self.samfile.close()
-
-
-class TestAlignedReadFromSam(TestAlignedReadFromBam):
-
-    def setUp(self):
-        self.samfile = pysam.Samfile(os.path.join(DATADIR, "ex3.sam"),
-                                     "r")
-        self.reads = list(self.samfile.fetch())
-
-# needs to be implemented
-# class TestAlignedReadFromSamWithoutHeader(TestAlignedReadFromBam):
-#
-#     def setUp(self):
-#         self.samfile=pysam.Samfile( "ex7.sam","r" )
-#         self.reads=list(self.samfile.fetch())
 
 
 class TestHeaderSam(unittest.TestCase):
@@ -1544,8 +1206,11 @@ class TestAlignedRead(unittest.TestCase):
                   "is_duplicate", "bin"):
             if x in exclude:
                 continue
-            self.assertEqual(getattr(read1, x), getattr(read2, x), "attribute mismatch for %s: %s != %s" %
-                             (x, getattr(read1, x), getattr(read2, x)))
+            self.assertEqual(
+                getattr(read1, x),
+                getattr(read2, x),
+                "attribute mismatch for %s: %s != %s" %
+                (x, getattr(read1, x), getattr(read2, x)))
 
     def testEmpty(self):
         a = pysam.AlignedRead()

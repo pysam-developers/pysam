@@ -3,7 +3,7 @@
 *#
 
 # test directory
-pysam/
+tests/pysam/
 tests/tmp*
 tests/*.bam
 tests/*.bai
