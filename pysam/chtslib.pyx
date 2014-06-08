@@ -1079,14 +1079,14 @@ cdef class Samfile:
                 raise ValueError( "fetch called on bamfile without index" )
 
             if has_coord:
-                return IteratorRowRegion( self, rtid, rstart, rend, 
-                                          reopen=reopen )
+                return IteratorRowRegion(self, rtid, rstart, rend, 
+                                         reopen=reopen )
             else:
                 if until_eof:
-                    return IteratorRowAll( self, reopen=reopen )
+                    return IteratorRowAll(self, reopen=reopen )
                 else:
                     # AH: check - reason why no reopen for AllRefs?
-                    return IteratorRowAllRefs(self ) # , reopen=reopen )
+                    return IteratorRowAllRefs(self) # , reopen=reopen )
         else:
             if has_coord:
                 raise ValueError ("fetching by region is not available for sam files" )
@@ -1599,8 +1599,36 @@ cdef class IteratorRow:
         explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
 
     '''
-    pass
 
+    def __init__(self, Samfile samfile, int reopen=True):
+        
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
+        # makes sure that samfile stays alive as long as the
+        # iterator is alive
+        self.samfile = samfile
+
+        # reopen the file - note that this makes the iterator
+        # slow and causes pileup to slow down significantly.
+        if reopen:
+            self.htsfile = hts_open(samfile._filename, 'r')
+            assert self.htsfile != NULL
+            # read header - required for accurate positioning
+            sam_hdr_read(self.htsfile)
+            self.owns_samfile = True
+        else:
+            self.htsfile = self.samfile.htsfile
+            self.owns_samfile = False
+
+        self.retval = 0
+
+        self.b = bam_init1()
+
+    def __dealloc__(self):
+        bam_destroy1(self.b)
+        if self.owns_samfile:
+            hts_close(self.htsfile)
 
 cdef class IteratorRowRegion(IteratorRow):
     """*(Samfile samfile, int tid, int beg, int end, int reopen = True )*
@@ -1627,42 +1655,21 @@ cdef class IteratorRowRegion(IteratorRow):
 
     """
 
-    def __cinit__(self, Samfile samfile, int tid,
-                  int beg, int end, int reopen=True):
+    def __init__(self, Samfile samfile,
+                 int tid, int beg, int end,
+                 int reopen=True):
 
-        if not samfile._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+        IteratorRow.__init__(self, samfile, reopen=reopen)
 
         if not samfile._hasIndex():
             raise ValueError( "no index available for iteration" )
-
-        # makes sure that samfile stays alive as long as the
-        # iterator is alive
-        self.samfile = samfile
-
-        if samfile.isbam: mode = b"rb"
-        else: mode = b"r"
-
-        # reopen the file - note that this makes the iterator
-        # slow and causes pileup to slow down significantly.
-        if reopen:
-            self.fp = hts_open(samfile._filename, mode)
-            assert self.fp != NULL
-            self.owns_samfile = True
-        else:
-            self.fp = self.samfile.htsfile
-            self.owns_samfile = False
-
-        self.retval = 0
 
         self.iter = sam_itr_queryi(
             self.samfile.index,
             tid,
             beg,
             end)
-
-        self.b = bam_init1()
-
+    
     def __iter__(self):
         return self
 
@@ -1671,7 +1678,7 @@ cdef class IteratorRowRegion(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        self.retval = hts_itr_next(self.fp.fp.bgzf,
+        self.retval = hts_itr_next(self.htsfile.fp.bgzf,
                                    self.iter,
                                    self.b,
                                    NULL)
@@ -1685,10 +1692,7 @@ cdef class IteratorRowRegion(IteratorRow):
         return makeAlignedRead(self.b)
 
     def __dealloc__(self):
-        bam_destroy1(self.b)
         hts_itr_destroy(self.iter)
-        if self.owns_samfile:
-            hts_close(self.fp)
 
 cdef class IteratorRowHead(IteratorRow):
     """*(Samfile samfile, n, int reopen = True)*
@@ -1706,31 +1710,12 @@ cdef class IteratorRowHead(IteratorRow):
 
     """
 
-    def __cinit__(self, Samfile samfile, int n, int reopen = True ):
+    def __init__(self, Samfile samfile, int n, int reopen=True):
 
-        if not samfile._isOpen():
-            raise ValueError( "I/O operation on closed file" )
-
-        # makes sure that samfile stays alive as long as the
-        # iterator is alive
-        self.samfile = samfile
-
-        if samfile.isbam: mode = b"rb"
-        else: mode = b"r"
+        IteratorRow.__init__(self, samfile, reopen=reopen)
 
         self.max_rows = n
         self.current_row = 0
-        # reopen the file to avoid iterator conflict
-        if reopen:
-            self.fp = hts_open(samfile._filename, mode)
-            assert self.fp != NULL
-            self.owns_samfile = True
-        else:
-            self.fp = samfile.htsfile
-            self.owns_samfile = False
-
-        # allocate memory for alignment
-        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
 
     def __iter__(self):
         return self
@@ -1740,7 +1725,7 @@ cdef class IteratorRowHead(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        return sam_read1(self.fp,
+        return sam_read1(self.htsfile,
                          self.samfile.header,
                          self.b)
 
@@ -1753,17 +1738,14 @@ cdef class IteratorRowHead(IteratorRow):
             raise StopIteration
 
         cdef int ret
-        ret = sam_read1(self.fp, self.samfile.header, self.b)
-        if (ret > 0):
+        ret = sam_read1(self.htsfile,
+                        self.samfile.header, self.b)
+        if (ret >= 0):
             self.current_row += 1
             return makeAlignedRead( self.b )
         else:
             raise StopIteration
 
-    def __dealloc__(self):
-        bam_destroy1(self.b)
-        if self.owns_samfile:
-            hts_close(self.fp)
 
 cdef class IteratorRowAll(IteratorRow):
     """*(Samfile samfile, int reopen = True)*
@@ -1781,32 +1763,9 @@ cdef class IteratorRowAll(IteratorRow):
 
     """
 
-    def __cinit__(self, Samfile samfile, int reopen = True):
+    def __init__(self, Samfile samfile, int reopen = True):
 
-        if not samfile._isOpen():
-            raise ValueError( "I/O operation on closed file" )
-
-        # makes sure that samfile stays alive as long as the
-        # iterator is alive
-        self.samfile = samfile
-        
-        if samfile.isbam:
-            mode = b"rb"
-        else:
-            mode = b"r"
-
-        # reopen the file to avoid iterator conflict
-        if reopen:
-            self.fp = hts_open(samfile._filename,
-                               mode)
-            assert self.fp != NULL
-            self.owns_samfile = True
-        else:
-            self.fp = samfile.htsfile
-            self.owns_samfile = False
-
-        # allocate memory for alignment
-        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
+        IteratorRow.__init__(self, samfile, reopen=reopen)
 
     def __iter__(self):
         return self
@@ -1816,7 +1775,7 @@ cdef class IteratorRowAll(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        return sam_read1(self.fp,
+        return sam_read1(self.htsfile,
                          self.samfile.header,
                          self.b)
 
@@ -1826,18 +1785,14 @@ cdef class IteratorRowAll(IteratorRow):
         pyrex uses this non-standard name instead of next()
         """
         cdef int ret
-        ret = sam_read1(self.fp,
+        ret = sam_read1(self.htsfile,
                         self.samfile.header,
                         self.b)
-        if (ret > 0):
+        if (ret >= 0):
             return makeAlignedRead(self.b)
         else:
             raise StopIteration
 
-    def __dealloc__(self):
-        bam_destroy1(self.b)
-        if self.owns_samfile:
-            hts_close(self.fp)
 
 cdef class IteratorRowAllRefs(IteratorRow):
     """iterates over all mapped reads by chaining iterators over each reference
@@ -1847,17 +1802,20 @@ cdef class IteratorRowAllRefs(IteratorRow):
         explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
     """
 
-    def __cinit__(self, Samfile samfile):
-        assert samfile._isOpen()
-        if not samfile._hasIndex(): raise ValueError("no index available for fetch")
+    def __init__(self, Samfile samfile, reopen=True):
 
-        # makes sure that samfile stays alive as long as the
-        # iterator is alive
-        self.samfile = samfile
+        IteratorRow.__init__(self, samfile, reopen=reopen)
+
+        if not samfile._hasIndex():
+            raise ValueError("no index available for fetch")
+
         self.tid = -1
 
     def nextiter(self):
-        self.rowiter = IteratorRowRegion(self.samfile, self.tid, 0, 1<<29)
+        self.rowiter = IteratorRowRegion(self.samfile,
+                                         self.tid,
+                                         0,
+                                         1<<29)
 
     def __iter__(self):
         return self
@@ -1868,7 +1826,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
         pyrex uses this non-standard name instead of next()
         """
         # Create an initial iterator
-        if self.tid==-1:
+        if self.tid == -1:
             if not self.samfile.nreferences:
                 raise StopIteration
             self.tid = 0
@@ -1884,10 +1842,11 @@ cdef class IteratorRowAllRefs(IteratorRow):
             self.tid += 1
 
             # Otherwise, proceed to next reference or stop
-            if self.tid<self.samfile.nreferences:
+            if self.tid < self.samfile.nreferences:
                 self.nextiter()
             else:
                 raise StopIteration
+
 
 cdef class IteratorRowSelection(IteratorRow):
     """*(Samfile samfile)*
@@ -1899,32 +1858,9 @@ cdef class IteratorRowSelection(IteratorRow):
         explicitely. It is returned as a result of call to a :meth:`Samfile.fetch`.
     """
 
-    def __cinit__(self, Samfile samfile, positions, int reopen = True ):
+    def __init__(self, Samfile samfile, positions, int reopen=True):
 
-        # makes sure that samfile stays alive as long as the
-        # iterator is alive
-        self.samfile = samfile
-
-        if not samfile._isOpen():
-            raise ValueError( "I/O operation on closed file" )
-
-        if not samfile._isOpen():
-            raise ValueError( "I/O operation on closed file" )
-
-        assert samfile.isbam, "can only use this iterator on bam files"
-        mode = b"rb"
-
-        # reopen the file to avoid iterator conflict
-        if reopen:
-            self.fp = hts_open( samfile._filename, mode)
-            assert self.fp != NULL
-            self.owns_samfile = True
-        else:
-            self.fp = samfile.htsfile
-            self.owns_samfile = False
-
-        # allocate memory for alignment
-        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
+        IteratorRow.__init__(self, samfile, reopen=reopen)
 
         self.positions = positions
         self.current_pos = 0
@@ -1945,7 +1881,9 @@ cdef class IteratorRowSelection(IteratorRow):
         # bam_seek(self.fp.x.bam,
         #          self.positions[self.current_pos], 0 )
         self.current_pos += 1
-        return sam_read1(self.fp, self.samfile.header, self.b)
+        return sam_read1(self.htsfile,
+                         self.samfile.header,
+                         self.b)
 
     def __next__(self):
         """python version of next().
@@ -1954,15 +1892,10 @@ cdef class IteratorRowSelection(IteratorRow):
         """
 
         cdef int ret = self.cnext()
-        if (ret > 0):
+        if (ret >= 0):
             return makeAlignedRead(self.b)
         else:
             raise StopIteration
-
-    def __dealloc__(self):
-        bam_destroy1(self.b)
-        if self.owns_samfile:
-            hts_close( self.fp )
 
 # ##-------------------------------------------------------------------
 # ##-------------------------------------------------------------------

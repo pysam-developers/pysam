@@ -721,58 +721,36 @@ cdef class PileupRead:
     cdef uint32_t _is_tail
 
 cdef class IteratorRow:
-    pass
+    cdef int retval
+    cdef bam1_t * b
+    cdef Samfile samfile
+    cdef htsFile * htsfile
+    # true if samfile belongs to this object
+    cdef int owns_samfile
 
 cdef class IteratorRowRegion(IteratorRow):
     cdef hts_itr_t * iter
-    cdef bam1_t * b
-    cdef int retval
-    cdef Samfile samfile
-    cdef htsFile * fp
-    # true if samfile belongs to this object
-    cdef int owns_samfile
-
     cdef bam1_t * getCurrent( self )
-
     cdef int cnext(self)
 
 cdef class IteratorRowHead(IteratorRow):
-    cdef bam1_t *               b
-    cdef int                    retval
-    cdef Samfile samfile
-    cdef htsFile              * fp
-    # true if samfile belongs to this object
-    cdef int owns_samfile
     cdef int max_rows
     cdef int current_row
-
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
 cdef class IteratorRowAll(IteratorRow):
-    cdef bam1_t * b
-    cdef htsFile * fp
-    cdef Samfile samfile
-    cdef int owns_samfile
     cdef bam1_t * getCurrent( self )
     cdef int cnext(self)
 
 cdef class IteratorRowAllRefs(IteratorRow):
-    cdef Samfile samfile
     cdef int         tid
     cdef IteratorRowRegion rowiter
 
 cdef class IteratorRowSelection(IteratorRow):
-    cdef Samfile samfile
-    cdef bam1_t * b
     cdef int current_pos
-    cdef htsFile * fp
     cdef positions
-    # true if samfile belongs to this object
-    cdef int owns_samfile
-
     cdef bam1_t * getCurrent( self )
-
     cdef int cnext(self)
 
 # cdef class IteratorColumn:
