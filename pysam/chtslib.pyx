@@ -595,7 +595,8 @@ cdef class Fastqfile:
             return self._filename
 
     def __iter__(self):
-        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
         return self
 
     cdef kseq_t * getCurrent(self):
@@ -616,15 +617,6 @@ cdef class Fastqfile:
             return makeFastqProxy( self.entry )
         else:
             raise StopIteration
-
-#------------------------------------------------------------------------
-#------------------------------------------------------------------------
-#------------------------------------------------------------------------
-cdef int count_callback( bam1_t *alignment, void *f):
-     '''callback for bam_fetch - count number of reads.
-     '''
-     cdef int* counter = (<int*>f)
-     counter[0] += 1;
 
 ctypedef struct MateData:
      char * name
@@ -716,7 +708,7 @@ cdef class Samfile:
     '''
 
     def __cinit__(self, *args, **kwargs ):
-        self.samfile = NULL
+        self.htsfile = NULL
         self._filename = None
         self.isbam = False
         self.isstream = False
@@ -726,11 +718,11 @@ cdef class Samfile:
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
 
     def _isOpen( self ):
-        '''return true if samfile has been opened.'''
-        return self.samfile != NULL
+        '''return true if htsfile has been opened.'''
+        return self.htsfile != NULL
 
     def _hasIndex( self ):
-        '''return true if samfile has an existing (and opened) index.'''
+        '''return true if htsfile has an existing (and opened) index.'''
         return self.index != NULL
 
     def _open( self,
@@ -779,7 +771,7 @@ cdef class Samfile:
             "invalid file opening mode `%s`" % mode
 
         # close a previously opened file
-        if self.samfile != NULL:
+        if self.htsfile != NULL:
             self.close()
 
         cdef bam_hdr_t * header_to_write
@@ -848,11 +840,10 @@ cdef class Samfile:
 
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
-            self.samfile = hts_open(filename, bmode)
+            self.htsfile = hts_open(filename, bmode)
             
-            # write header to samfile
-            # TODO
-            # bam_hdr_write(self.samfile, header_to_write)
+            # write header to htsfile
+            sam_hdr_write(self.htsfile, header_to_write)
 
             # bam_hdr_destroy takes care of cleaning up of all the members
             if not template and header_to_write != NULL:
@@ -860,32 +851,35 @@ cdef class Samfile:
 
         elif mode[0] == "r":
             # open file for reading
-            if filename != b"-" and not self.isremote and not os.path.exists( filename ):
+            if (filename != b"-"
+                and not self.isremote
+                and not os.path.exists(filename)):
                 raise IOError("file `%s` not found" % filename)
 
             # try to detect errors
-            self.samfile = hts_open(filename, bmode)
-            if self.samfile == NULL:
+            self.htsfile = hts_open(filename, bmode)
+            if self.htsfile == NULL:
                 raise ValueError( "could not open file (mode='%s') - is it SAM/BAM format?" % mode)
 
             # get file pointer
-            self.fp = self.samfile.fp.bgzf
+            self.fp = self.htsfile.fp.bgzf
 
             # bam files require a valid header
             if self.isbam:
-                self.header = sam_hdr_read(self.samfile)
+                self.header = sam_hdr_read(self.htsfile)
                 if self.header == NULL:
                     raise ValueError(
                         "file does not have valid header (mode='%s') "
                         "- is it BAM format?" % mode )
             else:
-                # in sam files it is optional (samfile full of unmapped reads)
+                # in sam files it is optional (htsfile full of unmapped reads)
                 if check_header:
-                    self.header = sam_hdr_read(self.samfile)
+                    self.header = sam_hdr_read(self.htsfile)
                     if self.header == NULL:
                         raise ValueError(
                             "file does not have valid header (mode='%s') "
                             "- is it SAM format?" % mode )
+                    # self.header.ignore_sam_err = True
 
             # disabled for autodetection to work
             # needs to be disabled so that reading from sam-files without headers works
@@ -894,7 +888,7 @@ cdef class Samfile:
                     ("file header is empty (mode='%s') - "
                      "is it SAM/BAM format?") % mode)
 
-        if self.samfile == NULL:
+        if self.htsfile == NULL:
             raise IOError("could not open file `%s`" % filename )
 
         # check for index and open if present
@@ -916,7 +910,7 @@ cdef class Samfile:
 
             # TODO
             # if not self.isstream:
-            #     self.start_offset = bam_tell( self.samfile.x.bam )
+            #     self.start_offset = bam_tell( self.htsfile.x.bam )
 
     def gettid( self, reference ):
         '''
@@ -1051,10 +1045,10 @@ cdef class Samfile:
         file. Using this option will also fetch unmapped reads.
 
         If *reopen* is set to true, the iterator returned will receive
-        its own filehandle to the samfile effectively opening its own
+        its own filehandle to the htsfile effectively opening its own
         copy of the file. The default behaviour is to re-open in order
         to safely work with multiple concurrent iterators on the same
-        file. Re-opening a samfile creates some overhead, so when
+        file. Re-opening a htsfile creates some overhead, so when
         using many calls to fetch() *reopen* can be set to False to
         gain some speed. Also, the tell() method will only work if
         *reopen* is set to False.
@@ -1076,7 +1070,7 @@ cdef class Samfile:
                                                           end,
                                                           region)
 
-        # Turn of re-opening if samfile is a stream
+        # Turn of re-opening if htsfile is a stream
         if self.isstream:
             reopen = False
 
@@ -1101,12 +1095,12 @@ cdef class Samfile:
                 raise NotImplementedError("callback not implemented yet")
 
             if self.header == NULL:
-                raise ValueError("fetch called for samfile without header")
+                raise ValueError("fetch called for htsfile without header")
 
             # check if targets are defined
             # give warning, sam_read1 segfaults
             if self.header.n_targets == 0:
-                warnings.warn( "fetch called for samfile without header")
+                warnings.warn( "fetch called for htsfile without header")
                 
             return IteratorRowAll(self, reopen=reopen )
 
@@ -1161,49 +1155,37 @@ cdef class Samfile:
     #     dest._delegate = mate_data.mate
     #     return dest
 
-    # def count( self,
-    #            reference = None,
-    #            start = None,
-    #            end = None,
-    #            region = None,
-    #            until_eof = False ):
-    #     '''*(reference = None, start = None, end = None, region = None, callback = None, until_eof = False)*
+    def count(self,
+              reference = None,
+              start = None,
+              end = None,
+              region = None,
+              until_eof = False):
+        '''*(reference = None, start = None, end = None,
+        region = None, callback = None, until_eof = False)*
 
-    #     count  reads :term:`region` using 0-based indexing. The region is specified by
-    #     :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can be supplied.
+        count reads :term:`region` using 0-based indexing. The region
+        is specified by :term:`reference`, *start* and
+        *end*. Alternatively, a samtools :term:`region` string can be
+        supplied.
 
-    #     Note that a :term:`TAM` file does not allow random access. If *region* or *reference* are given,
-    #     an exception is raised.
-    #     '''
-    #     cdef int rtid
-    #     cdef int rstart
-    #     cdef int rend
+        Note that a :term:`TAM` file does not allow random access. If
+        *region* or *reference* are given, an exception is raised.
+        '''
+        cdef AlignedRead read
+        cdef long counter
 
-    #     if not self._isOpen():
-    #         raise ValueError( "I/O operation on closed file" )
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+            
+        for read in self.fetch(reference=reference,
+                               start=start,
+                               end=end,
+                               region=region,
+                               until_eof=until_eof):
+            counter += 1
 
-    #     region, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
-
-    #     cdef int counter
-    #     counter = 0;
-
-    #     if self.isbam:
-    #         if not until_eof and not self._hasIndex() and not self.isremote:
-    #             raise ValueError( "fetch called on bamfile without index" )
-
-    #         if not region:
-    #             raise ValueError( "counting functionality requires a region/reference" )
-    #         if not self._hasIndex(): raise ValueError( "no index available for fetch" )
-    #         bam_fetch(self.samfile.x.bam,
-    #                          self.index,
-    #                          rtid,
-    #                          rstart,
-    #                          rend,
-    #                          <void*>&counter,
-    #                          count_callback )
-    #         return counter
-    #     else:
-    #         raise ValueError ("count for a region is not available for sam files" )
+        return counter
 
     # def pileup( self,
     #             reference = None,
@@ -1296,10 +1278,10 @@ cdef class Samfile:
     def close( self ):
         '''
         closes the :class:`pysam.Samfile`.'''
-        if self.samfile != NULL:
-            hts_close( self.samfile )
+        if self.htsfile != NULL:
+            hts_close( self.htsfile )
             hts_idx_destroy(self.index);
-            self.samfile = NULL
+            self.htsfile = NULL
 
     def __dealloc__( self ):
         # remember: dealloc cannot call other methods
@@ -1317,7 +1299,7 @@ cdef class Samfile:
         if not self._isOpen():
             return 0
 
-        return sam_write1(self.samfile,
+        return sam_write1(self.htsfile,
                           self.header,
                           read._delegate)
 
@@ -1561,9 +1543,12 @@ cdef class Samfile:
     ## Possible solutions: deprecate or open new file handle
     ###############################################################
     def __iter__(self):
-        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
         if not self.isbam and self.header.n_targets == 0:
-                raise NotImplementedError( "can not iterate over samfile without header")
+            raise NotImplementedError(
+                "can not iterate over samfile without header")
         return self
 
     cdef bam1_t * getCurrent( self ):
@@ -1574,7 +1559,7 @@ cdef class Samfile:
         cversion of iterator. Used by :class:`pysam.Samfile.IteratorColumn`.
         '''
         cdef int ret
-        return sam_read1(self.samfile,
+        return sam_read1(self.htsfile,
                          self.header,
                          self.b)
 
@@ -1583,8 +1568,8 @@ cdef class Samfile:
         python version of next().
         """
         cdef int ret
-        ret = sam_read1(self.samfile, self.header, self.b)
-        if (ret > 0):
+        ret = sam_read1(self.htsfile, self.header, self.b)
+        if (ret >= 0):
             return makeAlignedRead(self.b)
         else:
             raise StopIteration
@@ -1665,7 +1650,7 @@ cdef class IteratorRowRegion(IteratorRow):
             assert self.fp != NULL
             self.owns_samfile = True
         else:
-            self.fp = self.samfile.samfile
+            self.fp = self.samfile.htsfile
             self.owns_samfile = False
 
         self.retval = 0
@@ -1741,7 +1726,7 @@ cdef class IteratorRowHead(IteratorRow):
             assert self.fp != NULL
             self.owns_samfile = True
         else:
-            self.fp = samfile.samfile
+            self.fp = samfile.htsfile
             self.owns_samfile = False
 
         # allocate memory for alignment
@@ -1817,7 +1802,7 @@ cdef class IteratorRowAll(IteratorRow):
             assert self.fp != NULL
             self.owns_samfile = True
         else:
-            self.fp = samfile.samfile
+            self.fp = samfile.htsfile
             self.owns_samfile = False
 
         # allocate memory for alignment
@@ -1831,7 +1816,9 @@ cdef class IteratorRowAll(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        return sam_read1(self.fp, self.samfile.header, self.b)
+        return sam_read1(self.fp,
+                         self.samfile.header,
+                         self.b)
 
     def __next__(self):
         """python version of next().
@@ -1839,16 +1826,18 @@ cdef class IteratorRowAll(IteratorRow):
         pyrex uses this non-standard name instead of next()
         """
         cdef int ret
-        ret = sam_read1(self.fp, self.samfile.header, self.b)
+        ret = sam_read1(self.fp,
+                        self.samfile.header,
+                        self.b)
         if (ret > 0):
-            return makeAlignedRead( self.b )
+            return makeAlignedRead(self.b)
         else:
             raise StopIteration
 
     def __dealloc__(self):
         bam_destroy1(self.b)
         if self.owns_samfile:
-            hts_close( self.fp )
+            hts_close(self.fp)
 
 cdef class IteratorRowAllRefs(IteratorRow):
     """iterates over all mapped reads by chaining iterators over each reference
@@ -1931,7 +1920,7 @@ cdef class IteratorRowSelection(IteratorRow):
             assert self.fp != NULL
             self.owns_samfile = True
         else:
-            self.fp = samfile.samfile
+            self.fp = samfile.htsfile
             self.owns_samfile = False
 
         # allocate memory for alignment
