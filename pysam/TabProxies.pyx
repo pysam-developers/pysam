@@ -545,26 +545,30 @@ cdef class GTFProxy( TupleProxy ):
         # directly and so did the bug.
         cdef char * attributes = self.getAttributes()
 
-        r = _force_bytes(item)
+        # add space in order to make sure
+        # to not pick up a field that is a prefix of another field
+        print 'item=', item
+        r = _force_bytes(item + " ")
         query = r
-        start = strstr( attributes, query)
+        start = strstr(attributes, query)
 
         if start == NULL:
             raise AttributeError("'GTFProxy' has no attribute '%s'" % item )
 
-        start += strlen(query) + 1
+        start += strlen(query)
         # skip gaps before
-        while start[0] == ' ': start += 1
+        while start[0] == ' ':
+            start += 1
 
         if start[0] == '"':
             start += 1
             end = start
             while end[0] != '\0' and end[0] != '"': end += 1
             l = end - start
-            result = _force_str( PyBytes_FromStringAndSize( start, l ) )
+            result = _force_str(PyBytes_FromStringAndSize( start, l ))
             return result
         else:
-            return _force_str( start )
+            return _force_str(start)
 
     def setAttribute( self, name, value ):
         '''convenience method to set an attribute.'''
