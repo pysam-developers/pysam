@@ -167,7 +167,7 @@ cdef makeAlignedRead(bam1_t * src):
     return dest
 
 cdef class PileupProxy
-cdef makePileupProxy( bam_pileup1_t ** plp, int tid, int pos, int n ):
+cdef makePileupProxy(bam_pileup1_t ** plp, int tid, int pos, int n):
      cdef PileupProxy dest = PileupProxy.__new__(PileupProxy)
      dest.plp = plp
      dest.tid = tid
@@ -241,18 +241,6 @@ cdef convertBinaryTagToList( uint8_t * s ):
 
     return byte_size, nvalues, values
 
-#####################################################################
-#####################################################################
-#####################################################################
-## Generic callbacks for inserting python callbacks.
-#####################################################################
-cdef int fetch_callback( bam1_t *alignment, void *f):
-    '''callback for bam_fetch.
-
-    calls function in *f* with a new :class:`AlignedRead` object as parameter.
-    '''
-    a = makeAlignedRead( alignment )
-    (<object>f)(a)
 
 class PileupColumn(object):
     '''A pileup column. A pileup column contains
@@ -271,49 +259,7 @@ class PileupColumn(object):
         return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
             "\n" + "\n".join( map(str, self.pileups) )
 
-# cdef int pileup_callback( uint32_t tid, uint32_t pos, int n, bam_pileup1_t *pl, void *f):
-#     '''callback for pileup.
 
-#     calls function in *f* with a new :class:`Pileup` object as parameter.
-
-#     tid
-#         chromosome ID as is defined in the header
-#     pos
-#         start coordinate of the alignment, 0-based
-#     n
-#         number of elements in pl array
-#     pl
-#         array of alignments
-#     data
-#         user provided data
-#     '''
-
-#     p = PileupColumn()
-#     p.tid = tid
-#     p.pos = pos
-#     p.n = n
-#     pileups = []
-
-#     cdef int x
-#     for x from 0 <= x < n:
-#         pileups.append( makePileupRead( &(pl[x]) ) )
-#     p.pileups = pileups
-
-#     (<object>f)(p)
-
-# cdef int pileup_fetch_callback( bam1_t *b, void *data):
-#     '''callback for bam_fetch.
-
-#     Fetches reads and submits them to pileup.
-#     '''
-#     cdef bam_plbuf_t * buf
-#     buf = <bam_plbuf_t*>data
-#     bam_plbuf_push(b, buf)
-#     return 0
-
-######################################################################
-######################################################################
-######################################################################
 # valid types for sam headers
 VALID_HEADER_TYPES = {"HD" : dict,
                       "SQ" : list,
@@ -623,26 +569,24 @@ ctypedef struct MateData:
      bam1_t * mate
      uint32_t flag
 
-#------------------------------------------------------------------------
-#------------------------------------------------------------------------
-#------------------------------------------------------------------------
-cdef int mate_callback( bam1_t *alignment, void *f):
-     '''callback for bam_fetch = filter mate
-     '''
-     cdef MateData * d = (<MateData*>f)
-     # printf("mate = %p, name1 = %s, name2=%s\t%i\t%i\t%i\n",
-     #        d.mate, d.name, pysam_pysam_bam_get_qname(alignment),
-     #        d.flag, alignment.core.flag, alignment.core.flag & d.flag)
 
-     if d.mate == NULL:
-         # could be sped up by comparing the lengths of query strings first
-         # using l_qname
-         #
-         # also, make sure that we get the other read by comparing
-         # the flags
-         if alignment.core.flag & d.flag != 0 and \
-                 strcmp( pysam_bam_get_qname( alignment ), d.name ) == 0:
-             d.mate = bam_dup1( alignment )
+# cdef int mate_callback( bam1_t *alignment, void *f):
+#      '''callback for bam_fetch = filter mate
+#      '''
+#      cdef MateData * d = (<MateData*>f)
+#      # printf("mate = %p, name1 = %s, name2=%s\t%i\t%i\t%i\n",
+#      #        d.mate, d.name, pysam_pysam_bam_get_qname(alignment),
+#      #        d.flag, alignment.core.flag, alignment.core.flag & d.flag)
+
+#      if d.mate == NULL:
+#          # could be sped up by comparing the lengths of query strings first
+#          # using l_qname
+#          #
+#          # also, make sure that we get the other read by comparing
+#          # the flags
+#          if alignment.core.flag & d.flag != 0 and \
+#                  strcmp( pysam_bam_get_qname( alignment ), d.name ) == 0:
+#              d.mate = bam_dup1( alignment )
 
 
 cdef class Samfile:
@@ -1187,93 +1131,81 @@ cdef class Samfile:
 
         return counter
 
-    # def pileup( self,
-    #             reference = None,
-    #             start = None,
-    #             end = None,
-    #             region = None,
-    #             callback = None,
-    #             **kwargs ):
-    #     '''
-    #     perform a :term:`pileup` within a :term:`region`. The region is specified by
-    #     :term:`reference`, *start* and *end* (using 0-based indexing).
-    #     Alternatively, a samtools *region* string can be supplied.
+    def pileup( self,
+                reference = None,
+                start = None,
+                end = None,
+                region = None,
+                **kwargs ):
+        '''
+        perform a :term:`pileup` within a :term:`region`. The region is specified by
+        :term:`reference`, *start* and *end* (using 0-based indexing).
+        Alternatively, a samtools *region* string can be supplied.
 
-    #     Without *reference* or *region* all reads will be used for the pileup. The reads will be returned
-    #     ordered by :term:`reference` sequence, which will not necessarily be the order within the file.
+        Without *reference* or *region* all reads will be used for the pileup. The reads will be returned
+        ordered by :term:`reference` sequence, which will not necessarily be the order within the file.
 
-    #     The method returns an iterator of type :class:`pysam.IteratorColumn` unless
-    #     a *callback is provided. If a *callback* is given, the callback will be executed
-    #     for each column within the :term:`region`.
+        The method returns an iterator of type :class:`pysam.IteratorColumn` unless
+        a *callback is provided. If a *callback* is given, the callback will be executed
+        for each column within the :term:`region`.
 
-    #     Note that :term:`SAM` formatted files do not allow random access.
-    #     In these files, if a *region* or *reference* are given an exception is raised.
+        Note that :term:`SAM` formatted files do not allow random access.
+        In these files, if a *region* or *reference* are given an exception is raised.
 
-    #     Optional *kwargs* to the iterator:
+        Optional *kwargs* to the iterator:
 
-    #     stepper
-    #        The stepper controlls how the iterator advances.
-    #        Possible options for the stepper are
+        stepper
+           The stepper controlls how the iterator advances.
+           Possible options for the stepper are
 
-    #        ``all``
-    #           use all reads for pileup.
-    #        ``samtools``
-    #           same filter and read processing as in :term:`csamtools` pileup
+           ``all``
+              use all reads for pileup.
+           ``samtools``
+              same filter and read processing as in :term:`csamtools` pileup
 
-    #     fastafile
-    #        A :class:`FastaFile` object
+        fastafile
+           A :class:`FastaFile` object
 
-    #      mask
-    #        Skip all reads with bits set in mask if mask=True.
+         mask
+           Skip all reads with bits set in mask if mask=True.
 
-    #      max_depth
-    #        Maximum read depth permitted. The default limit is *8000*.
+         max_depth
+           Maximum read depth permitted. The default limit is *8000*.
 
-    #      truncate
-    #        By default, the samtools pileup engine outputs all reads overlapping a region (see note below).
-    #        If truncate is True and a region is given, only output columns in the exact region
-    #        specificied.
+         truncate
+           By default, the samtools pileup engine outputs all reads overlapping a region (see note below).
+           If truncate is True and a region is given, only output columns in the exact region
+           specificied.
 
-    #     .. note::
+        .. note::
 
-    #         *all* reads which overlap the region are returned. The first base returned will be the
-    #         first base of the first read *not* necessarily the first base of the region used in the query.
+            *all* reads which overlap the region are returned. The first base returned will be the
+            first base of the first read *not* necessarily the first base of the region used in the query.
 
-    #     '''
-    #     cdef int rtid, rstart, rend, has_coord
-    #     cdef bam_plbuf_t *buf
+        '''
+        cdef int rtid, rstart, rend, has_coord
 
-    #     if not self._isOpen():
-    #         raise ValueError( "I/O operation on closed file" )
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
 
-    #     has_coord, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
+        has_coord, rtid, rstart, rend = self._parseRegion(
+            reference, start, end, region )
 
-    #     if self.isbam:
-    #         if not self._hasIndex(): raise ValueError( "no index available for pileup" )
+        if self.isbam:
+            if not self._hasIndex():
+                raise ValueError("no index available for pileup")
 
-    #         if callback:
-    #             if not has_coord: raise ValueError( "callback functionality requires a region/reference" )
+            if has_coord:
+                return IteratorColumnRegion(self,
+                                            tid = rtid,
+                                            start = rstart,
+                                            end = rend,
+                                            **kwargs )
+            else:
+                return IteratorColumnAllRefs(self, **kwargs )
 
-    #             buf = bam_plbuf_init( <bam_pileup_f>pileup_callback, <void*>callback )
-    #             bam_fetch(self.samfile.x.bam,
-    #                       self.index, rtid, rstart, rend,
-    #                       buf, pileup_fetch_callback )
-
-    #             # finalize pileup
-    #             bam_plbuf_push( NULL, buf)
-    #             bam_plbuf_destroy(buf)
-    #         else:
-    #             if has_coord:
-    #                 return IteratorColumnRegion( self,
-    #                                              tid = rtid,
-    #                                              start = rstart,
-    #                                              end = rend,
-    #                                              **kwargs )
-    #             else:
-    #                 return IteratorColumnAllRefs(self, **kwargs )
-
-    #     else:
-    #         raise NotImplementedError( "pileup of samfiles not implemented yet" )
+        else:
+            raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
     def close( self ):
         '''
@@ -1897,15 +1829,14 @@ cdef class IteratorRowSelection(IteratorRow):
         else:
             raise StopIteration
 
-# ##-------------------------------------------------------------------
-# ##-------------------------------------------------------------------
-# ##-------------------------------------------------------------------
-# cdef int __advance_all( void * data, bam1_t * b ):
-#     '''advance without any read filtering.
-#     '''
-#     cdef __iterdata * d
-#     d = <__iterdata*>data
-#     return bam_iter_read( d.samfile.x.bam, d.iter, b )
+
+cdef int __advance_all(void *data, bam1_t *b):
+    '''advance without any read filtering.
+    '''
+    cdef __iterdata * d
+    d = <__iterdata*>data
+    return sam_itr_next(d.htsfile, d.iter, b)
+
 
 # cdef int __advance_snpcalls( void * data, bam1_t * b ):
 #     '''advance using same filter and read processing as in
@@ -1957,242 +1888,248 @@ cdef class IteratorRowSelection(IteratorRow):
 
 #     return ret
 
-# cdef class IteratorColumn:
-#     '''abstract base class for iterators over columns.
+cdef class IteratorColumn:
+    '''abstract base class for iterators over columns.
 
-#     IteratorColumn objects wrap the pileup functionality of samtools.
+    IteratorColumn objects wrap the pileup functionality of samtools.
 
-#     For reasons of efficiency, the iterator points to the current
-#     pileup buffer. The pileup buffer is updated at every iteration.
-#     This might cause some unexpected behavious. For example,
-#     consider the conversion to a list::
+    For reasons of efficiency, the iterator points to the current
+    pileup buffer. The pileup buffer is updated at every iteration.
+    This might cause some unexpected behavious. For example,
+    consider the conversion to a list::
 
-#        f = Samfile("file.bam", "rb")
-#        result = list( f.pileup() )
+       f = Samfile("file.bam", "rb")
+       result = list( f.pileup() )
 
-#     Here, ``result`` will contain ``n`` objects of type :class:`PileupProxy` for ``n`` columns,
-#     but each object in ``result`` will contain the same information.
+    Here, ``result`` will contain ``n`` objects of type :class:`PileupProxy` for ``n`` columns,
+    but each object in ``result`` will contain the same information.
 
-#     The desired behaviour can be achieved by list comprehension::
+    The desired behaviour can be achieved by list comprehension::
 
-#        result = [ x.pileups() for x in f.pileup() ]
+       result = [ x.pileups() for x in f.pileup() ]
 
-#     ``result`` will be a list of ``n`` lists of objects of type :class:`PileupRead`.
+    ``result`` will be a list of ``n`` lists of objects of type :class:`PileupRead`.
 
-#     If the iterator is associated with a :class:`Fastafile` using the :meth:`addReference`
-#     method, then the iterator will export the current sequence via the methods :meth:`getSequence`
-#     and :meth:`seq_len`.
+    If the iterator is associated with a :class:`Fastafile` using the :meth:`addReference`
+    method, then the iterator will export the current sequence via the methods :meth:`getSequence`
+    and :meth:`seq_len`.
 
-#     Optional kwargs to the iterator
+    Optional kwargs to the iterator
 
-#     stepper
-#        The stepper controls how the iterator advances.
-#        Possible options for the stepper are
+    stepper
+       The stepper controls how the iterator advances.
+       Possible options for the stepper are
 
-#        all
-#            use all reads for pileup.
-#        samtools
-#            same filter and read processing as in :term:`csamtools` pileup
+       all
+           use all reads for pileup.
+       samtools
+           same filter and read processing as in :term:`csamtools` pileup
 
-#        The default is to use "all" if no stepper is given.
+       The default is to use "all" if no stepper is given.
 
-#     fastafile
-#        A :class:`FastaFile` object
-#     mask
-#        Skip all reads with bits set in mask.
-#     max_depth
-#        maximum read depth. The default is 8000.
-#     '''
+    fastafile
+       A :class:`FastaFile` object
+    mask
+       Skip all reads with bits set in mask.
+    max_depth
+       maximum read depth. The default is 8000.
+    '''
 
-#     def __cinit__( self, Samfile samfile, **kwargs ):
-#         self.samfile = samfile
-#         self.mask = kwargs.get("mask", BAM_DEF_MASK )
-#         self.fastafile = kwargs.get( "fastafile", None )
-#         self.stepper = kwargs.get( "stepper", None )
-#         self.max_depth = kwargs.get( "max_depth", 8000 )
-#         self.iterdata.seq = NULL
-#         self.tid = 0
-#         self.pos = 0
-#         self.n_plp = 0
-#         self.plp = NULL
-#         self.pileup_iter = <bam_plp_t>NULL
+    def __cinit__( self, Samfile samfile, **kwargs ):
+        self.samfile = samfile
+        # TODO
+        # self.mask = kwargs.get("mask", BAM_DEF_MASK )
+        self.fastafile = kwargs.get( "fastafile", None )
+        self.stepper = kwargs.get( "stepper", None )
+        self.max_depth = kwargs.get( "max_depth", 8000 )
+        self.iterdata.seq = NULL
+        self.tid = 0
+        self.pos = 0
+        self.n_plp = 0
+        self.plp = NULL
+        self.pileup_iter = <bam_plp_t>NULL
 
-#     def __iter__(self):
-#         return self
+    def __iter__(self):
+        return self
 
-#     cdef int cnext(self):
-#         '''perform next iteration.
-#         '''
-#         self.plp = bam_plp_auto( self.pileup_iter,
-#                                  &self.tid,
-#                                  &self.pos,
-#                                  &self.n_plp )
+    cdef int cnext(self):
+        '''perform next iteration.
+        '''
+        self.plp = bam_plp_auto( self.pileup_iter,
+                                 &self.tid,
+                                 &self.pos,
+                                 &self.n_plp )
 
-#     cdef char * getSequence( self ):
-#         '''return current reference sequence underlying the iterator.
-#         '''
-#         return self.iterdata.seq
+    cdef char * getSequence( self ):
+        '''return current reference sequence underlying the iterator.
+        '''
+        return self.iterdata.seq
 
-#     property seq_len:
-#         '''current sequence length.'''
-#         def __get__(self): return self.iterdata.seq_len
+    property seq_len:
+        '''current sequence length.'''
+        def __get__(self): return self.iterdata.seq_len
 
-#     def addReference( self, Fastafile fastafile ):
-#        '''
-#        add reference sequences in *fastafile* to iterator.'''
-#        self.fastafile = fastafile
-#        if self.iterdata.seq != NULL: free(self.iterdata.seq)
-#        self.iterdata.tid = -1
-#        self.iterdata.fastafile = self.fastafile.fastafile
+    def addReference( self, Fastafile fastafile ):
+       '''
+       add reference sequences in *fastafile* to iterator.'''
+       self.fastafile = fastafile
+       if self.iterdata.seq != NULL: free(self.iterdata.seq)
+       self.iterdata.tid = -1
+       self.iterdata.fastafile = self.fastafile.fastafile
 
-#     def hasReference( self ):
-#         '''
-#         return true if iterator is associated with a reference'''
-#         return self.fastafile
+    def hasReference( self ):
+        '''
+        return true if iterator is associated with a reference'''
+        return self.fastafile
 
-#     cdef setMask( self, mask ):
-#         '''set masking flag in iterator.
+    cdef setMask( self, mask ):
+        '''set masking flag in iterator.
 
-#         reads with bits set in *mask* will be skipped.
-#         '''
-#         self.mask = mask
-#         bam_plp_set_mask( self.pileup_iter, self.mask )
+        reads with bits set in *mask* will be skipped.
+        '''
+        raise NotImplementedError()
+        # self.mask = mask
+        # bam_plp_set_mask( self.pileup_iter, self.mask )
 
-#     cdef setupIteratorData( self,
-#                             int tid,
-#                             int start,
-#                             int end,
-#                             int reopen = 0 ):
-#         '''setup the iterator structure'''
+    cdef setupIteratorData( self,
+                            int tid,
+                            int start,
+                            int end,
+                            int reopen = 0 ):
+        '''setup the iterator structure'''
 
-#         self.iter = IteratorRowRegion( self.samfile, tid, start, end, reopen )
-#         self.iterdata.samfile = self.samfile.samfile
-#         self.iterdata.iter = self.iter.iter
-#         self.iterdata.seq = NULL
-#         self.iterdata.tid = -1
+        self.iter = IteratorRowRegion(self.samfile, tid, start, end, reopen)
+        self.iterdata.htsfile = self.samfile.htsfile
+        self.iterdata.iter = self.iter.iter
+        self.iterdata.seq = NULL
+        self.iterdata.tid = -1
 
-#         if self.fastafile != None:
-#             self.iterdata.fastafile = self.fastafile.fastafile
-#         else:
-#             self.iterdata.fastafile = NULL
+        if self.fastafile != None:
+            self.iterdata.fastafile = self.fastafile.fastafile
+        else:
+            self.iterdata.fastafile = NULL
 
-#         if self.stepper == None or self.stepper == "all":
-#             self.pileup_iter = bam_plp_init( &__advance_all, &self.iterdata )
-#         elif self.stepper == "samtools":
-#             self.pileup_iter = bam_plp_init( &__advance_snpcalls, &self.iterdata )
-#         else:
-#             raise ValueError( "unknown stepper option `%s` in IteratorColumn" % self.stepper)
+        if self.stepper == None or self.stepper == "all":
+            self.pileup_iter = bam_plp_init(
+                <bam_plp_auto_f>&__advance_all,
+                &self.iterdata)
+        # elif self.stepper == "samtools":
+        #     self.pileup_iter = bam_plp_init(&__advance_snpcalls, &self.iterdata)
+        else:
+            raise ValueError(
+                "unknown stepper option `%s` in IteratorColumn" % self.stepper)
 
-#         if self.max_depth:
-#             bam_plp_set_maxcnt( self.pileup_iter, self.max_depth )
+        if self.max_depth:
+            bam_plp_set_maxcnt( self.pileup_iter, self.max_depth )
 
-#         bam_plp_set_mask( self.pileup_iter, self.mask )
+        # bam_plp_set_mask( self.pileup_iter, self.mask )
 
-#     cdef reset( self, tid, start, end ):
-#         '''reset iterator position.
+    cdef reset( self, tid, start, end ):
+        '''reset iterator position.
 
-#         This permits using the iterator multiple times without
-#         having to incur the full set-up costs.
-#         '''
-#         self.iter = IteratorRowRegion( self.samfile, tid, start, end, reopen = 0 )
-#         self.iterdata.iter = self.iter.iter
+        This permits using the iterator multiple times without
+        having to incur the full set-up costs.
+        '''
+        self.iter = IteratorRowRegion( self.samfile, tid, start, end, reopen = 0 )
+        self.iterdata.iter = self.iter.iter
 
-#         # invalidate sequence if different tid
-#         if self.tid != tid:
-#             if self.iterdata.seq != NULL: free( self.iterdata.seq )
-#             self.iterdata.seq = NULL
-#             self.iterdata.tid = -1
+        # invalidate sequence if different tid
+        if self.tid != tid:
+            if self.iterdata.seq != NULL: free( self.iterdata.seq )
+            self.iterdata.seq = NULL
+            self.iterdata.tid = -1
 
-#         # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
-#         bam_plp_reset(self.pileup_iter)
+        # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
+        bam_plp_reset(self.pileup_iter)
 
-#     def __dealloc__(self):
-#         # reset in order to avoid memory leak messages for iterators 
-#         # that have not been fully consumed
-#         if self.pileup_iter != <bam_plp_t>NULL:
-#             bam_plp_reset(self.pileup_iter)
-#             bam_plp_destroy(self.pileup_iter)
-#             self.pileup_iter = <bam_plp_t>NULL
-#             self.plp = <const_bam_pileup1_t_ptr>NULL
+    def __dealloc__(self):
+        # reset in order to avoid memory leak messages for iterators 
+        # that have not been fully consumed
+        if self.pileup_iter != <bam_plp_t>NULL:
+            bam_plp_reset(self.pileup_iter)
+            bam_plp_destroy(self.pileup_iter)
+            self.pileup_iter = <bam_plp_t>NULL
+            self.plp = <bam_pileup1_t*>NULL
 
-#         if self.iterdata.seq != NULL:
-#             free(self.iterdata.seq)
-#             self.iterdata.seq = NULL
+        if self.iterdata.seq != NULL:
+            free(self.iterdata.seq)
+            self.iterdata.seq = NULL
 
-# cdef class IteratorColumnRegion(IteratorColumn):
-#     '''iterates over a region only.
-#     '''
-#     def __cinit__(self, Samfile samfile,
-#                   int tid = 0,
-#                   int start = 0,
-#                   int end = max_pos,
-#                   int truncate = False,
-#                   **kwargs ):
+cdef class IteratorColumnRegion(IteratorColumn):
+    '''iterates over a region only.
+    '''
+    def __cinit__(self, Samfile samfile,
+                  int tid = 0,
+                  int start = 0,
+                  int end = max_pos,
+                  int truncate = False,
+                  **kwargs ):
 
-#         # initialize iterator
-#         self.setupIteratorData( tid, start, end, 1 )
-#         self.start = start
-#         self.end = end
-#         self.truncate = truncate
+        # initialize iterator
+        self.setupIteratorData( tid, start, end, 1 )
+        self.start = start
+        self.end = end
+        self.truncate = truncate
 
-#     def __next__(self):
-#         """python version of next().
-#         """
+    def __next__(self):
+        """python version of next().
+        """
 
-#         while 1:
-#             self.cnext()
-#             if self.n_plp < 0:
-#                 raise ValueError("error during iteration" )
+        while 1:
+            self.cnext()
+            if self.n_plp < 0:
+                raise ValueError("error during iteration" )
 
-#             if self.plp == NULL:
-#                 raise StopIteration
+            if self.plp == NULL:
+                raise StopIteration
             
-#             if self.truncate:
-#                 if self.start > self.pos: continue
-#                 if self.pos >= self.end: raise StopIteration
+            if self.truncate:
+                if self.start > self.pos: continue
+                if self.pos >= self.end: raise StopIteration
 
-#             return makePileupProxy( &self.plp,
-#                                      self.tid,
-#                                      self.pos,
-#                                      self.n_plp )
+            return makePileupProxy(&self.plp,
+                                   self.tid,
+                                   self.pos,
+                                   self.n_plp)
 
-# cdef class IteratorColumnAllRefs(IteratorColumn):
-#     """iterates over all columns by chaining iterators over each reference
-#     """
+cdef class IteratorColumnAllRefs(IteratorColumn):
+    """iterates over all columns by chaining iterators over each reference
+    """
 
-#     def __cinit__(self,
-#                   Samfile samfile,
-#                   **kwargs ):
+    def __cinit__(self,
+                  Samfile samfile,
+                  **kwargs):
 
-#         # no iteration over empty files
-#         if not samfile.nreferences: raise StopIteration
+        # no iteration over empty files
+        if not samfile.nreferences:
+            raise StopIteration
 
-#         # initialize iterator
-#         self.setupIteratorData( self.tid, 0, max_pos, 1 )
+        # initialize iterator
+        self.setupIteratorData(self.tid, 0, max_pos, 1)
 
-#     def __next__(self):
-#         """python version of next().
-#         """
+    def __next__(self):
+        """python version of next().
+        """
 
-#         while 1:
-#             self.cnext()
+        while 1:
+            self.cnext()
 
-#             if self.n_plp < 0:
-#                 raise ValueError("error during iteration" )
+            if self.n_plp < 0:
+                raise ValueError("error during iteration" )
 
-#             # return result, if within same reference
-#             if self.plp != NULL:
-#                 return makePileupProxy( &self.plp,
-#                                          self.tid,
-#                                          self.pos,
-#                                          self.n_plp )
-
-#             # otherwise, proceed to next reference or stop
-#             self.tid += 1
-#             if self.tid < self.samfile.nreferences:
-#                 self.setupIteratorData( self.tid, 0, max_pos, 0 )
-#             else:
-#                 raise StopIteration
+            # return result, if within same reference
+            if self.plp != NULL:
+                return makePileupProxy(&self.plp,
+                                       self.tid,
+                                       self.pos,
+                                       self.n_plp)
+                
+            # otherwise, proceed to next reference or stop
+            self.tid += 1
+            if self.tid < self.samfile.nreferences:
+                self.setupIteratorData(self.tid, 0, max_pos, 0)
+            else:
+                raise StopIteration
 
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
@@ -3612,7 +3549,7 @@ cdef class PileupProxy:
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append( makePileupRead( &(self.plp[0][x])) )
+                pileups.append(makePileupRead(&(self.plp[0][x])))
             return pileups
 
 cdef class PileupRead:
