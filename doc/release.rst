@@ -2,6 +2,14 @@
 Release notes
 =============
 
+Release 0.8.0
+=============
+
+   * Not implemented yet:
+     * reading sam files without header
+
+
+
 Release 0.7.8
 =============
 

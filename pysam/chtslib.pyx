@@ -656,7 +656,7 @@ cdef class Samfile:
         self._filename = None
         self.isbam = False
         self.isstream = False
-        self._open( *args, **kwargs )
+        self._open(*args, **kwargs)
 
         # allocate memory for iterator
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
@@ -669,19 +669,18 @@ cdef class Samfile:
         '''return true if htsfile has an existing (and opened) index.'''
         return self.index != NULL
 
-    def _open( self,
-               filename,
-               mode = None,
-               Samfile template = None,
-               referencenames = None,
-               referencelengths = None,
-               text = None,
-               header = None,
-               port = None,
-               add_sq_text = True,
-               check_header = True,
-               check_sq = True,
-              ):
+    def _open(self,
+              filename,
+              mode=None,
+              Samfile template=None,
+              referencenames=None,
+              referencelengths=None,
+              text=None,
+              header=None,
+              port=None,
+              add_sq_text=True,
+              check_header=True,
+              check_sq=True):
         '''open a sam/bam file.
 
         If _open is called on an existing bamfile, the current file will be
@@ -695,7 +694,9 @@ cdef class Samfile:
                            template=template,
                            referencenames=referencenames,
                            referencelengths=referencelengths,
-                           text=text, header=header, port=port,
+                           text=text,
+                           header=header,
+                           port=port,
                            check_header=check_header,
                            check_sq=check_sq)
                 return
@@ -706,7 +707,9 @@ cdef class Samfile:
                        template=template,
                        referencenames=referencenames,
                        referencelengths=referencelengths,
-                       text=text, header=header, port=port,
+                       text=text,
+                       header=header,
+                       port=port,
                        check_header=check_header,
                        check_sq=check_sq)
             return
@@ -718,16 +721,14 @@ cdef class Samfile:
         if self.htsfile != NULL:
             self.close()
 
-        cdef bam_hdr_t * header_to_write
-        header_to_write = NULL
-
         cdef bytes bmode = mode.encode('ascii')
         self._filename = filename = _encodeFilename(filename)
         self.isstream = filename == b"-"
 
         self.isbam = len(mode) > 1 and mode[1] == 'b'
 
-        self.isremote = filename.startswith(b"http:") or filename.startswith(b"ftp:")
+        self.isremote = filename.startswith(b"http:") or \
+                        filename.startswith(b"ftp:")
 
         cdef char * ctext
         ctext = NULL
@@ -737,62 +738,62 @@ cdef class Samfile:
 
             # header structure (used for writing)
             if template:
-                # copy header from another file
-                header_to_write = template.header
+                self.header = bam_hdr_dup(template.header)
             elif header:
-                header_to_write = self._buildHeader( header )
+                self.header = self._buildHeader(header)
             else:
                 # build header from a target names and lengths
-                assert referencenames and referencelengths, "either supply options `template`, `header` or  both `referencenames` and `referencelengths` for writing"
-                assert len(referencenames) == len(referencelengths), "unequal names and lengths of reference sequences"
+                assert referencenames and referencelengths, \
+                    ("either supply options `template`, `header` "
+                     "or  both `referencenames` and `referencelengths` "
+                     "for writing")
+                assert len(referencenames) == len(referencelengths), \
+                    "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
-                referencenames = [ _forceBytes(ref) for ref in referencenames ]
-                header_to_write = bam_hdr_init()
-                header_to_write.n_targets = len(referencenames)
+                referencenames = [_forceBytes(ref) for ref in referencenames]
+                self.header = bam_hdr_init()
+                self.header.n_targets = len(referencenames)
                 n = 0
-                for x in referencenames: n += len(x) + 1
-                header_to_write.target_name = <char**>calloc(n, sizeof(char*))
-                header_to_write.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
-                for x from 0 <= x < header_to_write.n_targets:
-                    header_to_write.target_len[x] = referencelengths[x]
+                for x in referencenames:
+                    n += len(x) + 1
+                self.header.target_name = <char**>calloc(n, sizeof(char*))
+                self.header.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
+                for x from 0 <= x < self.header.n_targets:
+                    self.header.target_len[x] = referencelengths[x]
                     name = referencenames[x]
-                    header_to_write.target_name[x] = <char*>calloc(len(name)+1, sizeof(char))
-                    strncpy( header_to_write.target_name[x], name, len(name) )
+                    self.header.target_name[x] = <char*>calloc(
+                        len(name) + 1, sizeof(char))
+                    strncpy(self.header.target_name[x], name, len(name))
 
-                # Optionally, if there is no text, add a SAM compatible header to output
-                # file.
+                # Optionally, if there is no text, add a SAM
+                # compatible header to output file.
                 if text is None and add_sq_text:
                     text = []
-                    for x from 0 <= x < header_to_write.n_targets:
-                        text.append( "@SQ\tSN:%s\tLN:%s\n" % \
-                                         (_forceStr(referencenames[x]), 
-                                          referencelengths[x] ) )
+                    for x from 0 <= x < self.header.n_targets:
+                        text.append("@SQ\tSN:%s\tLN:%s\n" % \
+                                    (_forceStr(referencenames[x]), 
+                                     referencelengths[x]))
                     text = ''.join(text)
 
                 if text != None:
                     # copy without \0
                     text = _forceBytes(text)
                     ctext = text
-                    header_to_write.l_text = strlen(ctext)
-                    header_to_write.text = <char*>calloc( strlen(ctext), sizeof(char) )
-                    memcpy( header_to_write.text, ctext, strlen(ctext) )
-
-                # TODO - check what this does
-                #header_to_write.hash = NULL
-                #header_to_write.rg2lib = NULL
+                    self.header.l_text = strlen(ctext)
+                    self.header.text = <char*>calloc(
+                        strlen(ctext), sizeof(char))
+                    memcpy(self.header.text, ctext, strlen(ctext))
 
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
             self.htsfile = hts_open(filename, bmode)
             
-            # write header to htsfile
-            sam_hdr_write(self.htsfile, header_to_write)
-
-            # bam_hdr_destroy takes care of cleaning up of all the members
-            if not template and header_to_write != NULL:
-                bam_hdr_destroy(header_to_write)
-
+            # for compatibility - "w" writes sam file without header
+            if self.isbam or "h" in mode:
+                # write header to htsfile
+                sam_hdr_write(self.htsfile, self.header)
+                
         elif mode[0] == "r":
             # open file for reading
             if (filename != b"-"
@@ -803,7 +804,9 @@ cdef class Samfile:
             # try to detect errors
             self.htsfile = hts_open(filename, bmode)
             if self.htsfile == NULL:
-                raise ValueError( "could not open file (mode='%s') - is it SAM/BAM format?" % mode)
+                raise ValueError(
+                    "could not open file (mode='%s') - "
+                    "is it SAM/BAM format?" % mode)
 
             # get file pointer
             self.fp = self.htsfile.fp.bgzf
@@ -825,8 +828,8 @@ cdef class Samfile:
                             "- is it SAM format?" % mode )
                     # self.header.ignore_sam_err = True
 
-            # disabled for autodetection to work
-            # needs to be disabled so that reading from sam-files without headers works
+            # disabled for autodetection to work needs to be disabled
+            # so that reading from sam-files without headers works
             if check_sq and self.header.n_targets == 0:
                 raise ValueError(
                     ("file header is empty (mode='%s') - "
@@ -851,7 +854,6 @@ cdef class Samfile:
                 self.index = hts_idx_load(filename, HTS_FMT_BAI)
                 if self.index == NULL:
                     warnings.warn("unable to open index for `%s` " % filename)
-
             # TODO
             # if not self.isstream:
             #     self.start_offset = bam_tell( self.htsfile.x.bam )
@@ -1211,7 +1213,7 @@ cdef class Samfile:
         '''
         closes the :class:`pysam.Samfile`.'''
         if self.htsfile != NULL:
-            hts_close( self.htsfile )
+            hts_close(self.htsfile)
             hts_idx_destroy(self.index);
             self.htsfile = NULL
 
@@ -1221,7 +1223,9 @@ cdef class Samfile:
         # note: __del__ is not called.
         self.close()
         bam_destroy1(self.b)
-
+        if self.header != NULL:
+            bam_hdr_destroy(self.header)
+            
     cpdef int write( self, AlignedRead read ) except -1:
         '''
         write a single :class:`pysam.AlignedRead` to disk.
@@ -1231,9 +1235,11 @@ cdef class Samfile:
         if not self._isOpen():
             return 0
 
-        return sam_write1(self.htsfile,
-                          self.header,
-                          read._delegate)
+        x = sam_write1(self.htsfile,
+                       self.header,
+                       read._delegate)
+
+        return x
 
     def __enter__(self):
         return self

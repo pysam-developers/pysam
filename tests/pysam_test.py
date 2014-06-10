@@ -304,13 +304,14 @@ class BasicTestSAMFile(BasicTestBAMFetch):
             "r")
         self.reads = [r for r in self.samfile]
 
-# TODO
-# class BasicTestSAMFetch(BasicTestBAMFetch):
-#     def setUp(self):
-#         self.samfile = pysam.Samfile(
-#             os.path.join(DATADIR, "ex3.sam"),
-#             "r")
-#         self.reads = list(self.samfile.fetch())
+
+class BasicTestSAMFetch(BasicTestBAMFetch):
+    def setUp(self):
+        self.samfile = pysam.Samfile(
+            os.path.join(DATADIR, "ex3.sam"),
+            "r")
+        self.reads = list(self.samfile.fetch())
+
 
 # needs to be implemented
 # class TestAlignedReadFromSamWithoutHeader(TestAlignedReadFromBam):
@@ -328,7 +329,8 @@ class TestIO(unittest.TestCase):
                   input_filename,
                   reference_filename,
                   output_filename,
-                  input_mode, output_mode, use_template=True):
+                  input_mode, output_mode,
+                  use_template=True):
         '''iterate through *input_filename* writing to *output_filename* and
         comparing the output to *reference_filename*.
 
@@ -373,7 +375,7 @@ class TestIO(unittest.TestCase):
         reference_filename = "ex1.bam"
 
         self.checkEcho(input_filename, reference_filename, output_filename,
-                       "rb", "wb")
+                       "rb", "wb", use_template=True)
 
     def testReadWriteBamWithTargetNames(self):
 
@@ -384,26 +386,29 @@ class TestIO(unittest.TestCase):
         self.checkEcho(input_filename, reference_filename, output_filename,
                        "rb", "wb", use_template=False)
 
-    # TODO
-    # def testReadWriteSamWithHeader(self):
+    def testReadWriteSamWithHeader(self):
 
-    #     input_filename = "ex2.sam"
-    #     output_filename = "pysam_ex2.sam"
-    #     reference_filename = "ex2.sam"
+        input_filename = "ex2.sam"
+        output_filename = "pysam_ex2.sam"
+        reference_filename = "ex2.sam"
 
-    #     self.checkEcho(input_filename, reference_filename, output_filename,
-    #                    "r", "wh")
+        self.checkEcho(input_filename,
+                       reference_filename,
+                       output_filename,
+                       "r", "wh")
 
-    # def testReadWriteSamWithoutHeader(self):
+    # Release 0.8.0
+    # no samfiles without header
+    def testReadWriteSamWithoutHeader(self):
 
-    #     input_filename = "ex2.sam"
-    #     output_filename = "pysam_ex2.sam"
-    #     reference_filename = "ex1.sam"
+        input_filename = "ex2.sam"
+        output_filename = "pysam_ex2.sam"
+        reference_filename = "ex1.sam"
 
-    #     self.checkEcho(input_filename,
-    #                    reference_filename,
-    #                    output_filename,
-    #                    "r", "w")
+        self.checkEcho(input_filename,
+                       reference_filename,
+                       output_filename,
+                       "r", "w")
 
     def testReadSamWithoutTargetNames(self):
         '''see issue 104.'''
@@ -444,20 +449,24 @@ class TestIO(unittest.TestCase):
         result = list(infile.fetch(until_eof=True))
 
     # TODO
-    # def testReadSamWithoutHeader(self):
-    #     input_filename = os.path.join(DATADIR, "ex1.sam")
+    def testReadSamWithoutHeader(self):
+        input_filename = os.path.join(DATADIR, "ex1.sam")
 
-    #     # reading from a samfile without header is not implemented.
-    #     self.assertRaises(ValueError,
-    #                       pysam.Samfile,
-    #                       input_filename,
-    #                       "r")
+        # reading from a samfile without header is not 
+        # implemented
+        self.assertRaises(ValueError,
+                          pysam.Samfile,
+                          input_filename,
+                          "r")
 
-    #     self.assertRaises(ValueError,
-    #                       pysam.Samfile,
-    #                       input_filename,
-    #                       "r",
-    #                       check_header=False)
+        # TODO
+        # without check_header header is no read
+        # leading to segfault
+        # self.assertRaises(ValueError,
+        #                   pysam.Samfile,
+        #                   input_filename,
+        #                   "r",
+        #                   check_header=False)
 
     # TODO
     # def testReadUnformattedFile(self):
@@ -508,9 +517,9 @@ class TestIO(unittest.TestCase):
                                 "rb")
         samfile.close()
         self.assertRaises(ValueError, samfile.fetch, 'chr1', 100, 120)
-        # TODO
-        # self.assertRaises(ValueError, samfile.pileup, 'chr1', 100, 120)
+        self.assertRaises(ValueError, samfile.pileup, 'chr1', 100, 120)
         self.assertRaises(ValueError, samfile.getrname, 0)
+        # TODO
         # self.assertRaises(ValueError, samfile.tell)
         # self.assertRaises(ValueError, samfile.seek, 0)
         self.assertRaises(ValueError, getattr, samfile, "nreferences")
