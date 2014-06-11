@@ -549,11 +549,11 @@ cdef class Fastqfile:
     A *FASTQ* file. The file is automatically opened.
 
     '''
-    def __cinit__(self, *args, **kwargs ):
+    def __cinit__(self, *args, **kwargs):
         # self.fastqfile = <gzFile*>NULL
         self._filename = None
         self.entry = NULL
-        self._open( *args, **kwargs )
+        self._open(*args, **kwargs)
 
     def _isOpen( self ):
         '''return true if samfile has been opened.'''
@@ -566,18 +566,18 @@ cdef class Fastqfile:
         '''
         self.close()
 
-        if not os.path.exists( filename ):
-            raise IOError( "No such file or directory: %s" % filename )
+        if not os.path.exists(filename):
+            raise IOError("No such file or directory: %s" % filename)
 
         filename = _encodeFilename(filename)
-        self.fastqfile = gzopen( filename, "r" )
-        self.entry = kseq_init( self.fastqfile )
+        self.fastqfile = gzopen(filename, "r")
+        self.entry = kseq_init(self.fastqfile)
         self._filename = filename
 
     def close( self ):
         '''close file.'''
         if self.entry != NULL:
-            gzclose( self.fastqfile )
+            gzclose(self.fastqfile)
             if self.entry:
                 kseq_destroy(self.entry)
                 self.entry = NULL
@@ -594,7 +594,7 @@ cdef class Fastqfile:
         if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
         return self
 
-    cdef kseq_t * getCurrent( self ):
+    cdef kseq_t * getCurrent(self):
         return self.entry
 
     cdef int cnext(self):
@@ -874,7 +874,7 @@ cdef class Samfile:
             else:
                 self.index = bam_index_load(filename)
                 if self.index == NULL:
-                    raise IOError("error while opening index `%s` " % filename )
+                    warnings.warn("unable to open index for `%s` " % filename)
 
             if not self.isstream:
                 self.start_offset = bam_tell( self.samfile.x.bam )
@@ -989,43 +989,62 @@ cdef class Samfile:
 
         return bam_tell( self.samfile.x.bam )
 
-    def fetch( self,
-               reference = None,
-               start = None,
-               end = None,
-               region = None,
-               callback = None,
-               until_eof = False ):
-        '''
-        fetch aligned reads in a :term:`region` using 0-based indexing. The region is specified by
-        :term:`reference`, *start* and *end*. Alternatively, a samtools :term:`region` string can
-        be supplied.
+    def fetch(self,
+              reference=None,
+              start=None,
+              end=None,
+              region=None,
+              callback=None,
+              until_eof=False,
+              reopen=True):
+        '''fetch aligned reads in a :term:`region` using 0-based indexing. The
+        region is specified by :term:`reference`, *start* and
+        *end*. Alternatively, a samtools :term:`region` string can be
+        supplied.
 
-        Without *reference* or *region* all mapped reads will be fetched. The reads will be returned
-        ordered by reference sequence, which will not necessarily be the order within the file.
+        Without *reference* or *region* all mapped reads will be
+        fetched. The reads will be returned ordered by reference
+        sequence, which will not necessarily be the order within the
+        file.
 
-        If *until_eof* is given, all reads from the current file position will be returned
-        in order as they are within the file. Using this option will also fetch unmapped reads.
+        If *until_eof* is given, all reads from the current file
+        position will be returned in order as they are within the
+        file. Using this option will also fetch unmapped reads.
 
-        If only *reference* is set, all reads aligned to *reference* will be fetched.
+        If *reopen* is set to true, the iterator returned will receive
+        its own filehandle to the samfile effectively opening its own
+        copy of the file. The default behaviour is to re-open in order
+        to safely work with multiple concurrent iterators on the same
+        file. Re-opening a samfile creates some overhead, so when
+        using many calls to fetch() *reopen* can be set to False to
+        gain some speed. Also, the tell() method will only work if
+        *reopen* is set to False.
+
+        If only *reference* is set, all reads aligned to *reference*
+        will be fetched.
 
         The method returns an iterator of type :class:`pysam.IteratorRow` unless
         a *callback is provided. If *callback* is given, the callback will be executed
         for each position within the :term:`region`. Note that callbacks currently work
         only, if *region* or *reference* is given.
 
-        Note that a :term:`SAM` file does not allow random access. If *region* or *reference* are given,
-        an exception is raised.
+        Note that a :term:`SAM` file does not allow random access. If
+        *region* or *reference* are given, an exception is raised.
+
         '''
         cdef int rtid, rstart, rend, has_coord
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
-        has_coord, rtid, rstart, rend = self._parseRegion( reference, start, end, region )
+        has_coord, rtid, rstart, rend = self._parseRegion(reference,
+                                                          start,
+                                                          end,
+                                                          region)
 
-        if self.isstream: reopen = False
-        else: reopen = True
+        # Turn of re-opening if samfile is a stream
+        if self.isstream:
+            reopen = False
 
         if self.isbam:
             if not until_eof and not self._hasIndex() and not self.isremote:
@@ -1056,20 +1075,28 @@ cdef class Samfile:
                 raise ValueError ("fetching by region is not available for sam files" )
 
             if callback:
-                raise NotImplementedError( "callback not implemented yet" )
+                raise NotImplementedError("callback not implemented yet")
 
             if self.samfile.header == NULL:
-                raise ValueError( "fetch called for samfile without header")
+                raise ValueError("fetch called for samfile without header")
 
             # check if targets are defined
             # give warning, sam_read1 segfaults
             if self.samfile.header.n_targets == 0:
                 warnings.warn( "fetch called for samfile without header")
                 
-            return IteratorRowAll( self, reopen=reopen )
+            return IteratorRowAll(self, reopen=reopen )
 
-    def mate( self,
-              AlignedRead read ):
+    def head(self, n):
+        '''
+        return iterator over the first n alignments. 
+
+        This is useful for inspecting the bam-file.
+        '''
+        return IteratorRowHead(self, n)
+
+    def mate(self,
+             AlignedRead read):
         '''return the mate of :class:`AlignedRead` *read*.
 
         Throws a ValueError if read is unpaired or the mate
@@ -1645,6 +1672,74 @@ cdef class IteratorRowRegion(IteratorRow):
         bam_iter_destroy( self.iter )
         if self.owns_samfile: samclose( self.fp )
 
+cdef class IteratorRowHead(IteratorRow):
+    """*(Samfile samfile, n, int reopen = True)*
+
+    iterate over first n reads in *samfile*
+
+    By default, the file is re-openend to avoid conflicts between
+    multiple iterators working on the same file. Set *reopen* = False
+    to not re-open *samfile*.
+
+    .. note::
+        It is usually not necessary to create an object of this class
+        explicitely. It is returned as a result of call to a :meth:`Samfile.head`.
+        
+
+    """
+
+    def __cinit__(self, Samfile samfile, int n, int reopen = True ):
+
+        if not samfile._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+
+        if samfile.isbam: mode = b"rb"
+        else: mode = b"r"
+
+        self.max_rows = n
+        self.current_row = 0
+        # reopen the file to avoid iterator conflict
+        if reopen:
+            self.fp = samopen( samfile._filename, mode, NULL )
+            assert self.fp != NULL
+            self.owns_samfile = True
+        else:
+            self.fp = samfile.samfile
+            self.owns_samfile = False
+
+        # allocate memory for alignment
+        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
+
+    def __iter__(self):
+        return self
+
+    cdef bam1_t * getCurrent( self ):
+        return self.b
+
+    cdef int cnext(self):
+        '''cversion of iterator. Used by IteratorColumn'''
+        return samread(self.fp, self.b)
+
+    def __next__(self):
+        """python version of next().
+
+        pyrex uses this non-standard name instead of next()
+        """
+        if self.current_row >= self.max_rows:
+            raise StopIteration
+
+        cdef int ret
+        ret = samread(self.fp, self.b)
+        if (ret > 0):
+            self.current_row += 1
+            return makeAlignedRead( self.b )
+        else:
+            raise StopIteration
+
+    def __dealloc__(self):
+        bam_destroy1(self.b)
+        if self.owns_samfile: samclose( self.fp )
+
 cdef class IteratorRowAll(IteratorRow):
     """*(Samfile samfile, int reopen = True)*
 
@@ -2123,8 +2218,8 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
 cdef inline int32_t query_start(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p, op
-    cdef uint32_t k
+    cdef uint32_t * cigar_p
+    cdef uint32_t k, op
     cdef uint32_t start_offset = 0
 
     if src.core.n_cigar:
@@ -2146,8 +2241,8 @@ cdef inline int32_t query_start(bam1_t *src) except -1:
 ##-------------------------------------------------------------------
 ##-------------------------------------------------------------------
 cdef inline int32_t query_end(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p, op
-    cdef uint32_t k
+    cdef uint32_t * cigar_p
+    cdef uint32_t k, op
     cdef uint32_t end_offset = src.core.l_qseq
 
     if src.core.n_cigar>1:
@@ -2381,7 +2476,8 @@ cdef class AlignedRead:
         '''return -1,0,1, if contents in this are binary <,=,> to *other*'''
 
         cdef int retval, x
-        cdef bam1_t *t, *o
+        cdef bam1_t *t
+        cdef bam1_t *o
 
         t = self._delegate
         o = other._delegate
@@ -2516,8 +2612,12 @@ cdef class AlignedRead:
             strncpy( p, qname, l )
 
     property cigar:
-        """the :term:`cigar` alignment (None if not present). The alignment
+        """the :term:`cigar` alignment. The alignment
         is returned as a list of tuples of (operation, length). 
+
+        If the alignment is not present, an empty list is
+        returned.
+
         The operations are:
 
         +-----+--------------+-----+
@@ -2542,22 +2642,25 @@ cdef class AlignedRead:
 
         .. note::
             The output is a list of (operation, length) tuples, such as
-            ``[ (0, 30) ]``.
+            ``[(0, 30)]``.
             This is different from the SAM specification and
             the :attr:`cigarstring` property, which uses a
             (length, operation) order, for example: ``30M``.
 
+        To unset the cigar property, assign an empty list
+        or None.
         """
         def __get__(self):
             cdef uint32_t * cigar_p
             cdef bam1_t * src
             cdef op, l, cigar
             cdef int k
+            cigar = []
 
             src = self._delegate
-            if src.core.n_cigar == 0: return None
+            if src.core.n_cigar == 0:
+                return cigar
 
-            cigar = []
             cigar_p = bam1_cigar(src);
             for k from 0 <= k < src.core.n_cigar:
                 op = cigar_p[k] & BAM_CIGAR_MASK
@@ -2565,12 +2668,11 @@ cdef class AlignedRead:
                 cigar.append((op, l))
             return cigar
 
-        def __set__(self, values ):
-            if values == None or len(values) == 0: return
+        def __set__(self, values):
             cdef uint32_t * p
             cdef bam1_t * src
             cdef op, l
-            cdef int k
+            cdef int k, ncigar
 
             k = 0
 
@@ -2579,14 +2681,19 @@ cdef class AlignedRead:
             # get location of cigar string
             p = bam1_cigar(src)
 
+            # empty values for cigar string
+            if values is None:
+                values = []
+
+            ncigar = len(values)
             # create space for cigar data within src.data
-            pysam_bam_update( src,
-                              src.core.n_cigar * 4,
-                              len(values) * 4,
-                              <uint8_t*>p )
+            pysam_bam_update(src,
+                             src.core.n_cigar * 4,
+                             ncigar * 4,
+                             <uint8_t*>p)
 
             # length is number of cigar operations, not bytes
-            src.core.n_cigar = len(values)
+            src.core.n_cigar = ncigar
 
             # re-acquire pointer to location in memory
             # as it might have moved
@@ -2597,8 +2704,10 @@ cdef class AlignedRead:
                 p[k] = l << BAM_CIGAR_SHIFT | op
                 k += 1
 
-            ## setting the cigar string also updates the "bin" attribute
-            src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, p))
+            ## setting the cigar string requires updating the bin
+            src.core.bin = bam_reg2bin(
+                src.core.pos,
+                bam_calend(&src.core, p))
 
     property cigarstring:
         '''the :term:`cigar` alignment as a string.
@@ -2613,6 +2722,9 @@ cdef class AlignedRead:
             the :attr:`cigar` property.
 
         Returns the empty string if not present.
+
+        To unset the cigarstring, assign None or the
+        empty string.
         '''
         def __get__(self):
             c = self.cigar
@@ -2621,10 +2733,12 @@ cdef class AlignedRead:
             else: return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
             
         def __set__(self, cigar):
-            if cigar == None or len(cigar) == 0: self.cigar = []
-            parts = CIGAR_REGEX.findall( cigar )
-            # reverse order
-            self.cigar = [ (CIGAR2CODE[ord(y)], int(x)) for x,y in parts ]
+            if cigar is None or len(cigar) == 0:
+                self.cigar = []
+            else:
+                parts = CIGAR_REGEX.findall(cigar)
+                # reverse order
+                self.cigar = [(CIGAR2CODE[ord(y)], int(x)) for x,y in parts]
 
     property seq:
         """read sequence bases, including :term:`soft clipped` bases 
@@ -2947,7 +3061,8 @@ cdef class AlignedRead:
         '''
 
         cdef int      value_size
-        cdef uint8_t* value_ptr, *existing_ptr
+        cdef uint8_t * value_ptr
+        cdef uint8_t *existing_ptr
         cdef uint8_t  type_code
         cdef float    float_value
         cdef double   double_value
@@ -3034,21 +3149,25 @@ cdef class AlignedRead:
         """0-based leftmost coordinate"""
         def __get__(self): return self._delegate.core.pos
         def __set__(self, pos):
-            ## setting the cigar string also updates the "bin" attribute
+            ## setting the position requires updating the "bin" attribute
             cdef bam1_t * src
             src = self._delegate
+            src.core.pos = pos
             if src.core.n_cigar:
-                src.core.bin = bam_reg2bin( src.core.pos, bam_calend( &src.core, bam1_cigar(src)) )
+                src.core.bin = bam_reg2bin(src.core.pos,
+                                           bam_calend(&src.core, bam1_cigar(src)))
             else:
-                src.core.bin = bam_reg2bin( src.core.pos, src.core.pos + 1)
-            self._delegate.core.pos = pos
+                src.core.bin = bam_reg2bin(src.core.pos,
+                                           src.core.pos + 1)
+
     property bin:
         """properties bin"""
         def __get__(self): return self._delegate.core.bin
         def __set__(self, bin): self._delegate.core.bin = bin
 
     property rlen:
-        """length of the read. This includes soft-clipped bases and is equal to ``len(seq)``.
+        """length of the read. This includes soft-clipped bases
+        and is equal to ``len(seq)``.
 
         This property is read-only.
 
@@ -3091,19 +3210,23 @@ cdef class AlignedRead:
         """
         def __get__(self): return self._delegate.core.mtid
         def __set__(self, mtid): self._delegate.core.mtid = mtid
+
     property rnext:
         """the :term:`reference` id of the mate """
         def __get__(self): return self._delegate.core.mtid
         def __set__(self, mtid): self._delegate.core.mtid = mtid
+
     property mpos:
         """the position of the mate
         deprecated, use PNEXT instead."""
         def __get__(self): return self._delegate.core.mpos
         def __set__(self, mpos): self._delegate.core.mpos = mpos
+
     property pnext:
         """the position of the mate"""
         def __get__(self): return self._delegate.core.mpos
         def __set__(self, mpos): self._delegate.core.mpos = mpos
+
     #######################################################################
     #######################################################################
     ## Flags
@@ -3114,7 +3237,7 @@ cdef class AlignedRead:
         def __get__(self): return self._delegate.core.isize
         def __set__(self, isize): self._delegate.core.isize = isize
     property tlen:
-        """the insert size"""
+        """the template length"""
         def __get__(self): return self._delegate.core.isize
         def __set__(self, isize): self._delegate.core.isize = isize
     property is_paired:
@@ -3571,12 +3694,12 @@ def _samtools_dispatch( method,
     
     # some special cases
     if method == "index":
-        if not os.path.exists( args[0] ):
-            raise IOError( "No such file or directory: '%s'" % args[0] )
+        if not os.path.exists(args[0]):
+            raise IOError("No such file or directory: '%s'" % args[0])
 
     # redirect stderr and stdout to file
     stderr_h, stderr_f = tempfile.mkstemp()
-    pysam_set_stderr( stderr_h )
+    pysam_set_stderr(stderr_h)
         
     if catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
@@ -3591,7 +3714,8 @@ def _samtools_dispatch( method,
         # samtools `view` closes stdout, from which I can not
         # recover. Thus redirect output to file with -o option.
         if method == "view":
-            if "-o" in args: raise ValueError("option -o is forbidden in samtools view")
+            if "-o" in args:
+                raise ValueError("option -o is forbidden in samtools view")
             args = ( "-o", stdout_f ) + args
 
     # do the function call to samtools

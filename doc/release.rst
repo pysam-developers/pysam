@@ -6,6 +6,11 @@ Release 0.7.8
 =============
 
    * added AlignedRead.setTag method
+   * added AlignedRead.blocks
+   * unsetting CIGAR strings is now possible
+   * empty CIGAR string returns empty list
+   * added reopen flag to Samfile.fetch()
+   * various bugfixes
 
 Release 0.7.7
 =============

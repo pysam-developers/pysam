@@ -422,11 +422,11 @@ cdef extern from "pysam_stream.h":
       kstring_t seq
       kstring_t qual
 
-    gzFile gzopen( char *, char * )
-    kseq_t * kseq_init( gzFile )
-    int kseq_read( kseq_t * )
-    void kseq_destroy( kseq_t * )
-    void gzclose( gzFile )
+    gzFile gzopen(char *, char *)
+    kseq_t * kseq_init(gzFile)
+    int kseq_read(kseq_t *)
+    void kseq_destroy(kseq_t *)
+    int gzclose(gzFile)
 
 ####################################################################
 # Utility types
@@ -490,14 +490,14 @@ cdef class Samfile:
     # beginning of read section
     cdef int64_t start_offset 
 
-    cdef bam_header_t * _buildHeader( self, new_header )
-    cdef bam1_t * getCurrent( self )
+    cdef bam_header_t * _buildHeader(self, new_header)
+    cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
     # write an aligned read
-    cpdef int write( self, AlignedRead read )
+    cpdef int write(self, AlignedRead read)
 
-    cdef char * _getrname( self, int tid )
+    cdef char * _getrname(self, int tid)
 
 cdef class PileupProxy:
     cdef bam_pileup1_t ** plp
@@ -526,6 +526,20 @@ cdef class IteratorRowRegion(IteratorRow):
     # true if samfile belongs to this object
     cdef int owns_samfile
 
+    cdef bam1_t * getCurrent( self )
+
+    cdef int cnext(self)
+
+cdef class IteratorRowHead(IteratorRow):
+    cdef bam_iter_t             iter # iterator state object
+    cdef bam1_t *               b
+    cdef int                    retval
+    cdef Samfile                samfile
+    cdef samfile_t              * fp
+    # true if samfile belongs to this object
+    cdef int owns_samfile
+    cdef int max_rows
+    cdef int current_row
     cdef bam1_t * getCurrent( self )
 
     cdef int cnext(self)
