@@ -547,7 +547,6 @@ cdef class GTFProxy( TupleProxy ):
 
         # add space in order to make sure
         # to not pick up a field that is a prefix of another field
-        print 'item=', item
         r = _force_bytes(item + " ")
         query = r
         start = strstr(attributes, query)
