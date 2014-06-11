@@ -14,6 +14,7 @@ import hashlib
 import re
 import fnmatch
 import platform
+import subprocess
 
 name = "pysam"
 
@@ -30,6 +31,7 @@ samtools_exclude = ("bamtk.c", "razip.c", "bgzip.c",
                     "wgsim.c", "md5fa.c", "maq2sam.c",
                     "bamcheck.c",
                     "chk_indel.c")
+htslib_exclude = ('htslib/tabix.c',)
 samtools_dest = os.path.abspath("samtools")
 tabix_exclude = ("main.c",)
 tabix_dest = os.path.abspath("tabix")
@@ -55,7 +57,7 @@ def _update_pysam_files(cf, destdir):
                 outfile.write(
                     re.sub("stderr", "pysamerr", "".join(infile.readlines())))
             with open(os.path.join(destdir, "pysam.h"), "w")as outfile:
-                outfile.write ("""#ifndef PYSAM_H
+                outfile.write("""#ifndef PYSAM_H
 #define PYSAM_H
 #include "stdio.h"
 extern FILE * pysamerr;
@@ -124,9 +126,10 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
 
     sys.exit(0)
 
+
 if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
     sys.stdout.write("refreshing latest source code from .c to .pysam.c")
-# redirect stderr to pysamerr and replace bam.h with a stub.
+    # redirect stderr to pysamerr and replace bam.h with a stub.
     sys.stdout.write("applying stderr redirection")
     for destdir in ('samtools', 'tabix'):
         pysamcfiles = locate("*.pysam.c", destdir)
@@ -137,6 +140,18 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 
     sys.exit(0)
 
+
+# checkout latest version of htslib
+if len(sys.argv) == 2 and sys.argv[1] == "htslib":
+    if not os.path.exists("htslib"):
+        subprocess.call(["git", "clone", "git@github.com:samtools/htslib.git"])
+        with open(os.path.join("htslib", "version.h"), "w") as outfile:
+            outfile.write('#define HTS_VERSION "0.0.1"')
+    else:
+        os.chdir('htslib')
+        subprocess.call(["git", "pull"])
+
+    sys.exit(0)
 
 ###################
 # populate headers
@@ -223,7 +238,7 @@ samtools = Extension(
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement"],
     define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')],
+                   ('_USE_KNETFILE', '')]
 )
 
 #######################################################
@@ -232,16 +247,23 @@ htslib = Extension(
     chtslib_sources +
     ["pysam/%s" % x for x in (
         "htslib_util.c", )] +
-    # glob.glob(os.path.join("samtools", "*.pysam.c")) +
+    [x for x in glob.glob(
+        os.path.join("htslib", "*.c")) +
+     glob.glob(
+         os.path.join("htslib", "cram", "*.c"))
+     if x not in htslib_exclude] +
     os_c_files,
-    # glob.glob(os.path.join("samtools", "*", "*.pysam.c")),
     library_dirs=["/home/andreas/devel/htslib"],
-    include_dirs=["htslib/htslib", "pysam"] + include_os,
-    libraries=["z", "hts"],
+    include_dirs=["htslib/htslib",
+                  "htslib",
+                  "pysam"] + include_os,
+    # at later stage, to include libhts.so, add "hts",
+    libraries=["z"],
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement"],
+    extra_compile_args=["-Wno-error=declaration-after-statement",
+                        "-DSAMTOOLS=1"],
     define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')],
+                   ('_USE_KNETFILE', '')]
 )
 
 tabix = Extension(
