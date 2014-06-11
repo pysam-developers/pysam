@@ -4,15 +4,8 @@
 import tempfile
 import os
 import sys
-import types
-import itertools
-import struct
-import ctypes
-import collections
-import re
 import platform
-import warnings
-from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython.version cimport PY_MAJOR_VERSION
 
 ########################################################################
@@ -83,7 +76,6 @@ cdef _forceStr(object s):
     else:
         # assume unicode
         return s
-
 
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
