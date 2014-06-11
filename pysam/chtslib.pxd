@@ -97,15 +97,15 @@ cdef extern from "pysam_stream.h":
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
-cdef extern from "kstring.h" nogil:
+cdef extern from "htslib/kstring.h" nogil:
     ctypedef struct kstring_t:
         size_t l, m
         char *s
 
-cdef extern from "hfile.h" nogil:
+cdef extern from "htslib/hfile.h" nogil:
     ctypedef struct hFILE
 
-cdef extern from "bgzf.h" nogil:
+cdef extern from "htslib/bgzf.h" nogil:
     ctypedef struct bgzf_mtaux_t
     ctypedef struct bgzidx_t
     ctypedef struct z_stream
@@ -314,7 +314,7 @@ cdef extern from "bgzf.h" nogil:
     int bgzf_index_dump(BGZF *fp, const char *bname, const char *suffix)
 
 
-cdef extern from "hts.h" nogil:
+cdef extern from "htslib/hts.h" nogil:
     uint32_t kroundup32(uint32_t x)
 
     ctypedef struct cram_fd
@@ -483,7 +483,7 @@ cdef extern from "hts.h" nogil:
     inline void *ed_swap_8p(void *x)
 
 
-cdef extern from "sam.h" nogil:
+cdef extern from "htslib/sam.h" nogil:
     #**********************
     #*** SAM/BAM header ***
     #**********************
@@ -1255,7 +1255,7 @@ cdef extern from "sam.h" nogil:
 cdef extern from *:
     ctypedef char* const_char_ptr "const char*"
 
-cdef extern from "faidx.h":
+cdef extern from "htslib/faidx.h":
 
    ctypedef struct faidx_t:
       pass

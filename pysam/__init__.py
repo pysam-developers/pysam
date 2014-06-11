@@ -149,6 +149,7 @@ def get_include():
     '''return a list of include directories.'''
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
     return [dirname,
+            os.path.join(dirname, 'include', 'htslib'),
             os.path.join(dirname, 'include', 'samtools'),
             os.path.join(dirname, 'include', 'tabix')]
 

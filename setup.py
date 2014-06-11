@@ -254,8 +254,7 @@ htslib = Extension(
      if x not in htslib_exclude] +
     os_c_files,
     library_dirs=["/home/andreas/devel/htslib"],
-    include_dirs=["htslib/htslib",
-                  "htslib",
+    include_dirs=["htslib",
                   "pysam"] + include_os,
     # at later stage, to include libhts.so, add "hts",
     libraries=["z"],

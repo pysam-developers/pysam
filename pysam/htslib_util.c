@@ -1,15 +1,14 @@
 #include <ctype.h>
 #include <assert.h>
-#include "khash.h"
-#include "ksort.h"
-#include "sam.h"
-#include "hts.h"
-#include "knetfile.h"
+#include "htslib/khash.h"
+#include "htslib/ksort.h"
+#include "htslib/sam.h"
+#include "htslib/hts.h"
+#include "htslib/knetfile.h"
+#include "htslib/kseq.h"
 #include "htslib_util.h"
 #include <stdio.h>
 
-// for sequence parsing
-#include "kseq.h"
 
 #ifndef inline
 #define inline __inline
