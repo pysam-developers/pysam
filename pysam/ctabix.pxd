@@ -98,89 +98,84 @@ cdef extern from "Python.h":
     int fileno(FILE *stream)
     FILE *fdopen(int fd, char *mode)
 
-cdef extern from "bgzf.h":
+# cdef extern from "bgzf.h":
 
-  ctypedef struct BGZF:
-    pass
+#   ctypedef struct BGZF:
+#     pass
 
-  int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
+#   int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
 
-  BGZF * bgzf_open(char * path, char * mode)
+#   BGZF * bgzf_open(char * path, char * mode)
 
-  int bgzf_write(BGZF * fp, void* data, int length)
+#   int bgzf_write(BGZF * fp, void* data, int length)
 
-  int bgzf_close(BGZF* fp)
+#   int bgzf_close(BGZF* fp)
+
+
+from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
 # tabix support
-cdef extern from "tabix.h":
+cdef extern from "htslib/tbx.h":
 
-  ctypedef struct ti_conf_t:
-    int32_t preset
-    int32_t sc, bc, ec
-    int32_t meta_char, line_skip
+    
+    # redefinitions from chtslib.pxd 
+    ctypedef struct hts_idx_t
+    ctypedef struct hts_itr_t
+    ctypedef struct htsFile
 
-  ctypedef struct ti_index_t:
-     pass
-      
-  ctypedef struct tabix_t: 
-    BGZF *fp
-    ti_index_t *idx
-    char *fn
-    char *fnidx
+    # tbx.h definitions
+    int8_t TBX_MAX_SHIFT
+    int8_t TBX_GENERIC
+    int8_t TBX_SAM
+    int8_t TBX_VCF
+    int8_t TBX_UCSC
 
-  ctypedef struct ti_iter_t:
-    pass
+    ctypedef struct tbx_conf_t:
+        int32_t preset
+        int32_t sc, bc, ec   # seq col., beg col. and end col.
+        int32_t meta_char, line_skip
 
-  tabix_t *ti_open(char *fn, char *fnidx)
+    ctypedef struct tbx_t:
+        tbx_conf_t conf
+        hts_idx_t *idx
+        void * dict
 
-  int ti_lazy_index_load(tabix_t *t)
+    tbx_conf_t tbx_conf_gff
+    tbx_conf_t tbx_conf_bed
+    tbx_conf_t tbx_conf_psltbl
+    tbx_conf_t tbx_conf_sam
+    tbx_conf_t tbx_conf_vcf
+    
+     
+    # defined within tbx
+    #define tbx_itr_destroy(iter) hts_itr_destroy(iter)
+    #define tbx_itr_queryi(tbx, tid, beg, end) hts_itr_query((tbx)->idx, (tid), (beg), (end), tbx_readrec)
+    #define tbx_itr_querys(tbx, s) hts_itr_querys((tbx)->idx, (s), (hts_name2id_f)(tbx_name2id), (tbx), hts_itr_query, tbx_readrec)
+    #define tbx_itr_next(htsfp, tbx, itr, r) hts_itr_next(hts_get_bgzfp(htsfp), (itr), (r), (tbx))
+    #define tbx_bgzf_itr_next(bgzfp, tbx, itr, r) hts_itr_next((bgzfp), (itr), (r), (tbx))
 
-  void ti_close(tabix_t *t)
+    void tbx_itr_destroy(hts_itr_t * iter)
+    hts_itr_t * tbx_itr_queryi(tbx_t * t, int tid, int bed, int end)
+    hts_itr_t * tbx_itr_querys(tbx_t * t, char * s)
+    int tbx_itr_next(htsFile * fp, tbx_t * t, hts_itr_t * iter, void * data)
 
-  ti_iter_t ti_query(tabix_t *t, char *name, int beg, int end)
-  ti_iter_t ti_queryi(tabix_t *t, int tid, int beg, int end)
-  ti_iter_t ti_querys(tabix_t *t, char *reg)
-  char * ti_read(tabix_t *t, ti_iter_t iter, int *len)
+    int tbx_name2id(tbx_t *tbx, char *ss)
 
-  # Get the list of sequence names. Each "char*" pointer points to a
-  #	internal member of the index, so DO NOT modify the returned
-  #	 pointer; otherwise the index will be corrupted. The returned
-  #	pointer should be freed by a single free() call by the routine
-  #	calling this function. The number of sequences is returned at *n
-  char **ti_seqname(ti_index_t *idx, int *n)
-  
-  # Destroy the iterator
-  void ti_iter_destroy(ti_iter_t iter)
+    #/* Internal helper function used by tbx_itr_next() */
+    # BGZF *hts_get_bgzfp(htsFile *fp);
+    #int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, int *beg, int *end);
 
-  # Build the index for file <fn>. File <fn>.tbi will be generated
-  # and overwrite the file of the same name. Return -1 on failure. */
-  int ti_index_build(char *fn, ti_conf_t *conf)
+    int tbx_index_build(char *fn,
+                        int min_shift,
+                        tbx_conf_t *conf)
+    
+    tbx_t * tbx_index_load(char *fn)
 
-  #/* Load the index from file <fn>.tbi. If <fn> is a URL and the index
-  #   * file is not in the working directory, <fn>.tbi will be
-  #   * downloaded. Return NULL on failure. */
-  ti_index_t *ti_index_load( char *fn)
+    # free the array but not the values
+    char **tbx_seqnames(tbx_t *tbx, int *n)
 
-  ti_index_t *ti_index_load_local(char *fnidx)
-
-  #/* Destroy the index */
-  void ti_index_destroy(ti_index_t *idx)
-
-  #/* Parse a region like: chr2, chr2:100, chr2:100-200. Return -1 on failure. */
-  int ti_parse_region( ti_index_t *idx,  char *str, int *tid, int *begin, int *end)
-
-  int ti_get_tid( ti_index_t *idx,  char *name)
-
-  #  /* Get the iterator pointing to the first record at the current file
-  #   * position. If the file is just openned, the iterator points to the
-  #   * first record in the file. */
-  ti_iter_t ti_iter_first()
-
-  #  /* Get the iterator pointing to the first record in region tid:beg-end */
-  ti_iter_t ti_iter_query( ti_index_t *idx, int tid, int beg, int end)
-
-  #  /* Get the data line pointed by the iterator and iterate to the next record. */
-  # char *ti_iter_read(BGZF *fp, ti_iter_t iter, int *len)
+    void tbx_destroy(tbx_t *tbx)
 
 cdef extern from "pysam_stream.h":
 
@@ -200,7 +195,7 @@ cdef extern from "pysam_stream.h":
 
 cdef class tabix_file_iterator:
     cdef gzFile fh
-    cdef kstream_t * ks
+    cdef kstream_t * kstream
     cdef kstring_t buffer
     cdef size_t size
     cdef Parser parser
@@ -212,8 +207,10 @@ cdef class tabix_file_iterator:
 cdef class Tabixfile:
 
     # pointer to tabixfile
-    cdef tabix_t * tabixfile
-     
+    cdef htsFile * tabixfile
+    # pointer to index structure
+    cdef tbx_t * index
+
     # flag indicating whether file is remote
     cdef int isremote
 
@@ -221,32 +218,40 @@ cdef class Tabixfile:
 
     cdef Parser parser
     
-cdef class TabixIterator:
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-
-cdef class TabixHeaderIterator:
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
-
 cdef class Parser:
-     cdef parse(self, char * buffer, int len)
+    cdef parse(self, char * buffer, int len)
 
 cdef class asTuple(Parser):
-     cdef parse(self, char * buffer, int len)
+    cdef parse(self, char * buffer, int len)
 
 cdef class asGTF(Parser):
-     pass
+    pass
 
 cdef class asBed(Parser):
-     pass
+    pass
 
 cdef class asVCF(Parser):
-     pass
+    pass
 
-cdef class TabixIteratorParsed:
-    cdef ti_iter_t iterator
-    cdef tabix_t * tabixfile
+cdef class TabixIterator:
+    cdef hts_itr_t * iterator
+    cdef Tabixfile tabixfile
+
+cdef class TabixIteratorParsed(TabixIterator):
+    cdef Parser parser
+
+cdef class GZIterator:
+    cdef object _filename
+    cdef gzFile gzipfile
+    cdef kstream_t * kstream
+    cdef kstring_t buffer
+
+    cdef int __cnext__(self)
+
+cdef class GZIteratorHead(GZIterator):
+    pass
+
+cdef class GZIteratorParsed(GZIterator):
     cdef Parser parser
 
 cdef _force_str(object s)

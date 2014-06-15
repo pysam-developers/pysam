@@ -6,9 +6,11 @@ Release 0.8.0
 =============
 
    * Not implemented yet:
-     * reading sam files without header
-
-
+     * reading SAM files without header
+  * tabix needs to be re-indexed
+  * tabix iterators will not return comments
+    (TODO: full iterator)
+  * tabix raises always ValueError for invalid intervals
 
 Release 0.7.8
 =============

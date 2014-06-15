@@ -175,71 +175,109 @@ class TestCompressionVCF(TestCompression):
     filename_index = os.path.join(DATADIR, "example.vcf.gz.tbi")
     preset = "vcf"
 
+class IterationTest(unittest.TestCase):
 
-class TestIteration(unittest.TestCase):
-
-    filename = os.path.join(DATADIR, "example.gtf.gz")
+    with_comments = False
 
     def setUp(self):
 
-        self.tabix = pysam.Tabixfile(self.filename)
         lines = []
         inf = gzip.open(self.filename, "rb")
         for line in inf:
             line = line.decode('ascii')
             if line.startswith("#"):
-                continue
+                if not self.with_comments:
+                    continue
             lines.append(line)
         inf.close()
+
         # creates index of contig, start, end, adds content without newline.
         self.compare = [
             (x[0][0], int(x[0][3]), int(x[0][4]), x[1])
-            for x in [(y.split("\t"), y[:-1]) for y in lines]]
-
+            for x in [(y.split("\t"), y[:-1]) for y in lines
+                      if not y.startswith("#")]]
+        
+        self.comments = [x[:-1] for x in lines if x.startswith("#")]
+        
     def getSubset(self, contig=None, start=None, end=None):
 
-        if contig == None:
+        if contig is None:
             # all lines
             subset = [x[3] for x in self.compare]
         else:
-            if start != None and end == None:
+            if start != None and end is None:
                 # until end of contig
                 subset = [x[3]
-                          for x in self.compare if x[0] == contig and x[2] > start]
-            elif start == None and end != None:
+                          for x in self.compare if x[0] == contig
+                          and x[2] > start]
+            elif start is None and end != None:
                 # from start of contig
                 subset = [x[3]
-                          for x in self.compare if x[0] == contig and x[1] <= end]
-            elif start == None and end == None:
+                          for x in self.compare if x[0] == contig
+                          and x[1] <= end]
+            elif start is None and end is None:
                 subset = [x[3] for x in self.compare if x[0] == contig]
             else:
                 # all within interval
-                subset = [x[3] for x in self.compare if x[0] == contig and
-                          min(x[2], end) - max(x[1], start) > 0]
+                subset = [x[3] for x in self.compare if x[0] == contig
+                          and min(x[2], end) - max(x[1], start) > 0]
 
+        if self.with_comments:
+            subset.extend(self.comments)
+        
         return subset
-
+    
     def checkPairwise(self, result, ref):
         '''check pairwise results.
         '''
         result.sort()
         ref.sort()
-
         a = set(result)
         b = set(ref)
 
-        self.assertEqual(len(result), len(ref),
-                         "unexpected number of results: result=%i, expected ref=%i, differences are %s: %s"
-                         % (len(result), len(ref),
-                             a.difference(b),
-                             b.difference(a)))
+        self.assertEqual(
+            len(result), len(ref),
+            "unexpected number of results: result=%i, expected ref=%i, differences are %s: %s"
+            % (len(result), len(ref),
+               a.difference(b),
+               b.difference(a)))
 
         for x, d in enumerate(list(zip(result, ref))):
-            self.assertEqual(d[0], d[1],
-                             "unexpected results in pair %i:\n'%s', expected\n'%s'" %
-                             (x,
-                              d[0],
-                              d[1]))
+            self.assertEqual(
+                d[0], d[1],
+                "unexpected results in pair %i:\n'%s', expected\n'%s'" %
+                (x,
+                 d[0],
+                 d[1]))
+
+
+class TestGZFile(IterationTest):
+
+    filename = os.path.join(DATADIR, "example.gtf.gz")
+    with_comments = True
+
+    def setUp(self):
+
+        IterationTest.setUp(self)
+
+        self.iter = pysam.GZIterator(self.filename)
+
+    def testAll(self):
+        result = list(self.iter)
+        ref = self.getSubset()
+        self.checkPairwise(result, ref)
+
+
+class TestIterationWithoutComments(IterationTest):
+    '''test iterating with Tabixfile.fetch() when
+    there are no comments in the file.'''
+
+    filename = os.path.join(DATADIR,
+                            "example_nocomment.gtf.gz")
+
+    def setUp(self):
+        IterationTest.setUp(self)
+        self.tabix = pysam.Tabixfile(self.filename)
 
     def testAll(self):
         result = list(self.tabix.fetch())
@@ -295,11 +333,11 @@ class TestIteration(unittest.TestCase):
         self.assertRaises(ValueError, self.tabix.fetch, "chr1", 200, 0)
 
         # out of range intervals
-        self.assertRaises(IndexError, self.tabix.fetch, "chr1", -10, 200)
-        self.assertRaises(IndexError, self.tabix.fetch, "chr1", -10, -20)
+        self.assertRaises(ValueError, self.tabix.fetch, "chr1", -10, 200)
+        self.assertRaises(ValueError, self.tabix.fetch, "chr1", -10, -20)
 
         # unknown chromosome
-        self.assertRaises(KeyError, self.tabix.fetch, "chrUn")
+        self.assertRaises(ValueError, self.tabix.fetch, "chrUn")
 
         # out of range access
         # to be implemented
@@ -336,6 +374,20 @@ class TestIteration(unittest.TestCase):
 
         for i in range(10000):
             func1()
+
+
+class TestIterationWithComments(TestIterationWithoutComments):
+    '''test iterating with Tabixfile.fetch() when
+    there are comments in the file.
+
+    
+    Tests will create plenty of warnings on stderr.
+    '''
+
+    filename = os.path.join(DATADIR, "example.gtf.gz")
+
+    def setUp(self):
+        TestIterationWithoutComments.setUp(self)
 
 
 class TestParser(unittest.TestCase):

@@ -884,11 +884,11 @@ cdef class Samfile:
             raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.header.n_targets ) )
         return self.header.target_name[tid]
 
-    def _parseRegion( self,
-                      reference = None,
-                      start = None,
-                      end = None,
-                      region = None ):
+    def _parseRegion(self,
+                     reference=None,
+                     start=None,
+                     end=None,
+                     region=None):
         '''
         parse region information.
 
@@ -899,10 +899,6 @@ cdef class Samfile:
 
         Note that regions are 1-based, while start,end are python coordinates.
         '''
-        # This method's main objective is to translate from a reference to a tid.
-        # For now, it calls bam_parse_region, which is clumsy. Might be worth
-        # implementing it all in pysam (makes use of khash).
-
         cdef int rtid
         cdef long long rstart
         cdef long long rend
@@ -929,7 +925,8 @@ cdef class Samfile:
             if len(parts) >= 2: rstart = int(parts[1]) - 1
             if len(parts) >= 3: rend = int(parts[2])
 
-        if not reference: return 0, 0, 0, 0
+        if not reference:
+            return 0, 0, 0, 0
 
         rtid = self.gettid( reference )
         if rtid < 0: raise ValueError( "invalid reference `%s`" % reference )

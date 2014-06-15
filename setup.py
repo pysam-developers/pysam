@@ -253,7 +253,7 @@ htslib = Extension(
          os.path.join("htslib", "cram", "*.c"))
      if x not in htslib_exclude] +
     os_c_files,
-    library_dirs=["/home/andreas/devel/htslib"],
+    library_dirs=[], # "/home/andreas/devel/htslib"],
     include_dirs=["htslib",
                   "pysam"] + include_os,
     # at later stage, to include libhts.so, add "hts",
@@ -269,13 +269,19 @@ tabix = Extension(
     "pysam.ctabix",
     tabix_sources +
     ["pysam/%s" % x for x in ("tabix_util.c", )] +
-    os_c_files +
-    glob.glob(os.path.join("tabix", "*.pysam.c")),
+    [x for x in glob.glob(
+        os.path.join("htslib", "*.c")) +
+     glob.glob(
+         os.path.join("htslib", "cram", "*.c"))
+     if x not in htslib_exclude] +
+    os_c_files,
+    # glob.glob(os.path.join("tabix", "*.pysam.c")),
     library_dirs=[],
-    include_dirs=["tabix", "htslib", "pysam"] + include_os,
+    include_dirs=["htslib", "pysam"] + include_os,
     libraries=["z", ],
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement"],
+    extra_compile_args=["-Wno-error=declaration-after-statement",
+                        "-DSAMTOOLS=1"],
     define_macros=[('_FILE_OFFSET_BITS', '64'),
                    ('_USE_KNETFILE', '')],
 )
@@ -315,16 +321,16 @@ metadata = {
                  'pysam.include.htslib',
                  'pysam.include.samtools',
                  'pysam.include.samtools.bcftools',
-                 'pysam.include.samtools.win32',
-                 'pysam.include.tabix'],
+                 'pysam.include.samtools.win32'],
+                 #'pysam.include.tabix'],
     'requires': ['cython (>=0.17)'],
     'ext_modules': [samtools, htslib, tabix, tabproxies, cvcf],
     'cmdclass': cmdclass,
     'install_requires': ['cython>=0.17', ],
     'package_dir': {'pysam': 'pysam',
                     'pysam.include.htslib': 'htslib',
-                    'pysam.include.samtools': 'samtools',
-                    'pysam.include.tabix': 'tabix'},
+                    'pysam.include.samtools': 'samtools'},
+                    #'pysam.include.tabix': 'tabix'},
     'package_data': {'': ['*.pxd', '*.h'], },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe': False,
