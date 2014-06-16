@@ -40,10 +40,10 @@ cdef extern from "stdio.h":
 cdef extern from "ctype.h":
   int toupper(int c)
   int tolower(int c)
-  
+
 cdef extern from "unistd.h":
   char *ttyname(int fd)
-  int isatty(int fd)  
+  int isatty(int fd)
 
 cdef extern from "string.h":
   int strcmp(char *s1, char *s2)
@@ -98,9 +98,6 @@ cdef extern from "pysam_stream.h":
 
     kstream_t * ks_init(gzFile)
     int ks_getuntil(kstream_t *, int delimiter, kstring_t str, int * dret)
-
-from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
-from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
 cdef extern from "htslib/kstring.h" nogil:
     ctypedef struct kstring_t:
@@ -329,7 +326,7 @@ cdef extern from "htslib/hts.h" nogil:
         cram_fd * cram
         hFILE * hfile
         void * voidp
-      
+
     ctypedef struct htsFile:
 	# uint32_t is_bin:1, is_write:1, is_be:1, is_cram:1, is_compressed:2, is_kstream:1, dummy:25;
         uint32_t  is_bin
@@ -458,7 +455,7 @@ cdef extern from "htslib/hts.h" nogil:
         int beg,
         int end,
         hts_readrec_func *readrec)
-    
+
     hts_itr_t *hts_itr_querys(
         const hts_idx_t *idx,
         const char *reg,
@@ -614,7 +611,7 @@ cdef extern from "htslib/sam.h" nogil:
     # 2. l_qseq is calculated from the total length of an alignment block
     # on reading or from CIGAR.
     # 3. cigar data is encoded 4 bytes per CIGAR operation.
-    # 4. seq is nybble-encoded according to bam_nt16_table.
+    # 4. seq is nybble-encoded according to seq_nt16_table.
     ctypedef struct bam1_t:
         bam1_core_t core
         int l_data, m_data
@@ -855,7 +852,7 @@ cdef extern from "htslib/faidx.h":
    int faidx_fetch_nseq(faidx_t *fai)
 
    char *faidx_fetch_seq(faidx_t *fai,
-                         char *c_name, 
+                         char *c_name,
                          int p_beg_i,
                          int p_end_i,
                          int *len)
@@ -863,7 +860,7 @@ cdef extern from "htslib/faidx.h":
 cdef extern from "htslib_util.h":
 
     # add *nbytes* into the variable length data of *src* at *pos*
-    bam1_t * pysam_bam_update( bam1_t * b, 
+    bam1_t * pysam_bam_update( bam1_t * b,
                                size_t nbytes_old,
                                size_t nbytes_new,
                                uint8_t * pos )
@@ -923,7 +920,7 @@ cdef class FastqProxy:
 cdef class Fastqfile:
     cdef object _filename
     cdef gzFile fastqfile
-    cdef kseq_t * entry 
+    cdef kseq_t * entry
 
     cdef kseq_t * getCurrent( self )
     cdef int cnext(self)
@@ -933,7 +930,7 @@ cdef class AlignedRead:
     # object that this AlignedRead represents
     cdef bam1_t * _delegate
 
-    # add an alignment tag with value to the AlignedRead 
+    # add an alignment tag with value to the AlignedRead
     # an existing tag of the same name will be replaced.
     cpdef setTag( self, tag, value, value_type = ?, replace = ? )
 
@@ -963,7 +960,7 @@ cdef class Samfile:
     cdef char * mode
 
     # beginning of read section
-    cdef int64_t start_offset 
+    cdef int64_t start_offset
 
     cdef bam_hdr_t * _buildHeader(self, new_header)
     cdef bam1_t * getCurrent(self)
@@ -1063,5 +1060,3 @@ cdef class IndexedReads:
     cdef index
     # true if samfile belongs to this object
     cdef int owns_samfile
-
-
