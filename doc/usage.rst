@@ -43,7 +43,8 @@ Using a function object, work can be done on the alignments. The
 code below simply counts aligned reads::
 
    class Counter:
-       cCounts = 0
+       def __init__(self):
+           self.counts = 0
        def __call__(self, alignment):
            self.counts += 1
    
