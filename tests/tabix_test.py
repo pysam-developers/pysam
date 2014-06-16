@@ -196,21 +196,21 @@ class IterationTest(unittest.TestCase):
             (x[0][0], int(x[0][3]), int(x[0][4]), x[1])
             for x in [(y.split("\t"), y[:-1]) for y in lines
                       if not y.startswith("#")]]
-        
+
         self.comments = [x[:-1] for x in lines if x.startswith("#")]
-        
+
     def getSubset(self, contig=None, start=None, end=None):
 
         if contig is None:
             # all lines
             subset = [x[3] for x in self.compare]
         else:
-            if start != None and end is None:
+            if start is not None and end is None:
                 # until end of contig
                 subset = [x[3]
                           for x in self.compare if x[0] == contig
                           and x[2] > start]
-            elif start is None and end != None:
+            elif start is None and end is not None:
                 # from start of contig
                 subset = [x[3]
                           for x in self.compare if x[0] == contig
@@ -273,7 +273,7 @@ class TestIterationWithoutComments(IterationTest):
     there are no comments in the file.'''
 
     filename = os.path.join(DATADIR,
-                            "example_nocomment.gtf.gz")
+                            "example.gtf.gz")
 
     def setUp(self):
         IterationTest.setUp(self)
@@ -384,7 +384,7 @@ class TestIterationWithComments(TestIterationWithoutComments):
     Tests will create plenty of warnings on stderr.
     '''
 
-    filename = os.path.join(DATADIR, "example.gtf.gz")
+    filename = os.path.join(DATADIR, "example_comments.gtf.gz")
 
     def setUp(self):
         TestIterationWithoutComments.setUp(self)
@@ -549,7 +549,7 @@ class TestIterators(unittest.TestCase):
         x = i.next()
         infile.close()
         # Not implemented
-        #self.assertRaises( ValueError, i.next )
+        # self.assertRaises(ValueError, i.next)
 
     def tearUp(self):
         os.unlink(self.tmpfilename_uncompressed)
@@ -744,7 +744,7 @@ class TestVCFFromVCF(TestVCF):
 
         self.vcf = pysam.VCF()
         self.compare = loadAndConvert(self.filename, encode=False)
-    
+
     def testConnecting(self):
 
         fn = os.path.basename(self.filename)
@@ -757,8 +757,6 @@ class TestVCFFromVCF(TestVCF):
                 self.vcf.connect(self.tmpfilename + ".gz")
 
     def testParsing(self):
-
-        ncolumns = len(self.columns)
 
         fn = os.path.basename(self.filename)
         with open(self.filename) as f:
@@ -775,7 +773,8 @@ class TestVCFFromVCF(TestVCF):
                     self.assertRaises(ValueError, list, iter)
                     break
                     # python 2.7
-                    # self.assertRaisesRegexp( ValueError, re.compile(msg), self.vcf.parse, f )
+                    # self.assertRaisesRegexp(
+                    # ValueError, re.compile(msg), self.vcf.parse, f)
             else:
                 # do the actual parsing
                 for x, r in enumerate(iter):
@@ -791,55 +790,63 @@ class TestVCFFromVCF(TestVCF):
                         elif field == "alt":
                             if c[y] == ".":
                                 # convert . to empty list
-                                self.assertEqual([], val,
-                                                 "mismatch in field %s: expected %s, got %s" %
-                                                 (field, c[y], val))
+                                self.assertEqual(
+                                    [], val,
+                                    "mismatch in field %s: expected %s, got %s" %
+                                    (field, c[y], val))
                             else:
                                 # convert to list
-                                self.assertEqual(c[y].split(","), val,
-                                                 "mismatch in field %s: expected %s, got %s" %
-                                                 (field, c[y], val))
-
+                                self.assertEqual(
+                                    c[y].split(","), val,
+                                    "mismatch in field %s: expected %s, got %s" %
+                                    (field, c[y], val))
+                                
                         elif field == "filter":
                             if c[y] == "PASS" or c[y] == ".":
                                 # convert PASS to empty list
-                                self.assertEqual([], val,
-                                                 "mismatch in field %s: expected %s, got %s" %
-                                                 (field, c[y], val))
+                                self.assertEqual(
+                                    [], val,
+                                    "mismatch in field %s: expected %s, got %s" %
+                                    (field, c[y], val))
                             else:
                                 # convert to list
-                                self.assertEqual(c[y].split(";"), val,
-                                                 "mismatch in field %s: expected %s, got %s" %
-                                                 (field, c[y], val))
+                                self.assertEqual(
+                                    c[y].split(";"), val,
+                                    "mismatch in field %s: expected %s, got %s" %
+                                    (field, c[y], val))
 
                         elif field == "info":
                             # tests for info field not implemented
                             pass
                         elif field == "qual" and c[y] == ".":
-                            self.assertEqual(-1, val,
-                                             "mismatch in field %s: expected %s, got %s" %
-                                             (field, c[y], val))
+                            self.assertEqual(
+                                -1, val,
+                                "mismatch in field %s: expected %s, got %s" %
+                                (field, c[y], val))
+
                         elif field == "format":
                             # format field converted to list
-                            self.assertEqual(c[y].split(":"), val,
-                                             "mismatch in field %s: expected %s, got %s" %
-                                             (field, c[y], val))
+                            self.assertEqual(
+                                c[y].split(":"), val,
+                                "mismatch in field %s: expected %s, got %s" %
+                                (field, c[y], val))
 
                         elif type(val) in (int, float):
                             if c[y] == ".":
-                                self.assertEqual(None, val,
-                                                 "mismatch in field %s: expected %s, got %s" %
-                                                 (field, c[y], val))
-
+                                self.assertEqual(
+                                    None, val,
+                                    "mismatch in field %s: expected %s, got %s" %
+                                    (field, c[y], val))
                             else:
-                                self.assertEqual(float(c[y]), float(val),
-                                                 "mismatch in field %s: expected %s, got %s" %
-                                                 (field, c[y], val))
-
+                                self.assertEqual(
+                                    float(c[y]), float(val),
+                                    "mismatch in field %s: expected %s, got %s" %
+                                    (field, c[y], val))
                         else:
-                            self.assertEqual(c[y], val,
-                                             "mismatch in field %s: expected %s, got %s" %
-                                             (field, c[y], val))
+                            self.assertEqual(
+                                c[y], val,
+                                "mismatch in field %s: expected %s, got %s" %
+                                (field, c[y], val))
 
 ############################################################################
 # create a test class for each example vcf file.
@@ -859,7 +866,7 @@ for vcf_file in vcf_files:
 
 class TestRemoteFileHTTP(unittest.TestCase):
 
-    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example.gtf.gz"
+    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example_htslib.gtf.gz"
     region = "chr1:1-1000"
     local = os.path.join(DATADIR, "example.gtf.gz")
 

@@ -125,8 +125,7 @@ SAMTOOLS_DISPATCH = {
     "bamshuf": ("bamshuf", None),
     # obsolete
     # "pileup": "pileup", ( (("-c",), Pileup.iterate),),),
-
- }
+}
 
 # instantiate samtools commands as python functions
 for key, options in SAMTOOLS_DISPATCH.items():
@@ -150,8 +149,7 @@ def get_include():
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
     return [dirname,
             os.path.join(dirname, 'include', 'htslib'),
-            os.path.join(dirname, 'include', 'samtools'),
-            os.path.join(dirname, 'include', 'tabix')]
+            os.path.join(dirname, 'include', 'samtools')]
 
 
 def get_defines():

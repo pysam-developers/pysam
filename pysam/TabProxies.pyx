@@ -172,10 +172,12 @@ cdef class TupleProxy:
         cdef int field
         cdef int max_fields, x
 
-        assert strlen(buffer) == nbytes
+        assert strlen(buffer) == nbytes, \
+            "length of buffer (%i) != number of bytes (%i)" % (
+                strlen(buffer), nbytes)
 
         if buffer[nbytes] != 0:
-            raise ValueError( "incomplete line at %s" % buffer )
+            raise ValueError("incomplete line at %s" % buffer)
 
         #################################
         # remove line breaks and feeds and update number of bytes
@@ -591,12 +593,13 @@ cdef class NamedTupleProxy( TupleProxy ):
             raise KeyError( "field %s not set" % key )
         return f( self.fields[idx] )
 
+
 cdef class BedProxy( NamedTupleProxy ):
     '''Proxy class for access to Bed fields.
 
-    This class represents a GTF entry for fast read-access.
+    This class represents a BED entry for fast read-access.
     '''
-    map_key2field = { 
+    map_key2field = {
         'contig' : (0, bytes),
         'start' : (1, int),
         'end' : (2, int),

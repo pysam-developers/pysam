@@ -98,26 +98,11 @@ cdef extern from "Python.h":
     int fileno(FILE *stream)
     FILE *fdopen(int fd, char *mode)
 
-# cdef extern from "bgzf.h":
-
-#   ctypedef struct BGZF:
-#     pass
-
-#   int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
-
-#   BGZF * bgzf_open(char * path, char * mode)
-
-#   int bgzf_write(BGZF * fp, void* data, int length)
-
-#   int bgzf_close(BGZF* fp)
-
-
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
 # tabix support
 cdef extern from "htslib/tbx.h":
-
     
     # redefinitions from chtslib.pxd 
     ctypedef struct hts_idx_t
@@ -147,24 +132,12 @@ cdef extern from "htslib/tbx.h":
     tbx_conf_t tbx_conf_sam
     tbx_conf_t tbx_conf_vcf
     
-     
-    # defined within tbx
-    #define tbx_itr_destroy(iter) hts_itr_destroy(iter)
-    #define tbx_itr_queryi(tbx, tid, beg, end) hts_itr_query((tbx)->idx, (tid), (beg), (end), tbx_readrec)
-    #define tbx_itr_querys(tbx, s) hts_itr_querys((tbx)->idx, (s), (hts_name2id_f)(tbx_name2id), (tbx), hts_itr_query, tbx_readrec)
-    #define tbx_itr_next(htsfp, tbx, itr, r) hts_itr_next(hts_get_bgzfp(htsfp), (itr), (r), (tbx))
-    #define tbx_bgzf_itr_next(bgzfp, tbx, itr, r) hts_itr_next((bgzfp), (itr), (r), (tbx))
-
     void tbx_itr_destroy(hts_itr_t * iter)
     hts_itr_t * tbx_itr_queryi(tbx_t * t, int tid, int bed, int end)
     hts_itr_t * tbx_itr_querys(tbx_t * t, char * s)
     int tbx_itr_next(htsFile * fp, tbx_t * t, hts_itr_t * iter, void * data)
 
     int tbx_name2id(tbx_t *tbx, char *ss)
-
-    #/* Internal helper function used by tbx_itr_next() */
-    # BGZF *hts_get_bgzfp(htsFile *fp);
-    #int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, int *beg, int *end);
 
     int tbx_index_build(char *fn,
                         int min_shift,
@@ -236,6 +209,8 @@ cdef class asVCF(Parser):
 cdef class TabixIterator:
     cdef hts_itr_t * iterator
     cdef Tabixfile tabixfile
+    cdef kstring_t buffer
+    cdef int __cnext__(self)
 
 cdef class TabixIteratorParsed(TabixIterator):
     cdef Parser parser
@@ -245,7 +220,6 @@ cdef class GZIterator:
     cdef gzFile gzipfile
     cdef kstream_t * kstream
     cdef kstring_t buffer
-
     cdef int __cnext__(self)
 
 cdef class GZIteratorHead(GZIterator):
