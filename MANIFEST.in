@@ -9,18 +9,9 @@ include INSTALL
 include KNOWN_BUGS
 include THANKS
 include distribute_setup.py
-include pysam/csamtools.pxd
-include pysam/csamtools.pyx
-include pysam/csamtools.c
-include pysam/ctabix.pxd
-include pysam/ctabix.c
-include pysam/ctabix.pyx
-include pysam/TabProxies.c
-include pysam/TabProxies.pyx
-include pysam/TabProxies.pxd
-include pysam/cvcf.pyx
-include pysam/cvcf.pxd
-include pysam/cvcf.c
+include pysam/c*.pxd
+include pysam/c*.pyx
+include pysam/c*.c
 include pysam/*.c
 include pysam/*.h
 include pysam/pysam_util.h
@@ -29,6 +20,10 @@ include samtools/*.h
 include samtools/*/*.h
 include tabix/*.c
 include tabix/*.h
+include htslib/*.c
+include htslib/*.h
+include htslib/htslib/*.h
+include htslib/htslib/*.c
 include pysam.py
 
 # pysam tests
