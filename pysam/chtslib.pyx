@@ -809,6 +809,8 @@ cdef class Samfile:
                     "is it SAM/BAM format?" % mode)
 
             # get file pointer
+            # TODO: this is specific to BAM files
+            #       refactor to make generalizable
             self.fp = self.htsfile.fp.bgzf
 
             # bam files require a valid header
