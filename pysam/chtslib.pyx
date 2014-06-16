@@ -3330,7 +3330,7 @@ cdef class AlignedRead:
         """
 
         def __get__(self):
-            cdef uint32_t k, pos
+            cdef uint32_t k, pos, l
             cdef int op
             cdef uint32_t * cigar_p
             cdef bam1_t * src
@@ -3342,6 +3342,7 @@ cdef class AlignedRead:
             result = []
             pos = src.core.pos
             cigar_p = pysam_bam_get_cigar(src)
+            l = 0
 
             for k from 0 <= k < pysam_get_n_cigar(src):
                 op = cigar_p[k] & BAM_CIGAR_MASK
@@ -3349,7 +3350,6 @@ cdef class AlignedRead:
                 if op == BAM_CMATCH:
                     result.append((pos, pos + l))
                     pos += l
-
                 elif op == BAM_CDEL or op == BAM_CREF_SKIP:
                     pos += l
 
