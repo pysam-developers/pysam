@@ -89,58 +89,11 @@ cdef _forceStr(object s):
 ########################################################################
 ## Constants and global variables
 ########################################################################
-DEF HTS_FMT_CSI = 0
-DEF HTS_FMT_BAI = 1
-DEF HTS_FMT_TBI = 2
-DEF HTS_FMT_CRAI = 3
 
 # defines imported from samtools
 DEF SEEK_SET = 0
 DEF SEEK_CUR = 1
 DEF SEEK_END = 2
-
-## These are bits set in the flag.
-## have to put these definitions here, in csamtools.pxd they got ignored
-## @abstract the read is paired in sequencing, no matter whether it is mapped in a pair
-DEF BAM_FPAIRED       =1
-## @abstract the read is mapped in a proper pair
-DEF BAM_FPROPER_PAIR  =2
-## @abstract the read itself is unmapped; conflictive with BAM_FPROPER_PAIR
-DEF BAM_FUNMAP        =4
-## @abstract the mate is unmapped
-DEF BAM_FMUNMAP       =8
-## @abstract the read is mapped to the reverse strand
-DEF BAM_FREVERSE      =16
-## @abstract the mate is mapped to the reverse strand
-DEF BAM_FMREVERSE     =32
-## @abstract this is read1
-DEF BAM_FREAD1        =64
-## @abstract this is read2
-DEF BAM_FREAD2       =128
-## @abstract not primary alignment
-DEF BAM_FSECONDARY   =256
-## @abstract QC failure
-DEF BAM_FQCFAIL      =512
-## @abstract optical or PCR duplicate
-DEF BAM_FDUP        =1024
-## @abstract supplementary alignment
-DEF BAM_FSUPPLEMENTARY =2048
-
-#####################################################################
-# CIGAR operations
-DEF BAM_CIGAR_SHIFT=4
-DEF BAM_CIGAR_MASK=((1 << BAM_CIGAR_SHIFT) - 1)
-
-DEF BAM_CMATCH     = 0
-DEF BAM_CINS       = 1
-DEF BAM_CDEL       = 2
-DEF BAM_CREF_SKIP  = 3
-DEF BAM_CSOFT_CLIP = 4
-DEF BAM_CHARD_CLIP = 5
-DEF BAM_CPAD       = 6
-DEF BAM_CEQUAL     = 7
-DEF BAM_CDIFF      = 8
-
 
 cdef char* CODE2CIGAR= "MIDNSHP=X"
 if IS_PYTHON3:
@@ -151,7 +104,6 @@ CIGAR_REGEX = re.compile( "(\d+)([MIDNSHP=X])" )
 
 #####################################################################
 # hard-coded constants
-cdef char * bam_nt16_rev_table = "=ACMGRSVTWYHKDBN"
 cdef int max_pos = 2 << 29
 
 #####################################################################
@@ -408,7 +360,7 @@ cdef class Fastafile:
         if not region:
             if reference is None: raise ValueError( 'no sequence/region supplied.' )
             if start is None: start = 0
-            if end is None: end = max_pos -1
+            if end is None: end = max_pos - 1
 
             if start > end: raise ValueError( 'invalid region: start (%i) > end (%i)' % (start, end) )
             if start == end: return b""
@@ -2200,9 +2152,9 @@ cdef inline object get_seq_range(bam1_t *src, uint32_t start, uint32_t end):
     p   = pysam_bam_get_seq(src)
 
     for k from start <= k < end:
-        # equivalent to bam_nt16_rev_table[bam1_seqi(s, i)] (see bam.c)
+        # equivalent to seq_nt16_str[bam1_seqi(s, i)] (see bam.c)
         # note: do not use string literal as it will be a python string
-        s[k-start] = bam_nt16_rev_table[p[k/2] >> 4 * (1 - k%2) & 0xf]
+        s[k-start] = seq_nt16_str[p[k/2] >> 4 * (1 - k%2) & 0xf]
 
     return seq
 
@@ -3775,7 +3727,7 @@ cdef class SNPCall:
 
 #        g = bam_maqcns_glfgen( self.iter.n_plp,
 #                               self.iter.plp,
-#                               bam_nt16_table[rb],
+#                               seq_nt16_table[rb],
 #                               self.c )
 
 #        if pysam_glf_depth( g ) == 0:
@@ -3791,7 +3743,7 @@ cdef class SNPCall:
 #         call._tid = self.iter.tid
 #         call._pos = self.iter.pos
 #         call._reference_base = rb
-#         call._genotype = bam_nt16_rev_table[cns>>28]
+#         call._genotype = seq_nt16_str[cns>>28]
 #         call._consensus_quality = cns >> 8 & 0xff
 #         call._snp_quality = cns & 0xff
 #         call._rms_mapping_quality = cns >> 16&0xff
@@ -3856,7 +3808,7 @@ cdef class SNPCall:
 # #
 # #        g = bam_maqcns_glfgen( self.iter.n_plp,
 # #                               self.iter.plp,
-# #                               bam_nt16_table[rb],
+# #                               seq_nt16_table[rb],
 # #                               self.c )
 # ##
 # #
@@ -3873,7 +3825,7 @@ cdef class SNPCall:
 #         call._tid = self.iter.tid
 #         call._pos = self.iter.pos
 #         call._reference_base = rb
-#         call._genotype = bam_nt16_rev_table[cns>>28]
+#         call._genotype = seq_nt16_str[cns>>28]
 #         call._consensus_quality = cns >> 8 & 0xff
 #         call._snp_quality = cns & 0xff
 #         call._rms_mapping_quality = cns >> 16&0xff
