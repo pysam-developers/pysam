@@ -1055,11 +1055,11 @@ cdef class Samfile:
     #     return dest
 
     def count(self,
-              reference = None,
-              start = None,
-              end = None,
-              region = None,
-              until_eof = False):
+              reference=None,
+              start=None,
+              end=None,
+              region=None,
+              until_eof=False):
         '''*(reference = None, start = None, end = None,
         region = None, callback = None, until_eof = False)*
 
@@ -1072,7 +1072,7 @@ cdef class Samfile:
         *region* or *reference* are given, an exception is raised.
         '''
         cdef AlignedRead read
-        cdef long counter
+        cdef long counter = 0
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )

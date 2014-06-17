@@ -1903,16 +1903,35 @@ class TestSamfileUtilityFunctions(unittest.TestCase):
         for contig in ("chr1", "chr2"):
             for start in range(0, 2000, 100):
                 end = start + 1
-                self.assertEqual(len(list(samfile.fetch(contig, start, end))),
-                                 samfile.count(contig, start, end))
+                self.assertEqual(
+                    len(list(samfile.fetch(contig, start, end))),
+                    samfile.count(contig, start, end),
+                    'number mismatch for %s:%i-%i %i != %i' % (
+                        contig, start, end,
+                        len(list(samfile.fetch(contig, start, end))),
+                        samfile.count(contig, start, end)))
 
                 # test empty intervals
-                self.assertEqual(len(list(samfile.fetch(contig, start, start))),
-                                 samfile.count(contig, start, start))
+                self.assertEqual(
+                    len(list(samfile.fetch(contig, start, start))),
+                    samfile.count(contig, start, start),
+                    'number mismatch for %s:%i-%i %i != %i' % (
+                        contig, start, start,
+                        len(list(samfile.fetch(contig, start, start))),
+                        samfile.count(contig, start, start)))
+                    
 
                 # test half empty intervals
                 self.assertEqual(len(list(samfile.fetch(contig, start))),
                                  samfile.count(contig, start))
+
+                self.assertEqual(
+                    len(list(samfile.fetch(contig, start))),
+                    samfile.count(contig, start, start),
+                    'number mismatch for %s:%i %i != %i' % (
+                        contig, start, start,
+                        len(list(samfile.fetch(contig, start))),
+                        samfile.count(contig, start)))
 
     # TODO
     # def testMate(self):
