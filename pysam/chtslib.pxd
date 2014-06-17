@@ -1,23 +1,10 @@
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
-
-cdef extern from "string.h":
-  ctypedef int size_t
-  void *memcpy(void *dst,void *src,size_t len)
-  void *memmove(void *dst,void *src,size_t len)
-  void *memset(void *b,int c,size_t len)
+from libc.stdlib cimport malloc, calloc, realloc, free
+from libc.string cimport memcpy
 
 cdef extern from "stdlib.h":
-  void free(void *)
-  void *malloc(size_t)
-  void *calloc(size_t,size_t)
-  void *realloc(void *,size_t)
   int c_abs "abs" (int)
-  void qsort(void *base, size_t nmemb, size_t size,
-             int (*compar)(void *,void *))
-
-cdef extern from "math.h":
-   double sqrt(double x)
 
 cdef extern from "stdio.h":
   ctypedef struct FILE:
@@ -36,14 +23,6 @@ cdef extern from "stdio.h":
   int sprintf(char *str,char *fmt,...)
   int fprintf(FILE *ifile,char *fmt,...)
   char *fgets(char *str,int size,FILE *ifile)
-
-cdef extern from "ctype.h":
-  int toupper(int c)
-  int tolower(int c)
-
-cdef extern from "unistd.h":
-  char *ttyname(int fd)
-  int isatty(int fd)
 
 cdef extern from "string.h":
   int strcmp(char *s1, char *s2)

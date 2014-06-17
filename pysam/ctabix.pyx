@@ -336,7 +336,7 @@ cdef class Tabixfile:
                 region = '%s:%i' % (reference, start + 1)
             else:
                 region = reference
-        
+
         # get iterator
         cdef hts_itr_t * iter
         if region is None:
@@ -346,7 +346,8 @@ cdef class Tabixfile:
                                   0,
                                   0)
         else:
-            iter = tbx_itr_querys(self.index, region)
+            iter = tbx_itr_querys(self.index,
+                                  region)
 
         if iter == NULL:
             if region is None:

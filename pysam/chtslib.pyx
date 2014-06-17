@@ -12,7 +12,8 @@ import collections
 import re
 import platform
 import warnings
-from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, \
+    PyBytes_FromStringAndSize
 from cpython.version cimport PY_MAJOR_VERSION
 
 ########################################################################
@@ -73,7 +74,8 @@ cdef _charptr_to_str(char* s):
         return s.decode("ascii")
 
 cdef _forceStr(object s):
-    """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
+    """Return s converted to str type of current Python
+    (bytes in Py2, unicode in Py3)"""
     if s is None:
         return None
     if PY_MAJOR_VERSION < 3:
@@ -1376,13 +1378,15 @@ cdef class Samfile:
             if record in new_header:
                 ttype = VALID_HEADER_TYPES[record]
                 data = new_header[record]
-                if type( data ) != type( ttype() ):
-                    raise ValueError( "invalid type for record %s: %s, expected %s" % (record, type(data), type(ttype()) ) )
-                if type( data ) is dict:
-                    lines.append( self._buildLine( data, record ) )
+                if type(data) != type(ttype()):
+                    raise ValueError(
+                        "invalid type for record %s: %s, expected %s" %
+                        (record, type(data), type(ttype())))
+                if type(data) is dict:
+                    lines.append(self._buildLine(data, record))
                 else:
                     for fields in new_header[record]:
-                        lines.append( self._buildLine( fields, record ) )
+                        lines.append(self._buildLine(fields, record))
 
         # then: user tags (lower case), sorted alphabetically
         for record, data in sorted(new_header.items()):
