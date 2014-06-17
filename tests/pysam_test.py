@@ -1927,9 +1927,9 @@ class TestSamfileUtilityFunctions(unittest.TestCase):
 
                 self.assertEqual(
                     len(list(samfile.fetch(contig, start))),
-                    samfile.count(contig, start, start),
+                    samfile.count(contig, start),
                     'number mismatch for %s:%i %i != %i' % (
-                        contig, start, start,
+                        contig, start,
                         len(list(samfile.fetch(contig, start))),
                         samfile.count(contig, start)))
 
