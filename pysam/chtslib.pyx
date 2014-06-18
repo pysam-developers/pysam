@@ -1238,33 +1238,49 @@ cdef class Samfile:
             return tuple(t)
 
     property mapped:
-        """total number of mapped reads in file.
+        """total number of mapped alignments in file.
         """
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
-            if not self.isbam: raise AttributeError( "Samfile.mapped only available in bam files" )
-            if self.index == NULL:
-                raise ValueError( "mapping information not recorded in index or index not available")
-
+            self._checkIndex()
             cdef int tid
-            cdef uint32_t total = 0
+            cdef uint64_t total = 0
+            cdef uint64_t mapped, unmapped
             for tid from 0 <= tid < self.header.n_targets:
-                total += pysam_get_mapped( self.index, tid )
+                hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
+                total += mapped
             return total
+
+    def _checkIndex(self):
+        '''check if index is present. Otherwise raise
+        an error.'''
+        if not self._isOpen():
+            raise ValueError("I/O operation on closed file")
+        if not self.isbam:
+            raise AttributeError("Samfile.mapped only available in bam files")
+        if self.index == NULL:
+            raise ValueError("mapping information not recorded in index "
+                                 "or index not available")
+
 
     property unmapped:
         """total number of unmapped reads in file.
         """
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
-            if not self.isbam: raise AttributeError( "Samfile.unmapped only available in bam files" )
+            self._checkIndex()
             cdef int tid
-            cdef uint32_t total = 0
+            cdef uint64_t total = 0
+            cdef uint64_t mapped, unmapped
             for tid from 0 <= tid < self.header.n_targets:
-                total += pysam_get_unmapped( self.index, tid )
-            # get unmapped reads without coordinates
-            total += pysam_get_unmapped( self.index, -1 )
+                hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
+                total += unmapped
             return total
+
+    property nocoordinate:
+        """total number of reads without coordinates
+        """
+        def __get__(self):
+            self._checkIndex()
+            return hts_idx_get_n_no_coor(self.index)
 
     property text:
         '''full contents of the :term:`sam file` header as a string.'''

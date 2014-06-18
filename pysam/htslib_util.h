@@ -45,12 +45,6 @@ bam1_t * pysam_bam_update(bam1_t * b,
 // translate a nucleotide character to binary code
 unsigned char pysam_translate_sequence(const unsigned char s);
 
-// return number of mapped reads for tid
-uint32_t pysam_get_mapped(const hts_idx_t *idx, const int tid);
-
-// return number of unmapped reads for tid
-uint32_t pysam_get_unmapped(const hts_idx_t *idx, const int tid);
-
 // return byte size of type
 int aux_type2size(uint8_t type);
 

@@ -1631,7 +1631,8 @@ class TestDoubleFetch(unittest.TestCase):
         # just making sure the test has something to catch
         self.assertTrue(len(list(samfile1.fetch(chr, start, stop))) > 0)
 
-        for a, b in zip(samfile1.fetch(chr, start, stop), samfile1.fetch(chr, start, stop)):
+        for a, b in zip(samfile1.fetch(chr, start, stop),
+                        samfile1.fetch(chr, start, stop)):
             self.assertEqual(a.compare(b), 0)
 
     def testDoubleFetchUntilEOF(self):
@@ -1944,13 +1945,14 @@ class TestSamfileUtilityFunctions(unittest.TestCase):
     #                 self.assertEqual(read.pos, mate.mpos)
     #                 self.assertEqual(read.mpos, mate.pos)
 
-    # def testIndexStats(self):
-    #     '''test if total number of mapped/unmapped reads is correct.'''
+    def testIndexStats(self):
+        '''test if total number of mapped/unmapped reads is correct.'''
 
-    #     samfile = pysam.Samfile(os.path.join(DATADIR, "ex1.bam"),
-    #                             "rb")
-    #     self.assertEqual(samfile.mapped, 3235)
-    #     self.assertEqual(samfile.unmapped, 35)
+        samfile = pysam.Samfile(os.path.join(DATADIR, "ex1.bam"),
+                                "rb")
+        self.assertEqual(samfile.mapped, 3235)
+        self.assertEqual(samfile.unmapped, 35)
+        self.assertEqual(samfile.nocoordinate, 0)
 
 
 class TestSamtoolsProxy(unittest.TestCase):

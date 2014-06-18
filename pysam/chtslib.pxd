@@ -422,6 +422,11 @@ cdef extern from "htslib/hts.h" nogil:
     uint8_t *hts_idx_get_meta(hts_idx_t *idx, int *l_meta)
     void hts_idx_set_meta(hts_idx_t *idx, int l_meta, uint8_t *meta, int is_copy)
 
+    int hts_idx_get_stat(const hts_idx_t* idx, int tid,
+                         uint64_t* mapped, uint64_t* unmapped)
+
+    uint64_t hts_idx_get_n_no_coor(const hts_idx_t* idx)
+
     const char *hts_parse_reg(const char *s, int *beg, int *end)
     hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, int beg, int end, hts_readrec_func *readrec)
     void hts_itr_destroy(hts_itr_t *iter)
@@ -843,10 +848,6 @@ cdef extern from "htslib_util.h":
                                size_t nbytes_old,
                                size_t nbytes_new,
                                uint8_t * pos )
-
-    # return mapped/unmapped reads on tid
-    uint32_t pysam_get_mapped(hts_idx_t *idx, int tid)
-    uint32_t pysam_get_unmapped(hts_idx_t *idx, int tid)
 
     # now: static
     int aux_type2size(int)
