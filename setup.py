@@ -177,6 +177,8 @@ except ImportError:
     csamtools_sources = ["pysam/csamtools.c"]
     chtslib_sources = ["pysam/chtslib.c"]
     tabix_sources = ["pysam/ctabix.c"]
+    faidx_sources = ["pysam/cfaidx.c"]
+    csamfile_sources = ["pysam/csamfile.c"]
     tabproxies_sources = ["pysam/TabProxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
 else:
@@ -186,6 +188,8 @@ else:
         for f in ("pysam/csamtools.c",
                   "pysam/chtslib.c",
                   "pysam/ctabix.c",
+                  "pysam/cfaidx.c",
+                  "pysam/csamfile.c",
                   "pysam/TabProxies.c",
                   "pysam/cvcf.c"):
             try:
@@ -196,7 +200,9 @@ else:
     cmdclass = {'build_ext': build_ext}
     csamtools_sources = ["pysam/csamtools.pyx"]
     chtslib_sources = ["pysam/chtslib.pyx"]
+    csamfile_sources = ["pysam/csamfile.pyx"]
     tabix_sources = ["pysam/ctabix.pyx"]
+    faidx_sources = ["pysam/cfaidx.pyx"]
     tabproxies_sources = ["pysam/TabProxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
 
@@ -241,9 +247,8 @@ samtools = Extension(
                    ('_USE_KNETFILE', '')]
 )
 
-#######################################################
 htslib = Extension(
-    "pysam.chtslib",
+    "pysam.libchtslib",
     chtslib_sources +
     ["pysam/%s" % x for x in (
         "htslib_util.c", )] +
@@ -256,8 +261,23 @@ htslib = Extension(
     library_dirs=[],  # "/home/andreas/devel/htslib"],
     include_dirs=["htslib",
                   "pysam"] + include_os,
-    # at later stage, to include libhts.so, add "hts",
     libraries=["z"],
+    language="c",
+    extra_compile_args=["-Wno-error=declaration-after-statement",
+                        "-DSAMTOOLS=1"],
+    define_macros=[('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')]
+)
+
+samfile = Extension(
+    "pysam.csamfile",
+    csamfile_sources +
+    ["pysam/%s" % x for x in (
+        "htslib_util.c", )] +
+    os_c_files,
+    library_dirs=["pysam"],
+    include_dirs=["htslib", "pysam"] + include_os,
+    libraries=["z", "chtslib"],
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement",
                         "-DSAMTOOLS=1"],
@@ -269,16 +289,24 @@ tabix = Extension(
     "pysam.ctabix",
     tabix_sources +
     ["pysam/%s" % x for x in ("tabix_util.c", )] +
-    [x for x in glob.glob(
-        os.path.join("htslib", "*.c")) +
-     glob.glob(
-         os.path.join("htslib", "cram", "*.c"))
-     if x not in htslib_exclude] +
     os_c_files,
-    # glob.glob(os.path.join("tabix", "*.pysam.c")),
-    library_dirs=[],
+    library_dirs=["pysam"],
     include_dirs=["htslib", "pysam"] + include_os,
-    libraries=["z", ],
+    libraries=["z", "chtslib"],
+    language="c",
+    extra_compile_args=["-Wno-error=declaration-after-statement",
+                        "-DSAMTOOLS=1"],
+    define_macros=[('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')],
+)
+
+faidx = Extension(
+    "pysam.cfaidx",
+    faidx_sources +
+    os_c_files,
+    library_dirs=["pysam"],
+    include_dirs=["htslib", "pysam"] + include_os,
+    libraries=["z", "chtslib"],
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement",
                         "-DSAMTOOLS=1"],
@@ -324,7 +352,9 @@ metadata = {
                  'pysam.include.samtools.bcftools',
                  'pysam.include.samtools.win32'],
     'requires': ['cython (>=0.20.1)'],
-    'ext_modules': [samtools, htslib, tabix, tabproxies, cvcf],
+    'ext_modules': [samtools, htslib, samfile,
+                    tabix, tabproxies, cvcf,
+                    faidx],
     'cmdclass': cmdclass,
     'install_requires': ['cython>=0.20.1', ],
     'package_dir': {'pysam': 'pysam',
