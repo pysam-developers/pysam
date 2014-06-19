@@ -19,7 +19,7 @@ FILE * pysam_set_stderr(int fd)
   return pysamerr;
 }
 
-void pysam_unset_stderr()
+void pysam_unset_stderr(void)
 {
   if (pysamerr != NULL)
     fclose(pysamerr);

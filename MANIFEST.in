@@ -8,7 +8,6 @@ include COPYING
 include INSTALL
 include KNOWN_BUGS
 include THANKS
-include distribute_setup.py
 include pysam/c*.pxd
 include pysam/c*.pyx
 include pysam/c*.c
@@ -18,17 +17,13 @@ include pysam/pysam_util.h
 include pysam/tabix_util.h
 include samtools/*.h
 include samtools/*/*.h
-include tabix/*.c
-include tabix/*.h
 include htslib/*.c
 include htslib/*.h
 include htslib/htslib/*.h
-include htslib/htslib/*.c
 include pysam.py
 
 # pysam tests
 include tests/00README.txt
-include tests/Makefile
 include tests/pysam_data
 include tests/tabix_data
 #ex1.fa
