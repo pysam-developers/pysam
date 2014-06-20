@@ -150,7 +150,7 @@ static const double __ac_HASH_UPPER = 0.77;
 		khkey_t *keys;													\
 		khval_t *vals;													\
 	} kh_##name##_t;													\
-	extern kh_##name##_t *kh_init_##name();								\
+	extern kh_##name##_t *kh_init_##name(void);								\
 	extern void kh_destroy_##name(kh_##name##_t *h);					\
 	extern void kh_clear_##name(kh_##name##_t *h);						\
 	extern khint_t kh_get_##name(const kh_##name##_t *h, khkey_t key); 	\
@@ -165,7 +165,7 @@ static const double __ac_HASH_UPPER = 0.77;
 		khkey_t *keys;													\
 		khval_t *vals;													\
 	} kh_##name##_t;													\
-	SCOPE kh_##name##_t *kh_init_##name() {								\
+	SCOPE kh_##name##_t *kh_init_##name(void) {								\
 		return (kh_##name##_t*)calloc(1, sizeof(kh_##name##_t));		\
 	}																	\
 	SCOPE void kh_destroy_##name(kh_##name##_t *h)						\

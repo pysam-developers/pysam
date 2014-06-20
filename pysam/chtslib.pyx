@@ -25,6 +25,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 ## Python 3 compatibility functions
 ########################################################################
 IS_PYTHON3 = PY_MAJOR_VERSION >= 3
+
 cdef from_string_and_size(char* s, size_t length):
     if PY_MAJOR_VERSION < 3:
         return s[:length]
@@ -53,6 +54,19 @@ cdef bytes _encodeFilename(object filename):
     else:
         raise TypeError, u"Argument must be string or unicode."
 
+cdef _forceStr(object s):
+    """Return s converted to str type of current Python
+    (bytes in Py2, unicode in Py3)"""
+    if s is None:
+        return None
+    if PY_MAJOR_VERSION < 3:
+        return s
+    elif PyBytes_Check(s):
+        return s.decode('ascii')
+    else:
+        # assume unicode
+        return s
+
 cdef bytes _forceBytes(object s):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     """
@@ -75,19 +89,6 @@ cdef _charptr_to_str(char* s):
         return s
     else:
         return s.decode("ascii")
-
-cdef _forceStr(object s):
-    """Return s converted to str type of current Python
-    (bytes in Py2, unicode in Py3)"""
-    if s is None:
-        return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
-        return s.decode('ascii')
-    else:
-        # assume unicode
-        return s
 
 
 __all__ = []

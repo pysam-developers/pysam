@@ -1,33 +1,29 @@
 # cython: embedsignature=True
 # adds doc-strings for sphinx
-
-# Helper functions for python 3 compatibility - taken
-# from csamtools.pyx
-import tempfile, os, sys, types, itertools, struct, ctypes, gzip
-import io
-cimport TabProxies
-from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
-    BGZF, bgzf_open, bgzf_close, bgzf_write
-
-from cpython cimport PyErr_SetString, PyBytes_Check, \
-    PyUnicode_Check, PyBytes_FromStringAndSize, \
-    PyObject_AsFileDescriptor
-
+import os
+import sys
 
 from libc.stdio cimport printf, fprintf, stderr
 from libc.string cimport strerror
 from libc.errno cimport errno
 from libc.stdint cimport int64_t
 
+from cpython cimport PyErr_SetString, PyBytes_Check, \
+    PyUnicode_Check, PyBytes_FromStringAndSize, \
+    PyObject_AsFileDescriptor
+
 from cpython.version cimport PY_MAJOR_VERSION
 
-PYTHON3 = PY_MAJOR_VERSION >= 3
+cimport TabProxies
 
-cdef from_string_and_size(char* s, size_t length):
-    if PY_MAJOR_VERSION < 3:
-        return s[:length]
-    else:
-        return s[:length].decode("ascii")
+from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
+    BGZF, bgzf_open, bgzf_close, bgzf_write, \
+    ks_init, gzFile, ks_getuntil, kstring_t, \
+    tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
+    tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
+    gzopen, gzclose, gzerror, gzdopen
+
+PYTHON3 = PY_MAJOR_VERSION >= 3
 
 # filename encoding (copied from lxml.etree.pyx)
 cdef str _FILENAME_ENCODING
