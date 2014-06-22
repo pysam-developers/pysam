@@ -1,5 +1,4 @@
 from pysam.libchtslib import *
-
 import pysam.ctabix as ctabix
 from pysam.ctabix import *
 import pysam.csamfile as csamfile

@@ -6,7 +6,6 @@ import sys
 from libc.stdio cimport printf, fprintf, stderr
 from libc.string cimport strerror
 from libc.errno cimport errno
-from libc.stdint cimport int64_t
 
 from cpython cimport PyErr_SetString, PyBytes_Check, \
     PyUnicode_Check, PyBytes_FromStringAndSize, \
