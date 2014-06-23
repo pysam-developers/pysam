@@ -121,7 +121,6 @@ cdef class IteratorRow:
     cdef bam1_t * b
     cdef Samfile samfile
     cdef htsFile * htsfile
-    # true if samfile belongs to this object
     cdef int owns_samfile
 
 cdef class IteratorRowRegion(IteratorRow):
@@ -148,6 +147,7 @@ cdef class IteratorRowSelection(IteratorRow):
     cdef positions
     cdef bam1_t * getCurrent( self )
     cdef int cnext(self)
+    cdef BGZF * fp
 
 cdef class IteratorColumn:
 
@@ -186,7 +186,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 
 cdef class IndexedReads:
     cdef Samfile samfile
-    cdef htsFile * fp
+    cdef htsFile * htsfile
     cdef index
-    # true if samfile belongs to this object
     cdef int owns_samfile
+    cdef BGZF * fp

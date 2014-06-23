@@ -520,8 +520,8 @@ class TestIO(unittest.TestCase):
         self.assertRaises(ValueError, samfile.pileup, 'chr1', 100, 120)
         self.assertRaises(ValueError, samfile.getrname, 0)
         # TODO
-        # self.assertRaises(ValueError, samfile.tell)
-        # self.assertRaises(ValueError, samfile.seek, 0)
+        self.assertRaises(ValueError, samfile.tell)
+        self.assertRaises(ValueError, samfile.seek, 0)
         self.assertRaises(ValueError, getattr, samfile, "nreferences")
         self.assertRaises(ValueError, getattr, samfile, "references")
         self.assertRaises(ValueError, getattr, samfile, "lengths")
@@ -1989,24 +1989,23 @@ class TestSamtoolsProxy(unittest.TestCase):
         self.assertRaises(pysam.SamtoolsError, pysam.sort, "missing_file")
 
 
-# class TestSamfileIndex(unittest.TestCase):
+class TestSamfileIndex(unittest.TestCase):
 
-#     def testIndex(self):
-#         samfile = pysam.Samfile(os.path.join(DATADIR, "ex1.bam"),
-#                                 "rb")
-#         index = pysam.IndexedReads(samfile)
-#         index.build()
+    def testIndex(self):
+        samfile = pysam.Samfile(os.path.join(DATADIR, "ex1.bam"),
+                                "rb")
+        index = pysam.IndexedReads(samfile)
+        index.build()
+        reads = collections.defaultdict(int)
 
-#         reads = collections.defaultdict(int)
+        for read in samfile:
+            reads[read.qname] += 1
 
-#         for read in samfile:
-#             reads[read.qname] += 1
-
-#         for qname, counts in reads.items():
-#             found = list(index.find(qname))
-#             self.assertEqual(len(found), counts)
-#             for x in found:
-#                 self.assertEqual(x.qname, qname)
+        for qname, counts in reads.items():
+            found = list(index.find(qname))
+            self.assertEqual(len(found), counts)
+            for x in found:
+                self.assertEqual(x.qname, qname)
 
 
 if __name__ == "__main__":

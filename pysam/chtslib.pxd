@@ -129,6 +129,7 @@ cdef extern from "htslib/bgzf.h" nogil:
     #  call to bgzf_seek can be used to position the file at the same point.
     #  Return value is non-negative on success.
     #define bgzf_tell(fp) (((fp)->block_address << 16) | ((fp)->block_offset & 0xFFFF))
+    int64_t bgzf_tell(BGZF * fp)
 
     #  Set the file to read from the location specified by _pos_.
     #

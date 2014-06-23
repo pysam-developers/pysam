@@ -539,9 +539,9 @@ cdef class Samfile:
                 self.index = hts_idx_load(filename, HTS_FMT_BAI)
                 if self.index == NULL:
                     warnings.warn("unable to open index for `%s` " % filename)
-            # TODO
-            # if not self.isstream:
-            #     self.start_offset = bam_tell( self.htsfile.x.bam )
+
+            if not self.isstream:
+                self.start_offset = bgzf_tell(self.fp)
 
     def gettid( self, reference ):
         '''
@@ -614,41 +614,47 @@ cdef class Samfile:
             return 0, 0, 0, 0
 
         rtid = self.gettid( reference )
-        if rtid < 0: raise ValueError( "invalid reference `%s`" % reference )
-        if rstart > rend: raise ValueError( 'invalid coordinates: start (%i) > end (%i)' % (rstart, rend) )
-        if not 0 <= rstart < max_pos: raise ValueError( 'start out of range (%i)' % rstart )
-        if not 0 <= rend <= max_pos: raise ValueError( 'end out of range (%i)' % rend )
+        if rtid < 0:
+            raise ValueError(
+                "invalid reference `%s`" % reference)
+        if rstart > rend:
+            raise ValueError(
+                'invalid coordinates: start (%i) > end (%i)' % (rstart, rend))
+        if not 0 <= rstart < max_pos:
+            raise ValueError('start out of range (%i)' % rstart)
+        if not 0 <= rend <= max_pos:
+            raise ValueError('end out of range (%i)' % rend)
 
         return 1, rtid, rstart, rend
 
-    def reset( self ):
+    def reset(self):
         '''reset file position to beginning of read section.'''
-        return self.seek( self.start_offset, 0 )
+        return self.seek(self.start_offset, 0)
 
-    # def seek( self, uint64_t offset, int where = 0):
-    #     '''
-    #     move file pointer to position *offset*, see :meth:`pysam.Samfile.tell`.
-    #     '''
+    def seek(self, uint64_t offset, int where = 0):
+        '''
+        move file pointer to position *offset*, see :meth:`pysam.Samfile.tell`.
+        '''
 
-    #     if not self._isOpen():
-    #         raise ValueError( "I/O operation on closed file" )
-    #     if not self.isbam:
-    #         raise NotImplementedError("seek only available in bam files")
-    #     if self.isstream:
-    #         raise OSError("seek no available in streams")
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+        if not self.isbam:
+            raise NotImplementedError("seek only available in bam files")
+        if self.isstream:
+            raise OSError("seek no available in streams")
 
-    #     return bam_seek( self.samfile.x.bam, offset, where )
+        return bgzf_seek(self.fp, offset, where)
 
-    # def tell( self ):
-    #     '''
-    #     return current file position
-    #     '''
-    #     if not self._isOpen():
-    #         raise ValueError( "I/O operation on closed file" )
-    #     if not self.isbam:
-    #         raise NotImplementedError("seek only available in bam files")
+    def tell(self):
+        '''
+        return current file position
+        '''
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
+        if not self.isbam:
+            raise NotImplementedError("seek only available in bam files")
 
-    #     return bam_tell( self.samfile.x.bam )
+        return bgzf_tell(self.fp)
 
     def fetch(self,
               reference=None,
@@ -1503,6 +1509,8 @@ cdef class IteratorRowSelection(IteratorRow):
         self.positions = positions
         self.current_pos = 0
 
+        self.fp = self.htsfile.fp.bgzf
+
     def __iter__(self):
         return self
 
@@ -1515,9 +1523,9 @@ cdef class IteratorRowSelection(IteratorRow):
         # end iteration if out of positions
         if self.current_pos >= len(self.positions): return -1
 
-        # TODO
-        # bam_seek(self.fp.x.bam,
-        #          self.positions[self.current_pos], 0 )
+        bgzf_seek(self.fp,
+                  self.positions[self.current_pos],
+                  0)
         self.current_pos += 1
         return sam_read1(self.htsfile,
                          self.samfile.header,
@@ -3352,63 +3360,74 @@ cdef class SNPCall:
                     self.coverage ) ) )
 
 
-# cdef class IndexedReads:
-#     """index a bamfile by read.
+cdef class IndexedReads:
+    """index a bamfile by read.
 
-#     The index is kept in memory.
+    The index is kept in memory.
 
-#     By default, the file is re-openend to avoid conflicts if
-#     multiple operators work on the same file. Set *reopen* = False
-#     to not re-open *samfile*.
-#     """
+    By default, the file is re-openend to avoid conflicts if
+    multiple operators work on the same file. Set *reopen* = False
+    to not re-open *samfile*.
+    """
 
-#     def __init__(self, Samfile samfile, int reopen = True ):
-#         self.samfile = samfile
+    def __init__(self, Samfile samfile, int reopen=True):
 
-#         if samfile.isbam: mode = b"rb"
-#         else: mode = b"r"
+        # makes sure that samfile stays alive as long as this
+        # object is alive.
+        self.samfile = samfile
 
-#         # reopen the file - note that this makes the iterator
-#         # slow and causes pileup to slow down significantly.
-#         if reopen:
-#             self.fp = hts_open(samfile._filename, mode)
-#             assert self.fp != NULL
-#             self.owns_samfile = True
-#         else:
-#             self.fp = samfile.samfile
-#             self.owns_samfile = False
+        assert samfile.isbam, "can only IndexReads on bam files"
 
-#         assert samfile.isbam, "can only IndexReads on bam files"
+        # reopen the file - note that this makes the iterator
+        # slow and causes pileup to slow down significantly.
+        if reopen:
+            self.htsfile = hts_open(samfile._filename, 'r')
+            assert self.htsfile != NULL
+            # read header - required for accurate positioning
+            sam_hdr_read(self.htsfile)
+            self.owns_samfile = True
+        else:
+            self.htsfile = self.samfile.htsfile
+            self.owns_samfile = False
 
-#     def build( self ):
-#         '''build index.'''
+        # TODO: BAM file specific
+        self.fp = self.htsfile.fp.bgzf
 
-#         self.index = collections.defaultdict( list )
+    def build(self):
+        '''build index.'''
 
-#         # this method will start indexing from the current file position
-#         # if you decide
-#         cdef int ret = 1
-#         cdef bam1_t * b = <bam1_t*> calloc(1, sizeof( bam1_t) )
+        self.index = collections.defaultdict(list)
 
-#         cdef uint64_t pos
+        # this method will start indexing from the current file position
+        # if you decide
+        cdef int ret = 1
+        cdef bam1_t * b = <bam1_t*>calloc(1, sizeof( bam1_t))
 
-#         while ret > 0:
-#             pos = bam_tell( self.fp.x.bam )
-#             ret = samread( self.fp, b)
-#             if ret > 0:
-#                 qname = _charptr_to_str(pysam_bam_get_qname( b ))
-#                 self.index[qname].append( pos )
+        cdef uint64_t pos
 
-#         bam_destroy1( b )
+        while ret > 0:
+            pos = bgzf_tell(self.fp)
+            ret = sam_read1(self.htsfile,
+                            self.samfile.header,
+                            b)
+            if ret > 0:
+                qname = _charptr_to_str(pysam_bam_get_qname(b))
+                self.index[qname].append(pos)
 
-#     def find( self, qname ):
-#         if qname in self.index:
-#             return IteratorRowSelection( self.samfile, self.index[qname], reopen = False )
-#         else:
-#             raise KeyError( "read %s not found" % qname )
+        bam_destroy1(b)
 
-#     def __dealloc__(self):
-#         if self.owns_samfile: hts_close( self.fp )
+    def find(self, qname):
+        if qname in self.index:
+            return IteratorRowSelection(
+                self.samfile,
+                self.index[qname],
+                reopen = False)
+        else:
+            raise KeyError("read %s not found" % qname)
+
+    def __dealloc__(self):
+        if self.owns_samfile:
+            hts_close(self.htsfile)
 
 __all__ = ["Samfile",
            "IteratorRow",
@@ -3417,11 +3436,11 @@ __all__ = ["Samfile",
            "PileupColumn",
            "PileupProxy",
            "PileupRead",
+           "IndexedReads" ]
            # "IteratorSNPCalls",
            # "SNPCaller",
            # "IndelCaller",
            # "IteratorIndelCalls",
-           #"IndexedReads" ]
-           ]
+
 
 

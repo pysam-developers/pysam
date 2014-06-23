@@ -32,8 +32,8 @@ IS_PYTHON3 = sys.version_info[0] >= 3
 #         pysam. 
 # external: use shared libhts.so compiled outside of 
 #           pysam
-HTSLIB="separate"
-HTSLIB_DIR=None
+HTSLIB = "separate"
+HTSLIB_DIR = []
 
 # collect pysam version
 sys.path.insert(0, "pysam")
@@ -77,6 +77,7 @@ elif HTSLIB == 'shared':
     htslib_libraries = ['chtslib']
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB)
+
 
 def locate(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
