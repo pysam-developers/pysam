@@ -241,36 +241,6 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
                       "PG" : ("PN", "ID", "VN", "CL", 
                               "PP"),}
 
-######################################################################
-######################################################################
-######################################################################
-## Public methods
-######################################################################
-
-ctypedef struct MateData:
-     char * name
-     bam1_t * mate
-     uint32_t flag
-
-
-# cdef int mate_callback( bam1_t *alignment, void *f):
-#      '''callback for bam_fetch = filter mate
-#      '''
-#      cdef MateData * d = (<MateData*>f)
-#      # printf("mate = %p, name1 = %s, name2=%s\t%i\t%i\t%i\n",
-#      #        d.mate, d.name, pysam_pysam_bam_get_qname(alignment),
-#      #        d.flag, alignment.core.flag, alignment.core.flag & d.flag)
-
-#      if d.mate == NULL:
-#          # could be sped up by comparing the lengths of query strings first
-#          # using l_qname
-#          #
-#          # also, make sure that we get the other read by comparing
-#          # the flags
-#          if alignment.core.flag & d.flag != 0 and \
-#                  strcmp( pysam_bam_get_qname( alignment ), d.name ) == 0:
-#              d.mate = bam_dup1( alignment )
-
 
 cdef class Samfile:
     '''*(filename, mode=None, template = None,
@@ -549,31 +519,38 @@ cdef class Samfile:
 
         returns -1 if reference is not known.
         '''
-        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
         reference = _forceBytes(reference)
         return bam_name2id(self.header, reference)
 
     def getrname( self, tid ):
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
-        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not self._isOpen():
+            raise ValueError( "I/O operation on closed file" )
         if not 0 <= tid < self.header.n_targets:
-            raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.header.n_targets ) )
+            raise ValueError("tid %i out of range 0<=tid<%i" % 
+                             (tid, self.header.n_targets ) )
         return _charptr_to_str(self.header.target_name[tid])
 
     cdef char * _getrname( self, int tid ): # TODO unused
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
-        if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+        if not self._isOpen():
+            raise ValueError("I/O operation on closed file")
+
         if not 0 <= tid < self.header.n_targets:
-            raise ValueError( "tid %i out of range 0<=tid<%i" % (tid, self.header.n_targets ) )
+            raise ValueError("tid %i out of range 0<=tid<%i" %
+                             (tid, self.header.n_targets ))
         return self.header.target_name[tid]
 
     def _parseRegion(self,
                      reference=None,
                      start=None,
                      end=None,
-                     region=None):
+                     region=None,
+                     tid=None):
         '''
         parse region information.
 
@@ -605,15 +582,21 @@ cdef class Samfile:
 
         if region:
             region = _forceStr(region)
-            parts = re.split( "[:-]", region )
+            parts = re.split("[:-]", region)
             reference = parts[0]
-            if len(parts) >= 2: rstart = int(parts[1]) - 1
-            if len(parts) >= 3: rend = int(parts[2])
+            if len(parts) >= 2:
+                rstart = int(parts[1]) - 1
+            if len(parts) >= 3:
+                rend = int(parts[2])
 
         if not reference:
             return 0, 0, 0, 0
 
-        rtid = self.gettid( reference )
+        if tid is not None:
+            rtid = tid
+        else:
+            rtid = self.gettid(reference)
+
         if rtid < 0:
             raise ValueError(
                 "invalid reference `%s`" % reference)
@@ -661,6 +644,7 @@ cdef class Samfile:
               start=None,
               end=None,
               region=None,
+              tid=None,
               callback=None,
               until_eof=False,
               reopen=True):
@@ -702,7 +686,8 @@ cdef class Samfile:
         has_coord, rtid, rstart, rend = self._parseRegion(reference,
                                                           start,
                                                           end,
-                                                          region)
+                                                          region,
+                                                          tid)
 
         # Turn of re-opening if htsfile is a stream
         if self.isstream:
@@ -714,16 +699,16 @@ cdef class Samfile:
 
             if has_coord:
                 return IteratorRowRegion(self, rtid, rstart, rend, 
-                                         reopen=reopen )
+                                         reopen=reopen)
             else:
                 if until_eof:
-                    return IteratorRowAll(self, reopen=reopen )
+                    return IteratorRowAll(self, reopen=reopen)
                 else:
                     # AH: check - reason why no reopen for AllRefs?
                     return IteratorRowAllRefs(self) # , reopen=reopen )
         else:
             if has_coord:
-                raise ValueError ("fetching by region is not available for sam files" )
+                raise ValueError ("fetching by region is not available for sam files")
 
             if callback:
                 raise NotImplementedError("callback not implemented yet")
@@ -734,9 +719,9 @@ cdef class Samfile:
             # check if targets are defined
             # give warning, sam_read1 segfaults
             if self.header.n_targets == 0:
-                warnings.warn( "fetch called for htsfile without header")
+                warnings.warn("fetch called for htsfile without header")
                 
-            return IteratorRowAll(self, reopen=reopen )
+            return IteratorRowAll(self, reopen=reopen)
 
     def head(self, n):
         '''
@@ -746,48 +731,50 @@ cdef class Samfile:
         '''
         return IteratorRowHead(self, n)
 
-    # def mate(self,
-    #          AlignedRead read):
-    #     '''return the mate of :class:`AlignedRead` *read*.
+    def mate(self,
+             AlignedRead read):
+        '''return the mate of :class:`AlignedRead` *read*.
 
-    #     Throws a ValueError if read is unpaired or the mate
-    #     is unmapped.
+        Throws a ValueError if read is unpaired or the mate
+        is unmapped.
 
-    #     .. note::
-    #         Calling this method will change the file position.
-    #         This might interfere with any iterators that have
-    #         not re-opened the file.
+        .. note::
 
-    #     '''
-    #     cdef uint32_t flag = read._delegate.core.flag
+            Calling this method will change the file position.
+            This might interfere with any iterators that have
+            not re-opened the file.
 
-    #     if flag & BAM_FPAIRED == 0:
-    #         raise ValueError( "read %s: is unpaired" % (read.qname))
-    #     if flag & BAM_FMUNMAP != 0:
-    #         raise ValueError( "mate %s: is unmapped" % (read.qname))
+        .. note::
+  
+           This method is too slow for high-throughput processing.
+           If a read needs to be processed with its mate, work
+           from a read name sorted file or, better, cache reads.
 
-    #     cdef MateData mate_data
+        '''
+        cdef uint32_t flag = read._delegate.core.flag
 
-    #     mate_data.name = <char *>pysam_bam_get_qname(read._delegate)
-    #     mate_data.mate = NULL
-    #     # xor flags to get the other mate
-    #     cdef int x = BAM_FREAD1 + BAM_FREAD2
-    #     mate_data.flag = ( flag ^ x) & x
+        if flag & BAM_FPAIRED == 0:
+            raise ValueError("read %s: is unpaired" % (read.qname))
+        if flag & BAM_FMUNMAP != 0:
+            raise ValueError("mate %s: is unmapped" % (read.qname))
 
-    #     bam_fetch(self.samfile.x.bam,
-    #               self.index,
-    #               read._delegate.core.mtid,
-    #               read._delegate.core.mpos,
-    #               read._delegate.core.mpos + 1,
-    #               <void*>&mate_data,
-    #               mate_callback )
+        # xor flags to get the other mate
+        cdef int x = BAM_FREAD1 + BAM_FREAD2
+        flag = (flag ^ x) & x
 
-    #     if mate_data.mate == NULL:
-    #         raise ValueError( "mate not found" )
-
-    #     cdef AlignedRead dest = AlignedRead.__new__(AlignedRead)
-    #     dest._delegate = mate_data.mate
-    #     return dest
+        # the following code is not using the C API and
+        # could thus be made much quicker
+        for mate in self.fetch(
+                read._delegate.core.mpos,
+                read._delegate.core.mpos + 1,
+                tid=read._delegate.core.mtid):
+            if mate.flag & flag != 0 and \
+               mate.qname == read.qname:
+                break
+        else:
+            raise ValueError("mate not found")
+        
+        return mate
 
     def count(self,
               reference=None,

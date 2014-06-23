@@ -1919,7 +1919,6 @@ class TestSamfileUtilityFunctions(unittest.TestCase):
                         contig, start, start,
                         len(list(samfile.fetch(contig, start, start))),
                         samfile.count(contig, start, start)))
-                    
 
                 # test half empty intervals
                 self.assertEqual(len(list(samfile.fetch(contig, start))),
@@ -1933,36 +1932,36 @@ class TestSamfileUtilityFunctions(unittest.TestCase):
                         len(list(samfile.fetch(contig, start))),
                         samfile.count(contig, start)))
 
-    # TODO
-    # def testMate(self):
-    #     '''test mate access.'''
+    def testMate(self):
+        '''test mate access.'''
 
-    #     with open(os.path.join(DATADIR, "ex1.sam"), "rb") as inf:
-    #         readnames = [x.split(b"\t")[0] for x in inf.readlines()]
-    #     if sys.version_info[0] >= 3:
-    #         readnames = [name.decode('ascii') for name in readnames]
+        with open(os.path.join(DATADIR, "ex1.sam"), "rb") as inf:
+            readnames = [x.split(b"\t")[0] for x in inf.readlines()]
+        if sys.version_info[0] >= 3:
+            readnames = [name.decode('ascii') for name in readnames]
 
-    #     counts = collections.defaultdict(int)
-    #     for x in readnames:
-    #         counts[x] += 1
+        counts = collections.defaultdict(int)
+        for x in readnames:
+            counts[x] += 1
 
-    #     samfile = pysam.Samfile(os.path.join(DATADIR, "ex1.bam"),
-    #                             "rb")
-    #     for read in samfile.fetch():
-    #         if not read.is_paired:
-    #             self.assertRaises(ValueError, samfile.mate, read)
-    #         elif read.mate_is_unmapped:
-    #             self.assertRaises(ValueError, samfile.mate, read)
-    #         else:
-    #             if counts[read.qname] == 1:
-    #                 self.assertRaises(ValueError, samfile.mate, read)
-    #             else:
-    #                 mate = samfile.mate(read)
-    #                 self.assertEqual(read.qname, mate.qname)
-    #                 self.assertEqual(read.is_read1, mate.is_read2)
-    #                 self.assertEqual(read.is_read2, mate.is_read1)
-    #                 self.assertEqual(read.pos, mate.mpos)
-    #                 self.assertEqual(read.mpos, mate.pos)
+        samfile = pysam.Samfile(os.path.join(DATADIR, "ex1.bam"),
+                                "rb")
+
+        for read in samfile.fetch():
+            if not read.is_paired:
+                self.assertRaises(ValueError, samfile.mate, read)
+            elif read.mate_is_unmapped:
+                self.assertRaises(ValueError, samfile.mate, read)
+            else:
+                if counts[read.qname] == 1:
+                    self.assertRaises(ValueError, samfile.mate, read)
+                else:
+                    mate = samfile.mate(read)
+                    self.assertEqual(read.qname, mate.qname)
+                    self.assertEqual(read.is_read1, mate.is_read2)
+                    self.assertEqual(read.is_read2, mate.is_read1)
+                    self.assertEqual(read.pos, mate.mpos)
+                    self.assertEqual(read.mpos, mate.pos)
 
     def testIndexStats(self):
         '''test if total number of mapped/unmapped reads is correct.'''
