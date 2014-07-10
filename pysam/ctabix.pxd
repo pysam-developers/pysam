@@ -6,11 +6,12 @@ from libc.stdio cimport FILE, printf
 
 # Note: this replaces python "open"!
 cdef extern from "fcntl.h":
-  int open(char *pathname, int flags)
+    int open(char *pathname, int flags)
 
 cdef extern from "unistd.h" nogil:
-  ctypedef int ssize_t
-  ssize_t read(int fd, void *buf, size_t count)
+    ctypedef int ssize_t
+    ssize_t read(int fd, void *buf, size_t count)
+    int close(int fd)
 
 from chtslib cimport hts_idx_t, hts_itr_t, htsFile, \
     kstream_t, kstring_t, gzFile, tbx_t

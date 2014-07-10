@@ -632,13 +632,17 @@ def tabix_compress(filename_in,
         c = read(fd_src, buffer, WINDOW_SIZE)
         r = bgzf_write(fp, buffer, c)
         if r < 0:
-            free( buffer )
+            free(buffer)
             raise OSError("writing failed")
         
-    free( buffer )
+    free(buffer)
     r = bgzf_close(fp)
     if r < 0:
-        raise OSError("writing failed")
+        raise OSError("writing to file %s failed" % filename_out)
+
+    r = close(fd_src)
+    if r < 0:
+        raise OSError("error when closing file %s" % filename_in)
 
 def tabix_index( filename, 
                  force = False,
