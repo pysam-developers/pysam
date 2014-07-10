@@ -2,7 +2,6 @@
 def make_ext(modname, pyxfilename):
     from distutils.extension import Extension
     import pysam
-    print pysam.get_include()
     return Extension(name = modname,
                      sources = [pyxfilename],
                      include_dirs = pysam.get_include(),
