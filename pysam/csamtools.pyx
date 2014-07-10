@@ -29,6 +29,7 @@ cdef bytes _forceBytes(object s):
     else:
         raise TypeError, u"Argument must be string, bytes or unicode."
 
+
 cdef inline bytes _forceCmdlineBytes(object s):
     return _forceBytes(s)
 
