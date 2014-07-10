@@ -3013,7 +3013,9 @@ cdef class AlignedRead:
            for k from 0 <= k < pysam_get_n_cigar(src):
                op = cigar_p[k] & BAM_CIGAR_MASK
 
-               if op == BAM_CMATCH or op == BAM_CINS or op == BAM_CSOFT_CLIP:
+               if op == BAM_CMATCH or op == BAM_CINS or \
+                  op == BAM_CSOFT_CLIP or \
+                  op == BAM_CEQUAL or op == BAM_CDIFF:
                    qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
 
            return qpos
@@ -3165,9 +3167,13 @@ cdef class AlignedRead:
 
 
     def fancy_str (self):
-        """returns list of fieldnames/values in pretty format for debugging
+        """returns list of fieldnames/values in pretty format for debugging.
+
         """
         ret_string = []
+
+        # Originally written by Leo. Note that not all of these fields
+        # exist. Deprecate?
         field_names = {
            "tid":           "Contig index",
            "pos":           "Mapped position on contig",
@@ -3192,13 +3198,13 @@ cdef class AlignedRead:
                                  "l_qseq", "qseq", "bqual", "l_data", "m_data"]
 
         for f in fields_names_in_order:
-            if not f in self.__dict__:
+            if f not in dir(self):
                 continue
-            ret_string.append("%-30s %-10s= %s" % (field_names[f], "(" + f + ")", self.__getattribute__(f)))
+            ret_string.append("%-30s %-10s= %s" %
+                              (field_names[f],
+                               "(" + f + ")",
+                               self.__getattribute__(f)))
 
-        for f in self.__dict__:
-            if not f in field_names:
-                ret_string.append("%-30s %-10s= %s" % (f, "", self.__getattribute__(f)))
         return ret_string
 
 cdef class PileupProxy:

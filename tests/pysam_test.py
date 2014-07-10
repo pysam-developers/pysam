@@ -1426,6 +1426,11 @@ class TestAlignedRead(unittest.TestCase):
         self.assertEqual(a.blocks,
                          [(20, 30), (31, 40), (40, 60)])
 
+    def testFancyStr(self):
+        a = self.buildRead()
+        output = a.fancy_str()
+        self.assertEqual(len(output), 9)
+
 
 class TestDeNovoConstruction(unittest.TestCase):
 
