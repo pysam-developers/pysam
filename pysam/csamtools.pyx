@@ -691,7 +691,7 @@ cdef class Samfile:
            By default, 'SQ' and 'LN' tags will be added to the header text. This option can be
            changed by unsetting the flag *add_sq_text*. 
 
-    By default, if file a file is opened in mode 'r', it is checked for a valid header
+    By default, if a file is opened in mode 'r', it is checked for a valid header
     (*check_header* = True) and a definition of chromosome names (*check_sq* = True). 
     
     '''
