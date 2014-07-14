@@ -945,7 +945,7 @@ cdef class Samfile:
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.header.n_targets:
-                t.append( _charptr_to_str(self.header.target_name[x]) )
+                t.append(_charptr_to_str(self.header.target_name[x]))
             return tuple(t)
 
     property lengths:
@@ -1501,7 +1501,7 @@ cdef class IteratorRowSelection(IteratorRow):
     def __iter__(self):
         return self
 
-    cdef bam1_t * getCurrent( self ):
+    cdef bam1_t * getCurrent(self):
         return self.b
 
     cdef int cnext(self):
@@ -1539,55 +1539,69 @@ cdef int __advance_all(void *data, bam1_t *b):
     return sam_itr_next(d.htsfile, d.iter, b)
 
 
-# cdef int __advance_snpcalls( void * data, bam1_t * b ):
-#     '''advance using same filter and read processing as in
-#     the samtools pileup.
-#     '''
-#     cdef __iterdata * d
-#     d = <__iterdata*>data
+cdef int __advance_snpcalls(void * data, bam1_t * b):
+    '''advance using same filter and read processing as in
+    the samtools pileup.
+    '''
 
-#     cdef int ret = bam_iter_read( d.samfile.x.bam, d.iter, b )
-#     cdef int skip = 0
-#     cdef int q
-#     cdef int is_cns = 1
-#     cdef int is_nobaq = 0
-#     cdef int capQ_thres = 0
+    # Note that this method requries acces to some 
+    # functions in the samtools code base and is thus
+    # not htslib only.
+    # The functions accessed in samtools are:
+    # 1. bam_prob_realn
+    # 2. bam_cap_mapQ
+    cdef __iterdata * d
+    d = <__iterdata*>data
 
-#     # reload sequence
-#     if d.fastafile != NULL and b.core.tid != d.tid:
-#         if d.seq != NULL: free(d.seq)
-#         d.tid = b.core.tid
-#         d.seq = faidx_fetch_seq(d.fastafile,
-#                                 d.samfile.header.target_name[d.tid],
-#                                 0, max_pos,
-#                                 &d.seq_len)
-#         if d.seq == NULL:
-#             raise ValueError( "reference sequence for '%s' (tid=%i) not found" % \
-#                                   (d.samfile.header.target_name[d.tid],
-#                                    d.tid))
+    cdef int ret = sam_itr_next(d.htsfile, d.iter, b)
+    cdef int skip = 0
+    cdef int q
+    cdef int is_cns = 1
+    cdef int is_nobaq = 0
+    cdef int capQ_thres = 0
+
+    # reload sequence
+    if d.fastafile != NULL and b.core.tid != d.tid:
+        if d.seq != NULL:
+            free(d.seq)
+        d.tid = b.core.tid
+        d.seq = faidx_fetch_seq(
+            d.fastafile,
+            d.header.target_name[d.tid],
+            0, max_pos,
+            &d.seq_len)
+
+        if d.seq == NULL:
+            raise ValueError(
+                "reference sequence for '%s' (tid=%i) not found" % \
+                (d.header.target_name[d.tid],
+                 d.tid))
 
 
-#     while ret >= 0:
+    while ret >= 0:
+        skip = 0
 
-#         skip = 0
+        # realign read - changes base qualities
+        if d.seq != NULL and is_cns and not is_nobaq: 
+            bam_prob_realn(b, d.seq)
 
-#         # realign read - changes base qualities
-#         if d.seq != NULL and is_cns and not is_nobaq: 
-#             bam_prob_realn( b, d.seq )
+        if d.seq != NULL and capQ_thres > 10:
+            q = bam_cap_mapQ(b, d.seq, capQ_thres)
+            if q < 0:
+                skip = 1
+            elif b.core.qual > q:
+                b.core.qual = q
+        if b.core.flag & BAM_FUNMAP:
+            skip = 1
+        elif b.core.flag & 1 and not b.core.flag & 2:
+            skip = 1
 
-#         if d.seq != NULL and capQ_thres > 10:
-#             q = bam_cap_mapQ(b, d.seq, capQ_thres)
-#             if q < 0: skip = 1
-#             elif b.core.qual > q: b.core.qual = q
-#         if b.core.flag & BAM_FUNMAP: skip = 1
-#         elif b.core.flag & 1 and not b.core.flag & 2: skip = 1
+        if not skip: break
+        # additional filters
 
-#         if not skip: break
-#         # additional filters
+        ret = sam_itr_next(d.htsfile, d.iter, b)
 
-#         ret = bam_iter_read( d.samfile.x.bam, d.iter, b )
-
-#     return ret
+    return ret
 
 cdef class IteratorColumn:
     '''abstract base class for iterators over columns.
@@ -1602,8 +1616,9 @@ cdef class IteratorColumn:
        f = Samfile("file.bam", "rb")
        result = list( f.pileup() )
 
-    Here, ``result`` will contain ``n`` objects of type :class:`PileupProxy` for ``n`` columns,
-    but each object in ``result`` will contain the same information.
+    Here, ``result`` will contain ``n`` objects of type
+    :class:`PileupProxy` for ``n`` columns, but each object in
+    ``result`` will contain the same information.
 
     The desired behaviour can be achieved by list comprehension::
 
@@ -1611,38 +1626,40 @@ cdef class IteratorColumn:
 
     ``result`` will be a list of ``n`` lists of objects of type :class:`PileupRead`.
 
-    If the iterator is associated with a :class:`Fastafile` using the :meth:`addReference`
-    method, then the iterator will export the current sequence via the methods :meth:`getSequence`
-    and :meth:`seq_len`.
+    If the iterator is associated with a :class:`Fastafile` using the
+    :meth:`addReference` method, then the iterator will export the
+    current sequence via the methods :meth:`getSequence` and
+    :meth:`seq_len`.
 
-    Optional kwargs to the iterator
+    Optional kwargs to the iterator:
 
     stepper
        The stepper controls how the iterator advances.
-       Possible options for the stepper are
 
-       all
-           use all reads for pileup.
-       samtools
-           same filter and read processing as in :term:`csamtools` pileup
+       Valid values are None, "all" or "samtools".
 
-       The default is to use "all" if no stepper is given.
+       The default stepper "all" uses all reads for
+       computing the pileup. This corresponds to the
+       mpileup options "-B" and "-A".
+
+       The stepper "samtools" uses the mpileup default
+       parameterization to advance.
 
     fastafile
        A :class:`FastaFile` object
-    mask
-       Skip all reads with bits set in mask.
+
     max_depth
        maximum read depth. The default is 8000.
+
     '''
 
     def __cinit__( self, Samfile samfile, **kwargs ):
         self.samfile = samfile
         # TODO
         # self.mask = kwargs.get("mask", BAM_DEF_MASK )
-        self.fastafile = kwargs.get( "fastafile", None )
-        self.stepper = kwargs.get( "stepper", None )
-        self.max_depth = kwargs.get( "max_depth", 8000 )
+        self.fastafile = kwargs.get("fastafile", None)
+        self.stepper = kwargs.get("stepper", None)
+        self.max_depth = kwargs.get("max_depth", 8000)
         self.iterdata.seq = NULL
         self.tid = 0
         self.pos = 0
@@ -1670,7 +1687,7 @@ cdef class IteratorColumn:
         '''current sequence length.'''
         def __get__(self): return self.iterdata.seq_len
 
-    def addReference( self, Fastafile fastafile ):
+    def addReference(self, Fastafile fastafile):
        '''
        add reference sequences in *fastafile* to iterator.'''
        self.fastafile = fastafile
@@ -1678,12 +1695,12 @@ cdef class IteratorColumn:
        self.iterdata.tid = -1
        self.iterdata.fastafile = self.fastafile.fastafile
 
-    def hasReference( self ):
+    def hasReference(self):
         '''
         return true if iterator is associated with a reference'''
         return self.fastafile
 
-    cdef setMask( self, mask ):
+    cdef setMask(self, mask):
         '''set masking flag in iterator.
 
         reads with bits set in *mask* will be skipped.
@@ -1704,6 +1721,7 @@ cdef class IteratorColumn:
         self.iterdata.iter = self.iter.iter
         self.iterdata.seq = NULL
         self.iterdata.tid = -1
+        self.iterdata.header = self.samfile.header
 
         if self.fastafile != None:
             self.iterdata.fastafile = self.fastafile.fastafile
@@ -1714,14 +1732,16 @@ cdef class IteratorColumn:
             self.pileup_iter = bam_plp_init(
                 <bam_plp_auto_f>&__advance_all,
                 &self.iterdata)
-        # elif self.stepper == "samtools":
-        #     self.pileup_iter = bam_plp_init(&__advance_snpcalls, &self.iterdata)
+        elif self.stepper == "samtools":
+            self.pileup_iter = bam_plp_init(
+                <bam_plp_auto_f>&__advance_snpcalls,
+                &self.iterdata)
         else:
             raise ValueError(
                 "unknown stepper option `%s` in IteratorColumn" % self.stepper)
 
         if self.max_depth:
-            bam_plp_set_maxcnt( self.pileup_iter, self.max_depth )
+            bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
 
         # bam_plp_set_mask( self.pileup_iter, self.mask )
 
@@ -1755,6 +1775,7 @@ cdef class IteratorColumn:
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
             self.iterdata.seq = NULL
+
 
 cdef class IteratorColumnRegion(IteratorColumn):
     '''iterates over a region only.
@@ -1792,6 +1813,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
                                    self.tid,
                                    self.pos,
                                    self.n_plp)
+
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
     """iterates over all columns by chaining iterators over each reference

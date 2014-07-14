@@ -41,11 +41,19 @@ cdef extern from "htslib_util.h":
     void pysam_set_n_cigar(bam1_t * b, uint16_t v)
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
+
+cdef extern from "samfile_util.h":
+
+    int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
+    int bam_prob_realn(bam1_t *b, const char *ref)
+
+
 ####################################################################
 # Utility types
 
 ctypedef struct __iterdata:
     htsFile * htsfile
+    bam_hdr_t * header
     hts_itr_t * iter
     faidx_t * fastafile
     int tid

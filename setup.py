@@ -307,15 +307,20 @@ htslib = Extension(
                    ('_USE_KNETFILE', '')]
 )
 
+# samfile requires functions defined in bam_md.c
+# for __advance_samtools method.
+# Selected ones have been copied into samfile_utils.c
+# Needs to be devolved somehow.
 samfile = Extension(
     "pysam.csamfile",
     csamfile_sources +
     ["pysam/%s" % x for x in (
-        "htslib_util.c", )] +
+        "htslib_util.c", "samfile_util.c",)] +
+    ["samtools/kprobaln.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["htslib", "pysam"] + include_os,
+    include_dirs=["htslib", "pysam", "samtools"] + include_os,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=[
