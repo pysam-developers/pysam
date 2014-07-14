@@ -32,8 +32,8 @@ IS_PYTHON3 = sys.version_info[0] >= 3
 #         pysam. 
 # external: use shared libhts.so compiled outside of 
 #           pysam
-HTSLIB="separate"
-HTSLIB_DIR=None
+HTSLIB = "separate"
+HTSLIB_DIR = []
 
 # collect pysam version
 sys.path.insert(0, "pysam")
@@ -77,6 +77,7 @@ elif HTSLIB == 'shared':
     htslib_libraries = ['chtslib']
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB)
+
 
 def locate(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
@@ -306,15 +307,20 @@ htslib = Extension(
                    ('_USE_KNETFILE', '')]
 )
 
+# samfile requires functions defined in bam_md.c
+# for __advance_samtools method.
+# Selected ones have been copied into samfile_utils.c
+# Needs to be devolved somehow.
 samfile = Extension(
     "pysam.csamfile",
     csamfile_sources +
     ["pysam/%s" % x for x in (
-        "htslib_util.c", )] +
+        "htslib_util.c", "samfile_util.c",)] +
+    ["samtools/kprobaln.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["htslib", "pysam"] + include_os,
+    include_dirs=["htslib", "pysam", "samtools"] + include_os,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=[
