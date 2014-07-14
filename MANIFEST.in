@@ -13,13 +13,13 @@ include pysam/c*.pyx
 include pysam/c*.c
 include pysam/*.c
 include pysam/*.h
-include pysam/pysam_util.h
-include pysam/tabix_util.h
 include samtools/*.h
 include samtools/*/*.h
 include htslib/*.c
 include htslib/*.h
 include htslib/htslib/*.h
+include htslib/cram/*.c
+include htslib/cram/*.h
 include pysam.py
 
 # pysam tests
