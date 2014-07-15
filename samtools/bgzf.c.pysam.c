@@ -103,7 +103,7 @@ static inline void packInt32(uint8_t *buffer, uint32_t value)
 	buffer[3] = value >> 24;
 }
 
-static BGZF *bgzf_read_init()
+static BGZF *bgzf_read_init(void)
 {
 	BGZF *fp;
 	fp = calloc(1, sizeof(BGZF));

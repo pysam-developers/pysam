@@ -1,7 +1,7 @@
 #ifndef PYSAM_STREAM_H
 #define PYSAM_STREAM_H
 
-#include "kseq.h"
+#include "htslib/kseq.h"
 
 // #######################################################
 // fastq parsing

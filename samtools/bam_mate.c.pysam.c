@@ -102,7 +102,7 @@ void bam_mating_core(bamFile in, bamFile out, int remove_reads)
 	free(str.s);
 }
 
-void usage()
+void usage(void)
 {
     fprintf(pysamerr,"Usage: samtools fixmate <in.nameSrt.bam> <out.nameSrt.bam>\n");
     fprintf(pysamerr,"Options:\n");

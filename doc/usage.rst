@@ -11,7 +11,7 @@ In order to follow the examples below, execute
 in the :file:`test` directory.
 
 Opening a samfile
-==================
+=================
 
 The first operation is to import the pysam module and open a 
 :class:`pysam.Samfile`::

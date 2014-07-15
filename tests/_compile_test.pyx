@@ -1,4 +1,4 @@
-from pysam.csamtools cimport Samfile, AlignedRead
+from pysam.csamfile cimport Samfile, AlignedRead
 from pysam.ctabix cimport Tabixfile
 
 cdef Samfile samfile

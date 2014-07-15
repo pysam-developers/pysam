@@ -73,7 +73,7 @@ static inline uint64_t byte_swap_8(uint64_t v){
 	return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
 }
 
-static inline int is_big_endian(){
+static inline int is_big_endian(void){
 	int x = 0x01;
 	char *c = (char*)&x;
 	return (c[0] != 0x01);

@@ -3,7 +3,7 @@
 *#
 
 # test directory
-pysam/
+tests/pysam/
 tests/tmp*
 tests/*.bam
 tests/*.bai
@@ -19,7 +19,7 @@ pysam/TabProxies.c
 pysam/csamtools.c
 pysam/ctabix.c
 pysam/cvcf.c
-  
+pysam/chtslib.c  
 
 ###### Generic python ignores below ######
 

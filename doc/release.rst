@@ -2,6 +2,22 @@
 Release notes
 =============
 
+Release 0.8.0
+=============
+
+  * Disabled features
+     * IteratorColumn.setMask() disabled as
+       htslib does not implement this functionality?
+
+  * Not implemented yet:
+     * reading SAM files without header
+     * samtools stepper
+
+  * tabix needs to be re-indexed
+  * tabix iterators will not return comments
+    (TODO: full iterator)
+  * tabix raises always ValueError for invalid intervals
+
 Release 0.7.8
 =============
 

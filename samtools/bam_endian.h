@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-static inline int bam_is_big_endian()
+static inline int bam_is_big_endian(void)
 {
 	long one= 1;
 	return !(*((char *)(&one)));
