@@ -119,12 +119,14 @@ cdef int max_pos = 2 << 29
 cdef class AlignedRead
 cdef makeAlignedRead(bam1_t * src):
     '''enter src into AlignedRead.'''
+    # note that the following does not call __init__
     cdef AlignedRead dest = AlignedRead.__new__(AlignedRead)
     dest._delegate = bam_dup1(src)
     return dest
 
 cdef class PileupProxy
 cdef makePileupProxy(bam_pileup1_t ** plp, int tid, int pos, int n):
+    # note that the following does not call __init__
      cdef PileupProxy dest = PileupProxy.__new__(PileupProxy)
      dest.plp = plp
      dest.tid = tid
