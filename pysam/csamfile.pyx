@@ -2078,7 +2078,8 @@ cdef class AlignedRead:
         # If size is 0, calloc does not return a pointer that can be passed to free()
         # so allocate 40 bytes for a new read
         self._delegate.m_data = 40
-        self._delegate.data = <uint8_t *>calloc( self._delegate.m_data, 1 )
+        self._delegate.data = <uint8_t *>calloc(
+            self._delegate.m_data, 1)
         self._delegate.l_data = 0
 
     def __dealloc__(self):
@@ -2135,7 +2136,7 @@ cdef class AlignedRead:
         # for x from 0 <= x < max(t.l_data, o.l_data): print x, tt[x], oo[x], chr(tt[x]), chr(oo[x])
 
         # Fast-path test for object identity
-        if t==o:
+        if t == o:
             return 0
 
         retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
