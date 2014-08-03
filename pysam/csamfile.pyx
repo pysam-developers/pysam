@@ -57,7 +57,7 @@ cdef bytes _forceBytes(object s):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     """
     if PY_MAJOR_VERSION < 3:
-        return s
+        return s.encode("ascii")
     elif s is None:
         return None
     elif PyBytes_Check(s):

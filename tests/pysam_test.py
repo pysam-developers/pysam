@@ -139,36 +139,36 @@ class BasicTestBAMFetch(unittest.TestCase):
             self.reads[1].tlen, 412))
 
     def testARseq(self):
-        self.assertEqual(self.reads[0].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (
-            self.reads[0].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
-        self.assertEqual(self.reads[1].seq, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (
-            self.reads[1].seq, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
-        self.assertEqual(self.reads[3].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 4: %s != %s" % (
-            self.reads[3].seq, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
+        self.assertEqual(self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (
+            self.reads[0].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
+        self.assertEqual(self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (
+            self.reads[1].seq, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
+        self.assertEqual(self.reads[3].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 4: %s != %s" % (
+            self.reads[3].seq, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
 
     def testARqual(self):
-        self.assertEqual(self.reads[0].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 1: %s != %s" % (self.reads[0].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(self.reads[1].qual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (
-            self.reads[1].qual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(self.reads[3].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 3: %s != %s" % (self.reads[3].qual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "quality string mismatch in read 1: %s != %s" % (self.reads[0].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (
+            self.reads[1].qual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
+        self.assertEqual(self.reads[3].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "quality string mismatch in read 3: %s != %s" % (self.reads[3].qual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
 
     def testARquery(self):
-        self.assertEqual(self.reads[0].query, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "query mismatch in read 1: %s != %s" % (
-            self.reads[0].query, b"AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
-        self.assertEqual(self.reads[1].query, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "query size mismatch in read 2: %s != %s" % (
-            self.reads[1].query, b"ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
-        self.assertEqual(self.reads[3].query, b"TAGCTAGCTACCTATATCTTGGTCTT", "query mismatch in read 4: %s != %s" % (
-            self.reads[3].query, b"TAGCTAGCTACCTATATCTTGGTCTT"))
+        self.assertEqual(self.reads[0].query, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "query mismatch in read 1: %s != %s" % (
+            self.reads[0].query, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
+        self.assertEqual(self.reads[1].query, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "query size mismatch in read 2: %s != %s" % (
+            self.reads[1].query, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
+        self.assertEqual(self.reads[3].query, "TAGCTAGCTACCTATATCTTGGTCTT", "query mismatch in read 4: %s != %s" % (
+            self.reads[3].query, "TAGCTAGCTACCTATATCTTGGTCTT"))
 
     def testARqqual(self):
-        self.assertEqual(self.reads[0].qqual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "qquality string mismatch in read 1: %s != %s" % (self.reads[0].qqual, b"<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(self.reads[1].qqual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "qquality string mismatch in read 2: %s != %s" % (
-            self.reads[1].qqual, b"<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(self.reads[3].qqual, b"<<<<<<<<<<<<<<<<<:<9/,&,22",
-                         "qquality string mismatch in read 3: %s != %s" % (self.reads[3].qqual, b"<<<<<<<<<<<<<<<<<:<9/,&,22"))
+        self.assertEqual(self.reads[0].qqual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "qquality string mismatch in read 1: %s != %s" % (self.reads[0].qqual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(self.reads[1].qqual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "qquality string mismatch in read 2: %s != %s" % (
+            self.reads[1].qqual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
+        self.assertEqual(self.reads[3].qqual, "<<<<<<<<<<<<<<<<<:<9/,&,22",
+                         "qquality string mismatch in read 3: %s != %s" % (self.reads[3].qqual, "<<<<<<<<<<<<<<<<<:<9/,&,22"))
 
     def testPresentOptionalFields(self):
         self.assertEqual(self.reads[0].opt(
@@ -695,31 +695,31 @@ class TestClipping(unittest.TestCase):
         for read in self.samfile:
 
             if read.qname == "r001":
-                self.assertEqual(read.seq, b'AAAAGATAAGGATA')
-                self.assertEqual(read.query, b'AGATAAGGATA')
+                self.assertEqual(read.seq, 'AAAAGATAAGGATA')
+                self.assertEqual(read.query, 'AGATAAGGATA')
                 self.assertEqual(read.qual, None)
                 self.assertEqual(read.qqual, None)
 
             elif read.qname == "r002":
 
-                self.assertEqual(read.seq, b'GCCTAAGCTAA')
-                self.assertEqual(read.query, b'AGCTAA')
-                self.assertEqual(read.qual, b'01234567890')
-                self.assertEqual(read.qqual, b'567890')
+                self.assertEqual(read.seq, 'GCCTAAGCTAA')
+                self.assertEqual(read.query, 'AGCTAA')
+                self.assertEqual(read.qual, '01234567890')
+                self.assertEqual(read.qqual, '567890')
 
             elif read.qname == "r003":
 
-                self.assertEqual(read.seq, b'GCCTAAGCTAA')
-                self.assertEqual(read.query, b'GCCTAA')
-                self.assertEqual(read.qual, b'01234567890')
-                self.assertEqual(read.qqual, b'012345')
+                self.assertEqual(read.seq, 'GCCTAAGCTAA')
+                self.assertEqual(read.query, 'GCCTAA')
+                self.assertEqual(read.qual, '01234567890')
+                self.assertEqual(read.qqual, '012345')
 
             elif read.qname == "r004":
 
-                self.assertEqual(read.seq, b'TAGGC')
-                self.assertEqual(read.query, b'TAGGC')
-                self.assertEqual(read.qual, b'01234')
-                self.assertEqual(read.qqual, b'01234')
+                self.assertEqual(read.seq, 'TAGGC')
+                self.assertEqual(read.query, 'TAGGC')
+                self.assertEqual(read.qual, '01234')
+                self.assertEqual(read.qqual, '01234')
 
 
 class TestIteratorRow(unittest.TestCase):
@@ -747,7 +747,7 @@ class TestIteratorRow(unittest.TestCase):
             if sys.version_info[0] < 3:
                 qual = d[10]
             else:
-                qual = d[10].encode('ascii')
+                qual = d[10]#.encode('ascii')
             self.assertEqual(a.qual, qual, "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
                              (line, a.qual, qual,
                               str(a), str(d)))
