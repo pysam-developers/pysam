@@ -1236,7 +1236,7 @@ cdef class IteratorRow:
     def __init__(self, Samfile samfile, int reopen=True):
         
         if not samfile._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+            raise ValueError("I/O operation on closed file")
 
         # makes sure that samfile stays alive as long as the
         # iterator is alive
@@ -1248,11 +1248,13 @@ cdef class IteratorRow:
             self.htsfile = hts_open(samfile._filename, 'r')
             assert self.htsfile != NULL
             # read header - required for accurate positioning
-            sam_hdr_read(self.htsfile)
+            self.header = sam_hdr_read(self.htsfile)
+            assert self.header != NULL
             self.owns_samfile = True
         else:
             self.htsfile = self.samfile.htsfile
             self.owns_samfile = False
+            self.header = self.samfile.header
 
         self.retval = 0
 
@@ -1262,6 +1264,8 @@ cdef class IteratorRow:
         bam_destroy1(self.b)
         if self.owns_samfile:
             hts_close(self.htsfile)
+            bam_hdr_destroy(self.header)
+
 
 cdef class IteratorRowRegion(IteratorRow):
     """*(Samfile samfile, int tid, int beg, int end, int reopen = True )*

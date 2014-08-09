@@ -129,6 +129,7 @@ cdef class IteratorRow:
     cdef bam1_t * b
     cdef Samfile samfile
     cdef htsFile * htsfile
+    cdef bam_hdr_t * header
     cdef int owns_samfile
 
 cdef class IteratorRowRegion(IteratorRow):
