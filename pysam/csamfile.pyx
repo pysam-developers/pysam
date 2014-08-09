@@ -3406,10 +3406,11 @@ cdef class IndexedReads:
             self.htsfile = hts_open(samfile._filename, 'r')
             assert self.htsfile != NULL
             # read header - required for accurate positioning
-            sam_hdr_read(self.htsfile)
+            self.header = sam_hdr_read(self.htsfile)
             self.owns_samfile = True
         else:
             self.htsfile = self.samfile.htsfile
+            self.header = self.samfile.header
             self.owns_samfile = False
 
         # TODO: BAM file specific
@@ -3450,6 +3451,7 @@ cdef class IndexedReads:
     def __dealloc__(self):
         if self.owns_samfile:
             hts_close(self.htsfile)
+            bam_hdr_destroy(self.header)
 
 __all__ = ["Samfile",
            "IteratorRow",

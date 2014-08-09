@@ -199,3 +199,4 @@ cdef class IndexedReads:
     cdef index
     cdef int owns_samfile
     cdef BGZF * fp
+    cdef bam_hdr_t * header
