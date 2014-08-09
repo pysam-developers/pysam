@@ -390,7 +390,7 @@ metadata = {
     'author_email': "andreas.heger@gmail.com",
     'license': "MIT",
     'platforms': "ALL",
-    'url': "http://code.google.com/p/pysam/",
+    'url': "https://github.com/pysam-developers/pysam",
     'packages': ['pysam',
                  'pysam.include',
                  'pysam.include.htslib',
