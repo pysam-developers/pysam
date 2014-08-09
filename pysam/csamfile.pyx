@@ -816,20 +816,24 @@ cdef class Samfile:
                 end = None,
                 region = None,
                 **kwargs ):
-        '''
-        perform a :term:`pileup` within a :term:`region`. The region is specified by
-        :term:`reference`, *start* and *end* (using 0-based indexing).
-        Alternatively, a samtools *region* string can be supplied.
+        '''perform a :term:`pileup` within a :term:`region`. The region is
+        specified by :term:`reference`, *start* and *end* (using
+        0-based indexing).  Alternatively, a samtools *region* string
+        can be supplied.
 
-        Without *reference* or *region* all reads will be used for the pileup. The reads will be returned
-        ordered by :term:`reference` sequence, which will not necessarily be the order within the file.
+        Without *reference* or *region* all reads will be used for the
+        pileup. The reads will be returned ordered by
+        :term:`reference` sequence, which will not necessarily be the
+        order within the file.
 
-        The method returns an iterator of type :class:`pysam.IteratorColumn` unless
-        a *callback is provided. If a *callback* is given, the callback will be executed
-        for each column within the :term:`region`.
+        The method returns an iterator of type
+        :class:`pysam.IteratorColumn` unless a *callback is
+        provided. If a *callback* is given, the callback will be
+        executed for each column within the :term:`region`.
 
-        Note that :term:`SAM` formatted files do not allow random access.
-        In these files, if a *region* or *reference* are given an exception is raised.
+        Note that :term:`SAM` formatted files do not allow random
+        access.  In these files, if a *region* or *reference* are
+        given an exception is raised.
 
         Optional *kwargs* to the iterator:
 
@@ -839,8 +843,16 @@ cdef class Samfile:
 
            ``all``
               use all reads for pileup.
+
+          ``pass``
+              skip reads in which any of the following flags are set:
+              BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
+
            ``samtools``
-              same filter and read processing as in :term:`csamtools` pileup
+              same filter and read processing as in :term:`csamtools`
+              pileup
+
+           
 
         fastafile
            A :class:`FastaFile` object
@@ -1537,12 +1549,29 @@ cdef class IteratorRowSelection(IteratorRow):
             raise StopIteration
 
 
-cdef int __advance_all(void *data, bam1_t *b):
+cdef int __advance_nofilter(void *data, bam1_t *b):
     '''advance without any read filtering.
     '''
     cdef __iterdata * d
     d = <__iterdata*>data
     return sam_itr_next(d.htsfile, d.iter, b)
+
+
+cdef int __advance_all(void *data, bam1_t *b):
+    '''only use reads for pileup passing basic
+    filters:
+
+    BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
+    '''
+
+    cdef __iterdata * d
+    cdef mask = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP
+    d = <__iterdata*>data
+    cdef int ret = sam_itr_next(d.htsfile, d.iter, b)
+    while ret >= 0 and b.core.flag & mask:
+        ret = sam_itr_next(d.htsfile, d.iter, b)
+
+    return ret
 
 
 cdef int __advance_snpcalls(void * data, bam1_t * b):
@@ -1583,7 +1612,6 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
                 (d.header.target_name[d.tid],
                  d.tid))
 
-
     while ret >= 0:
         skip = 0
 
@@ -1602,7 +1630,8 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
         elif b.core.flag & 1 and not b.core.flag & 2:
             skip = 1
 
-        if not skip: break
+        if not skip:
+            break
         # additional filters
 
         ret = sam_itr_next(d.htsfile, d.iter, b)
@@ -1729,14 +1758,18 @@ cdef class IteratorColumn:
         self.iterdata.tid = -1
         self.iterdata.header = self.samfile.header
 
-        if self.fastafile != None:
+        if self.fastafile is not None:
             self.iterdata.fastafile = self.fastafile.fastafile
         else:
             self.iterdata.fastafile = NULL
 
-        if self.stepper == None or self.stepper == "all":
+        if self.stepper is None or self.stepper == "all":
             self.pileup_iter = bam_plp_init(
                 <bam_plp_auto_f>&__advance_all,
+                &self.iterdata)
+        elif self.stepper == "nofilter":
+            self.pileup_iter = bam_plp_init(
+                <bam_plp_auto_f>&__advance_nofilter,
                 &self.iterdata)
         elif self.stepper == "samtools":
             self.pileup_iter = bam_plp_init(
@@ -1860,9 +1893,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
             else:
                 raise StopIteration
 
-##-------------------------------------------------------------------
-##-------------------------------------------------------------------
-##-------------------------------------------------------------------
+
 cdef inline int32_t query_start(bam1_t *src) except -1:
     cdef uint32_t * cigar_p
     cdef uint32_t k, op
@@ -2078,9 +2109,9 @@ cdef class AlignedRead:
     def __init__(self):
         # see bam_init1
         self._delegate = <bam1_t*>calloc( 1, sizeof( bam1_t) )
-        # allocate some memory
-        # If size is 0, calloc does not return a pointer that can be passed to free()
-        # so allocate 40 bytes for a new read
+        # allocate some memory. If size is 0, calloc does not return a
+        # pointer that can be passed to free() so allocate 40 bytes
+        # for a new read
         self._delegate.m_data = 40
         self._delegate.data = <uint8_t *>calloc(
             self._delegate.m_data, 1)
