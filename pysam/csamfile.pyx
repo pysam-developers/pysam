@@ -1959,7 +1959,7 @@ cdef inline object get_seq_range(bam1_t *src, uint32_t start, uint32_t end):
         # note: do not use string literal as it will be a python string
         s[k-start] = seq_nt16_str[p[k/2] >> 4 * (1 - k%2) & 0xf]
 
-    return seq
+    return _charptr_to_str(seq)
 
 
 cdef inline object get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
@@ -1978,7 +1978,8 @@ cdef inline object get_qual_range(bam1_t *src, uint32_t start, uint32_t end):
         ## equivalent to t[i] + 33 (see bam.c)
         q[k-start] = p[k] + 33
 
-    return qual
+    return _charptr_to_str(qual)
+
 
 cdef inline uint8_t get_type_code(value, value_type = None):
     '''guess type code for a *value*. If *value_type* is None,
@@ -2132,12 +2133,6 @@ cdef class AlignedRead:
         """
         # sam-parsing is done in sam.c/bam_format1_core which
         # requires a valid header.
-        if sys.version_info[0] < 3:
-            seq = self.seq
-            qual = self.qual
-        else:
-            seq = self.seq.decode('ascii')
-            qual = self.qual.decode('ascii')
         return "\t".join(map(str, (self.qname,
                                    self.flag,
                                    self.rname,
@@ -2147,8 +2142,8 @@ cdef class AlignedRead:
                                    self.mrnm,
                                    self.mpos,
                                    self.rlen,
-                                   seq,
-                                   qual,
+                                   self.seq,
+                                   self.qual,
                                    self.tags )))
 
     def compare(self, AlignedRead other):
