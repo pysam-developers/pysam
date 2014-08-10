@@ -1193,6 +1193,15 @@ class TestAlignedRead(unittest.TestCase):
         self.assertEqual(a.mpos, 0)
         self.assertEqual(a.isize, 0)
 
+
+    def testStrOfEmptyRead(self):
+        a = pysam.AlignedRead()
+        s = str(a)
+        self.assertEqual(
+            "None\t0\t0\t0\t0\t[]\t0\t0\t0\tNone\tNone\t[]",
+            s)
+
+
     def buildRead(self):
         '''build an example read.'''
 
