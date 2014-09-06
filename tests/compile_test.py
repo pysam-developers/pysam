@@ -5,6 +5,14 @@ compile_test.py - check pyximport
 test script for checking if compilation against
 pysam and tabix works.
 '''
+# clean up previous compilation
+import os
+try:
+    os.unlink('_compile_test.c')
+    os.unlink('_compile_test.pyxbldc')
+except OSError:
+    pass
+
 
 import pyximport
 pyximport.install(build_in_temp=False)

@@ -20,7 +20,6 @@ name = "pysam"
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
-
 # How to link against HTSLIB
 # separate: use included htslib and include in each extension
 #           module. No dependencies between modules and works
@@ -46,7 +45,7 @@ samtools_exclude = ("bamtk.c", "razip.c", "bgzip.c",
                     "wgsim.c", "md5fa.c", "maq2sam.c",
                     "bamcheck.c",
                     "chk_indel.c")
-htslib_exclude = ('htslib/tabix.c',)
+htslib_exclude = ('htslib/tabix.c', 'htslib/bgzip.c')
 samtools_dest = os.path.abspath("samtools")
 tabix_exclude = ("main.c",)
 tabix_dest = os.path.abspath("tabix")
@@ -279,12 +278,17 @@ samtools = Extension(
         "pysam_util.c", )] +
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
     os_c_files +
-    glob.glob(os.path.join("samtools", "*", "*.pysam.c")),
+    glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
+    htslib_sources,
     library_dirs=[],
-    include_dirs=["samtools", "pysam"] + include_os,
+    include_dirs=["samtools",
+                  "pysam",
+                  "htslib",
+                  "htslib/htslib"] + include_os,
     libraries=["z"],
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement"],
+    extra_compile_args=["-Wno-error=declaration-after-statement",
+                        "-DSAMTOOLS=1"],
     define_macros=[('_FILE_OFFSET_BITS', '64'),
                    ('_USE_KNETFILE', '')]
 )
@@ -396,7 +400,7 @@ metadata = {
                  'pysam.include.htslib',
                  'pysam.include.htslib.htslib',
                  'pysam.include.samtools',
-                 'pysam.include.samtools.bcftools',
+                 # 'pysam.include.samtools.bcftools',
                  'pysam.include.samtools.win32'],
     'requires': ['cython (>=0.20.1)'],
     'ext_modules': [samtools, htslib, samfile,

@@ -3,6 +3,24 @@
 #    Copyright (C) 2013-2014 Genome Research Ltd.
 #
 #    Author: John Marshall <jm18@sanger.ac.uk>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
 
 CC     = gcc
 AR     = ar
@@ -24,10 +42,13 @@ libdir      = $(exec_prefix)/lib
 mandir      = $(prefix)/share/man
 man1dir     = $(mandir)/man1
 man5dir     = $(mandir)/man5
+pkgconfigdir= $(libdir)/pkgconfig
 
+MKDIR_P = mkdir -p
 INSTALL = install -p
 INSTALL_PROGRAM = $(INSTALL)
 INSTALL_DATA    = $(INSTALL) -m 644
+INSTALL_DIR     = $(MKDIR_P) -m 755
 
 BUILT_PROGRAMS = \
 	bgzip \
@@ -60,8 +81,8 @@ lib-shared: libhts.so
 endif
 
 
-PACKAGE_VERSION  = 0.0.1
-LIBHTS_SOVERSION = 0
+PACKAGE_VERSION  = 1.0
+LIBHTS_SOVERSION = 1
 
 
 # $(NUMERIC_VERSION) is for items that must have a numeric X.Y.Z string
@@ -148,7 +169,7 @@ libhts.a: $(LIBHTS_OBJS)
 # file used at runtime (when $LD_LIBRARY_PATH includes the build directory).
 
 libhts.so: $(LIBHTS_OBJS:.o=.pico)
-	$(CC) -shared -Wl,-soname,libhts.so.$(LIBHTS_SOVERSION) $(LDFLAGS) -o $@ $(LIBHTS_OBJS:.o=.pico) $(LDLIBS) -lz
+	$(CC) -shared -Wl,-soname,libhts.so.$(LIBHTS_SOVERSION) -pthread $(LDFLAGS) -o $@ $(LIBHTS_OBJS:.o=.pico) $(LDLIBS) -lz -lm
 	ln -sf $@ libhts.so.$(LIBHTS_SOVERSION)
 
 # Similarly this also creates libhts.NN.dylib as a byproduct, so that programs
@@ -194,7 +215,7 @@ cram/cram_stats.o cram/cram_stats.pico: cram/cram_stats.c $(cram_h) cram/os.h
 cram/files.o cram/files.pico: cram/files.c $(cram_misc_h)
 cram/mFILE.o cram/mFILE.pico: cram/mFILE.c cram/os.h cram/mFILE.h cram/vlen.h
 cram/md5.o cram/md5.pico: cram/md5.c cram/md5.h
-cram/open_trace_file.o cram/open_trace_file.pico: cram/open_trace_file.c $(cram_open_trace_file_h) $(cram_misc_h)
+cram/open_trace_file.o cram/open_trace_file.pico: cram/open_trace_file.c $(cram_open_trace_file_h) $(cram_misc_h) $(htslib_hfile_h)
 cram/pooled_alloc.o cram/pooled_alloc.pico: cram/pooled_alloc.c cram/pooled_alloc.h
 cram/sam_header.o cram/sam_header.pico: cram/sam_header.c $(cram_sam_header_h) cram/string_alloc.h
 cram/string_alloc.o cram/string_alloc.pico: cram/string_alloc.c cram/string_alloc.h
@@ -213,11 +234,13 @@ bgzip.o: bgzip.c $(htslib_bgzf_h) $(htslib_hts_h)
 tabix.o: tabix.c $(htslib_tbx_h) $(htslib_sam_h) $(htslib_vcf_h) htslib/kseq.h $(htslib_bgzf_h) $(htslib_hts_h)
 
 
+# For tests that might use it, set $REF_PATH explicitly to use only reference
+# areas within the test suite (or set it to ':' to use no reference areas).
 check test: $(BUILT_TEST_PROGRAMS)
 	test/fieldarith test/fieldarith.sam
 	test/hfile
 	test/sam
-	cd test && ./test_view.pl
+	cd test && REF_PATH=: ./test_view.pl
 	cd test && ./test.pl
 
 test/fieldarith: test/fieldarith.o libhts.a
@@ -246,7 +269,7 @@ test/test-vcf-api.o: test/test-vcf-api.c $(htslib_hts_h) $(htslib_vcf_h) htslib/
 test/test-vcf-sweep.o: test/test-vcf-sweep.c $(htslib_vcf_sweep_h)
 
 
-install: installdirs install-$(SHLIB_FLAVOUR)
+install: libhts.a $(BUILT_PROGRAMS) installdirs install-$(SHLIB_FLAVOUR) install-pkgconfig
 	$(INSTALL_PROGRAM) $(BUILT_PROGRAMS) $(DESTDIR)$(bindir)
 	$(INSTALL_DATA) htslib/*.h $(DESTDIR)$(includedir)/htslib
 	$(INSTALL_DATA) libhts.a $(DESTDIR)$(libdir)/libhts.a
@@ -254,7 +277,7 @@ install: installdirs install-$(SHLIB_FLAVOUR)
 	$(INSTALL_DATA) *.5 $(DESTDIR)$(man5dir)
 
 installdirs:
-	mkdir -p $(DESTDIR)$(bindir) $(DESTDIR)$(includedir)/htslib $(DESTDIR)$(libdir) $(DESTDIR)$(man1dir) $(DESTDIR)$(man5dir)
+	$(INSTALL_DIR) $(DESTDIR)$(bindir) $(DESTDIR)$(includedir) $(DESTDIR)$(includedir)/htslib $(DESTDIR)$(libdir) $(DESTDIR)$(man1dir) $(DESTDIR)$(man5dir) $(DESTDIR)$(pkgconfigdir)
 
 # After installation, the real file in $(libdir) will be libhts.so.X.Y.Z,
 # with symlinks libhts.so (used via -lhts during linking of client programs)
@@ -270,6 +293,17 @@ install-dylib: libhts.dylib installdirs
 	ln -sf libhts.$(PACKAGE_VERSION).dylib $(DESTDIR)$(libdir)/libhts.dylib
 	ln -sf libhts.$(PACKAGE_VERSION).dylib $(DESTDIR)$(libdir)/libhts.$(LIBHTS_SOVERSION).dylib
 
+# Substitute these pseudo-autoconf variables only at install time
+# so that "make install prefix=/prefix/path" etc continue to work.
+install-pkgconfig: installdirs
+	sed -e 's#@includedir@#$(includedir)#g;s#@libdir@#$(libdir)#g;s#@PACKAGE_VERSION@#$(PACKAGE_VERSION)#g' htslib.pc.in > $(DESTDIR)$(pkgconfigdir)/htslib.pc
+	chmod 644 $(DESTDIR)$(pkgconfigdir)/htslib.pc
+
+# A pkg-config file (suitable for copying to $PKG_CONFIG_PATH) that provides
+# flags for building against the uninstalled library in this build directory.
+htslib-uninstalled.pc: htslib.pc.in
+	sed -e 's#@includedir@#'`pwd`'#g;s#@libdir@#'`pwd`'#g' htslib.pc.in > $@
+
 
 testclean:
 	-rm -f test/*.tmp test/*.tmp.*
@@ -281,7 +315,7 @@ clean: mostlyclean clean-$(SHLIB_FLAVOUR)
 	-rm -f libhts.a $(BUILT_PROGRAMS) $(BUILT_TEST_PROGRAMS)
 
 distclean: clean
-	-rm -f TAGS
+	-rm -f TAGS *-uninstalled.pc
 
 clean-so:
 	-rm -f libhts.so libhts.so.*
@@ -297,7 +331,7 @@ tags:
 force:
 
 
-.PHONY: all check clean distclean force install installdirs
+.PHONY: all check clean distclean force install install-pkgconfig installdirs
 .PHONY: lib-shared lib-static mostlyclean tags test testclean
 .PHONY: clean-so install-so
 .PHONY: clean-dylib install-dylib

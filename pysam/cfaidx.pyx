@@ -20,7 +20,7 @@ from cpython cimport PyErr_SetString, \
 from cpython.version cimport PY_MAJOR_VERSION
 
 from chtslib cimport \
-    faidx_fetch_nseq, fai_load, fai_destroy, fai_fetch, \
+    faidx_nseq, fai_load, fai_destroy, fai_fetch, \
     faidx_fetch_seq, gzopen, gzclose, \
     kseq_init, kseq_destroy, kseq_read
 
@@ -88,7 +88,7 @@ cdef class Fastafile:
         if self.fastafile == NULL:
             raise ValueError( "calling len() on closed file" )
 
-        return faidx_fetch_nseq(self.fastafile)
+        return faidx_nseq(self.fastafile)
 
     def _open(self, filename):
         '''open an indexed fasta file.
@@ -225,14 +225,14 @@ cdef class Fastafile:
                                end-1,
                                length )
 
-    def getReferenceLength( self, reference ):
+    def getReferenceLength(self, reference):
         '''return the length of reference.'''
         return self.reference2length[reference]
 
     def __getitem__(self, reference):
         return self.fetch(reference)
 
-    def __contains__( self, reference ):
+    def __contains__(self, reference):
         '''return true if reference in fasta file.'''
         return reference in self.reference2length
 

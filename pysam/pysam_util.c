@@ -26,6 +26,22 @@ void pysam_unset_stderr(void)
   pysamerr = fopen("/dev/null", "w");
 }
 
+
+// dummy function - required for samtools integration
+void print_error(const char *format, ...)
+{
+}
+
+// dummy function - required for samtools integration
+void print_error_errno(const char *format, ...)
+{
+}
+
+const char *samtools_version()
+{
+}
+
+
 // pysam dispatch function to emulate the samtools
 // command line within python.
 // taken from the main function in bamtk.c
@@ -104,8 +120,8 @@ int pysam_dispatch(int argc, char *argv[] )
       fprintf(stderr, "[main] unrecognized command '%s'\n", argv[1]);
       return 1;
     }
-  fflush( stdout );
-  
+  fflush(stdout);
+
   return retval;
 }
 

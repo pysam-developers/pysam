@@ -192,19 +192,19 @@ class BinaryTest(unittest.TestCase):
              'mpileup',
              'depth',
              'idxstats',
-             'fixmate',
+             # 'fixmate',
              'flagstat',
              # 'calmd',
              'merge',
-             'rmdup',
+             # 'rmdup',
              'reheader',
              'cat',
              'bedcov',
              'targetcut',
              'phase',
-             'bamshuf',
+             # 'bamshuf',
              'bam2fq',
-             'pad2unpad',
+             # 'pad2unpad',
              )
 
     def setUp(self):
@@ -238,7 +238,6 @@ class BinaryTest(unittest.TestCase):
             # cd to workdir
             savedir = os.getcwd()
             os.chdir(WORKDIR)
-
             for label in self.order:
                 # print ("command=", label)
                 command = self.commands[label]
@@ -258,8 +257,9 @@ class BinaryTest(unittest.TestCase):
                 try:
                     output = pysam_method(*pysam_options.split(" "), raw=True)
                 except pysam.SamtoolsError as msg:
-                    raise pysam.SamtoolsError("error while executing %s: options=%s: msg=%s" %
-                                              (label, pysam_options, msg))
+                    raise pysam.SamtoolsError(
+                        "error while executing %s: options=%s: msg=%s" %
+                        (label, pysam_options, msg))
 
                 if ">" in samtools_command:
                     with open(pysam_target, "wb") as outfile:
@@ -317,8 +317,8 @@ class BinaryTest(unittest.TestCase):
     def testIdxstats(self):
         self.checkCommand("idxstats")
 
-    def testFixmate(self):
-        self.checkCommand("fixmate")
+    # def testFixmate(self):
+    #     self.checkCommand("fixmate")
 
     def testFlagstat(self):
         self.checkCommand("flagstat")
@@ -326,8 +326,8 @@ class BinaryTest(unittest.TestCase):
     def testMerge(self):
         self.checkCommand("merge")
 
-    def testRmdup(self):
-        self.checkCommand("rmdup")
+    # def testRmdup(self):
+    #     self.checkCommand("rmdup")
 
     def testReheader(self):
         self.checkCommand("reheader")
@@ -347,11 +347,11 @@ class BinaryTest(unittest.TestCase):
     def testBedcov(self):
         self.checkCommand("bedcov")
 
-    def testBamshuf(self):
-        self.checkCommand("bamshuf")
+    # def testBamshuf(self):
+    #     self.checkCommand("bamshuf")
 
-    def testPad2Unpad(self):
-        self.checkCommand("pad2unpad")
+    # def testPad2Unpad(self):
+    #     self.checkCommand("pad2unpad")
 
     # def testPileup1( self ):
     #     self.checkCommand( "pileup1" )
