@@ -155,11 +155,11 @@ mkdir -p $HOME/CGAT/external-tools
 cd $HOME/CGAT/external-tools
 
 # install samtools
-curl -L http://downloads.sourceforge.net/project/samtools/samtools/0.1.19/samtools-0.1.19.tar.bz2 > samtools-0.1.19.tar.bz2
-tar xjvf samtools-0.1.19.tar.bz2 
-cd samtools-0.1.19
+curl -L http://downloads.sourceforge.net/project/samtools/samtools/1.0/samtools-1.0.tar.bz2 > samtools-1.0.tar.bz2
+tar xjvf samtools-1.0.tar.bz2 
+cd samtools-1.0
 make
-PATH=$PATH:$HOME/CGAT/external-tools/samtools-0.1.19
+PATH=$PATH:$HOME/CGAT/external-tools/samtools-1.0
 
 popd
 
