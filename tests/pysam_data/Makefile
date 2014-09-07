@@ -18,8 +18,11 @@ all: ex1.pileup.gz ex1.bam.bai \
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz
 
-%.bam: %.sam ex1.fa.fai
-	samtools import ex1.fa.fai $< $@
+#%.bam: %.sam ex1.fa.fai
+#	samtools import ex1.fa.fai $< $@
+
+%.bam: %.sam
+	samtools view -bS $< > $@
 
 %.sam: %.sam.gz
 	gunzip < $< > $@
@@ -28,8 +31,10 @@ ex1.fa.fai:ex1.fa
 		samtools faidx ex1.fa
 ex1.bam:ex1.sam.gz ex1.fa.fai
 		samtools import ex1.fa.fai ex1.sam.gz ex1.bam
+
 %.bam.bai:%.bam
 		samtools index $<
+
 ex1.pileup.gz:ex1.bam ex1.fa
 		samtools pileup -cf ex1.fa ex1.bam | gzip > ex1.pileup.gz
 
