@@ -4,7 +4,8 @@ BAI=$(BAM:%.bam=%.bam.bai)
 
 all: ex1.pileup.gz \
 	ex2.sam.gz ex2.sam ex1.sam \
-	$(BAM) $(BAI)
+	$(BAM) $(BAI) \
+	example_bai.bam
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz
@@ -38,9 +39,6 @@ example_bai.bam: ex1.bam
 	cp ex1.bam $@
 	samtools index $@
 	mv $@.bai example_bai.bai
-
-softclip.bam: softclip.sam
-	samtools view -bS $< > $@
 
 clean:
 	rm -fr *.bam *.bai *.fai *.pileup* \
