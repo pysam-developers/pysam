@@ -1,19 +1,10 @@
-all: ex1.pileup.gz ex1.bam.bai \
+SAM=$(wildcard *.sam)
+BAM=$(SAM:%.sam=%.bam)
+BAI=$(BAM:%.bam=%.bam.bai)
+
+all: ex1.pileup.gz \
 	ex2.sam.gz ex2.sam ex1.sam \
-	ex2.bam \
-	ex3.bam ex3.bam.bai \
-	ex4.bam ex4.bam.bai \
-	ex5.bam ex5.bam.bai \
-	ex6.bam \
-	ex8.bam ex8.bam.bai \
-	ex9_nofail.bam.bai \
-	ex9_fail.bam.bai \
-        ex10.bam ex10.bam.bai \
-	example_unmapped_reads_no_sq.bam \
-	example_user_header.bam \
-	example_btag.bam \
-	example_bai.bam \
-	softclip.bam
+	$(BAM) $(BAI)
 
 ex2.sam.gz: ex1.bam ex1.bam.bai
 		samtools view -h ex1.bam | gzip > ex2.sam.gz

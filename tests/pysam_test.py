@@ -8,6 +8,7 @@ and data files located there.
 import pysam
 import unittest
 import os
+import shutil
 import sys
 import collections
 import subprocess
@@ -552,12 +553,13 @@ class TestIO(unittest.TestCase):
     def testReadingFromFileWithoutIndex(self):
         '''read from bam file without index.'''
 
-        assert not os.path.exists(os.path.join(DATADIR, "ex2.bam.bai"))
-        samfile = pysam.Samfile(os.path.join(DATADIR, "ex2.bam"),
+        shutil.copyfile(os.path.join(DATADIR, "ex2.bam"), 'tmp_ex2.bam')
+        samfile = pysam.Samfile('tmp_ex2.bam',
                                 "rb")
         self.assertRaises(ValueError, samfile.fetch)
         self.assertEqual(len(list(samfile.fetch(until_eof=True))),
                          3270)
+        os.unlink('tmp_ex2.bam')
 
     # def testReadingUniversalFileMode(self):
     #     '''read from samfile without header.
