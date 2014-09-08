@@ -1,10 +1,10 @@
 #include <ctype.h>
 #include <assert.h>
 #include "bam.h"
-#include "khash.h"
-#include "ksort.h"
 #include "bam_endian.h"
-#include "knetfile.h"
+#include "htslib/khash.h"
+#include "htslib/ksort.h"
+#include "htslib/knetfile.h"
 #include "pysam_util.h"
 
 // Definition of pysamerr

@@ -31,32 +31,41 @@ IS_PYTHON3 = sys.version_info[0] >= 3
 #         pysam. 
 # external: use shared libhts.so compiled outside of 
 #           pysam
-HTSLIB = "separate"
-HTSLIB_DIR = []
+HTSLIB_MODE = "separate"
+HTSLIB_LIBRARY_DIR = os.environ.get('HTSLIB_LIBRARY_DIR', None)
+HTSLIB_INCLUDE_DIR = os.environ.get('HTSLIB_INCLUDE_DIR', None)
 
 # collect pysam version
 sys.path.insert(0, "pysam")
 import version
-
 version = version.__version__
 
+# exclude sources that contains a main function
 samtools_exclude = ("bamtk.c", "razip.c", "bgzip.c",
                     "main.c", "calDepth.c", "bam2bed.c",
                     "wgsim.c", "md5fa.c", "maq2sam.c",
                     "bamcheck.c",
                     "chk_indel.c")
 htslib_exclude = ('htslib/tabix.c', 'htslib/bgzip.c')
-samtools_dest = os.path.abspath("samtools")
 tabix_exclude = ("main.c",)
+
+# destination directories for import of samtools and tabix
+samtools_dest = os.path.abspath("samtools")
 tabix_dest = os.path.abspath("tabix")
 
-# Linking against htslib
-if HTSLIB == 'external':
+if HTSLIB_LIBRARY_DIR:
+    HTSLIB_MODE = 'external'
+    # linking against a shared htslib version
+    # no sources required for htslib
     htslib_sources = []
+    shared_htslib_sources = []
     chtslib_sources = []
-    htslib_library_dirs = HTSLIB_DIR
+    htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
+    htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
     htslib_libraries = ['hts']
-elif HTSLIB == 'separate':
+elif HTSLIB_MODE == 'separate':
+    # add to each pysam component a separately compiled
+    # htslib
     htslib_sources = [
         x for x in
         glob.glob(os.path.join("htslib", "*.c")) +
@@ -64,8 +73,12 @@ elif HTSLIB == 'separate':
         if x not in htslib_exclude]
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
+    htslib_include_dirs = ['htslib']
     htslib_libraries = []
-elif HTSLIB == 'shared':
+elif HTSLIB_MODE == 'shared':
+    # link each pysam component against the same
+    # htslib built from sources included in the pysam
+    # package.
     htslib_sources = []
     shared_htslib_sources = [
         x for x in
@@ -73,9 +86,10 @@ elif HTSLIB == 'shared':
         glob.glob(os.path.join("htslib", "cram", "*.c"))
         if x not in htslib_exclude]
     htslib_library_dirs = ['pysam']
+    htslib_include_dirs = ['htslib']
     htslib_libraries = ['chtslib']
 else:
-    raise ValueError("unknown HTSLIB value '%s'" % HTSLIB)
+    raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
 
 def locate(pattern, root=os.curdir):
@@ -281,11 +295,8 @@ samtools = Extension(
     glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
     htslib_sources,
     library_dirs=[],
-    include_dirs=["samtools",
-                  "pysam",
-                  "htslib",
-                  "htslib/htslib"] + include_os,
-    libraries=["z"],
+    include_dirs=["samtools", "pysam"] + include_os + htslib_include_dirs,
+    libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement",
                         "-DSAMTOOLS=1"],
@@ -301,8 +312,7 @@ htslib = Extension(
     shared_htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["htslib",
-                  "pysam"] + include_os,
+    include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement",
@@ -324,7 +334,7 @@ samfile = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["htslib", "pysam", "samtools"] + include_os,
+    include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=[
@@ -341,7 +351,7 @@ tabix = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["htslib", "pysam"] + include_os,
+    include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement",
@@ -356,7 +366,7 @@ faidx = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"],
-    include_dirs=["htslib", "pysam"] + include_os,
+    include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement",
@@ -379,7 +389,7 @@ cvcf = Extension(
     "pysam.cvcf",
     cvcf_sources + os_c_files,
     library_dirs=[],
-    include_dirs=["htslib"] + include_os,
+    include_dirs=["htslib"] + include_os + htslib_include_dirs,
     libraries=["z"],
     language="c",
     extra_compile_args=["-Wno-error=declaration-after-statement"],

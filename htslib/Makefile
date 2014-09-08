@@ -234,13 +234,11 @@ bgzip.o: bgzip.c $(htslib_bgzf_h) $(htslib_hts_h)
 tabix.o: tabix.c $(htslib_tbx_h) $(htslib_sam_h) $(htslib_vcf_h) htslib/kseq.h $(htslib_bgzf_h) $(htslib_hts_h)
 
 
-# For tests that might use it, set $REF_PATH explicitly to use only reference
-# areas within the test suite (or set it to ':' to use no reference areas).
 check test: $(BUILT_TEST_PROGRAMS)
 	test/fieldarith test/fieldarith.sam
 	test/hfile
 	test/sam
-	cd test && REF_PATH=: ./test_view.pl
+	cd test && ./test_view.pl
 	cd test && ./test.pl
 
 test/fieldarith: test/fieldarith.o libhts.a
@@ -269,7 +267,7 @@ test/test-vcf-api.o: test/test-vcf-api.c $(htslib_hts_h) $(htslib_vcf_h) htslib/
 test/test-vcf-sweep.o: test/test-vcf-sweep.c $(htslib_vcf_sweep_h)
 
 
-install: libhts.a $(BUILT_PROGRAMS) installdirs install-$(SHLIB_FLAVOUR) install-pkgconfig
+install: installdirs install-$(SHLIB_FLAVOUR) install-pkgconfig
 	$(INSTALL_PROGRAM) $(BUILT_PROGRAMS) $(DESTDIR)$(bindir)
 	$(INSTALL_DATA) htslib/*.h $(DESTDIR)$(includedir)/htslib
 	$(INSTALL_DATA) libhts.a $(DESTDIR)$(libdir)/libhts.a
