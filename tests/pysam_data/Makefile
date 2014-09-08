@@ -2,13 +2,17 @@ SAM=$(wildcard *.sam)
 BAM=$(SAM:%.sam=%.bam)
 BAI=$(BAM:%.bam=%.bam.bai)
 
+# ex2.bam - bam file without index
+
 all: ex1.pileup.gz \
-	ex2.sam.gz ex2.sam ex1.sam \
+	ex1.sam ex1.bam \
+	ex2.sam.gz ex2.sam ex2.bam \
 	$(BAM) $(BAI) \
 	example_bai.bam
 
+# ex2.sam - as ex1.sam, but with heaer
 ex2.sam.gz: ex1.bam ex1.bam.bai
-		samtools view -h ex1.bam | gzip > ex2.sam.gz
+	samtools view -h ex1.bam | gzip > ex2.sam.gz
 
 #%.bam: %.sam ex1.fa.fai
 #	samtools import ex1.fa.fai $< $@
