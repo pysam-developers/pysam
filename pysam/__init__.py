@@ -4,6 +4,8 @@ import pysam.ctabix as ctabix
 from pysam.ctabix import *
 import pysam.csamfile as csamfile
 from pysam.csamfile import *
+import pysam.calignmentfile as calignmentfile
+from pysam.calignmentfile import *
 import pysam.cfaidx as cfaidx
 from pysam.cfaidx import *
 import pysam.cvcf as cvcf
@@ -139,12 +141,13 @@ for key, options in SAMTOOLS_DISPATCH.items():
     cmd, parser = options
     globals()[key] = SamtoolsDispatcher(cmd, parser)
 
-# hack to export all the symbols from csamtools
+# hack to export all the symbols from separate modules
 __all__ = \
     libchtslib.__all__ + \
     ctabix.__all__ + \
     cvcf.__all__ +\
     cfaidx.__all__ +\
+    calignmentfile.__all__ +\
     csamfile.__all__ +\
     ["SamtoolsError", "SamtoolsDispatcher"] +\
     list(SAMTOOLS_DISPATCH) +\

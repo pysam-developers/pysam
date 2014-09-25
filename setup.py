@@ -234,6 +234,7 @@ except ImportError:
     tabix_sources = ["pysam/ctabix.c"]
     faidx_sources = ["pysam/cfaidx.c"]
     csamfile_sources = ["pysam/csamfile.c"]
+    calignmentfile_sources = ["pysam/calignmentfile.c"]
     tabproxies_sources = ["pysam/TabProxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
 else:
@@ -256,6 +257,7 @@ else:
     csamtools_sources = ["pysam/csamtools.pyx"]
     chtslib_sources = ["pysam/chtslib.pyx"]
     csamfile_sources = ["pysam/csamfile.pyx"]
+    calignmentfile_sources = ["pysam/calignmentfile.pyx"]
     tabix_sources = ["pysam/ctabix.pyx"]
     faidx_sources = ["pysam/cfaidx.pyx"]
     tabproxies_sources = ["pysam/TabProxies.pyx"]
@@ -344,6 +346,29 @@ samfile = Extension(
                    ('_USE_KNETFILE', '')]
 )
 
+# alignmentfile requires functions defined in bam_md.c
+# for __advance_samtools method.
+# Selected ones have been copied into samfile_utils.c
+# Needs to be devolved somehow.
+alignmentfile = Extension(
+    "pysam.calignmentfile",
+    calignmentfile_sources +
+    ["pysam/%s" % x for x in (
+        "htslib_util.c", "samfile_util.c",)] +
+    ["samtools/kprobaln.c"] +
+    htslib_sources +
+    os_c_files,
+    library_dirs=htslib_library_dirs,
+    include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
+    libraries=["z"] + htslib_libraries,
+    language="c",
+    extra_compile_args=[
+        "-Wno-error=declaration-after-statement",
+        "-DSAMTOOLS=1"],
+    define_macros=[('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')]
+)
+
 tabix = Extension(
     "pysam.ctabix",
     tabix_sources +
@@ -413,8 +438,13 @@ metadata = {
                  # 'pysam.include.samtools.bcftools',
                  'pysam.include.samtools.win32'],
     'requires': ['cython (>=0.20.1)'],
-    'ext_modules': [samtools, htslib, samfile,
-                    tabix, tabproxies, cvcf,
+    'ext_modules': [samtools,
+                    htslib,
+                    samfile,
+                    alignmentfile,
+                    tabix,
+                    tabproxies,
+                    cvcf,
                     faidx],
     'cmdclass': cmdclass,
     'install_requires': ['cython>=0.20.1', ],

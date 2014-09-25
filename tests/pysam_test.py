@@ -1156,32 +1156,36 @@ class TestWrongFormat(unittest.TestCase):
                           'rb')
 
 
-
-class TestAlignedRead(unittest.TestCase):
-
-    '''tests to check if aligned read can be constructed
-    and manipulated.
-    '''
+class ReadTest(unittest.TestCase):
 
     def checkFieldEqual(self, read1, read2, exclude=[]):
         '''check if two reads are equal by comparing each field.'''
 
-        for x in ("qname", "seq", "flag",
-                  "rname", "pos", "mapq", "cigar",
-                  "mrnm", "mpos", "isize", "qual",
-                  "is_paired", "is_proper_pair",
-                  "is_unmapped", "mate_is_unmapped",
-                  "is_reverse", "mate_is_reverse",
-                  "is_read1", "is_read2",
-                  "is_secondary", "is_qcfail",
-                  "is_duplicate", "bin"):
-            if x in exclude:
+        # add the . for refactoring purposes.
+        for x in (".qname", ".seq", ".flag",
+                  ".rname", ".pos", ".mapq", ".cigar",
+                  ".mrnm", ".mpos", ".isize", 
+                  ".qual",
+                  ".bin",
+                  ".is_paired", ".is_proper_pair",
+                  ".is_unmapped", ".mate_is_unmapped",
+                  ".is_reverse", ".mate_is_reverse",
+                  ".is_read1", ".is_read2",
+                  ".is_secondary", ".is_qcfail",
+                  ".is_duplicate"):
+            n = x[1:]
+            if n in exclude:
                 continue
-            self.assertEqual(
-                getattr(read1, x),
-                getattr(read2, x),
-                "attribute mismatch for %s: %s != %s" %
-                (x, getattr(read1, x), getattr(read2, x)))
+            self.assertEqual(getattr(read1, n), getattr(read2, n),
+                             "attribute mismatch for %s: %s != %s" %
+                             (n, getattr(read1, n), getattr(read2, n)))
+
+
+class TestAlignedRead(ReadTest):
+
+    '''tests to check if aligned read can be constructed
+    and manipulated.
+    '''
 
     def testEmpty(self):
         a = pysam.AlignedRead()
@@ -1362,13 +1366,14 @@ class TestAlignedRead(unittest.TestCase):
         self.assertEqual(a.blocks,
                          [(20, 30), (31, 40), (40, 60)])
 
-    def testFancyStr(self):
-        a = self.buildRead()
-        output = a.fancy_str()
-        self.assertEqual(len(output), 9)
+    # Disabled as not backwards compatible
+    # def testFancyStr(self):
+    #     a = self.buildRead()
+    #     output = a.fancy_str()
+    #     self.assertEqual(len(output), 9)
 
 
-class TestDeNovoConstruction(unittest.TestCase):
+class TestDeNovoConstruction(ReadTest):
 
     '''check BAM/SAM file construction using ex6.sam
 
@@ -1384,24 +1389,6 @@ class TestDeNovoConstruction(unittest.TestCase):
 
     bamfile = os.path.join(DATADIR, "ex6.bam")
     samfile = os.path.join(DATADIR, "ex6.sam")
-
-    def checkFieldEqual(self, read1, read2, exclude=[]):
-        '''check if two reads are equal by comparing each field.'''
-
-        for x in ("qname", "seq", "flag",
-                  "rname", "pos", "mapq", "cigar",
-                  "mrnm", "mpos", "isize", "qual",
-                  "bin",
-                  "is_paired", "is_proper_pair",
-                  "is_unmapped", "mate_is_unmapped",
-                  "is_reverse", "mate_is_reverse",
-                  "is_read1", "is_read2",
-                  "is_secondary", "is_qcfail",
-                  "is_duplicate"):
-            if x in exclude:
-                continue
-            self.assertEqual(getattr(read1, x), getattr(read2, x), "attribute mismatch for %s: %s != %s" %
-                             (x, getattr(read1, x), getattr(read2, x)))
 
     def setUp(self):
 
