@@ -1,0 +1,182 @@
+;; This buffer is for notes you don't want to save, and for Lisp evaluation.
+;; If you want to create a file, visit that file with C-x C-f,
+;; then enter the text in that file's own buffer.
+
+Samfile -> AlignmentFile
+AlignedRead -> AlignedSegment
+
+Changes to the AlignedSegment.API:
+
+Basic attributes
+================
+
+qname -> query_name
+tid -> reference_id
+pos -> reference_start
+mapq -> mapping_quality
+rnext -> next_reference_id
+pnext -> next_reference_start
+cigar = alignment (now returns CigarAlignment object)
+cigarstring = cigarstring
+tlen -> query_length
+seq -> query_sequence
+qual -> query_qualities, now returns array
+tags = tags (now returns Tags object)
+
+
+Derived simple attributes
+=========================
+
+alen -> reference_length, reference is always "alignment", so removed
+aend -> reference_end
+rlen -> query_length 
+query -> query_alignment_sequence
+qqual -> query_alignment_qualities, now returns array
+qstart -> query_alignment_start
+qend -> query_alignment_end
+qlen -> query_alignment_length, kept, because can be computed without fetching the sequence
+mrnm -> next_reference_id   
+mpos -> next_reference_start
+rname -> reference_id
+isize -> query_length
+
+
+Complex attributes - functions
+===============================
+
+blocks -> getBlocks()
+aligned_pairs -> getAlignedPairs()
+inferred_length -> inferQueryLength()
+positions -> getReferencePositions()
+overlap() -> getOverlap()
+
+fancy_str() -> removed
+
+=====================================================
+
+Kevin's suggestions:
+
+
+* smarter file opener
+* CRAM support
+* CSI index support (create and use)
+* better attribute and property names
+* remove deprecated names
+* add object oriented CIGAR and tag handling
+* fetch query that recruits mate pairs that overlap query region
+* other commonly re-invented functionality
+
+        qname -> template_name
+        pos -> reference_start
+        aend -> reference_stop
+        alen -> reference_length
+        tid -> ref_id
+        qname -> template_name (not a high priority, but would be clearer)
+        qstart -> query_start (really segment_align_start)
+        qend -> query_stop (really segment_align_stop)
+        qlen -> query_length (really segment_align_length)
+        qqual -> query_qual (really segment_align_qual)
+        rlen -> drop in favor of len(align.seq)
+        inferred_length -> inferred_query_length
+        is_* -> replace with flag object that is a subclass of int
+        cigarstring -> str(align.cigar)
+        tags -> opts object with a mapping-like interface
+    Non-backward compatible:
+        rname, mrnm, mpos, isize -> remove
+        cigar -> CigarSequence object (or something similar)
+        All coordinate and length queries return None when a value is not available (currently some return None, some 0)
+        Store qualities as an array or bytes type
+
+
+Marcel's suggestions:
+
+    I recently sent in a pull request (which was merged) that improves the pysam doc a bit. While preparing that, I also wrote down some ways in which the API itself could be improved. I think the API is ok, but for someone like me who uses pysam not every day, some of the details are hard to remember and every time I do very basic things I end up looking them up again in the docs. I can recommend this article, written for C++, but many points still apply:
+    http://qt-project.org/wiki/API_Design_Principles .
+
+    Originally, I wanted to convert at least some of these suggestions to pull requests, but I'm not sure I have the time for that in the near future. So before I forget about this completely, I thought it's best to at least send this to the list. I'm concentrating on issues I found in Samfile and AlignedRead here.
+
+    - The terminology is inconsistent - often two words are used
+      to describe the same thing: opt vs. tag, query vs. read,
+      reference vs. target. My suggestion is to consistently use
+      the same terms as in the SAM spec: tag, query,
+      reference. This applies both to documentation and
+      function/property names.
+
+    - In line with the document linked to above (see the
+      section "The Art of Naming"): Do not abbreviate function
+      and property names. For example, tlen -> template_length,
+      pos -> position, mapq -> mapping_quality etc.
+
+    - Be consistent with multiword function and variable names. I
+      suggest to use the PEP8 convention. This isn't so visible
+      to the user in Samfile and AlignedRead, it seems, but there
+      are things like convertBinaryTagToList which could be
+      renamed to convert_binary_tag_to_list.
+
+    - Don't make functions that are not setters or getters a
+      property. This applies to
+      AlignedRead.positions/.inferred_length/.aligned_pairs/.blocks
+      and currently also Samfile.references, for example. Making
+      these a property implies to the user that access requires
+      constant time. This is important in code like this:
+
+    for i in range(n):
+     do_something_with(read.positions[i])
+
+    This looks inconspicuous, but is possibly inefficient since
+    .positions actually builds up the result it returns each time
+    it's accessed.
+
+    - Update the examples in the docs to use context manager
+      syntax.
+
+    Particular to Samfile:
+
+    - Deprecate Samfile.nreferences: propose to use
+      len(samfile.references) instead. Cache Samfile.references
+      so it's not re-created every time.
+
+    - Move Samfile.mapped/.unmapped/.nocoordinate into a .stats
+      attribute (Samfile.stats.mapped/.unmapped/.noocordinate).
+
+    Particular to AlignedRead:
+
+    - When read is an AlignedRead, print(read) should print out a
+      properly formatted SAM line.
+
+    - Force assignment to .qual/.seq to go through a function
+      that sets both at the same time. This avoids the problem
+      that they must be set in a particular order, which is easy
+      to forget and only 'enforced' through documentation.
+
+    - Deprecate rlen, use len(read.seq) instead.
+
+    - Handling of tags is a little awkward. Would be cool if this
+      worked:
+
+    read.tags['XK'] = 'hello'  # add a new tag if it doesn't exist
+    read.tags['AS'] += 17      # update the value of a tag
+    del read.tags['AS']
+    if 'AS' in read.tags: ...
+
+    - Add a property AlignedRead.qualities that behaves like a
+      Py3-bytes object in both Py2 and Py3. That is, accessing
+      read.qualities[0] gives you an int value that represents
+      the quality. The fact that qualities are encoded as
+      ASCII(q+33) is an implementation detail that can be hidden.
+
+      Done      
+
+    - And finally: Add a Cigar class. I guess this is already
+      what 'improved CIGAR string handling' refers to in the
+      roadmap. AlignedRead.cigar would then return a Cigar object
+      that can be printed, compared and concatenated to others,
+      whose length can be measured etc. The .unclipped and
+      .inferred length properties can also be moved here. Or
+      perhaps: Make this an Alignment class that even knows about
+      the two strings it is aligning. One could then also iterate
+      over all columns of the alignment. But I guess this goes
+      too far since that's what the AlignedRead itself should be.
+
+    Regards,
+    Marcel
