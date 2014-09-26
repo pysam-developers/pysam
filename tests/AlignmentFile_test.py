@@ -1258,9 +1258,9 @@ class TestAlignedSegment(ReadTest):
 
         # check cigar
         b.cigartuples = ((0, 10), )
-        self.checkFieldEqual(a, b, "cigar")
+        self.checkFieldEqual(a, b, "cigartuples")
         b.cigartuples = ((0, 10), (2, 1), (0, 10))
-        self.checkFieldEqual(a, b, "cigar")
+        self.checkFieldEqual(a, b, "cigartuples")
         b.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
         self.checkFieldEqual(a, b)
 

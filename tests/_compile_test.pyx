@@ -1,15 +1,15 @@
-from pysam.csamfile cimport Samfile, AlignedRead
+from pysam.calignmentfile cimport AlignmentFile, AlignedSegment
 from pysam.ctabix cimport Tabixfile
 
-cdef Samfile samfile
+cdef AlignmentFile samfile
 cdef Tabixfile tabixfile
 
 
-def testCountBAM( Samfile samfile ):
+def testCountBAM(AlignmentFile samfile):
     '''test reading from a BAM file accessing
     the flag field directly.'''
 
-    cdef AlignedRead read
+    cdef AlignedSegment read
     cdef int n = 0
     
     for read in samfile.fetch():
@@ -18,7 +18,7 @@ def testCountBAM( Samfile samfile ):
             
     return n
 
-def testCountGTF( Tabixfile tabixfile ):
+def testCountGTF(Tabixfile tabixfile):
     '''test reading from a tabixfile.'''
     
     cdef int n = 0
