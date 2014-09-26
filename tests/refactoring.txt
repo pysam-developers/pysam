@@ -50,6 +50,13 @@ inferred_length -> inferQueryLength()
 positions -> getReferencePositions()
 overlap() -> getOverlap()
 
+
+Backwards incompatible changes:
+
+Empty cigarstring now returns None (intstead of '')
+Empty cigar now returns None (instead of [])
+
+
 fancy_str() -> removed
 
 =====================================================

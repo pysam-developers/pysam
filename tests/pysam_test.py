@@ -664,7 +664,7 @@ class TestTagParsing(unittest.TestCase):
         self.assertEqual(r.cigar, [(0, 20), (2, 10), (0, 20)])
         # unsetting cigar string
         r.cigarstring = None
-        self.assertEqual(r.cigarstring, '')
+        self.assertEqual(r.cigarstring, None)
 
     def testCigar(self):
         r = self.makeRead()
@@ -1206,7 +1206,7 @@ class TestAlignedRead(ReadTest):
         a = pysam.AlignedRead()
         s = str(a)
         self.assertEqual(
-            "None\t0\t0\t0\t0\t[]\t0\t0\t0\tNone\tNone\t[]",
+            "None\t0\t0\t0\t0\tNone\t0\t0\t0\tNone\tNone\t[]",
             s)
 
 
