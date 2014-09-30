@@ -4,10 +4,10 @@ Pysam
 
 Pysam is a python module for reading and manipulating files in the
 SAM/BAM format. The SAM/BAM format is a way to store efficiently large
-numbers of alignments (`Li 2009`_), such as those routinely are created by
+numbers of alignments (`Li 2009`_), such as those routinely created by
 next-generation sequencing methods.
 
-pysam lightweight wrapper of the samtools_ C-API. Pysam also includes an
+Pysam is a lightweight wrapper of the samtools_ C-API. Pysam also includes an
 interface for tabix_.
 
 The latest version is available through 

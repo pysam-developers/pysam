@@ -4,16 +4,16 @@ Andreas Heger, Tildon Grant Belgard, Kevin B. Jacobs, Florian
 Finkernagel, Leo Goodstadt, Martin Goodson all contributed code
 to pysam.
 
-Gerton Lunter provide a VCF parser.
+Gerton Lunter provided a VCF parser.
 
-Marcel Martin implented python 3 compabitility. 
-Ben Schiller contributed a windows compabtible clone.
+Marcel Martin implemented python 3 compatibility.
+Ben Schiller contributed a Windows compatible clone.
 
 The sources in the directory samtools are from the samtools project:
 http://samtools.sourceforge.net/. All of these are available under the
 MIT licence. The attributions for this code are as follows:
 
-Heng Li from the Sanger Institute wrote most of the initial source codes
+Heng Li from the Sanger Institute wrote most of the initial source code
 of SAMtools and various converters.
 
 Bob Handsaker from the Broad Institute is a major contributor to the
