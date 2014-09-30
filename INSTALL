@@ -55,9 +55,9 @@ The documentation will be put into build/sphinx.
 Architecture specific options
 =============================
 
-Pysam has been compiled on various linux systems and works
+Pysam has been compiled on various Linux systems and works
 with python 2.6 and python 2.5.
 
 Python 2.7 and Python 3 have not been tested.
 
-Windows support does not work yet
+Windows support does not work yet.
