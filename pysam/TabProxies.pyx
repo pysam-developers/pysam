@@ -148,9 +148,9 @@ cdef class TupleProxy:
         memcpy( <char*>self.data, buffer, s )
         self.update( self.data, nbytes )
 
-    cdef int getMaxFields( self, size_t nbytes ):
+    cdef int getMaxFields( self, size_t nfields ):
         '''initialize fields.'''
-        return nbytes / 2
+        return nfields
 
     cdef update( self, char * buffer, size_t nbytes ):
         '''update internal data.
@@ -199,7 +199,7 @@ cdef class TupleProxy:
 
         #################################
         # allocate new
-        max_fields = self.getMaxFields( nbytes )
+        max_fields = self.getMaxFields( len(buffer.split("\t")) )
         self.fields = <char **>calloc( max_fields, sizeof(char *) ) 
         if self.fields == NULL:
             raise ValueError("out of memory" )
@@ -350,7 +350,7 @@ cdef class GTFProxy( TupleProxy ):
         if self.hasOwnAttributes:
             free(self._attributes)
 
-    cdef int getMaxFields( self, size_t nbytes ):
+    cdef int getMaxFields( self, size_t nfields ):
         '''return max number of fields.'''
         return 9
 
@@ -616,7 +616,7 @@ cdef class BedProxy( NamedTupleProxy ):
         'blockSizes': (10, bytes),
         'blockStarts': (11, bytes), } 
 
-    cdef int getMaxFields( self, size_t nbytes ):
+    cdef int getMaxFields( self, size_t nfields ):
         '''return max number of fields.'''
         return 12
 
