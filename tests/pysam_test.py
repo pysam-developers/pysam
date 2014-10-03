@@ -1172,7 +1172,7 @@ class ReadTest(unittest.TestCase):
                   ".is_reverse", ".mate_is_reverse",
                   ".is_read1", ".is_read2",
                   ".is_secondary", ".is_qcfail",
-                  ".is_duplicate"):
+                  ".is_duplicate", ".is_supplementary"):
             n = x[1:]
             if n in exclude:
                 continue
@@ -1268,7 +1268,7 @@ class TestAlignedRead(ReadTest):
                 "is_reverse", "mate_is_reverse",
                 "is_read1", "is_read2",
                 "is_secondary", "is_qcfail",
-                "is_duplicate"):
+                "is_duplicate", "is_supplementary"):
             setattr(b, x, True)
             self.assertEqual(getattr(b, x), True)
             self.checkFieldEqual(a, b, ("flag", x,))
