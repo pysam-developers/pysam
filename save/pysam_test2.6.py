@@ -993,7 +993,7 @@ class TestAlignedRead(unittest.TestCase):
                   "is_reverse", "mate_is_reverse",
                   "is_read1", "is_read2",
                   "is_secondary", "is_qcfail",
-                  "is_duplicate", "bin"):
+                  "is_duplicate", "is_supplementary", "bin"):
             if x in exclude: continue
             self.assertEqual( getattr(read1, x), getattr(read2,x), "attribute mismatch for %s: %s != %s" % 
                               (x, getattr(read1, x), getattr(read2,x)))
@@ -1070,7 +1070,7 @@ class TestAlignedRead(unittest.TestCase):
             "is_reverse", "mate_is_reverse",
             "is_read1", "is_read2",
             "is_secondary", "is_qcfail",
-            "is_duplicate"):
+            "is_duplicate", "is_supplementary"):
             setattr( b, x, True )
             self.assertEqual( getattr(b, x), True )
             self.checkFieldEqual( a, b, ("flag", x,) )
@@ -1170,7 +1170,7 @@ class TestDeNovoConstruction(unittest.TestCase):
                   "is_reverse", "mate_is_reverse",
                   "is_read1", "is_read2",
                   "is_secondary", "is_qcfail",
-                  "is_duplicate"):
+                  "is_duplicate", "is_supplementary"):
             if x in exclude: continue
             self.assertEqual( getattr(read1, x), getattr(read2,x), "attribute mismatch for %s: %s != %s" % 
                               (x, getattr(read1, x), getattr(read2,x)))
