@@ -52,12 +52,18 @@ overlap() -> getOverlap()
 
 
 Backwards incompatible changes:
+================================
 
-Empty cigarstring now returns None (intstead of '')
-Empty cigar now returns None (instead of [])
+1. Empty cigarstring now returns None (intstead of '')
 
+2. Empty cigar now returns None (instead of [])
 
-fancy_str() -> removed
+3. When using the extension classes in cython modules, AlignedRead
+   needs to be substituted with AlignedSegment. Automatic casting
+   of the base class to the derived class seems not to work?
+
+4. fancy_str() has been removed
+
 
 =====================================================
 

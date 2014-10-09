@@ -35,3 +35,4 @@ def checkBinaryEqual(filename1, filename2):
     infile2.close()
     return found
 
+
