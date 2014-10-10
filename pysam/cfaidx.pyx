@@ -60,7 +60,7 @@ cdef bytes _encodeFilename(object filename):
 # hard-coded constants
 cdef int max_pos = 2 << 29
 
-cdef class Fastafile:
+cdef class FastaFile:
     '''*(filename)*
 
     A *FASTA* file. The file is automatically opened.
@@ -265,7 +265,7 @@ cdef class FastqProxy:
                 return self._delegate.qual.s
             else: return None
 
-cdef class Fastqfile:
+cdef class FastqFile:
     '''*(filename)*
 
     A *FASTQ* file. The file is automatically opened.
@@ -336,5 +336,14 @@ cdef class Fastqfile:
         else:
             raise StopIteration
 
-__all__ = ["Fastafile",
+# Compatibility Layer for pysam < 0.8
+cdef class Fastafile(FastaFile):
+    pass
+
+cdef class Fastqfile(FastqFile):
+    pass
+
+__all__ = ["FastaFile",
+           "FastqFile",
+           "Fastafile",
            "Fastqfile"]

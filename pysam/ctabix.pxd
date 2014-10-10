@@ -27,7 +27,7 @@ cdef class tabix_file_iterator:
 
     cdef __cnext__(self)
 
-cdef class Tabixfile:
+cdef class TabixFile:
 
     # pointer to tabixfile
     cdef htsFile * tabixfile
@@ -58,7 +58,7 @@ cdef class asVCF(Parser):
 
 cdef class TabixIterator:
     cdef hts_itr_t * iterator
-    cdef Tabixfile tabixfile
+    cdef TabixFile tabixfile
     cdef kstring_t buffer
     cdef int __cnext__(self)
 
@@ -79,3 +79,8 @@ cdef class GZIteratorParsed(GZIterator):
     cdef Parser parser
 
 cdef _force_str(object s)
+
+# Compatibility Layer for pysam < 0.8
+cdef class Tabixfile(TabixFile):
+    pass
+

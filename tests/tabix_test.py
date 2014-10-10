@@ -269,7 +269,7 @@ class TestGZFile(IterationTest):
 
 
 class TestIterationWithoutComments(IterationTest):
-    '''test iterating with Tabixfile.fetch() when
+    '''test iterating with TabixFile.fetch() when
     there are no comments in the file.'''
 
     filename = os.path.join(DATADIR,
@@ -277,7 +277,7 @@ class TestIterationWithoutComments(IterationTest):
 
     def setUp(self):
         IterationTest.setUp(self)
-        self.tabix = pysam.Tabixfile(self.filename)
+        self.tabix = pysam.TabixFile(self.filename)
 
     def testAll(self):
         result = list(self.tabix.fetch())
@@ -369,7 +369,7 @@ class TestIterationWithoutComments(IterationTest):
         '''test repeated opening of the same file.'''
         def func1():
             # opens any tabix file
-            inf = pysam.Tabixfile(self.filename)
+            inf = pysam.TabixFile(self.filename)
             return
 
         for i in range(10000):
@@ -377,7 +377,7 @@ class TestIterationWithoutComments(IterationTest):
 
 
 class TestIterationWithComments(TestIterationWithoutComments):
-    '''test iterating with Tabixfile.fetch() when
+    '''test iterating with TabixFile.fetch() when
     there are comments in the file.
 
     
@@ -396,7 +396,7 @@ class TestParser(unittest.TestCase):
 
     def setUp(self):
 
-        self.tabix = pysam.Tabixfile(self.filename)
+        self.tabix = pysam.TabixFile(self.filename)
         self.compare = loadAndConvert(self.filename)
 
     def testRead(self):
@@ -497,7 +497,7 @@ class TestIterators(unittest.TestCase):
 
     def setUp(self):
 
-        self.tabix = pysam.Tabixfile(self.filename)
+        self.tabix = pysam.TabixFile(self.filename)
         self.compare = loadAndConvert(self.filename)
         self.tmpfilename_uncompressed = 'tmp_TestIterators'
         infile = gzip.open(self.filename, "rb")
@@ -589,7 +589,7 @@ class TestBed(unittest.TestCase):
 
     def setUp(self):
 
-        self.tabix = pysam.Tabixfile(self.filename)
+        self.tabix = pysam.TabixFile(self.filename)
         self.compare = loadAndConvert(self.filename)
 
     def testRead(self):
@@ -649,7 +649,7 @@ class TestVCFFromTabix(TestVCF):
 
         TestVCF.setUp(self)
 
-        self.tabix = pysam.Tabixfile(self.tmpfilename + ".gz")
+        self.tabix = pysam.TabixFile(self.tmpfilename + ".gz")
         self.compare = loadAndConvert(self.filename)
 
     def testRead(self):
@@ -871,9 +871,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
     local = os.path.join(DATADIR, "example.gtf.gz")
 
     def testFetchAll(self):
-        remote_file = pysam.Tabixfile(self.url, "r")
+        remote_file = pysam.TabixFile(self.url, "r")
         remote_result = list(remote_file.fetch())
-        local_file = pysam.Tabixfile(self.local, "r")
+        local_file = pysam.TabixFile(self.local, "r")
         local_result = list(local_file.fetch())
 
         self.assertEqual(len(remote_result), len(local_result))
@@ -892,10 +892,10 @@ class TestIndexArgument(unittest.TestCase):
     def testFetchAll(self):
         shutil.copyfile(self.filename_src, self.filename_dst)
         shutil.copyfile(self.index_src, self.index_dst)
-        same_basename_file = pysam.Tabixfile(
+        same_basename_file = pysam.TabixFile(
             self.filename_src, "r", index=self.index_src)
         same_basename_results = list(same_basename_file.fetch())
-        diff_index_file = pysam.Tabixfile(
+        diff_index_file = pysam.TabixFile(
             self.filename_dst, "r", index=self.index_dst)
         diff_index_result = list(diff_index_file.fetch())
 

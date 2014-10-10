@@ -219,7 +219,7 @@ cdef class asVCF( Parser ):
         return r
 
 
-cdef class Tabixfile:
+cdef class TabixFile:
     '''*(filename, mode='r', parser = None)*
 
     opens a :term:`tabix file` for reading. A missing
@@ -410,7 +410,7 @@ cdef class Tabixfile:
             
     def close(self):
         '''
-        closes the :class:`pysam.Tabixfile`.'''
+        closes the :class:`pysam.TabixFile`.'''
         if self.tabixfile != NULL:
             hts_close(self.tabixfile)
             self.tabixfile = NULL
@@ -424,6 +424,7 @@ cdef class Tabixfile:
             self.tabixfile = NULL
         if self._filename != NULL:
             free(self._filename)
+
 
 cdef class TabixIterator:
     """iterates over rows in *tabixfile* in region
@@ -982,9 +983,14 @@ def tabix_iterator( infile, parser ):
 #        else:
 #            return tabix_generic_iterator( infile, parser )
     
+cdef class Tabixfile(TabixFile):
+    pass
+
+
 __all__ = [
     "tabix_index", 
     "tabix_compress",
+    "TabixFile",
     "Tabixfile",
     "asTuple",
     "asGTF",

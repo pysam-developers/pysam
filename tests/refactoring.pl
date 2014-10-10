@@ -10,6 +10,11 @@ while (<STDIN>) {
     s/\.query/\.query_alignment_sequence/g;
     s/\.positions/\.getReferencePositions()/g;
 
+    # Tabixfile, etc
+    s/Tabixfile/TabixFile/g;
+    s/Fastafile/FastaFile/g;
+    s/Fastqfile/FastqFile/g;
+
     # basic attributes
     s/\.qname/\.query_name/g;
     s/\.tid/\.reference_id/g;

@@ -11,7 +11,7 @@ cdef extern from "htslib/kstring.h" nogil:
         size_t l, m
         char *s
 
-cdef class Fastafile:
+cdef class FastaFile:
     cdef object _filename, _references, _lengths, reference2length
     cdef faidx_t* fastafile
     cdef char* _fetch(self, char* reference,
@@ -22,7 +22,7 @@ cdef class FastqProxy:
     cdef kseq_t * _delegate
 
 
-cdef class Fastqfile:
+cdef class FastqFile:
     cdef object _filename
     cdef gzFile fastqfile
     cdef kseq_t * entry
@@ -30,3 +30,10 @@ cdef class Fastqfile:
     cdef kseq_t * getCurrent( self )
     cdef int cnext(self)
 
+
+# Compatibility Layer for pysam < 0.8
+cdef class Fastafile(FastaFile):
+    pass
+
+cdef class Fastqfile(FastqFile):
+    pass

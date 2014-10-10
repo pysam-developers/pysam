@@ -15,7 +15,7 @@ class TestFastaFile(unittest.TestCase):
     }
 
     def setUp(self):
-        self.file = pysam.Fastafile(os.path.join(DATADIR, "ex1.fa"))
+        self.file = pysam.FastaFile(os.path.join(DATADIR, "ex1.fa"))
 
     def testFetch(self):
         for id, seq in list(self.sequences.items()):
@@ -61,13 +61,13 @@ class TestFastaFile(unittest.TestCase):
 class TestFastqFile(unittest.TestCase):
 
     def setUp(self):
-        self.file = pysam.Fastqfile(os.path.join(DATADIR, "ex1.fq"))
+        self.file = pysam.FastqFile(os.path.join(DATADIR, "ex1.fq"))
 
     def testCounts(self):
         self.assertEqual(len([x for x in self.file]), 3270)
 
     def testMissingFile(self):
-        self.assertRaises(IOError, pysam.Fastqfile, "nothere.fq")
+        self.assertRaises(IOError, pysam.FastqFile, "nothere.fq")
 
     def testSequence(self):
         s = self.file.__next__()

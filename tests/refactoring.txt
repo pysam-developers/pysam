@@ -4,6 +4,9 @@
 
 Samfile -> AlignmentFile
 AlignedRead -> AlignedSegment
+Tabixfile -> TabixFile
+Fastafile -> FastaFile
+Fastqfile -> FastqFile
 
 Changes to the AlignedSegment.API:
 
