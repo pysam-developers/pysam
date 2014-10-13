@@ -266,8 +266,8 @@ cdef class AlignmentFile:
     text (:term:`TAM`) mode.
 
     If ``b`` is present, it must immediately follow ``r`` or ``w``.
-    Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb`` and
-    ``wbu``. For instance, to open a :term:`BAM` formatted file for
+    Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and
+    ``wb0``. For instance, to open a :term:`BAM` formatted file for
     reading, type::
 
         f = pysam.AlignmentFile('ex1.bam','rb')
@@ -374,12 +374,16 @@ cdef class AlignmentFile:
                        check_sq=check_sq)
             return
 
-        assert mode in ( "r","w","rb","wb", "wh", "wbu", "rU" ), \
+        assert mode in ("r","w","rb","wb", "wh", "wbu", "rU", "wb0"), \
             "invalid file opening mode `%s`" % mode
 
         # close a previously opened file
         if self.htsfile != NULL:
             self.close()
+
+        # for htslib, wbu seems to not work
+        if mode == "wbu":
+            mode = "wb0"
 
         cdef bytes bmode = mode.encode('ascii')
         self._filename = filename = _encodeFilename(filename)

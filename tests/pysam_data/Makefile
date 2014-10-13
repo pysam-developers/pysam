@@ -7,6 +7,7 @@ BAI=$(BAM:%.bam=%.bam.bai)
 all: ex1.pileup.gz \
 	ex1.sam ex1.bam \
 	ex2.sam.gz ex2.sam ex2.bam \
+        uncompressed.bam \
 	$(BAM) $(BAI) \
 	example_bai.bam
 
@@ -16,6 +17,9 @@ ex2.sam.gz: ex1.bam ex1.bam.bai
 
 #%.bam: %.sam ex1.fa.fai
 #	samtools import ex1.fa.fai $< $@
+
+uncompressed.bam: ex2.sam
+	samtools view -buS $< > $@
 
 %.bam: %.sam
 	samtools view -bS $< > $@

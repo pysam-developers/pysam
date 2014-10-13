@@ -557,7 +557,7 @@ class TestIO(unittest.TestCase):
 
         shutil.copyfile(os.path.join(DATADIR, "ex2.bam"), 'tmp_ex2.bam')
         samfile = pysam.AlignmentFile('tmp_ex2.bam',
-                                "rb")
+                                      "rb")
         self.assertRaises(ValueError, samfile.fetch)
         self.assertEqual(len(list(samfile.fetch(until_eof=True))),
                          3270)
@@ -579,13 +579,30 @@ class TestIO(unittest.TestCase):
     def testHead(self):
         '''test IteratorRowHead'''
         samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                "rb")
+                                      "rb")
         l10 = list(samfile.head(10))
         l100 = list(samfile.head(100))
         self.assertEqual(len(l10), 10)
         self.assertEqual(len(l100), 100)
         self.assertEqual(list(map(str, l10)),
                          list(map(str, l100[:10])))
+
+    def testWriteUncompressedBAMFile(self):
+        '''read from uncompressed BAM file, see issue #43'''
+
+        input_filename = "ex2.sam"
+        output_filename = "pysam_uncompressed.bam"
+        reference_filename = "uncompressed.bam"
+
+        self.checkEcho(input_filename,
+                       reference_filename,
+                       output_filename,
+                       "r", "wb0")
+
+        self.checkEcho(input_filename,
+                       reference_filename,
+                       output_filename,
+                       "r", "wbu")
 
 
 class TestFloatTagBug(unittest.TestCase):
