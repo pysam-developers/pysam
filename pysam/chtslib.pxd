@@ -799,7 +799,7 @@ cdef extern from "htslib/faidx.h":
                     char *reg,
                     int *len)
 
-    int faidx_fetch_nseq(faidx_t *fai)
+    int faidx_nseq(faidx_t *fai)
 
     int faidx_has_seq(faidx_t *fai, const char *seq)
 

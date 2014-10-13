@@ -48,7 +48,6 @@ typedef struct samview_settings {
     int min_mapQ;
     int flag_on;
     int flag_off;
-    int qual_scale;
     int min_qlen;
     int remove_B;
     uint32_t subsam_seed;
@@ -72,14 +71,6 @@ int bed_overlap(const void *_h, const char *chr, int beg, int end);
 static int process_aln(const bam_hdr_t *h, bam1_t *b, samview_settings_t* settings)
 {
     if (settings->remove_B) bam_remove_B(b);
-    if (settings->qual_scale > 1) {
-        int i;
-        uint8_t *qual = bam_get_qual(b);
-        for (i = 0; i < b->core.l_qseq; ++i) {
-            int c = qual[i] * settings->qual_scale;
-            qual[i] = c < 93? c : 93;
-        }
-    }
     if (settings->min_qlen > 0) {
         int k, qlen = 0;
         uint32_t *cigar = bam_get_cigar(b);
@@ -249,7 +240,6 @@ int main_samview(int argc, char *argv[])
         .min_mapQ = 0,
         .flag_on = 0,
         .flag_off = 0,
-        .qual_scale = 0,
         .min_qlen = 0,
         .remove_B = 0,
         .subsam_seed = 0,
@@ -261,7 +251,7 @@ int main_samview(int argc, char *argv[])
     /* parse command-line options */
     /* TODO: convert this to getopt_long we're running out of letters */
     strcpy(out_mode, "w");
-    while ((c = getopt(argc, argv, "SbBcCt:h1Ho:q:f:F:ul:r:?T:R:L:s:Q:@:m:x:U:")) >= 0) {
+    while ((c = getopt(argc, argv, "SbBcCt:h1Ho:q:f:F:ul:r:?T:R:L:s:@:m:x:U:")) >= 0) {
         switch (c) {
         case 's':
             if ((settings.subsam_seed = strtol(optarg, &q, 10)) != 0) {
@@ -312,11 +302,6 @@ int main_samview(int argc, char *argv[])
         case '?': is_long_help = 1; break;
         case 'T': fn_ref = strdup(optarg); break;
         case 'B': settings.remove_B = 1; break;
-        case 'Q':
-            settings.qual_scale = atoi(optarg);
-            if (settings.qual_scale <  0) settings.qual_scale =  0;
-            if (settings.qual_scale > 93) settings.qual_scale = 93;
-            break;
         case '@': n_threads = strtol(optarg, 0, 0); break;
         case 'x':
             {
@@ -493,7 +478,6 @@ static int usage(int is_long_help)
     fprintf(pysamerr, "         -B       collapse the backward CIGAR operation\n");
     fprintf(pysamerr, "         -s FLOAT integer part sets seed of random number generator [0];\n");
     fprintf(pysamerr, "                  rest sets fraction of templates to subsample [no subsampling]\n");
-    fprintf(pysamerr, "         -Q INT   scale quality values by INT [1]\n");
     // general options
     fprintf(pysamerr, "         -@ INT   number of BAM compression threads [0]\n");
     fprintf(pysamerr, "         -?       print long help, including note about region specification\n");

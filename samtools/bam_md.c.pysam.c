@@ -26,7 +26,6 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
 
 #include <unistd.h>
-#include <assert.h>
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
@@ -112,9 +111,8 @@ void bam_fillmd1_core(bam1_t *b, char *ref, int flag, int max_nm)
         }
     }
     // update NM
-    if (flag & UPDATE_NM) {
+    if ((flag & UPDATE_NM) && !(c->flag & BAM_FUNMAP)) {
         uint8_t *old_nm = bam_aux_get(b, "NM");
-        if (c->flag & BAM_FUNMAP) return;
         if (old_nm) old_nm_i = bam_aux2i(old_nm);
         if (!old_nm) bam_aux_append(b, "NM", 'i', 4, (uint8_t*)&nm);
         else if (nm != old_nm_i) {
@@ -124,9 +122,8 @@ void bam_fillmd1_core(bam1_t *b, char *ref, int flag, int max_nm)
         }
     }
     // update MD
-    if (flag & UPDATE_MD) {
+    if ((flag & UPDATE_MD) && !(c->flag & BAM_FUNMAP)) {
         uint8_t *old_md = bam_aux_get(b, "MD");
-        if (c->flag & BAM_FUNMAP) return;
         if (!old_md) bam_aux_append(b, "MD", 'Z', str->l + 1, (uint8_t*)str->s);
         else {
             int is_diff = 0;
@@ -143,6 +140,7 @@ void bam_fillmd1_core(bam1_t *b, char *ref, int flag, int max_nm)
             }
         }
     }
+
     // drop all tags but RG
     if (flag&DROP_TAG) {
         uint8_t *q = bam_aux_get(b, "RG");
@@ -154,6 +152,7 @@ void bam_fillmd1_core(bam1_t *b, char *ref, int flag, int max_nm)
         for (i = 0; i < b->core.l_qseq; ++i)
             if (qual[i] >= 3) qual[i] = qual[i]/10*10 + 7;
     }
+
     free(str->s); free(str);
 }
 

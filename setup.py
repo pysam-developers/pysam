@@ -45,7 +45,8 @@ samtools_exclude = ("bamtk.c", "razip.c", "bgzip.c",
                     "main.c", "calDepth.c", "bam2bed.c",
                     "wgsim.c", "md5fa.c", "maq2sam.c",
                     "bamcheck.c",
-                    "chk_indel.c")
+                    "chk_indel.c",
+                    "vcf-miniview.c")
 htslib_exclude = ('htslib/tabix.c', 'htslib/bgzip.c')
 tabix_exclude = ("main.c",)
 
@@ -119,21 +120,33 @@ extern FILE * pysamerr;
 #endif
 """)
 
-# copy samtools source
+#################################################################
+# Importing samtools and htslib
+#
+# For htslib, simply copy the whole release tar-ball
+# into the directory "htslib" and recreate the file version.h
+#
+# rm -rf htslib
+# mv download/htslib htslib
+# git checkout -- htslib/version.h
+# Edit the file htslib/version.h to set the right version number.
+#
+# For samtools, type:
+# rm -rf samtools
+# python setup.py import download/samtools
+#
 if len(sys.argv) >= 2 and sys.argv[1] == "import":
     if len(sys.argv) < 3:
         raise ValueError("missing PATH to samtools source directory")
-    if len(sys.argv) < 4:
-        raise ValueError("missing PATH to tabix source directory")
 
     for destdir, srcdir, exclude in zip(
-            (samtools_dest, tabix_dest),
-            sys.argv[2:4],
-            (samtools_exclude, tabix_exclude)):
+            (samtools_dest,),
+            sys.argv[2:3],
+            (samtools_exclude,)):
 
         srcdir = os.path.abspath(srcdir)
         if not os.path.exists(srcdir):
-            raise IOError("samtools src dir `%s` does not exist." % srcdir)
+            raise IOError("source directory `%s` does not exist." % srcdir)
 
         cfiles = locate("*.c", srcdir)
         hfiles = locate("*.h", srcdir)
@@ -173,9 +186,9 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
 
         sys.stdout.write(
             "installed latest source code from %s: "
-            "%i files copied" % (srcdir, ncopied))
+            "%i files copied\n" % (srcdir, ncopied))
         # redirect stderr to pysamerr and replace bam.h with a stub.
-        sys.stdout.write("applying stderr redirection")
+        sys.stdout.write("applying stderr redirection\n")
 
         _update_pysam_files(cf, destdir)
 
@@ -195,18 +208,6 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 
     sys.exit(0)
 
-
-# checkout latest version of htslib
-if len(sys.argv) == 2 and sys.argv[1] == "htslib":
-    if not os.path.exists("htslib"):
-        subprocess.call(["git", "clone", "git@github.com:samtools/htslib.git"])
-        with open(os.path.join("htslib", "version.h"), "w") as outfile:
-            outfile.write('#define HTS_VERSION "0.0.1"')
-    else:
-        os.chdir('htslib')
-        subprocess.call(["git", "pull"])
-
-    sys.exit(0)
 
 ###################
 # populate headers

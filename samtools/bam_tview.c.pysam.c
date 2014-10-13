@@ -319,7 +319,7 @@ int base_draw_aln(tview_t *tv, int tid, int pos)
         if ( !tv->ref )
         {
             fprintf(pysamerr,"Could not read the reference sequence. Is it seekable (plain text or compressed + .gzi indexed with bgzip)?\n");
-            abort();
+            exit(1);
         }
     }
     // draw aln
@@ -343,13 +343,12 @@ static void error(const char *format, ...)
 {
     if ( !format )
     {
-        fprintf(pysamerr, "\n");
-        fprintf(pysamerr, "Usage: samtools tview [options] <aln.bam> [ref.fasta]\n");
-        fprintf(pysamerr, "Options:\n");
-        fprintf(pysamerr, "   -d display      output as (H)tml or (C)urses or (T)ext \n");
-        fprintf(pysamerr, "   -p chr:pos      go directly to this position\n");
-        fprintf(pysamerr, "   -s STR          display only reads from this sample or group\n");
-        fprintf(pysamerr, "\n");
+        fprintf(pysamerr,
+"Usage: samtools tview [options] <aln.bam> [ref.fasta]\n"
+"Options:\n"
+"   -d display      output as (H)tml or (C)urses or (T)ext \n"
+"   -p chr:pos      go directly to this position\n"
+"   -s STR          display only reads from this sample or group\n");
     }
     else
     {
@@ -410,7 +409,7 @@ int bam_tview_main(int argc, char *argv[])
             break;
             }
     }
-    if(tv==NULL)
+    if (tv==NULL)
     {
         error("cannot create view");
         return EXIT_FAILURE;
