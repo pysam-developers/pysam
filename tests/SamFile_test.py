@@ -13,7 +13,7 @@ import sys
 import collections
 import subprocess
 import logging
-from TestUtils import checkBinaryEqual
+from TestUtils import checkBinaryEqual, checkURL
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -978,6 +978,9 @@ class TestHeader1000Genomes(unittest.TestCase):
 
     def testRead(self):
 
+        if not checkURL(self.bamfile):
+            return
+
         f = pysam.Samfile(self.bamfile, "rb")
         data = f.header.copy()
         self.assertTrue(data)
@@ -1586,11 +1589,17 @@ class TestRemoteFileFTP(unittest.TestCase):
 
     def testFTPView(self):
         return
+        if not checkURL(self.url):
+            return
+
         result = pysam.view(self.url, self.region)
         self.assertEqual(len(result), 36)
 
     def testFTPFetch(self):
         return
+        if not checkURL(self.url):
+            return
+
         samfile = pysam.Samfile(self.url, "rb")
         result = list(samfile.fetch(region=self.region))
         self.assertEqual(len(result), 36)
@@ -1603,6 +1612,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
     local = os.path.join(DATADIR, "ex1.bam")
 
     def testView(self):
+        if not checkURL(self.url):
+            return
+
         samfile_local = pysam.Samfile(self.local, "rb")
         ref = list(samfile_local.fetch(region=self.region))
 
@@ -1610,6 +1622,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
         self.assertEqual(len(result), len(ref))
 
     def testFetch(self):
+        if not checkURL(self.url):
+            return
+
         samfile = pysam.Samfile(self.url, "rb")
         result = list(samfile.fetch(region=self.region))
         samfile_local = pysam.Samfile(self.local, "rb")
@@ -1620,6 +1635,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
             self.assertEqual(x.compare(y), 0)
 
     def testFetchAll(self):
+        if not checkURL(self.url):
+            return
+
         samfile = pysam.Samfile(self.url, "rb")
         result = list(samfile.fetch())
         samfile_local = pysam.Samfile(self.local, "rb")

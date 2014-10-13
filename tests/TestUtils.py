@@ -1,5 +1,6 @@
 import sys
 import os
+import urllib2
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -35,4 +36,17 @@ def checkBinaryEqual(filename1, filename2):
     infile2.close()
     return found
 
+
+def checkURL(url):
+    '''return True if URL is available.
+
+    A URL might not be available if it is the wrong URL
+    or there is no connection to the URL.
+    '''
+    try:
+        urllib2.urlopen(url, timeout=1)
+        return True
+    except urllib2.URLError:
+        pass
+    return False
 
