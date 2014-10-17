@@ -129,7 +129,7 @@ cdef class TupleProxy:
 
         Do not take ownership of the pointer.
         '''
-        self.update( buffer, nbytes )
+        self.update(buffer, nbytes)
 
     cdef copy( self, char * buffer, size_t nbytes ):
         '''start presenting buffer of size *nbytes*.
@@ -148,11 +148,17 @@ cdef class TupleProxy:
         memcpy( <char*>self.data, buffer, s )
         self.update( self.data, nbytes )
 
-    cdef int getMaxFields( self, size_t nfields ):
+    cdef int getMinFields(self):
+        '''return minimum number of fields.'''
+        # 1 is not a valid tabix entry, but TupleProxy
+        # could be more generic.
+        return 1
+
+    cdef int getMaxFields(self, size_t nfields):
         '''initialize fields.'''
         return nfields
 
-    cdef update( self, char * buffer, size_t nbytes ):
+    cdef update(self, char * buffer, size_t nbytes):
         '''update internal data.
 
         *buffer* is a \0 terminated string.
@@ -164,13 +170,14 @@ cdef class TupleProxy:
         to collect any number of fields until nbytes
         is exhausted.
 
-        If max_fields is set, the number of fields is initialized to 
+        If max_fields is set, the number of fields is initialized to
         max_fields.
+
         '''
         cdef char * pos
         cdef char * old_pos
         cdef int field
-        cdef int max_fields, x
+        cdef int max_fields, min_fields, x
 
         assert strlen(buffer) == nbytes, \
             "length of buffer (%i) != number of bytes (%i)" % (
@@ -189,20 +196,21 @@ cdef class TupleProxy:
 
         #################################
         # clear data
-        if self.fields != NULL: free(self.fields)
-        
         for field from 0 <= field < self.nfields:
-            if isNew( self.fields[field], self.data, self.nbytes ):
-                free( self.fields[field] )
+            if isNew(self.fields[field], self.data, self.nbytes):
+                free(self.fields[field])
+
+        if self.fields != NULL:
+            free(self.fields)
                 
         self.is_modified = self.nfields = 0
 
         #################################
         # allocate new
-        max_fields = self.getMaxFields( len(buffer.split("\t")) )
-        self.fields = <char **>calloc( max_fields, sizeof(char *) ) 
+        max_fields = self.getMaxFields(len(buffer.split("\t")))
+        self.fields = <char **>calloc(max_fields, sizeof(char *)) 
         if self.fields == NULL:
-            raise ValueError("out of memory" )
+            raise ValueError("out of memory in TupleProxy.update()")
 
         #################################
         # start filling
@@ -212,22 +220,30 @@ cdef class TupleProxy:
         old_pos = pos
         
         while 1:
-
-            pos = <char*>memchr( pos, '\t', nbytes )
-            if pos == NULL: break
+            
+            pos = <char*>memchr(pos, '\t', nbytes)
+            if pos == NULL:
+                break
             pos[0] = '\0'
             pos += 1
             self.fields[field] = pos
             field += 1
-            if field > max_fields:
-                raise ValueError("row too large - more than %i fields" % max_fields )
+            if field >= max_fields:
+                raise ValueError(
+                    "parsing error: more than %i fields in line: %s" %
+                    (max_fields, buffer))
             nbytes -= pos - old_pos
-            if nbytes < 0: break
+            if nbytes < 0:
+                break
             old_pos = pos
 
         self.nfields = field
+        if self.nfields < self.getMinFields():
+            raise ValueError("parsing error: fewer that %i fields in line: %s" %
+                             (self.getMinFields(), buffer))
 
-    def _getindex( self, int index ):
+
+    def _getindex(self, int index):
         '''return item at idx index'''
         cdef int i = index
         if i < 0: i += self.nfields
@@ -237,8 +253,9 @@ cdef class TupleProxy:
             raise IndexError( "list index out of range %i >= %i" % (i, self.nfields ))
         return self.fields[i] 
 
-    def __getitem__( self, key ):
-        if type(key) == int: return self._getindex( key )
+    def __getitem__(self, key):
+        if type(key) == int:
+            return self._getindex( key )
         # slice object
         start, end, step = key.indices( self.nfields )
         result = []
@@ -315,19 +332,22 @@ cdef class TupleProxy:
             free(cpy)
             return result.decode('ascii')
 
-def toDot( v ):
+def toDot(v):
     '''convert value to '.' if None'''
-    if v == None: return "." 
-    else: return str(v)
+    if v is None:
+        return "." 
+    else:
+        return str(v)
 
-def quote( v ):
+def quote(v):
     '''return a quoted attribute.'''
     if type(v) in types.StringTypes:
         return '"%s"' % v
     else: 
         return str(v)
 
-cdef class GTFProxy( TupleProxy ):
+
+cdef class GTFProxy(TupleProxy):
     '''Proxy class for access to GTF fields.
 
     This class represents a GTF entry for fast read-access.
@@ -350,7 +370,11 @@ cdef class GTFProxy( TupleProxy ):
         if self.hasOwnAttributes:
             free(self._attributes)
 
-    cdef int getMaxFields( self, size_t nfields ):
+    cdef int getMinFields(self):
+        '''return minimum number of fields.'''
+        return 3
+
+    cdef int getMaxFields(self, size_t nfields):
         '''return max number of fields.'''
         return 9
 
@@ -419,7 +443,7 @@ cdef class GTFProxy( TupleProxy ):
        if self.hasOwnAttributes:
            return self._attributes
        else:
-           return self.fields[ 8 ]
+           return self.fields[8]
 
     def asDict( self ):
         """parse attributes - return as dict
@@ -458,7 +482,7 @@ cdef class GTFProxy( TupleProxy ):
         
         return result
     
-    def fromDict( self, d ):
+    def fromDict(self, d):
         '''set attributes from a dictionary.'''
         cdef char * p
         cdef int l
@@ -503,7 +527,7 @@ cdef class GTFProxy( TupleProxy ):
         else: 
             return TupleProxy.__str__(self)
 
-    def invert( self, int lcontig ):
+    def invert(self, int lcontig):
         '''invert coordinates to negative strand coordinates
         
         This method will only act if the feature is on the
@@ -575,9 +599,10 @@ cdef class GTFProxy( TupleProxy ):
         '''convenience method to set an attribute.'''
         r = self.asDict()
         r[name] = value
-        self.fromDict( r )
+        self.fromDict(r)
 
-cdef class NamedTupleProxy( TupleProxy ):
+
+cdef class NamedTupleProxy(TupleProxy):
 
     map_key2field = {}
 
@@ -616,7 +641,11 @@ cdef class BedProxy( NamedTupleProxy ):
         'blockSizes': (10, bytes),
         'blockStarts': (11, bytes), } 
 
-    cdef int getMaxFields( self, size_t nfields ):
+    cdef int getMinFields(self):
+        '''return minimum number of fields.'''
+        return 3
+
+    cdef int getMaxFields(self, size_t nfields):
         '''return max number of fields.'''
         return 12
 

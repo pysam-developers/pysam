@@ -49,13 +49,14 @@ cdef class TupleProxy:
         int offset
         cdef bint is_modified
 
-    cdef int getMaxFields( self, size_t nbytes )
-#    cdef char * _getindex( self, int idx )
+    cdef int getMaxFields(self, size_t nbytes)
+    cdef int getMinFields(self)
+#    cdef char * _getindex(self, int idx)
 
-    cdef take( self, char * buffer, size_t nbytes )
-    cdef present( self, char * buffer, size_t nbytes )
-    cdef copy( self, char * buffer, size_t nbytes )
-    cdef update( self, char * buffer, size_t nbytes )
+    cdef take(self, char * buffer, size_t nbytes)
+    cdef present(self, char * buffer, size_t nbytes)
+    cdef copy(self, char * buffer, size_t nbytes)
+    cdef update(self, char * buffer, size_t nbytes)
 
 cdef class GTFProxy( TupleProxy) :
 
@@ -63,7 +64,8 @@ cdef class GTFProxy( TupleProxy) :
         char * _attributes
         cdef bint hasOwnAttributes
 
-    cdef int getMaxFields( self, size_t nbytes )
+    cdef int getMaxFields(self, size_t nbytes)
+    cdef int getMinFields(self)
     cdef char * getAttributes( self )
 
 cdef class NamedTupleProxy( TupleProxy) :
@@ -77,10 +79,11 @@ cdef class BedProxy( NamedTupleProxy) :
         uint32_t end
         int bedfields
 
-    cdef int getMaxFields( self, size_t nbytes )
-    cdef update( self, char * buffer, size_t nbytes )
+    cdef int getMaxFields(self, size_t nbytes)
+    cdef int getMinFields(self)
+    cdef update(self, char * buffer, size_t nbytes)
 
-cdef class VCFProxy( NamedTupleProxy) :
+cdef class VCFProxy(NamedTupleProxy) :
 
     cdef:
         char * contig

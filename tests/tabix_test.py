@@ -175,6 +175,7 @@ class TestCompressionVCF(TestCompression):
     filename_index = os.path.join(DATADIR, "example.vcf.gz.tbi")
     preset = "vcf"
 
+
 class IterationTest(unittest.TestCase):
 
     with_comments = False
@@ -224,9 +225,9 @@ class IterationTest(unittest.TestCase):
 
         if self.with_comments:
             subset.extend(self.comments)
-        
+
         return subset
-    
+
     def checkPairwise(self, result, ref):
         '''check pairwise results.
         '''
@@ -446,7 +447,8 @@ class TestParser(unittest.TestCase):
     def testIteratorCompressed(self):
         '''test iteration from compressed file.'''
         with gzip.open(self.filename) as infile:
-            for x, r in enumerate(pysam.tabix_iterator(infile, pysam.asTuple())):
+            for x, r in enumerate(pysam.tabix_iterator(
+                    infile, pysam.asTuple())):
                 self.assertEqual(self.compare[x], list(r))
                 self.assertEqual(len(self.compare[x]), len(r))
 
@@ -470,7 +472,8 @@ class TestParser(unittest.TestCase):
         infile.close()
 
         with open(tmpfilename) as infile:
-            for x, r in enumerate(pysam.tabix_iterator(infile, pysam.asTuple())):
+            for x, r in enumerate(pysam.tabix_iterator(
+                    infile, pysam.asTuple())):
                 self.assertEqual(self.compare[x], list(r))
                 self.assertEqual(len(self.compare[x]), len(r))
 
@@ -582,6 +585,30 @@ class TestGTF(TestParser):
             if r.feature != b'gene':
                 self.assertTrue(r.transcript_id.startswith("ENST"))
             self.assertEqual(c[0], r.contig)
+
+
+class TestIterationMalformattedGTFFiles(unittest.TestCase):
+    '''test reading from malformatted gtf files.'''
+
+    parser = pysam.asGTF
+    iterator = pysam.tabix_generic_iterator
+    parser = pysam.asGTF
+
+    def testGTFTooManyFields(self):
+
+        iterator = self.iterator(
+            gzip.open(os.path.join(DATADIR,
+                                   "gtf_toomany_fields.gtf.gz")),
+            parser=self.parser())
+        self.assertRaises(ValueError, iterator.next)
+
+    def testGTFTooFewFields(self):
+
+        iterator = self.iterator(
+            gzip.open(os.path.join(DATADIR,
+                                   "gtf_toofew_fields.gtf.gz")),
+            parser=self.parser())
+        self.assertRaises(ValueError, iterator.next)
 
 
 class TestBed(unittest.TestCase):
