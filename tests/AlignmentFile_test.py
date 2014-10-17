@@ -626,7 +626,7 @@ class TestLargeFieldBug(unittest.TestCase):
 
     def testLargeFileBug(self):
         '''when creating a read with a large entry in the tag field
-        causes an errror:
+        causes an error:
             NotImplementedError: tags field too large
         '''
         samfile = pysam.AlignmentFile(os.path.join(DATADIR, "issue100.bam"))
@@ -928,8 +928,10 @@ class TestHeaderSam(unittest.TestCase):
 
     header = {'SQ': [{'LN': 1575, 'SN': 'chr1'},
                      {'LN': 1584, 'SN': 'chr2'}],
-              'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10', "CN": "name:with:colon"},
-                     {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12', "CN": "name:with:colon"}],
+              'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891',
+                      'PU': 'SC_1_10', "CN": "name:with:colon"},
+                     {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891',
+                      'PU': 'SC_2_12', "CN": "name:with:colon"}],
               'PG': [{'ID': 'P1', 'VN': '1.0'}, {'ID': 'P2', 'VN': '1.1'}],
               'HD': {'VN': '1.0'},
               'CO': ['this is a comment', 'this is another comment'],
@@ -943,7 +945,7 @@ class TestHeaderSam(unittest.TestCase):
 
     def setUp(self):
         self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex3.sam"),
-                                     "r")
+                                           "r")
 
     def testHeaders(self):
         self.compareHeaders(self.header, self.samfile.header)
@@ -967,7 +969,7 @@ class TestHeaderBam(TestHeaderSam):
 
     def setUp(self):
         self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex3.bam"),
-                                     "rb")
+                                           "rb")
 
 
 class TestHeaderFromRefs(unittest.TestCase):

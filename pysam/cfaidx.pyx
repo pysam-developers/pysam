@@ -86,7 +86,7 @@ cdef class FastaFile:
 
     def __len__(self):
         if self.fastafile == NULL:
-            raise ValueError( "calling len() on closed file" )
+            raise ValueError("calling len() on closed file")
 
         return faidx_nseq(self.fastafile)
 
