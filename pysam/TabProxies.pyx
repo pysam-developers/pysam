@@ -3,8 +3,11 @@ import sys
 import string
 
 from cpython.version cimport PY_MAJOR_VERSION
+from cpython cimport PyErr_SetString, PyBytes_Check
+from cpython cimport PyUnicode_Check, PyBytes_FromStringAndSize
 
-from cpython cimport PyErr_SetString, PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
+from libc.stdio cimport printf
+
 
 cdef from_string_and_size(char* s, size_t length):
     if PY_MAJOR_VERSION < 3:
@@ -112,26 +115,28 @@ cdef class TupleProxy:
                     free( self.fields[x] )
                     self.fields[x] = NULL
 
-        if self.data != NULL: free(self.data)
-        if self.fields != NULL: free( self.fields )
+        if self.data != NULL:
+            free(self.data)
+        if self.fields != NULL:
+            free(self.fields)
 
-    cdef take( self, char * buffer, size_t nbytes ):
+    cdef take(self, char * buffer, size_t nbytes):
         '''start presenting buffer.
 
         Take ownership of the pointer.
         '''
         self.data = buffer
         self.nbytes = nbytes
-        self.update( buffer, nbytes )
+        self.update(buffer, nbytes)
 
-    cdef present( self, char * buffer, size_t nbytes ):
+    cdef present(self, char * buffer, size_t nbytes):
         '''start presenting buffer.
 
         Do not take ownership of the pointer.
         '''
         self.update(buffer, nbytes)
 
-    cdef copy( self, char * buffer, size_t nbytes ):
+    cdef copy(self, char * buffer, size_t nbytes):
         '''start presenting buffer of size *nbytes*.
 
         Buffer is a '\0'-terminated string without the '\n'.
@@ -141,12 +146,12 @@ cdef class TupleProxy:
         cdef int s
         # +1 for '\0'
         s = sizeof(char) *  (nbytes + 1)
-        self.data = <char*>malloc( s ) 
+        self.data = <char*>malloc(s)
         if self.data == NULL:
-            raise ValueError("out of memory" )
+            raise ValueError("out of memory in TupleProxy.copy()")
         self.nbytes = nbytes
-        memcpy( <char*>self.data, buffer, s )
-        self.update( self.data, nbytes )
+        memcpy(<char*>self.data, buffer, s)
+        self.update(self.data, nbytes)
 
     cdef int getMinFields(self):
         '''return minimum number of fields.'''
@@ -154,9 +159,10 @@ cdef class TupleProxy:
         # could be more generic.
         return 1
 
-    cdef int getMaxFields(self, size_t nfields):
-        '''initialize fields.'''
-        return nfields
+    cdef int getMaxFields(self):
+        '''return maximum number of fields. Return 
+        0 for unknown length.'''
+        return 0
 
     cdef update(self, char * buffer, size_t nbytes):
         '''update internal data.
@@ -196,18 +202,23 @@ cdef class TupleProxy:
 
         #################################
         # clear data
+        if self.fields != NULL:
+            free(self.fields)
+ 
         for field from 0 <= field < self.nfields:
             if isNew(self.fields[field], self.data, self.nbytes):
                 free(self.fields[field])
-
-        if self.fields != NULL:
-            free(self.fields)
                 
         self.is_modified = self.nfields = 0
 
         #################################
         # allocate new
-        max_fields = self.getMaxFields(len(buffer.split("\t")))
+        max_fields = self.getMaxFields()
+        if max_fields == 0:
+            # auto-detect fields
+            # need to do this quicker
+            max_fields = len(buffer.split("\t"))
+
         self.fields = <char **>calloc(max_fields, sizeof(char *)) 
         if self.fields == NULL:
             raise ValueError("out of memory in TupleProxy.update()")
@@ -218,30 +229,28 @@ cdef class TupleProxy:
         self.fields[field] = pos = buffer
         field += 1
         old_pos = pos
-        
         while 1:
             
             pos = <char*>memchr(pos, '\t', nbytes)
             if pos == NULL:
                 break
-            pos[0] = '\0'
-            pos += 1
-            self.fields[field] = pos
-            field += 1
             if field >= max_fields:
                 raise ValueError(
                     "parsing error: more than %i fields in line: %s" %
                     (max_fields, buffer))
+
+            pos[0] = '\0'
+            pos += 1
+            self.fields[field] = pos
+            field += 1
             nbytes -= pos - old_pos
             if nbytes < 0:
                 break
             old_pos = pos
-
         self.nfields = field
         if self.nfields < self.getMinFields():
             raise ValueError("parsing error: fewer that %i fields in line: %s" %
                              (self.getMinFields(), buffer))
-
 
     def _getindex(self, int index):
         '''return item at idx index'''
@@ -270,8 +279,8 @@ cdef class TupleProxy:
         if idx >= self.nfields:
             raise IndexError( "list index out of range" )
 
-        if isNew( self.fields[idx], self.data, self.nbytes ):
-            free( self.fields[idx] )
+        if isNew(self.fields[idx], self.data, self.nbytes):
+            free(self.fields[idx] )
 
         self.is_modified = 1
 
@@ -282,18 +291,19 @@ cdef class TupleProxy:
         # conversion with error checking
         value = _force_bytes(value)
         cdef char * tmp = <char*>value
-        self.fields[idx] = <char*>malloc( (strlen( tmp ) + 1) * sizeof(char) )
+        self.fields[idx] = <char*>malloc((strlen( tmp ) + 1) * sizeof(char))
         if self.fields[idx] == NULL:
             raise ValueError("out of memory" )
         strcpy( self.fields[idx], tmp )
 
-    def __setitem__(self, index, value ):
+    def __setitem__(self, index, value):
         '''set item at *index* to *value*'''
         cdef int i = index
-        if i < 0: i += self.nfields
+        if i < 0:
+            i += self.nfields
         i += self.offset
         
-        self._setindex( i, value )
+        self._setindex(i, value)
 
     def __len__(self):
         return self.nfields
@@ -309,7 +319,8 @@ cdef class TupleProxy:
             raise StopIteration
         cdef char * retval = self.fields[self.index]
         self.index += 1
-        if retval == NULL: return None
+        if retval == NULL:
+            return None
         else: return retval
 
     def __str__(self):
@@ -318,14 +329,14 @@ cdef class TupleProxy:
         if self.is_modified:
             # todo: treat NULL values
             result = []
-            for x in xrange( 0, self.nfields ):
-                result.append( StrOrEmpty( self.fields[x]).decode('ascii') )
-            return "\t".join( result )
+            for x in xrange(0, self.nfields):
+                result.append(StrOrEmpty(self.fields[x]).decode('ascii'))
+            return "\t".join(result)
         else:
-            cpy = <char*>calloc( sizeof(char), self.nbytes+1 )
+            cpy = <char*>calloc(sizeof(char), self.nbytes+1)
             if cpy == NULL:
                 raise ValueError("out of memory" )
-            memcpy( cpy, self.data, self.nbytes+1)
+            memcpy(cpy, self.data, self.nbytes+1)
             for x from 0 <= x < self.nbytes:
                 if cpy[x] == '\0': cpy[x] = '\t'
             result = cpy[:self.nbytes]
@@ -374,7 +385,7 @@ cdef class GTFProxy(TupleProxy):
         '''return minimum number of fields.'''
         return 3
 
-    cdef int getMaxFields(self, size_t nfields):
+    cdef int getMaxFields(self):
         '''return max number of fields.'''
         return 9
 
@@ -645,7 +656,7 @@ cdef class BedProxy( NamedTupleProxy ):
         '''return minimum number of fields.'''
         return 3
 
-    cdef int getMaxFields(self, size_t nfields):
+    cdef int getMaxFields(self):
         '''return max number of fields.'''
         return 12
 

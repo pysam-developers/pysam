@@ -139,10 +139,10 @@ cdef class asGTF(Parser):
     cdef parse(self, char * buffer, int len):
         cdef TabProxies.GTFProxy r
         r = TabProxies.GTFProxy()
-        r.copy( buffer, len )
+        r.copy(buffer, len)
         return r
 
-cdef class asBed( Parser ):
+cdef class asBed(Parser):
     '''converts a :term:`tabix row` into a bed record
     with the following fields:
 
@@ -179,7 +179,7 @@ cdef class asBed( Parser ):
     cdef parse(self, char * buffer, int len):
         cdef TabProxies.BedProxy r
         r = TabProxies.BedProxy()
-        r.copy( buffer, len )
+        r.copy(buffer, len)
         return r
 
 cdef class asVCF( Parser ): 
