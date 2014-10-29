@@ -215,12 +215,7 @@ if len(sys.argv) == 2 and sys.argv[1] == "htslib":
 # cp samtools/*.h pysam/*.h pysam/include
 # cp samtools/win32/*.h pysam/include/win32
 
-try:
-    from setuptools import Extension, setup
-except ImportError:
-    from ez_setup import use_setuptools
-    use_setuptools()
-    from setuptools import Extension, setup
+from setuptools import Extension, setup
 
 #######################################################
 #######################################################
