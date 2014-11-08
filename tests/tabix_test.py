@@ -11,10 +11,7 @@ import shutil
 import gzip
 import pysam
 import unittest
-import itertools
-import subprocess
 import glob
-import re
 
 DATADIR = 'tabix_data'
 
@@ -36,9 +33,9 @@ def myzip_open(infile, mode="r"):
 
 
 def loadAndConvert(infile, encode=True):
-    '''load data from infile and convert all fields to bytes.
+    '''load data from infile and convert all fields to string.
 
-    infile can be either plain or compressed (ending in .gz).
+    Infile can be either plain or compressed (ending in .gz).
     '''
     data = []
     if infile.endswith(".gz"):
@@ -47,21 +44,14 @@ def loadAndConvert(infile, encode=True):
             if line.startswith("#"):
                 continue
             d = line.strip().split("\t")
-            if encode:
-                data.append([x.encode("ascii") for x in d])
-            else:
-                data.append(d)
-
+            data.append(d)
     else:
         with open(infile) as f:
             for line in f:
                 if line.startswith("#"):
                     continue
                 d = line.strip().split("\t")
-                if encode:
-                    data.append([x.encode("ascii") for x in d])
-                else:
-                    data.append(d)
+                data.append(d)
 
     return data
 
@@ -238,7 +228,8 @@ class IterationTest(unittest.TestCase):
 
         self.assertEqual(
             len(result), len(ref),
-            "unexpected number of results: result=%i, expected ref=%i, differences are %s: %s"
+            "unexpected number of results: "
+            "result=%i, expected ref=%i, differences are %s: %s"
             % (len(result), len(ref),
                a.difference(b),
                b.difference(a)))
@@ -247,9 +238,7 @@ class IterationTest(unittest.TestCase):
             self.assertEqual(
                 d[0], d[1],
                 "unexpected results in pair %i:\n'%s', expected\n'%s'" %
-                (x,
-                 d[0],
-                 d[1]))
+                (x, d[0], d[1]))
 
 
 class TestGZFile(IterationTest):
@@ -309,7 +298,7 @@ class TestIterationWithoutComments(IterationTest):
                 ref = self.getSubset(contig, start, end)
                 self.checkPairwise(result, ref)
 
-    def testPerContig(self):
+    def testPerContig2(self):
 
         start, end = None, None
         for contig in ("chr1", "chr2", "chr1", "chr2"):
@@ -424,19 +413,19 @@ class TestParser(unittest.TestCase):
             for y in range(len(r)):
                 r[y] = "test_%05i" % y
                 c[y] = "test_%05i" % y
-            self.assertEqual([x.encode("ascii") for x in c], list(r))
+            self.assertEqual([x for x in c], list(r))
             self.assertEqual("\t".join(c), str(r))
             # check second assignment
             for y in range(len(r)):
                 r[y] = "test_%05i" % y
-            self.assertEqual([x.encode("ascii") for x in c], list(r))
+            self.assertEqual([x for x in c], list(r))
             self.assertEqual("\t".join(c), str(r))
 
     def testUnset(self):
         for x, r in enumerate(self.tabix.fetch(parser=pysam.asTuple())):
             self.assertEqual(self.compare[x], list(r))
             c = list(r)
-            e = [x.decode('ascii') for x in r]
+            e = list(r)
             for y in range(len(r)):
                 r[y] = None
                 c[y] = None
@@ -580,9 +569,9 @@ class TestGTF(TestParser):
             c = self.compare[x]
             self.assertEqual(len(c), len(r))
             self.assertEqual(list(c), list(r))
-            self.assertEqual(c, splitToBytes(str(r)))
+            self.assertEqual(c, str(r).split("\t"))
             self.assertTrue(r.gene_id.startswith("ENSG"))
-            if r.feature != b'gene':
+            if r.feature != 'gene':
                 self.assertTrue(r.transcript_id.startswith("ENST"))
             self.assertEqual(c[0], r.contig)
 
@@ -624,30 +613,30 @@ class TestBed(unittest.TestCase):
         for x, r in enumerate(self.tabix.fetch(parser=pysam.asBed())):
             c = self.compare[x]
             self.assertEqual(len(c), len(r))
-            self.assertEqual(c, splitToBytes(str(r)))
-            self.assertEqual(list(c), list(r))
+            self.assertEqual(c, str(r).split("\t"))
             self.assertEqual(c[0], r.contig)
             self.assertEqual(int(c[1]), r.start)
             self.assertEqual(int(c[2]), r.end)
+            self.assertEqual(list(c), list(r))
 
     def testWrite(self):
 
         for x, r in enumerate(self.tabix.fetch(parser=pysam.asBed())):
             c = self.compare[x]
-            self.assertEqual(c, splitToBytes(str(r)))
+            self.assertEqual(c, str(r).split("\t"))
             self.assertEqual(list(c), list(r))
 
             r.contig = "test"
-            self.assertEqual(b"test", r.contig)
-            self.assertEqual(b"test", r[0])
+            self.assertEqual("test", r.contig)
+            self.assertEqual("test", r[0])
 
             r.start += 1
             self.assertEqual(int(c[1]) + 1, r.start)
-            self.assertEqual(str(int(c[1]) + 1), r[1].decode("ascii"))
+            self.assertEqual(str(int(c[1]) + 1), r[1])
 
             r.end += 1
             self.assertEqual(int(c[2]) + 1, r.end)
-            self.assertEqual(str(int(c[2]) + 1), r[2].decode("ascii"))
+            self.assertEqual(str(int(c[2]) + 1), r[2])
 
 
 class TestVCF(unittest.TestCase):
@@ -712,7 +701,7 @@ class TestVCFFromTabix(TestVCF):
             c = self.compare[x]
             # check unmodified string
             cmp_string = str(r)
-            ref_string = "\t".join([x.decode() for x in c])
+            ref_string = "\t".join([x for x in c])
 
             self.assertEqual(ref_string, cmp_string)
 
@@ -731,7 +720,7 @@ class TestVCFFromTabix(TestVCF):
                     c[y] = str(int(c[y]) + 1)
                 else:
                     setattr(r, field, "test_%i" % y)
-                    c[y] = ("test_%i" % y).encode('ascii')
+                    c[y] = "test_%i" % y
                     self.assertEqual(c[y], getattr(r, field),
                                      "mismatch in field %s: %s != %s" %
                                      (field, c[y], getattr(r, field)))
@@ -742,8 +731,8 @@ class TestVCFFromTabix(TestVCF):
                 self.assertEqual(len(c), len(r) + ncolumns)
 
             for y in range(len(c) - ncolumns):
-                c[ncolumns + y] = ("test_%i" % y).encode('ascii')
-                r[y] = ("test_%i" % y).encode('ascii')
+                c[ncolumns + y] = "test_%i" % y
+                r[y] = "test_%i" % y
                 self.assertEqual(c[ncolumns + y], r[y])
 
 

@@ -59,7 +59,8 @@ cdef _charptr_to_str(char* s):
         return s.decode("ascii")
 
 cdef _force_str(object s):
-    """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
+    """Return s converted to str type of current Python "
+    "(bytes in Py2, unicode in Py3)"""
     if s is None:
         return None
     if PY_MAJOR_VERSION < 3:
@@ -214,10 +215,13 @@ cdef class TupleProxy:
         #################################
         # allocate new
         max_fields = self.getMaxFields()
+        # pre-count fields - better would be
+        # to guess or dynamically grow
         if max_fields == 0:
-            # auto-detect fields
-            # need to do this quicker
-            max_fields = len(buffer.split("\t"))
+            for x from 0 <= x < nbytes:
+                if buffer[x] == '\t':
+                    max_fields += 1
+            max_fields += 1
 
         self.fields = <char **>calloc(max_fields, sizeof(char *)) 
         if self.fields == NULL:
@@ -249,42 +253,48 @@ cdef class TupleProxy:
             old_pos = pos
         self.nfields = field
         if self.nfields < self.getMinFields():
-            raise ValueError("parsing error: fewer that %i fields in line: %s" %
-                             (self.getMinFields(), buffer))
+            raise ValueError(
+                "parsing error: fewer that %i fields in line: %s" %
+                (self.getMinFields(), buffer))
 
     def _getindex(self, int index):
         '''return item at idx index'''
         cdef int i = index
-        if i < 0: i += self.nfields
-        if i < 0: raise IndexError( "list index out of range" )
+        if i < 0:
+            i += self.nfields
+        if i < 0:
+            raise IndexError("list index out of range")
         i += self.offset
         if i >= self.nfields:
-            raise IndexError( "list index out of range %i >= %i" % (i, self.nfields ))
-        return self.fields[i] 
+            raise IndexError(
+                "list index out of range %i >= %i" %
+                (i, self.nfields))
+        return _force_str(self.fields[i])
 
     def __getitem__(self, key):
         if type(key) == int:
-            return self._getindex( key )
+            return self._getindex(key)
         # slice object
-        start, end, step = key.indices( self.nfields )
+        start, end, step = key.indices(self.nfields)
         result = []
-        for index in range( start, end, step ):
-            result.append( self._getindex( index ) )
+        for index in range(start, end, step):
+            result.append(self._getindex(index))
         return result
 
-    def _setindex( self, index, value ):
+    def _setindex(self, index, value):
         '''set item at idx index.'''
         cdef int idx = index
-        if idx < 0: raise IndexError( "list index out of range" )        
+        if idx < 0:
+            raise IndexError("list index out of range")
         if idx >= self.nfields:
-            raise IndexError( "list index out of range" )
+            raise IndexError("list index out of range")
 
         if isNew(self.fields[idx], self.data, self.nbytes):
             free(self.fields[idx] )
 
         self.is_modified = 1
 
-        if value == None:
+        if value is None:
             self.fields[idx] = NULL
             return
 
@@ -294,7 +304,7 @@ cdef class TupleProxy:
         self.fields[idx] = <char*>malloc((strlen( tmp ) + 1) * sizeof(char))
         if self.fields[idx] == NULL:
             raise ValueError("out of memory" )
-        strcpy( self.fields[idx], tmp )
+        strcpy(self.fields[idx], tmp)
 
     def __setitem__(self, index, value):
         '''set item at *index* to *value*'''
@@ -321,7 +331,8 @@ cdef class TupleProxy:
         self.index += 1
         if retval == NULL:
             return None
-        else: return retval
+        else:
+            return _force_str(retval)
 
     def __str__(self):
         '''return original data'''
@@ -391,13 +402,17 @@ cdef class GTFProxy(TupleProxy):
 
     property contig:
        '''contig of feature.'''
-       def __get__( self ): return self._getindex( 0 )
-       def __set__( self, value ): self._setindex( 0, value )
+       def __get__(self):
+           return self._getindex(0)
+       def __set__(self, value):
+           self._setindex(0, value)
 
     property source:
        '''feature source.'''
-       def __get__( self ): return self._getindex( 1 )
-       def __set__( self, value ): self._setindex( 1, value )
+       def __get__(self):
+           return self._getindex(1)
+       def __set__(self, value):
+           self._setindex(1, value)
 
     property feature:
        '''feature name.'''
@@ -441,7 +456,7 @@ cdef class GTFProxy(TupleProxy):
            if self.hasOwnAttributes:
                return self._attributes
            else:
-               return self._getindex( 8 )
+               return self._getindex(8)
        def __set__( self, value ): 
            if self.hasOwnAttributes:
                free(self._attributes)
@@ -449,7 +464,7 @@ cdef class GTFProxy(TupleProxy):
                self.hasOwnAttributes = False
            self._setindex(8, value )
 
-    cdef char * getAttributes( self ):
+    cdef char * getAttributes(self):
        '''return pointer to attributes.'''
        if self.hasOwnAttributes:
            return self._attributes
@@ -552,12 +567,13 @@ cdef class GTFProxy(TupleProxy):
     def keys( self ):
         '''return a list of attributes defined in this entry.'''
         r = self.attributes
-        return [ x.strip().split(" ")[0] for x in r.split(";") if x.strip() != '' ]
+        return [x.strip().split(" ")[0]
+                for x in r.split(";") if x.strip() != '']
 
     def __getitem__(self, key):
-        return self.__getattr__( key )
+        return self.__getattr__(key)
 
-    def __getattr__(self, item ):
+    def __getattr__(self, item):
         """Generic lookup of attribute from GFF/GTF attributes 
         Only called if there *isn't* an attribute with this name
         """
@@ -589,7 +605,7 @@ cdef class GTFProxy(TupleProxy):
         start = strstr(attributes, query)
 
         if start == NULL:
-            raise AttributeError("'GTFProxy' has no attribute '%s'" % item )
+            raise AttributeError("'GTFProxy' has no attribute '%s'" % item)
 
         start += strlen(query)
         # skip gaps before
@@ -599,14 +615,15 @@ cdef class GTFProxy(TupleProxy):
         if start[0] == '"':
             start += 1
             end = start
-            while end[0] != '\0' and end[0] != '"': end += 1
+            while end[0] != '\0' and end[0] != '"':
+                end += 1
             l = end - start
-            result = _force_str(PyBytes_FromStringAndSize( start, l ))
+            result = _force_str(PyBytes_FromStringAndSize(start, l))
             return result
         else:
             return _force_str(start)
 
-    def setAttribute( self, name, value ):
+    def setAttribute(self, name, value):
         '''convenience method to set an attribute.'''
         r = self.asDict()
         r[name] = value
@@ -617,40 +634,42 @@ cdef class NamedTupleProxy(TupleProxy):
 
     map_key2field = {}
 
-    def __setattr__(self, key, value ):
+    def __setattr__(self, key, value):
         '''set attribute.'''
         cdef int idx
         idx, f = self.map_key2field[key]
         if self.nfields < idx:
-            raise KeyError( "field %s not set" % key )
-        TupleProxy.__setitem__(self, idx, str(value) )
+            raise KeyError("field %s not set" % key)
+        TupleProxy.__setitem__(self, idx, str(value))
 
-    def __getattr__(self, key ):
+    def __getattr__(self, key):
         cdef int idx
         idx, f = self.map_key2field[key]
         if self.nfields < idx:
-            raise KeyError( "field %s not set" % key )
-        return f( self.fields[idx] )
+            raise KeyError("field %s not set" % key)
+        if f == str:
+            return _force_str(self.fields[idx])
+        return f(self.fields[idx])
 
 
-cdef class BedProxy( NamedTupleProxy ):
+cdef class BedProxy(NamedTupleProxy):
     '''Proxy class for access to Bed fields.
 
     This class represents a BED entry for fast read-access.
     '''
     map_key2field = {
-        'contig' : (0, bytes),
+        'contig' : (0, str),
         'start' : (1, int),
         'end' : (2, int),
-        'name' : (3, bytes),
+        'name' : (3, str),
         'score' : (4, float),
-        'strand' : (5, bytes),
-        'thickStart' : (6, int ),
+        'strand' : (5, str),
+        'thickStart' : (6, int),
         'thickEnd' : (7, int),
-        'itemRGB' : (8, bytes),
+        'itemRGB' : (8, str),
         'blockCount': (9, int),
-        'blockSizes': (10, bytes),
-        'blockStarts': (11, bytes), } 
+        'blockSizes': (10, str),
+        'blockStarts': (11, str), } 
 
     cdef int getMinFields(self):
         '''return minimum number of fields.'''
@@ -660,15 +679,16 @@ cdef class BedProxy( NamedTupleProxy ):
         '''return max number of fields.'''
         return 12
 
-    cdef update( self, char * buffer, size_t nbytes ):
+    cdef update(self, char * buffer, size_t nbytes):
         '''update internal data.
 
         nbytes does not include the terminal '\0'.
         '''
-        TupleProxy.update( self, buffer, nbytes )
+        TupleProxy.update(self, buffer, nbytes)
 
         if self.nfields < 3:
-            raise ValueError( "bed format requires at least three columns" )
+            raise ValueError(
+                "bed format requires at least three columns")
 
         # determines bed format
         self.bedfields = self.nfields
@@ -703,28 +723,28 @@ cdef class BedProxy( NamedTupleProxy ):
         idx, f = self.map_key2field[key]
         TupleProxy._setindex(self, idx, str(value) )
 
-cdef class VCFProxy( NamedTupleProxy ):
+cdef class VCFProxy(NamedTupleProxy):
     '''Proxy class for access to VCF fields.
 
     The genotypes are accessed via index.
     '''
     map_key2field = { 
-        'contig' : (0, bytes),
+        'contig' : (0, str),
         'pos' : (1, int),
-        'id' : (2, bytes),
-        'ref' : (3, bytes),
-        'alt' : (4, bytes),
-        'qual' : (5, bytes),
-        'filter' : (6, bytes),
-        'info' : (7, bytes),
-        'format' : (8, bytes) }
+        'id' : (2, str),
+        'ref' : (3, str),
+        'alt' : (4, str),
+        'qual' : (5, str),
+        'filter' : (6, str),
+        'info' : (7, str),
+        'format' : (8, str) }
 
-    def __cinit__(self ): 
+    def __cinit__(self): 
         # automatically calls TupleProxy.__cinit__
         # start indexed access at genotypes
         self.offset = 9
 
-    cdef update( self, char * buffer, size_t nbytes ):
+    cdef update(self, char * buffer, size_t nbytes):
         '''update internal data.
         
         nbytes does not include the terminal '\0'.

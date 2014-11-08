@@ -71,7 +71,8 @@ cdef _charptr_to_str(char* s):
         return s.decode("ascii")
 
 cdef _force_str(object s):
-    """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
+    """Return s converted to str type of current Python
+    (bytes in Py2, unicode in Py3)"""
     if s is None:
         return None
     if PY_MAJOR_VERSION < 3:
@@ -342,7 +343,7 @@ cdef class TabixFile:
                                   0)
         else:
             iter = tbx_itr_querys(self.index,
-                                  region)
+                                  _force_bytes(region))
 
         if iter == NULL:
             if region is None:
@@ -351,7 +352,8 @@ cdef class TabixFile:
                 return EmptyIterator()
             else:
                 raise ValueError(
-                    "could not create iterator for region '%s'" % region)
+                    "could not create iterator for region '%s'" %
+                    region)
             
         # use default parser if no parser is specified
         if parser is None:
@@ -479,8 +481,10 @@ class EmptyIterator:
     def __iter__(self):
         return self
 
-
     def next(self):
+        raise StopIteration()
+
+    def __next__(self):
         raise StopIteration()
 
 
@@ -553,7 +557,7 @@ cdef class GZIterator:
         cdef int retval = self.__cnext__()
         if retval < 0:
             raise StopIteration
-        return self.buffer.s
+        return _force_str(self.buffer.s)
 
 
 cdef class GZIteratorHead(GZIterator):
@@ -695,28 +699,31 @@ def tabix_index( filename,
     if not os.path.exists(filename):
         raise IOError("No such file '%s'" % filename)
 
-    if preset == None and (seq_col == None or start_col == None or end_col == None):
-        raise ValueError("neither preset nor seq_col,start_col and end_col given" )
+    if preset is None and \
+       (seq_col is None or start_col is None or end_col is None):
+        raise ValueError(
+            "neither preset nor seq_col,start_col and end_col given")
 
     if not filename.endswith(".gz"): 
-        tabix_compress( filename, filename + ".gz", force = force )
+        tabix_compress(filename, filename + ".gz", force=force)
         os.unlink( filename )
         filename += ".gz"
 
-    if not force and os.path.exists(filename + ".tbi" ):
-        raise IOError( "Filename '%s.tbi' already exists, use *force* to overwrite" )
+    if not force and os.path.exists(filename + ".tbi"):
+        raise IOError(
+            "Filename '%s.tbi' already exists, use *force* to overwrite")
 
     # columns (1-based):
     #   preset-code, contig, start, end, metachar for
     #     comments, lines to ignore at beginning
     # 0 is a missing column
     preset2conf = {
-        'gff' : ( 0, 1, 4, 5, ord('#'), 0 ),
-        'bed' : ( 0x10000, 1, 2, 3, ord('#'), 0 ),
-        'psltbl' : ( 0x10000, 15, 17, 18, ord('#'), 0 ),
-        'sam' : ( 1, 3, 4, 0, ord('@'), 0 ),
-        'vcf' : ( 2, 1, 2, 0, ord('#'), 0 ),
-        'pileup': (3, 1, 2, 0, ord('#'), 0 ),
+        'gff' : (0, 1, 4, 5, ord('#'), 0),
+        'bed' : (0x10000, 1, 2, 3, ord('#'), 0),
+        'psltbl' : (0x10000, 15, 17, 18, ord('#'), 0),
+        'sam' : (1, 3, 4, 0, ord('@'), 0),
+        'vcf' : (2, 1, 2, 0, ord('#'), 0),
+        'pileup': (3, 1, 2, 0, ord('#'), 0),
         }
 
     if preset:
@@ -935,9 +942,9 @@ class tabix_generic_iterator:
             line = self.infile.readline()
             if not line: break
             
-            s = _force_bytes( line )
+            s = _force_bytes(line)
             b = s
-            nbytes = len( line )
+            nbytes = len(line)
             assert b[nbytes] == '\0'
 
             # skip comments
