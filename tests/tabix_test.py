@@ -269,6 +269,19 @@ class TestIterationWithoutComments(IterationTest):
         IterationTest.setUp(self)
         self.tabix = pysam.TabixFile(self.filename)
 
+    def testRegionStrings(self):
+        """test if access with various region strings
+        works"""
+
+        self.assertEqual(218, len(list(
+            self.tabix.fetch("chr1"))))
+        self.assertEqual(218, len(list(
+            self.tabix.fetch("chr1", 1000))))
+        self.assertEqual(218, len(list(
+            self.tabix.fetch("chr1", end=1000000))))
+        self.assertEqual(218, len(list(
+            self.tabix.fetch("chr1", 1000, 1000000))))
+
     def testAll(self):
         result = list(self.tabix.fetch())
         ref = self.getSubset()
@@ -331,10 +344,11 @@ class TestIterationWithoutComments(IterationTest):
 
         # out of range access
         # to be implemented
-        # self.assertRaises( IndexError, self.tabix.fetch, "chr1", 1000000, 2000000 )
+        # self.assertRaises(IndexError, self.tabix.fetch, "chr1", 1000000, 2000000)
 
         # raise no error for invalid intervals
         self.tabix.fetch("chr1", 100, 100)
+
 
     def testGetContigs(self):
         self.assertEqual(sorted(self.tabix.contigs), [b"chr1", b"chr2"])
@@ -370,7 +384,6 @@ class TestIterationWithComments(TestIterationWithoutComments):
     '''test iterating with TabixFile.fetch() when
     there are comments in the file.
 
-    
     Tests will create plenty of warnings on stderr.
     '''
 
