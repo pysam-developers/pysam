@@ -13,10 +13,10 @@ cdef extern from *:
 cdef extern from "htslib_util.h":
 
     # add *nbytes* into the variable length data of *src* at *pos*
-    bam1_t * pysam_bam_update( bam1_t * b,
-                               size_t nbytes_old,
-                               size_t nbytes_new,
-                               uint8_t * pos )
+    bam1_t * pysam_bam_update(bam1_t * b,
+                              size_t nbytes_old,
+                              size_t nbytes_new,
+                              uint8_t * pos)
 
     # now: static
     int aux_type2size(int)
@@ -37,7 +37,7 @@ cdef extern from "htslib_util.h":
     void pysam_set_bin(bam1_t * b, uint16_t v)
     void pysam_set_qual(bam1_t * b, uint8_t v)
     void pysam_set_l_qname(bam1_t * b, uint8_t v)
-    void pysam_set_flag(bam1_t * b, uint8_t v)
+    void pysam_set_flag(bam1_t * b, uint16_t v)
     void pysam_set_n_cigar(bam1_t * b, uint16_t v)
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
