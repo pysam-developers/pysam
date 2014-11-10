@@ -1536,8 +1536,8 @@ class TestEmptyHeader(unittest.TestCase):
     '''see issue 84.'''
 
     def testEmptyHeader(self):
-
-        s = pysam.AlignmentFile(os.path.join(DATADIR, 'example_empty_header.bam'))
+        s = pysam.AlignmentFile(os.path.join(DATADIR,
+                                             'example_empty_header.bam'))
         self.assertEqual(s.header, {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
 
 
@@ -1549,7 +1549,7 @@ class TestTruncatedBAM(unittest.TestCase):
 
         s = pysam.AlignmentFile(os.path.join(DATADIR, 'ex2_truncated.bam'))
         iterall = lambda x: len([a for a in x])
-        self.assertRaises(ValueError, iterall, s)
+        self.assertRaises(IOError, iterall, s)
 
 
 class TestBTagSam(unittest.TestCase):

@@ -810,14 +810,16 @@ class TestIteratorColumn(unittest.TestCase):
     def checkRange(self, contig, start=None, end=None, truncate=False):
         '''compare results from iterator with those from samtools.'''
         # check if the same reads are returned and in the same order
-        for column in self.samfile.pileup(contig, start, end, truncate=truncate):
+        for column in self.samfile.pileup(contig, start, end,
+                                          truncate=truncate):
             if truncate:
                 self.assertGreaterEqual(column.pos, start)
                 self.assertLess(column.pos, end)
             thiscov = len(column.pileups)
             refcov = self.mCoverages[
                 self.samfile.getrname(column.tid)][column.pos]
-            self.assertEqual(thiscov, refcov, "wrong coverage at pos %s:%i %i should be %i" % (
+            self.assertEqual(
+                thiscov, refcov, "wrong coverage at pos %s:%i %i should be %i" % (
                 self.samfile.getrname(column.tid), column.pos, thiscov, refcov))
 
     def testIterateAll(self):

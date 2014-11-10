@@ -1231,7 +1231,7 @@ cdef class AlignmentFile:
         if (ret >= 0):
             return makeAlignedSegment(self.b)
         elif (ret == -2):
-            raise ValueError('Truncated file')
+            raise IOError('truncated file')
         else:
             raise StopIteration
 
@@ -1407,7 +1407,7 @@ cdef class IteratorRowHead(IteratorRow):
             self.current_row += 1
             return makeAlignedSegment( self.b )
         elif (ret == -2):
-            raise ValueError('Truncated file')
+            raise IOError('truncated file')
         else:
             raise StopIteration
 
@@ -1453,7 +1453,7 @@ cdef class IteratorRowAll(IteratorRow):
         if (ret >= 0):
             return makeAlignedSegment(self.b)
         elif (ret == -2):
-            raise ValueError('Truncated file')
+            raise IOError('truncated file')
         else:
             raise StopIteration
 
@@ -1560,7 +1560,7 @@ cdef class IteratorRowSelection(IteratorRow):
         if (ret >= 0):
             return makeAlignedSegment(self.b)
         elif (ret == -2):
-            raise ValueError('Truncated file')
+            raise IOError('truncated file')
         else:
             raise StopIteration
 

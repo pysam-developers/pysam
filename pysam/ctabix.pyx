@@ -342,8 +342,8 @@ cdef class TabixFile:
                                   0,
                                   0)
         else:
-            iter = tbx_itr_querys(self.index,
-                                  _force_bytes(region))
+            s = _force_bytes(region)
+            iter = tbx_itr_querys(self.index, s)
 
         if iter == NULL:
             if region is None:
