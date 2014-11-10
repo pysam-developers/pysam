@@ -1541,6 +1541,17 @@ class TestEmptyHeader(unittest.TestCase):
         self.assertEqual(s.header, {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
 
 
+class TestTruncatedBAM(unittest.TestCase):
+
+    '''see pull request 50.'''
+
+    def testTruncatedBam(self):
+
+        s = pysam.AlignmentFile(os.path.join(DATADIR, 'ex2_truncated.bam'))
+        iterall = lambda x: len([a for a in x])
+        self.assertRaises(ValueError, iterall, s)
+
+
 class TestBTagSam(unittest.TestCase):
 
     '''see issue 81.'''
