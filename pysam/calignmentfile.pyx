@@ -1212,7 +1212,6 @@ cdef class AlignmentFile:
         '''
         cversion of iterator. Used by :class:`pysam.AlignmentFile.IteratorColumn`.
         '''
-        cdef int ret
         return sam_read1(self.htsfile,
                          self.header,
                          self.b)
@@ -1221,10 +1220,11 @@ cdef class AlignmentFile:
         """
         python version of next().
         """
-        cdef int ret
-        ret = sam_read1(self.htsfile, self.header, self.b)
+        cdef int ret = self.cnext()
         if (ret >= 0):
             return makeAlignedSegment(self.b)
+        elif (ret == -2):
+            raise ValueError('Truncated file')
         else:
             raise StopIteration
 
@@ -1357,13 +1357,13 @@ cdef class IteratorRowHead(IteratorRow):
 
     iterate over first n reads in *samfile*
 
-    By default, the file is re-openend to avoid conflicts between
+    By default, the file is re-opened to avoid conflicts between
     multiple iterators working on the same file. Set *reopen* = False
     to not re-open *samfile*.
 
     .. note::
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a :meth:`AlignmentFile.head`.
+        explicitly. It is returned as a result of call to a :meth:`AlignmentFile.head`.
         
 
     """
@@ -1395,12 +1395,12 @@ cdef class IteratorRowHead(IteratorRow):
         if self.current_row >= self.max_rows:
             raise StopIteration
 
-        cdef int ret
-        ret = sam_read1(self.htsfile,
-                        self.samfile.header, self.b)
+        cdef int ret = self.cnext()
         if (ret >= 0):
             self.current_row += 1
             return makeAlignedSegment( self.b )
+        elif (ret == -2):
+            raise ValueError('Truncated file')
         else:
             raise StopIteration
 
@@ -1410,13 +1410,13 @@ cdef class IteratorRowAll(IteratorRow):
 
     iterate over all reads in *samfile*
 
-    By default, the file is re-openend to avoid conflicts between
+    By default, the file is re-opened to avoid conflicts between
     multiple iterators working on the same file. Set *reopen* = False
     to not re-open *samfile*.
 
     .. note::
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
+        explicitly. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
         
 
     """
@@ -1442,12 +1442,11 @@ cdef class IteratorRowAll(IteratorRow):
 
         pyrex uses this non-standard name instead of next()
         """
-        cdef int ret
-        ret = sam_read1(self.htsfile,
-                        self.samfile.header,
-                        self.b)
+        cdef int ret = self.cnext()
         if (ret >= 0):
             return makeAlignedSegment(self.b)
+        elif (ret == -2):
+            raise ValueError('Truncated file')
         else:
             raise StopIteration
 
@@ -1550,10 +1549,11 @@ cdef class IteratorRowSelection(IteratorRow):
 
         pyrex uses this non-standard name instead of next()
         """
-
         cdef int ret = self.cnext()
         if (ret >= 0):
             return makeAlignedSegment(self.b)
+        elif (ret == -2):
+            raise ValueError('Truncated file')
         else:
             raise StopIteration
 
