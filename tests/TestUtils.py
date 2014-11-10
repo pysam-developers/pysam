@@ -1,13 +1,14 @@
 import sys
 import os
-import urllib2
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
 if IS_PYTHON3:
     from itertools import zip_longest
+    from urllib.request import urlopen
 else:
     from itertools import izip as zip_longest
+    from urllib2 import urlopen
 
 
 def checkBinaryEqual(filename1, filename2):
@@ -44,9 +45,8 @@ def checkURL(url):
     or there is no connection to the URL.
     '''
     try:
-        urllib2.urlopen(url, timeout=1)
+        urlopen(url, timeout=1)
         return True
-    except urllib2.URLError:
-        pass
-    return False
+    except:
+        return False
 

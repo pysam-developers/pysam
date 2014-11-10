@@ -58,7 +58,8 @@ cdef bytes _encodeFilename(object filename):
         raise TypeError, u"Argument must be string or unicode."
 
 cdef bytes _forceBytes(object s):
-    u"""convert string or unicode object to bytes, assuming ascii encoding.
+    u"""convert string or unicode object to bytes, assuming
+    ascii encoding.
     """
     if PY_MAJOR_VERSION < 3:
         return s
@@ -421,8 +422,10 @@ cdef class AlignmentFile:
                 n = 0
                 for x in referencenames:
                     n += len(x) + 1
-                self.header.target_name = <char**>calloc(n, sizeof(char*))
-                self.header.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
+                self.header.target_name = <char**>calloc(
+                    n, sizeof(char*))
+                self.header.target_len = <uint32_t*>calloc(
+                    n, sizeof(uint32_t))
                 for x from 0 <= x < self.header.n_targets:
                     self.header.target_len[x] = referencelengths[x]
                     name = referencenames[x]
@@ -524,7 +527,7 @@ cdef class AlignmentFile:
             if not self.isstream:
                 self.start_offset = bgzf_tell(self.fp)
 
-    def gettid( self, reference ):
+    def gettid(self, reference):
         '''
         convert :term:`reference` name into numerical :term:`tid`
 
@@ -535,7 +538,7 @@ cdef class AlignmentFile:
         reference = _forceBytes(reference)
         return bam_name2id(self.header, reference)
 
-    def getrname( self, tid ):
+    def getrname(self, tid):
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
         if not self._isOpen():
