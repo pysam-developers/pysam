@@ -447,7 +447,6 @@ metadata = {
                     cvcf,
                     faidx],
     'cmdclass': cmdclass,
-    'install_requires': ['cython>=0.20.1', ],
     'package_dir': {'pysam': 'pysam',
                     'pysam.include.htslib': 'htslib',
                     'pysam.include.samtools': 'samtools'},
