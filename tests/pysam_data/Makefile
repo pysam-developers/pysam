@@ -10,6 +10,7 @@ all: ex1.pileup.gz \
         uncompressed.bam \
 	$(BAM) $(BAI) \
 	example_bai.bam \
+        rg_with_tab.bam \
 	ex2_truncated.bam
 
 # ex2.sam - as ex1.sam, but with header

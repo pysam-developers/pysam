@@ -977,8 +977,10 @@ cdef class AlignmentFile:
             return tuple(t)
 
     property lengths:
-        """tuple of the lengths of the :term:`reference` sequences. The lengths are in the same order as
+        """tuple of the lengths of the :term:`reference` sequences. The
+        lengths are in the same order as
         :attr:`pysam.AlignmentFile.references`
+
         """
         def __get__(self):
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
@@ -1033,98 +1035,144 @@ cdef class AlignmentFile:
             return hts_idx_get_n_no_coor(self.index)
 
     property text:
-        '''full contents of the :term:`sam file` header as a string.'''
+        '''full contents of the :term:`sam file` header as a string
+    
+        See :attr:`pysam.AlignmentFile.header` to get a parsed
+        representation of the header.
+
+        '''
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self._isOpen():
+                raise ValueError( "I/O operation on closed file" )
             return from_string_and_size(self.header.text, self.header.l_text)
 
     property header:
-        '''header information within the :term:`sam file`. The records and fields are returned as
-        a two-level dictionary.
+        '''header information within the :term:`sam file`. The records and
+        fields are returned as a two-level dictionary. 
+
+        The first level contains the record (``HD``, ``SQ``, etc) and
+        the second level contains the fields (``VN``, ``LN``, etc).
+        
+        The parser is validating and will raise an AssertionError if
+        if encounters any record or field tags that are not part of
+        the SAM specification. Use the
+        :attr:`pysam.AlignmentFile.text` attribute to get the unparsed
+        header.
+
+        The parsing follows the SAM format specification with the
+        exception of the ``CL`` field. This option will consume the
+        rest of a header line irrespective of any additional fields.
+        This behaviour has been added to accommodate command line
+        options that contain characters that are not valid field
+        separators.
+
         '''
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self._isOpen():
+                raise ValueError( "I/O operation on closed file" )
 
             result = {}
             
             if self.header.text != NULL:
-                # convert to python string (note: call self.text to create 0-terminated string)
+                # convert to python string (note: call self.text to
+                # create 0-terminated string)
                 t = self.text
                 for line in t.split("\n"):
                     if not line.strip(): continue
-                    assert line.startswith("@"), "header line without '@': '%s'" % line
+                    assert line.startswith("@"), \
+                        "header line without '@': '%s'" % line
                     fields = line[1:].split("\t")
                     record = fields[0]
-                    assert record in VALID_HEADER_TYPES, "header line with invalid type '%s': '%s'" % (record, line)
+                    assert record in VALID_HEADER_TYPES, \
+                        "header line with invalid type '%s': '%s'" % (record, line)
 
                     # treat comments
                     if record == "CO":
-                        if record not in result: result[record] = []
-                        result[record].append( "\t".join( fields[1:] ) )
+                        if record not in result:
+                            result[record] = []
+                        result[record].append("\t".join( fields[1:]))
                         continue
                     # the following is clumsy as generators do not work?
                     x = {}
-                    for field in fields[1:]:
+
+                    for idx, field in enumerate(fields[1:]):
                         if ":" not in field: 
                             raise ValueError("malformatted header: no ':' in field" )
-                        key, value = field.split(":",1)
+                        key, value = field.split(":", 1)
+                        if key in ("CL",):
+                            # special treatment for command line
+                            # statements (CL). These might contain
+                            # characters that are non-conformant with
+                            # the valid field separators in the SAM
+                            # header. Thus, in contravention to the
+                            # SAM API, consume the rest of the line.
+                            key, value = "\t".join(fields[idx+1:]).split(":", 1)
+                            x[key] = VALID_HEADER_FIELDS[record][key](value)
+                            break
+
                         # uppercase keys must be valid
-                        # lowercase are permitted for user fields
                         if key in VALID_HEADER_FIELDS[record]:
                             x[key] = VALID_HEADER_FIELDS[record][key](value)
+                        # lowercase are permitted for user fields
                         elif not key.isupper():
                             x[key] = value
                         else:
-                            raise ValueError( "unknown field code '%s' in record '%s'" % (key, record) )
+                            raise ValueError(
+                                "unknown field code '%s' in record '%s'" %
+                                (key, record))
 
                     if VALID_HEADER_TYPES[record] == dict:
                         if record in result:
-                            raise ValueError( "multiple '%s' lines are not permitted" % record )
+                            raise ValueError(
+                                "multiple '%s' lines are not permitted" % record)
+
                         result[record] = x
                     elif VALID_HEADER_TYPES[record] == list:
                         if record not in result: result[record] = []
-                        result[record].append( x )
+                        result[record].append(x)
 
                 # if there are no SQ lines in the header, add the reference names
                 # from the information in the bam file.
-                # Background: c-samtools keeps the textual part of the header separate from
-                # the list of reference names and lengths. Thus, if a header contains only 
-                # SQ lines, the SQ information is not part of the textual header and thus
-                # are missing from the output. See issue 84.
+                #
+                # Background: c-samtools keeps the textual part of the
+                # header separate from the list of reference names and
+                # lengths. Thus, if a header contains only SQ lines,
+                # the SQ information is not part of the textual header
+                # and thus are missing from the output. See issue 84.
                 if "SQ" not in result:
                     sq = []
-                    for ref, length in zip( self.references, self.lengths ):
-                        sq.append( {'LN': length, 'SN': ref } )
+                    for ref, length in zip(self.references, self.lengths):
+                        sq.append({'LN': length, 'SN': ref })
                     result["SQ"] = sq
 
             return result
 
-    def _buildLine( self, fields, record ):
+    def _buildLine(self, fields, record):
         '''build a header line from *fields* dictionary for *record*'''
 
         # TODO: add checking for field and sort order
-        line = ["@%s" % record ]
+        line = ["@%s" % record]
         # comment
         if record == "CO":
-            line.append( fields )
+            line.append(fields)
         # user tags
         elif record.islower():
             for key in sorted(fields):
-                line.append( "%s:%s" % (key, str(fields[key])))
+                line.append("%s:%s" % (key, str(fields[key])))
         # defined tags
         else:
             # write fields of the specification
             for key in VALID_HEADER_ORDER[record]:
                 if key in fields:
-                    line.append( "%s:%s" % (key, str(fields[key])))
+                    line.append("%s:%s" % (key, str(fields[key])))
             # write user fields
             for key in fields:
                 if not key.isupper():
-                    line.append( "%s:%s" % (key, str(fields[key])))
+                    line.append("%s:%s" % (key, str(fields[key])))
 
-        return "\t".join( line )
+        return "\t".join(line)
 
-    cdef bam_hdr_t * _buildHeader( self, new_header ):
+    cdef bam_hdr_t * _buildHeader(self, new_header):
         '''return a new header built from a dictionary in *new_header*.
 
         This method inserts the text field, target_name and target_len.

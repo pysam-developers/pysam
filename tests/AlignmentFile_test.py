@@ -1541,6 +1541,24 @@ class TestEmptyHeader(unittest.TestCase):
         self.assertEqual(s.header, {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
 
 
+class TestHeaderWithProgramOptions(unittest.TestCase):
+    '''see issue 39.'''
+
+    def testHeader(self):
+        s = pysam.AlignmentFile(os.path.join(DATADIR,
+                                             'rg_with_tab.bam'))
+        self.assertEqual(
+            s.header,
+            {'SQ': [{'LN': 1575, 'SN': 'chr1'},
+                    {'LN': 1584, 'SN': 'chr2'}],
+             'PG': [{'PN': 'bwa',
+                     'ID': 'bwa',
+                     'VN': '0.7.9a-r786',
+                     'CL': 'bwa mem -p -t 8 -M -R '
+                     '@RG\tID:None\tSM:None\t/mnt/data/hg19.fa\t'
+                     '/mnt/analysis/default-0.fastq'}]})
+
+
 class TestTruncatedBAM(unittest.TestCase):
 
     '''see pull request 50.'''
