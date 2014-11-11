@@ -14,7 +14,6 @@ import hashlib
 import re
 import fnmatch
 import platform
-import subprocess
 
 name = "pysam"
 
@@ -23,13 +22,13 @@ IS_PYTHON3 = sys.version_info[0] >= 3
 # How to link against HTSLIB
 # separate: use included htslib and include in each extension
 #           module. No dependencies between modules and works
-#           with setup.py install, but wasteful in terms of 
+#           with setup.py install, but wasteful in terms of
 #           memory and compilation time.
 # shared: share chtslib across extension modules. This would be
 #         the ideal method, but currently requires
 #         LD_LIBRARY_PATH to be set correctly when using
-#         pysam. 
-# external: use shared libhts.so compiled outside of 
+#         pysam.
+# external: use shared libhts.so compiled outside of
 #           pysam
 HTSLIB_MODE = "separate"
 HTSLIB_LIBRARY_DIR = os.environ.get('HTSLIB_LIBRARY_DIR', None)
@@ -263,6 +262,7 @@ else:
     faidx_sources = ["pysam/cfaidx.pyx"]
     tabproxies_sources = ["pysam/TabProxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
+
 
 #######################################################
 classifiers = """

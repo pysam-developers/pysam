@@ -102,10 +102,36 @@ Again, the iteration finishes as the temporary iterator created
 by pileup goes out of scope. The solution is to keep a handle
 to the iterator that remains alive::
 
-    i = Samfile( 'ex1.bam' ).pileup( 'chr1', 1000, 1010)
+    i = Samfile('ex1.bam').pileup( 'chr1', 1000, 1010)
     p = next(i)
     for pp in p.pileups:
         print pp
+
+Psyam won't compile
+===================
+
+Compiling pysam can be tricky as there are numerous variables that
+differ between build environments such as OS, version, python version,
+and compiler. It is difficult to build software that build cleanly
+on all systems and the process might fail. Please see the 
+`pysam user group
+<https://groups.google.com/forum/#!forum/pysam-user-group>`_
+for common issues.
+
+If there is a build issue, read the generated output carefully -
+generally the cause of the problem is among the first errors to be
+reported. For example, you will need to have the development version
+of python installed that includes the header files such as
+:file:`Python.h`. If that file is missing, the compiler will report
+this at the very top of its error messages but will follow it 
+with any unknown function or variable definition it encounters later
+on.
+
+A general advice is to always use the latest version on python_ and
+cython_ when building pysam. There are some known incompatibilities:
+
+* Python 3.4 requires cython 0.20.2 or later (see `here
+  <https://github.com/pysam-developers/pysam/issues/37>`_)
 
 
 

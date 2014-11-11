@@ -47,6 +47,20 @@ master_doc = 'index'
 project = u'pysam'
 copyright = u'2009, Andreas Heger, Tildon Grant Belgrad, Martin Goodson, Kevin Jacobs'
 
+# Included at the end of each rst file
+rst_epilog = '''
+.. _CGAT Training Programme: http://www.cgat.org
+.. _pysam: https://github.com/pysam-developers/pysam
+.. _samtools: http://samtools.sourceforge.net/
+.. _htslib: http://www.htslib.org/
+.. _tabix: http://samtools.sourceforge.net/tabix.shtml/
+.. _Galaxy: https://main.g2.bx.psu.edu/
+.. _cython: http://cython.org/
+.. _python: http://python.org/
+.. _pyximport: http://www.prescod.net/pyximport/
+
+'''
+
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
