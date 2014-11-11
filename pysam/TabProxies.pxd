@@ -47,7 +47,9 @@ cdef class TupleProxy:
         int index
         int nbytes
         int offset
-        cdef bint is_modified
+        bint is_modified
+
+    cdef encoding
 
     cdef int getMaxFields(self)
     cdef int getMinFields(self)

@@ -23,19 +23,7 @@ if _FILENAME_ENCODING is None:
 if _FILENAME_ENCODING is None:
     _FILENAME_ENCODING = 'ascii'
 
-cdef bytes _my_encodeFilename(object filename):
-    u"""Make sure a filename is 8-bit encoded (or None).
-    """
-    if filename is None:
-        return None
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(_FILENAME_ENCODING)
-    else:
-        raise TypeError, u"Argument must be string or unicode."
-
-cdef bytes _force_bytes(object s):
+cdef bytes _force_bytes(object s, encoding="ascii"):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     """
     if PY_MAJOR_VERSION < 3:
@@ -45,20 +33,20 @@ cdef bytes _force_bytes(object s):
     elif PyBytes_Check(s):
         return s
     elif PyUnicode_Check(s):
-        return s.encode('ascii')
+        return s.encode(encoding)
     else:
         raise TypeError, u"Argument must be string, bytes or unicode."
 
 cdef inline bytes _force_cmdline_bytes(object s):
     return _force_bytes(s)
 
-cdef _charptr_to_str(char* s):
+cdef _charptr_to_str(char* s, encoding="ascii"):
     if PY_MAJOR_VERSION < 3:
         return s
     else:
-        return s.decode("ascii")
+        return s.decode(encoding)
 
-cdef _force_str(object s):
+cdef inline _force_str(object s, encoding="ascii"):
     """Return s converted to str type of current Python "
     "(bytes in Py2, unicode in Py3)"""
     if s is None:
@@ -66,26 +54,29 @@ cdef _force_str(object s):
     if PY_MAJOR_VERSION < 3:
         return s
     elif PyBytes_Check(s):
-        return s.decode('ascii')
+        return s.decode(encoding)
     else:
         # assume unicode
         return s
 
-cdef char * nextItem( char * buffer ):
+cdef char * nextItem(char * buffer):
     cdef char * pos
-    pos = strchr( buffer, '\t' )
-    if pos == NULL: raise ValueError( "malformatted entry at %s" % buffer )
+    pos = strchr(buffer, '\t')
+    if pos == NULL:
+        raise ValueError("malformatted entry at %s" % buffer)
     pos[0] = '\0'
     pos += 1
     return pos
 
-cdef char *StrOrEmpty( char * buffer ):
-     if buffer == NULL: return ""
+cdef char *StrOrEmpty(char * buffer):
+     if buffer == NULL:
+         return ""
      else: return buffer
 
-cdef int isNew( char * p, char * buffer, size_t nbytes ):
-     if p == NULL: return 0
-     return not (buffer <= p < buffer + nbytes )
+cdef int isNew(char * p, char * buffer, size_t nbytes):
+     if p == NULL:
+         return 0
+     return not (buffer <= p < buffer + nbytes)
 
 cdef class TupleProxy:
     '''Proxy class for access to parsed row as a tuple.
@@ -98,7 +89,7 @@ cdef class TupleProxy:
 
     '''
 
-    def __cinit__(self ): 
+    def __cinit__(self, encoding="ascii"): 
         self.data = NULL
         self.fields = NULL
         self.index = 0
@@ -107,13 +98,14 @@ cdef class TupleProxy:
         self.nfields = 0
         # start counting at field offset
         self.offset = 0
+        self.encoding = encoding
 
     def __dealloc__(self):
         cdef int x
         if self.is_modified:
             for x from 0 <= x < self.nfields:
-                if isNew( self.fields[x], self.data, self.nbytes ):
-                    free( self.fields[x] )
+                if isNew(self.fields[x], self.data, self.nbytes):
+                    free(self.fields[x])
                     self.fields[x] = NULL
 
         if self.data != NULL:
@@ -264,12 +256,14 @@ cdef class TupleProxy:
             i += self.nfields
         if i < 0:
             raise IndexError("list index out of range")
+        # apply offset - separating a fixed number 
+        # of fields from a variable number such as in VCF
         i += self.offset
         if i >= self.nfields:
             raise IndexError(
                 "list index out of range %i >= %i" %
                 (i, self.nfields))
-        return _force_str(self.fields[i])
+        return _force_str(self.fields[i], self.encoding)
 
     def __getitem__(self, key):
         if type(key) == int:
@@ -332,7 +326,7 @@ cdef class TupleProxy:
         if retval == NULL:
             return None
         else:
-            return _force_str(retval)
+            return _force_str(retval, self.encoding)
 
     def __str__(self):
         '''return original data'''
@@ -341,18 +335,20 @@ cdef class TupleProxy:
             # todo: treat NULL values
             result = []
             for x in xrange(0, self.nfields):
-                result.append(StrOrEmpty(self.fields[x]).decode('ascii'))
+                result.append(StrOrEmpty(self.fields[x]).decode(self.encoding))
             return "\t".join(result)
         else:
             cpy = <char*>calloc(sizeof(char), self.nbytes+1)
             if cpy == NULL:
-                raise ValueError("out of memory" )
+                raise ValueError("out of memory")
             memcpy(cpy, self.data, self.nbytes+1)
             for x from 0 <= x < self.nbytes:
-                if cpy[x] == '\0': cpy[x] = '\t'
+                if cpy[x] == '\0':
+                    cpy[x] = '\t'
             result = cpy[:self.nbytes]
             free(cpy)
-            return result.decode('ascii')
+            r = result.decode(self.encoding)
+            return r
 
 def toDot(v):
     '''convert value to '.' if None'''
@@ -382,7 +378,7 @@ cdef class GTFProxy(TupleProxy):
     a dictionary - this field will manage its own memory.
     '''
 
-    def __cinit__(self ): 
+    def __cinit__(self): 
         # automatically calls TupleProxy.__cinit__
         self.hasOwnAttributes = False
         self._attributes = NULL
@@ -618,10 +614,11 @@ cdef class GTFProxy(TupleProxy):
             while end[0] != '\0' and end[0] != '"':
                 end += 1
             l = end - start
-            result = _force_str(PyBytes_FromStringAndSize(start, l))
+            result = _force_str(PyBytes_FromStringAndSize(start, l),
+                                self.encoding)
             return result
         else:
-            return _force_str(start)
+            return _force_str(start, self.encoding)
 
     def setAttribute(self, name, value):
         '''convenience method to set an attribute.'''
@@ -648,7 +645,8 @@ cdef class NamedTupleProxy(TupleProxy):
         if self.nfields < idx:
             raise KeyError("field %s not set" % key)
         if f == str:
-            return _force_str(self.fields[idx])
+            return _force_str(self.fields[idx],
+                              self.encoding)
         return f(self.fields[idx])
 
 
@@ -726,7 +724,8 @@ cdef class BedProxy(NamedTupleProxy):
 cdef class VCFProxy(NamedTupleProxy):
     '''Proxy class for access to VCF fields.
 
-    The genotypes are accessed via index.
+    The genotypes are accessed via a numeric index.
+    Sample headers are not available.
     '''
     map_key2field = { 
         'contig' : (0, str),
@@ -749,11 +748,11 @@ cdef class VCFProxy(NamedTupleProxy):
         
         nbytes does not include the terminal '\0'.
         '''
-        TupleProxy.update( self, buffer, nbytes )
+        TupleProxy.update(self, buffer, nbytes)
 
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here
-        self.pos = atoi( self.fields[1] ) - 1
+        self.pos = atoi(self.fields[1]) - 1
                              
     def __len__(self):
         '''return number of genotype fields.'''
@@ -761,10 +760,10 @@ cdef class VCFProxy(NamedTupleProxy):
 
     property pos:
        '''feature end (in 0-based open/closed coordinates).'''
-       def __get__( self ): 
+       def __get__(self): 
            return self.pos
 
-    def __setattr__(self, key, value ):
+    def __setattr__(self, key, value):
         '''set attribute.'''
         if key == "pos": 
             self.pos = value
@@ -772,5 +771,5 @@ cdef class VCFProxy(NamedTupleProxy):
 
         cdef int idx
         idx, f = self.map_key2field[key]
-        TupleProxy._setindex(self, idx, str(value) )
+        TupleProxy._setindex(self, idx, str(value))
 

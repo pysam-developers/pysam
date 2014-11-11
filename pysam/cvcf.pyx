@@ -15,29 +15,30 @@
 #
 # The sample keys are accessible through vcf.getsamples()
 #
-# A dictionary of values contains value keys (defined in ##INFO or ##FORMAT lines) which map
-# to a list, containign integers, floats, strings, or characters.  Missing values are replaced 
-# by a particular value, often -1 or .
+# A dictionary of values contains value keys (defined in ##INFO or
+# ##FORMAT lines) which map to a list, containign integers, floats,
+# strings, or characters.  Missing values are replaced by a particular
+# value, often -1 or .
 #
-# Genotypes are not stored as a string, but as a list of 1 or 3 elements (for haploid and diploid samples),
-# the first (and last) the integer representing an allele, and the second the separation character.
-# Note that there is just one genotype per sample, but for consistency the single element is stored in a list.
+# Genotypes are not stored as a string, but as a list of 1 or 3
+# elements (for haploid and diploid samples), the first (and last) the
+# integer representing an allele, and the second the separation
+# character.  Note that there is just one genotype per sample, but for
+# consistency the single element is stored in a list.
 #
-# Header lines other than ##INFO, ##FORMAT and ##FILTER are stored as (key, value) pairs and are accessible
-# through getheader()
+# Header lines other than ##INFO, ##FORMAT and ##FILTER are stored as
+# (key, value) pairs and are accessible through getheader()
 #
-# The VCF class can be instantiated with a 'regions' variable consisting of tuples (chrom,start,end) encoding
-# 0-based half-open segments.  Only variants with a position inside the segment will be parsed.  A regions
-# parser is available under parse_regions.
+# The VCF class can be instantiated with a 'regions' variable
+# consisting of tuples (chrom,start,end) encoding 0-based half-open
+# segments.  Only variants with a position inside the segment will be
+# parsed.  A regions parser is available under parse_regions.
 #
-# When instantiated, a reference can be passed to the VCF class.  This may be any class that supports a
-# fetch(chrom, start, end) method.
+# When instantiated, a reference can be passed to the VCF class.  This
+# may be any class that supports a fetch(chrom, start, end) method.
 #
-#
-#
-# NOTE: the position that is returned to Python is 0-based, NOT 1-based as in the VCF file.
-#
-#
+# NOTE: the position that is returned to Python is 0-based, NOT
+# 1-based as in the VCF file.
 #
 # TODO:
 #  only v4.0 writing is complete; alleles are not converted to v3.3 format
@@ -315,9 +316,11 @@ class VCF(object):
     _line = None
     _lines = None
 
-    def __init__(self, _copy=None, reference=None, regions=None, lines=None, leftalign=False):
+    def __init__(self, _copy=None, reference=None, regions=None,
+                 lines=None, leftalign=False):
         # make error identifiers accessible by name
-        for id in self._errors.keys(): self.__dict__[self._errors[id].split(':')[0]] = id
+        for id in self._errors.keys():
+            self.__dict__[self._errors[id].split(':')[0]] = id
         if _copy != None:
             self._leftalign = _copy._leftalign
             self._header = _copy._header[:]
@@ -335,6 +338,7 @@ class VCF(object):
         if regions: self._regions = regions
         if leftalign: self._leftalign = leftalign
         self._lines = lines
+        self.encoding = "ascii"
 
     def error(self,line,error,opt=None):
         if error in self._ignored_errors: return
@@ -518,7 +522,8 @@ class VCF(object):
             if f.id not in self._format:
                 self._format[f.id] = f
 
-    def parse_header( self, line ):
+    def parse_header(self, line):
+
         assert line.startswith('##')
         elts = line[2:].split('=')
         key = elts[0].strip()
@@ -881,23 +886,26 @@ class VCF(object):
                   alt,
                   qual,
                   filter,
-                  self.format_formatdata( data['info'], self._info, separator=";" ),
-                  self.format_formatdata( data['format'], self._format, value=False ) ]
+                  self.format_formatdata(
+                      data['info'], self._info, separator=";"),
+                  self.format_formatdata(
+                      data['format'], self._format, value=False)]
         
         for s in self._samples:
-            output.append( self.format_formatdata( data[s], self._format, key=False ) )
+            output.append(self.format_formatdata(
+                data[s], self._format, key=False))
         
         stream.write( "\t".join(output) + "\n" )
 
     def _parse_header(self, stream):
         self._lineno = 0
         for line in stream:
-            line = ctabix._force_str(line)
+            line = ctabix._force_str(line, self.encoding)
             self._lineno += 1
             if line.startswith('##'):
-                self.parse_header( line.strip() )
+                self.parse_header(line.strip())
             elif line.startswith('#'):
-                self.parse_heading( line.strip() )
+                self.parse_heading(line.strip())
                 self.enter_default_format()
             else:
                 break
@@ -1020,16 +1028,17 @@ class VCF(object):
 ## API functions added by Andreas
 ###########################################################################################################
 
-    def connect(self, filename):
+    def connect(self, filename, encoding="ascii"):
         '''connect to tabix file.'''
-        self.tabixfile = pysam.Tabixfile( filename )
+        self.encoding=encoding
+        self.tabixfile = pysam.Tabixfile(filename, encoding=encoding)
         self._parse_header(self.tabixfile.header)
         
     def fetch(self,
-              reference = None,
-              start = None, 
-              end = None, 
-              region = None ):
+              reference=None,
+              start=None, 
+              end=None, 
+              region=None ):
         """ Parse a stream of VCF-formatted lines.  
         Initializes class instance and return generator """
         return self.tabixfile.fetch(
@@ -1039,13 +1048,13 @@ class VCF(object):
             region,
             parser = asVCFRecord(self))
 
-    def validate( self, record ):
+    def validate(self, record):
         '''validate vcf record.
 
         returns a validated record.
         '''
         
-        raise NotImplementedError( "needs to be checked" )
+        raise NotImplementedError("needs to be checked")
 
         chrom, pos = record.chrom, record.pos
 

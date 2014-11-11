@@ -40,8 +40,17 @@ cdef class TabixFile:
     cdef char * _filename
 
     cdef Parser parser
-    
+
+    cdef encoding    
+
+###########################################
+# used by cvcf.pyx
+cdef _force_str(object s, encoding=?)
+
+###########################################
 cdef class Parser:
+    cdef encoding
+
     cdef parse(self, char * buffer, int len)
 
 cdef class asTuple(Parser):
@@ -60,6 +69,7 @@ cdef class TabixIterator:
     cdef hts_itr_t * iterator
     cdef TabixFile tabixfile
     cdef kstring_t buffer
+    cdef encoding
     cdef int __cnext__(self)
 
 cdef class TabixIteratorParsed(TabixIterator):
@@ -71,14 +81,13 @@ cdef class GZIterator:
     cdef kstream_t * kstream
     cdef kstring_t buffer
     cdef int __cnext__(self)
+    cdef encoding
 
 cdef class GZIteratorHead(GZIterator):
     pass
 
 cdef class GZIteratorParsed(GZIterator):
     cdef Parser parser
-
-cdef _force_str(object s)
 
 # Compatibility Layer for pysam < 0.8
 cdef class Tabixfile(TabixFile):

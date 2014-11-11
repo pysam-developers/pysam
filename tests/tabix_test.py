@@ -657,7 +657,6 @@ class TestVCF(unittest.TestCase):
     filename = os.path.join(DATADIR, "example.vcf40")
 
     def setUp(self):
-
         self.tmpfilename = "tmp_%s.vcf" % id(self)
         shutil.copyfile(self.filename, self.tmpfilename)
         pysam.tabix_index(self.tmpfilename, preset="vcf")
@@ -666,6 +665,36 @@ class TestVCF(unittest.TestCase):
         os.unlink(self.tmpfilename + ".gz")
         if os.path.exists(self.tmpfilename + ".gz.tbi"):
             os.unlink(self.tmpfilename + ".gz.tbi")
+
+
+if IS_PYTHON3:
+    class TestUnicode(unittest.TestCase):
+        '''test reading from a file with non-ascii characters.'''
+
+        filename = os.path.join(DATADIR, "example_unicode.vcf")
+
+        def setUp(self):
+            self.tmpfilename = "tmp_%s.vcf" % id(self)
+            shutil.copyfile(self.filename, self.tmpfilename)
+            pysam.tabix_index(self.tmpfilename, preset="vcf")
+
+        def testFromTabix(self):
+
+            # use ascii encoding - should raise error
+            t = pysam.TabixFile(self.tmpfilename + ".gz", encoding="ascii")
+            results = list(t.fetch(parser=pysam.asVCF()))
+            self.assertRaises(UnicodeDecodeError, getattr, results[1], "id")
+
+            t = pysam.TabixFile(self.tmpfilename + ".gz", encoding="utf-8")
+            results = list(t.fetch(parser=pysam.asVCF()))
+            self.assertEqual(getattr(results[1], "id"), u"Rene\xe9")
+
+        def testFromVCF(self):
+            self.vcf = pysam.VCF()
+            self.assertRaises(UnicodeDecodeError,
+                              self.vcf.connect, self.tmpfilename + ".gz", "ascii")
+            self.vcf.connect(self.tmpfilename + ".gz", encoding="utf-8")
+            v = self.vcf.getsamples()[0]
 
 
 class TestVCFFromTabix(TestVCF):

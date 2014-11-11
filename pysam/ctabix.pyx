@@ -35,7 +35,7 @@ if _FILENAME_ENCODING is None:
 #cdef char* _C_FILENAME_ENCODING
 #_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
 
-cdef bytes _encodeFilename(object filename):
+cdef inline bytes _encodeFilename(object filename):
     u"""Make sure a filename is 8-bit encoded (or None).
     """
     if filename is None:
@@ -47,7 +47,7 @@ cdef bytes _encodeFilename(object filename):
     else:
         raise TypeError, u"Argument must be string or unicode."
 
-cdef bytes _force_bytes(object s):
+cdef inline bytes _force_bytes(object s, encoding="ascii"):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     """
     if PY_MAJOR_VERSION < 3:
@@ -57,20 +57,17 @@ cdef bytes _force_bytes(object s):
     elif PyBytes_Check(s):
         return s
     elif PyUnicode_Check(s):
-        return s.encode('ascii')
+        return s.encode(encoding)
     else:
         raise TypeError, u"Argument must be string, bytes or unicode."
 
-cdef inline bytes _force_cmdline_bytes(object s):
-    return _force_bytes(s)
-
-cdef _charptr_to_str(char* s):
+cdef inline _charptr_to_str(char* s, encoding="ascii"):
     if PY_MAJOR_VERSION < 3:
         return s
     else:
-        return s.decode("ascii")
+        return s.decode(encoding)
 
-cdef _force_str(object s):
+cdef _force_str(object s, encoding="ascii"):
     """Return s converted to str type of current Python
     (bytes in Py2, unicode in Py3)"""
     if s is None:
@@ -78,13 +75,22 @@ cdef _force_str(object s):
     if PY_MAJOR_VERSION < 3:
         return s
     elif PyBytes_Check(s):
-        return s.decode('ascii')
+        return s.decode(encoding)
     else:
         # assume unicode
         return s
 
 
 cdef class Parser:
+
+    def __init__(self, encoding="ascii"):
+        self.encoding = encoding
+
+    def setEncoding(self, encoding):
+        self.encoding = encoding
+
+    def getEncoding(self):
+        return self.encoding
 
     cdef parse(self, char * buffer, int length):
         raise NotImplementedError(
@@ -93,6 +99,7 @@ cdef class Parser:
     def __call__(self, char * buffer, int length):
         return self.parse(buffer, length)
 
+
 cdef class asTuple(Parser):
     '''converts a :term:`tabix row` into a python tuple.
 
@@ -100,11 +107,12 @@ cdef class asTuple(Parser):
     ''' 
     cdef parse(self, char * buffer, int len):
         cdef TabProxies.TupleProxy r
-        r = TabProxies.TupleProxy()
+        r = TabProxies.TupleProxy(self.encoding)
         # need to copy - there were some
         # persistence issues with "present"
         r.copy(buffer, len)
         return r
+
 
 cdef class asGTF(Parser):
     '''converts a :term:`tabix row` into a GTF record with the following 
@@ -139,9 +147,10 @@ cdef class asGTF(Parser):
     ''' 
     cdef parse(self, char * buffer, int len):
         cdef TabProxies.GTFProxy r
-        r = TabProxies.GTFProxy()
+        r = TabProxies.GTFProxy(self.encoding)
         r.copy(buffer, len)
         return r
+
 
 cdef class asBed(Parser):
     '''converts a :term:`tabix row` into a bed record
@@ -179,11 +188,12 @@ cdef class asBed(Parser):
     ''' 
     cdef parse(self, char * buffer, int len):
         cdef TabProxies.BedProxy r
-        r = TabProxies.BedProxy()
+        r = TabProxies.BedProxy(self.encoding)
         r.copy(buffer, len)
         return r
 
-cdef class asVCF( Parser ): 
+
+cdef class asVCF(Parser): 
     '''converts a :term:`tabix row` into a VCF record with
     the following fields:
     
@@ -213,9 +223,9 @@ cdef class asVCF( Parser ):
         second_sample_genotype = vcf[1]
 
     '''
-    cdef parse(self, char * buffer, int len ):
+    cdef parse(self, char * buffer, int len):
         cdef TabProxies.VCFProxy r
-        r = TabProxies.VCFProxy()
+        r = TabProxies.VCFProxy(self.encoding)
         r.copy(buffer, len)
         return r
 
@@ -232,15 +242,19 @@ cdef class TabixFile:
     Otherwise, *parser* is assumed to be a functor that will return
     parsed data (see for example :meth:`asTuple` and :meth:`asGTF`).
     '''
-    def __cinit__(self, filename, mode = 'r',
+    def __cinit__(self,
+                  filename,
+                  mode = 'r',
                   parser=None,
                   index=None,
+                  encoding="ascii",
                   *args,
                   **kwargs ):
 
         self.tabixfile = NULL
         self.parser = parser
-        self._open( filename, mode, index, *args, **kwargs )
+        self._open(filename, mode, index, *args, **kwargs)
+        self.encoding = encoding
 
     def _open( self, 
                filename,
@@ -342,7 +356,7 @@ cdef class TabixFile:
                                   0,
                                   0)
         else:
-            s = _force_bytes(region)
+            s = _force_bytes(region, encoding=self.encoding)
             iter = tbx_itr_querys(self.index, s)
 
         if iter == NULL:
@@ -361,8 +375,9 @@ cdef class TabixFile:
 
         cdef TabixIterator a
         if parser is None: 
-            a = TabixIterator()
+            a = TabixIterator(encoding=self.encoding)
         else:
+            parser.setEncoding(self.encoding)
             a = TabixIteratorParsed(parser)
 
         a.tabixfile = self
@@ -432,6 +447,9 @@ cdef class TabixIterator:
     """iterates over rows in *tabixfile* in region
     given by *tid*, *start* and *end*.
     """
+
+    def __init__(self, encoding="ascii"):
+        self.encoding = encoding
     
     def __iter__(self):
         self.buffer.s = NULL
@@ -468,7 +486,7 @@ cdef class TabixIterator:
         if retval < 0:
             raise StopIteration
 
-        return _charptr_to_str(self.buffer.s)
+        return _charptr_to_str(self.buffer.s, self.encoding)
 
     def __dealloc__(self):
         if <void*>self.iterator != NULL:
@@ -491,6 +509,8 @@ class EmptyIterator:
 cdef class TabixIteratorParsed(TabixIterator):
     """iterates over mapped reads in a region.
 
+    The *parser* determines the encoding.
+
     Returns parsed data.
     """
 
@@ -509,11 +529,12 @@ cdef class TabixIteratorParsed(TabixIterator):
         cdef int retval = self.__cnext__()
         if retval < 0:
             raise StopIteration
-        return self.parser.parse(self.buffer.s, self.buffer.l)
+        return self.parser.parse(self.buffer.s,
+                                 self.buffer.l)
 
 
 cdef class GZIterator:
-    def __init__(self, filename, int buffer_size=65536):
+    def __init__(self, filename, int buffer_size=65536, encoding="ascii"):
         '''iterate line-by-line through gzip (or bgzip)
         compressed file.
         '''
@@ -524,6 +545,7 @@ cdef class GZIterator:
         self.gzipfile = gzopen(filename, "r")
         self._filename = filename
         self.kstream = ks_init(self.gzipfile)
+        self.encoding = encoding
 
         self.buffer.l = 0
         self.buffer.m = 0
@@ -557,7 +579,7 @@ cdef class GZIterator:
         cdef int retval = self.__cnext__()
         if retval < 0:
             raise StopIteration
-        return _force_str(self.buffer.s)
+        return _force_str(self.buffer.s, self.encoding)
 
 
 cdef class GZIteratorHead(GZIterator):
@@ -620,12 +642,12 @@ def tabix_compress(filename_in,
 
     WINDOW_SIZE = 64 * 1024
 
-    fn = _force_bytes(filename_out)
+    fn = _encodeFilename(filename_out)
     fp = bgzf_open( fn, "w")
     if fp == NULL:
         raise IOError("could not open '%s' for writing")
 
-    fn = _force_bytes(filename_in)
+    fn = _encodeFilename(filename_in)
     fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
         raise IOError("could not open '%s' for reading")
@@ -844,7 +866,7 @@ cdef class tabix_file_iterator:
                   int buffer_size=65536):
 
         if infile.closed:
-            raise ValueError( "I/O operation on closed file." )
+            raise ValueError("I/O operation on closed file.")
 
         self.infile = infile
 
@@ -889,15 +911,17 @@ cdef class tabix_file_iterator:
             b = self.buffer.s
             
             # skip comments
-            if (b[0] == '#'): continue
+            if (b[0] == '#'):
+                continue
 
             # skip empty lines
-            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
+            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r':
+                continue
 
             # gzgets terminates at \n, no need to test
 
             # parser creates a copy
-            return self.parser.parse( b, self.buffer.l )
+            return self.parser.parse( b, self.buffer.l)
 
         raise StopIteration
 
@@ -916,7 +940,7 @@ class tabix_generic_iterator:
     
     Permits the use of file-like objects for example from the gzip module.
     '''
-    def __init__(self, infile, parser ):
+    def __init__(self, infile, parser):
 
         self.infile = infile
         if self.infile.closed:
@@ -933,34 +957,41 @@ class tabix_generic_iterator:
         cdef char * cpy
         cdef size_t nbytes
 
+        encoding = self.parser.getEncoding()
+
         # note that GzipFile.close() does not close the file
         # reading is still possible.
-        if self.infile.closed: raise ValueError( "I/O operation on closed file." )
+        if self.infile.closed:
+            raise ValueError("I/O operation on closed file.")
 
         while 1:
 
             line = self.infile.readline()
-            if not line: break
+            if not line:
+                break
             
-            s = _force_bytes(line)
+            s = _force_bytes(line, encoding)
             b = s
             nbytes = len(line)
             assert b[nbytes] == '\0'
 
             # skip comments
-            if (b[0] == '#'): continue
+            if b[0] == '#':
+                continue
 
             # skip empty lines
-            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r': continue
+            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r':
+                continue
             
             # make sure that entry is complete
             if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
-                raise ValueError( "incomplete line at %s" % line )
+                raise ValueError("incomplete line at %s" % line)
             
             # create a copy
             cpy = <char*>malloc(nbytes+1)        
-            if cpy == NULL: raise MemoryError()
-            memcpy( cpy, b, nbytes+1)
+            if cpy == NULL:
+                raise MemoryError()
+            memcpy(cpy, b, nbytes+1)
 
             return self.parser(cpy, nbytes)            
 
@@ -970,12 +1001,12 @@ class tabix_generic_iterator:
     def next(self):
         return self.__next__()
 
-def tabix_iterator( infile, parser ):
+def tabix_iterator(infile, parser):
     """return an iterator over all entries in a file."""
     if PYTHON3:
-        return tabix_generic_iterator( infile, parser )
+        return tabix_generic_iterator(infile, parser)
     else:
-        return tabix_file_iterator( infile, parser )
+        return tabix_file_iterator(infile, parser)
         
     # file objects can use C stdio
     # used to be: isinstance( infile, file):
