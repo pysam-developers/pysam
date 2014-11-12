@@ -1,3 +1,4 @@
+
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 import os
@@ -258,13 +259,13 @@ cdef class TabixFile:
 
     def _open( self, 
                filename,
-               mode ='r',
-               index = None,
+               mode='r',
+               index=None,
               ):
         '''open a :term:`tabix file` for reading.
         '''
 
-        assert mode in ( "r",), "invalid file opening mode `%s`" % mode
+        assert mode in ("r",), "invalid file opening mode `%s`" % mode
 
         if self.tabixfile != NULL:
             self.close()
@@ -273,40 +274,41 @@ cdef class TabixFile:
         filename_index = index or (filename + ".tbi")
         self.isremote = filename.startswith("http:") or filename.startswith("ftp:")
 
-        # encode all the strings
-        filename = _encodeFilename(filename)
-        filename_index = _encodeFilename(filename_index)
-        cdef bytes bmode = mode.encode('ascii')
-
-        if self._filename != NULL: free(self._filename )
-
-        self._filename = strdup(filename)
-
-        if mode[0] == 'w':
-            # open file for writing
-            raise NotImplementedError("writing to tabix files not implemented" )
-
-        if mode[0] != "r":
-            raise ValueError("invalid mode '%s'" % mode)
-            # open file for reading
-            
         if not self.isremote:
             if not os.path.exists(filename):
                 raise IOError("file `%s` not found" % filename)
 
-            if not os.path.exists( filename_index ):
+            if not os.path.exists(filename_index):
                 raise IOError("index `%s` not found" % filename_index)
 
+        self._filename = filename
+        self._filename_index = filename_index
+
+        # encode all the strings to pass to tabix
+        _encoded_filename = _encodeFilename(filename)
+        _encoded_index = _encodeFilename(filename_index)
+
         # open file
-        self.tabixfile = hts_open(filename, 'r')
+        self.tabixfile = hts_open(_encoded_filename, 'r')
         if self.tabixfile == NULL:
             raise IOError("could not open file `%s`" % filename)
         
-        self.index = tbx_index_load(filename_index)
+        self.index = tbx_index_load(_encoded_index)
         if self.index == NULL:
             raise IOError("could not open index for `%s`" % filename)
 
-    def _isOpen( self ):
+    def _dup(self):
+        '''return a copy of this tabix file.
+        
+        The file is being re-opened.
+        '''
+        return TabixFile(self._filename,
+                         mode="r", 
+                         parser=self.parser,
+                         index=self._filename_index,
+                         encoding=self.encoding)
+
+    def _isOpen(self):
         '''return true if samfile has been opened.'''
         return self.tabixfile != NULL
 
@@ -316,7 +318,8 @@ cdef class TabixFile:
               start=None, 
               end=None, 
               region=None,
-              parser=None):
+              parser=None,
+              multiple_iterators=False):
         '''fetch one or more rows in a :term:`region` using 0-based
         indexing. The region is specified by :term:`reference`,
         *start* and *end*. Alternatively, a samtools :term:`region`
@@ -329,6 +332,12 @@ cdef class TabixFile:
 
         If *parser* is None, the default parser will be used for
         parsing.
+        
+        Set *multiple_iterators* to true if you will be using multiple
+        iterators on the same file at the same time. The iterator returned
+        will receive its own copy of a filehandle to the file effectively
+        re-opening the file. Re-opening a file creates some
+        overhead, so beware.
         '''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
@@ -349,15 +358,23 @@ cdef class TabixFile:
 
         # get iterator
         cdef hts_itr_t * iter
+        cdef TabixFile fileobj
+
+        # reopen the same file if necessary
+        if multiple_iterators:
+            fileobj = self._dup()
+        else:
+            fileobj = self
+
         if region is None:
             # without region or reference - iterate from start
-            iter = tbx_itr_queryi(self.index,
+            iter = tbx_itr_queryi(fileobj.index,
                                   HTS_IDX_START,
                                   0,
                                   0)
         else:
-            s = _force_bytes(region, encoding=self.encoding)
-            iter = tbx_itr_querys(self.index, s)
+            s = _force_bytes(region, encoding=fileobj.encoding)
+            iter = tbx_itr_querys(fileobj.index, s)
 
         if iter == NULL:
             if region is None:
@@ -371,18 +388,18 @@ cdef class TabixFile:
             
         # use default parser if no parser is specified
         if parser is None:
-            parser = self.parser
+            parser = fileobj.parser
 
         cdef TabixIterator a
         if parser is None: 
-            a = TabixIterator(encoding=self.encoding)
+            a = TabixIterator(encoding=fileobj.encoding)
         else:
-            parser.setEncoding(self.encoding)
+            parser.setEncoding(fileobj.encoding)
             a = TabixIteratorParsed(parser)
 
-        a.tabixfile = self
+        a.tabixfile = fileobj
         a.iterator = iter
-        
+
         return a
 
     ###############################################################
@@ -393,7 +410,8 @@ cdef class TabixFile:
     property filename:
         '''filename associated with this object.'''
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self._isOpen():
+                raise ValueError("I/O operation on closed file")
             return self._filename
 
     property header:
@@ -439,8 +457,6 @@ cdef class TabixFile:
         if self.tabixfile != NULL:
             hts_close(self.tabixfile)
             self.tabixfile = NULL
-        if self._filename != NULL:
-            free(self._filename)
 
 
 cdef class TabixIterator:
@@ -459,10 +475,18 @@ cdef class TabixIterator:
         return self 
 
     cdef int __cnext__(self):
-        '''return value needs to be freed by caller'''
+        '''iterate to next element.
+        
+        Return -5 if file has been closed when this function
+        was called.
+        '''
+        if self.tabixfile.tabixfile == NULL:
+            return -5
 
         cdef int retval
+
         while 1:
+                
             retval = tbx_itr_next(
                 self.tabixfile.tabixfile,
                 self.tabixfile.index,
@@ -483,7 +507,9 @@ cdef class TabixIterator:
         """
         
         cdef int retval = self.__cnext__()
-        if retval < 0:
+        if retval == -5:
+            raise IOError("iteration on closed file")
+        elif retval < 0:
             raise StopIteration
 
         return _charptr_to_str(self.buffer.s, self.encoding)
@@ -527,8 +553,11 @@ cdef class TabixIteratorParsed(TabixIterator):
         """
         
         cdef int retval = self.__cnext__()
-        if retval < 0:
+        if retval == -5:
+            raise IOError("iteration on closed file")
+        elif retval < 0:
             raise StopIteration
+
         return self.parser.parse(self.buffer.s,
                                  self.buffer.l)
 

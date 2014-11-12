@@ -12,6 +12,7 @@ import gzip
 import pysam
 import unittest
 import glob
+import re
 
 DATADIR = 'tabix_data'
 
@@ -961,6 +962,58 @@ class TestIndexArgument(unittest.TestCase):
         for x, y in zip(same_basename_results, diff_index_result):
             self.assertEqual(x, y)
 
-if __name__ == "__main__":
 
+def _TestMultipleIteratorsHelper(filename, multiple_iterators):
+    '''open file within scope, return iterator.'''
+
+    tabix = pysam.TabixFile(filename)
+    iterator = tabix.fetch(parser=pysam.asGTF(),
+                           multiple_iterators=multiple_iterators)
+    tabix.close()
+    return iterator
+
+
+class TestMultipleIterators(unittest.TestCase):
+
+    filename = os.path.join(DATADIR, "example.gtf.gz")
+
+    def testJoinedIterators(self):
+
+        # two iterators working on the same file
+        tabix = pysam.TabixFile(self.filename)
+        a = tabix.fetch(parser=pysam.asGTF()).next()
+        b = tabix.fetch(parser=pysam.asGTF()).next()
+        # the first two lines differ only by the feature field
+        self.assertEqual(a.feature, "UTR")
+        self.assertEqual(b.feature, "exon")
+        self.assertEqual(re.sub("UTR", "", str(a)),
+                         re.sub("exon", "", str(b)))
+
+    def testDisjointIterators(self):
+        # two iterators working on the same file
+        tabix = pysam.TabixFile(self.filename)
+        a = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
+        b = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
+        # both iterators are at top of file
+        self.assertEqual(str(a), str(b))
+
+    def testScope(self):
+        # technically it does not really test if the scope is correct
+        i = _TestMultipleIteratorsHelper(self.filename,
+                                         multiple_iterators=True)
+        self.assertTrue(i.next())
+        i = _TestMultipleIteratorsHelper(self.filename,
+                                         multiple_iterators=False)
+        self.assertRaises(IOError, i.next)
+
+    def testDoubleFetch(self):
+
+        f = pysam.TabixFile(self.filename)
+
+        for a, b in zip(f.fetch(multiple_iterators=True),
+                        f.fetch(multiple_iterators=True)):
+            self.assertEqual(str(a), str(b))
+
+
+if __name__ == "__main__":
     unittest.main()
