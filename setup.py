@@ -214,12 +214,7 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 # cp samtools/*.h pysam/*.h pysam/include
 # cp samtools/win32/*.h pysam/include/win32
 
-try:
-    from setuptools import Extension, setup
-except ImportError:
-    from ez_setup import use_setuptools
-    use_setuptools()
-    from setuptools import Extension, setup
+from setuptools import Extension, setup
 
 #######################################################
 #######################################################
@@ -447,7 +442,6 @@ metadata = {
                     cvcf,
                     faidx],
     'cmdclass': cmdclass,
-    'install_requires': ['cython>=0.20.1', ],
     'package_dir': {'pysam': 'pysam',
                     'pysam.include.htslib': 'htslib',
                     'pysam.include.samtools': 'samtools'},
