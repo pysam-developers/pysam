@@ -718,7 +718,8 @@ cdef class AlignmentFile:
                                           multiple_iterators=multiple_iterators)
                 else:
                     # AH: check - reason why no multiple_iterators for AllRefs?
-                    return IteratorRowAllRefs(self)
+                    return IteratorRowAllRefs(self,
+                                              multiple_iterators=multiple_iterators)
         else:
             if has_coord:
                 raise ValueError(
@@ -738,13 +739,16 @@ cdef class AlignmentFile:
             return IteratorRowAll(self,
                                   multiple_iterators=multiple_iterators)
 
-    def head(self, n):
-        '''
-        return iterator over the first n alignments. 
+    def head(self, n, multiple_iterators=True):
+        '''return iterator over the first n alignments. 
 
         This is useful for inspecting the bam-file.
+
+        *multiple_iterators* is set to True by default in order to
+        avoid changing the current file position.
         '''
-        return IteratorRowHead(self, n)
+        return IteratorRowHead(self, n,
+                               multiple_iterators=multiple_iterators)
 
     def mate(self,
              AlignedSegment read):
@@ -779,12 +783,17 @@ cdef class AlignmentFile:
         cdef int x = BAM_FREAD1 + BAM_FREAD2
         flag = (flag ^ x) & x
 
-        # the following code is not using the C API and
-        # could thus be made much quicker
+        # Make sure to use a separate file to jump around
+        # to mate as otherwise the original file position
+        # will be lost
+        # The following code is not using the C API and
+        # could thus be made much quicker, for example
+        # by using tell and seek.
         for mate in self.fetch(
                 read._delegate.core.mpos,
                 read._delegate.core.mpos + 1,
-                tid=read._delegate.core.mtid):
+                tid=read._delegate.core.mtid,
+                multiple_iterators=True):
             if mate.flag & flag != 0 and \
                mate.query_name == read.query_name:
                 break
@@ -1327,6 +1336,7 @@ cdef class IteratorRow:
             self.htsfile = hts_open(samfile._filename, 'r')
             assert self.htsfile != NULL
             # read header - required for accurate positioning
+            # could a tell/seek work?
             self.header = sam_hdr_read(self.htsfile)
             assert self.header != NULL
             self.owns_samfile = True
@@ -1376,7 +1386,7 @@ cdef class IteratorRowRegion(IteratorRow):
     def __iter__(self):
         return self
 
-    cdef bam1_t * getCurrent( self ):
+    cdef bam1_t * getCurrent(self):
         return self.b
 
     cdef int cnext(self):
@@ -1498,7 +1508,8 @@ cdef class IteratorRowAllRefs(IteratorRow):
 
     def __init__(self, AlignmentFile samfile, multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
+        IteratorRow.__init__(self, samfile,
+                             multiple_iterators=multiple_iterators)
 
         if not samfile._hasIndex():
             raise ValueError("no index available for fetch")
@@ -1506,10 +1517,20 @@ cdef class IteratorRowAllRefs(IteratorRow):
         self.tid = -1
 
     def nextiter(self):
+        # get a new iterator for a chromosome. The file
+        # will not be re-opened.
         self.rowiter = IteratorRowRegion(self.samfile,
                                          self.tid,
                                          0,
                                          1<<29)
+        # set htsfile and header of the rowiter
+        # to the values in this iterator to reflect multiple_iterators
+        self.rowiter.htsfile = self.htsfile
+        self.rowiter.header = self.header
+
+        # make sure the iterator understand that IteratorRowAllRefs
+        # has ownership
+        self.rowiter.owns_samfile = False
 
     def __iter__(self):
         return self
@@ -1530,7 +1551,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
             self.rowiter.cnext()
 
             # If current iterator is not exhausted, return aligned read
-            if self.rowiter.retval>0:
+            if self.rowiter.retval > 0:
                 return makeAlignedSegment(self.rowiter.b)
 
             self.tid += 1
