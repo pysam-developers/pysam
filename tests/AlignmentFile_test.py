@@ -1458,6 +1458,14 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.getReferencePositions()[-1],
                          a.reference_end - 1)
 
+    def testFullReferencePositions(self):
+        '''see issue 26'''
+        a = self.buildRead()
+        a.cigar = [(4, 30), (0, 20), (1, 3), (0, 47)]
+
+        self.assertEqual(100,
+                         len(a.getReferencePositions(full_length=True)))
+
     def testBlocks(self):
         a = self.buildRead()
         self.assertEqual(a.getBlocks(),

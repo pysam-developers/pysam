@@ -2877,12 +2877,21 @@ cdef class AlignedSegment:
     #####################################################
     # Computed properties
 
-    def getReferencePositions(self):
-        """a list of reference positions that this read aligns to."""
+    def getReferencePositions(self, full_length=False):
+        """a list of reference positions that this read aligns to.
+
+        By default, this method only returns positions in the
+        reference that are within the alignment. If *full_length* is
+        set, None values will be included for any soft-clipped or
+        unaligned positions within the read. The returned list will
+        thus be of the same length as the read.
+
+        """
         cdef uint32_t k, i, pos
         cdef int op
         cdef uint32_t * cigar_p
         cdef bam1_t * src
+        cdef bint _full = full_length
 
         src = self._delegate
         if pysam_get_n_cigar(src) == 0:
@@ -2895,11 +2904,16 @@ cdef class AlignedSegment:
         for k from 0 <= k < pysam_get_n_cigar(src):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
-            if op == BAM_CMATCH:
-                for i from pos <= i < pos + l:
-                    result.append( i )
 
-            if op == BAM_CMATCH or op == BAM_CDEL or op == BAM_CREF_SKIP:
+            if op == BAM_CSOFT_CLIP or op == BAM_CINS:
+                if _full:
+                    for i from 0 <= i < l:
+                        result.append(None)
+            elif op == BAM_CMATCH:
+                for i from pos <= i < pos + l:
+                    result.append(i)
+                pos += l
+            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
                 pos += l
 
         return result
@@ -2933,8 +2947,6 @@ cdef class AlignedSegment:
             
     def getAlignedPairs(self):
         """a list of aligned read and reference positions.
-
-        Unaligned position are marked by None.
         """
         cdef uint32_t k, i, pos, qpos
         cdef int op
@@ -2956,18 +2968,18 @@ cdef class AlignedSegment:
 
             if op == BAM_CMATCH:
                 for i from pos <= i < pos + l:
-                    result.append( (qpos, i) )
+                    result.append((qpos, i))
                     qpos += 1
                 pos += l
 
             elif op == BAM_CINS:
                 for i from pos <= i < pos + l:
-                    result.append( (qpos, None) )
+                    result.append((qpos, None))
                     qpos += 1
 
             elif op == BAM_CDEL or op == BAM_CREF_SKIP:
                 for i from pos <= i < pos + l:
-                    result.append( (None, i) )
+                    result.append((None, i))
                 pos += l
 
         return result
