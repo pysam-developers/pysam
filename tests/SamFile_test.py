@@ -1563,7 +1563,6 @@ class TestBTagBam(TestBTagSam):
 
 
 class TestDoubleFetch(unittest.TestCase):
-
     '''check if two iterators on the same bamfile are independent.'''
 
     filename = os.path.join(DATADIR, 'ex1.bam')
@@ -1572,7 +1571,8 @@ class TestDoubleFetch(unittest.TestCase):
 
         samfile1 = pysam.Samfile(self.filename, 'rb')
 
-        for a, b in zip(samfile1.fetch(), samfile1.fetch()):
+        for a, b in zip(samfile1.fetch(multiple_iterators=True),
+                        samfile1.fetch(multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)
 
     def testDoubleFetchWithRegion(self):
@@ -1583,7 +1583,8 @@ class TestDoubleFetch(unittest.TestCase):
         self.assertTrue(len(list(samfile1.fetch(chr, start, stop))) > 0)
 
         for a, b in zip(samfile1.fetch(chr, start, stop),
-                        samfile1.fetch(chr, start, stop)):
+                        samfile1.fetch(chr, start, stop,
+                                       multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)
 
     def testDoubleFetchUntilEOF(self):
@@ -1591,7 +1592,8 @@ class TestDoubleFetch(unittest.TestCase):
         samfile1 = pysam.Samfile(self.filename, 'rb')
 
         for a, b in zip(samfile1.fetch(until_eof=True),
-                        samfile1.fetch(until_eof=True)):
+                        samfile1.fetch(until_eof=True,
+                                       multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)
 
 
