@@ -12,7 +12,7 @@ all: ex1.pileup.gz \
 	example_bai.bam \
         rg_with_tab.bam \
 	ex2_truncated.bam \
-	empty.bam
+	empty.bam empty.bam.bai
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
