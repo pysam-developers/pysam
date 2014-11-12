@@ -661,7 +661,7 @@ cdef class AlignmentFile:
               tid=None,
               callback=None,
               until_eof=False,
-              reopen=True):
+              multiple_iterators=False):
         '''fetch aligned reads in a :term:`region` using 0-based indexing. The
         region is specified by :term:`reference`, *start* and
         *end*. Alternatively, a samtools :term:`region` string can be
@@ -676,14 +676,11 @@ cdef class AlignmentFile:
         position will be returned in order as they are within the
         file. Using this option will also fetch unmapped reads.
 
-        If *reopen* is set to true, the iterator returned will receive
-        its own filehandle to the htsfile effectively opening its own
-        copy of the file. The default behaviour is to re-open in order
-        to safely work with multiple concurrent iterators on the same
-        file. Re-opening a htsfile creates some overhead, so when
-        using many calls to fetch() *reopen* can be set to False to
-        gain some speed. Also, the tell() method will only work if
-        *reopen* is set to False.
+        Set *multiple_iterators* to true if you will be using multiple
+        iterators on the same file at the same time. The iterator returned
+        will receive its own copy of a filehandle to the file effectively
+        re-opening the file. Re-opening a file creates some
+        overhead, so beware.
 
         If only *reference* is set, all reads aligned to *reference*
         will be fetched.
@@ -705,24 +702,27 @@ cdef class AlignmentFile:
 
         # Turn of re-opening if htsfile is a stream
         if self.isstream:
-            reopen = False
+            multiple_iterators = False
 
         if self.isbam:
             if not until_eof and not self._hasIndex() and not self.isremote:
-                raise ValueError( "fetch called on bamfile without index" )
+                raise ValueError("fetch called on bamfile without index")
 
             if has_coord:
-                return IteratorRowRegion(self, rtid, rstart, rend, 
-                                         reopen=reopen)
+                return IteratorRowRegion(
+                    self, rtid, rstart, rend, 
+                    multiple_iterators=multiple_iterators)
             else:
                 if until_eof:
-                    return IteratorRowAll(self, reopen=reopen)
+                    return IteratorRowAll(self,
+                                          multiple_iterators=multiple_iterators)
                 else:
-                    # AH: check - reason why no reopen for AllRefs?
-                    return IteratorRowAllRefs(self) # , reopen=reopen )
+                    # AH: check - reason why no multiple_iterators for AllRefs?
+                    return IteratorRowAllRefs(self)
         else:
             if has_coord:
-                raise ValueError ("fetching by region is not available for sam files")
+                raise ValueError(
+                    "fetching by region is not available for sam files")
 
             if callback:
                 raise NotImplementedError("callback not implemented yet")
@@ -735,7 +735,8 @@ cdef class AlignmentFile:
             if self.header.n_targets == 0:
                 warnings.warn("fetch called for htsfile without header")
                 
-            return IteratorRowAll(self, reopen=reopen)
+            return IteratorRowAll(self,
+                                  multiple_iterators=multiple_iterators)
 
     def head(self, n):
         '''
@@ -1250,7 +1251,7 @@ cdef class AlignmentFile:
     ###############################################################
     ## file-object like iterator access
     ## note: concurrent access will cause errors (see IteratorRow
-    ## and reopen)
+    ## and multiple_iterators)
     ## Possible solutions: deprecate or open new file handle
     ###############################################################
     def __iter__(self):
@@ -1311,7 +1312,7 @@ cdef class IteratorRow:
 
     '''
 
-    def __init__(self, AlignmentFile samfile, int reopen=True):
+    def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
         
         if not samfile._isOpen():
             raise ValueError("I/O operation on closed file")
@@ -1322,7 +1323,7 @@ cdef class IteratorRow:
 
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
-        if reopen:
+        if multiple_iterators:
             self.htsfile = hts_open(samfile._filename, 'r')
             assert self.htsfile != NULL
             # read header - required for accurate positioning
@@ -1346,23 +1347,10 @@ cdef class IteratorRow:
 
 
 cdef class IteratorRowRegion(IteratorRow):
-    """*(AlignmentFile samfile, int tid, int beg, int end, int reopen = True )*
+    """*(AlignmentFile samfile, int tid, int beg, int end,
+    int multiple_iterators=False)*
 
     iterate over mapped reads in a region.
-
-    By default, the file is re-openend to avoid conflicts between
-    multiple iterators working on the same file. Set *reopen* = False
-    to not re-open *samfile*.
-
-    The samtools iterators assume that the file
-    position between iterations do not change.
-    As a consequence, no two iterators can work
-    on the same file. To permit this, each iterator
-    creates its own file handle by re-opening the
-    file.
-
-    Note that the index will be shared between
-    samfile and the iterator.
 
     .. note::
         It is usually not necessary to create an object of this class
@@ -1372,9 +1360,9 @@ cdef class IteratorRowRegion(IteratorRow):
 
     def __init__(self, AlignmentFile samfile,
                  int tid, int beg, int end,
-                 int reopen=True):
+                 int multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, reopen=reopen)
+        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
 
         if not samfile._hasIndex():
             raise ValueError( "no index available for iteration" )
@@ -1410,13 +1398,9 @@ cdef class IteratorRowRegion(IteratorRow):
         hts_itr_destroy(self.iter)
 
 cdef class IteratorRowHead(IteratorRow):
-    """*(AlignmentFile samfile, n, int reopen = True)*
+    """*(AlignmentFile samfile, n, int multiple_iterators=False)*
 
     iterate over first n reads in *samfile*
-
-    By default, the file is re-opened to avoid conflicts between
-    multiple iterators working on the same file. Set *reopen* = False
-    to not re-open *samfile*.
 
     .. note::
         It is usually not necessary to create an object of this class
@@ -1425,9 +1409,9 @@ cdef class IteratorRowHead(IteratorRow):
 
     """
 
-    def __init__(self, AlignmentFile samfile, int n, int reopen=True):
+    def __init__(self, AlignmentFile samfile, int n, int multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, reopen=reopen)
+        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
 
         self.max_rows = n
         self.current_row = 0
@@ -1463,13 +1447,9 @@ cdef class IteratorRowHead(IteratorRow):
 
 
 cdef class IteratorRowAll(IteratorRow):
-    """*(AlignmentFile samfile, int reopen = True)*
+    """*(AlignmentFile samfile, int multiple_iterators=False)*
 
     iterate over all reads in *samfile*
-
-    By default, the file is re-opened to avoid conflicts between
-    multiple iterators working on the same file. Set *reopen* = False
-    to not re-open *samfile*.
 
     .. note::
         It is usually not necessary to create an object of this class
@@ -1478,9 +1458,9 @@ cdef class IteratorRowAll(IteratorRow):
 
     """
 
-    def __init__(self, AlignmentFile samfile, int reopen = True):
+    def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, reopen=reopen)
+        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
 
     def __iter__(self):
         return self
@@ -1516,9 +1496,9 @@ cdef class IteratorRowAllRefs(IteratorRow):
         explicitely. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
     """
 
-    def __init__(self, AlignmentFile samfile, reopen=True):
+    def __init__(self, AlignmentFile samfile, multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, reopen=reopen)
+        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
 
         if not samfile._hasIndex():
             raise ValueError("no index available for fetch")
@@ -1572,9 +1552,9 @@ cdef class IteratorRowSelection(IteratorRow):
         explicitely. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
     """
 
-    def __init__(self, AlignmentFile samfile, positions, int reopen=True):
+    def __init__(self, AlignmentFile samfile, positions, int multiple_iterators=True):
 
-        IteratorRow.__init__(self, samfile, reopen=reopen)
+        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
 
         self.positions = positions
         self.current_pos = 0
@@ -1814,10 +1794,10 @@ cdef class IteratorColumn:
                             int tid,
                             int start,
                             int end,
-                            int reopen = 0 ):
+                            int multiple_iterators = 0 ):
         '''setup the iterator structure'''
 
-        self.iter = IteratorRowRegion(self.samfile, tid, start, end, reopen)
+        self.iter = IteratorRowRegion(self.samfile, tid, start, end, multiple_iterators)
         self.iterdata.htsfile = self.samfile.htsfile
         self.iterdata.iter = self.iter.iter
         self.iterdata.seq = NULL
@@ -1856,7 +1836,7 @@ cdef class IteratorColumn:
         This permits using the iterator multiple times without
         having to incur the full set-up costs.
         '''
-        self.iter = IteratorRowRegion( self.samfile, tid, start, end, reopen = 0 )
+        self.iter = IteratorRowRegion( self.samfile, tid, start, end, multiple_iterators = 0 )
         self.iterdata.iter = self.iter.iter
 
         # invalidate sequence if different tid
@@ -3533,11 +3513,11 @@ cdef class IndexedReads:
     The index is kept in memory.
 
     By default, the file is re-openend to avoid conflicts if
-    multiple operators work on the same file. Set *reopen* = False
+    multiple operators work on the same file. Set *multiple_iterators* = False
     to not re-open *samfile*.
     """
 
-    def __init__(self, AlignmentFile samfile, int reopen=True):
+    def __init__(self, AlignmentFile samfile, int multiple_iterators=True):
 
         # makes sure that samfile stays alive as long as this
         # object is alive.
@@ -3545,9 +3525,9 @@ cdef class IndexedReads:
 
         assert samfile.isbam, "can only IndexReads on bam files"
 
-        # reopen the file - note that this makes the iterator
+        # multiple_iterators the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
-        if reopen:
+        if multiple_iterators:
             self.htsfile = hts_open(samfile._filename, 'r')
             assert self.htsfile != NULL
             # read header - required for accurate positioning
@@ -3589,7 +3569,7 @@ cdef class IndexedReads:
             return IteratorRowSelection(
                 self.samfile,
                 self.index[qname],
-                reopen = False)
+                multiple_iterators = False)
         else:
             raise KeyError("read %s not found" % qname)
 

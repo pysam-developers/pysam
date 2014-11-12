@@ -180,7 +180,7 @@ cdef class IteratorColumn:
                            int tid,
                            int start,
                            int end,
-                           int reopen = ?)
+                           int multiple_iterators = ?)
 
     cdef reset(self, tid, start, end)
 
