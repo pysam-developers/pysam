@@ -604,6 +604,13 @@ class TestIO(unittest.TestCase):
                        output_filename,
                        "r", "wbu")
 
+    def testEmptyBAM(self):
+        samfile = pysam.Samfile(os.path.join(DATADIR, "empty.bam"),
+                                "rb")
+        self.assertEqual(samfile.mapped, 0)
+        self.assertEqual(samfile.unmapped, 0)
+        self.assertEqual(samfile.nocoordinate, 0)
+
 
 class TestFloatTagBug(unittest.TestCase):
 
@@ -667,10 +674,11 @@ class TestTagParsing(unittest.TestCase):
         x = -2
         r = self.makeRead()
         r.tags = [("XD", int(x))]
-        outfile = pysam.AlignmentFile("test.bam",
-                                "wb",
-                                referencenames=("chr1",),
-                                referencelengths = (1000,))
+        outfile = pysam.AlignmentFile(
+            "test.bam",
+            "wb",
+            referencenames=("chr1",),
+            referencelengths = (1000,))
         outfile.write(r)
         outfile.close()
 
@@ -706,41 +714,89 @@ class TestTagParsing(unittest.TestCase):
 
         self.assertEqual(tags, r.tags)
 
+    def testArrayTags(self):
+
+        r = self.makeRead()
+
+        def c(r, l):
+            r.tags = [('ZM', l)]
+            self.assertEqual(r.opt("ZM"), list(l))
+
+        # signed integers
+        c(r, (-1, 1))
+        c(r, (-1, 100))
+        c(r, (-1, 200))
+        c(r, (-1, 1000))
+        c(r, (-1, 30000))
+        c(r, (-1, 50000))
+        c(r, (1, -1))
+        c(r, (1, -100))
+        c(r, (1, -200))
+        c(r, (1, -1000))
+        c(r, (1, -30000))
+        c(r, (1, -50000))
+
+        # unsigned integers
+        c(r, (1, 100))
+        c(r, (1, 1000))
+        c(r, (1, 10000))
+        c(r, (1, 100000))
+
+        # float
+        c(r, (1, 100.0))
+
 
 class TestClipping(unittest.TestCase):
 
     def testClipping(self):
 
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "softclip.bam"),
-                                     "rb")
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "softclip.bam"),
+            "rb")
+
         for read in self.samfile:
 
             if read.query_name == "r001":
                 self.assertEqual(read.query_sequence, 'AAAAGATAAGGATA')
                 self.assertEqual(read.query_alignment_sequence, 'AGATAAGGATA')
-                self.assertEqual(pysam.toQualityString(read.query_qualities), None)
-                self.assertEqual(pysam.toQualityString(read.query_alignment_qualities), None)
+                self.assertEqual(pysam.toQualityString(read.query_qualities),
+                                 None)
+                self.assertEqual(
+                    pysam.toQualityString(read.query_alignment_qualities),
+                    None)
 
             elif read.query_name == "r002":
 
                 self.assertEqual(read.query_sequence, 'GCCTAAGCTAA')
                 self.assertEqual(read.query_alignment_sequence, 'AGCTAA')
-                self.assertEqual(pysam.toQualityString(read.query_qualities), '01234567890')
-                self.assertEqual(pysam.toQualityString(read.query_alignment_qualities), '567890')
+                self.assertEqual(
+                    pysam.toQualityString(read.query_qualities),
+                    '01234567890')
+                self.assertEqual(
+                    pysam.toQualityString(read.query_alignment_qualities),
+                    '567890')
 
             elif read.query_name == "r003":
 
                 self.assertEqual(read.query_sequence, 'GCCTAAGCTAA')
                 self.assertEqual(read.query_alignment_sequence, 'GCCTAA')
-                self.assertEqual(pysam.toQualityString(read.query_qualities), '01234567890')
-                self.assertEqual(pysam.toQualityString(read.query_alignment_qualities), '012345')
+                self.assertEqual(
+                    pysam.toQualityString(read.query_qualities),
+                    '01234567890')
+                self.assertEqual(
+                    pysam.toQualityString(read.query_alignment_qualities),
+                    '012345')
 
             elif read.query_name == "r004":
 
                 self.assertEqual(read.query_sequence, 'TAGGC')
                 self.assertEqual(read.query_alignment_sequence, 'TAGGC')
-                self.assertEqual(pysam.toQualityString(read.query_qualities), '01234')
-                self.assertEqual(pysam.toQualityString(read.query_alignment_qualities), '01234')
+                self.assertEqual(
+                    pysam.toQualityString(read.query_qualities),
+                    '01234')
+                self.assertEqual(
+                    pysam.toQualityString(read.query_alignment_qualities),
+                    '01234')
 
 
 class TestIteratorRow(unittest.TestCase):
@@ -777,7 +833,8 @@ class TestIteratorRow(unittest.TestCase):
 
     def testIterateRanges(self):
         '''check random access per range'''
-        for contig, length in zip(self.samfile.references, self.samfile.lengths):
+        for contig, length in zip(self.samfile.references,
+                                  self.samfile.lengths):
             for start in range(1, length, 90):
                 # this includes empty ranges
                 self.checkRange("%s:%i-%i" % (contig, start, start + 90))

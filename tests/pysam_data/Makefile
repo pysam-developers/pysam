@@ -11,7 +11,8 @@ all: ex1.pileup.gz \
 	$(BAM) $(BAI) \
 	example_bai.bam \
         rg_with_tab.bam \
-	ex2_truncated.bam
+	ex2_truncated.bam \
+	empty.bam
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
@@ -42,6 +43,9 @@ ex1.pileup.gz:ex1.bam ex1.fa
 
 ex2_truncated.bam: ex2.bam
 	head -c 124000 ex2.bam > ex2_truncated.bam
+
+empty.bam: ex2.sam
+	grep "^@" $< | samtools view -Sb - > $@
 
 example_unmapped_reads_no_sq.bam: example_unmapped_reads_no_sq.sam
 	touch tmp.list

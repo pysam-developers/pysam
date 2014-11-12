@@ -711,6 +711,11 @@ cdef extern from "htslib/sam.h" nogil:
     # set bam_pileup1_t::level, while the later does. Level helps the
     # implementation of alignment viewers, but calculating this has some
     # overhead.
+    # 
+    # is_del, is_head, etc are a bit field, declaring as below should
+    # work as expected, see
+    # https://groups.google.com/forum/#!msg/cython-users/24tD1kwRY7A/pmoPuSmanM0J
+
     ctypedef struct bam_pileup1_t:
         bam1_t *b
         int32_t qpos

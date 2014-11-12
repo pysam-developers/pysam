@@ -1,5 +1,6 @@
 #include "samfile_util.h"
 #include "htslib/sam.h"
+
 #include "kprobaln.h"
 
 // taken from bam_md.c
@@ -183,4 +184,5 @@ int bam_prob_realn(bam1_t *b, const char *ref)
 {
 	return bam_prob_realn_core(b, ref, 1);
 }
+ 
 

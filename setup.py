@@ -54,9 +54,8 @@ samtools_dest = os.path.abspath("samtools")
 tabix_dest = os.path.abspath("tabix")
 
 if HTSLIB_LIBRARY_DIR:
-    HTSLIB_MODE = 'external'
-    # linking against a shared htslib version
-    # no sources required for htslib
+    # linking against a shared, externally installed htslib version, no
+    # sources required for htslib
     htslib_sources = []
     shared_htslib_sources = []
     chtslib_sources = []

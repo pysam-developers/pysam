@@ -164,31 +164,49 @@ class BasicTestBAMFetch(unittest.TestCase):
             self.reads[3].query, "TAGCTAGCTACCTATATCTTGGTCTT"))
 
     def testARqqual(self):
-        self.assertEqual(self.reads[0].qqual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "qquality string mismatch in read 1: %s != %s" % (self.reads[0].qqual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(self.reads[1].qqual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "qquality string mismatch in read 2: %s != %s" % (
-            self.reads[1].qqual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(self.reads[3].qqual, "<<<<<<<<<<<<<<<<<:<9/,&,22",
-                         "qquality string mismatch in read 3: %s != %s" % (self.reads[3].qqual, "<<<<<<<<<<<<<<<<<:<9/,&,22"))
+        self.assertEqual(
+            self.reads[0].qqual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+            "qquality string mismatch in read 1: %s != %s" %
+            (self.reads[0].qqual, "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(
+            self.reads[1].qqual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<",
+            "qquality string mismatch in read 2: %s != %s" %
+            (self.reads[1].qqual, "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
+        self.assertEqual(
+            self.reads[3].qqual, "<<<<<<<<<<<<<<<<<:<9/,&,22",
+            "qquality string mismatch in read 3: %s != %s" %
+            (self.reads[3].qqual, "<<<<<<<<<<<<<<<<<:<9/,&,22"))
 
     def testPresentOptionalFields(self):
-        self.assertEqual(self.reads[0].opt(
-            'NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (self.reads[0].opt('NM'), 1))
-        self.assertEqual(self.reads[0].opt(
-            'RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (self.reads[0].opt('RG'), 'L1'))
-        self.assertEqual(self.reads[1].opt(
-            'RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (self.reads[1].opt('RG'), 'L2'))
-        self.assertEqual(self.reads[1].opt(
-            'MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (self.reads[1].opt('MF'), 18))
+        self.assertEqual(
+            self.reads[0].opt('NM'), 1,
+            "optional field mismatch in read 1, NM: %s != %s" %
+            (self.reads[0].opt('NM'), 1))
+        self.assertEqual(
+            self.reads[0].opt('RG'), 'L1',
+            "optional field mismatch in read 1, RG: %s != %s" %
+            (self.reads[0].opt('RG'), 'L1'))
+        self.assertEqual(
+            self.reads[1].opt('RG'), 'L2',
+            "optional field mismatch in read 2, RG: %s != %s" %
+            (self.reads[1].opt('RG'), 'L2'))
+        self.assertEqual(
+            self.reads[1].opt('MF'), 18,
+            "optional field mismatch in read 2, MF: %s != %s" %
+            (self.reads[1].opt('MF'), 18))
 
     def testPairedBools(self):
-        self.assertEqual(self.reads[0].is_paired, True, "is paired mismatch in read 1: %s != %s" % (
+        self.assertEqual(self.reads[0].is_paired, True,
+                         "is paired mismatch in read 1: %s != %s" % (
             self.reads[0].is_paired, True))
-        self.assertEqual(self.reads[1].is_paired, True, "is paired mismatch in read 2: %s != %s" % (
+        self.assertEqual(self.reads[1].is_paired, True,
+                         "is paired mismatch in read 2: %s != %s" % (
             self.reads[1].is_paired, True))
-        self.assertEqual(self.reads[0].is_proper_pair, True, "is proper pair mismatch in read 1: %s != %s" % (
+        self.assertEqual(self.reads[0].is_proper_pair, True,
+                         "is proper pair mismatch in read 1: %s != %s" % (
             self.reads[0].is_proper_pair, True))
-        self.assertEqual(self.reads[1].is_proper_pair, True, "is proper pair mismatch in read 2: %s != %s" % (
+        self.assertEqual(self.reads[1].is_proper_pair, True,
+                         "is proper pair mismatch in read 2: %s != %s" % (
             self.reads[1].is_proper_pair, True))
 
     def testTags(self):

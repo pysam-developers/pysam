@@ -141,10 +141,10 @@ cdef makePileupProxy(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
      return dest
 
 cdef class PileupRead
-cdef makePileupRead( bam_pileup1_t * src ):
+cdef makePileupRead(bam_pileup1_t * src):
     '''fill a  PileupRead object from a bam_pileup1_t * object.'''
     cdef PileupRead dest = PileupRead.__new__(PileupRead)
-    dest._alignment = makeAlignedSegment( src.b )
+    dest._alignment = makeAlignedSegment(src.b)
     dest._qpos = src.qpos
     dest._indel = src.indel
     dest._level = src.level
@@ -866,8 +866,6 @@ cdef class AlignmentFile:
               same filter and read processing as in :term:`csamtools`
               pileup
 
-           
-
         fastafile
            A :class:`FastaFile` object
 
@@ -878,14 +876,18 @@ cdef class AlignmentFile:
            Maximum read depth permitted. The default limit is *8000*.
 
          truncate
-           By default, the samtools pileup engine outputs all reads overlapping a region (see note below).
-           If truncate is True and a region is given, only output columns in the exact region
-           specificied.
+
+           By default, the samtools pileup engine outputs all reads
+           overlapping a region (see note below).  If truncate is True
+           and a region is given, only output columns in the exact
+           region specificied.
 
         .. note::
 
-            *all* reads which overlap the region are returned. The first base returned will be the
-            first base of the first read *not* necessarily the first base of the region used in the query.
+            *all* reads which overlap the region are returned. The
+            first base returned will be the first base of the first
+            read *not* necessarily the first base of the region used
+            in the query.
 
         '''
         cdef int rtid, rstart, rend, has_coord
@@ -2104,20 +2106,29 @@ cdef inline convert_python_tag(pytag, value, fmts, args):
             datafmt, datatype = "f", "f"
         else:
             mi, ma = min(value), max(value)
-            absmax = max( abs(mi), abs(ma) )
             # signed ints
             if mi < 0: 
-                if mi >= -127: datafmt, datatype = "b", 'c'
-                elif mi >= -32767: datafmt, datatype = "h", 's'
-                elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
+                if mi >= -128 and ma < 128:
+                    datafmt, datatype = "b", 'c'
+                elif mi >= -32768 and ma < 32768:
+                    datafmt, datatype = "h", 's'
+                elif mi < -2147483648 or ma >= 2147483648:
+                    raise ValueError(
+                        "at least one signed integer out of range of "
+                        "BAM/SAM specification")
                 else: datafmt, datatype = "i", 'i'
 
             # unsigned ints
             else:
-                if absmax <= 255: datafmt, datatype = "B", 'C'
-                elif absmax <= 65535: datafmt, datatype = "H", 'S'
-                elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                else: datafmt, datatype = "I", 'I'
+                if ma < 256:
+                    datafmt, datatype = "B", 'C'
+                elif ma < 65536:
+                    datafmt, datatype = "H", 'S'
+                elif ma >= 4294967296:
+                    raise ValueError(
+                        "at least one integer out of range of BAM/SAM specification")
+                else:
+                    datafmt, datatype = "I", 'I'
 
         datafmt = "2sccI%i%s" % (len(value), datafmt)
         args.extend( [pytag[:2], 
@@ -2263,73 +2274,6 @@ cdef class AlignedSegment:
     # Disabled so long as __cmp__ is a special method
     def __hash__(self):
         return _Py_HashPointer(<void *>self)
-
-    def _convert_python_tag(self, pytag, value, fmts, args):
-
-        if not type(pytag) is bytes:
-            pytag = pytag.encode('ascii')
-        t = type(value)
-
-        if t is tuple or t is list:
-            # binary tags - treat separately
-            pytype = 'B'
-            # get data type - first value determines type
-            if type(value[0]) is float:
-                datafmt, datatype = "f", "f"
-            else:
-                mi, ma = min(value), max(value)
-                absmax = max( abs(mi), abs(ma) )
-                # signed ints
-                if mi < 0: 
-                    if mi >= -127: datafmt, datatype = "b", 'c'
-                    elif mi >= -32767: datafmt, datatype = "h", 's'
-                    elif absmax < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                    else: datafmt, datatype = "i", 'i'
-
-                # unsigned ints
-                else:
-                    if absmax <= 255: datafmt, datatype = "B", 'C'
-                    elif absmax <= 65535: datafmt, datatype = "H", 'S'
-                    elif absmax > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                    else: datafmt, datatype = "I", 'I'
-                    
-            datafmt = "2sccI%i%s" % (len(value), datafmt)
-            args.extend( [pytag[:2], 
-                          pytype.encode('ascii'),
-                          datatype.encode('ascii'),
-                          len(value)] + list(value) )
-            fmts.append( datafmt )
-            return
-
-        if t is float:
-            fmt, pytype = "2scf", 'f'
-        elif t is int:
-            # negative values
-            if value < 0:
-                if value >= -127: fmt, pytype = "2scb", 'c'
-                elif value >= -32767: fmt, pytype = "2sch", 's'
-                elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                else: fmt, pytype = "2sci", 'i'
-            # positive values
-            else:
-                if value <= 255: fmt, pytype = "2scB", 'C'
-                elif value <= 65535: fmt, pytype = "2scH", 'S'
-                elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-                else: fmt, pytype = "2scI", 'I'
-        else:
-            # Note: hex strings (H) are not supported yet
-            if t is not bytes:
-                value = value.encode('ascii')
-            if len(value) == 1:
-                fmt, pytype = "2scc", 'A'
-            else:
-                fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
-
-        args.extend( [pytag[:2],
-                      pytype.encode('ascii'),
-                      value ] )
-        
-        fmts.append( fmt )
 
 
     #######################################################################
@@ -3478,7 +3422,10 @@ cdef class PileupRead:
         raise TypeError("This class cannot be instantiated from Python")
 
     def __str__(self):
-        return "\t".join( map(str, (self.alignment, self.qpos, self.indel, self.level, self.is_del, self.is_head, self.is_tail ) ) )
+        return "\t".join(
+            map(str,
+                (self.alignment, self.qpos, self.indel, self.level,
+                 self.is_del, self.is_head, self.is_tail, self.is_refskip)))
 
     property alignment:
         """a :class:`pysam.AlignedSegment` object of the aligned read"""
@@ -3492,6 +3439,10 @@ cdef class PileupRead:
         """indel length; 0 for no indel, positive for ins and negative for del"""
         def __get__(self):
             return self._indel
+    property level:
+        """the level of the read in the "viewer" mode"""
+        def __get__(self):
+            return self._level
     property is_del:
         """1 iff the base on the padded read is a deletion"""
         def __get__(self):
@@ -3502,9 +3453,9 @@ cdef class PileupRead:
     property is_tail:
         def __get__(self):
             return self._is_tail
-    property level:
+    property is_refskip:
         def __get__(self):
-            return self._level
+            return self._is_refskip
 
 
 cdef class SNPCall:

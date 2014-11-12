@@ -47,7 +47,6 @@ cdef extern from "samfile_util.h":
     int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
     int bam_prob_realn(bam1_t *b, const char *ref)
 
-
 ####################################################################
 # Utility types
 
