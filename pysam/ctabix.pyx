@@ -87,10 +87,10 @@ cdef class Parser:
     def __init__(self, encoding="ascii"):
         self.encoding = encoding
 
-    def setEncoding(self, encoding):
+    def set_encoding(self, encoding):
         self.encoding = encoding
 
-    def getEncoding(self):
+    def get_encoding(self):
         return self.encoding
 
     cdef parse(self, char * buffer, int length):
@@ -394,7 +394,7 @@ cdef class TabixFile:
         if parser is None: 
             a = TabixIterator(encoding=fileobj.encoding)
         else:
-            parser.setEncoding(fileobj.encoding)
+            parser.set_encoding(fileobj.encoding)
             a = TabixIteratorParsed(parser)
 
         a.tabixfile = fileobj
@@ -513,6 +513,9 @@ cdef class TabixIterator:
             raise StopIteration
 
         return _charptr_to_str(self.buffer.s, self.encoding)
+
+    def next(self):
+        return self.__next__()
 
     def __dealloc__(self):
         if <void*>self.iterator != NULL:
@@ -986,7 +989,7 @@ class tabix_generic_iterator:
         cdef char * cpy
         cdef size_t nbytes
 
-        encoding = self.parser.getEncoding()
+        encoding = self.parser.get_encoding()
 
         # note that GzipFile.close() does not close the file
         # reading is still possible.

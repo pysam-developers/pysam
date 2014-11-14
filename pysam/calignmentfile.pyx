@@ -2102,7 +2102,8 @@ cdef inline convert_python_tag(pytag, value, fmts, args):
     if t is tuple or t is list:
         # binary tags - treat separately
         pytype = 'B'
-        # get data type - first value determines type
+        # get data type - first value determines type. If there is a
+        # mix of types, the result is undefined.
         if type(value[0]) is float:
             datafmt, datatype = "f", "f"
         else:
@@ -2132,10 +2133,10 @@ cdef inline convert_python_tag(pytag, value, fmts, args):
                     datafmt, datatype = "I", 'I'
 
         datafmt = "2sccI%i%s" % (len(value), datafmt)
-        args.extend( [pytag[:2], 
-                      pytype.encode('ascii'),
-                      datatype.encode('ascii'),
-                      len(value)] + list(value) )
+        args.extend([pytag[:2], 
+                     pytype.encode('ascii'),
+                     datatype.encode('ascii'),
+                     len(value)] + list(value))
         fmts.append( datafmt )
         return
 
@@ -2189,14 +2190,6 @@ cdef class AlignedSegment:
     One issue to look out for is that the sequence should always
     be set *before* the quality scores. Setting the sequence will
     also erase any quality scores that were set previously.
-
-    In Python 3, the fields containing sequence and quality
-    (seq, query, qual and qqual) data are of type str. Other
-    string data, such as the qname field and strings in the
-    tags tuple, is represented as unicode strings. On assignment,
-    both bytes and unicode objects are allowed, but unicode strings
-    must contain only ASCII characters.
-
     '''
 
     # Now only called when instances are created from Python
@@ -2419,6 +2412,20 @@ cdef class AlignedSegment:
             self._delegate.core.mpos = mpos
 
     property query_length:
+        """the length of the query/read.
+
+        This value corresponds to the length of the sequence supplied
+        in the BAM/SAM file. The length of a query is 0 if there is no
+        sequence in the BAM/SAM file. In those cases, the read length
+        can be inferred from the CIGAR alignment, see
+        :meth:`pysam.AlignmentFile.infer_query_length.`.
+
+        This property can be set by providing a sequence.
+        """
+        def __get__(self):
+            return self._delegate.core.isize
+
+    property template_length:
         """the observed query template length"""
         def __get__(self):
             return self._delegate.core.isize
@@ -2428,10 +2435,6 @@ cdef class AlignedSegment:
     property query_sequence:
         """read sequence bases, including :term:`soft clipped` bases 
         (None if not present).
-
-        In Python 3, this property is of type bytes and assigning a
-        unicode string to it consisting of ASCII characters only will
-        work, but is inefficient.
 
         Note that assigning to seq will invalidate any quality scores.
         Thus, to in-place edit the sequence and quality scores, copies of
@@ -2504,16 +2507,18 @@ cdef class AlignedSegment:
         """read sequence base qualities, including :term:`soft
         clipped` bases (None if not present).
 
-        In Python 3, this property is of type bytes and assigning a
-        unicode string to it consisting of ASCII characters only will
-        work, but is inefficient.
+        Quality scores are returned as a python array of unsigned
+        chars. Note that this is not the ASCII-encoded value typically
+        seen in FASTQ or SAM formatted files. Thus, no offset of 33
+        needs to be subtracted.
 
         Note that to set quality scores the sequence has to be set
-        previously as this will determine the permitted length of
-        the quality score array.
+        beforehand as this will determine the expected length of the
+        quality score array.
 
         This method raises a ValueError if the length of the 
         quality scores and the sequence are not the same.
+
         """
         def __get__(self):
 
@@ -2796,10 +2801,6 @@ cdef class AlignedSegment:
         bases that were :term:`soft clipped` (None if not present). It
         is equal to ``seq[qstart:qend]``.
 
-        In Python 3, this property is of type bytes. Assigning a
-        unicode string to it consisting of ASCII characters only will
-        work, but is inefficient.
-
         SAM/BAM files may include extra flanking bases that are not
         part of the alignment.  These bases may be the result of the
         Smith-Waterman or other algorithms, which may not require
@@ -2813,11 +2814,11 @@ cdef class AlignedSegment:
         def __get__(self):
             cdef bam1_t * src
             cdef uint32_t start, end
-            cdef char * s
 
             src = self._delegate
 
-            if src.core.l_qseq == 0: return None
+            if src.core.l_qseq == 0:
+                return None
 
             start = _getQueryStart(src)
             end   = _getQueryEnd(src)
@@ -2830,9 +2831,12 @@ cdef class AlignedSegment:
         is, they exclude qualities of :term:`soft clipped` bases. This
         is equal to ``qual[qstart:qend]``.
 
-        This property is read-only.
+        Quality scores are returned as a python array of unsigned
+        chars. Note that this is not the ASCII-encoded value typically
+        seen in FASTQ or SAM formatted files. Thus, no offset of 33
+        needs to be subtracted.
 
-        In Python 3, this property is of type bytes.
+        This property is read-only.
 
         """
         def __get__(self):
@@ -2878,7 +2882,7 @@ cdef class AlignedSegment:
     #####################################################
     # Computed properties
 
-    def getReferencePositions(self, full_length=False):
+    def get_reference_positions(self, full_length=False):
         """a list of reference positions that this read aligns to.
 
         By default, this method only returns positions in the
@@ -2919,7 +2923,7 @@ cdef class AlignedSegment:
 
         return result
 
-    def inferQueryLength(self):
+    def infer_query_length(self):
         """inferred read length from CIGAR string.
 
         Returns None if CIGAR string is not present.
@@ -2946,7 +2950,7 @@ cdef class AlignedSegment:
 
         return qpos
             
-    def getAlignedPairs(self):
+    def get_aligned_pairs(self):
         """a list of aligned read and reference positions.
         """
         cdef uint32_t k, i, pos, qpos
@@ -2985,7 +2989,7 @@ cdef class AlignedSegment:
 
         return result
 
-    def getBlocks(self):
+    def get_blocks(self):
         """ a list of start and end positions of
         aligned gapless blocks.
 
@@ -3023,7 +3027,7 @@ cdef class AlignedSegment:
 
         return result
 
-    def getOverlap(self, uint32_t start, uint32_t end):
+    def get_overlap(self, uint32_t start, uint32_t end):
         """return number of aligned bases of read overlapping the interval
         *start* and *end* on the reference sequence.
 
@@ -3298,8 +3302,8 @@ cdef class AlignedSegment:
             return r
         def __set__(self, v): self.cigartuples = v
     property tlen:
-        def __get__(self): return self.query_length
-        def __set__(self, v): self.query_length = v
+        def __get__(self): return self.template_length
+        def __set__(self, v): self.template_length = v
     property seq:
         def __get__(self): return self.query_sequence
         def __set__(self, v): self.query_sequence = v
@@ -3340,18 +3344,18 @@ cdef class AlignedSegment:
         def __get__(self): return self.reference_id
         def __set__(self, v): self.reference_id = v
     property isize:
-        def __get__(self): return self.query_length
-        def __set__(self, v): self.query_length = v
+        def __get__(self): return self.template_length
+        def __set__(self, v): self.template_length = v
     property blocks:
-        def __get__(self): return self.getBlocks()
+        def __get__(self): return self.get_blocks()
     property aligned_pairs:
-        def __get__(self): return self.getAlignedPairs()
+        def __get__(self): return self.get_aligned_pairs()
     property inferred_length:
-        def __get__(self): return self.inferQueryLength()
+        def __get__(self): return self.infer_query_length()
     property positions:
-        def __get__(self): return self.getReferencePositions()
+        def __get__(self): return self.get_reference_positions()
     def overlap(self):
-        return self.getOverlap()
+        return self.get_overlap()
 
 
 cdef class PileupProxy:

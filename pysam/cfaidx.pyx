@@ -225,7 +225,7 @@ cdef class FastaFile:
                                end-1,
                                length )
 
-    def getReferenceLength(self, reference):
+    def get_reference_length(self, reference):
         '''return the length of reference.'''
         return self.reference2length[reference]
 

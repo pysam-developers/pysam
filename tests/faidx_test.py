@@ -51,8 +51,8 @@ class TestFastaFile(unittest.TestCase):
         self.assertEqual(len(self.file), 2)
 
     def testSequenceLengths(self):
-        self.assertEqual(1575, self.file.getReferenceLength("chr1"))
-        self.assertEqual(1584, self.file.getReferenceLength("chr2"))
+        self.assertEqual(1575, self.file.get_reference_length("chr1"))
+        self.assertEqual(1584, self.file.get_reference_length("chr2"))
 
     def tearDown(self):
         self.file.close()

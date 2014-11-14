@@ -31,38 +31,37 @@ Release 0.8.1
      * mapq -> mapping_quality
      * rnext -> next_reference_id
      * pnext -> next_reference_start
-     * cigar = alignment (now returns CigarAlignment object)
+     * cigar = alignment
      * cigarstring = cigarstring
      * tlen -> query_length
      * seq -> query_sequence
      * qual -> query_qualities, now returns array
-     * tags = tags (now returns Tags object)
+     * qqual -> query_alignment_qualities, now returns array
+     * tags = tags
      * alen -> reference_length, reference is always "alignment", so removed
      * aend -> reference_end
      * rlen -> query_length 
      * query -> query_alignment_sequence
-     * qqual -> query_alignment_qualities, now returns array
      * qstart -> query_alignment_start
      * qend -> query_alignment_end
      * qlen -> query_alignment_length
      * mrnm -> next_reference_id   
      * mpos -> next_reference_start
      * rname -> reference_id
-     * isize -> query_length
-     * blocks -> getBlocks()
-     * aligned_pairs -> getAlignedPairs()
-     * inferred_length -> inferQueryLength()
-     * positions -> getReferencePositions()
-     * overlap() -> getOverlap()
+     * isize -> template_length
+     * blocks -> get_blocks()
+     * aligned_pairs -> get_aligned_pairs()
+     * inferred_length -> infer_query_length()
+     * positions -> get_reference_positions()
+     * overlap() -> get_overlap()
 
-  * improved Cigar handling
-  * improved Tags handling
-  * Text in SAM/BAM/Tabix files is now a string - no more bytes.
+  * All strings are now passed to or received from the pysam API
+    as strings, no more bytes.
 
 Other changes:
   * AlignmentFile.fetch(reopen) option is now multiple_iterators. The
     default changed to not reopen a file unless requested by the user.
-
+  * FastaFile.getReferenceLength is now FastaFile.get_reference_length
 
 Backwards incompatible changes
 
@@ -71,6 +70,9 @@ Backwards incompatible changes
 * When using the extension classes in cython modules, AlignedRead
   needs to be substituted with AlignedSegment. 
 * fancy_str() has been removed
+* qual, qqual now return arrays
+
+
 
 
 Release 0.8.0

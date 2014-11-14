@@ -92,7 +92,7 @@ class SamtoolsDispatcher(object):
 
         return stdout
 
-    def getMessages(self):
+    def get_messages(self):
         return self.stderr
 
     def usage(self):

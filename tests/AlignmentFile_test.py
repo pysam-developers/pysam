@@ -659,7 +659,7 @@ class TestTagParsing(unittest.TestCase):
         a.cigartuples = ((0, 10), (2, 1), (0, 25))
         a.next_reference_id = 0
         a.next_reference_start = 200
-        a.query_length = 0
+        a.template_length = 0
         a.query_qualities = pysam.fromQualityString("1234") * 3
         # todo: create tags
         return a
@@ -668,6 +668,7 @@ class TestTagParsing(unittest.TestCase):
         x = -2
         aligned_read = self.makeRead()
         aligned_read.tags = [("XD", int(x))]
+        self.assertEqual(aligned_read.opt('XD'), x)
         # print (aligned_read.tags)
 
     def testNegativeIntegers2(self):
@@ -742,8 +743,8 @@ class TestTagParsing(unittest.TestCase):
         c(r, (1, 10000))
         c(r, (1, 100000))
 
-        # float
-        c(r, (1, 100.0))
+        # floats
+        c(r, (1.0, 100.0))
 
 
 class TestClipping(unittest.TestCase):
@@ -1256,8 +1257,13 @@ class ReadTest(unittest.TestCase):
 
         # add the . for refactoring purposes.
         for x in (".query_name", ".query_sequence", ".flag",
-                  ".reference_id", ".reference_start", ".mapping_quality", ".cigartuples",
-                  ".next_reference_id", ".next_reference_start", ".query_length", 
+                  ".reference_id", ".reference_start",
+                  ".mapping_quality",
+                  ".cigartuples",
+                  ".next_reference_id",
+                  ".next_reference_start",
+                  ".query_length",
+                  ".template_length",
                   ".query_qualities",
                   ".bin",
                   ".is_paired", ".is_proper_pair",
@@ -1292,8 +1298,7 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.tags, [])
         self.assertEqual(a.next_reference_id, 0)
         self.assertEqual(a.next_reference_start, 0)
-        self.assertEqual(a.query_length, 0)
-
+        self.assertEqual(a.template_length, 0)
 
     def testStrOfEmptyRead(self):
         a = pysam.AlignedSegment()
@@ -1301,7 +1306,6 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(
             "None\t0\t0\t0\t0\tNone\t0\t0\t0\tNone\tNone\t[]",
             s)
-
 
     def buildRead(self):
         '''build an example read.'''
@@ -1316,7 +1320,7 @@ class TestAlignedSegment(ReadTest):
         a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
         a.next_reference_id = 0
         a.next_reference_start = 200
-        a.query_length = 167
+        a.template_length = 167
         a.query_qualities = pysam.fromQualityString("1234") * 10
         # todo: create tags
         return a
@@ -1401,7 +1405,7 @@ class TestAlignedSegment(ReadTest):
         a.cigartuples = ((0, 4 * 200), )
         a.next_reference_id = 0
         a.next_reference_start = 200
-        a.query_length = 167
+        a.template_length = 167
         a.query_qualities = pysam.fromQualityString("1234") * 200
 
         return a
@@ -1423,20 +1427,20 @@ class TestAlignedSegment(ReadTest):
     def testUpdateTlen(self):
         '''check if updating tlen works'''
         a = self.buildRead()
-        oldlen = a.query_length
+        oldlen = a.template_length
         oldlen *= 2
-        a.query_length = oldlen
-        self.assertEqual(a.query_length, oldlen)
+        a.template_length = oldlen
+        self.assertEqual(a.template_length, oldlen)
 
     def testPositions(self):
         a = self.buildRead()
-        self.assertEqual(a.getReferencePositions(),
+        self.assertEqual(a.get_reference_positions(),
                          [20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
                           31, 32, 33, 34, 35, 36, 37, 38, 39,
                           40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
                           50, 51, 52, 53, 54, 55, 56, 57, 58, 59])
 
-        self.assertEqual(a.getAlignedPairs(),
+        self.assertEqual(a.get_aligned_pairs(),
                          [(0, 20), (1, 21), (2, 22), (3, 23), (4, 24),
                           (5, 25), (6, 26), (7, 27), (8, 28), (9, 29),
                           (None, 30),
@@ -1448,14 +1452,14 @@ class TestAlignedSegment(ReadTest):
                           (35, 55), (36, 56), (37, 57), (38, 58), (39, 59)])
 
         self.assertEqual(
-            a.getReferencePositions(),
-            [x[1] for x in a.getAlignedPairs()
+            a.get_reference_positions(),
+            [x[1] for x in a.get_aligned_pairs()
              if x[0] is not None and x[1] is not None])
         # alen is the length of the aligned read in genome
         self.assertEqual(a.reference_length,
-                         a.getAlignedPairs()[-1][0] + 1)
+                         a.get_aligned_pairs()[-1][0] + 1)
         # aend points to one beyond last aligned base in ref
-        self.assertEqual(a.getReferencePositions()[-1],
+        self.assertEqual(a.get_reference_positions()[-1],
                          a.reference_end - 1)
 
     def testFullReferencePositions(self):
@@ -1464,11 +1468,11 @@ class TestAlignedSegment(ReadTest):
         a.cigar = [(4, 30), (0, 20), (1, 3), (0, 47)]
 
         self.assertEqual(100,
-                         len(a.getReferencePositions(full_length=True)))
+                         len(a.get_reference_positions(full_length=True)))
 
     def testBlocks(self):
         a = self.buildRead()
-        self.assertEqual(a.getBlocks(),
+        self.assertEqual(a.get_blocks(),
                          [(20, 30), (31, 40), (40, 60)])
 
     # Disabled as not backwards compatible
@@ -1507,7 +1511,7 @@ class TestDeNovoConstruction(ReadTest):
         a.cigartuples = ((0, 10), (2, 1), (0, 25))
         a.next_reference_id = 0
         a.next_reference_start = 199
-        a.query_length = 167
+        a.template_length = 167
         a.query_qualities = pysam.fromQualityString("<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
         a.tags = (("NM", 1),
                   ("RG", "L1"))
@@ -1522,7 +1526,7 @@ class TestDeNovoConstruction(ReadTest):
         b.cigartuples = ((0, 35), )
         b.next_reference_id = 1
         b.next_reference_start = 499
-        b.query_length = 412
+        b.template_length = 412
         b.query_qualities = pysam.fromQualityString("<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<")
         b.tags = (("MF", 18),
                   ("RG", "L2"))
