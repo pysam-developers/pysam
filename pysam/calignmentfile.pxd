@@ -37,7 +37,7 @@ cdef extern from "htslib_util.h":
     void pysam_set_bin(bam1_t * b, uint16_t v)
     void pysam_set_qual(bam1_t * b, uint8_t v)
     void pysam_set_l_qname(bam1_t * b, uint8_t v)
-    void pysam_set_flag(bam1_t * b, uint8_t v)
+    void pysam_set_flag(bam1_t * b, uint16_t v)
     void pysam_set_n_cigar(bam1_t * b, uint16_t v)
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
