@@ -2062,7 +2062,8 @@ def fromQualityString(quality_string):
     '''return a list of quality scores from the
     stringn representation of quality scores used
     in the SAM format.'''
-
+    if quality_string is None:
+        return None
     return array.array('B', [ord(x)-33 for x in quality_string])
 
 
@@ -3293,32 +3294,45 @@ cdef class AlignedSegment:
         def __get__(self): return self.next_reference_id
         def __set__(self, v): self.next_reference_id = v
     property pnext:
-        def __get__(self): return self.next_reference_start
-        def __set__(self, v): self.next_reference_start = v
+        def __get__(self):
+            return self.next_reference_start
+        def __set__(self, v):
+            self.next_reference_start = v
     property cigar:
         def __get__(self):
             r = self.cigartuples
-            if r is None: r = []
+            if r is None:
+                r = []
             return r
         def __set__(self, v): self.cigartuples = v
     property tlen:
-        def __get__(self): return self.template_length
-        def __set__(self, v): self.template_length = v
+        def __get__(self):
+            return self.template_length
+        def __set__(self, v):
+            self.template_length = v
     property seq:
         def __get__(self): return self.query_sequence
         def __set__(self, v): self.query_sequence = v
     property qual:
-        def __get__(self): return toQualityString(self.query_qualities)
-        def __set__(self, v): self.query_qualities = fromQualityString(v)
+        def __get__(self):
+            return toQualityString(self.query_qualities)
+        def __set__(self, v):
+            self.query_qualities = fromQualityString(v)
     property alen:
-        def __get__(self): return self.reference_length
-        def __set__(self, v): self.reference_length = v
+        def __get__(self):
+            return self.reference_length
+        def __set__(self, v):
+            self.reference_length = v
     property aend:
-        def __get__(self): return self.reference_end
-        def __set__(self, v): self.reference_end = v
+        def __get__(self):
+            return self.reference_end
+        def __set__(self, v):
+            self.reference_end = v
     property rlen:
-        def __get__(self): return self.query_length
-        def __set__(self, v): self.query_length = v
+        def __get__(self):
+            return self.query_length
+        def __set__(self, v):
+            self.query_length = v
     property query:
         def __get__(self): return self.query_alignment_sequence
         def __set__(self, v): self.query_alignment_sequence = v
