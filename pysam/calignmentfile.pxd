@@ -184,6 +184,7 @@ cdef class IteratorColumn:
                            int reopen = ?)
 
     cdef reset(self, tid, start, end)
+    cdef _free_pileup_iter(self)
 
 cdef class IteratorColumnRegion(IteratorColumn):
     cdef int start
