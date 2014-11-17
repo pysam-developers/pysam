@@ -472,6 +472,8 @@ cdef class TabixIterator:
     def __dealloc__(self):
         if <void*>self.iterator != NULL:
             tbx_itr_destroy(self.iterator)
+        if self.buffer.s != NULL:
+            free(self.buffer.s)
 
 
 class EmptyIterator:
