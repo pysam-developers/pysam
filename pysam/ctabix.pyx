@@ -17,7 +17,7 @@ cimport TabProxies
 
 from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_close, bgzf_write, \
-    ks_init, gzFile, ks_getuntil, kstring_t, \
+    ks_init, ks_destroy, gzFile, ks_getuntil, kstring_t, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, gzopen, gzclose, gzerror, gzdopen
@@ -532,6 +532,7 @@ cdef class GZIterator:
             gzclose(self.gzipfile)
             self.gzipfile = NULL
         free(self.buffer.s)
+        ks_destroy(self.kstream)
 
     def __iter__(self):
         return self
