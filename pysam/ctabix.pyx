@@ -20,7 +20,7 @@ from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     ks_init, gzFile, ks_getuntil, kstring_t, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    gzopen, gzclose, gzerror, gzdopen
+    tbx_destroy, gzopen, gzclose, gzerror, gzdopen
 
 PYTHON3 = PY_MAJOR_VERSION >= 3
 
@@ -422,6 +422,8 @@ cdef class Tabixfile:
         if self.tabixfile != NULL:
             hts_close(self.tabixfile)
             self.tabixfile = NULL
+        if self.index != NULL:
+            tbx_destroy(self.index)
         if self._filename != NULL:
             free(self._filename)
 
