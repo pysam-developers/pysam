@@ -953,11 +953,8 @@ class tabix_generic_iterator:
             if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
                 raise ValueError( "incomplete line at %s" % line )
             
-            # create a copy
-            cpy = <char*>malloc(nbytes+1)        
-            if cpy == NULL: raise MemoryError()
-            memcpy( cpy, b, nbytes+1)
-
+            bytes_cpy = <bytes> b
+            cpy = <char *> bytes_cpy
             return self.parser(cpy, nbytes)            
 
         raise StopIteration
