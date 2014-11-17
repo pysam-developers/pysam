@@ -898,6 +898,7 @@ cdef class tabix_file_iterator:
 
     def __dealloc__(self):
         free(self.buffer.s)
+        ks_destroy(self.kstream)
         
     def __next__(self):
         return self.__cnext__()
