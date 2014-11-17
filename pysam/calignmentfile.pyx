@@ -3334,40 +3334,62 @@ cdef class AlignedSegment:
         def __set__(self, v):
             self.query_length = v
     property query:
-        def __get__(self): return self.query_alignment_sequence
-        def __set__(self, v): self.query_alignment_sequence = v
+        def __get__(self):
+            return self.query_alignment_sequence
+        def __set__(self, v):
+            self.query_alignment_sequence = v
     property qqual:
-        def __get__(self): return toQualityString(self.query_alignment_qualities)
-        def __set__(self, v): self.query_alignment_qualities = fromQualityString(v)
+        def __get__(self):
+            return toQualityString(self.query_alignment_qualities)
+        def __set__(self, v):
+            self.query_alignment_qualities = fromQualityString(v)
     property qstart:
-        def __get__(self): return self.query_alignment_start
-        def __set__(self, v): self.query_alignment_start = v
+        def __get__(self):
+            return self.query_alignment_start
+        def __set__(self, v):
+            self.query_alignment_start = v
     property qend:
-        def __get__(self): return self.query_alignment_end
-        def __set__(self, v): self.query_alignment_end = v
+        def __get__(self):
+            return self.query_alignment_end
+        def __set__(self, v):
+            self.query_alignment_end = v
     property qlen:
-        def __get__(self): return self.query_alignmen_length
-        def __set__(self, v): self.query_alignment_length = v
+        def __get__(self):
+            return self.query_alignment_length
+        def __set__(self, v):
+            self.query_alignment_length = v
     property mrnm:
-        def __get__(self): return self.next_reference_id
-        def __set__(self, v): self.next_reference_id = v
+        def __get__(self):
+            return self.next_reference_id
+        def __set__(self, v):
+            self.next_reference_id = v
     property mpos:
-        def __get__(self): return self.next_reference_start
-        def __set__(self, v): self.next_reference_start = v
+        def __get__(self):
+            return self.next_reference_start
+        def __set__(self, v):
+            self.next_reference_start = v
     property rname:
-        def __get__(self): return self.reference_id
-        def __set__(self, v): self.reference_id = v
+        def __get__(self):
+            return self.reference_id
+        def __set__(self, v):
+            self.reference_id = v
     property isize:
-        def __get__(self): return self.template_length
-        def __set__(self, v): self.template_length = v
+        def __get__(self):
+            return self.template_length
+        def __set__(self, v):
+            self.template_length = v
     property blocks:
-        def __get__(self): return self.get_blocks()
+        def __get__(self):
+            return self.get_blocks()
     property aligned_pairs:
-        def __get__(self): return self.get_aligned_pairs()
+        def __get__(self):
+            return self.get_aligned_pairs()
     property inferred_length:
-        def __get__(self): return self.infer_query_length()
+        def __get__(self):
+            return self.infer_query_length()
     property positions:
-        def __get__(self): return self.get_reference_positions()
+        def __get__(self):
+            return self.get_reference_positions()
     def overlap(self):
         return self.get_overlap()
 
