@@ -2436,7 +2436,7 @@ cdef class AlignedSegment:
         This property can be set by providing a sequence.
         """
         def __get__(self):
-            return self._delegate.core.isize
+            return self._delegate.core.l_qseq
 
     property template_length:
         """the observed query template length"""
