@@ -781,6 +781,7 @@ cdef extern from "pysam_stream.h" nogil:
     int gzclose(gzFile)
 
     kstream_t * ks_init(gzFile)
+    void ks_destroy(kstream_t *)
 
     # Retrieve characters from stream until delimiter
     # is reached placing results in str.

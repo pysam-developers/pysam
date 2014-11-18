@@ -40,7 +40,7 @@ Release 0.8.1
      * tags = tags
      * alen -> reference_length, reference is always "alignment", so removed
      * aend -> reference_end
-     * rlen -> query_length 
+     * rlen -> query_length
      * query -> query_alignment_sequence
      * qstart -> query_alignment_start
      * qend -> query_alignment_end

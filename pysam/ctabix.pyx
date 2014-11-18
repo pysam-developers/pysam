@@ -7,6 +7,7 @@ import sys
 from libc.stdio cimport printf, fprintf, stderr
 from libc.string cimport strerror
 from libc.errno cimport errno
+from posix.unistd cimport dup
 
 from cpython cimport PyErr_SetString, PyBytes_Check, \
     PyUnicode_Check, PyBytes_FromStringAndSize, \
@@ -18,10 +19,10 @@ cimport TabProxies
 
 from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_close, bgzf_write, \
-    ks_init, gzFile, ks_getuntil, kstring_t, \
+    ks_init, ks_destroy, gzFile, ks_getuntil, kstring_t, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    gzopen, gzclose, gzerror, gzdopen
+    tbx_destroy, gzopen, gzclose, gzerror, gzdopen
 
 PYTHON3 = PY_MAJOR_VERSION >= 3
 
@@ -449,6 +450,9 @@ cdef class TabixFile:
         if self.tabixfile != NULL:
             hts_close(self.tabixfile)
             self.tabixfile = NULL
+        if self.index != NULL:
+            tbx_destroy(self.index)
+            self.index = NULL
 
     def __dealloc__( self ):
         # remember: dealloc cannot call other python methods
@@ -456,9 +460,9 @@ cdef class TabixFile:
         # note: __del__ is not called.
         if self.tabixfile != NULL:
             hts_close(self.tabixfile)
-            self.tabixfile = NULL
-
-
+        if self.index != NULL:
+            tbx_destroy(self.index)
+            
 cdef class TabixIterator:
     """iterates over rows in *tabixfile* in region
     given by *tid*, *start* and *end*.
@@ -520,6 +524,8 @@ cdef class TabixIterator:
     def __dealloc__(self):
         if <void*>self.iterator != NULL:
             tbx_itr_destroy(self.iterator)
+        if self.buffer.s != NULL:
+            free(self.buffer.s)
 
 
 class EmptyIterator:
@@ -588,7 +594,9 @@ cdef class GZIterator:
         if self.gzipfile != NULL:
             gzclose(self.gzipfile)
             self.gzipfile = NULL
-        free(self.buffer.s)
+        if self.buffer.s != NULL:
+            free(self.buffer.s)
+        ks_destroy(self.kstream)
 
     def __iter__(self):
         return self
@@ -906,12 +914,14 @@ cdef class tabix_file_iterator:
         if fd == -1:
             raise ValueError("I/O operation on closed file.")
 
+        self.duplicated_fd = dup(fd)
+
         # From the manual:
         # gzopen can be used to read a file which is not in gzip format; 
         # in this case gzread will directly read from the file without decompression. 
         # When reading, this will be detected automatically by looking 
         # for the magic two-byte gzip header. 
-        self.fh = gzdopen(fd, 'r')
+        self.fh = gzdopen(self.duplicated_fd, 'r')
 
         if self.fh == NULL: 
             raise IOError('%s' % strerror(errno))
@@ -959,6 +969,8 @@ cdef class tabix_file_iterator:
 
     def __dealloc__(self):
         free(self.buffer.s)
+        ks_destroy(self.kstream)
+        gzclose(self.fh)
         
     def __next__(self):
         return self.__cnext__()
@@ -1019,11 +1031,8 @@ class tabix_generic_iterator:
             if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
                 raise ValueError("incomplete line at %s" % line)
             
-            # create a copy
-            cpy = <char*>malloc(nbytes+1)        
-            if cpy == NULL:
-                raise MemoryError()
-            memcpy(cpy, b, nbytes+1)
+            bytes_cpy = <bytes> b
+            cpy = <char *> bytes_cpy
 
             return self.parser(cpy, nbytes)            
 
