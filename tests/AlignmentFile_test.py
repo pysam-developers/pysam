@@ -129,15 +129,23 @@ class BasicTestBAMFetch(unittest.TestCase):
         self.assertEqual(self.reads[
                          1].next_reference_start, 500 - 1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].next_reference_start, 500 - 1))
 
-    def testARisize(self):
-        self.assertEqual(self.reads[0].query_length, 167, "insert size mismatch in read 1: %s != %s" % (
-            self.reads[0].query_length, 167))
-        self.assertEqual(self.reads[1].query_length, 412, "insert size mismatch in read 2: %s != %s" % (
-            self.reads[1].query_length, 412))
-        self.assertEqual(self.reads[0].query_length, 167, "insert size mismatch in read 1: %s != %s" % (
-            self.reads[0].query_length, 167))
-        self.assertEqual(self.reads[1].query_length, 412, "insert size mismatch in read 2: %s != %s" % (
-            self.reads[1].query_length, 412))
+    def testARQueryLength(self):
+        self.assertEqual(
+            self.reads[0].query_length, 35,
+            "insert size mismatch in read 1: %s != %s" %
+            (self.reads[0].query_length, 35))
+        self.assertEqual(
+            self.reads[1].query_length, 35,
+            "insert size mismatch in read 2: %s != %s" %
+            (self.reads[1].query_length, 35))
+        self.assertEqual(
+            self.reads[0].query_length, 35,
+            "insert size mismatch in read 1: %s != %s" %
+            (self.reads[0].query_length, 35))
+        self.assertEqual(
+            self.reads[1].query_length, 35,
+            "insert size mismatch in read 2: %s != %s" %
+            (self.reads[1].query_length, 35))
 
     def testARseq(self):
         self.assertEqual(self.reads[0].query_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (
@@ -1256,14 +1264,17 @@ class ReadTest(unittest.TestCase):
         '''check if two reads are equal by comparing each field.'''
 
         # add the . for refactoring purposes.
-        for x in (".query_name", ".query_sequence", ".flag",
-                  ".reference_id", ".reference_start",
+        for x in (".query_name",
+                  ".query_sequence",
+                  ".flag",
+                  ".reference_id",
+                  ".reference_start",
                   ".mapping_quality",
                   ".cigartuples",
                   ".next_reference_id",
                   ".next_reference_start",
-                  ".query_length",
                   ".template_length",
+                  ".query_length",
                   ".query_qualities",
                   ".bin",
                   ".is_paired", ".is_proper_pair",
@@ -1349,11 +1360,13 @@ class TestAlignedSegment(ReadTest):
 
         # check seq
         b.query_sequence = "ACGT"
-        self.checkFieldEqual(a, b,
-                             ("query_sequence", "query_qualities"))
+        self.checkFieldEqual(
+            a, b,
+            ("query_sequence", "query_qualities", "query_length"))
         b.query_sequence = "ACGT" * 3
-        self.checkFieldEqual(a, b,
-                             ("query_sequence", "query_qualities"))
+        self.checkFieldEqual(
+            a, b,
+            ("query_sequence", "query_qualities", "query_length"))
         b.query_sequence = "ACGT" * 10
         self.checkFieldEqual(a, b, ("query_qualities",))
 
