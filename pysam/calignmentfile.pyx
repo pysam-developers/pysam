@@ -2936,8 +2936,13 @@ cdef class AlignedSegment:
 
         return result
 
-    def infer_query_length(self):
+    def infer_query_length(self, always=True):
         """inferred read length from CIGAR string.
+
+        If *always* is set to True, the read length
+        will be always inferred. If set to False, the length
+        of the read sequence will be returned if it is
+        available.
 
         Returns None if CIGAR string is not present.
         """
@@ -2947,6 +2952,10 @@ cdef class AlignedSegment:
         cdef bam1_t * src 
 
         src = self._delegate
+
+        if not always and src.core.l_qseq:
+            return src.core.l_qseq
+
         if pysam_get_n_cigar(src) == 0:
             return None
 
