@@ -3328,7 +3328,7 @@ cdef class AlignedSegment:
         def __get__(self): return self.query_alignment_end
         def __set__(self, v): self.query_alignment_end = v
     property qlen:
-        def __get__(self): return self.query_alignmen_length
+        def __get__(self): return self.query_alignment_length
         def __set__(self, v): self.query_alignment_length = v
     property mrnm:
         def __get__(self): return self.next_reference_id
