@@ -211,7 +211,9 @@ class PileupColumn(object):
     n
         number of reads mapping to this column
     pileups
-        list of reads (:class:`pysam.PileupRead`) aligned to this column
+
+        list of reads (:class:`pysam.PileupRead`) aligned to this
+        column
     '''
     def __str__(self):
         return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
@@ -3453,19 +3455,23 @@ cdef class PileupRead:
     def __str__(self):
         return "\t".join(
             map(str,
-                (self.alignment, self.qpos, self.indel, self.level,
-                 self.is_del, self.is_head, self.is_tail, self.is_refskip)))
+                (self.alignment, self.query_position,
+                 self.indel, self.level,
+                 self.is_del, self.is_head,
+                 self.is_tail, self.is_refskip)))
 
     property alignment:
         """a :class:`pysam.AlignedSegment` object of the aligned read"""
         def __get__(self):
             return self._alignment
-    property qpos:
+
+    property query_position:
         """position of the read base at the pileup site, 0-based"""
         def __get__(self):
             return self._qpos
+
     property indel:
-        """indel length; 0 for no indel, positive for ins and negative for del"""
+        """indel length; 0 for no indel, positive for ins and negative            for del"""
         def __get__(self):
             return self._indel
     property level:
