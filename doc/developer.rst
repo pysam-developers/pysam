@@ -18,26 +18,22 @@ samtools
 tests
    Examples and data for testing
 
-Importing :term:`csamtools`
-===========================
+Importing new versions of htslib and samtools
+=============================================
 
-Running :file:`setup.py` will import the csamtools source code. 
-The command::
-
-   python setup.py import PATH
-
-where ``PATH`` points to a :term:`csamtools` source directory. For example::
-
-   python setup.py import ~/samtools-0.1.6
-
-Note that files will not be overwritten. To import all anew, 
-delete all :file:`*.c` and :file:`*.h` files in the :file:`samtools`
-directory first. 
+See instructions in :file:`setup.py` to import the latest
+version of htslib_ and samtools_.
 
 Unit testing
 ============
 
-Unit tests are in the scripts :file:`pysam_test.py` and :file:`tabix_test.py`. 
+Unit tests are in the :file:`tests` directory. To run all unit tests,
+run::
+
+   nosetests -s -v tests
+
+Note to use the ``-s/--nocapture`` option to prevent nosetests from
+captpuring standard output.
 
 Contributors
 ============

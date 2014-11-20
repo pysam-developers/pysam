@@ -23,10 +23,18 @@ from calignmentfile cimport AlignmentFile, AlignedSegment
 
 
 cdef class Samfile(AlignmentFile):
+    '''Deprecated alternative for :class:`~pysam.AlignmentFile`
+
+    Added for backwards compatibility with pysam <= 0.8.0
+    '''
     pass
 
 
 cdef class AlignedRead(AlignedSegment):
+    '''Deprecated alternative for :class:`~pysam.AlignedSegment`
+
+    Added for backwards compatibility with pysam <= 0.8.0
+    '''
     pass
 
 

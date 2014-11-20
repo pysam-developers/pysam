@@ -1,25 +1,21 @@
-.. samtools documentation master file, created by
-   sphinx-quickstart on Wed Aug 12 14:43:42 2009.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-pysam: samtools interface for python
-====================================
+pysam: htslib interface for python
+==================================
 
 :Author: Andreas Heger and contributors
 :Date: |today|
 :Version: |version|
 
-The *SAM/BAM* format is a way to store efficiently large numbers of alignments
-[Li2009]_, such as those routinely are created by next-generation sequencing 
-methods.
+The *SAM/BAM* format is a way to store efficiently large numbers of
+alignments [Li2009]_, such as those routinely are created by
+next-generation sequencing methods.
 
-This module provides a low-level wrapper around the samtools_ C-API using `cython`_
-and a high-level API for convenient access to the data in *SAM/BAM* formatted files.
-Also included is an interface to the tabix_ C-API for reading compressed and
-indexed tabular data.
+This module provides a low-level wrapper around the htslib_ C-API as
+using `cython`_ and a high-level API for convenient access to the data
+in *SAM/BAM* formatted files. Also included is an interface to the
+samtools_ command line utilities and the tabix_ C-API for reading
+compressed and indexed tabular data.
 
-The current version wraps *samtools-0.1.19* and *tabix-0.2.6*.
+The current version wraps *htslib-1.1* and *samtools-1.1*.
 
 Contents
 --------
@@ -52,6 +48,9 @@ References
 	    `PMID: 19505943 <http://www.ncbi.nlm.nih.gov/pubmed/19505943?dopt=Abstract>`_
 
 .. seealso::
+ 
+   Information about htslib
+      http://www.htslib.org
 
    The samtools homepage
       http://samtools.sourceforge.net
@@ -61,13 +60,3 @@ References
 
    The python language
       http://www.python.org
-
-.. _samtools: http://samtools.sourceforge.net
-
-.. _tabix: http://samtools.sourceforge.net/tabix.shtml
-
-.. _cython: http://cython.org/
-
-.. _python: http://www.python.org
-
-
