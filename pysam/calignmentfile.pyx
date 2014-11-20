@@ -1830,6 +1830,10 @@ cdef class IteratorColumn:
         else:
             self.iterdata.fastafile = NULL
 
+        # Free any previously allocated memory before reassigning
+        # pileup_iter
+        self._free_pileup_iter()
+
         if self.stepper is None or self.stepper == "all":
             self.pileup_iter = bam_plp_init(
                 <bam_plp_auto_f>&__advance_all,
@@ -1869,14 +1873,22 @@ cdef class IteratorColumn:
         # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
         bam_plp_reset(self.pileup_iter)
 
-    def __dealloc__(self):
-        # reset in order to avoid memory leak messages for iterators 
-        # that have not been fully consumed
+    cdef _free_pileup_iter(self):
+        '''free the memory alloc'd by bam_plp_init.
+
+        This is needed before setupIteratorData allocates
+        another pileup_iter, or else memory will be lost.
+        '''
         if self.pileup_iter != <bam_plp_t>NULL:
             bam_plp_reset(self.pileup_iter)
             bam_plp_destroy(self.pileup_iter)
             self.pileup_iter = <bam_plp_t>NULL
-            self.plp = <bam_pileup1_t*>NULL
+
+    def __dealloc__(self):
+        # reset in order to avoid memory leak messages for iterators
+        # that have not been fully consumed
+        self._free_pileup_iter()
+        self.plp = <bam_pileup1_t*>NULL
 
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
@@ -3332,7 +3344,7 @@ cdef class AlignedSegment:
         def __get__(self): return self.query_alignment_end
         def __set__(self, v): self.query_alignment_end = v
     property qlen:
-        def __get__(self): return self.query_alignmen_length
+        def __get__(self): return self.query_alignment_length
         def __set__(self, v): self.query_alignment_length = v
     property mrnm:
         def __get__(self): return self.next_reference_id

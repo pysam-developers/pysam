@@ -24,7 +24,7 @@ The ``b`` qualifier indicates that this is a :term:`BAM` file.
 To open a :term:`SAM` file, type::
 
    import pysam
-   samfile = pysam.Samfile( "ex1.bam", "r" )
+   samfile = pysam.Samfile( "ex1.sam", "r" )
 
 Fetching reads mapped to a :term:`region`
 =========================================

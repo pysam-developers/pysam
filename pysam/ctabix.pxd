@@ -23,6 +23,7 @@ cdef class tabix_file_iterator:
     cdef size_t size
     cdef Parser parser
     cdef int fd
+    cdef int duplicated_fd
     cdef infile
 
     cdef __cnext__(self)

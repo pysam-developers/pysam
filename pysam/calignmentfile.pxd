@@ -183,6 +183,7 @@ cdef class IteratorColumn:
                            int multiple_iterators = ?)
 
     cdef reset(self, tid, start, end)
+    cdef _free_pileup_iter(self)
 
 cdef class IteratorColumnRegion(IteratorColumn):
     cdef int start
