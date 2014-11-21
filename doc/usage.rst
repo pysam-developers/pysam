@@ -4,12 +4,6 @@
 Working with BAM/SAM-formatted files
 ====================================
 
-In order to follow the examples below, execute
-   
-   make
-
-in the :file:`test` directory.
-
 Opening a samfile
 =================
 
@@ -94,49 +88,6 @@ return a list of reads that are mapped that particular column::
 
 Aligned reads are returned as a :class:`pysam.PileupColumn`.
 
-Using samtools commands within python
-=====================================
-
-Commands available in :term:`csamtools` are available
-as simple function calls. For example::
-
-   pysam.sort("ex1.bam", "output")
-
-corresponds to the command line::
-
-   samtools sort ex1.bam output
-
-Command line options can be provided as arguments::
-   
-   pysam.sort("-n", "ex1.bam", "output")
-
-or::
-
-   pysam.sort("-m", "1000000", "ex1.bam", "output")
-
-In order to get usage information, try::
-
-   print pysam.sort.usage()
-
-Argument errors raise a :class:`pysam.SamtoolsError`::
-
-   pysam.sort()
-
-   Traceback (most recent call last):
-   File "x.py", line 12, in <module>
-     pysam.sort()
-   File "/home/andreas/pysam/build/lib.linux-x86_64-2.6/pysam/__init__.py", line 37, in __call__
-     if retval: raise SamtoolsError( "\n".join( stderr ) )
-   pysam.SamtoolsError: 'Usage: samtools sort [-n] [-m <maxMem>] <in.bam> <out.prefix>\n'
-
-Messages from :term:`csamtools` on stderr are captured and are
-available using the :meth:`getMessages` method::
-
-   pysam.sort.getMessage()
-
-Note that only the output from the last invocation of a command
-is stored.
-
 Creating SAM/BAM files from scratch
 ===================================
 
@@ -192,6 +143,54 @@ formatted file on stdout::
 
 Note, only the file open mode needs to changed from ``r`` to ``rb``.
 
+=====================================
+Using samtools commands within python
+=====================================
+
+Commands available in :term:`csamtools` are available
+as simple function calls. For example::
+
+   pysam.sort("ex1.bam", "output")
+
+corresponds to the command line::
+
+   samtools sort ex1.bam output
+
+Command line options can be provided as arguments::
+   
+   pysam.sort("-n", "ex1.bam", "output")
+
+or::
+
+   pysam.sort("-m", "1000000", "ex1.bam", "output")
+
+In order to get usage information, try::
+
+   print pysam.sort.usage()
+
+Argument errors raise a :class:`pysam.SamtoolsError`::
+
+   pysam.sort()
+
+   Traceback (most recent call last):
+   File "x.py", line 12, in <module>
+     pysam.sort()
+   File "/build/lib.linux-x86_64-2.6/pysam/__init__.py", line 37, in __call__
+     if retval: raise SamtoolsError( "\n".join( stderr ) )
+   pysam.SamtoolsError: 'Usage: samtools sort [-n] [-m <maxMem>] <in.bam> <out.prefix>\n'
+
+Messages from :term:`csamtools` on stderr are captured and are
+available using the :meth:`getMessages` method::
+
+   pysam.sort.getMessage()
+
+Note that only the output from the last invocation of a command
+is stored.
+
+================================
+Working with tabix-indexed files
+================================
+
 .. Currently inactivated as pileup deprecated
 .. Using the samtools SNP caller
 .. -----------------------------
@@ -225,6 +224,7 @@ Note, only the file open mode needs to changed from ``r`` to ``rb``.
 .. Calling indels works along the same lines, using the :class:`pysam.IteratorIndelCalls`
 .. and :class:`pysam.IteratorIndelCaller`.
 
+===============
 Extending pysam
 ===============
 
@@ -286,6 +286,3 @@ new compilation will take place.
 
 pyximport_ comes with cython_.
 
-.. _cython: http://cython.org/
-
-.. _pyximport: http://www.prescod.net/pyximport/

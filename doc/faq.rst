@@ -15,11 +15,12 @@ format is 0-based. It is important to remember that pysam will always
 conform to the python convention and translate to/from the file format
 automatically.
 
-The only exception is the :term:`region string` in the :meth:`Samfile.fetch`
-and :meth:`Samfile.pileup` methods. This string follows the convention
-of the samtools command line utilities. The same is true for any
-coordinates passed to the samtools command utilities directly, such
-as :meth:`pysam.mpileup`.
+The only exception is the :term:`region` string in the
+:meth:`~pysam.AlignmentFile.fetch` and
+:meth:`~pysam.AlignmentFile.pileup` methods. This string follows the
+convention of the samtools command line utilities. The same is true
+for any coordinates passed to the samtools command utilities directly,
+such as :meth:`pysam.mpileup`.
 
 BAM files with a large number of reference sequences is slow
 ============================================================
@@ -27,7 +28,7 @@ BAM files with a large number of reference sequences is slow
 If you have many reference sequences in a bam file, the following
 might be slow::
 
-      track = pysam.Samfile(fname, "rb")
+      track = pysam.AlignmentFile(fname, "rb")
       for aln in track.fetch():
       	  pass
 	  
@@ -36,7 +37,7 @@ for each reference sequence in the order as it is defined in the
 header. This might require a lot of jumping around in the file. To
 avoid this, use::
 
-      track = pysam.Samfile(fname, "rb")
+      track = pysam.AlignmentFile(fname, "rb")
       for aln in track.fetch( until_eof = True ):
       	  pass
  
@@ -84,7 +85,7 @@ the C-samtools package. Thus, some attention must be paid at the
 lifetime of objects. The following to code snippets will cause an
 error::
 
-    s = Samfile('ex1.bam')
+    s = AlignmentFile('ex1.bam')
     for p in s.pileup('chr1', 1000,1010):
         pass
     
@@ -94,7 +95,7 @@ error::
 The iteration has finished, thus the contents of p are invalid. A
 variation of this::
 
-    p = next(Samfile('ex1.bam').pileup('chr1', 1000, 1010))
+    p = next(AlignmentFile('ex1.bam').pileup('chr1', 1000, 1010))
     for pp in p.pileups:
         print pp
 
@@ -102,7 +103,7 @@ Again, the iteration finishes as the temporary iterator created
 by pileup goes out of scope. The solution is to keep a handle
 to the iterator that remains alive::
 
-    i = Samfile('ex1.bam').pileup( 'chr1', 1000, 1010)
+    i = AlignmentFile('ex1.bam').pileup( 'chr1', 1000, 1010)
     p = next(i)
     for pp in p.pileups:
         print pp

@@ -2,19 +2,22 @@
 pysam - An interface for reading and writing SAM files
 ======================================================
 
+Introduction
+============
+
 Pysam is a python module that makes it easy to read and manipulate
 mapped short read sequence data stored in SAM/BAM files.  It is a
 lightweight wrapper of the htslib_ C-API.
 
 This page provides a quick introduction in using pysam followed by the
-API.  See :ref:`usage` for more detailed usage instructions.
+API. See :ref:`usage` for more detailed usage instructions.
 
 To use the module to read a file in BAM format, create a
 :class:`~pysam.AlignmentFile` object::
 
    import pysam
-   samfile = pysam.Alignmentfile("ex1.bam", "rb")
-   
+   samfile = pysam.AlignmentFile("ex1.bam", "rb")
+
 Once a file is opened you can iterate over all of the read mapping to
 a specified region using :meth:`~pysam.AlignmentFile.fetch`.  Each
 iteration returns a :class:`~pysam.AlignedSegment` object which
@@ -128,8 +131,73 @@ More detailed usage instructions is at :ref:`usage`.
 API
 ===
 
-.. automodule:: pysam
+SAM/BAM files
+-------------
+
+Objects of type :class:`~pysam.AlignmentFile` allow working with
+BAM/SAM formatted files.
+
+.. autoclass:: pysam.AlignmentFile
    :members:
-   :undoc-members:
+
+An :class:`~pysam.AlignedSegment` represents an aligned segment within
+a SAM/BAM file.
+
+.. autoclass:: pysam.AlignedSegment
+   :members:
+
+.. autoclass:: pysam.PileupColumn
+   :members:
+
+.. autoclass:: pysam.PileupRead
+   :members:
+
+.. autoclass:: pysam.IndexedReads
+   :members:
+
+
+Tabix files
+-----------
+
+:class:`~pysam.TabixFile` opens tabular files that have been
+indexed with tabix_.
+
+.. autoclass:: pysam.TabixFile
+   :members:
+
+To iterate over tabix files, use :func:`~pysam.tabix_iterator`:
+
+.. autofunction:: pysam.tabix_iterator
+
+.. autofunction:: pysam.tabix_compress
+
+.. autofunction:: pysam.tabix_index
+
+.. autoclass:: pysam.asTuple
+   :members:
+
+.. autoclass:: pysam.asVCF
+   :members:
+
+.. autoclass:: pysam.asBed
+   :members:
+
+.. autoclass:: pysam.asGTF
+   :members:
+
+
+Fasta files
+-----------
+
+.. autoclass:: pysam.FastaFile
+   :members:
+
+Fastq files
+-----------
+
+.. autoclass:: pysam.FastqFile
+   :members:
+
+
 
 

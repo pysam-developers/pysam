@@ -60,16 +60,16 @@ cdef bytes _encodeFilename(object filename):
 # hard-coded constants
 cdef int max_pos = 2 << 29
 
+## TODO:
+##        add automatic indexing.
+##        add function to get sequence names.
 cdef class FastaFile:
     '''*(filename)*
 
     A *FASTA* file. The file is automatically opened.
 
-    The file expects an indexed fasta file.
-
-    TODO:
-        add automatic indexing.
-        add function to get sequence names.
+    This class expects an indexed fasta file and permits
+    random access to fasta sequences.
     '''
 
     def __cinit__(self, *args, **kwargs ):
@@ -142,19 +142,20 @@ cdef class FastaFile:
         def __get__(self):
             return self._lengths
 
-    def fetch( self,
-               reference = None,
-               start = None,
-               end = None,
-               region = None):
+    def fetch(self,
+              reference=None,
+              start=None,
+              end=None,
+              region=None):
 
         '''*(reference = None, start = None, end = None, region = None)*
 
-        fetch :class:`AlignedRead` objects in a :term:`region` using 0-based indexing.
+        fetch sequences in a :term:`region` using 0-based indexing.
 
         The region is specified by :term:`reference`, *start* and *end*.
 
-        fetch returns an empty string if the region is out of range or addresses an unknown *reference*.
+        fetch returns an empty string if the region is out of range or
+        addresses an unknown *reference*.
 
         If *reference* is given and *start* is None, the sequence from the
         first base is returned. Similarly, if *end* is None, the sequence
@@ -269,6 +270,9 @@ cdef class FastqFile:
     '''*(filename)*
 
     A *FASTQ* file. The file is automatically opened.
+
+    This file object permits iterating over all entries in
+    a fastq file. Random access is not implemented.
 
     '''
     def __cinit__(self, *args, **kwargs):

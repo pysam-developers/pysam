@@ -10,10 +10,8 @@ Release 0.8.1
 * Bugfixes, most notable:
   * issue #43: uncompressed BAM output
   * issue #42: skip tests requiring network if none available
-  * issue #19: multiple iterators can now be made to work on the same
-               tabix file
-  * issue #24: All strings returned from/passed to the pysam API are
-               now unicode in python 3
+  * issue #19: multiple iterators can now be made to work on the same tabix file
+  * issue #24: All strings returned from/passed to the pysam API are now unicode in python 3
   * issue #5:  type guessing for lists of integers fixed    
     
 * API changes for consistency. The old API is still present,

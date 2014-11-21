@@ -108,7 +108,7 @@ cdef class AlignmentFile:
 
     cdef char * _getrname(self, int tid)
 
-cdef class PileupProxy:
+cdef class PileupColumn:
     cdef bam_pileup1_t ** plp
     cdef int tid
     cdef int pos

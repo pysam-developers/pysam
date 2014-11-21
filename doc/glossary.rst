@@ -68,6 +68,20 @@ Glossary
    tabix row
       A row in a :term:`tabix file`. Fields within a row are 
       tab-separated. 
-      
 
-.. _samtools: http://samtools.sourceforge.net
+   soft clipping
+   soft clipped
+
+      In alignments with soft clipping part of the query sequence
+      are not aligned. The unaligned query sequence is still part
+      of the alignment record. This is in difference to hard clipped reads.
+
+   hard clipping
+   hard clipped
+
+      In hard clipped reads, part of the sequence has been removed
+      prior to alignment. That only a subsequence is aligend might be
+      recorded in the :term:`cigar` alignment, but the removed
+      sequence will not be part of the alignment record, in contrast
+      to :term:`soft clipped` reads.
+     

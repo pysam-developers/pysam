@@ -25,7 +25,6 @@ Contents
 
    api.rst
    usage.rst
-   tabix.rst
    faq.rst
    glossary.rst
    developer.rst

@@ -104,7 +104,7 @@ cdef class Parser:
 cdef class asTuple(Parser):
     '''converts a :term:`tabix row` into a python tuple.
 
-    Access is by numeric index.
+    A field in a row is accessed by numeric index.
     ''' 
     cdef parse(self, char * buffer, int len):
         cdef TabProxies.TupleProxy r
@@ -116,35 +116,44 @@ cdef class asTuple(Parser):
 
 
 cdef class asGTF(Parser):
-    '''converts a :term:`tabix row` into a GTF record with the following 
+    '''converts a :term:`tabix row` into a GTF record with the following
     fields:
+   
+    +----------+----------+-------------------------------+
+    |*Column*  |*Name*    |*Content*                      |
+    +----------+----------+-------------------------------+
+    |1         |contig    |the chromosome name            |
+    +----------+----------+-------------------------------+
+    |2         |feature   |The feature type               |
+    +----------+----------+-------------------------------+
+    |3         |source    |The feature source             |
+    +----------+----------+-------------------------------+
+    |4         |start     |genomic start coordinate       |
+    |          |          |(0-based)                      |
+    +----------+----------+-------------------------------+
+    |5         |end       |genomic end coordinate         |
+    |          |          |(0-based)                      |
+    +----------+----------+-------------------------------+
+    |6         |score     |feature score                  |
+    +----------+----------+-------------------------------+
+    |7         |strand    |strand                         |
+    +----------+----------+-------------------------------+
+    |8         |frame     |frame                          |
+    +----------+----------+-------------------------------+
+    |9         |attributes|the attribute field            |
+    +----------+----------+-------------------------------+
 
-    contig
-       contig
-    feature
-       feature
-    source
-       source
-    start
-       genomic start coordinate (0-based)
-    end
-       genomic end coordinate plus one (0-based)
-    score
-       feature score
-    strand
-       strand
-    frame
-       frame
-    attributes
-       attribute string.
+    GTF formatted entries also define the following fields that
+    are derived from the attributes field:
 
-    GTF formatted entries also defined the attributes:
+    +--------------------+------------------------------+
+    |*Name*              |*Content*                     |
+    +--------------------+------------------------------+
+    |gene_id             |the gene identifier           |
+    +--------------------+------------------------------+
+    |transcript_id       |the transcript identifier     |
+    +--------------------+------------------------------+
 
-    gene_id
-       the gene identifier
-    transcript_ind
-       the transcript identifier
-    
     ''' 
     cdef parse(self, char * buffer, int len):
         cdef TabProxies.GTFProxy r
@@ -157,30 +166,37 @@ cdef class asBed(Parser):
     '''converts a :term:`tabix row` into a bed record
     with the following fields:
 
-    contig
-       contig
-    start
-       genomic start coordinate (zero-based)
-    end
-       genomic end coordinate plus one (zero-based)
-    name
-       name of feature.
-    score
-       score of feature
-    strand
-       strand of feature
-    thickStart
-       thickStart
-    thickEnd
-       thickEnd
-    itemRGB
-       itemRGB
-    blockCount
-       number of bocks
-    blockSizes
-       ',' separated string of block sizes
-    blockStarts
-       ',' separated string of block genomic start positions
+    +-----------+-----------+------------------------------------------+
+    |*Column*   |*Field*    |*Contents*                                |
+    |           |           |                                          |
+    +-----------+-----------+------------------------------------------+
+    |1          |contig     |contig                                    |
+    |           |           |                                          |
+    +-----------+-----------+------------------------------------------+
+    |2          |start      |genomic start coordinate (zero-based)     |
+    +-----------+-----------+------------------------------------------+
+    |3          |end        |genomic end coordinate plus one           |
+    |           |           |(zero-based)                              |
+    +-----------+-----------+------------------------------------------+
+    |4          |name       |name of feature.                          |
+    +-----------+-----------+------------------------------------------+
+    |5          |score      |score of feature                          |
+    +-----------+-----------+------------------------------------------+
+    |6          |strand     |strand of feature                         |
+    +-----------+-----------+------------------------------------------+
+    |7          |thickStart |thickStart                                |
+    +-----------+-----------+------------------------------------------+
+    |8          |thickEnd   |thickEnd                                  |
+    +-----------+-----------+------------------------------------------+
+    |9          |itemRGB    |itemRGB                                   |
+    +-----------+-----------+------------------------------------------+
+    |10         |blockCount |number of bocks                           |
+    +-----------+-----------+------------------------------------------+
+    |11         |blockSizes |',' separated string of block sizes       |
+    +-----------+-----------+------------------------------------------+
+    |12         |blockStarts|',' separated string of block genomic     |
+    |           |           |start positions                           |
+    +-----------+-----------+------------------------------------------+
 
     Only the first three fields are required. Additional
     fields are optional, but if one is defined, all the preceeding
@@ -198,24 +214,28 @@ cdef class asVCF(Parser):
     '''converts a :term:`tabix row` into a VCF record with
     the following fields:
     
-    contig
-       contig
-    pos
-       chromosomal position, zero-based
-    id 
-       id
-    ref
-       reference
-    alt
-       alt
-    qual
-       qual
-    filter
-       filter
-    info
-       info
-    format
-       format specifier.
+    +----------+---------+------------------------------------+
+    |*Column*  |*Field*  |*Contents*                          |
+    |          |         |                                    |
+    +----------+---------+------------------------------------+
+    |1         |contig   |chromosome                          |
+    +----------+---------+------------------------------------+
+    |2         |pos      |chromosomal position, zero-based    |
+    +----------+---------+------------------------------------+
+    |3         |id       |id                                  |
+    +----------+---------+------------------------------------+
+    |4         |ref      |reference allele                    |
+    +----------+---------+------------------------------------+
+    |5         |alt      |alternate alleles                   |
+    +----------+---------+------------------------------------+
+    |6         |qual     |quality                             |
+    +----------+---------+------------------------------------+
+    |7         |filter   |filter                              |
+    +----------+---------+------------------------------------+
+    |8         |info     |info                                |
+    +----------+---------+------------------------------------+
+    |9         |format   |format specifier.                   |
+    +----------+---------+------------------------------------+
 
     Access to genotypes is via index::
 
@@ -241,7 +261,9 @@ cdef class TabixFile:
     *parser* sets the default parser for this tabix file. If *parser*
     is None, the results are returned as an unparsed string.
     Otherwise, *parser* is assumed to be a functor that will return
-    parsed data (see for example :meth:`asTuple` and :meth:`asGTF`).
+    parsed data (see for example :class:`~pysam.asTuple` and
+    :class:`~pysam.asGTF`).
+
     '''
     def __cinit__(self,
                   filename,
@@ -419,7 +441,7 @@ cdef class TabixFile:
         '''the file header.
           
         .. note::
-            The header is returned as an iterator over lines without the
+            The header is returned as an iterator presenting lines without the
             newline character.
         '''
         
@@ -427,7 +449,7 @@ cdef class TabixFile:
             return GZIteratorHead(self.filename)
 
     property contigs:
-        '''chromosome names'''
+        '''list of chromosome names'''
         def __get__(self):
             cdef char ** sequences
             cdef int nsequences
@@ -464,7 +486,7 @@ cdef class TabixFile:
         if self.index != NULL:
             tbx_destroy(self.index)
 
->>>>>>> d0a2591055d16ff28b630be2604e1997e61a7989
+
 cdef class TabixIterator:
     """iterates over rows in *tabixfile* in region
     given by *tid*, *start* and *end*.
@@ -1045,7 +1067,15 @@ class tabix_generic_iterator:
         return self.__next__()
 
 def tabix_iterator(infile, parser):
-    """return an iterator over all entries in a file."""
+    """return an iterator over all entries in a file.
+    
+    Results are returned parsed as specified by the *parser*. If
+    *parser* is None, the results are returned as an unparsed string.
+    Otherwise, *parser* is assumed to be a functor that will return
+    parsed data (see for example :class:`~pysam.asTuple` and
+    :class:`~pysam.asGTF`).
+
+    """
     if PYTHON3:
         return tabix_generic_iterator(infile, parser)
     else:

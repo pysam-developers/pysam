@@ -130,10 +130,10 @@ cdef object makeAlignedSegment(bam1_t * src):
     return dest
 
 
-cdef class PileupProxy
-cdef makePileupProxy(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
+cdef class PileupColumn
+cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
     # note that the following does not call __init__
-     cdef PileupProxy dest = PileupProxy.__new__(PileupProxy)
+     cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
      dest.plp = plp
      dest.tid = tid
      dest.pos = pos
@@ -200,37 +200,17 @@ cdef convertBinaryTagToList( uint8_t * s ):
     return byte_size, nvalues, values
 
 
-class PileupColumn(object):
-    '''A pileup column. A pileup column contains
-    all the reads that map to a certain target base.
-
-    tid
-        chromosome ID as is defined in the header
-    pos
-        the target base coordinate (0-based)
-    n
-        number of reads mapping to this column
-    pileups
-
-        list of reads (:class:`pysam.PileupRead`) aligned to this
-        column
-    '''
-    def __str__(self):
-        return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
-            "\n" + "\n".join( map(str, self.pileups) )
-
-
-# valid types for sam headers
+# valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : dict,
                       "SQ" : list,
                       "RG" : list,
                       "PG" : list,
                       "CO" : list}
 
-# order of records within sam headers
+# order of records within SAM headers
 VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
 
-# type conversions within sam header records
+# default type conversions within SAM header records
 VALID_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                        "SQ" : {"SN" : str, "LN" : int, "AS" : str, 
                                "M5" : str, "SP" : str, "UR" : str,},
@@ -254,10 +234,10 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
 
 cdef class AlignmentFile:
     '''*(filename, mode=None, template = None,
-         referencenames = None, referencelengths = None,
-         text = NULL, header = None,
-         add_sq_text = False, check_header = True,
-         check_sq = True )*
+         referencenames=None, referencelengths = None,
+         text=NULL, header=None,
+         add_sq_text=False, check_header=True,
+         check_sq=True)*
 
     A :term:`SAM`/:term:`BAM` formatted file. The file is
     automatically opened.
@@ -278,8 +258,8 @@ cdef class AlignmentFile:
     If mode is not specified, we will try to auto-detect in the order
     'rb', 'r', thus both the following should work::
 
-        f1 = pysam.AlignmentFile('ex1.bam' )
-        f2 = pysam.AlignmentFile('ex1.sam' )
+        f1 = pysam.AlignmentFile('ex1.bam')
+        f2 = pysam.AlignmentFile('ex1.sam')
 
     If an index for a BAM file exists (.bai), it will be opened
     automatically. Without an index random access to reads via
@@ -445,7 +425,7 @@ cdef class AlignmentFile:
                                      referencelengths[x]))
                     text = ''.join(text)
 
-                if text != None:
+                if text is not None:
                     # copy without \0
                     text = _forceBytes(text)
                     ctext = text
@@ -536,7 +516,7 @@ cdef class AlignmentFile:
         returns -1 if reference is not known.
         '''
         if not self._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+            raise ValueError("I/O operation on closed file")
         reference = _forceBytes(reference)
         return bam_name2id(self.header, reference)
 
@@ -544,13 +524,13 @@ cdef class AlignmentFile:
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
         if not self._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+            raise ValueError("I/O operation on closed file")
         if not 0 <= tid < self.header.n_targets:
-            raise ValueError("tid %i out of range 0<=tid<%i" % 
-                             (tid, self.header.n_targets ) )
+            raise ValueError("reference_id %i out of range 0<=tid<%i" % 
+                             (tid, self.header.n_targets))
         return _charptr_to_str(self.header.target_name[tid])
 
-    cdef char * _getrname( self, int tid ): # TODO unused
+    cdef char * _getrname(self, int tid):   # TODO unused
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
         if not self._isOpen():
@@ -567,15 +547,16 @@ cdef class AlignmentFile:
                      end=None,
                      region=None,
                      tid=None):
-        '''
-        parse region information.
+        '''parse region information.
 
-        raise ValueError for for invalid regions.
+        Raises ValueError for invalid regions.
 
-        returns a tuple of flag, tid, start and end. Flag indicates
-        whether some coordinates were supplied.
+        Returns a tuple of a flag, :term:`tid`, start and end. The
+        flag indicates whether some coordinates were supplied.
 
-        Note that regions are 1-based, while start,end are python coordinates.
+        Note that region strings are 1-based, while *start* and *end* denote
+        an interval in python coordinates.
+
         '''
         cdef int rtid
         cdef long long rstart
@@ -588,13 +569,13 @@ cdef class AlignmentFile:
             try:
                 rstart = start
             except OverflowError:
-                raise ValueError( 'start out of range (%i)' % start )
+                raise ValueError('start out of range (%i)' % start)
 
         if end != None:
             try:
                 rend = end
             except OverflowError:
-                raise ValueError( 'end out of range (%i)' % end )
+                raise ValueError('end out of range (%i)' % end)
 
         if region:
             region = _forceStr(region)
@@ -627,7 +608,8 @@ cdef class AlignmentFile:
         return 1, rtid, rstart, rend
 
     def reset(self):
-        '''reset file position to beginning of read section.'''
+        '''reset file position to beginning of file just after
+        the header.'''
         return self.seek(self.start_offset, 0)
 
     def seek(self, uint64_t offset, int where = 0):
@@ -646,10 +628,10 @@ cdef class AlignmentFile:
 
     def tell(self):
         '''
-        return current file position
+        return current file position.
         '''
         if not self._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+            raise ValueError("I/O operation on closed file")
         if not self.isbam:
             raise NotImplementedError("seek only available in bam files")
 
@@ -870,24 +852,26 @@ cdef class AlignmentFile:
            ``all``
               use all reads for pileup.
 
-          ``pass``
+           ``pass``
               skip reads in which any of the following flags are set:
               BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
 
            ``samtools``
               same filter and read processing as in :term:`csamtools`
-              pileup
+              pileup. This requires a *fastafile* to be given.
+
 
         fastafile
-           A :class:`FastaFile` object
+           A :class:`~pysam.FastaFile` object. This is required for
+           some of the steppers.
 
-         mask
+        mask
            Skip all reads with bits set in mask if mask=True.
 
-         max_depth
+        max_depth
            Maximum read depth permitted. The default limit is *8000*.
 
-         truncate
+        truncate
 
            By default, the samtools pileup engine outputs all reads
            overlapping a region (see note below).  If truncate is True
@@ -1721,14 +1705,15 @@ cdef class IteratorColumn:
        result = list( f.pileup() )
 
     Here, ``result`` will contain ``n`` objects of type
-    :class:`PileupProxy` for ``n`` columns, but each object in
+    :class:`PileupColumn` for ``n`` columns, but each object in
     ``result`` will contain the same information.
 
     The desired behaviour can be achieved by list comprehension::
 
        result = [ x.pileups() for x in f.pileup() ]
 
-    ``result`` will be a list of ``n`` lists of objects of type :class:`PileupRead`.
+    ``result`` will be a list of ``n`` lists of objects of type
+    :class:`PileupRead`.
 
     If the iterator is associated with a :class:`Fastafile` using the
     :meth:`addReference` method, then the iterator will export the
@@ -1929,7 +1914,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
                 if self.start > self.pos: continue
                 if self.pos >= self.end: raise StopIteration
 
-            return makePileupProxy(&self.plp,
+            return makePileupColumn(&self.plp,
                                    self.tid,
                                    self.pos,
                                    self.n_plp)
@@ -1962,7 +1947,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 
             # return result, if within same reference
             if self.plp != NULL:
-                return makePileupProxy(&self.plp,
+                return makePileupColumn(&self.plp,
                                        self.tid,
                                        self.pos,
                                        self.n_plp)
@@ -3377,15 +3362,10 @@ cdef class AlignedSegment:
         def __set__(self, v):
             self.query_alignment_end = v
     property qlen:
-<<<<<<< HEAD
         def __get__(self):
             return self.query_alignment_length
         def __set__(self, v):
             self.query_alignment_length = v
-=======
-        def __get__(self): return self.query_alignment_length
-        def __set__(self, v): self.query_alignment_length = v
->>>>>>> d0a2591055d16ff28b630be2604e1997e61a7989
     property mrnm:
         def __get__(self):
             return self.next_reference_id
@@ -3422,44 +3402,40 @@ cdef class AlignedSegment:
         return self.get_overlap()
 
 
-cdef class PileupProxy:
-    '''A pileup column. A pileup column contains
-    all the reads that map to a certain target base.
+cdef class PileupColumn:
+    '''A pileup of reads at a particular reference sequence postion
+    (:term:`column`). A pileup column contains all the reads that map
+    to a certain target base.
 
-    reference_id
-        chromosome ID as is defined in the header
+    This class is a proxy for results returned by the samtools pileup
+    engine.  If the underlying engine iterator advances, the results
+    of this column will change.
 
-    reference_pos
-        the reference base coordinate (0-based)
-
-    nsegments
-        number of segments mapping to this column
-
-    pileups
-        list of reads (:class:`pysam.PileupRead`) aligned to this column
-
-    This class is a proxy for results returned by the samtools pileup engine.
-    If the underlying engine iterator advances, the results of this column
-    will change.
     '''
     def __init__(self):
-        raise TypeError("This class cannot be instantiated from Python")
+        raise TypeError("this class cannot be instantiated from Python")
 
     def __str__(self):
-        return "\t".join( map(str, (self.tid, self.pos, self.n))) +\
+        return "\t".join(map(str, 
+                              (self.reference_id, self.reference_pos, 
+                               self.nsegmentes))) +\
             "\n" +\
-            "\n".join( map(str, self.pileups) )
+            "\n".join(map(str, self.pileups))
 
     property reference_id:
-        '''the chromosome ID as is defined in the header'''
-        def __get__(self): return self.tid
+        '''the reference sequence number as defined in the header'''
+        def __get__(self):
+            return self.tid
 
     property nsegments:
         '''number of reads mapping to this column.'''
-        def __get__(self): return self.n_pu
-        def __set__(self, n): self.n_pu = n
+        def __get__(self):
+            return self.n_pu
+        def __set__(self, n):
+            self.n_pu = n
 
     property reference_pos:
+        '''the position in the reference sequence (0-based).'''
         def __get__(self):
             return self.pos
 
@@ -3470,7 +3446,7 @@ cdef class PileupProxy:
             pileups = []
 
             if self.plp == NULL or self.plp[0] == NULL:
-                raise ValueError("PileupProxy accessed after iterator finished")
+                raise ValueError("PileupColumn accessed after iterator finished")
 
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
@@ -3483,24 +3459,32 @@ cdef class PileupProxy:
     # Functions, properties for compatibility with pysam < 0.8
     ########################################################
     property pos:
-        def __get__(self): return self.reference_pos
-        def __set__(self, v): self.reference_pos = v
+        def __get__(self):
+            return self.reference_pos
+        def __set__(self, v):
+            self.reference_pos = v
 
     property tid:
-        def __get__(self): return self.reference_id
-        def __set__(self, v): self.reference_id = v
+        def __get__(self):
+            return self.reference_id
+        def __set__(self, v):
+            self.reference_id = v
     
     property n:
-        def __get__(self): return self.nsegments
-        def __set__(self, v): self.nsegments = v
+        def __get__(self):
+            return self.nsegments
+        def __set__(self, v):
+            self.nsegments = v
             
 
 cdef class PileupRead:
-    '''A read aligned to a column.
+    '''Representation of a read aligned to a particular position in the
+    reference sequence.
+
     '''
 
     def __init__(self):
-        raise TypeError("This class cannot be instantiated from Python")
+        raise TypeError("this class cannot be instantiated from Python")
 
     def __str__(self):
         return "\t".join(
@@ -3576,11 +3560,13 @@ cdef class SNPCall:
        def __get__(self): return self._consensus_quality
 
     property snp_quality:
-       '''the snp quality (Phred scaled) - probability of consensus being identical to reference sequence.'''
+       '''the snp quality (Phred scaled) - probability of consensus being
+       identical to reference sequence.'''
        def __get__(self): return self._snp_quality
 
     property mapping_quality:
-       '''the root mean square (rms) of the mapping quality of all reads involved in the call.'''
+       '''the root mean square (rms) of the mapping quality of all reads
+       involved in the call.'''
        def __get__(self): return self._rms_mapping_quality
 
     property coverage:
@@ -3601,12 +3587,12 @@ cdef class SNPCall:
 
 
 cdef class IndexedReads:
-    """index a bamfile by read.
+    """index a Sam/BAM-file by query name.
 
-    The index is kept in memory.
+    The index is kept in memory and can be substantial.
 
-    By default, the file is re-openend to avoid conflicts if
-    multiple operators work on the same file. Set *multiple_iterators* = False
+    By default, the file is re-openend to avoid conflicts if multiple
+    operators work on the same file. Set *multiple_iterators* = False
     to not re-open *samfile*.
     """
 
@@ -3657,14 +3643,20 @@ cdef class IndexedReads:
 
         bam_destroy1(b)
 
-    def find(self, qname):
-        if qname in self.index:
+    def find(self, query_name):
+        '''find *query_name* in index.
+
+        Returns an iterator over all reads with query_name.
+
+        Raise a KeyError if the *query_name* is not in the index.
+        '''
+        if query_name in self.index:
             return IteratorRowSelection(
                 self.samfile,
-                self.index[qname],
+                self.index[query_name],
                 multiple_iterators = False)
         else:
-            raise KeyError("read %s not found" % qname)
+            raise KeyError("read %s not found" % query_name)
 
     def __dealloc__(self):
         if self.owns_samfile:
@@ -3676,7 +3668,6 @@ __all__ = ["AlignmentFile",
            "IteratorColumn",
            "AlignedSegment",
            "PileupColumn",
-           "PileupProxy",
            "PileupRead",
            "IndexedReads",
            "toQualityString",
