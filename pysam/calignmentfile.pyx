@@ -2318,14 +2318,14 @@ cdef class AlignedSegment:
             pysam_set_flag(self._delegate, flag)
 
     property reference_id:
-        """
-        :term:`reference` ID
+        """:term:`reference` ID
 
         .. note::
 
-            This field contains the index of the reference sequence
-            in the sequence dictionary. To obtain the name
-            of the reference sequence, use :meth:`pysam.AlignmentFile.getrname()`
+            This field contains the index of the reference sequence in
+            the sequence dictionary. To obtain the name of the
+            reference sequence, use
+            :meth:`pysam.AlignmentFile.getrname()`
 
         """
         def __get__(self): return self._delegate.core.tid
@@ -2685,12 +2685,12 @@ cdef class AlignedSegment:
             pysam_set_bin(self._delegate, bin)
 
 
-    #######################################################################
+    ##########################################################
     # Derived simple attributes. These are simple attributes of 
     # AlignedSegment getting and setting values.
-    #######################################################################
+    ##########################################################
     # 1. Flags
-    #######################################################################
+    ##########################################################
     property is_paired:
         """true if read is paired in sequencing"""
         def __get__(self):

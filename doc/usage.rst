@@ -7,7 +7,7 @@ Working with BAM/SAM-formatted files
 Opening a samfile
 =================
 
-The first operation is to import the pysam module and open a 
+To begin with, import the pysam module and open a
 :class:`pysam.AlignmentFile`::
 
    import pysam
@@ -65,10 +65,12 @@ span a region that is larger than the one queried.
 Using the pileup-engine
 =======================
 
-The :term:`pileup` engine of htslib_ iterates over all reads that are
-aligned to a :term:`region`. In contrast to :term:`fetching`, the
-:term:`pileup` engine returns for each base in the :term:`reference`
-sequence the reads that map to that particular position.
+In contrast to :term:`fetching`, the :term:`pileup` engine returns for
+each base in the :term:`reference` sequence the reads that map to that
+particular position. In the typical view of reads stacking vertically
+on top of the reference sequence similar to a multiple alignment,
+:term:`fetching` iterates over the rows of this implied multiple
+alignment while a :term:`pileup` iterates over the :term:`columns`.
 
 ..
    Again, there are two principal methods to iterate.
@@ -78,15 +80,17 @@ sequence the reads that map to that particular position.
 	  print str(pileups)
       samfile.pileup( 'seq1', 10, 20, callback = my_pileup_callback )
 
-Calling :meth:`~pysam.AlignmentFile.pileup` will return an iteraton
-that will iterate through each :term:`column` (reference base) and
-return a list of reads that are mapped that particular column::
+Calling :meth:`~pysam.AlignmentFile.pileup` will return an iterator
+over each :term:`column` (reference base) of a specified
+:term:`region`. Each call to the iterator returns an object of the
+type :class:`pysam.PileupColumn` that provides access to all the
+reads aligned to that particular reference position as well as
+some additional information::
 
    iter = samfile.pileup('seq1', 10, 20)
    for x in iter:
       print (str(x))
-
-Aligned reads are returned as a :class:`pysam.PileupColumn`.
+ 
 
 Creating SAM/BAM files from scratch
 ===================================
@@ -191,6 +195,31 @@ is stored.
 Working with tabix-indexed files
 ================================
 
+To open a tabular file that has been indexed with tabix_, use
+:class:`~pysam.TabixFile`::
+
+    import pysam
+    tbx = pysam.TabixFile("example.bed.gz")
+
+Similar to :class:`~pysam.AlignmentFile.fetch`, intervals within a
+region can be retrieved by calling :meth:`~pysam.TabixFile.fetch()`::
+
+    for row in tbx.fetch("chr1", 1000, 2000):
+         print (str(row))
+
+This will return a tuple-like data structure in which columns can
+be retrieved by numeric index:
+
+    for row in tbx.fetch("chr1", 1000, 2000):
+         print ("chromosome is", row[0])
+
+By providing a parser argument to :class:`~pysam.AlignmentFile.fetch`
+or :class:`~pysam.TabixFile`, the data will we presented in parsed
+form:
+
+    for row in tbx.fetch("chr1", 1000, 2000, parser=pysam.asTuple()):
+         print ("chromosome is", row.contig)
+
 .. Currently inactivated as pileup deprecated
 .. Using the samtools SNP caller
 .. -----------------------------
@@ -230,7 +259,7 @@ Extending pysam
 
 Using pyximport_, it is (relatively) straight-forward to access pysam
 internals and the underlying samtools library. An example is provided
-in the :file:`test` directory. The example emulates the samtools
+in the :file:`tests` directory. The example emulates the samtools
 flagstat command and consists of three files:
 
 1. The main script :file:`pysam_flagstat.py`. The important lines in
@@ -270,12 +299,12 @@ flagstat command and consists of three files:
 
      def make_ext(modname, pyxfilename):
 	 from distutils.extension import Extension
-	 import pysam, os
-	 return Extension(name = modname,
+	 import pysam
+	 return Extension(name=modname,
                sources=[pyxfilename],
                extra_link_args=pysam.get_libraries(),
-	       include_dirs =  pysam.get_include(),
-	       define_macros = pysam.get_defines())
+	       include_dirs=pysam.get_include(),
+	       define_macros=pysam.get_defines())
 
 If the script :file:`pysam_flagstat.py` is called the first time,
 pyximport_ will compile the cython_ extension
