@@ -1,4 +1,3 @@
-
 # cython: embedsignature=True
 # adds doc-strings for sphinx
 import os
@@ -335,10 +334,11 @@ cdef class TabixFile:
         parsing.
         
         Set *multiple_iterators* to true if you will be using multiple
-        iterators on the same file at the same time. The iterator returned
-        will receive its own copy of a filehandle to the file effectively
-        re-opening the file. Re-opening a file creates some
-        overhead, so beware.
+        iterators on the same file at the same time. The iterator
+        returned will receive its own copy of a filehandle to the file
+        effectively re-opening the file. Re-opening a file creates
+        some overhead, so beware.
+
         '''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
@@ -460,9 +460,11 @@ cdef class TabixFile:
         # note: __del__ is not called.
         if self.tabixfile != NULL:
             hts_close(self.tabixfile)
+            self.tabixfile = NULL
         if self.index != NULL:
             tbx_destroy(self.index)
-            
+
+>>>>>>> d0a2591055d16ff28b630be2604e1997e61a7989
 cdef class TabixIterator:
     """iterates over rows in *tabixfile* in region
     given by *tid*, *start* and *end*.
