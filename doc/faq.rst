@@ -22,6 +22,24 @@ convention of the samtools command line utilities. The same is true
 for any coordinates passed to the samtools command utilities directly,
 such as :meth:`pysam.mpileup`.
 
+AlignmentFile.fetch does not show unmapped reads
+================================================
+
+:meth:`~pysam.AlignmentFile.fetch` will only iterate over alignments
+in the SAM/BAM file. The following thus always works::
+
+    bf = pysam.AlignemFile(fname, "rb")
+    for r in bf.fetch():
+        assert not r.is_unmapped
+
+If the SAM/BAM file contains unaligned reads, they can be included
+in the iteration by adding the ``until_eof=True`` flag::
+
+    bf = pysam.AlignemFile(fname, "rb")
+    for r in bf.fetch(until_eof=True):
+        if r.is_unmapped:
+	    print "read is unmapped"
+	
 BAM files with a large number of reference sequences is slow
 ============================================================
 
@@ -38,7 +56,7 @@ header. This might require a lot of jumping around in the file. To
 avoid this, use::
 
       track = pysam.AlignmentFile(fname, "rb")
-      for aln in track.fetch( until_eof = True ):
+      for aln in track.fetch(until_eof=True):
       	  pass
  
 This will iterate through reads as they appear in the file.

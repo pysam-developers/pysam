@@ -646,15 +646,15 @@ cdef class AlignmentFile:
               callback=None,
               until_eof=False,
               multiple_iterators=False):
-        '''fetch aligned reads in a :term:`region` using 0-based indexing. The
-        region is specified by :term:`reference`, *start* and
-        *end*. Alternatively, a samtools :term:`region` string can be
-        supplied.
+        '''fetch aligned, i.e. mapped, reads in a :term:`region` using 0-based
+        indexing. The region is specified by :term:`reference`,
+        *start* and *end*. Alternatively, a samtools :term:`region`
+        string can be supplied.
 
         Without *reference* or *region* all mapped reads will be
         fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
-        file.
+        file. 
 
         If *until_eof* is given, all reads from the current file
         position will be returned in order as they are within the
