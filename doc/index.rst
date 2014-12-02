@@ -26,9 +26,9 @@ Contents
    api.rst
    usage.rst
    faq.rst
-   glossary.rst
    developer.rst
    release.rst
+   glossary.rst
 
 Indices and tables
 ------------------

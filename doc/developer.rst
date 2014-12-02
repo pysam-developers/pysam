@@ -8,15 +8,25 @@ Code organization
 The top level directory is organized in the following 
 directories:
 
-pysam
+:file:`pysam`
    Code specific to pysam
 
-samtools
-   Original and unmodified source code from :term:`csamtools`. Use 
-   :file:`setup.py` to obtain the latest code.
+:file:`doc`
+   The documentation. To build the latest documention type::
 
-tests
-   Examples and data for testing
+       make -C doc html
+
+:file:`tests`
+   Code and data for testing
+
+:file:`htslib`
+   Source code from :term:`htslib` shipped with pysam. See
+   :file:`setup.py` about importing.
+
+:file:`samtools`
+   Source code from :term:`csamtools` shipped with pysam. See
+   :file:`setup.py` about importing.
+
 
 Importing new versions of htslib and samtools
 =============================================
