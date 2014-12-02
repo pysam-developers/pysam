@@ -122,6 +122,7 @@ cdef class PileupRead:
     cdef uint32_t _is_del
     cdef uint32_t _is_head
     cdef uint32_t _is_tail
+    cdef uint32_t _is_refskip
 
 cdef class IteratorRow:
     cdef int retval

@@ -151,6 +151,7 @@ cdef makePileupRead(bam_pileup1_t * src):
     dest._is_del = src.is_del
     dest._is_head = src.is_head
     dest._is_tail = src.is_tail
+    dest._is_refskip = src.is_refskip
     return dest
 
 cdef convertBinaryTagToList( uint8_t * s ):
@@ -3417,8 +3418,9 @@ cdef class PileupColumn:
 
     def __str__(self):
         return "\t".join(map(str, 
-                              (self.reference_id, self.reference_pos, 
-                               self.nsegmentes))) +\
+                              (self.reference_id,
+                               self.reference_pos, 
+                               self.nsegments))) +\
             "\n" +\
             "\n".join(map(str, self.pileups))
 

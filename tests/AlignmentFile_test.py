@@ -901,8 +901,10 @@ class TestIteratorColumn(unittest.TestCase):
             thiscov = len(column.pileups)
             refcov = self.mCoverages[
                 self.samfile.getrname(column.reference_id)][column.reference_pos]
-            self.assertEqual(thiscov, refcov, "wrong coverage at pos %s:%i %i should be %i" % (
-                self.samfile.getrname(column.reference_id), column.reference_pos, thiscov, refcov))
+            self.assertEqual(thiscov, refcov,
+                             "wrong coverage at pos %s:%i %i should be %i" % (
+                                 self.samfile.getrname(column.reference_id),
+                                 column.reference_pos, thiscov, refcov))
 
     def testIterateAll(self):
         '''check random access per contig'''
@@ -945,7 +947,8 @@ class TestIteratorColumn(unittest.TestCase):
 
     def testIterateTruncate(self):
         '''check random access per range'''
-        for contig, length in zip(self.samfile.references, self.samfile.lengths):
+        for contig, length in zip(self.samfile.references,
+                                  self.samfile.lengths):
             for start in range(1, length, 90):
                 # this includes empty ranges
                 self.checkRange(contig, start, start + 90, truncate=True)
@@ -959,8 +962,9 @@ class TestIteratorColumn2(unittest.TestCase):
     '''test iterator column against contents of ex1.bam.'''
 
     def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                     "rb")
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex1.bam"),
+            "rb")
 
     def testStart(self):
         # print self.samfile.fetch().next().reference_start
@@ -988,6 +992,13 @@ class TestIteratorColumn2(unittest.TestCase):
         '''
         pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
         self.assertRaises(ValueError, getattr, pcolumn, "pileups")
+
+    def testStr(self):
+        '''test if PileupRead can be printed.'''
+        iter = self.samfile.pileup('chr1', 170, 180)
+        pcolumn = iter.__next__()
+        s = str(pcolumn)
+        self.assertEqual(len(s.split("\n")), 2)
 
 
 class TestHeaderSam(unittest.TestCase):
