@@ -2872,7 +2872,7 @@ cdef class AlignedSegment:
         def __get__(self):
             return _getQueryEnd(self._delegate)
 
-    property query_aligment_length:
+    property query_alignment_length:
         """length of the aligned query sequence.
 
         This is equal to :attr:`qend` - :attr:`qstart`"""
