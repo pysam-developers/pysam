@@ -2543,8 +2543,9 @@ cdef class AlignedSegment:
             src = self._delegate
             p = pysam_bam_get_qual(src)
             if qual is None or len(qual) == 0:
-                # if absent - set to 0xff
-                p[0] = 0xff
+                # if absent and there is a sequence: set to 0xff
+                if src.core.l_qseq != 0:
+                    p[0] = 0xff
                 return
             
             # check for length match

@@ -1347,6 +1347,13 @@ class TestAlignedSegment(ReadTest):
         # todo: create tags
         return a
 
+    def testSettingTagInEmptyRead(self):
+        '''see issue 62'''
+        a = pysam.AlignedSegment()
+        a.tags = (("NM", 1),)
+        a.query_qualities = None
+        self.assertEqual(a.tags, [("NM", 1), ])
+
     def testUpdate(self):
         '''check if updating fields affects other variable length data
         '''
