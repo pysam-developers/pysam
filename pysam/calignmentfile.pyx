@@ -2421,7 +2421,14 @@ cdef class AlignedSegment:
         can be inferred from the CIGAR alignment, see
         :meth:`pysam.AlignmentFile.infer_query_length.`.
 
-        This property can be set by providing a sequence.
+        The length includes soft-clipped bases and is equal to
+        ``len(query_sequence)``.
+
+        This property is read-only but can be set by providing a
+        sequence.
+
+        Returns 0 if not available.
+
         """
         def __get__(self):
             return self._delegate.core.l_qseq
@@ -2786,16 +2793,6 @@ cdef class AlignedSegment:
             return bam_endpos(src) - \
                 self._delegate.core.pos
     
-    property query_alignment_length:
-        """length of the query template. This includes soft-clipped bases
-        and is equal to ``len(seq)``.
-
-        This property is read-only.
-
-        Returns 0 if not available."""
-        def __get__(self):
-            return self._delegate.core.l_qseq
-
     property query_alignment_sequence:
         """aligned portion of the read.
 
