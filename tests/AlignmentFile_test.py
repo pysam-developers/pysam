@@ -1665,9 +1665,23 @@ class TestTruncatedBAM(unittest.TestCase):
 
     def testTruncatedBam(self):
 
-        s = pysam.AlignmentFile(os.path.join(DATADIR, 'ex2_truncated.bam'))
+        s = pysam.AlignmentFile(
+            os.path.join(DATADIR, 'ex2_truncated.bam'))
         iterall = lambda x: len([a for a in x])
         self.assertRaises(IOError, iterall, s)
+
+    def testTruncatedBamFetch(self):
+        '''See comments for pull request at 
+        https://github.com/pysam-developers/pysam/pull/50#issuecomment-64928625
+        '''
+        # Currently there is no way to detect truncated
+        # files through hts_iter_fetch, so this test is
+        # disabled
+        return
+        s = pysam.AlignmentFile(
+            os.path.join(DATADIR, 'ex2_truncated.bam'))
+        iterall = lambda x: len([a for a in x])
+        self.assertRaises(IOError, iterall, s.fetch())
 
 
 class TestBTagSam(unittest.TestCase):
