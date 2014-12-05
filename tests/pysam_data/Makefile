@@ -11,7 +11,7 @@ all: ex1.pileup.gz \
 	$(BAM) $(BAI) \
 	example_bai.bam \
         rg_with_tab.bam \
-	ex2_truncated.bam \
+	ex2_truncated.bam ex2_truncated.bam.bai \
 	empty.bam empty.bam.bai
 
 # ex2.sam - as ex1.sam, but with header

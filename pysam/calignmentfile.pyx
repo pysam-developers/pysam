@@ -662,10 +662,10 @@ cdef class AlignmentFile:
         file. Using this option will also fetch unmapped reads.
 
         Set *multiple_iterators* to true if you will be using multiple
-        iterators on the same file at the same time. The iterator returned
-        will receive its own copy of a filehandle to the file effectively
-        re-opening the file. Re-opening a file creates some
-        overhead, so beware.
+        iterators on the same file at the same time. The iterator
+        returned will receive its own copy of a filehandle to the file
+        effectively re-opening the file. Re-opening a file creates
+        some overhead, so beware.
 
         If only *reference* is set, all reads aligned to *reference*
         will be fetched.
@@ -690,8 +690,10 @@ cdef class AlignmentFile:
             multiple_iterators = False
 
         if self.isbam:
-            if not until_eof and not self._hasIndex() and not self.isremote:
-                raise ValueError("fetch called on bamfile without index")
+            if not until_eof and not self._hasIndex() \
+               and not self.isremote:
+                raise ValueError(
+                    "fetch called on bamfile without index")
 
             if has_coord:
                 return IteratorRowRegion(
@@ -699,22 +701,27 @@ cdef class AlignmentFile:
                     multiple_iterators=multiple_iterators)
             else:
                 if until_eof:
-                    return IteratorRowAll(self,
-                                          multiple_iterators=multiple_iterators)
+                    return IteratorRowAll(
+                        self,
+                        multiple_iterators=multiple_iterators)
                 else:
-                    # AH: check - reason why no multiple_iterators for AllRefs?
-                    return IteratorRowAllRefs(self,
-                                              multiple_iterators=multiple_iterators)
+                    # AH: check - reason why no multiple_iterators for
+                    # AllRefs?
+                    return IteratorRowAllRefs(
+                        self,
+                        multiple_iterators=multiple_iterators)
         else:
             if has_coord:
                 raise ValueError(
                     "fetching by region is not available for sam files")
 
             if callback:
-                raise NotImplementedError("callback not implemented yet")
+                raise NotImplementedError(
+                    "callback not implemented yet")
 
             if self.header == NULL:
-                raise ValueError("fetch called for htsfile without header")
+                raise ValueError(
+                    "fetch called for htsfile without header")
 
             # check if targets are defined
             # give warning, sam_read1 segfaults
@@ -1277,14 +1284,12 @@ cdef class AlignmentFile:
         cdef int ret = self.cnext()
         if (ret >= 0):
             return makeAlignedSegment(self.b)
-        elif (ret == -2):
+        elif ret == -2:
             raise IOError('truncated file')
         else:
             raise StopIteration
 
-##-------------------------------------------------------------------
-##-------------------------------------------------------------------
-##-------------------------------------------------------------------
+
 cdef class IteratorRow:
     '''abstract base class for iterators over mapped reads.
 
@@ -1303,8 +1308,10 @@ cdef class IteratorRow:
     The method :meth:`AlignmentFile.fetch` returns an IteratorRow.
 
     .. note::
+
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
+        explicitely. It is returned as a result of call to a
+        :meth:`AlignmentFile.fetch`.
 
     '''
 
@@ -1350,8 +1357,10 @@ cdef class IteratorRowRegion(IteratorRow):
     iterate over mapped reads in a region.
 
     .. note::
+
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
+        explicitely. It is returned as a result of call to a
+        :meth:`AlignmentFile.fetch`.
 
     """
 
@@ -1359,10 +1368,11 @@ cdef class IteratorRowRegion(IteratorRow):
                  int tid, int beg, int end,
                  int multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
+        IteratorRow.__init__(self, samfile,
+                             multiple_iterators=multiple_iterators)
 
         if not samfile._hasIndex():
-            raise ValueError( "no index available for iteration" )
+            raise ValueError("no index available for iteration")
 
         self.iter = sam_itr_queryi(
             self.samfile.index,
@@ -1387,9 +1397,15 @@ cdef class IteratorRowRegion(IteratorRow):
         """python version of next().
         """
         self.cnext()
-        if self.retval < 0:
+        if self.retval >= 0:
+            return makeAlignedSegment(self.b)
+        elif self.retval == -2:
+            # Note: it is currently not the case that hts_iter_next
+            # returns -2 for a truncated file.
+            # See https://github.com/pysam-developers/pysam/pull/50#issuecomment-64928625
+            raise IOError('truncated file')
+        else:
             raise StopIteration
-        return makeAlignedSegment(self.b)
 
     def __dealloc__(self):
         hts_itr_destroy(self.iter)
@@ -1401,14 +1417,16 @@ cdef class IteratorRowHead(IteratorRow):
 
     .. note::
         It is usually not necessary to create an object of this class
-        explicitly. It is returned as a result of call to a :meth:`AlignmentFile.head`.
-        
+        explicitly. It is returned as a result of call to a
+        :meth:`AlignmentFile.head`.
 
     """
 
-    def __init__(self, AlignmentFile samfile, int n, int multiple_iterators=False):
+    def __init__(self, AlignmentFile samfile, int n,
+                 int multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
+        IteratorRow.__init__(self, samfile,
+                             multiple_iterators=multiple_iterators)
 
         self.max_rows = n
         self.current_row = 0
@@ -1449,15 +1467,18 @@ cdef class IteratorRowAll(IteratorRow):
     iterate over all reads in *samfile*
 
     .. note::
+
         It is usually not necessary to create an object of this class
-        explicitly. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
-        
+        explicitly. It is returned as a result of call to a
+        :meth:`AlignmentFile.fetch`.
 
     """
 
-    def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
+    def __init__(self, AlignmentFile samfile,
+                 int multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
+        IteratorRow.__init__(self, samfile,
+                             multiple_iterators=multiple_iterators)
 
     def __iter__(self):
         return self
@@ -1486,14 +1507,18 @@ cdef class IteratorRowAll(IteratorRow):
 
 
 cdef class IteratorRowAllRefs(IteratorRow):
-    """iterates over all mapped reads by chaining iterators over each reference
+    """iterates over all mapped reads by chaining iterators over each
+    reference
 
     .. note::
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
+        explicitely. It is returned as a result of call to a
+        :meth:`AlignmentFile.fetch`.
+
     """
 
-    def __init__(self, AlignmentFile samfile, multiple_iterators=False):
+    def __init__(self, AlignmentFile samfile,
+                 multiple_iterators=False):
 
         IteratorRow.__init__(self, samfile,
                              multiple_iterators=multiple_iterators)
