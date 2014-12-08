@@ -490,7 +490,12 @@ cdef class GTFProxy(TupleProxy):
         attributes = self.attributes
 
         # separate into fields
-        fields = [x.strip() for x in attributes.split(";")[:-1]]
+        # Fields might contain a ";", for example in ENSEMBL GTF file
+        # for mouse, v78:
+        # ...; transcript_name "TXNRD2;-001"; ....
+        # The current heuristic is to split on a semicolon followed by a
+        # space, see also http://mblab.wustl.edu/GTF22.html
+        fields = [x.strip() for x in attributes.split("; ")[:-1]]
         
         result = {}
 
@@ -575,11 +580,12 @@ cdef class GTFProxy(TupleProxy):
             end = max(self.start, self.end)
             self.start, self.end = lcontig - end, lcontig - start
 
-    def keys( self ):
+    def keys(self):
         '''return a list of attributes defined in this entry.'''
         r = self.attributes
         return [x.strip().split(" ")[0]
-                for x in r.split(";") if x.strip() != '']
+                # separator is ';' followed by space
+                for x in r.split("; ") if x.strip() != '']
 
     def __getitem__(self, key):
         return self.__getattr__(key)
