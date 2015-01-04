@@ -231,6 +231,7 @@ except ImportError:
     calignmentfile_sources = ["pysam/calignmentfile.c"]
     tabproxies_sources = ["pysam/TabProxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
+    cbcf_sources = ["pysam/cbcf.c"]
 else:
     # remove existing files to recompute
     # necessary to be both compatible for python 2.7 and 3.3
@@ -241,7 +242,9 @@ else:
                   "pysam/cfaidx.c",
                   "pysam/csamfile.c",
                   "pysam/TabProxies.c",
-                  "pysam/cvcf.c"):
+                  "pysam/cvcf.c",
+                  "pysam/bvcf.c",
+                  ):
             try:
                 os.unlink(f)
             except:
@@ -256,6 +259,7 @@ else:
     faidx_sources = ["pysam/cfaidx.pyx"]
     tabproxies_sources = ["pysam/TabProxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
+    cbcf_sources = ["pysam/cbcf.pyx"]
 
 
 #######################################################
@@ -415,6 +419,16 @@ cvcf = Extension(
     extra_compile_args=["-Wno-error=declaration-after-statement"],
 )
 
+cbcf = Extension(
+    "pysam.cbcf",
+    cbcf_sources + os_c_files,
+    library_dirs=[],
+    include_dirs=["htslib"] + include_os + htslib_include_dirs,
+    libraries=["z"],
+    language="c",
+    extra_compile_args=["-Wno-error=declaration-after-statement"],
+)
+
 metadata = {
     'name': name,
     'version': version,
@@ -440,6 +454,7 @@ metadata = {
                     tabix,
                     tabproxies,
                     cvcf,
+                    cbcf,
                     faidx],
     'cmdclass': cmdclass,
     'package_dir': {'pysam': 'pysam',
