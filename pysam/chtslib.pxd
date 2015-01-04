@@ -124,12 +124,13 @@ cdef extern from "htslib/bgzf.h" nogil:
     #  Write the data in the buffer to the file.
     int bgzf_flush(BGZF *fp)
 
+    int SEEK_SET
+
     #  Return a virtual file pointer to the current location in the file.
     #  No interpetation of the value should be made, other than a subsequent
     #  call to bgzf_seek can be used to position the file at the same point.
     #  Return value is non-negative on success.
-    #define bgzf_tell(fp) (((fp)->block_address << 16) | ((fp)->block_offset & 0xFFFF))
-    int64_t bgzf_tell(BGZF * fp)
+    int64_t bgzf_tell(BGZF *fp)
 
     #  Set the file to read from the location specified by _pos_.
     #
@@ -333,6 +334,8 @@ cdef extern from "htslib/hts.h" nogil:
     int8_t HTS_FMT_BAI
     int8_t HTS_FMT_TBI
     int8_t HTS_FMT_CRAI
+
+    BGZF *hts_get_bgzfp(htsFile *fp)
 
     ctypedef struct hts_idx_t
 
