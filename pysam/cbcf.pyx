@@ -45,30 +45,33 @@
 #
 #     BCFFile(filename, mode=None, header=None, drop_samples=False)
 #
-#         htsfile:      htsFile* [private]
-#         start_offset: BGZF offset of first record [private]
-#         filename:     filename [read only]
-#         mode:         mode [read only]
-#         header:       BCFHeader object
-#         index:        TabixIndex, BCFIndex or None
-#         drop_samples: sample information is to be ignored
+#         htsfile:      htsFile*                             [private]
+#         start_offset: BGZF offset of first record          [private]
+#         filename:     filename                             [read only]
+#         mode:         mode                                 [read only]
+#         header:       BCFHeader object                     [read only]
+#         index:        TabixIndex, BCFIndex or None         [read only]
+#         drop_samples: sample information is to be ignored  [read only]
 #
 #         # temporary until htslib 1.2's better format metadata
-#         is_bcf:       file is a bcf file [read only]
-#         is_stream:    file is stdin/stdout [read only]
-#         is_remote:    file is not on the local filesystem [read only]
+#         is_bcf:       file is a bcf file                   [read only]
+#         is_stream:    file is stdin/stdout                 [read only]
+#         is_remote:    file is not on the local filesystem  [read only]
 #
 #     BCFHeader(mode)   # mode='r' for reading, mode='w' for writing
+#
+#         version:      VCF version
 #         samples:      sequence-like access to samples
 #         records:      sequence-like access to partially parsed headers
 #         contigs:      mapping-like object for contig name -> id
 #
 #         # type info value objects are not yet implemented
 #         filters:      mapping-like object for filter name -> type info
-#         info:         mapping-like object for filter name -> type info
-#         formats:      mapping-like object for filter name -> type info
+#         info:         mapping-like object for info name -> type info
+#         formats:      mapping-like object for formats name -> type info
 #
 #     BCFRecord(...)
+#
 #         header:       BCFHeader object
 #         rid:          reference id (i.e. tid)
 #         chrom:        chromosome/contig string
@@ -83,17 +86,38 @@
 #         alts:         alt alleles
 #         qual:         quality (float)
 #         filter:       mapping-like object for filter name -> type info
-#         info:         mapping-like object for filter name -> value
-#         format:       mapping-like object for filter name -> type info
+#         info:         mapping-like object for info name -> value
+#         format:       mapping-like object for format name -> type info
 #         genos:        sequence-like object of sample genotypes & attrs
 #
 #     BCFGeno(...)
+#
 #         sample:         sample name
 #         sample_index:   sample index
 #         allele_indices: tuple of allele indices (ref=0, alt=1..len(alts), missing=-1)
 #         alleles:        tuple of alleles (missing=None)
 #
 #         BCFGeno is also a mapping object from formats to values
+#
+###############################################################################
+#
+# TODO list for next major sprint:
+#
+#   * Finish header metadata types
+#   * more genotype methods
+#   * unit test suite (perhaps py.test based)
+#   * documentation
+#
+# For later sprints:
+#
+#   * ability to create indices
+#   * mutable header and record data
+#   * pickle support
+#   * Python 3 support
+#   * left/right locus normalization
+#   * parallel iteration (like synced_bcf_reader)
+#   * htslib 1.2 format info
+#   * fix reopen to re-use fd
 #
 ###############################################################################
 #
@@ -131,18 +155,25 @@ from libc.string cimport strcmp
 cimport cython
 
 from cpython cimport PyBytes_Check, PyUnicode_Check
-
-# hard-coded constants
-cdef int MAX_POS = 2 << 29
-
 from cpython.version cimport PY_MAJOR_VERSION
 
-__all__ = ['BCFFile']
+
+__all__ = ['BCFFile', 'BCFHeader']
+
+
+########################################################################
+########################################################################
+## Constants
+########################################################################
+
+cdef int MAX_POS = 2 << 29
+
 
 ########################################################################
 ########################################################################
 ## Python 3 compatibility functions
 ########################################################################
+
 IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
 
@@ -650,7 +681,7 @@ cdef class BCFHeader(object):
     # Python constructor
     def __init__(self, mode):
         if mode not in 'rw':
-            raise ValueError("invalid header mode specified '%s'" % mode)
+            raise ValueError("invalid header mode specified '{}'".format(mode))
 
         mode = force_bytes(mode)
         self.ptr = bcf_hdr_init(mode)
@@ -669,6 +700,10 @@ cdef class BCFHeader(object):
 
     def copy(self):
         return makeBCFHeader(bcf_hdr_dup(self.ptr))
+
+    property version:
+        def __get__(self):
+            return bcf_hdr_get_version(self.ptr)
 
     property samples:
         def __get__(self):
@@ -914,7 +949,7 @@ cdef class BCFRecordInfo(object):
         cdef bcf_info_t *info = bcf_get_info(h, r, key)
 
         if not info:
-            raise KeyError('Unknown INFO field: %s' % key)
+            raise KeyError('Unknown INFO field: {}'.format(key))
 
         return bcf_info_value(info)
 
@@ -1124,15 +1159,15 @@ cdef class BCFRecord(object):
 
     property pos:
         def __get__(self):
-            return self.ptr.pos
+            return self.ptr.pos + 1
 
     property start:
         def __get__(self):
-            return self.ptr.pos - 1
+            return self.ptr.pos
 
     property stop:
         def __get__(self):
-            return self.ptr.pos + self.ptr.rlen - 1
+            return self.ptr.pos + self.ptr.rlen
 
     property rlen:
         def __get__(self):
@@ -1858,7 +1893,7 @@ cdef class BCFFile(object):
             return
 
         if mode not in ('r','w','rb','wb', 'wh', 'wbu', 'rU', 'wb0'):
-            raise ValueError('invalid file opening mode `%s`' % mode)
+            raise ValueError('invalid file opening mode `{}`'.format(mode))
 
         mode = mode.encode('ascii')
 
@@ -1889,24 +1924,24 @@ cdef class BCFFile(object):
             self.htsfile = hts_open(filename, mode)
 
             if not self.htsfile:
-                raise ValueError("could not open file `%s` (mode='%s')" % (filename, mode))
+                raise ValueError("could not open file `{}` (mode='{}')".format((filename, mode)))
 
             bcf_hdr_write(self.htsfile, self.header.ptr)
 
         elif mode[0] == b'r':
             # open file for reading
             if filename != b'-' and not self.is_remote and not os.path.exists(filename):
-                raise IOError('file `%s` not found' % filename)
+                raise IOError('file `{}` not found'.format(filename))
 
             self.htsfile = hts_open(filename, mode)
 
             if not self.htsfile:
-                raise ValueError("could not open file `%s` (mode='%s') - is it VCF/BCF format?" % (filename, mode))
+                raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format((filename, mode)))
 
             self.header = makeBCFHeader(bcf_hdr_read(self.htsfile))
 
             if not self.header:
-                raise ValueError("file `%s` does not have valid header (mode='%s') - is it BCF format?" % (filename, mode))
+                raise ValueError("file `{}` does not have valid header (mode='{}') - is it BCF format?".format((filename, mode)))
 
             # check for index and open if present
             if self.is_bcf:
