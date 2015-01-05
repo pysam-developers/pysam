@@ -5,18 +5,19 @@
 ## Cython wrapper for htslib VCF/BCF reader/writer
 ###############################################################################
 #
-# NOTICE: This code is incomplete and preliminary.  It is nearly complete as
-#         an immutable interface, but has no capability (yet) to mutate the
-#         resulting data (beyond dropping all samples).  Documentation still
-#         needs to be written and a unit test suite is in the works.  The
-#         code is also specific to Python 2 and will require a bit of work
-#         to properly adapt to Python 3.
+# NOTICE: This code is incomplete and preliminary.  It does offer a nearly
+#         complete immutable Pythonic interface to VCF/BCF metadata and data
+#         with reading and writing capability, but has no capability (yet)
+#         to mutate the resulting data (beyond dropping all samples).
+#         Documentation still needs to be written and a unit test suite is
+#         in the works.  The code is also superficially specific to Python 2
+#         and will require a bit of work to properly adapt to Python 3.
 #
 # Here is a minimal example of how to use the API:
 #
 #     $ cat bcfview.py
 #     import sys
-#     from pysam.cbcf import BCFFile
+#     from pysam import BCFFile
 #
 #     bcf_in = BCFFile(sys.argv[1]) # auto-detect input format
 #     bcf_out = BCFFile('-', 'w', header=bcf_in.header)
