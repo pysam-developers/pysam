@@ -962,7 +962,7 @@ cdef class AlignmentFile:
     ## properties
     ###############################################################
     property filename:
-        '''number of :term:`filename` associated with this object.'''
+        ''':term:`filename` associated with this object.'''
         def __get__(self):
             return self._filename
 
