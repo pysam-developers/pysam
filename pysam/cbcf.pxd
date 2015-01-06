@@ -50,7 +50,7 @@ cdef class BCFHeader(object):
 
 cdef class BCFHeaderRecord(object):
     cdef BCFHeader header
-    cdef int32_t header_index
+    cdef bcf_hrec_t *ptr
 
 
 cdef class BCFHeaderRecords(object):
@@ -61,13 +61,18 @@ cdef class BCFHeaderContigs(object):
     cdef BCFHeader header
 
 
+cdef class BCFHeaderSamples(object):
+    cdef BCFHeader header
+
+
+cdef class BCFContig(object):
+    cdef BCFHeader header
+    cdef int id
+
+
 cdef class BCFHeaderMetadata(object):
     cdef BCFHeader header
     cdef int32_t type
-
-
-cdef class BCFHeaderSamples(object):
-    cdef BCFHeader header
 
 
 cdef class BCFRecord(object):

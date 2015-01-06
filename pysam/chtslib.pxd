@@ -985,8 +985,8 @@ cdef extern from "htslib/vcf.h" nogil:
         char **vals
 
     ctypedef struct bcf_idinfo_t:
-        uint32_t info[3]      # stores Number:20, var:4, Type:4, ColType:4 for BCF_HL_FLT,INFO,FMT
-        bcf_hrec_t *hrec[3]
+        uint32_t info[3]     # stores Number:20, var:4, Type:4, ColType:4 in info[0..2]
+        bcf_hrec_t *hrec[3]  # for BCF_HL_FLT,INFO,FMT and contig length in info[0] for BCF_HL_CTG
         int id
 
     ctypedef struct bcf_idpair_t:
@@ -995,8 +995,8 @@ cdef extern from "htslib/vcf.h" nogil:
 
     ctypedef struct bcf_hdr_t:
         int32_t n[3]
-        bcf_idpair_t **id
-        void **dict       # ID dictionary, contig dict and sample dict
+        bcf_idpair_t *id[3]
+        void *dict[3]               # ID dictionary, contig dict and sample dict
         char **samples
         bcf_hrec_t **hrec
         int nhrec, dirty

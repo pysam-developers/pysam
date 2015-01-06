@@ -64,7 +64,7 @@
 #         version:      VCF version
 #         samples:      sequence-like access to samples
 #         records:      sequence-like access to partially parsed headers
-#         contigs:      mapping-like object for contig name -> id
+#         contigs:      mapping-like object for contig name -> BCFContig
 #
 #         # type info value objects are not yet implemented
 #         filters:      mapping-like object for filter name -> type info
@@ -99,6 +99,20 @@
 #         alleles:        tuple of alleles (missing=None)
 #
 #         BCFGeno is also a mapping object from formats to values
+#
+#     BCFContig(...)
+#
+#         id:           reference id (i.e. tid)
+#         name:         chromosome/contig string
+#         length:       contig length if provided, else None
+#         header:       BCFHeaderRecord defining the contig
+#
+#    BCFHeaderRecord(...)  # replace with single tuple of key/value pairs?
+#
+#        type:          record type
+#        key:           first record key
+#        value:         first record value
+#        attrs:         remaining key/value pairs
 #
 ###############################################################################
 #
@@ -350,8 +364,7 @@ cdef inline int is_gt_fmt(bcf_hdr_t *h, bcf_fmt_t *fmt):
 cdef class BCFHeaderRecord(object):
     property type:
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            cdef bcf_hrec_t *r = h.hrec[self.header_index]
+            cdef bcf_hrec_t *r = self.ptr
 
             if r.type == BCF_HL_CTG:
                 return 'CONTIG'
@@ -370,32 +383,33 @@ cdef class BCFHeaderRecord(object):
 
     property key:
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            cdef bcf_hrec_t *r = h.hrec[self.header_index]
+            cdef bcf_hrec_t *r = self.ptr
             return r.key if r.key else None
 
     property value:
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            cdef bcf_hrec_t *r = h.hrec[self.header_index]
+            cdef bcf_hrec_t *r = self.ptr
             return r.value if r.value else None
 
     property attrs:
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            cdef bcf_hrec_t *r = h.hrec[self.header_index]
+            cdef bcf_hrec_t *r = self.ptr
             cdef int i
             return tuple( (r.keys[i] if r.keys[i] else None,
                            r.vals[i] if r.vals[i] else None) for i in range(r.nkeys) )
 
 
-cdef BCFHeaderRecord makeBCFHeaderRecord(BCFHeader header, int i):
+cdef BCFHeaderRecord makeBCFHeaderRecord(BCFHeader header, bcf_hrec_t *h):
     if not header:
         raise ValueError('invalid BCFHeader')
 
+    if not h:
+        return None
+
     cdef BCFHeaderRecord record = BCFHeaderRecord.__new__(BCFHeaderRecord)
     record.header = header
-    record.header_index = i
+    record.ptr = h
+
     return record
 
 
@@ -410,12 +424,12 @@ cdef class BCFHeaderRecords(object):
         cdef int32_t i = index
         if i < 0 or i >= self.header.ptr.nhrec:
             raise IndexError('invalid header record index')
-        return makeBCFHeaderRecord(self.header, i)
+        return makeBCFHeaderRecord(self.header, self.header.ptr.hrec[i])
 
     def __iter__(self):
         cdef int32_t i
         for i in range(self.header.ptr.nhrec):
-            yield makeBCFHeaderRecord(self.header, i)
+            yield makeBCFHeaderRecord(self.header, self.header.ptr.hrec[i])
 
     __hash__ = None
 
@@ -532,6 +546,44 @@ cdef BCFHeaderMetadata makeBCFHeaderMetadata(BCFHeader header, int32_t type):
     return meta
 
 
+cdef class BCFContig(object):
+    property name:
+        def __get__(self):
+            cdef bcf_hdr_t *h = self.header.ptr
+            return h.id[BCF_DT_CTG][self.id].key
+
+    property id:
+        def __get__(self):
+            return self.id
+
+    property length:
+        def __get__(self):
+            cdef bcf_hdr_t *h = self.header.ptr
+            cdef uint32_t length = h.id[BCF_DT_CTG][self.id].val.info[0]
+            return length if length else None
+
+    property header:
+        def __get__(self):
+            cdef bcf_hdr_t *h = self.header.ptr
+            cdef bcf_hrec_t *hrec = h.id[BCF_DT_CTG][self.id].val.hrec[0]
+            return makeBCFHeaderRecord(self.header, hrec)
+
+
+cdef BCFContig makeBCFContig(BCFHeader header, int id):
+    if not header:
+        raise ValueError('invalid BCFHeader')
+
+    if id < 0 or id >= header.ptr.n[BCF_DT_CTG]:
+        raise ValueError('invalid contig id')
+
+    cdef BCFContig contig = BCFContig.__new__(BCFContig)
+    contig.header = header
+    contig.id = id
+
+    return contig
+
+
+
 cdef class BCFHeaderContigs(object):
     def __len__(self):
         cdef bcf_hdr_t *h = self.header.ptr
@@ -545,19 +597,24 @@ cdef class BCFHeaderContigs(object):
 
     def __getitem__(self, key):
         cdef bcf_hdr_t *h = self.header.ptr
+
+        if isinstance(key, int):
+            return makeBCFContig(self.header, key)
+
         cdef vdict_t *d = <vdict_t *>h.dict[BCF_DT_CTG]
         cdef khiter_t k = kh_get_vdict(d, key)
 
         if k == kh_end(d):
-            raise KeyError('invalid filter')
+            raise KeyError('invalid contig')
 
-        # FIXME: Insert correct value type
-        return kh_val_vdict(d, k).id
+        cdef int id = kh_val_vdict(d, k).id
+
+        return makeBCFContig(self.header, id)
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.header.ptr
         cdef vdict_t *d = <vdict_t *>h.dict[BCF_DT_CTG]
-        cdef uint32_t n = kh_size(<vdict_t *>h.dict[BCF_DT_CTG])
+        cdef uint32_t n = kh_size(d)
 
         assert n == h.n[BCF_DT_CTG]
 
