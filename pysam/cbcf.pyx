@@ -359,7 +359,7 @@ cdef inline int is_gt_fmt(bcf_hdr_t *h, bcf_fmt_t *fmt):
 ## BCF Header objects
 ########################################################################
 
-#FIXME: passing hrec index may not be the safest approach once mutating
+#FIXME: passing bcf_hrec_t*  may not be the safest approach once mutating
 #       operations are allowed.
 cdef class BCFHeaderRecord(object):
     property type:
@@ -1552,10 +1552,8 @@ cdef class BCFIndex(object):
         if not self.ptr:
             raise ValueError('Invalid index object')
 
-        cdef const char **refs
         cdef int n
-
-        refs = bcf_index_seqnames(self.ptr, self.header.ptr, &n)
+        cdef const char **refs = bcf_index_seqnames(self.ptr, self.header.ptr, &n)
 
         if not refs:
             raise ValueError('Cannot retrieve reference sequence names')
@@ -1595,10 +1593,8 @@ cdef class TabixIndex(BaseIndex):
         if not self.ptr:
             raise ValueError('Invalid index object')
 
-        cdef const char **refs
         cdef int n
-
-        refs = tbx_seqnames(self.ptr, &n)
+        cdef const char **refs = tbx_seqnames(self.ptr, &n)
 
         if not refs:
             raise ValueError('Cannot retrieve reference sequence names')
@@ -1634,6 +1630,16 @@ cdef TabixIndex makeTabixIndex(tbx_t *idx):
 
 cdef class BaseIterator(object):
     pass
+
+
+# Interal function to clean up after iteration stop or failure.
+# This would be a nested function if it weren't a cdef function.
+cdef void _stop_BCFIterator(BCFIterator self, bcf1_t *record):
+    bcf_destroy1(record)
+
+    # destroy iter so future calls to __next__ raise StopIteration
+    bcf_itr_destroy(self.iter)
+    self.iter = NULL
 
 
 cdef class BCFIterator(BaseIterator):
@@ -1694,13 +1700,20 @@ cdef class BCFIterator(BaseIterator):
         if self.bcf.drop_samples:
             record.max_unpack = BCF_UN_SHR
 
-        cdef int ret = bcf_itr_next(self.bcf.htsfile, self.iter, <void *>record)
+        cdef int ret = bcf_itr_next(self.bcf.htsfile, self.iter, record)
 
         if ret < 0:
-            bcf_destroy1(record)
-            bcf_itr_destroy(self.iter)
-            self.iter = NULL
-            raise StopIteration
+            _stop_BCFIterator(self, record)
+            if ret == -1:
+                raise StopIteration
+            else:
+                raise ValueError('error reading BCF file')
+
+        ret = bcf_subset_format(self.bcf.header.ptr, record)
+
+        if ret < 0:
+            _stop_BCFIterator(self, record)
+            raise ValueError('error in bcf_subset_format')
 
         return makeBCFRecord(self.bcf.header, record)
 
@@ -1768,12 +1781,15 @@ cdef class TabixIterator(BaseIterator):
         if not self.iter:
             raise StopIteration
 
-        cdef int ret = tbx_itr_next(self.bcf.htsfile, self.index.ptr, self.iter, <void *>&self.line_buffer)
+        cdef int ret = tbx_itr_next(self.bcf.htsfile, self.index.ptr, self.iter, &self.line_buffer)
 
         if ret < 0:
             tbx_itr_destroy(self.iter)
             self.iter = NULL
-            raise StopIteration
+            if ret == -1:
+                raise StopIteration
+            else:
+                raise ValueError('error reading indexed VCF file')
 
         cdef bcf1_t *record = bcf_init1()
 
@@ -1783,6 +1799,7 @@ cdef class TabixIterator(BaseIterator):
 
         ret = vcf_parse1(&self.line_buffer, self.bcf.header.ptr, record)
 
+        # FIXME: stop iteration on parse failure?
         if ret < 0:
             bcf_destroy1(record)
             raise ValueError('error in vcf_parse')
@@ -1875,6 +1892,8 @@ cdef class BCFFile(object):
         elif ret == -2:
             bcf_destroy1(record)
             raise IOError('truncated file')
+        elif ret < -2:
+            raise ValueError('BCF read failed')
 
         return makeBCFRecord(self.header, record)
 
