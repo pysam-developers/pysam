@@ -46,18 +46,31 @@
 #
 #     BCFFile(filename, mode=None, header=None, drop_samples=False)
 #
-#         htsfile:      htsFile*                             [private]
-#         start_offset: BGZF offset of first record          [private]
-#         filename:     filename                             [read only]
-#         mode:         mode                                 [read only]
-#         header:       BCFHeader object                     [read only]
-#         index:        TabixIndex, BCFIndex or None         [read only]
-#         drop_samples: sample information is to be ignored  [read only]
+#         Attributes / Properties
 #
-#         # temporary until htslib 1.2's better format metadata
-#         is_bcf:       file is a bcf file                   [read only]
-#         is_stream:    file is stdin/stdout                 [read only]
-#         is_remote:    file is not on the local filesystem  [read only]
+#             htsfile:      htsFile*                             [private]
+#             start_offset: BGZF offset of first record          [private]
+#             filename:     filename                             [read only]
+#             mode:         mode                                 [read only]
+#             header:       BCFHeader object                     [read only]
+#             index:        TabixIndex, BCFIndex or None         [read only]
+#             drop_samples: sample information is to be ignored  [read only]
+#
+#             # temporary until htslib 1.2's better format metadata
+#             is_bcf:       file is a bcf file                   [read only]
+#             is_stream:    file is stdin/stdout                 [read only]
+#             is_remote:    file is not on the local filesystem  [read only]
+#             is_reading:   file has begun reading records       [read only]
+#
+#         Methods:
+#             copy()
+#             close()
+#             open(filename, mode=None, header=None, drop_samples=False)
+#             reset()
+#             seek(offset)
+#             tell()
+#             fetch(contig=None, start=None, stop=None, region=None, reopen=False)
+#             subset_samples(include_samples)
 #
 #     BCFHeader(mode)   # mode='r' for reading, mode='w' for writing
 #
@@ -66,10 +79,9 @@
 #         records:      sequence-like access to partially parsed headers
 #         contigs:      mapping-like object for contig name -> BCFContig
 #
-#         # type info value objects are not yet implemented
-#         filters:      mapping-like object for filter name -> type info
-#         info:         mapping-like object for info name -> type info
-#         formats:      mapping-like object for formats name -> type info
+#         filters:      mapping-like object for filter name -> BCFMetadata
+#         info:         mapping-like object for info name -> BCFMetadata
+#         formats:      mapping-like object for formats name -> BCFMetadata
 #
 #     BCFRecord(...)
 #
@@ -105,7 +117,15 @@
 #         id:           reference id (i.e. tid)
 #         name:         chromosome/contig string
 #         length:       contig length if provided, else None
-#         header:       BCFHeaderRecord defining the contig
+#         header:       defining BCFHeaderRecord
+#
+#     BCFMetadata(...) # for FILTER, INFO and FORMAT metadata
+#
+#         id:           internal id
+#         name:         metadata name
+#         type:         value data type
+#         number:       number of values
+#         header:       defining BCFHeaderRecord
 #
 #    BCFHeaderRecord(...)  # replace with single tuple of key/value pairs?
 #
@@ -181,8 +201,10 @@ __all__ = ['BCFFile', 'BCFHeader']
 ## Constants
 ########################################################################
 
-cdef int MAX_POS = 2 << 29
-
+cdef int   MAX_POS = 2 << 29
+cdef tuple VALUE_TYPES = ('Flag', 'Integer', 'Float', 'String')
+cdef tuple METADATA_TYPES = ('FILTER', 'INFO', 'FORMAT', 'CONTIG', 'STRUCTURED', 'GENERIC')
+cdef tuple METADATA_LENGTHS = ('FIXED', 'VARIABLE', 'A', 'G', 'R')
 
 ########################################################################
 ########################################################################
@@ -190,13 +212,6 @@ cdef int MAX_POS = 2 << 29
 ########################################################################
 
 IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-
-
-cdef inline from_string_and_size(char* s, size_t length):
-    if PY_MAJOR_VERSION < 3:
-        return s[:length]
-    else:
-        return s[:length].decode('ascii')
 
 
 # filename encoding (copied from lxml.etree.pyx)
@@ -365,21 +380,7 @@ cdef class BCFHeaderRecord(object):
     property type:
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
-
-            if r.type == BCF_HL_CTG:
-                return 'CONTIG'
-            elif r.type == BCF_HL_INFO:
-                return 'INFO'
-            elif r.type == BCF_HL_FLT:
-                return 'FILTER'
-            elif r.type == BCF_HL_FMT:
-                return 'FORMAT'
-            elif r.type == BCF_HL_STR:
-                return 'STRUCTURED'
-            elif r.type == BCF_HL_GEN:
-                return 'GENERIC'
-            else:
-                return 'UNKNOWN'
+            return METADATA_TYPES[r.type]
 
     property key:
         def __get__(self):
@@ -443,6 +444,65 @@ cdef BCFHeaderRecords makeBCFHeaderRecords(BCFHeader header):
     return records
 
 
+cdef class BCFMetadata(object):
+    property name:
+        def __get__(self):
+            cdef bcf_hdr_t *h = self.header.ptr
+            return h.id[BCF_DT_ID][self.id].key
+
+    property id:
+        def __get__(self):
+            return self.id
+
+    property number:
+        def __get__(self):
+            cdef bcf_hdr_t *h = self.header.ptr
+            if not bcf_hdr_idinfo_exists(h, self.type, self.id) or self.type == BCF_HL_FLT:
+                return None
+            cdef int l = bcf_hdr_id2length(h, self.type, self.id)
+            if l == BCF_VL_FIXED:
+                return bcf_hdr_id2number(h, self.type, self.id)
+            elif l == BCF_VL_VAR:
+                return '.'
+            else:
+                return METADATA_LENGTHS[l]
+
+    property type:
+        def __get__(self):
+            cdef bcf_hdr_t *h = self.header.ptr
+            if not bcf_hdr_idinfo_exists(h, self.type, self.id) or self.type == BCF_HL_FLT:
+                return None
+            return VALUE_TYPES[bcf_hdr_id2type(h, self.type, self.id)]
+
+    property header:
+        def __get__(self):
+            cdef bcf_hdr_t *h = self.header.ptr
+            if not bcf_hdr_idinfo_exists(h, self.type, self.id):
+                return None
+            cdef bcf_hrec_t *hrec = h.id[BCF_DT_ID][self.id].val.hrec[self.type]
+            if not hrec:
+                return None
+            return makeBCFHeaderRecord(self.header, hrec)
+
+
+cdef BCFMetadata makeBCFMetadata(BCFHeader header, int type, int id):
+    if not header:
+        raise ValueError('invalid BCFHeader')
+
+    if type != BCF_HL_FLT and type != BCF_HL_INFO and type != BCF_HL_FMT:
+        raise ValueError('invalid metadata type')
+
+    if id < 0 or id >= header.ptr.n[BCF_DT_ID]:
+        raise ValueError('invalid metadata id')
+
+    cdef BCFMetadata meta = BCFMetadata.__new__(BCFMetadata)
+    meta.header = header
+    meta.type = type
+    meta.id = id
+
+    return meta
+
+
 cdef class BCFHeaderMetadata(object):
     def __len__(self):
         cdef bcf_hdr_t *h = self.header.ptr
@@ -476,7 +536,7 @@ cdef class BCFHeaderMetadata(object):
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
             raise KeyError('invalid filter')
 
-        return None
+        return makeBCFMetadata(self.header, self.type, kh_val_vdict(d, k).id)
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.header.ptr
@@ -787,6 +847,24 @@ cdef class BCFHeader(object):
         def __get__(self):
             return makeBCFHeaderMetadata(self, BCF_HL_FMT)
 
+    # only safe to do when opening an htsfile
+    cdef _subset_samples(self, include_samples):
+        keep_samples    = set(self.samples)
+        include_samples = set(include_samples)
+        missing_samples = include_samples - keep_samples
+        keep_samples   &= include_samples
+
+        if missing_samples:
+            # FIXME: add specialized exception with payload
+            raise ValueError('missing {:d} requested samples'.format(len(missing_samples)))
+
+        keep_samples = ','.join(keep_samples)
+        cdef char *keep = <char *>keep_samples if keep_samples else NULL
+        cdef ret = bcf_hdr_set_samples(self.ptr, keep, 0)
+
+        if ret != 0:
+            raise ValueError('bcf_hdr_set_samples failed: ret = {}'.format(ret))
+
 
 cdef BCFHeader makeBCFHeader(bcf_hdr_t *h):
     if not h:
@@ -812,8 +890,6 @@ cdef class BCFRecordFilter(object):
         return self.record.ptr.d.n_flt != 0
 
     def __getitem__(self, index):
-        # FIXME: Switch to value class
-        cdef bcf_hdr_t *h = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i = index
         cdef int n = r.d.n_flt
@@ -821,7 +897,7 @@ cdef class BCFRecordFilter(object):
         if i < 0 or i >= n:
             raise IndexError('invalid filter index')
 
-        return bcf_hdr_int2id(h, BCF_DT_ID, r.d.flt[i])
+        return makeBCFMetadata(self.record.header, BCF_HL_FLT, r.d.flt[i])
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -831,12 +907,12 @@ cdef class BCFRecordFilter(object):
         for i in range(n):
             yield bcf_hdr_int2id(h, BCF_DT_ID, r.d.flt[i])
 
-#   def get(self, key, default=None):
-#       """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
-#       try:
-#           return self[key]
-#       except KeyError:
-#           return default
+    def get(self, key, default=None):
+        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def __contains__(self, key):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -847,40 +923,27 @@ cdef class BCFRecordFilter(object):
         """D.iterkeys() -> an iterator over the keys of D"""
         return iter(self)
 
-#   def itervalues(self):
-#       """D.itervalues() -> an iterator over the values of D"""
-#       cdef bcf1_t *r = self.record.ptr
-#       cdef bcf_info_t *info
-#       cdef int i, n = r.n_info
-#
-#       for i in range(n):
-#           info = &r.d.info[i]
-#           yield bcf_info_value(info)
+    def itervalues(self):
+        """D.itervalues() -> an iterator over the values of D"""
+        for key in self:
+            yield self[key]
 
-#   def iteritems(self):
-#       """D.iteritems() -> an iterator over the (key, value) items of D"""
-#       cdef bcf_hdr_t *h = self.record.header.ptr
-#       cdef bcf1_t *r = self.record.ptr
-#       cdef bcf_info_t *info
-#       cdef int i, n = r.n_info
-#
-#       for i in range(n):
-#           info = &r.d.info[i]
-#           key = bcf_hdr_int2id(h, BCF_DT_ID, info.key)
-#           value = bcf_info_value(info)
-#           yield key, value
+    def iteritems(self):
+        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        for key in self:
+            yield (key, self[key])
 
     def keys(self):
         """D.keys() -> list of D's keys"""
         return list(self)
 
-#   def items(self):
-#       """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
-#       return list(self.iteritems())
+    def items(self):
+        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        return list(self.iteritems())
 
-#   def values(self):
-#       """D.values() -> list of D's values"""
-#       return list(self.itervalues())
+    def values(self):
+        """D.values() -> list of D's values"""
+        return list(self.itervalues())
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -898,7 +961,6 @@ cdef BCFRecordFilter makeBCFRecordFilter(BCFRecord record):
     return filter
 
 
-#TODO: Implement VCFFormat value class and finish Mapping interface
 cdef class BCFRecordFormat(object):
     def __len__(self):
         return self.record.ptr.n_fmt
@@ -907,8 +969,6 @@ cdef class BCFRecordFormat(object):
         return self.record.ptr.n_fmt != 0
 
     def __getitem__(self, index):
-        # FIXME: Switch to value class
-        cdef bcf_hdr_t *h = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i = index
         cdef int n = r.n_fmt
@@ -916,7 +976,7 @@ cdef class BCFRecordFormat(object):
         if i < 0 or i >= n:
             raise IndexError('invalid format index')
 
-        return bcf_hdr_int2id(h, BCF_DT_ID, r.d.fmt[i].id)
+        return makeBCFMetadata(self.record.header, BCF_HL_FMT, r.d.fmt[i].id)
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -926,12 +986,12 @@ cdef class BCFRecordFormat(object):
         for i in range(n):
             yield bcf_hdr_int2id(h, BCF_DT_ID, r.d.fmt[i].id)
 
-#   def get(self, key, default=None):
-#       """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
-#       try:
-#           return self[key]
-#       except KeyError:
-#           return default
+    def get(self, key, default=None):
+        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def __contains__(self, key):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -943,40 +1003,27 @@ cdef class BCFRecordFormat(object):
         """D.iterkeys() -> an iterator over the keys of D"""
         return iter(self)
 
-#   def itervalues(self):
-#       """D.itervalues() -> an iterator over the values of D"""
-#       cdef bcf1_t *r = self.record.ptr
-#       cdef bcf_info_t *info
-#       cdef int i, n = r.n_info
-#
-#       for i in range(n):
-#           info = &r.d.info[i]
-#           yield bcf_info_value(info)
+    def itervalues(self):
+        """D.itervalues() -> an iterator over the values of D"""
+        for key in self:
+            yield self[key]
 
-#   def iteritems(self):
-#       """D.iteritems() -> an iterator over the (key, value) items of D"""
-#       cdef bcf_hdr_t *h = self.record.header.ptr
-#       cdef bcf1_t *r = self.record.ptr
-#       cdef bcf_info_t *info
-#       cdef int i, n = r.n_info
-#
-#       for i in range(n):
-#           info = &r.d.info[i]
-#           key = bcf_hdr_int2id(h, BCF_DT_ID, info.key)
-#           value = bcf_info_value(info)
-#           yield key, value
+    def iteritems(self):
+        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        for key in self:
+            yield (key, self[key])
 
     def keys(self):
         """D.keys() -> list of D's keys"""
         return list(self)
 
-#   def items(self):
-#       """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
-#       return list(self.iteritems())
+    def items(self):
+        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        return list(self.iteritems())
 
-#   def values(self):
-#       """D.values() -> list of D's values"""
-#       return list(self.itervalues())
+    def values(self):
+        """D.values() -> list of D's values"""
+        return list(self.itervalues())
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -1123,12 +1170,12 @@ cdef class BCFRecordGenos(object):
         for i in range(n):
             yield h.samples[i]
 
-#   def get(self, key, default=None):
-#       """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
-#       try:
-#           return self[key]
-#       except KeyError:
-#           return default
+    def get(self, key, default=None):
+        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def __contains__(self, key):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -1541,7 +1588,70 @@ cdef BCFGeno makeBCFGeno(BCFRecord record, int32_t sample_index):
 
 
 cdef class BaseIndex(object):
-    pass
+    def __init__(self):
+        self.refs = ()
+        self.remap = {}
+
+    def __len__(self):
+        return len(self.refs)
+
+    def __bool__(self):
+        return len(self.refs) != 0
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.refs[key]
+        else:
+            return self.refmap[key]
+
+    def __iter__(self):
+        return iter(self.refs)
+
+    def get(self, key, default=None):
+        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key):
+        try:
+            self[key]
+        except KeyError:
+            return False
+        else:
+            return True
+
+    def iterkeys(self):
+        """D.iterkeys() -> an iterator over the keys of D"""
+        return iter(self)
+
+    def itervalues(self):
+        """D.itervalues() -> an iterator over the values of D"""
+        for key in self:
+            yield self[key]
+
+    def iteritems(self):
+        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        for key in self:
+            yield (key, self[key])
+
+    def keys(self):
+        """D.keys() -> list of D's keys"""
+        return list(self)
+
+    def items(self):
+        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        return list(self.iteritems())
+
+    def values(self):
+        """D.values() -> list of D's values"""
+        return list(self.itervalues())
+
+    # Mappings are not hashable by default, but subclasses can change this
+    __hash__ = None
+
+    #TODO: implement __richcmp__
 
 
 cdef class BCFIndex(object):
@@ -1854,6 +1964,7 @@ cdef class BCFFile(object):
         self.is_bcf       = False
         self.is_stream    = False
         self.is_remote    = False
+        self.is_reading   = False
         self.drop_samples = False
         self.start_offset = -1
 
@@ -1874,6 +1985,11 @@ cdef class BCFFile(object):
     def __iter__(self):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
+
+        if self.mode[0] != b'r':
+            raise ValueError('cannot iterate over BCFfile opened for writing')
+
+        self.is_reading = 1
         return self
 
     def __next__(self):
@@ -1922,6 +2038,7 @@ cdef class BCFFile(object):
         bcf.is_bcf       = self.is_bcf
         bcf.is_stream    = self.is_stream
         bcf.is_remote    = self.is_remote
+        bcf.is_reading   = self.is_reading
         bcf.start_offset = self.start_offset
 
         # FIXME: seeking here does not currently work for text files.
@@ -2076,14 +2193,19 @@ cdef class BCFFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
+        if self.mode[0] != b'r':
+            raise ValueError('cannot fetch from BCFfile opened for writing')
+
         if contig is None and region is None:
+            self.is_reading = 1
             bcf = self.copy() if reopen else self
             bcf.seek(self.start_offset)
-            return bcf
+            return iter(bcf)
 
         if not self.index:
             raise ValueError('fetch requires an index')
 
+        self.is_reading = 1
         return self.index.fetch(self, contig, start, stop, region, reopen)
 
     cpdef int write(self, BCFRecord record) except -1:
@@ -2101,3 +2223,19 @@ cdef class BCFFile(object):
             raise ValueError('write failed')
 
         return ret
+
+    def subset_samples(self, include_samples):
+        if not self.is_open:
+            raise ValueError('I/O operation on closed file')
+
+        if self.mode[0] != b'r':
+            raise ValueError('cannot subset samples from BCFfile opened for writing')
+
+        if self.is_reading:
+            raise ValueError('cannot subset samples after fetching records')
+
+        self.header._subset_samples(include_samples)
+
+        # potentially unnecessary optimization that also sets max_unpack
+        if not include_samples:
+            self.drop_samples = True

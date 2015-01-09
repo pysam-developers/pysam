@@ -47,6 +47,8 @@ from chtslib     cimport *
 cdef class BCFHeader(object):
     cdef bcf_hdr_t *ptr
 
+    cdef _subset_samples(self, include_samples)
+
 
 cdef class BCFHeaderRecord(object):
     cdef BCFHeader header
@@ -67,6 +69,12 @@ cdef class BCFHeaderSamples(object):
 
 cdef class BCFContig(object):
     cdef BCFHeader header
+    cdef int id
+
+
+cdef class BCFMetadata(object):
+    cdef BCFHeader header
+    cdef int type
     cdef int id
 
 
@@ -145,5 +153,6 @@ cdef class BCFFile(object):
     cdef readonly bint       is_bcf        # true if file is a bcf file
     cdef readonly bint       is_stream     # true if not a seekable file but a stream
     cdef readonly bint       is_remote     # true if file is not on the local filesystem
+    cdef readonly bint       is_reading    # true if file has begun reading records
 
     cpdef int write(self, BCFRecord record) except -1
