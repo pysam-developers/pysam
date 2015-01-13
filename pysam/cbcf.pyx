@@ -1777,9 +1777,6 @@ cdef class BCFIterator(BaseIterator):
 
             rid = index.refmap.get(contig, -1)
 
-            if rid is not None and (start is not None or stop is not None):
-                raise ValueError  # FIXME
-
             if start is None:
                 start = 0
             if stop is None:
@@ -1856,9 +1853,6 @@ cdef class TabixIterator(BaseIterator):
                 raise ValueError  # FIXME
 
             rid = index.refmap.get(contig, -1)
-
-            if rid is not None and (start is not None or stop is not None):
-                raise ValueError  # FIXME
 
             if start is None:
                 start = 0
@@ -2002,14 +1996,14 @@ cdef class BCFFile(object):
 
         ret = bcf_read1(self.htsfile, self.header.ptr, record)
 
-        if ret == -1:
+        if ret < 0:
             bcf_destroy1(record)
-            raise StopIteration
-        elif ret == -2:
-            bcf_destroy1(record)
-            raise IOError('truncated file')
-        elif ret < -2:
-            raise ValueError('BCF read failed')
+            if ret == -1:
+                raise StopIteration
+            elif ret == -2:
+                raise IOError('truncated file')
+            else:
+                raise ValueError('BCF read failed')
 
         return makeBCFRecord(self.header, record)
 
