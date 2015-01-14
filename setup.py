@@ -421,12 +421,18 @@ cvcf = Extension(
 
 cbcf = Extension(
     "pysam.cbcf",
-    cbcf_sources + os_c_files,
-    library_dirs=[],
+    cbcf_sources +
+    htslib_sources +
+    os_c_files,
+    library_dirs=htslib_library_dirs,
     include_dirs=["htslib"] + include_os + htslib_include_dirs,
-    libraries=["z"],
+    libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement"],
+    extra_compile_args=[
+        "-Wno-error=declaration-after-statement",
+        "-DSAMTOOLS=1"],
+    define_macros=[('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')]
 )
 
 metadata = {
