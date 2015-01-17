@@ -12,6 +12,8 @@ tests/*.c
 tests/*.pyxbldc
 tests/*.sam
 tests/*.fai
+tests/pysam_data/*.bam
+tests/pysam_data/*.bam.bai
 tests/pysam_test_work
 
 # cython files

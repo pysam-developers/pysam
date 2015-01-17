@@ -237,11 +237,6 @@ cdef class FastaFile:
         '''return true if reference in fasta file.'''
         return reference in self.reference2length
 
-######################################################################
-######################################################################
-######################################################################
-## Fastq file
-######################################################################
 
 cdef class FastqProxy:
     def __init__(self): pass
@@ -266,13 +261,19 @@ cdef class FastqProxy:
                 return self._delegate.qual.s
             else: return None
 
-cdef class FastqFile:
+
+cdef class FastxFile:
     '''*(filename)*
 
-    A *FASTQ* file. The file is automatically opened.
+    A :term:`fastq` or :term:`fasta` formatted file. The file
+    is automatically opened.
+
+    Entries in the file can be both fastq or fasta formatted
+    or even a mixture of the two.
 
     This file object permits iterating over all entries in
-    a fastq file. Random access is not implemented.
+    the file. Random access is not implemented. The iteration
+    returns objects of type :class:`FastqProxy`
 
     '''
     def __cinit__(self, *args, **kwargs):
@@ -286,14 +287,12 @@ cdef class FastqFile:
         return self.entry != NULL
 
     def _open(self, filename):
-        '''open an indexed fasta file.
-
-        This method expects an indexed fasta file.
+        '''open a fastq/fasta file.
         '''
         self.close()
 
         if not os.path.exists(filename):
-            raise IOError("No such file or directory: %s" % filename)
+            raise IOError("no such file or directory: %s" % filename)
 
         filename = _encodeFilename(filename)
         self.fastqfile = gzopen(filename, "r")
@@ -312,13 +311,13 @@ cdef class FastqFile:
         self.close()
 
     property filename:
-        '''number of :term:`filename` associated with this object.'''
+        ''':term:`filename` associated with this object.'''
         def __get__(self):
             return self._filename
 
     def __iter__(self):
         if not self._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+            raise ValueError("I/O operation on closed file")
         return self
 
     cdef kseq_t * getCurrent(self):
@@ -334,17 +333,21 @@ cdef class FastqFile:
         python version of next().
         """
         cdef int l
-        l = kseq_read( self.entry)
+        l = kseq_read(self.entry)
         if (l > 0):
-            return makeFastqProxy( self.entry )
+            return makeFastqProxy(self.entry)
         else:
             raise StopIteration
+
+# Compatibility Layer for pysam 0.8.1
+cdef class FastqFile(FastxFile):
+    pass
 
 # Compatibility Layer for pysam < 0.8
 cdef class Fastafile(FastaFile):
     pass
 
-cdef class Fastqfile(FastqFile):
+cdef class Fastqfile(FastxFile):
     pass
 
 __all__ = ["FastaFile",

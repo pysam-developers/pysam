@@ -2,6 +2,12 @@
 Release notes
 =============
 
+Release 0.8.2
+
+* FastqFile is now FastxFile to reflect that the latter permits
+  iteration over both fastq- and fasta-formatted files.
+  
+
 Release 0.8.1
 =============
 
