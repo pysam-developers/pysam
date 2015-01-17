@@ -328,8 +328,8 @@ class BasicTestSAMFetch(BasicTestBAMFetch):
 
 
 class TestIO(unittest.TestCase):
-
-    '''check if reading samfile and writing a samfile are consistent.'''
+    '''check if reading samfile and writing a samfile
+    are consistent.'''
 
     def checkEcho(self,
                   input_filename,
@@ -337,10 +337,12 @@ class TestIO(unittest.TestCase):
                   output_filename,
                   input_mode, output_mode,
                   use_template=True):
-        '''iterate through *input_filename* writing to *output_filename* and
-        comparing the output to *reference_filename*.
+        '''iterate through *input_filename* writing to
+        *output_filename* and comparing the output to
+        *reference_filename*.
 
-        The files are opened according to the *input_mode* and *output_mode*.
+        The files are opened according to the *input_mode* and
+        *output_mode*.
 
         If *use_template* is set, the header is copied from infile
         using the template mechanism, otherwise target names and
@@ -348,8 +350,9 @@ class TestIO(unittest.TestCase):
 
         '''
 
-        infile = pysam.AlignmentFile(os.path.join(DATADIR, input_filename),
-                               input_mode)
+        infile = pysam.AlignmentFile(
+            os.path.join(DATADIR, input_filename),
+            input_mode)
         if use_template:
             outfile = pysam.AlignmentFile(output_filename,
                                     output_mode,
@@ -369,19 +372,34 @@ class TestIO(unittest.TestCase):
         outfile.close()
 
         self.assertTrue(
-            checkBinaryEqual(os.path.join(DATADIR, reference_filename),
+            checkBinaryEqual(os.path.join(DATADIR,
+                                          reference_filename),
                              output_filename),
             "files %s and %s are not the same" % (reference_filename,
                                                   output_filename))
 
-    def testReadWriteBam(self):
+    def testReadWriteBAM(self):
 
         input_filename = "ex1.bam"
         output_filename = "pysam_ex1.bam"
         reference_filename = "ex1.bam"
 
-        self.checkEcho(input_filename, reference_filename, output_filename,
+        self.checkEcho(input_filename,
+                       reference_filename,
+                       output_filename,
                        "rb", "wb", use_template=True)
+
+    def testReadWriteCRAM(self):
+
+        input_filename = "ex1.cram"
+        output_filename = "pysam_ex1.cram"
+        reference_filename = "ex1.cram"
+
+        self.checkEcho(input_filename,
+                       reference_filename,
+                       output_filename,
+                       "rc", "wc",
+                       use_template=True)
 
     # Disabled - should work, files are not binary equal, but are
     # non-binary equal:
@@ -901,8 +919,10 @@ class TestIteratorColumn(unittest.TestCase):
             thiscov = len(column.pileups)
             refcov = self.mCoverages[
                 self.samfile.getrname(column.reference_id)][column.reference_pos]
-            self.assertEqual(thiscov, refcov, "wrong coverage at pos %s:%i %i should be %i" % (
-                self.samfile.getrname(column.reference_id), column.reference_pos, thiscov, refcov))
+            self.assertEqual(thiscov, refcov,
+                             "wrong coverage at pos %s:%i %i should be %i" % (
+                                 self.samfile.getrname(column.reference_id),
+                                 column.reference_pos, thiscov, refcov))
 
     def testIterateAll(self):
         '''check random access per contig'''
@@ -945,7 +965,8 @@ class TestIteratorColumn(unittest.TestCase):
 
     def testIterateTruncate(self):
         '''check random access per range'''
-        for contig, length in zip(self.samfile.references, self.samfile.lengths):
+        for contig, length in zip(self.samfile.references,
+                                  self.samfile.lengths):
             for start in range(1, length, 90):
                 # this includes empty ranges
                 self.checkRange(contig, start, start + 90, truncate=True)
@@ -959,8 +980,9 @@ class TestIteratorColumn2(unittest.TestCase):
     '''test iterator column against contents of ex1.bam.'''
 
     def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                     "rb")
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex1.bam"),
+            "rb")
 
     def testStart(self):
         # print self.samfile.fetch().next().reference_start
@@ -988,6 +1010,13 @@ class TestIteratorColumn2(unittest.TestCase):
         '''
         pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
         self.assertRaises(ValueError, getattr, pcolumn, "pileups")
+
+    def testStr(self):
+        '''test if PileupRead can be printed.'''
+        iter = self.samfile.pileup('chr1', 170, 180)
+        pcolumn = iter.__next__()
+        s = str(pcolumn)
+        self.assertEqual(len(s.split("\n")), 2)
 
 
 class TestHeaderSam(unittest.TestCase):
@@ -1336,6 +1365,13 @@ class TestAlignedSegment(ReadTest):
         # todo: create tags
         return a
 
+    def testSettingTagInEmptyRead(self):
+        '''see issue 62'''
+        a = pysam.AlignedSegment()
+        a.tags = (("NM", 1),)
+        a.query_qualities = None
+        self.assertEqual(a.tags, [("NM", 1), ])
+
     def testUpdate(self):
         '''check if updating fields affects other variable length data
         '''
@@ -1647,9 +1683,23 @@ class TestTruncatedBAM(unittest.TestCase):
 
     def testTruncatedBam(self):
 
-        s = pysam.AlignmentFile(os.path.join(DATADIR, 'ex2_truncated.bam'))
+        s = pysam.AlignmentFile(
+            os.path.join(DATADIR, 'ex2_truncated.bam'))
         iterall = lambda x: len([a for a in x])
         self.assertRaises(IOError, iterall, s)
+
+    def testTruncatedBamFetch(self):
+        '''See comments for pull request at 
+        https://github.com/pysam-developers/pysam/pull/50#issuecomment-64928625
+        '''
+        # Currently there is no way to detect truncated
+        # files through hts_iter_fetch, so this test is
+        # disabled
+        return
+        s = pysam.AlignmentFile(
+            os.path.join(DATADIR, 'ex2_truncated.bam'))
+        iterall = lambda x: len([a for a in x])
+        self.assertRaises(IOError, iterall, s.fetch())
 
 
 class TestBTagSam(unittest.TestCase):

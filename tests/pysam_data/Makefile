@@ -1,6 +1,7 @@
 SAM=$(wildcard *.sam)
 BAM=$(SAM:%.sam=%.bam)
 BAI=$(BAM:%.bam=%.bam.bai)
+CRAM=ex1.cram
 
 # ex2.bam - bam file without index
 
@@ -9,9 +10,10 @@ all: ex1.pileup.gz \
 	ex2.sam.gz ex2.sam ex2.bam \
         uncompressed.bam \
 	$(BAM) $(BAI) \
+	$(CRAM) \
 	example_bai.bam \
         rg_with_tab.bam \
-	ex2_truncated.bam \
+	ex2_truncated.bam ex2_truncated.bam.bai \
 	empty.bam empty.bam.bai
 
 # ex2.sam - as ex1.sam, but with header
@@ -26,6 +28,9 @@ uncompressed.bam: ex2.sam
 
 %.bam: %.sam
 	samtools view -bS $< > $@
+
+%.cram: %.sam
+	samtools view -bC -T ex1.fa $< > $@
 
 %.sam: %.sam.gz
 	gunzip < $< > $@
