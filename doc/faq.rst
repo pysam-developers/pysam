@@ -22,6 +22,60 @@ convention of the samtools command line utilities. The same is true
 for any coordinates passed to the samtools command utilities directly,
 such as :meth:`pysam.mpileup`.
 
+Calling pysam.fetch() confuses existing iterators
+=================================================
+
+The following code will cause unexpected behaviour::
+
+   samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
+
+   iter1 = samfile.fetch("chr1")
+   print iter1.next().reference_id
+   iter2 = samfile.fetch("chr2")
+   print iter2.next().reference_id
+   print iter1.next().reference_id
+   
+This will give the following output::
+
+    0
+    1
+    Traceback (most recent call last):
+      File "xx.py", line 8, in <module>
+	print iter1.next().reference_id
+      File "calignmentfile.pyx", line 1408, in
+      pysam.calignmentfile.IteratorRowRegion.__next__
+      (pysam/calignmentfile.c:16461)
+    StopIteration
+
+Note how the second iterator stops as the file pointer has moved to
+chr2. The correct way to work with multiple iterators is::
+
+   samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
+
+   iter1 = samfile.fetch("chr1", all)
+   print iter1.next().reference_id
+   iter2 = samfile.fetch("chr2")
+   print iter2.next().reference_id
+   print iter1.next().reference_id
+
+Here, the output is::
+
+   0
+   1
+   0
+
+The reason for this behaviour is that every iterator needs to keep
+track of its current position in the file. Within pysam, each opened
+file can only keep track of one file position and hence there can only
+be one iterator per file. Using the option ``mulitple_iterators=True``
+will return an iterator within a newly opened file. This iterator will
+not interfere with existing iterators as it has its own file handle
+associated with it.
+
+Note that re-opening files incurs a performance penalty which can
+become severe when calling :meth:`~pysam.AlignmentFile.fetch` often.
+Thus, ``multiple_iterators`` is set to ``False`` by default.
+
 BAM files with a large number of reference sequences is slow
 ============================================================
 
@@ -38,7 +92,7 @@ header. This might require a lot of jumping around in the file. To
 avoid this, use::
 
       track = pysam.AlignmentFile(fname, "rb")
-      for aln in track.fetch( until_eof = True ):
+      for aln in track.fetch(until_eof = True):
       	  pass
  
 This will iterate through reads as they appear in the file.
@@ -66,7 +120,6 @@ the quality scores need to be taken. Consider trimming for example::
     read.seq = read.seq[5:10]
     read.qual = q[5:10]
  
-
 Why is there no SNPCaller class anymore?
 =========================================
 
