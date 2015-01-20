@@ -250,8 +250,13 @@ cdef extern from "htslib/hts.h" nogil:
         void * voidp
 
     ctypedef struct htsFile:
-	# uint32_t is_bin:1, is_write:1, is_be:1, is_cram:1, is_compressed:2, is_kstream:1, dummy:25;
-        uint32_t  is_bin
+        uint32_t is_bin    # file is opened in binary mode
+        uint32_t is_write  
+        uint32_t is_be
+        uint32_t is_cram
+        uint32_t is_compressed
+        uint32_t is_kstream
+        uint32_t dummy
         int64_t lineno
         kstring_t line
         char * fn

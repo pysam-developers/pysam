@@ -235,7 +235,7 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
 
 cdef class AlignmentFile:
     '''*(filename, mode=None, template = None,
-         referencenames=None, referencelengths = None,
+         reference_names=None, reference_lengths = None,
          text=NULL, header=None,
          add_sq_text=False, check_header=True,
          check_sq=True)*
@@ -283,11 +283,14 @@ cdef class AlignmentFile:
         3. If *text* is given, new header text is copied from raw
            text.
 
-        4. The names (*referencenames*) and lengths
-           (*referencelengths*) are supplied directly as lists.  By
+        4. The names (*reference_names*) and lengths
+           (*reference_lengths*) are supplied directly as lists.  By
            default, 'SQ' and 'LN' tags will be added to the header
            text. This option can be changed by unsetting the flag
            *add_sq_text*.
+
+    For writing a CRAM file, the filename of the reference can be 
+    added through a fasta formatted file (*reference_filename*)
 
     By default, if a file is opened in mode 'r', it is checked
     for a valid header (*check_header* = True) and a definition of
@@ -298,8 +301,11 @@ cdef class AlignmentFile:
     def __cinit__(self, *args, **kwargs ):
         self.htsfile = NULL
         self._filename = None
-        self.isbam = False
-        self.isstream = False
+        self.is_bam = False
+        self.is_stream = False
+        self.is_cram = False
+        self.is_remote = False
+        
         self._open(*args, **kwargs)
 
         # allocate memory for iterator
@@ -317,28 +323,36 @@ cdef class AlignmentFile:
               filename,
               mode=None,
               AlignmentFile template=None,
-              referencenames=None,
-              referencelengths=None,
+              reference_names=None,
+              reference_lengths=None,
+              reference_filename=None,
               text=None,
               header=None,
               port=None,
               add_sq_text=True,
               check_header=True,
-              check_sq=True):
-        '''open a sam/bam file.
+              check_sq=True,
+              referencenames=None,
+              referencelengths=None):
+        '''open a sam, bam or cram formatted file.
 
-        If _open is called on an existing bamfile, the current file
+        If _open is called on an existing file, the current file
         will be closed and a new file will be opened.
-
         '''
+        # for backwards compatibility:
+        if referencenames is not None:
+            reference_names = referencenames
+        if referencelengths is not None:
+            reference_lengths = referencelengths
 
         # read mode autodetection
         if mode is None:
             try:
                 self._open(filename, 'rb',
                            template=template,
-                           referencenames=referencenames,
-                           referencelengths=referencelengths,
+                           reference_names=reference_names,
+                           reference_lengths=reference_lengths,
+                           reference_filename=reference_filename,
                            text=text,
                            header=header,
                            port=port,
@@ -350,8 +364,9 @@ cdef class AlignmentFile:
 
             self._open(filename, 'r',
                        template=template,
-                       referencenames=referencenames,
-                       referencelengths=referencelengths,
+                       reference_names=reference_names,
+                       reference_lengths=reference_lengths,
+                       reference_filename=reference_filename,
                        text=text,
                        header=header,
                        port=port,
@@ -374,12 +389,13 @@ cdef class AlignmentFile:
 
         cdef bytes bmode = mode.encode('ascii')
         self._filename = filename = _encodeFilename(filename)
-        self.isstream = filename == b"-"
 
-        self.isbam = len(mode) > 1 and mode[1] in 'bc'
-
-        self.isremote = filename.startswith(b"http:") or \
-                        filename.startswith(b"ftp:")
+        # FIXME: Use htsFormat when it is available
+        self.is_bam = len(mode) > 1 and mode[1] == 'b'
+        self.is_cram = len(mode) > 1 and mode[1] == 'c'
+        self.is_stream = filename == b"-"
+        self.is_remote = filename.startswith(b"http:") or \
+                         filename.startswith(b"ftp:")
 
         cdef char * ctext
         ctext = NULL
@@ -394,27 +410,27 @@ cdef class AlignmentFile:
                 self.header = self._buildHeader(header)
             else:
                 # build header from a target names and lengths
-                assert referencenames and referencelengths, \
+                assert reference_names and reference_lengths, \
                     ("either supply options `template`, `header` "
-                     "or  both `referencenames` and `referencelengths` "
+                     "or  both `reference_names` and `reference_lengths` "
                      "for writing")
-                assert len(referencenames) == len(referencelengths), \
+                assert len(reference_names) == len(reference_lengths), \
                     "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
-                referencenames = [_forceBytes(ref) for ref in referencenames]
+                reference_names = [_forceBytes(ref) for ref in reference_names]
                 self.header = bam_hdr_init()
-                self.header.n_targets = len(referencenames)
+                self.header.n_targets = len(reference_names)
                 n = 0
-                for x in referencenames:
+                for x in reference_names:
                     n += len(x) + 1
                 self.header.target_name = <char**>calloc(
                     n, sizeof(char*))
                 self.header.target_len = <uint32_t*>calloc(
                     n, sizeof(uint32_t))
                 for x from 0 <= x < self.header.n_targets:
-                    self.header.target_len[x] = referencelengths[x]
-                    name = referencenames[x]
+                    self.header.target_len[x] = reference_lengths[x]
+                    name = reference_names[x]
                     self.header.target_name[x] = <char*>calloc(
                         len(name) + 1, sizeof(char))
                     strncpy(self.header.target_name[x], name, len(name))
@@ -425,8 +441,8 @@ cdef class AlignmentFile:
                     text = []
                     for x from 0 <= x < self.header.n_targets:
                         text.append("@SQ\tSN:%s\tLN:%s\n" % \
-                                    (_forceStr(referencenames[x]), 
-                                     referencelengths[x]))
+                                    (_forceStr(reference_names[x]), 
+                                     reference_lengths[x]))
                     text = ''.join(text)
 
                 if text is not None:
@@ -438,19 +454,26 @@ cdef class AlignmentFile:
                         strlen(ctext), sizeof(char))
                     memcpy(self.header.text, ctext, strlen(ctext))
 
-            # open file. Header gets written to file at the same time for bam files
-            # and sam files (in the latter case, the mode needs to be wh)
+            # open file
             self.htsfile = hts_open(filename, bmode)
-            
-            # for compatibility - "w" writes sam file without header
-            if self.isbam or "h" in mode:
-                # write header to htsfile
+
+            # set filename with reference sequences. If no filename
+            # is given, the CRAM reference arrays will be built from
+            # the @SQ header in the header
+            if self.is_cram and reference_filename:
+                # note that fn_aux takes ownership, so create
+                # a copy
+                fn = _encodeFilename(reference_filename)
+                self.htsfile.fn_aux = strdup(fn)
+
+            # write header to htsfile
+            if self.is_bam or self.is_cram or "h" in mode:
                 sam_hdr_write(self.htsfile, self.header)
-                
+
         elif mode[0] == "r":
             # open file for reading
             if (filename != b"-"
-                and not self.isremote
+                and not self.is_remote
                 and not os.path.exists(filename)):
                 raise IOError("file `%s` not found" % filename)
 
@@ -467,14 +490,15 @@ cdef class AlignmentFile:
             self.fp = self.htsfile.fp.bgzf
 
             # bam files require a valid header
-            if self.isbam:
+            if self.is_bam:
                 self.header = sam_hdr_read(self.htsfile)
                 if self.header == NULL:
                     raise ValueError(
                         "file does not have valid header (mode='%s') "
                         "- is it BAM format?" % mode )
             else:
-                # in sam files it is optional (htsfile full of unmapped reads)
+                # in sam files it is optional (htsfile full of
+                # unmapped reads)
                 if check_header:
                     self.header = sam_hdr_read(self.htsfile)
                     if self.header == NULL:
@@ -494,24 +518,41 @@ cdef class AlignmentFile:
             raise IOError("could not open file `%s`" % filename )
 
         # check for index and open if present
-        if mode[0] == "r" and self.isbam:
+        cdef int format_index = -1
+        if self.is_bam:
+            format_index = HTS_FMT_BAI
+        elif self.is_cram:
+            format_index = HTS_FMT_CRAI
 
-            if not self.isremote:
-                if not os.path.exists(filename + b".bai") \
-                   and not os.path.exists( filename[:-4] + b".bai"):
+        if mode[0] == "r" and (self.is_bam or self.is_cram):
+
+            # open index for remote files
+            if self.is_remote:
+                self.index = hts_idx_load(filename, format_index)
+                if self.index == NULL:
+                    warnings.warn(
+                        "unable to open remote index for '%s'" % filename)
+            else:
+                if self.is_bam \
+                   and not os.path.exists(filename + b".bai") \
+                   and not os.path.exists(filename[:-4] + b".bai"):
+                    self.index = NULL
+                elif self.is_cram \
+                     and not os.path.exists(filename + b".crai") \
+                     and not os.path.exists(filename[:-4] + b".crai"):
                     self.index = NULL
                 else:
                     # returns NULL if there is no index or index could
                     # not be opened
-                    self.index = hts_idx_load(filename, HTS_FMT_BAI)
+                    self.index = sam_index_load(self.htsfile,
+                                                filename)
                     if self.index == NULL:
-                        raise IOError("error while opening index `%s` " % filename )
-            else:
-                self.index = hts_idx_load(filename, HTS_FMT_BAI)
-                if self.index == NULL:
-                    warnings.warn("unable to open index for `%s` " % filename)
+                        raise IOError(
+                            "error while opening index for '%s'" %
+                            filename)
 
-            if not self.isstream:
+            # save start of data section
+            if not self.is_stream:
                 self.start_offset = bgzf_tell(self.fp)
 
     def gettid(self, reference):
@@ -618,15 +659,16 @@ cdef class AlignmentFile:
         return self.seek(self.start_offset, 0)
 
     def seek(self, uint64_t offset, int where = 0):
-        '''
-        move file pointer to position *offset*, see :meth:`pysam.AlignmentFile.tell`.
+        '''move file pointer to position *offset*, see
+        :meth:`pysam.AlignmentFile.tell`.
         '''
 
         if not self._isOpen():
-            raise ValueError( "I/O operation on closed file" )
-        if not self.isbam:
-            raise NotImplementedError("seek only available in bam files")
-        if self.isstream:
+            raise ValueError("I/O operation on closed file")
+        if not self.is_bam:
+            raise NotImplementedError(
+                "seek only available in bam files")
+        if self.is_stream:
             raise OSError("seek no available in streams")
 
         return bgzf_seek(self.fp, offset, where)
@@ -637,7 +679,7 @@ cdef class AlignmentFile:
         '''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
-        if not self.isbam:
+        if not self.is_bam:
             raise NotImplementedError("seek only available in bam files")
 
         return bgzf_tell(self.fp)
@@ -651,10 +693,10 @@ cdef class AlignmentFile:
               callback=None,
               until_eof=False,
               multiple_iterators=False):
-        '''fetch aligned reads in a :term:`region` using 0-based indexing. The
-        region is specified by :term:`reference`, *start* and
-        *end*. Alternatively, a samtools :term:`region` string can be
-        supplied.
+        '''fetch aligned reads in a :term:`region` using 0-based 
+        indexing. The region is specified by :term:`reference`,
+        *start* and *end*. Alternatively, a samtools :term:`region`
+        string can be supplied.
 
         Without *reference* or *region* all mapped reads will be
         fetched. The reads will be returned ordered by reference
@@ -690,12 +732,12 @@ cdef class AlignmentFile:
                                                           tid)
 
         # Turn of re-opening if htsfile is a stream
-        if self.isstream:
+        if self.is_stream:
             multiple_iterators = False
 
-        if self.isbam:
+        if self.is_bam:
             if not until_eof and not self._hasIndex() \
-               and not self.isremote:
+               and not self.is_remote:
                 raise ValueError(
                     "fetch called on bamfile without index")
 
@@ -906,7 +948,7 @@ cdef class AlignmentFile:
         has_coord, rtid, rstart, rend = self._parseRegion(
             reference, start, end, region )
 
-        if self.isbam:
+        if self.is_bam:
             if not self._hasIndex():
                 raise ValueError("no index available for pileup")
 
@@ -993,10 +1035,11 @@ cdef class AlignmentFile:
 
         """
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self._isOpen():
+                raise ValueError("I/O operation on closed file")
             t = []
             for x from 0 <= x < self.header.n_targets:
-                t.append( self.header.target_len[x] )
+                t.append(self.header.target_len[x])
             return tuple(t)
 
     property mapped:
@@ -1017,7 +1060,7 @@ cdef class AlignmentFile:
         an error.'''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
-        if not self.isbam:
+        if not self.is_bam:
             raise AttributeError("AlignmentFile.mapped only available in bam files")
         if self.index == NULL:
             raise ValueError("mapping information not recorded in index "
@@ -1265,7 +1308,7 @@ cdef class AlignmentFile:
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
 
-        if not self.isbam and self.header.n_targets == 0:
+        if not self.is_bam and self.header.n_targets == 0:
             raise NotImplementedError(
                 "can not iterate over samfile without header")
         return self
@@ -3513,7 +3556,8 @@ cdef class PileupRead:
     '''
 
     def __init__(self):
-        raise TypeError("this class cannot be instantiated from Python")
+        raise TypeError(
+            "this class cannot be instantiated from Python")
 
     def __str__(self):
         return "\t".join(
@@ -3537,20 +3581,25 @@ cdef class PileupRead:
         """indel length; 0 for no indel, positive for ins and negative            for del"""
         def __get__(self):
             return self._indel
+
     property level:
         """the level of the read in the "viewer" mode"""
         def __get__(self):
             return self._level
+
     property is_del:
         """1 iff the base on the padded read is a deletion"""
         def __get__(self):
             return self._is_del
+
     property is_head:
         def __get__(self):
             return self._is_head
+
     property is_tail:
         def __get__(self):
             return self._is_tail
+
     property is_refskip:
         def __get__(self):
             return self._is_refskip
@@ -3631,7 +3680,7 @@ cdef class IndexedReads:
         # object is alive.
         self.samfile = samfile
 
-        assert samfile.isbam, "can only IndexReads on bam files"
+        assert samfile.is_bam, "can only IndexReads on bam files"
 
         # multiple_iterators the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
@@ -3654,8 +3703,8 @@ cdef class IndexedReads:
 
         self.index = collections.defaultdict(list)
 
-        # this method will start indexing from the current file position
-        # if you decide
+        # this method will start indexing from the current file
+        # position if you decide
         cdef int ret = 1
         cdef bam1_t * b = <bam1_t*>calloc(1, sizeof( bam1_t))
 

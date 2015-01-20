@@ -336,6 +336,7 @@ class TestIO(unittest.TestCase):
                   reference_filename,
                   output_filename,
                   input_mode, output_mode,
+                  sequence_filename=None,
                   use_template=True):
         '''iterate through *input_filename* writing to
         *output_filename* and comparing the output to
@@ -349,25 +350,29 @@ class TestIO(unittest.TestCase):
         lengths are passed explicitely.
 
         '''
-
         infile = pysam.AlignmentFile(
             os.path.join(DATADIR, input_filename),
             input_mode)
         if use_template:
-            outfile = pysam.AlignmentFile(output_filename,
-                                    output_mode,
-                                    template=infile)
+            outfile = pysam.AlignmentFile(
+                output_filename,
+                output_mode,
+                reference_filename=sequence_filename,
+                template=infile)
         else:
-            outfile = pysam.AlignmentFile(output_filename,
-                                    output_mode,
-                                    referencenames=infile.references,
-                                    referencelengths=infile.lengths,
-                                    add_sq_text=False)
+            outfile = pysam.AlignmentFile(
+                output_filename,
+                output_mode,
+                reference_names=infile.references,
+                reference_lengths=infile.lengths,
+                reference_filename=sequence_filename,
+                add_sq_text=False)
 
         iter = infile.fetch()
 
         for x in iter:
             outfile.write(x)
+
         infile.close()
         outfile.close()
 
@@ -390,15 +395,17 @@ class TestIO(unittest.TestCase):
                        "rb", "wb", use_template=True)
 
     def testReadWriteCRAM(self):
-
+        return
         input_filename = "ex1.cram"
         output_filename = "pysam_ex1.cram"
         reference_filename = "ex1.cram"
+        sequence_filename = "pysam_data/ex1.fa"
 
         self.checkEcho(input_filename,
                        reference_filename,
                        output_filename,
                        "rc", "wc",
+                       sequence_filename=sequence_filename,
                        use_template=True)
 
     # Disabled - should work, files are not binary equal, but are

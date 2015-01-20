@@ -85,12 +85,14 @@ cdef class AlignmentFile:
     cdef hts_idx_t *index
     # header structure
     cdef bam_hdr_t * header
-    # true if file is a bam file
-    cdef int isbam
+    # true if file is bam format
+    cdef readonly bint is_bam
+    # true if file is bam format
+    cdef readonly bint is_cram
     # true if not a file but a stream
-    cdef int isstream
+    cdef readonly bint is_stream
     # true if file is not on the local filesystem
-    cdef int isremote
+    cdef readonly bint is_remote
     # current read within iteration
     cdef bam1_t * b
     # file opening mode
@@ -122,6 +124,7 @@ cdef class PileupRead:
     cdef uint32_t _is_del
     cdef uint32_t _is_head
     cdef uint32_t _is_tail
+    cdef uint32_t _is_refskip
 
 cdef class IteratorRow:
     cdef int retval
