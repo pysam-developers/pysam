@@ -13,7 +13,8 @@ import sys
 import collections
 import subprocess
 import logging
-from TestUtils import checkBinaryEqual, checkURL
+from functools import partial
+from TestUtils import checkBinaryEqual, checkURL, checkSamtoolsViewEqual
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -337,7 +338,8 @@ class TestIO(unittest.TestCase):
                   output_filename,
                   input_mode, output_mode,
                   sequence_filename=None,
-                  use_template=True):
+                  use_template=True,
+                  checkf=checkBinaryEqual):
         '''iterate through *input_filename* writing to
         *output_filename* and comparing the output to
         *reference_filename*.
@@ -349,6 +351,8 @@ class TestIO(unittest.TestCase):
         using the template mechanism, otherwise target names and
         lengths are passed explicitely.
 
+        The *checkf* is used to determine if the files are
+        equal.
         '''
         infile = pysam.AlignmentFile(
             os.path.join(DATADIR, input_filename),
@@ -376,37 +380,89 @@ class TestIO(unittest.TestCase):
         infile.close()
         outfile.close()
 
-        self.assertTrue(
-            checkBinaryEqual(os.path.join(DATADIR,
-                                          reference_filename),
-                             output_filename),
-            "files %s and %s are not the same" % (reference_filename,
-                                                  output_filename))
+        self.assertTrue(checkf(
+            os.path.join(DATADIR, reference_filename),
+            output_filename),
+                        "files %s and %s are not the same" %
+                        (reference_filename,
+                         output_filename))
 
-    def testReadWriteBAM(self):
+        os.unlink(output_filename)
 
-        input_filename = "ex1.bam"
-        output_filename = "pysam_ex1.bam"
-        reference_filename = "ex1.bam"
+    def testSAM2SAM(self):
+        self.checkEcho("ex2.sam",
+                       "ex2.sam",
+                       "tmp_ex2.sam",
+                       "r", "wh")
 
-        self.checkEcho(input_filename,
-                       reference_filename,
-                       output_filename,
-                       "rb", "wb", use_template=True)
+    def testBAM2BAM(self):
+        self.checkEcho("ex2.bam",
+                       "ex2.bam",
+                       "tmp_ex2.bam",
+                       "rb", "wb")
 
-    def testReadWriteCRAM(self):
-        return
-        input_filename = "ex1.cram"
-        output_filename = "pysam_ex1.cram"
-        reference_filename = "ex1.cram"
-        sequence_filename = "pysam_data/ex1.fa"
-
-        self.checkEcho(input_filename,
-                       reference_filename,
-                       output_filename,
+    def testCRAM2CRAM(self):
+        self.checkEcho("ex2.cram",
+                       "ex2.cram",
+                       "tmp_ex2.cram",
                        "rc", "wc",
-                       sequence_filename=sequence_filename,
-                       use_template=True)
+                       sequence_filename="pysam_data/ex1.fa",
+                       checkf=checkSamtoolsViewEqual)
+
+    def testSAM2BAM(self):
+        self.checkEcho("ex2.sam",
+                       "ex2.bam",
+                       "tmp_ex2.bam",
+                       "r", "wb")
+
+    def testBAM2SAM(self):
+        self.checkEcho("ex2.bam",
+                       "ex2.sam",
+                       "tmp_ex2.sam",
+                       "rb", "wh")
+
+    def testBAM2CRAM(self):
+        # ignore header (md5 sum)
+        self.checkEcho("ex2.bam",
+                       "ex2.cram",
+                       "tmp_ex2.cram",
+                       "rb", "wc",
+                       sequence_filename="pysam_data/ex1.fa",
+                       checkf=partial(
+                           checkSamtoolsViewEqual,
+                           without_header=True))
+
+    def testCRAM2BAM(self):
+        # ignore header (md5 sum)
+        self.checkEcho("ex2.cram",
+                       "ex2.bam",
+                       "tmp_ex2.bam",
+                       "rc", "wb",
+                       sequence_filename="pysam_data/ex1.fa",
+                       checkf=partial(
+                           checkSamtoolsViewEqual,
+                           without_header=True))
+
+    def testSAM2CRAM(self):
+        self.checkEcho("ex2.sam",
+                       "ex2.cram",
+                       "tmp_ex2.cram",
+                       "r", "wc",
+                       sequence_filename="pysam_data/ex1.fa",
+                       checkf=partial(
+                           checkSamtoolsViewEqual,
+                           without_header=True))
+
+    def testCRAM2SAM(self):
+        self.checkEcho("ex2.cram",
+                       "ex2.sam",
+                       "tmp_ex2.sam",
+                       "rc", "wh",
+                       sequence_filename="pysam_data/ex1.fa",
+                       checkf=partial(
+                           checkSamtoolsViewEqual,
+                           without_header=True))
+
 
     # Disabled - should work, files are not binary equal, but are
     # non-binary equal:
@@ -419,40 +475,30 @@ class TestIO(unittest.TestCase):
     #     self.checkEcho(input_filename, reference_filename, output_filename,
     #                    "rb", "wb", use_template=False)
 
-    def testReadWriteSamWithHeader(self):
-
-        input_filename = "ex2.sam"
-        output_filename = "pysam_ex2.sam"
-        reference_filename = "ex2.sam"
-
-        self.checkEcho(input_filename,
-                       reference_filename,
-                       output_filename,
-                       "r", "wh")
-
     # Release 0.8.0
     # no samfiles without header
-    def testReadWriteSamWithoutHeader(self):
-
-        input_filename = "ex2.sam"
-        output_filename = "pysam_ex2.sam"
-        reference_filename = "ex1.sam"
-
-        self.checkEcho(input_filename,
-                       reference_filename,
-                       output_filename,
+    def testSAM2SAMWithoutHeader(self):
+        self.checkEcho("ex2.sam",
+                       "ex1.sam",
+                       "tmp_ex2.sam",
                        "r", "w")
+
 
     def testReadSamWithoutTargetNames(self):
         '''see issue 104.'''
-        input_filename = os.path.join(DATADIR,
-                                      "example_unmapped_reads_no_sq.sam")
+        input_filename = os.path.join(
+            DATADIR,
+            "example_unmapped_reads_no_sq.sam")
 
         # raise exception in default mode
-        self.assertRaises(ValueError, pysam.AlignmentFile, input_filename, "r")
+        self.assertRaises(ValueError,
+                          pysam.AlignmentFile,
+                          input_filename,
+                          "r")
 
         # raise exception if no SQ files
-        self.assertRaises(ValueError, pysam.AlignmentFile,
+        self.assertRaises(ValueError,
+                          pysam.AlignmentFile,
                           input_filename, "r",
                           check_header=True)
 
@@ -471,10 +517,16 @@ class TestIO(unittest.TestCase):
             DATADIR, "example_unmapped_reads_no_sq.bam")
 
         # raise exception in default mode
-        self.assertRaises(ValueError, pysam.AlignmentFile, input_filename, "r")
+        self.assertRaises(ValueError,
+                          pysam.AlignmentFile,
+                          input_filename,
+                          "r")
 
         # raise exception if no SQ files
-        self.assertRaises(ValueError, pysam.AlignmentFile, input_filename, "r",
+        self.assertRaises(ValueError,
+                          pysam.AlignmentFile,
+                          input_filename,
+                          "r",
                           check_header=True)
 
         infile = pysam.AlignmentFile(
@@ -527,19 +579,24 @@ class TestIO(unittest.TestCase):
     def testBAMWithoutAlignedSegments(self):
         '''see issue 117'''
         input_filename = os.path.join(DATADIR, "test_unaligned.bam")
-        samfile = pysam.AlignmentFile(input_filename, "rb", check_sq=False)
+        samfile = pysam.AlignmentFile(input_filename,
+                                      "rb",
+                                      check_sq=False)
         samfile.fetch(until_eof=True)
 
     def testBAMWithShortBAI(self):
         '''see issue 116'''
         input_filename = os.path.join(DATADIR, "example_bai.bam")
-        samfile = pysam.AlignmentFile(input_filename, "rb", check_sq=False)
+        samfile = pysam.AlignmentFile(input_filename,
+                                      "rb",
+                                      check_sq=False)
         samfile.fetch('chr2')
 
     def testFetchFromClosedFile(self):
 
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                "rb")
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex1.bam"),
+            "rb")
         samfile.close()
         self.assertRaises(ValueError, samfile.fetch, 'chr1', 100, 120)
 
@@ -833,32 +890,46 @@ class TestClipping(unittest.TestCase):
                     '01234')
 
 
-class TestIteratorRow(unittest.TestCase):
+class TestIteratorRowBAM(unittest.TestCase):
+
+    filename = os.path.join(DATADIR, "ex2.bam")
+    mode = "rb"
 
     def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                     "rb")
+        self.samfile = pysam.AlignmentFile(
+            self.filename, self.mode,
+        )
 
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.view(os.path.join(DATADIR, "ex1.bam"),
+        sa = list(pysam.view(self.filename,
                              rnge,
                              raw=True))
-        self.assertEqual(len(ps), len(
-            sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa)))
+        self.assertEqual(
+            len(ps), len(sa),
+            "unequal number of results for range %s: %i != %i" %
+            (rnge, len(ps), len(sa)))
         # check if the same reads are returned and in the same order
         for line, (a, b) in enumerate(list(zip(ps, sa))):
             d = b.split("\t")
             self.assertEqual(
-                a.query_name, d[0], "line %i: read id mismatch: %s != %s" % (line, a.reference_id, d[0]))
-            self.assertEqual(a.reference_start, int(d[3]) - 1, "line %i: read position mismatch: %s != %s, \n%s\n%s\n" %
-                             (line, a.reference_start, int(d[3]) - 1,
-                              str(a), str(d)))
+                a.query_name, d[0],
+                "line %i: read id mismatch: %s != %s" %
+                (line, a.reference_id, d[0]))
+            self.assertEqual(
+                a.reference_start,
+                int(d[3]) - 1,
+                "line %i: read position mismatch: %s != %s, \n%s\n%s\n" %
+                (line, a.reference_start, int(d[3]) - 1,
+                 str(a), str(d)))
             qual = d[10]
-            self.assertEqual(pysam.toQualityString(a.query_qualities), qual, "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
-                             (line, pysam.toQualityString(a.query_qualities), qual,
-                              str(a), str(d)))
+            self.assertEqual(
+                pysam.toQualityString(a.query_qualities),
+                qual,
+                "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
+                (line, pysam.toQualityString(a.query_qualities), qual,
+                 str(a), str(d)))
 
     def testIteratePerContig(self):
         '''check random access per contig'''
@@ -871,30 +942,45 @@ class TestIteratorRow(unittest.TestCase):
                                   self.samfile.lengths):
             for start in range(1, length, 90):
                 # this includes empty ranges
-                self.checkRange("%s:%i-%i" % (contig, start, start + 90))
+                self.checkRange("%s:%i-%i" %
+                                (contig, start, start + 90))
 
     def tearDown(self):
         self.samfile.close()
 
+# class TestIteratorRowCRAM(TestIteratorRowBAM):
 
-class TestIteratorRowAll(unittest.TestCase):
+#     filename = os.path.join(DATADIR, "ex2.cram")
+#     mode = "rc"
+
+
+class TestIteratorRowAllBAM(unittest.TestCase):
+
+    filename = os.path.join(DATADIR, "ex2.bam")
+    mode = "rb"
 
     def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                     "rb")
+        self.samfile = pysam.AlignmentFile(
+            self.filename,
+            self.mode)
 
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch())
-        sa = list(pysam.view(os.path.join(DATADIR, "ex1.bam"),
+        sa = list(pysam.view(self.filename,
                              raw=True))
         self.assertEqual(
-            len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa)))
+            len(ps), len(sa),
+            "unequal number of results: %i != %i" %
+            (len(ps), len(sa)))
         # check if the same reads are returned
         for line, pair in enumerate(list(zip(ps, sa))):
             data = pair[1].split("\t")
-            self.assertEqual(pair[0].query_name, data[
-                             0], "read id mismatch in line %i: %s != %s" % (line, pair[0].reference_id, data[0]))
+            self.assertEqual(
+                pair[0].query_name,
+                data[0],
+                "read id mismatch in line %i: %s != %s" %
+                (line, pair[0].reference_id, data[0]))
 
     def tearDown(self):
         self.samfile.close()

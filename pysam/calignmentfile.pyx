@@ -737,6 +737,7 @@ cdef class AlignmentFile:
         if self.is_stream:
             multiple_iterators = False
 
+        # TODO: add cram here
         if self.is_bam:
             if not until_eof and not self._hasIndex() \
                and not self.is_remote:
@@ -950,7 +951,7 @@ cdef class AlignmentFile:
         has_coord, rtid, rstart, rend = self._parseRegion(
             reference, start, end, region )
 
-        if self.is_bam:
+        if self.is_bam or self.is_cram:
             if not self._hasIndex():
                 raise ValueError("no index available for pileup")
 
@@ -1062,11 +1063,13 @@ cdef class AlignmentFile:
         an error.'''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
-        if not self.is_bam:
-            raise AttributeError("AlignmentFile.mapped only available in bam files")
+        if not self.is_bam and not self.is_cram:
+            raise AttributeError(
+                "AlignmentFile.mapped only available in bam files")
         if self.index == NULL:
-            raise ValueError("mapping information not recorded in index "
-                                 "or index not available")
+            raise ValueError(
+                "mapping information not recorded in index "
+                "or index not available")
 
 
     property unmapped:

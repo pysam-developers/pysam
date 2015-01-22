@@ -1,5 +1,8 @@
 import sys
 import os
+import pysam
+import difflib
+
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -12,7 +15,8 @@ else:
 
 
 def checkBinaryEqual(filename1, filename2):
-    '''return true if the two files are binary equal.'''
+    '''return true if the two files are binary equal.
+    '''
     if os.path.getsize(filename1) != os.path.getsize(filename2):
         return False
 
@@ -36,6 +40,42 @@ def checkBinaryEqual(filename1, filename2):
     infile1.close()
     infile2.close()
     return found
+
+
+def checkSamtoolsViewEqual(filename1, filename2,
+                           without_header=False):
+    '''return true if the two files are equal in their
+    content through samtools view.
+    '''
+    
+    # strip MD and NM tags, as not preserved in CRAM files
+    args = ["-x", "MD", "-x", "NM"]
+    if not without_header:
+        args.append("-h")
+
+    lines1 = pysam.view(*(args + [filename1]))
+    lines2 = pysam.view(*(args + [filename2]))
+
+    if len(lines1) != len(lines2):
+        return False
+
+    if lines1 != lines2:
+        # line by line comparison
+        # sort each line, as tags get rearranged between
+        # BAM/CRAM
+        for n, pair in enumerate(zip(lines1, lines2)):
+            l1, l2 = pair
+            l1 = sorted(l1[:-1].split("\t"))
+            l2 = sorted(l2[:-1].split("\t"))
+            if l1 != l2:
+                print "mismatch in line %i" % n
+                print l1
+                print l2
+                return False
+        else:
+            return False
+
+    return True
 
 
 def checkURL(url):
