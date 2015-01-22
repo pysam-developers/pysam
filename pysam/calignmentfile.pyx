@@ -680,7 +680,8 @@ cdef class AlignmentFile:
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
         if not self.is_bam:
-            raise NotImplementedError("seek only available in bam files")
+            raise NotImplementedError(
+                "seek only available in bam files")
 
         return bgzf_tell(self.fp)
 
@@ -693,7 +694,8 @@ cdef class AlignmentFile:
               callback=None,
               until_eof=False,
               multiple_iterators=False):
-        '''fetch aligned reads in a :term:`region` using 0-based 
+        '''fetch aligned, i.e. mapped, reads in a :term:`region`
+        using 0-based
         indexing. The region is specified by :term:`reference`,
         *start* and *end*. Alternatively, a samtools :term:`region`
         string can be supplied.
@@ -701,7 +703,7 @@ cdef class AlignmentFile:
         Without *reference* or *region* all mapped reads will be
         fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
-        file.
+        file. 
 
         If *until_eof* is given, all reads from the current file
         position will be returned in order as they are within the
