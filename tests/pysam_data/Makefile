@@ -1,7 +1,7 @@
 SAM=$(wildcard *.sam)
 BAM=$(SAM:%.sam=%.bam)
 BAI=$(BAM:%.bam=%.bam.bai)
-CRAM=ex1.cram ex2.cram
+CRAM=ex1.cram ex2.cram ex3.cram
 CRAI=$(CRAM:%.cram=%.cram.crai)
 
 # ex2.bam - bam file without index
