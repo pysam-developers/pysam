@@ -1206,6 +1206,21 @@ class TestHeaderCRAM(TestHeaderSAM):
             os.path.join(DATADIR, "ex3.cram"),
             "rc")
 
+    def compareHeaders(self, a, b):
+        '''compare two headers a and b.'''
+        def _strip(dd):
+            for x in dd:
+                for y in ("M5", "UR"):
+                    if y in x:
+                        del x[y]
+                        
+        for ak, av in a.items():
+            _strip(av)
+            self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
+            _strip(b[ak])
+
+            self.assertEqual(sorted(av), sorted(b[ak]))
+
 
 class TestHeaderFromRefs(unittest.TestCase):
 
