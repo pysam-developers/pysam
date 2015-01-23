@@ -650,8 +650,9 @@ class TestIO(unittest.TestCase):
         samfile = pysam.AlignmentFile('tmp_ex2.bam',
                                       "rb")
         self.assertRaises(ValueError, samfile.fetch)
-        self.assertEqual(len(list(samfile.fetch(until_eof=True))),
-                         3270)
+        self.assertEqual(
+            len(list(samfile.fetch(until_eof=True))),
+            3270)
         os.unlink('tmp_ex2.bam')
 
     # def testReadingUniversalFileMode(self):
@@ -949,10 +950,10 @@ class TestIteratorRowBAM(unittest.TestCase):
     def tearDown(self):
         self.samfile.close()
 
-# class TestIteratorRowCRAM(TestIteratorRowBAM):
+class TestIteratorRowCRAM(TestIteratorRowBAM):
 
-#     filename = os.path.join(DATADIR, "ex2.cram")
-#     mode = "rc"
+    filename = os.path.join(DATADIR, "ex2.cram")
+    mode = "rc"
 
 
 class TestIteratorRowAllBAM(unittest.TestCase):

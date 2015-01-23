@@ -454,7 +454,7 @@ cdef class AlignmentFile:
                         strlen(ctext), sizeof(char))
                     memcpy(self.header.text, ctext, strlen(ctext))
 
-            # open file
+            # open file (hts_open is synonym with sam_open)
             self.htsfile = hts_open(filename, bmode)
 
             # set filename with reference sequences. If no filename
@@ -477,7 +477,7 @@ cdef class AlignmentFile:
                 and not os.path.exists(filename)):
                 raise IOError("file `%s` not found" % filename)
 
-            # try to detect errors
+            # open file (hts_open is synonym with sam_open)
             self.htsfile = hts_open(filename, bmode)
             if self.htsfile == NULL:
                 raise ValueError(
@@ -490,7 +490,7 @@ cdef class AlignmentFile:
             self.fp = self.htsfile.fp.bgzf
 
             # bam files require a valid header
-            if self.is_bam:
+            if self.is_bam or self.is_cram:
                 self.header = sam_hdr_read(self.htsfile)
                 if self.header == NULL:
                     raise ValueError(
@@ -738,11 +738,11 @@ cdef class AlignmentFile:
             multiple_iterators = False
 
         # TODO: add cram here
-        if self.is_bam:
-            if not until_eof and not self._hasIndex() \
-               and not self.is_remote:
-                raise ValueError(
-                    "fetch called on bamfile without index")
+        if self.is_bam or self.is_cram:
+            if not until_eof and not self.is_remote:
+                if not self._hasIndex():
+                    raise ValueError(
+                        "fetch called on bamfile without index")
 
             if has_coord:
                 return IteratorRowRegion(
@@ -1443,7 +1443,7 @@ cdef class IteratorRowRegion(IteratorRow):
         self.retval = hts_itr_next(self.htsfile.fp.bgzf,
                                    self.iter,
                                    self.b,
-                                   NULL)
+                                   self.htsfile)
 
     def __next__(self):
         """python version of next().
@@ -1461,6 +1461,7 @@ cdef class IteratorRowRegion(IteratorRow):
 
     def __dealloc__(self):
         hts_itr_destroy(self.iter)
+
 
 cdef class IteratorRowHead(IteratorRow):
     """*(AlignmentFile samfile, n, int multiple_iterators=False)*
