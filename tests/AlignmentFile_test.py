@@ -14,7 +14,7 @@ import collections
 import subprocess
 import logging
 from functools import partial
-from TestUtils import checkBinaryEqual, checkURL, checkSamtoolsViewEqual
+from TestUtils import checkBinaryEqual, checkURL, checkSamtoolsViewEqual, checkFieldEqual
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -23,7 +23,15 @@ WORKDIR = "pysam_test_work"
 DATADIR = "pysam_data"
 
 
-class BasicTestBAMFetch(unittest.TestCase):
+##################################################
+#
+# Detailed test of file contents
+# 
+# Data are read either through file based iterator
+# access (BasicTestBAMFromFile) or by calling fetch
+# without coordinates (BasicTestBAMFromFetch)
+##################################################
+class BasicTestBAMFromFetch(unittest.TestCase):
 
     '''basic first test - detailed testing
     if information in file is consistent
@@ -165,30 +173,62 @@ class BasicTestBAMFetch(unittest.TestCase):
                          "quality string mismatch in read 3: %s != %s" % (pysam.toQualityString(self.reads[3].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
 
     def testARquery(self):
-        self.assertEqual(self.reads[0].query_alignment_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "query mismatch in read 1: %s != %s" % (
-            self.reads[0].query_alignment_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
-        self.assertEqual(self.reads[1].query_alignment_sequence, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "query size mismatch in read 2: %s != %s" % (
-            self.reads[1].query_alignment_sequence, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
-        self.assertEqual(self.reads[3].query_alignment_sequence, "TAGCTAGCTACCTATATCTTGGTCTT", "query mismatch in read 4: %s != %s" % (
-            self.reads[3].query_alignment_sequence, "TAGCTAGCTACCTATATCTTGGTCTT"))
+        self.assertEqual(
+            self.reads[0].query_alignment_sequence,
+            "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG",
+            "query mismatch in read 1: %s != %s" %
+            (self.reads[0].query_alignment_sequence,
+             "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
+        self.assertEqual(
+            self.reads[1].query_alignment_sequence,
+            "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA",
+            "query size mismatch in read 2: %s != %s" %
+            (self.reads[1].query_alignment_sequence,
+             "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
+        self.assertEqual(
+            self.reads[3].query_alignment_sequence,
+            "TAGCTAGCTACCTATATCTTGGTCTT",
+            "query mismatch in read 4: %s != %s" %
+            (self.reads[3].query_alignment_sequence,
+             "TAGCTAGCTACCTATATCTTGGTCTT"))
 
     def testARqqual(self):
-        self.assertEqual(pysam.toQualityString(self.reads[0].query_alignment_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "qquality string mismatch in read 1: %s != %s" % (pysam.toQualityString(self.reads[0].query_alignment_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(pysam.toQualityString(self.reads[1].query_alignment_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "qquality string mismatch in read 2: %s != %s" % (
-            pysam.toQualityString(self.reads[1].query_alignment_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(pysam.toQualityString(self.reads[3].query_alignment_qualities), "<<<<<<<<<<<<<<<<<:<9/,&,22",
-                         "qquality string mismatch in read 3: %s != %s" % (pysam.toQualityString(self.reads[3].query_alignment_qualities), "<<<<<<<<<<<<<<<<<:<9/,&,22"))
+        self.assertEqual(
+            pysam.toQualityString(self.reads[0].query_alignment_qualities), 
+            "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+            "qquality string mismatch in read 1: %s != %s" % 
+            (pysam.toQualityString(self.reads[0].query_alignment_qualities),
+             "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(
+            pysam.toQualityString(self.reads[1].query_alignment_qualities),
+            "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<",
+            "qquality string mismatch in read 2: %s != %s" %
+            (pysam.toQualityString(self.reads[1].query_alignment_qualities), 
+             "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
+        self.assertEqual(
+            pysam.toQualityString(self.reads[3].query_alignment_qualities),
+            "<<<<<<<<<<<<<<<<<:<9/,&,22",
+            "qquality string mismatch in read 3: %s != %s" %
+            (pysam.toQualityString(self.reads[3].query_alignment_qualities), 
+             "<<<<<<<<<<<<<<<<<:<9/,&,22"))
 
     def testPresentOptionalFields(self):
-        self.assertEqual(self.reads[0].opt(
-            'NM'), 1, "optional field mismatch in read 1, NM: %s != %s" % (self.reads[0].opt('NM'), 1))
-        self.assertEqual(self.reads[0].opt(
-            'RG'), 'L1', "optional field mismatch in read 1, RG: %s != %s" % (self.reads[0].opt('RG'), 'L1'))
-        self.assertEqual(self.reads[1].opt(
-            'RG'), 'L2', "optional field mismatch in read 2, RG: %s != %s" % (self.reads[1].opt('RG'), 'L2'))
-        self.assertEqual(self.reads[1].opt(
-            'MF'), 18, "optional field mismatch in read 2, MF: %s != %s" % (self.reads[1].opt('MF'), 18))
+        self.assertEqual(
+            self.reads[0].opt('NM'), 1,
+            "optional field mismatch in read 1, NM: %s != %s" %
+            (self.reads[0].opt('NM'), 1))
+        self.assertEqual(
+            self.reads[0].opt('RG'), 'L1',
+            "optional field mismatch in read 1, RG: %s != %s" %
+            (self.reads[0].opt('RG'), 'L1'))
+        self.assertEqual(
+            self.reads[1].opt('RG'), 'L2',
+            "optional field mismatch in read 2, RG: %s != %s" %
+            (self.reads[1].opt('RG'), 'L2'))
+        self.assertEqual(
+            self.reads[1].opt('MF'), 18,
+            "optional field mismatch in read 2, MF: %s != %s" %
+            (self.reads[1].opt('MF'), 18))
 
     def testPairedBools(self):
         self.assertEqual(self.reads[0].is_paired, True, "is paired mismatch in read 1: %s != %s" % (
@@ -208,111 +248,15 @@ class BasicTestBAMFetch(unittest.TestCase):
                          [('MF', 18), ('RG', 'L2'),
                           ('PG', 'P2'), ('XT', 'R')])
 
-    def testAddTags(self):
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U')]))
-
-        self.reads[0].setTag('X1', 'C')
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 'C'), ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-        self.reads[0].setTag('X2', 5)
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X2', 5), ('X1', 'C'),
-                                 ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-        # add with replacement
-        self.reads[0].setTag('X2', 10)
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X2', 10), ('X1', 'C'),
-                                 ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-
-        # add without replacement
-        self.reads[0].setTag('X2', 5, replace=False)
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X2', 10), ('X1', 'C'),
-                                 ('X2', 5),
-                                 ('NM', 1), ('RG', 'L1'),
-                                 ('PG', 'P1'), ('XT', 'U'), ]))
-
-    def testAddTagsType(self):
-        self.reads[0].tags = None
-        self.assertEqual(self.reads[0].tags, [])
-
-        self.reads[0].setTag('X1', 5.0)
-        self.reads[0].setTag('X2', "5.0")
-        self.reads[0].setTag('X3', 5)
-
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 5.0),
-                                 ('X2', "5.0"),
-                                 ('X3', 5)]))
-
-        # test setting float for int value
-        self.reads[0].setTag('X4', 5, value_type='d')
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 5.0),
-                                 ('X2', "5.0"),
-                                 ('X3', 5),
-                                 ('X4', 5.0)]))
-
-        # test setting int for float value - the
-        # value will be rounded.
-        self.reads[0].setTag('X5', 5.2, value_type='i')
-        self.assertEqual(sorted(self.reads[0].tags),
-                         sorted([('X1', 5.0),
-                                 ('X2', "5.0"),
-                                 ('X3', 5),
-                                 ('X4', 5.0),
-                                 ('X5', 5)]))
-
-        # test setting invalid type code
-        self.assertRaises(ValueError, self.reads[0].setTag, 'X6', 5.2, 'g')
-
-    def testTagsUpdatingFloat(self):
-        self.assertEqual(self.reads[0].tags,
-                         [('NM', 1), ('RG', 'L1'),
-                          ('PG', 'P1'), ('XT', 'U')])
-        self.reads[0].tags += [('XC', 5.0)]
-        self.assertEqual(self.reads[0].tags,
-                         [('NM', 1), ('RG', 'L1'),
-                          ('PG', 'P1'), ('XT', 'U'), ('XC', 5.0)])
-
     def testOpt(self):
         self.assertEqual(self.reads[0].opt("XT"), "U")
         self.assertEqual(self.reads[1].opt("XT"), "R")
-
-    def testMissingOpt(self):
-        self.assertRaises(KeyError, self.reads[0].opt, "XP")
-
-    def testEmptyOpt(self):
-        self.assertRaises(KeyError, self.reads[2].opt, "XT")
 
     def tearDown(self):
         self.samfile.close()
 
 
-class BasicTestBAMFile(BasicTestBAMFetch):
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            os.path.join(DATADIR, "ex3.sam"),
-            "r")
-        self.reads = [r for r in self.samfile]
-
-
-class BasicTestSAMFile(BasicTestBAMFetch):
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            os.path.join(DATADIR, "ex3.sam"),
-            "r")
-        self.reads = [r for r in self.samfile]
-
-
-class BasicTestSAMFetch(BasicTestBAMFetch):
+class BasicTestSAMFromFetch(BasicTestBAMFromFetch):
     def setUp(self):
         self.samfile = pysam.AlignmentFile(
             os.path.join(DATADIR, "ex3.sam"),
@@ -320,14 +264,85 @@ class BasicTestSAMFetch(BasicTestBAMFetch):
         self.reads = list(self.samfile.fetch())
 
 
-# needs to be implemented
-# class TestAlignedSegmentFromSamWithoutHeader(TestAlignedSegmentFromBam):
+class BasicTestCRAMFromFetch(BasicTestBAMFromFetch):
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex3.cram"),
+            "rc")
+        self.reads = list(self.samfile.fetch())
+
+
+    def testTags(self):
+        self.assertEqual(
+            sorted(self.reads[0].tags),
+            sorted([('RG', 'L1'),
+                    ('NM', 22),
+                    ('MD','0C0T1G1C0C0A1G0^G0C1C1G1A0T2G0G0G0A1C1G1G1A2C0'),
+                    ('PG', 'P1'),
+                    ('XT', 'U'),
+                ]))
+        self.assertEqual(
+            sorted(self.reads[1].tags),
+            sorted([('RG', 'L2'),
+                    ('NM', 26),
+                    ('MD', '1G0A0A1G1G0G2C0A0G0A0A0C0T0T0G0A0A0G0A0C0A0A1T2C0T0T1'),
+                    ('MF', 18),
+                    ('PG', 'P2'),
+                    ('XT', 'R')]))
+
+    def testPresentOptionalFields(self):
+        self.assertEqual(
+            self.reads[0].opt('NM'), 22,
+            "optional field mismatch in read 1, NM: %s != %s" %
+            (self.reads[0].opt('NM'), 22))
+        self.assertEqual(
+            self.reads[0].opt('RG'), 'L1',
+            "optional field mismatch in read 1, RG: %s != %s" %
+            (self.reads[0].opt('RG'), 'L1'))
+        self.assertEqual(
+            self.reads[1].opt('RG'), 'L2',
+            "optional field mismatch in read 2, RG: %s != %s" %
+            (self.reads[1].opt('RG'), 'L2'))
+        self.assertEqual(
+            self.reads[1].opt('MF'), 18,
+            "optional field mismatch in read 2, MF: %s != %s" %
+            (self.reads[1].opt('MF'), 18))
+
+class BasicTestSAMFromFile(BasicTestBAMFromFetch):
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex3.sam"),
+            "r")
+        self.reads = [r for r in self.samfile]
+
+
+class BasicTestCRAMFromFile(BasicTestCRAMFromFetch):
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex3.cram"),
+            "rc")
+        self.reads = [r for r in self.samfile]
+
+
+class BasicTestBAMFromFile(BasicTestBAMFromFetch):
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex3.bam"),
+            "rb")
+        self.reads = [r for r in self.samfile]
+
+
+##################################################
 #
-#     def setUp(self):
-#         self.samfile=pysam.AlignmentFile( "ex7.sam","r" )
-#         self.reads=list(self.samfile.fetch())
-
-
+# Test of basic File I/O
+# 
+# * format conversions
+# * reading with/without index
+# * reading from closed files
+#
+##################################################
 class TestIO(unittest.TestCase):
     '''check if reading samfile and writing a samfile
     are consistent.'''
@@ -704,6 +719,248 @@ class TestIO(unittest.TestCase):
         self.assertEqual(samfile.nocoordinate, 0)
 
 
+##################################################
+#
+# Random access iterator tests
+# 
+##################################################
+class TestIteratorRowBAM(unittest.TestCase):
+
+    filename = os.path.join(DATADIR, "ex2.bam")
+    mode = "rb"
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            self.filename, self.mode,
+        )
+
+    def checkRange(self, rnge):
+        '''compare results from iterator with those from samtools.'''
+        ps = list(self.samfile.fetch(region=rnge))
+        sa = list(pysam.view(self.filename,
+                             rnge,
+                             raw=True))
+        self.assertEqual(
+            len(ps), len(sa),
+            "unequal number of results for range %s: %i != %i" %
+            (rnge, len(ps), len(sa)))
+        # check if the same reads are returned and in the same order
+        for line, (a, b) in enumerate(list(zip(ps, sa))):
+            d = b.split("\t")
+            self.assertEqual(
+                a.query_name, d[0],
+                "line %i: read id mismatch: %s != %s" %
+                (line, a.reference_id, d[0]))
+            self.assertEqual(
+                a.reference_start,
+                int(d[3]) - 1,
+                "line %i: read position mismatch: %s != %s, \n%s\n%s\n" %
+                (line, a.reference_start, int(d[3]) - 1,
+                 str(a), str(d)))
+            qual = d[10]
+            self.assertEqual(
+                pysam.toQualityString(a.query_qualities),
+                qual,
+                "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
+                (line, pysam.toQualityString(a.query_qualities), qual,
+                 str(a), str(d)))
+
+    def testIteratePerContig(self):
+        '''check random access per contig'''
+        for contig in self.samfile.references:
+            self.checkRange(contig)
+
+    def testIterateRanges(self):
+        '''check random access per range'''
+        for contig, length in zip(self.samfile.references,
+                                  self.samfile.lengths):
+            for start in range(1, length, 90):
+                # this includes empty ranges
+                self.checkRange("%s:%i-%i" %
+                                (contig, start, start + 90))
+
+    def tearDown(self):
+        self.samfile.close()
+
+
+class TestIteratorRowAllBAM(unittest.TestCase):
+
+    filename = os.path.join(DATADIR, "ex2.bam")
+    mode = "rb"
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            self.filename,
+            self.mode)
+
+    def testIterate(self):
+        '''compare results from iterator with those from samtools.'''
+        ps = list(self.samfile.fetch())
+        sa = list(pysam.view(self.filename,
+                             raw=True))
+        self.assertEqual(
+            len(ps), len(sa),
+            "unequal number of results: %i != %i" %
+            (len(ps), len(sa)))
+        # check if the same reads are returned
+        for line, pair in enumerate(list(zip(ps, sa))):
+            data = pair[1].split("\t")
+            self.assertEqual(
+                pair[0].query_name,
+                data[0],
+                "read id mismatch in line %i: %s != %s" %
+                (line, pair[0].reference_id, data[0]))
+
+    def tearDown(self):
+        self.samfile.close()
+
+
+class TestIteratorColumnBAM(unittest.TestCase):
+
+    '''test iterator column against contents of ex4.bam.'''
+
+    # note that samfile contains 1-based coordinates
+    # 1D means deletion with respect to reference sequence
+    #
+    mCoverages = {'chr1': [0] * 20 + [1] * 36 + [0] * (100 - 20 - 35),
+                  'chr2': [0] * 20 + [1] * 35 + [0] * (100 - 20 - 35),
+                  }
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex4.bam"),
+                                     "rb")
+
+    def checkRange(self, contig, start=None, end=None, truncate=False):
+        '''compare results from iterator with those from samtools.'''
+        # check if the same reads are returned and in the same order
+        for column in self.samfile.pileup(
+                contig, start, end, truncate=truncate):
+            if truncate:
+                self.assertGreaterEqual(column.reference_pos, start)
+                self.assertLess(column.reference_pos, end)
+            thiscov = len(column.pileups)
+            refcov = self.mCoverages[
+                self.samfile.getrname(column.reference_id)][column.reference_pos]
+            self.assertEqual(thiscov, refcov,
+                             "wrong coverage at pos %s:%i %i should be %i" % (
+                                 self.samfile.getrname(column.reference_id),
+                                 column.reference_pos, thiscov, refcov))
+
+    def testIterateAll(self):
+        '''check random access per contig'''
+        self.checkRange(None)
+
+    def testIteratePerContig(self):
+        '''check random access per contig'''
+        for contig in self.samfile.references:
+            self.checkRange(contig)
+
+    def testIterateRanges(self):
+        '''check random access per range'''
+        for contig, length in zip(
+                self.samfile.references, self.samfile.lengths):
+            for start in range(1, length, 90):
+                # this includes empty ranges
+                self.checkRange(contig, start, start + 90)
+
+    def testInverse(self):
+        '''test the inverse, is point-wise pileup accurate.'''
+        for contig, refseq in list(self.mCoverages.items()):
+            refcolumns = sum(refseq)
+            for pos, refcov in enumerate(refseq):
+                columns = list(self.samfile.pileup(contig, pos, pos + 1))
+                if refcov == 0:
+                    # if no read, no coverage
+                    self.assertEqual(
+                        len(columns),
+                        refcov,
+                        "wrong number of pileup columns returned for position %s:%i, %i should be %i" % (
+                            contig, pos,
+                            len(columns), refcov))
+                elif refcov == 1:
+                    # one read, all columns of the read are returned
+                    self.assertEqual(
+                        len(columns),
+                        refcolumns,
+                        "pileup incomplete at position %i: got %i, expected %i " %
+                        (pos, len(columns), refcolumns))
+
+    def testIterateTruncate(self):
+        '''check random access per range'''
+        for contig, length in zip(self.samfile.references,
+                                  self.samfile.lengths):
+            for start in range(1, length, 90):
+                # this includes empty ranges
+                self.checkRange(contig, start, start + 90, truncate=True)
+
+    def tearDown(self):
+        self.samfile.close()
+
+
+class TestIteratorRowCRAM(TestIteratorRowBAM):
+    filename = os.path.join(DATADIR, "ex2.cram")
+    mode = "rc"
+
+
+class TestIteratorRowCRAM(TestIteratorRowBAM):
+    filename = os.path.join(DATADIR, "ex2.cram")
+    mode = "rc"
+
+##########################################################
+##########################################################
+##########################################################
+# needs to be implemented
+# class TestAlignedSegmentFromSamWithoutHeader(TestAlignedSegmentFromBam):
+#
+#     def setUp(self):
+#         self.samfile=pysam.AlignmentFile( "ex7.sam","r" )
+#         self.reads=list(self.samfile.fetch())
+
+
+class TestIteratorColumn2(unittest.TestCase):
+
+    '''test iterator column against contents of ex1.bam.'''
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex1.bam"),
+            "rb")
+
+    def testStart(self):
+        # print self.samfile.fetch().next().reference_start
+        # print self.samfile.pileup().next().reference_start
+        pass
+
+    def testTruncate(self):
+        '''see issue 107.'''
+        # note that ranges in regions start from 1
+        p = self.samfile.pileup(region='chr1:170:172', truncate=True)
+        columns = [x.reference_pos for x in p]
+        self.assertEqual(len(columns), 3)
+        self.assertEqual(columns, [169, 170, 171])
+
+        p = self.samfile.pileup('chr1', 169, 172, truncate=True)
+        columns = [x.reference_pos for x in p]
+
+        self.assertEqual(len(columns), 3)
+        self.assertEqual(columns, [169, 170, 171])
+
+    def testAccessOnClosedIterator(self):
+        '''see issue 131
+
+        Accessing pileup data after iterator has closed.
+        '''
+        pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
+        self.assertRaises(ValueError, getattr, pcolumn, "pileups")
+
+    def testStr(self):
+        '''test if PileupRead can be printed.'''
+        iter = self.samfile.pileup('chr1', 170, 180)
+        pcolumn = iter.__next__()
+        s = str(pcolumn)
+        self.assertEqual(len(s.split("\n")), 2)
+
+
 class TestFloatTagBug(unittest.TestCase):
 
     '''see issue 71'''
@@ -892,229 +1149,8 @@ class TestClipping(unittest.TestCase):
                     '01234')
 
 
-class TestIteratorRowBAM(unittest.TestCase):
-
-    filename = os.path.join(DATADIR, "ex2.bam")
-    mode = "rb"
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            self.filename, self.mode,
-        )
-
-    def checkRange(self, rnge):
-        '''compare results from iterator with those from samtools.'''
-        ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.view(self.filename,
-                             rnge,
-                             raw=True))
-        self.assertEqual(
-            len(ps), len(sa),
-            "unequal number of results for range %s: %i != %i" %
-            (rnge, len(ps), len(sa)))
-        # check if the same reads are returned and in the same order
-        for line, (a, b) in enumerate(list(zip(ps, sa))):
-            d = b.split("\t")
-            self.assertEqual(
-                a.query_name, d[0],
-                "line %i: read id mismatch: %s != %s" %
-                (line, a.reference_id, d[0]))
-            self.assertEqual(
-                a.reference_start,
-                int(d[3]) - 1,
-                "line %i: read position mismatch: %s != %s, \n%s\n%s\n" %
-                (line, a.reference_start, int(d[3]) - 1,
-                 str(a), str(d)))
-            qual = d[10]
-            self.assertEqual(
-                pysam.toQualityString(a.query_qualities),
-                qual,
-                "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
-                (line, pysam.toQualityString(a.query_qualities), qual,
-                 str(a), str(d)))
-
-    def testIteratePerContig(self):
-        '''check random access per contig'''
-        for contig in self.samfile.references:
-            self.checkRange(contig)
-
-    def testIterateRanges(self):
-        '''check random access per range'''
-        for contig, length in zip(self.samfile.references,
-                                  self.samfile.lengths):
-            for start in range(1, length, 90):
-                # this includes empty ranges
-                self.checkRange("%s:%i-%i" %
-                                (contig, start, start + 90))
-
-    def tearDown(self):
-        self.samfile.close()
-
-class TestIteratorRowCRAM(TestIteratorRowBAM):
-
-    filename = os.path.join(DATADIR, "ex2.cram")
-    mode = "rc"
-
-
-class TestIteratorRowAllBAM(unittest.TestCase):
-
-    filename = os.path.join(DATADIR, "ex2.bam")
-    mode = "rb"
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            self.filename,
-            self.mode)
-
-    def testIterate(self):
-        '''compare results from iterator with those from samtools.'''
-        ps = list(self.samfile.fetch())
-        sa = list(pysam.view(self.filename,
-                             raw=True))
-        self.assertEqual(
-            len(ps), len(sa),
-            "unequal number of results: %i != %i" %
-            (len(ps), len(sa)))
-        # check if the same reads are returned
-        for line, pair in enumerate(list(zip(ps, sa))):
-            data = pair[1].split("\t")
-            self.assertEqual(
-                pair[0].query_name,
-                data[0],
-                "read id mismatch in line %i: %s != %s" %
-                (line, pair[0].reference_id, data[0]))
-
-    def tearDown(self):
-        self.samfile.close()
-
-
-class TestIteratorColumn(unittest.TestCase):
-
-    '''test iterator column against contents of ex4.bam.'''
-
-    # note that samfile contains 1-based coordinates
-    # 1D means deletion with respect to reference sequence
-    #
-    mCoverages = {'chr1': [0] * 20 + [1] * 36 + [0] * (100 - 20 - 35),
-                  'chr2': [0] * 20 + [1] * 35 + [0] * (100 - 20 - 35),
-                  }
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex4.bam"),
-                                     "rb")
-
-    def checkRange(self, contig, start=None, end=None, truncate=False):
-        '''compare results from iterator with those from samtools.'''
-        # check if the same reads are returned and in the same order
-        for column in self.samfile.pileup(
-                contig, start, end, truncate=truncate):
-            if truncate:
-                self.assertGreaterEqual(column.reference_pos, start)
-                self.assertLess(column.reference_pos, end)
-            thiscov = len(column.pileups)
-            refcov = self.mCoverages[
-                self.samfile.getrname(column.reference_id)][column.reference_pos]
-            self.assertEqual(thiscov, refcov,
-                             "wrong coverage at pos %s:%i %i should be %i" % (
-                                 self.samfile.getrname(column.reference_id),
-                                 column.reference_pos, thiscov, refcov))
-
-    def testIterateAll(self):
-        '''check random access per contig'''
-        self.checkRange(None)
-
-    def testIteratePerContig(self):
-        '''check random access per contig'''
-        for contig in self.samfile.references:
-            self.checkRange(contig)
-
-    def testIterateRanges(self):
-        '''check random access per range'''
-        for contig, length in zip(
-                self.samfile.references, self.samfile.lengths):
-            for start in range(1, length, 90):
-                # this includes empty ranges
-                self.checkRange(contig, start, start + 90)
-
-    def testInverse(self):
-        '''test the inverse, is point-wise pileup accurate.'''
-        for contig, refseq in list(self.mCoverages.items()):
-            refcolumns = sum(refseq)
-            for pos, refcov in enumerate(refseq):
-                columns = list(self.samfile.pileup(contig, pos, pos + 1))
-                if refcov == 0:
-                    # if no read, no coverage
-                    self.assertEqual(
-                        len(columns),
-                        refcov,
-                        "wrong number of pileup columns returned for position %s:%i, %i should be %i" % (
-                            contig, pos,
-                            len(columns), refcov))
-                elif refcov == 1:
-                    # one read, all columns of the read are returned
-                    self.assertEqual(
-                        len(columns),
-                        refcolumns,
-                        "pileup incomplete at position %i: got %i, expected %i " %
-                        (pos, len(columns), refcolumns))
-
-    def testIterateTruncate(self):
-        '''check random access per range'''
-        for contig, length in zip(self.samfile.references,
-                                  self.samfile.lengths):
-            for start in range(1, length, 90):
-                # this includes empty ranges
-                self.checkRange(contig, start, start + 90, truncate=True)
-
-    def tearDown(self):
-        self.samfile.close()
-
-
-class TestIteratorColumn2(unittest.TestCase):
-
-    '''test iterator column against contents of ex1.bam.'''
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            os.path.join(DATADIR, "ex1.bam"),
-            "rb")
-
-    def testStart(self):
-        # print self.samfile.fetch().next().reference_start
-        # print self.samfile.pileup().next().reference_start
-        pass
-
-    def testTruncate(self):
-        '''see issue 107.'''
-        # note that ranges in regions start from 1
-        p = self.samfile.pileup(region='chr1:170:172', truncate=True)
-        columns = [x.reference_pos for x in p]
-        self.assertEqual(len(columns), 3)
-        self.assertEqual(columns, [169, 170, 171])
-
-        p = self.samfile.pileup('chr1', 169, 172, truncate=True)
-        columns = [x.reference_pos for x in p]
-
-        self.assertEqual(len(columns), 3)
-        self.assertEqual(columns, [169, 170, 171])
-
-    def testAccessOnClosedIterator(self):
-        '''see issue 131
-
-        Accessing pileup data after iterator has closed.
-        '''
-        pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
-        self.assertRaises(ValueError, getattr, pcolumn, "pileups")
-
-    def testStr(self):
-        '''test if PileupRead can be printed.'''
-        iter = self.samfile.pileup('chr1', 170, 180)
-        pcolumn = iter.__next__()
-        s = str(pcolumn)
-        self.assertEqual(len(s.split("\n")), 2)
-
-
-class TestHeaderSam(unittest.TestCase):
+class TestHeaderSAM(unittest.TestCase):
+    """testing header manipulation"""
 
     header = {'SQ': [{'LN': 1575, 'SN': 'chr1'},
                      {'LN': 1584, 'SN': 'chr2'}],
@@ -1134,8 +1170,9 @@ class TestHeaderSam(unittest.TestCase):
             self.assertEqual(av, b[ak])
 
     def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex3.sam"),
-                                           "r")
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex3.sam"),
+            "r")
 
     def testHeaders(self):
         self.compareHeaders(self.header, self.samfile.header)
@@ -1155,11 +1192,19 @@ class TestHeaderSam(unittest.TestCase):
         self.samfile.close()
 
 
-class TestHeaderBam(TestHeaderSam):
+class TestHeaderBAM(TestHeaderSAM):
 
     def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex3.bam"),
-                                           "rb")
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex3.bam"),
+            "rb")
+
+class TestHeaderCRAM(TestHeaderSAM):
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex3.cram"),
+            "rc")
 
 
 class TestHeaderFromRefs(unittest.TestCase):
@@ -1258,9 +1303,8 @@ class TestPileupObjects(unittest.TestCase):
                     ": %s != %s" %
                     (len(pcolumn1.pileups), 2))
 
-
-# self.assertEqual( pcolumn1.pileups[0]  # need to test additional
-# properties here
+        # self.assertEqual( pcolumn1.pileups[0]  # need to test additional
+        # properties here
 
     def tearDown(self):
         self.samfile.close()
@@ -1382,251 +1426,7 @@ class TestWrongFormat(unittest.TestCase):
                           'rb')
 
 
-class ReadTest(unittest.TestCase):
-
-    def checkFieldEqual(self, read1, read2, exclude=[]):
-        '''check if two reads are equal by comparing each field.'''
-
-        # add the . for refactoring purposes.
-        for x in (".query_name",
-                  ".query_sequence",
-                  ".flag",
-                  ".reference_id",
-                  ".reference_start",
-                  ".mapping_quality",
-                  ".cigartuples",
-                  ".next_reference_id",
-                  ".next_reference_start",
-                  ".template_length",
-                  ".query_length",
-                  ".query_qualities",
-                  ".bin",
-                  ".is_paired", ".is_proper_pair",
-                  ".is_unmapped", ".mate_is_unmapped",
-                  ".is_reverse", ".mate_is_reverse",
-                  ".is_read1", ".is_read2",
-                  ".is_secondary", ".is_qcfail",
-                  ".is_duplicate"):
-            n = x[1:]
-            if n in exclude:
-                continue
-            self.assertEqual(getattr(read1, n), getattr(read2, n),
-                             "attribute mismatch for %s: %s != %s" %
-                             (n, getattr(read1, n), getattr(read2, n)))
-
-
-class TestAlignedSegment(ReadTest):
-
-    '''tests to check if aligned read can be constructed
-    and manipulated.
-    '''
-
-    def testEmpty(self):
-        a = pysam.AlignedSegment()
-        self.assertEqual(a.query_name, None)
-        self.assertEqual(a.query_sequence, None)
-        self.assertEqual(pysam.toQualityString(a.query_qualities), None)
-        self.assertEqual(a.flag, 0)
-        self.assertEqual(a.reference_id, 0)
-        self.assertEqual(a.mapping_quality, 0)
-        self.assertEqual(a.cigartuples, None)
-        self.assertEqual(a.tags, [])
-        self.assertEqual(a.next_reference_id, 0)
-        self.assertEqual(a.next_reference_start, 0)
-        self.assertEqual(a.template_length, 0)
-
-    def testStrOfEmptyRead(self):
-        a = pysam.AlignedSegment()
-        s = str(a)
-        self.assertEqual(
-            "None\t0\t0\t0\t0\tNone\t0\t0\t0\tNone\tNone\t[]",
-            s)
-
-    def buildRead(self):
-        '''build an example read.'''
-
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
-        a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
-        a.next_reference_id = 0
-        a.next_reference_start = 200
-        a.template_length = 167
-        a.query_qualities = pysam.fromQualityString("1234") * 10
-        # todo: create tags
-        return a
-
-    def testSettingTagInEmptyRead(self):
-        '''see issue 62'''
-        a = pysam.AlignedSegment()
-        a.tags = (("NM", 1),)
-        a.query_qualities = None
-        self.assertEqual(a.tags, [("NM", 1), ])
-
-    def testUpdate(self):
-        '''check if updating fields affects other variable length data
-        '''
-        a = self.buildRead()
-        b = self.buildRead()
-
-        # check qname
-        b.query_name = "read_123"
-        self.checkFieldEqual(a, b, "query_name")
-        b.query_name = "read_12345678"
-        self.checkFieldEqual(a, b, "query_name")
-        b.query_name = "read_12345"
-        self.checkFieldEqual(a, b)
-
-        # check cigar
-        b.cigartuples = ((0, 10), )
-        self.checkFieldEqual(a, b, "cigartuples")
-        b.cigartuples = ((0, 10), (2, 1), (0, 10))
-        self.checkFieldEqual(a, b, "cigartuples")
-        b.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
-        self.checkFieldEqual(a, b)
-
-        # check seq
-        b.query_sequence = "ACGT"
-        self.checkFieldEqual(
-            a, b,
-            ("query_sequence", "query_qualities", "query_length"))
-        b.query_sequence = "ACGT" * 3
-        self.checkFieldEqual(
-            a, b,
-            ("query_sequence", "query_qualities", "query_length"))
-        b.query_sequence = "ACGT" * 10
-        self.checkFieldEqual(a, b, ("query_qualities",))
-
-        # reset qual
-        b = self.buildRead()
-
-        # check flags:
-        for x in (
-                "is_paired", "is_proper_pair",
-                "is_unmapped", "mate_is_unmapped",
-                "is_reverse", "mate_is_reverse",
-                "is_read1", "is_read2",
-                "is_secondary", "is_qcfail",
-                "is_duplicate"):
-            setattr(b, x, True)
-            self.assertEqual(getattr(b, x), True)
-            self.checkFieldEqual(a, b, ("flag", x,))
-            setattr(b, x, False)
-            self.assertEqual(getattr(b, x), False)
-            self.checkFieldEqual(a, b)
-
-    def testUpdate2(self):
-        '''issue 135: inplace update of sequence and quality score.
-
-        This does not work as setting the sequence will erase
-        the quality scores.
-        '''
-        a = self.buildRead()
-        a.query_sequence = a.query_sequence[5:10]
-        self.assertEqual(pysam.toQualityString(a.query_qualities), None)
-
-        a = self.buildRead()
-        s = pysam.toQualityString(a.query_qualities)
-        a.query_sequence = a.query_sequence[5:10]
-        a.query_qualities = pysam.fromQualityString(s[5:10])
-
-        self.assertEqual(pysam.toQualityString(a.query_qualities), s[5:10])
-
-    def testLargeRead(self):
-        '''build an example read.'''
-
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 200
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
-        a.cigartuples = ((0, 4 * 200), )
-        a.next_reference_id = 0
-        a.next_reference_start = 200
-        a.template_length = 167
-        a.query_qualities = pysam.fromQualityString("1234") * 200
-
-        return a
-
-    def testTagParsing(self):
-        '''test for tag parsing
-
-        see http://groups.google.com/group/pysam-user-group/browse_thread/thread/67ca204059ea465a
-        '''
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex8.bam"),
-                                "rb")
-
-        for entry in samfile:
-            before = entry.tags
-            entry.tags = entry.tags
-            after = entry.tags
-            self.assertEqual(after, before)
-
-    def testUpdateTlen(self):
-        '''check if updating tlen works'''
-        a = self.buildRead()
-        oldlen = a.template_length
-        oldlen *= 2
-        a.template_length = oldlen
-        self.assertEqual(a.template_length, oldlen)
-
-    def testPositions(self):
-        a = self.buildRead()
-        self.assertEqual(a.get_reference_positions(),
-                         [20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
-                          31, 32, 33, 34, 35, 36, 37, 38, 39,
-                          40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
-                          50, 51, 52, 53, 54, 55, 56, 57, 58, 59])
-
-        self.assertEqual(a.get_aligned_pairs(),
-                         [(0, 20), (1, 21), (2, 22), (3, 23), (4, 24),
-                          (5, 25), (6, 26), (7, 27), (8, 28), (9, 29),
-                          (None, 30),
-                          (10, 31), (11, 32), (12, 33), (13, 34), (14, 35),
-                          (15, 36), (16, 37), (17, 38), (18, 39), (19, None),
-                          (20, 40), (21, 41), (22, 42), (23, 43), (24, 44),
-                          (25, 45), (26, 46), (27, 47), (28, 48), (29, 49),
-                          (30, 50), (31, 51), (32, 52), (33, 53), (34, 54),
-                          (35, 55), (36, 56), (37, 57), (38, 58), (39, 59)])
-
-        self.assertEqual(
-            a.get_reference_positions(),
-            [x[1] for x in a.get_aligned_pairs()
-             if x[0] is not None and x[1] is not None])
-        # alen is the length of the aligned read in genome
-        self.assertEqual(a.reference_length,
-                         a.get_aligned_pairs()[-1][0] + 1)
-        # aend points to one beyond last aligned base in ref
-        self.assertEqual(a.get_reference_positions()[-1],
-                         a.reference_end - 1)
-
-    def testFullReferencePositions(self):
-        '''see issue 26'''
-        a = self.buildRead()
-        a.cigar = [(4, 30), (0, 20), (1, 3), (0, 47)]
-
-        self.assertEqual(100,
-                         len(a.get_reference_positions(full_length=True)))
-
-    def testBlocks(self):
-        a = self.buildRead()
-        self.assertEqual(a.get_blocks(),
-                         [(20, 30), (31, 40), (40, 60)])
-
-    # Disabled as not backwards compatible
-    # def testFancyStr(self):
-    #     a = self.buildRead()
-    #     output = a.fancy_str()
-    #     self.assertEqual(len(output), 9)
-
-
-class TestDeNovoConstruction(ReadTest):
+class TestDeNovoConstruction(unittest.TestCase):
 
     '''check BAM/SAM file construction using ex6.sam
 
@@ -1700,7 +1500,7 @@ class TestDeNovoConstruction(ReadTest):
 
         others = list(infile)
         for denovo, other in zip(others, self.reads):
-            self.checkFieldEqual(other, denovo)
+            checkFieldEqual(self, other, denovo)
             self.assertEqual(other.compare(denovo), 0)
 
     # TODO
@@ -1710,7 +1510,7 @@ class TestDeNovoConstruction(ReadTest):
 
     #     others = list(infile)
     #     for denovo, other in zip(others, self.reads):
-    #         self.checkFieldEqual(other, denovo)
+    #         checkFieldEqual(self, other, denovo)
     #         self.assertEqual(other.compare(denovo), 0)
 
     def testBAMWholeFile(self):
