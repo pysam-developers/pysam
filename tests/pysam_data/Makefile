@@ -8,7 +8,7 @@ CRAI=$(CRAM:%.cram=%.cram.crai)
 
 all: ex1.pileup.gz \
 	ex1.sam ex1.bam \
-	ex2.sam.gz ex2.sam ex2.bam \
+	ex2.sam.gz ex2.sam ex2.bam ex2.bam.bai \
         uncompressed.bam \
 	$(BAM) $(BAI) \
 	$(CRAM) $(CRAI) \

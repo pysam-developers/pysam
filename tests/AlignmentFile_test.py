@@ -645,7 +645,8 @@ class TestIO(unittest.TestCase):
     def testReadingFromFileWithoutIndex(self):
         '''read from bam file without index.'''
 
-        shutil.copyfile(os.path.join(DATADIR, "ex2.bam"), 'tmp_ex2.bam')
+        shutil.copyfile(os.path.join(DATADIR, "ex2.bam"),
+                        'tmp_ex2.bam')
         samfile = pysam.AlignmentFile('tmp_ex2.bam',
                                       "rb")
         self.assertRaises(ValueError, samfile.fetch)
