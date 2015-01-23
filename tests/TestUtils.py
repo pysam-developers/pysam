@@ -90,3 +90,34 @@ def checkURL(url):
     except:
         return False
 
+
+def checkFieldEqual(cls, read1, read2, exclude=[]):
+    '''check if two reads are equal by comparing each field.'''
+
+    # add the . for refactoring purposes.
+    for x in (".query_name",
+              ".query_sequence",
+              ".flag",
+              ".reference_id",
+              ".reference_start",
+              ".mapping_quality",
+              ".cigartuples",
+              ".next_reference_id",
+              ".next_reference_start",
+              ".template_length",
+              ".query_length",
+              ".query_qualities",
+              ".bin",
+              ".is_paired", ".is_proper_pair",
+              ".is_unmapped", ".mate_is_unmapped",
+              ".is_reverse", ".mate_is_reverse",
+              ".is_read1", ".is_read2",
+              ".is_secondary", ".is_qcfail",
+              ".is_duplicate"):
+        n = x[1:]
+        if n in exclude:
+            continue
+        cls.assertEqual(getattr(read1, n), getattr(read2, n),
+                        "attribute mismatch for %s: %s != %s" %
+                        (n, getattr(read1, n), getattr(read2, n)))
+
