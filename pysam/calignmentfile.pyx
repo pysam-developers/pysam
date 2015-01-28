@@ -737,7 +737,6 @@ cdef class AlignmentFile:
         if self.is_stream:
             multiple_iterators = False
 
-        # TODO: add cram here
         if self.is_bam or self.is_cram:
             if not until_eof and not self.is_remote:
                 if not self._hasIndex():
@@ -967,7 +966,7 @@ cdef class AlignmentFile:
         else:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
-    def close( self ):
+    def close(self):
         '''
         closes the :class:`pysam.AlignmentFile`.'''
         if self.htsfile != NULL:
@@ -975,7 +974,7 @@ cdef class AlignmentFile:
             hts_idx_destroy(self.index);
             self.htsfile = NULL
 
-    def __dealloc__( self ):
+    def __dealloc__(self):
         # remember: dealloc cannot call other methods
         # note: no doc string
         # note: __del__ is not called.
@@ -2145,7 +2144,7 @@ def fromQualityString(quality_string):
     return array.array('B', [ord(x)-33 for x in quality_string])
 
 
-cdef inline uint8_t _getTypeCode(value, value_type = None):
+cdef inline uint8_t _get_value_code(value, value_type=None):
     '''guess type code for a *value*. If *value_type* is None,
     the type code will be inferred based on the Python type of
     *value*'''
@@ -2166,92 +2165,132 @@ cdef inline uint8_t _getTypeCode(value, value_type = None):
     else:
         if value_type not in 'Zidf':
             return 0
-        value_type = _forceBytes( value_type )
+        value_type = _forceBytes(value_type)
         _char_type = value_type
         type_code = (<uint8_t*>_char_type)[0]
 
     return type_code
 
-cdef inline convert_python_tag(pytag, value, fmts, args):
+
+cdef inline _get_value_type(value, maximum_value=None):
+    '''returns the value type of a value.
+
+    If max is specified, the approprite type is
+    returned for a range where value is the minimum.
+    '''
     
-    if not type(pytag) is bytes:
-        pytag = pytag.encode('ascii')
+    if maximum_value is None:
+        maximum_value = value
+
     t = type(value)
 
-    if t is tuple or t is list:
-        # binary tags - treat separately
-        pytype = 'B'
-        # get data type - first value determines type. If there is a
-        # mix of types, the result is undefined.
-        if type(value[0]) is float:
-            datafmt, datatype = "f", "f"
-        else:
-            mi, ma = min(value), max(value)
-            # signed ints
-            if mi < 0: 
-                if mi >= -128 and ma < 128:
-                    datafmt, datatype = "b", 'c'
-                elif mi >= -32768 and ma < 32768:
-                    datafmt, datatype = "h", 's'
-                elif mi < -2147483648 or ma >= 2147483648:
-                    raise ValueError(
-                        "at least one signed integer out of range of "
-                        "BAM/SAM specification")
-                else: datafmt, datatype = "i", 'i'
-
-            # unsigned ints
-            else:
-                if ma < 256:
-                    datafmt, datatype = "B", 'C'
-                elif ma < 65536:
-                    datafmt, datatype = "H", 'S'
-                elif ma >= 4294967296:
-                    raise ValueError(
-                        "at least one integer out of range of BAM/SAM specification")
-                else:
-                    datafmt, datatype = "I", 'I'
-
-        datafmt = "2sccI%i%s" % (len(value), datafmt)
-        args.extend([pytag[:2], 
-                     pytype.encode('ascii'),
-                     datatype.encode('ascii'),
-                     len(value)] + list(value))
-        fmts.append( datafmt )
-        return
-
     if t is float:
-        fmt, pytype = "2scf", 'f'
+        valuetype = b'f'
     elif t is int:
-        # negative values
-        if value < 0:
-            if value >= -127: fmt, pytype = "2scb", 'c'
-            elif value >= -32767: fmt, pytype = "2sch", 's'
-            elif value < -2147483648: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-            else: fmt, pytype = "2sci", 'i'
-        # positive values
+        # signed ints
+        if value < 0: 
+            if value >= -128 and maximum_value < 128:
+                valuetype = b'c'
+            elif value >= -32768 and maximum_value < 32768:
+                valuetype = b's'
+            elif value < -2147483648 or maximum_value >= 2147483648:
+                raise ValueError(
+                    "at least one signed integer out of range of "
+                    "BAM/SAM specification")
+            else:
+                datafmt, valuetype = b'i'
+        # unsigned ints
         else:
-            if value <= 255: fmt, pytype = "2scB", 'C'
-            elif value <= 65535: fmt, pytype = "2scH", 'S'
-            elif value > 4294967295: raise ValueError( "integer %i out of range of BAM/SAM specification" % value )
-            else: fmt, pytype = "2scI", 'I'
+            if maximum_value < 256:
+                valuetype = b'C'
+            elif maximum_value < 65536:
+                valuetype = b'S'
+            elif maximum_value >= 4294967296:
+                raise ValueError(
+                    "at least one integer out of range of BAM/SAM specification")
+            else:
+                valuetype = b'I'
     else:
         # Note: hex strings (H) are not supported yet
         if t is not bytes:
             value = value.encode('ascii')
         if len(value) == 1:
-            fmt, pytype = "2scc", 'A'
+            valuetype = b"A"
         else:
-            fmt, pytype = "2sc%is" % (len(value)+1), 'Z'
+            valuetype = b'Z'
 
-    args.extend([pytag[:2],
-                 pytype.encode('ascii'),
-                 value])
+    return valuetype
 
-    fmts.append(fmt)
+
+cdef inline _pack_tags(tags):
+    """pack a list of tags. Each tag is a tuple of (tag, tuple).
     
-###########################################################
-###########################################################
-###########################################################
+    Values are packed into the most space efficient data structure
+    possible unless the tag contains a third field with the type code.
+
+    Returns a fmt string and the associated list of arguments
+    to used in a call to struct.pack_into.
+    """
+    fmts, args = ["<"], []
+
+    for tag in tags:
+
+        if len(tag) == 2:
+            pytag, value = tag
+            valuetype = None
+        elif len(tag) == 3:
+            pytag, value, valuetype = tag
+        else:
+            raise ValueError("malformatted tag: %s" % str(tag))
+
+        if not type(pytag) is bytes:
+            pytag = pytag.encode('ascii')
+
+        datatype2format = {'c': 'b',
+                           's': 'h',
+                           'i': 'i',
+                           'C': 'B',
+                           'S': 'H',
+                           'I': 'I',
+                           'f': 'f',}
+
+        t = type(value)
+        if t is tuple or t is list:
+            # binary tags are treated separately
+            if valuetype is None:
+                # automatically determine value type - first value
+                # determines type. If there is a mix of types, the
+                # result is undefined.
+                valuetype = _get_value_type(min(value), max(value))
+                            
+            if valuetype not in datatype2format:
+                raise ValueError("invalid value type '%s'" % valuetype)
+            datafmt = "2sccI%i%s" % (len(value), datatype2format[valuetype])
+
+            args.extend([pytag[:2], 
+                         b"B",
+                         valuetype,
+                         len(value)] + list(value))
+            fmts.append(datafmt)
+        else:
+            
+            if valuetype is None:
+                valuetype = _get_value_type(value)
+
+            if valuetype == b"Z":
+                fmt = "2sc%is" % (len(value)+1)
+            else:
+                fmt = "2sc%s" % datatype2format[valuetype]
+
+            args.extend([pytag[:2],
+                         valuetype,
+                         value])
+
+            fmts.append(fmt)
+
+    return "".join(fmts), args
+    
+
 cdef class AlignedSegment:
     '''Class representing an aligned segment. 
 
@@ -2650,120 +2689,7 @@ cdef class AlignedSegment:
             # copy data
             memcpy(p, result.data.as_voidptr, l)
     
-    # TODO: opts object with mapping-like interface
-    property tags:
-        """the tags in the AUX field.
 
-        This property permits convenience access to
-        the tags. Changes it the returned list will
-        not update the tags automatically. Instead,
-        the following is required for adding a
-        new tag::
-
-            read.tags = read.tags + [("RG",0)]
-
-        This method will happily write the same tag
-        multiple times.
-        """
-        def __get__(self):
-            cdef char * ctag
-            cdef bam1_t * src
-            cdef uint8_t * s
-            cdef char auxtag[3]
-            cdef char auxtype
-            cdef uint8_t byte_size
-            cdef int32_t nvalues
-
-            src = self._delegate
-            if src.l_data == 0:
-                return []
-            s = pysam_bam_get_aux(src)
-            result = []
-            auxtag[2] = 0
-            while s < (src.data + src.l_data):
-                # get tag
-                auxtag[0] = s[0]
-                auxtag[1] = s[1]
-                s += 2
-                auxtype = s[0]
-                if auxtype in ('c', 'C'):
-                    value = <int>bam_aux2i(s)
-                    s += 1
-                elif auxtype in ('s', 'S'):
-                    value = <int>bam_aux2i(s)
-                    s += 2
-                elif auxtype in ('i', 'I'):
-                    value = <int32_t>bam_aux2i(s)
-                    s += 4
-                elif auxtype == 'f':
-                    value = <float>bam_aux2f(s)
-                    s += 4
-                elif auxtype == 'd':
-                    value = <double>bam_aux2f(s)
-                    s += 8
-                elif auxtype == 'A':
-                    value = "%c" % <char>bam_aux2A(s)
-                    s += 1
-                elif auxtype in ('Z', 'H'):
-                    value = _charptr_to_str(<char*>bam_aux2Z(s))
-                    # +1 for NULL terminated string
-                    s += len(value) + 1
-                elif auxtype == 'B':
-                    s += 1
-                    byte_size, nvalues, value = convertBinaryTagToList( s )
-                    # 5 for 1 char and 1 int
-                    s += 5 + ( nvalues * byte_size) - 1
-                else:
-                    raise KeyError("unknown type '%s'" % auxtype)
-
-                s += 1
-
-                result.append((_charptr_to_str(auxtag), value))
-
-            return result
-
-        def __set__(self, tags):
-            cdef bam1_t * src
-            cdef uint8_t * s
-            cdef char * temp
-            cdef int new_size = 0
-            cdef int old_size
-            src = self._delegate
-            fmts, args = ["<"], []
-            
-            if tags is not None and len(tags) > 0:
-                for pytag, value in tags:
-                    convert_python_tag(pytag, value, fmts, args)
-                fmt = "".join(fmts)
-                new_size = struct.calcsize(fmt)
-                buffer = ctypes.create_string_buffer(new_size)
-                struct.pack_into(fmt,
-                                 buffer,
-                                 0, 
-                                 *args)
-
-            # delete the old data and allocate new space.
-            # If total_size == 0, the aux field will be
-            # empty
-            old_size = pysam_bam_get_l_aux(src)
-            pysam_bam_update(src,
-                             old_size,
-                             new_size,
-                             pysam_bam_get_aux(src))
-
-            # copy data only if there is any
-            if new_size > 0:
-                
-                # get location of new data
-                s = pysam_bam_get_aux(src)
-
-                # check if there is direct path from buffer.raw to tmp
-                p = buffer.raw
-                # create handle to make sure buffer stays alive long 
-                # enough for memcpy, see issue 129
-                temp = p
-                memcpy(s, temp, new_size)
-                
     property bin:
         """properties bin"""
         def __get__(self):
@@ -3148,8 +3074,6 @@ cdef class AlignedSegment:
 
     #####################################################
     ## Unsorted as yet
-
-
     # TODO: capture in CIGAR object
     property cigartuples:
         """the :term:`cigar` alignment. The alignment
@@ -3253,17 +3177,23 @@ cdef class AlignedSegment:
                               5))
 
 
+    cpdef set_tag(self,
+                  tag,
+                  value, 
+                  value_type=None,
+                  replace=True):
+        """sets a particular field *tag* to *value* in the optional alignment
+        section.
 
-    cpdef setTag(self, tag, value, 
-                 value_type = None, 
-                 replace = True):
-        '''
-        Set optional field of alignment *tag* to *value*.  *value_type* may be specified,
-        but if not the type will be inferred based on the Python type of *value*
+        *value_type* describes the type of *value* that is to entered
+        into the alignment record.. It can be set explicitely to one
+        of the valid one-letter type codes. If unset, an appropriate
+        type will be chosen automatically.
 
-        An existing value of the same tag will be overwritten unless
-        *replace* is set to False.
-        '''
+        An existing value of the same *tag* will be overwritten unless
+        replace is set to False. This is usually not recommened as a
+        tag may only appear once in the optional alignment section.
+        """
 
         cdef int      value_size
         cdef uint8_t * value_ptr
@@ -3278,13 +3208,13 @@ cdef class AlignedSegment:
         if len(tag) != 2:
             raise ValueError('Invalid tag: %s' % tag)
         
-        type_code = _getTypeCode(value, value_type)
+        type_code = _get_value_code(value, value_type)
         if type_code == 0:
             raise ValueError("can't guess type or invalid type code specified")
 
         # Not Endian-safe, but then again neither is samtools!
         if type_code == 'Z':
-            value = _forceBytes( value )
+            value = _forceBytes(value)
             value_ptr    = <uint8_t*><char*>value
             value_size   = len(value)+1
         elif type_code == 'i':
@@ -3302,7 +3232,7 @@ cdef class AlignedSegment:
         else:
             raise ValueError('Unsupported value_type in set_option')
 
-        tag = _forceBytes( tag )
+        tag = _forceBytes(tag)
         if replace:
             existing_ptr = bam_aux_get(src, tag)
             if existing_ptr:
@@ -3314,20 +3244,32 @@ cdef class AlignedSegment:
                        value_size,
                        value_ptr)
 
-
-    #######################################################################
-    #######################################################################
-    ## Derived properties
-    #######################################################################
-
-    def opt(self, tag):
-        """retrieves optional data given a two-letter *tag*"""
-        #see bam_aux.c: bam_aux_get() and bam_aux2i() etc
+    cpdef has_tag(self, tag):
+        """returns true if the optional alignment section
+        contains a given *tag*."""
         cdef uint8_t * v
         cdef int nvalues
         btag = _forceBytes(tag)
         v = bam_aux_get(self._delegate, btag)
-        if v == NULL: raise KeyError( "tag '%s' not present" % tag )
+        return v != NULL
+
+    cpdef get_tag(self, tag):
+        """retrieves data from the optional alignment section
+        given a two-letter *tag* denoting the field.
+
+        If *tag* is not present, a KeyError is raised.
+
+        The returned value is cast into an appropriate python type.
+
+        This method is the fastest way to access the optional
+        alignment section if only few tags need to be retrieved.
+        """
+        cdef uint8_t * v
+        cdef int nvalues
+        btag = _forceBytes(tag)
+        v = bam_aux_get(self._delegate, btag)
+        if v == NULL:
+            raise KeyError("tag '%s' not present" % tag)
         auxtype = chr(v[0])
         if auxtype == 'c' or auxtype == 'C' or auxtype == 's' or auxtype == 'S':
             return <int>bam_aux2i(v)
@@ -3344,11 +3286,140 @@ cdef class AlignedSegment:
         elif auxtype == 'Z':
             return _charptr_to_str(<char*>bam_aux2Z(v))
         elif auxtype == 'B':
-            bytesize, nvalues, values = convertBinaryTagToList( v + 1 )
+            bytesize, nvalues, values = convertBinaryTagToList(v + 1)
             return values
         else:
             raise ValueError("unknown auxilliary type '%s'" % auxtype)
 
+    def get_tags(self, with_value_type=False):
+        """the fields in the optional aligment section.
+
+        Returns a list of all fields in the optional
+        alignment section. Values are converted to appropriate python
+        values. For example:
+
+        [(NM, 2), (RG, "GJP00TM04")]
+
+        If *with_value_type* is set, the value type as encode in
+        the AlignedSegment record will be returned as well:
+
+        [(NM, 2, "i"), (RG, "GJP00TM04", "Z")]
+
+        This method will convert all values in the optional alignment
+        section. When getting only one or few tags, please see
+        :meth:`get_tag` for a quicker way to achieve this.
+
+        """
+
+        cdef char * ctag
+        cdef bam1_t * src
+        cdef uint8_t * s
+        cdef char auxtag[3]
+        cdef char auxtype
+        cdef uint8_t byte_size
+        cdef int32_t nvalues
+
+        src = self._delegate
+        if src.l_data == 0:
+            return []
+        s = pysam_bam_get_aux(src)
+        result = []
+        auxtag[2] = 0
+        while s < (src.data + src.l_data):
+            # get tag
+            auxtag[0] = s[0]
+            auxtag[1] = s[1]
+            s += 2
+            auxtype = s[0]
+            if auxtype in ('c', 'C'):
+                value = <int>bam_aux2i(s)
+                s += 1
+            elif auxtype in ('s', 'S'):
+                value = <int>bam_aux2i(s)
+                s += 2
+            elif auxtype in ('i', 'I'):
+                value = <int32_t>bam_aux2i(s)
+                s += 4
+            elif auxtype == 'f':
+                value = <float>bam_aux2f(s)
+                s += 4
+            elif auxtype == 'd':
+                value = <double>bam_aux2f(s)
+                s += 8
+            elif auxtype == 'A':
+                value = "%c" % <char>bam_aux2A(s)
+                s += 1
+            elif auxtype in ('Z', 'H'):
+                value = _charptr_to_str(<char*>bam_aux2Z(s))
+                # +1 for NULL terminated string
+                s += len(value) + 1
+            elif auxtype == 'B':
+                s += 1
+                byte_size, nvalues, value = convertBinaryTagToList(s)
+                # 5 for 1 char and 1 int
+                s += 5 + (nvalues * byte_size) - 1
+            else:
+                raise KeyError("unknown type '%s'" % auxtype)
+
+            s += 1
+
+            result.append((_charptr_to_str(auxtag), value))
+
+        return result
+
+    def set_tags(self, tags):
+        """sets the fields in the optional alignmest section with
+        a list of (tag, value) tuples.
+
+        The :term:`value type` of the values is determined from the
+        python type. Optionally, a type may be given explicitely as
+        a third value in the tuple, For example:
+
+        x.set_tags([(NM, 2, "i"), (RG, "GJP00TM04", "Z")]
+
+        This method will not enforce the rule that the same tag may appear
+        only once in the optional alignment section.
+        """
+        
+        cdef bam1_t * src
+        cdef uint8_t * s
+        cdef char * temp
+        cdef int new_size = 0
+        cdef int old_size
+        src = self._delegate
+
+        # convert and pack the data
+        if tags is not None and len(tags) > 0:
+            fmt, args =_pack_tags(tags)
+            new_size = struct.calcsize(fmt)
+            buffer = ctypes.create_string_buffer(new_size)
+            struct.pack_into(fmt,
+                             buffer,
+                             0, 
+                             *args)
+
+        # delete the old data and allocate new space.
+        # If total_size == 0, the aux field will be
+        # empty
+        old_size = pysam_bam_get_l_aux(src)
+        pysam_bam_update(src,
+                         old_size,
+                         new_size,
+                         pysam_bam_get_aux(src))
+
+        # copy data only if there is any
+        if new_size > 0:
+
+            # get location of new data
+            s = pysam_bam_get_aux(src)
+
+            # check if there is direct path from buffer.raw to tmp
+            p = buffer.raw
+            # create handle to make sure buffer stays alive long 
+            # enough for memcpy, see issue 129
+            temp = p
+            memcpy(s, temp, new_size)
+                
 
     ########################################################
     # Compatibility Accessors
@@ -3477,7 +3548,10 @@ cdef class AlignedSegment:
             return self.get_reference_positions()
     def overlap(self):
         return self.get_overlap()
-
+    def opt(self, tag):
+        return self.get_tag(tag)
+    def setTag(self, tag, value, value_type=None, replace=True):
+        return self.set_tag(tag, value, value_type, replace)
 
 cdef class PileupColumn:
     '''A pileup of reads at a particular reference sequence postion

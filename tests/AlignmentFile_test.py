@@ -1199,6 +1199,7 @@ class TestHeaderBAM(TestHeaderSAM):
             os.path.join(DATADIR, "ex3.bam"),
             "rb")
 
+
 class TestHeaderCRAM(TestHeaderSAM):
 
     def setUp(self):
