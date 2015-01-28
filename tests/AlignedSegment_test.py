@@ -216,11 +216,17 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.get_blocks(),
                          [(20, 30), (31, 40), (40, 60)])
 
-    # Disabled as not backwards compatible
-    # def testFancyStr(self):
-    #     a = self.buildRead()
-    #     output = a.fancy_str()
-    #     self.assertEqual(len(output), 9)
+    def testMissingTag(self):
+        a = self.buildRead()
+        self.assertRaises(KeyError, a.get_tag, "XP")
+
+    def testEmptyTag(self):
+        a = self.buildRead()
+        self.assertRaises(KeyError, a.get_tag, "XT")
+
+    def testSetTag(self):
+        a = self.buildRead()
+
 
     def testAddTagsType(self):
         a = self.buildRead()
@@ -302,14 +308,6 @@ class TestAlignedSegment(ReadTest):
                                  ('X2', 5),
                                  ('NM', 1), ('RG', 'L1'),
                                  ('PG', 'P1'), ('XT', 'U'), ]))
-
-    def testMissingOpt(self):
-        a = self.buildRead()
-        self.assertRaises(KeyError, a.opt, "XP")
-
-    def testEmptyOpt(self):
-        a = self.buildRead()
-        self.assertRaises(KeyError, a.opt, "XT")
 
 
 if __name__ == "__main__":
