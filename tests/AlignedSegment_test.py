@@ -9,7 +9,24 @@ DATADIR = "pysam_data"
 
 
 class ReadTest(unittest.TestCase):
-    pass
+
+    def buildRead(self):
+        '''build an example read.'''
+
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
+        a.next_reference_id = 0
+        a.next_reference_start = 200
+        a.template_length = 167
+        a.query_qualities = pysam.fromQualityString("1234") * 10
+        # todo: create tags
+        return a
 
 
 class TestAlignedSegment(ReadTest):
@@ -38,24 +55,6 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(
             "None\t0\t0\t0\t0\tNone\t0\t0\t0\tNone\tNone\t[]",
             s)
-
-    def buildRead(self):
-        '''build an example read.'''
-
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
-        a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
-        a.next_reference_id = 0
-        a.next_reference_start = 200
-        a.template_length = 167
-        a.query_qualities = pysam.fromQualityString("1234") * 10
-        # todo: create tags
-        return a
 
     def testSettingTagInEmptyRead(self):
         '''see issue 62'''
@@ -151,20 +150,6 @@ class TestAlignedSegment(ReadTest):
 
         return a
 
-    def testTagParsing(self):
-        '''test for tag parsing
-
-        see http://groups.google.com/group/pysam-user-group/browse_thread/thread/67ca204059ea465a
-        '''
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex8.bam"),
-                                "rb")
-
-        for entry in samfile:
-            before = entry.tags
-            entry.tags = entry.tags
-            after = entry.tags
-            self.assertEqual(after, before)
-
     def testUpdateTlen(self):
         '''check if updating tlen works'''
         a = self.buildRead()
@@ -216,6 +201,9 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.get_blocks(),
                          [(20, 30), (31, 40), (40, 60)])
 
+
+class TestTags(ReadTest):
+
     def testMissingTag(self):
         a = self.buildRead()
         self.assertRaises(KeyError, a.get_tag, "XP")
@@ -226,8 +214,17 @@ class TestAlignedSegment(ReadTest):
 
     def testSetTag(self):
         a = self.buildRead()
-
-
+        self.assertEqual(False, a.has_tag("NM"))
+        a.set_tag("NM", 2)
+        self.assertEqual(True, a.has_tag("NM"))
+        self.assertEqual(a.get_tag("NM"), 2)
+        a.set_tag("NM", 3)
+        self.assertEqual(a.get_tag("NM"), 3)
+        a.set_tag("NM", None)
+        self.assertEqual(False, a.has_tag("NM"))
+        # check if deleting a non-existing tag is fine
+        a.set_tag("NM", None)
+        
     def testAddTagsType(self):
         a = self.buildRead()
         a.tags = None
@@ -309,6 +306,20 @@ class TestAlignedSegment(ReadTest):
                                  ('NM', 1), ('RG', 'L1'),
                                  ('PG', 'P1'), ('XT', 'U'), ]))
 
+    def testTagParsing(self):
+        '''test for tag parsing
+
+        see http://groups.google.com/group/pysam-user-group/browse_thread/thread/67ca204059ea465a
+        '''
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex8.bam"),
+            "rb")
+        
+        for entry in samfile:
+            before = entry.tags
+            entry.tags = entry.tags
+            after = entry.tags
+            self.assertEqual(after, before)
 
 if __name__ == "__main__":
     unittest.main()

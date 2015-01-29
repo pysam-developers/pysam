@@ -2198,7 +2198,7 @@ cdef inline _get_value_type(value, maximum_value=None):
                     "at least one signed integer out of range of "
                     "BAM/SAM specification")
             else:
-                datafmt, valuetype = b'i'
+                valuetype = b'i'
         # unsigned ints
         else:
             if maximum_value < 256:
@@ -2252,7 +2252,8 @@ cdef inline _pack_tags(tags):
                            'C': 'B',
                            'S': 'H',
                            'I': 'I',
-                           'f': 'f',}
+                           'f': 'f',
+                           'A': 'c',}
 
         t = type(value)
         if t is tuple or t is list:
@@ -2272,6 +2273,7 @@ cdef inline _pack_tags(tags):
                          valuetype,
                          len(value)] + list(value))
             fmts.append(datafmt)
+
         else:
             
             if valuetype is None:
@@ -3193,6 +3195,8 @@ cdef class AlignedSegment:
         An existing value of the same *tag* will be overwritten unless
         replace is set to False. This is usually not recommened as a
         tag may only appear once in the optional alignment section.
+
+        If *value* is None, the tag will be deleted.
         """
 
         cdef int      value_size
@@ -3207,6 +3211,16 @@ cdef class AlignedSegment:
         
         if len(tag) != 2:
             raise ValueError('Invalid tag: %s' % tag)
+
+        tag = _forceBytes(tag)
+        if replace:
+            existing_ptr = bam_aux_get(src, tag)
+            if existing_ptr:
+                bam_aux_del(src, existing_ptr)
+
+        # setting value to None deletes a tag
+        if value is None:
+            return
         
         type_code = _get_value_code(value, value_type)
         if type_code == 0:
@@ -3232,11 +3246,6 @@ cdef class AlignedSegment:
         else:
             raise ValueError('Unsupported value_type in set_option')
 
-        tag = _forceBytes(tag)
-        if replace:
-            existing_ptr = bam_aux_get(src, tag)
-            if existing_ptr:
-                bam_aux_del(src, existing_ptr)
 
         bam_aux_append(src,
                        tag,
@@ -3546,12 +3555,18 @@ cdef class AlignedSegment:
     property positions:
         def __get__(self):
             return self.get_reference_positions()
+    property tags:
+        def __get__(self):
+            return self.get_tags()
+        def __set__(self, tags):
+            self.set_tags(tags)
     def overlap(self):
         return self.get_overlap()
     def opt(self, tag):
         return self.get_tag(tag)
     def setTag(self, tag, value, value_type=None, replace=True):
         return self.set_tag(tag, value, value_type, replace)
+        
 
 cdef class PileupColumn:
     '''A pileup of reads at a particular reference sequence postion
