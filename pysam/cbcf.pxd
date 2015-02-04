@@ -44,68 +44,68 @@ from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 from chtslib     cimport *
 
 
-cdef class BCFHeader(object):
+cdef class VariantHeader(object):
     cdef bcf_hdr_t *ptr
 
     cdef _subset_samples(self, include_samples)
 
 
-cdef class BCFHeaderRecord(object):
-    cdef BCFHeader header
+cdef class VariantHeaderRecord(object):
+    cdef VariantHeader header
     cdef bcf_hrec_t *ptr
 
 
-cdef class BCFHeaderRecords(object):
-    cdef BCFHeader header
+cdef class VariantHeaderRecords(object):
+    cdef VariantHeader header
 
 
-cdef class BCFHeaderContigs(object):
-    cdef BCFHeader header
+cdef class VariantHeaderContigs(object):
+    cdef VariantHeader header
 
 
-cdef class BCFHeaderSamples(object):
-    cdef BCFHeader header
+cdef class VariantHeaderSamples(object):
+    cdef VariantHeader header
 
 
-cdef class BCFContig(object):
-    cdef BCFHeader header
+cdef class VariantContig(object):
+    cdef VariantHeader header
     cdef int id
 
 
-cdef class BCFMetadata(object):
-    cdef BCFHeader header
+cdef class VariantMetadata(object):
+    cdef VariantHeader header
     cdef int type
     cdef int id
 
 
-cdef class BCFHeaderMetadata(object):
-    cdef BCFHeader header
+cdef class VariantHeaderMetadata(object):
+    cdef VariantHeader header
     cdef int32_t type
 
 
-cdef class BCFRecord(object):
-    cdef BCFHeader header
+cdef class VariantRecord(object):
+    cdef VariantHeader header
     cdef bcf1_t *ptr
 
 
-cdef class BCFRecordFilter(object):
-    cdef BCFRecord record
+cdef class VariantRecordFilter(object):
+    cdef VariantRecord record
 
 
-cdef class BCFRecordFormat(object):
-    cdef BCFRecord record
+cdef class VariantRecordFormat(object):
+    cdef VariantRecord record
 
 
-cdef class BCFRecordInfo(object):
-    cdef BCFRecord record
+cdef class VariantRecordInfo(object):
+    cdef VariantRecord record
 
 
-cdef class BCFRecordGenos(object):
-    cdef BCFRecord record
+cdef class VariantRecordGenos(object):
+    cdef VariantRecord record
 
 
-cdef class BCFGeno(object):
-    cdef BCFRecord record
+cdef class VariantGeno(object):
+    cdef VariantRecord record
     cdef readonly int32_t sample_index
 
 
@@ -115,7 +115,7 @@ cdef class BaseIndex(object):
 
 
 cdef class BCFIndex(BaseIndex):
-    cdef BCFHeader header
+    cdef VariantHeader header
     cdef hts_idx_t *ptr
 
 
@@ -124,8 +124,8 @@ cdef class TabixIndex(BaseIndex):
 
 
 cdef class BaseIterator(object):
-    cdef BCFFile    bcf
-    cdef hts_itr_t *iter
+    cdef VariantFile bcf
+    cdef hts_itr_t  *iter
 
 
 cdef class BCFIterator(BaseIterator):
@@ -137,14 +137,14 @@ cdef class TabixIterator(BaseIterator):
     cdef kstring_t line_buffer
 
 
-cdef class BCFFile(object):
+cdef class VariantFile(object):
     cdef htsFile *htsfile                  # pointer to htsFile structure
     cdef int64_t  start_offset             # BGZF offset of first record
 
     cdef readonly object     filename      # filename as supplied by user
     cdef readonly object     mode          # file opening mode
 
-    cdef readonly BCFHeader  header
+    cdef readonly VariantHeader  header
     cdef readonly BaseIndex  index
 
     cdef readonly bint       drop_samples  # true if sample information is to be ignored
@@ -155,4 +155,4 @@ cdef class BCFFile(object):
     cdef readonly bint       is_remote     # true if file is not on the local filesystem
     cdef readonly bint       is_reading    # true if file has begun reading records
 
-    cpdef int write(self, BCFRecord record) except -1
+    cpdef int write(self, VariantRecord record) except -1

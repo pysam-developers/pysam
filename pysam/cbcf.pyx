@@ -17,10 +17,10 @@
 #
 #     $ cat bcfview.py
 #     import sys
-#     from pysam import BCFFile
+#     from pysam import VariantFile
 #
-#     bcf_in = BCFFile(sys.argv[1]) # auto-detect input format
-#     bcf_out = BCFFile('-', 'w', header=bcf_in.header)
+#     bcf_in = VariantFile(sys.argv[1]) # auto-detect input format
+#     bcf_out = VariantFile('-', 'w', header=bcf_in.header)
 #
 #     for rec in bcf_in:
 #         bcf_out.write(rec)
@@ -44,7 +44,7 @@
 #
 # Here is a quick tour through the objects:
 #
-#     BCFFile(filename, mode=None, header=None, drop_samples=False)
+#     VariantFile(filename, mode=None, header=None, drop_samples=False)
 #
 #         Attributes / Properties
 #
@@ -52,7 +52,7 @@
 #             start_offset: BGZF offset of first record          [private]
 #             filename:     filename                             [read only]
 #             mode:         mode                                 [read only]
-#             header:       BCFHeader object                     [read only]
+#             header:       VariantHeader object                     [read only]
 #             index:        TabixIndex, BCFIndex or None         [read only]
 #             drop_samples: sample information is to be ignored  [read only]
 #
@@ -72,20 +72,20 @@
 #             fetch(contig=None, start=None, stop=None, region=None, reopen=False)
 #             subset_samples(include_samples)
 #
-#     BCFHeader(mode)   # mode='r' for reading, mode='w' for writing
+#     VariantHeader(mode)   # mode='r' for reading, mode='w' for writing
 #
 #         version:      VCF version
 #         samples:      sequence-like access to samples
 #         records:      sequence-like access to partially parsed headers
-#         contigs:      mapping-like object for contig name -> BCFContig
+#         contigs:      mapping-like object for contig name -> VariantContig
 #
-#         filters:      mapping-like object for filter name -> BCFMetadata
-#         info:         mapping-like object for info name -> BCFMetadata
-#         formats:      mapping-like object for formats name -> BCFMetadata
+#         filters:      mapping-like object for filter name -> VariantMetadata
+#         info:         mapping-like object for info name -> VariantMetadata
+#         formats:      mapping-like object for formats name -> VariantMetadata
 #
-#     BCFRecord(...)
+#     VariantRecord(...)
 #
-#         header:       BCFHeader object
+#         header:       VariantHeader object
 #         rid:          reference id (i.e. tid)
 #         chrom:        chromosome/contig string
 #         contig:       synonym for chrom
@@ -103,31 +103,31 @@
 #         format:       mapping-like object for format name -> type info
 #         genos:        sequence-like object of sample genotypes & attrs
 #
-#     BCFGeno(...)
+#     VariantGeno(...)
 #
 #         sample:         sample name
 #         sample_index:   sample index
 #         allele_indices: tuple of allele indices (ref=0, alt=1..len(alts), missing=-1)
 #         alleles:        tuple of alleles (missing=None)
 #
-#         BCFGeno is also a mapping object from formats to values
+#         VariantGeno is also a mapping object from formats to values
 #
-#     BCFContig(...)
+#     VariantContig(...)
 #
 #         id:           reference id (i.e. tid)
 #         name:         chromosome/contig string
 #         length:       contig length if provided, else None
-#         header:       defining BCFHeaderRecord
+#         header:       defining VariantHeaderRecord
 #
-#     BCFMetadata(...) # for FILTER, INFO and FORMAT metadata
+#     VariantMetadata(...) # for FILTER, INFO and FORMAT metadata
 #
 #         id:           internal id
 #         name:         metadata name
 #         type:         value data type
 #         number:       number of values
-#         header:       defining BCFHeaderRecord
+#         header:       defining VariantHeaderRecord
 #
-#    BCFHeaderRecord(...)  # replace with single tuple of key/value pairs?
+#    VariantHeaderRecord(...)  # replace with single tuple of key/value pairs?
 #
 #        type:          record type
 #        key:           first record key
@@ -193,7 +193,7 @@ from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython.version cimport PY_MAJOR_VERSION
 
 
-__all__ = ['BCFFile', 'BCFHeader']
+__all__ = ['VariantFile', 'VariantHeader']
 
 
 ########################################################################
@@ -371,28 +371,35 @@ cdef inline int is_gt_fmt(bcf_hdr_t *h, bcf_fmt_t *fmt):
 
 ########################################################################
 ########################################################################
-## BCF Header objects
+## Variant Header objects
 ########################################################################
 
+#FIXME: implement a full mapping interface
 #FIXME: passing bcf_hrec_t*  may not be the safest approach once mutating
 #       operations are allowed.
-cdef class BCFHeaderRecord(object):
+cdef class VariantHeaderRecord(object):
+    """header record from a :class:`VariantHeader` object"""
+
     property type:
+        """header type: FILTER, INFO, FORMAT, CONTIG, STRUCTURED, or GENERIC"""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
             return METADATA_TYPES[r.type]
 
     property key:
+        """header key (the part before '=', in FILTER/INFO/FORMAT/contig/fileformat etc.)"""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
             return r.key if r.key else None
 
     property value:
+        """header value.  Set only for generic lines, None for FILTER/INFO, etc."""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
             return r.value if r.value else None
 
     property attrs:
+        """sequence of additional header attributes"""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
             cdef int i
@@ -400,21 +407,23 @@ cdef class BCFHeaderRecord(object):
                            r.vals[i] if r.vals[i] else None) for i in range(r.nkeys) )
 
 
-cdef BCFHeaderRecord makeBCFHeaderRecord(BCFHeader header, bcf_hrec_t *h):
+cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *h):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
     if not h:
         return None
 
-    cdef BCFHeaderRecord record = BCFHeaderRecord.__new__(BCFHeaderRecord)
+    cdef VariantHeaderRecord record = VariantHeaderRecord.__new__(VariantHeaderRecord)
     record.header = header
     record.ptr = h
 
     return record
 
 
-cdef class BCFHeaderRecords(object):
+cdef class VariantHeaderRecords(object):
+    """sequence of :class:`VariantHeaderRecord` object from a :class:`VariantHeader` object"""
+
     def __len__(self):
         return self.header.ptr.nhrec
 
@@ -425,26 +434,27 @@ cdef class BCFHeaderRecords(object):
         cdef int32_t i = index
         if i < 0 or i >= self.header.ptr.nhrec:
             raise IndexError('invalid header record index')
-        return makeBCFHeaderRecord(self.header, self.header.ptr.hrec[i])
+        return makeVariantHeaderRecord(self.header, self.header.ptr.hrec[i])
 
     def __iter__(self):
         cdef int32_t i
         for i in range(self.header.ptr.nhrec):
-            yield makeBCFHeaderRecord(self.header, self.header.ptr.hrec[i])
+            yield makeVariantHeaderRecord(self.header, self.header.ptr.hrec[i])
 
     __hash__ = None
 
 
-cdef BCFHeaderRecords makeBCFHeaderRecords(BCFHeader header):
+cdef VariantHeaderRecords makeVariantHeaderRecords(VariantHeader header):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
-    cdef BCFHeaderRecords records = BCFHeaderRecords.__new__(BCFHeaderRecords)
+    cdef VariantHeaderRecords records = VariantHeaderRecords.__new__(VariantHeaderRecords)
     records.header = header
     return records
 
 
-cdef class BCFMetadata(object):
+cdef class VariantMetadata(object):
+    """filter, info or format metadata record from a :class:`VariantHeader` object"""
     property name:
         def __get__(self):
             cdef bcf_hdr_t *h = self.header.ptr
@@ -482,12 +492,12 @@ cdef class BCFMetadata(object):
             cdef bcf_hrec_t *hrec = h.id[BCF_DT_ID][self.id].val.hrec[self.type]
             if not hrec:
                 return None
-            return makeBCFHeaderRecord(self.header, hrec)
+            return makeVariantHeaderRecord(self.header, hrec)
 
 
-cdef BCFMetadata makeBCFMetadata(BCFHeader header, int type, int id):
+cdef VariantMetadata makeVariantMetadata(VariantHeader header, int type, int id):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
     if type != BCF_HL_FLT and type != BCF_HL_INFO and type != BCF_HL_FMT:
         raise ValueError('invalid metadata type')
@@ -495,7 +505,7 @@ cdef BCFMetadata makeBCFMetadata(BCFHeader header, int type, int id):
     if id < 0 or id >= header.ptr.n[BCF_DT_ID]:
         raise ValueError('invalid metadata id')
 
-    cdef BCFMetadata meta = BCFMetadata.__new__(BCFMetadata)
+    cdef VariantMetadata meta = VariantMetadata.__new__(VariantMetadata)
     meta.header = header
     meta.type = type
     meta.id = id
@@ -503,7 +513,8 @@ cdef BCFMetadata makeBCFMetadata(BCFHeader header, int type, int id):
     return meta
 
 
-cdef class BCFHeaderMetadata(object):
+cdef class VariantHeaderMetadata(object):
+    """mapping from filter, info or format name to :class:`VariantMetadata` object"""
     def __len__(self):
         cdef bcf_hdr_t *h = self.header.ptr
         cdef bcf_idpair_t *idpair
@@ -536,7 +547,7 @@ cdef class BCFHeaderMetadata(object):
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
             raise KeyError('invalid filter')
 
-        return makeBCFMetadata(self.header, self.type, kh_val_vdict(d, k).id)
+        return makeVariantMetadata(self.header, self.type, kh_val_vdict(d, k).id)
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.header.ptr
@@ -595,18 +606,20 @@ cdef class BCFHeaderMetadata(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFHeaderMetadata makeBCFHeaderMetadata(BCFHeader header, int32_t type):
+cdef VariantHeaderMetadata makeVariantHeaderMetadata(VariantHeader header, int32_t type):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
-    cdef BCFHeaderMetadata meta = BCFHeaderMetadata.__new__(BCFHeaderMetadata)
+    cdef VariantHeaderMetadata meta = VariantHeaderMetadata.__new__(VariantHeaderMetadata)
     meta.header = header
     meta.type = type
 
     return meta
 
 
-cdef class BCFContig(object):
+cdef class VariantContig(object):
+    """contig metadata from a :class:`VariantHeader`"""
+
     property name:
         def __get__(self):
             cdef bcf_hdr_t *h = self.header.ptr
@@ -626,17 +639,17 @@ cdef class BCFContig(object):
         def __get__(self):
             cdef bcf_hdr_t *h = self.header.ptr
             cdef bcf_hrec_t *hrec = h.id[BCF_DT_CTG][self.id].val.hrec[0]
-            return makeBCFHeaderRecord(self.header, hrec)
+            return makeVariantHeaderRecord(self.header, hrec)
 
 
-cdef BCFContig makeBCFContig(BCFHeader header, int id):
+cdef VariantContig makeVariantContig(VariantHeader header, int id):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
     if id < 0 or id >= header.ptr.n[BCF_DT_CTG]:
         raise ValueError('invalid contig id')
 
-    cdef BCFContig contig = BCFContig.__new__(BCFContig)
+    cdef VariantContig contig = VariantContig.__new__(VariantContig)
     contig.header = header
     contig.id = id
 
@@ -644,7 +657,9 @@ cdef BCFContig makeBCFContig(BCFHeader header, int id):
 
 
 
-cdef class BCFHeaderContigs(object):
+cdef class VariantHeaderContigs(object):
+    """mapping from contig index or name to :class:`VariantContig` object"""
+
     def __len__(self):
         cdef bcf_hdr_t *h = self.header.ptr
         assert kh_size(<vdict_t *>h.dict[BCF_DT_CTG]) == h.n[BCF_DT_CTG]
@@ -659,7 +674,7 @@ cdef class BCFHeaderContigs(object):
         cdef bcf_hdr_t *h = self.header.ptr
 
         if isinstance(key, int):
-            return makeBCFContig(self.header, key)
+            return makeVariantContig(self.header, key)
 
         cdef vdict_t *d = <vdict_t *>h.dict[BCF_DT_CTG]
         cdef khiter_t k = kh_get_vdict(d, key)
@@ -669,7 +684,7 @@ cdef class BCFHeaderContigs(object):
 
         cdef int id = kh_val_vdict(d, k).id
 
-        return makeBCFContig(self.header, id)
+        return makeVariantContig(self.header, id)
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.header.ptr
@@ -728,17 +743,19 @@ cdef class BCFHeaderContigs(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFHeaderContigs makeBCFHeaderContigs(BCFHeader header):
+cdef VariantHeaderContigs makeVariantHeaderContigs(VariantHeader header):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
-    cdef BCFHeaderContigs contigs = BCFHeaderContigs.__new__(BCFHeaderContigs)
+    cdef VariantHeaderContigs contigs = VariantHeaderContigs.__new__(VariantHeaderContigs)
     contigs.header = header
 
     return contigs
 
 
-cdef class BCFHeaderSamples(object):
+cdef class VariantHeaderSamples(object):
+    """sequence of sample names from a :class:`VariantHeader` object"""
+
     def __len__(self):
         return bcf_hdr_nsamples(self.header.ptr)
 
@@ -776,23 +793,24 @@ cdef class BCFHeaderSamples(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFHeaderSamples makeBCFHeaderSamples(BCFHeader header):
+cdef VariantHeaderSamples makeVariantHeaderSamples(VariantHeader header):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
-    cdef BCFHeaderSamples samples = BCFHeaderSamples.__new__(BCFHeaderSamples)
+    cdef VariantHeaderSamples samples = VariantHeaderSamples.__new__(VariantHeaderSamples)
     samples.header = header
 
     return samples
 
 
-cdef class BCFHeader(object):
+cdef class VariantHeader(object):
+    """parsed header information from a :class:`VariantFile` object"""
+
     #FIXME: Add structured proxy
     #FIXME: Add generic proxy
-    #FIXME: Add immutable flag
     #FIXME: Add mutable methods
 
-    # See makeBCFHeader for C constructor
+    # See makeVariantHeader for C constructor
     def __cinit__(self, mode):
         self.ptr = NULL
 
@@ -805,7 +823,7 @@ cdef class BCFHeader(object):
         self.ptr = bcf_hdr_init(mode)
 
         if not self.ptr:
-            raise ValueError('cannot create BCFHeader')
+            raise ValueError('cannot create VariantHeader')
 
     def __dealloc__(self):
         if self.ptr:
@@ -817,7 +835,7 @@ cdef class BCFHeader(object):
         return self.ptr != NULL
 
     def copy(self):
-        return makeBCFHeader(bcf_hdr_dup(self.ptr))
+        return makeVariantHeader(bcf_hdr_dup(self.ptr))
 
     property version:
         def __get__(self):
@@ -825,27 +843,27 @@ cdef class BCFHeader(object):
 
     property samples:
         def __get__(self):
-            return makeBCFHeaderSamples(self)
+            return makeVariantHeaderSamples(self)
 
     property records:
         def __get__(self):
-            return makeBCFHeaderRecords(self)
+            return makeVariantHeaderRecords(self)
 
     property contigs:
         def __get__(self):
-            return makeBCFHeaderContigs(self)
+            return makeVariantHeaderContigs(self)
 
     property filters:
         def __get__(self):
-            return makeBCFHeaderMetadata(self, BCF_HL_FLT)
+            return makeVariantHeaderMetadata(self, BCF_HL_FLT)
 
     property info:
         def __get__(self):
-            return makeBCFHeaderMetadata(self, BCF_HL_INFO)
+            return makeVariantHeaderMetadata(self, BCF_HL_INFO)
 
     property formats:
         def __get__(self):
-            return makeBCFHeaderMetadata(self, BCF_HL_FMT)
+            return makeVariantHeaderMetadata(self, BCF_HL_FMT)
 
     # only safe to do when opening an htsfile
     cdef _subset_samples(self, include_samples):
@@ -866,11 +884,11 @@ cdef class BCFHeader(object):
             raise ValueError('bcf_hdr_set_samples failed: ret = {}'.format(ret))
 
 
-cdef BCFHeader makeBCFHeader(bcf_hdr_t *h):
+cdef VariantHeader makeVariantHeader(bcf_hdr_t *h):
     if not h:
-        raise ValueError('cannot create BCFHeader')
+        raise ValueError('cannot create VariantHeader')
 
-    cdef BCFHeader header = BCFHeader.__new__(BCFHeader, None)
+    cdef VariantHeader header = VariantHeader.__new__(VariantHeader, None)
     header.ptr = h
 
     return header
@@ -878,11 +896,12 @@ cdef BCFHeader makeBCFHeader(bcf_hdr_t *h):
 
 ########################################################################
 ########################################################################
-## BCF Record objects
+## Variant Record objects
 ########################################################################
 
-#TODO: Implement BCFFormat value class and finish Mapping interface
-cdef class BCFRecordFilter(object):
+cdef class VariantRecordFilter(object):
+    """mapping from filter name to :class:`VariantMetadata` object for filters set on a :class:`VariantRecord` object"""
+
     def __len__(self):
         return self.record.ptr.d.n_flt
 
@@ -897,7 +916,7 @@ cdef class BCFRecordFilter(object):
         if i < 0 or i >= n:
             raise IndexError('invalid filter index')
 
-        return makeBCFMetadata(self.record.header, BCF_HL_FLT, r.d.flt[i])
+        return makeVariantMetadata(self.record.header, BCF_HL_FLT, r.d.flt[i])
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -951,23 +970,32 @@ cdef class BCFRecordFilter(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFRecordFilter makeBCFRecordFilter(BCFRecord record):
+cdef VariantRecordFilter makeVariantRecordFilter(VariantRecord record):
     if not record:
-        raise ValueError('invalid BCFRecord')
+        raise ValueError('invalid VariantRecord')
 
-    cdef BCFRecordFilter filter = BCFRecordFilter.__new__(BCFRecordFilter)
+    cdef VariantRecordFilter filter = VariantRecordFilter.__new__(VariantRecordFilter)
     filter.record = record
 
     return filter
 
 
-cdef class BCFRecordFormat(object):
+# FIXME: should be 
+cdef class VariantRecordFormat(object):
+    """sequence of :class:`VariantMetadata` object for formats present in a :class:`VariantRecord` object
+
+       Supports containment testing by name::
+
+       >> 'DT' in formats
+       True
+    """
     def __len__(self):
         return self.record.ptr.n_fmt
 
     def __bool__(self):
         return self.record.ptr.n_fmt != 0
 
+    # FIXME: should also support mapping semantics by name?
     def __getitem__(self, index):
         cdef bcf1_t *r = self.record.ptr
         cdef int i = index
@@ -976,7 +1004,7 @@ cdef class BCFRecordFormat(object):
         if i < 0 or i >= n:
             raise IndexError('invalid format index')
 
-        return makeBCFMetadata(self.record.header, BCF_HL_FMT, r.d.fmt[i].id)
+        return makeVariantMetadata(self.record.header, BCF_HL_FMT, r.d.fmt[i].id)
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -1031,17 +1059,17 @@ cdef class BCFRecordFormat(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFRecordFormat makeBCFRecordFormat(BCFRecord record):
+cdef VariantRecordFormat makeVariantRecordFormat(VariantRecord record):
     if not record:
-        raise ValueError('invalid BCFRecord')
+        raise ValueError('invalid VariantRecord')
 
-    cdef BCFRecordFormat format = BCFRecordFormat.__new__(BCFRecordFormat)
+    cdef VariantRecordFormat format = VariantRecordFormat.__new__(VariantRecordFormat)
     format.record = record
 
     return format
 
 
-cdef class BCFRecordInfo(object):
+cdef class VariantRecordInfo(object):
     def __len__(self):
         return self.record.ptr.n_info
 
@@ -1125,17 +1153,17 @@ cdef class BCFRecordInfo(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFRecordInfo makeBCFRecordInfo(BCFRecord record):
+cdef VariantRecordInfo makeVariantRecordInfo(VariantRecord record):
     if not record:
-        raise ValueError('invalid BCFRecord')
+        raise ValueError('invalid VariantRecord')
 
-    cdef BCFRecordInfo info = BCFRecordInfo.__new__(BCFRecordInfo)
+    cdef VariantRecordInfo info = VariantRecordInfo.__new__(VariantRecordInfo)
     info.record = record
 
     return info
 
 
-cdef class BCFRecordGenos(object):
+cdef class VariantRecordGenos(object):
     def __len__(self):
         return bcf_hdr_nsamples(self.record.header.ptr)
 
@@ -1160,7 +1188,7 @@ cdef class BCFRecordGenos(object):
         if sample_index < 0 or sample_index >= n:
             raise IndexError('invalid sample index')
 
-        return makeBCFGeno(self.record, sample_index)
+        return makeVariantGeno(self.record, sample_index)
 
     def __iter__(self):
         cdef bcf_hdr_t *h = self.record.header.ptr
@@ -1205,7 +1233,7 @@ cdef class BCFRecordGenos(object):
         cdef int32_t i, n = bcf_hdr_nsamples(h)
 
         for i in range(n):
-            yield makeBCFGeno(self.record, i)
+            yield makeVariantGeno(self.record, i)
 
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
@@ -1214,7 +1242,7 @@ cdef class BCFRecordGenos(object):
         cdef int32_t i, n = bcf_hdr_nsamples(h)
 
         for i in range(n):
-            yield h.samples[i], makeBCFGeno(self.record, i)
+            yield h.samples[i], makeVariantGeno(self.record, i)
 
     def keys(self):
         """D.keys() -> list of D's keys"""
@@ -1234,17 +1262,17 @@ cdef class BCFRecordGenos(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFRecordGenos makeBCFRecordGenos(BCFRecord record):
+cdef VariantRecordGenos makeVariantRecordGenos(VariantRecord record):
     if not record:
-        raise ValueError('invalid BCFRecord')
+        raise ValueError('invalid VariantRecord')
 
-    cdef BCFRecordGenos genos = BCFRecordGenos.__new__(BCFRecordGenos)
+    cdef VariantRecordGenos genos = VariantRecordGenos.__new__(VariantRecordGenos)
     genos.record = record
 
     return genos
 
 
-cdef class BCFRecord(object):
+cdef class VariantRecord(object):
     def __dealloc__(self):
         if self.ptr:
             bcf_destroy1(self.ptr)
@@ -1311,26 +1339,26 @@ cdef class BCFRecord(object):
 #   property n_flt:
 #       def __get__(self):
 #           if bcf_unpack(self.ptr, BCF_UN_FLT) < 0:
-#               raise ValueError('Error unpacking BCFRecord')
+#               raise ValueError('Error unpacking VariantRecord')
 #           return self.ptr.d.n_flt
 
     property id:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
-                raise ValueError('Error unpacking BCFRecord')
+                raise ValueError('Error unpacking VariantRecord')
             id = self.ptr.d.id
             return id if id != b'.' else None
 
     property ref:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
-                raise ValueError('Error unpacking BCFRecord')
+                raise ValueError('Error unpacking VariantRecord')
             return self.ptr.d.allele[0] if self.ptr.d.allele else None
 
     property alleles:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
-                raise ValueError('Error unpacking BCFRecord')
+                raise ValueError('Error unpacking VariantRecord')
             if not self.ptr.d.allele:
                 return None
             return tuple(self.ptr.d.allele[i] for i in range(self.ptr.n_allele))
@@ -1338,7 +1366,7 @@ cdef class BCFRecord(object):
     property alts:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
-                raise ValueError('Error unpacking BCFRecord')
+                raise ValueError('Error unpacking VariantRecord')
             if self.ptr.n_allele < 2 or not self.ptr.d.allele:
                 return None
             return tuple(self.ptr.d.allele[i] for i in range(1,self.ptr.n_allele))
@@ -1346,36 +1374,36 @@ cdef class BCFRecord(object):
     property filter:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_FLT) < 0:
-                raise ValueError('Error unpacking BCFRecord')
-            return makeBCFRecordFilter(self)
+                raise ValueError('Error unpacking VariantRecord')
+            return makeVariantRecordFilter(self)
 
     property info:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_INFO) < 0:
-                raise ValueError('Error unpacking BCFRecord')
-            return makeBCFRecordInfo(self)
+                raise ValueError('Error unpacking VariantRecord')
+            return makeVariantRecordInfo(self)
 
     property format:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_FMT) < 0:
-                raise ValueError('Error unpacking BCFRecord')
-            return makeBCFRecordFormat(self)
+                raise ValueError('Error unpacking VariantRecord')
+            return makeVariantRecordFormat(self)
 
     property genos:
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_IND) < 0:
-                raise ValueError('Error unpacking BCFRecord')
-            return makeBCFRecordGenos(self)
+                raise ValueError('Error unpacking VariantRecord')
+            return makeVariantRecordGenos(self)
 
 
-cdef BCFRecord makeBCFRecord(BCFHeader header, bcf1_t *r):
+cdef VariantRecord makeVariantRecord(VariantHeader header, bcf1_t *r):
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
     if not r:
-        raise ValueError('cannot create BCFRecord')
+        raise ValueError('cannot create VariantRecord')
 
-    cdef BCFRecord record = BCFRecord.__new__(BCFRecord)
+    cdef VariantRecord record = VariantRecord.__new__(VariantRecord)
     record.header = header
     record.ptr = r
 
@@ -1384,11 +1412,11 @@ cdef BCFRecord makeBCFRecord(BCFHeader header, bcf1_t *r):
 
 ########################################################################
 ########################################################################
-## BCF Genotype object
+## Variant Genotype object
 ########################################################################
 
 
-cdef class BCFGeno(object):
+cdef class VariantGeno(object):
     property sample:
         def __get__(self):
             cdef bcf_hdr_t *h = self.record.header.ptr
@@ -1570,11 +1598,11 @@ cdef class BCFGeno(object):
     #TODO: implement __richcmp__
 
 
-cdef BCFGeno makeBCFGeno(BCFRecord record, int32_t sample_index):
+cdef VariantGeno makeVariantGeno(VariantRecord record, int32_t sample_index):
     if not record or sample_index < 0:
-        raise ValueError('cannot create BCFGeno')
+        raise ValueError('cannot create VariantGeno')
 
-    cdef BCFGeno geno = BCFGeno.__new__(BCFGeno)
+    cdef VariantGeno geno = VariantGeno.__new__(VariantGeno)
     geno.record = record
     geno.sample_index = sample_index
 
@@ -1680,12 +1708,12 @@ cdef class BCFIndex(object):
         return BCFIterator(bcf, contig, start, stop, region, reopen)
 
 
-cdef BCFIndex makeBCFIndex(BCFHeader header, hts_idx_t *idx):
+cdef BCFIndex makeBCFIndex(VariantHeader header, hts_idx_t *idx):
     if not idx:
         return None
 
     if not header:
-        raise ValueError('invalid BCFHeader')
+        raise ValueError('invalid VariantHeader')
 
     cdef BCFIndex index = BCFIndex.__new__(BCFIndex)
     index.header = header
@@ -1753,7 +1781,7 @@ cdef void _stop_BCFIterator(BCFIterator self, bcf1_t *record):
 
 
 cdef class BCFIterator(BaseIterator):
-    def __init__(self, BCFFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+    def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
 
         if not isinstance(bcf.index, BCFIndex):
             raise ValueError('bcf index required')
@@ -1822,7 +1850,7 @@ cdef class BCFIterator(BaseIterator):
             _stop_BCFIterator(self, record)
             raise ValueError('error in bcf_subset_format')
 
-        return makeBCFRecord(self.bcf.header, record)
+        return makeVariantRecord(self.bcf.header, record)
 
 
 cdef class TabixIterator(BaseIterator):
@@ -1831,7 +1859,7 @@ cdef class TabixIterator(BaseIterator):
         self.line_buffer.m = 0
         self.line_buffer.s = NULL
 
-    def __init__(self, BCFFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+    def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
         if not isinstance(bcf.index, TabixIndex):
             raise ValueError('tabix index required')
 
@@ -1908,16 +1936,16 @@ cdef class TabixIterator(BaseIterator):
             bcf_destroy1(record)
             raise ValueError('error in vcf_parse')
 
-        return makeBCFRecord(self.bcf.header, record)
+        return makeVariantRecord(self.bcf.header, record)
 
 
 ########################################################################
 ########################################################################
-## BCF File
+## Variant File
 ########################################################################
 
 
-cdef class BCFFile(object):
+cdef class VariantFile(object):
     """*(filename, mode=None, header=None, drop_samples=False)*
 
     A :term:`VCF`/:term:`BCF` formatted file. The file is automatically
@@ -1925,27 +1953,26 @@ cdef class BCFFile(object):
 
     *mode* should be ``r`` for reading or ``w`` for writing. The default is
     text mode (:term:`VCF`).  For binary (:term:`BCF`) I/O you should append
-    ``b`` for compressed or ``u`` for uncompressed :term:`BCF` output.  Use
-    ``h`` to output header information in text (:term:`TAM`) mode.
+    ``b`` for compressed or ``u`` for uncompressed :term:`BCF` output.
 
     If ``b`` is present, it must immediately follow ``r`` or ``w``.  Valid
     modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and ``wb0``.
     For instance, to open a :term:`BCF` formatted file for reading, type::
 
-        f = pysam.BCFFile('ex1.bcf','rb')
+        f = pysam.VariantFile('ex1.bcf','rb')
 
     If mode is not specified, we will try to auto-detect in the order 'rb',
     'r', thus both the following should work::
 
-        f1 = pysam.BCFFile('ex1.bcf')
-        f2 = pysam.BCFFile('ex1.vcf')
+        f1 = pysam.VariantFile('ex1.bcf')
+        f2 = pysam.VariantFile('ex1.vcf')
 
-    If an index for a BCF file exists (.csi), it will be opened
+    If an index for a variant file exists (.csi or .tbi), it will be opened
     automatically.  Without an index random access to records via
     :meth:`fetch` is disabled.
 
-    For writing, a :class:`BCFHeader` object of a :term:`VCF`
-    file/:term:`BCF` file must be provided.
+    For writing, a :class:`VariantHeader` object must be provided, typically
+    obtained from another :term:`VCF` file/:term:`BCF` file.
     """
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
@@ -1981,7 +2008,7 @@ cdef class BCFFile(object):
             raise ValueError('I/O operation on closed file')
 
         if self.mode[0] != b'r':
-            raise ValueError('cannot iterate over BCFfile opened for writing')
+            raise ValueError('cannot iterate over Variantfile opened for writing')
 
         self.is_reading = 1
         return self
@@ -2003,15 +2030,15 @@ cdef class BCFFile(object):
             elif ret == -2:
                 raise IOError('truncated file')
             else:
-                raise ValueError('BCF read failed')
+                raise ValueError('Variant read failed')
 
-        return makeBCFRecord(self.header, record)
+        return makeVariantRecord(self.header, record)
 
     def copy(self):
         if not self.is_open:
             raise ValueError
 
-        cdef BCFFile bcf = BCFFile.__new__(BCFFile)
+        cdef VariantFile bcf = VariantFile.__new__(VariantFile)
 
         # FIXME: re-open using fd or else header and index could be invalid
         #        adding an hts_reopen/hts_dup function will be easy once
@@ -2043,12 +2070,12 @@ cdef class BCFFile(object):
         if self.is_bcf:
             bcf.seek(self.tell())
         else:
-            makeBCFHeader(bcf_hdr_read(bcf.htsfile))
+            makeVariantHeader(bcf_hdr_read(bcf.htsfile))
 
         return bcf
 
     def close(self):
-        """closes the :class:`pysam.BCFFile`."""
+        """closes the :class:`pysam.VariantFile`."""
         if self.htsfile:
             hts_close(self.htsfile)
             self.htsfile = NULL
@@ -2056,13 +2083,13 @@ cdef class BCFFile(object):
 
     property is_open:
         def __get__(self):
-            """return True if BCFFile is open and in a valid state."""
+            """return True if VariantFile is open and in a valid state."""
             return self.htsfile != NULL
 
-    def open(self, filename, mode=None, BCFHeader header=None, drop_samples=False):
+    def open(self, filename, mode=None, VariantHeader header=None, drop_samples=False):
         """open a vcf/bcf file.
 
-        If open is called on an existing BCFFile, the current file will be
+        If open is called on an existing VariantFile, the current file will be
         closed and a new file will be opened.
         """
         # close a previously opened file
@@ -2105,7 +2132,7 @@ cdef class BCFFile(object):
             if header:
                 self.header = header.copy()
             else:
-                raise ValueError('a BCFHeader must be specified')
+                raise ValueError('a VariantHeader must be specified')
 
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
@@ -2126,7 +2153,7 @@ cdef class BCFFile(object):
             if not self.htsfile:
                 raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format((filename, mode)))
 
-            self.header = makeBCFHeader(bcf_hdr_read(self.htsfile))
+            self.header = makeVariantHeader(bcf_hdr_read(self.htsfile))
 
             if not self.header:
                 raise ValueError("file `{}` does not have valid header (mode='{}') - is it BCF format?".format((filename, mode)))
@@ -2145,7 +2172,7 @@ cdef class BCFFile(object):
         return self.seek(self.start_offset, 0)
 
     def seek(self, uint64_t offset):
-        """move file pointer to position *offset*, see :meth:`pysam.BCFFile.tell`."""
+        """move file pointer to position *offset*, see :meth:`pysam.VariantFile.tell`."""
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
         if self.is_stream:
@@ -2155,7 +2182,7 @@ cdef class BCFFile(object):
 
     def tell(self):
         """
-        return current file position, see :meth:`pysam.BCFFile.seek`.
+        return current file position, see :meth:`pysam.VariantFile.seek`.
         """
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
@@ -2188,7 +2215,7 @@ cdef class BCFFile(object):
             raise ValueError('I/O operation on closed file')
 
         if self.mode[0] != b'r':
-            raise ValueError('cannot fetch from BCFfile opened for writing')
+            raise ValueError('cannot fetch from Variantfile opened for writing')
 
         if contig is None and region is None:
             self.is_reading = 1
@@ -2202,9 +2229,9 @@ cdef class BCFFile(object):
         self.is_reading = 1
         return self.index.fetch(self, contig, start, stop, region, reopen)
 
-    cpdef int write(self, BCFRecord record) except -1:
+    cpdef int write(self, VariantRecord record) except -1:
         """
-        write a single :class:`pysam.BCFRecord` to disk.
+        write a single :class:`pysam.VariantRecord` to disk.
 
         returns the number of bytes written.
         """
@@ -2223,7 +2250,7 @@ cdef class BCFFile(object):
             raise ValueError('I/O operation on closed file')
 
         if self.mode[0] != b'r':
-            raise ValueError('cannot subset samples from BCFfile opened for writing')
+            raise ValueError('cannot subset samples from Variantfile opened for writing')
 
         if self.is_reading:
             raise ValueError('cannot subset samples after fetching records')
