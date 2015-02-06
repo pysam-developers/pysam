@@ -46,7 +46,7 @@ samtools_exclude = ("bamtk.c", "razip.c", "bgzip.c",
                     "bamcheck.c",
                     "chk_indel.c",
                     "vcf-miniview.c")
-htslib_exclude = ('htslib/tabix.c', 'htslib/bgzip.c')
+htslib_exclude = ('htslib/tabix.c', 'htslib/bgzip.c', 'htslib/htsfile.c', 'htslib/hfile_irods.c')
 tabix_exclude = ("main.c",)
 
 # destination directories for import of samtools and tabix
