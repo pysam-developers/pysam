@@ -100,13 +100,13 @@ cdef class VariantRecordInfo(object):
     cdef VariantRecord record
 
 
-cdef class VariantRecordGenos(object):
+cdef class VariantRecordSamples(object):
     cdef VariantRecord record
 
 
-cdef class VariantGeno(object):
+cdef class VariantRecordSample(object):
     cdef VariantRecord record
-    cdef readonly int32_t sample_index
+    cdef readonly int32_t index
 
 
 cdef class BaseIndex(object):
