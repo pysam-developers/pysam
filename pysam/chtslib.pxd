@@ -3,6 +3,7 @@ from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 from libc.stdlib cimport malloc, calloc, realloc, free
 from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 from libc.stdio cimport FILE, printf
+from posix.types cimport off_t
 
 cdef extern from "Python.h":
    long _Py_HashPointer(void*)
@@ -63,6 +64,85 @@ cdef extern from "htslib_util.h" nogil:
 cdef extern from "htslib/hfile.h" nogil:
     ctypedef struct hFILE
 
+    # @abstract  Open the named file or URL as a stream
+    # @return    An hFILE pointer, or NULL (with errno set) if an error occurred.
+    hFILE *hopen(const char *filename, const char *mode)
+
+    # @abstract  Associate a stream with an existing open file descriptor
+    # @return    An hFILE pointer, or NULL (with errno set) if an error occurred.
+    # @notes     For socket descriptors (on Windows), mode should contain 's'.
+    hFILE *hdopen(int fd, const char *mode)
+
+    # @abstract  Report whether the file name or URL denotes remote storage
+    # @return    0 if local, 1 if remote.
+    # @notes     "Remote" means involving e.g. explicit network access, with the
+    #   implication that callers may wish to cache such files' contents locally.
+    int hisremote(const char *filename)
+
+    # @abstract  Flush (for output streams) and close the stream
+    # @return    0 if successful, or EOF (with errno set) if an error occurred.
+    int hclose(hFILE *fp)
+
+    # @abstract  Close the stream, without flushing or propagating errors
+    # @notes     For use while cleaning up after an error only.  Preserves errno.
+    void hclose_abruptly(hFILE *fp)
+
+    # @abstract  Return the stream's error indicator
+    # @return    Non-zero (in fact, an errno value) if an error has occurred.
+    # @notes     This would be called herror() and return true/false to parallel
+    #   ferror(3), but a networking-related herror(3) function already exists.  */
+    int herrno(hFILE *fp)
+
+    # @abstract  Clear the stream's error indicator
+    void hclearerr(hFILE *fp)
+
+    # @abstract  Reposition the read/write stream offset
+    # @return    The resulting offset within the stream (as per lseek(2)),
+    #   or negative if an error occurred.
+    off_t hseek(hFILE *fp, off_t offset, int whence)
+
+    # @abstract  Report the current stream offset
+    # @return    The offset within the stream, starting from zero.
+    off_t htell(hFILE *fp)
+
+    # @abstract  Read one character from the stream
+    # @return    The character read, or EOF on end-of-file or error
+    int hgetc(hFILE *fp)
+
+    # @abstract  Peek at characters to be read without removing them from buffers
+    # @param fp      The file stream
+    # @param buffer  The buffer to which the peeked bytes will be written
+    # @param nbytes  The number of bytes to peek at; limited by the size of the
+    #   internal buffer, which could be as small as 4K.
+    # @return    The number of bytes peeked, which may be less than nbytes if EOF
+    #   is encountered; or negative, if there was an I/O error.
+    # @notes  The characters peeked at remain in the stream's internal buffer,
+    #   and will be returned by later hread() etc calls.
+    ssize_t hpeek(hFILE *fp, void *buffer, size_t nbytes)
+
+    # @abstract  Read a block of characters from the file
+    # @return    The number of bytes read, or negative if an error occurred.
+    # @notes     The full nbytes requested will be returned, except as limited
+    #   by EOF or I/O errors.
+    ssize_t hread(hFILE *fp, void *buffer, size_t nbytes)
+
+    # @abstract  Write a character to the stream
+    # @return    The character written, or EOF if an error occurred.
+    int hputc(int c, hFILE *fp)
+
+    # @abstract  Write a string to the stream
+    # @return    0 if successful, or EOF if an error occurred.
+    int hputs(const char *text, hFILE *fp)
+
+    # @abstract  Write a block of characters to the file
+    # @return    Either nbytes, or negative if an error occurred.
+    # @notes     In the absence of I/O errors, the full nbytes will be written.
+    ssize_t hwrite(hFILE *fp, const void *buffer, size_t nbytes)
+
+    # @abstract  For writing streams, flush buffered output to the underlying stream
+    # @return    0 if successful, or EOF if an error occurred.
+    int hflush(hFILE *fp)
+
 
 cdef extern from "htslib/bgzf.h" nogil:
     ctypedef struct bgzf_mtaux_t
@@ -95,9 +175,10 @@ cdef extern from "htslib/bgzf.h" nogil:
     #  Open an existing file descriptor for reading or writing.
     #
     #  @param fd    file descriptor
-    #  @param mode  mode matching /[rwa][u0-9]+/: 'r' for reading, 'w' for
-    #               writing, or 'a' for appending, while a digit specifies
-    #               the zlib compression level.
+    #  @param mode  mode matching /[rwag][u0-9]+/: 'r' for reading, 'w' for
+    #               writing, 'a' for appending, 'g' for gzip rather than BGZF
+    #               compression (with 'w' only), and digit specifies the zlib
+    #               compression level.
     #               Note that there is a distinction between 'u' and '0': the
     #               first yields plain uncompressed output whereas the latter
     #               outputs uncompressed data wrapped in the zlib format.
@@ -284,7 +365,6 @@ cdef extern from "htslib/hts.h" nogil:
         hFILE   *hfile
         void    *voidp
 
-    # requires htslib 1.2, so can't be used yet :(
     ctypedef enum htsFormatCategory:
         unknown_category
         sequence_data    # Sequence data -- SAM, BAM, CRAM, etc
@@ -293,53 +373,68 @@ cdef extern from "htslib/hts.h" nogil:
         region_list      # Coordinate intervals or regions -- BED, etc
         category_maximum
 
-    # requires htslib 1.2, so can't be used yet :(
     ctypedef enum htsExactFormat:
         unknown_format
         binary_format
         text_format
-        sam, bam, bai, cram, crai, vcf, bcfv1, bcf, csi, gzi, tbi, bed
+        sam, bam, bai, cram, crai, vcf, bcf, csi, gzi, tbi, bed
         format_maximum
 
-    # requires htslib 1.2, so can't be used yet :(
     ctypedef enum htsCompression:
         no_compression, gzip, bgzf, custom
         compression_maximum
 
-    # requires htslib 1.2, so can't be used yet :(
+    cdef struct htsVersion:
+        short major, minor
+
     ctypedef struct htsFormat:
         htsFormatCategory category
         htsExactFormat    format
+        htsVersion        version
         htsCompression    compression
 
     ctypedef struct htsFile:
-	# uint32_t is_bin:1, is_write:1, is_be:1, is_cram:1, is_compressed:2, is_kstream:1, dummy:25
         uint8_t  is_bin
         uint8_t  is_write
         uint8_t  is_be
         uint8_t  is_cram
-        uint8_t  is_compressed
-        uint8_t  is_kstream
         int64_t lineno
         kstring_t line
-        char * fn
-        char * fn_aux
+        char *fn
+        char *fn_aux
         FilePointerUnion fp
-        # requires htslib 1.2, so can't be used yet :(
-        #htsFormat format
+        htsFormat format
 
     int hts_verbose
 
-    # @abstract Table for converting a nucleotide character to the 4-bit encoding.
+    # @abstract Table for converting a nucleotide character to 4-bit encoding.
+    # The input character may be either an IUPAC ambiguity code, '=' for 0, or
+    # '0'/'1'/'2'/'3' for a result of 1/2/4/8.  The result is encoded as 1/2/4/8
+    # for A/C/G/T or combinations of these bits for ambiguous bases.
     const unsigned char *seq_nt16_table
 
-    # @abstract Table for converting a 4-bit encoded nucleotide to a letter.
+    # @abstract Table for converting a 4-bit encoded nucleotide to an IUPAC
+    # ambiguity code letter (or '=' when given 0).
     const char *seq_nt16_str
+
+    # @abstract Table for converting a 4-bit encoded nucleotide to about 2 bits.
+    # Returns 0/1/2/3 for 1/2/4/8 (i.e., A/C/G/T), or 4 otherwise (0 or ambiguous).
+    const int *seq_nt16_int
 
     # @abstract  Get the htslib version number
     # @return    For released versions, a string like "N.N[.N]"; or git describe
     # output if using a library built within a Git repository.
     const char *hts_version()
+
+    # @abstract    Determine format by peeking at the start of a file
+    # @param fp    File opened for reading, positioned at the beginning
+    # @param fmt   Format structure that will be filled out on return
+    # @return      0 for success, or negative if an error occurred.
+    int hts_detect_format(hFILE *fp, htsFormat *fmt)
+
+    # @abstract    Get a human-readable description of the file format
+    # @return      Description string, to be freed by the caller after use.
+    char *hts_format_description(const htsFormat *format)
 
     # @abstract       Open a SAM/BAM/CRAM/VCF/BCF/etc file
     # @param fn       The file name or "-" for stdin/stdout
@@ -351,8 +446,9 @@ cdef extern from "htslib/hts.h" nogil:
     #     specifier letters:
     #       b  binary format (BAM, BCF, etc) rather than text (SAM, VCF, etc)
     #       c  CRAM format
+    #       g  gzip compressed
     #       u  uncompressed
-    #       z  compressed
+    #       z  bgzf compressed
     #       [0-9]  zlib compression level
     #     Note that there is a distinction between 'u' and '0': the first yields
     #     plain uncompressed output whereas the latter outputs uncompressed data
@@ -364,10 +460,28 @@ cdef extern from "htslib/hts.h" nogil:
     #     [rw]  .. uncompressed VCF
     htsFile *hts_open(const char *fn, const char *mode)
 
+    # @abstract       Open an existing stream as a SAM/BAM/CRAM/VCF/BCF/etc file
+    # @param fp       The already-open file handle
+    # @param fn       The file name or "-" for stdin/stdout
+    # @param mode     Open mode, as per hts_open()
+    htsFile *hts_hopen(hFILE *fp, const char *fn, const char *mode)
+
     # @abstract  Close a file handle, flushing buffered data for output streams
     # @param fp  The file handle to be closed
     # @return    0 for success, or negative if an error occurred.
     int hts_close(htsFile *fp)
+
+    # @abstract  Returns the file's format information
+    # @param fp  The file handle
+    # @return    Read-only pointer to the file's htsFormat.
+    const htsFormat *hts_get_format(htsFile *fp)
+
+    # @abstract  Sets a specified CRAM option on the open file handle.
+    # @param fp  The file handle open the open file.
+    # @param opt The CRAM_OPT_* option.
+    # @param ... Optional arguments, dependent on the option used.
+    # @return    0 for success, or negative if an error occurred.
+    #int hts_set_opt(htsFile *fp, enum cram_option opt, ...)
 
     int hts_getline(htsFile *fp, int delimiter, kstring_t *str)
     char **hts_readlines(const char *fn, int *_n)
@@ -405,6 +519,8 @@ cdef extern from "htslib/hts.h" nogil:
     int8_t HTS_FMT_CRAI
 
     BGZF *hts_get_bgzfp(htsFile *fp)
+    int hts_useek(htsFile *fp, long uoffset, int where)
+    long hts_utell(htsFile *fp)
 
     ctypedef struct hts_idx_t
 
@@ -421,6 +537,7 @@ cdef extern from "htslib/hts.h" nogil:
         uint32_t read_rest
         uint32_t finished
         int tid, bed, end, n_off, i
+        int curr_tid, curr_beg, curr_end
         uint64_t curr_off
         hts_pair64_t *off
         hts_readrec_func *readfunc
@@ -471,8 +588,8 @@ cdef extern from "htslib/hts.h" nogil:
     #
     # Returns one of the FT_* defines.
     #
-    # This function was added in order to avoid the need for excessive command
-    # line switches.
+    # DEPRECATED:  This function has been replaced by hts_detect_format().
+    # It and these FT_* macros will be removed in a future HTSlib release.
     int FT_UNKN
     int FT_GZ
     int FT_VCF
@@ -1240,6 +1357,7 @@ cdef extern from "htslib/vcf.h" nogil:
     int bcf_hdr_append(bcf_hdr_t *h, const char *line)
     int bcf_hdr_printf(bcf_hdr_t *h, const char *format, ...)
 
+    # VCF version, e.g. VCFv4.2
     const char *bcf_hdr_get_version(const bcf_hdr_t *hdr)
     void bcf_hdr_set_version(bcf_hdr_t *hdr, const char *version)
 

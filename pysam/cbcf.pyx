@@ -56,11 +56,15 @@
 #             index:        TabixIndex, BCFIndex or None         [read only]
 #             drop_samples: sample information is to be ignored  [read only]
 #
-#             # temporary until htslib 1.2's better format metadata
-#             is_bcf:       file is a bcf file                   [read only]
 #             is_stream:    file is stdin/stdout                 [read only]
 #             is_remote:    file is not on the local filesystem  [read only]
 #             is_reading:   file has begun reading records       [read only]
+#             category:     file format general category         [read only]
+#             format:       file format                          [read only]
+#             version:      tuple of (major, minor) format version [read only]
+#             compression:  file compression
+#             description:  vaguely human readable description of  [read only]
+#                           file format.
 #
 #         Methods:
 #             copy()
@@ -204,6 +208,11 @@ cdef int   MAX_POS = 2 << 29
 cdef tuple VALUE_TYPES = ('Flag', 'Integer', 'Float', 'String')
 cdef tuple METADATA_TYPES = ('FILTER', 'INFO', 'FORMAT', 'CONTIG', 'STRUCTURED', 'GENERIC')
 cdef tuple METADATA_LENGTHS = ('FIXED', 'VARIABLE', 'A', 'G', 'R')
+
+cdef tuple FORMAT_CATEGORIES = ('UNKNOWN', 'ALIGNMENTS', 'VARIANTS', 'INDEX', 'REGIONS')
+cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', 'BAI', 'CRAM', 'CRAI',
+                      'VCF', 'BCF', 'CSI', 'GZI', 'TBI', 'BED')
+cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 
 ########################################################################
 ########################################################################
@@ -2093,7 +2102,6 @@ cdef class VariantFile(object):
         self.index        = None
         self.filename     = None
         self.mode         = None
-        self.is_bcf       = False
         self.is_stream    = False
         self.is_remote    = False
         self.is_reading   = False
@@ -2113,6 +2121,59 @@ cdef class VariantFile(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
         return False
+
+    property category:
+        """General file format category.  One of UNKNOWN, ALIGNMENTS, VARIANTS, INDEX, REGIONS"""
+        def __get__(self):
+            if not self.htsfile:
+                raise ValueError('metadata not available on closed file')
+            return FORMAT_CATEGORIES[self.htsfile.format.category]
+
+    property format:
+        """File format.
+           One of UNKNOWN, BINARY_FORMAT, TEXT_FORMAT, SAM, BAM, BAI, CRAM, CRAI, VCF, BCF, CSI, GZI, TBI, BED.
+        """
+        def __get__(self):
+            if not self.htsfile:
+                raise ValueError('metadata not available on closed file')
+            return FORMATS[self.htsfile.format.format]
+
+    property version:
+        """Tuple of file format version numbers (major, minor)"""
+        def __get__(self):
+            if not self.htsfile:
+                raise ValueError('metadata not available on closed file')
+            return self.htsfile.format.version.major, self.htsfile.format.version.minor
+
+    property compression:
+        """File compression.  One of NONE, GZIP, BGZF, CUSTOM."""
+        def __get__(self):
+            if not self.htsfile:
+                raise ValueError('metadata not available on closed file')
+            return COMPRESSION[self.htsfile.format.compression]
+
+    property description:
+        """Vaguely human readable description of the file format"""
+        def __get__(self):
+            if not self.htsfile:
+                raise ValueError('metadata not available on closed file')
+            cdef char *desc = hts_format_description(&self.htsfile.format)
+            try:
+                return force_str(desc)
+            finally:
+                free(desc)
+
+    def close(self):
+        """closes the :class:`pysam.VariantFile`."""
+        if self.htsfile:
+            hts_close(self.htsfile)
+            self.htsfile = NULL
+        self.header = self.index = None
+
+    property is_open:
+        def __get__(self):
+            """return True if VariantFile is open and in a valid state."""
+            return self.htsfile != NULL
 
     def __iter__(self):
         if not self.is_open:
@@ -2149,53 +2210,33 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError
 
-        cdef VariantFile bcf = VariantFile.__new__(VariantFile)
+        cdef VariantFile vars = VariantFile.__new__(VariantFile)
 
         # FIXME: re-open using fd or else header and index could be invalid
-        #        adding an hts_reopen/hts_dup function will be easy once
-        #        htslib 1.2 is a bit further along
-        bcf.htsfile      = hts_open(self.filename, self.mode)
+        vars.htsfile = hts_open(self.filename, self.mode)
 
-        if not bcf.htsfile:
+        if not vars.htsfile:
             raise ValueError('Cannot re-open htsfile')
 
         # minimize overhead by re-using header and index.  This approach is
         # currently risky, but see above for how this can be mitigated.
-        bcf.header       = self.header
-        bcf.index        = self.index
+        vars.header       = self.header
+        vars.index        = self.index
 
-        bcf.filename     = self.filename
-        bcf.mode         = self.mode
-        bcf.drop_samples = self.drop_samples
-        bcf.is_bcf       = self.is_bcf
-        bcf.is_stream    = self.is_stream
-        bcf.is_remote    = self.is_remote
-        bcf.is_reading   = self.is_reading
-        bcf.start_offset = self.start_offset
+        vars.filename     = self.filename
+        vars.mode         = self.mode
+        vars.drop_samples = self.drop_samples
+        vars.is_stream    = self.is_stream
+        vars.is_remote    = self.is_remote
+        vars.is_reading   = self.is_reading
+        vars.start_offset = self.start_offset
 
-        # FIXME: seeking here does not currently work for text files.
-        # Falling back to re-reading the header for now.  There is no point
-        # in debugging this now, but I will look into this more when htslib
-        # 1.2 is more stable.
-
-        if self.is_bcf:
-            bcf.seek(self.tell())
+        if self.htsfile.is_bin:
+            vars.seek(self.tell())
         else:
-            makeVariantHeader(bcf_hdr_read(bcf.htsfile))
+            makeVariantHeader(bcf_hdr_read(vars.htsfile))
 
-        return bcf
-
-    def close(self):
-        """closes the :class:`pysam.VariantFile`."""
-        if self.htsfile:
-            hts_close(self.htsfile)
-            self.htsfile = NULL
-        self.header = self.index = None
-
-    property is_open:
-        def __get__(self):
-            """return True if VariantFile is open and in a valid state."""
-            return self.htsfile != NULL
+        return vars
 
     def open(self, filename, mode=None, VariantHeader header=None, drop_samples=False):
         """open a vcf/bcf file.
@@ -2232,7 +2273,6 @@ cdef class VariantFile(object):
         self.drop_samples = bool(drop_samples)
 
         # FIXME: Use htsFormat when it is available
-        self.is_bcf = filename.endswith('.bcf')
         self.is_remote = filename.startswith(b'http:') or filename.startswith(b'ftp:')
         self.is_stream = filename == b'-'
 
@@ -2270,7 +2310,7 @@ cdef class VariantFile(object):
                 raise ValueError("file `{}` does not have valid header (mode='{}') - is it BCF format?".format((filename, mode)))
 
             # check for index and open if present
-            if self.is_bcf:
+            if self.htsfile.format.format == bcf:
                 self.index = makeBCFIndex(self.header, bcf_index_load(filename))
             else:
                 self.index = makeTabixIndex(tbx_index_load(filename + '.tbi'))
@@ -2289,7 +2329,10 @@ cdef class VariantFile(object):
         if self.is_stream:
             raise OSError('seek not available in streams')
 
-        return bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
+        if self.htsfile.format.compression != no_compression:
+            return bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
+        else:
+            return hts_useek(self.htsfile, offset, SEEK_SET)
 
     def tell(self):
         """return current file position, see :meth:`pysam.VariantFile.seek`."""
@@ -2298,7 +2341,10 @@ cdef class VariantFile(object):
         if self.is_stream:
             raise OSError('tell not available in streams')
 
-        return bgzf_tell(hts_get_bgzfp(self.htsfile))
+        if self.htsfile.format.compression != no_compression:
+            return bgzf_tell(hts_get_bgzfp(self.htsfile))
+        else:
+            return hts_utell(self.htsfile)
 
     def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False):
         """fetch records in a :term:`region` using 0-based indexing. The
