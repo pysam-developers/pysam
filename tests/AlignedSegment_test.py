@@ -314,11 +314,11 @@ class TestTags(ReadTest):
         samfile = pysam.AlignmentFile(
             os.path.join(DATADIR, "ex8.bam"),
             "rb")
-        
+
         for entry in samfile:
-            before = entry.tags
-            entry.tags = entry.tags
-            after = entry.tags
+            before = entry.get_tags()
+            entry.set_tags(before)
+            after = entry.get_tags()
             self.assertEqual(after, before)
 
 if __name__ == "__main__":
