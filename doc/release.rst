@@ -37,7 +37,7 @@ Release 0.8.1
      * pnext -> next_reference_start
      * cigar -> cigartuples
      * cigarstring -> cigarstring
-     * tlen -> query_length
+     * tlen -> template_length
      * seq -> query_sequence
      * qual -> query_qualities, now returns array
      * qqual -> query_alignment_qualities, now returns array
