@@ -11,7 +11,9 @@ Release 0.8.2
      instead.
    * added has_tag()
    * tags is deprecated, use get_tags() and set_tags() instead.
-
+* FastqFile is now FastxFile to reflect that the latter permits
+  iteration over both fastq- and fasta-formatted files.
+  
 Release 0.8.1
 =============
 

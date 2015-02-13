@@ -16,7 +16,7 @@
 # The sample keys are accessible through vcf.getsamples()
 #
 # A dictionary of values contains value keys (defined in ##INFO or
-# ##FORMAT lines) which map to a list, containign integers, floats,
+# ##FORMAT lines) which map to a list, containing integers, floats,
 # strings, or characters.  Missing values are replaced by a particular
 # value, often -1 or .
 #

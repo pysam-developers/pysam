@@ -85,9 +85,6 @@ cdef class AlignmentFile:
     # pointer to htsFile structure
     cdef htsFile * htsfile
 
-    # pointer to compressed file
-    cdef BGZF * fp
-
     # pointer to index
     cdef hts_idx_t *index
     # header structure
@@ -113,7 +110,7 @@ cdef class AlignmentFile:
     cdef int cnext(self)
 
     # write an aligned read
-    cpdef int write(self, AlignedSegment read)
+    cpdef int write(self, AlignedSegment read) except -1
 
     cdef char * _getrname(self, int tid)
 
@@ -165,7 +162,6 @@ cdef class IteratorRowSelection(IteratorRow):
     cdef positions
     cdef bam1_t * getCurrent( self )
     cdef int cnext(self)
-    cdef BGZF * fp
 
 cdef class IteratorColumn:
 
@@ -208,5 +204,4 @@ cdef class IndexedReads:
     cdef htsFile * htsfile
     cdef index
     cdef int owns_samfile
-    cdef BGZF * fp
     cdef bam_hdr_t * header

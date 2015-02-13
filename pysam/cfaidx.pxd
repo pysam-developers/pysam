@@ -22,18 +22,21 @@ cdef class FastqProxy:
     cdef kseq_t * _delegate
 
 
-cdef class FastqFile:
+cdef class FastxFile:
     cdef object _filename
     cdef gzFile fastqfile
     cdef kseq_t * entry
 
-    cdef kseq_t * getCurrent( self )
+    cdef kseq_t * getCurrent(self)
     cdef int cnext(self)
 
+# Compatibility Layer for pysam 0.8.1
+cdef class FastqFile(FastxFile):
+    pass
 
 # Compatibility Layer for pysam < 0.8
 cdef class Fastafile(FastaFile):
     pass
 
-cdef class Fastqfile(FastqFile):
+cdef class Fastqfile(FastxFile):
     pass

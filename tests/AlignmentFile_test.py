@@ -1443,7 +1443,6 @@ class TestWrongFormat(unittest.TestCase):
 
 
 class TestDeNovoConstruction(unittest.TestCase):
-
     '''check BAM/SAM file construction using ex6.sam
 
     (note these are +1 coordinates):

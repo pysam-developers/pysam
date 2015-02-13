@@ -390,84 +390,99 @@ cdef class GTFProxy(TupleProxy):
 
     cdef int getMinFields(self):
         '''return minimum number of fields.'''
-        return 3
+        return 9
 
     cdef int getMaxFields(self):
         '''return max number of fields.'''
         return 9
 
     property contig:
-       '''contig of feature.'''
-       def __get__(self):
-           return self._getindex(0)
-       def __set__(self, value):
-           self._setindex(0, value)
+        '''contig of feature.'''
+        def __get__(self):
+            return self._getindex(0)
+        def __set__(self, value):
+            self._setindex(0, value)
 
     property source:
-       '''feature source.'''
-       def __get__(self):
-           return self._getindex(1)
-       def __set__(self, value):
-           self._setindex(1, value)
+        '''feature source.'''
+        def __get__(self):
+            return self._getindex(1)
+        def __set__(self, value):
+            self._setindex(1, value)
 
     property feature:
-       '''feature name.'''
-       def __get__( self ): return self._getindex( 2 )
-       def __set__( self, value ): self._setindex( 2, value )
+        '''feature name.'''
+        def __get__(self):
+            return self._getindex(2)
+        def __set__(self, value):
+            self._setindex(2, value)
 
     property start:
-       '''feature start (in 0-based open/closed coordinates).'''
-       def __get__( self ): return int( self._getindex( 3 )) - 1
-       def __set__( self, value ): self._setindex( 3, str(value+1) )
+        '''feature start (in 0-based open/closed coordinates).'''
+        def __get__(self ):
+            return int( self._getindex(3)) - 1
+        def __set__(self, value ):
+            self._setindex(3, str(value+1))
 
     property end:
-       '''feature end (in 0-based open/closed coordinates).'''
-       def __get__( self ): return int( self._getindex( 4 ) )
-       def __set__( self, value ): self._setindex( 4, str(value) )
+        '''feature end (in 0-based open/closed coordinates).'''
+        def __get__(self):
+            return int(self._getindex(4))
+        def __set__(self, value):
+            self._setindex(4, str(value))
 
     property score:
-       '''feature score.'''
-       def __get__( self ): 
-           v = self._getindex(5)
-           if v == "" or v[0] == '.':
-               return None
-           else:
-               return float(v)
+        '''feature score.'''
+        def __get__(self): 
+            v = self._getindex(5)
+            if v == "" or v[0] == '.':
+                return None
+            else:
+                return float(v)
 
-       def __set__( self, value ): self._setindex( 5, value )
+        def __set__(self, value):
+            self._setindex(5, value)
 
     property strand:
-       '''feature strand.'''
-       def __get__( self ): return self._getindex( 6 )
-       def __set__( self, value ): self._setindex( 6, value )
+        '''feature strand.'''
+        def __get__(self ):
+            return self._getindex(6)
+        def __set__(self, value ):
+            self._setindex(6, value)
 
     property frame:
        '''feature frame.'''
-       def __get__( self ): return self._getindex( 7 )
-       def __set__( self, value ): self._setindex( 7, value )
+       def __get__(self):
+           return self._getindex(7)
+       def __set__(self, value):
+           self._setindex(7, value)
 
     property attributes:
-       '''feature attributes (as a string).'''
-       def __get__( self ): 
-           if self.hasOwnAttributes:
-               return self._attributes
-           else:
-               return self._getindex(8)
-       def __set__( self, value ): 
-           if self.hasOwnAttributes:
-               free(self._attributes)
-               self._attributes = NULL
-               self.hasOwnAttributes = False
-           self._setindex(8, value )
+        '''feature attributes (as a string).'''
+        def __get__(self): 
+            if self.hasOwnAttributes:
+                return self._attributes
+            else:
+                return self._getindex(8)
+        def __set__( self, value): 
+            if self.hasOwnAttributes:
+                free(self._attributes)
+                self._attributes = NULL
+                self.hasOwnAttributes = False
+            self._setindex(8, value)
 
     cdef char * getAttributes(self):
-       '''return pointer to attributes.'''
-       if self.hasOwnAttributes:
-           return self._attributes
-       else:
-           return self.fields[8]
+        '''return pointer to attributes.'''
+        cdef char * attributes
+        if self.hasOwnAttributes:
+            attributes = self._attributes
+        else:
+            attributes = self.fields[8]
+        if attributes == NULL:
+            raise KeyError("no attributes defined GTF entry")
+        return attributes
 
-    def asDict( self ):
+    def asDict(self):
         """parse attributes - return as dict
         """
 
@@ -475,7 +490,12 @@ cdef class GTFProxy(TupleProxy):
         attributes = self.attributes
 
         # separate into fields
-        fields = [x.strip() for x in attributes.split(";")[:-1]]
+        # Fields might contain a ";", for example in ENSEMBL GTF file
+        # for mouse, v78:
+        # ...; transcript_name "TXNRD2;-001"; ....
+        # The current heuristic is to split on a semicolon followed by a
+        # space, see also http://mblab.wustl.edu/GTF22.html
+        fields = [x.strip() for x in attributes.split("; ")[:-1]]
         
         result = {}
 
@@ -560,11 +580,12 @@ cdef class GTFProxy(TupleProxy):
             end = max(self.start, self.end)
             self.start, self.end = lcontig - end, lcontig - start
 
-    def keys( self ):
+    def keys(self):
         '''return a list of attributes defined in this entry.'''
         r = self.attributes
         return [x.strip().split(" ")[0]
-                for x in r.split(";") if x.strip() != '']
+                # separator is ';' followed by space
+                for x in r.split("; ") if x.strip() != '']
 
     def __getitem__(self, key):
         return self.__getattr__(key)
@@ -593,6 +614,8 @@ cdef class GTFProxy(TupleProxy):
         # disappeard after accessing the C data structures
         # directly and so did the bug.
         cdef char * attributes = self.getAttributes()
+        if attributes == NULL:
+            raise KeyError("key %s not found, no attributes" % item)
 
         # add space in order to make sure
         # to not pick up a field that is a prefix of another field

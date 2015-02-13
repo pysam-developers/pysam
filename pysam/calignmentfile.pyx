@@ -484,11 +484,6 @@ cdef class AlignmentFile:
                     "could not open file (mode='%s') - "
                     "is it SAM/BAM format?" % mode)
 
-            # get file pointer
-            # TODO: this is specific to BAM files
-            #       refactor to make generalizable
-            self.fp = self.htsfile.fp.bgzf
-
             # bam files require a valid header
             if self.is_bam or self.is_cram:
                 self.header = sam_hdr_read(self.htsfile)
@@ -553,7 +548,7 @@ cdef class AlignmentFile:
 
             # save start of data section
             if not self.is_stream:
-                self.start_offset = bgzf_tell(self.fp)
+                self.start_offset = self.tell()
 
     def gettid(self, reference):
         '''
@@ -671,7 +666,7 @@ cdef class AlignmentFile:
         if self.is_stream:
             raise OSError("seek no available in streams")
 
-        return bgzf_seek(self.fp, offset, where)
+        return bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
 
     def tell(self):
         '''
@@ -679,11 +674,11 @@ cdef class AlignmentFile:
         '''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
-        if not self.is_bam:
+        if not (self.is_bam or self.is_cram):
             raise NotImplementedError(
                 "seek only available in bam files")
 
-        return bgzf_tell(self.fp)
+        return bgzf_tell(hts_get_bgzfp(self.htsfile))
 
     def fetch(self,
               reference=None,
@@ -978,6 +973,12 @@ cdef class AlignmentFile:
         # remember: dealloc cannot call other methods
         # note: no doc string
         # note: __del__ is not called.
+
+        # FIXME[kbj]: isn't self.close a method?  I've been duplicating
+        # close within __dealloc__ (see BCFFile.__dealloc__).  Not a pretty
+        # solution and perhaps unnecessary given that calling self.close has
+        # been working for years.
+
         self.close()
         bam_destroy1(self.b)
         if self.header != NULL:
@@ -992,11 +993,17 @@ cdef class AlignmentFile:
         if not self._isOpen():
             return 0
 
-        x = sam_write1(self.htsfile,
-                       self.header,
-                       read._delegate)
+        cdef int ret = sam_write1(self.htsfile,
+                                  self.header,
+                                  read._delegate)
 
-        return x
+        # kbj: Still need to raise an exception with except -1. Otherwise
+        #      when ret == -1 we get a "SystemError: error return without
+        #      exception set".
+        if ret < 0:
+            raise ValueError('sam write failed')
+
+        return ret
 
     def __enter__(self):
         return self
@@ -1011,7 +1018,7 @@ cdef class AlignmentFile:
     ## properties
     ###############################################################
     property filename:
-        '''number of :term:`filename` associated with this object.'''
+        ''':term:`filename` associated with this object.'''
         def __get__(self):
             return self._filename
 
@@ -1439,7 +1446,7 @@ cdef class IteratorRowRegion(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        self.retval = hts_itr_next(self.htsfile.fp.bgzf,
+        self.retval = hts_itr_next(hts_get_bgzfp(self.htsfile),
                                    self.iter,
                                    self.b,
                                    self.htsfile)
@@ -1644,8 +1651,6 @@ cdef class IteratorRowSelection(IteratorRow):
         self.positions = positions
         self.current_pos = 0
 
-        self.fp = self.htsfile.fp.bgzf
-
     def __iter__(self):
         return self
 
@@ -1658,7 +1663,7 @@ cdef class IteratorRowSelection(IteratorRow):
         # end iteration if out of positions
         if self.current_pos >= len(self.positions): return -1
 
-        bgzf_seek(self.fp,
+        bgzf_seek(hts_get_bgzfp(self.htsfile),
                   self.positions[self.current_pos],
                   0)
         self.current_pos += 1
@@ -3790,9 +3795,6 @@ cdef class IndexedReads:
             self.header = self.samfile.header
             self.owns_samfile = False
 
-        # TODO: BAM file specific
-        self.fp = self.htsfile.fp.bgzf
-
     def build(self):
         '''build index.'''
 
@@ -3806,7 +3808,7 @@ cdef class IndexedReads:
         cdef uint64_t pos
 
         while ret > 0:
-            pos = bgzf_tell(self.fp)
+            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
             ret = sam_read1(self.htsfile,
                             self.samfile.header,
                             b)

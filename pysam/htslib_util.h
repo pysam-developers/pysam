@@ -1,6 +1,19 @@
 #ifndef PYSAM_UTIL_H
 #define PYSAM_UTIL_H
 
+#include "htslib/sam.h"
+#include "htslib/vcf.h"
+#include "htslib/khash.h"
+
+KHASH_MAP_INIT_STR(vdict, bcf_idinfo_t)
+typedef khash_t(vdict) vdict_t;
+
+KHASH_DECLARE(s2i, kh_cstr_t, int64_t)
+typedef khash_t(s2i) s2i_t;
+
+int hts_useek(htsFile *fp, long uoffset, int where);
+long hts_utell(htsFile *fp);
+
 //////////////////////////////////////////////////////////////////
 /*! set pysam standard error to point to file descriptor
 
