@@ -1,6 +1,6 @@
 # pysam versioning information
 
-__version__ = "0.8.1"
+__version__ = "0.8.2pre-bcf"
 
 __samtools_version__ = "1.1"
 
