@@ -5,6 +5,7 @@ Release notes
 Release 0.8.2
 =============
 
+* Pysam now wraps htslib 1.2.1 and samtools version 1.2
 * Added CRAM file support to pysam
 * New alignment info interface.
    * opt() and setTag are deprecated, use get_tag() and set_tag()
