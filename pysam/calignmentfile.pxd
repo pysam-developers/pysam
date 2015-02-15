@@ -104,7 +104,7 @@ cdef class AlignmentFile:
     cdef int cnext(self)
 
     # write an aligned read
-    cpdef int write(self, AlignedSegment read)
+    cpdef int write(self, AlignedSegment read) except -1
 
     cdef char * _getrname(self, int tid)
 
