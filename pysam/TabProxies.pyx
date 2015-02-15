@@ -495,11 +495,16 @@ cdef class GTFProxy(TupleProxy):
         # ...; transcript_name "TXNRD2;-001"; ....
         # The current heuristic is to split on a semicolon followed by a
         # space, see also http://mblab.wustl.edu/GTF22.html
-        fields = [x.strip() for x in attributes.split("; ")[:-1]]
+        fields = [x.strip() for x in attributes.split("; ")]
         
         result = {}
 
         for f in fields:
+
+            # strip semicolon (GTF files without a space after the last semicolon)
+            if f.endswith(";"):
+                f = f[:-1]
+
             # split at most once in order to avoid separating
             # multi-word values
             d = [x.strip() for x in string.split(f, " ", maxsplit=1)]
@@ -543,10 +548,10 @@ cdef class GTFProxy(TupleProxy):
         a = "; ".join( aa ) + ";"
         p = a
         l = len(a)
-        self._attributes = <char *>calloc( l + 1, sizeof(char) )
+        self._attributes = <char *>calloc(l + 1, sizeof(char))
         if self._attributes == NULL:
-            raise ValueError("out of memory" )
-        memcpy( self._attributes, p, l )
+            raise ValueError("out of memory")
+        memcpy(self._attributes, p, l)
 
         self.hasOwnAttributes = True
         self.is_modified = True

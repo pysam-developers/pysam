@@ -42,13 +42,13 @@ Release 0.8.1
      * mapq -> mapping_quality
      * rnext -> next_reference_id
      * pnext -> next_reference_start
-     * cigar = alignment
-     * cigarstring = cigarstring
-     * tlen -> query_length
+     * cigar -> cigartuples
+     * cigarstring -> cigarstring
+     * tlen -> template_length
      * seq -> query_sequence
      * qual -> query_qualities, now returns array
      * qqual -> query_alignment_qualities, now returns array
-     * tags = tags
+     * tags -> tags
      * alen -> reference_length, reference is always "alignment", so removed
      * aend -> reference_end
      * rlen -> query_length
