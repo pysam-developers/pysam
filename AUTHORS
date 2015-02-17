@@ -1,10 +1,12 @@
 List of contributors:
 
-Andreas Heger, Tildon Grant Belgard, Kevin B. Jacobs, Florian
-Finkernagel, Leo Goodstadt, Martin Goodson all contributed code
-to pysam.
+Andreas Heger, Tildon Grant Belgard, Florian Finkernagel, Leo
+Goodstadt, Martin Goodson all contributed code to pysam.
 
-Gerton Lunter provided a VCF parser.
+Kevin B. Jacobs implemented a Cython wrapper for the VCF/BCF
+reader/writer in htslib.
+
+Gerton Lunter provided a validating VCF parser.
 
 Marcel Martin implemented python 3 compatibility.
 Ben Schiller contributed a Windows compatible clone.

@@ -69,7 +69,14 @@ cdef class AlignedSegment:
 
     # add an alignment tag with value to the AlignedSegment
     # an existing tag of the same name will be replaced.
-    cpdef setTag( self, tag, value, value_type = ?, replace = ? )
+    cpdef set_tag(self, tag, value, value_type=?, replace=?)
+
+    # add an alignment tag with value to the AlignedSegment
+    # an existing tag of the same name will be replaced.
+    cpdef get_tag(self, tag)
+
+    # return true if tag exists
+    cpdef has_tag(self, tag)
 
 cdef class AlignmentFile:
 
@@ -78,19 +85,18 @@ cdef class AlignmentFile:
     # pointer to htsFile structure
     cdef htsFile * htsfile
 
-    # pointer to compressed file
-    cdef BGZF * fp
-
     # pointer to index
     cdef hts_idx_t *index
     # header structure
     cdef bam_hdr_t * header
-    # true if file is a bam file
-    cdef int isbam
+    # true if file is bam format
+    cdef readonly bint is_bam
+    # true if file is bam format
+    cdef readonly bint is_cram
     # true if not a file but a stream
-    cdef int isstream
+    cdef readonly bint is_stream
     # true if file is not on the local filesystem
-    cdef int isremote
+    cdef readonly bint is_remote
     # current read within iteration
     cdef bam1_t * b
     # file opening mode
@@ -156,7 +162,6 @@ cdef class IteratorRowSelection(IteratorRow):
     cdef positions
     cdef bam1_t * getCurrent( self )
     cdef int cnext(self)
-    cdef BGZF * fp
 
 cdef class IteratorColumn:
 
@@ -199,5 +204,4 @@ cdef class IndexedReads:
     cdef htsFile * htsfile
     cdef index
     cdef int owns_samfile
-    cdef BGZF * fp
     cdef bam_hdr_t * header

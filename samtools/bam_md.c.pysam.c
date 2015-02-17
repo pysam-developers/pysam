@@ -32,7 +32,6 @@ DEALINGS IN THE SOFTWARE.  */
 #include "htslib/faidx.h"
 #include "sam.h"
 #include "htslib/kstring.h"
-#include "kaln.h"
 #include "kprobaln.h"
 
 #define USE_EQUAL 1

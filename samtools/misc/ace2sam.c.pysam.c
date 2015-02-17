@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
                 if (t[1].s[i] != '*') ++k;
             }
             // write out the SAM header and contig sequences
-            fprintf(pysamerr, "H @SQ\tSN:%s\tLN:%ld\n", t[0].s, t[is_padded?1:2].l); // The SAM header line
+            fprintf(pysamerr, "H @SQ\tSN:%s\tLN:%llu\n", t[0].s, (unsigned long long)(t[is_padded?1:2].l)); // The SAM header line
             cns = &t[is_padded?1:2];
             fprintf(pysamerr, "S >%s\n", t[0].s);
             for (i = 0; i < cns->l; i += LINE_LEN) {

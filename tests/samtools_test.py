@@ -23,7 +23,6 @@ DATADIR = "pysam_data"
 
 def runSamtools(cmd):
     '''run a samtools command'''
-
     try:
         retcode = subprocess.call(cmd, shell=True,
                                   stderr=subprocess.PIPE)
@@ -224,16 +223,11 @@ class BinaryTest(unittest.TestCase):
             # copy the source files to WORKDIR
             os.makedirs(WORKDIR)
 
-            shutil.copy(os.path.join(DATADIR, "ex1.fa"),
-                        os.path.join(WORKDIR, "pysam_ex1.fa"))
-            shutil.copy(os.path.join(DATADIR, "ex1.fa"),
-                        os.path.join(WORKDIR, "ex1.fa"))
-            shutil.copy(os.path.join(DATADIR, "ex1.sam.gz"),
-                        os.path.join(WORKDIR, "ex1.sam.gz"))
-            shutil.copy(os.path.join(DATADIR, "ex1.sam"),
-                        os.path.join(WORKDIR, "ex1.sam"))
-            shutil.copy(os.path.join(DATADIR, "ex2.bam"),
-                        os.path.join(WORKDIR, "ex2.bam"))
+            for f in ("ex1.fa", "ex1.sam.gz",
+                      "ex1.sam", "ex2.bam",
+                      "ex1.bed"):
+                shutil.copy(os.path.join(DATADIR, f),
+                            os.path.join(WORKDIR, f))
 
             # cd to workdir
             savedir = os.getcwd()

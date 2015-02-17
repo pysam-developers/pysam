@@ -100,7 +100,7 @@ int main_depth(int argc, char *argv[])
         fprintf(pysamerr, "Options:\n");
         fprintf(pysamerr, "   -b <bed>            list of positions or regions\n");
         fprintf(pysamerr, "   -f <list>           list of input BAM filenames, one per line [null]\n");
-        fprintf(pysamerr, "   -l <int>            minQLen\n");
+        fprintf(pysamerr, "   -l <int>            read length threshold (ignore reads shorter than <int>)\n");
         fprintf(pysamerr, "   -q <int>            base quality threshold\n");
         fprintf(pysamerr, "   -Q <int>            mapping quality threshold\n");
         fprintf(pysamerr, "   -r <chr:from-to>    region\n");
@@ -127,6 +127,16 @@ int main_depth(int argc, char *argv[])
             print_error_errno("Could not open \"%s\"", argv[optind+i]);
             status = EXIT_FAILURE;
             goto depth_end;
+        }
+        if (hts_set_opt(data[i]->fp, CRAM_OPT_REQUIRED_FIELDS,
+                        SAM_FLAG | SAM_RNAME | SAM_POS | SAM_MAPQ | SAM_CIGAR |
+                        SAM_SEQ)) {
+            fprintf(pysamerr, "Failed to set CRAM_OPT_REQUIRED_FIELDS value\n");
+            return 1;
+        }
+        if (hts_set_opt(data[i]->fp, CRAM_OPT_DECODE_MD, 0)) {
+            fprintf(pysamerr, "Failed to set CRAM_OPT_DECODE_MD value\n");
+            return 1;
         }
         data[i]->min_mapQ = mapQ;                    // set the mapQ filter
         data[i]->min_len  = min_len;                 // set the qlen filter
@@ -179,8 +189,8 @@ int main_depth(int argc, char *argv[])
 depth_end:
     for (i = 0; i < n && data[i]; ++i) {
         bam_hdr_destroy(data[i]->hdr);
-        sam_close(data[i]->fp);
-        if (data[i]->iter) hts_itr_destroy(data[i]->iter);
+        if (data[i]->fp) sam_close(data[i]->fp);
+        hts_itr_destroy(data[i]->iter);
         free(data[i]);
     }
     free(data); free(reg);

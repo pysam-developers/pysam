@@ -40,18 +40,29 @@ import version
 version = version.__version__
 
 # exclude sources that contains a main function
-samtools_exclude = ("bamtk.c", "razip.c", "bgzip.c",
-                    "main.c", "calDepth.c", "bam2bed.c",
-                    "wgsim.c", "md5fa.c", "maq2sam.c",
+samtools_exclude = ("bamtk.c",
+                    "razip.c",
+                    "bgzip.c",
+                    "main.c",
+                    "calDepth.c",
+                    "bam2bed.c",
+                    "wgsim.c",
+                    "md5fa.c",
+                    "maq2sam.c",
                     "bamcheck.c",
                     "chk_indel.c",
-                    "vcf-miniview.c")
-htslib_exclude = ('htslib/tabix.c', 'htslib/bgzip.c')
-tabix_exclude = ("main.c",)
+                    "vcf-miniview.c",
+                    "htslib-1.2.1",   # do not import twice
+                    "hfile_irods.c",  # requires irods library
+                    )
+
+htslib_exclude = ('htslib/tabix.c',
+                  'htslib/bgzip.c',
+                  'htslib/htsfile.c',
+                  'htslib/hfile_irods.c')
 
 # destination directories for import of samtools and tabix
 samtools_dest = os.path.abspath("samtools")
-tabix_dest = os.path.abspath("tabix")
 
 if HTSLIB_LIBRARY_DIR:
     # linking against a shared, externally installed htslib version, no
@@ -93,7 +104,8 @@ else:
 
 def locate(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
-    supplied root directory.'''
+    supplied root directory.
+    '''
     for path, dirs, files in os.walk(os.path.abspath(root)):
         for filename in fnmatch.filter(files, pattern):
             yield os.path.join(path, filename)
@@ -137,58 +149,68 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
     if len(sys.argv) < 3:
         raise ValueError("missing PATH to samtools source directory")
 
-    for destdir, srcdir, exclude in zip(
-            (samtools_dest,),
-            sys.argv[2:3],
-            (samtools_exclude,)):
+    destdir = samtools_dest
+    srcdir = sys.argv[2]
+    exclude = samtools_exclude
 
-        srcdir = os.path.abspath(srcdir)
-        if not os.path.exists(srcdir):
-            raise IOError("source directory `%s` does not exist." % srcdir)
+    srcdir = os.path.abspath(srcdir)
+    if not os.path.exists(srcdir):
+        raise IOError(
+            "source directory `%s` does not exist." % srcdir)
 
-        cfiles = locate("*.c", srcdir)
-        hfiles = locate("*.h", srcdir)
-        ncopied = 0
+    cfiles = locate("*.c", srcdir)
+    hfiles = locate("*.h", srcdir)
 
-        def _compareAndCopy(src, srcdir, destdir, exclude):
+    # remove unwanted files and htslib subdirectory.
+    cfiles = [x for x in cfiles if os.path.basename(x) not in exclude
+              and not re.search("htslib-", x)]
 
-            d, f = os.path.split(src)
-            if f in exclude:
-                return None
-            common_prefix = os.path.commonprefix((d, srcdir))
-            subdir = re.sub(common_prefix, "", d)[1:]
-            targetdir = os.path.join(destdir, subdir)
-            if not os.path.exists(targetdir):
-                os.makedirs(targetdir)
-            old_file = os.path.join(targetdir, f)
-            if os.path.exists(old_file):
-                md5_old = hashlib.md5(
-                    "".join(open(old_file, "r").readlines())).digest()
-                md5_new = hashlib.md5(
-                    "".join(open(src, "r").readlines())).digest()
-                if md5_old != md5_new:
-                    raise ValueError(
-                        "incompatible files for %s and %s" % (old_file, src))
+    hfiles = [x for x in hfiles if os.path.basename(x) not in exclude
+              and not re.search("htslib-", x)]
 
-            shutil.copy(src, targetdir)
-            return old_file
+    ncopied = 0
 
-        for src_file in hfiles:
-            _compareAndCopy(src_file, srcdir, destdir, exclude)
-            ncopied += 1
+    def _compareAndCopy(src, srcdir, destdir, exclude):
 
-        cf = []
-        for src_file in cfiles:
-            cf.append(_compareAndCopy(src_file, srcdir, destdir, exclude))
-            ncopied += 1
+        d, f = os.path.split(src)
+        common_prefix = os.path.commonprefix((d, srcdir))
+        subdir = re.sub(common_prefix, "", d)[1:]
+        targetdir = os.path.join(destdir, subdir)
+        if not os.path.exists(targetdir):
+            os.makedirs(targetdir)
+        old_file = os.path.join(targetdir, f)
+        if os.path.exists(old_file):
+            md5_old = hashlib.md5(
+                "".join(open(old_file, "r").readlines())).digest()
+            md5_new = hashlib.md5(
+                "".join(open(src, "r").readlines())).digest()
+            if md5_old != md5_new:
+                raise ValueError(
+                    "incompatible files for %s and %s" %
+                    (old_file, src))
 
-        sys.stdout.write(
-            "installed latest source code from %s: "
-            "%i files copied\n" % (srcdir, ncopied))
-        # redirect stderr to pysamerr and replace bam.h with a stub.
-        sys.stdout.write("applying stderr redirection\n")
+        shutil.copy(src, targetdir)
+        return old_file
 
-        _update_pysam_files(cf, destdir)
+    for src_file in hfiles:
+        _compareAndCopy(src_file, srcdir, destdir, exclude)
+        ncopied += 1
+
+    cf = []
+    for src_file in cfiles:
+        cf.append(_compareAndCopy(src_file,
+                                  srcdir,
+                                  destdir,
+                                  exclude))
+        ncopied += 1
+
+    sys.stdout.write(
+        "installed latest source code from %s: "
+        "%i files copied\n" % (srcdir, ncopied))
+    # redirect stderr to pysamerr and replace bam.h with a stub.
+    sys.stdout.write("applying stderr redirection\n")
+
+    _update_pysam_files(cf, destdir)
 
     sys.exit(0)
 
@@ -197,7 +219,7 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
     sys.stdout.write("refreshing latest source code from .c to .pysam.c")
     # redirect stderr to pysamerr and replace bam.h with a stub.
     sys.stdout.write("applying stderr redirection")
-    for destdir in ('samtools', 'tabix'):
+    for destdir in ('samtools', ):
         pysamcfiles = locate("*.pysam.c", destdir)
         for f in pysamcfiles:
             os.remove(f)
@@ -231,6 +253,7 @@ except ImportError:
     calignmentfile_sources = ["pysam/calignmentfile.c"]
     tabproxies_sources = ["pysam/TabProxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
+    cbcf_sources = ["pysam/cbcf.c"]
 else:
     # remove existing files to recompute
     # necessary to be both compatible for python 2.7 and 3.3
@@ -241,7 +264,9 @@ else:
                   "pysam/cfaidx.c",
                   "pysam/csamfile.c",
                   "pysam/TabProxies.c",
-                  "pysam/cvcf.c"):
+                  "pysam/cvcf.c",
+                  "pysam/bvcf.c",
+                  ):
             try:
                 os.unlink(f)
             except:
@@ -256,6 +281,7 @@ else:
     faidx_sources = ["pysam/cfaidx.pyx"]
     tabproxies_sources = ["pysam/TabProxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
+    cbcf_sources = ["pysam/cbcf.pyx"]
 
 
 #######################################################
@@ -415,6 +441,22 @@ cvcf = Extension(
     extra_compile_args=["-Wno-error=declaration-after-statement"],
 )
 
+cbcf = Extension(
+    "pysam.cbcf",
+    cbcf_sources +
+    htslib_sources +
+    os_c_files,
+    library_dirs=htslib_library_dirs,
+    include_dirs=["htslib"] + include_os + htslib_include_dirs,
+    libraries=["z"] + htslib_libraries,
+    language="c",
+    extra_compile_args=[
+        "-Wno-error=declaration-after-statement",
+        "-DSAMTOOLS=1"],
+    define_macros=[('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')]
+)
+
 metadata = {
     'name': name,
     'version': version,
@@ -432,7 +474,7 @@ metadata = {
                  'pysam.include.samtools',
                  # 'pysam.include.samtools.bcftools',
                  'pysam.include.samtools.win32'],
-    'requires': ['cython (>=0.20.1)'],
+    'requires': ['cython (>=0.21)'],
     'ext_modules': [samtools,
                     htslib,
                     samfile,
@@ -440,6 +482,7 @@ metadata = {
                     tabix,
                     tabproxies,
                     cvcf,
+                    cbcf,
                     faidx],
     'cmdclass': cmdclass,
     'package_dir': {'pysam': 'pysam',

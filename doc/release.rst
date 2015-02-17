@@ -3,11 +3,23 @@ Release notes
 =============
 
 Release 0.8.2
+=============
 
+* Pysam now wraps htslib 1.2.1 and samtools version 1.2
+* Added CRAM file support to pysam
+* New alignment info interface.
+   * opt() and setTag are deprecated, use get_tag() and set_tag()
+     instead.
+   * added has_tag()
+   * tags is deprecated, use get_tags() and set_tags() instead.
 * FastqFile is now FastxFile to reflect that the latter permits
   iteration over both fastq- and fasta-formatted files.
+* A Cython wrapper for htslib VCF/BCF reader/writer. The wrapper
+  provides a nearly complete Pythonic interface to VCF/BCF metadata
+  with reading and writing capability. However, the interface is still
+  incomplete and preliminary and lacks capability to mutate the
+  resulting data.
   
-
 Release 0.8.1
 =============
 

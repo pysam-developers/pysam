@@ -10,6 +10,8 @@ import pysam.cfaidx as cfaidx
 from pysam.cfaidx import *
 import pysam.cvcf as cvcf
 from pysam.cvcf import *
+import pysam.cbcf as cbcf
+from pysam.cbcf import *
 import pysam.csamtools as csamtools
 
 import pysam.Pileup as Pileup
@@ -145,6 +147,7 @@ __all__ = \
     libchtslib.__all__ + \
     ctabix.__all__ + \
     cvcf.__all__ +\
+    cbcf.__all__ +\
     cfaidx.__all__ +\
     calignmentfile.__all__ +\
     csamfile.__all__ +\
@@ -180,4 +183,5 @@ def get_libraries():
         'cfaidx.so',
         'csamfile.so',
         'cvcf.so',
+        'cbcf.so',
         'ctabix.so')]
