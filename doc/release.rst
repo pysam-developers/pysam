@@ -2,6 +2,12 @@
 Release notes
 =============
 
+Release 0.8.2.1
+===============
+
+* Installation bugfix release
+
+
 Release 0.8.2
 =============
 
