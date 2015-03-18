@@ -709,12 +709,12 @@ def tabix_compress(filename_in,
     fn = _encodeFilename(filename_out)
     fp = bgzf_open( fn, "w")
     if fp == NULL:
-        raise IOError("could not open '%s' for writing")
+        raise IOError("could not open '%s' for writing" % (filename_out, ))
 
     fn = _encodeFilename(filename_in)
     fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
-        raise IOError("could not open '%s' for reading")
+        raise IOError("could not open '%s' for reading" % (filename_in, ))
 
     buffer = malloc(WINDOW_SIZE)
     c = 1
