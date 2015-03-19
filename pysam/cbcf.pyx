@@ -196,7 +196,19 @@ from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython.version cimport PY_MAJOR_VERSION
 
 
-__all__ = ['VariantFile', 'VariantHeader']
+__all__ = ['VariantFile', 'VariantHeader', 'set_hts_verbose', 'get_hts_verbose']
+
+
+
+def set_hts_verbose(int verbosity):
+    u"""Set htslib's hts_verbose global variable to the specified value.
+    """
+    cdef extern int hts_verbose = verbosity
+
+def get_hts_verbose():
+    u"""Return the value of htslib's hts_verbose global variable.
+    """
+    return hts_verbose
 
 
 ########################################################################
