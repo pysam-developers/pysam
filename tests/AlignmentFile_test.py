@@ -2008,6 +2008,18 @@ class TestAlignmentFileIndex(unittest.TestCase):
                 self.assertEqual(x.query_name, qname)
 
 
+class TestVerbosity(unittest.TestCase):
+    '''test if setting/getting of verbosity works.'''
+
+    def testVerbosity(self):
+        self.assertEqual(pysam.get_verbosity(), 3)
+        old = pysam.set_verbosity(0)
+        self.assertEqual(pysam.get_verbosity(), 0)
+        new = pysam.set_verbosity(old)
+        self.assertEqual(new, 0)
+        self.assertEqual(pysam.get_verbosity(), 3)
+
+
 if __name__ == "__main__":
     # build data files
     print ("building data files")

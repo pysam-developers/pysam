@@ -12,6 +12,9 @@ cdef extern from *:
 
 cdef extern from "htslib_util.h":
 
+    int hts_set_verbosity(int verbosity)
+    int hts_get_verbosity()
+
     # add *nbytes* into the variable length data of *src* at *pos*
     bam1_t * pysam_bam_update(bam1_t * b,
                               size_t nbytes_old,

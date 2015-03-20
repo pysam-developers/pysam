@@ -90,5 +90,5 @@ cdef _charptr_to_str(char* s):
     else:
         return s.decode("ascii")
 
-
 __all__ = []
+
