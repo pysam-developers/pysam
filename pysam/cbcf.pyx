@@ -195,9 +195,7 @@ cimport cython
 from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython.version cimport PY_MAJOR_VERSION
 
-
 __all__ = ['VariantFile', 'VariantHeader']
-
 
 ########################################################################
 ########################################################################

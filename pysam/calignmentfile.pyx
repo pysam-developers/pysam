@@ -3838,6 +3838,16 @@ cdef class IndexedReads:
             hts_close(self.htsfile)
             bam_hdr_destroy(self.header)
 
+cpdef set_verbosity(int verbosity):
+    u"""Set htslib's hts_verbose global variable to the specified value.
+    """
+    return hts_set_verbosity(verbosity)
+
+cpdef get_verbosity():
+    u"""Return the value of htslib's hts_verbose global variable.
+    """
+    return hts_get_verbosity()
+
 __all__ = ["AlignmentFile",
            "IteratorRow",
            "IteratorColumn",
@@ -3846,7 +3856,9 @@ __all__ = ["AlignmentFile",
            "PileupRead",
            "IndexedReads",
            "toQualityString",
-           "fromQualityString"]
+           "fromQualityString",
+           "get_verbosity",
+           "set_verbosity"]
            # "IteratorSNPCalls",
            # "SNPCaller",
            # "IndelCaller",

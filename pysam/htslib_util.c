@@ -13,6 +13,24 @@
 #define inline __inline
 #endif
 
+// set htslib verbosity level
+extern int hts_verbose;
+int hts_set_verbosity(int verbosity)
+{
+  int old_verbosity = hts_verbose;
+  hts_verbose = verbosity;
+  return old_verbosity;
+}
+
+int hts_get_verbosity()
+{
+  return hts_verbose;
+}
+
+
+int hts_get_hts_verbose();
+
+
 // taken from samtools/bam_import.c
 static inline uint8_t *alloc_data(bam1_t *b, size_t size)
 {
