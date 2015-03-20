@@ -15,7 +15,7 @@ in *SAM/BAM* formatted files. Also included is an interface to the
 samtools_ command line utilities and the tabix_ C-API for reading
 compressed and indexed tabular data.
 
-The current version wraps *htslib-1.1* and *samtools-1.1*.
+The current version wraps *htslib-1.2.1* and *samtools-1.2*.
 
 Contents
 --------
