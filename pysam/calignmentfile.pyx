@@ -3008,6 +3008,42 @@ cdef class AlignedSegment:
 
         return result
 
+    def get_aligned_pairs_matches_only(self):
+        """a list of aligned read and reference positions, but
+        only if there's a match - no indels, no None returned
+        """
+        cdef uint32_t k, i, pos, qpos
+        cdef int op
+        cdef uint32_t * cigar_p
+        cdef bam1_t * src 
+
+        src = self._delegate
+        if pysam_get_n_cigar(src) == 0:
+            return []
+
+        result = []
+        pos = src.core.pos
+        qpos = 0
+        cigar_p = pysam_bam_get_cigar(src)
+
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+
+            if op == BAM_CMATCH:
+                for i from pos <= i < pos + l:
+                    result.append((qpos, i))
+                    qpos += 1
+                pos += l
+
+            elif op == BAM_CINS:
+                qpos += l
+
+            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                pos += l
+
+        return result
+
     def get_blocks(self):
         """ a list of start and end positions of
         aligned gapless blocks.
