@@ -2982,6 +2982,9 @@ cdef class AlignedSegment:
         cdef int op
         cdef uint32_t * cigar_p
         cdef bam1_t * src 
+        cdef int _matches_only
+
+        _matches_only = bool(matches_only)
 
         src = self._delegate
         if pysam_get_n_cigar(src) == 0:
@@ -3003,7 +3006,7 @@ cdef class AlignedSegment:
                 pos += l
 
             elif op == BAM_CINS or op == BAM_CSOFT_CLIP:
-                if not matches_only:
+                if not _matches_only:
                     for i from pos <= i < pos + l:
                         result.append((qpos, None))
                         qpos += 1
@@ -3011,7 +3014,7 @@ cdef class AlignedSegment:
                     qpos += l
 
             elif op == BAM_CDEL or op == BAM_CREF_SKIP:
-                if not matches_only:
+                if not _matches_only:
                     for i from pos <= i < pos + l:
                         result.append((None, i))
                 pos += l
