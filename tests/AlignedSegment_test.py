@@ -201,9 +201,101 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.get_blocks(),
                          [(20, 30), (31, 40), (40, 60)])
 
+    def test_get_aligned_pairs_soft_clipping(self):
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((4, 2), (0, 35), (4, 3))
+        a.query_qualities = pysam.fromQualityString("1234") * 10
+        self.assertEqual(a.get_aligned_pairs(),
+                        [(0, None), (1, None)] + 
+                         [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(2, 2+35), range(20, 20+35))] + 
+                         [(37, None), (38, None), (39, None)]
+                         )
+        self.assertEqual(a.get_aligned_pairs(True),
+                        #[(0, None), (1, None)] + 
+                         [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(2, 2+35), range(20, 20+35))] 
+                         #[(37, None), (38, None), (39, None)]
+                         )
+
+    def test_get_aligned_pairs_hard_clipping(self):
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((5, 2), (0, 35), (5, 3))
+        a.query_qualities = pysam.fromQualityString("1234") * 10
+        self.assertEqual(a.get_aligned_pairs(),
+                            #No seq, no seq pos
+                         [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(0, 0+35), range(20, 20+35))])
+        self.assertEqual(a.get_aligned_pairs(True),
+                         [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(0, 0+35), range(20, 20+35))])
+
+    def test_get_aligned_pairs_skip(self):
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((0, 2), (3, 100), (0, 38))
+        a.query_qualities = pysam.fromQualityString("1234") * 10
+        self.assertEqual(a.get_aligned_pairs(),
+                        [(0, 20), (1, 21)] + 
+                        [(None, refpos) for refpos in range(22, 22+100)] + 
+                         [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(2, 2+38), range(20+2+100, 20+2+100+38))])
+        self.assertEqual(a.get_aligned_pairs(True),
+                        [(0, 20), (1, 21)] + 
+                        #[(None, refpos) for refpos in range(21, 21+100)] + 
+                         [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(2, 2+38), range(20+2+100, 20+2+100+38))])
+
+    def test_get_aligned_pairs_match_mismatch(self):
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((7,20), (8,20))
+        a.query_qualities = pysam.fromQualityString("1234") * 10
+        self.assertEqual(a.get_aligned_pairs(),
+                         [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(0, 0+40), range(20, 20+40))])
+        self.assertEqual(a.get_aligned_pairs(True),
+                        [(qpos, refpos) for (qpos, refpos) in zip(
+                             range(0, 0+40), range(20, 20+40))])
+
+    def test_get_aligned_pairs_padding(self):
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((7,20), (6, 1), (8,19))
+        a.query_qualities = pysam.fromQualityString("1234") * 10
+        def inner():
+            a.get_aligned_pairs()
+        self.assertRaises(NotImplementedError, inner)  # padding is not bein handled right now
+
 
 class TestTags(ReadTest):
-
     def testMissingTag(self):
         a = self.buildRead()
         self.assertRaises(KeyError, a.get_tag, "XP")

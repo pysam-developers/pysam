@@ -2969,8 +2969,14 @@ cdef class AlignedSegment:
 
         return qpos
             
-    def get_aligned_pairs(self):
-        """a list of aligned read and reference positions.
+    def get_aligned_pairs(self, matches_only = False):
+        """a list of aligned read (query) and reference positions.
+        For inserts, deletions, skipping either query or reference position may be None.
+
+        If @matches_only is True, only matched bases are returned - no None on either side.
+
+        Padding is currently not supported and leads to an exception
+        
         """
         cdef uint32_t k, i, pos, qpos
         cdef int op
@@ -2990,21 +2996,31 @@ cdef class AlignedSegment:
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
-            if op == BAM_CMATCH:
+            if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
                 for i from pos <= i < pos + l:
                     result.append((qpos, i))
                     qpos += 1
                 pos += l
 
-            elif op == BAM_CINS:
-                for i from pos <= i < pos + l:
-                    result.append((qpos, None))
-                    qpos += 1
+            elif op == BAM_CINS or op == BAM_CSOFT_CLIP:
+                if not matches_only:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, None))
+                        qpos += 1
+                else:
+                    qpos += l
 
             elif op == BAM_CDEL or op == BAM_CREF_SKIP:
-                for i from pos <= i < pos + l:
-                    result.append((None, i))
+                if not matches_only:
+                    for i from pos <= i < pos + l:
+                        result.append((None, i))
                 pos += l
+
+            elif op == BAM_CHARD_CLIP:
+                pass # advances neither
+
+            elif op == BAM_CPAD:
+                raise NotImplementedError("Padding (BAM_CPAD, 6) is currently not supported. Please implement. Sorry about that.")
 
         return result
 
