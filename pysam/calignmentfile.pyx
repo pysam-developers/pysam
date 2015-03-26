@@ -901,11 +901,12 @@ cdef class AlignmentFile:
            Possible options for the stepper are
 
            ``all``
-              use all reads for pileup.
-
-           ``pass``
               skip reads in which any of the following flags are set:
               BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
+
+           ``nofilter``
+              uses every single read
+              
 
            ``samtools``
               same filter and read processing as in :term:`csamtools`
@@ -1808,15 +1809,10 @@ cdef class IteratorColumn:
     stepper
        The stepper controls how the iterator advances.
 
-       Valid values are None, "all" or "samtools".
+       Valid values are None, "all" (default), "nofilter" or "samtools".
 
-       The default stepper "all" uses all reads for
-       computing the pileup. This corresponds to the
-       mpileup options "-B" and "-A".
-
-       The stepper "samtools" uses the mpileup default
-       parameterization to advance.
-
+       See AlignmentFile.pileup for description.
+    
     fastafile
        A :class:`FastaFile` object
 
