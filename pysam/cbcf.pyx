@@ -76,7 +76,7 @@
 #             fetch(contig=None, start=None, stop=None, region=None, reopen=False)
 #             subset_samples(include_samples)
 #
-#     VariantHeader(mode)   # mode='r' for reading, mode='w' for writing
+#     VariantHeader()
 #
 #         version:      VCF version
 #         samples:      sequence-like access to samples
@@ -188,7 +188,7 @@ from __future__ import division, print_function
 import os
 import sys
 
-from libc.string cimport strcmp
+from libc.string cimport strcmp, strpbrk
 
 cimport cython
 
@@ -373,8 +373,8 @@ cdef object bcf_info_value(const bcf_info_t *z):
     return value
 
 
-cdef inline int is_gt_fmt(bcf_hdr_t *h, bcf_fmt_t *fmt):
-    return strcmp(bcf_hdr_int2id(h, BCF_DT_ID, fmt.id), "GT") == 0
+cdef inline int is_gt_fmt(bcf_hdr_t *hdr, bcf_fmt_t *fmt):
+    return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id), "GT") == 0
 
 
 ########################################################################
@@ -423,16 +423,16 @@ cdef class VariantHeaderRecord(object):
             return '##{}=<{}>'.format(self.type, attrs)
 
 
-cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *h):
+cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *hdr):
     if not header:
         raise ValueError('invalid VariantHeader')
 
-    if not h:
+    if not hdr:
         return None
 
     cdef VariantHeaderRecord record = VariantHeaderRecord.__new__(VariantHeaderRecord)
     record.header = header
-    record.ptr = h
+    record.ptr = hdr
 
     return record
 
@@ -474,8 +474,8 @@ cdef class VariantMetadata(object):
     property name:
         """metadata name"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            return h.id[BCF_DT_ID][self.id].key
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            return hdr.id[BCF_DT_ID][self.id].key
 
     # Q: Should this be exposed?
     property id:
@@ -486,12 +486,12 @@ cdef class VariantMetadata(object):
     property number:
         """metadata number (i.e. cardinality)"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            if not bcf_hdr_idinfo_exists(h, self.type, self.id) or self.type == BCF_HL_FLT:
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            if not bcf_hdr_idinfo_exists(hdr, self.type, self.id) or self.type == BCF_HL_FLT:
                 return None
-            cdef int l = bcf_hdr_id2length(h, self.type, self.id)
+            cdef int l = bcf_hdr_id2length(hdr, self.type, self.id)
             if l == BCF_VL_FIXED:
-                return bcf_hdr_id2number(h, self.type, self.id)
+                return bcf_hdr_id2number(hdr, self.type, self.id)
             elif l == BCF_VL_VAR:
                 return '.'
             else:
@@ -500,18 +500,18 @@ cdef class VariantMetadata(object):
     property type:
         """metadata value type"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            if not bcf_hdr_idinfo_exists(h, self.type, self.id) or self.type == BCF_HL_FLT:
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            if not bcf_hdr_idinfo_exists(hdr, self.type, self.id) or self.type == BCF_HL_FLT:
                 return None
-            return VALUE_TYPES[bcf_hdr_id2type(h, self.type, self.id)]
+            return VALUE_TYPES[bcf_hdr_id2type(hdr, self.type, self.id)]
 
     property header:
         """:class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            if not bcf_hdr_idinfo_exists(h, self.type, self.id):
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            if not bcf_hdr_idinfo_exists(hdr, self.type, self.id):
                 return None
-            cdef bcf_hrec_t *hrec = h.id[BCF_DT_ID][self.id].val.hrec[self.type]
+            cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_ID][self.id].val.hrec[self.type]
             if not hrec:
                 return None
             return makeVariantHeaderRecord(self.header, hrec)
@@ -538,33 +538,56 @@ cdef VariantMetadata makeVariantMetadata(VariantHeader header, int type, int id)
 cdef class VariantHeaderMetadata(object):
     """mapping from filter, info or format name to :class:`VariantMetadata` object"""
 
+    def add(self, id, number, type, description, **kwargs):
+        """Add a new filter, info or format record"""
+        if id in self:
+            raise ValueError('Header already exists for id=%s' % id)
+
+        if self.type == BCF_HL_FLT:
+            if number is not None:
+                raise ValueError('Number must be None when adding a filter')
+            if type is not None:
+                raise ValueError('Type must be None when adding a filter')
+
+            items = [('ID', id), ('Description', description)]
+        else:
+            if type not in VALUE_TYPES:
+                raise ValueError('unknown type specified: %s' % type)
+            if number is None:
+                number = '.'
+
+            items = [('ID', id), ('Number', number), ('Type', type), ('Description', description)]
+
+        items += kwargs.items()
+        self.header.add_meta(METADATA_TYPES[self.type], items=items)
+
     def __len__(self):
-        cdef bcf_hdr_t *h = self.header.ptr
+        cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_idpair_t *idpair
         cdef int32_t i, n = 0
 
-        for i in range(h.n[BCF_DT_ID]):
-            idpair = h.id[BCF_DT_ID] + i
+        for i in range(hdr.n[BCF_DT_ID]):
+            idpair = hdr.id[BCF_DT_ID] + i
             if idpair.key and idpair.val and idpair.val.info[self.type] & 0xF != 0xF:
                 n += 1
 
         return n
 
     def __bool__(self):
-        cdef bcf_hdr_t *h = self.header.ptr
+        cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_idpair_t *idpair
         cdef int32_t i
 
-        for i in range(h.n[BCF_DT_ID]):
-            idpair = h.id[BCF_DT_ID] + i
+        for i in range(hdr.n[BCF_DT_ID]):
+            idpair = hdr.id[BCF_DT_ID] + i
             if idpair.key and idpair.val and idpair.val.info[self.type] & 0xF != 0xF:
                 return True
 
         return False
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *h = self.header.ptr
-        cdef vdict_t *d = <vdict_t *>h.dict[BCF_DT_ID]
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_ID]
         cdef khiter_t k = kh_get_vdict(d, key)
 
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
@@ -573,12 +596,12 @@ cdef class VariantHeaderMetadata(object):
         return makeVariantMetadata(self.header, self.type, kh_val_vdict(d, k).id)
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.header.ptr
+        cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_idpair_t *idpair
         cdef int32_t i
 
-        for i in range(h.n[BCF_DT_ID]):
-            idpair = h.id[BCF_DT_ID] + i
+        for i in range(hdr.n[BCF_DT_ID]):
+            idpair = hdr.id[BCF_DT_ID] + i
             if idpair.key and idpair.val and idpair.val.info[self.type] & 0xF != 0xF:
                 yield idpair.key
 
@@ -646,8 +669,8 @@ cdef class VariantContig(object):
     property name:
         """contig name"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            return h.id[BCF_DT_CTG][self.id].key
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            return hdr.id[BCF_DT_CTG][self.id].key
 
     property id:
         """contig internal id number"""
@@ -657,15 +680,15 @@ cdef class VariantContig(object):
     property length:
         """contig length or None if not available"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            cdef uint32_t length = h.id[BCF_DT_CTG][self.id].val.info[0]
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            cdef uint32_t length = hdr.id[BCF_DT_CTG][self.id].val.info[0]
             return length if length else None
 
     property header:
         """:class:`VariantHeaderRecord` associated with this :class:`VariantContig` object"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.header.ptr
-            cdef bcf_hrec_t *hrec = h.id[BCF_DT_CTG][self.id].val.hrec[0]
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_CTG][self.id].val.hrec[0]
             return makeVariantHeaderRecord(self.header, hrec)
 
 
@@ -687,26 +710,26 @@ cdef class VariantHeaderContigs(object):
     """mapping from contig name or index to :class:`VariantContig` object."""
 
     def __len__(self):
-        cdef bcf_hdr_t *h = self.header.ptr
-        assert kh_size(<vdict_t *>h.dict[BCF_DT_CTG]) == h.n[BCF_DT_CTG]
-        return h.n[BCF_DT_CTG]
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        assert kh_size(<vdict_t *>hdr.dict[BCF_DT_CTG]) == hdr.n[BCF_DT_CTG]
+        return hdr.n[BCF_DT_CTG]
 
     def __bool__(self):
-        cdef bcf_hdr_t *h = self.header.ptr
-        assert kh_size(<vdict_t *>h.dict[BCF_DT_CTG]) == h.n[BCF_DT_CTG]
-        return h.n[BCF_DT_CTG] != 0
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        assert kh_size(<vdict_t *>hdr.dict[BCF_DT_CTG]) == hdr.n[BCF_DT_CTG]
+        return hdr.n[BCF_DT_CTG] != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *h = self.header.ptr
+        cdef bcf_hdr_t *hdr = self.header.ptr
         cdef int index
 
         if isinstance(key, int):
             index = key
-            if index < 0 or index >= h.n[BCF_DT_CTG]:
+            if index < 0 or index >= hdr.n[BCF_DT_CTG]:
                 raise IndexError('invalid contig index')
             return makeVariantContig(self.header, index)
 
-        cdef vdict_t *d = <vdict_t *>h.dict[BCF_DT_CTG]
+        cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_CTG]
         cdef khiter_t k = kh_get_vdict(d, key)
 
         if k == kh_end(d):
@@ -717,14 +740,14 @@ cdef class VariantHeaderContigs(object):
         return makeVariantContig(self.header, id)
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.header.ptr
-        cdef vdict_t *d = <vdict_t *>h.dict[BCF_DT_CTG]
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_CTG]
         cdef uint32_t n = kh_size(d)
 
-        assert n == h.n[BCF_DT_CTG]
+        assert n == hdr.n[BCF_DT_CTG]
 
         for i in range(n):
-            yield bcf_hdr_id2name(h, i)
+            yield bcf_hdr_id2name(hdr, i)
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -772,6 +795,14 @@ cdef class VariantHeaderContigs(object):
 
     #TODO: implement __richcmp__
 
+    def add(self, id, **kwargs):
+        """Add a new contig record"""
+        if id in self:
+            raise ValueError('Header already exists for contig %s' % id)
+
+        items = [('ID', id)] + kwargs.items()
+        self.header.add_meta('contig', items=items)
+
 
 cdef VariantHeaderContigs makeVariantHeaderContigs(VariantHeader header):
     if not header:
@@ -793,26 +824,25 @@ cdef class VariantHeaderSamples(object):
         return bcf_hdr_nsamples(self.header.ptr) != 0
 
     def __getitem__(self, index):
-        cdef bcf_hdr_t *h = self.header.ptr
-        cdef int32_t n = bcf_hdr_nsamples(h)
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef int32_t n = bcf_hdr_nsamples(hdr)
         cdef int32_t i = index
 
         if i < 0 or i >= n:
             raise IndexError('invalid sample index')
 
-        return h.samples[i]
+        return hdr.samples[i]
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.header.ptr
-        cdef int32_t n = bcf_hdr_nsamples(h)
-        cdef int32_t i
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield h.samples[i]
+            yield hdr.samples[i]
 
     def __contains__(self, key):
-        cdef bcf_hdr_t *h = self.header.ptr
-        cdef vdict_t *d = <vdict_t *>h.dict[BCF_DT_SAMPLE]
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_SAMPLE]
         cdef khiter_t k = kh_get_vdict(d, key)
 
         return k != kh_end(d)
@@ -821,6 +851,10 @@ cdef class VariantHeaderSamples(object):
     __hash__ = None
 
     #TODO: implement __richcmp__
+
+    def add(self, name):
+        """Add a new sample"""
+        self.header.add_sample(name)
 
 
 cdef VariantHeaderSamples makeVariantHeaderSamples(VariantHeader header):
@@ -841,17 +875,12 @@ cdef class VariantHeader(object):
     #FIXME: Add mutable methods
 
     # See makeVariantHeader for C constructor
-    def __cinit__(self, mode):
+    def __cinit__(self):
         self.ptr = NULL
 
     # Python constructor
-    def __init__(self, mode):
-        if mode not in 'rw':
-            raise ValueError("invalid header mode specified '{}'".format(mode))
-
-        mode = force_bytes(mode)
-        self.ptr = bcf_hdr_init(mode)
-
+    def __init__(self):
+        self.ptr = bcf_hdr_init(b'w')
         if not self.ptr:
             raise ValueError('cannot create VariantHeader')
 
@@ -928,13 +957,67 @@ cdef class VariantHeader(object):
         free(hstr)
         return force_str(hstr)
 
+    def add_record(self, VariantHeaderRecord record):
+        """Add an existing :class:`VariantHeaderRecord` to this header"""
+        cdef bcf_hrec_t *r = record.ptr
 
-cdef VariantHeader makeVariantHeader(bcf_hdr_t *h):
-    if not h:
+        if r.type == BCF_HL_GEN:
+            self.add_meta(r.key, r.value)
+        else:
+            items = [(k,v) for k,v in record.attrs if k != 'IDX']
+            self.add_meta(r.key, items=items)
+
+    def add_line(self, line):
+        """Add a metadata line to this header"""
+        if bcf_hdr_append(self.ptr, line) < 0:
+            raise ValueError('invalid header line')
+
+        if self.ptr.dirty:
+            bcf_hdr_sync(self.ptr)
+
+    def add_meta(self, key, value=None, items=None):
+        """Add metadata to this header"""
+        if not ((value is not None) ^ (items is not None)):
+            raise ValueError('either value or items must be specified')
+
+        cdef bcf_hrec_t *hrec = <bcf_hrec_t*>calloc(1, sizeof(bcf_hrec_t))
+        cdef int quoted
+
+        try:
+            hrec.key = strdup(key)
+
+            if value is not None:
+                hrec.value = strdup(value)
+            else:
+                for key, value in items:
+                    bcf_hrec_add_key(hrec, key, len(key))
+
+                    value = str(value)
+                    quoted = strpbrk(value, ' ;,"\t<>') != NULL
+                    bcf_hrec_set_val(hrec, hrec.nkeys-1, value, len(value), quoted)
+        except:
+            bcf_hrec_destroy(hrec)
+            raise
+
+        bcf_hdr_add_hrec(self.ptr, hrec)
+
+        if self.ptr.dirty:
+            bcf_hdr_sync(self.ptr)
+
+    def add_sample(self, name):
+        """Add a new sample to this header"""
+        if bcf_hdr_add_sample(self.ptr, name) < 0:
+            raise ValueError('Duplicated sample name: %s' % name)
+        if self.ptr.dirty:
+            bcf_hdr_sync(self.ptr)
+
+
+cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
+    if not hdr:
         raise ValueError('cannot create VariantHeader')
 
-    cdef VariantHeader header = VariantHeader.__new__(VariantHeader, None)
-    header.ptr = h
+    cdef VariantHeader header = VariantHeader.__new__(VariantHeader)
+    header.ptr = hdr
 
     return header
 
@@ -954,7 +1037,7 @@ cdef class VariantRecordFilter(object):
         return self.record.ptr.d.n_flt != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int index, id
         cdef int n = r.d.n_flt
@@ -970,20 +1053,20 @@ cdef class VariantRecordFilter(object):
             if key == '.':
                 key = 'PASS'
 
-            id = bcf_hdr_id2int(h, BCF_DT_ID, key)
+            id = bcf_hdr_id2int(hdr, BCF_DT_ID, key)
 
-            if not bcf_hdr_idinfo_exists(h, BCF_HL_FLT, id) or not bcf_has_filter(h, self.record.ptr, key):
+            if not bcf_hdr_idinfo_exists(hdr, BCF_HL_FLT, id) or not bcf_has_filter(hdr, self.record.ptr, key):
                 raise KeyError('Invalid filter')
 
         return makeVariantMetadata(self.record.header, BCF_HL_FLT, id)
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = r.d.n_flt
 
         for i in range(n):
-            yield bcf_hdr_int2id(h, BCF_DT_ID, r.d.flt[i])
+            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.flt[i])
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -993,9 +1076,9 @@ cdef class VariantRecordFilter(object):
             return default
 
     def __contains__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        return bcf_has_filter(h, r, key) == 1
+        return bcf_has_filter(hdr, r, key) == 1
 
     def iterkeys(self):
         """D.iterkeys() -> an iterator over the keys of D"""
@@ -1049,7 +1132,7 @@ cdef class VariantRecordFormat(object):
         return self.record.ptr.n_fmt != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_fmt_t *fmt
         cdef int index
@@ -1061,19 +1144,19 @@ cdef class VariantRecordFormat(object):
                 raise IndexError('invalid format index')
             fmt = &r.d.fmt[index]
         else:
-            fmt = bcf_get_fmt(h, r, key)
+            fmt = bcf_get_fmt(hdr, r, key)
             if not fmt:
                 raise KeyError('unknown format')
 
         return makeVariantMetadata(self.record.header, BCF_HL_FMT, fmt.id)
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = r.n_fmt
 
         for i in range(n):
-            yield bcf_hdr_int2id(h, BCF_DT_ID, r.d.fmt[i].id)
+            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id)
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1083,9 +1166,9 @@ cdef class VariantRecordFormat(object):
             return default
 
     def __contains__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef bcf_fmt_t *fmt = bcf_get_fmt(h, r, key)
+        cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, key)
         return fmt != NULL
 
     def iterkeys(self):
@@ -1141,9 +1224,9 @@ cdef class VariantRecordInfo(object):
         return self.record.ptr.n_info != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef bcf_info_t *info = bcf_get_info(h, r, key)
+        cdef bcf_info_t *info = bcf_get_info(hdr, r, key)
 
         if not info:
             raise KeyError('Unknown INFO field: {}'.format(key))
@@ -1151,12 +1234,12 @@ cdef class VariantRecordInfo(object):
         return bcf_info_value(info)
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = r.n_info
 
         for i in range(n):
-            yield bcf_hdr_int2id(h, BCF_DT_ID, r.d.info[i].key)
+            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.info[i].key)
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1166,9 +1249,9 @@ cdef class VariantRecordInfo(object):
             return default
 
     def __contains__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef bcf_info_t *info = bcf_get_info(h, r, key)
+        cdef bcf_info_t *info = bcf_get_info(hdr, r, key)
 
         return info != NULL
 
@@ -1188,14 +1271,14 @@ cdef class VariantRecordInfo(object):
 
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_info_t *info
         cdef int i, n = r.n_info
 
         for i in range(n):
             info = &r.d.info[i]
-            key = bcf_hdr_int2id(h, BCF_DT_ID, info.key)
+            key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
             value = bcf_info_value(info)
             yield key, value
 
@@ -1228,7 +1311,7 @@ cdef VariantRecordInfo makeVariantRecordInfo(VariantRecord record):
 
 
 cdef class VariantRecordSamples(object):
-    """mapping from sample index or name to :class:`makeVariantRecordSample` object."""
+    """mapping from sample index or name to :class:`VariantRecordSample` object."""
 
     def __len__(self):
         return bcf_hdr_nsamples(self.record.header.ptr)
@@ -1237,9 +1320,9 @@ cdef class VariantRecordSamples(object):
         return bcf_hdr_nsamples(self.record.header.ptr) != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef int n = bcf_hdr_nsamples(h)
+        cdef int n = bcf_hdr_nsamples(hdr)
         cdef int sample_index
         cdef vdict_t *d
         cdef khiter_t k
@@ -1247,7 +1330,7 @@ cdef class VariantRecordSamples(object):
         if isinstance(key, int):
             sample_index = key
         else:
-            sample_index = bcf_hdr_id2int(h, BCF_DT_SAMPLE, key)
+            sample_index = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, key)
             if sample_index < 0:
                 raise KeyError('invalid sample name')
 
@@ -1257,12 +1340,12 @@ cdef class VariantRecordSamples(object):
         return makeVariantRecordSample(self.record, sample_index)
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef int32_t i, n = bcf_hdr_nsamples(h)
+        cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield h.samples[i]
+            yield hdr.samples[i]
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1272,9 +1355,9 @@ cdef class VariantRecordSamples(object):
             return default
 
     def __contains__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef int n = bcf_hdr_nsamples(h)
+        cdef int n = bcf_hdr_nsamples(hdr)
         cdef int sample_index
         cdef vdict_t *d
         cdef khiter_t k
@@ -1282,7 +1365,7 @@ cdef class VariantRecordSamples(object):
         if isinstance(key, int):
             sample_index = key
         else:
-            sample_index = bcf_hdr_id2int(h, BCF_DT_SAMPLE, key)
+            sample_index = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, key)
             if sample_index < 0:
                 raise KeyError('invalid sample name')
 
@@ -1294,21 +1377,21 @@ cdef class VariantRecordSamples(object):
 
     def itervalues(self):
         """D.itervalues() -> an iterator over the values of D"""
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef int32_t i, n = bcf_hdr_nsamples(h)
+        cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
             yield makeVariantRecordSample(self.record, i)
 
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef int32_t i, n = bcf_hdr_nsamples(h)
+        cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield h.samples[i], makeVariantRecordSample(self.record, i)
+            yield hdr.samples[i], makeVariantRecordSample(self.record, i)
 
     def keys(self):
         """D.keys() -> list of D's keys"""
@@ -1535,27 +1618,27 @@ cdef class VariantRecordSample(object):
     property name:
         """sample name"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.record.header.ptr
+            cdef bcf_hdr_t *hdr = self.record.header.ptr
             cdef bcf1_t *r = self.record.ptr
-            cdef int32_t n = bcf_hdr_nsamples(h)
+            cdef int32_t n = bcf_hdr_nsamples(hdr)
 
             if self.index < 0 or self.index >= n:
                 raise ValueError('invalid sample index')
 
-            return h.samples[self.index]
+            return hdr.samples[self.index]
 
     property allele_indices:
         """allele indices for called genotype, if present.  Otherwise None"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.record.header.ptr
+            cdef bcf_hdr_t *hdr = self.record.header.ptr
             cdef bcf1_t *r = self.record.ptr
-            cdef int32_t n = bcf_hdr_nsamples(h)
+            cdef int32_t n = bcf_hdr_nsamples(hdr)
 
             if self.index < 0 or self.index >= n or not r.n_fmt:
                 return None
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(h, fmt0)
+            cdef int gt0 = is_gt_fmt(hdr, fmt0)
 
             if not gt0 or not fmt0.n:
                 return None
@@ -1589,16 +1672,16 @@ cdef class VariantRecordSample(object):
     property alleles:
         """alleles for called genotype, if present.  Otherwise None"""
         def __get__(self):
-            cdef bcf_hdr_t *h = self.record.header.ptr
+            cdef bcf_hdr_t *hdr = self.record.header.ptr
             cdef bcf1_t *r = self.record.ptr
-            cdef int32_t nsamples = bcf_hdr_nsamples(h)
+            cdef int32_t nsamples = bcf_hdr_nsamples(hdr)
             cdef int32_t nalleles = r.n_allele
 
             if self.index < 0 or self.index >= nsamples or not r.n_fmt:
                 return None
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(h, fmt0)
+            cdef int gt0 = is_gt_fmt(hdr, fmt0)
 
             if not gt0 or not fmt0.n:
                 return None
@@ -1640,7 +1723,7 @@ cdef class VariantRecordSample(object):
         return self.record.ptr.n_fmt != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_fmt_t *fmt
         cdef int index
@@ -1651,12 +1734,12 @@ cdef class VariantRecordSample(object):
                 raise IndexError('invalid format index')
             fmt = r.d.fmt + index
         else:
-            fmt = bcf_get_fmt(h, r, key)
+            fmt = bcf_get_fmt(hdr, r, key)
 
         if not fmt:
             raise KeyError('invalid format requested')
 
-        if is_gt_fmt(h, fmt):
+        if is_gt_fmt(hdr, fmt):
             return self.alleles
         elif fmt.p and fmt.n and fmt.size:
             return bcf_array_to_object(fmt.p + self.index * fmt.size, fmt.type, fmt.n, scalar=1)
@@ -1664,12 +1747,12 @@ cdef class VariantRecordSample(object):
             return None
 
     def __iter__(self):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = r.n_fmt
 
         for i in range(n):
-            yield bcf_hdr_int2id(h, BCF_DT_ID, r.d.fmt[i].id)
+            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id)
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1679,9 +1762,9 @@ cdef class VariantRecordSample(object):
             return default
 
     def __contains__(self, key):
-        cdef bcf_hdr_t *h = self.record.header.ptr
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef bcf_fmt_t *fmt = bcf_get_fmt(h, r, key)
+        cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, key)
         return fmt != NULL
 
     def iterkeys(self):
