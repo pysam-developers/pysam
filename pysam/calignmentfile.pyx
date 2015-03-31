@@ -3688,7 +3688,10 @@ cdef class PileupRead:
             return self._alignment
 
     property query_position:
-        """position of the read base at the pileup site, 0-based"""
+        """position of the read base at the pileup site, 0-based.
+        Only valid if neither is_del nor is_refskip is set.
+        
+        """
         def __get__(self):
             return self._qpos
 
