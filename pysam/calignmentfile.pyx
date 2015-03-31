@@ -23,6 +23,8 @@ from cpython cimport array
 
 from cpython.version cimport PY_MAJOR_VERSION
 
+cimport cython
+
 ########################################################################
 ########################################################################
 ########################################################################
@@ -961,6 +963,67 @@ cdef class AlignmentFile:
 
         else:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
+
+    @cython.boundscheck(False)  # we do manual bounds checking
+    def count_coverage(self, chr, start, stop, quality_threshold = 15, read_callback = 'all'):
+        """Count ACGT in a part of a AlignmentFile. 
+        Return 4 array.arrays of length = stop - start,
+        in order A C G T.
+        @quality_threshold is the minimum quality score (in phred) a base has to reach to be counted.
+        Possible @read_callback values are
+          ``all``
+              skip reads in which any of the following flags are set:
+              BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
+
+           ``nofilter``
+              uses every single read
+
+           a function check_read(read)
+              uses only those reads where check_read returns True
+        """
+        
+        cdef int _start = start
+        cdef int _stop = stop
+        cdef int length = _stop - _start
+        cdef array.array int_array_template = array.array('L', [])
+        cdef array.array count_a
+        cdef array.array count_c
+        cdef array.array count_g
+        cdef array.array count_t
+        count_a = array.clone(int_array_template, length, zero=True)
+        count_c = array.clone(int_array_template, length, zero=True)
+        count_g = array.clone(int_array_template, length, zero=True)
+        count_t = array.clone(int_array_template, length, zero=True)
+
+        cdef char * seq
+        cdef array.array quality
+        cdef int qpos
+        cdef int refpos
+        cdef int c = 0
+        cdef int _threshold = quality_threshold
+        for read in self.fetch(chr, start, stop):
+            if read_callback == 'all':
+                if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
+                    continue
+            elif read_callback == 'nofilter':
+                pass
+            else:
+                if not read_callback(read):
+                    continue
+            seq = read.seq
+            quality = read.query_qualities
+            for qpos, refpos in read.get_aligned_pairs(True):
+                if qpos is not None and refpos is not None and _start <= refpos < _stop:
+                    if quality[qpos] > quality_threshold:
+                        if seq[qpos] == 'A':
+                            count_a.data.as_ulongs[refpos - _start] += 1
+                        if seq[qpos] == 'C':
+                            count_c.data.as_ulongs[refpos - _start] += 1
+                        if seq[qpos] == 'G':
+                            count_g.data.as_ulongs[refpos - _start] += 1
+                        if seq[qpos] == 'T':
+                            count_t.data.as_ulongs[refpos - _start] += 1
+        return count_a, count_c, count_g, count_t
 
     def close(self):
         '''
