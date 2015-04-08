@@ -3752,11 +3752,14 @@ cdef class PileupRead:
 
     property query_position:
         """position of the read base at the pileup site, 0-based.
-        Only valid if neither is_del nor is_refskip is set.
+        None if is_del or is_refskip is set.
         
         """
         def __get__(self):
-            return self._qpos
+            if self.is_del or self.is_refskip:
+                return None
+            else:
+                return self._qpos
 
     property indel:
         """indel length; 0 for no indel, positive for ins and negative            for del"""
