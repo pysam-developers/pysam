@@ -107,7 +107,7 @@ class TestAlignedSegment(ReadTest):
                 "is_reverse", "mate_is_reverse",
                 "is_read1", "is_read2",
                 "is_secondary", "is_qcfail",
-                "is_duplicate"):
+                "is_duplicate", "is_supplementary"):
             setattr(b, x, True)
             self.assertEqual(getattr(b, x), True)
             checkFieldEqual(self, a, b, ("flag", x,))
