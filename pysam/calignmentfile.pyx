@@ -2837,6 +2837,12 @@ cdef class AlignedSegment:
             return (self.flag & BAM_FDUP) != 0
         def __set__(self, val):
             pysam_update_flag(self._delegate, val, BAM_FDUP)
+    property is_supplementary:
+        """true if this is a supplementary alignment"""
+        def __get__(self):
+            return (self.flag & BAM_FSUPPLEMENTARY) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FSUPPLEMENTARY)
 
     # 2. Coordinates and lengths
     property reference_end:
