@@ -2449,6 +2449,14 @@ cdef class AlignedSegment:
             return retval
         return memcmp(t.data, o.data, t.l_data)
 
+    def __richcmp__(self, AlignedSegment other, int op):
+        if op == 2:  # == operator
+            return self.compare(other) == 0
+        elif op == 3:  # != operator
+            return self.compare(other) != 0
+        else:
+            return NotImplemented
+
     # Disabled so long as __cmp__ is a special method
     def __hash__(self):
         return _Py_HashPointer(<void *>self)
