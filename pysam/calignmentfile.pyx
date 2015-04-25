@@ -2860,10 +2860,13 @@ cdef class AlignedSegment:
 
     # 2. Coordinates and lengths
     property reference_end:
-        '''aligned reference position of the read on the reference genome.  
+        '''aligned reference position of the read on the reference genome.
         
-        aend points to one past the last aligned residue.
-        Returns None if not available.'''
+        reference_end points to one past the last aligned residue.
+        Returns None if not available (read is unmapped or no cigar
+        alignment present).
+
+        '''
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
