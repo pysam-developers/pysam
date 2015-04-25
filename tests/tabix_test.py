@@ -260,6 +260,7 @@ class TestGZFile(IterationTest):
 
 
 class TestIterationWithoutComments(IterationTest):
+
     '''test iterating with TabixFile.fetch() when
     there are no comments in the file.'''
 
@@ -350,7 +351,6 @@ class TestIterationWithoutComments(IterationTest):
         # raise no error for invalid intervals
         self.tabix.fetch("chr1", 100, 100)
 
-
     def testGetContigs(self):
         self.assertEqual(sorted(self.tabix.contigs), [b"chr1", b"chr2"])
         # check that contigs is read-only
@@ -382,6 +382,7 @@ class TestIterationWithoutComments(IterationTest):
 
 
 class TestIterationWithComments(TestIterationWithoutComments):
+
     '''test iterating with TabixFile.fetch() when
     there are comments in the file.
 
@@ -591,6 +592,7 @@ class TestGTF(TestParser):
 
 
 class TestIterationMalformattedGTFFiles(unittest.TestCase):
+
     '''test reading from malformatted gtf files.'''
 
     parser = pysam.asGTF
@@ -670,6 +672,7 @@ class TestVCF(unittest.TestCase):
 
 if IS_PYTHON3:
     class TestUnicode(unittest.TestCase):
+
         '''test reading from a file with non-ascii characters.'''
 
         filename = os.path.join(DATADIR, "example_unicode.vcf")
@@ -860,7 +863,7 @@ class TestVCFFromVCF(TestVCF):
                                     c[y].split(","), val,
                                     "mismatch in field %s: expected %s, got %s" %
                                     (field, c[y], val))
-                                
+
                         elif field == "filter":
                             if c[y] == "PASS" or c[y] == ".":
                                 # convert PASS to empty list

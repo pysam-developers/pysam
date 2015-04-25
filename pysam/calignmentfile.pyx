@@ -2417,7 +2417,10 @@ cdef class AlignedSegment:
                                    self.tags)))
 
     def compare(self, AlignedSegment other):
-        '''return -1,0,1, if contents in this are binary <,=,> to *other*'''
+        '''return -1,0,1, if contents in this are binary
+        <,=,> to *other*
+
+        '''
 
         cdef int retval, x
         cdef bam1_t *t
