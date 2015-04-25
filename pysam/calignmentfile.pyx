@@ -1116,7 +1116,8 @@ cdef class AlignmentFile:
             return tuple(t)
 
     property mapped:
-        """total number of mapped alignments in file.
+        """total number of mapped alignments according
+        to the statistics recorded in the index.
         """
         def __get__(self):
             self._checkIndex()
@@ -1143,7 +1144,8 @@ cdef class AlignmentFile:
 
 
     property unmapped:
-        """total number of unmapped reads in file.
+        """total number of unmapped reads according
+        to the statistics recorded in the index.
         """
         def __get__(self):
             self._checkIndex()
@@ -1156,7 +1158,8 @@ cdef class AlignmentFile:
             return total
 
     property nocoordinate:
-        """total number of reads without coordinates
+        """total number of reads without coordinates according
+        to the statistics recorded in the index.
         """
         def __get__(self):
             self._checkIndex()
