@@ -80,7 +80,14 @@ class TestAlignedSegment(ReadTest):
         self.assertFalse(b == a)
         self.assertTrue(a != b)
         self.assertTrue(b != a)
-        
+
+    def testHashing(self):
+        a = self.buildRead()
+        b = self.buildRead()
+        self.assertEqual(hash(a), hash(b))
+        b.tid = 2
+        self.assertNotEqual(hash(a), hash(b))
+
     def testUpdate(self):
         '''check if updating fields affects other variable length data
         '''

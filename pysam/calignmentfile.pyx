@@ -2465,13 +2465,23 @@ cdef class AlignedSegment:
 
     # Disabled so long as __cmp__ is a special method
     def __hash__(self):
-        return _Py_HashPointer(<void *>self)
+        cdef bam1_t * src
+        src = self._delegate
+        # shift and xor values in the core structure
+        # make sure tid and mtid are shifted by different amounts
+        # should variable length data be included?
+        cdef uint32_t hash_value = src.core.tid << 24 ^ \
+            src.core.pos << 16 ^ \
+            src.core.qual << 8 ^ \
+            src.core.flag ^ \
+            src.core.isize << 24 ^ \
+            src.core.mtid << 16 ^ \
+            src.core.mpos << 8
 
+        return hash_value
 
-    #######################################################################
-    #######################################################################
+    ########################################################
     ## Basic attributes in order of appearance in SAM format
-    #######################################################################
     property query_name:
         """the query template name (None if not present)"""
         def __get__(self):
