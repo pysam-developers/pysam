@@ -123,7 +123,7 @@ cdef class FastaFile:
         self.close()
 
     property filename:
-        '''number of :term:`filename` associated with this object.'''
+        '''filename associated with this object.'''
         def __get__(self):
             return self._filename
 
@@ -311,7 +311,7 @@ cdef class FastxFile:
         self.close()
 
     property filename:
-        ''':term:`filename` associated with this object.'''
+        '''filename associated with this object.'''
         def __get__(self):
             return self._filename
 

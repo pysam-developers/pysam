@@ -2,11 +2,19 @@
 Release notes
 =============
 
+Release 0.8.3
+=============
+
+* samtools command now accept the "catch_stdout" option.
+* get_aligned_pairs now works for soft-clipped reads
+* query_position is now None when a PileupRead is not aligned
+  to a particular position.
+* AlignedSegments are now comparable and hashable.
+
 Release 0.8.2.1
 ===============
 
 * Installation bugfix release
-
 
 Release 0.8.2
 =============

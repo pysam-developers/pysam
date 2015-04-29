@@ -965,21 +965,28 @@ cdef class AlignmentFile:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
     @cython.boundscheck(False)  # we do manual bounds checking
-    def count_coverage(self, chr, start, stop, quality_threshold = 15, read_callback = 'all'):
+    def count_coverage(self, chr, start, stop, quality_threshold = 15,
+                       read_callback = 'all'):
         """Count ACGT in a part of a AlignmentFile. 
         Return 4 array.arrays of length = stop - start,
         in order A C G T.
-        @quality_threshold is the minimum quality score (in phred) a base has to reach to be counted.
-        Possible @read_callback values are
-          ``all``
-              skip reads in which any of the following flags are set:
-              BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
+        
+        @quality_threshold is the minimum quality score (in phred) a
+        base has to reach to be counted.  Possible @read_callback
+        values are
 
-           ``nofilter``
-              uses every single read
+        ``all``
+`            skip reads in which any of the following
+             flags are set: BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL,
+             BAM_FDUP
 
-           a function check_read(read)
-              uses only those reads where check_read returns True
+         ``nofilter``
+             uses every single read
+
+        Alternatively, @read_callback can be a function ```check_read(read)``1
+        that should return True only for those reads that shall be included in
+        the counting.
+
         """
         
         cdef int _start = start
@@ -1082,7 +1089,7 @@ cdef class AlignmentFile:
     ## properties
     ###############################################################
     property filename:
-        ''':term:`filename` associated with this object.'''
+        '''filename associated with this object.'''
         def __get__(self):
             return self._filename
 
