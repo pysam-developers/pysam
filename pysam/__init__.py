@@ -63,7 +63,7 @@ class SamtoolsDispatcher(object):
         '''execute a samtools command
         '''
         retval, stderr, stdout = csamtools._samtools_dispatch(
-            self.dispatch, args, **kwargs)
+            self.dispatch, args, catch_stdout=kwargs.get("catch_stdout", True))
 
         if retval:
             raise SamtoolsError(
