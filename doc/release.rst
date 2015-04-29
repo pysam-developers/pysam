@@ -6,28 +6,35 @@ Release 0.8.3
 =============
 
 * samtools command now accept the "catch_stdout" option.
-* get_aligned_pairs now works for soft-clipped reads
+
+* get_aligned_pairs now works for soft-clipped reads.
+
 * query_position is now None when a PileupRead is not aligned
   to a particular position.
+
 * AlignedSegments are now comparable and hashable.
 
 Release 0.8.2.1
 ===============
 
-* Installation bugfix release
+* Installation bugfix release.
 
 Release 0.8.2
 =============
 
-* Pysam now wraps htslib 1.2.1 and samtools version 1.2
-* Added CRAM file support to pysam
+* Pysam now wraps htslib 1.2.1 and samtools version 1.2.
+
+* Added CRAM file support to pysam.
+
 * New alignment info interface.
    * opt() and setTag are deprecated, use get_tag() and set_tag()
      instead.
    * added has_tag()
    * tags is deprecated, use get_tags() and set_tags() instead.
+
 * FastqFile is now FastxFile to reflect that the latter permits
   iteration over both fastq- and fasta-formatted files.
+
 * A Cython wrapper for htslib VCF/BCF reader/writer. The wrapper
   provides a nearly complete Pythonic interface to VCF/BCF metadata
   with reading and writing capability. However, the interface is still
@@ -37,7 +44,7 @@ Release 0.8.2
 Release 0.8.1
 =============
 
-* Pysam now wraps htslib and samtools versions 1.1
+* Pysam now wraps htslib and samtools versions 1.1.
 
 * Bugfixes, most notable:
   * issue #43: uncompressed BAM output
@@ -89,9 +96,9 @@ Release 0.8.1
     as strings, no more bytes.
 
 Other changes:
-  * AlignmentFile.fetch(reopen) option is now multiple_iterators. The
-    default changed to not reopen a file unless requested by the user.
-  * FastaFile.getReferenceLength is now FastaFile.get_reference_length
+   * AlignmentFile.fetch(reopen) option is now multiple_iterators. The
+     default changed to not reopen a file unless requested by the user.
+   * FastaFile.getReferenceLength is now FastaFile.get_reference_length
 
 Backwards incompatible changes
 
@@ -109,11 +116,11 @@ Release 0.8.0
 =============
 
 * Disabled features
-  * IteratorColumn.setMask() disabled as htslib does not implement
-    this functionality?
+   * IteratorColumn.setMask() disabled as htslib does not implement
+     this functionality?
 
 * Not implemented yet:
-  * reading SAM files without header
+   * reading SAM files without header
 
 Tabix files between version 0.7.8 and 0.8.0 are
 not compatible and need to be re-indexed.
