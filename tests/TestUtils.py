@@ -47,7 +47,7 @@ def checkSamtoolsViewEqual(filename1, filename2,
     '''return true if the two files are equal in their
     content through samtools view.
     '''
-    
+
     # strip MD and NM tags, as not preserved in CRAM files
     args = ["-x", "MD", "-x", "NM"]
     if not without_header:
@@ -120,4 +120,3 @@ def checkFieldEqual(cls, read1, read2, exclude=[]):
         cls.assertEqual(getattr(read1, n), getattr(read2, n),
                         "attribute mismatch for %s: %s != %s" %
                         (n, getattr(read1, n), getattr(read2, n)))
-

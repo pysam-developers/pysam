@@ -191,6 +191,18 @@ available using the :meth:`getMessages` method::
 Note that only the output from the last invocation of a command
 is stored.
 
+In order for pysam to make the output of samtools commands accessible
+the stdout stream needs to be redirected. This is the default
+behaviour, but can cause problems in environments such as the ipython
+notebook. A solution is to pass the ``catch_stdout`` keyword
+argument::
+
+   pysam.sort(catch_stdout=False)
+
+Note that this means that output from commands which produce output on
+stdout will not be available. The only solution is to run samtools
+commands through subprocess.
+
 ================================
 Working with tabix-indexed files
 ================================

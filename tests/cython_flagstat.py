@@ -9,4 +9,3 @@ is_paired, is_proper = _cython_flagstat.count(
 
 print ("there are alignments of %i paired reads" % is_paired)
 print ("there are %i proper paired alignments" % is_proper)
-

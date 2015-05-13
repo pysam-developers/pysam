@@ -20,7 +20,7 @@ directories:
    Code and data for testing
 
 :file:`htslib`
-   Source code from :term:`htslib` shipped with pysam. See
+   Source code from htslib_ shipped with pysam. See
    :file:`setup.py` about importing.
 
 :file:`samtools`
@@ -48,19 +48,12 @@ captpuring standard output.
 Contributors
 ============
 
-The following people have contributed to pysam:
+Please see github for a list of all contributors:
 
-* Andreas Heger
-* Tildon Grant Belgrad
-* Kevin Jacobs
-* Florian Finkernagel
-* Ben Schiller
-* Marcel Martin
-* Gerton Lunter
-* Martin Goodson
-* Leo Goodstadt
+https://github.com/pysam-developers/pysam/graphs/contributors
 
-
+Many thanks to all contributors for helping in making pysam
+useful.
 
 
 

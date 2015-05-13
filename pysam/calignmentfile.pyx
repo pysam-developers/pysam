@@ -23,6 +23,8 @@ from cpython cimport array
 
 from cpython.version cimport PY_MAJOR_VERSION
 
+cimport cython
+
 ########################################################################
 ########################################################################
 ########################################################################
@@ -901,11 +903,12 @@ cdef class AlignmentFile:
            Possible options for the stepper are
 
            ``all``
-              use all reads for pileup.
-
-           ``pass``
               skip reads in which any of the following flags are set:
               BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
+
+           ``nofilter``
+              uses every single read
+              
 
            ``samtools``
               same filter and read processing as in :term:`csamtools`
@@ -960,6 +963,74 @@ cdef class AlignmentFile:
 
         else:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
+
+    @cython.boundscheck(False)  # we do manual bounds checking
+    def count_coverage(self, chr, start, stop, quality_threshold = 15,
+                       read_callback = 'all'):
+        """Count ACGT in a part of a AlignmentFile. 
+        Return 4 array.arrays of length = stop - start,
+        in order A C G T.
+        
+        @quality_threshold is the minimum quality score (in phred) a
+        base has to reach to be counted.  Possible @read_callback
+        values are
+
+        ``all``
+`            skip reads in which any of the following
+             flags are set: BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL,
+             BAM_FDUP
+
+         ``nofilter``
+             uses every single read
+
+        Alternatively, @read_callback can be a function ```check_read(read)``1
+        that should return True only for those reads that shall be included in
+        the counting.
+
+        """
+        
+        cdef int _start = start
+        cdef int _stop = stop
+        cdef int length = _stop - _start
+        cdef array.array int_array_template = array.array('L', [])
+        cdef array.array count_a
+        cdef array.array count_c
+        cdef array.array count_g
+        cdef array.array count_t
+        count_a = array.clone(int_array_template, length, zero=True)
+        count_c = array.clone(int_array_template, length, zero=True)
+        count_g = array.clone(int_array_template, length, zero=True)
+        count_t = array.clone(int_array_template, length, zero=True)
+
+        cdef char * seq
+        cdef array.array quality
+        cdef int qpos
+        cdef int refpos
+        cdef int c = 0
+        cdef int _threshold = quality_threshold
+        for read in self.fetch(chr, start, stop):
+            if read_callback == 'all':
+                if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
+                    continue
+            elif read_callback == 'nofilter':
+                pass
+            else:
+                if not read_callback(read):
+                    continue
+            seq = read.seq
+            quality = read.query_qualities
+            for qpos, refpos in read.get_aligned_pairs(True):
+                if qpos is not None and refpos is not None and _start <= refpos < _stop:
+                    if quality[qpos] > quality_threshold:
+                        if seq[qpos] == 'A':
+                            count_a.data.as_ulongs[refpos - _start] += 1
+                        if seq[qpos] == 'C':
+                            count_c.data.as_ulongs[refpos - _start] += 1
+                        if seq[qpos] == 'G':
+                            count_g.data.as_ulongs[refpos - _start] += 1
+                        if seq[qpos] == 'T':
+                            count_t.data.as_ulongs[refpos - _start] += 1
+        return count_a, count_c, count_g, count_t
 
     def close(self):
         '''
@@ -1018,7 +1089,7 @@ cdef class AlignmentFile:
     ## properties
     ###############################################################
     property filename:
-        ''':term:`filename` associated with this object.'''
+        '''filename associated with this object.'''
         def __get__(self):
             return self._filename
 
@@ -1052,7 +1123,8 @@ cdef class AlignmentFile:
             return tuple(t)
 
     property mapped:
-        """total number of mapped alignments in file.
+        """total number of mapped alignments according
+        to the statistics recorded in the index.
         """
         def __get__(self):
             self._checkIndex()
@@ -1079,7 +1151,8 @@ cdef class AlignmentFile:
 
 
     property unmapped:
-        """total number of unmapped reads in file.
+        """total number of unmapped reads according
+        to the statistics recorded in the index.
         """
         def __get__(self):
             self._checkIndex()
@@ -1092,7 +1165,8 @@ cdef class AlignmentFile:
             return total
 
     property nocoordinate:
-        """total number of reads without coordinates
+        """total number of reads without coordinates according
+        to the statistics recorded in the index.
         """
         def __get__(self):
             self._checkIndex()
@@ -1808,15 +1882,10 @@ cdef class IteratorColumn:
     stepper
        The stepper controls how the iterator advances.
 
-       Valid values are None, "all" or "samtools".
+       Valid values are None, "all" (default), "nofilter" or "samtools".
 
-       The default stepper "all" uses all reads for
-       computing the pileup. This corresponds to the
-       mpileup options "-B" and "-A".
-
-       The stepper "samtools" uses the mpileup default
-       parameterization to advance.
-
+       See AlignmentFile.pileup for description.
+    
     fastafile
        A :class:`FastaFile` object
 
@@ -2358,7 +2427,10 @@ cdef class AlignedSegment:
                                    self.tags)))
 
     def compare(self, AlignedSegment other):
-        '''return -1,0,1, if contents in this are binary <,=,> to *other*'''
+        '''return -1,0,1, if contents in this are binary
+        <,=,> to *other*
+
+        '''
 
         cdef int retval, x
         cdef bam1_t *t
@@ -2390,15 +2462,33 @@ cdef class AlignedSegment:
             return retval
         return memcmp(t.data, o.data, t.l_data)
 
+    def __richcmp__(self, AlignedSegment other, int op):
+        if op == 2:  # == operator
+            return self.compare(other) == 0
+        elif op == 3:  # != operator
+            return self.compare(other) != 0
+        else:
+            return NotImplemented
+
     # Disabled so long as __cmp__ is a special method
     def __hash__(self):
-        return _Py_HashPointer(<void *>self)
+        cdef bam1_t * src
+        src = self._delegate
+        # shift and xor values in the core structure
+        # make sure tid and mtid are shifted by different amounts
+        # should variable length data be included?
+        cdef uint32_t hash_value = src.core.tid << 24 ^ \
+            src.core.pos << 16 ^ \
+            src.core.qual << 8 ^ \
+            src.core.flag ^ \
+            src.core.isize << 24 ^ \
+            src.core.mtid << 16 ^ \
+            src.core.mpos << 8
 
+        return hash_value
 
-    #######################################################################
-    #######################################################################
+    ########################################################
     ## Basic attributes in order of appearance in SAM format
-    #######################################################################
     property query_name:
         """the query template name (None if not present)"""
         def __get__(self):
@@ -2778,13 +2868,22 @@ cdef class AlignedSegment:
             return (self.flag & BAM_FDUP) != 0
         def __set__(self, val):
             pysam_update_flag(self._delegate, val, BAM_FDUP)
+    property is_supplementary:
+        """true if this is a supplementary alignment"""
+        def __get__(self):
+            return (self.flag & BAM_FSUPPLEMENTARY) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FSUPPLEMENTARY)
 
     # 2. Coordinates and lengths
     property reference_end:
-        '''aligned reference position of the read on the reference genome.  
+        '''aligned reference position of the read on the reference genome.
         
-        aend points to one past the last aligned residue.
-        Returns None if not available.'''
+        reference_end points to one past the last aligned residue.
+        Returns None if not available (read is unmapped or no cigar
+        alignment present).
+
+        '''
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
@@ -2969,13 +3068,22 @@ cdef class AlignedSegment:
 
         return qpos
             
-    def get_aligned_pairs(self):
-        """a list of aligned read and reference positions.
+    def get_aligned_pairs(self, matches_only = False):
+        """a list of aligned read (query) and reference positions.
+        For inserts, deletions, skipping either query or reference position may be None.
+
+        If @matches_only is True, only matched bases are returned - no None on either side.
+
+        Padding is currently not supported and leads to an exception
+        
         """
         cdef uint32_t k, i, pos, qpos
         cdef int op
         cdef uint32_t * cigar_p
         cdef bam1_t * src 
+        cdef int _matches_only
+
+        _matches_only = bool(matches_only)
 
         src = self._delegate
         if pysam_get_n_cigar(src) == 0:
@@ -2990,21 +3098,31 @@ cdef class AlignedSegment:
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
-            if op == BAM_CMATCH:
+            if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
                 for i from pos <= i < pos + l:
                     result.append((qpos, i))
                     qpos += 1
                 pos += l
 
-            elif op == BAM_CINS:
-                for i from pos <= i < pos + l:
-                    result.append((qpos, None))
-                    qpos += 1
+            elif op == BAM_CINS or op == BAM_CSOFT_CLIP:
+                if not _matches_only:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, None))
+                        qpos += 1
+                else:
+                    qpos += l
 
             elif op == BAM_CDEL or op == BAM_CREF_SKIP:
-                for i from pos <= i < pos + l:
-                    result.append((None, i))
+                if not _matches_only:
+                    for i from pos <= i < pos + l:
+                        result.append((None, i))
                 pos += l
+
+            elif op == BAM_CHARD_CLIP:
+                pass # advances neither
+
+            elif op == BAM_CPAD:
+                raise NotImplementedError("Padding (BAM_CPAD, 6) is currently not supported. Please implement. Sorry about that.")
 
         return result
 
@@ -3673,9 +3791,15 @@ cdef class PileupRead:
             return self._alignment
 
     property query_position:
-        """position of the read base at the pileup site, 0-based"""
+        """position of the read base at the pileup site, 0-based.
+        None if is_del or is_refskip is set.
+        
+        """
         def __get__(self):
-            return self._qpos
+            if self.is_del or self.is_refskip:
+                return None
+            else:
+                return self._qpos
 
     property indel:
         """indel length; 0 for no indel, positive for ins and negative            for del"""
@@ -3838,6 +3962,16 @@ cdef class IndexedReads:
             hts_close(self.htsfile)
             bam_hdr_destroy(self.header)
 
+cpdef set_verbosity(int verbosity):
+    u"""Set htslib's hts_verbose global variable to the specified value.
+    """
+    return hts_set_verbosity(verbosity)
+
+cpdef get_verbosity():
+    u"""Return the value of htslib's hts_verbose global variable.
+    """
+    return hts_get_verbosity()
+
 __all__ = ["AlignmentFile",
            "IteratorRow",
            "IteratorColumn",
@@ -3846,7 +3980,9 @@ __all__ = ["AlignmentFile",
            "PileupRead",
            "IndexedReads",
            "toQualityString",
-           "fromQualityString"]
+           "fromQualityString",
+           "get_verbosity",
+           "set_verbosity"]
            # "IteratorSNPCalls",
            # "SNPCaller",
            # "IndelCaller",

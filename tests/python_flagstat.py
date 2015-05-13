@@ -9,5 +9,3 @@ for read in pysam.AlignmentFile("ex1.bam", "rb"):
 
 print ("there are alignments of %i paired reads" % is_paired)
 print ("there are %i proper paired alignments" % is_proper)
-
-

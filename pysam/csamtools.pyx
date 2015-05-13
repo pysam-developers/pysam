@@ -88,6 +88,8 @@ def _samtools_dispatch(method,
        which are then read into memory in their entirety. This method
        is slow and might cause large memory overhead.
 
+    Catching of stdout can be turned of by setting *catch_stdout* to False.
+
     See http://bytes.com/topic/c/answers/487231-how-capture-stdout-temporarily
     on the topic of redirecting stderr/stdout.
     '''

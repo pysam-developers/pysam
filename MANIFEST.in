@@ -26,6 +26,7 @@ include pysam.py
 include tests/00README.txt
 include tests/pysam_data
 include tests/tabix_data
+include tests/*.py
 #ex1.fa
 #include tests/ex1.sam.gz
 #include tests/ex3.sam
@@ -49,7 +50,6 @@ include tests/tabix_data
 #include tests/issue100.bam
 
 # tabix tests
-#include tests/tabix_test.py
 #include tests/example.gtf.gz
 #include tests/example.gtf.gz.tbi
 #include tests/example.bed.gz

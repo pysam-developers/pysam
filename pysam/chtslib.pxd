@@ -23,12 +23,10 @@ cdef extern from "zlib.h" nogil:
   char * gzgets(gzFile file, char *buf, int len)
   int gzeof(gzFile file)
 
-
 cdef extern from "htslib/kstring.h" nogil:
     ctypedef struct kstring_t:
         size_t l, m
         char *s
-
 
 cdef extern from "htslib_util.h" nogil:
     ctypedef uint32_t khint32_t

@@ -63,7 +63,8 @@ class SamtoolsDispatcher(object):
         '''execute a samtools command
         '''
         retval, stderr, stdout = csamtools._samtools_dispatch(
-            self.dispatch, args)
+            self.dispatch, args, catch_stdout=kwargs.get("catch_stdout", True))
+
         if retval:
             raise SamtoolsError(
                 'csamtools returned with error %i: %s' %
@@ -78,8 +79,7 @@ class SamtoolsDispatcher(object):
                   if not (x.startswith("[sam_header_read2]") or
                           x.startswith("[bam_index_load]") or
                           x.startswith("[bam_sort_core]") or
-                          x.startswith("[samopen] SAM header is present"))
-        ]
+                          x.startswith("[samopen] SAM header is present"))]
         if stderr:
             raise SamtoolsError("\n".join(stderr))
 

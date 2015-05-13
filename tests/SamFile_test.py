@@ -322,6 +322,7 @@ class BasicTestSAMFile(BasicTestBAMFetch):
 
 
 class BasicTestSAMFetch(BasicTestBAMFetch):
+
     def setUp(self):
         self.samfile = pysam.Samfile(
             os.path.join(DATADIR, "ex3.sam"),
@@ -445,7 +446,7 @@ class TestIO(unittest.TestCase):
             input_filename,
             check_header=False,
             check_sq=False)
-        
+
         # TODO
         # result = list(infile.fetch(until_eof=True))
         # self.assertEqual(2, len(result))
@@ -470,7 +471,7 @@ class TestIO(unittest.TestCase):
     def testReadSamWithoutHeader(self):
         input_filename = os.path.join(DATADIR, "ex1.sam")
 
-        # reading from a samfile without header is not 
+        # reading from a samfile without header is not
         # implemented
         self.assertRaises(ValueError,
                           pysam.Samfile,
@@ -838,7 +839,7 @@ class TestIteratorColumn(unittest.TestCase):
                 self.samfile.getrname(column.tid)][column.pos]
             self.assertEqual(
                 thiscov, refcov, "wrong coverage at pos %s:%i %i should be %i" % (
-                self.samfile.getrname(column.tid), column.pos, thiscov, refcov))
+                    self.samfile.getrname(column.tid), column.pos, thiscov, refcov))
 
     def testIterateAll(self):
         '''check random access per contig'''
@@ -992,6 +993,7 @@ class TestHeaderFromRefs(unittest.TestCase):
 
 
 class TestHeader1000Genomes(unittest.TestCase):
+
     '''see issue 110'''
     # bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase2b_alignment/data/NA07048/exome_alignment/NA07048.unmapped.ILLUMINA.bwa.CEU.exome.20120522_p2b.bam"
     bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase3_EX_or_LC_only_alignment/data/HG00104/alignment/HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"
@@ -1187,7 +1189,7 @@ class ReadTest(unittest.TestCase):
         # add the . for refactoring purposes.
         for x in (".qname", ".seq", ".flag",
                   ".rname", ".pos", ".mapq", ".cigar",
-                  ".mrnm", ".mpos", ".isize", 
+                  ".mrnm", ".mpos", ".isize",
                   ".qual",
                   ".bin",
                   ".is_paired", ".is_proper_pair",
@@ -1224,14 +1226,12 @@ class TestAlignedRead(ReadTest):
         self.assertEqual(a.mpos, 0)
         self.assertEqual(a.isize, 0)
 
-
     def testStrOfEmptyRead(self):
         a = pysam.AlignedRead()
         s = str(a)
         self.assertEqual(
             "None\t0\t0\t0\t0\tNone\t0\t0\t0\tNone\tNone\t[]",
             s)
-
 
     def buildRead(self):
         '''build an example read.'''
@@ -1563,6 +1563,7 @@ class TestBTagBam(TestBTagSam):
 
 
 class TestDoubleFetch(unittest.TestCase):
+
     '''check if two iterators on the same bamfile are independent.'''
 
     filename = os.path.join(DATADIR, 'ex1.bam')
@@ -1719,6 +1720,7 @@ class TestLargeOptValues(unittest.TestCase):
 
 
 class TestPileup(unittest.TestCase):
+
     '''test pileup functionality.'''
 
     samfilename = "pysam_data/ex1.bam"
