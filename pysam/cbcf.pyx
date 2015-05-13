@@ -414,13 +414,91 @@ cdef class VariantHeaderRecord(object):
             return tuple( (r.keys[i] if r.keys[i] else None,
                            r.vals[i] if r.vals[i] else None) for i in range(r.nkeys) )
 
+    def __len__(self):
+        cdef bcf_hrec_t *r = self.ptr
+        return r.nkeys
+
+    def __bool__(self):
+        cdef bcf_hrec_t *r = self.ptr
+        cdef int i
+        for i in range(r.nkeys):
+            yield r.keys[i]
+
+    def __getitem__(self, key):
+        """get attribute value"""
+        cdef bcf_hrec_t *r = self.ptr
+        cdef int i
+        for i in range(r.nkeys):
+            if r.keys[i] and r.keys[i] == key:
+                return r.vals[i] if r.vals[i] else None
+        raise KeyError('cannot find metadata key')
+
+    def __iter__(self):
+        cdef bcf_hrec_t *r = self.ptr
+        cdef int i
+        for i in range(r.nkeys):
+            if r.keys[i]:
+                yield r.keys[i]
+
+    def get(self, key, default=None):
+        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key):
+        try:
+            self[key]
+        except KeyError:
+            return False
+        else:
+            return True
+
+    def iterkeys(self):
+        """D.iterkeys() -> an iterator over the keys of D"""
+        return iter(self)
+
+    def itervalues(self):
+        """D.itervalues() -> an iterator over the values of D"""
+        cdef bcf_hrec_t *r = self.ptr
+        cdef int i
+        for i in range(r.nkeys):
+            if r.keys[i]:
+                yield r.vals[i] if r.vals[i] else None
+
+    def iteritems(self):
+        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        cdef bcf_hrec_t *r = self.ptr
+        cdef int i
+        for i in range(r.nkeys):
+            if r.keys[i]:
+                yield r.keys[i], r.vals[i] if r.vals[i] else None
+
+    def keys(self):
+        """D.keys() -> list of D's keys"""
+        return list(self)
+
+    def items(self):
+        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
+        return list(self.iteritems())
+
+    def values(self):
+        """D.values() -> list of D's values"""
+        return list(self.itervalues())
+
+    # Mappings are not hashable by default, but subclasses can change this
+    __hash__ = None
+
+    #TODO: implement __richcmp__
+
     def __str__(self):
         cdef bcf_hrec_t *r = self.ptr
         if r.type == BCF_HL_GEN:
             return '##{}={}'.format(self.key, self.value)
         else:
             attrs = ','.join('{}={}'.format(k, v) for k,v in self.attrs if k != 'IDX')
-            return '##{}=<{}>'.format(self.type, attrs)
+            return '##{}=<{}>'.format(self.key or self.type, attrs)
 
 
 cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *hdr):
@@ -505,7 +583,15 @@ cdef class VariantMetadata(object):
                 return None
             return VALUE_TYPES[bcf_hdr_id2type(hdr, self.type, self.id)]
 
-    property header:
+    property description:
+        """metadata description (or None if not set)"""
+        def __get__(self):
+            descr = self.record.get('Description')
+            if descr:
+                descr = descr.strip('"')
+            return descr
+
+    property record:
         """:class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object"""
         def __get__(self):
             cdef bcf_hdr_t *hdr = self.header.ptr
@@ -541,7 +627,7 @@ cdef class VariantHeaderMetadata(object):
     def add(self, id, number, type, description, **kwargs):
         """Add a new filter, info or format record"""
         if id in self:
-            raise ValueError('Header already exists for id=%s' % id)
+            raise ValueError('Header already exists for id={}'.format(id))
 
         if self.type == BCF_HL_FLT:
             if number is not None:
@@ -552,7 +638,7 @@ cdef class VariantHeaderMetadata(object):
             items = [('ID', id), ('Description', description)]
         else:
             if type not in VALUE_TYPES:
-                raise ValueError('unknown type specified: %s' % type)
+                raise ValueError('unknown type specified: {}'.format(type))
             if number is None:
                 number = '.'
 
@@ -798,7 +884,7 @@ cdef class VariantHeaderContigs(object):
     def add(self, id, **kwargs):
         """Add a new contig record"""
         if id in self:
-            raise ValueError('Header already exists for contig %s' % id)
+            raise ValueError('Header already exists for contig {}'.format(id))
 
         items = [('ID', id)] + kwargs.items()
         self.header.add_meta('contig', items=items)
@@ -931,6 +1017,18 @@ cdef class VariantHeader(object):
         def __get__(self):
             return makeVariantHeaderMetadata(self, BCF_HL_FMT)
 
+    property alts:
+        """
+        alt metadata (:class:`dict` ID->record).  The data returned just a snapshot of alt records,
+        is created every time the property is requested, and modifications will not be reflected
+        in the header metadata and vice versa.
+
+        i.e. it is just a dict that reflects the state of alt records at the time it is created.
+        """
+        def __get__(self):
+            return { record['ID']:record for record in self.records if record.key.upper() == 'ALT' }
+
+
     # only safe to do when opening an htsfile
     cdef _subset_samples(self, include_samples):
         keep_samples    = set(self.samples)
@@ -1007,7 +1105,7 @@ cdef class VariantHeader(object):
     def add_sample(self, name):
         """Add a new sample to this header"""
         if bcf_hdr_add_sample(self.ptr, name) < 0:
-            raise ValueError('Duplicated sample name: %s' % name)
+            raise ValueError('Duplicated sample name: {}'.format(name))
         if self.ptr.dirty:
             bcf_hdr_sync(self.ptr)
 
