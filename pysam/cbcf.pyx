@@ -1529,41 +1529,82 @@ cdef class VariantRecord(object):
         """internal reference id number"""
         def __get__(self):
             return self.ptr.rid
+        def __set__(self, rid):
+            cdef bcf_hdr_t *hdr = self.header.ptr
+            cdef int r = rid
+            if rid < 0 or r >= hdr.n[BCF_DT_CTG] or not hdr.id[BCF_DT_CTG][r].val:
+                raise ValueError('invalid reference id')
+            self.ptr.rid = r
 
     property chrom:
         """chromosome/contig name"""
         def __get__(self):
             return bcf_hdr_id2name(self.header.ptr, self.ptr.rid)
+        def __set__(self, chrom):
+            cdef vdict_t *d = <vdict_t*>self.header.ptr.dict[BCF_DT_CTG]
+            cdef khint_t k = kh_get_vdict(d, chrom)
+            if k == kh_end(d):
+                raise ValueError('Invalid chromosome/contig')
+            self.ptr.rid = kh_val_vdict(d, k).id
 
     property contig:
         """chromosome/contig name"""
         def __get__(self):
             return bcf_hdr_id2name(self.header.ptr, self.ptr.rid)
+        def __set__(self, chrom):
+            cdef vdict_t *d = <vdict_t*>self.header.ptr.dict[BCF_DT_CTG]
+            cdef khint_t k = kh_get_vdict(d, chrom)
+            if k == kh_end(d):
+                raise ValueError('Invalid chromosome/contig')
+            self.ptr.rid = kh_val_vdict(d, k).id
 
     property pos:
         """record start position on chrom/contig (1-based inclusive)"""
         def __get__(self):
             return self.ptr.pos + 1
+        def __set__(self, pos):
+            if pos < 1:
+                raise ValueError('Position must be positive')
+            # FIXME: check start <= stop?
+            self.ptr.pos = pos - 1
 
     property start:
         """record start position on chrom/contig (0-based inclusive)"""
         def __get__(self):
             return self.ptr.pos
+        def __set__(self, start):
+            if start < 0:
+                raise ValueError('Start coordinate must be non-negative')
+            # FIXME: check start <= stop?
+            self.ptr.pos = start
 
     property stop:
         """record stop position on chrom/contig (0-based exclusive)"""
         def __get__(self):
             return self.ptr.pos + self.ptr.rlen
+        def __set__(self, stop):
+            if stop < self.ptr.pos:
+                raise ValueError('Stop coordinate must be greater than or equal to start')
+            self.ptr.rlen = stop - self.ptr.pos
 
     property rlen:
-        """record length on chrom/contig (rec.stop - rec.start)"""
+        """record length on chrom/contig (typically rec.stop - rec.start unless END info is supplied)"""
         def __get__(self):
             return self.ptr.rlen
+        def __set__(self, rlen):
+            if rlen < 0:
+                raise ValueError('Reference length must be non-negative')
+            self.ptr.rlen = rlen
 
     property qual:
         """phred scaled quality score or None if not available"""
         def __get__(self):
             return self.ptr.qual if not bcf_float_is_missing(self.ptr.qual) else None
+        def __set__(self, qual):
+            if qual is not None:
+                self.ptr.qual = qual
+            else:
+                memcpy(&self.ptr.qual, &bcf_float_missing, 4)
 
 #   property n_info:
 #       def __get__(self):
@@ -1604,6 +1645,12 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             id = self.ptr.d.id
             return id if id != b'.' else None
+        def __set__(self, id):
+            cdef char *idstr = NULL
+            if id is not None:
+                idstr = id
+            if bcf_update_id(self.header.ptr, self.ptr, idstr) < 0:
+                raise ValueError('Error updating id')
 
     property ref:
         """reference allele"""
@@ -1611,6 +1658,10 @@ cdef class VariantRecord(object):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
             return self.ptr.d.allele[0] if self.ptr.d.allele else None
+        def __set__(self, ref):
+            alleles = list(self.alleles)
+            alleles[0] = ref
+            self.alleles = alleles
 
     property alleles:
         """tuple of reference allele followed by alt alleles"""
@@ -1620,6 +1671,12 @@ cdef class VariantRecord(object):
             if not self.ptr.d.allele:
                 return None
             return tuple(self.ptr.d.allele[i] for i in range(self.ptr.n_allele))
+        def __set__(self, values):
+            if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
+                raise ValueError('Error unpacking VariantRecord')
+            values = ','.join(values)
+            if bcf_update_alleles_str(self.header.ptr, self.ptr, values) < 0:
+                raise ValueError('Error updating alleles')
 
     property alts:
         """tuple of alt alleles"""
@@ -1629,6 +1686,10 @@ cdef class VariantRecord(object):
             if self.ptr.n_allele < 2 or not self.ptr.d.allele:
                 return None
             return tuple(self.ptr.d.allele[i] for i in range(1,self.ptr.n_allele))
+        def __set__(self, alts):
+            alleles = [self.ref]
+            alleles.extend(alts)
+            self.alleles = alleles
 
     property filter:
         """filter information (see :class:`VariantRecordFilter`)"""
