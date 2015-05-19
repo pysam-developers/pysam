@@ -2196,6 +2196,8 @@ cdef class BCFIterator(BaseIterator):
             raise ValueError('bcf index required')
 
         cdef BCFIndex index = bcf.index
+        cdef int rid, cstart, cstop
+        cdef char *cregion
 
         if not index:
             raise ValueError('bcf index required')
@@ -2207,7 +2209,9 @@ cdef class BCFIterator(BaseIterator):
             if contig is not None or start is not None or stop is not None:
                 raise ValueError  # FIXME
 
-            self.iter = bcf_itr_querys(index.ptr, bcf.header.ptr, region)
+            cregion = region
+            with nogil:
+                self.iter = bcf_itr_querys(index.ptr, bcf.header.ptr, cregion)
         else:
             if contig is None:
                 raise ValueError  # FIXME
@@ -2219,7 +2223,10 @@ cdef class BCFIterator(BaseIterator):
             if stop is None:
                 stop = MAX_POS
 
-            self.iter = bcf_itr_queryi(index.ptr, rid, start, stop)
+            cstart, cstop = start, stop
+
+            with nogil:
+                self.iter = bcf_itr_queryi(index.ptr, rid, cstart, cstop)
 
         # Do not fail on self.iter == NULL, since it signifies a null query.
 
@@ -2244,7 +2251,10 @@ cdef class BCFIterator(BaseIterator):
         if self.bcf.drop_samples:
             record.max_unpack = BCF_UN_SHR
 
-        cdef int ret = bcf_itr_next(self.bcf.htsfile, self.iter, record)
+        cdef int ret
+
+        with nogil:
+            ret = bcf_itr_next(self.bcf.htsfile, self.iter, record)
 
         if ret < 0:
             _stop_BCFIterator(self, record)
@@ -2322,7 +2332,10 @@ cdef class TabixIterator(BaseIterator):
         if not self.iter:
             raise StopIteration
 
-        cdef int ret = tbx_itr_next(self.bcf.htsfile, self.index.ptr, self.iter, &self.line_buffer)
+        cdef int ret
+
+        with nogil:
+            ret = tbx_itr_next(self.bcf.htsfile, self.index.ptr, self.iter, &self.line_buffer)
 
         if ret < 0:
             tbx_itr_destroy(self.iter)
@@ -2482,7 +2495,8 @@ cdef class VariantFile(object):
         if self.drop_samples:
             record.max_unpack = BCF_UN_SHR
 
-        ret = bcf_read1(self.htsfile, self.header.ptr, record)
+        with nogil:
+            ret = bcf_read1(self.htsfile, self.header.ptr, record)
 
         if ret < 0:
             bcf_destroy1(record)
@@ -2500,9 +2514,13 @@ cdef class VariantFile(object):
             raise ValueError
 
         cdef VariantFile vars = VariantFile.__new__(VariantFile)
+        cdef bcf_hdr_t *hdr
+        cdef char *cfilename, *cmode
 
         # FIXME: re-open using fd or else header and index could be invalid
-        vars.htsfile = hts_open(self.filename, self.mode)
+        cfilename, cmode = self.filename, self.mode
+        with nogil:
+            vars.htsfile = hts_open(cfilename, cmode)
 
         if not vars.htsfile:
             raise ValueError('Cannot re-open htsfile')
@@ -2523,7 +2541,9 @@ cdef class VariantFile(object):
         if self.htsfile.is_bin:
             vars.seek(self.tell())
         else:
-            makeVariantHeader(bcf_hdr_read(vars.htsfile))
+            with nogil:
+                hdr = bcf_hdr_read(vars.htsfile)
+            makeVariantHeader(hdr)
 
         return vars
 
@@ -2533,6 +2553,11 @@ cdef class VariantFile(object):
         If open is called on an existing VariantFile, the current file will be
         closed and a new file will be opened.
         """
+        cdef bcf_hdr_t *hdr
+        cdef hts_idx_t *idx
+        cdef tbx_t *tidx
+        cdef char *cfilename, *cmode
+
         # close a previously opened file
         if self.is_open:
             self.close()
@@ -2576,33 +2601,47 @@ cdef class VariantFile(object):
 
             # open file. Header gets written to file at the same time for bam files
             # and sam files (in the latter case, the mode needs to be wh)
-            self.htsfile = hts_open(filename, mode)
+            cfilename, cmode = filename, mode
+            with nogil:
+                self.htsfile = hts_open(cfilename, cmode)
 
             if not self.htsfile:
                 raise ValueError("could not open file `{}` (mode='{}')".format((filename, mode)))
 
-            bcf_hdr_write(self.htsfile, self.header.ptr)
+            with nogil:
+                bcf_hdr_write(self.htsfile, self.header.ptr)
 
         elif mode[0] == b'r':
             # open file for reading
             if filename != b'-' and not self.is_remote and not os.path.exists(filename):
                 raise IOError('file `{}` not found'.format(filename))
 
-            self.htsfile = hts_open(filename, mode)
+            cfilename, cmode = filename, mode
+            with nogil:
+                self.htsfile = hts_open(cfilename, cmode)
 
             if not self.htsfile:
                 raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format((filename, mode)))
 
-            self.header = makeVariantHeader(bcf_hdr_read(self.htsfile))
+            with nogil:
+                hdr = bcf_hdr_read(self.htsfile)
+            self.header = makeVariantHeader(hdr)
 
             if not self.header:
                 raise ValueError("file `{}` does not have valid header (mode='{}') - is it BCF format?".format((filename, mode)))
 
             # check for index and open if present
             if self.htsfile.format.format == bcf:
-                self.index = makeBCFIndex(self.header, bcf_index_load(filename))
+                cfilename = filename
+                with nogil:
+                    idx = bcf_index_load(cfilename)
+                self.index = makeBCFIndex(self.header, idx)
             else:
-                self.index = makeTabixIndex(tbx_index_load(filename + '.tbi'))
+                tabix_filename = filename + '.tbi'
+                cfilename = tabix_filename
+                with nogil:
+                    tidx = tbx_index_load(cfilename)
+                self.index = makeTabixIndex(tidx)
 
             if not self.is_stream:
                 self.start_offset = self.tell()
@@ -2618,10 +2657,15 @@ cdef class VariantFile(object):
         if self.is_stream:
             raise OSError('seek not available in streams')
 
+        cdef int ret
         if self.htsfile.format.compression != no_compression:
-            return bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
+            with nogil:
+                ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
         else:
-            return hts_useek(self.htsfile, offset, SEEK_SET)
+            with nogil:
+                ret = hts_useek(self.htsfile, offset, SEEK_SET)
+        return ret
+
 
     def tell(self):
         """return current file position, see :meth:`pysam.VariantFile.seek`."""
@@ -2630,10 +2674,14 @@ cdef class VariantFile(object):
         if self.is_stream:
             raise OSError('tell not available in streams')
 
+        cdef int ret
         if self.htsfile.format.compression != no_compression:
-            return bgzf_tell(hts_get_bgzfp(self.htsfile))
+            with nogil:
+                ret = bgzf_tell(hts_get_bgzfp(self.htsfile))
         else:
-            return hts_utell(self.htsfile)
+            with nogil:
+                ret = hts_utell(self.htsfile)
+        return ret
 
     def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False):
         """fetch records in a :term:`region` using 0-based indexing. The
@@ -2682,7 +2730,10 @@ cdef class VariantFile(object):
         if not self.is_open:
             return 0
 
-        cdef int ret = bcf_write1(self.htsfile, self.header.ptr, record.ptr)
+        cdef int ret
+
+        with nogil:
+            ret = bcf_write1(self.htsfile, self.header.ptr, record.ptr)
 
         if ret < 0:
             raise ValueError('write failed')
