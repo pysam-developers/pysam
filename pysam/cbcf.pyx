@@ -1511,10 +1511,10 @@ cdef VariantRecordSamples makeVariantRecordSamples(VariantRecord record):
     if not record:
         raise ValueError('invalid VariantRecord')
 
-    cdef VariantRecordSamples genos = VariantRecordSamples.__new__(VariantRecordSamples)
-    genos.record = record
+    cdef VariantRecordSamples samples = VariantRecordSamples.__new__(VariantRecordSamples)
+    samples.record = record
 
-    return genos
+    return samples
 
 
 cdef class VariantRecord(object):
@@ -1872,6 +1872,55 @@ cdef class VariantRecordSample(object):
                     alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
 
             return tuple(alleles)
+
+    property phased:
+        """False if genotype is missing or any allele is unphased.  Otherwise True."""
+        def __get__(self):
+            cdef bcf_hdr_t *hdr = self.record.header.ptr
+            cdef bcf1_t *r = self.record.ptr
+            cdef int32_t n = bcf_hdr_nsamples(hdr)
+
+            if self.index < 0 or self.index >= n or not r.n_fmt:
+                return False
+
+            cdef bcf_fmt_t *fmt0 = r.d.fmt
+            cdef int gt0 = is_gt_fmt(hdr, fmt0)
+
+            if not gt0 or not fmt0.n:
+                return False
+
+            cdef int8_t  *data8
+            cdef int16_t *data16
+            cdef int32_t *data32
+
+            phased = False
+
+            if fmt0.type == BCF_BT_INT8:
+                data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
+                for i in range(fmt0.n):
+                    if data8[i] == bcf_int8_vector_end:
+                        break
+                    if i and data8[i] & 1 == 0:
+                        return False
+                    phased = True
+            elif fmt0.type == BCF_BT_INT16:
+                data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
+                for i in range(fmt0.n):
+                    if data16[i] == bcf_int16_vector_end:
+                        break
+                    if i and data16[i] & 1 == 0:
+                        return False
+                    phased = True
+            elif fmt0.type == BCF_BT_INT32:
+                data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
+                for i in range(fmt0.n):
+                    if data32[i] == bcf_int32_vector_end:
+                        break
+                    if i and data32[i] & 1 == 0:
+                        return False
+                    phased = True
+
+            return phased
 
     def __len__(self):
         return self.record.ptr.n_fmt
