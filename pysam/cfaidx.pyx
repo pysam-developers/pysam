@@ -99,7 +99,9 @@ cdef class FastaFile:
         # close a previously opened file
         if self.fastafile != NULL: self.close()
         self._filename = _encodeFilename(filename)
-        self.fastafile = fai_load(self._filename)
+        cdef char *cfilename = self._filename
+        with nogil:
+            self.fastafile = fai_load(cfilename)
 
         if self.fastafile == NULL:
             raise IOError("could not open file `%s`" % filename)
@@ -168,7 +170,8 @@ cdef class FastaFile:
             raise ValueError( "I/O operation on closed file" )
 
         cdef int length
-        cdef char * seq
+        cdef char *seq
+        cdef char *cregion
 
         if not region:
             if reference is None:
@@ -197,14 +200,18 @@ cdef class FastaFile:
             #                       end-1,
             #                       &length)
             region = "%s:%i-%i" % (reference, start+1, end)
+            cregion = region
             if PY_MAJOR_VERSION >= 3:
                 region = region.encode('ascii')
-            seq = fai_fetch( self.fastafile,
-                             region,
-                             &length )
+            with nogil:
+                seq = fai_fetch(self.fastafile,
+                                cregion,
+                                &length)
         else:
             # samtools adds a '\0' at the end
-            seq = fai_fetch( self.fastafile, region, &length )
+            cregion = region
+            with nogil:
+                seq = fai_fetch(self.fastafile, cregion, &length)
 
         # copy to python
         if seq == NULL:
@@ -220,11 +227,12 @@ cdef class FastaFile:
     cdef char * _fetch( self, char * reference, int start, int end, int * length ):
         '''fetch sequence for reference, start and end'''
 
-        return faidx_fetch_seq(self.fastafile,
-                               reference,
-                               start,
-                               end-1,
-                               length )
+        with nogil:
+            return faidx_fetch_seq(self.fastafile,
+                                   reference,
+                                   start,
+                                   end-1,
+                                   length )
 
     def get_reference_length(self, reference):
         '''return the length of reference.'''
@@ -295,8 +303,10 @@ cdef class FastxFile:
             raise IOError("no such file or directory: %s" % filename)
 
         filename = _encodeFilename(filename)
-        self.fastqfile = gzopen(filename, "r")
-        self.entry = kseq_init(self.fastqfile)
+        cdef char *cfilename = filename
+        with nogil:
+            self.fastqfile = gzopen(cfilename, "r")
+            self.entry = kseq_init(self.fastqfile)
         self._filename = filename
 
     def close( self ):
@@ -326,14 +336,16 @@ cdef class FastxFile:
     cdef int cnext(self):
         '''C version of iterator
         '''
-        return kseq_read(self.entry)
+        with nogil:
+            return kseq_read(self.entry)
 
     def __next__(self):
         """
         python version of next().
         """
         cdef int l
-        l = kseq_read(self.entry)
+        with nogil:
+            l = kseq_read(self.entry)
         if (l > 0):
             return makeFastqProxy(self.entry)
         else:

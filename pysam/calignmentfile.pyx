@@ -341,6 +341,9 @@ cdef class AlignmentFile:
         If _open is called on an existing file, the current file
         will be closed and a new file will be opened.
         '''
+        cdef char *cfilename
+        cdef char *cmode
+
         # for backwards compatibility:
         if referencenames is not None:
             reference_names = referencenames
@@ -457,7 +460,9 @@ cdef class AlignmentFile:
                     memcpy(self.header.text, ctext, strlen(ctext))
 
             # open file (hts_open is synonym with sam_open)
-            self.htsfile = hts_open(filename, bmode)
+            cfilename, cmode = filename, bmode
+            with nogil:
+                self.htsfile = hts_open(cfilename, cmode)
 
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
@@ -470,7 +475,8 @@ cdef class AlignmentFile:
 
             # write header to htsfile
             if self.is_bam or self.is_cram or "h" in mode:
-                sam_hdr_write(self.htsfile, self.header)
+                with nogil:
+                    sam_hdr_write(self.htsfile, self.header)
 
         elif mode[0] == "r":
             # open file for reading
@@ -480,7 +486,10 @@ cdef class AlignmentFile:
                 raise IOError("file `%s` not found" % filename)
 
             # open file (hts_open is synonym with sam_open)
-            self.htsfile = hts_open(filename, bmode)
+            cfilename, cmode = filename, bmode
+            with nogil:
+                self.htsfile = hts_open(cfilename, cmode)
+
             if self.htsfile == NULL:
                 raise ValueError(
                     "could not open file (mode='%s') - "
@@ -488,7 +497,8 @@ cdef class AlignmentFile:
 
             # bam files require a valid header
             if self.is_bam or self.is_cram:
-                self.header = sam_hdr_read(self.htsfile)
+                with nogil:
+                    self.header = sam_hdr_read(self.htsfile)
                 if self.header == NULL:
                     raise ValueError(
                         "file does not have valid header (mode='%s') "
@@ -497,7 +507,8 @@ cdef class AlignmentFile:
                 # in sam files it is optional (htsfile full of
                 # unmapped reads)
                 if check_header:
-                    self.header = sam_hdr_read(self.htsfile)
+                    with nogil:
+                        self.header = sam_hdr_read(self.htsfile)
                     if self.header == NULL:
                         raise ValueError(
                             "file does not have valid header (mode='%s') "
@@ -525,7 +536,9 @@ cdef class AlignmentFile:
 
             # open index for remote files
             if self.is_remote:
-                self.index = hts_idx_load(filename, format_index)
+                cfilename = filename
+                with nogil:
+                    self.index = hts_idx_load(cfilename, format_index)
                 if self.index == NULL:
                     warnings.warn(
                         "unable to open remote index for '%s'" % filename)
@@ -541,8 +554,10 @@ cdef class AlignmentFile:
                 else:
                     # returns NULL if there is no index or index could
                     # not be opened
-                    self.index = sam_index_load(self.htsfile,
-                                                filename)
+                    cfilename = filename
+                    with nogil:
+                        self.index = sam_index_load(self.htsfile,
+                                                    cfilename)
                     if self.index == NULL:
                         raise IOError(
                             "error while opening index for '%s'" %
@@ -668,7 +683,10 @@ cdef class AlignmentFile:
         if self.is_stream:
             raise OSError("seek no available in streams")
 
-        return bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
+        cdef uint64_t pos
+        with nogil:
+            pos = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
+        return pos
 
     def tell(self):
         '''
@@ -680,7 +698,10 @@ cdef class AlignmentFile:
             raise NotImplementedError(
                 "seek only available in bam files")
 
-        return bgzf_tell(hts_get_bgzfp(self.htsfile))
+        cdef uint64_t pos
+        with nogil:
+            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
+        return pos
 
     def fetch(self,
               reference=None,
@@ -1064,9 +1085,12 @@ cdef class AlignmentFile:
         if not self._isOpen():
             return 0
 
-        cdef int ret = sam_write1(self.htsfile,
-                                  self.header,
-                                  read._delegate)
+        cdef int ret
+
+        with nogil:
+            ret = sam_write1(self.htsfile,
+                             self.header,
+                             read._delegate)
 
         # kbj: Still need to raise an exception with except -1. Otherwise
         #      when ret == -1 we get a "SystemError: error return without
@@ -1132,7 +1156,8 @@ cdef class AlignmentFile:
             cdef uint64_t total = 0
             cdef uint64_t mapped, unmapped
             for tid from 0 <= tid < self.header.n_targets:
-                hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
+                with nogil:
+                    hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
                 total += mapped
             return total
 
@@ -1160,7 +1185,8 @@ cdef class AlignmentFile:
             cdef uint64_t total = 0
             cdef uint64_t mapped, unmapped
             for tid from 0 <= tid < self.header.n_targets:
-                hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
+                with nogil:
+                    hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
                 total += unmapped
             return total
 
@@ -1170,7 +1196,10 @@ cdef class AlignmentFile:
         """
         def __get__(self):
             self._checkIndex()
-            return hts_idx_get_n_no_coor(self.index)
+            cdef uint64_t n
+            with nogil:
+                n = hts_idx_get_n_no_coor(self.index)
+            return n
 
     property text:
         '''full contents of the :term:`sam file` header as a string
@@ -1405,9 +1434,12 @@ cdef class AlignmentFile:
         '''
         cversion of iterator. Used by :class:`pysam.AlignmentFile.IteratorColumn`.
         '''
-        return sam_read1(self.htsfile,
-                         self.header,
-                         self.b)
+        cdef int ret
+        with nogil:
+            ret = sam_read1(self.htsfile,
+                            self.header,
+                            self.b)
+        return ret
 
     def __next__(self):
         """
@@ -1448,6 +1480,7 @@ cdef class IteratorRow:
     '''
 
     def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
+        cdef char *cfilename
         
         if not samfile._isOpen():
             raise ValueError("I/O operation on closed file")
@@ -1459,11 +1492,14 @@ cdef class IteratorRow:
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if multiple_iterators:
-            self.htsfile = hts_open(samfile._filename, 'r')
+            cfilename = samfile._filename
+            with nogil:
+                self.htsfile = hts_open(cfilename, 'r')
             assert self.htsfile != NULL
             # read header - required for accurate positioning
             # could a tell/seek work?
-            self.header = sam_hdr_read(self.htsfile)
+            with nogil:
+                self.header = sam_hdr_read(self.htsfile)
             assert self.header != NULL
             self.owns_samfile = True
         else:
@@ -1506,11 +1542,12 @@ cdef class IteratorRowRegion(IteratorRow):
         if not samfile._hasIndex():
             raise ValueError("no index available for iteration")
 
-        self.iter = sam_itr_queryi(
-            self.samfile.index,
-            tid,
-            beg,
-            end)
+        with nogil:
+            self.iter = sam_itr_queryi(
+                self.samfile.index,
+                tid,
+                beg,
+                end)
     
     def __iter__(self):
         return self
@@ -1520,10 +1557,11 @@ cdef class IteratorRowRegion(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        self.retval = hts_itr_next(hts_get_bgzfp(self.htsfile),
-                                   self.iter,
-                                   self.b,
-                                   self.htsfile)
+        with nogil:
+            self.retval = hts_itr_next(hts_get_bgzfp(self.htsfile),
+                                       self.iter,
+                                       self.b,
+                                       self.htsfile)
 
     def __next__(self):
         """python version of next().
@@ -1572,9 +1610,12 @@ cdef class IteratorRowHead(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        return sam_read1(self.htsfile,
-                         self.samfile.header,
-                         self.b)
+        cdef int ret
+        with nogil:
+            ret = sam_read1(self.htsfile,
+                            self.samfile.header,
+                            self.b)
+        return ret
 
     def __next__(self):
         """python version of next().
@@ -1621,9 +1662,12 @@ cdef class IteratorRowAll(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
-        return sam_read1(self.htsfile,
-                         self.samfile.header,
-                         self.b)
+        cdef int ret
+        with nogil:
+            ret = sam_read1(self.htsfile,
+                            self.samfile.header,
+                            self.b)
+        return ret
 
     def __next__(self):
         """python version of next().
@@ -1733,17 +1777,22 @@ cdef class IteratorRowSelection(IteratorRow):
 
     cdef int cnext(self):
         '''cversion of iterator'''
-
         # end iteration if out of positions
         if self.current_pos >= len(self.positions): return -1
 
-        bgzf_seek(hts_get_bgzfp(self.htsfile),
-                  self.positions[self.current_pos],
-                  0)
+        cdef uint64_t pos = self.positions[self.current_pos]
+        with nogil:
+            bgzf_seek(hts_get_bgzfp(self.htsfile),
+                      pos,
+                      0)
         self.current_pos += 1
-        return sam_read1(self.htsfile,
-                         self.samfile.header,
-                         self.b)
+
+        cdef int ret
+        with nogil:
+            ret = sam_read1(self.htsfile,
+                            self.samfile.header,
+                            self.b)
+        return ret
 
     def __next__(self):
         """python version of next().
@@ -1764,7 +1813,10 @@ cdef int __advance_nofilter(void *data, bam1_t *b):
     '''
     cdef __iterdata * d
     d = <__iterdata*>data
-    return sam_itr_next(d.htsfile, d.iter, b)
+    cdef int ret
+    with nogil:
+        ret = sam_itr_next(d.htsfile, d.iter, b)
+    return ret
 
 
 cdef int __advance_all(void *data, bam1_t *b):
@@ -1777,10 +1829,12 @@ cdef int __advance_all(void *data, bam1_t *b):
     cdef __iterdata * d
     cdef mask = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP
     d = <__iterdata*>data
-    cdef int ret = sam_itr_next(d.htsfile, d.iter, b)
-    while ret >= 0 and b.core.flag & mask:
+    cdef int ret
+    with nogil:
         ret = sam_itr_next(d.htsfile, d.iter, b)
-
+    while ret >= 0 and b.core.flag & mask:
+        with nogil:
+            ret = sam_itr_next(d.htsfile, d.iter, b)
     return ret
 
 
@@ -1798,12 +1852,15 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
     cdef __iterdata * d
     d = <__iterdata*>data
 
-    cdef int ret = sam_itr_next(d.htsfile, d.iter, b)
+    cdef int ret
     cdef int skip = 0
     cdef int q
     cdef int is_cns = 1
     cdef int is_nobaq = 0
     cdef int capQ_thres = 0
+
+    with nogil:
+        ret = sam_itr_next(d.htsfile, d.iter, b)
 
     # reload sequence
     if d.fastafile != NULL and b.core.tid != d.tid:
@@ -1844,7 +1901,8 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
             break
         # additional filters
 
-        ret = sam_itr_next(d.htsfile, d.iter, b)
+        with nogil:
+            ret = sam_itr_next(d.htsfile, d.iter, b)
 
     return ret
 
@@ -2685,7 +2743,8 @@ cdef class AlignedSegment:
             cdef bam1_t * src
             cdef uint8_t * p
             cdef char * s
-            cdef int l, k, nbytes_new, nbytes_old
+            cdef int l, k
+            cdef Py_ssize_t nbytes_new, nbytes_old
 
             if seq == None:
                 l = 0
@@ -3899,6 +3958,7 @@ cdef class IndexedReads:
     """
 
     def __init__(self, AlignmentFile samfile, int multiple_iterators=True):
+        cdef char *cfilename
 
         # makes sure that samfile stays alive as long as this
         # object is alive.
@@ -3909,10 +3969,13 @@ cdef class IndexedReads:
         # multiple_iterators the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if multiple_iterators:
-            self.htsfile = hts_open(samfile._filename, 'r')
+            cfilename = samfile._filename
+            with nogil:
+                self.htsfile = hts_open(cfilename, 'r')
             assert self.htsfile != NULL
             # read header - required for accurate positioning
-            self.header = sam_hdr_read(self.htsfile)
+            with nogil:
+                self.header = sam_hdr_read(self.htsfile)
             self.owns_samfile = True
         else:
             self.htsfile = self.samfile.htsfile
@@ -3932,10 +3995,11 @@ cdef class IndexedReads:
         cdef uint64_t pos
 
         while ret > 0:
-            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
-            ret = sam_read1(self.htsfile,
-                            self.samfile.header,
-                            b)
+            with nogil:
+                pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
+                ret = sam_read1(self.htsfile,
+                                self.samfile.header,
+                                b)
             if ret > 0:
                 qname = _charptr_to_str(pysam_bam_get_qname(b))
                 self.index[qname].append(pos)

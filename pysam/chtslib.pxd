@@ -979,7 +979,7 @@ cdef extern from "pysam_stream.h" nogil:
                     int * dret)
 
 
-cdef extern from "htslib/faidx.h":
+cdef extern from "htslib/faidx.h" nogil:
 
     ctypedef struct faidx_t:
        pass

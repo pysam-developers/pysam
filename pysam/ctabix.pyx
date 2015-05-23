@@ -311,11 +311,17 @@ cdef class TabixFile:
         _encoded_index = _encodeFilename(filename_index)
 
         # open file
-        self.tabixfile = hts_open(_encoded_filename, 'r')
+        cdef char *cfilename = _encoded_filename
+        with nogil:
+            self.tabixfile = hts_open(cfilename, 'r')
+
         if self.tabixfile == NULL:
             raise IOError("could not open file `%s`" % filename)
         
-        self.index = tbx_index_load(_encoded_index)
+        cfilename = _encoded_index
+        with nogil:
+            self.index = tbx_index_load(cfilename)
+
         if self.index == NULL:
             raise IOError("could not open index for `%s`" % filename)
 
@@ -381,6 +387,7 @@ cdef class TabixFile:
 
         # get iterator
         cdef hts_itr_t * iter
+        cdef char *cstr
         cdef TabixFile fileobj
 
         # reopen the same file if necessary
@@ -391,13 +398,16 @@ cdef class TabixFile:
 
         if region is None:
             # without region or reference - iterate from start
-            iter = tbx_itr_queryi(fileobj.index,
-                                  HTS_IDX_START,
-                                  0,
-                                  0)
+            with nogil:
+                iter = tbx_itr_queryi(fileobj.index,
+                                      HTS_IDX_START,
+                                      0,
+                                      0)
         else:
             s = _force_bytes(region, encoding=fileobj.encoding)
-            iter = tbx_itr_querys(fileobj.index, s)
+            cstr = s
+            with nogil:
+                iter = tbx_itr_querys(fileobj.index, cstr)
 
         if iter == NULL:
             if region is None:
@@ -514,12 +524,13 @@ cdef class TabixIterator:
         cdef int retval
 
         while 1:
-                
-            retval = tbx_itr_next(
-                self.tabixfile.tabixfile,
-                self.tabixfile.index,
-                self.iterator,
-                &self.buffer)
+            with nogil:
+                retval = tbx_itr_next(
+                    self.tabixfile.tabixfile,
+                    self.tabixfile.index,
+                    self.iterator,
+                    &self.buffer)
+
             if retval < 0:
                 break
 
@@ -604,7 +615,9 @@ cdef class GZIterator:
             raise IOError("No such file or directory: %s" % filename)
 
         filename = _encodeFilename(filename)
-        self.gzipfile = gzopen(filename, "r")
+        cdef char *cfilename = filename
+        with nogil:
+            self.gzipfile = gzopen(cfilename, "r")
         self._filename = filename
         self.kstream = ks_init(self.gzipfile)
         self.encoding = encoding
@@ -629,7 +642,8 @@ cdef class GZIterator:
         cdef int dret = 0
         cdef int retval = 0
         while 1:
-            retval = ks_getuntil(self.kstream, '\n', &self.buffer, &dret)
+            with nogil:
+                retval = ks_getuntil(self.kstream, '\n', &self.buffer, &dret)
             
             if retval < 0: 
                 break
@@ -707,7 +721,9 @@ def tabix_compress(filename_in,
     WINDOW_SIZE = 64 * 1024
 
     fn = _encodeFilename(filename_out)
-    fp = bgzf_open( fn, "w")
+    cdef char *cfn = fn
+    with nogil:
+        fp = bgzf_open(cfn, "w")
     if fp == NULL:
         raise IOError("could not open '%s' for writing" % (filename_out, ))
 
@@ -720,8 +736,9 @@ def tabix_compress(filename_in,
     c = 1
 
     while c > 0:
-        c = read(fd_src, buffer, WINDOW_SIZE)
-        r = bgzf_write(fp, buffer, c)
+        with nogil:
+            c = read(fd_src, buffer, WINDOW_SIZE)
+            r = bgzf_write(fp, buffer, c)
         if r < 0:
             free(buffer)
             raise OSError("writing failed")
@@ -743,7 +760,7 @@ def tabix_index( filename,
                  preset = None,
                  meta_char = "#",
                  zerobased = False,
-                 min_shift = -1,
+                 int min_shift = -1,
                 ):
     '''index tab-separated *filename* using tabix.
 
@@ -840,7 +857,9 @@ def tabix_index( filename,
 
 
     fn = _encodeFilename(filename)
-    tbx_index_build(fn, min_shift, &conf)
+    cdef char *cfn = fn
+    with nogil:
+        tbx_index_build(cfn, min_shift, &conf)
     
     return filename
 
@@ -967,8 +986,8 @@ cdef class tabix_file_iterator:
         cdef int dret = 0
         cdef int retval = 0
         while 1:
-            
-            retval = ks_getuntil(self.kstream, '\n', &self.buffer, &dret)
+            with nogil:
+                retval = ks_getuntil(self.kstream, '\n', &self.buffer, &dret)
             
             if retval < 0: 
                 break
