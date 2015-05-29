@@ -738,10 +738,6 @@ cdef class AlignmentFile:
 
         Note that a :term:`SAM` file does not allow random access. If
         *region* or *reference* are given, an exception is raised.
-        
-        Also note that using fetch() will not yield reads with mates
-        properly mapped to a different reference: all reads returned
-        by fetch() will have reference_id == next_reference_id.
 
         '''
         cdef int rtid, rstart, rend, has_coord
