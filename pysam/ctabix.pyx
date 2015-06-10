@@ -199,7 +199,7 @@ cdef class asBed(Parser):
     +-----------+-----------+------------------------------------------+
 
     Only the first three fields are required. Additional
-    fields are optional, but if one is defined, all the preceeding
+    fields are optional, but if one is defined, all the preceding
     need to be defined as well.
 
     ''' 

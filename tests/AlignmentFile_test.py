@@ -370,7 +370,7 @@ class TestIO(unittest.TestCase):
 
         If *use_template* is set, the header is copied from infile
         using the template mechanism, otherwise target names and
-        lengths are passed explicitely.
+        lengths are passed explicitly.
 
         The *checkf* is used to determine if the files are
         equal.
