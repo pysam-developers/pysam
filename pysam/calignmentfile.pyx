@@ -1474,7 +1474,7 @@ cdef class IteratorRow:
     .. note::
 
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a
+        explicitly. It is returned as a result of call to a
         :meth:`AlignmentFile.fetch`.
 
     '''
@@ -1527,7 +1527,7 @@ cdef class IteratorRowRegion(IteratorRow):
     .. note::
 
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a
+        explicitly. It is returned as a result of call to a
         :meth:`AlignmentFile.fetch`.
 
     """
@@ -1689,7 +1689,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
 
     .. note::
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a
+        explicitly. It is returned as a result of call to a
         :meth:`AlignmentFile.fetch`.
 
     """
@@ -1759,7 +1759,7 @@ cdef class IteratorRowSelection(IteratorRow):
 
     .. note::
         It is usually not necessary to create an object of this class
-        explicitely. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
+        explicitly. It is returned as a result of call to a :meth:`AlignmentFile.fetch`.
     """
 
     def __init__(self, AlignmentFile samfile, positions, int multiple_iterators=True):
@@ -3370,7 +3370,7 @@ cdef class AlignedSegment:
         section.
 
         *value_type* describes the type of *value* that is to entered
-        into the alignment record.. It can be set explicitely to one
+        into the alignment record.. It can be set explicitly to one
         of the valid one-letter type codes. If unset, an appropriate
         type will be chosen automatically.
 
@@ -3480,7 +3480,7 @@ cdef class AlignedSegment:
             bytesize, nvalues, values = convertBinaryTagToList(v + 1)
             return values
         else:
-            raise ValueError("unknown auxilliary type '%s'" % auxtype)
+            raise ValueError("unknown auxiliary type '%s'" % auxtype)
 
     def get_tags(self, with_value_type=False):
         """the fields in the optional aligment section.
@@ -3563,7 +3563,7 @@ cdef class AlignedSegment:
         a list of (tag, value) tuples.
 
         The :term:`value type` of the values is determined from the
-        python type. Optionally, a type may be given explicitely as
+        python type. Optionally, a type may be given explicitly as
         a third value in the tuple, For example:
 
         x.set_tags([(NM, 2, "i"), (RG, "GJP00TM04", "Z")]

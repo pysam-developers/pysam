@@ -355,7 +355,7 @@ class IOTest(unittest.TestCase):
 
         If *use_template* is set, the header is copied from infile using the
         template mechanism, otherwise target names and lengths are passed 
-        explicitely. 
+        explicitly. 
 
         '''
 
