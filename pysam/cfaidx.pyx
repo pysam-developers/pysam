@@ -3,6 +3,7 @@
 # adds doc-strings for sphinx
 import sys
 import os
+from array import array
 
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
@@ -420,6 +421,7 @@ __all__ = ["FastaFile",
            "Fastafile",
            "Fastqfile"]
 
-cdef array.array cs_to_ph(cython.str input_str):
+
+cdef array.array cs_to_ph(bytes input_str):
     cdef char i
     return array('B', [i - 33 for i in input_str])
