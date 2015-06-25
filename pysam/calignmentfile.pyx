@@ -3444,7 +3444,7 @@ cdef class AlignedSegment:
         v = bam_aux_get(self._delegate, btag)
         return v != NULL
 
-    cpdef get_tag(self, tag):
+    cpdef get_tag(self, tag, with_value_type=False):
         """retrieves data from the optional alignment section
         given a two-letter *tag* denoting the field.
 
@@ -3454,6 +3454,9 @@ cdef class AlignedSegment:
 
         This method is the fastest way to access the optional
         alignment section if only few tags need to be retrieved.
+
+        If *with_value_type* is set, the return value is a tuple of
+        (tag value, type code)
         """
         cdef uint8_t * v
         cdef int nvalues
@@ -3461,26 +3464,34 @@ cdef class AlignedSegment:
         v = bam_aux_get(self._delegate, btag)
         if v == NULL:
             raise KeyError("tag '%s' not present" % tag)
-        auxtype = chr(v[0])
+        if chr(v[0]) == "B":
+            auxtype = chr(v[0]) + chr(v[1])
+        else:
+            auxtype = chr(v[0])
         if auxtype == 'c' or auxtype == 'C' or auxtype == 's' or auxtype == 'S':
-            return <int>bam_aux2i(v)
+            value = <int>bam_aux2i(v)
         elif auxtype == 'i' or auxtype == 'I':
-            return <int32_t>bam_aux2i(v)
+            value = <int32_t>bam_aux2i(v)
         elif auxtype == 'f' or auxtype == 'F':
-            return <float>bam_aux2f(v)
+            value = <float>bam_aux2f(v)
         elif auxtype == 'd' or auxtype == 'D':
-            return <double>bam_aux2f(v)
+            value = <double>bam_aux2f(v)
         elif auxtype == 'A':
             # there might a more efficient way
             # to convert a char into a string
-            return '%c' % <char>bam_aux2A(v)
+            value = '%c' % <char>bam_aux2A(v)
         elif auxtype == 'Z':
-            return _charptr_to_str(<char*>bam_aux2Z(v))
-        elif auxtype == 'B':
+            value = _charptr_to_str(<char*>bam_aux2Z(v))
+        elif auxtype[0] == 'B':
             bytesize, nvalues, values = convertBinaryTagToList(v + 1)
-            return values
+            value = values
         else:
             raise ValueError("unknown auxiliary type '%s'" % auxtype)
+
+        if with_value_type:
+            return (value, auxtype)
+        else:
+            return value
 
     def get_tags(self, with_value_type=False):
         """the fields in the optional aligment section.

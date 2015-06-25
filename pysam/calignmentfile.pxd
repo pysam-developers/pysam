@@ -76,7 +76,7 @@ cdef class AlignedSegment:
 
     # add an alignment tag with value to the AlignedSegment
     # an existing tag of the same name will be replaced.
-    cpdef get_tag(self, tag)
+    cpdef get_tag(self, tag, with_value_type=?)
 
     # return true if tag exists
     cpdef has_tag(self, tag)
