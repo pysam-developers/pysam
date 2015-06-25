@@ -187,7 +187,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
                     if len(elts) == 1: v = None
                     elif len(elts) == 2: v = elts[1]
                     else: self.vcf.error(str(self),self.ERROR_INFO_STRING)
-                    info[elts[0]] = self.vcf.parse_formatdata(elts[0], v, self.vcf._info, str(self))
+                    info[elts[0]] = self.vcf.parse_formatdata(elts[0], v, self.vcf._info, str(self.vcf))
             return info
 
     property format:
