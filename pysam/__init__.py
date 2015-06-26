@@ -1,13 +1,16 @@
 from pysam.libchtslib import *
 
+from pysam.cyutils import *
+import pysam.cyutils as cyutils
+
+import pysam.cfaidx as cfaidx
+from pysam.cfaidx import *
 import pysam.ctabix as ctabix
 from pysam.ctabix import *
 import pysam.csamfile as csamfile
 from pysam.csamfile import *
 import pysam.calignmentfile as calignmentfile
 from pysam.calignmentfile import *
-import pysam.cfaidx as cfaidx
-from pysam.cfaidx import *
 import pysam.cvcf as cvcf
 from pysam.cvcf import *
 import pysam.cbcf as cbcf

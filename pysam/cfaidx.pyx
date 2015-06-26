@@ -3,15 +3,7 @@
 # adds doc-strings for sphinx
 import sys
 import os
-from array import array
-
-cdef class FastqProxy
-cdef makeFastqProxy(kseq_t * src):
-    '''enter src into AlignedRead.'''
-    cdef FastqProxy dest = FastqProxy.__new__(FastqProxy)
-    dest._delegate = src
-    return dest
-
+from cpython cimport array
 
 from cpython cimport PyErr_SetString, \
     PyBytes_Check, \
@@ -25,6 +17,14 @@ from chtslib cimport \
     faidx_fetch_seq, gzopen, gzclose, \
     kseq_init, kseq_destroy, kseq_read
 
+cimport cyutils
+
+cdef class FastqProxy
+cdef makeFastqProxy(kseq_t * src):
+    '''enter src into AlignedRead.'''
+    cdef FastqProxy dest = FastqProxy.__new__(FastqProxy)
+    dest._delegate = src
+    return dest
 
 ########################################################################
 ########################################################################
@@ -262,21 +262,31 @@ cdef class FastqProxy:
         def __get__(self):
             if self._delegate.comment.l:
                 return self._delegate.comment.s
-            else: return None
+            else:
+                return None
 
     property quality:
         def __get__(self):
             if self._delegate.qual.l:
                 return self._delegate.qual.s
-            else: return None
+            else:
+                return None
 
+    cdef cython.str tostring(self):
+        return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
+                                        self.sequence, self.quality)
 
-cdef class pFastqProxy:
+    def __str__(self):
+        return self.tostring()
+
+    cpdef array.array get_quality_array(self):
+        return cyutils._chars_to_array(self.quality)
+
+cdef class PersistentFastqProxy:
     """
     Python container for pysam.cfaidx.FastqProxy with persistence.
     Needed to compare multiple fastq records from the same file.
-    In addition, has a __str__ method and a very fast getQualArray.
-    (
+
     """
     def __init__(self, FastqProxy FastqRead):
         self.comment = FastqRead.comment
@@ -291,37 +301,8 @@ cdef class pFastqProxy:
     def __str__(self):
         return self.tostring()
 
-    cpdef array.array getQualArray(self):
-        return cs_to_ph(self.quality)
-
-
-cdef class pFastqFile(object):
-    """
-    Contains a handle for a FastqFile wrapper and converts each FastqProxy
-    to a pFastqProxy.
-    pFastqProxy objects persist, unlike FastqProxy objects, making it
-    possible to compare a number of Fastq records from a single file.
-    """
-    def __init__(self, object Fq):
-        if(isinstance(Fq, str)):
-            self.handle = FastqFile(Fq)
-        elif(isinstance(Fq, FastqFile)):
-            self.handle = Fq
-        else:
-            raise ValueError("pFastqFile can be initiated by a "
-                             "pysam.cfaidx.FastqFile or a string.")
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return pFastqProxy(next(self.handle))
-
-    cpdef close(self):
-        self.handle.close()
-
-    def refresh(self):
-        self.handle = FastqFile(self.handle.filename)
+    cpdef array.array get_quality_array(self):
+        return cyutils._chars_to_array(self.quality)
 
 
 cdef class FastxFile:
@@ -348,13 +329,20 @@ cdef class FastxFile:
         '''return true if samfile has been opened.'''
         return self.entry != NULL
 
-    def _open(self, filename):
-        '''open a fastq/fasta file.
+    def _open(self, filename, persist=True):
+        '''open a fastq/fasta file in *filename*
+
+        Keyword arguments:
+        persist -- if True return a copy of the underlying data (default True).
+                   The copy will persist even if the iteration on the file continues.
+
         '''
         self.close()
 
         if not os.path.exists(filename):
             raise IOError("no such file or directory: %s" % filename)
+
+        self.persist = persist
 
         filename = _encodeFilename(filename)
         cdef char *cfilename = filename
@@ -401,6 +389,8 @@ cdef class FastxFile:
         with nogil:
             l = kseq_read(self.entry)
         if (l > 0):
+            if self.persist:
+                return PersistentFastqProxy(makeFastqProxy(self.entry))
             return makeFastqProxy(self.entry)
         else:
             raise StopIteration
@@ -413,15 +403,8 @@ cdef class FastqFile(FastxFile):
 cdef class Fastafile(FastaFile):
     pass
 
-cdef class Fastqfile(FastxFile):
-    pass
-
 __all__ = ["FastaFile",
            "FastqFile",
-           "Fastafile",
-           "Fastqfile"]
+           "FastxFile"]
 
 
-cdef array.array cs_to_ph(bytes input_str):
-    cdef char i
-    return array('B', [i - 33 for i in input_str])

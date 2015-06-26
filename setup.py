@@ -250,6 +250,7 @@ except ImportError:
     tabix_sources = ["pysam/ctabix.c"]
     faidx_sources = ["pysam/cfaidx.c"]
     csamfile_sources = ["pysam/csamfile.c"]
+    cyutils_sources = ["pysam/cyutils.c"]
     calignmentfile_sources = ["pysam/calignmentfile.c"]
     tabproxies_sources = ["pysam/TabProxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
@@ -266,6 +267,7 @@ else:
                   "pysam/TabProxies.c",
                   "pysam/cvcf.c",
                   "pysam/bvcf.c",
+                  "pysam/cyutils.c",
                   ):
             try:
                 os.unlink(f)
@@ -282,6 +284,7 @@ else:
     tabproxies_sources = ["pysam/TabProxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
     cbcf_sources = ["pysam/cbcf.pyx"]
+    cyutils_sources = ["pysam/cyutils.pyx"]
 
 
 #######################################################
@@ -406,6 +409,21 @@ tabix = Extension(
                    ('_USE_KNETFILE', '')],
 )
 
+cyutils = Extension(
+    "pysam.cyutils",
+    cyutils_sources +
+    htslib_sources +
+    os_c_files,
+    library_dirs=["pysam"],
+    include_dirs=["pysam"] + include_os + htslib_include_dirs,
+    libraries=["z"] + htslib_libraries,
+    language="c",
+    extra_compile_args=["-Wno-error=declaration-after-statement",
+                        "-DSAMTOOLS=1"],
+    define_macros=[('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')],
+)
+
 faidx = Extension(
     "pysam.cfaidx",
     faidx_sources +
@@ -483,7 +501,8 @@ metadata = {
                     tabproxies,
                     cvcf,
                     cbcf,
-                    faidx],
+                    faidx,
+                    cyutils],
     'cmdclass': cmdclass,
     'package_dir': {'pysam': 'pysam',
                     'pysam.include.htslib': 'htslib',
