@@ -3,6 +3,7 @@
 # adds doc-strings for sphinx
 import sys
 import os
+from array import array
 
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
@@ -270,6 +271,59 @@ cdef class FastqProxy:
             else: return None
 
 
+cdef class pFastqProxy:
+    """
+    Python container for pysam.cfaidx.FastqProxy with persistence.
+    Needed to compare multiple fastq records from the same file.
+    In addition, has a __str__ method and a very fast getQualArray.
+    (
+    """
+    def __init__(self, FastqProxy FastqRead):
+        self.comment = FastqRead.comment
+        self.quality = FastqRead.quality
+        self.sequence = FastqRead.sequence
+        self.name = FastqRead.name
+
+    cdef cython.str tostring(self):
+        return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
+                                        self.sequence, self.quality)
+
+    def __str__(self):
+        return self.tostring()
+
+    cpdef array.array getQualArray(self):
+        return cs_to_ph(self.quality)
+
+
+cdef class pFastqFile(object):
+    """
+    Contains a handle for a FastqFile wrapper and converts each FastqProxy
+    to a pFastqProxy.
+    pFastqProxy objects persist, unlike FastqProxy objects, making it
+    possible to compare a number of Fastq records from a single file.
+    """
+    def __init__(self, object Fq):
+        if(isinstance(Fq, str)):
+            self.handle = FastqFile(Fq)
+        elif(isinstance(Fq, FastqFile)):
+            self.handle = Fq
+        else:
+            raise ValueError("pFastqFile can be initiated by a "
+                             "pysam.cfaidx.FastqFile or a string.")
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return pFastqProxy(next(self.handle))
+
+    cpdef close(self):
+        self.handle.close()
+
+    def refresh(self):
+        self.handle = FastqFile(self.handle.filename)
+
+
 cdef class FastxFile:
     '''*(filename)*
 
@@ -290,7 +344,7 @@ cdef class FastxFile:
         self.entry = NULL
         self._open(*args, **kwargs)
 
-    def _isOpen( self ):
+    def _isOpen(self):
         '''return true if samfile has been opened.'''
         return self.entry != NULL
 
@@ -366,3 +420,8 @@ __all__ = ["FastaFile",
            "FastqFile",
            "Fastafile",
            "Fastqfile"]
+
+
+cdef array.array cs_to_ph(bytes input_str):
+    cdef char i
+    return array('B', [i - 33 for i in input_str])
