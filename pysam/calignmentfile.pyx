@@ -3564,8 +3564,11 @@ cdef class AlignedSegment:
                 raise KeyError("unknown type '%s'" % auxtype)
 
             s += 1
-
-            result.append((_charptr_to_str(auxtag), value))
+            
+            if with_value_type:
+                result.append((_charptr_to_str(auxtag), value, auxtype))
+            else:
+                result.append((_charptr_to_str(auxtag), value))
 
         return result
 
@@ -3592,7 +3595,7 @@ cdef class AlignedSegment:
 
         # convert and pack the data
         if tags is not None and len(tags) > 0:
-            fmt, args =_pack_tags(tags)
+            fmt, args = _pack_tags(tags)
             new_size = struct.calcsize(fmt)
             buffer = ctypes.create_string_buffer(new_size)
             struct.pack_into(fmt,
