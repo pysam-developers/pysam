@@ -273,11 +273,16 @@ cdef class FastqProxy:
                 return None
 
     cdef cython.str tostring(self):
-        if (self.quality is None):
-            return ">%s %s\n%s\n" % (self.name, self.comment, self.sequence)
+        if self.comment is None:
+            comment = ""
         else:
-            return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
-                                        self.sequence, self.quality)
+            comment = " %s" % self.comment
+
+        if self.quality is None:
+            return ">%s%s\n%s" % (self.name, comment, self.sequence)
+        else:
+            return "@%s%s\n%s\n+\n%s" % (self.name, comment,
+                                         self.sequence, self.quality)
 
     def __str__(self):
         return self.tostring()
@@ -301,11 +306,16 @@ cdef class PersistentFastqProxy:
         self.name = FastqRead.name
 
     cdef cython.str tostring(self):
-        if (self.quality is None):
-            return ">%s %s\n%s\n" % (self.name, self.comment, self.sequence)
+        if self.comment is None:
+            comment = ""
         else:
-            return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
-                                        self.sequence, self.quality)
+            comment = " %s" % self.comment
+
+        if self.quality is None:
+            return ">%s%s\n%s" % (self.name, comment, self.sequence)
+        else:
+            return "@%s%s\n%s\n+\n%s" % (self.name, comment,
+                                         self.sequence, self.quality)
 
     def __str__(self):
         return self.tostring()

@@ -77,10 +77,19 @@ class TestFastxFileFastq(unittest.TestCase):
             self.assertEqual(s.quality, b"<<86<<;<78<<<)<;4<67<;<;<74-7;,;8,;")
             self.assertEqual(list(s.get_quality_array()),
                              [ord(x) - 33 for x in s.quality])
+            self.assertEqual(str(s),
+                             "@B7_589:1:101:825:28\n"
+                             "GGGAACAGGGGGGTGCACTAATGCGCTCCACGCCC\n"
+                             "+\n"
+                             "<<86<<;<78<<<)<;4<67<;<;<74-7;,;8,;")
+
         else:
             self.assertEqual(s.quality, None)
             self.assertEqual(s.get_quality_array(), None)
-        
+            self.assertEqual(str(s),
+                             ">B7_589:1:101:825:28\n"
+                             "GGGAACAGGGGGGTGCACTAATGCGCTCCACGCCC")
+
     def checkLast(self, s):
         self.assertEqual(s.sequence, b"TAATTGAAAAATTCATTTAAGAAATTACAAAATAT")
         self.assertEqual(s.name, b"EAS56_65:8:64:507:478")
