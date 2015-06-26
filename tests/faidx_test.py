@@ -58,30 +58,70 @@ class TestFastaFile(unittest.TestCase):
         self.file.close()
 
 
-class TestFastqFile(unittest.TestCase):
+class TestFastxFileFastq(unittest.TestCase):
+
+    filetype = pysam.FastxFile
+    filename = "faidx_ex1.fq"
+    persist = True
 
     def setUp(self):
-        self.file = pysam.FastqFile(os.path.join(DATADIR, "ex1.fq"))
+        self.file = self.filetype(os.path.join(DATADIR, self.filename),
+                                  persist=self.persist)
+        self.has_quality = self.filename.endswith('.fq')
+
+    def checkFirst(self, s):
+        # test first entry
+        self.assertEqual(s.sequence, b"GGGAACAGGGGGGTGCACTAATGCGCTCCACGCCC")
+        self.assertEqual(s.name, b"B7_589:1:101:825:28")
+        if self.has_quality:
+            self.assertEqual(s.quality, b"<<86<<;<78<<<)<;4<67<;<;<74-7;,;8,;")
+            self.assertEqual(list(s.get_quality_array()),
+                             [ord(x) - 33 for x in s.quality])
+        else:
+            self.assertEqual(s.quality, None)
+            self.assertEqual(s.get_quality_array(), None)
+        
+    def checkLast(self, s):
+        self.assertEqual(s.sequence, b"TAATTGAAAAATTCATTTAAGAAATTACAAAATAT")
+        self.assertEqual(s.name, b"EAS56_65:8:64:507:478")
+        if self.has_quality:
+            self.assertEqual(s.quality, b"<<<<<;<<<<<<<<<<<<<<<;;;<<<;<<8;<;<")
+            self.assertEqual(list(s.get_quality_array()),
+                             [ord(x) - 33 for x in s.quality])
+        else:
+            self.assertEqual(s.quality, None)
+            self.assertEqual(s.get_quality_array(), None)
 
     def testCounts(self):
         self.assertEqual(len([x for x in self.file]), 3270)
 
     def testMissingFile(self):
-        self.assertRaises(IOError, pysam.FastqFile, "nothere.fq")
+        self.assertRaises(IOError, self.filetype, "nothere.fq")
 
     def testSequence(self):
-        s = self.file.__next__()
-        # test first entry
-        self.assertEqual(s.sequence, b"GGGAACAGGGGGGTGCACTAATGCGCTCCACGCCC")
-        self.assertEqual(s.quality, b"<<86<<;<78<<<)<;4<67<;<;<74-7;,;8,;")
-        self.assertEqual(s.name, b"B7_589:1:101:825:28")
-
-        for s in self.file:
+        first = self.file.__next__()
+        self.checkFirst(first)
+        for last in self.file:
             pass
-        # test last entry
-        self.assertEqual(s.sequence, b"TAATTGAAAAATTCATTTAAGAAATTACAAAATAT")
-        self.assertEqual(s.quality, b"<<<<<;<<<<<<<<<<<<<<<;;;<<<;<<8;<;<")
-        self.assertEqual(s.name, b"EAS56_65:8:64:507:478")
+        self.checkLast(last)
+
+        # test for persistence
+        if self.persist:
+            self.checkFirst(first)
+        else:
+            self.checkLast(first)
+
+# Test for backwards compatibility
+class TestFastqFileFastq(TestFastxFileFastq):
+    filetype = pysam.FastqFile
+
+# Test for backwards compatibility
+class TestFastxFileFasta(TestFastxFileFastq):
+    filetype = pysam.FastqFile
+    filename = "faidx_ex1.fa"
+
+class TestFastxFileFastqStream(TestFastxFileFastq):
+    persist = False
 
 if __name__ == "__main__":
     unittest.main()

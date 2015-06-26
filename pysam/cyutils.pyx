@@ -14,8 +14,7 @@ cdef class TestClass:
     def __init__(self):
         pass
 
-cdef array.array _chars_to_array(bytes input_str):
+cdef array.array _chars_to_array(bytes input_str, int offset=0):
     '''convert a buffer of characters to a byte array'''
     cdef char i
-    cdef int offset = 33
     return array.array('B', [i - offset for i in input_str])

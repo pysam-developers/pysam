@@ -23,7 +23,7 @@ cdef class FastaFile:
 cdef class FastqProxy:
     cdef kseq_t * _delegate
     cdef cython.str tostring(self)
-    cpdef array.array get_quality_array(self)
+    cpdef array.array get_quality_array(self, int offset=*)
 
 
 cdef class PersistentFastqProxy:
@@ -32,7 +32,7 @@ cdef class PersistentFastqProxy:
     """
     cdef public bytes comment, quality, sequence, name
     cdef cython.str tostring(self)
-    cpdef array.array get_quality_array(self)
+    cpdef array.array get_quality_array(self, int offset=*)
 
 
 cdef class FastxFile:

@@ -273,14 +273,20 @@ cdef class FastqProxy:
                 return None
 
     cdef cython.str tostring(self):
-        return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
+        if (self.quality is None):
+            return ">%s %s\n%s\n" % (self.name, self.comment, self.sequence)
+        else:
+            return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
                                         self.sequence, self.quality)
 
     def __str__(self):
         return self.tostring()
 
-    cpdef array.array get_quality_array(self):
-        return cyutils._chars_to_array(self.quality)
+    cpdef array.array get_quality_array(self, int offset=33):
+        '''return quality values as array after subtracting offset.'''
+        if self.quality is None:
+            return None
+        return cyutils._chars_to_array(self.quality, offset=offset)
 
 cdef class PersistentFastqProxy:
     """
@@ -295,14 +301,20 @@ cdef class PersistentFastqProxy:
         self.name = FastqRead.name
 
     cdef cython.str tostring(self):
-        return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
+        if (self.quality is None):
+            return ">%s %s\n%s\n" % (self.name, self.comment, self.sequence)
+        else:
+            return "@%s %s\n%s\n+\n%s\n" % (self.name, self.comment,
                                         self.sequence, self.quality)
 
     def __str__(self):
         return self.tostring()
 
-    cpdef array.array get_quality_array(self):
-        return cyutils._chars_to_array(self.quality)
+    cpdef array.array get_quality_array(self, int offset=33):
+        '''return quality values as array after subtracting offset.'''
+        if self.quality is None:
+            return None
+        return cyutils._chars_to_array(self.quality, offset=offset)
 
 
 cdef class FastxFile:
