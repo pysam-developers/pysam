@@ -105,6 +105,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
 
     def __init__(self, vcf):
         self.vcf = vcf
+        self.encoding = vcf.encoding
         # if len(data) != len(self.vcf._samples):
         #     self.vcf.error(str(data),
         #                self.BAD_NUMBER_OF_COLUMNS, 
@@ -119,6 +120,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         self.offset = 9
         
         self.vcf = vcf
+        self.encoding = vcf.encoding
     
     def error(self, line, error, opt=None):
         '''raise error.'''
@@ -187,7 +189,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
                     if len(elts) == 1: v = None
                     elif len(elts) == 2: v = elts[1]
                     else: self.vcf.error(str(self),self.ERROR_INFO_STRING)
-                    info[elts[0]] = self.vcf.parse_formatdata(elts[0], v, self.vcf._info, str(self))
+                    info[elts[0]] = self.vcf.parse_formatdata(elts[0], v, self.vcf._info, str(self.vcf))
             return info
 
     property format:
