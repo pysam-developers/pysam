@@ -36,9 +36,6 @@ typedef khash_t(s2i) s2i_t;
 //////////////////////////////////////////////////////////////////
 // various helper functions
 //
-// fill pileup buffer for next position.
-
-int pysam_dispatch(int argc, char *argv[] );
 
 /*!
   @abstract Update the variable length data within a bam1_t entry
