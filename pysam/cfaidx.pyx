@@ -427,6 +427,7 @@ cdef class Fastafile(FastaFile):
 
 __all__ = ["FastaFile",
            "FastqFile",
-           "FastxFile"]
+           "FastxFile",
+           "Fastafile"]
 
 
