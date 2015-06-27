@@ -11,10 +11,16 @@ Glossary
       ``[ (0,3), (1,5), (0,2) ]`` refers to an alignment with 3 matches, 5 insertions
       and another 2 matches.
 
-   region
-      A genomic region, stated relative to a reference sequence. A region consists of 
-      reference name ('chr1'), start (100000), and end (200000). 
-      0-based coordinates. Can be expressed as a string ('chr1:10000:20000')
+   region A genomic region, stated relative to a reference sequence. A
+      region consists of reference name ('chr1'), start (10000), and
+      end (20000). Start and end can be omitted for regions spanning
+      a whole chromosome. If end is missing, the region will span from
+      start to the end of the chromosome. Within pysam, coordinates
+      are 0-based, half-open intervals, i.e., the position 10,000 is
+      part of the interval, but 20,000 is not. An exception are
+      :term:`samtools` compatible region strings such as
+      'chr1:10000:20000', which are closed, i.e., both positions 10,000
+      and 20,000 are part of the interval.
 
    column
       Reads that are aligned to a base in the :term:`reference` sequence.
