@@ -13,6 +13,7 @@ import pysam
 import unittest
 import glob
 import re
+import copy
 
 DATADIR = 'tabix_data'
 
@@ -493,6 +494,16 @@ class TestParser(unittest.TestCase):
 
         os.unlink(tmpfilename)
 
+    def testCopy(self):
+        a = self.tabix.fetch(parser=pysam.asTuple()).next()
+        b = copy.copy(a)
+        self.assertEqual(a, b)
+
+        a = self.tabix.fetch(parser=pysam.asGTF()).next()
+        b = copy.copy(a)
+        self.assertEqual(a, b)
+
+        
 
 class TestIterators(unittest.TestCase):
 
