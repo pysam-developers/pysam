@@ -113,6 +113,39 @@ cdef class TupleProxy:
         if self.fields != NULL:
             free(self.fields)
 
+    def __copy__(self):
+        if self.is_modified:
+            raise NotImplementedError(
+                "copying modified tuples is not implemented")
+        cdef TupleProxy n = type(self)()
+        n.copy(self.data, self.nbytes, reset=True)
+        return n
+
+    def compare(self, TupleProxy other):
+        '''return -1,0,1, if contents in this are binary
+        <,=,> to *other*
+
+        '''
+        if self.is_modified or other.is_modified:
+            raise NotImplementedError(
+                'comparison of modified TupleProxies is not implemented')
+        if self.data == other.data:
+            return 0
+
+        if self.nbytes < other.nbytes:
+            return -1
+        elif self.nbytes > other.nbytes:
+            return 1
+        return memcmp(self.data, other.data, self.nbytes)
+
+    def __richcmp__(self, TupleProxy other, int op):
+        if op == 2:  # == operator
+            return self.compare(other) == 0
+        elif op == 3:  # != operator
+            return self.compare(other) != 0
+        else:
+            return NotImplemented
+
     cdef take(self, char * buffer, size_t nbytes):
         '''start presenting buffer.
 
@@ -129,30 +162,34 @@ cdef class TupleProxy:
         '''
         self.update(buffer, nbytes)
 
-    cdef copy(self, char * buffer, size_t nbytes):
+    cdef copy(self, char * buffer, size_t nbytes, bint reset=False):
         '''start presenting buffer of size *nbytes*.
 
         Buffer is a '\0'-terminated string without the '\n'.
 
         Take a copy of buffer.
         '''
-        cdef int s
         # +1 for '\0'
-        s = sizeof(char) *  (nbytes + 1)
+        cdef int s = sizeof(char) *  (nbytes + 1)
         self.data = <char*>malloc(s)
         if self.data == NULL:
             raise ValueError("out of memory in TupleProxy.copy()")
-        self.nbytes = nbytes
         memcpy(<char*>self.data, buffer, s)
+
+        if reset:
+            for x from 0 <= x < nbytes:
+                if self.data[x] == '\0':
+                    self.data[x] = '\t'
+
         self.update(self.data, nbytes)
 
-    cdef int getMinFields(self):
+    cpdef int getMinFields(self):
         '''return minimum number of fields.'''
         # 1 is not a valid tabix entry, but TupleProxy
         # could be more generic.
         return 1
 
-    cdef int getMaxFields(self):
+    cpdef int getMaxFields(self):
         '''return maximum number of fields. Return 
         0 for unknown length.'''
         return 0
@@ -180,7 +217,7 @@ cdef class TupleProxy:
 
         assert strlen(buffer) == nbytes, \
             "length of buffer (%i) != number of bytes (%i)" % (
-                strlen(buffer), nbytes)
+            strlen(buffer), nbytes)
 
         if buffer[nbytes] != 0:
             raise ValueError("incomplete line at %s" % buffer)
@@ -331,6 +368,7 @@ cdef class TupleProxy:
     def __str__(self):
         '''return original data'''
         # copy and replace \0 bytes with \t characters
+        cdef char * cpy
         if self.is_modified:
             # todo: treat NULL values
             result = []
@@ -388,11 +426,11 @@ cdef class GTFProxy(TupleProxy):
         if self.hasOwnAttributes:
             free(self._attributes)
 
-    cdef int getMinFields(self):
+    cpdef int getMinFields(self):
         '''return minimum number of fields.'''
         return 9
 
-    cdef int getMaxFields(self):
+    cpdef int getMaxFields(self):
         '''return max number of fields.'''
         return 9
 
@@ -697,11 +735,11 @@ cdef class BedProxy(NamedTupleProxy):
         'blockSizes': (10, str),
         'blockStarts': (11, str), } 
 
-    cdef int getMinFields(self):
+    cpdef int getMinFields(self):
         '''return minimum number of fields.'''
         return 3
 
-    cdef int getMaxFields(self):
+    cpdef int getMaxFields(self):
         '''return max number of fields.'''
         return 12
 
@@ -736,14 +774,16 @@ cdef class BedProxy(NamedTupleProxy):
         cdef int save_fields = self.nfields
         # ensure fields to use correct format
         self.nfields = self.bedfields
-        retval = TupleProxy.__str__( self )
+        retval = TupleProxy.__str__(self)
         self.nfields = save_fields
         return retval
 
     def __setattr__(self, key, value ):
         '''set attribute.'''
-        if key == "start": self.start = value
-        elif key == "end": self.end = value
+        if key == "start":
+            self.start = value
+        elif key == "end":
+            self.end = value
 
         cdef int idx
         idx, f = self.map_key2field[key]
