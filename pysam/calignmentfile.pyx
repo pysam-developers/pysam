@@ -1093,7 +1093,9 @@ cdef class AlignmentFile:
         # close within __dealloc__ (see BCFFile.__dealloc__).  Not a pretty
         # solution and perhaps unnecessary given that calling self.close has
         # been working for years.
-
+        # AH: I have removed the call to close. Even though it is working,
+        # it seems to be dangerous according to the documentation as the
+        # object be partially deconstructed already.
         if self.htsfile != NULL:
             hts_close(self.htsfile)
             hts_idx_destroy(self.index);
