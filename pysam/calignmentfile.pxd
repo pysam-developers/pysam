@@ -70,6 +70,12 @@ cdef class AlignedSegment:
     # object that this AlignedSegment represents
     cdef bam1_t * _delegate
 
+    # caching of array properties for quick access
+    cdef object cache_query_qualities
+    cdef object cache_query_alignment_qualities
+    cdef object cache_query_sequence
+    cdef object cache_query_alignment_sequence
+
     # add an alignment tag with value to the AlignedSegment
     # an existing tag of the same name will be replaced.
     cpdef set_tag(self, tag, value, value_type=?, replace=?)

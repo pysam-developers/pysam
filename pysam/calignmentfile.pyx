@@ -2456,6 +2456,12 @@ cdef class AlignedSegment:
             self._delegate.m_data, 1)
         self._delegate.l_data = 0
 
+        # caching for selected fields
+        self.cache_query_qualities = None
+        self.cache_query_alignment_qualities = None
+        self.cache_query_sequence = None
+        self.cache_query_alignment_sequence = None
+
     def __dealloc__(self):
         bam_destroy1(self._delegate)
 
@@ -2729,13 +2735,18 @@ cdef class AlignedSegment:
         sequence.
         """
         def __get__(self):
+            if self.cache_query_sequence:
+                return self.cache_query_sequence
+
             cdef bam1_t * src
             cdef char * s
             src = self._delegate
 
-            if src.core.l_qseq == 0: return None
+            if src.core.l_qseq == 0:
+                return None
 
-            return _getSequenceRange(src, 0, src.core.l_qseq)
+            self.cache_query_sequence = _getSequenceRange(src, 0, src.core.l_qseq)
+            return self.cache_query_sequence
 
         def __set__(self, seq):
             # samtools manages sequence and quality length memory together
@@ -2783,6 +2794,12 @@ cdef class AlignedSegment:
                 # erase qualities
                 p = pysam_bam_get_qual(src)
                 p[0] = 0xff
+                
+            self.cache_query_sequence = seq
+
+            # clear cached values for quality values
+            self.cache_query_qualities = None
+            self.cache_query_alignment_qualities = None
 
     property query_qualities:
         """read sequence base qualities, including :term:`soft
@@ -2803,6 +2820,9 @@ cdef class AlignedSegment:
         """
         def __get__(self):
 
+            if self.cache_query_qualities:
+                return self.cache_query_qualities
+
             cdef bam1_t * src
             cdef char * q
 
@@ -2811,9 +2831,11 @@ cdef class AlignedSegment:
             if src.core.l_qseq == 0:
                 return None
 
-            return _getQualitiesRange(src, 0, src.core.l_qseq)
+            self.cache_query_qualities = _getQualitiesRange(src, 0, src.core.l_qseq)
+            return self.cache_query_qualities
 
         def __set__(self, qual):
+
             # note that memory is already allocated via setting the sequence
             # hence length match of sequence and quality needs is checked.
             cdef bam1_t * src
@@ -2844,7 +2866,9 @@ cdef class AlignedSegment:
 
             # copy data
             memcpy(p, result.data.as_voidptr, l)
-    
+            
+            # save in cache
+            self.cache_query_qualities = qual
 
     property bin:
         """properties bin"""
@@ -2980,6 +3004,9 @@ cdef class AlignedSegment:
         """
 
         def __get__(self):
+            if self.cache_query_alignment_sequence:
+                return self.cache_query_alignment_sequence
+
             cdef bam1_t * src
             cdef uint32_t start, end
 
@@ -2991,7 +3018,8 @@ cdef class AlignedSegment:
             start = _getQueryStart(src)
             end   = _getQueryEnd(src)
 
-            return _getSequenceRange(src, start, end)
+            self.cache_query_alignment_sequence = _getSequenceRange(src, start, end)
+            return self.cache_query_alignment_sequence
 
     property query_alignment_qualities:
         """aligned query sequence quality values (None if not present). These
@@ -3008,6 +3036,10 @@ cdef class AlignedSegment:
 
         """
         def __get__(self):
+
+            if self.cache_query_alignment_qualities:
+                return self.cache_query_alignment_qualities
+
             cdef bam1_t * src
             cdef uint32_t start, end
 
@@ -3018,8 +3050,9 @@ cdef class AlignedSegment:
 
             start = _getQueryStart(src)
             end   = _getQueryEnd(src)
-
-            return _getQualitiesRange(src, start, end)
+            self.cache_query_alignment_qualities = _getQualitiesRange(src, start, end)
+            return self.cache_query_alignment_qualities
+        
 
     property query_alignment_start:
         """start index of the aligned query portion of the sequence (0-based,
