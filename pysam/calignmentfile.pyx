@@ -236,14 +236,16 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
 
 
 cdef class AlignmentFile:
-    '''*(filename, mode=None, template = None,
-         reference_names=None, reference_lengths = None,
+    '''*(filepath_or_object, mode=None, template=None,
+         reference_names=None, reference_lengths=None,
          text=NULL, header=None,
          add_sq_text=False, check_header=True,
          check_sq=True)*
 
-    A :term:`SAM`/:term:`BAM` formatted file. The file is
-    automatically opened.
+    A :term:`SAM`/:term:`BAM` formatted file. If *filepath_or_object*
+    is a string, the file is automatically opened. If
+    *filepath_or_object* is a python File object, the already opened
+    file will be used.
 
     *mode* should be ``r`` for reading or ``w`` for writing. The
     default is text mode (:term:`SAM`). For binary (:term:`BAM`) I/O
@@ -322,7 +324,7 @@ cdef class AlignmentFile:
         return self.index != NULL
 
     def _open(self,
-              filename,
+              filepath_or_object,
               mode=None,
               AlignmentFile template=None,
               reference_names=None,
@@ -353,7 +355,8 @@ cdef class AlignmentFile:
         # read mode autodetection
         if mode is None:
             try:
-                self._open(filename, 'rb',
+                self._open(filepath_or_object,
+                           'rb',
                            template=template,
                            reference_names=reference_names,
                            reference_lengths=reference_lengths,
@@ -367,7 +370,8 @@ cdef class AlignmentFile:
             except ValueError, msg:
                 pass
 
-            self._open(filename, 'r',
+            self._open(filepath_or_object,
+                       'r',
                        template=template,
                        reference_names=reference_names,
                        reference_lengths=reference_lengths,
@@ -387,6 +391,12 @@ cdef class AlignmentFile:
         # close a previously opened file
         if self.htsfile != NULL:
             self.close()
+            
+        # check if we are working with a File object
+        if hasattr(filepath_or_object, "fileno"):
+            filename = filepath_or_object.name
+        else:
+            filename = filepath_or_object
 
         # for htslib, wbu seems to not work
         if mode == "wbu":
@@ -403,6 +413,7 @@ cdef class AlignmentFile:
                          filename.startswith(b"ftp:")
 
         cdef char * ctext
+        cdef hFILE * fp
         ctext = NULL
 
         if mode[0] == 'w':
@@ -461,8 +472,13 @@ cdef class AlignmentFile:
 
             # open file (hts_open is synonym with sam_open)
             cfilename, cmode = filename, bmode
-            with nogil:
-                self.htsfile = hts_open(cfilename, cmode)
+            if hasattr(filepath_or_object, "fileno"):
+                fp = hdopen(filepath_or_object.fileno(), cmode)
+                with nogil:
+                    self.htsfile = hts_hopen(fp, cfilename, cmode)
+            else:
+                with nogil:
+                    self.htsfile = hts_open(cfilename, cmode)
 
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
@@ -487,8 +503,13 @@ cdef class AlignmentFile:
 
             # open file (hts_open is synonym with sam_open)
             cfilename, cmode = filename, bmode
-            with nogil:
-                self.htsfile = hts_open(cfilename, cmode)
+            if hasattr(filepath_or_object, "fileno"):
+                fp = hdopen(filepath_or_object.fileno(), cmode)
+                with nogil:
+                    self.htsfile = hts_hopen(fp, cfilename, cmode)
+            else:
+                with nogil:
+                    self.htsfile = hts_open(cfilename, cmode)
 
             if self.htsfile == NULL:
                 raise ValueError(
