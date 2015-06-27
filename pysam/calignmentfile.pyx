@@ -1094,7 +1094,11 @@ cdef class AlignmentFile:
         # solution and perhaps unnecessary given that calling self.close has
         # been working for years.
 
-        self.close()
+        if self.htsfile != NULL:
+            hts_close(self.htsfile)
+            hts_idx_destroy(self.index);
+            self.htsfile = NULL
+
         bam_destroy1(self.b)
         if self.header != NULL:
             bam_hdr_destroy(self.header)
