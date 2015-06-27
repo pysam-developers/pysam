@@ -499,6 +499,12 @@ class TestParser(unittest.TestCase):
         b = copy.copy(a)
         self.assertEqual(a, b)
 
+        a = self.tabix.fetch(parser=pysam.asGTF()).next()
+        b = copy.copy(a)
+        self.assertEqual(a, b)
+
+        
+
 class TestIterators(unittest.TestCase):
 
     filename = os.path.join(DATADIR, "example.gtf.gz")
