@@ -709,7 +709,6 @@ cdef class AlignmentFile:
               end=None,
               region=None,
               tid=None,
-              callback=None,
               until_eof=False,
               multiple_iterators=False):
         '''fetch aligned, i.e. mapped, reads in a :term:`region`
@@ -780,10 +779,6 @@ cdef class AlignmentFile:
             if has_coord:
                 raise ValueError(
                     "fetching by region is not available for sam files")
-
-            if callback:
-                raise NotImplementedError(
-                    "callback not implemented yet")
 
             if self.header == NULL:
                 raise ValueError(
