@@ -2490,6 +2490,12 @@ cdef class AlignedSegment:
                                    self.query_qualities,
                                    self.tags)))
 
+    def __copy__(self):
+        return makeAlignedSegment(self._delegate)
+
+    def __deepcopy__(self, memo):
+        return makeAlignedSegment(self._delegate)
+
     def compare(self, AlignedSegment other):
         '''return -1,0,1, if contents in this are binary
         <,=,> to *other*
@@ -3890,7 +3896,7 @@ cdef class PileupRead:
                  self.indel, self.level,
                  self.is_del, self.is_head,
                  self.is_tail, self.is_refskip)))
-
+    
     property alignment:
         """a :class:`pysam.AlignedSegment` object of the aligned read"""
         def __get__(self):

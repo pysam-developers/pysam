@@ -2,6 +2,7 @@ import os
 import pysam
 import unittest
 from TestUtils import checkFieldEqual
+import copy
 
 SAMTOOLS = "samtools"
 WORKDIR = "pysam_test_work"
@@ -442,6 +443,34 @@ class TestTags(ReadTest):
             entry.set_tags(before)
             after = entry.get_tags()
             self.assertEqual(after, before)
+
+
+class TestCopy(ReadTest):
+    
+    def testCopy(self):
+        a = self.buildRead()
+        b = copy.copy(a)
+        # check if a and be are the same
+        self.assertEqual(a, b)
+
+        # check if they map to different objects
+        a.query_name = 'ReadA'
+        b.query_name = 'ReadB'
+        self.assertEqual(a.query_name, 'ReadA')
+        self.assertEqual(b.query_name, 'ReadB')
+
+    def testDeepCopy(self):
+        a = self.buildRead()
+        b = copy.deepcopy(a)
+        # check if a and be are the same
+        self.assertEqual(a, b)
+
+        # check if they map to different objects
+        a.query_name = 'ReadA'
+        b.query_name = 'ReadB'
+        self.assertEqual(a.query_name, 'ReadA')
+        self.assertEqual(b.query_name, 'ReadB')
+
 
 if __name__ == "__main__":
     unittest.main()
