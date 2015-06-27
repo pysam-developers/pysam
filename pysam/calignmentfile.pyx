@@ -395,6 +395,8 @@ cdef class AlignmentFile:
         # check if we are working with a File object
         if hasattr(filepath_or_object, "fileno"):
             filename = filepath_or_object.name
+            if filepath_or_object.closed:
+                raise ValueError('I/O operation on closed file')
         else:
             filename = filepath_or_object
 

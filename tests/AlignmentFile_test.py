@@ -646,6 +646,25 @@ class TestIO(unittest.TestCase):
         samfile.close()
         self.assertRaises(ValueError, samfile.fetch, 'chr1', 100, 120)
 
+    def testFetchFromClosedFileObject(self):
+
+        f = open(os.path.join(DATADIR, "ex1.bam"))
+        samfile = pysam.AlignmentFile(f, "rb")
+        f.close()
+        self.assertTrue(f.closed)
+        # access to Samfile should still work
+        self.checkEcho("ex1.bam",
+                       "ex1.bam",
+                       "tmp_ex1.bam",
+                       "rb", "wb")
+
+        f = open(os.path.join(DATADIR, "ex1.bam"))
+        samfile = pysam.AlignmentFile(f, "rb")
+        self.assertFalse(f.closed)
+        samfile.close()
+        # python file needs to be closed separately
+        self.assertFalse(f.closed)
+
     def testClosedFile(self):
         '''test that access to a closed samfile raises ValueError.'''
 
