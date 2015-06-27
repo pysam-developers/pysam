@@ -2468,9 +2468,8 @@ cdef class AlignedSegment:
     def __str__(self):
         """return string representation of alignment.
 
-        The representation is an approximate :term:`sam` format.
-
-        An aligned read might not be associated with a :term:`AlignmentFile`.
+        The representation is an approximate :term:`sam` format, because
+        an aligned read might not be associated with a :term:`AlignmentFile`.
         As a result :term:`tid` is shown instead of the reference name.
 
         Similarly, the tags field is returned in its parsed state.
@@ -2732,9 +2731,9 @@ cdef class AlignedSegment:
         Thus, to in-place edit the sequence and quality scores, copies of
         the quality scores need to be taken. Consider trimming for example::
 
-           q = read.qual
-           read.seq = read.seq[5:10]
-           read.qual = q[5:10]
+           q = read.query_qualities
+           read.query_squence = read.query_sequence[5:10]
+           read.query_qualities = q[5:10]
 
         The sequence is returned as it is stored in the BAM file. Some mappers
         might have stored a reverse complement of the original read 
