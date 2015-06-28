@@ -51,6 +51,8 @@ import sys, re, copy, bisect
 cimport ctabix
 cimport TabProxies
 
+from cyutils cimport _force_str
+
 import pysam
 
 gtsRegEx = re.compile("[|/\\\\]")
@@ -902,7 +904,7 @@ class VCF(object):
     def _parse_header(self, stream):
         self._lineno = 0
         for line in stream:
-            line = ctabix._force_str(line, self.encoding)
+            line = _force_str(line, self.encoding)
             self._lineno += 1
             if line.startswith('##'):
                 self.parse_header(line.strip())

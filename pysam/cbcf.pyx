@@ -217,62 +217,8 @@ cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 ## Python 3 compatibility functions
 ########################################################################
 
-IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-
-
-# filename encoding (copied from lxml.etree.pyx)
-cdef str FILENAME_ENCODING
-FILENAME_ENCODING = sys.getfilesystemencoding()
-if FILENAME_ENCODING is None:
-    FILENAME_ENCODING = sys.getdefaultencoding()
-if FILENAME_ENCODING is None:
-    FILENAME_ENCODING = 'ascii'
-
-
-cdef bytes encode_filename(object filename):
-    """Make sure a filename is 8-bit encoded (or None)."""
-    if filename is None:
-        return None
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(FILENAME_ENCODING)
-    else:
-        raise TypeError('Argument must be string or unicode.')
-
-
-cdef force_str(object s):
-    """Return s converted to str type of current Python (bytes in Py2, unicode in Py3)"""
-    if s is None:
-        return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
-        return s.decode('ascii')
-    else:
-        # assume unicode
-        return s
-
-
-cdef bytes force_bytes(object s):
-    """convert string or unicode object to bytes, assuming ascii encoding."""
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif s is None:
-        return None
-    elif PyBytes_Check(s):
-        return s
-    elif PyUnicode_Check(s):
-        return s.encode('ascii')
-    else:
-        raise TypeError('Argument must be string, bytes or unicode.')
-
-
-cdef charptr_to_str(const char* s):
-    if PY_MAJOR_VERSION < 3:
-        return s
-    else:
-        return s.decode('ascii')
+from cyutils cimport _force_bytes, _force_str, _charptr_to_str
+from cyutils cimport _encode_filename, from_string_and_size
 
 
 ########################################################################
@@ -285,7 +231,7 @@ cdef tuple char_array_to_tuple(const char **a, int n, int free_after=0):
     if not a:
         return None
     try:
-         return tuple( charptr_to_str(a[i]) for i in range(n) )
+         return tuple(_charptr_to_str(a[i]) for i in range(n))
     finally:
         if free_after and a:
             free(a)
@@ -1051,7 +997,7 @@ cdef class VariantHeader(object):
 
         ret = hstr[:hlen]
         free(hstr)
-        return force_str(hstr)
+        return _force_str(hstr)
 
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
@@ -1739,7 +1685,7 @@ cdef class VariantRecord(object):
         #    line.l -= 1
 
         ret = line.s[:line.l]
-        ret = force_str(ret)
+        ret = _force_str(ret)
 
         if line.m:
             free(line.s)
@@ -2461,7 +2407,7 @@ cdef class VariantFile(object):
                 raise ValueError('metadata not available on closed file')
             cdef char *desc = hts_format_description(&self.htsfile.format)
             try:
-                return force_str(desc)
+                return _force_str(desc)
             finally:
                 free(desc)
 
@@ -2583,7 +2529,7 @@ cdef class VariantFile(object):
             mode = b'wb0'
 
         self.mode = mode
-        self.filename = filename = encode_filename(filename)
+        self.filename = filename = _encode_filename(filename)
         self.drop_samples = bool(drop_samples)
 
         # FIXME: Use htsFormat when it is available

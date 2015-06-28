@@ -21,8 +21,8 @@ Glossary
       :term:`samtools` compatible region strings such as
       'chr1:10000:20000', which are closed, i.e., both positions 10,000
       and 20,000 are part of the interval.
-
-   column
+ 
+  column
       Reads that are aligned to a base in the :term:`reference` sequence.
      
    tid

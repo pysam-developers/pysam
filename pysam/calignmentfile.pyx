@@ -23,78 +23,10 @@ from cpython cimport array
 
 from cpython.version cimport PY_MAJOR_VERSION
 
+from cyutils cimport _force_bytes, _force_str, _charptr_to_str
+from cyutils cimport _encode_filename, from_string_and_size
+
 cimport cython
-
-########################################################################
-########################################################################
-########################################################################
-## Python 3 compatibility functions
-########################################################################
-IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-cdef from_string_and_size(char* s, size_t length):
-    if PY_MAJOR_VERSION < 3:
-        return s[:length]
-    else:
-        return s[:length].decode("ascii")
-
-# filename encoding (copied from lxml.etree.pyx)
-cdef str _FILENAME_ENCODING
-_FILENAME_ENCODING = sys.getfilesystemencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = sys.getdefaultencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = 'ascii'
-
-#cdef char* _C_FILENAME_ENCODING
-#_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
-
-cdef bytes _encodeFilename(object filename):
-    """Make sure a filename is 8-bit encoded (or None)."""
-    if filename is None:
-        return None
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(_FILENAME_ENCODING)
-    else:
-        raise TypeError, u"Argument must be string or unicode."
-
-cdef bytes _forceBytes(object s):
-    u"""convert string or unicode object to bytes, assuming
-    ascii encoding.
-    """
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif s is None:
-        return None
-    elif PyBytes_Check(s):
-        return s
-    elif PyUnicode_Check(s):
-        return s.encode('ascii')
-    else:
-        raise TypeError, u"Argument must be string, bytes or unicode."
-
-cdef inline bytes _forceCmdlineBytes(object s):
-    return _forceBytes(s)
-
-cdef _charptr_to_str(char* s):
-    if PY_MAJOR_VERSION < 3:
-        return s
-    else:
-        return s.decode("ascii")
-
-cdef _forceStr(object s):
-    """Return s converted to str type of current Python
-    (bytes in Py2, unicode in Py3)"""
-    if s is None:
-        return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
-        return s.decode('ascii')
-    else:
-        # assume unicode
-        return s
 
 ########################################################################
 ########################################################################
@@ -108,10 +40,12 @@ DEF SEEK_CUR = 1
 DEF SEEK_END = 2
 
 cdef char* CODE2CIGAR= "MIDNSHP=X"
-if IS_PYTHON3:
-    CIGAR2CODE = dict( [y,x] for x,y in enumerate( CODE2CIGAR) )
+
+if PY_MAJOR_VERSION >= 3:
+    CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
 else:
-    CIGAR2CODE = dict( [ord(y),x] for x,y in enumerate( CODE2CIGAR) )
+    CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
+
 CIGAR_REGEX = re.compile( "(\d+)([MIDNSHP=X])" )
 
 #####################################################################
@@ -405,7 +339,7 @@ cdef class AlignmentFile:
             mode = "wb0"
 
         cdef bytes bmode = mode.encode('ascii')
-        self._filename = filename = _encodeFilename(filename)
+        self._filename = filename = _encode_filename(filename)
 
         # FIXME: Use htsFormat when it is available
         self.is_bam = len(mode) > 1 and mode[1] == 'b'
@@ -436,7 +370,7 @@ cdef class AlignmentFile:
                     "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
-                reference_names = [_forceBytes(ref) for ref in reference_names]
+                reference_names = [_force_bytes(ref) for ref in reference_names]
                 self.header = bam_hdr_init()
                 self.header.n_targets = len(reference_names)
                 n = 0
@@ -459,13 +393,13 @@ cdef class AlignmentFile:
                     text = []
                     for x from 0 <= x < self.header.n_targets:
                         text.append("@SQ\tSN:%s\tLN:%s\n" % \
-                                    (_forceStr(reference_names[x]), 
+                                    (_force_str(reference_names[x]), 
                                      reference_lengths[x]))
                     text = ''.join(text)
 
                 if text is not None:
                     # copy without \0
-                    text = _forceBytes(text)
+                    text = _force_bytes(text)
                     ctext = text
                     self.header.l_text = strlen(ctext)
                     self.header.text = <char*>calloc(
@@ -488,7 +422,7 @@ cdef class AlignmentFile:
             if self.is_cram and reference_filename:
                 # note that fn_aux takes ownership, so create
                 # a copy
-                fn = _encodeFilename(reference_filename)
+                fn = _encode_filename(reference_filename)
                 self.htsfile.fn_aux = strdup(fn)
 
             # write header to htsfile
@@ -598,7 +532,7 @@ cdef class AlignmentFile:
         '''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
-        reference = _forceBytes(reference)
+        reference = _force_bytes(reference)
         return bam_name2id(self.header, reference)
 
     def getrname(self, tid):
@@ -659,7 +593,7 @@ cdef class AlignmentFile:
                 raise ValueError('end out of range (%i)' % end)
 
         if region:
-            region = _forceStr(region)
+            region = _force_str(region)
             parts = re.split("[:-]", region)
             reference = parts[0]
             if len(parts) >= 2:
@@ -2321,7 +2255,7 @@ cdef inline uint8_t _get_value_code(value, value_type=None):
     else:
         if value_type not in 'Zidf':
             return 0
-        value_type = _forceBytes(value_type)
+        value_type = _force_bytes(value_type)
         _char_type = value_type
         type_code = (<uint8_t*>_char_type)[0]
 
@@ -2594,7 +2528,7 @@ cdef class AlignedSegment:
         def __set__(self, qname):
             if qname is None or len(qname) == 0:
                 return
-            qname = _forceBytes(qname)
+            qname = _force_bytes(qname)
             cdef bam1_t * src
             cdef int l
             cdef char * p
@@ -2790,7 +2724,7 @@ cdef class AlignedSegment:
                 l = 0
             else:
                 l = len(seq)                
-                seq = _forceBytes(seq)
+                seq = _force_bytes(seq)
 
             src = self._delegate
 
@@ -3456,7 +3390,7 @@ cdef class AlignedSegment:
         if len(tag) != 2:
             raise ValueError('Invalid tag: %s' % tag)
 
-        tag = _forceBytes(tag)
+        tag = _force_bytes(tag)
         if replace:
             existing_ptr = bam_aux_get(src, tag)
             if existing_ptr:
@@ -3472,7 +3406,7 @@ cdef class AlignedSegment:
 
         # Not Endian-safe, but then again neither is samtools!
         if type_code == 'Z':
-            value = _forceBytes(value)
+            value = _force_bytes(value)
             value_ptr    = <uint8_t*><char*>value
             value_size   = len(value)+1
         elif type_code == 'i':
@@ -3502,7 +3436,7 @@ cdef class AlignedSegment:
         contains a given *tag*."""
         cdef uint8_t * v
         cdef int nvalues
-        btag = _forceBytes(tag)
+        btag = _force_bytes(tag)
         v = bam_aux_get(self._delegate, btag)
         return v != NULL
 
@@ -3522,7 +3456,7 @@ cdef class AlignedSegment:
         """
         cdef uint8_t * v
         cdef int nvalues
-        btag = _forceBytes(tag)
+        btag = _force_bytes(tag)
         v = bam_aux_get(self._delegate, btag)
         if v == NULL:
             raise KeyError("tag '%s' not present" % tag)

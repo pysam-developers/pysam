@@ -23,64 +23,8 @@ from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, gzopen, gzclose, gzerror, gzdopen
 
-PYTHON3 = PY_MAJOR_VERSION >= 3
-
-# filename encoding (copied from lxml.etree.pyx)
-cdef str _FILENAME_ENCODING
-_FILENAME_ENCODING = sys.getfilesystemencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = sys.getdefaultencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = 'ascii'
-
-#cdef char* _C_FILENAME_ENCODING
-#_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
-
-cdef inline bytes _encodeFilename(object filename):
-    u"""Make sure a filename is 8-bit encoded (or None).
-    """
-    if filename is None:
-        return None
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(_FILENAME_ENCODING)
-    else:
-        raise TypeError, u"Argument must be string or unicode."
-
-cdef inline bytes _force_bytes(object s, encoding="ascii"):
-    u"""convert string or unicode object to bytes, assuming ascii encoding.
-    """
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif s is None:
-        return None
-    elif PyBytes_Check(s):
-        return s
-    elif PyUnicode_Check(s):
-        return s.encode(encoding)
-    else:
-        raise TypeError, u"Argument must be string, bytes or unicode."
-
-cdef inline _charptr_to_str(char* s, encoding="ascii"):
-    if PY_MAJOR_VERSION < 3:
-        return s
-    else:
-        return s.decode(encoding)
-
-cdef _force_str(object s, encoding="ascii"):
-    """Return s converted to str type of current Python
-    (bytes in Py2, unicode in Py3)"""
-    if s is None:
-        return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
-        return s.decode(encoding)
-    else:
-        # assume unicode
-        return s
-
+from cyutils cimport _force_bytes, _force_str, _charptr_to_str
+from cyutils cimport _encode_filename, from_string_and_size
 
 cdef class Parser:
 
@@ -307,8 +251,8 @@ cdef class TabixFile:
         self._filename_index = filename_index
 
         # encode all the strings to pass to tabix
-        _encoded_filename = _encodeFilename(filename)
-        _encoded_index = _encodeFilename(filename_index)
+        _encoded_filename = _encode_filename(filename)
+        _encoded_index = _encode_filename(filename_index)
 
         # open file
         cdef char *cfilename = _encoded_filename
@@ -614,7 +558,7 @@ cdef class GZIterator:
         if not os.path.exists(filename):
             raise IOError("No such file or directory: %s" % filename)
 
-        filename = _encodeFilename(filename)
+        filename = _encode_filename(filename)
         cdef char *cfilename = filename
         with nogil:
             self.gzipfile = gzopen(cfilename, "r")
@@ -720,14 +664,14 @@ def tabix_compress(filename_in,
 
     WINDOW_SIZE = 64 * 1024
 
-    fn = _encodeFilename(filename_out)
+    fn = _encode_filename(filename_out)
     cdef char *cfn = fn
     with nogil:
         fp = bgzf_open(cfn, "w")
     if fp == NULL:
         raise IOError("could not open '%s' for writing" % (filename_out, ))
 
-    fn = _encodeFilename(filename_in)
+    fn = _encode_filename(filename_in)
     fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
         raise IOError("could not open '%s' for reading" % (filename_in, ))
@@ -856,7 +800,7 @@ def tabix_index( filename,
     conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
 
 
-    fn = _encodeFilename(filename)
+    fn = _encode_filename(filename)
     cdef char *cfn = fn
     with nogil:
         tbx_index_build(cfn, min_shift, &conf)
@@ -1095,14 +1039,14 @@ def tabix_iterator(infile, parser):
     :class:`~pysam.asGTF`).
 
     """
-    if PYTHON3:
+    if PY_MAJOR_VERSION >= 3:
         return tabix_generic_iterator(infile, parser)
     else:
         return tabix_file_iterator(infile, parser)
         
     # file objects can use C stdio
     # used to be: isinstance( infile, file):
-    # if PYTHON3:
+    # if PY_MAJOR_VERSION >= 3:
     #     if isinstance( infile, io.IOBase ):
     #         return tabix_copy_iterator( infile, parser )
     #     else:

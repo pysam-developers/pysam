@@ -8,56 +8,8 @@ from cpython cimport PyUnicode_Check, PyBytes_FromStringAndSize
 
 from libc.stdio cimport printf
 
-
-cdef from_string_and_size(char* s, size_t length):
-    if PY_MAJOR_VERSION < 3:
-        return s[:length]
-    else:
-        return s[:length].decode("ascii")
-
-# filename encoding (copied from lxml.etree.pyx)
-cdef str _FILENAME_ENCODING
-_FILENAME_ENCODING = sys.getfilesystemencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = sys.getdefaultencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = 'ascii'
-
-cdef bytes _force_bytes(object s, encoding="ascii"):
-    u"""convert string or unicode object to bytes, assuming ascii encoding.
-    """
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif s is None:
-        return None
-    elif PyBytes_Check(s):
-        return s
-    elif PyUnicode_Check(s):
-        return s.encode(encoding)
-    else:
-        raise TypeError, u"Argument must be string, bytes or unicode."
-
-cdef inline bytes _force_cmdline_bytes(object s):
-    return _force_bytes(s)
-
-cdef _charptr_to_str(char* s, encoding="ascii"):
-    if PY_MAJOR_VERSION < 3:
-        return s
-    else:
-        return s.decode(encoding)
-
-cdef inline _force_str(object s, encoding="ascii"):
-    """Return s converted to str type of current Python "
-    "(bytes in Py2, unicode in Py3)"""
-    if s is None:
-        return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
-        return s.decode(encoding)
-    else:
-        # assume unicode
-        return s
+from cyutils cimport _force_bytes, _force_str, _charptr_to_str
+from cyutils cimport _encode_filename, from_string_and_size
 
 cdef char * nextItem(char * buffer):
     cdef char * pos

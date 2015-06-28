@@ -15,7 +15,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 ########################################################################
 IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
-cdef bytes _forceBytes(object s):
+cdef bytes _force_bytes(object s):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     """
     if PY_MAJOR_VERSION < 3:
@@ -31,7 +31,7 @@ cdef bytes _forceBytes(object s):
 
 
 cdef inline bytes _forceCmdlineBytes(object s):
-    return _forceBytes(s)
+    return _force_bytes(s)
 
 
 class Outs:
