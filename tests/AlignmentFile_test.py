@@ -2220,6 +2220,25 @@ class TestAlignmentFileIndex(unittest.TestCase):
                 self.assertEqual(x.query_name, qname)
 
 
+class TestExplicitIndex(unittest.TestCase):
+
+    def testExplicitIndexBAM(self):
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "explicit_index.bam"),
+            "rb",
+            filepath_index=os.path.join(DATADIR, 'ex1.bam.bai'))
+                                      
+        samfile.fetch("chr1")
+
+    def testExplicitIndexCRAM(self):
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "explicit_index.cram"),
+            "rc",
+            filepath_index=os.path.join(DATADIR, 'ex1.cram.crai'))
+
+                                      
+        
+
 class TestVerbosity(unittest.TestCase):
 
     '''test if setting/getting of verbosity works.'''
@@ -2232,6 +2251,10 @@ class TestVerbosity(unittest.TestCase):
         self.assertEqual(new, 0)
         self.assertEqual(pysam.get_verbosity(), 3)
 
+
+
+        
+    
 
 if __name__ == "__main__":
     # build data files
