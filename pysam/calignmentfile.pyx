@@ -561,11 +561,8 @@ cdef class AlignmentFile:
         if mode[0] == "r" and (self.is_bam or self.is_cram):
 
             # open index for remote files
-            if self.is_remote:
-                if filepath_index is not None:
-                    cfilename = filepath_index
-                else:
-                    cfilename = filename
+            if self.is_remote and not filepath_index:
+                cfilename = filename
 
                 with nogil:
                     self.index = hts_idx_load(cfilename, format_index)
@@ -605,7 +602,6 @@ cdef class AlignmentFile:
                 if has_index:
                     # returns NULL if there is no index or index could
                     # not be opened
-                    print cfilename
                     with nogil:
                         self.index = sam_index_load(self.htsfile,
                                                     cfilename)

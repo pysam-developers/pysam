@@ -2236,8 +2236,14 @@ class TestExplicitIndex(unittest.TestCase):
             "rc",
             filepath_index=os.path.join(DATADIR, 'ex1.cram.crai'))
 
-                                      
-        
+    def testRemoteExplicitIndexBAM(self):
+        samfile = pysam.AlignmentFile(
+            "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam",
+            "rb",
+            filepath_index=os.path.join(DATADIR, 'ex1.bam.bai'))
+
+        samfile.fetch("chr1")
+
 
 class TestVerbosity(unittest.TestCase):
 
@@ -2251,10 +2257,6 @@ class TestVerbosity(unittest.TestCase):
         self.assertEqual(new, 0)
         self.assertEqual(pysam.get_verbosity(), 3)
 
-
-
-        
-    
 
 if __name__ == "__main__":
     # build data files
