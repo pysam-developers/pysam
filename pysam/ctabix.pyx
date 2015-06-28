@@ -23,8 +23,8 @@ from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, gzopen, gzclose, gzerror, gzdopen
 
-from cyutils cimport _force_bytes, _force_str, _charptr_to_str
-from cyutils cimport _encode_filename, from_string_and_size
+from cyutils cimport force_bytes, force_str, charptr_to_str
+from cyutils cimport encode_filename, from_string_and_size
 
 cdef class Parser:
 
@@ -251,8 +251,8 @@ cdef class TabixFile:
         self._filename_index = filename_index
 
         # encode all the strings to pass to tabix
-        _encoded_filename = _encode_filename(filename)
-        _encoded_index = _encode_filename(filename_index)
+        _encoded_filename = encode_filename(filename)
+        _encoded_index = encode_filename(filename_index)
 
         # open file
         cdef char *cfilename = _encoded_filename
@@ -348,7 +348,7 @@ cdef class TabixFile:
                                       0,
                                       0)
         else:
-            s = _force_bytes(region, encoding=fileobj.encoding)
+            s = force_bytes(region, encoding=fileobj.encoding)
             cstr = s
             with nogil:
                 iter = tbx_itr_querys(fileobj.index, cstr)
@@ -495,7 +495,7 @@ cdef class TabixIterator:
         elif retval < 0:
             raise StopIteration
 
-        return _charptr_to_str(self.buffer.s, self.encoding)
+        return charptr_to_str(self.buffer.s, self.encoding)
 
     def next(self):
         return self.__next__()
@@ -558,7 +558,7 @@ cdef class GZIterator:
         if not os.path.exists(filename):
             raise IOError("No such file or directory: %s" % filename)
 
-        filename = _encode_filename(filename)
+        filename = encode_filename(filename)
         cdef char *cfilename = filename
         with nogil:
             self.gzipfile = gzopen(cfilename, "r")
@@ -601,7 +601,7 @@ cdef class GZIterator:
         cdef int retval = self.__cnext__()
         if retval < 0:
             raise StopIteration
-        return _force_str(self.buffer.s, self.encoding)
+        return force_str(self.buffer.s, self.encoding)
 
 
 cdef class GZIteratorHead(GZIterator):
@@ -664,14 +664,14 @@ def tabix_compress(filename_in,
 
     WINDOW_SIZE = 64 * 1024
 
-    fn = _encode_filename(filename_out)
+    fn = encode_filename(filename_out)
     cdef char *cfn = fn
     with nogil:
         fp = bgzf_open(cfn, "w")
     if fp == NULL:
         raise IOError("could not open '%s' for writing" % (filename_out, ))
 
-    fn = _encode_filename(filename_in)
+    fn = encode_filename(filename_in)
     fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
         raise IOError("could not open '%s' for reading" % (filename_in, ))
@@ -800,7 +800,7 @@ def tabix_index( filename,
     conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
 
 
-    fn = _encode_filename(filename)
+    fn = encode_filename(filename)
     cdef char *cfn = fn
     with nogil:
         tbx_index_build(cfn, min_shift, &conf)
@@ -1001,7 +1001,7 @@ class tabix_generic_iterator:
             if not line:
                 break
             
-            s = _force_bytes(line, encoding)
+            s = force_bytes(line, encoding)
             b = s
             nbytes = len(line)
             assert b[nbytes] == '\0'

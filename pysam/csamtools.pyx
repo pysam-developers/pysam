@@ -15,7 +15,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 ########################################################################
 IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
-cdef bytes _force_bytes(object s):
+cdef bytes force_bytes(object s):
     u"""convert string or unicode object to bytes, assuming ascii encoding.
     """
     if PY_MAJOR_VERSION < 3:
@@ -30,8 +30,8 @@ cdef bytes _force_bytes(object s):
         raise TypeError, u"Argument must be string, bytes or unicode."
 
 
-cdef inline bytes _forceCmdlineBytes(object s):
-    return _force_bytes(s)
+cdef inline bytes forceCmdlineBytes(object s):
+    return force_bytes(s)
 
 
 class Outs:
@@ -128,8 +128,8 @@ def _samtools_dispatch(method,
     cdef int i, n, retval
 
     n = len(args)
-    method = _forceCmdlineBytes(method)
-    args = [ _forceCmdlineBytes(a) for a in args ]
+    method = forceCmdlineBytes(method)
+    args = [ forceCmdlineBytes(a) for a in args ]
 
     # allocate two more for first (dummy) argument (contains command)
     cargs = <char**>calloc( n+2, sizeof( char *) )

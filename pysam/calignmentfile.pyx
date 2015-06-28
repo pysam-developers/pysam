@@ -23,8 +23,8 @@ from cpython cimport array
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-from cyutils cimport _force_bytes, _force_str, _charptr_to_str
-from cyutils cimport _encode_filename, from_string_and_size
+from cyutils cimport force_bytes, force_str, charptr_to_str
+from cyutils cimport encode_filename, from_string_and_size
 
 cimport cython
 
@@ -339,7 +339,7 @@ cdef class AlignmentFile:
             mode = "wb0"
 
         cdef bytes bmode = mode.encode('ascii')
-        self._filename = filename = _encode_filename(filename)
+        self._filename = filename = encode_filename(filename)
 
         # FIXME: Use htsFormat when it is available
         self.is_bam = len(mode) > 1 and mode[1] == 'b'
@@ -370,7 +370,7 @@ cdef class AlignmentFile:
                     "unequal names and lengths of reference sequences"
 
                 # allocate and fill header
-                reference_names = [_force_bytes(ref) for ref in reference_names]
+                reference_names = [force_bytes(ref) for ref in reference_names]
                 self.header = bam_hdr_init()
                 self.header.n_targets = len(reference_names)
                 n = 0
@@ -393,13 +393,13 @@ cdef class AlignmentFile:
                     text = []
                     for x from 0 <= x < self.header.n_targets:
                         text.append("@SQ\tSN:%s\tLN:%s\n" % \
-                                    (_force_str(reference_names[x]), 
+                                    (force_str(reference_names[x]), 
                                      reference_lengths[x]))
                     text = ''.join(text)
 
                 if text is not None:
                     # copy without \0
-                    text = _force_bytes(text)
+                    text = force_bytes(text)
                     ctext = text
                     self.header.l_text = strlen(ctext)
                     self.header.text = <char*>calloc(
@@ -422,7 +422,7 @@ cdef class AlignmentFile:
             if self.is_cram and reference_filename:
                 # note that fn_aux takes ownership, so create
                 # a copy
-                fn = _encode_filename(reference_filename)
+                fn = encode_filename(reference_filename)
                 self.htsfile.fn_aux = strdup(fn)
 
             # write header to htsfile
@@ -532,7 +532,7 @@ cdef class AlignmentFile:
         '''
         if not self._isOpen():
             raise ValueError("I/O operation on closed file")
-        reference = _force_bytes(reference)
+        reference = force_bytes(reference)
         return bam_name2id(self.header, reference)
 
     def getrname(self, tid):
@@ -543,7 +543,7 @@ cdef class AlignmentFile:
         if not 0 <= tid < self.header.n_targets:
             raise ValueError("reference_id %i out of range 0<=tid<%i" % 
                              (tid, self.header.n_targets))
-        return _charptr_to_str(self.header.target_name[tid])
+        return charptr_to_str(self.header.target_name[tid])
 
     cdef char * _getrname(self, int tid):   # TODO unused
         '''
@@ -593,7 +593,7 @@ cdef class AlignmentFile:
                 raise ValueError('end out of range (%i)' % end)
 
         if region:
-            region = _force_str(region)
+            region = force_str(region)
             parts = re.split("[:-]", region)
             reference = parts[0]
             if len(parts) >= 2:
@@ -1087,7 +1087,7 @@ cdef class AlignmentFile:
             if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.header.n_targets:
-                t.append(_charptr_to_str(self.header.target_name[x]))
+                t.append(charptr_to_str(self.header.target_name[x]))
             return tuple(t)
 
     property lengths:
@@ -2192,7 +2192,7 @@ cdef inline object _getSequenceRange(bam1_t *src,
         # note: do not use string literal as it will be a python string
         s[k-start] = seq_nt16_str[p[k/2] >> 4 * (1 - k%2) & 0xf]
 
-    return _charptr_to_str(seq)
+    return charptr_to_str(seq)
 
 
 cdef inline object _getQualitiesRange(bam1_t *src,
@@ -2255,7 +2255,7 @@ cdef inline uint8_t _get_value_code(value, value_type=None):
     else:
         if value_type not in 'Zidf':
             return 0
-        value_type = _force_bytes(value_type)
+        value_type = force_bytes(value_type)
         _char_type = value_type
         type_code = (<uint8_t*>_char_type)[0]
 
@@ -2523,12 +2523,12 @@ cdef class AlignedSegment:
             src = self._delegate
             if pysam_get_l_qname(src) == 0:
                 return None
-            return _charptr_to_str(<char *>pysam_bam_get_qname(src))
+            return charptr_to_str(<char *>pysam_bam_get_qname(src))
 
         def __set__(self, qname):
             if qname is None or len(qname) == 0:
                 return
-            qname = _force_bytes(qname)
+            qname = force_bytes(qname)
             cdef bam1_t * src
             cdef int l
             cdef char * p
@@ -2724,7 +2724,7 @@ cdef class AlignedSegment:
                 l = 0
             else:
                 l = len(seq)                
-                seq = _force_bytes(seq)
+                seq = force_bytes(seq)
 
             src = self._delegate
 
@@ -3390,7 +3390,7 @@ cdef class AlignedSegment:
         if len(tag) != 2:
             raise ValueError('Invalid tag: %s' % tag)
 
-        tag = _force_bytes(tag)
+        tag = force_bytes(tag)
         if replace:
             existing_ptr = bam_aux_get(src, tag)
             if existing_ptr:
@@ -3406,7 +3406,7 @@ cdef class AlignedSegment:
 
         # Not Endian-safe, but then again neither is samtools!
         if type_code == 'Z':
-            value = _force_bytes(value)
+            value = force_bytes(value)
             value_ptr    = <uint8_t*><char*>value
             value_size   = len(value)+1
         elif type_code == 'i':
@@ -3436,7 +3436,7 @@ cdef class AlignedSegment:
         contains a given *tag*."""
         cdef uint8_t * v
         cdef int nvalues
-        btag = _force_bytes(tag)
+        btag = force_bytes(tag)
         v = bam_aux_get(self._delegate, btag)
         return v != NULL
 
@@ -3456,7 +3456,7 @@ cdef class AlignedSegment:
         """
         cdef uint8_t * v
         cdef int nvalues
-        btag = _force_bytes(tag)
+        btag = force_bytes(tag)
         v = bam_aux_get(self._delegate, btag)
         if v == NULL:
             raise KeyError("tag '%s' not present" % tag)
@@ -3477,7 +3477,7 @@ cdef class AlignedSegment:
             # to convert a char into a string
             value = '%c' % <char>bam_aux2A(v)
         elif auxtype == 'Z':
-            value = _charptr_to_str(<char*>bam_aux2Z(v))
+            value = charptr_to_str(<char*>bam_aux2Z(v))
         elif auxtype[0] == 'B':
             bytesize, nvalues, values = convertBinaryTagToList(v + 1)
             value = values
@@ -3548,7 +3548,7 @@ cdef class AlignedSegment:
                 value = "%c" % <char>bam_aux2A(s)
                 s += 1
             elif auxtype in ('Z', 'H'):
-                value = _charptr_to_str(<char*>bam_aux2Z(s))
+                value = charptr_to_str(<char*>bam_aux2Z(s))
                 # +1 for NULL terminated string
                 s += len(value) + 1
             elif auxtype == 'B':
@@ -3562,9 +3562,9 @@ cdef class AlignedSegment:
             s += 1
             
             if with_value_type:
-                result.append((_charptr_to_str(auxtag), value, auxtype))
+                result.append((charptr_to_str(auxtag), value, auxtype))
             else:
-                result.append((_charptr_to_str(auxtag), value))
+                result.append((charptr_to_str(auxtag), value))
 
         return result
 
@@ -4011,7 +4011,7 @@ cdef class IndexedReads:
                                 self.samfile.header,
                                 b)
             if ret > 0:
-                qname = _charptr_to_str(pysam_bam_get_qname(b))
+                qname = charptr_to_str(pysam_bam_get_qname(b))
                 self.index[qname].append(pos)
 
         bam_destroy1(b)

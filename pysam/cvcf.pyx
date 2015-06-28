@@ -51,7 +51,7 @@ import sys, re, copy, bisect
 cimport ctabix
 cimport TabProxies
 
-from cyutils cimport _force_str
+from cyutils cimport force_str
 
 import pysam
 
@@ -904,7 +904,7 @@ class VCF(object):
     def _parse_header(self, stream):
         self._lineno = 0
         for line in stream:
-            line = _force_str(line, self.encoding)
+            line = force_str(line, self.encoding)
             self._lineno += 1
             if line.startswith('##'):
                 self.parse_header(line.strip())

@@ -39,7 +39,7 @@ if _FILENAME_ENCODING is None:
 #cdef char* _C_FILENAME_ENCODING
 #_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
 
-cdef bytes _encode_filename(object filename):
+cdef bytes encode_filename(object filename):
     """Make sure a filename is 8-bit encoded (or None)."""
     if filename is None:
         return None
@@ -50,7 +50,7 @@ cdef bytes _encode_filename(object filename):
     else:
         raise TypeError, u"Argument must be string or unicode."
 
-cdef bytes _force_bytes(object s, encoding="ascii"):
+cdef bytes force_bytes(object s, encoding="ascii"):
     u"""convert string or unicode object to bytes, assuming
     ascii encoding.
     """
@@ -65,16 +65,16 @@ cdef bytes _force_bytes(object s, encoding="ascii"):
     else:
         raise TypeError, u"Argument must be string, bytes or unicode."
 
-cdef bytes _force_cmdline_bytes(object s, encoding="ascii"):
-    return _force_bytes(s)
+cdef bytes force_cmdline_bytes(object s, encoding="ascii"):
+    return force_bytes(s)
 
-cdef _charptr_to_str(char* s, encoding="ascii"):
+cdef charptr_to_str(char* s, encoding="ascii"):
     if PY_MAJOR_VERSION < 3:
         return s
     else:
         return s.decode(encoding)
 
-cdef _force_str(object s, encoding="ascii"):
+cdef force_str(object s, encoding="ascii"):
     """Return s converted to str type of current Python
     (bytes in Py2, unicode in Py3)"""
     if s is None:

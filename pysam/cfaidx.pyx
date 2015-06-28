@@ -17,8 +17,8 @@ from chtslib cimport \
     faidx_fetch_seq, gzopen, gzclose, \
     kseq_init, kseq_destroy, kseq_read
 
-from cyutils cimport _force_bytes, _force_str, _charptr_to_str
-from cyutils cimport _encode_filename, from_string_and_size
+from cyutils cimport force_bytes, force_str, charptr_to_str
+from cyutils cimport encode_filename, from_string_and_size
 from cyutils cimport _chars_to_array
 
 
@@ -71,7 +71,7 @@ cdef class FastaFile:
 
         # close a previously opened file
         if self.fastafile != NULL: self.close()
-        self._filename = _encode_filename(filename)
+        self._filename = encode_filename(filename)
         cdef char *cfilename = self._filename
         with nogil:
             self.fastafile = fai_load(cfilename)
@@ -338,7 +338,7 @@ cdef class FastxFile:
 
         self.persist = persist
 
-        filename = _encode_filename(filename)
+        filename = encode_filename(filename)
         cdef char *cfilename = filename
         with nogil:
             self.fastqfile = gzopen(cfilename, "r")

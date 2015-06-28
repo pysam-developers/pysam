@@ -217,8 +217,8 @@ cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 ## Python 3 compatibility functions
 ########################################################################
 
-from cyutils cimport _force_bytes, _force_str, _charptr_to_str
-from cyutils cimport _encode_filename, from_string_and_size
+from cyutils cimport force_bytes, force_str, charptr_to_str
+from cyutils cimport encode_filename, from_string_and_size
 
 
 ########################################################################
@@ -231,7 +231,7 @@ cdef tuple char_array_to_tuple(const char **a, int n, int free_after=0):
     if not a:
         return None
     try:
-         return tuple(_charptr_to_str(a[i]) for i in range(n))
+         return tuple(charptr_to_str(a[i]) for i in range(n))
     finally:
         if free_after and a:
             free(a)
@@ -997,7 +997,7 @@ cdef class VariantHeader(object):
 
         ret = hstr[:hlen]
         free(hstr)
-        return _force_str(hstr)
+        return force_str(hstr)
 
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
@@ -1685,7 +1685,7 @@ cdef class VariantRecord(object):
         #    line.l -= 1
 
         ret = line.s[:line.l]
-        ret = _force_str(ret)
+        ret = force_str(ret)
 
         if line.m:
             free(line.s)
@@ -2407,7 +2407,7 @@ cdef class VariantFile(object):
                 raise ValueError('metadata not available on closed file')
             cdef char *desc = hts_format_description(&self.htsfile.format)
             try:
-                return _force_str(desc)
+                return force_str(desc)
             finally:
                 free(desc)
 
@@ -2529,7 +2529,7 @@ cdef class VariantFile(object):
             mode = b'wb0'
 
         self.mode = mode
-        self.filename = filename = _encode_filename(filename)
+        self.filename = filename = encode_filename(filename)
         self.drop_samples = bool(drop_samples)
 
         # FIXME: Use htsFormat when it is available
