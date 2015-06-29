@@ -250,7 +250,7 @@ except ImportError:
     tabix_sources = ["pysam/ctabix.c"]
     faidx_sources = ["pysam/cfaidx.c"]
     csamfile_sources = ["pysam/csamfile.c"]
-    cyutils_sources = ["pysam/cyutils.c"]
+    cutils_sources = ["pysam/cutils.c"]
     calignmentfile_sources = ["pysam/calignmentfile.c"]
     tabproxies_sources = ["pysam/ctabixproxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
@@ -267,7 +267,7 @@ else:
                   "pysam/ctabixproxies.c",
                   "pysam/cvcf.c",
                   "pysam/bvcf.c",
-                  "pysam/cyutils.c",
+                  "pysam/cutils.c",
                   ):
             try:
                 os.unlink(f)
@@ -284,7 +284,7 @@ else:
     tabproxies_sources = ["pysam/ctabixproxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
     cbcf_sources = ["pysam/cbcf.pyx"]
-    cyutils_sources = ["pysam/cyutils.pyx"]
+    cutils_sources = ["pysam/cutils.pyx"]
 
 
 #######################################################
@@ -409,9 +409,9 @@ tabix = Extension(
                    ('_USE_KNETFILE', '')],
 )
 
-cyutils = Extension(
-    "pysam.cyutils",
-    cyutils_sources +
+cutils = Extension(
+    "pysam.cutils",
+    cutils_sources +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"],
@@ -502,7 +502,7 @@ metadata = {
                     cvcf,
                     cbcf,
                     faidx,
-                    cyutils],
+                    cutils],
     'cmdclass': cmdclass,
     'package_dir': {'pysam': 'pysam',
                     'pysam.include.htslib': 'htslib',

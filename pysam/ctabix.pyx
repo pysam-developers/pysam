@@ -23,8 +23,8 @@ from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, gzopen, gzclose, gzerror, gzdopen
 
-from cyutils cimport force_bytes, force_str, charptr_to_str
-from cyutils cimport encode_filename, from_string_and_size
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
 
 cdef class Parser:
 

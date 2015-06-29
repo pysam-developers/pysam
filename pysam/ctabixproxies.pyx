@@ -8,8 +8,8 @@ from cpython cimport PyUnicode_Check, PyBytes_FromStringAndSize
 
 from libc.stdio cimport printf
 
-from cyutils cimport force_bytes, force_str, charptr_to_str
-from cyutils cimport encode_filename, from_string_and_size
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
 
 cdef char * nextItem(char * buffer):
     cdef char * pos

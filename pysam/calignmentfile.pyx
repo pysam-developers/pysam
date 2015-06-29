@@ -23,8 +23,8 @@ from cpython cimport array
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-from cyutils cimport force_bytes, force_str, charptr_to_str
-from cyutils cimport encode_filename, from_string_and_size
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
 
 cimport cython
 

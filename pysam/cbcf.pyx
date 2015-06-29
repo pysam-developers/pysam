@@ -217,8 +217,8 @@ cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 ## Python 3 compatibility functions
 ########################################################################
 
-from cyutils cimport force_bytes, force_str, charptr_to_str
-from cyutils cimport encode_filename, from_string_and_size
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
 
 
 ########################################################################

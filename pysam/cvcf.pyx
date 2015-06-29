@@ -51,7 +51,7 @@ import sys, re, copy, bisect
 cimport ctabix
 cimport ctabixproxies
 
-from cyutils cimport force_str
+from cutils cimport force_str
 
 import pysam
 

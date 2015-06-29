@@ -17,9 +17,9 @@ from chtslib cimport \
     faidx_fetch_seq, gzopen, gzclose, \
     kseq_init, kseq_destroy, kseq_read
 
-from cyutils cimport force_bytes, force_str, charptr_to_str
-from cyutils cimport encode_filename, from_string_and_size
-from cyutils cimport _chars_to_array
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
+from cutils cimport _chars_to_array
 
 
 cdef class FastqProxy

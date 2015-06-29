@@ -1,7 +1,7 @@
 from pysam.libchtslib import *
 
-from pysam.cyutils import *
-import pysam.cyutils as cyutils
+from pysam.cutils import *
+import pysam.cutils as cutils
 
 import pysam.cfaidx as cfaidx
 from pysam.cfaidx import *
