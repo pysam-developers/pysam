@@ -14,7 +14,7 @@ from cpython cimport PyErr_SetString, PyBytes_Check, \
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-cimport TabProxies
+cimport ctabixproxies
 
 from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_close, bgzf_write, \
@@ -51,8 +51,8 @@ cdef class asTuple(Parser):
     A field in a row is accessed by numeric index.
     ''' 
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.TupleProxy r
-        r = TabProxies.TupleProxy(self.encoding)
+        cdef ctabixproxies.TupleProxy r
+        r = ctabixproxies.TupleProxy(self.encoding)
         # need to copy - there were some
         # persistence issues with "present"
         r.copy(buffer, len)
@@ -100,8 +100,8 @@ cdef class asGTF(Parser):
 
     ''' 
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.GTFProxy r
-        r = TabProxies.GTFProxy(self.encoding)
+        cdef ctabixproxies.GTFProxy r
+        r = ctabixproxies.GTFProxy(self.encoding)
         r.copy(buffer, len)
         return r
 
@@ -148,8 +148,8 @@ cdef class asBed(Parser):
 
     ''' 
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.BedProxy r
-        r = TabProxies.BedProxy(self.encoding)
+        cdef ctabixproxies.BedProxy r
+        r = ctabixproxies.BedProxy(self.encoding)
         r.copy(buffer, len)
         return r
 
@@ -189,8 +189,8 @@ cdef class asVCF(Parser):
 
     '''
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.VCFProxy r
-        r = TabProxies.VCFProxy(self.encoding)
+        cdef ctabixproxies.VCFProxy r
+        r = ctabixproxies.VCFProxy(self.encoding)
         r.copy(buffer, len)
         return r
 

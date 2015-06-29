@@ -49,7 +49,7 @@ from operator import itemgetter
 import sys, re, copy, bisect
 
 cimport ctabix
-cimport TabProxies
+cimport ctabixproxies
 
 from cyutils cimport force_str
 
@@ -95,7 +95,7 @@ FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue
 # 
 ###########################################################################################################
 
-cdef class VCFRecord( TabProxies.TupleProxy):
+cdef class VCFRecord( ctabixproxies.TupleProxy):
     '''vcf record.
 
     initialized from data and vcf meta 
@@ -134,7 +134,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         
         nbytes does not include the terminal '\0'.
         '''
-        TabProxies.TupleProxy.update(self, buffer, nbytes)
+        ctabixproxies.TupleProxy.update(self, buffer, nbytes)
 
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here

@@ -252,7 +252,7 @@ except ImportError:
     csamfile_sources = ["pysam/csamfile.c"]
     cyutils_sources = ["pysam/cyutils.c"]
     calignmentfile_sources = ["pysam/calignmentfile.c"]
-    tabproxies_sources = ["pysam/TabProxies.c"]
+    tabproxies_sources = ["pysam/ctabixproxies.c"]
     cvcf_sources = ["pysam/cvcf.c"]
     cbcf_sources = ["pysam/cbcf.c"]
 else:
@@ -264,7 +264,7 @@ else:
                   "pysam/ctabix.c",
                   "pysam/cfaidx.c",
                   "pysam/csamfile.c",
-                  "pysam/TabProxies.c",
+                  "pysam/ctabixproxies.c",
                   "pysam/cvcf.c",
                   "pysam/bvcf.c",
                   "pysam/cyutils.c",
@@ -281,7 +281,7 @@ else:
     calignmentfile_sources = ["pysam/calignmentfile.pyx"]
     tabix_sources = ["pysam/ctabix.pyx"]
     faidx_sources = ["pysam/cfaidx.pyx"]
-    tabproxies_sources = ["pysam/TabProxies.pyx"]
+    tabproxies_sources = ["pysam/ctabixproxies.pyx"]
     cvcf_sources = ["pysam/cvcf.pyx"]
     cbcf_sources = ["pysam/cbcf.pyx"]
     cyutils_sources = ["pysam/cyutils.pyx"]
@@ -440,7 +440,7 @@ faidx = Extension(
 )
 
 tabproxies = Extension(
-    "pysam.TabProxies",
+    "pysam.ctabixproxies",
     tabproxies_sources + os_c_files,
     library_dirs=[],
     include_dirs=include_os,

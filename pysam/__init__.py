@@ -182,7 +182,7 @@ def get_libraries():
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
     return [os.path.join(dirname, x) for x in (
         'libchtslib.so',
-        'TabProxies.so',
+        'ctabixproxies.so',
         'cfaidx.so',
         'csamfile.so',
         'cvcf.so',
