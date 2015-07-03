@@ -2296,7 +2296,7 @@ cdef inline object _getQualitiesRange(bam1_t *src,
     return result
 
 
-cpdef QualStringFromArray(py_array_t arr, cython.bint offset64=False):
+cpdef QualStringFromArray(array.array arr, cython.bint offset64=False):
     if(offset64 is False):
         return arr.tostring().translate(PHRED_OFFSET_STRING33)
     else:
@@ -2316,7 +2316,7 @@ def toQualityString(qualities, cython.bint offset64=False):
 
 
 cdef bytes TagToString(tuple tagtup):
-    cdef py_array_t b_aux_arr
+    cdef array.array b_aux_arr
     cdef char value_type = tagtup[2]
     cdef char* tag = tagtup[0]
     cdef double value_double
@@ -2343,9 +2343,10 @@ cdef bytes TagToString(tuple tagtup):
                 return <bytes> (tag + ":B:f" +
                                 ",".join([str(f) for f in tagtup[1]]))
             else:
-                b_aux_arr = array('L', tagtup[1])
-        size = sizeof(b_aux_arr)
-        min_value = min(tagtup[1])
+                b_aux_arr = array('l', tagtup[1])
+                # Choose long to accommodate any size integers.
+        size = sizeof(tagtup[1])
+        min_value = min(b_aux_arr)
         if(size == 1):
             if(min_value < 0):
                 ret = tag + ":B:c" + ",".join([str(i) for i in b_aux_arr])
@@ -2669,7 +2670,7 @@ cdef class AlignedSegment:
             self.rnext != self.reference_id) else "="
         cigarstring = self.cigarstring if(
             self.cigarstring is not None) else "*"
-        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (
+        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
             self.query_name, self.flag, handle.getrname(self.reference_id),
             self.pos + 1, self.mapq, cigarstring, mate_ref, self.mpos + 1,
             self.template_length, self.seq, self.qual, self.get_tag_string())

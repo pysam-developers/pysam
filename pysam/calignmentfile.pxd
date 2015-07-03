@@ -7,10 +7,9 @@ from libc.stdio cimport FILE, printf
 from cfaidx cimport faidx_t, Fastafile
 from chtslib cimport *
 
-cimport cpython.array
+from cpython cimport array
 cimport cython
 
-ctypedef cpython.array.array py_array_t
 ctypedef AlignmentFile AlignmentFile_t
 
 cdef extern from *:
