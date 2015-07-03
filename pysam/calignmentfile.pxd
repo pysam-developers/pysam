@@ -7,6 +7,12 @@ from libc.stdio cimport FILE, printf
 from cfaidx cimport faidx_t, Fastafile
 from chtslib cimport *
 
+cimport cpython.array
+cimport cython
+
+ctypedef cpython.array.array py_array_t
+ctypedef AlignmentFile AlignmentFile_t
+
 cdef extern from *:
     ctypedef char* const_char_ptr "const char*"
 
@@ -87,6 +93,13 @@ cdef class AlignedSegment:
     # return true if tag exists
     cpdef has_tag(self, tag)
 
+    # returns a valid sam alignment string
+    cpdef bytes tostring(self, AlignmentFile_t handle)
+
+    # returns the aux tag fields as a string.
+    cdef bytes get_tag_string(self)
+
+
 cdef class AlignmentFile:
 
     cdef object _filename
@@ -149,7 +162,7 @@ cdef class IteratorRow:
 
 cdef class IteratorRowRegion(IteratorRow):
     cdef hts_itr_t * iter
-    cdef bam1_t * getCurrent( self )
+    cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
 cdef class IteratorRowHead(IteratorRow):
@@ -159,7 +172,7 @@ cdef class IteratorRowHead(IteratorRow):
     cdef int cnext(self)
 
 cdef class IteratorRowAll(IteratorRow):
-    cdef bam1_t * getCurrent( self )
+    cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
 cdef class IteratorRowAllRefs(IteratorRow):
@@ -169,7 +182,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
 cdef class IteratorRowSelection(IteratorRow):
     cdef int current_pos
     cdef positions
-    cdef bam1_t * getCurrent( self )
+    cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
 cdef class IteratorColumn:
@@ -189,13 +202,13 @@ cdef class IteratorColumn:
     cdef int max_depth
 
     cdef int cnext(self)
-    cdef char * getSequence( self )
+    cdef char * getSequence(self)
     cdef setMask(self, mask)
     cdef setupIteratorData(self,
                            int tid,
                            int start,
                            int end,
-                           int multiple_iterators = ?)
+                           int multiple_iterators=?)
 
     cdef reset(self, tid, start, end)
     cdef _free_pileup_iter(self)
@@ -214,3 +227,7 @@ cdef class IndexedReads:
     cdef index
     cdef int owns_samfile
     cdef bam_hdr_t * header
+
+cdef bytes PHRED_OFFSET_STRING64, PHRED_OFFSET_STRING33
+
+cdef bytes TagToString(tuple tagtup)
