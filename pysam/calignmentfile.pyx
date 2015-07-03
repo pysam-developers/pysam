@@ -2665,13 +2665,20 @@ cdef class AlignedSegment:
         return hash_value
 
     cpdef bytes tostring(self, AlignmentFile_t handle):
-        cdef cython.str cigarstring, mate_ref
-        mate_ref = handle.getrname(self.rnext) if(
-            self.rnext != self.reference_id) else "="
+        cdef cython.str cigarstring, mate_ref, ref
+        if(self.is_unmapped):
+            ref = "*"
+        else:
+            ret = handle.getrname(self.reference_id)
+        if(self.mate_is_unmapped):
+            mate_ref = "*"
+        else:
+            mate_ref = handle.getrname(self.rnext) if(
+                self.rnext != self.reference_id and self.rnext != -1) else "="
         cigarstring = self.cigarstring if(
             self.cigarstring is not None) else "*"
         ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
-            self.query_name, self.flag, handle.getrname(self.reference_id),
+            self.query_name, self.flag, ref,
             self.pos + 1, self.mapq, cigarstring, mate_ref, self.mpos + 1,
             self.template_length, self.seq, self.qual, self.get_tag_string())
         return <bytes> ret
