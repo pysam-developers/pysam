@@ -2669,7 +2669,7 @@ cdef class AlignedSegment:
         if(self.is_unmapped):
             ref = "*"
         else:
-            ret = handle.getrname(self.reference_id)
+            ref = handle.getrname(self.reference_id)
         if(self.mate_is_unmapped):
             mate_ref = "*"
         else:
