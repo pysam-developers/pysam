@@ -116,16 +116,16 @@ else:
 CIGAR_REGEX = re.compile( "(\d+)([MIDNSHP=X])" )
 
 PHRED_OFFSET_STRING64 = string.maketrans(
-        "".join({chr(x): chr(x + 64) for x in xrange(
-            0, 63)}.iterkeys()),
-        "".join({chr(x): chr(x + 64) for x in xrange(
-            0, 63)}.itervalues()))
+        "".join(chr(x) for x in xrange(
+            0, 63)),
+        "".join(chr(x + 64) for x in xrange(
+            0, 63)))
 
 PHRED_OFFSET_STRING33 = string.maketrans(
-        "".join({chr(x): chr(x + 33) for x in xrange(
-            0, 94)}.iterkeys()),
-        "".join({chr(x): chr(x + 33) for x in xrange(
-            0, 94)}.itervalues()))
+        "".join(chr(x) for x in xrange(
+            0, 94)),
+        "".join(chr(x + 33) for x in xrange(
+            0, 94)))
 
 #####################################################################
 # hard-coded constants
@@ -2306,13 +2306,17 @@ cpdef QualStringFromArray(array.array arr, cython.bint offset64=False):
 def toQualityString(qualities, cython.bint offset64=False):
     '''convert a list of quality score to the string
     representation used in the SAM format.'''
-    cdef char x
+    cdef char x, offset
     if qualities is None:
         return None
     elif(isinstance(qualities, array.array)):
         return QualStringFromArray(qualities, offset64=offset64)
     else:
-        return "".join([chr(x+33) for x in qualities])
+        offset = 64 if(offset64) else 33
+        if(offset64 is False):
+            return "".join([chr(x + offset) for x in qualities])
+        else:
+            return "".join([chr(x + offset) for x in qualities])
 
 
 cdef bytes TagToString(tuple tagtup):
