@@ -216,6 +216,53 @@ cdef convertBinaryTagToList( uint8_t * s ):
     return byte_size, nvalues, values
 
 
+cdef convertBinaryTagToArray( uint8_t * s ):
+    """return bytesize, number of values list of values in s.
+    Discussion: if we 
+    """
+    cdef char auxtype
+    cdef uint8_t byte_size
+    cdef int32_t nvalues
+
+    # get byte size
+    auxtype = s[0]
+    byte_size = aux_type2size( auxtype )
+    s += 1
+    # get number of values in array
+    nvalues = (<int32_t*>s)[0]
+    s += 4
+    # get values
+    values = []
+    if auxtype == 'c':
+        values = array.array('b', [(<int8_t*>s)[0] for s in xrange(s, s + nvalues)])
+    elif auxtype == 'C':
+        values = array.array('B', [(<int8_t*>s)[0] for s in xrange(s, s + nvalues)])
+    elif auxtype == 's':
+        for x from 0 <= x < nvalues:
+            values.append((<int16_t*>s)[0])
+            s += 2
+    elif auxtype == 'S':
+        for x from 0 <= x < nvalues:
+            values.append((<uint16_t*>s)[0])
+            s += 2
+    elif auxtype == 'i':
+        for x from 0 <= x < nvalues:
+            values.append((<int32_t*>s)[0])
+            s += 4
+    elif auxtype == 'I':
+        for x from 0 <= x < nvalues:
+            values.append((<uint32_t*>s)[0])
+            s += 4
+    elif auxtype == 'f':
+        for x from 0 <= x < nvalues:
+            values.append((<float*>s)[0])
+            s += 4
+    else:
+        values = array.array('c', [])
+
+    return byte_size, nvalues, values
+
+
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : dict,
                       "SQ" : list,
