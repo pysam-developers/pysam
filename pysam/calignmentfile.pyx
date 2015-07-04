@@ -218,7 +218,6 @@ cdef convertBinaryTagToList( uint8_t * s ):
 
 cdef convertBinaryTagToArray( uint8_t * s ):
     """return bytesize, number of values list of values in s.
-    Discussion: if we 
     """
     cdef char auxtype
     cdef uint8_t byte_size
@@ -236,29 +235,21 @@ cdef convertBinaryTagToArray( uint8_t * s ):
     if auxtype == 'c':
         values = array.array('b', [(<int8_t*>s)[0] for s in xrange(s, s + nvalues)])
     elif auxtype == 'C':
-        values = array.array('B', [(<int8_t*>s)[0] for s in xrange(s, s + nvalues)])
+        values = array.array('B', [(<uint8_t*>s)[0] for s in xrange(s, s + nvalues)])
     elif auxtype == 's':
-        for x from 0 <= x < nvalues:
-            values.append((<int16_t*>s)[0])
-            s += 2
+        values = array.array('h', [(<int16_t*>s)[0] for s in xrange(s, s + nvalues * 2, 2)])
     elif auxtype == 'S':
-        for x from 0 <= x < nvalues:
-            values.append((<uint16_t*>s)[0])
-            s += 2
+        values = array.array('H', [(<uint16_t*>s)[0] for s in xrange(s, s + nvalues * 2, 2)])
     elif auxtype == 'i':
-        for x from 0 <= x < nvalues:
-            values.append((<int32_t*>s)[0])
-            s += 4
+        values = array.array('i', [(<int32_t*>s)[0] for s in xrange(s, s + nvalues * 4, 4)])
     elif auxtype == 'I':
-        for x from 0 <= x < nvalues:
-            values.append((<uint32_t*>s)[0])
-            s += 4
+        values = array.array('I', [(<uint32_t*>s)[0] for s in xrange(s, s + nvalues * 4, 4)])
     elif auxtype == 'f':
-        for x from 0 <= x < nvalues:
-            values.append((<float*>s)[0])
-            s += 4
+        values = array.array('f', [(<float*>s)[0] for s in xrange(s, s + nvalues * 4, 4)])
     else:
-        values = array.array('c', [])
+        # Throw an exception for an invalid typecode. (Overflow)
+        # This else statement permits cython to write this as a switch statement.
+        values = array.array('c', [-1e10])
 
     return byte_size, nvalues, values
 
