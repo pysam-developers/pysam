@@ -2,6 +2,11 @@
 Release notes
 =============
 
+Release 0.8.4
+=============
+
+* binary tags are now returned as python arrays
+
 Release 0.8.3
 =============
 

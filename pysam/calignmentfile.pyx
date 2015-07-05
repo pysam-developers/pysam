@@ -12,14 +12,16 @@ import collections
 import re
 import platform
 import warnings
-import array
+
+from libc.string cimport strchr
 
 from cpython cimport PyErr_SetString, \
     PyBytes_Check, \
     PyUnicode_Check, \
     PyBytes_FromStringAndSize
 
-from cpython cimport array
+from cpython cimport array as c_array
+import array
 
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -96,6 +98,10 @@ cdef _forceStr(object s):
         # assume unicode
         return s
 
+# Constants for binary tag conversion
+cdef char * htslib_types = 'cCsSiIf'
+cdef char * parray_types = 'bBiIlLf'
+
 ########################################################################
 ########################################################################
 ########################################################################
@@ -156,52 +162,34 @@ cdef makePileupRead(bam_pileup1_t * src):
     dest._is_refskip = src.is_refskip
     return dest
 
-cdef convertBinaryTagToList( uint8_t * s ):
-    """return bytesize, number of values list of values in s."""
+cdef convert_binary_tag(uint8_t * s):
+    """return bytesize, number of values and array of values in s."""
     cdef char auxtype
     cdef uint8_t byte_size
     cdef int32_t nvalues
-
     # get byte size
     auxtype = s[0]
-    byte_size = aux_type2size( auxtype )
+    byte_size = aux_type2size(auxtype)
     s += 1
     # get number of values in array
     nvalues = (<int32_t*>s)[0]
     s += 4
-    # get values
-    values = []
-    if auxtype == 'c':
-        for x from 0 <= x < nvalues:
-            values.append((<int8_t*>s)[0])
-            s += 1
-    elif auxtype == 'C':
-        for x from 0 <= x < nvalues:
-            values.append((<uint8_t*>s)[0])
-            s += 1
-    elif auxtype == 's':
-        for x from 0 <= x < nvalues:
-            values.append((<int16_t*>s)[0])
-            s += 2
-    elif auxtype == 'S':
-        for x from 0 <= x < nvalues:
-            values.append((<uint16_t*>s)[0])
-            s += 2
-    elif auxtype == 'i':
-        for x from 0 <= x < nvalues:
-            values.append((<int32_t*>s)[0])
-            s += 4
-    elif auxtype == 'I':
-        for x from 0 <= x < nvalues:
-            values.append((<uint32_t*>s)[0])
-            s += 4
-    elif auxtype == 'f':
-        for x from 0 <= x < nvalues:
-            values.append((<float*>s)[0])
-            s += 4
 
-    return byte_size, nvalues, values
+    # map type from htslib to python array
+    cdef char * f = strchr(htslib_types, auxtype)
+    if f == NULL:
+        raise ValueError("unkown binary tag type '%s'" % auxtype)
+    cdef char parray_type = parray_types[f - htslib_types]
+    # define python array
+    cdef c_array.array c_values = array.array('I')
+    # <char>parray_type)
+    c_array.resize(c_values, nvalues)
 
+    # copy data
+    memcpy(c_values.data.as_voidptr, <int8_t*>s, nvalues * byte_size)
+
+    # check for endianness? see array.byteswop()
+    return byte_size, nvalues, c_values
 
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : dict,
@@ -1031,18 +1019,18 @@ cdef class AlignmentFile:
         cdef int _start = start
         cdef int _stop = stop
         cdef int length = _stop - _start
-        cdef array.array int_array_template = array.array('L', [])
-        cdef array.array count_a
-        cdef array.array count_c
-        cdef array.array count_g
-        cdef array.array count_t
-        count_a = array.clone(int_array_template, length, zero=True)
-        count_c = array.clone(int_array_template, length, zero=True)
-        count_g = array.clone(int_array_template, length, zero=True)
-        count_t = array.clone(int_array_template, length, zero=True)
+        cdef c_array.array int_array_template = array.array('L', [])
+        cdef c_array.array count_a
+        cdef c_array.array count_c
+        cdef c_array.array count_g
+        cdef c_array.array count_t
+        count_a = c_array.clone(int_array_template, length, zero=True)
+        count_c = c_array.clone(int_array_template, length, zero=True)
+        count_g = c_array.clone(int_array_template, length, zero=True)
+        count_t = c_array.clone(int_array_template, length, zero=True)
 
         cdef char * seq
-        cdef array.array quality
+        cdef c_array.array quality
         cdef int qpos
         cdef int refpos
         cdef int c = 0
@@ -2274,7 +2262,7 @@ cdef inline object _getQualitiesRange(bam1_t *src,
         return None
 
     # 'B': unsigned char
-    cdef array.array result = array.array('B', [0])
+    cdef c_array.array result = array.array('B', [0])
     array.resize(result, end - start)
 
     # copy data
@@ -2297,7 +2285,7 @@ def fromQualityString(quality_string):
     in the SAM format.'''
     if quality_string is None:
         return None
-    return array.array('B', [ord(x)-33 for x in quality_string])
+    return c_array.array('B', [ord(x)-33 for x in quality_string])
 
 
 cdef inline uint8_t _get_value_code(value, value_type=None):
@@ -2891,7 +2879,7 @@ cdef class AlignedSegment:
 
             # NB: should avoid this copying if qual is
             # already of the correct type.
-            cdef array.array result = array.array('B', qual)
+            cdef c_array.array result = c_array.array('B', qual)
 
             # copy data
             memcpy(p, result.data.as_voidptr, l)
@@ -3507,18 +3495,37 @@ cdef class AlignedSegment:
         return v != NULL
 
     cpdef get_tag(self, tag, with_value_type=False):
-        """retrieves data from the optional alignment section
+        """
+        retrieves data from the optional alignment section
         given a two-letter *tag* denoting the field.
-
-        If *tag* is not present, a KeyError is raised.
 
         The returned value is cast into an appropriate python type.
 
         This method is the fastest way to access the optional
         alignment section if only few tags need to be retrieved.
 
-        If *with_value_type* is set, the return value is a tuple of
-        (tag value, type code)
+        Parameters 
+        ----------
+
+        tag : 
+            data tag.
+            
+        with_value_type : Optional[bool]
+            if set to True, the return value is a tuple of (tag value, type code).
+            (default False)
+            
+        Returns
+        -------
+
+        A python object with the value of the `tag`. The type of the
+        object depends on the data type in the data record.
+
+        Raises
+        ------
+
+        KeyError
+            If `tag` is not present, a KeyError is raised.
+
         """
         cdef uint8_t * v
         cdef int nvalues
@@ -3530,6 +3537,7 @@ cdef class AlignedSegment:
             auxtype = chr(v[0]) + chr(v[1])
         else:
             auxtype = chr(v[0])
+
         if auxtype == 'c' or auxtype == 'C' or auxtype == 's' or auxtype == 'S':
             value = <int>bam_aux2i(v)
         elif auxtype == 'i' or auxtype == 'I':
@@ -3545,7 +3553,7 @@ cdef class AlignedSegment:
         elif auxtype == 'Z':
             value = _charptr_to_str(<char*>bam_aux2Z(v))
         elif auxtype[0] == 'B':
-            bytesize, nvalues, values = convertBinaryTagToList(v + 1)
+            bytesize, nvalues, values = convert_binary_tag(v + 1)
             value = values
         else:
             raise ValueError("unknown auxiliary type '%s'" % auxtype)
@@ -3619,7 +3627,7 @@ cdef class AlignedSegment:
                 s += len(value) + 1
             elif auxtype == 'B':
                 s += 1
-                byte_size, nvalues, value = convertBinaryTagToList(s)
+                byte_size, nvalues, value = convert_binary_tag(s)
                 # 5 for 1 char and 1 int
                 s += 5 + (nvalues * byte_size) - 1
             else:
