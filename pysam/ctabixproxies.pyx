@@ -8,56 +8,8 @@ from cpython cimport PyUnicode_Check, PyBytes_FromStringAndSize
 
 from libc.stdio cimport printf
 
-
-cdef from_string_and_size(char* s, size_t length):
-    if PY_MAJOR_VERSION < 3:
-        return s[:length]
-    else:
-        return s[:length].decode("ascii")
-
-# filename encoding (copied from lxml.etree.pyx)
-cdef str _FILENAME_ENCODING
-_FILENAME_ENCODING = sys.getfilesystemencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = sys.getdefaultencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = 'ascii'
-
-cdef bytes _force_bytes(object s, encoding="ascii"):
-    u"""convert string or unicode object to bytes, assuming ascii encoding.
-    """
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif s is None:
-        return None
-    elif PyBytes_Check(s):
-        return s
-    elif PyUnicode_Check(s):
-        return s.encode(encoding)
-    else:
-        raise TypeError, u"Argument must be string, bytes or unicode."
-
-cdef inline bytes _force_cmdline_bytes(object s):
-    return _force_bytes(s)
-
-cdef _charptr_to_str(char* s, encoding="ascii"):
-    if PY_MAJOR_VERSION < 3:
-        return s
-    else:
-        return s.decode(encoding)
-
-cdef inline _force_str(object s, encoding="ascii"):
-    """Return s converted to str type of current Python "
-    "(bytes in Py2, unicode in Py3)"""
-    if s is None:
-        return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
-        return s.decode(encoding)
-    else:
-        # assume unicode
-        return s
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
 
 cdef char * nextItem(char * buffer):
     cdef char * pos
@@ -300,7 +252,7 @@ cdef class TupleProxy:
             raise IndexError(
                 "list index out of range %i >= %i" %
                 (i, self.nfields))
-        return _force_str(self.fields[i], self.encoding)
+        return force_str(self.fields[i], self.encoding)
 
     def __getitem__(self, key):
         if type(key) == int:
@@ -330,7 +282,7 @@ cdef class TupleProxy:
             return
 
         # conversion with error checking
-        value = _force_bytes(value)
+        value = force_bytes(value)
         cdef char * tmp = <char*>value
         self.fields[idx] = <char*>malloc((strlen( tmp ) + 1) * sizeof(char))
         if self.fields[idx] == NULL:
@@ -363,7 +315,7 @@ cdef class TupleProxy:
         if retval == NULL:
             return None
         else:
-            return _force_str(retval, self.encoding)
+            return force_str(retval, self.encoding)
 
     def __str__(self):
         '''return original data'''
@@ -662,7 +614,7 @@ cdef class GTFProxy(TupleProxy):
 
         # add space in order to make sure
         # to not pick up a field that is a prefix of another field
-        r = _force_bytes(item + " ")
+        r = force_bytes(item + " ")
         query = r
         start = strstr(attributes, query)
 
@@ -680,11 +632,11 @@ cdef class GTFProxy(TupleProxy):
             while end[0] != '\0' and end[0] != '"':
                 end += 1
             l = end - start
-            result = _force_str(PyBytes_FromStringAndSize(start, l),
+            result = force_str(PyBytes_FromStringAndSize(start, l),
                                 self.encoding)
             return result
         else:
-            return _force_str(start, self.encoding)
+            return force_str(start, self.encoding)
 
     def setAttribute(self, name, value):
         '''convenience method to set an attribute.'''
@@ -711,7 +663,7 @@ cdef class NamedTupleProxy(TupleProxy):
         if self.nfields < idx:
             raise KeyError("field %s not set" % key)
         if f == str:
-            return _force_str(self.fields[idx],
+            return force_str(self.fields[idx],
                               self.encoding)
         return f(self.fields[idx])
 

@@ -45,11 +45,6 @@ cdef class TabixFile:
 
     cdef encoding    
 
-###########################################
-# used by cvcf.pyx
-cdef _force_str(object s, encoding=?)
-
-###########################################
 cdef class Parser:
     cdef encoding
 

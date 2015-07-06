@@ -17,7 +17,10 @@ from chtslib cimport \
     faidx_fetch_seq, gzopen, gzclose, \
     kseq_init, kseq_destroy, kseq_read
 
-cimport cyutils
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
+from cutils cimport _chars_to_array
+
 
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
@@ -25,37 +28,6 @@ cdef makeFastqProxy(kseq_t * src):
     cdef FastqProxy dest = FastqProxy.__new__(FastqProxy)
     dest._delegate = src
     return dest
-
-########################################################################
-########################################################################
-########################################################################
-## Python 3 compatibility functions
-########################################################################
-IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-
-# filename encoding (copied from lxml.etree.pyx)
-cdef str _FILENAME_ENCODING
-_FILENAME_ENCODING = sys.getfilesystemencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = sys.getdefaultencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = 'ascii'
-
-#cdef char* _C_FILENAME_ENCODING
-#_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
-
-cdef bytes _encodeFilename(object filename):
-    """Make sure a filename is 8-bit encoded (or None)."""
-    if filename is None:
-        return None
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(_FILENAME_ENCODING)
-    else:
-        raise TypeError, u"Argument must be string or unicode."
-
-
 
 #####################################################################
 # hard-coded constants
@@ -99,7 +71,7 @@ cdef class FastaFile:
 
         # close a previously opened file
         if self.fastafile != NULL: self.close()
-        self._filename = _encodeFilename(filename)
+        self._filename = encode_filename(filename)
         cdef char *cfilename = self._filename
         with nogil:
             self.fastafile = fai_load(cfilename)
@@ -291,7 +263,7 @@ cdef class FastqProxy:
         '''return quality values as array after subtracting offset.'''
         if self.quality is None:
             return None
-        return cyutils._chars_to_array(self.quality, offset=offset)
+        return _chars_to_array(self.quality, offset=offset)
 
 cdef class PersistentFastqProxy:
     """
@@ -324,7 +296,7 @@ cdef class PersistentFastqProxy:
         '''return quality values as array after subtracting offset.'''
         if self.quality is None:
             return None
-        return cyutils._chars_to_array(self.quality, offset=offset)
+        return _chars_to_array(self.quality, offset=offset)
 
 
 cdef class FastxFile:
@@ -366,7 +338,7 @@ cdef class FastxFile:
 
         self.persist = persist
 
-        filename = _encodeFilename(filename)
+        filename = encode_filename(filename)
         cdef char *cfilename = filename
         with nogil:
             self.fastqfile = gzopen(cfilename, "r")

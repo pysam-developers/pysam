@@ -49,7 +49,9 @@ from operator import itemgetter
 import sys, re, copy, bisect
 
 cimport ctabix
-cimport TabProxies
+cimport ctabixproxies
+
+from cutils cimport force_str
 
 import pysam
 
@@ -93,7 +95,7 @@ FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue
 # 
 ###########################################################################################################
 
-cdef class VCFRecord( TabProxies.TupleProxy):
+cdef class VCFRecord( ctabixproxies.TupleProxy):
     '''vcf record.
 
     initialized from data and vcf meta 
@@ -132,7 +134,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         
         nbytes does not include the terminal '\0'.
         '''
-        TabProxies.TupleProxy.update(self, buffer, nbytes)
+        ctabixproxies.TupleProxy.update(self, buffer, nbytes)
 
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here
@@ -902,7 +904,7 @@ class VCF(object):
     def _parse_header(self, stream):
         self._lineno = 0
         for line in stream:
-            line = ctabix._force_str(line, self.encoding)
+            line = force_str(line, self.encoding)
             self._lineno += 1
             if line.startswith('##'):
                 self.parse_header(line.strip())
