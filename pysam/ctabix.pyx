@@ -14,7 +14,7 @@ from cpython cimport PyErr_SetString, PyBytes_Check, \
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-cimport TabProxies
+cimport ctabixproxies
 
 from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_close, bgzf_write, \
@@ -23,64 +23,8 @@ from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, gzopen, gzclose, gzerror, gzdopen
 
-PYTHON3 = PY_MAJOR_VERSION >= 3
-
-# filename encoding (copied from lxml.etree.pyx)
-cdef str _FILENAME_ENCODING
-_FILENAME_ENCODING = sys.getfilesystemencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = sys.getdefaultencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = 'ascii'
-
-#cdef char* _C_FILENAME_ENCODING
-#_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
-
-cdef inline bytes _encodeFilename(object filename):
-    u"""Make sure a filename is 8-bit encoded (or None).
-    """
-    if filename is None:
-        return None
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(_FILENAME_ENCODING)
-    else:
-        raise TypeError, u"Argument must be string or unicode."
-
-cdef inline bytes _force_bytes(object s, encoding="ascii"):
-    u"""convert string or unicode object to bytes, assuming ascii encoding.
-    """
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif s is None:
-        return None
-    elif PyBytes_Check(s):
-        return s
-    elif PyUnicode_Check(s):
-        return s.encode(encoding)
-    else:
-        raise TypeError, u"Argument must be string, bytes or unicode."
-
-cdef inline _charptr_to_str(char* s, encoding="ascii"):
-    if PY_MAJOR_VERSION < 3:
-        return s
-    else:
-        return s.decode(encoding)
-
-cdef _force_str(object s, encoding="ascii"):
-    """Return s converted to str type of current Python
-    (bytes in Py2, unicode in Py3)"""
-    if s is None:
-        return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
-        return s.decode(encoding)
-    else:
-        # assume unicode
-        return s
-
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport encode_filename, from_string_and_size
 
 cdef class Parser:
 
@@ -107,8 +51,8 @@ cdef class asTuple(Parser):
     A field in a row is accessed by numeric index.
     ''' 
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.TupleProxy r
-        r = TabProxies.TupleProxy(self.encoding)
+        cdef ctabixproxies.TupleProxy r
+        r = ctabixproxies.TupleProxy(self.encoding)
         # need to copy - there were some
         # persistence issues with "present"
         r.copy(buffer, len)
@@ -156,8 +100,8 @@ cdef class asGTF(Parser):
 
     ''' 
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.GTFProxy r
-        r = TabProxies.GTFProxy(self.encoding)
+        cdef ctabixproxies.GTFProxy r
+        r = ctabixproxies.GTFProxy(self.encoding)
         r.copy(buffer, len)
         return r
 
@@ -204,8 +148,8 @@ cdef class asBed(Parser):
 
     ''' 
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.BedProxy r
-        r = TabProxies.BedProxy(self.encoding)
+        cdef ctabixproxies.BedProxy r
+        r = ctabixproxies.BedProxy(self.encoding)
         r.copy(buffer, len)
         return r
 
@@ -245,8 +189,8 @@ cdef class asVCF(Parser):
 
     '''
     cdef parse(self, char * buffer, int len):
-        cdef TabProxies.VCFProxy r
-        r = TabProxies.VCFProxy(self.encoding)
+        cdef ctabixproxies.VCFProxy r
+        r = ctabixproxies.VCFProxy(self.encoding)
         r.copy(buffer, len)
         return r
 
@@ -307,8 +251,8 @@ cdef class TabixFile:
         self._filename_index = filename_index
 
         # encode all the strings to pass to tabix
-        _encoded_filename = _encodeFilename(filename)
-        _encoded_index = _encodeFilename(filename_index)
+        _encoded_filename = encode_filename(filename)
+        _encoded_index = encode_filename(filename_index)
 
         # open file
         cdef char *cfilename = _encoded_filename
@@ -404,7 +348,7 @@ cdef class TabixFile:
                                       0,
                                       0)
         else:
-            s = _force_bytes(region, encoding=fileobj.encoding)
+            s = force_bytes(region, encoding=fileobj.encoding)
             cstr = s
             with nogil:
                 iter = tbx_itr_querys(fileobj.index, cstr)
@@ -551,7 +495,7 @@ cdef class TabixIterator:
         elif retval < 0:
             raise StopIteration
 
-        return _charptr_to_str(self.buffer.s, self.encoding)
+        return charptr_to_str(self.buffer.s, self.encoding)
 
     def next(self):
         return self.__next__()
@@ -614,7 +558,7 @@ cdef class GZIterator:
         if not os.path.exists(filename):
             raise IOError("No such file or directory: %s" % filename)
 
-        filename = _encodeFilename(filename)
+        filename = encode_filename(filename)
         cdef char *cfilename = filename
         with nogil:
             self.gzipfile = gzopen(cfilename, "r")
@@ -657,7 +601,7 @@ cdef class GZIterator:
         cdef int retval = self.__cnext__()
         if retval < 0:
             raise StopIteration
-        return _force_str(self.buffer.s, self.encoding)
+        return force_str(self.buffer.s, self.encoding)
 
 
 cdef class GZIteratorHead(GZIterator):
@@ -720,14 +664,14 @@ def tabix_compress(filename_in,
 
     WINDOW_SIZE = 64 * 1024
 
-    fn = _encodeFilename(filename_out)
+    fn = encode_filename(filename_out)
     cdef char *cfn = fn
     with nogil:
         fp = bgzf_open(cfn, "w")
     if fp == NULL:
         raise IOError("could not open '%s' for writing" % (filename_out, ))
 
-    fn = _encodeFilename(filename_in)
+    fn = encode_filename(filename_in)
     fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
         raise IOError("could not open '%s' for reading" % (filename_in, ))
@@ -856,7 +800,7 @@ def tabix_index( filename,
     conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
 
 
-    fn = _encodeFilename(filename)
+    fn = encode_filename(filename)
     cdef char *cfn = fn
     with nogil:
         tbx_index_build(cfn, min_shift, &conf)
@@ -1057,7 +1001,7 @@ class tabix_generic_iterator:
             if not line:
                 break
             
-            s = _force_bytes(line, encoding)
+            s = force_bytes(line, encoding)
             b = s
             nbytes = len(line)
             assert b[nbytes] == '\0'
@@ -1095,14 +1039,14 @@ def tabix_iterator(infile, parser):
     :class:`~pysam.asGTF`).
 
     """
-    if PYTHON3:
+    if PY_MAJOR_VERSION >= 3:
         return tabix_generic_iterator(infile, parser)
     else:
         return tabix_file_iterator(infile, parser)
         
     # file objects can use C stdio
     # used to be: isinstance( infile, file):
-    # if PYTHON3:
+    # if PY_MAJOR_VERSION >= 3:
     #     if isinstance( infile, io.IOBase ):
     #         return tabix_copy_iterator( infile, parser )
     #     else:
