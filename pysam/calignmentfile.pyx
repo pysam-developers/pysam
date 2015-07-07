@@ -32,7 +32,7 @@ cimport cython
 
 # Constants for binary tag conversion
 cdef char * htslib_types = 'cCsSiIf'
-cdef char * parray_types = 'bBhHlLf'
+cdef char * parray_types = 'bBhHiIf'
 
 ########################################################################
 ########################################################################
@@ -103,7 +103,7 @@ cdef inline char map_type_htslib_to_python(uint8_t s):
     # map type from htslib to python array
     cdef char * f = strchr(htslib_types, s)
     if f == NULL:
-        raise ValueError("unkown htslib tag type '%s'" % chr(s))
+        raise ValueError("unknown htslib tag type '%s'" % chr(s))
     return parray_types[f - htslib_types]
 
 cdef inline uint8_t map_type_python_to_htslib(char s):
@@ -111,7 +111,7 @@ cdef inline uint8_t map_type_python_to_htslib(char s):
     cdef char * f = strchr(parray_types, s)
     if f == NULL:
         raise ValueError(
-            "unkown conversion for array type '%s'" % s)
+            "unknown conversion for array type '%s'" % s)
     return htslib_types[f - parray_types]
 
 cdef convert_binary_tag(uint8_t * s):
@@ -126,14 +126,14 @@ cdef convert_binary_tag(uint8_t * s):
     # get number of values in array
     nvalues = (<int32_t*>s)[0]
     s += 4
-
+    
     # define python array
     cdef c_array.array c_values = array.array(
         chr(map_type_htslib_to_python(auxtype)))
     c_array.resize(c_values, nvalues)
 
     # copy data
-    memcpy(c_values.data.as_voidptr, <int8_t*>s, nvalues * byte_size)
+    memcpy(c_values.data.as_voidptr, <uint8_t*>s, nvalues * byte_size)
 
     # no need to check for endian-ness as bam1_core_t fields
     # and aux_data are in host endian-ness. See sam.c and calls
@@ -2362,12 +2362,11 @@ cdef inline _pack_tags(tags):
                 # determines type. If there is a mix of types, the
                 # result is undefined.
                 valuetype = get_value_type(min(value), max(value))
-                            
+
             if valuetype not in datatype2format:
                 raise ValueError("invalid value type '%s'" % valuetype)
 
             datafmt = "2sccI%i%s" % (len(value), datatype2format[valuetype][0])
-
             args.extend([pytag[:2], 
                          b"B",
                          valuetype,
@@ -3402,17 +3401,18 @@ cdef class AlignedSegment:
         If *value* is None, the tag will be deleted.
         """
 
-        cdef int      value_size
+        cdef int value_size
         cdef uint8_t * value_ptr
         cdef uint8_t *existing_ptr
-        cdef uint8_t  type_code
-        cdef float    float_value
-        cdef double   double_value
-        cdef int32_t  int_value
+        cdef uint8_t type_code
+        cdef float float_value
+        cdef double double_value
+        cdef int32_t int_value
         cdef bam1_t * src = self._delegate
         cdef char * _value_type
         cdef c_array.array array_value
-        
+        cdef object buffer
+
         if len(tag) != 2:
             raise ValueError('Invalid tag: %s' % tag)
 
@@ -3447,15 +3447,30 @@ cdef class AlignedSegment:
             float_value  = value
             value_ptr = <uint8_t*>&float_value
             value_size = sizeof(float)
-        elif type_code == 'B' and isinstance(value, array.array):
-            # switch to C interface for array
-            raise NotImplementedError()
-            # not functional - array needs to be enriched with
-            # the size and type code of the array. Probably
-            # requires copying into a new buffer.
-            array_value = value
-            value_ptr = <uint8_t*>array_value.data.as_voidptr
-            value_size = array_value.itemsize * len(array_value)
+        elif type_code == 'B':
+            # the following goes through python, needs to be cleaned up
+            # pack array using struct
+            if value_type is None:
+                fmt, args = _pack_tags([(tag, value)])
+            else:
+                fmt, args = _pack_tags([(tag, value, value_type)])
+
+            # remove tag and type code as set by bam_aux_append
+            # first four chars of format (<2sc)
+            fmt = '<' + fmt[4:]
+            # first two values to pack
+            args = args[2:]
+            value_size = struct.calcsize(fmt)
+            # buffer will be freed when object goes out of scope
+            buffer = ctypes.create_string_buffer(value_size)
+            struct.pack_into(fmt, buffer, 0, *args)
+            # bam_aux_append copies data from value_ptr
+            bam_aux_append(src,
+                           tag,
+                           type_code, 
+                           value_size,
+                           <uint8_t*>buffer.raw)
+            return
         else:
             raise ValueError('unsupported value_type in set_option')
 

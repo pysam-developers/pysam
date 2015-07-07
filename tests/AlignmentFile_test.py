@@ -1120,7 +1120,7 @@ class TestTagParsing(unittest.TestCase):
 
         def c(r, l):
             r.tags = [('ZM', l)]
-            self.assertEqual(r.opt("ZM"), list(l))
+            self.assertEqual(list(r.opt("ZM")), list(l))
 
         # signed integers
         c(r, (-1, 1))
@@ -1746,8 +1746,7 @@ class TestBTagSam(unittest.TestCase):
             self.assertEqual(read.tags, before)
 
             for tag, value in before:
-                # print tag, value
-                # read.set_tag(tag, value)
+                read.set_tag(tag, value)
                 self.assertEqual(value, read.get_tag(tag))
 
 
