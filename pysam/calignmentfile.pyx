@@ -2212,7 +2212,7 @@ cdef inline object _getQualitiesRange(bam1_t *src,
 
     # 'B': unsigned char
     cdef c_array.array result = array.array('B', [0])
-    array.resize(result, end - start)
+    c_array.resize(result, end - start)
 
     # copy data
     memcpy(result.data.as_voidptr, <void*>&p[start], end - start) 
