@@ -471,6 +471,16 @@ class TestCopy(ReadTest):
         self.assertEqual(a.query_name, 'ReadA')
         self.assertEqual(b.query_name, 'ReadB')
 
+class TestAsString(unittest.TestCase):
+
+    def testAsString(self):
+        with open(os.path.join(DATADIR, "ex2.sam")) as samf:
+            reference = [x for x in samf if not x.startswith("@")]
+
+        with pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex2.bam"), "r") as pysamf:
+            for s, p in zip(reference, pysamf):
+                self.assertEqual(s, p.tostring(pysamf))
 
 if __name__ == "__main__":
     unittest.main()

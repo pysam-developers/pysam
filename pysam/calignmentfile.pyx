@@ -62,6 +62,7 @@ import collections
 import re
 import warnings
 import array
+import string
 
 from libc.string cimport strchr
 
@@ -96,10 +97,22 @@ if PY_MAJOR_VERSION >= 3:
 else:
     CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
 
-CIGAR_REGEX = re.compile( "(\d+)([MIDNSHP=X])" )
+CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=X])")
 
 # maximum genomic coordinace
 cdef int max_pos = 2 << 29
+
+PHRED_OFFSET_STRING64 = string.maketrans(
+        "".join(chr(x) for x in xrange(
+            0, 63)),
+        "".join(chr(x + 64) for x in xrange(
+            0, 63)))
+
+PHRED_OFFSET_STRING33 = string.maketrans(
+        "".join(chr(x) for x in xrange(
+            0, 94)),
+        "".join(chr(x + 33) for x in xrange(
+            0, 94)))
 
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : dict,
@@ -285,14 +298,14 @@ cdef class AlignmentFile:
 
     '''
 
-    def __cinit__(self, *args, **kwargs ):
+    def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
         self._filename = None
         self.is_bam = False
         self.is_stream = False
         self.is_cram = False
         self.is_remote = False
-        
+
         self._open(*args, **kwargs)
 
         # allocate memory for iterator
@@ -366,7 +379,7 @@ cdef class AlignmentFile:
                        check_sq=check_sq)
             return
 
-        assert mode in ("r","w","rb","wb", "wh",
+        assert mode in ("r", "w", "rb", "wb", "wh",
                         "wbu", "rU", "wb0",
                         "rc", "wc"), \
             "invalid file opening mode `%s`" % mode
@@ -374,7 +387,7 @@ cdef class AlignmentFile:
         # close a previously opened file
         if self.htsfile != NULL:
             self.close()
-            
+
         # check if we are working with a File object
         if hasattr(filepath_or_object, "fileno"):
             filename = filepath_or_object.name
@@ -676,7 +689,7 @@ cdef class AlignmentFile:
         the header.'''
         return self.seek(self.start_offset, 0)
 
-    def seek(self, uint64_t offset, int where = 0):
+    def seek(self, uint64_t offset, int where=0):
         '''move file pointer to position *offset*, see
         :meth:`pysam.AlignmentFile.tell`.
         '''
@@ -858,7 +871,7 @@ cdef class AlignmentFile:
                 break
         else:
             raise ValueError("mate not found")
-        
+
         return mate
 
     def count(self,
@@ -883,7 +896,7 @@ cdef class AlignmentFile:
 
         if not self._isOpen():
             raise ValueError( "I/O operation on closed file" )
-            
+
         for read in self.fetch(reference=reference,
                                start=start,
                                end=end,
@@ -893,12 +906,12 @@ cdef class AlignmentFile:
 
         return counter
 
-    def pileup( self,
-                reference = None,
-                start = None,
-                end = None,
-                region = None,
-                **kwargs ):
+    def pileup(self,
+               reference=None,
+               start=None,
+               end=None,
+               region=None,
+               **kwargs):
         '''perform a :term:`pileup` within a :term:`region`. The region is
         specified by :term:`reference`, *start* and *end* (using
         0-based indexing).  Alternatively, a samtools *region* string
@@ -930,7 +943,7 @@ cdef class AlignmentFile:
 
            ``nofilter``
               uses every single read
-              
+
 
            ``samtools``
               same filter and read processing as in :term:`csamtools`
@@ -976,9 +989,9 @@ cdef class AlignmentFile:
 
             if has_coord:
                 return IteratorColumnRegion(self,
-                                            tid = rtid,
-                                            start = rstart,
-                                            end = rend,
+                                            tid=rtid,
+                                            start=rstart,
+                                            end=rend,
                                             **kwargs )
             else:
                 return IteratorColumnAllRefs(self, **kwargs )
@@ -987,8 +1000,8 @@ cdef class AlignmentFile:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
     @cython.boundscheck(False)  # we do manual bounds checking
-    def count_coverage(self, chr, start, stop, quality_threshold = 15,
-                       read_callback = 'all'):
+    def count_coverage(self, chr, start, stop, quality_threshold=15,
+                       read_callback='all'):
         """Count ACGT in a part of a AlignmentFile. 
         Return 4 array.arrays of length = stop - start,
         in order A C G T.
@@ -2019,7 +2032,7 @@ cdef class IteratorColumn:
                             int tid,
                             int start,
                             int end,
-                            int multiple_iterators = 0 ):
+                            int multiple_iterators=0 ):
         '''setup the iterator structure'''
 
         self.iter = IteratorRowRegion(self.samfile, tid, start, end, multiple_iterators)
@@ -2266,13 +2279,88 @@ cdef inline object _getQualitiesRange(bam1_t *src,
     return result
 
 
-def toQualityString(qualities):
+cpdef QualStringFromArray(array.array arr, cython.bint offset64=False):
+    if(offset64 is False):
+        return arr.tostring().translate(PHRED_OFFSET_STRING33)
+    else:
+        return arr.tostring().translate(PHRED_OFFSET_STRING64)
+
+
+def toQualityString(qualities, cython.bint offset64=False):
     '''convert a list of quality score to the string
     representation used in the SAM format.'''
+    cdef char x, offset
     if qualities is None:
         return None
-    return "".join([chr(x+33) for x in qualities])
-    
+    elif isinstance(qualities, array.array):
+        return QualStringFromArray(qualities, offset64=offset64)
+    else:
+        offset = 64 if(offset64) else 33
+        if(offset64 is False):
+            return "".join([chr(x + offset) for x in qualities])
+        else:
+            return "".join([chr(x + offset) for x in qualities])
+
+
+cdef bytes TagToString(tuple tagtup):
+    cdef array.array b_aux_arr
+    cdef char value_type = tagtup[2]
+    cdef char* tag = tagtup[0]
+    cdef double value_double
+    cdef long value_int
+    cdef bytes value_bytes
+    cdef long i, min_value
+    cdef double f
+    cdef cython.str ret
+    cdef size_t size
+    if(value_type in ['c', 'C', 'i', 'I', 's', 'S']):
+        value_int = tagtup[1]
+        ret = tag + ":i:%s" % value_int
+    elif(value_type in ['f', 'F', 'd', 'D']):
+        value_float = tagtup[1]
+        ret = tag + ":f:%s" % (value_float)
+    elif(value_type == "Z"):
+        value_bytes = tagtup[1]
+        ret = tag + ":Z:" + value_bytes
+    elif(value_type == "B"):
+        if(isinstance(tagtup[1], array.array)):
+            b_aux_arr = tagtup[1]
+        else:
+            if(isinstance(tagtup[1][0], float)):
+                return <bytes> (tag + ":B:f" +
+                                ",".join([str(f) for f in tagtup[1]]))
+            else:
+                b_aux_arr = array('l', tagtup[1])
+                # Choose long to accommodate any size integers.
+        size = sizeof(tagtup[1])
+        min_value = min(b_aux_arr)
+        if(size == 1):
+            if(min_value < 0):
+                ret = tag + ":B:c" + ",".join([str(i) for i in b_aux_arr])
+            else:
+                ret = tag + ":B:C" + ",".join([str(i) for i in b_aux_arr])
+        elif(size == 2):
+            if(min_value < 0):
+                ret = tag + ":B:i" + ",".join([str(i) for i in b_aux_arr])
+            else:
+                ret = tag + ":B:I" + ",".join([str(i) for i in b_aux_arr])
+        else:  # size == 4. Removed check to compile to switch statement.
+            if(min_value < 0):
+                ret = tag + ":B:s" + ",".join([str(i) for i in b_aux_arr])
+            else:
+                ret = tag + ":B:S" + ",".join([str(i) for i in b_aux_arr])
+    elif(value_type == "H"):
+        ret = tag + ":H:" + "".join([hex(i)[2:] for i in tagtup[1]])
+    elif(value_type == "A"):
+        ret = tag + ":A:" + tagtup[1]
+    else:
+        # Unrecognized character - returning the string as it was provided.
+        # An exception is not being raised because that prevents cython
+        # from being able to compile this into a switch statement for
+        # performance.
+        ret = "%s:%s:%s" % (tag, tagtup[2], tagtup[1])
+    return <bytes> ret
+
 
 def fromQualityString(quality_string):
     '''return a list of quality scores from the
@@ -2321,7 +2409,7 @@ cdef inline get_value_type(value, maximum_value=None):
     If max is specified, the approprite type is
     returned for a range where value is the minimum.
     '''
-    
+
     if maximum_value is None:
         maximum_value = value
 
@@ -2367,7 +2455,7 @@ cdef inline get_value_type(value, maximum_value=None):
 
 cdef inline _pack_tags(tags):
     """pack a list of tags. Each tag is a tuple of (tag, tuple).
-    
+
     Values are packed into the most space efficient data structure
     possible unless the tag contains a third field with the type code.
 
@@ -2451,10 +2539,10 @@ cdef inline _pack_tags(tags):
         fmts.append(datafmt)
 
     return "".join(fmts), args
-    
+
 
 cdef class AlignedSegment:
-    '''Class representing an aligned segment. 
+    '''Class representing an aligned segment.
 
     This class stores a handle to the samtools C-structure representing
     an aligned read. Member read access is forwarded to the C-structure
@@ -2554,7 +2642,7 @@ cdef class AlignedSegment:
         if retval:
             return retval
         # cmp(t.l_data, o.l_data)
-        retval = (t.l_data > o.l_data) - (t.l_data < o.l_data) 
+        retval = (t.l_data > o.l_data) - (t.l_data < o.l_data)
         if retval:
             return retval
         return memcmp(t.data, o.data, t.l_data)
@@ -2583,6 +2671,46 @@ cdef class AlignedSegment:
             src.core.mpos << 8
 
         return hash_value
+
+    cpdef bytes tostring(self, AlignmentFile_t htsfile):
+        """returns a string representation of the aligned segment.
+
+        The output format is valid SAM format if 
+
+        Parameters
+        ----------
+
+        htsfile -- AlignmentFile object to map numerical
+                   identifers to chromosome names.
+        """
+
+        cdef cython.str cigarstring, mate_ref, ref
+        if self.reference_id < 0:
+            ref = "*"
+        else:
+            ref = htsfile.getrname(self.reference_id)
+
+        if self.rnext < 0:
+            mate_ref = "*"
+        elif self.rnext == self.reference_id:
+            mate_ref = "="
+        else:
+            mate_ref = htsfile.getrname(self.rnext)
+
+        cigarstring = self.cigarstring if(
+            self.cigarstring is not None) else "*"
+        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
+            self.query_name, self.flag, ref,
+            self.pos + 1, self.mapq, cigarstring, mate_ref, self.mpos + 1,
+            self.template_length, self.seq, self.qual, self.get_tag_string())
+        return <bytes> ret
+
+    cdef bytes get_tag_string(self):
+        cdef tuple tag
+        cdef cython.str ret = "\t".join([
+            TagToString(tag) for tag in
+            self.get_tags(with_value_type=True)])
+        return <bytes> ret
 
     ########################################################
     ## Basic attributes in order of appearance in SAM format
@@ -2827,7 +2955,7 @@ cdef class AlignedSegment:
                 # erase qualities
                 p = pysam_bam_get_qual(src)
                 p[0] = 0xff
-                
+
             self.cache_query_sequence = seq
 
             # clear cached values for quality values
@@ -2882,7 +3010,7 @@ cdef class AlignedSegment:
                 if src.core.l_qseq != 0:
                     p[0] = 0xff
                 return
-            
+
             # check for length match
             l = len(qual)
             if src.core.l_qseq != l:
@@ -2994,7 +3122,7 @@ cdef class AlignedSegment:
     # 2. Coordinates and lengths
     property reference_end:
         '''aligned reference position of the read on the reference genome.
-        
+
         reference_end points to one past the last aligned residue.
         Returns None if not available (read is unmapped or no cigar
         alignment present).
@@ -3085,7 +3213,7 @@ cdef class AlignedSegment:
             end   = _getQueryEnd(src)
             self.cache_query_alignment_qualities = _getQualitiesRange(src, start, end)
             return self.cache_query_alignment_qualities
-        
+
 
     property query_alignment_start:
         """start index of the aligned query portion of the sequence (0-based,
@@ -3675,7 +3803,7 @@ cdef class AlignedSegment:
                 raise KeyError("unknown type '%s'" % auxtype)
 
             s += 1
-            
+
             if with_value_type:
                 result.append((charptr_to_str(auxtag), value, auxtype))
             else:
