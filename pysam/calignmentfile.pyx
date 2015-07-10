@@ -1,26 +1,70 @@
 # cython: embedsignature=True
 # cython: profile=True
-# adds doc-strings for sphinx
-import tempfile
+###############################################################################
+###############################################################################
+# Cython wrapper for SAM/BAM/CRAM files based on htslib
+###############################################################################
+# The principal classes defined in this module are:
+#
+# class AlignmentFile   read/write access to SAM/BAM/CRAM formatted files
+# 
+# class AlignedSegment  an aligned segment (read)
+#
+# class PileupColumn    a collection of segments (PileupRead) aligned to
+#                       a particular genomic position.
+# 
+# class PileupRead      an AlignedSegment aligned to a particular genomic
+#                       position. Contains additional attributes with respect
+#                       to this.
+#
+# Additionally this module defines numerous additional classes that are part
+# of the internal API. These are:
+# 
+# Various iterator classes to iterate over alignments in sequential (IteratorRow)
+# or in a stacked fashion (IteratorColumn):
+# 
+# class IteratorRow
+# class IteratorRowRegion
+# class IteratorRowHead
+# class IteratorRowAll
+# class IteratorRowAllRefs
+# class IteratorRowSelection
+#
+###############################################################################
+#
+# The MIT License
+#
+# Copyright (c) 2015 Kevin Jacobs (jacobs@bioinformed.com)
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
+###############################################################################
 import os
-import sys
-import types
-import itertools
 import struct
 import ctypes
 import collections
 import re
-import platform
 import warnings
 import array
 
-from cpython cimport PyErr_SetString, \
-    PyBytes_Check, \
-    PyUnicode_Check, \
-    PyBytes_FromStringAndSize
-
+from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
 from cpython cimport array
-
 from cpython.version cimport PY_MAJOR_VERSION
 
 from cutils cimport force_bytes, force_str, charptr_to_str
@@ -29,16 +73,16 @@ from cutils cimport encode_filename, from_string_and_size
 cimport cython
 
 ########################################################################
-########################################################################
-########################################################################
 ## Constants and global variables
-########################################################################
 
 # defines imported from samtools
 DEF SEEK_SET = 0
 DEF SEEK_CUR = 1
 DEF SEEK_END = 2
 
+# translation tables
+
+# cigar code to character and vice versa
 cdef char* CODE2CIGAR= "MIDNSHP=X"
 
 if PY_MAJOR_VERSION >= 3:
@@ -53,13 +97,10 @@ CIGAR_REGEX = re.compile( "(\d+)([MIDNSHP=X])" )
 cdef int max_pos = 2 << 29
 
 #####################################################################
-#####################################################################
-#####################################################################
 ## private factory methods
-#####################################################################
 cdef class AlignedSegment
 cdef object makeAlignedSegment(bam1_t * src):
-    '''enter src into AlignedSegment.'''
+    '''return an AlignedSegment object constructed from `src`'''
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
@@ -68,17 +109,19 @@ cdef object makeAlignedSegment(bam1_t * src):
 
 cdef class PileupColumn
 cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
+    '''return a PileupColumn object constructed from pileup in `plp` and setting
+    additional attributes.'''
     # note that the following does not call __init__
-     cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
-     dest.plp = plp
-     dest.tid = tid
-     dest.pos = pos
-     dest.n_pu = n_pu
-     return dest
+    cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
+    dest.plp = plp
+    dest.tid = tid
+    dest.pos = pos
+    dest.n_pu = n_pu
+    return dest
 
 cdef class PileupRead
 cdef makePileupRead(bam_pileup1_t * src):
-    '''fill a  PileupRead object from a bam_pileup1_t * object.'''
+    '''return a PileupRead object construted from a bam_pileup1_t * object.'''
     cdef PileupRead dest = PileupRead.__new__(PileupRead)
     dest._alignment = makeAlignedSegment(src.b)
     dest._qpos = src.qpos
@@ -90,7 +133,7 @@ cdef makePileupRead(bam_pileup1_t * src):
     dest._is_refskip = src.is_refskip
     return dest
 
-cdef convertBinaryTagToList( uint8_t * s ):
+cdef convertBinaryTagToList(uint8_t * s):
     """return bytesize, number of values list of values in s."""
     cdef char auxtype
     cdef uint8_t byte_size
@@ -98,7 +141,7 @@ cdef convertBinaryTagToList( uint8_t * s ):
 
     # get byte size
     auxtype = s[0]
-    byte_size = aux_type2size( auxtype )
+    byte_size = aux_type2size(auxtype)
     s += 1
     # get number of values in array
     nvalues = (<int32_t*>s)[0]
