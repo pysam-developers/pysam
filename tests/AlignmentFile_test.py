@@ -166,12 +166,12 @@ class BasicTestBAMFromFetch(unittest.TestCase):
             self.reads[3].query_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
 
     def testARqual(self):
-        self.assertEqual(pysam.toQualityString(self.reads[0].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 1: %s != %s" % (pysam.toQualityString(self.reads[0].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(pysam.toQualityString(self.reads[1].query_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (
-            pysam.toQualityString(self.reads[1].query_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(pysam.toQualityString(self.reads[3].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 3: %s != %s" % (pysam.toQualityString(self.reads[3].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(pysam.qualities_to_qualitystring(self.reads[0].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "quality string mismatch in read 1: %s != %s" % (pysam.qualities_to_qualitystring(self.reads[0].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(pysam.qualities_to_qualitystring(self.reads[1].query_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (
+            pysam.qualities_to_qualitystring(self.reads[1].query_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
+        self.assertEqual(pysam.qualities_to_qualitystring(self.reads[3].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
+                         "quality string mismatch in read 3: %s != %s" % (pysam.qualities_to_qualitystring(self.reads[3].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
 
     def testARquery(self):
         self.assertEqual(
@@ -195,22 +195,22 @@ class BasicTestBAMFromFetch(unittest.TestCase):
 
     def testARqqual(self):
         self.assertEqual(
-            pysam.toQualityString(self.reads[0].query_alignment_qualities),
+            pysam.qualities_to_qualitystring(self.reads[0].query_alignment_qualities),
             "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
             "qquality string mismatch in read 1: %s != %s" %
-            (pysam.toQualityString(self.reads[0].query_alignment_qualities),
+            (pysam.qualities_to_qualitystring(self.reads[0].query_alignment_qualities),
              "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
         self.assertEqual(
-            pysam.toQualityString(self.reads[1].query_alignment_qualities),
+            pysam.qualities_to_qualitystring(self.reads[1].query_alignment_qualities),
             "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<",
             "qquality string mismatch in read 2: %s != %s" %
-            (pysam.toQualityString(self.reads[1].query_alignment_qualities),
+            (pysam.qualities_to_qualitystring(self.reads[1].query_alignment_qualities),
              "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
         self.assertEqual(
-            pysam.toQualityString(self.reads[3].query_alignment_qualities),
+            pysam.qualities_to_qualitystring(self.reads[3].query_alignment_qualities),
             "<<<<<<<<<<<<<<<<<:<9/,&,22",
             "qquality string mismatch in read 3: %s != %s" %
-            (pysam.toQualityString(self.reads[3].query_alignment_qualities),
+            (pysam.qualities_to_qualitystring(self.reads[3].query_alignment_qualities),
              "<<<<<<<<<<<<<<<<<:<9/,&,22"))
 
     def testPresentOptionalFields(self):
@@ -809,10 +809,10 @@ class TestIteratorRowBAM(unittest.TestCase):
                  str(a), str(d)))
             qual = d[10]
             self.assertEqual(
-                pysam.toQualityString(a.query_qualities),
+                pysam.qualities_to_qualitystring(a.query_qualities),
                 qual,
                 "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
-                (line, pysam.toQualityString(a.query_qualities), qual,
+                (line, pysam.qualities_to_qualitystring(a.query_qualities), qual,
                  str(a), str(d)))
 
     def testIteratePerContig(self):
@@ -1059,7 +1059,7 @@ class TestTagParsing(unittest.TestCase):
         a.next_reference_id = 0
         a.next_reference_start = 200
         a.template_length = 0
-        a.query_qualities = pysam.fromQualityString("1234") * 3
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 3
         # todo: create tags
         return a
 
@@ -1159,10 +1159,10 @@ class TestClipping(unittest.TestCase):
             if read.query_name == "r001":
                 self.assertEqual(read.query_sequence, 'AAAAGATAAGGATA')
                 self.assertEqual(read.query_alignment_sequence, 'AGATAAGGATA')
-                self.assertEqual(pysam.toQualityString(read.query_qualities),
+                self.assertEqual(pysam.qualities_to_qualitystring(read.query_qualities),
                                  None)
                 self.assertEqual(
-                    pysam.toQualityString(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
                     None)
 
             elif read.query_name == "r002":
@@ -1170,10 +1170,10 @@ class TestClipping(unittest.TestCase):
                 self.assertEqual(read.query_sequence, 'GCCTAAGCTAA')
                 self.assertEqual(read.query_alignment_sequence, 'AGCTAA')
                 self.assertEqual(
-                    pysam.toQualityString(read.query_qualities),
+                    pysam.qualities_to_qualitystring(read.query_qualities),
                     '01234567890')
                 self.assertEqual(
-                    pysam.toQualityString(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
                     '567890')
 
             elif read.query_name == "r003":
@@ -1181,10 +1181,10 @@ class TestClipping(unittest.TestCase):
                 self.assertEqual(read.query_sequence, 'GCCTAAGCTAA')
                 self.assertEqual(read.query_alignment_sequence, 'GCCTAA')
                 self.assertEqual(
-                    pysam.toQualityString(read.query_qualities),
+                    pysam.qualities_to_qualitystring(read.query_qualities),
                     '01234567890')
                 self.assertEqual(
-                    pysam.toQualityString(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
                     '012345')
 
             elif read.query_name == "r004":
@@ -1192,10 +1192,10 @@ class TestClipping(unittest.TestCase):
                 self.assertEqual(read.query_sequence, 'TAGGC')
                 self.assertEqual(read.query_alignment_sequence, 'TAGGC')
                 self.assertEqual(
-                    pysam.toQualityString(read.query_qualities),
+                    pysam.qualities_to_qualitystring(read.query_qualities),
                     '01234')
                 self.assertEqual(
-                    pysam.toQualityString(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
                     '01234')
 
 
@@ -1528,7 +1528,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         a.next_reference_id = 0
         a.next_reference_start = 199
         a.template_length = 167
-        a.query_qualities = pysam.fromQualityString(
+        a.query_qualities = pysam.qualitystring_to_array(
             "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
         a.tags = (("NM", 1),
                   ("RG", "L1"))
@@ -1544,7 +1544,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         b.next_reference_id = 1
         b.next_reference_start = 499
         b.template_length = 412
-        b.query_qualities = pysam.fromQualityString(
+        b.query_qualities = pysam.qualitystring_to_array(
             "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<")
         b.tags = (("MF", 18),
                   ("RG", "L2"))

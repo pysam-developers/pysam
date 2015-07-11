@@ -1,9 +1,15 @@
-cdef class TestClass:
-     cdef int x
+#########################################################################
+# Utility functions used across pysam
+#########################################################################
+cimport cython
+from cpython cimport array as c_array
 
-from cpython cimport array
+#########################################################################
+# Utility functions for quality string conversions
 
-cdef array.array _chars_to_array(bytes input_str, int offset=*)
+cpdef c_array.array qualitystring_to_array(bytes input_str, int offset=*)
+cpdef array_to_qualitystring(c_array.array arr, int offset=*)
+cpdef qualities_to_qualitystring(qualities, int offset=*)
 
 ########################################################################
 ########################################################################

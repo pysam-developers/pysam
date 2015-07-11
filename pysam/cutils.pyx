@@ -3,17 +3,73 @@ import sys
 import string
 
 from cpython.version cimport PY_MAJOR_VERSION
-from cpython cimport PyErr_SetString, PyBytes_Check
-from cpython cimport PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython cimport PyBytes_Check, PyUnicode_Check
 
-from libc.stdio cimport printf
+from cpython cimport array as c_array
+cimport cython
 
-from cpython cimport array
 
-cdef array.array _chars_to_array(bytes input_str, int offset=0):
-    '''convert a buffer of characters to a byte array'''
+#################################################################
+# Utility functions for quality string conversions
+
+PHRED_OFFSET_STRING64 = string.maketrans(
+        "".join(chr(x) for x in xrange(
+            0, 63)),
+        "".join(chr(x + 64) for x in xrange(
+            0, 63)))
+
+PHRED_OFFSET_STRING33 = string.maketrans(
+        "".join(chr(x) for x in xrange(
+            0, 94)),
+        "".join(chr(x + 33) for x in xrange(
+            0, 94)))
+
+cpdef c_array.array qualitystring_to_array(bytes input_str, int offset=33):
+    """convert a qualitystring to an array of quality values."""
+    if input_str == None:
+        return None
     cdef char i
-    return array.array('B', [i - offset for i in input_str])
+    return c_array.array('B', [i - offset for i in input_str])
+
+
+cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
+    """convert an array of quality values to a string."""
+    if qualities is None:
+        return None
+    cdef char i
+    if offset == 33:
+        return qualities.tostring().translate(PHRED_OFFSET_STRING33)
+    elif offset == 64:
+        return qualities.tostring().translate(PHRED_OFFSET_STRING64)
+    else:
+        return "".join([i + offset for i in qualities])
+
+
+cpdef qualities_to_qualitystring(qualities, int offset=33):
+    """convert a list or array of quality scores to the string
+    representation used in the SAM format.
+
+    Parameters
+    ----------
+    offset : int
+        offset to be added to the quality scores to arrive at
+        the characters of the quality string (default=33).
+
+    Returns
+    -------
+    string
+         a quality string
+
+    """
+    cdef char x
+    if qualities is None:
+        return None
+    elif isinstance(qualities, c_array.array):
+        return array_to_qualitystring(qualities, offset=offset)
+    else:
+        # tuples and lists
+        return "".join([chr(x + offset) for x in qualities])
+
 
 ########################################################################
 ########################################################################
@@ -87,4 +143,6 @@ cdef force_str(object s, encoding="ascii"):
         # assume unicode
         return s
 
-
+__all__ = ["qualitystring_to_array",
+           "array_to_qualitystring",
+           "qualities_to_qualitystring"]

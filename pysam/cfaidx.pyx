@@ -19,7 +19,7 @@ from chtslib cimport \
 
 from cutils cimport force_bytes, force_str, charptr_to_str
 from cutils cimport encode_filename, from_string_and_size
-from cutils cimport _chars_to_array
+from cutils cimport qualitystring_to_array
 
 
 cdef class FastqProxy
@@ -263,7 +263,7 @@ cdef class FastqProxy:
         '''return quality values as array after subtracting offset.'''
         if self.quality is None:
             return None
-        return _chars_to_array(self.quality, offset=offset)
+        return qualitystring_to_array(self.quality, offset=offset)
 
 cdef class PersistentFastqProxy:
     """
@@ -296,7 +296,7 @@ cdef class PersistentFastqProxy:
         '''return quality values as array after subtracting offset.'''
         if self.quality is None:
             return None
-        return _chars_to_array(self.quality, offset=offset)
+        return qualitystring_to_array(self.quality, offset=offset)
 
 
 cdef class FastxFile:

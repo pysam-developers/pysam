@@ -147,8 +147,9 @@ for key, options in SAMTOOLS_DISPATCH.items():
 
 # hack to export all the symbols from separate modules
 __all__ = \
-    libchtslib.__all__ + \
-    ctabix.__all__ + \
+    libchtslib.__all__ +\
+    cutils.__all__ +\
+    ctabix.__all__ +\
     cvcf.__all__ +\
     cbcf.__all__ +\
     cfaidx.__all__ +\

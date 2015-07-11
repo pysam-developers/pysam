@@ -34,7 +34,7 @@
 #
 # The MIT License
 #
-# Copyright (c) 2015 Kevin Jacobs (jacobs@bioinformed.com)
+# Copyright (c) 2015 Andreas Heger
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -72,6 +72,8 @@ from cpython.version cimport PY_MAJOR_VERSION
 
 from cutils cimport force_bytes, force_str, charptr_to_str
 from cutils cimport encode_filename, from_string_and_size
+from cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
+    array_to_qualitystring
 
 cimport cython
 
@@ -101,18 +103,6 @@ CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=X])")
 
 # maximum genomic coordinace
 cdef int max_pos = 2 << 29
-
-PHRED_OFFSET_STRING64 = string.maketrans(
-        "".join(chr(x) for x in xrange(
-            0, 63)),
-        "".join(chr(x + 64) for x in xrange(
-            0, 63)))
-
-PHRED_OFFSET_STRING33 = string.maketrans(
-        "".join(chr(x) for x in xrange(
-            0, 94)),
-        "".join(chr(x + 33) for x in xrange(
-            0, 94)))
 
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : dict,
@@ -149,7 +139,7 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
 #####################################################################
 ## private factory methods
 cdef class AlignedSegment
-cdef object makeAlignedSegment(bam1_t * src):
+cdef inline makeAlignedSegment(bam1_t * src):
     '''return an AlignedSegment object constructed from `src`'''
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
@@ -158,7 +148,7 @@ cdef object makeAlignedSegment(bam1_t * src):
 
 
 cdef class PileupColumn
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
+cdef inline makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
     '''return a PileupColumn object constructed from pileup in `plp` and setting
     additional attributes.'''
     # note that the following does not call __init__
@@ -170,7 +160,7 @@ cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
     return dest
 
 cdef class PileupRead
-cdef makePileupRead(bam_pileup1_t * src):
+cdef inline makePileupRead(bam_pileup1_t * src):
     '''return a PileupRead object construted from a bam_pileup1_t * object.'''
     cdef PileupRead dest = PileupRead.__new__(PileupRead)
     dest._alignment = makeAlignedSegment(src.b)
@@ -186,44 +176,45 @@ cdef makePileupRead(bam_pileup1_t * src):
 
 #####################################################################
 ## conversion utilities
-cdef inline char map_type_htslib_to_python(uint8_t s):
-    """map an htslib type to the corresponding python type
+cdef inline char map_typecode_htslib_to_python(uint8_t s):
+    """map an htslib typecode to the corresponding python typecode
     to be used in the struct or array modules."""
 
     # map type from htslib to python array
     cdef char * f = strchr(htslib_types, s)
     if f == NULL:
-        raise ValueError("unknown htslib tag type '%s'" % chr(s))
+        raise ValueError("unknown htslib tag typecode '%s'" % chr(s))
     return parray_types[f - htslib_types]
 
-cdef inline uint8_t map_type_python_to_htslib(char s):
+cdef inline uint8_t map_typecode_python_to_htslib(char s):
     """determine value type from type code of array"""
     cdef char * f = strchr(parray_types, s)
     if f == NULL:
         raise ValueError(
-            "unknown conversion for array type '%s'" % s)
+            "unknown conversion for array typecode '%s'" % s)
     return htslib_types[f - parray_types]
 
-cdef convert_binary_tag(uint8_t * s):
-    """return bytesize, number of values and array of values in s."""
+cdef convert_binary_tag(uint8_t * tag):
+    """return bytesize, number of values and array of values
+    in aux_data memory location pointed to by tag."""
     cdef uint8_t auxtype
     cdef uint8_t byte_size
     cdef int32_t nvalues
     # get byte size
-    auxtype = s[0]
+    auxtype = tag[0]
     byte_size = aux_type2size(auxtype)
-    s += 1
+    tag += 1
     # get number of values in array
-    nvalues = (<int32_t*>s)[0]
-    s += 4
+    nvalues = (<int32_t*>tag)[0]
+    tag += 4
     
     # define python array
     cdef c_array.array c_values = array.array(
-        chr(map_type_htslib_to_python(auxtype)))
+        chr(map_typecode_htslib_to_python(auxtype)))
     c_array.resize(c_values, nvalues)
 
     # copy data
-    memcpy(c_values.data.as_voidptr, <uint8_t*>s, nvalues * byte_size)
+    memcpy(c_values.data.as_voidptr, <uint8_t*>tag, nvalues * byte_size)
 
     # no need to check for endian-ness as bam1_core_t fields
     # and aux_data are in host endian-ness. See sam.c and calls
@@ -2190,7 +2181,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                 raise StopIteration
 
 
-cdef inline int32_t _getQueryStart(bam1_t *src) except -1:
+cdef inline int32_t getQueryStart(bam1_t *src) except -1:
     cdef uint32_t * cigar_p
     cdef uint32_t k, op
     cdef uint32_t start_offset = 0
@@ -2211,7 +2202,7 @@ cdef inline int32_t _getQueryStart(bam1_t *src) except -1:
     return start_offset
 
 
-cdef inline int32_t _getQueryEnd(bam1_t *src) except -1:
+cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
     cdef uint32_t * cigar_p
     cdef uint32_t k, op
     cdef uint32_t end_offset = src.core.l_qseq
@@ -2236,8 +2227,12 @@ cdef inline int32_t _getQueryEnd(bam1_t *src) except -1:
     return end_offset
 
 
-cdef inline object _getSequenceRange(bam1_t *src,
-                                     uint32_t start, uint32_t end):
+cdef inline object getSequenceInRange(bam1_t *src,
+                                         uint32_t start,
+                                         uint32_t end):
+    """return python string of the sequence in a bam1_t object.
+    """
+
     cdef uint8_t * p
     cdef uint32_t k
     cdef char * s
@@ -2257,10 +2252,10 @@ cdef inline object _getSequenceRange(bam1_t *src,
     return charptr_to_str(seq)
 
 
-cdef inline object _getQualitiesRange(bam1_t *src,
-                                      uint32_t start, 
-                                      uint32_t end):
-    '''return an array of quality values.'''
+cdef inline object getQualitiesInRange(bam1_t *src,
+                                          uint32_t start, 
+                                          uint32_t end):
+    """return python array of quality values from a bam1_t object"""
 
     cdef uint8_t * p
     cdef uint32_t k
@@ -2277,29 +2272,6 @@ cdef inline object _getQualitiesRange(bam1_t *src,
     memcpy(result.data.as_voidptr, <void*>&p[start], end - start) 
 
     return result
-
-
-cpdef QualStringFromArray(array.array arr, cython.bint offset64=False):
-    if(offset64 is False):
-        return arr.tostring().translate(PHRED_OFFSET_STRING33)
-    else:
-        return arr.tostring().translate(PHRED_OFFSET_STRING64)
-
-
-def toQualityString(qualities, cython.bint offset64=False):
-    '''convert a list of quality score to the string
-    representation used in the SAM format.'''
-    cdef char x, offset
-    if qualities is None:
-        return None
-    elif isinstance(qualities, array.array):
-        return QualStringFromArray(qualities, offset64=offset64)
-    else:
-        offset = 64 if(offset64) else 33
-        if(offset64 is False):
-            return "".join([chr(x + offset) for x in qualities])
-        else:
-            return "".join([chr(x + offset) for x in qualities])
 
 
 cdef bytes TagToString(tuple tagtup):
@@ -2362,35 +2334,26 @@ cdef bytes TagToString(tuple tagtup):
     return <bytes> ret
 
 
-def fromQualityString(quality_string):
-    '''return a list of quality scores from the
-    stringn representation of quality scores used
-    in the SAM format.'''
-    if quality_string is None:
-        return None
-    return c_array.array('B', [ord(x)-33 for x in quality_string])
-
-
 cdef inline uint8_t get_value_code(value, value_type=None):
     '''guess type code for a *value*. If *value_type* is None,
     the type code will be inferred based on the Python type of
     *value*'''
-    cdef uint8_t  type_code    
+    cdef uint8_t  typecode    
     cdef char * _char_type
 
     if value_type is None:
         if isinstance(value, int):
-            type_code = 'i'
+            typecode = 'i'
         elif isinstance(value, float):
-            type_code = 'd'
+            typecode = 'd'
         elif isinstance(value, str):
-            type_code = 'Z'
+            typecode = 'Z'
         elif isinstance(value, bytes):
-            type_code = 'Z'
+            typecode = 'Z'
         elif isinstance(value, array.array) or \
                 isinstance(value, list) or \
                 isinstance(value, tuple):
-            type_code = 'B'
+            typecode = 'B'
         else:
             return 0
     else:
@@ -2398,13 +2361,13 @@ cdef inline uint8_t get_value_code(value, value_type=None):
             return 0
         value_type = force_bytes(value_type)
         _char_type = value_type
-        type_code = (<uint8_t*>_char_type)[0]
+        typecode = (<uint8_t*>_char_type)[0]
 
-    return type_code
+    return typecode
 
 
-cdef inline get_value_type(value, maximum_value=None):
-    '''returns the value type of a value.
+cdef inline getTypecode(value, maximum_value=None):
+    '''returns the value typecode of a value.
 
     If max is specified, the approprite type is
     returned for a range where value is the minimum.
@@ -2453,14 +2416,14 @@ cdef inline get_value_type(value, maximum_value=None):
     return valuetype
 
 
-cdef inline _pack_tags(tags):
+cdef inline packTags(tags):
     """pack a list of tags. Each tag is a tuple of (tag, tuple).
 
     Values are packed into the most space efficient data structure
-    possible unless the tag contains a third field with the type code.
+    possible unless the tag contains a third field with the typecode.
 
-    Returns a fmt string and the associated list of arguments
-    to used in a call to struct.pack_into.
+    Returns a format string and the associated list of arguments
+    to be used in a call to struct.pack_into.
     """
     fmts, args = ["<"], []
 
@@ -2495,7 +2458,7 @@ cdef inline _pack_tags(tags):
                 # automatically determine value type - first value
                 # determines type. If there is a mix of types, the
                 # result is undefined.
-                valuetype = get_value_type(min(value), max(value))
+                valuetype = getTypecode(min(value), max(value))
 
             if valuetype not in datatype2format:
                 raise ValueError("invalid value type '%s'" % valuetype)
@@ -2509,7 +2472,7 @@ cdef inline _pack_tags(tags):
         elif isinstance(value, array.array):
             # binary tags from arrays
             if valuetype is None:
-                valuetype = chr(map_type_python_to_htslib(ord(value.typecode)))
+                valuetype = chr(map_typecode_python_to_htslib(ord(value.typecode)))
                 
             if valuetype not in datatype2format:
                 raise ValueError("invalid value type '%s'" % valuetype)
@@ -2525,7 +2488,7 @@ cdef inline _pack_tags(tags):
             
         else:
             if valuetype is None:
-                valuetype = get_value_type(value)
+                valuetype = getTypecode(value)
 
             if valuetype == b"Z":
                 datafmt = "2sc%is" % (len(value)+1)
@@ -2586,9 +2549,10 @@ cdef class AlignedSegment:
 
         The representation is an approximate :term:`sam` format, because
         an aligned read might not be associated with a :term:`AlignmentFile`.
-        As a result :term:`tid` is shown instead of the reference name.
-
+        As a result :term:`tid` is shown instead of the reference name. 
         Similarly, the tags field is returned in its parsed state.
+
+        To get a valid SAM record, use :meth:`tostring`.
         """
         # sam-parsing is done in sam.c/bam_format1_core which
         # requires a valid header.
@@ -2655,7 +2619,6 @@ cdef class AlignedSegment:
         else:
             return NotImplemented
 
-    # Disabled so long as __cmp__ is a special method
     def __hash__(self):
         cdef bam1_t * src
         src = self._delegate
@@ -2700,9 +2663,13 @@ cdef class AlignedSegment:
         cigarstring = self.cigarstring if(
             self.cigarstring is not None) else "*"
         ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
-            self.query_name, self.flag, ref,
-            self.pos + 1, self.mapq, cigarstring, mate_ref, self.mpos + 1,
-            self.template_length, self.seq, self.qual, self.get_tag_string())
+            self.query_name, self.flag,
+            ref, self.pos + 1, self.mapq,
+            cigarstring,
+            mate_ref, self.mpos + 1,
+            self.template_length,
+            self.seq, self.qual,
+            self.get_tag_string())
         return <bytes> ret
 
     cdef bytes get_tag_string(self):
@@ -2906,7 +2873,8 @@ cdef class AlignedSegment:
             if src.core.l_qseq == 0:
                 return None
 
-            self.cache_query_sequence = _getSequenceRange(src, 0, src.core.l_qseq)
+            self.cache_query_sequence = getSequenceInRange(
+                src, 0, src.core.l_qseq)
             return self.cache_query_sequence
 
         def __set__(self, seq):
@@ -2992,7 +2960,7 @@ cdef class AlignedSegment:
             if src.core.l_qseq == 0:
                 return None
 
-            self.cache_query_qualities = _getQualitiesRange(src, 0, src.core.l_qseq)
+            self.cache_query_qualities = getQualitiesInRange(src, 0, src.core.l_qseq)
             return self.cache_query_qualities
 
         def __set__(self, qual):
@@ -3176,10 +3144,10 @@ cdef class AlignedSegment:
             if src.core.l_qseq == 0:
                 return None
 
-            start = _getQueryStart(src)
-            end   = _getQueryEnd(src)
+            start = getQueryStart(src)
+            end   = getQueryEnd(src)
 
-            self.cache_query_alignment_sequence = _getSequenceRange(src, start, end)
+            self.cache_query_alignment_sequence = getSequenceInRange(src, start, end)
             return self.cache_query_alignment_sequence
 
     property query_alignment_qualities:
@@ -3209,11 +3177,11 @@ cdef class AlignedSegment:
             if src.core.l_qseq == 0:
                 return None
 
-            start = _getQueryStart(src)
-            end   = _getQueryEnd(src)
-            self.cache_query_alignment_qualities = _getQualitiesRange(src, start, end)
+            start = getQueryStart(src)
+            end   = getQueryEnd(src)
+            self.cache_query_alignment_qualities = \
+                getQualitiesInRange(src, start, end)
             return self.cache_query_alignment_qualities
-
 
     property query_alignment_start:
         """start index of the aligned query portion of the sequence (0-based,
@@ -3224,13 +3192,13 @@ cdef class AlignedSegment:
 
         """
         def __get__(self):
-            return _getQueryStart(self._delegate)
+            return getQueryStart(self._delegate)
 
     property query_alignment_end:
         """end index of the aligned query portion of the sequence (0-based,
         exclusive)"""
         def __get__(self):
-            return _getQueryEnd(self._delegate)
+            return getQueryEnd(self._delegate)
 
     property query_alignment_length:
         """length of the aligned query sequence.
@@ -3239,7 +3207,7 @@ cdef class AlignedSegment:
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
-            return _getQueryEnd(src) - _getQueryStart(src)
+            return getQueryEnd(src) - getQueryStart(src)
 
     #####################################################
     # Computed properties
@@ -3578,7 +3546,7 @@ cdef class AlignedSegment:
         cdef int value_size
         cdef uint8_t * value_ptr
         cdef uint8_t *existing_ptr
-        cdef uint8_t type_code
+        cdef uint8_t typecode
         cdef float float_value
         cdef double double_value
         cdef int32_t int_value
@@ -3600,34 +3568,34 @@ cdef class AlignedSegment:
         if value is None:
             return
         
-        type_code = get_value_code(value, value_type)
-        if type_code == 0:
+        typecode = get_value_code(value, value_type)
+        if typecode == 0:
             raise ValueError("can't guess type or invalid type code specified")
 
         # Not Endian-safe, but then again neither is samtools!
-        if type_code == 'Z':
+        if typecode == 'Z':
             value = force_bytes(value)
             value_ptr = <uint8_t*><char*>value
             value_size = len(value)+1
-        elif type_code == 'i':
+        elif typecode == 'i':
             int_value = value
             value_ptr = <uint8_t*>&int_value
             value_size = sizeof(int32_t)
-        elif type_code == 'd':
+        elif typecode == 'd':
             double_value = value
             value_ptr = <uint8_t*>&double_value
             value_size = sizeof(double)
-        elif type_code == 'f':
+        elif typecode == 'f':
             float_value  = value
             value_ptr = <uint8_t*>&float_value
             value_size = sizeof(float)
-        elif type_code == 'B':
+        elif typecode == 'B':
             # the following goes through python, needs to be cleaned up
             # pack array using struct
             if value_type is None:
-                fmt, args = _pack_tags([(tag, value)])
+                fmt, args = packTags([(tag, value)])
             else:
-                fmt, args = _pack_tags([(tag, value, value_type)])
+                fmt, args = packTags([(tag, value, value_type)])
 
             # remove tag and type code as set by bam_aux_append
             # first four chars of format (<2sc)
@@ -3641,7 +3609,7 @@ cdef class AlignedSegment:
             # bam_aux_append copies data from value_ptr
             bam_aux_append(src,
                            tag,
-                           type_code, 
+                           typecode, 
                            value_size,
                            <uint8_t*>buffer.raw)
             return
@@ -3650,7 +3618,7 @@ cdef class AlignedSegment:
 
         bam_aux_append(src,
                        tag,
-                       type_code, 
+                       typecode, 
                        value_size,
                        value_ptr)
 
@@ -3834,7 +3802,7 @@ cdef class AlignedSegment:
 
         # convert and pack the data
         if tags is not None and len(tags) > 0:
-            fmt, args = _pack_tags(tags)
+            fmt, args = packTags(tags)
             new_size = struct.calcsize(fmt)
             buffer = ctypes.create_string_buffer(new_size)
             struct.pack_into(fmt,
@@ -3915,9 +3883,9 @@ cdef class AlignedSegment:
         def __set__(self, v): self.query_sequence = v
     property qual:
         def __get__(self):
-            return toQualityString(self.query_qualities)
+            return array_to_qualitystring(self.query_qualities)
         def __set__(self, v):
-            self.query_qualities = fromQualityString(v)
+            self.query_qualities = qualitystring_to_array(v)
     property alen:
         def __get__(self):
             return self.reference_length
@@ -3940,9 +3908,9 @@ cdef class AlignedSegment:
             self.query_alignment_sequence = v
     property qqual:
         def __get__(self):
-            return toQualityString(self.query_alignment_qualities)
+            return array_to_qualitystring(self.query_alignment_qualities)
         def __set__(self, v):
-            self.query_alignment_qualities = fromQualityString(v)
+            self.query_alignment_qualities = qualitystring_to_array(v)
     property qstart:
         def __get__(self):
             return self.query_alignment_start
@@ -4296,8 +4264,6 @@ __all__ = ["AlignmentFile",
            "PileupColumn",
            "PileupRead",
            "IndexedReads",
-           "toQualityString",
-           "fromQualityString",
            "get_verbosity",
            "set_verbosity"]
            # "IteratorSNPCalls",
