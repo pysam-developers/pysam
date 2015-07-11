@@ -1193,7 +1193,7 @@ cdef class AlignmentFile:
         def __get__(self):
             self._checkIndex()
             cdef int tid
-            cdef uint64_t total = 0
+            cdef uint64_t total = hts_idx_get_n_no_coor(self.index)
             cdef uint64_t mapped, unmapped
             for tid from 0 <= tid < self.header.n_targets:
                 with nogil:
