@@ -14,6 +14,7 @@ import unittest
 import glob
 import re
 import copy
+from TestUtils import checkURL
 
 DATADIR = 'tabix_data'
 
@@ -945,6 +946,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
     local = os.path.join(DATADIR, "example.gtf.gz")
 
     def testFetchAll(self):
+        if not checkURL(self.url):
+            return
+
         remote_file = pysam.TabixFile(self.url, "r")
         remote_result = list(remote_file.fetch())
         local_file = pysam.TabixFile(self.local, "r")
