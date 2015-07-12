@@ -1,24 +1,19 @@
 # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
-import tempfile
-import os
-import sys
-import types
-import itertools
-import struct
-import ctypes
-import collections
-import re
-import platform
-import warnings
-from cpython cimport PyErr_SetString, \
-    PyBytes_Check, \
-    PyUnicode_Check, \
-    PyBytes_FromStringAndSize
+from chtslib cimport *
 
-from cpython.version cimport PY_MAJOR_VERSION
-from cpython cimport array
+cpdef set_verbosity(int verbosity):
+    u"""Set htslib's hts_verbose global variable to the specified value.
+    """
+    return hts_set_verbosity(verbosity)
 
-__all__ = []
+cpdef get_verbosity():
+    u"""Return the value of htslib's hts_verbose global variable.
+    """
+    return hts_get_verbosity()
+
+__all__ = [
+    "get_verbosity",
+    "set_verbosity"]
 

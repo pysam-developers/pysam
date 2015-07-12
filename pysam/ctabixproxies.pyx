@@ -1,7 +1,3 @@
-import types
-import sys
-import string
-
 from cpython cimport PyBytes_FromStringAndSize
 
 from libc.stdio cimport printf, feof, fgets
@@ -9,18 +5,8 @@ from libc.string cimport strcpy, strlen, memcmp, memcpy, memchr, strstr, strchr
 from libc.stdlib cimport free, malloc, calloc, realloc
 from libc.stdlib cimport atoi, atol, atof
 
-
 from cutils cimport force_bytes, force_str, charptr_to_str
 from cutils cimport encode_filename, from_string_and_size
-
-cdef char * nextItem(char * buffer):
-    cdef char * pos
-    pos = strchr(buffer, '\t')
-    if pos == NULL:
-        raise ValueError("malformatted entry at %s" % buffer)
-    pos[0] = '\0'
-    pos += 1
-    return pos
 
 cdef char *StrOrEmpty(char * buffer):
      if buffer == NULL:
@@ -28,9 +14,13 @@ cdef char *StrOrEmpty(char * buffer):
      else: return buffer
 
 cdef int isNew(char * p, char * buffer, size_t nbytes):
-     if p == NULL:
-         return 0
-     return not (buffer <= p < buffer + nbytes)
+    """return True if `p` is located within `buffer` of size
+    `nbytes`
+    """
+    if p == NULL:
+        return 0
+    return not (buffer <= p < buffer + nbytes)
+
 
 cdef class TupleProxy:
     '''Proxy class for access to parsed row as a tuple.
@@ -351,7 +341,7 @@ def toDot(v):
 
 def quote(v):
     '''return a quoted attribute.'''
-    if type(v) in types.StringTypes:
+    if isinstance(v, str):
         return '"%s"' % v
     else: 
         return str(v)
@@ -499,7 +489,7 @@ cdef class GTFProxy(TupleProxy):
 
             # split at most once in order to avoid separating
             # multi-word values
-            d = [x.strip() for x in string.split(f, " ", maxsplit=1)]
+            d = [x.strip() for x in f.split(" ", 1)]
 
             n,v = d[0], d[1]
             if len(d) > 2:
@@ -532,7 +522,7 @@ cdef class GTFProxy(TupleProxy):
 
         aa = []
         for k,v in d.items():
-            if type(v) in types.StringTypes:
+            if isinstance(v, str):
                 aa.append( '%s "%s"' % (k,v) )
             else:
                 aa.append( '%s %s' % (k,str(v)) )

@@ -1700,3 +1700,8 @@ cdef extern from "htslib/vcf.h" nogil:
     int bcf_itr_next(htsFile *fp, hts_itr_t *iter, void *r)
     hts_idx_t *bcf_index_load(const char *fn)
     const char **bcf_index_seqnames(const hts_idx_t *idx, const bcf_hdr_t *hdr, int *nptr)
+
+cdef extern from "htslib_util.h":
+
+    int hts_set_verbosity(int verbosity)
+    int hts_get_verbosity()

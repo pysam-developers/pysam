@@ -8,15 +8,9 @@
 #
 # class AlignmentFile   read/write access to SAM/BAM/CRAM formatted files
 # 
-# class AlignedSegment  an aligned segment (read)
-#
-# class PileupColumn    a collection of segments (PileupRead) aligned to
-#                       a particular genomic position.
+# class IndexedReads    index a SAM/BAM/CRAM file by query name while keeping
+#                       the original sort order intact
 # 
-# class PileupRead      an AlignedSegment aligned to a particular genomic
-#                       position. Contains additional attributes with respect
-#                       to this.
-#
 # Additionally this module defines numerous additional classes that are part
 # of the internal API. These are:
 # 
@@ -29,6 +23,9 @@
 # class IteratorRowAll
 # class IteratorRowAllRefs
 # class IteratorRowSelection
+# class IteratorColumn
+# class IteratorColumnRegion
+# class IteratorColumnAllRefs
 #
 ###############################################################################
 #
@@ -113,6 +110,103 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
                               "PP"),}
 
 
+def build_header_line(fields, record):
+    '''build a header line from *fields* dictionary for *record*'''
+
+    # TODO: add checking for field and sort order
+    line = ["@%s" % record]
+        # comment
+    if record == "CO":
+        line.append(fields)
+    # user tags
+    elif record.islower():
+        for key in sorted(fields):
+            line.append("%s:%s" % (key, str(fields[key])))
+    # defined tags
+    else:
+        # write fields of the specification
+        for key in VALID_HEADER_ORDER[record]:
+            if key in fields:
+                line.append("%s:%s" % (key, str(fields[key])))
+        # write user fields
+        for key in fields:
+            if not key.isupper():
+                line.append("%s:%s" % (key, str(fields[key])))
+
+    return "\t".join(line)
+
+cdef bam_hdr_t * build_header(new_header):
+    '''return a new header built from a dictionary in *new_header*.
+
+    This method inserts the text field, target_name and target_len.
+    '''
+
+    lines = []
+
+    # check if hash exists
+
+    # create new header and copy old data
+    cdef bam_hdr_t * dest
+
+    dest = bam_hdr_init()
+
+    # first: defined tags
+    for record in VALID_HEADERS:
+        if record in new_header:
+            ttype = VALID_HEADER_TYPES[record]
+            data = new_header[record]
+            if type(data) != type(ttype()):
+                raise ValueError(
+                    "invalid type for record %s: %s, expected %s" %
+                    (record, type(data), type(ttype())))
+            if type(data) is dict:
+                lines.append(build_header_line(data, record))
+            else:
+                for fields in new_header[record]:
+                    lines.append(build_header_line(fields, record))
+
+    # then: user tags (lower case), sorted alphabetically
+    for record, data in sorted(new_header.items()):
+        if record in VALID_HEADERS: continue
+        if type(data) is dict:
+            lines.append(build_header_line(data, record))
+        else:
+            for fields in new_header[record]:
+                lines.append(build_header_line(fields, record))
+
+    text = "\n".join(lines) + "\n"
+    if dest.text != NULL: free( dest.text )
+    dest.text = <char*>calloc(len(text), sizeof(char))
+    dest.l_text = len(text)
+    cdef bytes btext = text.encode('ascii')
+    strncpy(dest.text, btext, dest.l_text)
+
+    cdef bytes bseqname
+    # collect targets
+    if "SQ" in new_header:
+        seqs = []
+        for fields in new_header["SQ"]:
+            try:
+                seqs.append( (fields["SN"], fields["LN"] ) )
+            except KeyError:
+                raise KeyError( "incomplete sequence information in '%s'" % str(fields))
+
+        dest.n_targets = len(seqs)
+        dest.target_name = <char**>calloc(dest.n_targets, sizeof(char*))
+        dest.target_len = <uint32_t*>calloc(dest.n_targets, sizeof(uint32_t))
+
+        for x from 0 <= x < dest.n_targets:
+            seqname, seqlen = seqs[x]
+            dest.target_name[x] = <char*>calloc(
+                len(seqname) + 1, sizeof(char))
+            bseqname = seqname.encode('ascii')
+            strncpy(dest.target_name[x], bseqname,
+                    len(seqname) + 1)
+            dest.target_len[x] = seqlen
+
+    return dest
+
+
 cdef class AlignmentFile:
     '''*(filepath_or_object, mode=None, template=None,
          reference_names=None, reference_lengths=None,
@@ -120,63 +214,92 @@ cdef class AlignmentFile:
          add_sq_text=False, check_header=True,
          check_sq=True)*
 
-    A :term:`SAM`/:term:`BAM` formatted file. If *filepath_or_object*
+    A :term:`SAM`/:term:`BAM` formatted file. If `filepath_or_object`
     is a string, the file is automatically opened. If
-    *filepath_or_object* is a python File object, the already opened
+    `filepath_or_object` is a python File object, the already opened
     file will be used.
 
-    *mode* should be ``r`` for reading or ``w`` for writing. The
-    default is text mode (:term:`SAM`). For binary (:term:`BAM`) I/O
-    you should append ``b`` for compressed or ``u`` for uncompressed
-    :term:`BAM` output.  Use ``h`` to output header information in
-    text (:term:`TAM`) mode.
-
-    If ``b`` is present, it must immediately follow ``r`` or ``w``.
-    Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and
-    ``wb0``. For instance, to open a :term:`BAM` formatted file for
-    reading, type::
-
-        f = pysam.AlignmentFile('ex1.bam','rb')
-
-    If mode is not specified, we will try to auto-detect in the order
-    'rb', 'r', thus both the following should work::
-
-        f1 = pysam.AlignmentFile('ex1.bam')
-        f2 = pysam.AlignmentFile('ex1.sam')
-
-    If an index for a BAM file exists (.bai), it will be opened
-    automatically. Without an index random access to reads via
-    :meth:`fetch` and :meth:`pileup` is disabled.
+    If the file is opened for reading an index for a BAM file exists
+    (.bai), it will be opened automatically. Without an index random
+    access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
 
     For writing, the header of a :term:`SAM` file/:term:`BAM` file can
     be constituted from several sources (see also the samtools format
     specification):
 
-        1. If *template* is given, the header is copied from a another
-           *AlignmentFile* (*template* must be of type *AlignmentFile*).
+        1. If `template` is given, the header is copied from a another
+           `AlignmentFile` (`template` must be of type `AlignmentFile`).
 
-        2. If *header* is given, the header is built from a
-           multi-level dictionary. The first level are the four types
-           ('HD', 'SQ', ...). The second level are a list of lines,
-           with each line being a list of tag-value pairs. The header
-           is constructed first from all the defined fields, followed
-           by user tags in alphabetical order.
+        2. If `header` is given, the header is built from a
+           multi-level dictionary. 
 
-        3. If *text* is given, new header text is copied from raw
+        3. If `text` is given, new header text is copied from raw
            text.
 
-        4. The names (*reference_names*) and lengths
-           (*reference_lengths*) are supplied directly as lists.  By
-           default, 'SQ' and 'LN' tags will be added to the header
-           text. This option can be changed by unsetting the flag
-           *add_sq_text*.
+        4. The names (`reference_names`) and lengths
+           (`reference_lengths`) are supplied directly as lists.
 
     For writing a CRAM file, the filename of the reference can be 
-    added through a fasta formatted file (*reference_filename*)
+    added through a fasta formatted file (`reference_filename`)
 
     By default, if a file is opened in mode 'r', it is checked
-    for a valid header (*check_header* = True) and a definition of
-    chromosome names (*check_sq* = True).
+    for a valid header (`check_header` = True) and a definition of
+    chromosome names (`check_sq` = True).
+
+    Parameters
+    ----------
+
+    mode : string
+
+       `mode` should be ``r`` for reading or ``w`` for writing. The
+       default is text mode (:term:`SAM`). For binary (:term:`BAM`) I/O
+       you should append ``b`` for compressed or ``u`` for uncompressed
+       :term:`BAM` output.  Use ``h`` to output header information in
+       text (:term:`TAM`) mode.
+
+       If ``b`` is present, it must immediately follow ``r`` or ``w``.
+       Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and
+       ``wb0``. For instance, to open a :term:`BAM` formatted file for
+       reading, type::
+
+           f = pysam.AlignmentFile('ex1.bam','rb')
+
+        If mode is not specified, the method will try to auto-detect
+        in the order 'rb', 'r', thus both the following should work::
+
+            f1 = pysam.AlignmentFile('ex1.bam')
+            f2 = pysam.AlignmentFile('ex1.sam')
+  
+    template : AlignmentFile
+        when writing, copy  header frem `template`.
+       
+    header :  dict
+        when writing, build header from a multi-level dictionary. The
+        first level are the four types ('HD', 'SQ', ...). The
+        second level are a list of lines, with each line being a
+        list of tag-value pairs. The header is constructed first
+        from all the defined fields, followed by user tags in
+        alphabetical order.
+
+    text : string
+        when writing, use the string provided as the header
+
+   reference_names : list
+   reference_lengths : list
+        when writing, build header from list of chromosome names and lengths.
+        By default, 'SQ' and 'LN' tags will be added to the header
+        text. This option can be changed by unsetting the flag
+        `add_sq_text`.
+
+   add_sq_text : bool
+        do not add 'SQ' and 'LN' tags to header. This option permits construction
+        :term:`SAM` formatted files without a header.
+
+   check_header : bool
+        when reading, check if header is present (default=True)
+
+   check_sq : bool
+        when reading, check if SQ entries are present in header (default=True) 
 
     '''
 
@@ -193,13 +316,26 @@ cdef class AlignmentFile:
         # allocate memory for iterator
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
 
-    def _isOpen(self):
+    def is_open(self):
         '''return true if htsfile has been opened.'''
         return self.htsfile != NULL
 
-    def _hasIndex(self):
+    def has_index(self):
         '''return true if htsfile has an existing (and opened) index.'''
         return self.index != NULL
+
+    def check_index(self):
+        '''check if index is present. Otherwise raise
+        an error.'''
+        if not self.is_open():
+            raise ValueError("I/O operation on closed file")
+        if not self.is_bam and not self.is_cram:
+            raise AttributeError(
+                "AlignmentFile.mapped only available in bam files")
+        if self.index == NULL:
+            raise ValueError(
+                "mapping information not recorded in index "
+                "or index not available")
 
     def _open(self,
               filepath_or_object,
@@ -303,7 +439,7 @@ cdef class AlignmentFile:
             if template:
                 self.header = bam_hdr_dup(template.header)
             elif header:
-                self.header = self._buildHeader(header)
+                self.header = build_header(header)
             else:
                 # build header from a target names and lengths
                 assert reference_names and reference_lengths, \
@@ -474,7 +610,7 @@ cdef class AlignmentFile:
 
         returns -1 if reference is not known.
         '''
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError("I/O operation on closed file")
         reference = force_bytes(reference)
         return bam_name2id(self.header, reference)
@@ -482,7 +618,7 @@ cdef class AlignmentFile:
     def getrname(self, tid):
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError("I/O operation on closed file")
         if not 0 <= tid < self.header.n_targets:
             raise ValueError("reference_id %i out of range 0<=tid<%i" % 
@@ -492,7 +628,7 @@ cdef class AlignmentFile:
     cdef char * _getrname(self, int tid):   # TODO unused
         '''
         convert numerical :term:`tid` into :term:`reference` name.'''
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError("I/O operation on closed file")
 
         if not 0 <= tid < self.header.n_targets:
@@ -576,7 +712,7 @@ cdef class AlignmentFile:
         :meth:`pysam.AlignmentFile.tell`.
         '''
 
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError("I/O operation on closed file")
         if not self.is_bam:
             raise NotImplementedError(
@@ -593,7 +729,7 @@ cdef class AlignmentFile:
         '''
         return current file position.
         '''
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError("I/O operation on closed file")
         if not (self.is_bam or self.is_cram):
             raise NotImplementedError(
@@ -642,7 +778,7 @@ cdef class AlignmentFile:
         '''
         cdef int rtid, rstart, rend, has_coord
 
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError( "I/O operation on closed file" )
 
         has_coord, rtid, rstart, rend = self._parseRegion(reference,
@@ -657,7 +793,7 @@ cdef class AlignmentFile:
 
         if self.is_bam or self.is_cram:
             if not until_eof and not self.is_remote:
-                if not self._hasIndex():
+                if not self.has_index():
                     raise ValueError(
                         "fetch called on bamfile without index")
 
@@ -776,7 +912,7 @@ cdef class AlignmentFile:
         cdef AlignedSegment read
         cdef long counter = 0
 
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError( "I/O operation on closed file" )
 
         for read in self.fetch(reference=reference,
@@ -795,27 +931,31 @@ cdef class AlignmentFile:
                region=None,
                **kwargs):
         '''perform a :term:`pileup` within a :term:`region`. The region is
-        specified by :term:`reference`, *start* and *end* (using
-        0-based indexing).  Alternatively, a samtools *region* string
+        specified by :term:`reference`, 'start' and 'end' (using
+        0-based indexing).  Alternatively, a samtools 'region' string
         can be supplied.
 
-        Without *reference* or *region* all reads will be used for the
+        Without 'reference' or 'region' all reads will be used for the
         pileup. The reads will be returned ordered by
         :term:`reference` sequence, which will not necessarily be the
         order within the file.
 
-        The method returns an iterator of type
-        :class:`pysam.IteratorColumn` unless a *callback is
-        provided. If a *callback* is given, the callback will be
-        executed for each column within the :term:`region`.
-
         Note that :term:`SAM` formatted files do not allow random
-        access.  In these files, if a *region* or *reference* are
+        access.  In these files, if a 'region' or 'reference' are
         given an exception is raised.
 
-        Optional *kwargs* to the iterator:
+        .. note::
 
-        stepper
+            'all' reads which overlap the region are returned. The
+            first base returned will be the first base of the first
+            read 'not' necessarily the first base of the region used
+            in the query.
+
+
+        Parameters
+        ----------
+
+        stepper : string
            The stepper controlls how the iterator advances.
            Possible options for the stepper are
 
@@ -826,47 +966,44 @@ cdef class AlignmentFile:
            ``nofilter``
               uses every single read
 
-
            ``samtools``
               same filter and read processing as in :term:`csamtools`
-              pileup. This requires a *fastafile* to be given.
+              pileup. This requires a 'fastafile' to be given.
 
 
-        fastafile
-           A :class:`~pysam.FastaFile` object. This is required for
-           some of the steppers.
+        fastafile : :class:`~pysam.FastaFile` object.
 
-        mask
-           Skip all reads with bits set in mask if mask=True.
+           This is required for some of the steppers.
 
-        max_depth
-           Maximum read depth permitted. The default limit is *8000*.
+        max_depth : int
+           Maximum read depth permitted. The default limit is '8000'.
 
-        truncate
+        truncate : bool
 
            By default, the samtools pileup engine outputs all reads
            overlapping a region (see note below).  If truncate is True
            and a region is given, only output columns in the exact
            region specificied.
 
-        .. note::
+        Returns
+        -------
 
-            *all* reads which overlap the region are returned. The
-            first base returned will be the first base of the first
-            read *not* necessarily the first base of the region used
-            in the query.
+        The method returns an iterator of type
+        :class:`pysam.IteratorColumn` unless a 'callback is
+        provided. If a 'callback' is given, the callback will be
+        executed for each column within the :term:`region`.
 
         '''
         cdef int rtid, rstart, rend, has_coord
 
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError( "I/O operation on closed file" )
 
         has_coord, rtid, rstart, rend = self._parseRegion(
             reference, start, end, region )
 
         if self.is_bam or self.is_cram:
-            if not self._hasIndex():
+            if not self.has_index():
                 raise ValueError("no index available for pileup")
 
             if has_coord:
@@ -882,27 +1019,51 @@ cdef class AlignmentFile:
             raise NotImplementedError( "pileup of samfiles not implemented yet" )
 
     @cython.boundscheck(False)  # we do manual bounds checking
-    def count_coverage(self, chr, start, stop, quality_threshold=15,
+    def count_coverage(self, reference, start, stop,
+                       quality_threshold=15,
                        read_callback='all'):
-        """Count ACGT in a part of a AlignmentFile. 
-        Return 4 array.arrays of length = stop - start,
-        in order A C G T.
+        """Count coverage by aligned segments in a genomic region.
+        Counting is performed per base (ACGT).
+
+        Parameters
+        ----------
         
-        @quality_threshold is the minimum quality score (in phred) a
-        base has to reach to be counted.  Possible @read_callback
-        values are
+        reference : string
+            reference_name of the genomic region (chromosome)
 
-        ``all``
-`            skip reads in which any of the following
-             flags are set: BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL,
-             BAM_FDUP
+        start : int
+            start of the genomic region
 
-         ``nofilter``
-             uses every single read
+        end : int
+            end of the genomic region
 
-        Alternatively, @read_callback can be a function ```check_read(read)``1
-        that should return True only for those reads that shall be included in
-        the counting.
+        quality_threshold : int
+
+            quality_threshold is the minimum quality score (in phred) a
+            base has to reach to be counted. 
+
+        read_callback: string or function
+
+            select a call-back to ignore reads when counting. It can be either 
+            a string with the following values:
+
+            ``all``
+            `   skip reads in which any of the following
+                flags are set: BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL,
+                BAM_FDUP
+
+             ``nofilter``
+                  uses every single read
+
+             Alternatively, `read_callback` can be a function
+             ``check_read(read)`` that should return True only for
+             those reads that shall be included in the counting.
+
+        Returns
+        -------
+        
+        a tuple with four array.arrays of length = stop - start,
+        in order A C G T.
 
         """
         
@@ -925,7 +1086,7 @@ cdef class AlignmentFile:
         cdef int refpos
         cdef int c = 0
         cdef int _threshold = quality_threshold
-        for read in self.fetch(chr, start, stop):
+        for read in self.fetch(reference, start, stop):
             if read_callback == 'all':
                 if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
                     continue
@@ -982,9 +1143,17 @@ cdef class AlignmentFile:
         '''
         write a single :class:`pysam.AlignedSegment` to disk.
 
-        returns the number of bytes written.
+        Raises
+        ------
+        ValueError
+            if the writing failed
+
+        Returns
+        -------
+            int with the number of bytes written. If the file is closed,
+            this will be 0.
         '''
-        if not self._isOpen():
+        if not self.is_open():
             return 0
 
         cdef int ret
@@ -1002,6 +1171,7 @@ cdef class AlignmentFile:
 
         return ret
 
+    # context manager interface
     def __enter__(self):
         return self
 
@@ -1014,34 +1184,43 @@ cdef class AlignmentFile:
     ###############################################################
     ## properties
     ###############################################################
+    property closed:
+        """"bool indicating the current state of the file object. 
+        This is a read-only attribute; the close() method changes the value. 
+        """
+        def __get__(self):
+            return not self.is_open()
+
     property filename:
-        '''filename associated with this object.'''
+        '''filename associated with this object. This is a read-only attribute.'''
         def __get__(self):
             return self._filename
 
     property nreferences:
-        '''number of :term:`reference` sequences in the file.'''
+        '''int with the number of :term:`reference` sequences in the file.
+        This is a read-only attribute.'''
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self.is_open(): raise ValueError( "I/O operation on closed file" )
             return self.header.n_targets
 
     property references:
-        """tuple with the names of :term:`reference` sequences."""
+        """tuple with the names of :term:`reference` sequences. This is a 
+        read-only attribute"""
         def __get__(self):
-            if not self._isOpen(): raise ValueError( "I/O operation on closed file" )
+            if not self.is_open(): raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.header.n_targets:
                 t.append(charptr_to_str(self.header.target_name[x]))
             return tuple(t)
 
     property lengths:
-        """tuple of the lengths of the :term:`reference` sequences. The
-        lengths are in the same order as
+        """tuple of the lengths of the :term:`reference` sequences. This is a
+        read-only attribute. The lengths are in the same order as
         :attr:`pysam.AlignmentFile.references`
 
         """
         def __get__(self):
-            if not self._isOpen():
+            if not self.is_open():
                 raise ValueError("I/O operation on closed file")
             t = []
             for x from 0 <= x < self.header.n_targets:
@@ -1049,11 +1228,12 @@ cdef class AlignmentFile:
             return tuple(t)
 
     property mapped:
-        """total number of mapped alignments according
-        to the statistics recorded in the index.
+        """int with total number of mapped alignments according to the
+        statistics recorded in the index. This is a read-only
+        attribute.
         """
         def __get__(self):
-            self._checkIndex()
+            self.check_index()
             cdef int tid
             cdef uint64_t total = 0
             cdef uint64_t mapped, unmapped
@@ -1063,26 +1243,13 @@ cdef class AlignmentFile:
                 total += mapped
             return total
 
-    def _checkIndex(self):
-        '''check if index is present. Otherwise raise
-        an error.'''
-        if not self._isOpen():
-            raise ValueError("I/O operation on closed file")
-        if not self.is_bam and not self.is_cram:
-            raise AttributeError(
-                "AlignmentFile.mapped only available in bam files")
-        if self.index == NULL:
-            raise ValueError(
-                "mapping information not recorded in index "
-                "or index not available")
-
-
     property unmapped:
-        """total number of unmapped reads according
-        to the statistics recorded in the index.
+        """int with total number of unmapped reads according to the statistics
+        recorded in the index. This number of reads includes the number of reads
+        without coordinates. This is a read-only attribute.
         """
         def __get__(self):
-            self._checkIndex()
+            self.check_index()
             cdef int tid
             cdef uint64_t total = hts_idx_get_n_no_coor(self.index)
             cdef uint64_t mapped, unmapped
@@ -1093,31 +1260,31 @@ cdef class AlignmentFile:
             return total
 
     property nocoordinate:
-        """total number of reads without coordinates according
-        to the statistics recorded in the index.
+        """int with total number of reads without coordinates according to the
+        statistics recorded in the index. This is a read-only attribute.
         """
         def __get__(self):
-            self._checkIndex()
+            self.check_index()
             cdef uint64_t n
             with nogil:
                 n = hts_idx_get_n_no_coor(self.index)
             return n
 
     property text:
-        '''full contents of the :term:`sam file` header as a string
-    
-        See :attr:`pysam.AlignmentFile.header` to get a parsed
+        '''string with the full contents of the :term:`sam file` header as a
+        string This is a read-only attribute.  See
+        :attr:`pysam.AlignmentFile.header` to get a parsed
         representation of the header.
 
         '''
         def __get__(self):
-            if not self._isOpen():
+            if not self.is_open():
                 raise ValueError( "I/O operation on closed file" )
             return from_string_and_size(self.header.text, self.header.l_text)
 
     property header:
-        '''header information within the :term:`sam file`. The records and
-        fields are returned as a two-level dictionary. 
+        """two-level dictionay with header information within the :term:`sam file`. 
+        This is a read-only attribute.
 
         The first level contains the record (``HD``, ``SQ``, etc) and
         the second level contains the fields (``VN``, ``LN``, etc).
@@ -1135,9 +1302,9 @@ cdef class AlignmentFile:
         options that contain characters that are not valid field
         separators.
 
-        '''
+        """
         def __get__(self):
-            if not self._isOpen():
+            if not self.is_open():
                 raise ValueError( "I/O operation on closed file" )
 
             result = {}
@@ -1200,8 +1367,9 @@ cdef class AlignmentFile:
                         if record not in result: result[record] = []
                         result[record].append(x)
 
-                # if there are no SQ lines in the header, add the reference names
-                # from the information in the bam file.
+                # if there are no SQ lines in the header, add the
+                # reference names from the information in the bam
+                # file.
                 #
                 # Background: c-samtools keeps the textual part of the
                 # header separate from the list of reference names and
@@ -1216,102 +1384,6 @@ cdef class AlignmentFile:
 
             return result
 
-    def _buildLine(self, fields, record):
-        '''build a header line from *fields* dictionary for *record*'''
-
-        # TODO: add checking for field and sort order
-        line = ["@%s" % record]
-        # comment
-        if record == "CO":
-            line.append(fields)
-        # user tags
-        elif record.islower():
-            for key in sorted(fields):
-                line.append("%s:%s" % (key, str(fields[key])))
-        # defined tags
-        else:
-            # write fields of the specification
-            for key in VALID_HEADER_ORDER[record]:
-                if key in fields:
-                    line.append("%s:%s" % (key, str(fields[key])))
-            # write user fields
-            for key in fields:
-                if not key.isupper():
-                    line.append("%s:%s" % (key, str(fields[key])))
-
-        return "\t".join(line)
-
-    cdef bam_hdr_t * _buildHeader(self, new_header):
-        '''return a new header built from a dictionary in *new_header*.
-
-        This method inserts the text field, target_name and target_len.
-        '''
-
-        lines = []
-
-        # check if hash exists
-
-        # create new header and copy old data
-        cdef bam_hdr_t * dest
-
-        dest = bam_hdr_init()
-
-        # first: defined tags
-        for record in VALID_HEADERS:
-            if record in new_header:
-                ttype = VALID_HEADER_TYPES[record]
-                data = new_header[record]
-                if type(data) != type(ttype()):
-                    raise ValueError(
-                        "invalid type for record %s: %s, expected %s" %
-                        (record, type(data), type(ttype())))
-                if type(data) is dict:
-                    lines.append(self._buildLine(data, record))
-                else:
-                    for fields in new_header[record]:
-                        lines.append(self._buildLine(fields, record))
-
-        # then: user tags (lower case), sorted alphabetically
-        for record, data in sorted(new_header.items()):
-            if record in VALID_HEADERS: continue
-            if type( data ) is dict:
-                lines.append( self._buildLine( data, record ) )
-            else:
-                for fields in new_header[record]:
-                    lines.append( self._buildLine( fields, record ) )
-
-        text = "\n".join(lines) + "\n"
-        if dest.text != NULL: free( dest.text )
-        dest.text = <char*>calloc( len(text), sizeof(char))
-        dest.l_text = len(text)
-        cdef bytes btext = text.encode('ascii')
-        strncpy( dest.text, btext, dest.l_text )
-
-        cdef bytes bseqname
-        # collect targets
-        if "SQ" in new_header:
-            seqs = []
-            for fields in new_header["SQ"]:
-                try:
-                    seqs.append( (fields["SN"], fields["LN"] ) )
-                except KeyError:
-                    raise KeyError( "incomplete sequence information in '%s'" % str(fields))
-
-            dest.n_targets = len(seqs)
-            dest.target_name = <char**>calloc(dest.n_targets, sizeof(char*))
-            dest.target_len = <uint32_t*>calloc(dest.n_targets, sizeof(uint32_t))
-
-            for x from 0 <= x < dest.n_targets:
-                seqname, seqlen = seqs[x]
-                dest.target_name[x] = <char*>calloc(
-                    len(seqname) + 1, sizeof(char))
-                bseqname = seqname.encode('ascii')
-                strncpy(dest.target_name[x], bseqname,
-                        len(seqname) + 1)
-                dest.target_len[x] = seqlen
-
-        return dest
-
     ###############################################################
     ###############################################################
     ###############################################################
@@ -1321,7 +1393,7 @@ cdef class AlignmentFile:
     ## Possible solutions: deprecate or open new file handle
     ###############################################################
     def __iter__(self):
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError( "I/O operation on closed file" )
 
         if not self.is_bam and self.header.n_targets == 0:
@@ -1384,7 +1456,7 @@ cdef class IteratorRow:
     def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
         cdef char *cfilename
         
-        if not samfile._isOpen():
+        if not samfile.is_open():
             raise ValueError("I/O operation on closed file")
 
         # makes sure that samfile stays alive as long as the
@@ -1441,7 +1513,7 @@ cdef class IteratorRowRegion(IteratorRow):
         IteratorRow.__init__(self, samfile,
                              multiple_iterators=multiple_iterators)
 
-        if not samfile._hasIndex():
+        if not samfile.has_index():
             raise ValueError("no index available for iteration")
 
         with nogil:
@@ -1602,7 +1674,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
         IteratorRow.__init__(self, samfile,
                              multiple_iterators=multiple_iterators)
 
-        if not samfile._hasIndex():
+        if not samfile.has_index():
             raise ValueError("no index available for fetch")
 
         self.tid = -1
@@ -1856,8 +1928,6 @@ cdef class IteratorColumn:
 
     def __cinit__( self, AlignmentFile samfile, **kwargs ):
         self.samfile = samfile
-        # TODO
-        # self.mask = kwargs.get("mask", BAM_DEF_MASK )
         self.fastafile = kwargs.get("fastafile", None)
         self.stepper = kwargs.get("stepper", None)
         self.max_depth = kwargs.get("max_depth", 8000)
@@ -2134,13 +2204,27 @@ cdef class SNPCall:
 
 
 cdef class IndexedReads:
-    """index a Sam/BAM-file by query name.
+    """*(AlignmentFile samfile, multiple_iterators=True)
+
+    Index a Sam/BAM-file by query name while keeping the
+    original sort order intact.
 
     The index is kept in memory and can be substantial.
 
     By default, the file is re-openend to avoid conflicts if multiple
-    operators work on the same file. Set *multiple_iterators* = False
-    to not re-open *samfile*.
+    operators work on the same file. Set `multiple_iterators` = False
+    to not re-open `samfile`.
+
+    Parameters
+    ----------
+
+    samfile : AlignmentFile
+        File to be indexed.
+
+    multiple_iterators : bool
+        Flag indicating whether the file should be reopened. Reopening prevents
+        existing iterators being affected by the indexing.
+
     """
 
     def __init__(self, AlignmentFile samfile, int multiple_iterators=True):
@@ -2169,7 +2253,7 @@ cdef class IndexedReads:
             self.owns_samfile = False
 
     def build(self):
-        '''build index.'''
+        '''build the index.'''
 
         self.index = collections.defaultdict(list)
 
@@ -2195,9 +2279,18 @@ cdef class IndexedReads:
     def find(self, query_name):
         '''find *query_name* in index.
 
-        Returns an iterator over all reads with query_name.
+        Returns
+        -------
 
-        Raise a KeyError if the *query_name* is not in the index.
+        IteratorRowSelection
+            Returns an iterator over all reads with query_name.
+
+        Raises
+        ------
+        
+        KeyError
+            if the *query_name* is not in the index.
+
         '''
         if query_name in self.index:
             return IteratorRowSelection(
@@ -2212,27 +2305,11 @@ cdef class IndexedReads:
             hts_close(self.htsfile)
             bam_hdr_destroy(self.header)
 
-cpdef set_verbosity(int verbosity):
-    u"""Set htslib's hts_verbose global variable to the specified value.
-    """
-    return hts_set_verbosity(verbosity)
-
-cpdef get_verbosity():
-    u"""Return the value of htslib's hts_verbose global variable.
-    """
-    return hts_get_verbosity()
-
 __all__ = [
     "AlignmentFile",
     "IteratorRow",
     "IteratorColumn",
-    "IndexedReads",
-    "get_verbosity",
-    "set_verbosity"]
-# "IteratorSNPCalls",
-# "SNPCaller",
-# "IndelCaller",
-# "IteratorIndelCalls",
+    "IndexedReads"]
 
 
 

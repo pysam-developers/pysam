@@ -16,9 +16,6 @@ cdef extern from *:
 
 cdef extern from "htslib_util.h":
 
-    int hts_set_verbosity(int verbosity)
-    int hts_get_verbosity()
-
     char * pysam_bam_get_qname(bam1_t * b)
 
 cdef extern from "samfile_util.h":
@@ -66,7 +63,6 @@ cdef class AlignmentFile:
     # beginning of read section
     cdef int64_t start_offset
 
-    cdef bam_hdr_t * _buildHeader(self, new_header)
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
