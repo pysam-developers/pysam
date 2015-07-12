@@ -2,11 +2,13 @@ import types
 import sys
 import string
 
-from cpython.version cimport PY_MAJOR_VERSION
-from cpython cimport PyErr_SetString, PyBytes_Check
-from cpython cimport PyUnicode_Check, PyBytes_FromStringAndSize
+from cpython cimport PyBytes_FromStringAndSize
 
-from libc.stdio cimport printf
+from libc.stdio cimport printf, feof, fgets
+from libc.string cimport strcpy, strlen, memcmp, memcpy, memchr, strstr, strchr
+from libc.stdlib cimport free, malloc, calloc, realloc
+from libc.stdlib cimport atoi, atol, atof
+
 
 from cutils cimport force_bytes, force_str, charptr_to_str
 from cutils cimport encode_filename, from_string_and_size

@@ -6,9 +6,7 @@ from libc.stdio cimport FILE, printf
 from posix.types cimport off_t
 
 cdef extern from "Python.h":
-   long _Py_HashPointer(void*)
    FILE* PyFile_AsFile(object)
-
 
 cdef extern from "zlib.h" nogil:
   ctypedef void * gzFile
