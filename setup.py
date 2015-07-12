@@ -239,53 +239,28 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 from setuptools import Extension, setup
 
 #######################################################
-#######################################################
+parts = ["samtools", "htslib", "tabix",
+         "faidx", "samfile", "utils",
+         "alignmentfile", "tabixproxies",
+         "vcf", "bcf"]
+
 try:
     from Cython.Distutils import build_ext
 except ImportError:
     # no Cython available - use existing C code
     cmdclass = {}
-    csamtools_sources = ["pysam/csamtools.c"]
-    chtslib_sources = ["pysam/chtslib.c"]
-    tabix_sources = ["pysam/ctabix.c"]
-    faidx_sources = ["pysam/cfaidx.c"]
-    csamfile_sources = ["pysam/csamfile.c"]
-    cutils_sources = ["pysam/cutils.c"]
-    calignmentfile_sources = ["pysam/calignmentfile.c"]
-    tabproxies_sources = ["pysam/ctabixproxies.c"]
-    cvcf_sources = ["pysam/cvcf.c"]
-    cbcf_sources = ["pysam/cbcf.c"]
+    source_pattern = "pysam/c%s.c"
 else:
     # remove existing files to recompute
     # necessary to be both compatible for python 2.7 and 3.3
     if IS_PYTHON3:
-        for f in ("pysam/csamtools.c",
-                  "pysam/chtslib.c",
-                  "pysam/ctabix.c",
-                  "pysam/cfaidx.c",
-                  "pysam/csamfile.c",
-                  "pysam/ctabixproxies.c",
-                  "pysam/cvcf.c",
-                  "pysam/bvcf.c",
-                  "pysam/cutils.c",
-                  ):
+        for part in parts:
             try:
-                os.unlink(f)
+                os.unlink("pysam/c%s.c" % part)
             except:
                 pass
-
+    source_pattern = "pysam/c%s.pyx"
     cmdclass = {'build_ext': build_ext}
-    csamtools_sources = ["pysam/csamtools.pyx"]
-    chtslib_sources = ["pysam/chtslib.pyx"]
-    csamfile_sources = ["pysam/csamfile.pyx"]
-    calignmentfile_sources = ["pysam/calignmentfile.pyx"]
-    tabix_sources = ["pysam/ctabix.pyx"]
-    faidx_sources = ["pysam/cfaidx.pyx"]
-    tabproxies_sources = ["pysam/ctabixproxies.pyx"]
-    cvcf_sources = ["pysam/cvcf.pyx"]
-    cbcf_sources = ["pysam/cbcf.pyx"]
-    cutils_sources = ["pysam/cutils.pyx"]
-
 
 #######################################################
 classifiers = """
@@ -311,168 +286,176 @@ else:
     os_c_files = []
 
 #######################################################
-samtools = Extension(
+extra_compile_args = ["-Wno-error=declaration-after-statement",
+                      "-DSAMTOOLS=1"]
+define_macros = [('_FILE_OFFSET_BITS', '64'),
+                   ('_USE_KNETFILE', '')]
+
+csamtools = Extension(
     "pysam.csamtools",
-    csamtools_sources +
-    ["pysam/%s" % x for x in (
-        "pysam_util.c", )] +
+    [source_pattern % "samtools",
+     "pysam/pysam_util.c"] +
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
-    os_c_files +
     glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
+    os_c_files +
     htslib_sources,
     library_dirs=[],
     include_dirs=["samtools", "pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement",
-                        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')]
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
-htslib = Extension(
+chtslib = Extension(
     "pysam.libchtslib",
-    chtslib_sources +
-    ["pysam/%s" % x for x in (
-        "htslib_util.c", )] +
+    [source_pattern % "htslib",
+     "pysam/htslib_util.c"] +
     shared_htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement",
-                        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')]
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
 # samfile requires functions defined in bam_md.c
 # for __advance_samtools method.
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
-samfile = Extension(
+csamfile = Extension(
     "pysam.csamfile",
-    csamfile_sources +
-    ["pysam/%s" % x for x in (
-        "htslib_util.c", "samfile_util.c",)] +
-    ["samtools/kprobaln.c"] +
+    [source_pattern % "samfile",
+     "pysam/htslib_util.c",
+     "pysam/samfile_util.c",
+     "samtools/kprobaln.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=[
-        "-Wno-error=declaration-after-statement",
-        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')]
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
 # alignmentfile requires functions defined in bam_md.c
 # for __advance_samtools method.
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
-alignmentfile = Extension(
+calignmentfile = Extension(
     "pysam.calignmentfile",
-    calignmentfile_sources +
-    ["pysam/%s" % x for x in (
-        "htslib_util.c", "samfile_util.c",)] +
-    ["samtools/kprobaln.c"] +
+    [source_pattern % "alignmentfile",
+     "pysam/htslib_util.c",
+     "pysam/samfile_util.c",
+     "samtools/kprobaln.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=[
-        "-Wno-error=declaration-after-statement",
-        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')]
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
-tabix = Extension(
+# alignmentfile requires functions defined in bam_md.c
+# for __advance_samtools method.
+# Selected ones have been copied into samfile_utils.c
+# Needs to be devolved somehow.
+calignedsegment = Extension(
+    "pysam.calignedsegment",
+    [source_pattern % "alignedsegment",
+     "pysam/htslib_util.c",
+     "pysam/samfile_util.c",
+     "samtools/kprobaln.c"] +
+    htslib_sources +
+    os_c_files,
+    library_dirs=htslib_library_dirs,
+    include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
+    libraries=["z"] + htslib_libraries,
+    language="c",
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
+)
+
+ctabix = Extension(
     "pysam.ctabix",
-    tabix_sources +
-    ["pysam/%s" % x for x in ("tabix_util.c", )] +
+    [source_pattern % "tabix",
+     "pysam/tabix_util.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement",
-                        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')],
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
 cutils = Extension(
     "pysam.cutils",
-    cutils_sources +
+    [source_pattern % "utils"] + 
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"],
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement",
-                        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')],
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
-faidx = Extension(
+cfaidx = Extension(
     "pysam.cfaidx",
-    faidx_sources +
+    [source_pattern % "faidx"] + 
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"],
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement",
-                        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')],
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
-tabproxies = Extension(
+ctabixproxies = Extension(
     "pysam.ctabixproxies",
-    tabproxies_sources + os_c_files,
+    [source_pattern % "tabixproxies"] + 
+    os_c_files,
     library_dirs=[],
     include_dirs=include_os,
     libraries=["z"],
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement"],
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
 cvcf = Extension(
     "pysam.cvcf",
-    cvcf_sources + os_c_files,
+    [source_pattern % "vcf"] + 
+    os_c_files,
     library_dirs=[],
     include_dirs=["htslib"] + include_os + htslib_include_dirs,
     libraries=["z"],
     language="c",
-    extra_compile_args=["-Wno-error=declaration-after-statement"],
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
 cbcf = Extension(
     "pysam.cbcf",
-    cbcf_sources +
+    [source_pattern % "bcf"] + 
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["htslib"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
-    extra_compile_args=[
-        "-Wno-error=declaration-after-statement",
-        "-DSAMTOOLS=1"],
-    define_macros=[('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')]
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
 )
 
 metadata = {
@@ -493,15 +476,16 @@ metadata = {
                  # 'pysam.include.samtools.bcftools',
                  'pysam.include.samtools.win32'],
     'requires': ['cython (>=0.21)'],
-    'ext_modules': [samtools,
-                    htslib,
-                    samfile,
-                    alignmentfile,
-                    tabix,
-                    tabproxies,
+    'ext_modules': [csamtools,
+                    chtslib,
+                    csamfile,
+                    calignmentfile,
+                    calignedsegment,
+                    ctabix,
+                    ctabixproxies,
                     cvcf,
                     cbcf,
-                    faidx,
+                    cfaidx,
                     cutils],
     'cmdclass': cmdclass,
     'package_dir': {'pysam': 'pysam',

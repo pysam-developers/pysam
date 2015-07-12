@@ -5,12 +5,11 @@ from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 from libc.stdio cimport FILE, printf
 
 from cfaidx cimport faidx_t, Fastafile
+from calignedsegment cimport AlignedSegment
 from chtslib cimport *
 
 from cpython cimport array
 cimport cython
-
-ctypedef AlignmentFile AlignmentFile_t
 
 cdef extern from *:
     ctypedef char* const_char_ptr "const char*"
@@ -20,35 +19,7 @@ cdef extern from "htslib_util.h":
     int hts_set_verbosity(int verbosity)
     int hts_get_verbosity()
 
-    # add *nbytes* into the variable length data of *src* at *pos*
-    bam1_t * pysam_bam_update(bam1_t * b,
-                              size_t nbytes_old,
-                              size_t nbytes_new,
-                              uint8_t * pos)
-
-    # now: static
-    int aux_type2size(int)
-
     char * pysam_bam_get_qname(bam1_t * b)
-    uint32_t * pysam_bam_get_cigar(bam1_t * b)
-    uint8_t * pysam_bam_get_seq(bam1_t * b)
-    uint8_t * pysam_bam_get_qual(bam1_t * b)
-    uint8_t * pysam_bam_get_aux(bam1_t * b)
-    int pysam_bam_get_l_aux(bam1_t * b)
-    char pysam_bam_seqi(uint8_t * s, int i)
-
-    uint16_t pysam_get_bin(bam1_t * b)
-    uint8_t pysam_get_qual(bam1_t * b)
-    uint8_t pysam_get_l_qname(bam1_t * b)
-    uint16_t pysam_get_flag(bam1_t * b)
-    uint16_t pysam_get_n_cigar(bam1_t * b)
-    void pysam_set_bin(bam1_t * b, uint16_t v)
-    void pysam_set_qual(bam1_t * b, uint8_t v)
-    void pysam_set_l_qname(bam1_t * b, uint8_t v)
-    void pysam_set_flag(bam1_t * b, uint16_t v)
-    void pysam_set_n_cigar(bam1_t * b, uint16_t v)
-    void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
-
 
 cdef extern from "samfile_util.h":
 
@@ -66,37 +37,6 @@ ctypedef struct __iterdata:
     int tid
     char * seq
     int seq_len
-
-# Exposing pysam extension classes
-#
-# Note: need to declare all C fields and methods here
-cdef class AlignedSegment:
-
-    # object that this AlignedSegment represents
-    cdef bam1_t * _delegate
-
-    # caching of array properties for quick access
-    cdef object cache_query_qualities
-    cdef object cache_query_alignment_qualities
-    cdef object cache_query_sequence
-    cdef object cache_query_alignment_sequence
-
-    # add an alignment tag with value to the AlignedSegment
-    # an existing tag of the same name will be replaced.
-    cpdef set_tag(self, tag, value, value_type=?, replace=?)
-
-    # add an alignment tag with value to the AlignedSegment
-    # an existing tag of the same name will be replaced.
-    cpdef get_tag(self, tag, with_value_type=?)
-
-    # return true if tag exists
-    cpdef has_tag(self, tag)
-
-    # returns a valid sam alignment string
-    cpdef bytes tostring(self, AlignmentFile_t handle)
-
-    # returns the aux tag fields as a string.
-    cdef bytes get_tag_string(self)
 
 
 cdef class AlignmentFile:
@@ -227,6 +167,3 @@ cdef class IndexedReads:
     cdef int owns_samfile
     cdef bam_hdr_t * header
 
-cdef bytes PHRED_OFFSET_STRING64, PHRED_OFFSET_STRING33
-
-cdef bytes TagToString(tuple tagtup)

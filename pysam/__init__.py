@@ -11,6 +11,8 @@ import pysam.csamfile as csamfile
 from pysam.csamfile import *
 import pysam.calignmentfile as calignmentfile
 from pysam.calignmentfile import *
+import pysam.calignedsegment as calignedsegment
+from pysam.calignedsegment import *
 import pysam.cvcf as cvcf
 from pysam.cvcf import *
 import pysam.cbcf as cbcf
@@ -154,6 +156,7 @@ __all__ = \
     cbcf.__all__ +\
     cfaidx.__all__ +\
     calignmentfile.__all__ +\
+    calignedsegment.__all__ +\
     csamfile.__all__ +\
     ["SamtoolsError", "SamtoolsDispatcher"] +\
     list(SAMTOOLS_DISPATCH) +\
