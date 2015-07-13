@@ -6,7 +6,12 @@ Release 0.8.4
 =============
 
 * binary tags are now returned as python arrays
-
+* renamed functions for pep8, old names still retained for	
+  backwards compatibility, but deprecated.
+  gettid -> get_tid
+  getrname -> get_reference_name
+  parseRegion -> parse_region
+  
 Release 0.8.3
 =============
 

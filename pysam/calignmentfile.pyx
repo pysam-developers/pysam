@@ -321,12 +321,23 @@ cdef class AlignmentFile:
         return self.htsfile != NULL
 
     def has_index(self):
-        '''return true if htsfile has an existing (and opened) index.'''
+        """return true if htsfile has an existing (and opened) index.
+        """
         return self.index != NULL
 
     def check_index(self):
-        '''check if index is present. Otherwise raise
-        an error.'''
+        """return True if index is present. 
+
+        Raises
+        ------
+
+        AttributeError
+            if htsfile is :term:`SAM` formatted and thus has no index.
+
+        ValueError
+            if htsfile is closed or index could not be opened.
+        """
+
         if not self.is_open():
             raise ValueError("I/O operation on closed file")
         if not self.is_bam and not self.is_cram:
@@ -604,20 +615,22 @@ cdef class AlignmentFile:
             if not self.is_stream:
                 self.start_offset = self.tell()
 
-    def gettid(self, reference):
-        '''
-        convert :term:`reference` name into numerical :term:`tid`
+    def get_tid(self, reference):
+        """
+        return the numerical :term:`tid` corresponding to
+        :term:`reference`
 
         returns -1 if reference is not known.
-        '''
+        """
         if not self.is_open():
             raise ValueError("I/O operation on closed file")
         reference = force_bytes(reference)
         return bam_name2id(self.header, reference)
 
-    def getrname(self, tid):
-        '''
-        convert numerical :term:`tid` into :term:`reference` name.'''
+    def get_reference_name(self, tid):
+        """
+        return :term:`reference` name corresponding to numerical :term:`tid`
+        """
         if not self.is_open():
             raise ValueError("I/O operation on closed file")
         if not 0 <= tid < self.header.n_targets:
@@ -625,34 +638,40 @@ cdef class AlignmentFile:
                              (tid, self.header.n_targets))
         return charptr_to_str(self.header.target_name[tid])
 
-    cdef char * _getrname(self, int tid):   # TODO unused
-        '''
-        convert numerical :term:`tid` into :term:`reference` name.'''
-        if not self.is_open():
-            raise ValueError("I/O operation on closed file")
-
-        if not 0 <= tid < self.header.n_targets:
-            raise ValueError("tid %i out of range 0<=tid<%i" %
-                             (tid, self.header.n_targets ))
-        return self.header.target_name[tid]
-
-    def _parseRegion(self,
+    def parse_region(self,
                      reference=None,
                      start=None,
                      end=None,
                      region=None,
                      tid=None):
-        '''parse region information.
+        """parse alternative ways to specify a genomic region.  A region can
+        either be specified by :term:`reference`, `start` and
+        `end`. `start` and `end` denote 0-based, half-open
+        intervals.
 
-        Raises ValueError for invalid regions.
+        Alternatively, a samtools :term:`region` string can be
+        supplied.
+        
+        If any of the coordinates are missing they will be replaced by the
+        minimum (`start`) or maximum (`end`) coordinate.
 
-        Returns a tuple of a flag, :term:`tid`, start and end. The
-        flag indicates whether some coordinates were supplied.
+        Returns
+        -------
+        
+        a tuple of `flag`, :term:`tid`, `start` and `end`. The
+        flag indicates whether no coordinates were supplied and the
+        genomic region is the complete genomic space.
+
+        Raises
+        ------
+        
+        ValueError
+           for invalid or out of bounds regions.
 
         Note that region strings are 1-based, while *start* and *end* denote
         an interval in python coordinates.
 
-        '''
+        """
         cdef int rtid
         cdef long long rstart
         cdef long long rend
@@ -703,14 +722,41 @@ cdef class AlignmentFile:
         return 1, rtid, rstart, rend
 
     def reset(self):
-        '''reset file position to beginning of file just after
-        the header.'''
+        """reset file position to beginning of file just after
+        the header.
+
+        Returns
+        -------
+
+        The file position after moving the file pointer.
+
+        """
         return self.seek(self.start_offset, 0)
 
     def seek(self, uint64_t offset, int where=0):
-        '''move file pointer to position *offset*, see
+        """move file pointer to position 'offset', see
         :meth:`pysam.AlignmentFile.tell`.
-        '''
+
+        Parameters
+        ----------
+        
+        offset : int
+
+        position of the read/write pointer within the file.
+
+        where :
+    
+        optional and defaults to 0 which means absolute file
+        positioning, other values are 1 which means seek relative to
+        the current position and 2 means seek relative to the file's
+        end.
+        
+        Returns
+        -------
+        
+        the file position after moving the file pointer
+
+        """
 
         if not self.is_open():
             raise ValueError("I/O operation on closed file")
@@ -726,9 +772,9 @@ cdef class AlignmentFile:
         return pos
 
     def tell(self):
-        '''
+        """
         return current file position.
-        '''
+        """
         if not self.is_open():
             raise ValueError("I/O operation on closed file")
         if not (self.is_bam or self.is_cram):
@@ -748,44 +794,62 @@ cdef class AlignmentFile:
               tid=None,
               until_eof=False,
               multiple_iterators=False):
-        '''fetch aligned, i.e. mapped, reads in a :term:`region`
-        using 0-based
-        indexing. The region is specified by :term:`reference`,
-        *start* and *end*. Alternatively, a samtools :term:`region`
-        string can be supplied.
+        """fetch aligned, i.e. mapped, reads in a :term:`region`. 
+        See :meth:`AlignmentFile.parse_region` for more information
+        or genomic regions.
 
-        Without *reference* or *region* all mapped reads will be
+        Without `reference` or `region` all mapped reads will be
         fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
         file. 
 
-        If *until_eof* is given, all reads from the current file
-        position will be returned in order as they are within the
-        file. Using this option will also fetch unmapped reads.
-
-        Set *multiple_iterators* to true if you will be using multiple
-        iterators on the same file at the same time. The iterator
-        returned will receive its own copy of a filehandle to the file
-        effectively re-opening the file. Re-opening a file creates
-        some overhead, so beware.
-
-        If only *reference* is set, all reads aligned to *reference*
+        If only `reference` is set, all reads aligned to `reference`
         will be fetched.
 
         Note that a :term:`SAM` file does not allow random access. If
-        *region* or *reference* are given, an exception is raised.
+        `region` or `reference` are given, an exception is raised.
 
-        '''
+        Parameters
+        ----------
+        
+        until_eof : bool
+
+           If `until_eof` is True, all reads from the current file
+           position will be returned in order as they are within the
+           file. Using this option will also fetch unmapped reads.
+
+        multiple_iterators : bool
+           
+           If `multiple_iterators` is True (default) multiple
+           iterators on the same file can be used at the same time. The
+           iterator returned will receive its own copy of a filehandle to
+           the file effectively re-opening the file. Re-opening a file
+           creates some overhead, so beware.
+
+        Returns
+        -------
+
+        An iterator of class :class:`IteratorRow` or one of its derived classes.
+
+        Raises
+        ------
+
+        ValueError
+            if the genomic coordinates are out of range or invalid or the
+            file does not permit random access to genomic coordinates.
+
+        """
         cdef int rtid, rstart, rend, has_coord
 
         if not self.is_open():
             raise ValueError( "I/O operation on closed file" )
 
-        has_coord, rtid, rstart, rend = self._parseRegion(reference,
-                                                          start,
-                                                          end,
-                                                          region,
-                                                          tid)
+        has_coord, rtid, rstart, rend = self.parse_region(
+            reference,
+            start,
+            end,
+            region,
+            tid)
 
         # Turn of re-opening if htsfile is a stream
         if self.is_stream:
@@ -830,22 +894,29 @@ cdef class AlignmentFile:
                                   multiple_iterators=multiple_iterators)
 
     def head(self, n, multiple_iterators=True):
-        '''return iterator over the first n alignments. 
+        '''return an iterator over the first n alignments. 
 
-        This is useful for inspecting the bam-file.
+        This iterator is is useful for inspecting the bam-file.
 
-        *multiple_iterators* is set to True by default in order to
-        avoid changing the current file position.
+        Parameters
+        ----------
+
+        multiple_iterators : bool
+        
+            is set to True by default in order to
+            avoid changing the current file position.
+        
+        Returns
+        -------
+        
+        An object of type :class:`IteratorRowHead`
+        
         '''
         return IteratorRowHead(self, n,
                                multiple_iterators=multiple_iterators)
 
-    def mate(self,
-             AlignedSegment read):
-        '''return the mate of :class:`AlignedSegment` *read*.
-
-        Throws a ValueError if read is unpaired or the mate
-        is unmapped.
+    def mate(self, AlignedSegment read):
+        '''return the mate of :class:`AlignedSegment` `read`.
 
         .. note::
 
@@ -858,6 +929,17 @@ cdef class AlignmentFile:
            This method is too slow for high-throughput processing.
            If a read needs to be processed with its mate, work
            from a read name sorted file or, better, cache reads.
+
+        Returns
+        -------
+        
+        an :class:`AlignedSegment`
+
+        Raises
+        ------
+
+        ValueError
+            if the read is unpaired or the mate is unmapped
 
         '''
         cdef uint32_t flag = read._delegate.core.flag
@@ -892,45 +974,13 @@ cdef class AlignmentFile:
 
         return mate
 
-    def count(self,
-              reference=None,
-              start=None,
-              end=None,
-              region=None,
-              until_eof=False):
-        '''*(reference = None, start = None, end = None,
-        region = None, callback = None, until_eof = False)*
-
-        count reads :term:`region` using 0-based indexing. The region
-        is specified by :term:`reference`, *start* and
-        *end*. Alternatively, a samtools :term:`region` string can be
-        supplied.
-
-        Note that a :term:`SAM` file does not allow random access. If
-        *region* or *reference* are given, an exception is raised.
-        '''
-        cdef AlignedSegment read
-        cdef long counter = 0
-
-        if not self.is_open():
-            raise ValueError( "I/O operation on closed file" )
-
-        for read in self.fetch(reference=reference,
-                               start=start,
-                               end=end,
-                               region=region,
-                               until_eof=until_eof):
-            counter += 1
-
-        return counter
-
     def pileup(self,
                reference=None,
                start=None,
                end=None,
                region=None,
                **kwargs):
-        '''perform a :term:`pileup` within a :term:`region`. The region is
+        """perform a :term:`pileup` within a :term:`region`. The region is
         specified by :term:`reference`, 'start' and 'end' (using
         0-based indexing).  Alternatively, a samtools 'region' string
         can be supplied.
@@ -950,7 +1000,6 @@ cdef class AlignmentFile:
             first base returned will be the first base of the first
             read 'not' necessarily the first base of the region used
             in the query.
-
 
         Parameters
         ----------
@@ -981,9 +1030,9 @@ cdef class AlignmentFile:
         truncate : bool
 
            By default, the samtools pileup engine outputs all reads
-           overlapping a region (see note below).  If truncate is True
-           and a region is given, only output columns in the exact
-           region specificied.
+           overlapping a region. If truncate is True and a region is
+           given, only columns in the exact region specificied are
+           returned.
 
         Returns
         -------
@@ -993,14 +1042,14 @@ cdef class AlignmentFile:
         provided. If a 'callback' is given, the callback will be
         executed for each column within the :term:`region`.
 
-        '''
+        """
         cdef int rtid, rstart, rend, has_coord
 
         if not self.is_open():
-            raise ValueError( "I/O operation on closed file" )
+            raise ValueError("I/O operation on closed file")
 
-        has_coord, rtid, rstart, rend = self._parseRegion(
-            reference, start, end, region )
+        has_coord, rtid, rstart, rend = self.parse_region(
+            reference, start, end, region)
 
         if self.is_bam or self.is_cram:
             if not self.has_index():
@@ -1016,14 +1065,23 @@ cdef class AlignmentFile:
                 return IteratorColumnAllRefs(self, **kwargs )
 
         else:
-            raise NotImplementedError( "pileup of samfiles not implemented yet" )
+            raise NotImplementedError(
+                "pileup of samfiles not implemented yet")
 
-    @cython.boundscheck(False)  # we do manual bounds checking
-    def count_coverage(self, reference, start, stop,
-                       quality_threshold=15,
-                       read_callback='all'):
-        """Count coverage by aligned segments in a genomic region.
-        Counting is performed per base (ACGT).
+    def count(self,
+              reference=None,
+              start=None,
+              end=None,
+              region=None,
+              until_eof=False):
+        '''
+        count the number of reads in :term:`region` using 0-based
+        indexing. The region is specified by :term:`reference`,
+        *start* and *end*. Alternatively, a samtools :term:`region`
+        string can be supplied.
+
+        Note that a :term:`SAM` file does not allow random access. If
+        *region* or *reference* are given, an exception is raised.
 
         Parameters
         ----------
@@ -1036,6 +1094,60 @@ cdef class AlignmentFile:
 
         end : int
             end of the genomic region
+
+        until_eof : bool
+            count until the end of the file, possibly including 
+            unmapped reads as well.
+
+        Raises
+        ------
+
+        ValueError
+            if the genomic coordinates are out of range or invalid.
+
+        '''
+        cdef AlignedSegment read
+        cdef long counter = 0
+
+        if not self.is_open():
+            raise ValueError( "I/O operation on closed file" )
+
+        for read in self.fetch(reference=reference,
+                               start=start,
+                               end=end,
+                               region=region,
+                               until_eof=until_eof):
+            counter += 1
+
+        return counter
+
+    @cython.boundscheck(False)  # we do manual bounds checking
+    def count_coverage(self, 
+                       reference=None,
+                       start=None,
+                       end=None,
+                       region=None,
+                       quality_threshold=15,
+                       read_callback='all'):
+        """count the coverage of reads in :term:`region` using 0-based
+        indexing. The region is specified by :term:`reference`,
+        *start* and *end*. Alternatively, a samtools :term:`region`
+        string can be supplied. The coverage is computed per-base [ACGT].
+
+        Parameters
+        ----------
+        
+        reference : string
+            reference_name of the genomic region (chromosome)
+
+        start : int
+            start of the genomic region
+
+        end : int
+            end of the genomic region
+
+        region : int
+            a region string.
 
         quality_threshold : int
 
@@ -1059,6 +1171,13 @@ cdef class AlignmentFile:
              ``check_read(read)`` that should return True only for
              those reads that shall be included in the counting.
 
+        Raises
+        ------
+
+        ValueError
+            if the genomic coordinates are out of range or invalid.
+
+
         Returns
         -------
         
@@ -1068,7 +1187,7 @@ cdef class AlignmentFile:
         """
         
         cdef int _start = start
-        cdef int _stop = stop
+        cdef int _stop = end
         cdef int length = _stop - _start
         cdef c_array.array int_array_template = array.array('L', [])
         cdef c_array.array count_a
@@ -1086,7 +1205,8 @@ cdef class AlignmentFile:
         cdef int refpos
         cdef int c = 0
         cdef int _threshold = quality_threshold
-        for read in self.fetch(reference, start, stop):
+        for read in self.fetch(reference=reference, start=start,
+                               end=end, region=region):
             if read_callback == 'all':
                 if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
                     continue
@@ -1385,16 +1505,13 @@ cdef class AlignmentFile:
             return result
 
     ###############################################################
-    ###############################################################
-    ###############################################################
     ## file-object like iterator access
     ## note: concurrent access will cause errors (see IteratorRow
     ## and multiple_iterators)
     ## Possible solutions: deprecate or open new file handle
-    ###############################################################
     def __iter__(self):
         if not self.is_open():
-            raise ValueError( "I/O operation on closed file" )
+            raise ValueError("I/O operation on closed file")
 
         if not self.is_bam and self.header.n_targets == 0:
             raise NotImplementedError(
@@ -1426,7 +1543,13 @@ cdef class AlignmentFile:
             raise IOError('truncated file')
         else:
             raise StopIteration
-
+            
+    # Compatibility functions for pysam < 0.8.3
+    def gettid(self, reference):
+        return self.get_tid(reference)
+        
+    def getrname(self, tid):
+        return self.get_reference_name(tid)
 
 cdef class IteratorRow:
     '''abstract base class for iterators over mapped reads.

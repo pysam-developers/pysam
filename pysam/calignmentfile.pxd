@@ -69,8 +69,6 @@ cdef class AlignmentFile:
     # write an aligned read
     cpdef int write(self, AlignedSegment read) except -1
 
-    cdef char * _getrname(self, int tid)
-
 cdef class PileupColumn:
     cdef bam_pileup1_t ** plp
     cdef int tid

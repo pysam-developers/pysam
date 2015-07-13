@@ -4,35 +4,8 @@
 import tempfile
 import os
 import sys
-import platform
-from cpython cimport PyBytes_Check, PyUnicode_Check
-from cpython.version cimport PY_MAJOR_VERSION
 
-########################################################################
-########################################################################
-########################################################################
-## Python 3 compatibility functions
-########################################################################
-IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-
-cdef bytes force_bytes(object s):
-    u"""convert string or unicode object to bytes, assuming ascii encoding.
-    """
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif s is None:
-        return None
-    elif PyBytes_Check(s):
-        return s
-    elif PyUnicode_Check(s):
-        return s.encode('ascii')
-    else:
-        raise TypeError, u"Argument must be string, bytes or unicode."
-
-
-cdef inline bytes forceCmdlineBytes(object s):
-    return force_bytes(s)
-
+from cutils cimport force_bytes, force_cmdline_bytes
 
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''
@@ -128,14 +101,15 @@ def _samtools_dispatch(method,
     cdef int i, n, retval
 
     n = len(args)
-    method = forceCmdlineBytes(method)
-    args = [ forceCmdlineBytes(a) for a in args ]
+    method = force_cmdline_bytes(method)
+    args = [force_cmdline_bytes(a) for a in args ]
 
     # allocate two more for first (dummy) argument (contains command)
-    cargs = <char**>calloc( n+2, sizeof( char *) )
+    cargs = <char**>calloc(n + 2, sizeof(char *))
     cargs[0] = "samtools"
     cargs[1] = method
-    for i from 0 <= i < n: cargs[i+2] = args[i]
+    for i from 0 <= i < n:
+        cargs[i + 2] = args[i]
     
     retval = pysam_dispatch(n+2, cargs)
     free( cargs )

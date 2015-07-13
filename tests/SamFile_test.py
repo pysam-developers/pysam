@@ -1081,7 +1081,7 @@ class TestContextManager(unittest.TestCase):
         with pysam.Samfile(os.path.join(DATADIR, 'ex1.bam'),
                            'rb') as samfile:
             samfile.fetch()
-        self.assertEqual(samfile._isOpen(), False)
+        self.assertEqual(samfile.closed, True)
 
 
 class TestExceptions(unittest.TestCase):

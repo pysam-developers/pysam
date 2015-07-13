@@ -11,7 +11,8 @@ Glossary
       ``[ (0,3), (1,5), (0,2) ]`` refers to an alignment with 3 matches, 5 insertions
       and another 2 matches.
 
-   region A genomic region, stated relative to a reference sequence. A
+   region 
+      A genomic region, stated relative to a reference sequence. A
       region consists of reference name ('chr1'), start (10000), and
       end (20000). Start and end can be omitted for regions spanning
       a whole chromosome. If end is missing, the region will span from
@@ -22,7 +23,7 @@ Glossary
       'chr1:10000:20000', which are closed, i.e., both positions 10,000
       and 20,000 are part of the interval.
  
-  column
+   column
       Reads that are aligned to a base in the :term:`reference` sequence.
      
    tid
