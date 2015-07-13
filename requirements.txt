@@ -1,0 +1,2 @@
+cython>=0.22
+numpydoc>=0.5
