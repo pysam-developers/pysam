@@ -475,7 +475,7 @@ metadata = {
                  'pysam.include.samtools',
                  # 'pysam.include.samtools.bcftools',
                  'pysam.include.samtools.win32'],
-    'requires': ['cython (>=0.21)'],
+    'requires': ['cython (>=0.21)', 'numpydoc (>=0.5)'],
     'ext_modules': [csamtools,
                     chtslib,
                     csamfile,
