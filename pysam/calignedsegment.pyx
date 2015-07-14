@@ -158,28 +158,47 @@ cdef bytes TagToString(tuple tagtup):
             b_aux_arr = tagtup[1]
         else:
             if(isinstance(tagtup[1][0], float)):
-                return <bytes> (tag + ":B:f" +
+                if(len(tagtup[1]) == 1):
+                    return <bytes> (tag + ":B:f%s," % tagtup[1][0])
+                else:
+                    return <bytes> (tag + ":B:f" +
                                 ",".join([str(f) for f in tagtup[1]]))
             else:
                 b_aux_arr = array('l', tagtup[1])
                 # Choose long to accommodate any size integers.
-        size = sizeof(tagtup[1])
+        size = sizeof(b_aux_arr)
         min_value = min(b_aux_arr)
+        length = len(b_aux_arr)
         if(size == 1):
-            if(min_value < 0):
-                ret = tag + ":B:c" + ",".join([str(i) for i in b_aux_arr])
+            if(length != 1):
+                if(min_value < 0):
+                    ret = tag + ":B:c" + ",".join([str(i) for i in b_aux_arr])
+                else:
+                    ret = tag + ":B:C" + ",".join([str(i) for i in b_aux_arr])
+            elif(min_value < 0):
+                ret = tag + ":B:c%s," % b_aux_arr[0]
             else:
-                ret = tag + ":B:C" + ",".join([str(i) for i in b_aux_arr])
+                ret = tag + ":B:C%s," % b_aux_arr[0]
         elif(size == 2):
-            if(min_value < 0):
-                ret = tag + ":B:i" + ",".join([str(i) for i in b_aux_arr])
+            if(length != 1):
+                if(min_value < 0):
+                    ret = tag + ":B:i" + ",".join([str(i) for i in b_aux_arr])
+                else:
+                    ret = tag + ":B:I" + ",".join([str(i) for i in b_aux_arr])
+            elif(min_value < 0):
+                ret = tag + ":B:i%s," % b_aux_arr[0]
             else:
-                ret = tag + ":B:I" + ",".join([str(i) for i in b_aux_arr])
+                ret = tag + ":B:I%s," % b_aux_arr[0]
         else:  # size == 4. Removed check to compile to switch statement.
-            if(min_value < 0):
-                ret = tag + ":B:s" + ",".join([str(i) for i in b_aux_arr])
+            if(length != 1):
+                if(min_value < 0):
+                    ret = tag + ":B:s" + ",".join([str(i) for i in b_aux_arr])
+                else:
+                    ret = tag + ":B:S" + ",".join([str(i) for i in b_aux_arr])
+            elif(min_value < 0):
+                ret = tag + ":B:s%s," % b_aux_arr[0]
             else:
-                ret = tag + ":B:S" + ",".join([str(i) for i in b_aux_arr])
+                ret = tag + ":B:S%s," % b_aux_arr[0]
     elif(value_type == "H"):
         ret = tag + ":H:" + "".join([hex(i)[2:] for i in tagtup[1]])
     elif(value_type == "A"):
