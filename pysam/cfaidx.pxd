@@ -6,12 +6,36 @@ from libc.stdio cimport FILE, printf
 cimport cython
 
 from cpython cimport array
-from chtslib cimport faidx_t, kseq_t, gzFile
+from chtslib cimport faidx_t, gzFile, kstring_t
 
-cdef extern from "htslib/kstring.h" nogil:
-    ctypedef struct kstring_t:
-        size_t l, m
-        char *s
+# These functions are put here and not in chtslib.pxd in order
+# to avoid warnings for unused functions.
+cdef extern from "pysam_stream.h" nogil:
+
+    ctypedef struct kstream_t:
+        pass
+
+    ctypedef struct kseq_t:
+        kstring_t name
+        kstring_t comment
+        kstring_t seq
+        kstring_t qual
+
+    gzFile gzopen(char *, char *)
+    kseq_t *kseq_init(gzFile)
+    int kseq_read(kseq_t *)
+    void kseq_destroy(kseq_t *)
+    int gzclose(gzFile)
+
+    kstream_t *ks_init(gzFile)
+    void ks_destroy(kstream_t *)
+
+    # Retrieve characters from stream until delimiter
+    # is reached placing results in str.
+    int ks_getuntil(kstream_t *,
+                    int delimiter,
+                    kstring_t * str,
+                    int * dret)
 
 cdef class FastaFile:
     cdef object _filename, _references, _lengths, reference2length

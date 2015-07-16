@@ -1,5 +1,57 @@
 # cython: embedsignature=True
-# adds doc-strings for sphinx
+# cython: profile=True
+###############################################################################
+###############################################################################
+# Cython wrapper for access to tabix indexed files in bgzf format
+###############################################################################
+# The principal classes and functions defined in this module are:
+#
+# class TabixFile  class wrapping tabix indexed files in bgzf format
+#
+# class asTuple  Parser class for tuples
+# class asGT     Parser class for GTF formatted rows
+# class asBed    Parser class for Bed formatted rows
+# class asVCF    Parser class for VCF formatted rows
+#
+# class tabix_generic_iterator  Streamed iterator of bgzf formatted files
+#
+# Additionally this module defines several additional classes that are part
+# of the internal API. These are:
+#
+# class Parser                base class for parsers of tab-separated rows
+# class tabix_file_iterator
+# class TabixIterator         iterator class over rows in bgzf file
+# class EmptyIterator
+#
+# For backwards compatibility, the following classes are also defined:
+#
+# class Tabixfile   equivalent to TabixFile
+#
+###############################################################################
+#
+# The MIT License
+#
+# Copyright (c) 2015 Andreas Heger
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
+###############################################################################
 import os
 import sys
 
@@ -17,8 +69,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 cimport ctabixproxies
 
 from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
-    BGZF, bgzf_open, bgzf_close, bgzf_write, \
-    ks_init, ks_destroy, gzFile, ks_getuntil, kstring_t, \
+    BGZF, bgzf_open, bgzf_close, bgzf_write, gzFile, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, gzopen, gzclose, gzerror, gzdopen
@@ -196,19 +247,47 @@ cdef class asVCF(Parser):
 
 
 cdef class TabixFile:
-    '''*(filename, mode='r', parser = None)*
+    """Random access to bgzf formatted files that
+    have been indexed by :term:`tabix`.
 
-    opens a :term:`tabix file` for reading. A missing
-    index (*filename* + ".tbi") will raise an exception. *index*
-    specifies an alternative name of the index.
+    The file is automatically opened. The index file of file
+    ``<filename>`` is expected to be called ``<filename>.tbi``
+    by default (see parameter `index`).
+    
+    Parameters
+    ----------
+    
+    filename : string
+        Filename of bgzf file to be opened.
 
-    *parser* sets the default parser for this tabix file. If *parser*
-    is None, the results are returned as an unparsed string.
-    Otherwise, *parser* is assumed to be a functor that will return
-    parsed data (see for example :class:`~pysam.asTuple` and
-    :class:`~pysam.asGTF`).
+    index : string
+        The filename of the index. If not set, the default is to
+        assume that the index is called ``filename.tbi`
 
-    '''
+    mode : char
+        The file opening mode. Currently, only ``r`` is permitted.
+        
+    parser : :class:`pysam.Parser`
+    
+        sets the default parser for this tabix file. If `parser`
+        is None, the results are returned as an unparsed string.
+        Otherwise, `parser` is assumed to be a functor that will return
+        parsed data (see for example :class:`~pysam.asTuple` and
+        :class:`~pysam.asGTF`).
+
+    encoding : string
+
+        The encoding passed to the parser
+
+    Raises
+    ------
+    
+    ValueError
+        if index file is missing.
+
+    IOError
+        if file could not be opened
+    """
     def __cinit__(self,
                   filename,
                   mode = 'r',
@@ -280,7 +359,7 @@ cdef class TabixFile:
                          index=self._filename_index,
                          encoding=self.encoding)
 
-    def _isOpen(self):
+    def is_open(self):
         '''return true if samfile has been opened.'''
         return self.tabixfile != NULL
 
@@ -312,7 +391,7 @@ cdef class TabixFile:
         some overhead, so beware.
 
         '''
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError("I/O operation on closed file")
 
         # convert coordinates to region string
@@ -384,10 +463,17 @@ cdef class TabixFile:
     ###############################################################
     ## properties
     ###############################################################
+    property closed:
+        """"bool indicating the current state of the file object. 
+        This is a read-only attribute; the close() method changes the value. 
+        """
+        def __get__(self):
+            return not self.is_open()
+
     property filename:
         '''filename associated with this object.'''
         def __get__(self):
-            if not self._isOpen():
+            if not self.is_open():
                 raise ValueError("I/O operation on closed file")
             return self._filename
 

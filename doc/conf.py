@@ -30,7 +30,8 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.todo', 
               'sphinx.ext.ifconfig',
               'sphinx.ext.intersphinx',
-              'numpydoc']
+#	      'numpydoc']
+	      'sphinx.ext.napoleon']
 
 intersphinx_mapping = {'python': ('http://docs.python.org/3.2', None)}
 
@@ -63,6 +64,8 @@ rst_epilog = '''
 .. _pyximport: http://www.prescod.net/pyximport/
 
 '''
+
+autosummary_generate = True
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
