@@ -1993,7 +1993,8 @@ class TestCountCoverage(unittest.TestCase):
                 if not read.is_del and not read.is_refskip and \
                    read_callback(read.alignment):
                     try:
-                        if read.alignment.query_qualities[read.query_position] > quality_threshold:
+                        if read.alignment.query_qualities[read.query_position] \
+                           >= quality_threshold:
                             letter = read.alignment.query[read.query_position]
                             if letter == 'A':
                                 count_a[rpos] += 1
@@ -2019,10 +2020,11 @@ class TestCountCoverage(unittest.TestCase):
             chrom, start, stop,
             read_callback=lambda read: True,
             quality_threshold=0)
-        self.assertEqual(fast_counts[0], manual_counts[0])
-        self.assertEqual(fast_counts[1], manual_counts[1])
-        self.assertEqual(fast_counts[2], manual_counts[2])
-        self.assertEqual(fast_counts[3], manual_counts[3])
+
+        self.assertEqual(list(fast_counts[0]), list(manual_counts[0]))
+        self.assertEqual(list(fast_counts[1]), list(manual_counts[1]))
+        self.assertEqual(list(fast_counts[2]), list(manual_counts[2]))
+        self.assertEqual(list(fast_counts[3]), list(manual_counts[3]))
 
     def test_count_coverage_quality_filter(self):
         chrom = 'chr1'

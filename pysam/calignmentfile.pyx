@@ -1206,7 +1206,7 @@ cdef class AlignmentFile:
         count_t = c_array.clone(int_array_template, length, zero=True)
 
         cdef AlignedSegment read
-        cdef char * seq
+        cdef cython.str seq
         cdef c_array.array quality
         cdef int qpos
         cdef int refpos
@@ -1222,6 +1222,7 @@ cdef class AlignmentFile:
                                start=start,
                                end=end,
                                region=region):
+            # apply filter
             if filter_method == 1:
                 # filter = "all"
                 if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
@@ -1232,11 +1233,14 @@ cdef class AlignmentFile:
             else:
                 if not read_callback(read):
                     continue
+
+            # count
             seq = read.seq
             quality = read.query_qualities
             for qpos, refpos in read.get_aligned_pairs(True):
-                if qpos is not None and refpos is not None and _start <= refpos < _stop:
-                    if quality[qpos] > quality_threshold:
+                if qpos is not None and refpos is not None and \
+                   _start <= refpos < _stop:
+                    if quality[qpos] >= quality_threshold:
                         if seq[qpos] == 'A':
                             count_a.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'C':
@@ -1245,6 +1249,7 @@ cdef class AlignmentFile:
                             count_g.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'T':
                             count_t.data.as_ulongs[refpos - _start] += 1
+
         return count_a, count_c, count_g, count_t
 
     def close(self):

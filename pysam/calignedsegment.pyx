@@ -1869,8 +1869,10 @@ cdef class AlignedSegment:
         def __set__(self, v):
             self.template_length = v
     property seq:
-        def __get__(self): return self.query_sequence
-        def __set__(self, v): self.query_sequence = v
+        def __get__(self):
+            return self.query_sequence
+        def __set__(self, v):
+            self.query_sequence = v
     property qual:
         def __get__(self):
             return array_to_qualitystring(self.query_qualities)
