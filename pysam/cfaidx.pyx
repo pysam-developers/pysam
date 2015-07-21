@@ -1,6 +1,50 @@
-# cython: embedsignature=True
+ # cython: embedsignature=True
 # cython: profile=True
-# adds doc-strings for sphinx
+###############################################################################
+###############################################################################
+# Cython wrapper for SAM/BAM/CRAM files based on htslib
+###############################################################################
+# The principal classes defined in this module are:
+#
+# class FastaFile   random read read/write access to faidx indexd files
+# class FastxFile   streamed read/write access to fasta/fastq files
+#
+# Additionally this module defines several additional classes that are part
+# of the internal API. These are:
+#
+# class FastqProxy
+# class PersistentFastqProxy
+#
+# For backwards compatibility, the following classes are also defined:
+#
+# class Fastafile   equivalent to FastaFile
+# class FastqFile   equivalent to FastxFile
+#
+###############################################################################
+#
+# The MIT License
+#
+# Copyright (c) 2015 Andreas Heger
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
+###############################################################################
 import sys
 import os
 from cpython cimport array
@@ -14,13 +58,11 @@ from cpython.version cimport PY_MAJOR_VERSION
 
 from chtslib cimport \
     faidx_nseq, fai_load, fai_destroy, fai_fetch, \
-    faidx_fetch_seq, gzopen, gzclose, \
-    kseq_init, kseq_destroy, kseq_read
+    faidx_fetch_seq, gzopen, gzclose
 
 from cutils cimport force_bytes, force_str, charptr_to_str
 from cutils cimport encode_filename, from_string_and_size
 from cutils cimport qualitystring_to_array
-
 
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
@@ -31,29 +73,44 @@ cdef makeFastqProxy(kseq_t * src):
 
 #####################################################################
 # hard-coded constants
-cdef int max_pos = 2 << 29
+cdef int MAX_POS = 2 << 29
 
 ## TODO:
 ##        add automatic indexing.
 ##        add function to get sequence names.
 cdef class FastaFile:
-    '''*(filename)*
+    """Random access to fasta formatted files that
+    have been indexed by :term:`faidx`.
 
-    A *FASTA* file. The file is automatically opened.
+    The file is automatically opened. The index file of file
+    ``<filename>`` is expected to be called ``<filename>.fai``.
 
-    This class expects an indexed fasta file and permits
-    random access to fasta sequences.
-    '''
+    Parameters
+    ----------
 
-    def __cinit__(self, *args, **kwargs ):
+    filename : string
+        Filename of fasta file to be opened.
+
+    Raises
+    ------
+    
+    ValueError
+        if index file is missing
+
+    IOError
+        if file could not be opened
+
+    """
+
+    def __cinit__(self, *args, **kwargs):
         self.fastafile = NULL
         self._filename = None
         self._references = None
         self._lengths = None
         self.reference2length = None
-        self._open( *args, **kwargs )
+        self._open(*args, **kwargs)
 
-    def _isOpen( self ):
+    def is_open(self):
         '''return true if samfile has been opened.'''
         return self.fastafile != NULL
 
@@ -70,7 +127,8 @@ cdef class FastaFile:
         '''
 
         # close a previously opened file
-        if self.fastafile != NULL: self.close()
+        if self.fastafile != NULL:
+            self.close()
         self._filename = encode_filename(filename)
         cdef char *cfilename = self._filename
         with nogil:
@@ -80,7 +138,7 @@ cdef class FastaFile:
             raise IOError("could not open file `%s`" % filename)
 
         # read index
-        if not os.path.exists( self._filename + b".fai" ):
+        if not os.path.exists(self._filename + b".fai"):
             raise ValueError("could not locate index file")
 
         with open( self._filename + b".fai" ) as inf:
@@ -89,16 +147,24 @@ cdef class FastaFile:
             self._lengths = tuple(int(x[1]) for x in data)
             self.reference2length = dict(zip(self._references, self._lengths))
 
-    def close( self ):
+    def close(self):
+        """close the file."""
         if self.fastafile != NULL:
-            fai_destroy( self.fastafile )
+            fai_destroy(self.fastafile)
             self.fastafile = NULL
 
     def __dealloc__(self):
         self.close()
 
+    property closed:
+        """"bool indicating the current state of the file object. 
+        This is a read-only attribute; the close() method changes the value. 
+        """
+        def __get__(self):
+            return not self.is_open()
+
     property filename:
-        '''filename associated with this object.'''
+        """filename associated with this object. This is a read-only attribute."""
         def __get__(self):
             return self._filename
 
@@ -108,12 +174,13 @@ cdef class FastaFile:
             return self._references
 
     property nreferences:
-        '''number of :term:`reference` sequences in the file.'''
+        """"int with the number of :term:`reference` sequences in the file.
+        This is a read-only attribute."""
         def __get__(self):
             return len(self._references) if self.references else None
 
     property lengths:
-        '''tuple with the lengths of :term:`reference` sequences.'''
+        """tuple with the lengths of :term:`reference` sequences."""
         def __get__(self):
             return self._lengths
 
@@ -122,25 +189,41 @@ cdef class FastaFile:
               start=None,
               end=None,
               region=None):
+        """fetch sequences in a :term:`region`.
 
-        '''*(reference = None, start = None, end = None, region = None)*
+        A region can
+        either be specified by :term:`reference`, `start` and
+        `end`. `start` and `end` denote 0-based, half-open
+        intervals.
 
-        fetch sequences in a :term:`region` using 0-based indexing.
+        Alternatively, a samtools :term:`region` string can be
+        supplied.
+        
+        If any of the coordinates are missing they will be replaced by the
+        minimum (`start`) or maximum (`end`) coordinate.
 
-        The region is specified by :term:`reference`, *start* and *end*.
+        Note that region strings are 1-based, while `start` and `end` denote
+        an interval in python coordinates.
+        The region is specified by :term:`reference`, `start` and `end`.
+        
+        Returns
+        -------
 
-        fetch returns an empty string if the region is out of range or
-        addresses an unknown *reference*.
+        string : a string with the sequence specified by the region.
 
-        If *reference* is given and *start* is None, the sequence from the
-        first base is returned. Similarly, if *end* is None, the sequence
-        until the last base is returned.
+        Raises
+        ------
 
-        Alternatively, a samtools :term:`region` string can be supplied.
-        '''
+        IndexError
+            if the coordinates are out of range
+            
+        ValueErrro
+            if the region is invalid
 
-        if not self._isOpen():
-            raise ValueError( "I/O operation on closed file" )
+        """
+
+        if not self.is_open():
+            raise ValueError("I/O operation on closed file" )
 
         cdef int length
         cdef char *seq
@@ -152,7 +235,7 @@ cdef class FastaFile:
             if start is None:
                 start = 0
             if end is None:
-                end = max_pos - 1
+                end = MAX_POS - 1
 
             if start > end:
                 raise ValueError(
@@ -160,9 +243,9 @@ cdef class FastaFile:
             if start == end:
                 return b""
             # valid ranges are from 0 to 2^29-1
-            if not 0 <= start < max_pos:
+            if not 0 <= start < MAX_POS:
                 raise IndexError('start out of range (%i)' % start)
-            if not 0 <= end < max_pos:
+            if not 0 <= end < MAX_POS:
                 raise IndexError('end out of range (%i)' % end)
             # note: faidx_fetch_seq has a bug such that out-of-range access
             # always returns the last residue. Hence do not use faidx_fetch_seq,
@@ -197,7 +280,7 @@ cdef class FastaFile:
 
         return py_seq
 
-    cdef char * _fetch( self, char * reference, int start, int end, int * length ):
+    cdef char * _fetch(self, char * reference, int start, int end, int * length):
         '''fetch sequence for reference, start and end'''
 
         with nogil:
@@ -205,7 +288,7 @@ cdef class FastaFile:
                                    reference,
                                    start,
                                    end-1,
-                                   length )
+                                   length)
 
     def get_reference_length(self, reference):
         '''return the length of reference.'''
@@ -269,7 +352,6 @@ cdef class PersistentFastqProxy:
     """
     Python container for pysam.cfaidx.FastqProxy with persistence.
     Needed to compare multiple fastq records from the same file.
-
     """
     def __init__(self, FastqProxy FastqRead):
         self.comment = FastqRead.comment
@@ -300,35 +382,58 @@ cdef class PersistentFastqProxy:
 
 
 cdef class FastxFile:
-    '''*(filename)*
+    """Stream access to :term:`fasta` or :term:`fastq` formatted files.
 
-    A :term:`fastq` or :term:`fasta` formatted file. The file
-    is automatically opened.
+    The file is automatically opened.
 
-    Entries in the file can be both fastq or fasta formatted
-    or even a mixture of the two.
+    Entries in the file can be both fastq or fasta formatted or even a
+    mixture of the two.
 
-    This file object permits iterating over all entries in
-    the file. Random access is not implemented. The iteration
-    returns objects of type :class:`FastqProxy`
+    This file object permits iterating over all entries in the
+    file. Random access is not implemented. The iteration returns
+    objects of type :class:`FastqProxy`
 
-    '''
+    Parameters
+    ----------
+
+    filename : string
+        Filename of fasta/fastq file to be opened.
+
+    persist : bool 
+
+        If True (default) make a copy of the entry in the file during
+        iteration. If set to False, no copy will be made. This will
+        permit faster iteration, but an entry will not persist when
+        the iteration continues.
+        
+    Raises
+    ------
+    
+    IOError
+        if file could not be opened
+
+    """
     def __cinit__(self, *args, **kwargs):
         # self.fastqfile = <gzFile*>NULL
         self._filename = None
         self.entry = NULL
         self._open(*args, **kwargs)
 
-    def _isOpen(self):
+    def is_open(self):
         '''return true if samfile has been opened.'''
         return self.entry != NULL
 
     def _open(self, filename, persist=True):
         '''open a fastq/fasta file in *filename*
 
-        Keyword arguments:
-        persist -- if True return a copy of the underlying data (default True).
-                   The copy will persist even if the iteration on the file continues.
+        Paramentes
+        ----------
+
+        persist : bool
+
+            if True return a copy of the underlying data (default
+            True).  The copy will persist even if the iteration
+            on the file continues.
 
         '''
         self.close()
@@ -345,24 +450,31 @@ cdef class FastxFile:
             self.entry = kseq_init(self.fastqfile)
         self._filename = filename
 
-    def close( self ):
-        '''close file.'''
+    def close(self):
+        '''close the file.'''
         if self.entry != NULL:
             gzclose(self.fastqfile)
             if self.entry:
                 kseq_destroy(self.entry)
                 self.entry = NULL
-
+            
     def __dealloc__(self):
         self.close()
 
+    property closed:
+        """"bool indicating the current state of the file object. 
+        This is a read-only attribute; the close() method changes the value. 
+        """
+        def __get__(self):
+            return not self.is_open()
+
     property filename:
-        '''filename associated with this object.'''
+        """string with the filename associated with this object."""
         def __get__(self):
             return self._filename
 
     def __iter__(self):
-        if not self._isOpen():
+        if not self.is_open():
             raise ValueError("I/O operation on closed file")
         return self
 

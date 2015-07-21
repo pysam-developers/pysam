@@ -111,7 +111,7 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
 
 
 def build_header_line(fields, record):
-    '''build a header line from *fields* dictionary for *record*'''
+    '''build a header line from `fields` dictionary for `record`'''
 
     # TODO: add checking for field and sort order
     line = ["@%s" % record]
@@ -136,7 +136,7 @@ def build_header_line(fields, record):
     return "\t".join(line)
 
 cdef bam_hdr_t * build_header(new_header):
-    '''return a new header built from a dictionary in *new_header*.
+    '''return a new header built from a dictionary in `new_header`.
 
     This method inserts the text field, target_name and target_len.
     '''
@@ -208,27 +208,29 @@ cdef bam_hdr_t * build_header(new_header):
 
 
 cdef class AlignmentFile:
-    '''*(filepath_or_object, mode=None, template=None,
-         reference_names=None, reference_lengths=None,
-         text=NULL, header=None,
-         add_sq_text=False, check_header=True,
-         check_sq=True)*
+    """
+    AlignmentFile(filepath_or_object, mode=None, template=None,
+    reference_names=None, reference_lengths=None, text=NULL,
+    header=None, add_sq_text=False, check_header=True, check_sq=True)
 
-    A :term:`SAM`/:term:`BAM` formatted file. If `filepath_or_object`
-    is a string, the file is automatically opened. If
-    `filepath_or_object` is a python File object, the already opened
-    file will be used.
+    A :term:`SAM`/:term:`BAM` formatted file. 
+
+    If `filepath_or_object` is a string, the file is automatically
+    opened. If `filepath_or_object` is a python File object, the
+    already opened file will be used.
 
     If the file is opened for reading an index for a BAM file exists
     (.bai), it will be opened automatically. Without an index random
-    access to reads via :meth:`fetch` and :meth:`pileup` is disabled.
+    access via :meth:`~pysam.AlignmentFile.fetch` and
+    :meth:`~pysam.AlignmentFile.pileup` is disabled.
 
     For writing, the header of a :term:`SAM` file/:term:`BAM` file can
     be constituted from several sources (see also the samtools format
     specification):
 
         1. If `template` is given, the header is copied from a another
-           `AlignmentFile` (`template` must be of type `AlignmentFile`).
+           `AlignmentFile` (`template` must be a
+           :class:`~pysam.AlignmentFile`).
 
         2. If `header` is given, the header is built from a
            multi-level dictionary. 
@@ -248,19 +250,17 @@ cdef class AlignmentFile:
 
     Parameters
     ----------
-
     mode : string
+        `mode` should be ``r`` for reading or ``w`` for writing. The
+        default is text mode (:term:`SAM`). For binary (:term:`BAM`) I/O
+        you should append ``b`` for compressed or ``u`` for uncompressed
+        :term:`BAM` output.  Use ``h`` to output header information in
+        text (:term:`TAM`) mode.
 
-       `mode` should be ``r`` for reading or ``w`` for writing. The
-       default is text mode (:term:`SAM`). For binary (:term:`BAM`) I/O
-       you should append ``b`` for compressed or ``u`` for uncompressed
-       :term:`BAM` output.  Use ``h`` to output header information in
-       text (:term:`TAM`) mode.
-
-       If ``b`` is present, it must immediately follow ``r`` or ``w``.
-       Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and
-       ``wb0``. For instance, to open a :term:`BAM` formatted file for
-       reading, type::
+        If ``b`` is present, it must immediately follow ``r`` or ``w``.
+        Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and
+        ``wb0``. For instance, to open a :term:`BAM` formatted file for
+        reading, type::
 
            f = pysam.AlignmentFile('ex1.bam','rb')
 
@@ -269,10 +269,10 @@ cdef class AlignmentFile:
 
             f1 = pysam.AlignmentFile('ex1.bam')
             f2 = pysam.AlignmentFile('ex1.sam')
-  
+
     template : AlignmentFile
         when writing, copy  header frem `template`.
-       
+
     header :  dict
         when writing, build header from a multi-level dictionary. The
         first level are the four types ('HD', 'SQ', ...). The
@@ -285,6 +285,8 @@ cdef class AlignmentFile:
         when writing, use the string provided as the header
 
    reference_names : list
+        see referece_lengths
+
    reference_lengths : list
         when writing, build header from list of chromosome names and lengths.
         By default, 'SQ' and 'LN' tags will be added to the header
@@ -301,9 +303,10 @@ cdef class AlignmentFile:
    check_sq : bool
         when reading, check if SQ entries are present in header (default=True) 
 
-    '''
+    """
 
     def __cinit__(self, *args, **kwargs):
+
         self.htsfile = NULL
         self._filename = None
         self.is_bam = False
@@ -644,7 +647,7 @@ cdef class AlignmentFile:
                      end=None,
                      region=None,
                      tid=None):
-        """parse alternative ways to specify a genomic region.  A region can
+        """parse alternative ways to specify a genomic region. A region can
         either be specified by :term:`reference`, `start` and
         `end`. `start` and `end` denote 0-based, half-open
         intervals.
@@ -655,10 +658,13 @@ cdef class AlignmentFile:
         If any of the coordinates are missing they will be replaced by the
         minimum (`start`) or maximum (`end`) coordinate.
 
+        Note that region strings are 1-based, while `start` and `end` denote
+        an interval in python coordinates.
+
         Returns
         -------
         
-        a tuple of `flag`, :term:`tid`, `start` and `end`. The
+        tuple :  a tuple of `flag`, :term:`tid`, `start` and `end`. The
         flag indicates whether no coordinates were supplied and the
         genomic region is the complete genomic space.
 
@@ -667,9 +673,6 @@ cdef class AlignmentFile:
         
         ValueError
            for invalid or out of bounds regions.
-
-        Note that region strings are 1-based, while *start* and *end* denote
-        an interval in python coordinates.
 
         """
         cdef int rtid
@@ -734,7 +737,7 @@ cdef class AlignmentFile:
         return self.seek(self.start_offset, 0)
 
     def seek(self, uint64_t offset, int where=0):
-        """move file pointer to position 'offset', see
+        """move file pointer to position `offset`, see
         :meth:`pysam.AlignmentFile.tell`.
 
         Parameters
@@ -794,20 +797,27 @@ cdef class AlignmentFile:
               tid=None,
               until_eof=False,
               multiple_iterators=False):
-        """fetch aligned, i.e. mapped, reads in a :term:`region`. 
-        See :meth:`AlignmentFile.parse_region` for more information
-        or genomic regions.
+        """fetch reads aligned in a :term:`region`. 
 
-        Without `reference` or `region` all mapped reads will be
-        fetched. The reads will be returned ordered by reference
+        See :meth:`AlignmentFile.parse_region` for more information
+        on genomic regions.
+
+        Without a `reference` or `region` all mapped reads in the file
+        will be fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
-        file. 
+        file.
 
         If only `reference` is set, all reads aligned to `reference`
         will be fetched.
 
         Note that a :term:`SAM` file does not allow random access. If
         `region` or `reference` are given, an exception is raised.
+
+        :class:`~pysam.FastaFile`
+        :class:`~pysam.IteratorRow`
+        :class:`~pysam.IteratorRow`
+        :class:`~IteratorRow`
+        :class:`IteratorRow`
 
         Parameters
         ----------
@@ -829,7 +839,7 @@ cdef class AlignmentFile:
         Returns
         -------
 
-        An iterator of class :class:`IteratorRow` or one of its derived classes.
+        An iterator over a collection of reads.
 
         Raises
         ------
@@ -909,14 +919,14 @@ cdef class AlignmentFile:
         Returns
         -------
         
-        An object of type :class:`IteratorRowHead`
+        an iterator over a collection of reads
         
         '''
         return IteratorRowHead(self, n,
                                multiple_iterators=multiple_iterators)
 
     def mate(self, AlignedSegment read):
-        '''return the mate of :class:`AlignedSegment` `read`.
+        '''return the mate of :class:`~pysam.AlignedSegment` `read`.
 
         .. note::
 
@@ -933,7 +943,7 @@ cdef class AlignmentFile:
         Returns
         -------
         
-        an :class:`AlignedSegment`
+        :class:`~pysam.AlignedSegment` : the mate
 
         Raises
         ------
@@ -1037,10 +1047,7 @@ cdef class AlignmentFile:
         Returns
         -------
 
-        The method returns an iterator of type
-        :class:`pysam.IteratorColumn` unless a 'callback is
-        provided. If a 'callback' is given, the callback will be
-        executed for each column within the :term:`region`.
+        an iterator over genomic positions.
 
         """
         cdef int rtid, rstart, rend, has_coord
@@ -1075,13 +1082,14 @@ cdef class AlignmentFile:
               region=None,
               until_eof=False):
         '''
-        count the number of reads in :term:`region` using 0-based
-        indexing. The region is specified by :term:`reference`,
-        *start* and *end*. Alternatively, a samtools :term:`region`
-        string can be supplied.
+        count the number of reads in :term:`region`
 
-        Note that a :term:`SAM` file does not allow random access. If
-        *region* or *reference* are given, an exception is raised.
+        The region is specified by :term:`reference`, `start` and
+        `end`. Alternatively, a :term:`samtools` :term:`region` string
+        can be supplied.
+
+        Note that a :term:`SAM` file does not allow random access and if 
+        `region` or `reference` are given, an exception is raised.
 
         Parameters
         ----------
@@ -1129,10 +1137,11 @@ cdef class AlignmentFile:
                        region=None,
                        quality_threshold=15,
                        read_callback='all'):
-        """count the coverage of reads in :term:`region` using 0-based
-        indexing. The region is specified by :term:`reference`,
-        *start* and *end*. Alternatively, a samtools :term:`region`
-        string can be supplied. The coverage is computed per-base [ACGT].
+        """count the coverage of genomic positions by reads in :term:`region`.
+
+        The region is specified by :term:`reference`, `start` and
+        `end`. Alternatively, a :term:`samtools` :term:`region` string can be
+        supplied. The coverage is computed per-base [ACGT].
 
         Parameters
         ----------
@@ -1150,26 +1159,25 @@ cdef class AlignmentFile:
             a region string.
 
         quality_threshold : int
-
             quality_threshold is the minimum quality score (in phred) a
             base has to reach to be counted. 
 
         read_callback: string or function
 
-            select a call-back to ignore reads when counting. It can be either 
-            a string with the following values:
+            select a call-back to ignore reads when counting. It can
+            be either a string with the following values:
 
             ``all``
-            `   skip reads in which any of the following
+                skip reads in which any of the following
                 flags are set: BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL,
                 BAM_FDUP
 
-             ``nofilter``
-                  uses every single read
+            ``nofilter``
+                uses every single read
 
-             Alternatively, `read_callback` can be a function
-             ``check_read(read)`` that should return True only for
-             those reads that shall be included in the counting.
+            Alternatively, `read_callback` can be a function
+            ``check_read(read)`` that should return True only for
+            those reads that shall be included in the counting.
 
         Raises
         ------
@@ -1177,12 +1185,10 @@ cdef class AlignmentFile:
         ValueError
             if the genomic coordinates are out of range or invalid.
 
-
         Returns
         -------
-        
-        a tuple with four array.arrays of length = stop - start,
-        in order A C G T.
+
+        four array.arrays of the same length in order A C G T : tuple
 
         """
         
@@ -1270,8 +1276,9 @@ cdef class AlignmentFile:
 
         Returns
         -------
-            int with the number of bytes written. If the file is closed,
-            this will be 0.
+            
+        int : the number of bytes written. If the file is closed,
+              this will be 0.
         '''
         if not self.is_open():
             return 0
@@ -1305,22 +1312,23 @@ cdef class AlignmentFile:
     ## properties
     ###############################################################
     property closed:
-        """"bool indicating the current state of the file object. 
+        """bool indicating the current state of the file object. 
         This is a read-only attribute; the close() method changes the value. 
         """
         def __get__(self):
             return not self.is_open()
 
     property filename:
-        '''filename associated with this object. This is a read-only attribute.'''
+        """filename associated with this object. This is a read-only attribute."""
         def __get__(self):
             return self._filename
 
     property nreferences:
-        '''int with the number of :term:`reference` sequences in the file.
-        This is a read-only attribute.'''
+        """"int with the number of :term:`reference` sequences in the file.
+        This is a read-only attribute."""
         def __get__(self):
-            if not self.is_open(): raise ValueError( "I/O operation on closed file" )
+            if not self.is_open():
+                raise ValueError("I/O operation on closed file")
             return self.header.n_targets
 
     property references:
@@ -1392,10 +1400,12 @@ cdef class AlignmentFile:
 
     property text:
         '''string with the full contents of the :term:`sam file` header as a
-        string This is a read-only attribute.  See
-        :attr:`pysam.AlignmentFile.header` to get a parsed
-        representation of the header.
+        string. 
 
+        This is a read-only attribute.
+        
+        See :attr:`pysam.AlignmentFile.header` to get a parsed
+        representation of the header.
         '''
         def __get__(self):
             if not self.is_open():
@@ -1403,7 +1413,8 @@ cdef class AlignmentFile:
             return from_string_and_size(self.header.text, self.header.l_text)
 
     property header:
-        """two-level dictionay with header information within the :term:`sam file`. 
+        """two-level dictionay with header information from the file. 
+        
         This is a read-only attribute.
 
         The first level contains the record (``HD``, ``SQ``, etc) and
@@ -1533,9 +1544,6 @@ cdef class AlignmentFile:
         return ret
 
     def __next__(self):
-        """
-        python version of next().
-        """
         cdef int ret = self.cnext()
         if (ret >= 0):
             return makeAlignedSegment(self.b)
@@ -1550,6 +1558,7 @@ cdef class AlignmentFile:
         
     def getrname(self, tid):
         return self.get_reference_name(tid)
+
 
 cdef class IteratorRow:
     '''abstract base class for iterators over mapped reads.
@@ -1661,8 +1670,6 @@ cdef class IteratorRowRegion(IteratorRow):
                                        self.htsfile)
 
     def __next__(self):
-        """python version of next().
-        """
         self.cnext()
         if self.retval >= 0:
             return makeAlignedSegment(self.b)
@@ -1681,7 +1688,7 @@ cdef class IteratorRowRegion(IteratorRow):
 cdef class IteratorRowHead(IteratorRow):
     """*(AlignmentFile samfile, n, int multiple_iterators=False)*
 
-    iterate over first n reads in *samfile*
+    iterate over first n reads in `samfile`
 
     .. note::
         It is usually not necessary to create an object of this class
@@ -1715,10 +1722,6 @@ cdef class IteratorRowHead(IteratorRow):
         return ret
 
     def __next__(self):
-        """python version of next().
-
-        pyrex uses this non-standard name instead of next()
-        """
         if self.current_row >= self.max_rows:
             raise StopIteration
 
@@ -1735,7 +1738,7 @@ cdef class IteratorRowHead(IteratorRow):
 cdef class IteratorRowAll(IteratorRow):
     """*(AlignmentFile samfile, int multiple_iterators=False)*
 
-    iterate over all reads in *samfile*
+    iterate over all reads in `samfile`
 
     .. note::
 
@@ -1767,10 +1770,6 @@ cdef class IteratorRowAll(IteratorRow):
         return ret
 
     def __next__(self):
-        """python version of next().
-
-        pyrex uses this non-standard name instead of next()
-        """
         cdef int ret = self.cnext()
         if (ret >= 0):
             return makeAlignedSegment(self.b)
@@ -1822,10 +1821,6 @@ cdef class IteratorRowAllRefs(IteratorRow):
         return self
 
     def __next__(self):
-        """python version of next().
-
-        pyrex uses this non-standard name instead of next()
-        """
         # Create an initial iterator
         if self.tid == -1:
             if not self.samfile.nreferences:
@@ -1852,7 +1847,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
 cdef class IteratorRowSelection(IteratorRow):
     """*(AlignmentFile samfile)*
 
-    iterate over reads in *samfile* at a given list of file positions.
+    iterate over reads in `samfile` at a given list of file positions.
 
     .. note::
         It is usually not necessary to create an object of this class
@@ -1892,10 +1887,6 @@ cdef class IteratorRowSelection(IteratorRow):
         return ret
 
     def __next__(self):
-        """python version of next().
-
-        pyrex uses this non-standard name instead of next()
-        """
         cdef int ret = self.cnext()
         if (ret >= 0):
             return makeAlignedSegment(self.b)
@@ -2017,7 +2008,7 @@ cdef class IteratorColumn:
        result = list( f.pileup() )
 
     Here, ``result`` will contain ``n`` objects of type
-    :class:`PileupColumn` for ``n`` columns, but each object in
+    :class:`~pysam.PileupColumn` for ``n`` columns, but each object in
     ``result`` will contain the same information.
 
     The desired behaviour can be achieved by list comprehension::
@@ -2025,9 +2016,9 @@ cdef class IteratorColumn:
        result = [ x.pileups() for x in f.pileup() ]
 
     ``result`` will be a list of ``n`` lists of objects of type
-    :class:`PileupRead`.
+    :class:`~pysam.PileupRead`.
 
-    If the iterator is associated with a :class:`Fastafile` using the
+    If the iterator is associated with a :class:`~pysam.Fastafile` using the
     :meth:`addReference` method, then the iterator will export the
     current sequence via the methods :meth:`getSequence` and
     :meth:`seq_len`.
@@ -2042,7 +2033,7 @@ cdef class IteratorColumn:
        See AlignmentFile.pileup for description.
     
     fastafile
-       A :class:`FastaFile` object
+       A :class:`~pysam.FastaFile` object
 
     max_depth
        maximum read depth. The default is 8000.
@@ -2067,12 +2058,12 @@ cdef class IteratorColumn:
     cdef int cnext(self):
         '''perform next iteration.
         '''
-        self.plp = bam_plp_auto( self.pileup_iter,
-                                 &self.tid,
-                                 &self.pos,
-                                 &self.n_plp )
+        self.plp = bam_plp_auto(self.pileup_iter,
+                                &self.tid,
+                                &self.pos,
+                                &self.n_plp )
 
-    cdef char * getSequence( self ):
+    cdef char * getSequence(self):
         '''return current reference sequence underlying the iterator.
         '''
         return self.iterdata.seq
@@ -2083,7 +2074,7 @@ cdef class IteratorColumn:
 
     def addReference(self, Fastafile fastafile):
        '''
-       add reference sequences in *fastafile* to iterator.'''
+       add reference sequences in `fastafile` to iterator.'''
        self.fastafile = fastafile
        if self.iterdata.seq != NULL: free(self.iterdata.seq)
        self.iterdata.tid = -1
@@ -2097,7 +2088,7 @@ cdef class IteratorColumn:
     cdef setMask(self, mask):
         '''set masking flag in iterator.
 
-        reads with bits set in *mask* will be skipped.
+        reads with bits set in `mask` will be skipped.
         '''
         raise NotImplementedError()
         # self.mask = mask
@@ -2204,8 +2195,6 @@ cdef class IteratorColumnRegion(IteratorColumn):
         self.truncate = truncate
 
     def __next__(self):
-        """python version of next().
-        """
 
         while 1:
             self.cnext()
@@ -2241,8 +2230,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
         self.setupIteratorData(self.tid, 0, MAX_POS, 1)
 
     def __next__(self):
-        """python version of next().
-        """
 
         while 1:
             self.cnext()
@@ -2400,7 +2387,7 @@ cdef class IndexedReads:
         bam_destroy1(b)
 
     def find(self, query_name):
-        '''find *query_name* in index.
+        '''find `query_name` in index.
 
         Returns
         -------
@@ -2412,7 +2399,7 @@ cdef class IndexedReads:
         ------
         
         KeyError
-            if the *query_name* is not in the index.
+            if the `query_name` is not in the index.
 
         '''
         if query_name in self.index:

@@ -48,6 +48,10 @@ from collections import namedtuple, defaultdict
 from operator import itemgetter
 import sys, re, copy, bisect
 
+from libc.stdlib cimport atoi
+from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
+
 cimport ctabix
 cimport ctabixproxies
 

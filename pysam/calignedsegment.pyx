@@ -556,7 +556,7 @@ cdef class AlignedSegment:
     def __str__(self):
         """return string representation of alignment.
 
-        The representation is an approximate :term:`sam` format, because
+        The representation is an approximate :term:`SAM` format, because
         an aligned read might not be associated with a :term:`AlignmentFile`.
         As a result :term:`tid` is shown instead of the reference name. 
         Similarly, the tags field is returned in its parsed state.
