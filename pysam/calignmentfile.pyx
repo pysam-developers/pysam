@@ -1,9 +1,9 @@
 # cython: embedsignature=True
 # cython: profile=True
-###############################################################################
-###############################################################################
+########################################################
+########################################################
 # Cython wrapper for SAM/BAM/CRAM files based on htslib
-###############################################################################
+########################################################
 # The principal classes defined in this module are:
 #
 # class AlignmentFile   read/write access to SAM/BAM/CRAM formatted files
@@ -27,7 +27,7 @@
 # class IteratorColumnRegion
 # class IteratorColumnAllRefs
 #
-###############################################################################
+########################################################
 #
 # The MIT License
 #
@@ -51,7 +51,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 #
-###############################################################################
+########################################################
 import os
 import collections
 import re
@@ -67,7 +67,7 @@ from calignedsegment cimport makeAlignedSegment, makePileupColumn
 
 cimport cython
 
-########################################################################
+########################################################
 ## Constants and global variables
 
 # defines imported from samtools
@@ -1140,8 +1140,8 @@ cdef class AlignmentFile:
         """count the coverage of genomic positions by reads in :term:`region`.
 
         The region is specified by :term:`reference`, `start` and
-        `end`. Alternatively, a :term:`samtools` :term:`region` string can be
-        supplied. The coverage is computed per-base [ACGT].
+        `end`. Alternatively, a :term:`samtools` :term:`region` string
+        can be supplied. The coverage is computed per-base [ACGT].
 
         Parameters
         ----------
@@ -1205,18 +1205,29 @@ cdef class AlignmentFile:
         count_g = c_array.clone(int_array_template, length, zero=True)
         count_t = c_array.clone(int_array_template, length, zero=True)
 
+        cdef AlignedSegment read
         cdef char * seq
         cdef c_array.array quality
         cdef int qpos
         cdef int refpos
         cdef int c = 0
+        cdef int filter_method = 0
+        if read_callback == "all":
+            filter_method = 1
+        elif read_callback == "nofilter":
+            filter_method = 2
+    
         cdef int _threshold = quality_threshold
-        for read in self.fetch(reference=reference, start=start,
-                               end=end, region=region):
-            if read_callback == 'all':
+        for read in self.fetch(reference=reference,
+                               start=start,
+                               end=end,
+                               region=region):
+            if filter_method == 1:
+                # filter = "all"
                 if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
                     continue
-            elif read_callback == 'nofilter':
+            elif filter_method == 2:
+                # filter = "nofilter"
                 pass
             else:
                 if not read_callback(read):
@@ -2420,6 +2431,3 @@ __all__ = [
     "IteratorRow",
     "IteratorColumn",
     "IndexedReads"]
-
-
-
