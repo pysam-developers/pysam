@@ -187,7 +187,7 @@ to the iterator that remains alive::
     for pp in p.pileups:
         print pp
 
-Psyam won't compile
+Pysam won't compile
 ===================
 
 Compiling pysam can be tricky as there are numerous variables that

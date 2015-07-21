@@ -35,7 +35,8 @@ def runSamtools(cmd):
 def getSamtoolsVersion():
     '''return samtools version'''
 
-    with subprocess.Popen(SAMTOOLS, shell=True, stderr=subprocess.PIPE).stderr as pipe:
+    with subprocess.Popen(SAMTOOLS, shell=True,
+                          stderr=subprocess.PIPE).stderr as pipe:
         lines = b"".join(pipe.readlines())
 
     if IS_PYTHON3:
@@ -281,9 +282,10 @@ class BinaryTest(unittest.TestCase):
             return re.sub("[^0-9.]", "", s)
 
         if _r(samtools_version) != _r(pysam.__samtools_version__):
-            raise ValueError("versions of pysam/samtools and samtools differ: %s != %s" %
-                             (pysam.__samtools_version__,
-                              samtools_version))
+            raise ValueError(
+                "versions of pysam/samtools and samtools differ: %s != %s" %
+                (pysam.__samtools_version__,
+                 samtools_version))
 
     def checkCommand(self, command):
         if command:
@@ -291,8 +293,10 @@ class BinaryTest(unittest.TestCase):
                 command][0][0], self.commands[command][1][0]
             samtools_target = os.path.join(WORKDIR, samtools_target)
             pysam_target = os.path.join(WORKDIR, pysam_target)
-            self.assertTrue(checkBinaryEqual(samtools_target, pysam_target),
-                            "%s failed: files %s and %s are not the same" % (command, samtools_target, pysam_target))
+            self.assertTrue(
+                checkBinaryEqual(samtools_target, pysam_target),
+                "%s failed: files %s and %s are not the same" %
+                (command, samtools_target, pysam_target))
 
     def testImport(self):
         self.checkCommand("import")
@@ -367,6 +371,19 @@ class BinaryTest(unittest.TestCase):
     def __del__(self):
         if os.path.exists(WORKDIR):
             shutil.rmtree(WORKDIR)
+
+
+class StdoutTest(unittest.TestCase):
+    '''test if stdout can be redirected.'''
+
+    def testWithRedirectedStdout(self):
+        r = pysam.flagstat(os.path.join(DATADIR, "ex1.bam"))
+        self.assertTrue(len(r) > 0)
+
+    def testWithoutRedirectedStdout(self):
+        r = pysam.flagstat(os.path.join(DATADIR, "ex1.bam"),
+                           catch_stdout=False)
+        self.assertTrue(len(r) == 0)
 
 if __name__ == "__main__":
     # build data files

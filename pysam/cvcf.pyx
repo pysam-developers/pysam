@@ -48,8 +48,14 @@ from collections import namedtuple, defaultdict
 from operator import itemgetter
 import sys, re, copy, bisect
 
+from libc.stdlib cimport atoi
+from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
+
 cimport ctabix
-cimport TabProxies
+cimport ctabixproxies
+
+from cutils cimport force_str
 
 import pysam
 
@@ -93,7 +99,7 @@ FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue
 # 
 ###########################################################################################################
 
-cdef class VCFRecord( TabProxies.TupleProxy):
+cdef class VCFRecord( ctabixproxies.TupleProxy):
     '''vcf record.
 
     initialized from data and vcf meta 
@@ -105,6 +111,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
 
     def __init__(self, vcf):
         self.vcf = vcf
+        self.encoding = vcf.encoding
         # if len(data) != len(self.vcf._samples):
         #     self.vcf.error(str(data),
         #                self.BAD_NUMBER_OF_COLUMNS, 
@@ -119,6 +126,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         self.offset = 9
         
         self.vcf = vcf
+        self.encoding = vcf.encoding
     
     def error(self, line, error, opt=None):
         '''raise error.'''
@@ -130,7 +138,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
         
         nbytes does not include the terminal '\0'.
         '''
-        TabProxies.TupleProxy.update(self, buffer, nbytes)
+        ctabixproxies.TupleProxy.update(self, buffer, nbytes)
 
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here
@@ -187,7 +195,7 @@ cdef class VCFRecord( TabProxies.TupleProxy):
                     if len(elts) == 1: v = None
                     elif len(elts) == 2: v = elts[1]
                     else: self.vcf.error(str(self),self.ERROR_INFO_STRING)
-                    info[elts[0]] = self.vcf.parse_formatdata(elts[0], v, self.vcf._info, str(self))
+                    info[elts[0]] = self.vcf.parse_formatdata(elts[0], v, self.vcf._info, str(self.vcf))
             return info
 
     property format:
@@ -900,7 +908,7 @@ class VCF(object):
     def _parse_header(self, stream):
         self._lineno = 0
         for line in stream:
-            line = ctabix._force_str(line, self.encoding)
+            line = force_str(line, self.encoding)
             self._lineno += 1
             if line.startswith('##'):
                 self.parse_header(line.strip())

@@ -1,0 +1,2104 @@
+# cython: embedsignature=True
+# cython: profile=True
+###############################################################################
+###############################################################################
+# Cython wrapper for SAM/BAM/CRAM files based on htslib
+###############################################################################
+# The principal classes defined in this module are:
+#
+# class AlignedSegment  an aligned segment (read)
+#
+# class PileupColumn    a collection of segments (PileupRead) aligned to
+#                       a particular genomic position.
+# 
+# class PileupRead      an AlignedSegment aligned to a particular genomic
+#                       position. Contains additional attributes with respect
+#                       to this.
+#
+# Additionally this module defines numerous additional classes that are part
+# of the internal API. These are:
+# 
+# Various iterator classes to iterate over alignments in sequential (IteratorRow)
+# or in a stacked fashion (IteratorColumn):
+# 
+# class IteratorRow
+# class IteratorRowRegion
+# class IteratorRowHead
+# class IteratorRowAll
+# class IteratorRowAllRefs
+# class IteratorRowSelection
+#
+###############################################################################
+#
+# The MIT License
+#
+# Copyright (c) 2015 Andreas Heger
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
+###############################################################################
+import re
+import array
+import ctypes
+import struct
+
+cimport cython
+from cpython cimport array as c_array
+from cpython.version cimport PY_MAJOR_VERSION
+from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
+from libc.string cimport strchr
+
+from cutils cimport force_bytes, force_str, charptr_to_str
+from cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
+    array_to_qualitystring
+
+# Constants for binary tag conversion
+cdef char * htslib_types = 'cCsSiIf'
+cdef char * parray_types = 'bBhHiIf'
+
+# translation tables
+
+# cigar code to character and vice versa
+cdef char* CODE2CIGAR= "MIDNSHP=X"
+
+if PY_MAJOR_VERSION >= 3:
+    CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
+else:
+    CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
+
+CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=X])")
+
+#####################################################################
+# typecode guessing
+cdef inline char map_typecode_htslib_to_python(uint8_t s):
+    """map an htslib typecode to the corresponding python typecode
+    to be used in the struct or array modules."""
+
+    # map type from htslib to python array
+    cdef char * f = strchr(htslib_types, s)
+    if f == NULL:
+        raise ValueError("unknown htslib tag typecode '%s'" % chr(s))
+    return parray_types[f - htslib_types]
+
+cdef inline uint8_t map_typecode_python_to_htslib(char s):
+    """determine value type from type code of array"""
+    cdef char * f = strchr(parray_types, s)
+    if f == NULL:
+        raise ValueError(
+            "unknown conversion for array typecode '%s'" % s)
+    return htslib_types[f - parray_types]
+
+# optional tag data manipulation
+cdef convert_binary_tag(uint8_t * tag):
+    """return bytesize, number of values and array of values
+    in aux_data memory location pointed to by tag."""
+    cdef uint8_t auxtype
+    cdef uint8_t byte_size
+    cdef int32_t nvalues
+    # get byte size
+    auxtype = tag[0]
+    byte_size = aux_type2size(auxtype)
+    tag += 1
+    # get number of values in array
+    nvalues = (<int32_t*>tag)[0]
+    tag += 4
+    
+    # define python array
+    cdef c_array.array c_values = array.array(
+        chr(map_typecode_htslib_to_python(auxtype)))
+    c_array.resize(c_values, nvalues)
+
+    # copy data
+    memcpy(c_values.data.as_voidptr, <uint8_t*>tag, nvalues * byte_size)
+
+    # no need to check for endian-ness as bam1_core_t fields
+    # and aux_data are in host endian-ness. See sam.c and calls
+    # to swap_data
+    return byte_size, nvalues, c_values
+
+
+cdef bytes TagToString(tuple tagtup):
+    cdef c_array.array b_aux_arr
+    cdef char value_type = tagtup[2]
+    cdef char* tag = tagtup[0]
+    cdef double value_double
+    cdef long value_int
+    cdef bytes value_bytes
+    cdef long i, min_value
+    cdef double f
+    cdef cython.str ret
+    cdef size_t size
+    if(value_type in ['c', 'C', 'i', 'I', 's', 'S']):
+        value_int = tagtup[1]
+        ret = tag + ":i:%s" % value_int
+    elif(value_type in ['f', 'F', 'd', 'D']):
+        value_float = tagtup[1]
+        ret = tag + ":f:%s" % (value_float)
+    elif(value_type == "Z"):
+        value_bytes = tagtup[1]
+        ret = tag + ":Z:" + value_bytes
+    elif(value_type == "B"):
+        if(isinstance(tagtup[1], array.array)):
+            b_aux_arr = tagtup[1]
+        else:
+            if(isinstance(tagtup[1][0], float)):
+                return <bytes> (tag + ":B:f" +
+                                ",".join([str(f) for f in tagtup[1]]))
+            else:
+                b_aux_arr = array('l', tagtup[1])
+                # Choose long to accommodate any size integers.
+        size = sizeof(tagtup[1])
+        min_value = min(b_aux_arr)
+        if(size == 1):
+            if(min_value < 0):
+                ret = tag + ":B:c" + ",".join([str(i) for i in b_aux_arr])
+            else:
+                ret = tag + ":B:C" + ",".join([str(i) for i in b_aux_arr])
+        elif(size == 2):
+            if(min_value < 0):
+                ret = tag + ":B:i" + ",".join([str(i) for i in b_aux_arr])
+            else:
+                ret = tag + ":B:I" + ",".join([str(i) for i in b_aux_arr])
+        else:  # size == 4. Removed check to compile to switch statement.
+            if(min_value < 0):
+                ret = tag + ":B:s" + ",".join([str(i) for i in b_aux_arr])
+            else:
+                ret = tag + ":B:S" + ",".join([str(i) for i in b_aux_arr])
+    elif(value_type == "H"):
+        ret = tag + ":H:" + "".join([hex(i)[2:] for i in tagtup[1]])
+    elif(value_type == "A"):
+        ret = tag + ":A:" + tagtup[1]
+    else:
+        # Unrecognized character - returning the string as it was provided.
+        # An exception is not being raised because that prevents cython
+        # from being able to compile this into a switch statement for
+        # performance.
+        ret = "%s:%s:%s" % (tag, tagtup[2], tagtup[1])
+    return <bytes> ret
+
+
+cdef inline uint8_t get_value_code(value, value_type=None):
+    '''guess type code for a *value*. If *value_type* is None,
+    the type code will be inferred based on the Python type of
+    *value*'''
+    cdef uint8_t  typecode    
+    cdef char * _char_type
+
+    if value_type is None:
+        if isinstance(value, int):
+            typecode = 'i'
+        elif isinstance(value, float):
+            typecode = 'd'
+        elif isinstance(value, str):
+            typecode = 'Z'
+        elif isinstance(value, bytes):
+            typecode = 'Z'
+        elif isinstance(value, array.array) or \
+                isinstance(value, list) or \
+                isinstance(value, tuple):
+            typecode = 'B'
+        else:
+            return 0
+    else:
+        if value_type not in 'Zidf':
+            return 0
+        value_type = force_bytes(value_type)
+        _char_type = value_type
+        typecode = (<uint8_t*>_char_type)[0]
+
+    return typecode
+
+
+cdef inline getTypecode(value, maximum_value=None):
+    '''returns the value typecode of a value.
+
+    If max is specified, the approprite type is
+    returned for a range where value is the minimum.
+    '''
+
+    if maximum_value is None:
+        maximum_value = value
+
+    t = type(value)
+
+    if t is float:
+        valuetype = b'f'
+    elif t is int:
+        # signed ints
+        if value < 0: 
+            if value >= -128 and maximum_value < 128:
+                valuetype = b'c'
+            elif value >= -32768 and maximum_value < 32768:
+                valuetype = b's'
+            elif value < -2147483648 or maximum_value >= 2147483648:
+                raise ValueError(
+                    "at least one signed integer out of range of "
+                    "BAM/SAM specification")
+            else:
+                valuetype = b'i'
+        # unsigned ints
+        else:
+            if maximum_value < 256:
+                valuetype = b'C'
+            elif maximum_value < 65536:
+                valuetype = b'S'
+            elif maximum_value >= 4294967296:
+                raise ValueError(
+                    "at least one integer out of range of BAM/SAM specification")
+            else:
+                valuetype = b'I'
+    else:
+        # Note: hex strings (H) are not supported yet
+        if t is not bytes:
+            value = value.encode('ascii')
+        if len(value) == 1:
+            valuetype = b"A"
+        else:
+            valuetype = b'Z'
+
+    return valuetype
+
+
+cdef inline packTags(tags):
+    """pack a list of tags. Each tag is a tuple of (tag, tuple).
+
+    Values are packed into the most space efficient data structure
+    possible unless the tag contains a third field with the typecode.
+
+    Returns a format string and the associated list of arguments
+    to be used in a call to struct.pack_into.
+    """
+    fmts, args = ["<"], []
+
+    datatype2format = {
+        'c': ('b', 1),
+        'C': ('B', 1),
+        's': ('h', 2),
+        'S': ('H', 2),
+        'i': ('i', 4),
+        'I': ('I', 4),
+        'f': ('f', 4),
+        'A': ('c', 1)}
+    
+    for tag in tags:
+
+        if len(tag) == 2:
+            pytag, value = tag
+            valuetype = None
+        elif len(tag) == 3:
+            pytag, value, valuetype = tag
+        else:
+            raise ValueError("malformatted tag: %s" % str(tag))
+
+        if not type(pytag) is bytes:
+            pytag = pytag.encode('ascii')
+
+        t = type(value)
+
+        if t is tuple or t is list:
+            # binary tags from tuples or lists
+            if valuetype is None:
+                # automatically determine value type - first value
+                # determines type. If there is a mix of types, the
+                # result is undefined.
+                valuetype = getTypecode(min(value), max(value))
+
+            if valuetype not in datatype2format:
+                raise ValueError("invalid value type '%s'" % valuetype)
+
+            datafmt = "2sccI%i%s" % (len(value), datatype2format[valuetype][0])
+            args.extend([pytag[:2], 
+                         b"B",
+                         valuetype,
+                         len(value)] + list(value))
+
+        elif isinstance(value, array.array):
+            # binary tags from arrays
+            if valuetype is None:
+                valuetype = chr(map_typecode_python_to_htslib(ord(value.typecode)))
+                
+            if valuetype not in datatype2format:
+                raise ValueError("invalid value type '%s'" % valuetype)
+            
+            # use array.tostring() to retrieve byte representation and
+            # save as bytes
+            datafmt = "2sccI%is" % (len(value) * datatype2format[valuetype][1])
+            args.extend([pytag[:2], 
+                         b"B",
+                         valuetype,
+                         len(value),
+                         value.tostring()])
+            
+        else:
+            if valuetype is None:
+                valuetype = getTypecode(value)
+
+            if valuetype == b"Z":
+                datafmt = "2sc%is" % (len(value)+1)
+            else:
+                datafmt = "2sc%s" % datatype2format[valuetype][0]
+
+            args.extend([pytag[:2],
+                         valuetype,
+                         value])
+
+        fmts.append(datafmt)
+
+    return "".join(fmts), args
+
+
+cdef inline int32_t getQueryStart(bam1_t *src) except -1:
+    cdef uint32_t * cigar_p
+    cdef uint32_t k, op
+    cdef uint32_t start_offset = 0
+
+    if pysam_get_n_cigar(src):
+        cigar_p = pysam_bam_get_cigar(src);
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            if op == BAM_CHARD_CLIP:
+                if start_offset != 0 and start_offset != src.core.l_qseq:
+                    PyErr_SetString(ValueError, 'Invalid clipping in CIGAR string')
+                    return -1
+            elif op == BAM_CSOFT_CLIP:
+                start_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
+            else:
+                break
+
+    return start_offset
+
+
+cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
+    cdef uint32_t * cigar_p
+    cdef uint32_t k, op
+    cdef uint32_t end_offset = src.core.l_qseq
+
+    if pysam_get_n_cigar(src) > 1:
+        cigar_p = pysam_bam_get_cigar(src);
+        for k from pysam_get_n_cigar(src) > k >= 1:
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            if op == BAM_CHARD_CLIP:
+                if end_offset != 0 and end_offset != src.core.l_qseq:
+                    PyErr_SetString(ValueError,
+                                    'Invalid clipping in CIGAR string')
+                    return -1
+            elif op == BAM_CSOFT_CLIP:
+                end_offset -= cigar_p[k] >> BAM_CIGAR_SHIFT
+            else:
+                break
+
+    if end_offset == 0:
+        end_offset = src.core.l_qseq
+
+    return end_offset
+
+
+cdef inline object getSequenceInRange(bam1_t *src,
+                                         uint32_t start,
+                                         uint32_t end):
+    """return python string of the sequence in a bam1_t object.
+    """
+
+    cdef uint8_t * p
+    cdef uint32_t k
+    cdef char * s
+
+    if not src.core.l_qseq:
+        return None
+
+    seq = PyBytes_FromStringAndSize(NULL, end - start)
+    s   = <char*>seq
+    p   = pysam_bam_get_seq(src)
+
+    for k from start <= k < end:
+        # equivalent to seq_nt16_str[bam1_seqi(s, i)] (see bam.c)
+        # note: do not use string literal as it will be a python string
+        s[k-start] = seq_nt16_str[p[k/2] >> 4 * (1 - k%2) & 0xf]
+
+    return charptr_to_str(seq)
+
+
+cdef inline object getQualitiesInRange(bam1_t *src,
+                                          uint32_t start, 
+                                          uint32_t end):
+    """return python array of quality values from a bam1_t object"""
+
+    cdef uint8_t * p
+    cdef uint32_t k
+
+    p = pysam_bam_get_qual(src)
+    if p[0] == 0xff:
+        return None
+
+    # 'B': unsigned char
+    cdef c_array.array result = array.array('B', [0])
+    c_array.resize(result, end - start)
+
+    # copy data
+    memcpy(result.data.as_voidptr, <void*>&p[start], end - start) 
+
+    return result
+
+
+#####################################################################
+## private factory methods
+cdef class AlignedSegment
+cdef makeAlignedSegment(bam1_t * src):
+    '''return an AlignedSegment object constructed from `src`'''
+    # note that the following does not call __init__
+    cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
+    dest._delegate = bam_dup1(src)
+    return dest
+
+
+cdef class PileupColumn
+cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
+    '''return a PileupColumn object constructed from pileup in `plp` and setting
+    additional attributes.'''
+    # note that the following does not call __init__
+    cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
+    dest.plp = plp
+    dest.tid = tid
+    dest.pos = pos
+    dest.n_pu = n_pu
+    return dest
+
+cdef class PileupRead
+cdef inline makePileupRead(bam_pileup1_t * src):
+    '''return a PileupRead object construted from a bam_pileup1_t * object.'''
+    cdef PileupRead dest = PileupRead.__new__(PileupRead)
+    dest._alignment = makeAlignedSegment(src.b)
+    dest._qpos = src.qpos
+    dest._indel = src.indel
+    dest._level = src.level
+    dest._is_del = src.is_del
+    dest._is_head = src.is_head
+    dest._is_tail = src.is_tail
+    dest._is_refskip = src.is_refskip
+    return dest
+
+
+cdef class AlignedSegment:
+    '''Class representing an aligned segment.
+
+    This class stores a handle to the samtools C-structure representing
+    an aligned read. Member read access is forwarded to the C-structure
+    and converted into python objects. This implementation should be fast,
+    as only the data needed is converted.
+
+    For write access, the C-structure is updated in-place. This is
+    not the most efficient way to build BAM entries, as the variable
+    length data is concatenated and thus needs to be resized if
+    a field is updated. Furthermore, the BAM entry might be
+    in an inconsistent state.
+
+    One issue to look out for is that the sequence should always
+    be set *before* the quality scores. Setting the sequence will
+    also erase any quality scores that were set previously.
+    '''
+
+    # Now only called when instances are created from Python
+    def __init__(self):
+        # see bam_init1
+        self._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
+        # allocate some memory. If size is 0, calloc does not return a
+        # pointer that can be passed to free() so allocate 40 bytes
+        # for a new read
+        self._delegate.m_data = 40
+        self._delegate.data = <uint8_t *>calloc(
+            self._delegate.m_data, 1)
+        self._delegate.l_data = 0
+
+        # caching for selected fields
+        self.cache_query_qualities = None
+        self.cache_query_alignment_qualities = None
+        self.cache_query_sequence = None
+        self.cache_query_alignment_sequence = None
+
+    def __dealloc__(self):
+        bam_destroy1(self._delegate)
+
+    def __str__(self):
+        """return string representation of alignment.
+
+        The representation is an approximate :term:`SAM` format, because
+        an aligned read might not be associated with a :term:`AlignmentFile`.
+        As a result :term:`tid` is shown instead of the reference name. 
+        Similarly, the tags field is returned in its parsed state.
+
+        To get a valid SAM record, use :meth:`tostring`.
+        """
+        # sam-parsing is done in sam.c/bam_format1_core which
+        # requires a valid header.
+        return "\t".join(map(str, (self.query_name,
+                                   self.flag,
+                                   self.reference_id,
+                                   self.reference_start,
+                                   self.mapping_quality,
+                                   self.cigarstring,
+                                   self.next_reference_id,
+                                   self.next_reference_start,
+                                   self.query_alignment_length,
+                                   self.query_sequence,
+                                   self.query_qualities,
+                                   self.tags)))
+
+    def __copy__(self):
+        return makeAlignedSegment(self._delegate)
+
+    def __deepcopy__(self, memo):
+        return makeAlignedSegment(self._delegate)
+
+    def compare(self, AlignedSegment other):
+        '''return -1,0,1, if contents in this are binary
+        <,=,> to *other*
+
+        '''
+
+        cdef int retval, x
+        cdef bam1_t *t
+        cdef bam1_t *o
+
+        t = self._delegate
+        o = other._delegate
+
+        # uncomment for debugging purposes
+        # cdef unsigned char * oo, * tt
+        # tt = <unsigned char*>(&t.core)
+        # oo = <unsigned char*>(&o.core)
+        # for x from 0 <= x < sizeof( bam1_core_t): print x, tt[x], oo[x]
+        # tt = <unsigned char*>(t.data)
+        # oo = <unsigned char*>(o.data)
+        # for x from 0 <= x < max(t.l_data, o.l_data): print x, tt[x], oo[x], chr(tt[x]), chr(oo[x])
+
+        # Fast-path test for object identity
+        if t == o:
+            return 0
+
+        retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
+
+        if retval:
+            return retval
+        # cmp(t.l_data, o.l_data)
+        retval = (t.l_data > o.l_data) - (t.l_data < o.l_data)
+        if retval:
+            return retval
+        return memcmp(t.data, o.data, t.l_data)
+
+    def __richcmp__(self, AlignedSegment other, int op):
+        if op == 2:  # == operator
+            return self.compare(other) == 0
+        elif op == 3:  # != operator
+            return self.compare(other) != 0
+        else:
+            return NotImplemented
+
+    def __hash__(self):
+        cdef bam1_t * src
+        src = self._delegate
+        # shift and xor values in the core structure
+        # make sure tid and mtid are shifted by different amounts
+        # should variable length data be included?
+        cdef uint32_t hash_value = src.core.tid << 24 ^ \
+            src.core.pos << 16 ^ \
+            src.core.qual << 8 ^ \
+            src.core.flag ^ \
+            src.core.isize << 24 ^ \
+            src.core.mtid << 16 ^ \
+            src.core.mpos << 8
+
+        return hash_value
+
+    cpdef bytes tostring(self, AlignmentFile_t htsfile):
+        """returns a string representation of the aligned segment.
+
+        The output format is valid SAM format if 
+
+        Parameters
+        ----------
+
+        htsfile -- AlignmentFile object to map numerical
+                   identifers to chromosome names.
+        """
+
+        cdef cython.str cigarstring, mate_ref, ref
+        if self.reference_id < 0:
+            ref = "*"
+        else:
+            ref = htsfile.getrname(self.reference_id)
+
+        if self.rnext < 0:
+            mate_ref = "*"
+        elif self.rnext == self.reference_id:
+            mate_ref = "="
+        else:
+            mate_ref = htsfile.getrname(self.rnext)
+
+        cigarstring = self.cigarstring if(
+            self.cigarstring is not None) else "*"
+        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
+            self.query_name, self.flag,
+            ref, self.pos + 1, self.mapq,
+            cigarstring,
+            mate_ref, self.mpos + 1,
+            self.template_length,
+            self.seq, self.qual,
+            self.get_tag_string())
+        return <bytes> ret
+
+    cdef bytes get_tag_string(self):
+        cdef tuple tag
+        cdef cython.str ret = "\t".join([
+            TagToString(tag) for tag in
+            self.get_tags(with_value_type=True)])
+        return <bytes> ret
+
+    ########################################################
+    ## Basic attributes in order of appearance in SAM format
+    property query_name:
+        """the query template name (None if not present)"""
+        def __get__(self):
+            cdef bam1_t * src
+            src = self._delegate
+            if pysam_get_l_qname(src) == 0:
+                return None
+            return charptr_to_str(<char *>pysam_bam_get_qname(src))
+
+        def __set__(self, qname):
+            if qname is None or len(qname) == 0:
+                return
+            qname = force_bytes(qname)
+            cdef bam1_t * src
+            cdef int l
+            cdef char * p
+
+            src = self._delegate
+            p = pysam_bam_get_qname(src)
+
+            # the qname is \0 terminated
+            l = len(qname) + 1
+            pysam_bam_update(src,
+                             pysam_get_l_qname(src),
+                             l,
+                             <uint8_t*>p)
+
+            
+            pysam_set_l_qname(src, l)
+
+            # re-acquire pointer to location in memory
+            # as it might have moved
+            p = pysam_bam_get_qname(src)
+
+            strncpy(p, qname, l)
+
+    property flag:
+        """properties flag"""
+        def __get__(self):
+            return pysam_get_flag(self._delegate)
+        def __set__(self, flag):
+            pysam_set_flag(self._delegate, flag)
+
+    property reference_id:
+        """:term:`reference` ID
+
+        .. note::
+
+            This field contains the index of the reference sequence in
+            the sequence dictionary. To obtain the name of the
+            reference sequence, use
+            :meth:`pysam.AlignmentFile.getrname()`
+
+        """
+        def __get__(self): return self._delegate.core.tid
+        def __set__(self, tid): self._delegate.core.tid = tid
+
+    property reference_start:
+        """0-based leftmost coordinate"""
+        def __get__(self): return self._delegate.core.pos
+        def __set__(self, pos):
+            ## setting the position requires updating the "bin" attribute
+            cdef bam1_t * src
+            src = self._delegate
+            src.core.pos = pos
+            if pysam_get_n_cigar(src):
+                pysam_set_bin(src, 
+                              hts_reg2bin(
+                                  src.core.pos,
+                                  bam_endpos(src),
+                                  14,
+                                  5))
+            else:
+                pysam_set_bin(src,
+                              hts_reg2bin(
+                                  src.core.pos,
+                                  src.core.pos + 1,
+                                  14,
+                                  5))
+
+    property mapping_quality:
+        """mapping quality"""
+        def __get__(self):
+            return pysam_get_qual(self._delegate)
+        def __set__(self, qual):
+            pysam_set_qual(self._delegate, qual)
+
+    property cigarstring:
+        '''the :term:`cigar` alignment as a string.
+        
+        The cigar string is a string of alternating integers
+        and characters denoting the length and the type of
+        an operation.
+
+        .. note::
+            The order length,operation is specified in the
+            SAM format. It is different from the order of
+            the :attr:`cigar` property.
+
+        Returns None if not present.
+
+        To unset the cigarstring, assign None or the
+        empty string.
+        '''
+        def __get__(self):
+            c = self.cigartuples
+            if c is None:
+                return None
+            # reverse order
+            else:
+                return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
+            
+        def __set__(self, cigar):
+            if cigar is None or len(cigar) == 0:
+                self.cigartuples = []
+            else:
+                parts = CIGAR_REGEX.findall(cigar)
+                # reverse order
+                self.cigartuples = [(CIGAR2CODE[ord(y)], int(x)) for x,y in parts]
+
+    # TODO
+    # property cigar:
+    #     """the cigar alignment"""
+
+    property next_reference_id:
+        """the :term:`reference` id of the mate/next read."""
+        def __get__(self): return self._delegate.core.mtid
+        def __set__(self, mtid):
+            self._delegate.core.mtid = mtid
+
+    property next_reference_start:
+        """the position of the mate/next read."""
+        def __get__(self):
+            return self._delegate.core.mpos
+        def __set__(self, mpos):
+            self._delegate.core.mpos = mpos
+
+    property query_length:
+        """the length of the query/read.
+
+        This value corresponds to the length of the sequence supplied
+        in the BAM/SAM file. The length of a query is 0 if there is no
+        sequence in the BAM/SAM file. In those cases, the read length
+        can be inferred from the CIGAR alignment, see
+        :meth:`pysam.AlignmentFile.infer_query_length.`.
+
+        The length includes soft-clipped bases and is equal to
+        ``len(query_sequence)``.
+
+        This property is read-only but can be set by providing a
+        sequence.
+
+        Returns 0 if not available.
+
+        """
+        def __get__(self):
+            return self._delegate.core.l_qseq
+
+    property template_length:
+        """the observed query template length"""
+        def __get__(self):
+            return self._delegate.core.isize
+        def __set__(self, isize):
+            self._delegate.core.isize = isize
+
+    property query_sequence:
+        """read sequence bases, including :term:`soft clipped` bases 
+        (None if not present).
+
+        Note that assigning to seq will invalidate any quality scores.
+        Thus, to in-place edit the sequence and quality scores, copies of
+        the quality scores need to be taken. Consider trimming for example::
+
+           q = read.query_qualities
+           read.query_squence = read.query_sequence[5:10]
+           read.query_qualities = q[5:10]
+
+        The sequence is returned as it is stored in the BAM file. Some mappers
+        might have stored a reverse complement of the original read 
+        sequence.
+        """
+        def __get__(self):
+            if self.cache_query_sequence:
+                return self.cache_query_sequence
+
+            cdef bam1_t * src
+            cdef char * s
+            src = self._delegate
+
+            if src.core.l_qseq == 0:
+                return None
+
+            self.cache_query_sequence = getSequenceInRange(
+                src, 0, src.core.l_qseq)
+            return self.cache_query_sequence
+
+        def __set__(self, seq):
+            # samtools manages sequence and quality length memory together
+            # if no quality information is present, the first byte says 0xff.
+            cdef bam1_t * src
+            cdef uint8_t * p
+            cdef char * s
+            cdef int l, k
+            cdef Py_ssize_t nbytes_new, nbytes_old
+
+            if seq == None:
+                l = 0
+            else:
+                l = len(seq)                
+                seq = force_bytes(seq)
+
+            src = self._delegate
+
+            # as the sequence is stored in half-bytes, the total length (sequence
+            # plus quality scores) is (l+1)/2 + l
+            nbytes_new = (l + 1) / 2 + l
+            nbytes_old = (src.core.l_qseq + 1) / 2 + src.core.l_qseq
+
+            # acquire pointer to location in memory
+            p = pysam_bam_get_seq(src)
+            src.core.l_qseq = l
+
+            # change length of data field
+            pysam_bam_update(src,
+                             nbytes_old,
+                             nbytes_new,
+                             p)
+
+            if l > 0:
+                # re-acquire pointer to location in memory
+                # as it might have moved
+                p = pysam_bam_get_seq(src)
+                for k from 0 <= k < nbytes_new:
+                    p[k] = 0
+                # convert to C string
+                s = seq
+                for k from 0 <= k < l:
+                    p[k/2] |= seq_nt16_table[<unsigned char>s[k]] << 4 * (1 - k % 2)
+
+                # erase qualities
+                p = pysam_bam_get_qual(src)
+                p[0] = 0xff
+
+            self.cache_query_sequence = seq
+
+            # clear cached values for quality values
+            self.cache_query_qualities = None
+            self.cache_query_alignment_qualities = None
+
+    property query_qualities:
+        """read sequence base qualities, including :term:`soft
+        clipped` bases (None if not present).
+
+        Quality scores are returned as a python array of unsigned
+        chars. Note that this is not the ASCII-encoded value typically
+        seen in FASTQ or SAM formatted files. Thus, no offset of 33
+        needs to be subtracted.
+
+        Note that to set quality scores the sequence has to be set
+        beforehand as this will determine the expected length of the
+        quality score array.
+
+        This method raises a ValueError if the length of the 
+        quality scores and the sequence are not the same.
+
+        """
+        def __get__(self):
+
+            if self.cache_query_qualities:
+                return self.cache_query_qualities
+
+            cdef bam1_t * src
+            cdef char * q
+
+            src = self._delegate
+
+            if src.core.l_qseq == 0:
+                return None
+
+            self.cache_query_qualities = getQualitiesInRange(src, 0, src.core.l_qseq)
+            return self.cache_query_qualities
+
+        def __set__(self, qual):
+
+            # note that memory is already allocated via setting the sequence
+            # hence length match of sequence and quality needs is checked.
+            cdef bam1_t * src
+            cdef uint8_t * p
+            cdef int l
+
+            src = self._delegate
+            p = pysam_bam_get_qual(src)
+            if qual is None or len(qual) == 0:
+                # if absent and there is a sequence: set to 0xff
+                if src.core.l_qseq != 0:
+                    p[0] = 0xff
+                return
+
+            # check for length match
+            l = len(qual)
+            if src.core.l_qseq != l:
+                raise ValueError(
+                    "quality and sequence mismatch: %i != %i" %
+                    (l, src.core.l_qseq))
+
+            # create a python array object filling it
+            # with the quality scores
+
+            # NB: should avoid this copying if qual is
+            # already of the correct type.
+            cdef c_array.array result = c_array.array('B', qual)
+
+            # copy data
+            memcpy(p, result.data.as_voidptr, l)
+            
+            # save in cache
+            self.cache_query_qualities = qual
+
+    property bin:
+        """properties bin"""
+        def __get__(self):
+            return pysam_get_bin(self._delegate)
+        def __set__(self, bin):
+            pysam_set_bin(self._delegate, bin)
+
+
+    ##########################################################
+    # Derived simple attributes. These are simple attributes of 
+    # AlignedSegment getting and setting values.
+    ##########################################################
+    # 1. Flags
+    ##########################################################
+    property is_paired:
+        """true if read is paired in sequencing"""
+        def __get__(self):
+            return (self.flag & BAM_FPAIRED) != 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, val, BAM_FPAIRED)
+
+    property is_proper_pair:
+        """true if read is mapped in a proper pair"""
+        def __get__(self):
+            return (self.flag & BAM_FPROPER_PAIR) != 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, val, BAM_FPROPER_PAIR)
+    property is_unmapped:
+        """true if read itself is unmapped"""
+        def __get__(self):
+            return (self.flag & BAM_FUNMAP) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FUNMAP)
+    property mate_is_unmapped:
+        """true if the mate is unmapped"""
+        def __get__(self):
+            return (self.flag & BAM_FMUNMAP) != 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, val, BAM_FMUNMAP)
+    property is_reverse:
+        """true if read is mapped to reverse strand"""
+        def __get__(self):
+            return (self.flag & BAM_FREVERSE) != 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, val, BAM_FREVERSE)
+    property mate_is_reverse:
+        """true is read is mapped to reverse strand"""
+        def __get__(self):
+            return (self.flag & BAM_FMREVERSE) != 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, val, BAM_FMREVERSE)
+    property is_read1:
+        """true if this is read1"""
+        def __get__(self):
+            return (self.flag & BAM_FREAD1) != 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, val, BAM_FREAD1)
+    property is_read2:
+        """true if this is read2"""
+        def __get__(self):
+            return (self.flag & BAM_FREAD2) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FREAD2)
+    property is_secondary:
+        """true if not primary alignment"""
+        def __get__(self):
+            return (self.flag & BAM_FSECONDARY) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FSECONDARY)
+    property is_qcfail:
+        """true if QC failure"""
+        def __get__(self):
+            return (self.flag & BAM_FQCFAIL) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FQCFAIL)
+    property is_duplicate:
+        """true if optical or PCR duplicate"""
+        def __get__(self):
+            return (self.flag & BAM_FDUP) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FDUP)
+    property is_supplementary:
+        """true if this is a supplementary alignment"""
+        def __get__(self):
+            return (self.flag & BAM_FSUPPLEMENTARY) != 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, val, BAM_FSUPPLEMENTARY)
+
+    # 2. Coordinates and lengths
+    property reference_end:
+        '''aligned reference position of the read on the reference genome.
+
+        reference_end points to one past the last aligned residue.
+        Returns None if not available (read is unmapped or no cigar
+        alignment present).
+
+        '''
+        def __get__(self):
+            cdef bam1_t * src
+            src = self._delegate
+            if (self.flag & BAM_FUNMAP) or pysam_get_n_cigar(src) == 0:
+                return None
+            return bam_endpos(src)
+
+    property reference_length:
+        '''aligned length of the read on the reference genome.
+
+        This is equal to `aend - pos`. Returns None if not available.'''
+        def __get__(self):
+            cdef bam1_t * src
+            src = self._delegate
+            if (self.flag & BAM_FUNMAP) or pysam_get_n_cigar(src) == 0:
+                return None
+            return bam_endpos(src) - \
+                self._delegate.core.pos
+    
+    property query_alignment_sequence:
+        """aligned portion of the read.
+
+        This is a substring of :attr:`seq` that excludes flanking
+        bases that were :term:`soft clipped` (None if not present). It
+        is equal to ``seq[qstart:qend]``.
+
+        SAM/BAM files may include extra flanking bases that are not
+        part of the alignment.  These bases may be the result of the
+        Smith-Waterman or other algorithms, which may not require
+        alignments that begin at the first residue or end at the last.
+        In addition, extra sequencing adapters, multiplex identifiers,
+        and low-quality bases that were not considered for alignment
+        may have been retained.
+
+        """
+
+        def __get__(self):
+            if self.cache_query_alignment_sequence:
+                return self.cache_query_alignment_sequence
+
+            cdef bam1_t * src
+            cdef uint32_t start, end
+
+            src = self._delegate
+
+            if src.core.l_qseq == 0:
+                return None
+
+            start = getQueryStart(src)
+            end   = getQueryEnd(src)
+
+            self.cache_query_alignment_sequence = getSequenceInRange(src, start, end)
+            return self.cache_query_alignment_sequence
+
+    property query_alignment_qualities:
+        """aligned query sequence quality values (None if not present). These
+        are the quality values that correspond to :attr:`query`, that
+        is, they exclude qualities of :term:`soft clipped` bases. This
+        is equal to ``qual[qstart:qend]``.
+
+        Quality scores are returned as a python array of unsigned
+        chars. Note that this is not the ASCII-encoded value typically
+        seen in FASTQ or SAM formatted files. Thus, no offset of 33
+        needs to be subtracted.
+
+        This property is read-only.
+
+        """
+        def __get__(self):
+
+            if self.cache_query_alignment_qualities:
+                return self.cache_query_alignment_qualities
+
+            cdef bam1_t * src
+            cdef uint32_t start, end
+
+            src = self._delegate
+
+            if src.core.l_qseq == 0:
+                return None
+
+            start = getQueryStart(src)
+            end   = getQueryEnd(src)
+            self.cache_query_alignment_qualities = \
+                getQualitiesInRange(src, start, end)
+            return self.cache_query_alignment_qualities
+
+    property query_alignment_start:
+        """start index of the aligned query portion of the sequence (0-based,
+        inclusive).
+
+        This the index of the first base in :attr:`seq` that is not
+        soft-clipped.
+
+        """
+        def __get__(self):
+            return getQueryStart(self._delegate)
+
+    property query_alignment_end:
+        """end index of the aligned query portion of the sequence (0-based,
+        exclusive)"""
+        def __get__(self):
+            return getQueryEnd(self._delegate)
+
+    property query_alignment_length:
+        """length of the aligned query sequence.
+
+        This is equal to :attr:`qend` - :attr:`qstart`"""
+        def __get__(self):
+            cdef bam1_t * src
+            src = self._delegate
+            return getQueryEnd(src) - getQueryStart(src)
+
+    #####################################################
+    # Computed properties
+
+    def get_reference_positions(self, full_length=False):
+        """a list of reference positions that this read aligns to.
+
+        By default, this method only returns positions in the
+        reference that are within the alignment. If *full_length* is
+        set, None values will be included for any soft-clipped or
+        unaligned positions within the read. The returned list will
+        thus be of the same length as the read.
+
+        """
+        cdef uint32_t k, i, pos
+        cdef int op
+        cdef uint32_t * cigar_p
+        cdef bam1_t * src
+        cdef bint _full = full_length
+
+        src = self._delegate
+        if pysam_get_n_cigar(src) == 0:
+            return []
+
+        result = []
+        pos = src.core.pos
+        cigar_p = pysam_bam_get_cigar(src)
+
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+
+            if op == BAM_CSOFT_CLIP or op == BAM_CINS:
+                if _full:
+                    for i from 0 <= i < l:
+                        result.append(None)
+            elif op == BAM_CMATCH:
+                for i from pos <= i < pos + l:
+                    result.append(i)
+                pos += l
+            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                pos += l
+
+        return result
+
+    def infer_query_length(self, always=True):
+        """inferred read length from CIGAR string.
+
+        If *always* is set to True, the read length
+        will be always inferred. If set to False, the length
+        of the read sequence will be returned if it is
+        available.
+
+        Returns None if CIGAR string is not present.
+        """
+        cdef uint32_t k, qpos
+        cdef int op
+        cdef uint32_t * cigar_p
+        cdef bam1_t * src 
+
+        src = self._delegate
+
+        if not always and src.core.l_qseq:
+            return src.core.l_qseq
+
+        if pysam_get_n_cigar(src) == 0:
+            return None
+
+        qpos = 0
+        cigar_p = pysam_bam_get_cigar(src)
+
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+
+            if op == BAM_CMATCH or op == BAM_CINS or \
+               op == BAM_CSOFT_CLIP or \
+               op == BAM_CEQUAL or op == BAM_CDIFF:
+                qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
+
+        return qpos
+            
+    def get_aligned_pairs(self, matches_only = False):
+        """a list of aligned read (query) and reference positions.
+        For inserts, deletions, skipping either query or reference position may be None.
+
+        If @matches_only is True, only matched bases are returned - no None on either side.
+
+        Padding is currently not supported and leads to an exception
+        
+        """
+        cdef uint32_t k, i, pos, qpos
+        cdef int op
+        cdef uint32_t * cigar_p
+        cdef bam1_t * src 
+        cdef int _matches_only
+
+        _matches_only = bool(matches_only)
+
+        src = self._delegate
+        if pysam_get_n_cigar(src) == 0:
+            return []
+
+        result = []
+        pos = src.core.pos
+        qpos = 0
+        cigar_p = pysam_bam_get_cigar(src)
+
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+
+            if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
+                for i from pos <= i < pos + l:
+                    result.append((qpos, i))
+                    qpos += 1
+                pos += l
+
+            elif op == BAM_CINS or op == BAM_CSOFT_CLIP:
+                if not _matches_only:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, None))
+                        qpos += 1
+                else:
+                    qpos += l
+
+            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                if not _matches_only:
+                    for i from pos <= i < pos + l:
+                        result.append((None, i))
+                pos += l
+
+            elif op == BAM_CHARD_CLIP:
+                pass # advances neither
+
+            elif op == BAM_CPAD:
+                raise NotImplementedError("Padding (BAM_CPAD, 6) is currently not supported. Please implement. Sorry about that.")
+
+        return result
+
+    def get_blocks(self):
+        """ a list of start and end positions of
+        aligned gapless blocks.
+
+        The start and end positions are in genomic 
+        coordinates. 
+      
+        Blocks are not normalized, i.e. two blocks 
+        might be directly adjacent. This happens if
+        the two blocks are separated by an insertion 
+        in the read.
+        """
+
+        cdef uint32_t k, pos, l
+        cdef int op
+        cdef uint32_t * cigar_p
+        cdef bam1_t * src
+
+        src = self._delegate
+        if pysam_get_n_cigar(src) == 0:
+            return []
+
+        result = []
+        pos = src.core.pos
+        cigar_p = pysam_bam_get_cigar(src)
+        l = 0
+
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+            if op == BAM_CMATCH:
+                result.append((pos, pos + l))
+                pos += l
+            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                pos += l
+
+        return result
+
+    def get_overlap(self, uint32_t start, uint32_t end):
+        """return number of aligned bases of read overlapping the interval
+        *start* and *end* on the reference sequence.
+
+        Return None if cigar alignment is not available.
+        """
+        cdef uint32_t k, i, pos, overlap
+        cdef int op, o
+        cdef uint32_t * cigar_p
+        cdef bam1_t * src
+
+        overlap = 0
+
+        src = self._delegate
+        if pysam_get_n_cigar(src) == 0:
+            return None
+        pos = src.core.pos
+        o = 0
+
+        cigar_p = pysam_bam_get_cigar(src)
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+
+            if op == BAM_CMATCH:
+                o = min( pos + l, end) - max( pos, start )
+                if o > 0: overlap += o
+
+            if op == BAM_CMATCH or op == BAM_CDEL or op == BAM_CREF_SKIP:
+                pos += l
+
+        return overlap
+
+    #####################################################
+    ## Unsorted as yet
+    # TODO: capture in CIGAR object
+    property cigartuples:
+        """the :term:`cigar` alignment. The alignment
+        is returned as a list of tuples of (operation, length). 
+
+        If the alignment is not present, None is returned.
+
+        The operations are:
+
+        +-----+--------------+-----+
+        |M    |BAM_CMATCH    |0    |
+        +-----+--------------+-----+
+        |I    |BAM_CINS      |1    |
+        +-----+--------------+-----+
+        |D    |BAM_CDEL      |2    |
+        +-----+--------------+-----+
+        |N    |BAM_CREF_SKIP |3    |
+        +-----+--------------+-----+
+        |S    |BAM_CSOFT_CLIP|4    |
+        +-----+--------------+-----+
+        |H    |BAM_CHARD_CLIP|5    |
+        +-----+--------------+-----+
+        |P    |BAM_CPAD      |6    |
+        +-----+--------------+-----+
+        |=    |BAM_CEQUAL    |7    |
+        +-----+--------------+-----+
+        |X    |BAM_CDIFF     |8    |
+        +-----+--------------+-----+
+
+        .. note::
+            The output is a list of (operation, length) tuples, such as
+            ``[(0, 30)]``.
+            This is different from the SAM specification and
+            the :attr:`cigarstring` property, which uses a
+            (length, operation) order, for example: ``30M``.
+
+        To unset the cigar property, assign an empty list
+        or None.
+        """
+        def __get__(self):
+            cdef uint32_t * cigar_p
+            cdef bam1_t * src
+            cdef uint32_t op, l
+            cdef int k
+
+            src = self._delegate
+            if pysam_get_n_cigar(src) == 0:
+                return None
+
+            cigar = []
+
+            cigar_p = pysam_bam_get_cigar(src);
+            for k from 0 <= k < pysam_get_n_cigar(src):
+                op = cigar_p[k] & BAM_CIGAR_MASK
+                l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                cigar.append((op, l))
+            return cigar
+
+        def __set__(self, values):
+            cdef uint32_t * p
+            cdef bam1_t * src
+            cdef op, l
+            cdef int k, ncigar
+
+            k = 0
+
+            src = self._delegate
+
+            # get location of cigar string
+            p = pysam_bam_get_cigar(src)
+
+            # empty values for cigar string
+            if values is None:
+                values = []
+
+            ncigar = len(values)
+            # create space for cigar data within src.data
+            pysam_bam_update(src,
+                             pysam_get_n_cigar(src) * 4,
+                             ncigar * 4,
+                             <uint8_t*>p)
+
+            # length is number of cigar operations, not bytes
+            pysam_set_n_cigar(src, ncigar)
+
+            # re-acquire pointer to location in memory
+            # as it might have moved
+            p = pysam_bam_get_cigar(src)
+
+            # insert cigar operations
+            for op, l in values:
+                p[k] = l << BAM_CIGAR_SHIFT | op
+                k += 1
+
+            ## setting the cigar string requires updating the bin
+            pysam_set_bin(src,
+                          hts_reg2bin(
+                              src.core.pos,
+                              bam_endpos(src),
+                              14,
+                              5))
+
+
+    cpdef set_tag(self,
+                  tag,
+                  value, 
+                  value_type=None,
+                  replace=True):
+        """sets a particular field *tag* to *value* in the optional alignment
+        section.
+
+        *value_type* describes the type of *value* that is to entered
+        into the alignment record.. It can be set explicitly to one
+        of the valid one-letter type codes. If unset, an appropriate
+        type will be chosen automatically.
+
+        An existing value of the same *tag* will be overwritten unless
+        replace is set to False. This is usually not recommened as a
+        tag may only appear once in the optional alignment section.
+
+        If *value* is None, the tag will be deleted.
+        """
+
+        cdef int value_size
+        cdef uint8_t * value_ptr
+        cdef uint8_t *existing_ptr
+        cdef uint8_t typecode
+        cdef float float_value
+        cdef double double_value
+        cdef int32_t int_value
+        cdef bam1_t * src = self._delegate
+        cdef char * _value_type
+        cdef c_array.array array_value
+        cdef object buffer
+
+        if len(tag) != 2:
+            raise ValueError('Invalid tag: %s' % tag)
+
+        tag = force_bytes(tag)
+        if replace:
+            existing_ptr = bam_aux_get(src, tag)
+            if existing_ptr:
+                bam_aux_del(src, existing_ptr)
+
+        # setting value to None deletes a tag
+        if value is None:
+            return
+        
+        typecode = get_value_code(value, value_type)
+        if typecode == 0:
+            raise ValueError("can't guess type or invalid type code specified")
+
+        # Not Endian-safe, but then again neither is samtools!
+        if typecode == 'Z':
+            value = force_bytes(value)
+            value_ptr = <uint8_t*><char*>value
+            value_size = len(value)+1
+        elif typecode == 'i':
+            int_value = value
+            value_ptr = <uint8_t*>&int_value
+            value_size = sizeof(int32_t)
+        elif typecode == 'd':
+            double_value = value
+            value_ptr = <uint8_t*>&double_value
+            value_size = sizeof(double)
+        elif typecode == 'f':
+            float_value  = value
+            value_ptr = <uint8_t*>&float_value
+            value_size = sizeof(float)
+        elif typecode == 'B':
+            # the following goes through python, needs to be cleaned up
+            # pack array using struct
+            if value_type is None:
+                fmt, args = packTags([(tag, value)])
+            else:
+                fmt, args = packTags([(tag, value, value_type)])
+
+            # remove tag and type code as set by bam_aux_append
+            # first four chars of format (<2sc)
+            fmt = '<' + fmt[4:]
+            # first two values to pack
+            args = args[2:]
+            value_size = struct.calcsize(fmt)
+            # buffer will be freed when object goes out of scope
+            buffer = ctypes.create_string_buffer(value_size)
+            struct.pack_into(fmt, buffer, 0, *args)
+            # bam_aux_append copies data from value_ptr
+            bam_aux_append(src,
+                           tag,
+                           typecode, 
+                           value_size,
+                           <uint8_t*>buffer.raw)
+            return
+        else:
+            raise ValueError('unsupported value_type in set_option')
+
+        bam_aux_append(src,
+                       tag,
+                       typecode, 
+                       value_size,
+                       value_ptr)
+
+    cpdef has_tag(self, tag):
+        """returns true if the optional alignment section
+        contains a given *tag*."""
+        cdef uint8_t * v
+        cdef int nvalues
+        btag = force_bytes(tag)
+        v = bam_aux_get(self._delegate, btag)
+        return v != NULL
+
+    cpdef get_tag(self, tag, with_value_type=False):
+        """
+        retrieves data from the optional alignment section
+        given a two-letter *tag* denoting the field.
+
+        The returned value is cast into an appropriate python type.
+
+        This method is the fastest way to access the optional
+        alignment section if only few tags need to be retrieved.
+
+        Parameters 
+        ----------
+
+        tag : 
+            data tag.
+            
+        with_value_type : Optional[bool]
+            if set to True, the return value is a tuple of (tag value, type code).
+            (default False)
+            
+        Returns
+        -------
+
+        A python object with the value of the `tag`. The type of the
+        object depends on the data type in the data record.
+
+        Raises
+        ------
+
+        KeyError
+            If `tag` is not present, a KeyError is raised.
+
+        """
+        cdef uint8_t * v
+        cdef int nvalues
+        btag = force_bytes(tag)
+        v = bam_aux_get(self._delegate, btag)
+        if v == NULL:
+            raise KeyError("tag '%s' not present" % tag)
+        if chr(v[0]) == "B":
+            auxtype = chr(v[0]) + chr(v[1])
+        else:
+            auxtype = chr(v[0])
+
+        if auxtype == 'c' or auxtype == 'C' or auxtype == 's' or auxtype == 'S':
+            value = <int>bam_aux2i(v)
+        elif auxtype == 'i' or auxtype == 'I':
+            value = <int32_t>bam_aux2i(v)
+        elif auxtype == 'f' or auxtype == 'F':
+            value = <float>bam_aux2f(v)
+        elif auxtype == 'd' or auxtype == 'D':
+            value = <double>bam_aux2f(v)
+        elif auxtype == 'A':
+            # there might a more efficient way
+            # to convert a char into a string
+            value = '%c' % <char>bam_aux2A(v)
+        elif auxtype == 'Z':
+            value = charptr_to_str(<char*>bam_aux2Z(v))
+        elif auxtype[0] == 'B':
+            bytesize, nvalues, values = convert_binary_tag(v + 1)
+            value = values
+        else:
+            raise ValueError("unknown auxiliary type '%s'" % auxtype)
+
+        if with_value_type:
+            return (value, auxtype)
+        else:
+            return value
+
+    def get_tags(self, with_value_type=False):
+        """the fields in the optional aligment section.
+
+        Returns a list of all fields in the optional
+        alignment section. Values are converted to appropriate python
+        values. For example:
+
+        [(NM, 2), (RG, "GJP00TM04")]
+
+        If *with_value_type* is set, the value type as encode in
+        the AlignedSegment record will be returned as well:
+
+        [(NM, 2, "i"), (RG, "GJP00TM04", "Z")]
+
+        This method will convert all values in the optional alignment
+        section. When getting only one or few tags, please see
+        :meth:`get_tag` for a quicker way to achieve this.
+
+        """
+
+        cdef char * ctag
+        cdef bam1_t * src
+        cdef uint8_t * s
+        cdef char auxtag[3]
+        cdef char auxtype
+        cdef uint8_t byte_size
+        cdef int32_t nvalues
+
+        src = self._delegate
+        if src.l_data == 0:
+            return []
+        s = pysam_bam_get_aux(src)
+        result = []
+        auxtag[2] = 0
+        while s < (src.data + src.l_data):
+            # get tag
+            auxtag[0] = s[0]
+            auxtag[1] = s[1]
+            s += 2
+            auxtype = s[0]
+            if auxtype in ('c', 'C'):
+                value = <int>bam_aux2i(s)
+                s += 1
+            elif auxtype in ('s', 'S'):
+                value = <int>bam_aux2i(s)
+                s += 2
+            elif auxtype in ('i', 'I'):
+                value = <int32_t>bam_aux2i(s)
+                s += 4
+            elif auxtype == 'f':
+                value = <float>bam_aux2f(s)
+                s += 4
+            elif auxtype == 'd':
+                value = <double>bam_aux2f(s)
+                s += 8
+            elif auxtype == 'A':
+                value = "%c" % <char>bam_aux2A(s)
+                s += 1
+            elif auxtype in ('Z', 'H'):
+                value = charptr_to_str(<char*>bam_aux2Z(s))
+                # +1 for NULL terminated string
+                s += len(value) + 1
+            elif auxtype == 'B':
+                s += 1
+                byte_size, nvalues, value = convert_binary_tag(s)
+                # 5 for 1 char and 1 int
+                s += 5 + (nvalues * byte_size) - 1
+            else:
+                raise KeyError("unknown type '%s'" % auxtype)
+
+            s += 1
+
+            if with_value_type:
+                result.append((charptr_to_str(auxtag), value, auxtype))
+            else:
+                result.append((charptr_to_str(auxtag), value))
+
+        return result
+
+    def set_tags(self, tags):
+        """sets the fields in the optional alignmest section with
+        a list of (tag, value) tuples.
+
+        The :term:`value type` of the values is determined from the
+        python type. Optionally, a type may be given explicitly as
+        a third value in the tuple, For example:
+
+        x.set_tags([(NM, 2, "i"), (RG, "GJP00TM04", "Z")]
+
+        This method will not enforce the rule that the same tag may appear
+        only once in the optional alignment section.
+        """
+        
+        cdef bam1_t * src
+        cdef uint8_t * s
+        cdef char * temp
+        cdef int new_size = 0
+        cdef int old_size
+        src = self._delegate
+
+        # convert and pack the data
+        if tags is not None and len(tags) > 0:
+            fmt, args = packTags(tags)
+            new_size = struct.calcsize(fmt)
+            buffer = ctypes.create_string_buffer(new_size)
+            struct.pack_into(fmt,
+                             buffer,
+                             0, 
+                             *args)
+
+        # delete the old data and allocate new space.
+        # If total_size == 0, the aux field will be
+        # empty
+        old_size = pysam_bam_get_l_aux(src)
+        pysam_bam_update(src,
+                         old_size,
+                         new_size,
+                         pysam_bam_get_aux(src))
+
+        # copy data only if there is any
+        if new_size > 0:
+
+            # get location of new data
+            s = pysam_bam_get_aux(src)
+
+            # check if there is direct path from buffer.raw to tmp
+            p = buffer.raw
+            # create handle to make sure buffer stays alive long 
+            # enough for memcpy, see issue 129
+            temp = p
+            memcpy(s, temp, new_size)
+                
+
+    ########################################################
+    # Compatibility Accessors
+    # Functions, properties for compatibility with pysam < 0.8
+    #
+    # Several options
+    #     change the factory functions according to API
+    #         * requires code changes throughout, incl passing
+    #           handles to factory functions
+    #     subclass functions and add attributes at runtime
+    #         e.g.: AlignedSegments.qname = AlignedSegments.query_name
+    #         * will slow down the default interface
+    #     explicit declaration of getters/setters
+    ########################################################
+    property qname:
+        def __get__(self): return self.query_name
+        def __set__(self, v): self.query_name = v
+    property tid:
+        def __get__(self): return self.reference_id
+        def __set__(self, v): self.reference_id = v
+    property pos:
+        def __get__(self): return self.reference_start
+        def __set__(self, v): self.reference_start = v
+    property mapq:
+        def __get__(self): return self.mapping_quality
+        def __set__(self, v): self.mapping_quality = v
+    property rnext:
+        def __get__(self): return self.next_reference_id
+        def __set__(self, v): self.next_reference_id = v
+    property pnext:
+        def __get__(self):
+            return self.next_reference_start
+        def __set__(self, v):
+            self.next_reference_start = v
+    property cigar:
+        def __get__(self):
+            r = self.cigartuples
+            if r is None:
+                r = []
+            return r
+        def __set__(self, v): self.cigartuples = v
+    property tlen:
+        def __get__(self):
+            return self.template_length
+        def __set__(self, v):
+            self.template_length = v
+    property seq:
+        def __get__(self): return self.query_sequence
+        def __set__(self, v): self.query_sequence = v
+    property qual:
+        def __get__(self):
+            return array_to_qualitystring(self.query_qualities)
+        def __set__(self, v):
+            self.query_qualities = qualitystring_to_array(v)
+    property alen:
+        def __get__(self):
+            return self.reference_length
+        def __set__(self, v):
+            self.reference_length = v
+    property aend:
+        def __get__(self):
+            return self.reference_end
+        def __set__(self, v):
+            self.reference_end = v
+    property rlen:
+        def __get__(self):
+            return self.query_length
+        def __set__(self, v):
+            self.query_length = v
+    property query:
+        def __get__(self):
+            return self.query_alignment_sequence
+        def __set__(self, v):
+            self.query_alignment_sequence = v
+    property qqual:
+        def __get__(self):
+            return array_to_qualitystring(self.query_alignment_qualities)
+        def __set__(self, v):
+            self.query_alignment_qualities = qualitystring_to_array(v)
+    property qstart:
+        def __get__(self):
+            return self.query_alignment_start
+        def __set__(self, v):
+            self.query_alignment_start = v
+    property qend:
+        def __get__(self):
+            return self.query_alignment_end
+        def __set__(self, v):
+            self.query_alignment_end = v
+    property qlen:
+        def __get__(self):
+            return self.query_alignment_length
+        def __set__(self, v):
+            self.query_alignment_length = v
+    property mrnm:
+        def __get__(self):
+            return self.next_reference_id
+        def __set__(self, v):
+            self.next_reference_id = v
+    property mpos:
+        def __get__(self):
+            return self.next_reference_start
+        def __set__(self, v):
+            self.next_reference_start = v
+    property rname:
+        def __get__(self):
+            return self.reference_id
+        def __set__(self, v):
+            self.reference_id = v
+    property isize:
+        def __get__(self):
+            return self.template_length
+        def __set__(self, v):
+            self.template_length = v
+    property blocks:
+        def __get__(self):
+            return self.get_blocks()
+    property aligned_pairs:
+        def __get__(self):
+            return self.get_aligned_pairs()
+    property inferred_length:
+        def __get__(self):
+            return self.infer_query_length()
+    property positions:
+        def __get__(self):
+            return self.get_reference_positions()
+    property tags:
+        def __get__(self):
+            return self.get_tags()
+        def __set__(self, tags):
+            self.set_tags(tags)
+    def overlap(self):
+        return self.get_overlap()
+    def opt(self, tag):
+        return self.get_tag(tag)
+    def setTag(self, tag, value, value_type=None, replace=True):
+        return self.set_tag(tag, value, value_type, replace)
+        
+
+cdef class PileupColumn:
+    '''A pileup of reads at a particular reference sequence postion
+    (:term:`column`). A pileup column contains all the reads that map
+    to a certain target base.
+
+    This class is a proxy for results returned by the samtools pileup
+    engine.  If the underlying engine iterator advances, the results
+    of this column will change.
+
+    '''
+    def __init__(self):
+        raise TypeError("this class cannot be instantiated from Python")
+
+    def __str__(self):
+        return "\t".join(map(str, 
+                              (self.reference_id,
+                               self.reference_pos, 
+                               self.nsegments))) +\
+            "\n" +\
+            "\n".join(map(str, self.pileups))
+
+    property reference_id:
+        '''the reference sequence number as defined in the header'''
+        def __get__(self):
+            return self.tid
+
+    property nsegments:
+        '''number of reads mapping to this column.'''
+        def __get__(self):
+            return self.n_pu
+        def __set__(self, n):
+            self.n_pu = n
+
+    property reference_pos:
+        '''the position in the reference sequence (0-based).'''
+        def __get__(self):
+            return self.pos
+
+    property pileups:
+        '''list of reads (:class:`pysam.PileupRead`) aligned to this column'''
+        def __get__(self):
+            cdef int x
+            pileups = []
+
+            if self.plp == NULL or self.plp[0] == NULL:
+                raise ValueError("PileupColumn accessed after iterator finished")
+
+            # warning: there could be problems if self.n and self.buf are
+            # out of sync.
+            for x from 0 <= x < self.n_pu:
+                pileups.append(makePileupRead(&(self.plp[0][x])))
+            return pileups
+
+    ########################################################
+    # Compatibility Accessors
+    # Functions, properties for compatibility with pysam < 0.8
+    ########################################################
+    property pos:
+        def __get__(self):
+            return self.reference_pos
+        def __set__(self, v):
+            self.reference_pos = v
+
+    property tid:
+        def __get__(self):
+            return self.reference_id
+        def __set__(self, v):
+            self.reference_id = v
+    
+    property n:
+        def __get__(self):
+            return self.nsegments
+        def __set__(self, v):
+            self.nsegments = v
+            
+
+cdef class PileupRead:
+    '''Representation of a read aligned to a particular position in the
+    reference sequence.
+
+    '''
+
+    def __init__(self):
+        raise TypeError(
+            "this class cannot be instantiated from Python")
+
+    def __str__(self):
+        return "\t".join(
+            map(str,
+                (self.alignment, self.query_position,
+                 self.indel, self.level,
+                 self.is_del, self.is_head,
+                 self.is_tail, self.is_refskip)))
+    
+    property alignment:
+        """a :class:`pysam.AlignedSegment` object of the aligned read"""
+        def __get__(self):
+            return self._alignment
+
+    property query_position:
+        """position of the read base at the pileup site, 0-based.
+        None if is_del or is_refskip is set.
+        
+        """
+        def __get__(self):
+            if self.is_del or self.is_refskip:
+                return None
+            else:
+                return self._qpos
+
+    property indel:
+        """indel length; 0 for no indel, positive for ins and negative            for del"""
+        def __get__(self):
+            return self._indel
+
+    property level:
+        """the level of the read in the "viewer" mode"""
+        def __get__(self):
+            return self._level
+
+    property is_del:
+        """1 iff the base on the padded read is a deletion"""
+        def __get__(self):
+            return self._is_del
+
+    property is_head:
+        def __get__(self):
+            return self._is_head
+
+    property is_tail:
+        def __get__(self):
+            return self._is_tail
+
+    property is_refskip:
+        def __get__(self):
+            return self._is_refskip
+
+__all__ = [
+    "AlignedSegment",
+    "PileupColumn",
+    "PileupRead"]

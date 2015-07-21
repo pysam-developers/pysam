@@ -2,6 +2,9 @@
 Pysam
 =====
 
+.. image:: https://travis-ci.org/pysam-developers/pysam.svg
+       :alt: pysam build status
+
 Pysam is a python module for reading and manipulating files in the
 SAM/BAM format. The SAM/BAM format is a way to store efficiently large
 numbers of alignments (`Li 2009`_), such as those routinely created by
@@ -15,7 +18,7 @@ The latest version is available through
 type::
   
    pip install pysam
-                                                      .
+
 Pysam documentation is available through https://readthedocs.org/ from
 `here <http://pysam.readthedocs.org/en/latest/>`_
 

@@ -6,7 +6,6 @@ from libc.stdio cimport FILE, printf
 from posix.types cimport off_t
 
 cdef extern from "Python.h":
-   long _Py_HashPointer(void*)
    FILE* PyFile_AsFile(object)
 
 
@@ -22,6 +21,7 @@ cdef extern from "zlib.h" nogil:
   gzFile gzdopen (int fd, char *mode)
   char * gzgets(gzFile file, char *buf, int len)
   int gzeof(gzFile file)
+
 
 cdef extern from "htslib/kstring.h" nogil:
     ctypedef struct kstring_t:
@@ -951,35 +951,7 @@ cdef extern from "htslib/sam.h" nogil:
     # ctypedef bam_pileup1_t * const_bam_pileup1_t_ptr "const bam_pileup1_t *"
 
 
-cdef extern from "pysam_stream.h" nogil:
-
-    ctypedef struct kstream_t:
-        pass
-
-    ctypedef struct kseq_t:
-        kstring_t name
-        kstring_t comment
-        kstring_t seq
-        kstring_t qual
-
-    gzFile gzopen(char *, char *)
-    kseq_t *kseq_init(gzFile)
-    int kseq_read(kseq_t *)
-    void kseq_destroy(kseq_t *)
-    int gzclose(gzFile)
-
-    kstream_t *ks_init(gzFile)
-    void ks_destroy(kstream_t *)
-
-    # Retrieve characters from stream until delimiter
-    # is reached placing results in str.
-    int ks_getuntil(kstream_t *,
-                    int delimiter,
-                    kstring_t * str,
-                    int * dret)
-
-
-cdef extern from "htslib/faidx.h":
+cdef extern from "htslib/faidx.h" nogil:
 
     ctypedef struct faidx_t:
        pass
@@ -1702,3 +1674,8 @@ cdef extern from "htslib/vcf.h" nogil:
     int bcf_itr_next(htsFile *fp, hts_itr_t *iter, void *r)
     hts_idx_t *bcf_index_load(const char *fn)
     const char **bcf_index_seqnames(const hts_idx_t *idx, const bcf_hdr_t *hdr, int *nptr)
+
+cdef extern from "htslib_util.h":
+
+    int hts_set_verbosity(int verbosity)
+    int hts_get_verbosity()

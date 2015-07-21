@@ -1,13 +1,18 @@
 from pysam.libchtslib import *
 
+from pysam.cutils import *
+import pysam.cutils as cutils
+
+import pysam.cfaidx as cfaidx
+from pysam.cfaidx import *
 import pysam.ctabix as ctabix
 from pysam.ctabix import *
 import pysam.csamfile as csamfile
 from pysam.csamfile import *
 import pysam.calignmentfile as calignmentfile
 from pysam.calignmentfile import *
-import pysam.cfaidx as cfaidx
-from pysam.cfaidx import *
+import pysam.calignedsegment as calignedsegment
+from pysam.calignedsegment import *
 import pysam.cvcf as cvcf
 from pysam.cvcf import *
 import pysam.cbcf as cbcf
@@ -66,7 +71,8 @@ class SamtoolsDispatcher(object):
         raw -- ignore any parsers associated with this samtools command.
         '''
         retval, stderr, stdout = csamtools._samtools_dispatch(
-            self.dispatch, args, **kwargs)
+            self.dispatch, args, catch_stdout=kwargs.get("catch_stdout", True))
+
         if retval:
             raise SamtoolsError(
                 'csamtools returned with error %i: %s' %
@@ -81,8 +87,7 @@ class SamtoolsDispatcher(object):
                   if not (x.startswith("[sam_header_read2]") or
                           x.startswith("[bam_index_load]") or
                           x.startswith("[bam_sort_core]") or
-                          x.startswith("[samopen] SAM header is present"))
-        ]
+                          x.startswith("[samopen] SAM header is present"))]
         if stderr:
             raise SamtoolsError("\n".join(stderr))
 
@@ -147,12 +152,14 @@ for key, options in SAMTOOLS_DISPATCH.items():
 
 # hack to export all the symbols from separate modules
 __all__ = \
-    libchtslib.__all__ + \
-    ctabix.__all__ + \
+    libchtslib.__all__ +\
+    cutils.__all__ +\
+    ctabix.__all__ +\
     cvcf.__all__ +\
     cbcf.__all__ +\
     cfaidx.__all__ +\
     calignmentfile.__all__ +\
+    calignedsegment.__all__ +\
     csamfile.__all__ +\
     ["SamtoolsError", "SamtoolsDispatcher"] +\
     list(SAMTOOLS_DISPATCH) +\
@@ -182,7 +189,7 @@ def get_libraries():
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
     return [os.path.join(dirname, x) for x in (
         'libchtslib.so',
-        'TabProxies.so',
+        'ctabixproxies.so',
         'cfaidx.so',
         'csamfile.so',
         'cvcf.so',

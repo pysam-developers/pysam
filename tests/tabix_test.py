@@ -13,6 +13,8 @@ import pysam
 import unittest
 import glob
 import re
+import copy
+from TestUtils import checkURL
 
 DATADIR = 'tabix_data'
 
@@ -493,6 +495,16 @@ class TestParser(unittest.TestCase):
 
         os.unlink(tmpfilename)
 
+    def testCopy(self):
+        a = self.tabix.fetch(parser=pysam.asTuple()).next()
+        b = copy.copy(a)
+        self.assertEqual(a, b)
+
+        a = self.tabix.fetch(parser=pysam.asGTF()).next()
+        b = copy.copy(a)
+        self.assertEqual(a, b)
+
+        
 
 class TestIterators(unittest.TestCase):
 
@@ -934,6 +946,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
     local = os.path.join(DATADIR, "example.gtf.gz")
 
     def testFetchAll(self):
+        if not checkURL(self.url):
+            return
+
         remote_file = pysam.TabixFile(self.url, "r")
         remote_result = list(remote_file.fetch())
         local_file = pysam.TabixFile(self.local, "r")

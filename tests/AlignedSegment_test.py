@@ -2,6 +2,7 @@ import os
 import pysam
 import unittest
 from TestUtils import checkFieldEqual
+import copy
 
 SAMTOOLS = "samtools"
 WORKDIR = "pysam_test_work"
@@ -24,7 +25,7 @@ class ReadTest(unittest.TestCase):
         a.next_reference_id = 0
         a.next_reference_start = 200
         a.template_length = 167
-        a.query_qualities = pysam.fromQualityString("1234") * 10
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         # todo: create tags
         return a
 
@@ -39,7 +40,7 @@ class TestAlignedSegment(ReadTest):
         a = pysam.AlignedSegment()
         self.assertEqual(a.query_name, None)
         self.assertEqual(a.query_sequence, None)
-        self.assertEqual(pysam.toQualityString(a.query_qualities), None)
+        self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), None)
         self.assertEqual(a.flag, 0)
         self.assertEqual(a.reference_id, 0)
         self.assertEqual(a.mapping_quality, 0)
@@ -148,14 +149,14 @@ class TestAlignedSegment(ReadTest):
         '''
         a = self.buildRead()
         a.query_sequence = a.query_sequence[5:10]
-        self.assertEqual(pysam.toQualityString(a.query_qualities), None)
+        self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), None)
 
         a = self.buildRead()
-        s = pysam.toQualityString(a.query_qualities)
+        s = pysam.qualities_to_qualitystring(a.query_qualities)
         a.query_sequence = a.query_sequence[5:10]
-        a.query_qualities = pysam.fromQualityString(s[5:10])
+        a.query_qualities = pysam.qualitystring_to_array(s[5:10])
 
-        self.assertEqual(pysam.toQualityString(a.query_qualities), s[5:10])
+        self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), s[5:10])
 
     def testLargeRead(self):
         '''build an example read.'''
@@ -171,7 +172,7 @@ class TestAlignedSegment(ReadTest):
         a.next_reference_id = 0
         a.next_reference_start = 200
         a.template_length = 167
-        a.query_qualities = pysam.fromQualityString("1234") * 200
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 200
 
         return a
 
@@ -235,7 +236,7 @@ class TestAlignedSegment(ReadTest):
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((4, 2), (0, 35), (4, 3))
-        a.query_qualities = pysam.fromQualityString("1234") * 10
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         self.assertEqual(a.get_aligned_pairs(),
                          [(0, None), (1, None)] +
                          [(qpos, refpos) for (qpos, refpos) in zip(
@@ -258,7 +259,7 @@ class TestAlignedSegment(ReadTest):
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((5, 2), (0, 35), (5, 3))
-        a.query_qualities = pysam.fromQualityString("1234") * 10
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         self.assertEqual(a.get_aligned_pairs(),
                          # No seq, no seq pos
                          [(qpos, refpos) for (qpos, refpos) in zip(
@@ -276,7 +277,7 @@ class TestAlignedSegment(ReadTest):
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((0, 2), (3, 100), (0, 38))
-        a.query_qualities = pysam.fromQualityString("1234") * 10
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         self.assertEqual(a.get_aligned_pairs(),
                          [(0, 20), (1, 21)] +
                          [(None, refpos) for refpos in range(22, 22 + 100)] +
@@ -299,7 +300,7 @@ class TestAlignedSegment(ReadTest):
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((7, 20), (8, 20))
-        a.query_qualities = pysam.fromQualityString("1234") * 10
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         self.assertEqual(a.get_aligned_pairs(),
                          [(qpos, refpos) for (qpos, refpos) in zip(
                              range(0, 0 + 40), range(20, 20 + 40))])
@@ -316,7 +317,7 @@ class TestAlignedSegment(ReadTest):
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((7, 20), (6, 1), (8, 19))
-        a.query_qualities = pysam.fromQualityString("1234") * 10
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
 
         def inner():
             a.get_aligned_pairs()
@@ -442,6 +443,44 @@ class TestTags(ReadTest):
             entry.set_tags(before)
             after = entry.get_tags()
             self.assertEqual(after, before)
+
+
+class TestCopy(ReadTest):
+    
+    def testCopy(self):
+        a = self.buildRead()
+        b = copy.copy(a)
+        # check if a and be are the same
+        self.assertEqual(a, b)
+
+        # check if they map to different objects
+        a.query_name = 'ReadA'
+        b.query_name = 'ReadB'
+        self.assertEqual(a.query_name, 'ReadA')
+        self.assertEqual(b.query_name, 'ReadB')
+
+    def testDeepCopy(self):
+        a = self.buildRead()
+        b = copy.deepcopy(a)
+        # check if a and be are the same
+        self.assertEqual(a, b)
+
+        # check if they map to different objects
+        a.query_name = 'ReadA'
+        b.query_name = 'ReadB'
+        self.assertEqual(a.query_name, 'ReadA')
+        self.assertEqual(b.query_name, 'ReadB')
+
+class TestAsString(unittest.TestCase):
+
+    def testAsString(self):
+        with open(os.path.join(DATADIR, "ex2.sam")) as samf:
+            reference = [x for x in samf if not x.startswith("@")]
+
+        with pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex2.bam"), "r") as pysamf:
+            for s, p in zip(reference, pysamf):
+                self.assertEqual(s, p.tostring(pysamf))
 
 if __name__ == "__main__":
     unittest.main()

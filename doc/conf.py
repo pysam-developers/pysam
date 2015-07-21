@@ -16,20 +16,24 @@ import sys, os, glob
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-_libdir = "../build/lib.%s-%s-%s.%s" % (os.uname()[0].lower(), os.uname()[4],sys.version_info[0], sys.version_info[1] )
-if os.path.exists( _libdir ):
-    sys.path.insert(0, os.path.abspath( _libdir ) )
+_libdir = "../build/lib.%s-%s-%s.%s" % (os.uname()[0].lower(), os.uname()[4],
+                                        sys.version_info[0], sys.version_info[1])
+if os.path.exists(_libdir):
+    sys.path.insert(0, os.path.abspath(_libdir))
 
 # -- General configuration -----------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.todo', 
-	'sphinx.ext.ifconfig',
-	'sphinx.ext.intersphinx']
+extensions = ['sphinx.ext.autodoc',
+              'sphinx.ext.autosummary',
+              'sphinx.ext.todo', 
+              'sphinx.ext.ifconfig',
+              'sphinx.ext.intersphinx',
+#	      'numpydoc']
+	      'sphinx.ext.napoleon']
 
 intersphinx_mapping = {'python': ('http://docs.python.org/3.2', None)}
-
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -60,6 +64,8 @@ rst_epilog = '''
 .. _pyximport: http://www.prescod.net/pyximport/
 
 '''
+
+autosummary_generate = True
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -113,7 +119,7 @@ pygments_style = 'sphinx'
 
 # The theme to use for HTML and HTML Help pages.  Major themes that come with
 # Sphinx are currently 'default' and 'sphinxdoc'.
-html_theme = 'default'
+html_theme = 'classic'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
