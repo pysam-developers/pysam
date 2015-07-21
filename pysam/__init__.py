@@ -30,14 +30,13 @@ class SamtoolsError(Exception):
 
 
 class SamtoolsDispatcher(object):
-    '''samtools dispatcher.
-
-    Emulates the samtools command line as module calls.
+    '''The samtools dispatcher emulates the samtools command line as
+    module calls.
 
     Captures stdout and stderr.
 
-    Raises a :class:`pysam.SamtoolsError` exception in case
-    samtools exits with an error code other than 0.
+    Raises a :class:`pysam.SamtoolsError` exception in case samtools
+    exits with an error code other than 0.
 
     Some command line options are associated with parsers.  For
     example, the samtools command "pileup -c" creates a tab-separated
@@ -46,8 +45,8 @@ class SamtoolsDispatcher(object):
     will be processed in order checking for the presence of each
     option.
 
-    If no parser is given or no appropriate parser is found, the
-    stdout output of samtools commands will be returned.
+    If no parser is given or no appropriate parser is found, the stdout
+    output of samtools commands will be returned.
 
     '''
 
@@ -60,10 +59,14 @@ class SamtoolsDispatcher(object):
         self.stderr = []
 
     def __call__(self, *args, **kwargs):
-        '''execute a samtools command
+        '''execute a samtools command.
+
+        Keyword arguments:
+        catch_stdout -- redirect stdout from the samtools command and return as variable (default True)
+        raw -- ignore any parsers associated with this samtools command.
         '''
         retval, stderr, stdout = csamtools._samtools_dispatch(
-            self.dispatch, args)
+            self.dispatch, args, **kwargs)
         if retval:
             raise SamtoolsError(
                 'csamtools returned with error %i: %s' %

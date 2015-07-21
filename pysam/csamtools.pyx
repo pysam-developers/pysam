@@ -8,11 +8,8 @@ import platform
 from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython.version cimport PY_MAJOR_VERSION
 
-########################################################################
-########################################################################
-########################################################################
+#####################################################
 ## Python 3 compatibility functions
-########################################################################
 IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
 cdef bytes _forceBytes(object s):
@@ -71,8 +68,8 @@ class Outs:
 
 
 def _samtools_dispatch(method,
-                       args = (),
-                       catch_stdout = True):
+                       args=(),
+                       catch_stdout=True):
     '''call ``method`` in samtools providing arguments in args.
     
     .. note:: 

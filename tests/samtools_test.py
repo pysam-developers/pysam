@@ -212,6 +212,7 @@ class BinaryTest(unittest.TestCase):
         For setup, all commands will be run before the first test is
         executed. Individual tests will then just compare the output
         files.
+
         '''
         if BinaryTest.first_time:
 
@@ -365,8 +366,7 @@ class BinaryTest(unittest.TestCase):
 
     def __del__(self):
         if os.path.exists(WORKDIR):
-            pass
-        # shutil.rmtree( WORKDIR )
+            shutil.rmtree(WORKDIR)
 
 if __name__ == "__main__":
     # build data files
