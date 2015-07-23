@@ -1696,13 +1696,15 @@ cdef class AlignedSegment:
             # there might a more efficient way
             # to convert a char into a string
             value = '%c' % <char>bam_aux2A(v)
-        elif auxtype == 'Z':
-            value = charptr_to_str(<char*>bam_aux2Z(v))
         elif auxtype[0] == 'B':
             bytesize, nvalues, values = convert_binary_tag(v + 1)
             value = values
         else:
-            raise ValueError("unknown auxiliary type '%s'" % auxtype)
+            # auxtype == 'Z':
+            # Unsafe, as it assumes that if it's not any of the others,
+            # it must be string, but this will compile to a switch
+            # and be faster
+            value = charptr_to_str(<char*>bam_aux2Z(v))
 
         if with_value_type:
             return (value, auxtype)
