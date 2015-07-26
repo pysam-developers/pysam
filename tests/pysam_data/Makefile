@@ -48,7 +48,7 @@ ex1.bam:ex1.sam.gz ex1.fa.fai
 		samtools index $<
 
 ex1.pileup.gz:ex1.bam ex1.fa
-		samtools pileup -cf ex1.fa ex1.bam | gzip > ex1.pileup.gz
+		samtools mpileup -f ex1.fa ex1.bam | gzip > ex1.pileup.gz
 
 ex2_truncated.bam: ex2.bam
 	head -c 124000 ex2.bam > ex2_truncated.bam
