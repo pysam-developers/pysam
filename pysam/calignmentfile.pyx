@@ -1493,16 +1493,8 @@ cdef class AlignmentFile:
                             x[key] = VALID_HEADER_FIELDS[record][key](value)
                             break
 
-                        # uppercase keys must be valid
-                        if key in VALID_HEADER_FIELDS[record]:
-                            x[key] = VALID_HEADER_FIELDS[record][key](value)
-                        # lowercase are permitted for user fields
-                        elif not key.isupper():
-                            x[key] = value
-                        else:
-                            raise ValueError(
-                                "unknown field code '%s' in record '%s'" %
-                                (key, record))
+                        # interpret type of known header record tags, default to str
+                        x[key] = VALID_HEADER_FIELDS[record].get(key, str)(value)
 
                     if VALID_HEADER_TYPES[record] == dict:
                         if record in result:
