@@ -11,19 +11,6 @@ cimport cython
 
 #################################################################
 # Utility functions for quality string conversions
-
-PHRED_OFFSET_STRING64 = string.maketrans(
-        "".join(chr(x) for x in xrange(
-            0, 63)),
-        "".join(chr(x + 64) for x in xrange(
-            0, 63)))
-
-PHRED_OFFSET_STRING33 = string.maketrans(
-        "".join(chr(x) for x in xrange(
-            0, 94)),
-        "".join(chr(x + 33) for x in xrange(
-            0, 94)))
-
 cpdef c_array.array qualitystring_to_array(bytes input_str, int offset=33):
     """convert a qualitystring to an array of quality values."""
     if input_str == None:
@@ -36,13 +23,14 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
     """convert an array of quality values to a string."""
     if qualities is None:
         return None
-    cdef char i
-    if offset == 33:
-        return qualities.tostring().translate(PHRED_OFFSET_STRING33)
-    elif offset == 64:
-        return qualities.tostring().translate(PHRED_OFFSET_STRING64)
-    else:
-        return "".join([i + offset for i in qualities])
+    cdef int x
+    
+    cdef c_array.array result
+    result = c_array.clone(qualities, len(qualities), zero=False)
+    
+    for x from 0 <= x < len(qualities):
+        result[x] = qualities[x] + offset
+    return result.tostring()
 
 
 cpdef qualities_to_qualitystring(qualities, int offset=33):

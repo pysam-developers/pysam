@@ -44,8 +44,8 @@ class Outs:
 
 
 def _samtools_dispatch(method,
-                       args = (),
-                       catch_stdout = True):
+                       args=(),
+                       catch_stdout=True):
     '''call ``method`` in samtools providing arguments in args.
     
     .. note:: 

@@ -1951,18 +1951,50 @@ class TestPileup(unittest.TestCase):
             fastafile=self.fastafile)
         self.checkEqual(refs, iterator)
 
-    def count_coverage_python(self, bam, chr, start, stop, read_callback, quality_threshold=15):
+
+class TestCountCoverage(unittest.TestCase):
+
+    samfilename = "pysam_data/ex1.bam"
+    fastafilename = "pysam_data/ex1.fa"
+
+    def setUp(self):
+
+        self.samfile = pysam.AlignmentFile(self.samfilename)
+        self.fastafile = pysam.Fastafile(self.fastafilename)
+
+        samfile = pysam.AlignmentFile(
+            "test_count_coverage_read_all.bam", 'wb',
+            template=self.samfile)
+        for ii, read in enumerate(self.samfile.fetch()):
+            # if ii % 2 == 0: # setting BFUNMAP makes no sense...
+                #read.flag = read.flag | 0x4
+            if ii % 3 == 0:
+                read.flag = read.flag | 0x100
+            if ii % 5 == 0:
+                read.flag = read.flag | 0x200
+            if ii % 7 == 0:
+                read.flag = read.flag | 0x400
+            samfile.write(read)
+        samfile.close()
+        pysam.index("test_count_coverage_read_all.bam")
+
+    def count_coverage_python(self, bam, chrom, start, stop,
+                              read_callback,
+                              quality_threshold=15):
         l = stop - start
         count_a = array.array('L', [0] * l)
         count_c = array.array('L', [0] * l)
         count_g = array.array('L', [0] * l)
         count_t = array.array('L', [0] * l)
-        for p in bam.pileup(chr, start, stop, truncate=True, stepper='nofilter'):
+        for p in bam.pileup(chrom, start, stop, truncate=True,
+                            stepper='nofilter'):
             rpos = p.reference_pos - start
             for read in p.pileups:
-                if not read.is_del and not read.is_refskip and read_callback(read.alignment):
+                if not read.is_del and not read.is_refskip and \
+                   read_callback(read.alignment):
                     try:
-                        if read.alignment.query_qualities[read.query_position] > quality_threshold:
+                        if read.alignment.query_qualities[read.query_position] \
+                           >= quality_threshold:
                             letter = read.alignment.query[read.query_position]
                             if letter == 'A':
                                 count_a[rpos] += 1
@@ -1977,51 +2009,59 @@ class TestPileup(unittest.TestCase):
         return count_a, count_c, count_g, count_t
 
     def test_count_coverage(self):
-        chr = 'chr1'
+        chrom = 'chr1'
         start = 0
         stop = 2000
-        manual_counts = self.count_coverage_python(self.samfile, chr, start, stop,
-                                                   lambda read: True,
-                                                   quality_threshold=0)
-        fast_counts = self.samfile.count_coverage(chr, start, stop,
-                                                  read_callback=lambda read: True,
-                                                  quality_threshold=0)
-        self.assertEqual(fast_counts[0], manual_counts[0])
-        self.assertEqual(fast_counts[1], manual_counts[1])
-        self.assertEqual(fast_counts[2], manual_counts[2])
-        self.assertEqual(fast_counts[3], manual_counts[3])
+        manual_counts = self.count_coverage_python(
+            self.samfile, chrom, start, stop,
+            lambda read: True,
+            quality_threshold=0)
+        fast_counts = self.samfile.count_coverage(
+            chrom, start, stop,
+            read_callback=lambda read: True,
+            quality_threshold=0)
+
+        self.assertEqual(list(fast_counts[0]), list(manual_counts[0]))
+        self.assertEqual(list(fast_counts[1]), list(manual_counts[1]))
+        self.assertEqual(list(fast_counts[2]), list(manual_counts[2]))
+        self.assertEqual(list(fast_counts[3]), list(manual_counts[3]))
 
     def test_count_coverage_quality_filter(self):
-        chr = 'chr1'
+        chrom = 'chr1'
         start = 0
         stop = 2000
-        manual_counts = self.count_coverage_python(self.samfile, chr, start, stop,
-                                                   lambda read: True,
-                                                   quality_threshold=0)
-        fast_counts = self.samfile.count_coverage(chr, start, stop,
-                                                  read_callback=lambda read: True,
-                                                  quality_threshold=15)
+        manual_counts = self.count_coverage_python(
+            self.samfile, chrom, start, stop,
+            lambda read: True,
+            quality_threshold=0)
+        fast_counts = self.samfile.count_coverage(
+            chrom, start, stop,
+            read_callback=lambda read: True,
+            quality_threshold=15)
         # we filtered harder, should be less
         for i in range(4):
             for r in range(start, stop):
                 self.assertTrue(fast_counts[i][r] <= manual_counts[i][r])
 
     def test_count_coverage_read_callback(self):
-        chr = 'chr1'
+        chrom = 'chr1'
         start = 0
         stop = 2000
-        manual_counts = self.count_coverage_python(self.samfile, chr, start, stop,
-                                                   lambda read: read.flag & 0x10,
-                                                   quality_threshold=0)
-        fast_counts = self.samfile.count_coverage(chr, start, stop,
-                                                  read_callback=lambda read: True,
-                                                  quality_threshold=0)
+        manual_counts = self.count_coverage_python(
+            self.samfile, chrom, start, stop,
+            lambda read: read.flag & 0x10,
+            quality_threshold=0)
+        fast_counts = self.samfile.count_coverage(
+            chrom, start, stop,
+            read_callback=lambda read: True,
+            quality_threshold=0)
         for i in range(4):
             for r in range(start, stop):
                 self.assertTrue(fast_counts[i][r] >= manual_counts[i][r])
-        fast_counts = self.samfile.count_coverage(chr, start, stop,
-                                                  read_callback=lambda read: read.flag & 0x10,
-                                                  quality_threshold=0)
+        fast_counts = self.samfile.count_coverage(
+            chrom, start, stop,
+            read_callback=lambda read: read.flag & 0x10,
+            quality_threshold=0)
 
         self.assertEqual(fast_counts[0], manual_counts[0])
         self.assertEqual(fast_counts[1], manual_counts[1])
@@ -2029,35 +2069,23 @@ class TestPileup(unittest.TestCase):
         self.assertEqual(fast_counts[3], manual_counts[3])
 
     def test_count_coverage_read_all(self):
-        samfile = pysam.AlignmentFile(
-            "test_count_coverage_read_all.bam", 'wb', template=self.samfile)
-        for ii, read in enumerate(self.samfile.fetch()):
-            # if ii % 2 == 0: # setting BFUNMAP makes no sense...
-                #read.flag = read.flag | 0x4
-            if ii % 3 == 0:
-                read.flag = read.flag | 0x100
-            if ii % 5 == 0:
-                read.flag = read.flag | 0x200
-            if ii % 7 == 0:
-                read.flag = read.flag | 0x400
-            samfile.write(read)
-        samfile.close()
-        pysam.index("test_count_coverage_read_all.bam")
         samfile = pysam.AlignmentFile("test_count_coverage_read_all.bam")
-        chr = 'chr1'
+        chrom = 'chr1'
         start = 0
         stop = 2000
 
         def filter(read):
             return not (read.flag & (0x4 | 0x100 | 0x200 | 0x400))
-        fast_counts = samfile.count_coverage(chr, start, stop,
-                                             read_callback='all',
-                                             #read_callback = lambda read: ~(read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
-                                             quality_threshold=0)
-        manual_counts = samfile.count_coverage(chr, start, stop,
-                                               read_callback=lambda read: not(
-                                                   read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
-                                               quality_threshold=0)
+        fast_counts = samfile.count_coverage(
+            chrom, start, stop,
+            read_callback='all',
+            #read_callback = lambda read: ~(read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
+            quality_threshold=0)
+        manual_counts = samfile.count_coverage(
+            chrom, start, stop,
+            read_callback=lambda read: not(
+                read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
+            quality_threshold=0)
 
         os.unlink("test_count_coverage_read_all.bam")
         os.unlink("test_count_coverage_read_all.bam.bai")

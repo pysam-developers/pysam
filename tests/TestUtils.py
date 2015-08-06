@@ -68,9 +68,9 @@ def checkSamtoolsViewEqual(filename1, filename2,
             l1 = sorted(l1[:-1].split("\t"))
             l2 = sorted(l2[:-1].split("\t"))
             if l1 != l2:
-                print "mismatch in line %i" % n
-                print l1
-                print l2
+                print ("mismatch in line %i" % n)
+                print (l1)
+                print (l2)
                 return False
         else:
             return False

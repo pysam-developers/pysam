@@ -170,35 +170,20 @@ cdef bytes TagToString(tuple tagtup):
         min_value = min(b_aux_arr)
         length = len(b_aux_arr)
         if(size == 1):
-            if(length != 1):
-                if(min_value < 0):
-                    ret = tag + ":B:c" + ",".join([str(i) for i in b_aux_arr])
-                else:
-                    ret = tag + ":B:C" + ",".join([str(i) for i in b_aux_arr])
-            elif(min_value < 0):
-                ret = tag + ":B:c%s," % b_aux_arr[0]
+            if(min_value < 0):
+                ret = tag + ":B:c," + ",".join([str(i) for i in b_aux_arr])
             else:
-                ret = tag + ":B:C%s," % b_aux_arr[0]
+                ret = tag + ":B:C," + ",".join([str(i) for i in b_aux_arr])
         elif(size == 2):
-            if(length != 1):
-                if(min_value < 0):
-                    ret = tag + ":B:i" + ",".join([str(i) for i in b_aux_arr])
-                else:
-                    ret = tag + ":B:I" + ",".join([str(i) for i in b_aux_arr])
-            elif(min_value < 0):
-                ret = tag + ":B:i%s," % b_aux_arr[0]
+            if(min_value < 0):
+                ret = tag + ":B:i," + ",".join([str(i) for i in b_aux_arr])
             else:
-                ret = tag + ":B:I%s," % b_aux_arr[0]
+                ret = tag + ":B:I," + ",".join([str(i) for i in b_aux_arr])
         else:  # size == 4. Removed check to compile to switch statement.
-            if(length != 1):
-                if(min_value < 0):
-                    ret = tag + ":B:s" + ",".join([str(i) for i in b_aux_arr])
-                else:
-                    ret = tag + ":B:S" + ",".join([str(i) for i in b_aux_arr])
-            elif(min_value < 0):
-                ret = tag + ":B:s%s," % b_aux_arr[0]
+            if(min_value < 0):
+                ret = tag + ":B:s," + ",".join([str(i) for i in b_aux_arr])
             else:
-                ret = tag + ":B:S%s," % b_aux_arr[0]
+                ret = tag + ":B:S," + ",".join([str(i) for i in b_aux_arr])
     elif(value_type == "H"):
         ret = tag + ":H:" + "".join([hex(i)[2:] for i in tagtup[1]])
     elif(value_type == "A"):
@@ -1890,8 +1875,10 @@ cdef class AlignedSegment:
         def __set__(self, v):
             self.template_length = v
     property seq:
-        def __get__(self): return self.query_sequence
-        def __set__(self, v): self.query_sequence = v
+        def __get__(self):
+            return self.query_sequence
+        def __set__(self, v):
+            self.query_sequence = v
     property qual:
         def __get__(self):
             return array_to_qualitystring(self.query_qualities)
