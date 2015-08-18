@@ -89,7 +89,7 @@ VALID_HEADER_TYPES = {"HD" : dict,
 VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
 
 # default type conversions within SAM header records
-VALID_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
+KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                        "SQ" : {"SN" : str, "LN" : int, "AS" : str, 
                                "M5" : str, "SP" : str, "UR" : str,},
                        "RG" : {"ID" : str, "CN" : str, "DS" : str,
@@ -1490,19 +1490,11 @@ cdef class AlignmentFile:
                             # header. Thus, in contravention to the
                             # SAM API, consume the rest of the line.
                             key, value = "\t".join(fields[idx+1:]).split(":", 1)
-                            x[key] = VALID_HEADER_FIELDS[record][key](value)
+                            x[key] = KNOWN_HEADER_FIELDS[record][key](value)
                             break
 
-                        # uppercase keys must be valid
-                        if key in VALID_HEADER_FIELDS[record]:
-                            x[key] = VALID_HEADER_FIELDS[record][key](value)
-                        # lowercase are permitted for user fields
-                        elif not key.isupper():
-                            x[key] = value
-                        else:
-                            raise ValueError(
-                                "unknown field code '%s' in record '%s'" %
-                                (key, record))
+                        # interpret type of known header record tags, default to str
+                        x[key] = KNOWN_HEADER_FIELDS[record].get(key, str)(value)
 
                     if VALID_HEADER_TYPES[record] == dict:
                         if record in result:
