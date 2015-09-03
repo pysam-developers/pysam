@@ -363,7 +363,7 @@ cdef extern from "htslib/hts.h" nogil:
         hFILE   *hfile
         void    *voidp
 
-    ctypedef enum htsFormatCategory:
+    cdef enum htsFormatCategory:
         unknown_category
         sequence_data    # Sequence data -- SAM, BAM, CRAM, etc
         variant_data     # Variant calling data -- VCF, BCF, etc
@@ -371,14 +371,14 @@ cdef extern from "htslib/hts.h" nogil:
         region_list      # Coordinate intervals or regions -- BED, etc
         category_maximum
 
-    ctypedef enum htsExactFormat:
+    cdef enum htsExactFormat:
         unknown_format
         binary_format
         text_format
         sam, bam, bai, cram, crai, vcf, bcf, csi, gzi, tbi, bed
         format_maximum
 
-    ctypedef enum htsCompression:
+    cdef enum htsCompression:
         no_compression, gzip, bgzf, custom
         compression_maximum
 
