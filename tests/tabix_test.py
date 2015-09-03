@@ -1034,5 +1034,17 @@ class TestMultipleIterators(unittest.TestCase):
             self.assertEqual(str(a), str(b))
 
 
+class TestContextManager(unittest.TestCase):
+
+    filename = os.path.join(DATADIR, "example.gtf.gz")
+
+    def testManager(self):
+
+        with pysam.TabixFile(self.filename) as tabixfile:
+            tabixfile.fetch()
+        self.assertEqual(tabixfile.closed, True)
+
+
+
 if __name__ == "__main__":
     unittest.main()
