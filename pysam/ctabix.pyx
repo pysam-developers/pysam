@@ -487,13 +487,24 @@ cdef class TabixFile:
 
     property header:
         '''the file header.
-          
+
+        The file header consists of the lines at the beginning of a
+        file that are prefixed by the comment character ``#``.
+       
         .. note::
-            The header is returned as an iterator presenting lines without the
-            newline character.
+            The header is returned as an iterator presenting lines
+            without the newline character.
+        
+        .. note::
+            The header is only available for local files. For remote
+            files an Attribute Error is raised.
+
         '''
         
         def __get__(self):
+            if self.isremote:
+                raise AttributeError(
+                    "the header is not available for remote files")
             return GZIteratorHead(self.filename)
 
     property contigs:
