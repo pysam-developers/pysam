@@ -1554,7 +1554,7 @@ cdef class AlignmentFile:
     def __next__(self):
         cdef int ret = self.cnext()
         if (ret >= 0):
-            return makeAlignedSegment(self.b)
+            return makeAlignedSegment(self.b, self)
         elif ret == -2:
             raise IOError('truncated file')
         else:
@@ -1680,7 +1680,7 @@ cdef class IteratorRowRegion(IteratorRow):
     def __next__(self):
         self.cnext()
         if self.retval >= 0:
-            return makeAlignedSegment(self.b)
+            return makeAlignedSegment(self.b, self.samfile)
         elif self.retval == -2:
             # Note: it is currently not the case that hts_iter_next
             # returns -2 for a truncated file.
@@ -1734,10 +1734,10 @@ cdef class IteratorRowHead(IteratorRow):
             raise StopIteration
 
         cdef int ret = self.cnext()
-        if (ret >= 0):
+        if ret >= 0:
             self.current_row += 1
-            return makeAlignedSegment( self.b )
-        elif (ret == -2):
+            return makeAlignedSegment(self.b, self.samfile)
+        elif ret == -2:
             raise IOError('truncated file')
         else:
             raise StopIteration
@@ -1779,9 +1779,9 @@ cdef class IteratorRowAll(IteratorRow):
 
     def __next__(self):
         cdef int ret = self.cnext()
-        if (ret >= 0):
-            return makeAlignedSegment(self.b)
-        elif (ret == -2):
+        if ret >= 0:
+            return makeAlignedSegment(self.b, self.samfile)
+        elif ret == -2:
             raise IOError('truncated file')
         else:
             raise StopIteration
@@ -1841,7 +1841,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
 
             # If current iterator is not exhausted, return aligned read
             if self.rowiter.retval > 0:
-                return makeAlignedSegment(self.rowiter.b)
+                return makeAlignedSegment(self.rowiter.b, self.samfile)
 
             self.tid += 1
 
@@ -1897,7 +1897,7 @@ cdef class IteratorRowSelection(IteratorRow):
     def __next__(self):
         cdef int ret = self.cnext()
         if (ret >= 0):
-            return makeAlignedSegment(self.b)
+            return makeAlignedSegment(self.b, self.samfile)
         elif (ret == -2):
             raise IOError('truncated file')
         else:
@@ -2219,7 +2219,8 @@ cdef class IteratorColumnRegion(IteratorColumn):
             return makePileupColumn(&self.plp,
                                    self.tid,
                                    self.pos,
-                                   self.n_plp)
+                                   self.n_plp,
+                                   self.samfile)
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
@@ -2250,7 +2251,8 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                 return makePileupColumn(&self.plp,
                                        self.tid,
                                        self.pos,
-                                       self.n_plp)
+                                       self.n_plp,
+                                       self.samfile)
                 
             # otherwise, proceed to next reference or stop
             self.tid += 1
