@@ -1,4 +1,4 @@
-from chtslib cimport *
+from pysam.chtslib cimport *
 
 cdef extern from "htslib_util.h":
 

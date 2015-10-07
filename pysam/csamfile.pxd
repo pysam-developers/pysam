@@ -1,10 +1,10 @@
-from calignmentfile cimport AlignedSegment, AlignmentFile
+from pysam.calignmentfile cimport AlignedSegment, AlignmentFile
 
 #################################################
 # Compatibility Layer for pysam < 0.8
 
 # import all declarations from htslib
-from chtslib cimport *
+from pysam.chtslib cimport *
 
 cdef class AlignedRead(AlignedSegment):
     pass

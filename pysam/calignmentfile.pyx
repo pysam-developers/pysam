@@ -61,9 +61,9 @@ import array
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
 
-from cutils cimport force_bytes, force_str, charptr_to_str
-from cutils cimport encode_filename, from_string_and_size
-from calignedsegment cimport makeAlignedSegment, makePileupColumn
+from pysam.cutils cimport force_bytes, force_str, charptr_to_str
+from pysam.cutils cimport encode_filename, from_string_and_size
+from pysam.calignedsegment cimport makeAlignedSegment, makePileupColumn
 
 cimport cython
 

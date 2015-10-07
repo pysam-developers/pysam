@@ -5,7 +5,7 @@ import tempfile
 import os
 import sys
 
-from cutils cimport force_bytes, force_cmdline_bytes
+from pysam.cutils cimport force_bytes, force_cmdline_bytes
 
 class Outs:
     '''http://mail.python.org/pipermail/python-list/2000-June/038406.html'''

@@ -41,7 +41,7 @@ from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 from libc.stdlib cimport malloc, calloc, realloc, free
 from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 
-from chtslib     cimport *
+from pysam.chtslib cimport *
 
 
 cdef class VariantHeader(object):

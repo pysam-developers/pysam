@@ -66,16 +66,16 @@ from cpython cimport PyErr_SetString, PyBytes_Check, \
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-cimport ctabixproxies
+cimport pysam.ctabixproxies as ctabixproxies
 
-from chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
+from pysam.chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_close, bgzf_write, gzFile, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, gzopen, gzclose, gzerror, gzdopen
 
-from cutils cimport force_bytes, force_str, charptr_to_str
-from cutils cimport encode_filename, from_string_and_size
+from pysam.cutils cimport force_bytes, force_str, charptr_to_str
+from pysam.cutils cimport encode_filename, from_string_and_size
 
 cdef class Parser:
 
