@@ -32,7 +32,7 @@ cdef extern from "htslib_util.h":
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
 
-from calignmentfile cimport AlignmentFile
+from pysam.calignmentfile cimport AlignmentFile
 ctypedef AlignmentFile AlignmentFile_t
 
 cdef bytes TagToString(tuple tagtup)
