@@ -6,7 +6,7 @@ from libc.stdio cimport FILE, printf
 cimport cython
 
 from cpython cimport array
-from chtslib cimport faidx_t, gzFile, kstring_t
+from pysam.chtslib cimport faidx_t, gzFile, kstring_t
 
 # These functions are put here and not in chtslib.pxd in order
 # to avoid warnings for unused functions.

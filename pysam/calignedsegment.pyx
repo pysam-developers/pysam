@@ -64,8 +64,8 @@ from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
 from libc.string cimport strchr
 
-from cutils cimport force_bytes, force_str, charptr_to_str
-from cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
+from pysam.cutils cimport force_bytes, force_str, charptr_to_str
+from pysam.cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
 
 # Constants for binary tag conversion
