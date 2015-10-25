@@ -64,8 +64,8 @@ from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
 from libc.string cimport strchr
 
-from cutils cimport force_bytes, force_str, charptr_to_str
-from cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
+from pysam.cutils cimport force_bytes, force_str, charptr_to_str
+from pysam.cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
 
 # Constants for binary tag conversion
@@ -463,20 +463,22 @@ cdef inline object getQualitiesInRange(bam1_t *src,
 #####################################################################
 ## private factory methods
 cdef class AlignedSegment
-cdef makeAlignedSegment(bam1_t * src):
+cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file):
     '''return an AlignedSegment object constructed from `src`'''
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
+    dest._alignment_file = alignment_file
     return dest
 
 
 cdef class PileupColumn
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
+cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu, AlignmentFile alignment_file):
     '''return a PileupColumn object constructed from pileup in `plp` and setting
     additional attributes.'''
     # note that the following does not call __init__
     cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
+    dest._alignment_file = alignment_file
     dest.plp = plp
     dest.tid = tid
     dest.pos = pos
@@ -484,10 +486,10 @@ cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu):
     return dest
 
 cdef class PileupRead
-cdef inline makePileupRead(bam_pileup1_t * src):
+cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
     '''return a PileupRead object construted from a bam_pileup1_t * object.'''
     cdef PileupRead dest = PileupRead.__new__(PileupRead)
-    dest._alignment = makeAlignedSegment(src.b)
+    dest._alignment = makeAlignedSegment(src.b, alignment_file)
     dest._qpos = src.qpos
     dest._indel = src.indel
     dest._level = src.level
@@ -564,10 +566,10 @@ cdef class AlignedSegment:
                                    self.tags)))
 
     def __copy__(self):
-        return makeAlignedSegment(self._delegate)
+        return makeAlignedSegment(self._delegate, self._alignment_file)
 
     def __deepcopy__(self, memo):
-        return makeAlignedSegment(self._delegate)
+        return makeAlignedSegment(self._delegate, self._alignment_file)
 
     def compare(self, AlignedSegment other):
         '''return -1,0,1, if contents in this are binary
@@ -718,6 +720,13 @@ cdef class AlignedSegment:
         def __set__(self, flag):
             pysam_set_flag(self._delegate, flag)
 
+    property reference_name:
+        """:term:`reference` name (None if no AlignmentFile is associated)"""
+        def __get__(self):
+            if self._alignment_file is not None:
+                return self._alignment_file.getrname(self._delegate.core.tid)
+            return None
+
     property reference_id:
         """:term:`reference` ID
 
@@ -804,6 +813,14 @@ cdef class AlignedSegment:
         def __get__(self): return self._delegate.core.mtid
         def __set__(self, mtid):
             self._delegate.core.mtid = mtid
+
+    property next_reference_name:
+        """:term:`reference` name of the mate/next read (None if no
+        AlignmentFile is associated)"""
+        def __get__(self):
+            if self._alignment_file is not None:
+                return self._alignment_file.getrname(self._delegate.core.mtid)
+            return None
 
     property next_reference_start:
         """the position of the mate/next read."""
@@ -1995,6 +2012,13 @@ cdef class PileupColumn:
         def __get__(self):
             return self.tid
 
+    property reference_name:
+        """:term:`reference` name (None if no AlignmentFile is associated)"""
+        def __get__(self):
+            if self._alignment_file is not None:
+                return self._alignment_file.getrname(self.tid)
+            return None
+
     property nsegments:
         '''number of reads mapping to this column.'''
         def __get__(self):
@@ -2019,7 +2043,7 @@ cdef class PileupColumn:
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append(makePileupRead(&(self.plp[0][x])))
+                pileups.append(makePileupRead(&(self.plp[0][x]), self._alignment_file))
             return pileups
 
     ########################################################

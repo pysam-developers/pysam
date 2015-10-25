@@ -936,8 +936,6 @@ for vcf_file in vcf_files:
     n = "VCFFromVCFTest_%s" % os.path.basename(vcf_file[:-4])
     globals()[n] = type(n, (TestVCFFromVCF,), dict(filename=vcf_file,))
 
-############################################################################
-
 
 class TestRemoteFileHTTP(unittest.TestCase):
 
@@ -945,18 +943,27 @@ class TestRemoteFileHTTP(unittest.TestCase):
     region = "chr1:1-1000"
     local = os.path.join(DATADIR, "example.gtf.gz")
 
+    def setUp(self):
+        self.remote_file = pysam.TabixFile(self.url, "r")
+        self.local_file = pysam.TabixFile(self.local, "r")
+
     def testFetchAll(self):
         if not checkURL(self.url):
             return
 
-        remote_file = pysam.TabixFile(self.url, "r")
-        remote_result = list(remote_file.fetch())
-        local_file = pysam.TabixFile(self.local, "r")
-        local_result = list(local_file.fetch())
+        remote_result = list(self.remote_file.fetch())
+        local_result = list(self.local_file.fetch())
 
         self.assertEqual(len(remote_result), len(local_result))
         for x, y in zip(remote_result, local_result):
             self.assertEqual(x, y)
+
+    def testHeader(self):
+        self.assertEqual(list(self.local_file.header), [])
+        self.assertRaises(AttributeError,
+                          getattr,
+                          self.remote_file,
+                          "header")
 
 
 class TestIndexArgument(unittest.TestCase):

@@ -1,3 +1,4 @@
+# cython: embedsignature=True
 #
 # Code to read, write and edit VCF files
 #
@@ -39,6 +40,7 @@
 #
 # NOTE: the position that is returned to Python is 0-based, NOT
 # 1-based as in the VCF file.
+# NOTE: There is also preliminary VCF functionality in the VariantFile class.
 #
 # TODO:
 #  only v4.0 writing is complete; alleles are not converted to v3.3 format
@@ -52,10 +54,10 @@ from libc.stdlib cimport atoi
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
-cimport ctabix
-cimport ctabixproxies
+cimport pysam.ctabix as ctabix
+cimport pysam.ctabixproxies as ctabixproxies
 
-from cutils cimport force_str
+from pysam.cutils cimport force_str
 
 import pysam
 
@@ -89,22 +91,22 @@ def parse_regions( string ):
             raise ValueError("Don't understand region string '%s'" % r)
         result.append( (chrom,start,end) )
     return result
-            
+
 
 FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue')
 
 ###########################################################################################################
-# 
+#
 # New class
-# 
+#
 ###########################################################################################################
 
 cdef class VCFRecord( ctabixproxies.TupleProxy):
     '''vcf record.
 
-    initialized from data and vcf meta 
+    initialized from data and vcf meta
     '''
-    
+
     cdef vcf
     cdef char * contig
     cdef uint32_t pos
@@ -114,20 +116,20 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
         self.encoding = vcf.encoding
         # if len(data) != len(self.vcf._samples):
         #     self.vcf.error(str(data),
-        #                self.BAD_NUMBER_OF_COLUMNS, 
+        #                self.BAD_NUMBER_OF_COLUMNS,
         #                "expected %s for %s samples (%s), got %s" % \
-        #                    (len(self.vcf._samples), 
-        #                     len(self.vcf._samples), 
-        #                     self.vcf._samples, 
+        #                    (len(self.vcf._samples),
+        #                     len(self.vcf._samples),
+        #                     self.vcf._samples,
         #                     len(data)))
-    
-    def __cinit__(self, vcf): 
+
+    def __cinit__(self, vcf):
         # start indexed access at genotypes
         self.offset = 9
-        
+
         self.vcf = vcf
         self.encoding = vcf.encoding
-    
+
     def error(self, line, error, opt=None):
         '''raise error.'''
         # pass to vcf file for error handling
@@ -135,7 +137,7 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
 
     cdef update(self, char * buffer, size_t nbytes):
         '''update internal data.
-        
+
         nbytes does not include the terminal '\0'.
         '''
         ctabixproxies.TupleProxy.update(self, buffer, nbytes)
@@ -157,13 +159,13 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
         def __get__(self): return self.fields[2]
 
     property ref:
-        def __get__(self): 
+        def __get__(self):
             return self.fields[3]
 
     property alt:
         def __get__(self):
             # convert v3.3 to v4.0 alleles below
-            alt = self.fields[4] 
+            alt = self.fields[4]
             if alt == ".": alt = []
             else: alt = alt.upper().split(',')
             return alt
@@ -172,7 +174,7 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
         def __get__(self):
             qual = self.fields[5]
             if qual == b".": qual = -1
-            else: 
+            else:
                 try:    qual = float(qual)
                 except: self.vcf.error(str(self),self.QUAL_NOT_NUMERICAL)
             return qual
@@ -207,7 +209,7 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
             return self.vcf._samples
 
     def __getitem__(self, key):
-        
+
         # parse sample columns
         values = self.fields[self.vcf._sample2column[key]].split(':')
         alt = self.alt
@@ -233,9 +235,9 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
                 result[format[idx]] = result[format[idx]][:expected]
 
         return result
- 
 
-cdef class asVCFRecord(ctabix.Parser): 
+
+cdef class asVCFRecord(ctabix.Parser):
     '''converts a :term:`tabix row` into a VCF record.'''
     cdef vcffile
     def __init__(self, vcffile):
@@ -359,10 +361,10 @@ class VCF(object):
 
     def parse_format(self,line,format,filter=False):
         if self._version == 40:
-            if not format.startswith('<'): 
+            if not format.startswith('<'):
                 self.error(line,self.V40_MISSING_ANGLE_BRACKETS)
                 format = "<"+format
-            if not format.endswith('>'): 
+            if not format.endswith('>'):
                 self.error(line,self.V40_MISSING_ANGLE_BRACKETS)
                 format += ">"
             format = format[1:-1]
@@ -380,9 +382,9 @@ class VCF(object):
             elif first.startswith('Type='):        data['type'] = first.split('=')[1]
             elif first.startswith('Description='):
                 elts = format.split('"')
-                if len(elts)<3: 
+                if len(elts)<3:
                     self.error(line,self.FORMAT_MISSING_QUOTES)
-                    elts = first.split('=') + [rest] 
+                    elts = first.split('=') + [rest]
                 data['descr'] = elts[1]
                 rest = '"'.join(elts[2:])
                 if rest.startswith(','): rest = rest[1:]
@@ -392,7 +394,7 @@ class VCF(object):
             idx += 1
             if filter and idx==1: idx=3  # skip number and type fields for FILTER format strings
         if not data['id']: self.error(line,self.BADLY_FORMATTED_FORMAT_STRING)
-        if 'descr' not in data: 
+        if 'descr' not in data:
             # missing description
             self.error(line,self.BADLY_FORMATTED_FORMAT_STRING)
             data['descr'] = ""
@@ -428,7 +430,7 @@ class VCF(object):
             data['type'] = 'Flag'
 
         return FORMAT(data['id'],t,n,data['type'],data['descr'],data['missing'])
-    
+
     def format_format( self, fmt, filter=False ):
         values = [('ID',fmt.id)]
         if fmt.number != None and not filter:
@@ -489,7 +491,7 @@ class VCF(object):
             for idx,v in enumerate(data[k]):
                 if v == format[k].missingvalue: data[k][idx] = "."
         # make sure GT comes first; and ensure fixed ordering; also convert GT data back to string
-        for k in data: 
+        for k in data:
             if k != 'GT': sdata.append( (k,data[k]) )
         sdata.sort()
         if 'GT' in data:
@@ -515,12 +517,12 @@ class VCF(object):
         for f in [FORMAT('GT',self.NT_NUMBER,1,'String','Genotype','.'),
                   FORMAT('DP',self.NT_NUMBER,1,'Integer','Read depth at this position for this sample',-1),
                   FORMAT('FT',self.NT_NUMBER,1,'String','Sample Genotype Filter','.'),
-                  FORMAT('GL',self.NT_UNKNOWN,-1,'Float','Genotype likelihoods','.'),                  
-                  FORMAT('GLE',self.NT_UNKNOWN,-1,'Float','Genotype likelihoods','.'),                  
+                  FORMAT('GL',self.NT_UNKNOWN,-1,'Float','Genotype likelihoods','.'),
+                  FORMAT('GLE',self.NT_UNKNOWN,-1,'Float','Genotype likelihoods','.'),
                   FORMAT('GQ',self.NT_NUMBER,1,'Integer','Genotype Quality',-1),
                   FORMAT('PL',self.NT_GENOTYPES,-1,'Integer','Phred-scaled genotype likelihoods', '.'),
-                  FORMAT('GP',self.NT_GENOTYPES,-1,'Float','Genotype posterior probabilities','.'),                  
-                  FORMAT('GQ',self.NT_GENOTYPES,-1,'Integer','Conditional genotype quality','.'),                  
+                  FORMAT('GP',self.NT_GENOTYPES,-1,'Float','Genotype posterior probabilities','.'),
+                  FORMAT('GQ',self.NT_GENOTYPES,-1,'Integer','Conditional genotype quality','.'),
                   FORMAT('HQ',self.NT_UNKNOWN,-1,'Integer','Haplotype Quality',-1),    # unknown number, since may be haploid
                   FORMAT('PS',self.NT_UNKNOWN,-1,'Integer','Phase set','.'),
                   FORMAT('PQ',self.NT_NUMBER,1,'Integer','Phasing quality',-1),
@@ -565,7 +567,7 @@ class VCF(object):
         for key,value in self._header: stream.write("##%s=%s\n" % (key,value))
         for var,label in [(self._info,"INFO"),(self._filter,"FILTER"),(self._format,"FORMAT")]:
             for f in var.itervalues(): stream.write("##%s=%s\n" % (label,self.format_format(f,filter=(label=="FILTER"))))
-        
+
 
     def parse_heading( self, line ):
         assert line.startswith('#')
@@ -580,7 +582,7 @@ class VCF(object):
 
             if len(headings)<=i or headings[i] != s:
 
-                if len(headings) <= i: 
+                if len(headings) <= i:
                     err = "(%sth entry not found)" % (i+1)
                 else:
                     err = "(found %s, expected %s)" % (headings[i],s)
@@ -594,7 +596,7 @@ class VCF(object):
 
         self._samples = headings[9:]
         self._sample2column = dict( [(y,x+9) for x,y in enumerate( self._samples ) ] )
-                           
+
     def write_heading( self, stream ):
         stream.write("#" + "\t".join(self._required + self._samples) + "\n")
 
@@ -627,12 +629,12 @@ class VCF(object):
         if f.type in ["Float","Integer"] and len(values)>0 and values[-1].find(';') > -1:
             self.error(line,self.ERROR_TRAILING_DATA,values[-1])
             values[-1] = values[-1].split(';')[0]
-        if f.type == "Integer": 
+        if f.type == "Integer":
             for idx,v in enumerate(values):
                 try:
                     if v == ".": values[idx] = f.missingvalue
                     else:        values[idx] = int(v)
-                except: 
+                except:
                     self.error(line,self.ERROR_FORMAT_NOT_INTEGER,"%s=%s" % (key, str(values)))
                     return [0] * len(values)
             return values
@@ -641,7 +643,7 @@ class VCF(object):
             if f.id == "GT": values = list(map( self.convertGT, values ))
             return values
         elif f.type == "Character":
-            for v in values: 
+            for v in values:
                 if len(v) != 1: self.error(line,self.ERROR_FORMAT_NOT_CHAR)
             return values
         elif f.type == "Float":
@@ -670,7 +672,7 @@ class VCF(object):
                 cols.append("")
             else:
                 self.error(line,
-                           self.BAD_NUMBER_OF_COLUMNS, 
+                           self.BAD_NUMBER_OF_COLUMNS,
                            "expected %s for %s samples (%s), got %s" % (len(self._samples)+9, len(self._samples), self._samples, len(cols)))
 
         chrom = cols[0]
@@ -685,7 +687,7 @@ class VCF(object):
 
         # end of first-pass parse for sortedVCF
         if lineparse: return chrom, pos, line
-        
+
         id = cols[2]
 
         ref = cols[3].upper()
@@ -697,7 +699,7 @@ class VCF(object):
             for c in ref:
                 if c not in "ACGTN": self.error(line,self.UNKNOWN_CHAR_IN_REF)
             if "N" in ref: ref = get_sequence(chrom,pos,pos+len(ref),self._reference)
-                
+
         # make sure reference is sane
         if self._reference:
             left = max(0,pos-100)
@@ -711,7 +713,7 @@ class VCF(object):
         else: alt = cols[4].upper().split(',')
 
         if cols[5] == ".": qual = -1
-        else: 
+        else:
             try:    qual = float(cols[5])
             except: self.error(line,self.QUAL_NOT_NUMERICAL)
 
@@ -727,9 +729,9 @@ class VCF(object):
                 if len(elts) == 1: v = None
                 elif len(elts) == 2: v = elts[1]
                 else: self.error(line,self.ERROR_INFO_STRING)
-                info[elts[0]] = self.parse_formatdata(elts[0], 
-                                                      v, 
-                                                      self._info, 
+                info[elts[0]] = self.parse_formatdata(elts[0],
+                                                      v,
+                                                      self._info,
                                                       line)
 
         # Gracefully deal with absent FORMAT column
@@ -739,7 +741,7 @@ class VCF(object):
         # check: all filters are defined
         for f in filter:
             if f not in self._filter: self.error(line,self.FILTER_NOT_DEFINED, f)
-            
+
         # check: format fields are defined
         if self._format:
             for f in format:
@@ -802,7 +804,7 @@ class VCF(object):
                     self.error(line,self.MISSING_INDEL_ALLELE_REF_BASE)
 
         # trim trailing bases in alleles
-        # AH: not certain why trimming this needs to be added 
+        # AH: not certain why trimming this needs to be added
         #     disabled now for unit testing
         # if alt:
         #     for i in range(1,min(len(ref),min(map(len,alt)))):
@@ -845,10 +847,10 @@ class VCF(object):
                 else:
                     if expected == -1: value = "."
                     else: value = ",".join(["."]*expected)
-                    
-                dict[format[idx]] = self.parse_formatdata(format[idx], 
-                                                          value, 
-                                                          self._format, 
+
+                dict[format[idx]] = self.parse_formatdata(format[idx],
+                                                          value,
+                                                          self._format,
                                                           line)
                 if expected != -1 and len(dict[format[idx]]) != expected:
                     self.error(line,self.BAD_NUMBER_OF_PARAMETERS,
@@ -869,7 +871,7 @@ class VCF(object):
              'format':format}
         for key,value in zip(self._samples,samples):
             d[key] = value
-        
+
         return d
 
 
@@ -880,14 +882,14 @@ class VCF(object):
         if data['alt'] == []: alt = "."
         else: alt = ",".join(data['alt'])
         if data['filter'] == None: filter = "."
-        elif data['filter'] == []: 
+        elif data['filter'] == []:
             if self._version == 33: filter = "0"
             else: filter = "PASS"
         else: filter = ';'.join(data['filter'])
         if data['qual'] == -1: qual = "."
         else: qual = str(data['qual'])
 
-        output = [data['chrom'], 
+        output = [data['chrom'],
                   str(data['pos']+1),   # change to 1-based position
                   data['id'],
                   data['ref'],
@@ -898,11 +900,11 @@ class VCF(object):
                       data['info'], self._info, separator=";"),
                   self.format_formatdata(
                       data['format'], self._format, value=False)]
-        
+
         for s in self._samples:
             output.append(self.format_formatdata(
                 data[s], self._format, key=False))
-        
+
         stream.write( "\t".join(output) + "\n" )
 
     def _parse_header(self, stream):
@@ -1041,13 +1043,13 @@ class VCF(object):
         self.encoding=encoding
         self.tabixfile = pysam.Tabixfile(filename, encoding=encoding)
         self._parse_header(self.tabixfile.header)
-        
+
     def fetch(self,
               reference=None,
-              start=None, 
-              end=None, 
+              start=None,
+              end=None,
               region=None ):
-        """ Parse a stream of VCF-formatted lines.  
+        """ Parse a stream of VCF-formatted lines.
         Initializes class instance and return generator """
         return self.tabixfile.fetch(
             reference,
@@ -1061,7 +1063,7 @@ class VCF(object):
 
         returns a validated record.
         '''
-        
+
         raise NotImplementedError("needs to be checked")
 
         chrom, pos = record.chrom, record.pos
@@ -1087,11 +1089,11 @@ class VCF(object):
             faref = faref_leftflank[pos-left:]
             if faref != ref: self.error(str(record),self.WRONG_REF,"(reference is %s, VCF says %s)" % (faref,ref))
             ref = faref
-            
+
         # check: format fields are defined
         for f in record.format:
             if f not in self._format: self.error(str(record),self.FORMAT_NOT_DEFINED, f)
-            
+
         # check: all filters are defined
         for f in record.filter:
             if f not in self._filter: self.error(str(record),self.FILTER_NOT_DEFINED, f)
@@ -1144,7 +1146,7 @@ class VCF(object):
             for allele in alt:
                 if not alleleRegEx.match(allele):
                     self.error(str(record),self.V40_BAD_ALLELE,allele)
-                    
+
 
         # check for leading nucleotide in indel calls
         for allele in alt:
@@ -1154,7 +1156,7 @@ class VCF(object):
                     self.error(str(record),self.MISSING_INDEL_ALLELE_REF_BASE)
 
         # trim trailing bases in alleles
-        # AH: not certain why trimming this needs to be added 
+        # AH: not certain why trimming this needs to be added
         #     disabled now for unit testing
         # for i in range(1,min(len(ref),min(map(len,alt)))):
         #     if len(set(allele[-1].upper() for allele in alt)) > 1 or ref[-1].upper() != alt[0][-1].upper():
@@ -1185,5 +1187,3 @@ class VCF(object):
 
 __all__ = [
     "VCF", "VCFRecord", ]
-
-

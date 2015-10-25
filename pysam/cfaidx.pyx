@@ -56,13 +56,13 @@ from cpython cimport PyErr_SetString, \
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-from chtslib cimport \
+from pysam.chtslib cimport \
     faidx_nseq, fai_load, fai_destroy, fai_fetch, \
     faidx_fetch_seq, gzopen, gzclose
 
-from cutils cimport force_bytes, force_str, charptr_to_str
-from cutils cimport encode_filename, from_string_and_size
-from cutils cimport qualitystring_to_array
+from pysam.cutils cimport force_bytes, force_str, charptr_to_str
+from pysam.cutils cimport encode_filename, from_string_and_size
+from pysam.cutils cimport qualitystring_to_array
 
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
@@ -155,6 +155,14 @@ cdef class FastaFile:
 
     def __dealloc__(self):
         self.close()
+
+    # context manager interface
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
 
     property closed:
         """"bool indicating the current state of the file object. 

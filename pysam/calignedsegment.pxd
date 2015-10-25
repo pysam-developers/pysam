@@ -1,4 +1,4 @@
-from chtslib cimport *
+from pysam.chtslib cimport *
 
 cdef extern from "htslib_util.h":
 
@@ -32,7 +32,7 @@ cdef extern from "htslib_util.h":
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
 
-from calignmentfile cimport AlignmentFile
+from pysam.calignmentfile cimport AlignmentFile
 ctypedef AlignmentFile AlignmentFile_t
 
 cdef bytes TagToString(tuple tagtup)
@@ -42,6 +42,9 @@ cdef class AlignedSegment:
 
     # object that this AlignedSegment represents
     cdef bam1_t * _delegate
+
+    # the file from which this AlignedSegment originates (can be None)
+    cdef AlignmentFile _alignment_file
 
     # caching of array properties for quick access
     cdef object cache_query_qualities
@@ -72,6 +75,7 @@ cdef class PileupColumn:
     cdef int tid
     cdef int pos
     cdef int n_pu
+    cdef AlignmentFile _alignment_file
 
 
 cdef class PileupRead:
@@ -85,6 +89,6 @@ cdef class PileupRead:
     cdef uint32_t _is_refskip
 
 # factor methods
-cdef makeAlignedSegment(bam1_t * src)
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu)
-cdef inline makePileupRead(bam_pileup1_t * src)
+cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file)
+cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu, AlignmentFile alignment_file)
+cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file)
