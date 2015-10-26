@@ -38,10 +38,10 @@ The following code will cause unexpected behaviour::
    samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
 
    iter1 = samfile.fetch("chr1")
-   print iter1.next().reference_id
+   print (iter1.next().reference_id)
    iter2 = samfile.fetch("chr2")
-   print iter2.next().reference_id
-   print iter1.next().reference_id
+   print (iter2.next().reference_id)
+   print (iter1.next().reference_id)
    
 This will give the following output::
 
@@ -61,10 +61,10 @@ chr2. The correct way to work with multiple iterators is::
    samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
 
    iter1 = samfile.fetch("chr1", all)
-   print iter1.next().reference_id
+   print (iter1.next().reference_id)
    iter2 = samfile.fetch("chr2")
-   print iter2.next().reference_id
-   print iter1.next().reference_id
+   print (iter2.next().reference_id)
+   print (iter1.next().reference_id)
 
 Here, the output is::
 
@@ -100,7 +100,19 @@ in the iteration by adding the ``until_eof=True`` flag::
     bf = pysam.AlignemFile(fname, "rb")
     for r in bf.fetch(until_eof=True):
         if r.is_unmapped:
-	    print "read is unmapped"
+	    print ("read is unmapped")
+
+I can't call AlignmentFile.fetch on a file without index
+========================================================
+
+:meth:`~pysam.AlignmentFile.fetch` requires an index when
+iterating over a SAM/BAM file. To iterate over a file without
+index, use the ``until_eof=True`::
+
+    bf = pysam.AlignemFile(fname, "rb")
+    for r in bf.fetch(until_eof=True):
+        print (r)
+
 	
 BAM files with a large number of reference sequences is slow
 ============================================================

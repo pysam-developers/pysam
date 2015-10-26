@@ -805,7 +805,8 @@ cdef class AlignmentFile:
         Without a `reference` or `region` all mapped reads in the file
         will be fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
-        file.
+        file. This mode of iteration still requires an index. If there is
+        no index, use `until_eof=True`.
 
         If only `reference` is set, all reads aligned to `reference`
         will be fetched.
