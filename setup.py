@@ -299,7 +299,7 @@ csamtools = Extension(
     glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
     os_c_files +
     htslib_sources,
-    library_dirs=[],
+    library_dirs=htslib_library_dirs,
     include_dirs=["samtools", "pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
@@ -397,10 +397,10 @@ ctabix = Extension(
 
 cutils = Extension(
     "pysam.cutils",
-    [source_pattern % "utils"] + 
+    [source_pattern % "utils"] +
     htslib_sources +
     os_c_files,
-    library_dirs=["pysam"],
+    library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
@@ -410,10 +410,10 @@ cutils = Extension(
 
 cfaidx = Extension(
     "pysam.cfaidx",
-    [source_pattern % "faidx"] + 
+    [source_pattern % "faidx"] +
     htslib_sources +
     os_c_files,
-    library_dirs=["pysam"],
+    library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",

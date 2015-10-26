@@ -11,6 +11,7 @@ Release 0.8.4
   gettid -> get_tid
   getrname -> get_reference_name
   parseRegion -> parse_region
+* faidx now returns strings and not binary strings in py3
   
 Release 0.8.3
 =============

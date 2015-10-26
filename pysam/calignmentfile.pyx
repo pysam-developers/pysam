@@ -641,6 +641,71 @@ cdef class AlignmentFile:
                              (tid, self.header.n_targets))
         return charptr_to_str(self.header.target_name[tid])
 
+    def reset(self):
+        """reset file position to beginning of file just after
+        the header.
+
+        Returns
+        -------
+
+        The file position after moving the file pointer.
+
+        """
+        return self.seek(self.start_offset, 0)
+
+    def seek(self, uint64_t offset, int where=0):
+        """move file pointer to position `offset`, see
+        :meth:`pysam.AlignmentFile.tell`.
+
+        Parameters
+        ----------
+        
+        offset : int
+
+        position of the read/write pointer within the file.
+
+        where :
+    
+        optional and defaults to 0 which means absolute file
+        positioning, other values are 1 which means seek relative to
+        the current position and 2 means seek relative to the file's
+        end.
+        
+        Returns
+        -------
+        
+        the file position after moving the file pointer
+
+        """
+
+        if not self.is_open():
+            raise ValueError("I/O operation on closed file")
+        if not self.is_bam:
+            raise NotImplementedError(
+                "seek only available in bam files")
+        if self.is_stream:
+            raise OSError("seek no available in streams")
+
+        cdef uint64_t pos
+        with nogil:
+            pos = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
+        return pos
+
+    def tell(self):
+        """
+        return current file position.
+        """
+        if not self.is_open():
+            raise ValueError("I/O operation on closed file")
+        if not (self.is_bam or self.is_cram):
+            raise NotImplementedError(
+                "seek only available in bam files")
+
+        cdef uint64_t pos
+        with nogil:
+            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
+        return pos
+
     def parse_region(self,
                      reference=None,
                      start=None,
@@ -723,71 +788,6 @@ cdef class AlignmentFile:
             raise ValueError('end out of range (%i)' % rend)
 
         return 1, rtid, rstart, rend
-
-    def reset(self):
-        """reset file position to beginning of file just after
-        the header.
-
-        Returns
-        -------
-
-        The file position after moving the file pointer.
-
-        """
-        return self.seek(self.start_offset, 0)
-
-    def seek(self, uint64_t offset, int where=0):
-        """move file pointer to position `offset`, see
-        :meth:`pysam.AlignmentFile.tell`.
-
-        Parameters
-        ----------
-        
-        offset : int
-
-        position of the read/write pointer within the file.
-
-        where :
-    
-        optional and defaults to 0 which means absolute file
-        positioning, other values are 1 which means seek relative to
-        the current position and 2 means seek relative to the file's
-        end.
-        
-        Returns
-        -------
-        
-        the file position after moving the file pointer
-
-        """
-
-        if not self.is_open():
-            raise ValueError("I/O operation on closed file")
-        if not self.is_bam:
-            raise NotImplementedError(
-                "seek only available in bam files")
-        if self.is_stream:
-            raise OSError("seek no available in streams")
-
-        cdef uint64_t pos
-        with nogil:
-            pos = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
-        return pos
-
-    def tell(self):
-        """
-        return current file position.
-        """
-        if not self.is_open():
-            raise ValueError("I/O operation on closed file")
-        if not (self.is_bam or self.is_cram):
-            raise NotImplementedError(
-                "seek only available in bam files")
-
-        cdef uint64_t pos
-        with nogil:
-            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
-        return pos
 
     def fetch(self,
               reference=None,

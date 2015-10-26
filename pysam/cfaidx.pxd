@@ -54,7 +54,7 @@ cdef class PersistentFastqProxy:
     """
     Python container for pysam.cfaidx.FastqProxy with persistence.
     """
-    cdef public bytes comment, quality, sequence, name
+    cdef public str comment, quality, sequence, name
     cdef cython.str tostring(self)
     cpdef array.array get_quality_array(self, int offset=*)
 

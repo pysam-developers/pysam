@@ -4,6 +4,8 @@
 cimport cython
 from cpython cimport array as c_array
 
+cpdef parse_region(reference=*, start=*, end=*, region=*)
+
 #########################################################################
 # Utility functions for quality string conversions
 
@@ -22,3 +24,4 @@ cdef bytes force_bytes(object s, encoding=*)
 cdef bytes force_cmdline_bytes(object s, encoding=*)
 cdef bytes encode_filename(object filename)
 cdef from_string_and_size(char *s, size_t length)
+
