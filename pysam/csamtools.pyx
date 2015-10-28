@@ -78,12 +78,12 @@ def _samtools_dispatch(method,
     # redirect stderr and stdout to file
     stderr_h, stderr_f = tempfile.mkstemp()
     pysam_set_stderr(stderr_h)
-        
+                                        
     if catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
         try:
-            stdout_save = Outs( sys.stdout.fileno() )
-            stdout_save.setfd( stdout_h )
+            stdout_save = Outs(sys.stdout.fileno())
+            stdout_save.setfd(stdout_h)
         except AttributeError:
             # stdout has already been redirected
             catch_stdout = False
@@ -94,7 +94,7 @@ def _samtools_dispatch(method,
         if method == "view":
             if "-o" in args:
                 raise ValueError("option -o is forbidden in samtools view")
-            args = ( "-o", stdout_f ) + args
+            args =  ("-o", stdout_f) + args
 
     # do the function call to samtools
     cdef char ** cargs
@@ -112,36 +112,35 @@ def _samtools_dispatch(method,
         cargs[i + 2] = args[i]
     
     retval = pysam_dispatch(n+2, cargs)
-    free( cargs )
+    free(cargs)
     
     # restore stdout/stderr. This will also flush, so
     # needs to be before reading back the file contents
     if catch_stdout:
         stdout_save.restore()
         try:
-            with open( stdout_f, "r") as inf:
+            with open(stdout_f, "r") as inf:
                 out_stdout = inf.readlines()
         except UnicodeDecodeError:
             with open( stdout_f, "rb") as inf:
                 # read binary output
                 out_stdout = inf.read()
-        os.remove( stdout_f )
+        os.remove(stdout_f)
     else:
         out_stdout = []
 
     # get error messages
     pysam_unset_stderr()
+    out_stderr = []
     try:
-        with open( stderr_f, "r") as inf:
+        with open(stderr_f, "r") as inf:
             out_stderr = inf.readlines()
     except UnicodeDecodeError:
         with open( stderr_f, "rb") as inf:
             # read binary output
             out_stderr = inf.read()
-    else:
-        out_stderr = []
     finally:
-        os.remove( stderr_f )
+        os.remove(stderr_f)
 
     return retval, out_stderr, out_stdout
 
