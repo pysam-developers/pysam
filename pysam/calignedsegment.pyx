@@ -367,6 +367,32 @@ cdef inline packTags(tags):
     return "".join(fmts), args
 
 
+cdef inline int32_t calculateQueryLength(bam1_t * src):
+    """return query length computed from CIGAR alignment.
+
+    Return 0 if there is no CIGAR alignment.
+    """
+        
+    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+
+    if cigar_p == NULL:
+        return 0
+    
+    cdef uint32_t k, qpos
+    cdef int op
+    qpos = 0
+    
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
+        
+        if op == BAM_CMATCH or op == BAM_CINS or \
+           op == BAM_CSOFT_CLIP or \
+           op == BAM_CEQUAL or op == BAM_CDIFF:
+            qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
+            
+    return qpos
+
+
 cdef inline int32_t getQueryStart(bam1_t *src) except -1:
     cdef uint32_t * cigar_p
     cdef uint32_t k, op
@@ -393,6 +419,11 @@ cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
     cdef uint32_t k, op
     cdef uint32_t end_offset = src.core.l_qseq
 
+    # if there is no sequence, compute length from cigar string
+    if end_offset == 0:
+        end_offset = calculateQueryLength(src)
+
+    # walk backwards in cigar string
     if pysam_get_n_cigar(src) > 1:
         cigar_p = pysam_bam_get_cigar(src);
         for k from pysam_get_n_cigar(src) > k >= 1:
@@ -406,9 +437,6 @@ cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
                 end_offset -= cigar_p[k] >> BAM_CIGAR_SHIFT
             else:
                 break
-
-    if end_offset == 0:
-        end_offset = src.core.l_qseq
 
     return end_offset
 
@@ -1274,8 +1302,7 @@ cdef class AlignedSegment:
 
         Returns None if CIGAR string is not present.
         """
-        cdef uint32_t k, qpos
-        cdef int op
+
         cdef uint32_t * cigar_p
         cdef bam1_t * src 
 
@@ -1284,21 +1311,7 @@ cdef class AlignedSegment:
         if not always and src.core.l_qseq:
             return src.core.l_qseq
 
-        if pysam_get_n_cigar(src) == 0:
-            return None
-
-        qpos = 0
-        cigar_p = pysam_bam_get_cigar(src)
-
-        for k from 0 <= k < pysam_get_n_cigar(src):
-            op = cigar_p[k] & BAM_CIGAR_MASK
-
-            if op == BAM_CMATCH or op == BAM_CINS or \
-               op == BAM_CSOFT_CLIP or \
-               op == BAM_CEQUAL or op == BAM_CDIFF:
-                qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
-
-        return qpos
+        return calculateQueryLength(src)
             
     def get_aligned_pairs(self, matches_only = False):
         """a list of aligned read (query) and reference positions.

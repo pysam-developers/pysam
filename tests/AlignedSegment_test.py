@@ -324,6 +324,21 @@ class TestAlignedSegment(ReadTest):
         # padding is not bein handled right now
         self.assertRaises(NotImplementedError, inner)
 
+    def testNoSequence(self):
+        '''issue 176: retrieving length without query sequence
+        with soft-clipping.
+        '''
+        a = self.buildRead()
+        a.query_sequence = None
+        a.cigarstring = "20M"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "20M1S"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1S20M"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1S20M1S"
+        self.assertEqual(a.query_alignment_length, 20)
+
 
 class TestTags(ReadTest):
 
