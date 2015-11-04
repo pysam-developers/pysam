@@ -292,7 +292,7 @@ flagstat command and consists of three files:
 2. The cython implementation :file:`_pysam_flagstat.pyx`. This script
    imports the pysam API via::
 
-      from pysam.calignmentfile cimport AlignementFile, AlignedSegment
+      from pysam.calignmentfile cimport AlignmentFile, AlignedSegment
 
    This statement imports, amongst others, :class:`AlignedSegment`
    into the namespace. Speed can be gained from declaring
