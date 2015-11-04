@@ -459,6 +459,24 @@ class TestTags(ReadTest):
             after = entry.get_tags()
             self.assertEqual(after, before)
 
+    def testMDTag(self):
+        a = self.buildRead()
+
+        # Substitutions only
+        a.cigarstring = "36M"
+        a.query_sequence = "CGATACGGGGACATCCGGCCTGCTCCTTCTCACATG"
+        a.set_tag('MD', "1A0C0C0C1T0C0T27")
+        self.assertEqual(
+            "CacccCtctGACATCCGGCCTGCTCCTTCTCACATG",
+            a.get_reference_sequence())
+
+        a.cigarstring = "40M"
+        a.query_sequence = "CGATACGGGGACATCCGGCCTGCTCCTTCTCACATGGGGG"
+        a.set_tag('MD', "GA0C0C0C1T0C0T27C2C")
+        self.assertEqual(
+            "gacccCtctGACATCCGGCCTGCTCCTTCTCACATGcGGc",
+            a.get_reference_sequence())
+
 
 class TestCopy(ReadTest):
     
@@ -485,6 +503,7 @@ class TestCopy(ReadTest):
         b.query_name = 'ReadB'
         self.assertEqual(a.query_name, 'ReadA')
         self.assertEqual(b.query_name, 'ReadB')
+
 
 class TestAsString(unittest.TestCase):
 

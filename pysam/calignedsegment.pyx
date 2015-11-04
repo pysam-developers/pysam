@@ -501,9 +501,12 @@ cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file):
 
 
 cdef class PileupColumn
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu, AlignmentFile alignment_file):
-    '''return a PileupColumn object constructed from pileup in `plp` and setting
-    additional attributes.'''
+cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
+                      int n_pu, AlignmentFile alignment_file):
+    '''return a PileupColumn object constructed from pileup in `plp` and
+    setting additional attributes.
+
+    '''
     # note that the following does not call __init__
     cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
     dest._alignment_file = alignment_file
@@ -526,6 +529,61 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
     dest._is_tail = src.is_tail
     dest._is_refskip = src.is_refskip
     return dest
+
+
+cdef reconstituteSequenceFromMD(bam1_t * src):
+    """return reference sequence from MD tag.
+
+    Returns
+    -------
+
+    None, if no MD tag is present.
+    """
+    
+    cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
+
+    if md_tag_ptr == NULL:
+        return None
+        
+    read_sequence = getSequenceInRange(src, 0, src.core.l_qseq)
+
+    cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
+    cdef int md_idx = 0
+    cdef int r_idx = 0
+    cdef int nmatches = 0
+    cdef int x = 0
+
+    s = []
+    while md_tag[md_idx] != 0:
+        # c is numerical
+        if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
+            nmatches *= 10
+            nmatches += md_tag[md_idx] - 48
+            md_idx += 1
+            continue
+        else:
+            # save matches up to this point
+            for x from r_idx <= x < r_idx + nmatches:
+                s.append(read_sequence[x])
+            r_idx += nmatches
+            nmatches = 0
+
+            if md_tag[md_idx] == '^':
+                md_idx += 1
+                while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
+                    s.append(chr(md_tag[md_idx]))
+                    md_idx += 1
+            else:
+                # convert mismatch to lower case
+                s.append(chr(md_tag[md_idx] + 32))
+                r_idx += 1
+                md_idx += 1
+
+    # save matches up to this point
+    for x from r_idx <= x < r_idx + nmatches:
+        s.append(read_sequence[x])
+
+    return "".join(s)
 
 
 cdef class AlignedSegment:
@@ -1313,14 +1371,39 @@ cdef class AlignedSegment:
 
         return calculateQueryLength(src)
             
-    def get_aligned_pairs(self, matches_only = False):
-        """a list of aligned read (query) and reference positions.
-        For inserts, deletions, skipping either query or reference position may be None.
+    def get_reference_sequence(self):
+        """return the reference sequence.
 
-        If @matches_only is True, only matched bases are returned - no None on either side.
+        This method requires the MD tag to be set.
+        """
+        return reconstituteSequenceFromMD(self._delegate)
+
+
+    def get_aligned_pairs(self, matches_only=False, with_seq=False):
+        """a list of aligned read (query) and reference positions.
+
+        For inserts, deletions, skipping either query or reference
+        position may be None.
 
         Padding is currently not supported and leads to an exception
         
+        Parameters
+        ----------
+        
+        matches_only : bool
+           
+        If True, only matched bases are returned - no None on either
+        side.
+
+        with_seq : bool
+
+        If True, return the sequence.
+
+        Returns
+        -------
+
+        aligned_pairs : list
+
         """
         cdef uint32_t k, i, pos, qpos
         cdef int op
@@ -1333,6 +1416,9 @@ cdef class AlignedSegment:
         src = self._delegate
         if pysam_get_n_cigar(src) == 0:
             return []
+
+        if with_seq:
+            return reconstituteSequenceFromMD(src)
 
         result = []
         pos = src.core.pos
@@ -1367,7 +1453,9 @@ cdef class AlignedSegment:
                 pass # advances neither
 
             elif op == BAM_CPAD:
-                raise NotImplementedError("Padding (BAM_CPAD, 6) is currently not supported. Please implement. Sorry about that.")
+                raise NotImplementedError(
+                    "Padding (BAM_CPAD, 6) is currently not supported. "
+                    "Please implement. Sorry about that.")
 
         return result
 

@@ -664,7 +664,7 @@ cdef class AlignmentFile:
 
         position of the read/write pointer within the file.
 
-        where :
+        where : int
     
         optional and defaults to 0 which means absolute file
         positioning, other values are 1 which means seek relative to
