@@ -545,7 +545,10 @@ cdef reconstituteSequenceFromMD(bam1_t * src):
     if md_tag_ptr == NULL:
         return None
         
-    read_sequence = getSequenceInRange(src, 0, src.core.l_qseq)
+    # get read sequence, taking into account soft-clipping
+    read_sequence = getSequenceInRange(src,
+                                       getQueryStart(src),
+                                       getQueryEnd(src))
 
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
