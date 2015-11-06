@@ -531,7 +531,8 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
     return dest
 
 
-cdef reconstituteSequenceFromMD(bam1_t * src):
+# TODO: avoid string copying for getSequenceInRange, reconstituneSequenceFromMD, ...
+cdef inline object reconstituteSequenceFromMD(bam1_t * src):
     """return reference sequence from MD tag.
 
     Returns
@@ -541,22 +542,31 @@ cdef reconstituteSequenceFromMD(bam1_t * src):
     """
     
     cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
-
+    
     if md_tag_ptr == NULL:
         return None
         
+    cdef uint32_t start, end
+    start = getQueryStart(src)
+    end = getQueryEnd(src)
+                          
     # get read sequence, taking into account soft-clipping
-    read_sequence = getSequenceInRange(src,
-                                       getQueryStart(src),
-                                       getQueryEnd(src))
+    r = getSequenceInRange(src, start, end)
+    cdef char * read_sequence = r
 
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
     cdef int r_idx = 0
     cdef int nmatches = 0
     cdef int x = 0
+    cdef int s_idx = 0
 
-    s = []
+    # maximum length of sequence is read length + inserts in MD tag + \0
+    cdef uint32_t max_len = end - start + strlen(md_tag) + 1
+    cdef char * s = <char*>calloc(max_len, sizeof(char))
+    if s == NULL:
+        raise ValueError(
+            "could not allocated sequence of length %i" % max_len)
     while md_tag[md_idx] != 0:
         # c is numerical
         if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
@@ -567,26 +577,32 @@ cdef reconstituteSequenceFromMD(bam1_t * src):
         else:
             # save matches up to this point
             for x from r_idx <= x < r_idx + nmatches:
-                s.append(read_sequence[x])
+                s[s_idx] = read_sequence[x]
+                s_idx += 1
             r_idx += nmatches
             nmatches = 0
 
             if md_tag[md_idx] == '^':
                 md_idx += 1
                 while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
-                    s.append(chr(md_tag[md_idx]))
+                    s[s_idx] = md_tag[md_idx]
+                    s_idx += 1
                     md_idx += 1
             else:
                 # convert mismatch to lower case
-                s.append(chr(md_tag[md_idx] + 32))
+                s[s_idx] = md_tag[md_idx] + 32
+                s_idx += 1
                 r_idx += 1
                 md_idx += 1
 
     # save matches up to this point
     for x from r_idx <= x < r_idx + nmatches:
-        s.append(read_sequence[x])
-
-    return "".join(s)
+        s[s_idx] = read_sequence[x]
+        s_idx += 1
+    
+    seq = PyBytes_FromStringAndSize(s, s_idx)
+    free(s)
+    return seq
 
 
 cdef class AlignedSegment:
