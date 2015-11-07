@@ -95,7 +95,8 @@ KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                        "RG" : {"ID" : str, "CN" : str, "DS" : str,
                                "DT" : str, "FO" : str, "KS" : str,
                                "LB" : str, "PG" : str, "PI" : str,
-                               "PL" : str, "PU" : str, "SM" : str,},
+                               "PL" : str, "PM" : str, "PU" : str,
+                               "SM" : str,},
                        "PG" : {"ID" : str, "PN" : str, "CL" : str, 
                                "PP" : str, "DS" : str, "VN" : str,},}
 
