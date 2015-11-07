@@ -1404,7 +1404,7 @@ cdef class AlignedSegment:
         For inserts, deletions, skipping either query or reference
         position may be None.
 
-        Padding is currently not supported and leads to an exception
+        Padding is currently not supported and leads to an exception.
         
         Parameters
         ----------
@@ -1416,56 +1416,79 @@ cdef class AlignedSegment:
 
         with_seq : bool
 
-        If True, return the sequence.
+        If True, return a third element in the tuple containing the
+        reference sequence. Substitutions are lower-case. This option
+        requires an MD tag to be present.
 
         Returns
         -------
 
-        aligned_pairs : list
+        aligned_pairs : list of tuples
 
         """
-        cdef uint32_t k, i, pos, qpos
+        cdef uint32_t k, i, pos, qpos, r_idx
         cdef int op
         cdef uint32_t * cigar_p
-        cdef bam1_t * src 
-        cdef int _matches_only
+        cdef bam1_t * src = self._delegate
+        cdef bint _matches_only = bool(matches_only)
+        cdef bint _with_seq = bool(with_seq)
 
-        _matches_only = bool(matches_only)
+        # TODO: this method performs no checking and assumes that
+        # read sequence, cigar and MD tag are consistent.
 
-        src = self._delegate
+        if _with_seq:
+            ref_seq = reconstituteSequenceFromMD(src)
+            if ref_seq is None:
+                raise ValueError("MD tag not present")
+
+        r_idx = 0
+
         if pysam_get_n_cigar(src) == 0:
             return []
-
-        if with_seq:
-            return reconstituteSequenceFromMD(src)
-
+            
         result = []
         pos = src.core.pos
         qpos = 0
         cigar_p = pysam_bam_get_cigar(src)
-
+        
         for k from 0 <= k < pysam_get_n_cigar(src):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
             if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
-                for i from pos <= i < pos + l:
-                    result.append((qpos, i))
-                    qpos += 1
+                if _with_seq:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, i, ref_seq[r_idx]))
+                        r_idx += 1
+                        qpos += 1
+                else:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, i))
+                        qpos += 1
                 pos += l
 
             elif op == BAM_CINS or op == BAM_CSOFT_CLIP:
                 if not _matches_only:
-                    for i from pos <= i < pos + l:
-                        result.append((qpos, None))
-                        qpos += 1
+                    if _with_seq:
+                        for i from pos <= i < pos + l:
+                            result.append((qpos, None, None))
+                            qpos += 1
+                    else:
+                        for i from pos <= i < pos + l:
+                            result.append((qpos, None))
+                            qpos += 1
                 else:
                     qpos += l
 
             elif op == BAM_CDEL or op == BAM_CREF_SKIP:
                 if not _matches_only:
-                    for i from pos <= i < pos + l:
-                        result.append((None, i))
+                    if _with_seq:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, ref_seq[r_idx]))
+                            r_idx += 1
+                    else:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i))
                 pos += l
 
             elif op == BAM_CHARD_CLIP:
