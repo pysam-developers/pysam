@@ -330,7 +330,7 @@ cdef class AlignmentFile:
         return self.index != NULL
 
     def check_index(self):
-        """return True if index is present. 
+        """return True if index is present.
 
         Raises
         ------
@@ -351,6 +351,7 @@ cdef class AlignmentFile:
             raise ValueError(
                 "mapping information not recorded in index "
                 "or index not available")
+        return True
 
     def _open(self,
               filepath_or_object,
