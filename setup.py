@@ -1,8 +1,21 @@
-#!/usr/bin/python
-'''
+#! /usr/bin/python
 
-pysam
-*****
+'''The SAM/BAM/CRAM format is a way to store efficiently large numbers
+of alignments, such as those routinely are created by next-generation
+sequencing methods.
+
+This module provides a low-level wrapper around the htslib C-API as
+using cython and a high-level API for convenient access to the data in
+SAM/BAM formatted files. Also included is an interface to the samtools
+command line utilities and the tabix C-API for reading compressed and
+indexed tabular data.
+
+The current version wraps htslib-1.2.1 and samtools-1.2.
+
+See:
+http://www.htslib.org
+https://github.com/pysam-developers/pysam
+http://pysam.readthedocs.org/en/stable
 
 '''
 
