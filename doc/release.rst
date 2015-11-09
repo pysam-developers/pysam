@@ -5,14 +5,89 @@ Release notes
 Release 0.8.4
 =============
 
+This release contains numerous bugfixes and a first implementation of
+a pythonic interface to VCF/BCF files. Note that this code is still
+incomplete and preliminary, but does offer a nearly complete immutable
+Pythonic interface to VCF/BCF metadata and data with reading and
+writing capability.
+
+Potential isses when upgrading from v0.8.3:
+
 * binary tags are now returned as python arrays
-* renamed functions for pep8, old names still retained for	
-  backwards compatibility, but deprecated.
-  gettid -> get_tid
-  getrname -> get_reference_name
-  parseRegion -> parse_region
-* faidx now returns strings and not binary strings in py3
-  
+* renamed several methods for pep8 compatibility, old names still retained for	
+  backwards compatibility, but should be considered deprecated.
+   * gettid() is now get_tid()
+   * getrname() is now get_reference_name()
+   * parseRegion() is now parse_region()
+* faidx now returns strings and not binary strings in py3.
+* The cython components have been broken up into smaller files with
+  more specific content. This will affect users using the cython
+  interfaces.
+
+Edited list of commit log changes:
+
+*    fixes AlignmentFile.check_index to return True
+*    add RG/PM header tag - closes #179
+*    add with_seq option to get_aligned_pairs
+*    use char * inside reconsituteReferenceSequence
+*    add soft clipping for get_reference_sequence
+*    add get_reference_sequence
+*    queryEnd now computes length from cigar string if no sequence present, closes #176
+*    tolerate missing space at end of gtf files, closes #162
+*    do not raise Error when receiving output on stderr
+*    add docu about fetching without index, closes #170
+*    FastaFile and FastxFile now return strings in python3, closes #173
+*    py3 compat: relative -> absolute imports.
+*    add reference_name and next_reference_name attributes to AlignedSegment
+*    add function signatures to cvcf cython.  Added note about other VCF code.
+*    add context manager functions to FastaFile
+*    add reference_name and next_reference_name attributes to AlignedSegment
+*    PileupColumn also gets a reference_name attribute.
+*    add context manager functions to FastaFile
+*    TabixFile.header for remote files raises AttributeError, fixes #157
+*    add context manager interface to TabixFile, closes #165
+*    change ctypedef enum to typedef enum for cython 0.23
+*    add function signatures to cvcf cython, also added note about other VCF code
+*    remove exception for custom upper-case header record tags.
+*    rename VALID_HEADER_FIELDS to KNOWN_HEADER_FIELDS
+*    fix header record tag parsing for custom tags.
+*    use cython.str in count_coverage, fixes #141
+*    avoid maketrans (issues with python3)
+*    refactoring: AlignedSegment now in separate module
+*    do not execute remote tests if URL not available
+*    fix the unmapped count, incl reads with no SQ group
+*    add raw output to tags
+*    added write access for binary tags
+*    bugfix in call to resize
+*    implemented writing of binary tags from arrays
+*    implemented convert_binary_tag to use arrays
+*    add special cases for reads that are unmapped or whose mates are unmapped.
+*    rename TabProxies to ctabixproxies
+*    remove underscores from utility functions
+*    move utility methods into cutils
+*    remove callback argument to fetch - closes #128
+*    avoid calling close in dealloc
+*    add unit tests for File object opening
+*    change AlignmentFile.open to filepath_or_object
+*    implement copy.copy, close #65
+*    add chaching of array attributes in AlignedSegment, closes #121
+*    add export of Fastafile
+*    remove superfluous pysam_dispatch
+*    use persist option in FastqFile
+*    get_tag: expose tag type if requested with `with_value_type`
+*    fix to allow reading vcf record info via tabix-based vcf reader
+*    add pFastqProxy and pFastqFile objects to make it possible to work with multiple fastq records per file handle, unlike FastqProxy/FastqFile.
+*    release GIL around htslib IO operations
+*    More work on read/write support, API improvements
+*    add `phased` property on `VariantRecordSample`
+*    add mutable properties to VariantRecord
+*    BCF fixes and start of read/write support
+*    VariantHeaderRecord objects now act like mappings for attributes.
+*    add VariantHeader.alts dict from alt ID->Record.
+*    Bug fix to strong representation of structured header records.
+*    VariantHeader is now mutable
+
+
 Release 0.8.3
 =============
 

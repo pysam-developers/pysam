@@ -200,6 +200,12 @@ Fastq files
 .. autoclass:: pysam.FastqFile
    :members:
 
+VCF files
+---------
 
+.. autoclass:: pysam.VariantFile
+   :members:
 
+.. autoclass:: pysam.VariantHeader
+   :members:
 
