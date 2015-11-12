@@ -14,12 +14,20 @@ writing capability.
 Potential isses when upgrading from v0.8.3:
 
 * binary tags are now returned as python arrays
+
 * renamed several methods for pep8 compatibility, old names still retained for	
   backwards compatibility, but should be considered deprecated.
    * gettid() is now get_tid()
    * getrname() is now get_reference_name()
    * parseRegion() is now parse_region()
+
+* some methods have changed for pep8 compatibility without the old
+  names being present:
+   * fromQualityString() is now qualitystring_to_array()
+   * toQualityString() is now qualities_to_qualitystring()
+   
 * faidx now returns strings and not binary strings in py3.
+
 * The cython components have been broken up into smaller files with
   more specific content. This will affect users using the cython
   interfaces.
