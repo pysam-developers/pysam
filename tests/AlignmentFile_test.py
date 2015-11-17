@@ -768,6 +768,12 @@ class TestIO(unittest.TestCase):
         self.assertEqual(samfile.unmapped, 0)
         self.assertEqual(samfile.nocoordinate, 0)
 
+    def testOpenFromFilename(self):
+
+        samfile = pysam.AlignmentFile(
+            filename=os.path.join(DATADIR, "ex1.bam"),
+            mode="rb")
+        self.assertEqual(len(list(samfile.fetch())), 3270)
 
 ##################################################
 #

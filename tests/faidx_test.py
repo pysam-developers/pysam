@@ -115,6 +115,17 @@ class TestFastxFileFastq(unittest.TestCase):
         else:
             self.checkLast(first)
 
+    def testManager(self):
+        with self.filetype(os.path.join(DATADIR, self.filename),
+                           persist=self.persist) as inf:
+            first = inf.__next__()
+            self.checkFirst(first)
+            for last in inf:
+                pass
+            self.checkLast(last)
+
+        self.assertEqual(inf.closed, True)
+
 
 # Test for backwards compatibility
 class TestFastqFileFastq(TestFastxFileFastq):

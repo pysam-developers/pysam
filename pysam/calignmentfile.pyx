@@ -212,7 +212,8 @@ cdef class AlignmentFile:
     """
     AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
-    header=None, add_sq_text=False, check_header=True, check_sq=True)
+    header=None, add_sq_text=False, check_header=True, check_sq=True,
+    filename=None)
 
     A :term:`SAM`/:term:`BAM` formatted file. 
 
@@ -285,25 +286,28 @@ cdef class AlignmentFile:
     text : string
         when writing, use the string provided as the header
 
-   reference_names : list
+    reference_names : list
         see referece_lengths
 
-   reference_lengths : list
+    reference_lengths : list
         when writing, build header from list of chromosome names and lengths.
         By default, 'SQ' and 'LN' tags will be added to the header
         text. This option can be changed by unsetting the flag
         `add_sq_text`.
 
-   add_sq_text : bool
+    add_sq_text : bool
         do not add 'SQ' and 'LN' tags to header. This option permits construction
         :term:`SAM` formatted files without a header.
 
-   check_header : bool
+    check_header : bool
         when reading, check if header is present (default=True)
 
-   check_sq : bool
+    check_sq : bool
         when reading, check if SQ entries are present in header (default=True) 
 
+    filename : string
+        Alternative to filepath_or_object. Filename of the file
+        to be opened.
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -314,6 +318,10 @@ cdef class AlignmentFile:
         self.is_stream = False
         self.is_cram = False
         self.is_remote = False
+
+        if "filename" in kwargs:
+            args = [kwargs["filename"]]
+            del kwargs["filename"]
 
         self._open(*args, **kwargs)
 

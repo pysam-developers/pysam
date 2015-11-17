@@ -450,6 +450,14 @@ cdef class FastxFile:
     def __dealloc__(self):
         self.close()
 
+    # context manager interface
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
+
     property closed:
         """"bool indicating the current state of the file object. 
         This is a read-only attribute; the close() method changes the value. 
