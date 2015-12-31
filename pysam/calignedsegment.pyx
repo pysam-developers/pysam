@@ -10,17 +10,17 @@
 #
 # class PileupColumn    a collection of segments (PileupRead) aligned to
 #                       a particular genomic position.
-# 
+#
 # class PileupRead      an AlignedSegment aligned to a particular genomic
 #                       position. Contains additional attributes with respect
 #                       to this.
 #
 # Additionally this module defines numerous additional classes that are part
 # of the internal API. These are:
-# 
+#
 # Various iterator classes to iterate over alignments in sequential (IteratorRow)
 # or in a stacked fashion (IteratorColumn):
-# 
+#
 # class IteratorRow
 # class IteratorRowRegion
 # class IteratorRowHead
@@ -118,7 +118,7 @@ cdef convert_binary_tag(uint8_t * tag):
     # get number of values in array
     nvalues = (<int32_t*>tag)[0]
     tag += 4
-    
+
     # define python array
     cdef c_array.array c_values = array.array(
         chr(map_typecode_htslib_to_python(auxtype)))
@@ -201,7 +201,7 @@ cdef inline uint8_t get_value_code(value, value_type=None):
     '''guess type code for a *value*. If *value_type* is None,
     the type code will be inferred based on the Python type of
     *value*'''
-    cdef uint8_t  typecode    
+    cdef uint8_t  typecode
     cdef char * _char_type
 
     if value_type is None:
@@ -245,7 +245,7 @@ cdef inline getTypecode(value, maximum_value=None):
         valuetype = b'f'
     elif t is int:
         # signed ints
-        if value < 0: 
+        if value < 0:
             if value >= -128 and maximum_value < 128:
                 valuetype = b'c'
             elif value >= -32768 and maximum_value < 32768:
@@ -299,7 +299,7 @@ cdef inline packTags(tags):
         'I': ('I', 4),
         'f': ('f', 4),
         'A': ('c', 1)}
-    
+
     for tag in tags:
 
         if len(tag) == 2:
@@ -327,7 +327,7 @@ cdef inline packTags(tags):
                 raise ValueError("invalid value type '%s'" % valuetype)
 
             datafmt = "2sccI%i%s" % (len(value), datatype2format[valuetype][0])
-            args.extend([pytag[:2], 
+            args.extend([pytag[:2],
                          b"B",
                          valuetype,
                          len(value)] + list(value))
@@ -336,19 +336,19 @@ cdef inline packTags(tags):
             # binary tags from arrays
             if valuetype is None:
                 valuetype = chr(map_typecode_python_to_htslib(ord(value.typecode)))
-                
+
             if valuetype not in datatype2format:
                 raise ValueError("invalid value type '%s'" % valuetype)
-            
+
             # use array.tostring() to retrieve byte representation and
             # save as bytes
             datafmt = "2sccI%is" % (len(value) * datatype2format[valuetype][1])
-            args.extend([pytag[:2], 
+            args.extend([pytag[:2],
                          b"B",
                          valuetype,
                          len(value),
                          value.tostring()])
-            
+
         else:
             if valuetype is None:
                 valuetype = getTypecode(value)
@@ -372,24 +372,24 @@ cdef inline int32_t calculateQueryLength(bam1_t * src):
 
     Return 0 if there is no CIGAR alignment.
     """
-        
+
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
 
     if cigar_p == NULL:
         return 0
-    
+
     cdef uint32_t k, qpos
     cdef int op
     qpos = 0
-    
+
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
-        
+
         if op == BAM_CMATCH or op == BAM_CINS or \
            op == BAM_CSOFT_CLIP or \
            op == BAM_CEQUAL or op == BAM_CDIFF:
             qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
-            
+
     return qpos
 
 
@@ -467,7 +467,7 @@ cdef inline object getSequenceInRange(bam1_t *src,
 
 
 cdef inline object getQualitiesInRange(bam1_t *src,
-                                          uint32_t start, 
+                                          uint32_t start,
                                           uint32_t end):
     """return python array of quality values from a bam1_t object"""
 
@@ -483,7 +483,7 @@ cdef inline object getQualitiesInRange(bam1_t *src,
     c_array.resize(result, end - start)
 
     # copy data
-    memcpy(result.data.as_voidptr, <void*>&p[start], end - start) 
+    memcpy(result.data.as_voidptr, <void*>&p[start], end - start)
 
     return result
 
@@ -540,16 +540,16 @@ cdef inline object reconstituteSequenceFromMD(bam1_t * src):
 
     None, if no MD tag is present.
     """
-    
+
     cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
-    
+
     if md_tag_ptr == NULL:
         return None
-        
+
     cdef uint32_t start, end
     start = getQueryStart(src)
     end = getQueryEnd(src)
-                          
+
     # get read sequence, taking into account soft-clipping
     r = getSequenceInRange(src, start, end)
     cdef char * read_sequence = r
@@ -599,7 +599,7 @@ cdef inline object reconstituteSequenceFromMD(bam1_t * src):
     for x from r_idx <= x < r_idx + nmatches:
         s[s_idx] = read_sequence[x]
         s_idx += 1
-    
+
     seq = PyBytes_FromStringAndSize(s, s_idx)
     free(s)
     return seq
@@ -650,7 +650,7 @@ cdef class AlignedSegment:
 
         The representation is an approximate :term:`SAM` format, because
         an aligned read might not be associated with a :term:`AlignmentFile`.
-        As a result :term:`tid` is shown instead of the reference name. 
+        As a result :term:`tid` is shown instead of the reference name.
         Similarly, the tags field is returned in its parsed state.
 
         To get a valid SAM record, use :meth:`tostring`.
@@ -739,7 +739,7 @@ cdef class AlignedSegment:
     cpdef bytes tostring(self, AlignmentFile_t htsfile):
         """returns a string representation of the aligned segment.
 
-        The output format is valid SAM format if 
+        The output format is valid SAM format if
 
         Parameters
         ----------
@@ -809,7 +809,7 @@ cdef class AlignedSegment:
                              l,
                              <uint8_t*>p)
 
-            
+
             pysam_set_l_qname(src, l)
 
             # re-acquire pointer to location in memory
@@ -855,7 +855,7 @@ cdef class AlignedSegment:
             src = self._delegate
             src.core.pos = pos
             if pysam_get_n_cigar(src):
-                pysam_set_bin(src, 
+                pysam_set_bin(src,
                               hts_reg2bin(
                                   src.core.pos,
                                   bam_endpos(src),
@@ -878,7 +878,7 @@ cdef class AlignedSegment:
 
     property cigarstring:
         '''the :term:`cigar` alignment as a string.
-        
+
         The cigar string is a string of alternating integers
         and characters denoting the length and the type of
         an operation.
@@ -900,7 +900,7 @@ cdef class AlignedSegment:
             # reverse order
             else:
                 return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
-            
+
         def __set__(self, cigar):
             if cigar is None or len(cigar) == 0:
                 self.cigartuples = []
@@ -963,7 +963,7 @@ cdef class AlignedSegment:
             self._delegate.core.isize = isize
 
     property query_sequence:
-        """read sequence bases, including :term:`soft clipped` bases 
+        """read sequence bases, including :term:`soft clipped` bases
         (None if not present).
 
         Note that assigning to seq will invalidate any quality scores.
@@ -975,7 +975,7 @@ cdef class AlignedSegment:
            read.query_qualities = q[5:10]
 
         The sequence is returned as it is stored in the BAM file. Some mappers
-        might have stored a reverse complement of the original read 
+        might have stored a reverse complement of the original read
         sequence.
         """
         def __get__(self):
@@ -1005,7 +1005,7 @@ cdef class AlignedSegment:
             if seq == None:
                 l = 0
             else:
-                l = len(seq)                
+                l = len(seq)
                 seq = force_bytes(seq)
 
             src = self._delegate
@@ -1059,7 +1059,7 @@ cdef class AlignedSegment:
         beforehand as this will determine the expected length of the
         quality score array.
 
-        This method raises a ValueError if the length of the 
+        This method raises a ValueError if the length of the
         quality scores and the sequence are not the same.
 
         """
@@ -1111,7 +1111,7 @@ cdef class AlignedSegment:
 
             # copy data
             memcpy(p, result.data.as_voidptr, l)
-            
+
             # save in cache
             self.cache_query_qualities = qual
 
@@ -1124,7 +1124,7 @@ cdef class AlignedSegment:
 
 
     ##########################################################
-    # Derived simple attributes. These are simple attributes of 
+    # Derived simple attributes. These are simple attributes of
     # AlignedSegment getting and setting values.
     ##########################################################
     # 1. Flags
@@ -1230,7 +1230,7 @@ cdef class AlignedSegment:
                 return None
             return bam_endpos(src) - \
                 self._delegate.core.pos
-    
+
     property query_alignment_sequence:
         """aligned portion of the read.
 
@@ -1381,7 +1381,7 @@ cdef class AlignedSegment:
         """
 
         cdef uint32_t * cigar_p
-        cdef bam1_t * src 
+        cdef bam1_t * src
 
         src = self._delegate
 
@@ -1389,7 +1389,7 @@ cdef class AlignedSegment:
             return src.core.l_qseq
 
         return calculateQueryLength(src)
-            
+
     def get_reference_sequence(self):
         """return the reference sequence.
 
@@ -1405,20 +1405,17 @@ cdef class AlignedSegment:
         position may be None.
 
         Padding is currently not supported and leads to an exception.
-        
+
         Parameters
         ----------
-        
+
         matches_only : bool
-           
-        If True, only matched bases are returned - no None on either
-        side.
-
+          If True, only matched bases are returned - no None on either
+          side.
         with_seq : bool
-
-        If True, return a third element in the tuple containing the
-        reference sequence. Substitutions are lower-case. This option
-        requires an MD tag to be present.
+          If True, return a third element in the tuple containing the
+          reference sequence. Substitutions are lower-case. This option
+          requires an MD tag to be present.
 
         Returns
         -------
@@ -1445,12 +1442,12 @@ cdef class AlignedSegment:
 
         if pysam_get_n_cigar(src) == 0:
             return []
-            
+
         result = []
         pos = src.core.pos
         qpos = 0
         cigar_p = pysam_bam_get_cigar(src)
-        
+
         for k from 0 <= k < pysam_get_n_cigar(src):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
@@ -1505,12 +1502,12 @@ cdef class AlignedSegment:
         """ a list of start and end positions of
         aligned gapless blocks.
 
-        The start and end positions are in genomic 
-        coordinates. 
-      
-        Blocks are not normalized, i.e. two blocks 
+        The start and end positions are in genomic
+        coordinates.
+
+        Blocks are not normalized, i.e. two blocks
         might be directly adjacent. This happens if
-        the two blocks are separated by an insertion 
+        the two blocks are separated by an insertion
         in the read.
         """
 
@@ -1577,7 +1574,7 @@ cdef class AlignedSegment:
     # TODO: capture in CIGAR object
     property cigartuples:
         """the :term:`cigar` alignment. The alignment
-        is returned as a list of tuples of (operation, length). 
+        is returned as a list of tuples of (operation, length).
 
         If the alignment is not present, None is returned.
 
@@ -1679,7 +1676,7 @@ cdef class AlignedSegment:
 
     cpdef set_tag(self,
                   tag,
-                  value, 
+                  value,
                   value_type=None,
                   replace=True):
         """sets a particular field *tag* to *value* in the optional alignment
@@ -1721,7 +1718,7 @@ cdef class AlignedSegment:
         # setting value to None deletes a tag
         if value is None:
             return
-        
+
         typecode = get_value_code(value, value_type)
         if typecode == 0:
             raise ValueError("can't guess type or invalid type code specified")
@@ -1763,7 +1760,7 @@ cdef class AlignedSegment:
             # bam_aux_append copies data from value_ptr
             bam_aux_append(src,
                            tag,
-                           typecode, 
+                           typecode,
                            value_size,
                            <uint8_t*>buffer.raw)
             return
@@ -1772,7 +1769,7 @@ cdef class AlignedSegment:
 
         bam_aux_append(src,
                        tag,
-                       typecode, 
+                       typecode,
                        value_size,
                        value_ptr)
 
@@ -1795,16 +1792,16 @@ cdef class AlignedSegment:
         This method is the fastest way to access the optional
         alignment section if only few tags need to be retrieved.
 
-        Parameters 
+        Parameters
         ----------
 
-        tag : 
+        tag :
             data tag.
-            
+
         with_value_type : Optional[bool]
             if set to True, the return value is a tuple of (tag value, type code).
             (default False)
-            
+
         Returns
         -------
 
@@ -1946,7 +1943,7 @@ cdef class AlignedSegment:
         This method will not enforce the rule that the same tag may appear
         only once in the optional alignment section.
         """
-        
+
         cdef bam1_t * src
         cdef uint8_t * s
         cdef char * temp
@@ -1961,7 +1958,7 @@ cdef class AlignedSegment:
             buffer = ctypes.create_string_buffer(new_size)
             struct.pack_into(fmt,
                              buffer,
-                             0, 
+                             0,
                              *args)
 
         # delete the old data and allocate new space.
@@ -1981,11 +1978,11 @@ cdef class AlignedSegment:
 
             # check if there is direct path from buffer.raw to tmp
             p = buffer.raw
-            # create handle to make sure buffer stays alive long 
+            # create handle to make sure buffer stays alive long
             # enough for memcpy, see issue 129
             temp = p
             memcpy(s, temp, new_size)
-                
+
 
     ########################################################
     # Compatibility Accessors
@@ -2125,7 +2122,7 @@ cdef class AlignedSegment:
         return self.get_tag(tag)
     def setTag(self, tag, value, value_type=None, replace=True):
         return self.set_tag(tag, value, value_type, replace)
-        
+
 
 cdef class PileupColumn:
     '''A pileup of reads at a particular reference sequence postion
@@ -2141,9 +2138,9 @@ cdef class PileupColumn:
         raise TypeError("this class cannot be instantiated from Python")
 
     def __str__(self):
-        return "\t".join(map(str, 
+        return "\t".join(map(str,
                               (self.reference_id,
-                               self.reference_pos, 
+                               self.reference_pos,
                                self.nsegments))) +\
             "\n" +\
             "\n".join(map(str, self.pileups))
@@ -2202,13 +2199,13 @@ cdef class PileupColumn:
             return self.reference_id
         def __set__(self, v):
             self.reference_id = v
-    
+
     property n:
         def __get__(self):
             return self.nsegments
         def __set__(self, v):
             self.nsegments = v
-            
+
 
 cdef class PileupRead:
     '''Representation of a read aligned to a particular position in the
@@ -2227,7 +2224,7 @@ cdef class PileupRead:
                  self.indel, self.level,
                  self.is_del, self.is_head,
                  self.is_tail, self.is_refskip)))
-    
+
     property alignment:
         """a :class:`pysam.AlignedSegment` object of the aligned read"""
         def __get__(self):
@@ -2236,7 +2233,7 @@ cdef class PileupRead:
     property query_position:
         """position of the read base at the pileup site, 0-based.
         None if is_del or is_refskip is set.
-        
+
         """
         def __get__(self):
             if self.is_del or self.is_refskip:
