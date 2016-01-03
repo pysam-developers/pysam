@@ -10,7 +10,7 @@ SAM/BAM formatted files. Also included is an interface to the samtools
 command line utilities and the tabix C-API for reading compressed and
 indexed tabular data.
 
-The current version wraps htslib-1.2.1 and samtools-1.2.
+The current version wraps htslib-1.3 and samtools-1.3.
 
 See:
 http://www.htslib.org
@@ -61,11 +61,12 @@ samtools_exclude = ("bamtk.c",
                     "bam2bed.c",
                     "wgsim.c",
                     "md5fa.c",
+                    "md5sum-lite.c",
                     "maq2sam.c",
                     "bamcheck.c",
                     "chk_indel.c",
                     "vcf-miniview.c",
-                    "htslib-1.2.1",   # do not import twice
+                    "htslib-1.3",   # do not import twice
                     "hfile_irods.c",  # requires irods library
                     )
 
@@ -85,7 +86,7 @@ if HTSLIB_LIBRARY_DIR:
     chtslib_sources = []
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
-    htslib_libraries = ['hts']
+    htslib_libraries = ['hts', "curl", "ncurses"]
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
     # htslib
@@ -97,7 +98,7 @@ elif HTSLIB_MODE == 'separate':
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
-    htslib_libraries = []
+    htslib_libraries = ["curl", "ncurses"]
 elif HTSLIB_MODE == 'shared':
     # link each pysam component against the same
     # htslib built from sources included in the pysam
@@ -110,7 +111,7 @@ elif HTSLIB_MODE == 'shared':
         if x not in htslib_exclude]
     htslib_library_dirs = ['pysam']
     htslib_include_dirs = ['htslib']
-    htslib_libraries = ['chtslib']
+    htslib_libraries = ['chtslib', "curl", "ncurses"]
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
@@ -300,7 +301,9 @@ else:
 
 #######################################################
 extra_compile_args = ["-Wno-error=declaration-after-statement",
-                      "-DSAMTOOLS=1"]
+                      "-DSAMTOOLS=1",
+                      "-DHAVE_HMAC=1",
+                      "-DHAVE_LIBCURL=1"]
 define_macros = [('_FILE_OFFSET_BITS', '64'),
                    ('_USE_KNETFILE', '')]
 

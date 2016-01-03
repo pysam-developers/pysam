@@ -350,7 +350,7 @@ class TestIterationWithoutComments(IterationTest):
         # to be implemented
         # self.assertRaises(IndexError, self.tabix.fetch, "chr1", 1000000, 2000000)
 
-        # raise no error for invalid intervals
+        # raise no error for empty intervals
         self.tabix.fetch("chr1", 100, 100)
 
     def testGetContigs(self):

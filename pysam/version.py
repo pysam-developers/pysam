@@ -1,7 +1,7 @@
 # pysam versioning information
 
-__version__ = "0.8.4"
+__version__ = "0.8.5"
 
-__samtools_version__ = "1.2"
+__samtools_version__ = "1.3"
 
-__htslib_version__ = "1.2.1"
+__htslib_version__ = "1.3"

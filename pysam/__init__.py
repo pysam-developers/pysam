@@ -75,8 +75,11 @@ class SamtoolsDispatcher(object):
 
         if retval:
             raise SamtoolsError(
-                'csamtools returned with error %i: %s' %
-                (retval, "\n".join(stderr)))
+                "csamtools returned with error %i: "
+                "stdout=%s, stderr=%s" %
+                (retval, 
+                 "\n".join(stdout),
+                 "\n".join(stderr)))
 
         self.stderr = stderr
 

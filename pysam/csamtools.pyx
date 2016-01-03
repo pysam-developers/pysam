@@ -105,7 +105,12 @@ def _samtools_dispatch(method,
     args = [force_cmdline_bytes(a) for a in args ]
 
     # allocate two more for first (dummy) argument (contains command)
-    cargs = <char**>calloc(n + 2, sizeof(char *))
+    cdef int extra_args = 0
+    if method == "index":
+        extra_args = 1
+    # add extra arguments for commands accepting optional arguments
+    # such as 'samtools index x.bam [out.index]'
+    cargs = <char**>calloc(n + 2 + extra_args, sizeof(char *))
     cargs[0] = "samtools"
     cargs[1] = method
     for i from 0 <= i < n:
@@ -122,7 +127,7 @@ def _samtools_dispatch(method,
             with open(stdout_f, "r") as inf:
                 out_stdout = inf.readlines()
         except UnicodeDecodeError:
-            with open( stdout_f, "rb") as inf:
+            with open(stdout_f, "rb") as inf:
                 # read binary output
                 out_stdout = inf.read()
         os.remove(stdout_f)
