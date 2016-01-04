@@ -14,7 +14,7 @@ all: ex1.pileup.gz \
 	$(CRAM) $(CRAI) \
 	example_bai.bam \
         rg_with_tab.bam \
-	ex2_truncated.bam ex2_truncated.bam.bai \
+	ex2_truncated.bam \
 	empty.bam empty.bam.bai
 
 # ex2.sam - as ex1.sam, but with header
