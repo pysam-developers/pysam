@@ -517,7 +517,7 @@ cdef extern from "htslib/hts.h" nogil:
     # @param opt The CRAM_OPT_* option.
     # @param ... Optional arguments, dependent on the option used.
     # @return    0 for success, or negative if an error occurred.
-    int hts_set_opt(htsFile *fp, hts_fmt_option opt, ...)
+    #int hts_set_opt(htsFile *fp, hts_fmt_option opt, ...)
 
     int hts_getline(htsFile *fp, int delimiter, kstring_t *str)
     char **hts_readlines(const char *fn, int *_n)
@@ -1840,7 +1840,7 @@ cdef extern from "htslib/vcfutils.h" nogil:
     #           indexes to remove
     #
     # Number=A,R,G INFO and FORMAT fields will be updated accordingly.
-    void bcf_remove_allele_set(const bcf_hdr_t *header, bcf1_t *line, const struct kbitset_t *rm_set)
+    void bcf_remove_allele_set(const bcf_hdr_t *header, bcf1_t *line, kbitset_t *rm_set)
 
     # bcf_calc_ac() - calculate the number of REF and ALT alleles
     # @header:  for access to BCF_DT_ID dictionary
