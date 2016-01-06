@@ -28,7 +28,11 @@ cdef extern from "htslib/kstring.h" nogil:
         size_t l, m
         char *s
 
+
 cdef extern from "htslib_util.h" nogil:
+    int hts_set_verbosity(int verbosity)
+    int hts_get_verbosity()
+
     ctypedef uint32_t khint32_t
     ctypedef uint32_t khint_t
     ctypedef khint_t  khiter_t
@@ -148,8 +152,8 @@ cdef extern from "htslib/bgzf.h" nogil:
     ctypedef struct z_stream
 
     ctypedef struct BGZF:
-        int           errcode
-        int           is_write
+        unsigned           errcode
+        unsigned           is_write
         int           is_be
         int           compress_level
         int           is_compressed
@@ -308,6 +312,18 @@ cdef extern from "htslib/bgzf.h" nogil:
     int bgzf_mt(BGZF *fp, int n_threads, int n_sub_blks)
 
 
+    # Compress a single BGZF block.
+    #
+    # @param dst    output buffer (must have size >= BGZF_MAX_BLOCK_SIZE)
+    # @param dlen   size of output buffer; updated on return to the number
+    #               of bytes actually written to dst
+    # @param src    buffer to be compressed
+    # @param slen   size of data to compress (must be <= BGZF_BLOCK_SIZE)
+    # @param level  compression level
+    # @return       0 on success and negative on error
+    #
+    int bgzf_compress(void *dst, size_t *dlen, const void *src, size_t slen, int level)
+
     #*******************
     #  bgzidx routines *
     #   BGZF at the uncompressed offset
@@ -357,13 +373,13 @@ cdef extern from "htslib/hts.h" nogil:
 
     ctypedef struct cram_fd
 
-    ctypedef union FilePointerUnion:
+    union FilePointerUnion:
         BGZF    *bgzf
         cram_fd *cram
         hFILE   *hfile
         void    *voidp
 
-    cdef enum htsFormatCategory:
+    enum htsFormatCategory:
         unknown_category
         sequence_data    # Sequence data -- SAM, BAM, CRAM, etc
         variant_data     # Variant calling data -- VCF, BCF, etc
@@ -371,18 +387,18 @@ cdef extern from "htslib/hts.h" nogil:
         region_list      # Coordinate intervals or regions -- BED, etc
         category_maximum
 
-    cdef enum htsExactFormat:
+    enum htsExactFormat:
         unknown_format
         binary_format
         text_format
         sam, bam, bai, cram, crai, vcf, bcf, csi, gzi, tbi, bed
         format_maximum
 
-    cdef enum htsCompression:
+    enum htsCompression:
         no_compression, gzip, bgzf, custom
         compression_maximum
 
-    cdef struct htsVersion:
+    ctypedef struct htsVersion:
         short major, minor
 
     ctypedef struct htsFormat:
@@ -436,7 +452,7 @@ cdef extern from "htslib/hts.h" nogil:
 
     # @abstract       Open a SAM/BAM/CRAM/VCF/BCF/etc file
     # @param fn       The file name or "-" for stdin/stdout
-    # @param mode     Mode matching /[rwa][bcuz0-9]+/
+    # @param mode     Mode matching / [rwa][bceguxz0-9]* /
     # @discussion
     #     With 'r' opens for reading; any further format mode letters are ignored
     #     as the format is detected by checking the first few bytes or BGZF blocks
@@ -448,15 +464,32 @@ cdef extern from "htslib/hts.h" nogil:
     #       u  uncompressed
     #       z  bgzf compressed
     #       [0-9]  zlib compression level
+    #     and with non-format option letters (for any of 'r'/'w'/'a'):
+    #       e  close the file on exec(2) (opens with O_CLOEXEC, where supported)
+    #       x  create the file exclusively (opens with O_EXCL, where supported)
     #     Note that there is a distinction between 'u' and '0': the first yields
     #     plain uncompressed output whereas the latter outputs uncompressed data
     #     wrapped in the zlib format.
     # @example
-    #     [rw]b .. compressed BCF, BAM, FAI
-    #     [rw]u .. uncompressed BCF
-    #     [rw]z .. compressed VCF
-    #     [rw]  .. uncompressed VCF
+    #     [rw]b  .. compressed BCF, BAM, FAI
+    #     [rw]bu .. uncompressed BCF
+    #     [rw]z  .. compressed VCF
+    #     [rw]   .. uncompressed VCF
     htsFile *hts_open(const char *fn, const char *mode)
+
+    # @abstract       Open a SAM/BAM/CRAM/VCF/BCF/etc file
+    # @param fn       The file name or "-" for stdin/stdout
+    # @param mode     Open mode, as per hts_open()
+    # @param fmt      Optional format specific parameters
+    # @discussion
+    #     See hts_open() for description of fn and mode.
+    #     // TODO Update documentation for s/opts/fmt/
+    #     Opts contains a format string (sam, bam, cram, vcf, bcf) which will,
+    #     if defined, override mode.  Opts also contains a linked list of hts_opt
+    #     structures to apply to the open file handle.  These can contain things
+    #     like pointers to the reference or information on compression levels,
+    #     block sizes, etc.
+    htsFile *hts_open_format(const char *fn, const char *mode, const htsFormat *fmt)
 
     # @abstract       Open an existing stream as a SAM/BAM/CRAM/VCF/BCF/etc file
     # @param fp       The already-open file handle
@@ -474,12 +507,17 @@ cdef extern from "htslib/hts.h" nogil:
     # @return    Read-only pointer to the file's htsFormat.
     const htsFormat *hts_get_format(htsFile *fp)
 
+    # @ abstract      Returns a string containing the file format extension.
+    # @ param format  Format structure containing the file type.
+    # @ return        A string ("sam", "bam", etc) or "?" for unknown formats.
+    const char *hts_format_file_extension(const htsFormat *format)
+
     # @abstract  Sets a specified CRAM option on the open file handle.
     # @param fp  The file handle open the open file.
     # @param opt The CRAM_OPT_* option.
     # @param ... Optional arguments, dependent on the option used.
     # @return    0 for success, or negative if an error occurred.
-    #int hts_set_opt(htsFile *fp, enum cram_option opt, ...)
+    int hts_set_opt(htsFile *fp, hts_fmt_option opt, ...)
 
     int hts_getline(htsFile *fp, int delimiter, kstring_t *str)
     char **hts_readlines(const char *fn, int *_n)
@@ -546,8 +584,33 @@ cdef extern from "htslib/hts.h" nogil:
     int hts_idx_push(hts_idx_t *idx, int tid, int beg, int end, uint64_t offset, int is_mapped)
     void hts_idx_finish(hts_idx_t *idx, uint64_t final_offset)
 
-    void hts_idx_save(const hts_idx_t *idx, const char *fn, int fmt)
+    #### Save an index to a file
+    #    @param idx  Index to be written
+    #    @param fn   Input BAM/BCF/etc filename, to which .bai/.csi/etc will be added
+    #    @param fmt  One of the HTS_FMT_* index formats
+    #    @return  0 if successful, or negative if an error occurred.
+    int hts_idx_save(const hts_idx_t *idx, const char *fn, int fmt)
+
+    #### Save an index to a specific file
+    #    @param idx    Index to be written
+    #    @param fn     Input BAM/BCF/etc filename
+    #    @param fnidx  Output filename, or NULL to add .bai/.csi/etc to @a fn
+    #    @param fmt    One of the HTS_FMT_* index formats
+    #    @return  0 if successful, or negative if an error occurred.
+    int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int fmt)
+
+    #### Load an index file
+    #    @param fn   BAM/BCF/etc filename, to which .bai/.csi/etc will be added or
+    #                the extension substituted, to search for an existing index file
+    #    @param fmt  One of the HTS_FMT_* index formats
+    #    @return  The index, or NULL if an error occurred.
     hts_idx_t *hts_idx_load(const char *fn, int fmt)
+
+    #### Load a specific index file
+    #    @param fn     Input BAM/BCF/etc filename
+    #    @param fnidx  The input index filename
+    #    @return  The index, or NULL if an error occurred.
+    hts_idx_t *hts_idx_load2(const char *fn, const char *fnidx)
 
     uint8_t *hts_idx_get_meta(hts_idx_t *idx, int *l_meta)
     void hts_idx_set_meta(hts_idx_t *idx, int l_meta, uint8_t *meta, int is_copy)
@@ -557,7 +620,29 @@ cdef extern from "htslib/hts.h" nogil:
 
     uint64_t hts_idx_get_n_no_coor(const hts_idx_t* idx)
 
-    const char *hts_parse_reg(const char *s, int *beg, int *end)
+    int HTS_PARSE_THOUSANDS_SEP  # Ignore ',' separators within numbers
+
+    # Parse a numeric string
+    #    The number may be expressed in scientific notation, and optionally may
+    #    contain commas in the integer part (before any decimal point or E notation).
+    #    @param str     String to be parsed
+    #    @param strend  If non-NULL, set on return to point to the first character
+    #                   in @a str after those forming the parsed number
+    #    @param flags   Or'ed-together combination of HTS_PARSE_* flags
+    #    @return  Converted value of the parsed number.
+    #
+    #    When @a strend is NULL, a warning will be printed (if hts_verbose is 2
+    #    or more) if there are any trailing characters after the number.
+    long long hts_parse_decimal(const char *str, char **strend, int flags)
+
+    # Parse a "CHR:START-END"-style region string
+    #    @param str  String to be parsed
+    #    @param beg  Set on return to the 0-based start of the region
+    #    @param end  Set on return to the 1-based end of the region
+    #    @return  Pointer to the colon or '\0' after the reference sequence name,
+    #             or NULL if @a str could not be parsed.
+    const char *hts_parse_reg(const char *str, int *beg, int *end)
+
     hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, int beg, int end, hts_readrec_func *readrec)
     void hts_itr_destroy(hts_itr_t *iter)
 
@@ -837,12 +922,37 @@ cdef extern from "htslib/sam.h" nogil:
     hts_itr_t *bam_itr_querys(const hts_idx_t *idx, bam_hdr_t *hdr, const char *region)
     int bam_itr_next(htsFile *htsfp, hts_itr_t *itr, void *r)
 
-    # Load .csi or .bai BAM index file.
-    hts_idx_t *bam_idx_load(const char *fn)
+    # Load/build .csi or .bai BAM index file.  Does not work with CRAM.
+    # It is recommended to use the sam_index_* functions below instead.
+    hts_idx_t *bam_index_load(const char *fn)
     int bam_index_build(const char *fn, int min_shift)
 
-    # Load BAM (.csi or .bai) or CRAM (.crai) index file.
+    # Load a BAM (.csi or .bai) or CRAM (.crai) index file
+    # @param fp  File handle of the data file whose index is being opened
+    # @param fn  BAM/CRAM/etc filename to search alongside for the index file
+    # @return  The index, or NULL if an error occurred.
     hts_idx_t *sam_index_load(htsFile *fp, const char *fn)
+
+    # Load a specific BAM (.csi or .bai) or CRAM (.crai) index file
+    # @param fp     File handle of the data file whose index is being opened
+    # @param fn     BAM/CRAM/etc data file filename
+    # @param fnidx  Index filename, or NULL to search alongside @a fn
+    # @return  The index, or NULL if an error occurred.
+    hts_idx_t *sam_index_load2(htsFile *fp, const char *fn, const char *fnidx)
+
+    # Generate and save an index file
+    # @param fn        Input BAM/etc filename, to which .csi/etc will be added
+    # @param min_shift Positive to generate CSI, or 0 to generate BAI
+    # @return  0 if successful, or negative if an error occurred (usually -1; or
+    #         -2: opening fn failed; -3: format not indexable)
+    int sam_index_build(const char *fn, int min_shift)
+
+    # Generate and save an index to a specific file
+    # @param fn        Input BAM/CRAM/etc filename
+    # @param fnidx     Output filename, or NULL to add .bai/.csi/etc to @a fn
+    # @param min_shift Positive to generate CSI, or 0 to generate BAI
+    # @return  0 if successful, or negative if an error occurred.
+    int sam_index_build2(const char *fn, const char *fnidx, int min_shift)
 
     void sam_itr_destroy(hts_itr_t *iter)
     hts_itr_t *sam_itr_queryi(const hts_idx_t *idx, int tid, int beg, int end)
@@ -854,7 +964,15 @@ cdef extern from "htslib/sam.h" nogil:
     #***************
 
     htsFile *sam_open(const char *fn, const char *mode)
+    htsFile *sam_open_format(const char *fn, const char *mode, const htsFormat *fmt)
     int sam_close(htsFile *fp)
+
+    int sam_open_mode(char *mode, const char *fn, const char *format)
+
+    # A version of sam_open_mode that can handle ,key=value options.
+    # The format string is allocated and returned, to be freed by the caller.
+    # Prefix should be "r" or "w",
+    char *sam_open_mode_opts(const char *fn, const char *mode, const char *format)
 
     bam_hdr_t *sam_hdr_parse(int l_text, const char *text)
     bam_hdr_t *sam_hdr_read(htsFile *fp)
@@ -1012,11 +1130,11 @@ cdef extern from "htslib/tbx.h" nogil:
 
     int tbx_name2id(tbx_t *tbx, char *ss)
 
-    int tbx_index_build(char *fn,
-                        int min_shift,
-                        tbx_conf_t *conf)
+    int tbx_index_build(char *fn, int min_shift, tbx_conf_t *conf)
+    int tbx_index_build2(const char *fn, const char *fnidx, int min_shift, const tbx_conf_t *conf)
 
     tbx_t * tbx_index_load(char *fn)
+    tbx_t *tbx_index_load2(const char *fn, const char *fnidx)
 
     # free the array but not the values
     char **tbx_seqnames(tbx_t *tbx, int *n)
@@ -1081,7 +1199,7 @@ cdef extern from "htslib/vcf.h" nogil:
         const bcf_idinfo_t *val
 
     ctypedef struct bcf_hdr_t:
-        int32_t n[3]
+        int32_t n[3]                # n:the size of the dictionary block in use, (allocated size, m, is below to preserve ABI)
         bcf_idpair_t *id[3]
         void *dict[3]               # ID dictionary, contig dict and sample dict
         char **samples
@@ -1092,6 +1210,7 @@ cdef extern from "htslib/vcf.h" nogil:
         int nsamples_ori            # for bcf_hdr_set_samples()
         uint8_t *keep_samples
         kstring_t mem
+        int32_t m[3]                # m: allocated size of the dictionary block in use (see n above)
 
     uint8_t bcf_type_shift[]
 
@@ -1121,7 +1240,7 @@ cdef extern from "htslib/vcf.h" nogil:
         uint32_t p_off
         uint8_t p_free
 
-    ctypedef union bcf_info_union_t:
+    union bcf_info_union_t:
         int32_t i      # integer value
         float f        # float value
 
@@ -1159,6 +1278,7 @@ cdef extern from "htslib/vcf.h" nogil:
     uint8_t BCF_ERR_CTG_UNDEF
     uint8_t BCF_ERR_TAG_UNDEF
     uint8_t BCF_ERR_NCOLS
+    uint8_t BCF_ERR_LIMITS
 
     # The bcf1_t structure corresponds to one VCF/BCF line. Reading from VCF file
     # is slower because the string is first to be parsed, packed into BCF line
@@ -1229,7 +1349,7 @@ cdef extern from "htslib/vcf.h" nogil:
     #             ^LIST|FILE  .. exclude samples from list/file
     #             -           .. include all samples
     #             NULL        .. exclude all samples
-    # @is_file: @samples is a file (1) or a comma-separated list (1)
+    # @is_file: @samples is a file (1) or a comma-separated list (0)
     #
     # The bottleneck of VCF reading is parsing of genotype fields. If the
     # reader knows in advance that only subset of samples is needed (possibly
@@ -1288,7 +1408,7 @@ cdef extern from "htslib/vcf.h" nogil:
     bcf1_t *bcf_copy(bcf1_t *dst, bcf1_t *src)
 
     # bcf_write() - write one VCF or BCF record. The type is determined at the open() call.
-    int bcf_write(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
+    int bcf_write(htsFile *fp, bcf_hdr_t *h, bcf1_t *v)
 
     # The following functions work only with VCFs and should rarely be called
     # directly. Usually one wants to use their bcf_* alternatives, which work
@@ -1310,6 +1430,20 @@ cdef extern from "htslib/vcf.h" nogil:
     #     1 .. conflicting definitions of tag length
     #     # todo
     int bcf_hdr_combine(bcf_hdr_t *dst, const bcf_hdr_t *src)
+
+    # bcf_hdr_merge() - copy header lines from src to dst, see also bcf_translate()
+    # @param dst: the destination header to be merged into, NULL on the first pass
+    # @param src: the source header
+    #
+    # Notes:
+    #     - use as:
+    #         bcf_hdr_t *dst = NULL;
+    #         for (i=0; i<nsrc; i++) dst = bcf_hdr_merge(dst,src[i]);
+    #
+    #     - bcf_hdr_merge() replaces bcf_hdr_combine() which had a problem when
+    #     combining multiple BCF headers. The current bcf_hdr_combine()
+    #     does not have this problem, but became slow when used for many files.
+    bcf_hdr_t *bcf_hdr_merge(bcf_hdr_t *dst, const bcf_hdr_t *src)
 
     # bcf_hdr_add_sample() - add a new sample.
     # @param sample:  sample name to be added
@@ -1333,7 +1467,7 @@ cdef extern from "htslib/vcf.h" nogil:
 
     # bcf_hdr_remove() - remove VCF header tag
     # @param type:      one of BCF_HL_*
-    # @param key:       tag name
+    # @param key:       tag name or NULL to remove all tags of the given type
     void bcf_hdr_remove(bcf_hdr_t *h, int type, const char *key)
 
     # bcf_hdr_subset() - creates a new copy of the header removing unwanted samples
@@ -1396,18 +1530,18 @@ cdef extern from "htslib/vcf.h" nogil:
     int bcf_is_snp(bcf1_t *v)
 
     # bcf_update_filter() - sets the FILTER column
-    # @flt_ids:  The filter IDs to set, numeric IDs returned by bcf_id2int(hdr, BCF_DT_ID, "PASS")
+    # @flt_ids:  The filter IDs to set, numeric IDs returned by bcf_hdr_id2int(hdr, BCF_DT_ID, "PASS")
     # @n:        Number of filters. If n==0, all filters are removed
     int bcf_update_filter(const bcf_hdr_t *hdr, bcf1_t *line, int *flt_ids, int n)
 
     # bcf_add_filter() - adds to the FILTER column
-    # @flt_id:   filter ID to add, numeric ID returned by bcf_id2int(hdr, BCF_DT_ID, "PASS")
+    # @flt_id:   The filter IDs to add, numeric IDs returned by bcf_hdr_id2int(hdr, BCF_DT_ID, "PASS")
     #
     # If flt_id is PASS, all existing filters are removed first. If other than PASS, existing PASS is removed.
     int bcf_add_filter(const bcf_hdr_t *hdr, bcf1_t *line, int flt_id)
 
     # bcf_remove_filter() - removes from the FILTER column
-    # @flt_id:   filter ID to remove, numeric ID returned by bcf_id2int(hdr, BCF_DT_ID, "PASS")
+    # @flt_id:   filter ID to remove, numeric ID returned by bcf_hdr_id2int(hdr, BCF_DT_ID, "PASS")
     # @pass:     when set to 1 and no filters are present, set to PASS
     int bcf_remove_filter(const bcf_hdr_t *hdr, bcf1_t *line, int flt_id, int set_pass)
 
@@ -1418,15 +1552,13 @@ cdef extern from "htslib/vcf.h" nogil:
     # @alleles:           Array of alleles
     # @nals:              Number of alleles
     # @alleles_string:    Comma-separated alleles, starting with the REF allele
-    #
-    # Not that in order for indexing to work correctly in presence of INFO/END tag,
-    # the length of reference allele (line->rlen) must be set explicitly by the caller,
-    # or otherwise, if rlen is zero, strlen(line->d.allele[0]) is used to set the length
-    # on bcf_write().
-    #
     int bcf_update_alleles(const bcf_hdr_t *hdr, bcf1_t *line, const char **alleles, int nals)
     int bcf_update_alleles_str(const bcf_hdr_t *hdr, bcf1_t *line, const char *alleles_string)
+
+    # bcf_update_id() - sets new ID string
+    # bcf_add_id() - adds to the ID string checking for duplicates
     int bcf_update_id(const bcf_hdr_t *hdr, bcf1_t *line, const char *id)
+    int bcf_add_id(const bcf_hdr_t *hdr, bcf1_t *line, const char *id)
 
     # bcf_update_info_*() - functions for updating INFO fields
     # @hdr:       the BCF header
@@ -1579,7 +1711,7 @@ cdef extern from "htslib/vcf.h" nogil:
     #
     # bcf_hdr_id2*() - Macros for accessing bcf_idinfo_t
     # @type:      one of BCF_HL_FLT, BCF_HL_INFO, BCF_HL_FMT
-    # @int_id:    return value of bcf_id2int, must be >=0
+    # @int_id:    return value of bcf_hdr_id2int, must be >=0
     #
     # The returned values are:
     #    bcf_hdr_id2length   ..  whether the number of values is fixed or variable, one of BCF_VL_*
@@ -1612,7 +1744,9 @@ cdef extern from "htslib/vcf.h" nogil:
     # both indexed BCFs and VCFs.
     #************************************************************************
 
+    hts_idx_t *bcf_index_load2(const char *fn, const char *fnidx)
     int bcf_index_build(const char *fn, int min_shift)
+    int bcf_index_build2(const char *fn, const char *fnidx, int min_shift)
 
     #*******************
     # Typed value I/O *
@@ -1663,6 +1797,7 @@ cdef extern from "htslib/vcf.h" nogil:
     int bcf_write1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
     int vcf_write1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
     void bcf_destroy1(bcf1_t *v)
+    void bcf_empty1(bcf1_t *v)
     int vcf_parse1(kstring_t *s, const bcf_hdr_t *h, bcf1_t *v)
     void bcf_clear1(bcf1_t *v)
     int vcf_format1(const bcf_hdr_t *h, const bcf1_t *v, kstring_t *s)
@@ -1675,7 +1810,78 @@ cdef extern from "htslib/vcf.h" nogil:
     hts_idx_t *bcf_index_load(const char *fn)
     const char **bcf_index_seqnames(const hts_idx_t *idx, const bcf_hdr_t *hdr, int *nptr)
 
-cdef extern from "htslib_util.h":
 
-    int hts_set_verbosity(int verbosity)
-    int hts_get_verbosity()
+# VCF/BCF utility functions
+cdef extern from "htslib/vcfutils.h" nogil:
+    struct kbitset_t
+
+    # bcf_trim_alleles() - remove ALT alleles unused in genotype fields
+    # @header:  for access to BCF_DT_ID dictionary
+    # @line:    VCF line obtain from vcf_parse1
+    #
+    # Returns the number of removed alleles on success or negative
+    # on error:
+    #     -1 .. some allele index is out of bounds
+    int bcf_trim_alleles(const bcf_hdr_t *header, bcf1_t *line)
+
+    # bcf_remove_alleles() - remove ALT alleles according to bitmask @mask
+    # @header:  for access to BCF_DT_ID dictionary
+    # @line:    VCF line obtained from vcf_parse1
+    # @mask:    alleles to remove
+    #
+    # If you have more than 31 alleles, then the integer bit mask will
+    # overflow, so use bcf_remove_allele_set instead
+    void bcf_remove_alleles(const bcf_hdr_t *header, bcf1_t *line, int mask)
+
+    # bcf_remove_allele_set() - remove ALT alleles according to bitset @rm_set
+    # @header:  for access to BCF_DT_ID dictionary
+    # @line:    VCF line obtained from vcf_parse1
+    # @rm_set:  pointer to kbitset_t object with bits set for allele
+    #           indexes to remove
+    #
+    # Number=A,R,G INFO and FORMAT fields will be updated accordingly.
+    void bcf_remove_allele_set(const bcf_hdr_t *header, bcf1_t *line, const struct kbitset_t *rm_set)
+
+    # bcf_calc_ac() - calculate the number of REF and ALT alleles
+    # @header:  for access to BCF_DT_ID dictionary
+    # @line:    VCF line obtained from vcf_parse1
+    # @ac:      array of length line->n_allele
+    # @which:   determine if INFO/AN,AC and indv fields be used
+    #
+    # Returns 1 if the call succeeded, or 0 if the value could not
+    # be determined.
+    #
+    # The value of @which determines if existing INFO/AC,AN can be
+    # used (BCF_UN_INFO) and and if indv fields can be splitted
+    # (BCF_UN_FMT).
+    int bcf_calc_ac(const bcf_hdr_t *header, bcf1_t *line, int *ac, int which)
+
+    # bcf_gt_type() - determines type of the genotype
+    # @fmt_ptr:  the GT format field as set for example by set_fmt_ptr
+    # @isample:  sample index (starting from 0)
+    # @ial:      index of the 1st non-reference allele (starting from 1)
+    # @jal:      index of the 2nd non-reference allele (starting from 1)
+    #
+    # Returns the type of the genotype (one of GT_HOM_RR, GT_HET_RA,
+    # GT_HOM_AA, GT_HET_AA, GT_HAPL_R, GT_HAPL_A or GT_UNKN). If $ial
+    # is not NULL and the genotype has one or more non-reference
+    # alleles, $ial will be set. In case of GT_HET_AA, $ial is the
+    # position of the allele which appeared first in ALT. If $jal is
+    # not null and the genotype is GT_HET_AA, $jal will be set and is
+    # the position of the second allele in ALT.
+    uint8_t GT_HOM_RR    # note: the actual value of GT_* matters, used in dosage r2 calculation
+    uint8_t GT_HOM_AA
+    uint8_t GT_HET_RA
+    uint8_t GT_HET_AA
+    uint8_t GT_HAPL_R
+    uint8_t GT_HAPL_A
+    uint8_t GT_UNKN
+    int bcf_gt_type(bcf_fmt_t *fmt_ptr, int isample, int *ial, int *jal)
+
+    int bcf_acgt2int(char c)
+    char bcf_int2acgt(int i)
+
+    # bcf_ij2G() - common task: allele indexes to Number=G index (diploid)
+    # @i,j:  allele indexes, 0-based, i<=j
+    # Returns index to the Number=G diploid array
+    uint32_t bcf_ij2G(uint32_t i, uint32_t j)
