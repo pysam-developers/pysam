@@ -610,7 +610,7 @@ cdef class AlignmentFile:
                     self.index = NULL
                 elif self.is_cram \
                      and not os.path.exists(filename + b".crai") \
-                     and not os.path.exists(filename[:-4] + b".crai"):
+                     and not os.path.exists(filename[:-5] + b".crai"):
                     self.index = NULL
                 else:
                     # returns NULL if there is no index or index could
