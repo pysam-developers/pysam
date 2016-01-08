@@ -259,7 +259,7 @@ parts = ["samtools", "htslib", "tabix",
          "vcf", "bcf"]
 
 try:
-    from Cython.Distutils import build_ext
+    from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 except ImportError:
     # no Cython available - use existing C code
     cmdclass = {}
