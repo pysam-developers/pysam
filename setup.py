@@ -64,7 +64,6 @@ samtools_exclude = ("bamtk.c",
                     "md5sum-lite.c",
                     "maq2sam.c",
                     "bamcheck.c",
-                    "bam_tview_curses.c",
                     "chk_indel.c",
                     "vcf-miniview.c",
                     "htslib-1.3",   # do not import twice
