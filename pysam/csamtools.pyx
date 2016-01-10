@@ -102,7 +102,7 @@ def _samtools_dispatch(method,
 
     n = len(args)
     method = force_cmdline_bytes(method)
-    args = [force_cmdline_bytes(a) for a in args ]
+    args = [force_cmdline_bytes(a) for a in args]
 
     # allocate two more for first (dummy) argument (contains command)
     cdef int extra_args = 0
@@ -115,10 +115,8 @@ def _samtools_dispatch(method,
     cargs[1] = method
     for i from 0 <= i < n:
         cargs[i + 2] = args[i]
-    
     retval = pysam_dispatch(n+2, cargs)
     free(cargs)
-    
     # restore stdout/stderr. This will also flush, so
     # needs to be before reading back the file contents
     if catch_stdout:

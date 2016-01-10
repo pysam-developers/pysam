@@ -53,8 +53,7 @@ import version
 version = version.__version__
 
 # exclude sources that contains a main function
-samtools_exclude = ("bamtk.c",
-                    "razip.c",
+samtools_exclude = ("razip.c",
                     "bgzip.c",
                     "main.c",
                     "calDepth.c",
@@ -158,7 +157,9 @@ extern FILE * pysamerr;
 # For samtools, type:
 # rm -rf samtools
 # python setup.py import download/samtools
-#
+# Manually, then:
+# modify config.h to set compatibility flags
+# change bamtk.c.pysam.c/main to bamtk.c.pysam.c/samtools_main
 if len(sys.argv) >= 2 and sys.argv[1] == "import":
     if len(sys.argv) < 3:
         raise ValueError("missing PATH to samtools source directory")

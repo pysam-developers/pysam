@@ -144,10 +144,18 @@ SAMTOOLS_DISPATCH = {
     # others
     "samimport": ("import", None),
     "bam2fq": ("bam2fq", None),
+    "dict": ("dict", None),
+    "addreplacerg": ("addreplacerg", None),
     "pad2unpad": ("pad2unpad", None),
     "depad": ("pad2unpad", None),
     "bedcov": ("bedcov", None),
     "bamshuf": ("bamshuf", None),
+    "collate": ("collate", None),
+    "stats": ("stats", None),
+    "fasta": ("fasta", None),
+    "fastq": ("fastq", None),
+    "quickcheck": ("quickcheck", None),
+    "split": ("split", None),
     # obsolete
     # "pileup": "pileup", ( (("-c",), Pileup.iterate),),),
 }

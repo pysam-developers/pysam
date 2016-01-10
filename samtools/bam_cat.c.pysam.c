@@ -529,8 +529,6 @@ int main_cat(int argc, char *argv[])
         return 1;
     }
 
-    fprintf(stderr, "DB: argc=%i, optind=%i, %s\n", argc, optind, argv[optind]);
-    
     in = sam_open(argv[optind], "r");
     if (!in) {
         fprintf(pysamerr, "[%s] ERROR: failed to open file '%s'.\n", __func__, argv[optind]);

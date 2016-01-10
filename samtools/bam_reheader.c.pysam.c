@@ -431,6 +431,7 @@ int main_reheader(int argc, char *argv[])
     };
 
     while ((c = getopt_long(argc, argv, "hiP", lopts, NULL)) >= 0) {
+        fprintf(stderr, " %i %c %s\n", optind, c, argv[optind-1]);
         switch (c) {
         case 'P': add_PG = 0; break;
         case 'i': inplace = 1; break;

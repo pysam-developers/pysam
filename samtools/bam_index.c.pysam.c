@@ -54,6 +54,7 @@ int bam_index(int argc, char *argv[])
     int csi = 0;
     int min_shift = BAM_LIDX_SHIFT;
     int c, ret;
+
     while ((c = getopt(argc, argv, "bcm:")) >= 0)
         switch (c) {
         case 'b': csi = 0; break;
@@ -63,10 +64,12 @@ int bam_index(int argc, char *argv[])
             index_usage(pysamerr);
             return 1;
         }
+
     if (optind == argc) {
         index_usage(stdout);
         return 1;
     }
+
     ret = sam_index_build2(argv[optind], argv[optind+1], csi? min_shift : 0);
     if (ret != 0) {
         if (ret == -2)
