@@ -52,8 +52,6 @@ class BinaryTest(unittest.TestCase):
     Tests fail, if the output is not binary identical.
     '''
 
-    first_time = True
-
     requisites = [
         "ex1.fa", "ex1.fa.fai",
         "ex1.sam.gz",
@@ -113,11 +111,12 @@ class BinaryTest(unittest.TestCase):
         files.
 
         '''
-        if BinaryTest.first_time:
+        if not os.path.exists(WORKDIR):
+            os.makedirs(WORKDIR)
 
-            for f in self.requisites:
-                shutil.copy(os.path.join(DATADIR, f),
-                            os.path.join(WORKDIR, f))
+        for f in self.requisites:
+            shutil.copy(os.path.join(DATADIR, f),
+                        os.path.join(WORKDIR, f))
 
         samtools_version = getSamtoolsVersion()
 
@@ -134,12 +133,12 @@ class BinaryTest(unittest.TestCase):
                 (pysam.__samtools_version__,
                  samtools_version))
 
-        BinaryTest.first_time = False
-        os.chdir(WORKDIR)
-
         return
 
     def check_statement(self, statement):
+
+        savedir = os.getcwd()
+        os.chdir(WORKDIR)
 
         parts = statement.split(" ")
         r_samtools = {"out": "samtools"}
@@ -192,6 +191,8 @@ class BinaryTest(unittest.TestCase):
                 checkBinaryEqual(samtools_target, pysam_target),
                 "%s failed: files %s and %s are not the same" %
                 (command, samtools_target, pysam_target))
+
+        os.chdir(savedir)
 
     def testStatements(self):
         for statement in self.statements:
