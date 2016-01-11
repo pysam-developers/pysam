@@ -133,12 +133,12 @@ class BinaryTest(unittest.TestCase):
                 (pysam.__samtools_version__,
                  samtools_version))
 
+        self.savedir = os.getcwd()
+        os.chdir(WORKDIR)
+
         return
 
     def check_statement(self, statement):
-
-        savedir = os.getcwd()
-        os.chdir(WORKDIR)
 
         parts = statement.split(" ")
         r_samtools = {"out": "samtools"}
@@ -156,7 +156,6 @@ class BinaryTest(unittest.TestCase):
 
         # run samtools
         samtools_statement = statement % {"out": "samtools"}
-
         run_samtools(" ".join((SAMTOOLS, samtools_statement)))
         sys.stdout.write(" samtools ok")
 
@@ -166,7 +165,7 @@ class BinaryTest(unittest.TestCase):
             parts = parts[:-2]
 
         # avoid interpolation to preserve string quoting, tab chars, etc.
-        pysam_parts = [re.sub("(out)s", "pysam", x) for x in parts[1:]]
+        pysam_parts = [re.sub("%\(out\)s", "pysam", x) for x in parts[1:]]
         output = pysam_method(*pysam_parts,
                               raw=True,
                               catch_stdout=True)
@@ -192,19 +191,19 @@ class BinaryTest(unittest.TestCase):
                 "%s failed: files %s and %s are not the same" %
                 (command, samtools_target, pysam_target))
 
-        os.chdir(savedir)
-
     def testStatements(self):
         for statement in self.statements:
             self.check_statement(statement)
+        
+    def tearDown(self):
+        if os.path.exists(WORKDIR):
+            shutil.rmtree(WORKDIR)
+        os.chdir(self.savedir)
+
+class EmptyIndexTest(unittest.TestCase):
 
     def testEmptyIndex(self):
         self.assertRaises(IOError, pysam.index, "exdoesntexist.bam")
-
-    def __del__(self):
-        return
-        if os.path.exists(WORKDIR):
-            shutil.rmtree(WORKDIR)
 
 
 class StdoutTest(unittest.TestCase):
