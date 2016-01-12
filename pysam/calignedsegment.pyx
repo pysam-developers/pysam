@@ -145,61 +145,56 @@ cdef bytes TagToString(tuple tagtup):
     cdef bytes ret
     cdef size_t size
     if(value_type in ['c', 'C', 'i', 'I', 's', 'S']):
-        ret = <bytes>("%s:i:%s" % (tag, tagtup[1]))
+        return <bytes>("%s:i:%s" % (tag, tagtup[1]))
     elif(value_type in ['f', 'F', 'd', 'D']):
         value_float = tagtup[1]
-        ret = <bytes>("%s:f:%s" % (tag, tagtup[1]))
+        return <bytes>("%s:f:%s" % (tag, tagtup[1]))
     elif(value_type == "Z"):
-        ret = <bytes>("%s:Z:%s" % (tag, tagtup[1]))
+        return <bytes>("%s:Z:%s" % (tag, tagtup[1]))
     elif(value_type == "B"):
         if(isinstance(tagtup[1], array.array)):
             b_aux_arr = tagtup[1]
         else:
             if(isinstance(tagtup[1][0], float)):
-                if(len(tagtup[1]) == 1):
-                    return <bytes> (tag + ":B:f%s," % tagtup[1][0])
-                else:
-                    return <bytes> (tag + ":B:f" +
-                                ",".join([str(f) for f in tagtup[1]]))
+                return <bytes>("%s:B:f,%s" % (tag, ",".join([str(f) for f in tagtup[1]])))
             else:
                 b_aux_arr = array('l', tagtup[1])
-                # Choose long to accommodate any size integers.
         size = sizeof(b_aux_arr)
         min_value = min(b_aux_arr)
         length = len(b_aux_arr)
         if(size == 1):
             if(min_value < 0):
-                ret = <bytes>("%s:B:c,%s" % (tag, ",".join([str(i) for
-                                                            i in b_aux_arr])))
+                return <bytes>("%s:B:c,%s" % (tag, ",".join([str(i) for
+                                                             i in b_aux_arr])))
             else:
-                ret = <bytes>("%s:B:C,%s" % (tag, ",".join([str(i) for
-                                                            i in b_aux_arr])))
+                return <bytes>("%s:B:C,%s" % (tag, ",".join([str(i) for
+                                                             i in b_aux_arr])))
         elif(size == 2):
             if(min_value < 0):
-                ret = <bytes>("%s:B:i,%s" % (tag, ",".join([str(i) for
-                                                            i in b_aux_arr])))
+                return <bytes>("%s:B:i,%s" % (tag, ",".join([str(i) for
+                                                             i in b_aux_arr])))
             else:
-                ret = <bytes>("%s:B:I,%s" % (tag, ",".join([str(i) for
-                                                           i in b_aux_arr])))
+                return <bytes>("%s:B:I,%s" % (tag, ",".join([str(i) for
+                                                             i in b_aux_arr])))
         else:  # size == 4. Removed check to compile to switch statement.
             if(min_value < 0):
-                ret = <bytes>("%s:B:s,%s" % (tag, ",".join([str(i) for
-                                                            i in b_aux_arr])))
+                return <bytes>("%s:B:s,%s" % (tag, ",".join([str(i) for
+                                                             i in b_aux_arr])))
             else:
-                ret = <bytes>("%s:B:S,%s" % (tag, ",".join([str(i) for
-                                                            i in b_aux_arr])))
+                return <bytes>("%s:B:S,%s" % (tag, ",".join([str(i) for
+                                                             i in b_aux_arr])))
     elif(value_type == "H"):
-        ret = <bytes>("%s:H:%s" % (tag, "".join([hex(i)[2:] for
+        return <bytes>("%s:H:%s" % (tag, "".join([hex(i)[2:] for
                                                  i in tagtup[1]])))
     elif(value_type == "A"):
-        ret = <bytes>("%s:A:%s" % (tag, tagtup[1]))
+        return <bytes>("%s:A:%s" % (tag, tagtup[1]))
     else:
         # Unrecognized character - returning the string as it was provided.
         # An exception is not being raised because that prevents cython
         # from being able to compile this into a switch statement for
         # performance.
-        ret = <bytes>("%s:%s:%s" % (tag, tagtup[2], tagtup[1]))
-    return ret
+        return <bytes>("%s:%s:%s" % (tag, tagtup[2], tagtup[1]))
+    return ret  # This never happens
 
 
 cdef inline uint8_t get_value_code(value, value_type=None):
