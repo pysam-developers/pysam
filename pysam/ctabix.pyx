@@ -421,16 +421,14 @@ cdef class TabixFile:
 
         if region is None:
             # without region or reference - iterate from start
-            with nogil:
-                iter = tbx_itr_queryi(fileobj.index,
-                                      HTS_IDX_START,
-                                      0,
-                                      0)
+            iter = tbx_itr_queryi(fileobj.index,
+                                  HTS_IDX_START,
+                                  0,
+                                  0)
         else:
             s = force_bytes(region, encoding=fileobj.encoding)
             cstr = s
-            with nogil:
-                iter = tbx_itr_querys(fileobj.index, cstr)
+            iter = tbx_itr_querys(fileobj.index, cstr)
 
         if iter == NULL:
             if region is None:
@@ -573,12 +571,11 @@ cdef class TabixIterator:
         cdef int retval
 
         while 1:
-            with nogil:
-                retval = tbx_itr_next(
-                    self.tabixfile.tabixfile,
-                    self.tabixfile.index,
-                    self.iterator,
-                    &self.buffer)
+            retval = tbx_itr_next(
+                self.tabixfile.tabixfile,
+                self.tabixfile.index,
+                self.iterator,
+                &self.buffer)
 
             if retval < 0:
                 break

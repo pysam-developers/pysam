@@ -1,8 +1,21 @@
-#!/usr/bin/python
-'''
+#! /usr/bin/python
 
-pysam
-*****
+'''The SAM/BAM/CRAM format is a way to store efficiently large numbers
+of alignments, such as those routinely are created by next-generation
+sequencing methods.
+
+This module provides a low-level wrapper around the htslib C-API as
+using cython and a high-level API for convenient access to the data in
+SAM/BAM formatted files. Also included is an interface to the samtools
+command line utilities and the tabix C-API for reading compressed and
+indexed tabular data.
+
+The current version wraps htslib-1.2.1 and samtools-1.2.
+
+See:
+http://www.htslib.org
+https://github.com/pysam-developers/pysam
+http://pysam.readthedocs.org/en/stable
 
 '''
 
@@ -299,7 +312,7 @@ csamtools = Extension(
     glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
     os_c_files +
     htslib_sources,
-    library_dirs=[],
+    library_dirs=htslib_library_dirs,
     include_dirs=["samtools", "pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
@@ -397,10 +410,10 @@ ctabix = Extension(
 
 cutils = Extension(
     "pysam.cutils",
-    [source_pattern % "utils"] + 
+    [source_pattern % "utils"] +
     htslib_sources +
     os_c_files,
-    library_dirs=["pysam"],
+    library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
@@ -410,10 +423,10 @@ cutils = Extension(
 
 cfaidx = Extension(
     "pysam.cfaidx",
-    [source_pattern % "faidx"] + 
+    [source_pattern % "faidx"] +
     htslib_sources +
     os_c_files,
-    library_dirs=["pysam"],
+    library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",

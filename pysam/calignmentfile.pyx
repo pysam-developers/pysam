@@ -95,7 +95,8 @@ KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                        "RG" : {"ID" : str, "CN" : str, "DS" : str,
                                "DT" : str, "FO" : str, "KS" : str,
                                "LB" : str, "PG" : str, "PI" : str,
-                               "PL" : str, "PU" : str, "SM" : str,},
+                               "PL" : str, "PM" : str, "PU" : str,
+                               "SM" : str,},
                        "PG" : {"ID" : str, "PN" : str, "CL" : str, 
                                "PP" : str, "DS" : str, "VN" : str,},}
 
@@ -211,7 +212,8 @@ cdef class AlignmentFile:
     """
     AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
-    header=None, add_sq_text=False, check_header=True, check_sq=True)
+    header=None, add_sq_text=False, check_header=True, check_sq=True,
+    filename=None)
 
     A :term:`SAM`/:term:`BAM` formatted file. 
 
@@ -284,25 +286,28 @@ cdef class AlignmentFile:
     text : string
         when writing, use the string provided as the header
 
-   reference_names : list
+    reference_names : list
         see referece_lengths
 
-   reference_lengths : list
+    reference_lengths : list
         when writing, build header from list of chromosome names and lengths.
         By default, 'SQ' and 'LN' tags will be added to the header
         text. This option can be changed by unsetting the flag
         `add_sq_text`.
 
-   add_sq_text : bool
+    add_sq_text : bool
         do not add 'SQ' and 'LN' tags to header. This option permits construction
         :term:`SAM` formatted files without a header.
 
-   check_header : bool
+    check_header : bool
         when reading, check if header is present (default=True)
 
-   check_sq : bool
+    check_sq : bool
         when reading, check if SQ entries are present in header (default=True) 
 
+    filename : string
+        Alternative to filepath_or_object. Filename of the file
+        to be opened.
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -313,6 +318,10 @@ cdef class AlignmentFile:
         self.is_stream = False
         self.is_cram = False
         self.is_remote = False
+
+        if "filename" in kwargs:
+            args = [kwargs["filename"]]
+            del kwargs["filename"]
 
         self._open(*args, **kwargs)
 
@@ -329,7 +338,7 @@ cdef class AlignmentFile:
         return self.index != NULL
 
     def check_index(self):
-        """return True if index is present. 
+        """return True if index is present.
 
         Raises
         ------
@@ -350,6 +359,7 @@ cdef class AlignmentFile:
             raise ValueError(
                 "mapping information not recorded in index "
                 "or index not available")
+        return True
 
     def _open(self,
               filepath_or_object,
@@ -641,6 +651,71 @@ cdef class AlignmentFile:
                              (tid, self.header.n_targets))
         return charptr_to_str(self.header.target_name[tid])
 
+    def reset(self):
+        """reset file position to beginning of file just after
+        the header.
+
+        Returns
+        -------
+
+        The file position after moving the file pointer.
+
+        """
+        return self.seek(self.start_offset, 0)
+
+    def seek(self, uint64_t offset, int where=0):
+        """move file pointer to position `offset`, see
+        :meth:`pysam.AlignmentFile.tell`.
+
+        Parameters
+        ----------
+        
+        offset : int
+
+        position of the read/write pointer within the file.
+
+        where : int
+    
+        optional and defaults to 0 which means absolute file
+        positioning, other values are 1 which means seek relative to
+        the current position and 2 means seek relative to the file's
+        end.
+        
+        Returns
+        -------
+        
+        the file position after moving the file pointer
+
+        """
+
+        if not self.is_open():
+            raise ValueError("I/O operation on closed file")
+        if not self.is_bam:
+            raise NotImplementedError(
+                "seek only available in bam files")
+        if self.is_stream:
+            raise OSError("seek no available in streams")
+
+        cdef uint64_t pos
+        with nogil:
+            pos = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
+        return pos
+
+    def tell(self):
+        """
+        return current file position.
+        """
+        if not self.is_open():
+            raise ValueError("I/O operation on closed file")
+        if not (self.is_bam or self.is_cram):
+            raise NotImplementedError(
+                "seek only available in bam files")
+
+        cdef uint64_t pos
+        with nogil:
+            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
+        return pos
+
     def parse_region(self,
                      reference=None,
                      start=None,
@@ -724,71 +799,6 @@ cdef class AlignmentFile:
 
         return 1, rtid, rstart, rend
 
-    def reset(self):
-        """reset file position to beginning of file just after
-        the header.
-
-        Returns
-        -------
-
-        The file position after moving the file pointer.
-
-        """
-        return self.seek(self.start_offset, 0)
-
-    def seek(self, uint64_t offset, int where=0):
-        """move file pointer to position `offset`, see
-        :meth:`pysam.AlignmentFile.tell`.
-
-        Parameters
-        ----------
-        
-        offset : int
-
-        position of the read/write pointer within the file.
-
-        where :
-    
-        optional and defaults to 0 which means absolute file
-        positioning, other values are 1 which means seek relative to
-        the current position and 2 means seek relative to the file's
-        end.
-        
-        Returns
-        -------
-        
-        the file position after moving the file pointer
-
-        """
-
-        if not self.is_open():
-            raise ValueError("I/O operation on closed file")
-        if not self.is_bam:
-            raise NotImplementedError(
-                "seek only available in bam files")
-        if self.is_stream:
-            raise OSError("seek no available in streams")
-
-        cdef uint64_t pos
-        with nogil:
-            pos = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
-        return pos
-
-    def tell(self):
-        """
-        return current file position.
-        """
-        if not self.is_open():
-            raise ValueError("I/O operation on closed file")
-        if not (self.is_bam or self.is_cram):
-            raise NotImplementedError(
-                "seek only available in bam files")
-
-        cdef uint64_t pos
-        with nogil:
-            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
-        return pos
-
     def fetch(self,
               reference=None,
               start=None,
@@ -805,7 +815,8 @@ cdef class AlignmentFile:
         Without a `reference` or `region` all mapped reads in the file
         will be fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
-        file.
+        file. This mode of iteration still requires an index. If there is
+        no index, use `until_eof=True`.
 
         If only `reference` is set, all reads aligned to `reference`
         will be fetched.

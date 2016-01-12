@@ -58,11 +58,12 @@ from cpython.version cimport PY_MAJOR_VERSION
 
 from pysam.chtslib cimport \
     faidx_nseq, fai_load, fai_destroy, fai_fetch, \
+    faidx_seq_len, \
     faidx_fetch_seq, gzopen, gzclose
 
 from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
-from pysam.cutils cimport qualitystring_to_array
+from pysam.cutils cimport qualitystring_to_array, parse_region
 
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
@@ -70,10 +71,6 @@ cdef makeFastqProxy(kseq_t * src):
     cdef FastqProxy dest = FastqProxy.__new__(FastqProxy)
     dest._delegate = src
     return dest
-
-#####################################################################
-# hard-coded constants
-cdef int MAX_POS = 2 << 29
 
 ## TODO:
 ##        add automatic indexing.
@@ -225,7 +222,7 @@ cdef class FastaFile:
         IndexError
             if the coordinates are out of range
             
-        ValueErrro
+        ValueError
             if the region is invalid
 
         """
@@ -235,58 +232,40 @@ cdef class FastaFile:
 
         cdef int length
         cdef char *seq
-        cdef char *cregion
+        cdef char *ref
+        cdef int rstart, rend
 
-        if not region:
-            if reference is None:
-                raise ValueError('no sequence/region supplied.')
-            if start is None:
-                start = 0
-            if end is None:
-                end = MAX_POS - 1
+        reference, rstart, rend = parse_region(reference, start, end, region)
 
-            if start > end:
-                raise ValueError(
-                    'invalid region: start (%i) > end (%i)' % (start, end))
-            if start == end:
-                return b""
-            # valid ranges are from 0 to 2^29-1
-            if not 0 <= start < MAX_POS:
-                raise IndexError('start out of range (%i)' % start)
-            if not 0 <= end < MAX_POS:
-                raise IndexError('end out of range (%i)' % end)
-            # note: faidx_fetch_seq has a bug such that out-of-range access
-            # always returns the last residue. Hence do not use faidx_fetch_seq,
-            # but use fai_fetch instead
-            # seq = faidx_fetch_seq(self.fastafile,
-            #                       reference,
-            #                       start,
-            #                       end-1,
-            #                       &length)
-            region = "%s:%i-%i" % (reference, start+1, end)
-            cregion = region
-            if PY_MAJOR_VERSION >= 3:
-                region = region.encode('ascii')
-            with nogil:
-                seq = fai_fetch(self.fastafile,
-                                cregion,
-                                &length)
-        else:
-            # samtools adds a '\0' at the end
-            cregion = region
-            with nogil:
-                seq = fai_fetch(self.fastafile, cregion, &length)
+        if reference is None:
+            raise ValueError("no sequence/region supplied.")
 
-        # copy to python
+        if rstart == rend:
+            return ""
+
+        ref = reference
+        length = faidx_seq_len(self.fastafile, ref)
+        if length == -1:
+            raise KeyError("sequence '%s' not present" % reference)
+        if rstart >= length:
+            return ""
+
+        # fai_fetch adds a '\0' at the end
+        with nogil:
+            seq = faidx_fetch_seq(self.fastafile,
+                                  ref,
+                                  rstart,
+                                  rend-1,
+                                  &length)
+
         if seq == NULL:
-            return b""
-        else:
-            try:
-                py_seq = seq[:length]
-            finally:
-                free(seq)
+            raise ValueError(
+                "failure when retrieving sequence on '%s'" % reference)
 
-        return py_seq
+        try:
+            return charptr_to_str(seq)
+        finally:
+            free(seq)
 
     cdef char * _fetch(self, char * reference, int start, int end, int * length):
         '''fetch sequence for reference, start and end'''
@@ -315,23 +294,23 @@ cdef class FastqProxy:
 
     property name:
         def __get__(self):
-            return self._delegate.name.s
+            return charptr_to_str(self._delegate.name.s)
 
     property sequence:
         def __get__(self):
-            return self._delegate.seq.s
+            return charptr_to_str(self._delegate.seq.s)
 
     property comment:
         def __get__(self):
             if self._delegate.comment.l:
-                return self._delegate.comment.s
+                return charptr_to_str(self._delegate.comment.s)
             else:
                 return None
 
     property quality:
         def __get__(self):
             if self._delegate.qual.l:
-                return self._delegate.qual.s
+                return charptr_to_str(self._delegate.qual.s)
             else:
                 return None
 
@@ -354,7 +333,8 @@ cdef class FastqProxy:
         '''return quality values as array after subtracting offset.'''
         if self.quality is None:
             return None
-        return qualitystring_to_array(self.quality, offset=offset)
+        return qualitystring_to_array(force_bytes(self.quality),
+                                      offset=offset)
 
 cdef class PersistentFastqProxy:
     """
@@ -386,7 +366,8 @@ cdef class PersistentFastqProxy:
         '''return quality values as array after subtracting offset.'''
         if self.quality is None:
             return None
-        return qualitystring_to_array(self.quality, offset=offset)
+        return qualitystring_to_array(force_bytes(self.quality),
+                                      offset=offset)
 
 
 cdef class FastxFile:
@@ -468,6 +449,14 @@ cdef class FastxFile:
             
     def __dealloc__(self):
         self.close()
+
+    # context manager interface
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
 
     property closed:
         """"bool indicating the current state of the file object. 

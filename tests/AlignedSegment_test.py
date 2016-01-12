@@ -228,15 +228,8 @@ class TestAlignedSegment(ReadTest):
                          [(20, 30), (31, 40), (40, 60)])
 
     def test_get_aligned_pairs_soft_clipping(self):
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
+        a = self.buildRead()
         a.cigartuples = ((4, 2), (0, 35), (4, 3))
-        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         self.assertEqual(a.get_aligned_pairs(),
                          [(0, None), (1, None)] +
                          [(qpos, refpos) for (qpos, refpos) in zip(
@@ -251,15 +244,8 @@ class TestAlignedSegment(ReadTest):
                          )
 
     def test_get_aligned_pairs_hard_clipping(self):
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
+        a = self.buildRead()
         a.cigartuples = ((5, 2), (0, 35), (5, 3))
-        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         self.assertEqual(a.get_aligned_pairs(),
                          # No seq, no seq pos
                          [(qpos, refpos) for (qpos, refpos) in zip(
@@ -269,15 +255,8 @@ class TestAlignedSegment(ReadTest):
                              range(0, 0 + 35), range(20, 20 + 35))])
 
     def test_get_aligned_pairs_skip(self):
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
-        a.cigartuples = ((0, 2), (3, 100), (0, 38))
-        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
+        a = self.buildRead()
+        a.cigarstring = "2M100D38M"
         self.assertEqual(a.get_aligned_pairs(),
                          [(0, 20), (1, 21)] +
                          [(None, refpos) for refpos in range(22, 22 + 100)] +
@@ -292,15 +271,8 @@ class TestAlignedSegment(ReadTest):
                              range(20 + 2 + 100, 20 + 2 + 100 + 38))])
 
     def test_get_aligned_pairs_match_mismatch(self):
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
+        a = self.buildRead()
         a.cigartuples = ((7, 20), (8, 20))
-        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
         self.assertEqual(a.get_aligned_pairs(),
                          [(qpos, refpos) for (qpos, refpos) in zip(
                              range(0, 0 + 40), range(20, 20 + 40))])
@@ -309,20 +281,67 @@ class TestAlignedSegment(ReadTest):
                              range(0, 0 + 40), range(20, 20 + 40))])
 
     def test_get_aligned_pairs_padding(self):
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 20
-        a.mapping_quality = 20
+        a = self.buildRead()
         a.cigartuples = ((7, 20), (6, 1), (8, 19))
-        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
 
         def inner():
             a.get_aligned_pairs()
         # padding is not bein handled right now
         self.assertRaises(NotImplementedError, inner)
+
+    def test_get_aligned_pairs(self):
+        a = self.buildRead()
+        a.query_sequence = "A" * 9
+        a.cigarstring = "9M"
+        a.set_tag("MD", "9")
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [(0, 20, 'A'), (1, 21, 'A'), (2, 22, 'A'),
+             (3, 23, 'A'), (4, 24, 'A'), (5, 25, 'A'),
+             (6, 26, 'A'), (7, 27, 'A'), (8, 28, 'A')])
+
+        a.set_tag("MD", "4C4")
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [(0, 20, 'A'), (1, 21, 'A'), (2, 22, 'A'),
+             (3, 23, 'A'), (4, 24, 'c'), (5, 25, 'A'),
+             (6, 26, 'A'), (7, 27, 'A'), (8, 28, 'A')])
+
+        a.cigarstring = "5M2D4M"
+        a.set_tag("MD", "4C^TT4")
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [(0, 20, 'A'), (1, 21, 'A'), (2, 22, 'A'),
+             (3, 23, 'A'), (4, 24, 'c'),
+             (None, 25, 'T'), (None, 26, 'T'),
+             (5, 27, 'A'), (6, 28, 'A'), (7, 29, 'A'), (8, 30, 'A')]
+            )
+        
+        a.cigarstring = "5M2D2I2M"
+        a.set_tag("MD", "4C^TT2")
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [(0, 20, 'A'), (1, 21, 'A'), (2, 22, 'A'),
+             (3, 23, 'A'), (4, 24, 'c'),
+             (None, 25, 'T'), (None, 26, 'T'),
+             (5, None, None), (6, None, None),
+             (7, 27, 'A'), (8, 28, 'A')]
+            )
+
+    def testNoSequence(self):
+        '''issue 176: retrieving length without query sequence
+        with soft-clipping.
+        '''
+        a = self.buildRead()
+        a.query_sequence = None
+        a.cigarstring = "20M"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "20M1S"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1S20M"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1S20M1S"
+        self.assertEqual(a.query_alignment_length, 20)
 
 
 class TestTags(ReadTest):
@@ -444,6 +463,87 @@ class TestTags(ReadTest):
             after = entry.get_tags()
             self.assertEqual(after, before)
 
+    def testMDTag(self):
+        a = self.buildRead()
+
+        # Substitutions only
+        a.cigarstring = "21M"
+        a.query_sequence = "A" * 21
+        a.set_tag('MD', "5C0T0G05C0G0T5")
+        self.assertEqual(
+            "AAAAActgAAAAAcgtAAAAA",
+            a.get_reference_sequence())
+
+        a.cigarstring = "21M"
+        a.query_sequence = "A" * 21
+        a.set_tag('MD', "5CTG5CGT5")
+        self.assertEqual(
+            "AAAAActgAAAAAcgtAAAAA",
+            a.get_reference_sequence())
+
+        a.cigarstring = "11M"
+        a.query_sequence = "A" * 11
+        a.set_tag('MD', "CTG5CGT")
+        self.assertEqual(
+            "ctgAAAAAcgt",
+            a.get_reference_sequence())
+
+        # insertions are silent
+        a.cigarstring = "5M1I5M"
+        a.query_sequence = "A" * 5 + "C" + "A" * 5
+        a.set_tag('MD', "11")
+        self.assertEqual(
+            a.query_sequence,
+            a.get_reference_sequence())
+
+        a.cigarstring = "1I10M"
+        self.assertEqual(
+            a.query_sequence,
+            a.get_reference_sequence())
+
+        a.cigarstring = "10M1I"
+        self.assertEqual(
+            a.query_sequence,
+            a.get_reference_sequence())
+
+        a.cigarstring = "5M1D5M"
+        a.query_sequence = "A" * 10
+        a.set_tag('MD', "5^C5")
+        self.assertEqual(
+            "A" * 5 + "C" + "A" * 5,
+            a.get_reference_sequence())
+
+        a.cigarstring = "5M1D5M"
+        a.query_sequence = "A" * 10
+        a.set_tag('MD', "5^CCC5")
+        self.assertEqual(
+            "A" * 5 + "C" * 3 + "A" * 5,
+            a.get_reference_sequence())
+
+        # softclipping
+        a.cigarstring = "5S5M1D5M5S"
+        a.query_sequence = "G" * 5 + "A" * 10 + "G" * 5
+        a.set_tag('MD', "10")
+        self.assertEqual(
+            "A" * 10,
+            a.get_reference_sequence())
+
+        # all together
+        a.cigarstring = "5S5M1D5M1I5M5S"
+        a.query_sequence = "G" * 5 + "A" * 16 + "G" * 5
+        a.set_tag('MD', "2C2^T10")
+        self.assertEqual(
+            "AAcAATAAAAAAAAAA",
+            a.get_reference_sequence())
+
+        # all together
+        a.cigarstring = "5S5M1D2I5M5S"
+        a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
+        a.set_tag('MD', "2C2^TC5")
+        self.assertEqual(
+            "AAcAATCAAAAA",
+            a.get_reference_sequence())
+
 
 class TestCopy(ReadTest):
     
@@ -470,6 +570,7 @@ class TestCopy(ReadTest):
         b.query_name = 'ReadB'
         self.assertEqual(a.query_name, 'ReadA')
         self.assertEqual(b.query_name, 'ReadB')
+
 
 class TestAsString(unittest.TestCase):
 
