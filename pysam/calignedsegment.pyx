@@ -774,10 +774,9 @@ cdef class AlignedSegment:
 
     cdef bytes get_tag_string(self):
         cdef tuple tag
-        cdef bytes ret = <bytes>("\t".join([
+        return <bytes>("\t".join([
             TagToString(tag) for tag in
             self.get_tags(with_value_type=True)]))
-        return ret
 
     ########################################################
     ## Basic attributes in order of appearance in SAM format
