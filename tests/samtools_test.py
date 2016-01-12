@@ -103,9 +103,9 @@ class BinaryTest(unittest.TestCase):
             ),
             "fixmate":
             (
-                ("ex1.fixmate", "fixmate ex1.bam ex1.fixmate"),
-                ("pysam_ex1.fixmate",
-                 (pysam.fixmate, "pysam_ex1.bam pysam_ex1.fixmate")),
+                ("ex1.fixmate.bam", "fixmate ex1.bam ex1.fixmate.bam"),
+                ("pysam_ex1.fixmate.bam",
+                 (pysam.fixmate, "pysam_ex1.bam pysam_ex1.fixmate.bam")),
             ),
             "flagstat":
             (
@@ -114,22 +114,24 @@ class BinaryTest(unittest.TestCase):
             ),
             "calmd":
             (
-                ("ex1.calmd", "calmd ex1.bam ex1.fa > ex1.calmd"),
-                ("pysam_ex1.calmd", (pysam.calmd, "pysam_ex1.bam ex1.fa")),
+                ("ex1.calmd.bam", "calmd ex1.bam ex1.fa > ex1.calmd.bam"),
+                ("pysam_ex1.calmd.bam", (pysam.calmd, "pysam_ex1.bam ex1.fa")),
             ),
             "merge":
             (
                 ("ex1.merge", "merge -f ex1.merge ex1.bam ex1.bam"),
-                # -f option does not work - following command will cause the subsequent
-                # command to fail
+                # -f option does not work - following command will
+                # cause the subsequent command to fail
                 ("pysam_ex1.merge",
                  (pysam.merge, "pysam_ex1.merge pysam_ex1.bam pysam_ex1.bam")),
             ),
             "rmdup":
             (
-                ("ex1.rmdup", "rmdup ex1.bam ex1.rmdup"),
-                ("pysam_ex1.rmdup",
-                 (pysam.rmdup, "pysam_ex1.bam pysam_ex1.rmdup")),
+                # use -s option, otherwise the following error in samtools 1.2:
+                # Samtools-htslib-API: bam_get_library() not yet implemented
+                ("ex1.rmdup.bam", "rmdup -s ex1.bam ex1.rmdup.bam"),
+                ("pysam_ex1.rmdup.bam",
+                 (pysam.rmdup, "pysam_ex1.bam -s pysam_ex1.rmdup.bam")),
             ),
             "reheader":
             (
@@ -138,8 +140,9 @@ class BinaryTest(unittest.TestCase):
             ),
             "cat":
             (
-                ("ex1.cat", "cat ex1.bam ex1.bam > ex1.cat"),
-                ("pysam_ex1.cat", (pysam.cat, "ex1.bam ex1.bam")),
+                ("ex1.cat.bam", "cat -o ex1.cat.bam ex1.bam ex1.bam"),
+                ("pysam_ex1.cat.bam",
+                 (pysam.cat, " -o pysam_ex1.cat.bam ex1.bam ex1.bam")),
             ),
             "targetcut":
             (
@@ -184,26 +187,29 @@ class BinaryTest(unittest.TestCase):
     # the samtools commands are executed.
     # The first three (faidx, import, index) need to be in that order,
     # the rest is arbitrary.
-    order = ('faidx', 'import', 'index',
-             # 'pileup1', 'pileup2', deprecated
-             # 'glfview', deprecated
-             'view', 'view2',
+    order = ('faidx',
+             'import',
+             'index',
+             'view',
+             'view2',
              'sort',
              'mpileup',
              'depth',
              'idxstats',
-             # 'fixmate',
+             'fixmate',
              'flagstat',
-             # 'calmd',
+             'calmd',
              'merge',
-             # 'rmdup',
+             'rmdup',
              'reheader',
              'cat',
              'bedcov',
              'targetcut',
              'phase',
-             # 'bamshuf',
              'bam2fq',
+             # Segmentation fault:
+             # 'bamshuf',
+             # File not binary identical
              # 'pad2unpad',
              )
 
@@ -235,12 +241,12 @@ class BinaryTest(unittest.TestCase):
             savedir = os.getcwd()
             os.chdir(WORKDIR)
             for label in self.order:
-                # print ("command=", label)
+                sys.stdout.write("preparing test {}".format(label))
                 command = self.commands[label]
                 # build samtools command and target and run
                 samtools_target, samtools_command = command[0]
                 runSamtools(" ".join((SAMTOOLS, samtools_command)))
-
+                sys.stdout.write(" samtools ok")
                 # get pysam command and run
                 try:
                     pysam_target, pysam_command = command[1]
@@ -249,13 +255,17 @@ class BinaryTest(unittest.TestCase):
                                      (label, command, msg))
 
                 pysam_method, pysam_options = pysam_command
-
+                
                 try:
-                    output = pysam_method(*pysam_options.split(" "), raw=True)
+                    output = pysam_method(*pysam_options.split(" "),
+                                          raw=True,
+                                          catch_stdout=True)
                 except pysam.SamtoolsError as msg:
                     raise pysam.SamtoolsError(
                         "error while executing %s: options=%s: msg=%s" %
                         (label, pysam_options, msg))
+
+                sys.stdout.write(" pysam ok\n")
 
                 if ">" in samtools_command:
                     with open(pysam_target, "wb") as outfile:
@@ -310,14 +320,17 @@ class BinaryTest(unittest.TestCase):
     def testMpileup(self):
         self.checkCommand("mpileup")
 
+    def testCalmd(self):
+        self.checkCommand("calmd")
+
     def testDepth(self):
         self.checkCommand("depth")
 
     def testIdxstats(self):
         self.checkCommand("idxstats")
 
-    # def testFixmate(self):
-    #     self.checkCommand("fixmate")
+    def testFixmate(self):
+        self.checkCommand("fixmate")
 
     def testFlagstat(self):
         self.checkCommand("flagstat")
@@ -325,8 +338,8 @@ class BinaryTest(unittest.TestCase):
     def testMerge(self):
         self.checkCommand("merge")
 
-    # def testRmdup(self):
-    #     self.checkCommand("rmdup")
+    def testRmdup(self):
+        self.checkCommand("rmdup")
 
     def testReheader(self):
         self.checkCommand("reheader")
@@ -346,24 +359,14 @@ class BinaryTest(unittest.TestCase):
     def testBedcov(self):
         self.checkCommand("bedcov")
 
-    # def testBamshuf(self):
-    #     self.checkCommand("bamshuf")
-
-    # def testPad2Unpad(self):
-    #     self.checkCommand("pad2unpad")
-
-    # def testPileup1( self ):
-    #     self.checkCommand( "pileup1" )
-
-    # def testPileup2( self ):
-    #     self.checkCommand( "pileup2" )
-
-    # deprecated
-    # def testGLFView( self ):
-    #     self.checkCommand( "glfview" )
-
     def testView(self):
         self.checkCommand("view")
+
+    # def testBamshuf(self):
+    #    self.checkCommand("bamshuf")
+
+    # def testPad2Unpad(self):
+    #    self.checkCommand("pad2unpad")
 
     def testEmptyIndex(self):
         self.assertRaises(IOError, pysam.index, "exdoesntexist.bam")

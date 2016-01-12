@@ -477,7 +477,9 @@ cdef class GTFProxy(TupleProxy):
         # ...; transcript_name "TXNRD2;-001"; ....
         # The current heuristic is to split on a semicolon followed by a
         # space, see also http://mblab.wustl.edu/GTF22.html
-        fields = [x.strip() for x in attributes.split("; ")]
+
+        # Remove white space to prevent a last empty field.
+        fields = [x.strip() for x in attributes.strip().split("; ")]
         
         result = {}
 

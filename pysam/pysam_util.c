@@ -87,7 +87,7 @@ int pysam_dispatch(int argc, char *argv[] )
 
   if (argc < 2) return 1;
   int retval = 0;
-  
+
   if (strcmp(argv[1], "view") == 0) retval = main_samview(argc-1, argv+1);
   else if (strcmp(argv[1], "import") == 0) retval = main_import(argc-1, argv+1);
   else if (strcmp(argv[1], "mpileup") == 0) retval = bam_mpileup(argc-1, argv+1);

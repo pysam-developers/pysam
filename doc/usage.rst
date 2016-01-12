@@ -265,6 +265,26 @@ form:
 .. Calling indels works along the same lines, using the :class:`pysam.IteratorIndelCalls`
 .. and :class:`pysam.IteratorIndelCaller`.
 
+
+====================================
+Working with VCF/BCF formatted files
+====================================
+
+To iterate through a VCF/BCF formatted file tabular file use
+:class:`~pysam.VariantFile`::
+
+   from pysam import VariantFile
+
+   bcf_in = VariantFile("test.bcf")  # auto-detect input format
+   bcf_out = VariantFile('-', 'w', header=bcf_in.header)
+   
+   for rec in bcf_in.fetch('chr1', 100000, 200000):
+       bcf_out.write(rec)
+
+.. note::
+
+   The VCF/BCF API is preliminary and incomplete.
+
 ===============
 Extending pysam
 ===============
@@ -292,7 +312,7 @@ flagstat command and consists of three files:
 2. The cython implementation :file:`_pysam_flagstat.pyx`. This script
    imports the pysam API via::
 
-      from pysam.calignmentfile cimport AlignementFile, AlignedSegment
+      from pysam.calignmentfile cimport AlignmentFile, AlignedSegment
 
    This statement imports, amongst others, :class:`AlignedSegment`
    into the namespace. Speed can be gained from declaring

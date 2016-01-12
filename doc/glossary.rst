@@ -92,3 +92,20 @@ Glossary
       sequence will not be part of the alignment record, in contrast
       to :term:`soft clipped` reads.
      
+   VCF
+      Variant call format
+
+   BCF
+      Binary :term:`VCF`
+
+   tabix
+      Utility in the htslib package to index :term:`bgzip` compressed
+      files.
+
+   faidx
+      Utility in the samtools package to index :term:`fasta` formatted
+      files.
+
+   bgzip
+      Utility in the htslib package to block compress genomic data
+      files.

@@ -5,8 +5,9 @@ python:
   - "2.7"
   - "3.3"
   - "3.4"
+  - "3.5"
 
-script: 
+script:
   - sudo ./install-CGAT-tools.sh --travis
 
 notifications:
