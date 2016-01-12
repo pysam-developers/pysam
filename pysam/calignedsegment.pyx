@@ -142,17 +142,15 @@ cdef bytes TagToString(tuple tagtup):
     cdef bytes value_bytes
     cdef long i, min_value
     cdef double f
-    cdef cython.str ret
+    cdef bytes ret
     cdef size_t size
     if(value_type in ['c', 'C', 'i', 'I', 's', 'S']):
-        value_int = tagtup[1]
-        ret = tag + ":i:%s" % value_int
+        ret = <bytes>("%s:i:%s" % (tag, tagtup[1]))
     elif(value_type in ['f', 'F', 'd', 'D']):
         value_float = tagtup[1]
-        ret = tag + ":f:%s" % (value_float)
+        ret = <bytes>("%s:f:%s" % (tag, tagtup[1]))
     elif(value_type == "Z"):
-        value_bytes = tagtup[1]
-        ret = tag + ":Z:" + value_bytes
+        ret = <bytes>("%s:Z:%s" % (tag, tagtup[1]))
     elif(value_type == "B"):
         if(isinstance(tagtup[1], array.array)):
             b_aux_arr = tagtup[1]
@@ -171,30 +169,37 @@ cdef bytes TagToString(tuple tagtup):
         length = len(b_aux_arr)
         if(size == 1):
             if(min_value < 0):
-                ret = tag + ":B:c," + ",".join([str(i) for i in b_aux_arr])
+                ret = <bytes>("%s:B:c,%s" % (tag, ",".join([str(i) for
+                                                            i in b_aux_arr])))
             else:
-                ret = tag + ":B:C," + ",".join([str(i) for i in b_aux_arr])
+                ret = <bytes>("%s:B:C,%s" % (tag, ",".join([str(i) for
+                                                            i in b_aux_arr])))
         elif(size == 2):
             if(min_value < 0):
-                ret = tag + ":B:i," + ",".join([str(i) for i in b_aux_arr])
+                ret = <bytes>("%s:B:i,%s" % (tag, ",".join([str(i) for
+                                                            i in b_aux_arr])))
             else:
-                ret = tag + ":B:I," + ",".join([str(i) for i in b_aux_arr])
+                ret = <bytes>("%s:B:I,%s" % (tag, ",".join([str(i) for
+                                                           i in b_aux_arr])))
         else:  # size == 4. Removed check to compile to switch statement.
             if(min_value < 0):
-                ret = tag + ":B:s," + ",".join([str(i) for i in b_aux_arr])
+                ret = <bytes>("%s:B:s,%s" % (tag, ",".join([str(i) for
+                                                            i in b_aux_arr])))
             else:
-                ret = tag + ":B:S," + ",".join([str(i) for i in b_aux_arr])
+                ret = <bytes>("%s:B:S,%s" % (tag, ",".join([str(i) for
+                                                            i in b_aux_arr])))
     elif(value_type == "H"):
-        ret = tag + ":H:" + "".join([hex(i)[2:] for i in tagtup[1]])
+        ret = <bytes>("%s:H:%s" % (tag, "".join([hex(i)[2:] for
+                                                 i in tagtup[1]])))
     elif(value_type == "A"):
-        ret = tag + ":A:" + tagtup[1]
+        ret = <bytes>("%s:A:%s" % (tag, tagtup[1]))
     else:
         # Unrecognized character - returning the string as it was provided.
         # An exception is not being raised because that prevents cython
         # from being able to compile this into a switch statement for
         # performance.
-        ret = "%s:%s:%s" % (tag, tagtup[2], tagtup[1])
-    return <bytes> ret
+        ret = <bytes>("%s:%s:%s" % (tag, tagtup[2], tagtup[1]))
+    return ret
 
 
 cdef inline uint8_t get_value_code(value, value_type=None):
@@ -643,37 +648,36 @@ cdef class AlignedSegment:
                    identifers to chromosome names.
         """
 
-        cdef cython.str cigarstring, mate_ref, ref
+        cdef bytes cigarstring, mate_ref, ref
         if self.reference_id < 0:
-            ref = "*"
+            ref = <bytes>"*"
         else:
-            ref = htsfile.getrname(self.reference_id)
+            ref = <bytes>htsfile.getrname(self.reference_id)
 
         if self.rnext < 0:
-            mate_ref = "*"
+            mate_ref = <bytes>"*"
         elif self.rnext == self.reference_id:
-            mate_ref = "="
+            mate_ref = <bytes>"="
         else:
             mate_ref = htsfile.getrname(self.rnext)
 
         cigarstring = self.cigarstring if(
-            self.cigarstring is not None) else "*"
-        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
+            self.cigarstring is not None) else <bytes>"*"
+        return <bytes>("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
             self.query_name, self.flag,
             ref, self.pos + 1, self.mapq,
             cigarstring,
             mate_ref, self.mpos + 1,
             self.template_length,
             self.seq, self.qual,
-            self.get_tag_string())
-        return <bytes> ret
+            self.get_tag_string()))
 
     cdef bytes get_tag_string(self):
         cdef tuple tag
-        cdef cython.str ret = "\t".join([
+        cdef bytes ret = <bytes>("\t".join([
             TagToString(tag) for tag in
-            self.get_tags(with_value_type=True)])
-        return <bytes> ret
+            self.get_tags(with_value_type=True)]))
+        return ret
 
     ########################################################
     ## Basic attributes in order of appearance in SAM format
