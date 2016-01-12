@@ -118,7 +118,7 @@ Here, we use a header dictionary::
    a.next_reference_id = 0
    a.next_reference_start=199
    a.template_length=167
-   a.query_qualities = pysam.fromQualityString("<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
+   a.query_qualities = pysam.qualitystring_to_array("<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
    a.tags = (("NM", 1),
 	     ("RG", "L1"))
    outfile.write(a)
