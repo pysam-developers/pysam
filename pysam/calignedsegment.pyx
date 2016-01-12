@@ -759,10 +759,10 @@ cdef class AlignedSegment:
         elif self.rnext == self.reference_id:
             mate_ref = <bytes>"="
         else:
-            mate_ref = htsfile.getrname(self.rnext)
+            mate_ref = <bytes>htsfile.getrname(self.rnext)
 
-        cigarstring = self.cigarstring if(
-            self.cigarstring is not None) else <bytes>"*"
+        cigarstring = <bytes>(self.cigarstring if(
+            self.cigarstring is not None) else "*")
         return <bytes>("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
             self.query_name, self.flag,
             ref, self.pos + 1, self.mapq,
