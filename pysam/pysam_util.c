@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <assert.h>
+#include <unistd.h>
 #include "bam.h"
 #include "bam_endian.h"
 #include "htslib/khash.h"
@@ -26,17 +27,15 @@ void pysam_unset_stderr(void)
   pysamerr = fopen("/dev/null", "w");
 }
 
-int samtools_main(int argc, char *argv[]);
-  
-int pysam_dispatch(int argc, char *argv[])
+void reset_getopt(void)
 {
-  // reset getopt
-  optind = 1;
-
-  return samtools_main(argc, argv);
+  // setting this in cython via 
+  // "from posix.unistd cimport optind"
+  // did not work.
+  //
+  // setting to 0 forces a complete re-initialization
+  optind = 0;
 }
-
-
 
 
 

@@ -53,26 +53,34 @@ import version
 version = version.__version__
 
 # exclude sources that contains a main function
-samtools_exclude = ("razip.c",
-                    "bgzip.c",
-                    "main.c",
-                    "calDepth.c",
-                    "bam2bed.c",
-                    "wgsim.c",
-                    "md5fa.c",
-                    "md5sum-lite.c",
-                    "maq2sam.c",
-                    "bamcheck.c",
-                    "chk_indel.c",
-                    "vcf-miniview.c",
-                    "htslib-1.3",   # do not import twice
-                    "hfile_irods.c",  # requires irods library
-                    )
-
-htslib_exclude = ('htslib/tabix.c',
-                  'htslib/bgzip.c',
-                  'htslib/htsfile.c',
-                  'htslib/hfile_irods.c')
+exclude = {
+    "samtools": ("razip.c",
+                 "bgzip.c",
+                 "main.c",
+                 "calDepth.c",
+                 "bam2bed.c",
+                 "wgsim.c",
+                 "md5fa.c",
+                 "md5sum-lite.c",
+                 "maq2sam.c",
+                 "bamcheck.c",
+                 "chk_indel.c",
+                 "vcf-miniview.c",
+                 "htslib-1.3",   # do not import twice
+                 "hfile_irods.c",  # requires irods library
+             ),
+    "bcftools": ("test",
+                 "plugins",
+                 "peakfit.c",
+                 "peakfit.h",
+                 # needs to renamed, name conflict with samtools reheader
+                 "reheader.c",
+                 "polysomy.c"),
+    "htslib": ('htslib/tabix.c',
+               'htslib/bgzip.c',
+               'htslib/htsfile.c',
+               'htslib/hfile_irods.c'),
+    }
 
 # destination directories for import of samtools and tabix
 samtools_dest = os.path.abspath("samtools")
@@ -93,7 +101,7 @@ elif HTSLIB_MODE == 'separate':
         x for x in
         glob.glob(os.path.join("htslib", "*.c")) +
         glob.glob(os.path.join("htslib", "cram", "*.c"))
-        if x not in htslib_exclude]
+        if x not in exclude["htslib"]]
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
@@ -107,7 +115,7 @@ elif HTSLIB_MODE == 'shared':
         x for x in
         glob.glob(os.path.join("htslib", "*.c")) +
         glob.glob(os.path.join("htslib", "cram", "*.c"))
-        if x not in htslib_exclude]
+        if x not in exclude["htslib"]]
     htslib_library_dirs = ['pysam']
     htslib_include_dirs = ['htslib']
     htslib_libraries = ['chtslib', "curl"]
@@ -156,18 +164,25 @@ extern FILE * pysamerr;
 #
 # For samtools, type:
 # rm -rf samtools
-# python setup.py import download/samtools
+# python setup.py import samtools download/samtools
 # Manually, then:
 # modify config.h to set compatibility flags
 # change bamtk.c.pysam.c/main to bamtk.c.pysam.c/samtools_main
+#
+# For bcftools, type:
+# rm -rf bedtools
+# python setup.py import bedtools download/bedtools
+
 if len(sys.argv) >= 2 and sys.argv[1] == "import":
-    if len(sys.argv) < 3:
-        raise ValueError("missing PATH to samtools source directory")
+    if len(sys.argv) != 4:
+        raise ValueError("import requires dest src")
 
-    destdir = samtools_dest
-    srcdir = sys.argv[2]
-    exclude = samtools_exclude
-
+    dest, srcdir = sys.argv[2:4]
+    if dest not in exclude:
+        raise ValueError("import expected one of %s" %
+                         ",".join(exclude.keys()))
+    exclude = exclude[dest]
+    destdir = os.path.abspath(dest)
     srcdir = os.path.abspath(srcdir)
     if not os.path.exists(srcdir):
         raise IOError(
@@ -254,10 +269,17 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
 from setuptools import Extension, setup
 
 #######################################################
-parts = ["samtools", "htslib", "tabix",
-         "faidx", "samfile", "utils",
-         "alignmentfile", "tabixproxies",
-         "vcf", "bcf"]
+parts = ["samtools",
+         "bcftools",
+         "htslib",
+         "tabix",
+         "faidx",
+         "samfile",
+         "utils",
+         "alignmentfile",
+         "tabixproxies",
+         "vcf",
+         "bcf"]
 
 try:
     from cy_build import CyExtension as Extension, cy_build_ext as build_ext
@@ -308,21 +330,36 @@ extra_compile_args = ["-Wno-error=declaration-after-statement",
 define_macros = [('_FILE_OFFSET_BITS', '64'),
                    ('_USE_KNETFILE', '')]
 
-csamtools = Extension(
-    "pysam.csamtools",
-    [source_pattern % "samtools",
-     "pysam/pysam_util.c"] +
-    glob.glob(os.path.join("samtools", "*.pysam.c")) +
-    glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
-    os_c_files +
-    htslib_sources,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["samtools", "pysam"] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
+# csamtools = Extension(
+#     "pysam.csamtools",
+#     [source_pattern % "samtools",
+#      "pysam/pysam_util.c"] +
+#     glob.glob(os.path.join("samtools", "*.pysam.c")) +
+#     glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
+#     os_c_files +
+#     htslib_sources,
+#     library_dirs=htslib_library_dirs,
+#     include_dirs=["samtools", "pysam"] + include_os + htslib_include_dirs,
+#     libraries=["z"] + htslib_libraries,
+#     language="c",
+#     extra_compile_args=extra_compile_args,
+#     define_macros=define_macros
+# )
+
+# cbcftools = Extension(
+#     "pysam.cbcftools",
+#     [source_pattern %  "bcftools"] +
+#     glob.glob(os.path.join("bcftools", "*.pysam.c")) +
+#     glob.glob(os.path.join("bcftools", "*", "*.pysam.c")) +
+#     os_c_files +
+#     htslib_sources,
+#     library_dirs=htslib_library_dirs,
+#     include_dirs=["bcftools", "pysam"] + include_os + htslib_include_dirs,
+#     libraries=["z"] + htslib_libraries,
+#     language="c",
+#     extra_compile_args=extra_compile_args,
+#     define_macros=define_macros
+# )
 
 chtslib = Extension(
     "pysam.libchtslib",
@@ -414,11 +451,16 @@ ctabix = Extension(
 
 cutils = Extension(
     "pysam.cutils",
-    [source_pattern % "utils"] +
+    [source_pattern % "utils", "pysam/pysam_util.c"] +
+    glob.glob(os.path.join("samtools", "*.pysam.c")) +
+    # glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
+    glob.glob(os.path.join("bcftools", "*.pysam.c")) +
+    # glob.glob(os.path.join("bcftools", "*", "*.pysam.c")) +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["pysam"] + include_os + htslib_include_dirs,
+    include_dirs=["samtools", "bcftools", "pysam"] +
+    include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -490,11 +532,10 @@ metadata = {
                  'pysam.include.htslib',
                  'pysam.include.htslib.htslib',
                  'pysam.include.samtools',
-                 # 'pysam.include.samtools.bcftools',
+                 'pysam.include.bcftools',
                  'pysam.include.samtools.win32'],
     'requires': ['cython (>=0.21)'],
-    'ext_modules': [csamtools,
-                    chtslib,
+    'ext_modules': [chtslib,
                     csamfile,
                     calignmentfile,
                     calignedsegment,
@@ -507,7 +548,8 @@ metadata = {
     'cmdclass': cmdclass,
     'package_dir': {'pysam': 'pysam',
                     'pysam.include.htslib': 'htslib',
-                    'pysam.include.samtools': 'samtools'},
+                    'pysam.include.samtools': 'samtools',
+                    'pysam.include.bcftools': 'bcftools'},
     'package_data': {'': ['*.pxd', '*.h'], },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe': False,

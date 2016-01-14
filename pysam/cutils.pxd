@@ -25,3 +25,10 @@ cdef bytes force_cmdline_bytes(object s, encoding=*)
 cdef bytes encode_filename(object filename)
 cdef from_string_and_size(char *s, size_t length)
 
+cdef extern from "pysam_util.h":
+
+    int samtools_main(int argc, char *argv[])
+    int bcftools_main(int argc, char *argv[])
+    void pysam_set_stderr(int fd)
+    void pysam_unset_stderr()
+    void reset_getopt()

@@ -152,7 +152,7 @@ class BinaryTest(unittest.TestCase):
         samtools_targets = [x % r_samtools for x in targets]
         pysam_targets = [x % r_pysam for x in targets]
 
-        pysam_method = getattr(pysam, command)
+        pysam_method = getattr(pysam.samtools, command)
 
         # run samtools
         samtools_statement = statement % {"out": "samtools"}
@@ -203,19 +203,22 @@ class BinaryTest(unittest.TestCase):
 class EmptyIndexTest(unittest.TestCase):
 
     def testEmptyIndex(self):
-        self.assertRaises(IOError, pysam.index, "exdoesntexist.bam")
+        self.assertRaises(IOError, pysam.samtools.index,
+                          "exdoesntexist.bam")
 
 
 class StdoutTest(unittest.TestCase):
     '''test if stdout can be redirected.'''
 
     def testWithRedirectedStdout(self):
-        r = pysam.flagstat(os.path.join(DATADIR, "ex1.bam"))
+        r = pysam.samtools.flagstat(
+            os.path.join(DATADIR, "ex1.bam"))
         self.assertTrue(len(r) > 0)
 
     def testWithoutRedirectedStdout(self):
-        r = pysam.flagstat(os.path.join(DATADIR, "ex1.bam"),
-                           catch_stdout=False)
+        r = pysam.samtools.flagstat(
+            os.path.join(DATADIR, "ex1.bam"),
+            catch_stdout=False)
         self.assertTrue(len(r) == 0)
 
 if __name__ == "__main__":
