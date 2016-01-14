@@ -20,7 +20,7 @@ from pysam.cbcf import *
 
 import pysam.Pileup as Pileup
 import os
-from samtools import SAMTOOLS_DISPATCH
+# from samtools import SAMTOOLS_DISPATCH
 
 # export all the symbols from separate modules
 __all__ = \
@@ -34,8 +34,9 @@ __all__ = \
     calignedsegment.__all__ +\
     csamfile.__all__ +\
     ["SamtoolsError", "SamtoolsDispatcher"] +\
-    SAMTOOLS_DISPATCH.keys() +\
     ["Pileup"]
+
+    # SAMTOOLS_DISPATCH.keys() +\
 
 from pysam.version import __version__, __samtools_version__
 

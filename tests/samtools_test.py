@@ -6,6 +6,8 @@ and data files located there.
 '''
 
 import pysam
+import pysam.samtools
+import pysam.bcftools
 import unittest
 import os
 import re
@@ -16,12 +18,11 @@ from TestUtils import checkBinaryEqual
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
-SAMTOOLS = "samtools"
 WORKDIR = "pysam_test_work"
 DATADIR = "pysam_data"
 
 
-def run_samtools(cmd):
+def run_command(cmd):
     '''run a samtools command'''
     try:
         retcode = subprocess.call(cmd, shell=True,
@@ -32,10 +33,10 @@ def run_samtools(cmd):
         print("Execution failed:", e)
 
 
-def getSamtoolsVersion():
-    '''return samtools version'''
+def get_version(executable):
+    '''return samtools/bcftools version'''
 
-    with subprocess.Popen(SAMTOOLS, shell=True,
+    with subprocess.Popen(executable, shell=True,
                           stderr=subprocess.PIPE).stderr as pipe:
         lines = b"".join(pipe.readlines())
 
@@ -44,7 +45,7 @@ def getSamtoolsVersion():
     return re.search("Version:\s+(\S+)", lines).groups()[0]
 
 
-class BinaryTest(unittest.TestCase):
+class SamtoolsTest(unittest.TestCase):
 
     '''test samtools command line commands and compare
     against pysam commands.
@@ -103,22 +104,13 @@ class BinaryTest(unittest.TestCase):
     map_command = {
         "import": "samimport"}
 
-    def setUp(self):
-        '''setup tests. 
+    executable = "samtools"
 
-        For setup, all commands will be run before the first test is
-        executed. Individual tests will then just compare the output
-        files.
+    module = pysam.samtools
 
-        '''
-        if not os.path.exists(WORKDIR):
-            os.makedirs(WORKDIR)
+    def check_version(self):
 
-        for f in self.requisites:
-            shutil.copy(os.path.join(DATADIR, f),
-                        os.path.join(WORKDIR, f))
-
-        samtools_version = getSamtoolsVersion()
+        samtools_version = get_version(self.executable)
 
         def _r(s):
             # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a ->
@@ -129,9 +121,29 @@ class BinaryTest(unittest.TestCase):
 
         if _r(samtools_version) != _r(pysam.__samtools_version__):
             raise ValueError(
-                "versions of pysam/samtools and samtools differ: %s != %s" %
-                (pysam.__samtools_version__,
+                "versions of pysam.%s and %s differ: %s != %s" %
+                (self.executable,
+                 self.executable,
+                 pysam.__samtools_version__,
                  samtools_version))
+
+    def setUp(self):
+        '''setup tests. 
+
+        For setup, all commands will be run before the first test is
+        executed. Individual tests will then just compare the output
+        files.
+
+        '''
+
+        self.check_version()
+
+        if not os.path.exists(WORKDIR):
+            os.makedirs(WORKDIR)
+
+        for f in self.requisites:
+            shutil.copy(os.path.join(DATADIR, f), 
+                        os.path.join(WORKDIR, f))
 
         self.savedir = os.getcwd()
         os.chdir(WORKDIR)
@@ -141,23 +153,22 @@ class BinaryTest(unittest.TestCase):
     def check_statement(self, statement):
 
         parts = statement.split(" ")
-        r_samtools = {"out": "samtools"}
+        r_samtools = {"out": self.executable}
         r_pysam = {"out": "pysam"}
 
         command = parts[0]
         command = self.map_command.get(command, command)
-        self.assertTrue(command in pysam.SAMTOOLS_DISPATCH)
+        # self.assertTrue(command in pysam.SAMTOOLS_DISPATCH)
 
         targets = [x for x in parts if "%(out)s" in x]
         samtools_targets = [x % r_samtools for x in targets]
         pysam_targets = [x % r_pysam for x in targets]
 
-        pysam_method = getattr(pysam.samtools, command)
-
+        pysam_method = getattr(self.module, command)
         # run samtools
-        samtools_statement = statement % {"out": "samtools"}
-        run_samtools(" ".join((SAMTOOLS, samtools_statement)))
-        sys.stdout.write(" samtools ok")
+        full_statement = statement % {"out": self.executable}
+        run_command(" ".join((self.executable, full_statement)))
+        sys.stdout.write(" %s ok" % self.executable)
 
         # run pysam
         if ">" in statement:
@@ -220,6 +231,28 @@ class StdoutTest(unittest.TestCase):
             os.path.join(DATADIR, "ex1.bam"),
             catch_stdout=False)
         self.assertTrue(len(r) == 0)
+
+
+class BcftoolsTest(SamtoolsTest):
+
+    requisites = [
+        "ex1.vcf.gz"
+    ]
+    # a list of statements to test
+    # should contain at least one %(out)s component indicating
+    # an output file.
+    statements = [
+        ("stats ex1.vcf.gz > %(out)s_ex1.stats"),
+    ]
+
+    map_command = {
+        "import": "samimport"}
+
+    executable = "bcftools"
+
+    module = pysam.bcftools
+
+
 
 if __name__ == "__main__":
     # build data files

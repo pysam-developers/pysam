@@ -313,7 +313,7 @@ def _pysam_dispatch(collection,
     # add extra arguments for commands accepting optional arguments
     # such as 'samtools index x.bam [out.index]'
     cargs = <char**>calloc(n + 2 + extra_args, sizeof(char *))
-    cargs[0] = "samtools"
+    cargs[0] = collection
     cargs[1] = method
 
     # create copies of strings - getopt for long options permutes
