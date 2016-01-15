@@ -17,10 +17,11 @@ import pysam.cvcf as cvcf
 from pysam.cvcf import *
 import pysam.cbcf as cbcf
 from pysam.cbcf import *
+from pysam.utils import SamtoolsError
 
 import pysam.Pileup as Pileup
 import os
-# from samtools import SAMTOOLS_DISPATCH
+from pysam.samtools import *
 
 # export all the symbols from separate modules
 __all__ = \
@@ -33,10 +34,8 @@ __all__ = \
     calignmentfile.__all__ +\
     calignedsegment.__all__ +\
     csamfile.__all__ +\
-    ["SamtoolsError", "SamtoolsDispatcher"] +\
+    ["SamtoolsError"] +\
     ["Pileup"]
-
-    # SAMTOOLS_DISPATCH.keys() +\
 
 from pysam.version import __version__, __samtools_version__
 

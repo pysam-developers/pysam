@@ -6,6 +6,7 @@ and data files located there.
 '''
 
 import pysam
+import pysam.samtools
 import unittest
 import os
 import shutil
@@ -16,10 +17,6 @@ import logging
 import array
 from TestUtils import checkBinaryEqual, checkURL
 
-IS_PYTHON3 = sys.version_info[0] >= 3
-
-SAMTOOLS = "samtools"
-WORKDIR = "pysam_test_work"
 DATADIR = "pysam_data"
 
 
@@ -755,7 +752,7 @@ class TestIteratorRow(unittest.TestCase):
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.view(os.path.join(DATADIR, "ex1.bam"),
+        sa = list(pysam.samtools.view(os.path.join(DATADIR, "ex1.bam"),
                              rnge,
                              raw=True))
         self.assertEqual(len(ps), len(
@@ -798,7 +795,7 @@ class TestIteratorRowAll(unittest.TestCase):
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch())
-        sa = list(pysam.view(os.path.join(DATADIR, "ex1.bam"),
+        sa = list(pysam.samtools.view(os.path.join(DATADIR, "ex1.bam"),
                              raw=True))
         self.assertEqual(
             len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa)))
@@ -1661,7 +1658,7 @@ class TestRemoteFileFTP(unittest.TestCase):
         if not checkURL(self.url):
             return
 
-        result = pysam.view(self.url, self.region)
+        result = pysam.samtools.view(self.url, self.region)
         self.assertEqual(len(result), 36)
 
     def testFTPFetch(self):
@@ -1687,7 +1684,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
         samfile_local = pysam.Samfile(self.local, "rb")
         ref = list(samfile_local.fetch(region=self.region))
 
-        result = pysam.view(self.url, self.region)
+        result = pysam.samtools.view(self.url, self.region)
         self.assertEqual(len(result), len(ref))
 
     def testFetch(self):
@@ -1786,7 +1783,7 @@ class TestPileup(unittest.TestCase):
             self.assertEqual(int(pos) - 1, column.pos)
 
     def testSamtoolsStepper(self):
-        refs = pysam.mpileup(
+        refs = pysam.samtools.mpileup(
             "-f", self.fastafilename,
             self.samfilename)
         iterator = self.samfile.pileup(
@@ -1795,7 +1792,7 @@ class TestPileup(unittest.TestCase):
         self.checkEqual(refs, iterator)
 
     def testAllStepper(self):
-        refs = pysam.mpileup(
+        refs = pysam.samtools.mpileup(
             "-f", self.fastafilename,
             "-A", "-B",
             self.samfilename)
@@ -1937,14 +1934,14 @@ class TestSamtoolsProxy(unittest.TestCase):
     '''tests for sanity checking access to samtools functions.'''
 
     def testIndex(self):
-        self.assertRaises(IOError, pysam.index, "missing_file")
+        self.assertRaises(IOError, pysam.samtools.index, "missing_file")
 
     def testView(self):
         # note that view still echos "open: No such file or directory"
-        self.assertRaises(pysam.SamtoolsError, pysam.view, "missing_file")
+        self.assertRaises(pysam.SamtoolsError, pysam.samtools.view, "missing_file")
 
     def testSort(self):
-        self.assertRaises(pysam.SamtoolsError, pysam.sort, "missing_file")
+        self.assertRaises(pysam.SamtoolsError, pysam.samtools.sort, "missing_file")
 
 
 class TestSamfileIndex(unittest.TestCase):

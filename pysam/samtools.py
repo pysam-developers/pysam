@@ -36,11 +36,11 @@ SAMTOOLS_DISPATCH = {
     "fastq": ("fastq", None),
     "quickcheck": ("quickcheck", None),
     "split": ("split", None),
-    # obsolete
-    # "pileup": "pileup", ( (("-c",), Pileup.iterate),),),
 }
 
 # instantiate samtools commands as python functions
 for key, options in SAMTOOLS_DISPATCH.items():
     cmd, parser = options
     globals()[key] = PysamDispatcher("samtools", cmd, parser)
+
+__all__ = list(SAMTOOLS_DISPATCH)

@@ -53,8 +53,8 @@ def checkSamtoolsViewEqual(filename1, filename2,
     if not without_header:
         args.append("-h")
 
-    lines1 = pysam.view(*(args + [filename1]))
-    lines2 = pysam.view(*(args + [filename2]))
+    lines1 = pysam.samtools.view(*(args + [filename1]))
+    lines2 = pysam.samtools.view(*(args + [filename2]))
 
     if len(lines1) != len(lines2):
         return False

@@ -168,7 +168,7 @@ class SamtoolsTest(unittest.TestCase):
         # run samtools
         full_statement = statement % {"out": self.executable}
         run_command(" ".join((self.executable, full_statement)))
-        sys.stdout.write(" %s ok" % self.executable)
+        # sys.stdout.write(" %s ok" % self.executable)
 
         # run pysam
         if ">" in statement:
@@ -181,7 +181,7 @@ class SamtoolsTest(unittest.TestCase):
                               raw=True,
                               catch_stdout=True)
         
-        sys.stdout.write(" pysam ok\n")
+        # sys.stdout.write(" pysam ok\n")
 
         if ">" in statement:
             with open(pysam_targets[-1], "wb") as outfile:
@@ -231,6 +231,16 @@ class StdoutTest(unittest.TestCase):
             os.path.join(DATADIR, "ex1.bam"),
             catch_stdout=False)
         self.assertTrue(len(r) == 0)
+
+
+class PysamTest(SamtoolsTest):
+    """check access to samtools command in the pysam 
+    main package.
+    
+    This is for backwards capability.
+    """
+
+    module = pysam
 
 
 class BcftoolsTest(SamtoolsTest):
