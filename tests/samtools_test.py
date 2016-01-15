@@ -11,6 +11,7 @@ import pysam.bcftools
 import unittest
 import os
 import re
+import glob
 import sys
 import subprocess
 import shutil
@@ -42,7 +43,11 @@ def get_version(executable):
 
     if IS_PYTHON3:
         lines = lines.decode('ascii')
-    return re.search("Version:\s+(\S+)", lines).groups()[0]
+    try:
+        x = re.search("Version:\s+(\S+)", lines).groups()[0]
+    except AttributeError:
+        raise ValueError("could not get version from %s" % lines)
+    return x
 
 
 class SamtoolsTest(unittest.TestCase):
@@ -64,41 +69,41 @@ class SamtoolsTest(unittest.TestCase):
     # should contain at least one %(out)s component indicating
     # an output file.
     statements = [
-        ("view ex1.bam > %(out)s_ex1.view"),
-        # ("view -bT ex1.fa -o %(out)s_ex1.view2 ex1.sam"),
-        ("sort ex1.bam -o %(out)s_ex1.sort.bam"),
-        ("mpileup ex1.bam > %(out)s_ex1.pileup"),
-        ("depth ex1.bam > %(out)s_ex1.depth"),
+        "view ex1.bam > %(out)s_ex1.view",
+        # ("view -bT ex1.fa -o %(out)s_ex1.view2 ex1.sam",
+        "sort ex1.bam -o %(out)s_ex1.sort.bam",
+        "mpileup ex1.bam > %(out)s_ex1.pileup",
+        "depth ex1.bam > %(out)s_ex1.depth",
         # TODO: issues with file naming
-        # ("faidx ex1.fa; %(out)s_ex1.fa.fai"),
-        ("index ex1.bam %(out)s_ex1.bam.fai"),
-        ("idxstats ex1.bam > %(out)s_ex1.idxstats"),
-        ("fixmate ex1.bam %(out)s_ex1.fixmate.bam"),
-        ("flagstat ex1.bam > %(out)s_ex1.flagstat"),
-        ("calmd ex1.bam ex1.fa > %(out)s_ex1.calmd.bam"),
+        # "faidx ex1.fa; %(out)s_ex1.fa.fai",
+        "index ex1.bam %(out)s_ex1.bam.fai",
+        "idxstats ex1.bam > %(out)s_ex1.idxstats",
+        "fixmate ex1.bam %(out)s_ex1.fixmate.bam",
+        "flagstat ex1.bam > %(out)s_ex1.flagstat",
+        "calmd ex1.bam ex1.fa > %(out)s_ex1.calmd.bam",
         # use -s option, otherwise the following error in samtools 1.2:
         # Samtools-htslib-API: bam_get_library() not yet implemented
         # causes downstream problems
         # TODO: The following cause subsequent commands to fail
         # unknow option
-        # ("rmdup -s ex1.bam %(out)s_ex1.rmdup.bam"),
-        # ("merge -f %(out)s_ex1.merge.bam ex1.bam ex1.bam"),
-        ("reheader ex1.sam ex1.bam > %(out)s_ex1.reheader"),
-        ("cat -o %(out)s_ex1.cat.bam ex1.bam ex1.bam"),
-        ("targetcut ex1.bam > %(out)s_ex1.targetcut"),
-        ("phase ex1.bam > %(out)s_ex1.phase"),
-        ("import ex1.fa.fai ex1.sam.gz %(out)s_ex1.bam"),
-        ("bam2fq ex1.bam > %(out)s_ex1.bam2fq"),
+        # "rmdup -s ex1.bam %(out)s_ex1.rmdup.bam",
+        # "merge -f %(out)s_ex1.merge.bam ex1.bam ex1.bam",
+        "reheader ex1.sam ex1.bam > %(out)s_ex1.reheader",
+        "cat -o %(out)s_ex1.cat.bam ex1.bam ex1.bam",
+        "targetcut ex1.bam > %(out)s_ex1.targetcut",
+        "phase ex1.bam > %(out)s_ex1.phase",
+        "import ex1.fa.fai ex1.sam.gz %(out)s_ex1.bam",
+        "bam2fq ex1.bam > %(out)s_ex1.bam2fq",
         # TODO: not the same
-        # ("pad2unpad -T ex1.fa ex2.bam > %(out)s_ex2.unpad"),
+        # "pad2unpad -T ex1.fa ex2.bam > %(out)s_ex2.unpad",
         # TODO: command line option problem
-        # ("bamshuf ex1.bam -O --output-fmt SAM > %(out)s_ex1.bamshuf.sam"),
-        # ("collate ex1.bam %(out)s_ex1.collate"),
-        ("bedcov ex1.bed ex1.bam > %(out)s_ex1.bedcov"),
-        ("stats ex1.bam > %(out)s_ex1.stats"),
-        ("dict ex1.bam > %(out)s_ex1.dict"),
+        # "bamshuf ex1.bam -O --output-fmt SAM > %(out)s_ex1.bamshuf.sam",
+        # "collate ex1.bam %(out)s_ex1.collate",
+        "bedcov ex1.bed ex1.bam > %(out)s_ex1.bedcov",
+        "stats ex1.bam > %(out)s_ex1.stats",
+        "dict ex1.bam > %(out)s_ex1.dict",
         # TODO: not the same
-        # ("addreplacerg -r 'RG\tID:ga\tSM:hs' ex1.bam > %(out)s_ex1.addreplacerg"),
+        # ("addreplacerg -r 'RG\tID:ga\tSM:hs' ex1.bam > %(out)s_ex1.addreplacerg",
     ]
 
     map_command = {
@@ -111,7 +116,6 @@ class SamtoolsTest(unittest.TestCase):
     def check_version(self):
 
         samtools_version = get_version(self.executable)
-
         def _r(s):
             # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a ->
             # 0.1.12
@@ -166,9 +170,9 @@ class SamtoolsTest(unittest.TestCase):
 
         pysam_method = getattr(self.module, command)
         # run samtools
-        full_statement = statement % {"out": self.executable}
+        full_statement = re.sub("%\(out\)s", self.executable, statement)
         run_command(" ".join((self.executable, full_statement)))
-        # sys.stdout.write(" %s ok" % self.executable)
+        sys.stdout.write("%s %s ok" % (command, self.executable))
 
         # run pysam
         if ">" in statement:
@@ -181,7 +185,7 @@ class SamtoolsTest(unittest.TestCase):
                               raw=True,
                               catch_stdout=True)
         
-        # sys.stdout.write(" pysam ok\n")
+        sys.stdout.write(" pysam ok\n")
 
         if ">" in statement:
             with open(pysam_targets[-1], "wb") as outfile:
@@ -197,10 +201,21 @@ class SamtoolsTest(unittest.TestCase):
 
         for samtools_target, pysam_target in zip(samtools_targets,
                                                  pysam_targets):
-            self.assertTrue(
-                checkBinaryEqual(samtools_target, pysam_target),
-                "%s failed: files %s and %s are not the same" %
-                (command, samtools_target, pysam_target))
+            if os.path.isdir(samtools_target):
+                samtools_files = glob.glob(os.path.join(samtools_target, "*"))
+                pysam_files = glob.glob(os.path.join(pysam_target, "*"))
+                self.assertEqual(len(samtools_files), len(pysam_files))
+                # need to be able to exclude files like README, etc.
+                continue
+            else:
+                samtools_files = [samtools_target]
+                pysam_files = [pysam_target]
+                
+            for s, p in zip(samtools_files, pysam_files):
+                self.assertTrue(
+                    checkBinaryEqual(s, p),
+                    "%s failed: files %s and %s are not the same" %
+                    (command, s, p))
 
     def testStatements(self):
         for statement in self.statements:
@@ -246,13 +261,35 @@ class PysamTest(SamtoolsTest):
 class BcftoolsTest(SamtoolsTest):
 
     requisites = [
-        "ex1.vcf.gz"
+        "ex1.fa",
+        "ex1.vcf.gz",
+        "ex1.vcf.gz.tbi",
     ]
     # a list of statements to test
     # should contain at least one %(out)s component indicating
     # an output file.
     statements = [
-        ("stats ex1.vcf.gz > %(out)s_ex1.stats"),
+        # "index -n ex1.vcf.gz > %(out)s_ex1.index",
+        "annotate -x ID ex1.vcf.gz > %(out)s_ex1.annotate",
+        "concat -a ex1.vcf.gz ex1.vcf.gz > %(out)s_ex1.concat",
+        "isec -p %(out)s_ex1.isec ex1.vcf.gz ex1.vcf.gz",
+        "merge --force-samples ex1.vcf.gz ex1.vcf.gz > %(out)s_ex1.norm",
+        "norm -m +both ex1.vcf.gz > %(out)s_ex1.norm",
+        # "plugin",
+        # "query -f '%CHROM\n' ex1.vcf.gz > %(out)s_ex1.query",
+        # "reheader -s A > %(out)s_ex1.reheader",
+        # "view ex1.vcf.gz > %(out)s_ex1.view",
+        # "call -m ex1.vcf.gz > %(out)s_ex1.call",
+        # bad file descriptor
+        # "consensus -f ex1.fa ex1.vcf.gz  > %(out)s_ex1.consensus"
+        # need appropriate VCF file
+        # "cnv",
+        # segfault
+        # "filter -s A ex1.vcf.gz  > %(out)s_ex1.filter",
+        # exit
+        # "gtcheck -s A ex1.vcf.gz  > %(out)s_ex1.gtcheck",
+        "roh -s A ex1.vcf.gz > %(out)s_ex1.roh",
+        "stats ex1.vcf.gz > %(out)s_ex1.stats",
     ]
 
     map_command = {
@@ -261,7 +298,6 @@ class BcftoolsTest(SamtoolsTest):
     executable = "bcftools"
 
     module = pysam.bcftools
-
 
 
 if __name__ == "__main__":

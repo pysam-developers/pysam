@@ -162,8 +162,9 @@ make
 PATH=$PATH:$HOME/CGAT/external-tools/samtools-1.3
 
 # install bcftools
-curl -L http://downloads.sourceforge.net/project/bcftools/bcftools/1.3/bcftools-1.3.tar.bz2 > bcftools-1.3.tar.bz2
-tar xjvf bcftools-1.3.tar.bz2 
+
+curl -L https://github.com/samtools/bcftools/releases/download/1.3/bcftools-1.3.tar.bz2 > bcftools-1.3.tar.bz2
+tar xjvf bcftools-1.3.tar.bz2
 cd bcftools-1.3
 make
 PATH=$PATH:$HOME/CGAT/external-tools/bcftools-1.3

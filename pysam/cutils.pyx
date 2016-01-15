@@ -293,7 +293,7 @@ def _pysam_dispatch(collection,
         # patch for `samtools view`
         # samtools `view` closes stdout, from which I can not
         # recover. Thus redirect output to file with -o option.
-        if method == "view":
+        if collection == "samtools" and method == "view":
             if "-o" in args:
                 raise ValueError("option -o is forbidden in samtools view")
             args =  ("-o", stdout_f) + args
