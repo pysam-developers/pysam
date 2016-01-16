@@ -610,6 +610,7 @@ cdef class AlignmentFile:
                         "unable to open remote index for '%s'" % cfilename)
             else:
                 has_index = True
+                cfilename = filename
                 if filepath_index:
                     if not os.path.exists(filepath_index):
                         warnings.warn(
@@ -617,7 +618,6 @@ cdef class AlignmentFile:
                         self.index = NULL
                         has_index = False
                 else:
-                    cfilename = filename
                     if self.is_bam \
                             and not os.path.exists(filename + b".bai") \
                             and not os.path.exists(filename[:-4] + b".bai"):
@@ -625,7 +625,7 @@ cdef class AlignmentFile:
                         has_index = False
                     elif self.is_cram \
                             and not os.path.exists(filename + b".crai") \
-                            and not os.path.exists(filename[:-4] + b".crai"):
+                            and not os.path.exists(filename[:-5] + b".crai"):
                         self.index = NULL
                         has_index = False
 
