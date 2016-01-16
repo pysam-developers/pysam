@@ -1600,8 +1600,10 @@ class TestDeNovoConstruction(unittest.TestCase):
             outfile.write(x)
         outfile.close()
 
-        self.assertTrue(checkBinaryEqual(tmpfilename, self.bamfile),
-                        "mismatch when construction BAM file, see %s %s" % (tmpfilename, self.bamfile))
+        self.assertTrue(
+            checkBinaryEqual(tmpfilename, self.bamfile),
+            "mismatch when construction BAM file, see %s %s" %
+            (tmpfilename, self.bamfile))
 
         os.unlink(tmpfilename)
 

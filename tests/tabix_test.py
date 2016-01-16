@@ -988,6 +988,9 @@ class TestIndexArgument(unittest.TestCase):
         for x, y in zip(same_basename_results, diff_index_result):
             self.assertEqual(x, y)
 
+        os.unlink(self.filename_dst)
+        os.unlink(self.index_dst)
+
 
 def _TestMultipleIteratorsHelper(filename, multiple_iterators):
     '''open file within scope, return iterator.'''
