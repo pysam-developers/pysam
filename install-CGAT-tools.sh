@@ -152,9 +152,9 @@ pushd .
 
 # create a new folder to store external tools
 mkdir -p $HOME/CGAT/external-tools
-cd $HOME/CGAT/external-tools
 
 # install samtools
+cd $HOME/CGAT/external-tools
 curl -L http://downloads.sourceforge.net/project/samtools/samtools/1.3/samtools-1.3.tar.bz2 > samtools-1.3.tar.bz2
 tar xjf samtools-1.3.tar.bz2 
 cd samtools-1.3
@@ -164,8 +164,12 @@ PATH=$PATH:$HOME/CGAT/external-tools/samtools-1.3
 echo "installed samtools"
 samtools --version
 
-# install bcftools
+if [ $? != 0 ]; then
+    exit 1
+fi
 
+# install bcftools
+cd $HOME/CGAT/external-tools
 curl -L https://github.com/samtools/bcftools/releases/download/1.3/bcftools-1.3.tar.bz2 > bcftools-1.3.tar.bz2
 tar xjf bcftools-1.3.tar.bz2
 cd bcftools-1.3
@@ -174,6 +178,10 @@ PATH=$PATH:$HOME/CGAT/external-tools/bcftools-1.3
 
 echo "installed bcftools"
 bcftools --version
+
+if [ $? != 0 ]; then
+    exit 1
+fi
 
 popd
 
