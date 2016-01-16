@@ -15,7 +15,8 @@ all: ex1.pileup.gz \
 	example_bai.bam \
         rg_with_tab.bam \
 	ex2_truncated.bam \
-	empty.bam empty.bam.bai
+	empty.bam empty.bam.bai \
+	explicit_index.bam explicit_index.cram
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
@@ -65,6 +66,12 @@ example_bai.bam: ex1.bam
 	cp ex1.bam $@
 	samtools index $@
 	mv $@.bai example_bai.bai
+
+explicit_index.bam: ex1.bam
+	cp ex1.bam $@
+
+explicit_index.cram: ex1.cram
+	cp ex1.cram $@
 
 clean:
 	rm -fr *.bam *.bai *.fai *.pileup* \
