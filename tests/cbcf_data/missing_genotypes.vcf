@@ -1,0 +1,6 @@
+##fileformat=VCFv4.1
+##contig=<ID=chr1,length=100>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample1	sample2
+chr1	1	.	A	G	999	.	.	GT	0/0	1/1
+chr1	50	.	T	C	999	.	.	GT	./.	0/1
