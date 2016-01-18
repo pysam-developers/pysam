@@ -9,7 +9,7 @@ cpdef parse_region(reference=*, start=*, end=*, region=*)
 #########################################################################
 # Utility functions for quality string conversions
 
-cpdef c_array.array qualitystring_to_array(bytes input_str, int offset=*)
+cpdef c_array.array qualitystring_to_array(input_str, int offset=*)
 cpdef array_to_qualitystring(c_array.array arr, int offset=*)
 cpdef qualities_to_qualitystring(qualities, int offset=*)
 

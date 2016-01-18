@@ -15,12 +15,13 @@ cdef int MAX_POS = 2 << 29
 
 #################################################################
 # Utility functions for quality string conversions
-cpdef c_array.array qualitystring_to_array(bytes input_str, int offset=33):
+cpdef c_array.array qualitystring_to_array(input_str, int offset=33):
     """convert a qualitystring to an array of quality values."""
     if input_str is None:
         return None
+    qs = force_bytes(input_str)
     cdef char i
-    return c_array.array('B', [i - offset for i in input_str])
+    return c_array.array('B', [i - offset for i in qs])
 
 
 cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
