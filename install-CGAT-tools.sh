@@ -63,7 +63,7 @@ if [ "$OS" == "ubuntu" -o "$OS" == "travis" ] ; then
    echo " Installing packages for Ubuntu "
    echo
 
-   apt-get install -y gcc g++ zlib1g-dev libssl-dev libbz2-dev libfreetype6-dev libpng12-dev libblas-dev libatlas-dev liblapack-dev gfortran libpq-dev r-base-dev libreadline-dev libmysqlclient-dev libboost-dev libsqlite3-dev mercurial;
+   apt-get install -y gcc g++
 
 elif [ "$OS" == "sl" ] ; then
 
@@ -71,7 +71,7 @@ elif [ "$OS" == "sl" ] ; then
    echo " Installing packages for Scientific Linux "
    echo
 
-   yum -y install gcc zlib-devel gcc-c++ freetype-devel libpng-devel blas atlas lapack gcc-gfortran postgresql-devel R-core-devel readline-devel mysql-devel boost-devel sqlite-devel mercurial openssl-devel bzip2-devel 
+   yum -y install gcc zlib-devel gcc-c++
 
 else
 
@@ -119,28 +119,6 @@ else
 
 fi # if-OS
 } # install_python_deps
-
-install_nosetests_deps() {
-
-return
-
-if [ "$OS" == "ubuntu" -o "$OS" == "travis" ] ; then
-
-   # GCProfile
-   apt-get install -y libc6-i386 libstdc++5:i386
-
-elif [ "$OS" == "sl" ] ; then
-
-   # GCProfile
-   yum install -y glibc.i686 compat-libstdc++-33.i686
-
-else
-
-   sanity_check_os
-
-fi # if-OS
-
-} # install_nosetests_deps
 
 # common set of tasks to prepare external dependencies
 nosetests_external_deps() {
@@ -246,7 +224,6 @@ else
       OS="travis"
       install_os_packages
       install_python_deps
-      install_nosetests_deps
       run_nosetests
 
    elif [ "$1" == "--install-os-packages" ] ; then
