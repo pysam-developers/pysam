@@ -1,6 +1,7 @@
 import pysam
 import unittest
 import os
+import gzip
 
 DATADIR = "pysam_data"
 
@@ -140,6 +141,27 @@ class TestFastxFileFasta(TestFastxFileFastq):
 
 class TestFastxFileFastqStream(TestFastxFileFastq):
     persist = False
+
+
+class TestFastxFileWithEmptySequence(unittest.TestCase):
+    """see issue 204:
+
+    iteration over fastq file with empty sequence stops prematurely
+    """
+
+    filetype = pysam.FastxFile
+    filename = "faidx_empty_seq.fq.gz"
+
+    def testIteration(self):
+        fn = os.path.join(DATADIR, self.filename)
+
+        with gzip.open(fn) as inf:
+            ref_num = len(list(inf)) / 4
+
+        f = self.filetype(fn)
+        l = len(list(f))
+        self.assertEqual(ref_num, l)
+
 
 if __name__ == "__main__":
     unittest.main()
