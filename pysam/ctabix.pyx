@@ -432,9 +432,16 @@ cdef class TabixFile:
 
         if iter == NULL:
             if region is None:
-                # possible reason is that the file is empty -
-                # return an empty iterator
-                return EmptyIterator()
+                if len(self.contigs) > 0:
+                    # when accessing a tabix file created prior tabix 1.0
+                    # the full-file iterator is empty.
+                    raise ValueError(
+                        "could not create iterator, possible "
+                        "tabix version mismatch")
+                else:
+                    # possible reason is that the file is empty -
+                    # return an empty iterator
+                    return EmptyIterator()
             else:
                 raise ValueError(
                     "could not create iterator for region '%s'" %
