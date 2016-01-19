@@ -576,7 +576,7 @@ class TestAsString(unittest.TestCase):
 
     def testAsString(self):
         with open(os.path.join(DATADIR, "ex2.sam")) as samf:
-            reference = [x for x in samf if not x.startswith("@")]
+            reference = [x[:-1] for x in samf if not x.startswith("@")]
 
         with pysam.AlignmentFile(
             os.path.join(DATADIR, "ex2.bam"), "r") as pysamf:

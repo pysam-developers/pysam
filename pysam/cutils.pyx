@@ -35,7 +35,7 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
     
     for x from 0 <= x < len(qualities):
         result[x] = qualities[x] + offset
-    return result.tostring()
+    return force_str(result.tobytes())
 
 
 cpdef qualities_to_qualitystring(qualities, int offset=33):
@@ -61,7 +61,7 @@ cpdef qualities_to_qualitystring(qualities, int offset=33):
         return array_to_qualitystring(qualities, offset=offset)
     else:
         # tuples and lists
-        return "".join([chr(x + offset) for x in qualities])
+        return force_str("".join([chr(x + offset) for x in qualities]))
 
 
 ########################################################################
@@ -124,6 +124,12 @@ cdef charptr_to_str(char* s, encoding="ascii"):
         return s
     else:
         return s.decode(encoding)
+
+cdef bytes charptr_to_bytes(char* s, encoding="ascii"):
+    if s == NULL:
+        return None
+    else:
+        return s
 
 cdef force_str(object s, encoding="ascii"):
     """Return s converted to str type of current Python

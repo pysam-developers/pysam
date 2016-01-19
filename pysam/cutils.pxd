@@ -19,6 +19,7 @@ cpdef qualities_to_qualitystring(qualities, int offset=*)
 ## Python 3 compatibility functions
 ########################################################################
 cdef charptr_to_str(char *s, encoding=*)
+cdef bytes charptr_to_bytes(char *s, encoding=*)
 cdef force_str(object s, encoding=*)
 cdef bytes force_bytes(object s, encoding=*)
 cdef bytes force_cmdline_bytes(object s, encoding=*)

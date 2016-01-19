@@ -166,12 +166,15 @@ class BasicTestBAMFromFetch(unittest.TestCase):
             self.reads[3].query_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
 
     def testARqual(self):
-        self.assertEqual(pysam.qualities_to_qualitystring(self.reads[0].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 1: %s != %s" % (pysam.qualities_to_qualitystring(self.reads[0].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
-        self.assertEqual(pysam.qualities_to_qualitystring(self.reads[1].query_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<", "quality string mismatch in read 2: %s != %s" % (
-            pysam.qualities_to_qualitystring(self.reads[1].query_qualities), "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
-        self.assertEqual(pysam.qualities_to_qualitystring(self.reads[3].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
-                         "quality string mismatch in read 3: %s != %s" % (pysam.qualities_to_qualitystring(self.reads[3].query_qualities), "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
+        self.assertEqual(
+            pysam.qualities_to_qualitystring(self.reads[0].query_qualities),
+            "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
+        self.assertEqual(
+            pysam.qualities_to_qualitystring(self.reads[1].query_qualities),
+            "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<")
+        self.assertEqual(
+            pysam.qualities_to_qualitystring(self.reads[3].query_qualities),
+            "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
 
     def testARquery(self):
         self.assertEqual(
@@ -1277,7 +1280,7 @@ class TestHeaderCRAM(TestHeaderSAM):
             self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
             _strip(b[ak])
 
-            self.assertEqual(sorted(av), sorted(b[ak]))
+            self.assertEqual(av, b[ak])
 
 
 class TestHeaderFromRefs(unittest.TestCase):
