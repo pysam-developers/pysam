@@ -812,7 +812,8 @@ class TestVCFFromVCF(TestVCF):
     # tests failing on opening
     fail_on_opening = ((24, "Error HEADING_NOT_SEPARATED_BY_TABS"),
                        )
-
+    
+    check_samples = False
     coordinate_offset = 1
 
     # value returned for missing values
@@ -851,6 +852,9 @@ class TestVCFFromVCF(TestVCF):
 
     def get_field_value(self, record, field):
         return record[field]
+
+    def sample2value(self, r, v):
+        return r, v
 
     def alt2value(self, r, v):
         if r == ".":
@@ -947,6 +951,56 @@ class TestVCFFromVCF(TestVCF):
                             ref_val, val,
                             "mismatch in field %s: expected %s(%s), got %s(%s)" %
                             (field, ref_val, type(ref_val), val, type(val)))
+                # parse samples
+                if self.check_samples:
+                    if len(c) == 8:
+                        for x, s in enumerate(r.samples):
+                            self.assertEqual([], r.samples[s].values(),
+                                "mismatch in sample {}: "
+                                "expected [], got {}, src={}, line={}".format(
+                                    s, r.samples[s].values(),
+                                    r.samples[s].items(), r))
+                    else:
+                        for x, s in enumerate(r.samples):
+                            ref, comp = self.sample2value(c[9 + x], r.samples[s])
+                            self.compare_samples(ref, comp, s, r)
+
+    def compare_samples(self, ref, comp, s, r):
+
+        if ref != comp:
+
+            # check if GT not at start, not VCF conform and
+            # not supported by cbcf.pyx
+            k = r.format.keys()
+            if "GT" in k and k[0] != "GT":
+                return
+
+            # perform an element-wise checto work around rounding differences
+            for a, b in zip(re.split("[:,;]", ref),
+                            re.split("[:,;]", comp)):
+                is_float = True
+                try:
+                    a = float(a)
+                    b = float(a)
+                except ValueError:
+                    is_float = False
+
+                if is_float:
+                    self.assertAlmostEqual(
+                        a, b, 2,
+                        "mismatch in sample {}: "
+                        "expected {}, got {}, src={}, line={}"
+                        .format(
+                            s, ref, comp,
+                            r.samples[s].items(), r))
+                else:
+                    self.assertEqual(
+                        a, b,
+                        "mismatch in sample {}: "
+                        "expected {}, got {}, src={}, line={}"
+                        .format(
+                            s, ref, comp,
+                            r.samples[s].items(), r))
 
 ############################################################################
 # create a test class for each example vcf file.
@@ -971,7 +1025,7 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
     fail_on_parsing = []
     fail_on_opening = []
     coordinate_offset = 0
-
+    check_samples = True
     # value returned for missing values
     missing_value = None
     missing_quality = None
@@ -989,6 +1043,42 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
             return None, v
         else:
             return r.split(","), list(v)
+
+    def sample2value(self, r, smp):
+
+        def convert_field(f):
+            if f is None:
+                return "."
+            elif isinstance(f, tuple):
+                return ",".join(map(convert_field, f))
+            else:
+                return str(f)
+
+        try:
+            gt_field = smp.keys().index("GT")
+        except ValueError:
+            gt_field = None
+
+        if smp.allele_indices:
+            alleles = [x if x >= 0 else "." for x in  smp.allele_indices]
+        else:
+            alleles = "."
+
+        if smp.phased:
+            alleles = "|".join(map(str, alleles))
+        else:
+            alleles = "/".join(map(str, alleles))
+
+        v = smp.values()
+        if gt_field is not None:
+            v[gt_field] = alleles
+
+        comp = ":".join(map(convert_field, v))
+
+        if comp.endswith(":."):
+            comp = comp[:-2]
+
+        return r, comp
 
     def setUp(self):
         TestVCF.setUp(self)
