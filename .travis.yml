@@ -7,8 +7,16 @@ python:
   - "3.4"
   - "3.5"
 
+sudo: false
+
+addons:
+  apt:
+    packages:
+    - gcc
+    - g++
+
 script:
-  - sudo ./install-CGAT-tools.sh --travis
+  - ./run_tests_travis.sh
 
 notifications:
   email:

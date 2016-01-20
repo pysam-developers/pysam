@@ -999,6 +999,44 @@ def _TestMultipleIteratorsHelper(filename, multiple_iterators):
     return iterator
 
 
+class TestBackwardsCompatibility(unittest.TestCase):
+    """check if error is raised if a tabix file from an 
+    old version is accessed from pysam"""
+
+    def check(self, filename, raises=None):
+        tf = pysam.TabixFile(filename)
+        ref = loadAndConvert(filename)
+        if raises is None:
+            self.assertEqual(len(list(tf.fetch())), len(ref))
+        else:
+            self.assertRaises(raises, tf.fetch)
+        
+    def testVCF0v23(self):
+        self.check(os.path.join(DATADIR, "example_0v23.vcf.gz"),
+                   ValueError)
+
+    def testBED0v23(self):
+        self.check(os.path.join(DATADIR, "example_0v23.bed.gz"),
+                   ValueError)
+
+    def testVCF0v26(self):
+        self.check(os.path.join(DATADIR, "example_0v26.vcf.gz"),
+                   ValueError)
+
+    def testBED0v26(self):
+        self.check(os.path.join(DATADIR, "example_0v26.bed.gz"),
+                   ValueError)
+
+    def testVCF(self):
+        self.check(os.path.join(DATADIR, "example.vcf.gz"))
+
+    def testBED(self):
+        self.check(os.path.join(DATADIR, "example.bed.gz"))
+
+    def testEmpty(self):
+        self.check(os.path.join(DATADIR, "empty.bed.gz"))
+
+
 class TestMultipleIterators(unittest.TestCase):
 
     filename = os.path.join(DATADIR, "example.gtf.gz")
