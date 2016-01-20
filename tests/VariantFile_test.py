@@ -15,22 +15,19 @@ class TestMissingGenotypes(unittest.TestCase):
                                       encode=False)
 
     def check(self, filename):
-        return 
+        """see issue 203 - check for segmentation fault"""
         fn = os.path.join(DATADIR, filename)
         self.assertEqual(True, os.path.exists(fn))
-        # v = pysam.VariantFile(fn)
-        # for site in v:
-        #     for ss,rec in site.samples.items():
-        #         print ss, rec
+        v = pysam.VariantFile(fn)
+        for site in v:
+            for ss,rec in site.samples.items():
+                a, b = ss, rec
 
         v = pysam.VariantFile(fn)
         for x, site in enumerate(v):
-            import pdb; pdb.set_trace()
-            print "======"
-            print site
             for ss,rec in site.samples.items():
-                print ss
-                print rec.alleles
+                a, b = ss, rec.alleles
+                a, b = ss, rec.allele_indices
 
     def testVCF(self):
         self.check(self.filename)

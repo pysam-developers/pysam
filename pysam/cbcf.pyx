@@ -1715,7 +1715,9 @@ cdef VariantRecord makeVariantRecord(VariantHeader header, bcf1_t *r):
 
 cdef class VariantRecordSample(object):
     """Data for a single sample from a :class:`VariantRecord` object.
-       Provides data accessors for genotypes and a mapping interface from format name to values.
+       Provides data accessors for genotypes and a mapping interface
+       from format name to values.
+
     """
 
     property name:
@@ -1794,6 +1796,10 @@ cdef class VariantRecordSample(object):
             cdef int16_t *data16
             cdef int32_t *data32
             alleles = []
+
+            # AH: not sure why this should be NULL, but see issue #203
+            if r.d.allele == NULL:
+                return tuple(["."] * nalleles
 
             if fmt0.type == BCF_BT_INT8:
                 data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
