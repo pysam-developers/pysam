@@ -35,7 +35,7 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
     
     for x from 0 <= x < len(qualities):
         result[x] = qualities[x] + offset
-    return force_str(result.tobytes())
+    return force_str(result.tostring())
 
 
 cpdef qualities_to_qualitystring(qualities, int offset=33):

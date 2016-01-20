@@ -259,7 +259,7 @@ cdef inline packTags(tags):
                 # automatically determine value type - first value
                 # determines type. If there is a mix of types, the
                 # result is undefined.
-                vt = getTypecode(min(value), max(value))
+                valuetype = getTypecode(min(value), max(value))
 
             if valuetype not in datatype2format:
                 raise ValueError("invalid value type '%s'" % valuetype)
@@ -287,7 +287,7 @@ cdef inline packTags(tags):
                          b"B",
                          valuetype,
                          len(value),
-                         value.tobytes()])
+                         force_bytes(value.tostring())])
 
         else:
             if valuetype is None:
