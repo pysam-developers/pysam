@@ -292,6 +292,7 @@ else:
     # necessary to be both compatible for python 2.7 and 3.3
     if IS_PYTHON3:
         for part in parts:
+            # break
             try:
                 os.unlink("pysam/c%s.c" % part)
             except:
@@ -329,37 +330,6 @@ extra_compile_args = ["-Wno-error=declaration-after-statement",
                       "-DHAVE_LIBCURL=1"]
 define_macros = [('_FILE_OFFSET_BITS', '64'),
                    ('_USE_KNETFILE', '')]
-
-# csamtools = Extension(
-#     "pysam.csamtools",
-#     [source_pattern % "samtools",
-#      "pysam/pysam_util.c"] +
-#     glob.glob(os.path.join("samtools", "*.pysam.c")) +
-#     glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
-#     os_c_files +
-#     htslib_sources,
-#     library_dirs=htslib_library_dirs,
-#     include_dirs=["samtools", "pysam"] + include_os + htslib_include_dirs,
-#     libraries=["z"] + htslib_libraries,
-#     language="c",
-#     extra_compile_args=extra_compile_args,
-#     define_macros=define_macros
-# )
-
-# cbcftools = Extension(
-#     "pysam.cbcftools",
-#     [source_pattern %  "bcftools"] +
-#     glob.glob(os.path.join("bcftools", "*.pysam.c")) +
-#     glob.glob(os.path.join("bcftools", "*", "*.pysam.c")) +
-#     os_c_files +
-#     htslib_sources,
-#     library_dirs=htslib_library_dirs,
-#     include_dirs=["bcftools", "pysam"] + include_os + htslib_include_dirs,
-#     libraries=["z"] + htslib_libraries,
-#     language="c",
-#     extra_compile_args=extra_compile_args,
-#     define_macros=define_macros
-# )
 
 chtslib = Extension(
     "pysam.libchtslib",

@@ -35,7 +35,6 @@ cdef extern from "htslib_util.h":
 from pysam.calignmentfile cimport AlignmentFile
 ctypedef AlignmentFile AlignmentFile_t
 
-cdef bytes TagToString(tuple tagtup)
 
 # Note: need to declare all C fields and methods here
 cdef class AlignedSegment:
@@ -64,10 +63,7 @@ cdef class AlignedSegment:
     cpdef has_tag(self, tag)
 
     # returns a valid sam alignment string
-    cpdef bytes tostring(self, AlignmentFile_t handle)
-
-    # returns the aux tag fields as a string.
-    cdef bytes get_tag_string(self)
+    cpdef tostring(self, AlignmentFile_t handle)
 
 
 cdef class PileupColumn:

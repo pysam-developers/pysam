@@ -16,7 +16,8 @@ all: ex1.pileup.gz \
         rg_with_tab.bam \
 	ex2_truncated.bam \
 	empty.bam empty.bam.bai \
-	explicit_index.bam explicit_index.cram
+	explicit_index.bam explicit_index.cram \
+	faidx_empty_seq.fq.gz
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
@@ -75,6 +76,9 @@ explicit_index.cram: ex1.cram
 
 clean:
 	rm -fr *.bam *.bai *.fai *.pileup* *.cram \
-		*~ calDepth *.dSYM pysam_*.sam \
+	*~ calDepth *.dSYM pysam_*.sam \
 	ex2.sam ex2.sam.gz ex1.sam \
+	*.fq.gz
 
+%.fq.gz: %.fq
+	gzip < $< > $@

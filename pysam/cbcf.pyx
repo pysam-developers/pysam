@@ -1799,7 +1799,7 @@ cdef class VariantRecordSample(object):
 
             # AH: not sure why this should be NULL, but see issue #203
             if r.d.allele == NULL:
-                return tuple(["."] * nalleles
+                return tuple(["."] * nalleles)
 
             if fmt0.type == BCF_BT_INT8:
                 data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)

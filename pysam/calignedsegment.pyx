@@ -64,7 +64,8 @@ from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
 from libc.string cimport strchr
 
-from pysam.cutils cimport force_bytes, force_str, charptr_to_str
+from pysam.cutils cimport force_bytes, force_str, \
+    charptr_to_str, charptr_to_bytes
 from pysam.cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
 
@@ -133,70 +134,6 @@ cdef convert_binary_tag(uint8_t * tag):
     return byte_size, nvalues, c_values
 
 
-cdef bytes TagToString(tuple tagtup):
-    cdef c_array.array b_aux_arr
-    cdef char value_type = tagtup[2]
-    cdef char* tag = tagtup[0]
-    cdef double value_double
-    cdef long value_int
-    cdef bytes value_bytes
-    cdef long i, min_value
-    cdef double f
-    cdef cython.str ret
-    cdef size_t size
-    if(value_type in ['c', 'C', 'i', 'I', 's', 'S']):
-        value_int = tagtup[1]
-        ret = tag + ":i:%s" % value_int
-    elif(value_type in ['f', 'F', 'd', 'D']):
-        value_float = tagtup[1]
-        ret = tag + ":f:%s" % (value_float)
-    elif(value_type == "Z"):
-        value_bytes = tagtup[1]
-        ret = tag + ":Z:" + value_bytes
-    elif(value_type == "B"):
-        if(isinstance(tagtup[1], array.array)):
-            b_aux_arr = tagtup[1]
-        else:
-            if(isinstance(tagtup[1][0], float)):
-                if(len(tagtup[1]) == 1):
-                    return <bytes> (tag + ":B:f%s," % tagtup[1][0])
-                else:
-                    return <bytes> (tag + ":B:f" +
-                                ",".join([str(f) for f in tagtup[1]]))
-            else:
-                b_aux_arr = array('l', tagtup[1])
-                # Choose long to accommodate any size integers.
-        size = sizeof(b_aux_arr)
-        min_value = min(b_aux_arr)
-        length = len(b_aux_arr)
-        if(size == 1):
-            if(min_value < 0):
-                ret = tag + ":B:c," + ",".join([str(i) for i in b_aux_arr])
-            else:
-                ret = tag + ":B:C," + ",".join([str(i) for i in b_aux_arr])
-        elif(size == 2):
-            if(min_value < 0):
-                ret = tag + ":B:i," + ",".join([str(i) for i in b_aux_arr])
-            else:
-                ret = tag + ":B:I," + ",".join([str(i) for i in b_aux_arr])
-        else:  # size == 4. Removed check to compile to switch statement.
-            if(min_value < 0):
-                ret = tag + ":B:s," + ",".join([str(i) for i in b_aux_arr])
-            else:
-                ret = tag + ":B:S," + ",".join([str(i) for i in b_aux_arr])
-    elif(value_type == "H"):
-        ret = tag + ":H:" + "".join([hex(i)[2:] for i in tagtup[1]])
-    elif(value_type == "A"):
-        ret = tag + ":A:" + tagtup[1]
-    else:
-        # Unrecognized character - returning the string as it was provided.
-        # An exception is not being raised because that prevents cython
-        # from being able to compile this into a switch statement for
-        # performance.
-        ret = "%s:%s:%s" % (tag, tagtup[2], tagtup[1])
-    return <bytes> ret
-
-
 cdef inline uint8_t get_value_code(value, value_type=None):
     '''guess type code for a *value*. If *value_type* is None,
     the type code will be inferred based on the Python type of
@@ -229,7 +166,7 @@ cdef inline uint8_t get_value_code(value, value_type=None):
     return typecode
 
 
-cdef inline getTypecode(value, maximum_value=None):
+cdef inline bytes getTypecode(value, maximum_value=None):
     '''returns the value typecode of a value.
 
     If max is specified, the approprite type is
@@ -238,6 +175,8 @@ cdef inline getTypecode(value, maximum_value=None):
 
     if maximum_value is None:
         maximum_value = value
+
+    cdef bytes valuetype
 
     t = type(value)
 
@@ -272,7 +211,7 @@ cdef inline getTypecode(value, maximum_value=None):
         if t is not bytes:
             value = value.encode('ascii')
         if len(value) == 1:
-            valuetype = b"A"
+            valuetype = b'A'
         else:
             valuetype = b'Z'
 
@@ -289,16 +228,16 @@ cdef inline packTags(tags):
     to be used in a call to struct.pack_into.
     """
     fmts, args = ["<"], []
-
+    
     datatype2format = {
-        'c': ('b', 1),
-        'C': ('B', 1),
-        's': ('h', 2),
-        'S': ('H', 2),
-        'i': ('i', 4),
-        'I': ('I', 4),
-        'f': ('f', 4),
-        'A': ('c', 1)}
+        b'c': ('b', 1),
+        b'C': ('B', 1),
+        b's': ('h', 2),
+        b'S': ('H', 2),
+        b'i': ('i', 4),
+        b'I': ('I', 4),
+        b'f': ('f', 4),
+        b'A': ('c', 1)}
 
     for tag in tags:
 
@@ -310,9 +249,8 @@ cdef inline packTags(tags):
         else:
             raise ValueError("malformatted tag: %s" % str(tag))
 
-        if not type(pytag) is bytes:
-            pytag = pytag.encode('ascii')
-
+        pytag = force_bytes(pytag)
+        valuetype = force_bytes(valuetype)
         t = type(value)
 
         if t is tuple or t is list:
@@ -335,10 +273,12 @@ cdef inline packTags(tags):
         elif isinstance(value, array.array):
             # binary tags from arrays
             if valuetype is None:
-                valuetype = chr(map_typecode_python_to_htslib(ord(value.typecode)))
+                valuetype = force_bytes(chr(
+                    map_typecode_python_to_htslib(ord(value.typecode))))
 
             if valuetype not in datatype2format:
-                raise ValueError("invalid value type '%s'" % valuetype)
+                raise ValueError("invalid value type '%s' (%s)" %
+                                 (valuetype, type(valuetype)))
 
             # use array.tostring() to retrieve byte representation and
             # save as bytes
@@ -347,11 +287,14 @@ cdef inline packTags(tags):
                          b"B",
                          valuetype,
                          len(value),
-                         value.tostring()])
+                         force_bytes(value.tostring())])
 
         else:
             if valuetype is None:
                 valuetype = getTypecode(value)
+
+            if valuetype in b"AZ":
+                value = force_bytes(value)
 
             if valuetype == b"Z":
                 datafmt = "2sc%is" % (len(value)+1)
@@ -441,9 +384,9 @@ cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
     return end_offset
 
 
-cdef inline object getSequenceInRange(bam1_t *src,
-                                         uint32_t start,
-                                         uint32_t end):
+cdef inline bytes getSequenceInRange(bam1_t *src,
+                                     uint32_t start,
+                                     uint32_t end):
     """return python string of the sequence in a bam1_t object.
     """
 
@@ -463,12 +406,12 @@ cdef inline object getSequenceInRange(bam1_t *src,
         # note: do not use string literal as it will be a python string
         s[k-start] = seq_nt16_str[p[k/2] >> 4 * (1 - k%2) & 0xf]
 
-    return charptr_to_str(seq)
+    return charptr_to_bytes(seq)
 
 
 cdef inline object getQualitiesInRange(bam1_t *src,
-                                          uint32_t start,
-                                          uint32_t end):
+                                       uint32_t start,
+                                       uint32_t end):
     """return python array of quality values from a bam1_t object"""
 
     cdef uint8_t * p
@@ -532,7 +475,7 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
 
 
 # TODO: avoid string copying for getSequenceInRange, reconstituneSequenceFromMD, ...
-cdef inline object reconstituteSequenceFromMD(bam1_t * src):
+cdef inline bytes reconstituteSequenceFromMD(bam1_t * src):
     """return reference sequence from MD tag.
 
     Returns
@@ -736,10 +679,10 @@ cdef class AlignedSegment:
 
         return hash_value
 
-    cpdef bytes tostring(self, AlignmentFile_t htsfile):
+    cpdef tostring(self, AlignmentFile_t htsfile):
         """returns a string representation of the aligned segment.
 
-        The output format is valid SAM format if
+        The output format is valid SAM format.
 
         Parameters
         ----------
@@ -748,37 +691,21 @@ cdef class AlignedSegment:
                    identifers to chromosome names.
         """
 
-        cdef cython.str cigarstring, mate_ref, ref
-        if self.reference_id < 0:
-            ref = "*"
-        else:
-            ref = htsfile.getrname(self.reference_id)
+        cdef kstring_t line
+        line.l = line.m = 0
+        line.s = NULL
 
-        if self.rnext < 0:
-            mate_ref = "*"
-        elif self.rnext == self.reference_id:
-            mate_ref = "="
-        else:
-            mate_ref = htsfile.getrname(self.rnext)
+        if sam_format1(htsfile.header, self._delegate, &line) < 0:
+            if line.m:
+                free(line.s)
+            raise ValueError('sam_format failed')
 
-        cigarstring = self.cigarstring if(
-            self.cigarstring is not None) else "*"
-        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (
-            self.query_name, self.flag,
-            ref, self.pos + 1, self.mapq,
-            cigarstring,
-            mate_ref, self.mpos + 1,
-            self.template_length,
-            self.seq, self.qual,
-            self.get_tag_string())
-        return <bytes> ret
+        ret = force_str(line.s[:line.l])
+        
+        if line.m:
+            free(line.s)
 
-    cdef bytes get_tag_string(self):
-        cdef tuple tag
-        cdef cython.str ret = "\t".join([
-            TagToString(tag) for tag in
-            self.get_tags(with_value_type=True)])
-        return <bytes> ret
+        return ret
 
     ########################################################
     ## Basic attributes in order of appearance in SAM format
@@ -989,8 +916,8 @@ cdef class AlignedSegment:
             if src.core.l_qseq == 0:
                 return None
 
-            self.cache_query_sequence = getSequenceInRange(
-                src, 0, src.core.l_qseq)
+            self.cache_query_sequence = force_str(getSequenceInRange(
+                src, 0, src.core.l_qseq))
             return self.cache_query_sequence
 
         def __set__(self, seq):
@@ -1040,7 +967,7 @@ cdef class AlignedSegment:
                 p = pysam_bam_get_qual(src)
                 p[0] = 0xff
 
-            self.cache_query_sequence = seq
+            self.cache_query_sequence = force_str(seq)
 
             # clear cached values for quality values
             self.cache_query_qualities = None
@@ -1263,7 +1190,8 @@ cdef class AlignedSegment:
             start = getQueryStart(src)
             end   = getQueryEnd(src)
 
-            self.cache_query_alignment_sequence = getSequenceInRange(src, start, end)
+            self.cache_query_alignment_sequence = force_str(
+                getSequenceInRange(src, start, end))
             return self.cache_query_alignment_sequence
 
     property query_alignment_qualities:
@@ -1395,7 +1323,7 @@ cdef class AlignedSegment:
 
         This method requires the MD tag to be set.
         """
-        return reconstituteSequenceFromMD(self._delegate)
+        return force_str(reconstituteSequenceFromMD(self._delegate))
 
 
     def get_aligned_pairs(self, matches_only=False, with_seq=False):
@@ -1434,7 +1362,7 @@ cdef class AlignedSegment:
         # read sequence, cigar and MD tag are consistent.
 
         if _with_seq:
-            ref_seq = reconstituteSequenceFromMD(src)
+            ref_seq = force_str(reconstituteSequenceFromMD(src))
             if ref_seq is None:
                 raise ValueError("MD tag not present")
 

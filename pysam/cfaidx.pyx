@@ -491,7 +491,7 @@ cdef class FastxFile:
         cdef int l
         with nogil:
             l = kseq_read(self.entry)
-        if (l > 0):
+        if (l >= 0):
             if self.persist:
                 return PersistentFastqProxy(makeFastqProxy(self.entry))
             return makeFastqProxy(self.entry)

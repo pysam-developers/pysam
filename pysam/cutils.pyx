@@ -17,12 +17,13 @@ cdef int MAX_POS = 2 << 29
 
 #################################################################
 # Utility functions for quality string conversions
-cpdef c_array.array qualitystring_to_array(bytes input_str, int offset=33):
+cpdef c_array.array qualitystring_to_array(input_str, int offset=33):
     """convert a qualitystring to an array of quality values."""
     if input_str is None:
         return None
+    qs = force_bytes(input_str)
     cdef char i
-    return c_array.array('B', [i - offset for i in input_str])
+    return c_array.array('B', [i - offset for i in qs])
 
 
 cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
@@ -36,7 +37,7 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
     
     for x from 0 <= x < len(qualities):
         result[x] = qualities[x] + offset
-    return result.tostring()
+    return force_str(result.tostring())
 
 
 cpdef qualities_to_qualitystring(qualities, int offset=33):
@@ -62,7 +63,7 @@ cpdef qualities_to_qualitystring(qualities, int offset=33):
         return array_to_qualitystring(qualities, offset=offset)
     else:
         # tuples and lists
-        return "".join([chr(x + offset) for x in qualities])
+        return force_str("".join([chr(x + offset) for x in qualities]))
 
 
 ########################################################################
@@ -125,6 +126,12 @@ cdef charptr_to_str(char* s, encoding="ascii"):
         return s
     else:
         return s.decode(encoding)
+
+cdef bytes charptr_to_bytes(char* s, encoding="ascii"):
+    if s == NULL:
+        return None
+    else:
+        return s
 
 cdef force_str(object s, encoding="ascii"):
     """Return s converted to str type of current Python
@@ -304,11 +311,12 @@ def _pysam_dispatch(collection,
 
     n = len(args)
     method = force_cmdline_bytes(method)
+    collection = force_cmdline_bytes(collection)
     args = [force_cmdline_bytes(a) for a in args]
 
     # allocate two more for first (dummy) argument (contains command)
     cdef int extra_args = 0
-    if method == "index":
+    if method == b"index":
         extra_args = 1
     # add extra arguments for commands accepting optional arguments
     # such as 'samtools index x.bam [out.index]'
@@ -327,9 +335,9 @@ def _pysam_dispatch(collection,
     reset_getopt()
 
     # call samtools
-    if collection == "samtools":
+    if collection == b"samtools":
         retval = samtools_main(n + 2, cargs)
-    elif collection == "bcftools":
+    elif collection == b"bcftools":
         retval = bcftools_main(n + 2, cargs)
 
     for i from 0 <= i < n:

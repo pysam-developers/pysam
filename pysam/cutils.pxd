@@ -9,7 +9,7 @@ cpdef parse_region(reference=*, start=*, end=*, region=*)
 #########################################################################
 # Utility functions for quality string conversions
 
-cpdef c_array.array qualitystring_to_array(bytes input_str, int offset=*)
+cpdef c_array.array qualitystring_to_array(input_str, int offset=*)
 cpdef array_to_qualitystring(c_array.array arr, int offset=*)
 cpdef qualities_to_qualitystring(qualities, int offset=*)
 
@@ -19,6 +19,7 @@ cpdef qualities_to_qualitystring(qualities, int offset=*)
 ## Python 3 compatibility functions
 ########################################################################
 cdef charptr_to_str(char *s, encoding=*)
+cdef bytes charptr_to_bytes(char *s, encoding=*)
 cdef force_str(object s, encoding=*)
 cdef bytes force_bytes(object s, encoding=*)
 cdef bytes force_cmdline_bytes(object s, encoding=*)

@@ -633,7 +633,7 @@ cdef class AlignmentFile:
                     # returns NULL if there is no index or index could
                     # not be opened
                     if filepath_index:
-                        cindexname = filepath_index
+                        cindexname = filepath_index = encode_filename(filepath_index)
                         with nogil:
                             self.index = sam_index_load2(self.htsfile,
                                                          cfilename,
