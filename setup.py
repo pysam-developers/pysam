@@ -292,7 +292,7 @@ else:
     # necessary to be both compatible for python 2.7 and 3.3
     if IS_PYTHON3:
         for part in parts:
-            # break
+            break
             try:
                 os.unlink("pysam/c%s.c" % part)
             except:

@@ -1086,7 +1086,6 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
 
     def get_iterator(self):
         vcf = pysam.VariantFile(self.filename)
-        import pdb; pdb.set_trace()
         return vcf.fetch()
 
     def get_field_value(self, record, field):
