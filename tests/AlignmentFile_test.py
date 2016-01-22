@@ -5,8 +5,6 @@ Execute in the :file:`tests` directory as it requires the Makefile
 and data files located there.
 '''
 
-import pysam
-import pysam.samtools
 import unittest
 import os
 import shutil
@@ -14,9 +12,14 @@ import sys
 import collections
 import subprocess
 import logging
-from functools import partial
-from TestUtils import checkBinaryEqual, checkURL, checkSamtoolsViewEqual, checkFieldEqual
 import array
+from functools import partial
+
+import pysam
+import pysam.samtools
+from TestUtils import checkBinaryEqual, checkURL, \
+    checkSamtoolsViewEqual, checkFieldEqual
+
 
 DATADIR = "pysam_data"
 

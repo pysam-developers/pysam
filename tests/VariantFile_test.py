@@ -36,5 +36,37 @@ class TestMissingGenotypes(unittest.TestCase):
         self.check(self.filename + ".gz")
 
 
+class TestOpening(unittest.TestCase):
+
+    def testMissingFile(self):
+        self.assertRaises(IOError, pysam.VariantFile,
+                          "missing_file.vcf")
+
+    def testMissingFileVCFGZ(self):
+        self.assertRaises(IOError, pysam.VariantFile,
+                          "missing_file.vcf.gz")
+        
+    def testEmptyFileVCF(self):
+        with open("tmp_testEmptyFile.vcf", "w"):
+            pass
+
+        self.assertRaises(ValueError, pysam.VariantFile,
+                          "tmp_testEmptyFile.vcf")
+
+        os.unlink("tmp_testEmptyFile.vcf")
+
+    def testEmptyFileVCFGZ(self):
+        with open("tmp_testEmptyFile.vcf", "w"):
+            pass
+
+        pysam.tabix_compress("tmp_testEmptyFile.vcf",
+                             "tmp_testEmptyFile.vcf.gz")
+
+        self.assertRaises(ValueError, pysam.VariantFile,
+                          "tmp_testEmptyFile.vcf.gz")
+
+        os.unlink("tmp_testEmptyFile.vcf")
+        os.unlink("tmp_testEmptyFile.vcf.gz")
+
 if __name__ == "__main__":
     unittest.main()

@@ -2386,7 +2386,9 @@ cdef class VariantFile(object):
 
     def __dealloc__(self):
         if self.htsfile:
-            hts_close(self.htsfile)
+            # empty file causes segfault on closing, check if that is the case
+            if hts_get_bgzfp(self.htsfile).fp != NULL:
+                hts_close(self.htsfile)
             self.htsfile = NULL
 
     def __enter__(self):
@@ -2446,7 +2448,9 @@ cdef class VariantFile(object):
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
         if self.htsfile:
-            hts_close(self.htsfile)
+            # empty file causes segfault on closing, check if that is the case
+            if hts_get_bgzfp(self.htsfile).fp != NULL:
+                hts_close(self.htsfile)
             self.htsfile = NULL
         self.header = self.index = None
 
@@ -2606,19 +2610,21 @@ cdef class VariantFile(object):
             cfilename, cmode = filename, mode
             with nogil:
                 self.htsfile = hts_open(cfilename, cmode)
-
+                
             if not self.htsfile:
                 raise ValueError(
                     "could not open file `{}` (mode='{}') - "
                     "is it VCF/BCF format?".format((filename, mode)))
+
             with nogil:
                 hdr = bcf_hdr_read(self.htsfile)
+
             self.header = makeVariantHeader(hdr)
 
             if not self.header:
                 raise ValueError(
                     "file `{}` does not have valid header (mode='{}') - "
-                    "is it BCF format?".format((filename, mode)))
+                    "is it VCF/BCF format?".format((filename, mode)))
             # check for index and open if present
             if self.htsfile.format.format == bcf:
                 cfilename = filename

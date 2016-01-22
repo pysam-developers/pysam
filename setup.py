@@ -292,7 +292,6 @@ else:
     # necessary to be both compatible for python 2.7 and 3.3
     if IS_PYTHON3:
         for part in parts:
-            break
             try:
                 os.unlink("pysam/c%s.c" % part)
             except:
@@ -302,9 +301,8 @@ else:
 
 #######################################################
 classifiers = """
-Development Status :: 2 - Alpha
+Development Status :: 3 - Beta
 Operating System :: MacOS :: MacOS X
-Operating System :: Microsoft :: Windows :: Windows NT/2000
 Operating System :: OS Independent
 Operating System :: POSIX
 Operating System :: POSIX :: Linux
