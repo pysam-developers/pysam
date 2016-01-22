@@ -2,16 +2,51 @@
 
 pushd .
 
-# create a new folder to store external tools
-mkdir -p $HOME/external-tools
-cd $HOME/external-tools
+WORKDIR=`pwd`
 
-# install samtools
-curl -L http://downloads.sourceforge.net/project/samtools/samtools/1.2/samtools-1.2.tar.bz2 > samtools-1.2.tar.bz2
-tar xjvf samtools-1.2.tar.bz2 
-cd samtools-1.2
+# create a new folder to store external tools
+mkdir -p $WORKDIR/external-tools
+
+# install htslib
+cd $WORKDIR/external-tools
+curl -L https://github.com/samtools/htslib/releases/download/1.3/htslib-1.3.tar.bz2 > htslib-1.3.tar.bz2
+tar xjvf htslib-1.3.tar.bz2
+cd htslib-1.3
 make
-PATH=$PATH:$HOME/external-tools/samtools-1.2
+PATH=$PATH:$WORKDIR/external-tools/htslib-1.3
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$WORKDIR/external-tools/htslib-1.3
+
+# install samtools, compile against htslib
+cd $WORKDIR/external-tools
+curl -L http://downloads.sourceforge.net/project/samtools/samtools/1.3/samtools-1.3.tar.bz2 > samtools-1.3.tar.bz2
+tar xjvf samtools-1.3.tar.bz2 
+cd samtools-1.3
+./configure --with-htslib=../htslib-1.3
+make
+PATH=$PATH:$WORKDIR/external-tools/samtools-1.3
+
+echo "installed samtools"
+samtools --version
+
+if [ $? != 0 ]; then
+    exit 1
+fi
+
+# install bcftools
+cd $WORKDIR/external-tools
+curl -L https://github.com/samtools/bcftools/releases/download/1.3/bcftools-1.3.tar.bz2 > bcftools-1.3.tar.bz2
+tar xjf bcftools-1.3.tar.bz2
+cd bcftools-1.3
+./configure --with-htslib=../htslib-1.3
+make
+PATH=$PATH:$WORKDIR/external-tools/bcftools-1.3
+
+echo "installed bcftools"
+bcftools --version
+
+if [ $? != 0 ]; then
+    exit 1
+fi
 
 popd
 
