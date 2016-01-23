@@ -752,23 +752,33 @@ class TestIteratorRow(unittest.TestCase):
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.samtools.view(os.path.join(DATADIR, "ex1.bam"),
-                             rnge,
-                             raw=True))
-        self.assertEqual(len(ps), len(
-            sa), "unequal number of results for range %s: %i != %i" % (rnge, len(ps), len(sa)))
+        sa = pysam.samtools.view(
+            os.path.join(DATADIR, "ex1.bam"),
+            rnge,
+            raw=True).splitlines(True)
+        self.assertEqual(
+            len(ps), len(sa),
+            "unequal number of results for range %s: %i != %i" %
+            (rnge, len(ps), len(sa)))
         # check if the same reads are returned and in the same order
         for line, (a, b) in enumerate(list(zip(ps, sa))):
             d = b.split("\t")
             self.assertEqual(
-                a.qname, d[0], "line %i: read id mismatch: %s != %s" % (line, a.rname, d[0]))
-            self.assertEqual(a.pos, int(d[3]) - 1, "line %i: read position mismatch: %s != %s, \n%s\n%s\n" %
-                             (line, a.pos, int(d[3]) - 1,
-                              str(a), str(d)))
+                a.qname, d[0],
+                "line %i: read id mismatch: %s != %s" %
+                (line, a.rname, d[0]))
+            self.assertEqual(
+                a.pos, int(d[3]) - 1,
+                "line %i: read position mismatch: %s != %s, "
+                "\n%s\n%s\n" %
+                (line, a.pos, int(d[3]) - 1,
+                 str(a), str(d)))
             qual = d[10]
-            self.assertEqual(a.qual, qual, "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
-                             (line, a.qual, qual,
-                              str(a), str(d)))
+            self.assertEqual(
+                a.qual, qual,
+                "line %i: quality mismatch: %s != %s, \n%s\n%s\n" %
+                (line, a.qual, qual,
+                 str(a), str(d)))
 
     def testIteratePerContig(self):
         '''check random access per contig'''
@@ -795,8 +805,10 @@ class TestIteratorRowAll(unittest.TestCase):
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch())
-        sa = list(pysam.samtools.view(os.path.join(DATADIR, "ex1.bam"),
-                             raw=True))
+        sa = pysam.samtools.view(
+            os.path.join(DATADIR, "ex1.bam"),
+            raw=True).splitlines(True)
+
         self.assertEqual(
             len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa)))
         # check if the same reads are returned
@@ -1684,7 +1696,8 @@ class TestRemoteFileHTTP(unittest.TestCase):
         samfile_local = pysam.Samfile(self.local, "rb")
         ref = list(samfile_local.fetch(region=self.region))
 
-        result = pysam.samtools.view(self.url, self.region)
+        result = pysam.samtools.view(
+            self.url, self.region).splitlines(True)
         self.assertEqual(len(result), len(ref))
 
     def testFetch(self):
@@ -1785,7 +1798,7 @@ class TestPileup(unittest.TestCase):
     def testSamtoolsStepper(self):
         refs = pysam.samtools.mpileup(
             "-f", self.fastafilename,
-            self.samfilename)
+            self.samfilename).splitlines(True)
         iterator = self.samfile.pileup(
             stepper="samtools",
             fastafile=self.fastafile)
@@ -1795,7 +1808,7 @@ class TestPileup(unittest.TestCase):
         refs = pysam.samtools.mpileup(
             "-f", self.fastafilename,
             "-A", "-B",
-            self.samfilename)
+            self.samfilename).splitlines(True)
 
         iterator = self.samfile.pileup(
             stepper="all",

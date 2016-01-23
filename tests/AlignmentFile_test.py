@@ -796,9 +796,10 @@ class TestIteratorRowBAM(unittest.TestCase):
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.samtools.view(self.filename,
-                                      rnge,
-                                      raw=True))
+        sa = pysam.samtools.view(
+            self.filename,
+            rnge,
+            raw=True).splitlines()
         self.assertEqual(
             len(ps), len(sa),
             "unequal number of results for range %s: %i != %i" %
@@ -855,8 +856,8 @@ class TestIteratorRowAllBAM(unittest.TestCase):
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch())
-        sa = list(pysam.samtools.view(self.filename,
-                                      raw=True))
+        sa = pysam.samtools.view(self.filename,
+                                 raw=True).splitlines()
         self.assertEqual(
             len(ps), len(sa),
             "unequal number of results: %i != %i" %
@@ -1845,7 +1846,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
         ref = list(samfile_local.fetch(region=self.region))
 
         result = pysam.samtools.view(self.url, self.region)
-        self.assertEqual(len(result), len(ref))
+        self.assertEqual(len(result.splitlines()), len(ref))
 
     def testFetch(self):
         if not checkURL(self.url):
@@ -1949,7 +1950,7 @@ class TestPileup(unittest.TestCase):
     def testSamtoolsStepper(self):
         refs = pysam.samtools.mpileup(
             "-f", self.fastafilename,
-            self.samfilename)
+            self.samfilename).splitlines(True)
         iterator = self.samfile.pileup(
             stepper="samtools",
             fastafile=self.fastafile)
@@ -1959,7 +1960,7 @@ class TestPileup(unittest.TestCase):
         refs = pysam.samtools.mpileup(
             "-f", self.fastafilename,
             "-A", "-B",
-            self.samfilename)
+            self.samfilename).splitlines(True)
 
         iterator = self.samfile.pileup(
             stepper="all",
