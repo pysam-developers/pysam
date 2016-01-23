@@ -172,7 +172,7 @@ class SamtoolsTest(unittest.TestCase):
         # run samtools
         full_statement = re.sub("%\(out\)s", self.executable, statement)
         run_command(" ".join((self.executable, full_statement)))
-        sys.stdout.write("%s %s ok" % (command, self.executable))
+        # sys.stdout.write("%s %s ok" % (command, self.executable))
 
         # run pysam
         if ">" in statement:
@@ -185,24 +185,18 @@ class SamtoolsTest(unittest.TestCase):
                               raw=True,
                               catch_stdout=True)
         
-        sys.stdout.write(" pysam ok\n")
+        # sys.stdout.write(" pysam ok\n")
 
         if ">" in statement:
             with open(pysam_targets[-1], "wb") as outfile:
-                if type(output) == list:
-                    if IS_PYTHON3:
-                        for line in output:
-                            outfile.write(line.encode('ascii'))
-                    else:
-                        for line in output:
-                            outfile.write(line)
-                else:
-                    outfile.write(output)
+                if output is not None:
+                    outfile = outfile.write(output)
 
         for samtools_target, pysam_target in zip(samtools_targets,
                                                  pysam_targets):
             if os.path.isdir(samtools_target):
-                samtools_files = glob.glob(os.path.join(samtools_target, "*"))
+                samtools_files = glob.glob(os.path.join(
+                    samtools_target, "*"))
                 pysam_files = glob.glob(os.path.join(pysam_target, "*"))
                 self.assertEqual(len(samtools_files), len(pysam_files))
                 # need to be able to exclude files like README, etc.
@@ -226,6 +220,7 @@ class SamtoolsTest(unittest.TestCase):
             shutil.rmtree(WORKDIR)
         os.chdir(self.savedir)
 
+
 class EmptyIndexTest(unittest.TestCase):
 
     def testEmptyIndex(self):
@@ -245,7 +240,7 @@ class StdoutTest(unittest.TestCase):
         r = pysam.samtools.flagstat(
             os.path.join(DATADIR, "ex1.bam"),
             catch_stdout=False)
-        self.assertTrue(len(r) == 0)
+        self.assertEqual(r, None)
 
 
 class PysamTest(SamtoolsTest):
@@ -270,11 +265,13 @@ class BcftoolsTest(SamtoolsTest):
     # an output file.
     statements = [
         # "index -n ex1.vcf.gz > %(out)s_ex1.index",
+
         "annotate -x ID ex1.vcf.gz > %(out)s_ex1.annotate",
         "concat -a ex1.vcf.gz ex1.vcf.gz > %(out)s_ex1.concat",
         "isec -p %(out)s_ex1.isec ex1.vcf.gz ex1.vcf.gz",
         "merge --force-samples ex1.vcf.gz ex1.vcf.gz > %(out)s_ex1.norm",
         "norm -m +both ex1.vcf.gz > %(out)s_ex1.norm",
+
         # "plugin",
         # "query -f '%CHROM\n' ex1.vcf.gz > %(out)s_ex1.query",
         # "reheader -s A > %(out)s_ex1.reheader",
