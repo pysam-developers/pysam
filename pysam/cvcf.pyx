@@ -546,6 +546,9 @@ class VCF(object):
             elif value == "VCFv4.1":
                 # AH - for testing
                 self._version = 40
+            elif value == "VCFv4.2":
+                # AH - for testing
+                self._version = 40
             else:
                 self.error(line,self.UNKNOWN_FORMAT_STRING)
         elif key == "INFO":
