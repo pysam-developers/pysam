@@ -18,7 +18,7 @@ from functools import partial
 import pysam
 import pysam.samtools
 from TestUtils import checkBinaryEqual, checkURL, \
-    checkSamtoolsViewEqual, checkFieldEqual
+    checkSamtoolsViewEqual, checkFieldEqual, force_str
 
 
 DATADIR = "pysam_data"
@@ -796,10 +796,11 @@ class TestIteratorRowBAM(unittest.TestCase):
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = pysam.samtools.view(
-            self.filename,
-            rnge,
-            raw=True).splitlines()
+        sa = force_str(
+            pysam.samtools.view(
+                self.filename,
+                rnge,
+                raw=True)).splitlines(True)
         self.assertEqual(
             len(ps), len(sa),
             "unequal number of results for range %s: %i != %i" %
@@ -864,7 +865,7 @@ class TestIteratorRowAllBAM(unittest.TestCase):
             (len(ps), len(sa)))
         # check if the same reads are returned
         for line, pair in enumerate(list(zip(ps, sa))):
-            data = pair[1].split("\t")
+            data = force_str(pair[1]).split("\t")
             self.assertEqual(
                 pair[0].query_name,
                 data[0],
@@ -1948,19 +1949,21 @@ class TestPileup(unittest.TestCase):
             self.assertEqual(int(pos) - 1, column.reference_pos)
 
     def testSamtoolsStepper(self):
-        refs = pysam.samtools.mpileup(
-            "-f", self.fastafilename,
-            self.samfilename).splitlines(True)
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                self.samfilename)).splitlines(True)
         iterator = self.samfile.pileup(
             stepper="samtools",
             fastafile=self.fastafile)
         self.checkEqual(refs, iterator)
 
     def testAllStepper(self):
-        refs = pysam.samtools.mpileup(
-            "-f", self.fastafilename,
-            "-A", "-B",
-            self.samfilename).splitlines(True)
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "-A", "-B",
+                self.samfilename)).splitlines(True)
 
         iterator = self.samfile.pileup(
             stepper="all",
@@ -2283,17 +2286,22 @@ class TestSamtoolsProxy(unittest.TestCase):
 
     def testView(self):
         # note that view still echos "open: No such file or directory"
-        self.assertRaises(pysam.SamtoolsError, pysam.samtools.view, "missing_file")
+        self.assertRaises(pysam.SamtoolsError,
+                          pysam.samtools.view,
+                          "missing_file")
 
     def testSort(self):
-        self.assertRaises(pysam.SamtoolsError, pysam.samtools.sort, "missing_file")
+        self.assertRaises(pysam.SamtoolsError,
+                          pysam.samtools.sort,
+                          "missing_file")
 
 
 class TestAlignmentFileIndex(unittest.TestCase):
 
     def testIndex(self):
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                      "rb")
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex1.bam"),
+            "rb")
         index = pysam.IndexedReads(samfile)
         index.build()
         reads = collections.defaultdict(int)

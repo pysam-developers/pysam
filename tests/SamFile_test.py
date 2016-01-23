@@ -15,7 +15,7 @@ import collections
 import subprocess
 import logging
 import array
-from TestUtils import checkBinaryEqual, checkURL
+from TestUtils import checkBinaryEqual, checkURL, force_str
 
 DATADIR = "pysam_data"
 
@@ -752,10 +752,11 @@ class TestIteratorRow(unittest.TestCase):
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = pysam.samtools.view(
-            os.path.join(DATADIR, "ex1.bam"),
-            rnge,
-            raw=True).splitlines(True)
+        sa = force_str(
+            pysam.samtools.view(
+                os.path.join(DATADIR, "ex1.bam"),
+                rnge,
+                raw=True)).splitlines(True)
         self.assertEqual(
             len(ps), len(sa),
             "unequal number of results for range %s: %i != %i" %
@@ -805,9 +806,10 @@ class TestIteratorRowAll(unittest.TestCase):
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch())
-        sa = pysam.samtools.view(
-            os.path.join(DATADIR, "ex1.bam"),
-            raw=True).splitlines(True)
+        sa = force_str(
+            pysam.samtools.view(
+                os.path.join(DATADIR, "ex1.bam"),
+                raw=True)).splitlines(True)
 
         self.assertEqual(
             len(ps), len(sa), "unequal number of results: %i != %i" % (len(ps), len(sa)))
@@ -862,7 +864,8 @@ class TestIteratorColumn(unittest.TestCase):
 
     def testIterateRanges(self):
         '''check random access per range'''
-        for contig, length in zip(self.samfile.references, self.samfile.lengths):
+        for contig, length in zip(
+                self.samfile.references, self.samfile.lengths):
             for start in range(1, length, 90):
                 # this includes empty ranges
                 self.checkRange(contig, start, start + 90)
@@ -1796,20 +1799,22 @@ class TestPileup(unittest.TestCase):
             self.assertEqual(int(pos) - 1, column.pos)
 
     def testSamtoolsStepper(self):
-        refs = pysam.samtools.mpileup(
-            "-f", self.fastafilename,
-            self.samfilename).splitlines(True)
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                self.samfilename)).splitlines(True)
         iterator = self.samfile.pileup(
             stepper="samtools",
             fastafile=self.fastafile)
         self.checkEqual(refs, iterator)
 
     def testAllStepper(self):
-        refs = pysam.samtools.mpileup(
-            "-f", self.fastafilename,
-            "-A", "-B",
-            self.samfilename).splitlines(True)
-
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "-A", "-B",
+                self.samfilename)).splitlines(True)
+            
         iterator = self.samfile.pileup(
             stepper="all",
             fastafile=self.fastafile)

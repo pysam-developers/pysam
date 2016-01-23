@@ -14,6 +14,14 @@ else:
     from urllib2 import urlopen
 
 
+if IS_PYTHON3:
+    def force_str(s):
+        return s.decode('ascii')
+else:
+    def force_str(s):
+        return s
+
+
 def checkBinaryEqual(filename1, filename2):
     '''return true if the two files are binary equal.
     '''
