@@ -986,22 +986,26 @@ cdef class VariantHeader(object):
 
         if missing_samples:
             # FIXME: add specialized exception with payload
-            raise ValueError('missing {:d} requested samples'.format(len(missing_samples)))
+            raise ValueError(
+                'missing {:d} requested samples'.format(
+                    len(missing_samples)))
 
         keep_samples = ','.join(keep_samples)
         cdef char *keep = <char *>keep_samples if keep_samples else NULL
         cdef ret = bcf_hdr_set_samples(self.ptr, keep, 0)
 
         if ret != 0:
-            raise ValueError('bcf_hdr_set_samples failed: ret = {}'.format(ret))
+            raise ValueError(
+                'bcf_hdr_set_samples failed: ret = {}'.format(ret))
 
     def __str__(self):
         cdef int hlen
         cdef char *hstr = bcf_hdr_fmt_text(self.ptr, 0, &hlen)
 
-        ret = hstr[:hlen]
+        # remove new-line
+        ret = hstr[:hlen-1]
         free(hstr)
-        return force_str(hstr)
+        return force_str(ret)
 
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
