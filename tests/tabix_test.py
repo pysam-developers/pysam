@@ -35,21 +35,21 @@ def myzip_open(infile, mode="r"):
         return gzip.open(mode)
 
 
-def loadAndConvert(infile, encode=True):
-    '''load data from infile and convert all fields to string.
+def loadAndConvert(filename, encode=True):
+    '''load data from filename and convert all fields to string.
 
-    Infile can be either plain or compressed (ending in .gz).
+    Filename can be either plain or compressed (ending in .gz).
     '''
     data = []
-    if infile.endswith(".gz"):
-        for line in gzip.open(infile):
+    if filename.endswith(".gz"):
+        for line in gzip.open(filename):
             line = line.decode("ascii")
             if line.startswith("#"):
                 continue
             d = line.strip().split("\t")
             data.append(d)
     else:
-        with open(infile) as f:
+        with open(filename) as f:
             for line in f:
                 if line.startswith("#"):
                     continue

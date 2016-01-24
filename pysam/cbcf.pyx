@@ -966,15 +966,19 @@ cdef class VariantHeader(object):
             return makeVariantHeaderMetadata(self, BCF_HL_FMT)
 
     property alts:
-        """
-        alt metadata (:class:`dict` ID->record).  The data returned just a snapshot of alt records,
-        is created every time the property is requested, and modifications will not be reflected
-        in the header metadata and vice versa.
+        """alt metadata (:class:`dict` ID->record).
 
-        i.e. it is just a dict that reflects the state of alt records at the time it is created.
+        The data returned just a snapshot of alt records, is created
+        every time the property is requested, and modifications will
+        not be reflected in the header metadata and vice versa.
+
+        i.e. it is just a dict that reflects the state of alt records
+        at the time it is created.
+
         """
         def __get__(self):
-            return { record['ID']:record for record in self.records if record.key.upper() == 'ALT' }
+            return { record['ID']:record for record in self.records
+                     if record.key.upper() == 'ALT' }
 
 
     # only safe to do when opening an htsfile
@@ -1002,8 +1006,7 @@ cdef class VariantHeader(object):
         cdef int hlen
         cdef char *hstr = bcf_hdr_fmt_text(self.ptr, 0, &hlen)
 
-        # remove new-line
-        ret = hstr[:hlen-1]
+        ret = hstr[:hlen]
         free(hstr)
         return force_str(ret)
 
@@ -1271,7 +1274,8 @@ cdef VariantRecordFormat makeVariantRecordFormat(VariantRecord record):
 
 #TODO: Add a getmeta method to return the corresponding VariantMetadata?
 cdef class VariantRecordInfo(object):
-    """mapping from info metadata name to value for info data present in a :class:`VariantRecord` object."""
+    """mapping from info metadata name to value for info data present in a
+    :class:`VariantRecord` object."""
 
     def __len__(self):
         return self.record.ptr.n_info

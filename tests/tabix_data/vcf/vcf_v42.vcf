@@ -10,6 +10,7 @@
 ##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele">
 ##INFO=<ID=DB,Number=0,Type=Flag,Description="dbSNP membership, build 129">
 ##INFO=<ID=H2,Number=0,Type=Flag,Description="HapMap2 membership">
+##FILTER=<ID=PASS,Description="All filters passed">
 ##FILTER=<ID=q10,Description="Quality below 10">
 ##FILTER=<ID=s50,Description="Less than 50% of samples have data">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
