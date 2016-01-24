@@ -35,21 +35,21 @@ def myzip_open(infile, mode="r"):
         return gzip.open(mode)
 
 
-def loadAndConvert(infile, encode=True):
-    '''load data from infile and convert all fields to string.
+def loadAndConvert(filename, encode=True):
+    '''load data from filename and convert all fields to string.
 
-    Infile can be either plain or compressed (ending in .gz).
+    Filename can be either plain or compressed (ending in .gz).
     '''
     data = []
-    if infile.endswith(".gz"):
-        for line in gzip.open(infile):
+    if filename.endswith(".gz"):
+        for line in gzip.open(filename):
             line = line.decode("ascii")
             if line.startswith("#"):
                 continue
             d = line.strip().split("\t")
             data.append(d)
     else:
-        with open(infile) as f:
+        with open(filename) as f:
             for line in f:
                 if line.startswith("#"):
                     continue
@@ -350,7 +350,7 @@ class TestIterationWithoutComments(IterationTest):
         # to be implemented
         # self.assertRaises(IndexError, self.tabix.fetch, "chr1", 1000000, 2000000)
 
-        # raise no error for invalid intervals
+        # raise no error for empty intervals
         self.tabix.fetch("chr1", 100, 100)
 
     def testGetContigs(self):
@@ -812,6 +812,13 @@ class TestVCFFromVCF(TestVCF):
     # tests failing on opening
     fail_on_opening = ((24, "Error HEADING_NOT_SEPARATED_BY_TABS"),
                        )
+    
+    check_samples = False
+    coordinate_offset = 1
+
+    # value returned for missing values
+    missing_value = "."
+    missing_quality = -1
 
     def setUp(self):
 
@@ -831,97 +838,169 @@ class TestVCFFromVCF(TestVCF):
             else:
                 self.vcf.connect(self.tmpfilename + ".gz")
 
+    def get_iterator(self):
+
+        f = open(self.filename)
+        fn = os.path.basename(self.filename)
+
+        for x, msg in self.fail_on_opening:
+            if "%i.vcf" % x == fn:
+                self.assertRaises(ValueError, self.vcf.parse, f)
+                return
+
+        return self.vcf.parse(f)
+
+    def get_field_value(self, record, field):
+        return record[field]
+
+    def sample2value(self, r, v):
+        return r, v
+
+    def alt2value(self, r, v):
+        if r == ".":
+            return [], v
+        else:
+            return r.split(","), list(v)
+
+    def filter2value(self, r, v):
+        if r == "PASS":
+            return [], v
+        elif r == ".":
+            return [], v
+        else:
+            return r.split(";"), v
+
     def testParsing(self):
 
+        itr = self.get_iterator()
+        if itr is None:
+            return
+
         fn = os.path.basename(self.filename)
-        with open(self.filename) as f:
 
-            for x, msg in self.fail_on_opening:
-                if "%i.vcf" % x == fn:
-                    self.assertRaises(ValueError, self.vcf.parse, f)
-                    return
-            else:
-                iter = self.vcf.parse(f)
+        for x, msg in self.fail_on_parsing:
+            if "%i.vcf" % x == fn:
+                self.assertRaises(ValueError, list, itr)
+                break
+                # python 2.7
+                # self.assertRaisesRegexp(
+                # ValueError, re.compile(msg), self.vcf.parse, f)
+        else:
+            # do the actual parsing
+            for x, r in enumerate(itr):
+                c = self.compare[x]
+                for y, field in enumerate(self.columns):
+                    # it is ok to have a missing format column
+                    if y == 8 and y == len(c):
+                        continue
 
-            for x, msg in self.fail_on_parsing:
-                if "%i.vcf" % x == fn:
-                    self.assertRaises(ValueError, list, iter)
-                    break
-                    # python 2.7
-                    # self.assertRaisesRegexp(
-                    # ValueError, re.compile(msg), self.vcf.parse, f)
-            else:
-                # do the actual parsing
-                for x, r in enumerate(iter):
-                    c = self.compare[x]
-                    for y, field in enumerate(self.columns):
-                        # it is ok to have a missing format column
-                        if y == 8 and y == len(c):
-                            continue
-
-                        val = r[field]
-                        if field == "pos":
-                            self.assertEqual(int(c[y]) - 1, val)
-                        elif field == "alt":
-                            if c[y] == ".":
-                                # convert . to empty list
-                                self.assertEqual(
-                                    [], val,
-                                    "mismatch in field %s: expected %s, got %s" %
-                                    (field, c[y], val))
-                            else:
-                                # convert to list
-                                self.assertEqual(
-                                    c[y].split(","), val,
-                                    "mismatch in field %s: expected %s, got %s" %
-                                    (field, c[y], val))
-
-                        elif field == "filter":
-                            if c[y] == "PASS" or c[y] == ".":
-                                # convert PASS to empty list
-                                self.assertEqual(
-                                    [], val,
-                                    "mismatch in field %s: expected %s, got %s" %
-                                    (field, c[y], val))
-                            else:
-                                # convert to list
-                                self.assertEqual(
-                                    c[y].split(";"), val,
-                                    "mismatch in field %s: expected %s, got %s" %
-                                    (field, c[y], val))
-
-                        elif field == "info":
-                            # tests for info field not implemented
+                    val = self.get_field_value(r, field)
+                    if field == "pos":
+                        self.assertEqual(int(c[y]) - self.coordinate_offset, val)
+                    elif field == "alt" or field == "alts":
+                        cc, vv = self.alt2value(c[y], val)
+                        if cc != vv:
+                            # import pdb; pdb.set_trace()
                             pass
-                        elif field == "qual" and c[y] == ".":
+                        self.assertEqual(
+                            cc, vv,
+                            "mismatch in field %s: expected %s, got %s" %
+                            (field, cc, vv))
+
+                    elif field == "filter":
+                        cc, vv = self.filter2value(c[y], val)
+                        self.assertEqual(
+                            cc, vv,
+                            "mismatch in field %s: expected %s, got %s" %
+                            (field, cc, vv))
+
+                    elif field == "info":
+                        # tests for info field not implemented
+                        pass
+
+                    elif field == "qual" and c[y] == ".":
+                        self.assertEqual(
+                            self.missing_quality, val,
+                            "mismatch in field %s: expected %s, got %s" %
+                            (field, c[y], val))
+
+                    elif field == "format":
+                        # format field converted to list
+                        self.assertEqual(
+                            c[y].split(":"), list(val),
+                            "mismatch in field %s: expected %s, got %s" %
+                            (field, c[y], val))
+
+                    elif type(val) in (int, float):
+                        if c[y] == ".":
                             self.assertEqual(
-                                -1, val,
+                                None, val,
                                 "mismatch in field %s: expected %s, got %s" %
                                 (field, c[y], val))
-
-                        elif field == "format":
-                            # format field converted to list
-                            self.assertEqual(
-                                c[y].split(":"), val,
-                                "mismatch in field %s: expected %s, got %s" %
-                                (field, c[y], val))
-
-                        elif type(val) in (int, float):
-                            if c[y] == ".":
-                                self.assertEqual(
-                                    None, val,
-                                    "mismatch in field %s: expected %s, got %s" %
-                                    (field, c[y], val))
-                            else:
-                                self.assertEqual(
-                                    float(c[y]), float(val),
-                                    "mismatch in field %s: expected %s, got %s" %
-                                    (field, c[y], val))
                         else:
-                            self.assertEqual(
-                                c[y], val,
+                            self.assertAlmostEqual(
+                                float(c[y]), float(val), 2,
                                 "mismatch in field %s: expected %s, got %s" %
                                 (field, c[y], val))
+                    else:
+                        if c[y] == ".":
+                            ref_val = self.missing_value
+                        else:
+                            ref_val = c[y]
+                        self.assertEqual(
+                            ref_val, val,
+                            "mismatch in field %s: expected %s(%s), got %s(%s)" %
+                            (field, ref_val, type(ref_val), val, type(val)))
+                # parse samples
+                if self.check_samples:
+                    if len(c) == 8:
+                        for x, s in enumerate(r.samples):
+                            self.assertEqual([], r.samples[s].values(),
+                                "mismatch in sample {}: "
+                                "expected [], got {}, src={}, line={}".format(
+                                    s, r.samples[s].values(),
+                                    r.samples[s].items(), r))
+                    else:
+                        for x, s in enumerate(r.samples):
+                            ref, comp = self.sample2value(c[9 + x], r.samples[s])
+                            self.compare_samples(ref, comp, s, r)
+
+    def compare_samples(self, ref, comp, s, r):
+
+        if ref != comp:
+
+            # check if GT not at start, not VCF conform and
+            # not supported by cbcf.pyx
+            k = r.format.keys()
+            if "GT" in k and k[0] != "GT":
+                return
+
+            # perform an element-wise checto work around rounding differences
+            for a, b in zip(re.split("[:,;]", ref),
+                            re.split("[:,;]", comp)):
+                is_float = True
+                try:
+                    a = float(a)
+                    b = float(a)
+                except ValueError:
+                    is_float = False
+
+                if is_float:
+                    self.assertAlmostEqual(
+                        a, b, 2,
+                        "mismatch in sample {}: "
+                        "expected {}, got {}, src={}, line={}"
+                        .format(
+                            s, ref, comp,
+                            r.samples[s].items(), r))
+                else:
+                    self.assertEqual(
+                        a, b,
+                        "mismatch in sample {}: "
+                        "expected {}, got {}, src={}, line={}"
+                        .format(
+                            s, ref, comp,
+                            r.samples[s].items(), r))
 
 ############################################################################
 # create a test class for each example vcf file.
@@ -935,6 +1014,87 @@ for vcf_file in vcf_files:
     globals()[n] = type(n, (TestVCFFromTabix,), dict(filename=vcf_file,))
     n = "VCFFromVCFTest_%s" % os.path.basename(vcf_file[:-4])
     globals()[n] = type(n, (TestVCFFromVCF,), dict(filename=vcf_file,))
+
+
+class TestVCFFromVariantFile(TestVCFFromVCF):
+
+    columns = ("chrom", "pos", "id",
+               "ref", "alts", "qual",
+               "filter", "info", "format")
+
+    fail_on_parsing = []
+    fail_on_opening = []
+    coordinate_offset = 0
+    check_samples = True
+    # value returned for missing values
+    missing_value = None
+    missing_quality = None
+
+    def filter2value(self, r, v):
+        if r == "PASS":
+            return ["PASS"], list(v)
+        elif r == ".":
+            return [], list(v)
+        else:
+            return r.split(";"), list(v)
+
+    def alt2value(self, r, v):
+        if r == ".":
+            return None, v
+        else:
+            return r.split(","), list(v)
+
+    def sample2value(self, r, smp):
+
+        def convert_field(f):
+            if f is None:
+                return "."
+            elif isinstance(f, tuple):
+                return ",".join(map(convert_field, f))
+            else:
+                return str(f)
+
+        try:
+            gt_field = smp.keys().index("GT")
+        except ValueError:
+            gt_field = None
+
+        if smp.allele_indices:
+            alleles = [x if x >= 0 else "." for x in  smp.allele_indices]
+        else:
+            alleles = "."
+
+        if smp.phased:
+            alleles = "|".join(map(str, alleles))
+        else:
+            alleles = "/".join(map(str, alleles))
+
+        v = smp.values()
+        if gt_field is not None:
+            v[gt_field] = alleles
+
+        comp = ":".join(map(convert_field, v))
+
+        if comp.endswith(":."):
+            comp = comp[:-2]
+
+        return r, comp
+
+    def setUp(self):
+        TestVCF.setUp(self)
+        self.compare = loadAndConvert(self.filename, encode=False)
+
+    def get_iterator(self):
+        vcf = pysam.VariantFile(self.filename)
+        return vcf.fetch()
+
+    def get_field_value(self, record, field):
+        return getattr(record, field)
+
+
+for vcf_file in vcf_files:
+    n = "TestVCFFromVariantFile_%s" % os.path.basename(vcf_file[:-4])
+    globals()[n] = type(n, (TestVCFFromVariantFile,), dict(filename=vcf_file,))
 
 
 class TestRemoteFileHTTP(unittest.TestCase):
@@ -987,6 +1147,9 @@ class TestIndexArgument(unittest.TestCase):
         self.assertEqual(len(same_basename_results), len(diff_index_result))
         for x, y in zip(same_basename_results, diff_index_result):
             self.assertEqual(x, y)
+
+        os.unlink(self.filename_dst)
+        os.unlink(self.index_dst)
 
 
 def _TestMultipleIteratorsHelper(filename, multiple_iterators):
@@ -1088,7 +1251,6 @@ class TestContextManager(unittest.TestCase):
         with pysam.TabixFile(self.filename) as tabixfile:
             tabixfile.fetch()
         self.assertEqual(tabixfile.closed, True)
-
 
 
 if __name__ == "__main__":

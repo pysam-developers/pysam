@@ -2,6 +2,21 @@
 Release notes
 =============
 
+Release 0.8.5
+=============
+
+* upgraded to htslib 1.3
+* added a first set of bcftools commands in the pysam.bcftools
+  submodule.
+* samtools commands are now in the pysam.samtools module. For
+  backwards compatibility they are still imported into the pysam
+  namespace.
+* samtools/bcftools return stdout as a single (byte) string. As output
+  can be binary (VCF.gz, BAM) this is necessary to ensure py2/py3
+  compatibility. To replicate the previous behaviour in py2.7, use::
+
+     pysam.samtools.view(self.filename).splitlines(True)
+
 Release 0.8.4
 =============
 

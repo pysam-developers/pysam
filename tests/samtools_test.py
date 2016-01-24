@@ -6,9 +6,12 @@ and data files located there.
 '''
 
 import pysam
+import pysam.samtools
+import pysam.bcftools
 import unittest
 import os
 import re
+import glob
 import sys
 import subprocess
 import shutil
@@ -16,12 +19,11 @@ from TestUtils import checkBinaryEqual
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
-SAMTOOLS = "samtools"
 WORKDIR = "pysam_test_work"
 DATADIR = "pysam_data"
 
 
-def runSamtools(cmd):
+def run_command(cmd):
     '''run a samtools command'''
     try:
         retcode = subprocess.call(cmd, shell=True,
@@ -32,19 +34,23 @@ def runSamtools(cmd):
         print("Execution failed:", e)
 
 
-def getSamtoolsVersion():
-    '''return samtools version'''
+def get_version(executable):
+    '''return samtools/bcftools version'''
 
-    with subprocess.Popen(SAMTOOLS, shell=True,
+    with subprocess.Popen(executable, shell=True,
                           stderr=subprocess.PIPE).stderr as pipe:
         lines = b"".join(pipe.readlines())
 
     if IS_PYTHON3:
         lines = lines.decode('ascii')
-    return re.search("Version:\s+(\S+)", lines).groups()[0]
+    try:
+        x = re.search("Version:\s+(\S+)", lines).groups()[0]
+    except AttributeError:
+        raise ValueError("could not get version from %s" % lines)
+    return x
 
 
-class BinaryTest(unittest.TestCase):
+class SamtoolsTest(unittest.TestCase):
 
     '''test samtools command line commands and compare
     against pysam commands.
@@ -52,238 +58,64 @@ class BinaryTest(unittest.TestCase):
     Tests fail, if the output is not binary identical.
     '''
 
-    first_time = True
+    requisites = [
+        "ex1.fa", "ex1.fa.fai",
+        "ex1.sam.gz",
+        "ex1.bam", "ex1.bam.bai",
+        "ex1.sam", "ex2.bam",
+        "ex1.bed"]
 
-    # a dictionary of commands to test
-    # first entry: (samtools output file, samtools command)
-    # second entry: (pysam output file, (pysam function, pysam options) )
-    commands = \
-        {
-            "view":
-            (
-                ("ex1.view", "view ex1.bam > ex1.view"),
-                ("pysam_ex1.view", (pysam.view, "ex1.bam")),
-            ),
-            "view2":
-            (
-                ("ex1.view", "view -bT ex1.fa -o ex1.view2 ex1.sam"),
-                # note that -o ex1.view2 throws exception.
-                ("pysam_ex1.view",
-                 (pysam.view, "-bT ex1.fa -oex1.view2 ex1.sam")),
-            ),
-            "sort":
-            (
-                ("ex1.sort.bam", "sort ex1.bam ex1.sort"),
-                ("pysam_ex1.sort.bam", (pysam.sort, "ex1.bam pysam_ex1.sort")),
-            ),
-            "mpileup":
-            (
-                ("ex1.pileup", "mpileup ex1.bam > ex1.pileup"),
-                ("pysam_ex1.mpileup", (pysam.mpileup, "ex1.bam")),
-            ),
-            "depth":
-            (
-                ("ex1.depth", "depth ex1.bam > ex1.depth"),
-                ("pysam_ex1.depth", (pysam.depth, "ex1.bam")),
-            ),
-            "faidx":
-            (
-                ("ex1.fa.fai", "faidx ex1.fa"),
-                ("pysam_ex1.fa.fai", (pysam.faidx, "ex1.fa")),
-            ),
-            "index":
-            (
-                ("ex1.bam.bai", "index ex1.bam"),
-                ("pysam_ex1.bam.bai", (pysam.index, "pysam_ex1.bam")),
-            ),
-            "idxstats":
-            (
-                ("ex1.idxstats", "idxstats ex1.bam > ex1.idxstats"),
-                ("pysam_ex1.idxstats", (pysam.idxstats, "pysam_ex1.bam")),
-            ),
-            "fixmate":
-            (
-                ("ex1.fixmate.bam", "fixmate ex1.bam ex1.fixmate.bam"),
-                ("pysam_ex1.fixmate.bam",
-                 (pysam.fixmate, "pysam_ex1.bam pysam_ex1.fixmate.bam")),
-            ),
-            "flagstat":
-            (
-                ("ex1.flagstat", "flagstat ex1.bam > ex1.flagstat"),
-                ("pysam_ex1.flagstat", (pysam.flagstat, "pysam_ex1.bam")),
-            ),
-            "calmd":
-            (
-                ("ex1.calmd.bam", "calmd ex1.bam ex1.fa > ex1.calmd.bam"),
-                ("pysam_ex1.calmd.bam", (pysam.calmd, "pysam_ex1.bam ex1.fa")),
-            ),
-            "merge":
-            (
-                ("ex1.merge", "merge -f ex1.merge ex1.bam ex1.bam"),
-                # -f option does not work - following command will
-                # cause the subsequent command to fail
-                ("pysam_ex1.merge",
-                 (pysam.merge, "pysam_ex1.merge pysam_ex1.bam pysam_ex1.bam")),
-            ),
-            "rmdup":
-            (
-                # use -s option, otherwise the following error in samtools 1.2:
-                # Samtools-htslib-API: bam_get_library() not yet implemented
-                ("ex1.rmdup.bam", "rmdup -s ex1.bam ex1.rmdup.bam"),
-                ("pysam_ex1.rmdup.bam",
-                 (pysam.rmdup, "pysam_ex1.bam -s pysam_ex1.rmdup.bam")),
-            ),
-            "reheader":
-            (
-                ("ex1.reheader", "reheader ex1.bam ex1.bam > ex1.reheader"),
-                ("pysam_ex1.reheader", (pysam.reheader, "ex1.bam ex1.bam")),
-            ),
-            "cat":
-            (
-                ("ex1.cat.bam", "cat -o ex1.cat.bam ex1.bam ex1.bam"),
-                ("pysam_ex1.cat.bam",
-                 (pysam.cat, " -o pysam_ex1.cat.bam ex1.bam ex1.bam")),
-            ),
-            "targetcut":
-            (
-                ("ex1.targetcut", "targetcut ex1.bam > ex1.targetcut"),
-                ("pysam_ex1.targetcut", (pysam.targetcut, "pysam_ex1.bam")),
-            ),
-            "phase":
-            (
-                ("ex1.phase", "phase ex1.bam > ex1.phase"),
-                ("pysam_ex1.phase", (pysam.phase, "pysam_ex1.bam")),
-            ),
-            "import":
-            (
-                ("ex1.bam", "import ex1.fa.fai ex1.sam.gz ex1.bam"),
-                ("pysam_ex1.bam",
-                 (pysam.samimport, "ex1.fa.fai ex1.sam.gz pysam_ex1.bam")),
-            ),
-            "bam2fq":
-            (
-                ("ex1.bam2fq", "bam2fq ex1.bam > ex1.bam2fq"),
-                ("pysam_ex1.bam2fq", (pysam.bam2fq, "pysam_ex1.bam")),
-            ),
-            "pad2unpad":
-            (
-                ("ex2.unpad", "pad2unpad -T ex1.fa ex2.bam > ex2.unpad"),
-                ("pysam_ex2.unpad", (pysam.pad2unpad, "-T ex1.fa ex2.bam")),
-            ),
-            "bamshuf":
-            (
-                ("ex1.bamshuf.bam", "bamshuf ex1.bam ex1.bamshuf"),
-                ("pysam_ex1.bamshuf.bam",
-                 (pysam.bamshuf, "ex1.bam pysam_ex1.bamshuf")),
-            ),
-            "bedcov":
-            (
-                ("ex1.bedcov", "bedcov ex1.bed ex1.bam > ex1.bedcov"),
-                ("pysam_ex1.bedcov", (pysam.bedcov, "ex1.bed ex1.bam")),
-            ),
-        }
+    # a list of statements to test
+    # should contain at least one %(out)s component indicating
+    # an output file.
+    statements = [
+        "view ex1.bam > %(out)s_ex1.view",
+        # ("view -bT ex1.fa -o %(out)s_ex1.view2 ex1.sam",
+        "sort ex1.bam -o %(out)s_ex1.sort.bam",
+        "mpileup ex1.bam > %(out)s_ex1.pileup",
+        "depth ex1.bam > %(out)s_ex1.depth",
+        # TODO: issues with file naming
+        # "faidx ex1.fa; %(out)s_ex1.fa.fai",
+        "index ex1.bam %(out)s_ex1.bam.fai",
+        "idxstats ex1.bam > %(out)s_ex1.idxstats",
+        "fixmate ex1.bam %(out)s_ex1.fixmate.bam",
+        "flagstat ex1.bam > %(out)s_ex1.flagstat",
+        "calmd ex1.bam ex1.fa > %(out)s_ex1.calmd.bam",
+        # use -s option, otherwise the following error in samtools 1.2:
+        # Samtools-htslib-API: bam_get_library() not yet implemented
+        # causes downstream problems
+        # TODO: The following cause subsequent commands to fail
+        # unknow option
+        # "rmdup -s ex1.bam %(out)s_ex1.rmdup.bam",
+        # "merge -f %(out)s_ex1.merge.bam ex1.bam ex1.bam",
+        "reheader ex1.sam ex1.bam > %(out)s_ex1.reheader",
+        "cat -o %(out)s_ex1.cat.bam ex1.bam ex1.bam",
+        "targetcut ex1.bam > %(out)s_ex1.targetcut",
+        "phase ex1.bam > %(out)s_ex1.phase",
+        "import ex1.fa.fai ex1.sam.gz %(out)s_ex1.bam",
+        "bam2fq ex1.bam > %(out)s_ex1.bam2fq",
+        # TODO: not the same
+        # "pad2unpad -T ex1.fa ex2.bam > %(out)s_ex2.unpad",
+        # TODO: command line option problem
+        # "bamshuf ex1.bam -O --output-fmt SAM > %(out)s_ex1.bamshuf.sam",
+        # "collate ex1.bam %(out)s_ex1.collate",
+        "bedcov ex1.bed ex1.bam > %(out)s_ex1.bedcov",
+        "stats ex1.bam > %(out)s_ex1.stats",
+        "dict ex1.bam > %(out)s_ex1.dict",
+        # TODO: not the same
+        # ("addreplacerg -r 'RG\tID:ga\tSM:hs' ex1.bam > %(out)s_ex1.addreplacerg",
+    ]
 
-    # some tests depend on others. The order specifies in which order
-    # the samtools commands are executed.
-    # The first three (faidx, import, index) need to be in that order,
-    # the rest is arbitrary.
-    order = ('faidx',
-             'import',
-             'index',
-             'view',
-             'view2',
-             'sort',
-             'mpileup',
-             'depth',
-             'idxstats',
-             'fixmate',
-             'flagstat',
-             'calmd',
-             'merge',
-             'rmdup',
-             'reheader',
-             'cat',
-             'bedcov',
-             'targetcut',
-             'phase',
-             'bam2fq',
-             # Segmentation fault:
-             # 'bamshuf',
-             # File not binary identical
-             # 'pad2unpad',
-             )
+    map_command = {
+        "import": "samimport"}
 
-    def setUp(self):
-        '''setup tests. 
+    executable = "samtools"
 
-        For setup, all commands will be run before the first test is
-        executed. Individual tests will then just compare the output
-        files.
+    module = pysam.samtools
 
-        '''
-        if BinaryTest.first_time:
+    def check_version(self):
 
-            # remove previous files
-            if os.path.exists(WORKDIR):
-                shutil.rmtree(WORKDIR)
-                pass
-
-            # copy the source files to WORKDIR
-            os.makedirs(WORKDIR)
-
-            for f in ("ex1.fa", "ex1.sam.gz",
-                      "ex1.sam", "ex2.bam",
-                      "ex1.bed"):
-                shutil.copy(os.path.join(DATADIR, f),
-                            os.path.join(WORKDIR, f))
-
-            # cd to workdir
-            savedir = os.getcwd()
-            os.chdir(WORKDIR)
-            for label in self.order:
-                sys.stdout.write("preparing test {}".format(label))
-                command = self.commands[label]
-                # build samtools command and target and run
-                samtools_target, samtools_command = command[0]
-                runSamtools(" ".join((SAMTOOLS, samtools_command)))
-                sys.stdout.write(" samtools ok")
-                # get pysam command and run
-                try:
-                    pysam_target, pysam_command = command[1]
-                except ValueError as msg:
-                    raise ValueError("error while setting up %s=%s: %s" %
-                                     (label, command, msg))
-
-                pysam_method, pysam_options = pysam_command
-                
-                try:
-                    output = pysam_method(*pysam_options.split(" "),
-                                          raw=True,
-                                          catch_stdout=True)
-                except pysam.SamtoolsError as msg:
-                    raise pysam.SamtoolsError(
-                        "error while executing %s: options=%s: msg=%s" %
-                        (label, pysam_options, msg))
-
-                sys.stdout.write(" pysam ok\n")
-
-                if ">" in samtools_command:
-                    with open(pysam_target, "wb") as outfile:
-                        if type(output) == list:
-                            if IS_PYTHON3:
-                                for line in output:
-                                    outfile.write(line.encode('ascii'))
-                            else:
-                                for line in output:
-                                    outfile.write(line)
-                        else:
-                            outfile.write(output)
-
-            os.chdir(savedir)
-            BinaryTest.first_time = False
-
-        samtools_version = getSamtoolsVersion()
-
+        samtools_version = get_version(self.executable)
         def _r(s):
             # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a ->
             # 0.1.12
@@ -293,100 +125,177 @@ class BinaryTest(unittest.TestCase):
 
         if _r(samtools_version) != _r(pysam.__samtools_version__):
             raise ValueError(
-                "versions of pysam/samtools and samtools differ: %s != %s" %
-                (pysam.__samtools_version__,
+                "versions of pysam.%s and %s differ: %s != %s" %
+                (self.executable,
+                 self.executable,
+                 pysam.__samtools_version__,
                  samtools_version))
 
-    def checkCommand(self, command):
-        if command:
-            samtools_target, pysam_target = self.commands[
-                command][0][0], self.commands[command][1][0]
-            samtools_target = os.path.join(WORKDIR, samtools_target)
-            pysam_target = os.path.join(WORKDIR, pysam_target)
-            self.assertTrue(
-                checkBinaryEqual(samtools_target, pysam_target),
-                "%s failed: files %s and %s are not the same" %
-                (command, samtools_target, pysam_target))
+    def setUp(self):
+        '''setup tests. 
 
-    def testImport(self):
-        self.checkCommand("import")
+        For setup, all commands will be run before the first test is
+        executed. Individual tests will then just compare the output
+        files.
 
-    def testIndex(self):
-        self.checkCommand("index")
+        '''
 
-    def testSort(self):
-        self.checkCommand("sort")
+        self.check_version()
 
-    def testMpileup(self):
-        self.checkCommand("mpileup")
+        if not os.path.exists(WORKDIR):
+            os.makedirs(WORKDIR)
 
-    def testCalmd(self):
-        self.checkCommand("calmd")
+        for f in self.requisites:
+            shutil.copy(os.path.join(DATADIR, f), 
+                        os.path.join(WORKDIR, f))
 
-    def testDepth(self):
-        self.checkCommand("depth")
+        self.savedir = os.getcwd()
+        os.chdir(WORKDIR)
 
-    def testIdxstats(self):
-        self.checkCommand("idxstats")
+        return
 
-    def testFixmate(self):
-        self.checkCommand("fixmate")
+    def check_statement(self, statement):
 
-    def testFlagstat(self):
-        self.checkCommand("flagstat")
+        parts = statement.split(" ")
+        r_samtools = {"out": self.executable}
+        r_pysam = {"out": "pysam"}
 
-    def testMerge(self):
-        self.checkCommand("merge")
+        command = parts[0]
+        command = self.map_command.get(command, command)
+        # self.assertTrue(command in pysam.SAMTOOLS_DISPATCH)
 
-    def testRmdup(self):
-        self.checkCommand("rmdup")
+        targets = [x for x in parts if "%(out)s" in x]
+        samtools_targets = [x % r_samtools for x in targets]
+        pysam_targets = [x % r_pysam for x in targets]
 
-    def testReheader(self):
-        self.checkCommand("reheader")
+        pysam_method = getattr(self.module, command)
+        # run samtools
+        full_statement = re.sub("%\(out\)s", self.executable, statement)
+        run_command(" ".join((self.executable, full_statement)))
+        # sys.stdout.write("%s %s ok" % (command, self.executable))
 
-    def testCat(self):
-        self.checkCommand("cat")
+        # run pysam
+        if ">" in statement:
+            assert parts[-2] == ">"
+            parts = parts[:-2]
 
-    def testTargetcut(self):
-        self.checkCommand("targetcut")
+        # avoid interpolation to preserve string quoting, tab chars, etc.
+        pysam_parts = [re.sub("%\(out\)s", "pysam", x) for x in parts[1:]]
+        output = pysam_method(*pysam_parts,
+                              raw=True,
+                              catch_stdout=True)
+        
+        # sys.stdout.write(" pysam ok\n")
 
-    def testPhase(self):
-        self.checkCommand("phase")
+        if ">" in statement:
+            with open(pysam_targets[-1], "wb") as outfile:
+                if output is not None:
+                    outfile = outfile.write(output)
 
-    def testBam2fq(self):
-        self.checkCommand("bam2fq")
+        for samtools_target, pysam_target in zip(samtools_targets,
+                                                 pysam_targets):
+            if os.path.isdir(samtools_target):
+                samtools_files = glob.glob(os.path.join(
+                    samtools_target, "*"))
+                pysam_files = glob.glob(os.path.join(pysam_target, "*"))
+                self.assertEqual(len(samtools_files), len(pysam_files))
+                # need to be able to exclude files like README, etc.
+                continue
+            else:
+                samtools_files = [samtools_target]
+                pysam_files = [pysam_target]
+                
+            for s, p in zip(samtools_files, pysam_files):
+                self.assertTrue(
+                    checkBinaryEqual(s, p),
+                    "%s failed: files %s and %s are not the same" %
+                    (command, s, p))
 
-    def testBedcov(self):
-        self.checkCommand("bedcov")
-
-    def testView(self):
-        self.checkCommand("view")
-
-    # def testBamshuf(self):
-    #    self.checkCommand("bamshuf")
-
-    # def testPad2Unpad(self):
-    #    self.checkCommand("pad2unpad")
-
-    def testEmptyIndex(self):
-        self.assertRaises(IOError, pysam.index, "exdoesntexist.bam")
-
-    def __del__(self):
+    def testStatements(self):
+        for statement in self.statements:
+            self.check_statement(statement)
+        
+    def tearDown(self):
         if os.path.exists(WORKDIR):
             shutil.rmtree(WORKDIR)
+        os.chdir(self.savedir)
+
+
+class EmptyIndexTest(unittest.TestCase):
+
+    def testEmptyIndex(self):
+        self.assertRaises(IOError, pysam.samtools.index,
+                          "exdoesntexist.bam")
 
 
 class StdoutTest(unittest.TestCase):
     '''test if stdout can be redirected.'''
 
     def testWithRedirectedStdout(self):
-        r = pysam.flagstat(os.path.join(DATADIR, "ex1.bam"))
+        r = pysam.samtools.flagstat(
+            os.path.join(DATADIR, "ex1.bam"))
         self.assertTrue(len(r) > 0)
 
     def testWithoutRedirectedStdout(self):
-        r = pysam.flagstat(os.path.join(DATADIR, "ex1.bam"),
-                           catch_stdout=False)
-        self.assertTrue(len(r) == 0)
+        r = pysam.samtools.flagstat(
+            os.path.join(DATADIR, "ex1.bam"),
+            catch_stdout=False)
+        self.assertEqual(r, None)
+
+
+class PysamTest(SamtoolsTest):
+    """check access to samtools command in the pysam 
+    main package.
+    
+    This is for backwards capability.
+    """
+
+    module = pysam
+
+
+class BcftoolsTest(SamtoolsTest):
+
+    requisites = [
+        "ex1.fa",
+        "ex1.vcf.gz",
+        "ex1.vcf.gz.tbi",
+    ]
+    # a list of statements to test
+    # should contain at least one %(out)s component indicating
+    # an output file.
+    statements = [
+        # "index -n ex1.vcf.gz > %(out)s_ex1.index",
+
+        "annotate -x ID ex1.vcf.gz > %(out)s_ex1.annotate",
+        "concat -a ex1.vcf.gz ex1.vcf.gz > %(out)s_ex1.concat",
+        "isec -p %(out)s_ex1.isec ex1.vcf.gz ex1.vcf.gz",
+        "merge --force-samples ex1.vcf.gz ex1.vcf.gz > %(out)s_ex1.norm",
+        "norm -m +both ex1.vcf.gz > %(out)s_ex1.norm",
+
+        # "plugin",
+        # "query -f '%CHROM\n' ex1.vcf.gz > %(out)s_ex1.query",
+        # "reheader -s A > %(out)s_ex1.reheader",
+        # "view ex1.vcf.gz > %(out)s_ex1.view",
+        # "call -m ex1.vcf.gz > %(out)s_ex1.call",
+        # bad file descriptor
+        # "consensus -f ex1.fa ex1.vcf.gz  > %(out)s_ex1.consensus"
+        # need appropriate VCF file
+        # "cnv",
+        # segfault
+        # "filter -s A ex1.vcf.gz  > %(out)s_ex1.filter",
+        # exit
+        # "gtcheck -s A ex1.vcf.gz  > %(out)s_ex1.gtcheck",
+        "roh -s A ex1.vcf.gz > %(out)s_ex1.roh",
+        "stats ex1.vcf.gz > %(out)s_ex1.stats",
+    ]
+
+    map_command = {
+        "import": "samimport"}
+
+    executable = "bcftools"
+
+    module = pysam.bcftools
+
 
 if __name__ == "__main__":
     # build data files

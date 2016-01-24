@@ -13,6 +13,8 @@ most of the modern Linux/Unix distributions. If you do not have this
 library installed, you can still compile the rest of SAMtools by
 manually modifying one line in Makefile.
 
+curl
+
 Pysam requires Python (2.6 or greater) and Cython (0.22 or greater).
 It has not been tested on many other platforms.
 

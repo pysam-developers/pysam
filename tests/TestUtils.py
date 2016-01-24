@@ -14,6 +14,14 @@ else:
     from urllib2 import urlopen
 
 
+if IS_PYTHON3:
+    def force_str(s):
+        return s.decode('ascii')
+else:
+    def force_str(s):
+        return s
+
+
 def checkBinaryEqual(filename1, filename2):
     '''return true if the two files are binary equal.
     '''
@@ -53,8 +61,8 @@ def checkSamtoolsViewEqual(filename1, filename2,
     if not without_header:
         args.append("-h")
 
-    lines1 = pysam.view(*(args + [filename1]))
-    lines2 = pysam.view(*(args + [filename2]))
+    lines1 = pysam.samtools.view(*(args + [filename1]))
+    lines2 = pysam.samtools.view(*(args + [filename2]))
 
     if len(lines1) != len(lines2):
         return False

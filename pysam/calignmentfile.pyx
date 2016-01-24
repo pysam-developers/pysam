@@ -374,6 +374,7 @@ cdef class AlignmentFile:
               add_sq_text=True,
               check_header=True,
               check_sq=True,
+              filepath_index=None,
               referencenames=None,
               referencelengths=None):
         '''open a sam, bam or cram formatted file.
@@ -382,6 +383,7 @@ cdef class AlignmentFile:
         will be closed and a new file will be opened.
         '''
         cdef char *cfilename
+        cdef char *cindexname
         cdef char *cmode
 
         # for backwards compatibility:
@@ -403,7 +405,8 @@ cdef class AlignmentFile:
                            header=header,
                            port=port,
                            check_header=check_header,
-                           check_sq=check_sq)
+                           check_sq=check_sq,
+                           filepath_index=filepath_index)
                 return
             except ValueError, msg:
                 pass
@@ -418,7 +421,8 @@ cdef class AlignmentFile:
                        header=header,
                        port=port,
                        check_header=check_header,
-                       check_sq=check_sq)
+                       check_sq=check_sq,
+                       filepath_index=filepath_index)
             return
 
         assert mode in ("r", "w", "rb", "wb", "wh",
@@ -596,29 +600,49 @@ cdef class AlignmentFile:
         if mode[0] == "r" and (self.is_bam or self.is_cram):
 
             # open index for remote files
-            if self.is_remote:
+            if self.is_remote and not filepath_index:
                 cfilename = filename
+
                 with nogil:
                     self.index = hts_idx_load(cfilename, format_index)
                 if self.index == NULL:
                     warnings.warn(
-                        "unable to open remote index for '%s'" % filename)
+                        "unable to open remote index for '%s'" % cfilename)
             else:
-                if self.is_bam \
-                   and not os.path.exists(filename + b".bai") \
-                   and not os.path.exists(filename[:-4] + b".bai"):
-                    self.index = NULL
-                elif self.is_cram \
-                     and not os.path.exists(filename + b".crai") \
-                     and not os.path.exists(filename[:-4] + b".crai"):
-                    self.index = NULL
+                has_index = True
+                cfilename = filename
+                if filepath_index:
+                    if not os.path.exists(filepath_index):
+                        warnings.warn(
+                            "unable to open index at %s" % cfilename)
+                        self.index = NULL
+                        has_index = False
                 else:
+                    if self.is_bam \
+                            and not os.path.exists(filename + b".bai") \
+                            and not os.path.exists(filename[:-4] + b".bai"):
+                        self.index = NULL
+                        has_index = False
+                    elif self.is_cram \
+                            and not os.path.exists(filename + b".crai") \
+                            and not os.path.exists(filename[:-5] + b".crai"):
+                        self.index = NULL
+                        has_index = False
+
+                if has_index:
                     # returns NULL if there is no index or index could
                     # not be opened
-                    cfilename = filename
-                    with nogil:
-                        self.index = sam_index_load(self.htsfile,
-                                                    cfilename)
+                    if filepath_index:
+                        cindexname = filepath_index = encode_filename(filepath_index)
+                        with nogil:
+                            self.index = sam_index_load2(self.htsfile,
+                                                         cfilename,
+                                                         cindexname)
+
+                    else:
+                        with nogil:
+                            self.index = sam_index_load(self.htsfile,
+                                                        cfilename)
                     if self.index == NULL:
                         raise IOError(
                             "error while opening index for '%s'" %

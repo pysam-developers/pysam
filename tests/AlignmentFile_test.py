@@ -5,7 +5,6 @@ Execute in the :file:`tests` directory as it requires the Makefile
 and data files located there.
 '''
 
-import pysam
 import unittest
 import os
 import shutil
@@ -13,14 +12,15 @@ import sys
 import collections
 import subprocess
 import logging
-from functools import partial
-from TestUtils import checkBinaryEqual, checkURL, checkSamtoolsViewEqual, checkFieldEqual
 import array
+from functools import partial
 
-IS_PYTHON3 = sys.version_info[0] >= 3
+import pysam
+import pysam.samtools
+from TestUtils import checkBinaryEqual, checkURL, \
+    checkSamtoolsViewEqual, checkFieldEqual, force_str
 
-SAMTOOLS = "samtools"
-WORKDIR = "pysam_test_work"
+
 DATADIR = "pysam_data"
 
 
@@ -796,9 +796,11 @@ class TestIteratorRowBAM(unittest.TestCase):
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
-        sa = list(pysam.view(self.filename,
-                             rnge,
-                             raw=True))
+        sa = force_str(
+            pysam.samtools.view(
+                self.filename,
+                rnge,
+                raw=True)).splitlines(True)
         self.assertEqual(
             len(ps), len(sa),
             "unequal number of results for range %s: %i != %i" %
@@ -855,15 +857,15 @@ class TestIteratorRowAllBAM(unittest.TestCase):
     def testIterate(self):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch())
-        sa = list(pysam.view(self.filename,
-                             raw=True))
+        sa = pysam.samtools.view(self.filename,
+                                 raw=True).splitlines()
         self.assertEqual(
             len(ps), len(sa),
             "unequal number of results: %i != %i" %
             (len(ps), len(sa)))
         # check if the same reads are returned
         for line, pair in enumerate(list(zip(ps, sa))):
-            data = pair[1].split("\t")
+            data = force_str(pair[1]).split("\t")
             self.assertEqual(
                 pair[0].query_name,
                 data[0],
@@ -1606,8 +1608,10 @@ class TestDeNovoConstruction(unittest.TestCase):
             outfile.write(x)
         outfile.close()
 
-        self.assertTrue(checkBinaryEqual(tmpfilename, self.bamfile),
-                        "mismatch when construction BAM file, see %s %s" % (tmpfilename, self.bamfile))
+        self.assertTrue(
+            checkBinaryEqual(tmpfilename, self.bamfile),
+            "mismatch when construction BAM file, see %s %s" %
+            (tmpfilename, self.bamfile))
 
         os.unlink(tmpfilename)
 
@@ -1816,7 +1820,7 @@ class TestRemoteFileFTP(unittest.TestCase):
         if not checkURL(self.url):
             return
 
-        result = pysam.view(self.url, self.region)
+        result = pysam.samtools.view(self.url, self.region)
         self.assertEqual(len(result), 36)
 
     def testFTPFetch(self):
@@ -1842,8 +1846,8 @@ class TestRemoteFileHTTP(unittest.TestCase):
         samfile_local = pysam.AlignmentFile(self.local, "rb")
         ref = list(samfile_local.fetch(region=self.region))
 
-        result = pysam.view(self.url, self.region)
-        self.assertEqual(len(result), len(ref))
+        result = pysam.samtools.view(self.url, self.region)
+        self.assertEqual(len(result.splitlines()), len(ref))
 
     def testFetch(self):
         if not checkURL(self.url):
@@ -1935,25 +1939,31 @@ class TestPileup(unittest.TestCase):
     def checkEqual(self, references, iterator):
 
         for x, column in enumerate(iterator):
+            v = references[x][:-1].split("\t")
+            self.assertEqual(
+                len(v), 6,
+                "expected 6 values, got {}".format(v))
             (contig, pos, reference_base,
              read_bases, read_qualities, alignment_mapping_qualities) \
-                = references[x][:-1].split("\t")
+                = v
             self.assertEqual(int(pos) - 1, column.reference_pos)
 
     def testSamtoolsStepper(self):
-        refs = pysam.mpileup(
-            "-f", self.fastafilename,
-            self.samfilename)
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                self.samfilename)).splitlines(True)
         iterator = self.samfile.pileup(
             stepper="samtools",
             fastafile=self.fastafile)
         self.checkEqual(refs, iterator)
 
     def testAllStepper(self):
-        refs = pysam.mpileup(
-            "-f", self.fastafilename,
-            "-A", "-B",
-            self.samfilename)
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "-A", "-B",
+                self.samfilename)).splitlines(True)
 
         iterator = self.samfile.pileup(
             stepper="all",
@@ -1985,7 +1995,7 @@ class TestCountCoverage(unittest.TestCase):
                 read.flag = read.flag | 0x400
             samfile.write(read)
         samfile.close()
-        pysam.index("test_count_coverage_read_all.bam")
+        pysam.samtools.index("test_count_coverage_read_all.bam")
 
     def count_coverage_python(self, bam, chrom, start, stop,
                               read_callback,
@@ -2118,7 +2128,7 @@ class TestCountCoverage(unittest.TestCase):
                 read.flag = read.flag | 0x400
             samfile.write(read)
         samfile.close()
-        pysam.index("test_count_coverage_nofilter.bam")
+        pysam.samtools.index("test_count_coverage_nofilter.bam")
         samfile = pysam.AlignmentFile("test_count_coverage_nofilter.bam")
         chr = 'chr1'
         start = 0
@@ -2272,21 +2282,26 @@ class TestSamtoolsProxy(unittest.TestCase):
     '''tests for sanity checking access to samtools functions.'''
 
     def testIndex(self):
-        self.assertRaises(IOError, pysam.index, "missing_file")
+        self.assertRaises(IOError, pysam.samtools.index, "missing_file")
 
     def testView(self):
         # note that view still echos "open: No such file or directory"
-        self.assertRaises(pysam.SamtoolsError, pysam.view, "missing_file")
+        self.assertRaises(pysam.SamtoolsError,
+                          pysam.samtools.view,
+                          "missing_file")
 
     def testSort(self):
-        self.assertRaises(pysam.SamtoolsError, pysam.sort, "missing_file")
+        self.assertRaises(pysam.SamtoolsError,
+                          pysam.samtools.sort,
+                          "missing_file")
 
 
 class TestAlignmentFileIndex(unittest.TestCase):
 
     def testIndex(self):
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                      "rb")
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "ex1.bam"),
+            "rb")
         index = pysam.IndexedReads(samfile)
         index.build()
         reads = collections.defaultdict(int)
@@ -2299,6 +2314,31 @@ class TestAlignmentFileIndex(unittest.TestCase):
             self.assertEqual(len(found), counts)
             for x in found:
                 self.assertEqual(x.query_name, qname)
+
+
+class TestExplicitIndex(unittest.TestCase):
+
+    def testExplicitIndexBAM(self):
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "explicit_index.bam"),
+            "rb",
+            filepath_index=os.path.join(DATADIR, 'ex1.bam.bai'))
+                                      
+        samfile.fetch("chr1")
+
+    def testExplicitIndexCRAM(self):
+        samfile = pysam.AlignmentFile(
+            os.path.join(DATADIR, "explicit_index.cram"),
+            "rc",
+            filepath_index=os.path.join(DATADIR, 'ex1.cram.crai'))
+
+    def testRemoteExplicitIndexBAM(self):
+        samfile = pysam.AlignmentFile(
+            "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam",
+            "rb",
+            filepath_index=os.path.join(DATADIR, 'ex1.bam.bai'))
+
+        samfile.fetch("chr1")
 
 
 class TestVerbosity(unittest.TestCase):

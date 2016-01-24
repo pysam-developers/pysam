@@ -130,14 +130,36 @@ pushd .
 
 # create a new folder to store external tools
 mkdir -p $HOME/CGAT/external-tools
-cd $HOME/CGAT/external-tools
 
 # install samtools
-curl -L http://downloads.sourceforge.net/project/samtools/samtools/1.2/samtools-1.2.tar.bz2 > samtools-1.2.tar.bz2
-tar xjvf samtools-1.2.tar.bz2 
-cd samtools-1.2
+cd $HOME/CGAT/external-tools
+curl -L http://downloads.sourceforge.net/project/samtools/samtools/1.3/samtools-1.3.tar.bz2 > samtools-1.3.tar.bz2
+tar xjf samtools-1.3.tar.bz2 
+cd samtools-1.3
 make
-PATH=$PATH:$HOME/CGAT/external-tools/samtools-1.2
+PATH=$PATH:$HOME/CGAT/external-tools/samtools-1.3
+
+echo "installed samtools"
+samtools --version
+
+if [ $? != 0 ]; then
+    exit 1
+fi
+
+# install bcftools
+cd $HOME/CGAT/external-tools
+curl -L https://github.com/samtools/bcftools/releases/download/1.3/bcftools-1.3.tar.bz2 > bcftools-1.3.tar.bz2
+tar xjf bcftools-1.3.tar.bz2
+cd bcftools-1.3
+make
+PATH=$PATH:$HOME/CGAT/external-tools/bcftools-1.3
+
+echo "installed bcftools"
+bcftools --version
+
+if [ $? != 0 ]; then
+    exit 1
+fi
 
 popd
 
@@ -167,7 +189,8 @@ cd tests
 echo
 echo 'building test data'
 echo 
-make -C pysam_data
+make -C pysam_data all
+make -C cbcf_data all
 
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch

@@ -394,16 +394,26 @@ cdef class TabixFile:
         if not self.is_open():
             raise ValueError("I/O operation on closed file")
 
-        # convert coordinates to region string
+        # convert coordinates to region string, which is one-based
         if reference:
             if end is not None:
+                if end < 0:
+                    raise ValueError("end out of range (%i)" % end)
                 if start is None:
                     start = 0
-                region = '%s:%i-%i' % (reference, start + 1, end)
-                if start > end:
+                    
+                if start < 0:
+                    raise ValueError("start out of range (%i)" % end)
+                elif start > end:
                     raise ValueError(
-                        'start (%i) > end (%i)' % (start, end))
+                        'start (%i) >= end (%i)' % (start, end))
+                elif start == end:
+                    return EmptyIterator()
+                else:
+                    region = '%s:%i-%i' % (reference, start + 1, end)
             elif start is not None:
+                if start < 0:
+                    raise ValueError("start out of range (%i)" % end)
                 region = '%s:%i' % (reference, start + 1)
             else:
                 region = reference

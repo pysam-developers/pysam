@@ -342,7 +342,7 @@ cdef class VariantHeaderRecord(object):
         """header key (the part before '=', in FILTER/INFO/FORMAT/contig/fileformat etc.)"""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
-            return r.key if r.key else None
+            return force_str(r.key) if r.key else None
 
     property value:
         """header value.  Set only for generic lines, None for FILTER/INFO, etc."""
@@ -382,7 +382,7 @@ cdef class VariantHeaderRecord(object):
         cdef int i
         for i in range(r.nkeys):
             if r.keys[i]:
-                yield r.keys[i]
+                yield force_str(r.keys[i])
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -492,12 +492,14 @@ cdef VariantHeaderRecords makeVariantHeaderRecords(VariantHeader header):
 
 
 cdef class VariantMetadata(object):
-    """filter, info or format metadata record from a :class:`VariantHeader` object"""
+    """filter, info or format metadata record from a :class:`VariantHeader`
+    object"""
+
     property name:
         """metadata name"""
         def __get__(self):
             cdef bcf_hdr_t *hdr = self.header.ptr
-            return hdr.id[BCF_DT_ID][self.id].key
+            return force_str(hdr.id[BCF_DT_ID][self.id].key)
 
     # Q: Should this be exposed?
     property id:
@@ -523,7 +525,8 @@ cdef class VariantMetadata(object):
         """metadata value type"""
         def __get__(self):
             cdef bcf_hdr_t *hdr = self.header.ptr
-            if not bcf_hdr_idinfo_exists(hdr, self.type, self.id) or self.type == BCF_HL_FLT:
+            if not bcf_hdr_idinfo_exists(hdr, self.type, self.id) or \
+               self.type == BCF_HL_FLT:
                 return None
             return VALUE_TYPES[bcf_hdr_id2type(hdr, self.type, self.id)]
 
@@ -533,10 +536,11 @@ cdef class VariantMetadata(object):
             descr = self.record.get('Description')
             if descr:
                 descr = descr.strip('"')
-            return descr
+            return force_bytes(descr)
 
     property record:
-        """:class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object"""
+        """:class:`VariantHeaderRecord` associated with this
+        :class:`VariantMetadata` object"""
         def __get__(self):
             cdef bcf_hdr_t *hdr = self.header.ptr
             if not bcf_hdr_idinfo_exists(hdr, self.type, self.id):
@@ -861,14 +865,14 @@ cdef class VariantHeaderSamples(object):
         if i < 0 or i >= n:
             raise IndexError('invalid sample index')
 
-        return hdr.samples[i]
+        return force_str(hdr.samples[i])
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield hdr.samples[i]
+            yield force_str(hdr.samples[i])
 
     def __contains__(self, key):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -929,7 +933,7 @@ cdef class VariantHeader(object):
     property version:
         """VCF version"""
         def __get__(self):
-            return bcf_hdr_get_version(self.ptr)
+            return force_bytes(bcf_hdr_get_version(self.ptr))
 
     property samples:
         """samples (:class:`VariantHeaderSamples`)"""
@@ -962,15 +966,19 @@ cdef class VariantHeader(object):
             return makeVariantHeaderMetadata(self, BCF_HL_FMT)
 
     property alts:
-        """
-        alt metadata (:class:`dict` ID->record).  The data returned just a snapshot of alt records,
-        is created every time the property is requested, and modifications will not be reflected
-        in the header metadata and vice versa.
+        """alt metadata (:class:`dict` ID->record).
 
-        i.e. it is just a dict that reflects the state of alt records at the time it is created.
+        The data returned just a snapshot of alt records, is created
+        every time the property is requested, and modifications will
+        not be reflected in the header metadata and vice versa.
+
+        i.e. it is just a dict that reflects the state of alt records
+        at the time it is created.
+
         """
         def __get__(self):
-            return { record['ID']:record for record in self.records if record.key.upper() == 'ALT' }
+            return { record['ID']:record for record in self.records
+                     if record.key.upper() == 'ALT' }
 
 
     # only safe to do when opening an htsfile
@@ -982,14 +990,17 @@ cdef class VariantHeader(object):
 
         if missing_samples:
             # FIXME: add specialized exception with payload
-            raise ValueError('missing {:d} requested samples'.format(len(missing_samples)))
+            raise ValueError(
+                'missing {:d} requested samples'.format(
+                    len(missing_samples)))
 
         keep_samples = ','.join(keep_samples)
         cdef char *keep = <char *>keep_samples if keep_samples else NULL
         cdef ret = bcf_hdr_set_samples(self.ptr, keep, 0)
 
         if ret != 0:
-            raise ValueError('bcf_hdr_set_samples failed: ret = {}'.format(ret))
+            raise ValueError(
+                'bcf_hdr_set_samples failed: ret = {}'.format(ret))
 
     def __str__(self):
         cdef int hlen
@@ -997,7 +1008,7 @@ cdef class VariantHeader(object):
 
         ret = hstr[:hlen]
         free(hstr)
-        return force_str(hstr)
+        return force_str(ret)
 
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
@@ -1070,7 +1081,8 @@ cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
 ########################################################################
 
 cdef class VariantRecordFilter(object):
-    """mapping from filter index or name to :class:`VariantMetadata` object for filters set on a :class:`VariantRecord` object."""
+    """mapping from filter index or name to :class:`VariantMetadata` 
+    object for filters set on a :class:`VariantRecord` object."""
 
     def __len__(self):
         return self.record.ptr.d.n_flt
@@ -1095,9 +1107,11 @@ cdef class VariantRecordFilter(object):
             if key == '.':
                 key = 'PASS'
 
-            id = bcf_hdr_id2int(hdr, BCF_DT_ID, key)
+            bkey = force_bytes(key)
+            id = bcf_hdr_id2int(hdr, BCF_DT_ID, bkey)
 
-            if not bcf_hdr_idinfo_exists(hdr, BCF_HL_FLT, id) or not bcf_has_filter(hdr, self.record.ptr, key):
+            if not bcf_hdr_idinfo_exists(hdr, BCF_HL_FLT, id) \
+               or not bcf_has_filter(hdr, self.record.ptr, bkey):
                 raise KeyError('Invalid filter')
 
         return makeVariantMetadata(self.record.header, BCF_HL_FLT, id)
@@ -1108,7 +1122,7 @@ cdef class VariantRecordFilter(object):
         cdef int i, n = r.d.n_flt
 
         for i in range(n):
-            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.flt[i])
+            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.flt[i]))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1165,7 +1179,8 @@ cdef VariantRecordFilter makeVariantRecordFilter(VariantRecord record):
 
 
 cdef class VariantRecordFormat(object):
-    """mapping from format name or index to :class:`VariantMetadata` object for formats present in a :class:`VariantRecord` object."""
+    """mapping from format name or index to :class:`VariantMetadata`
+    object for formats present in a :class:`VariantRecord` object."""
 
     def __len__(self):
         return self.record.ptr.n_fmt
@@ -1186,7 +1201,8 @@ cdef class VariantRecordFormat(object):
                 raise IndexError('invalid format index')
             fmt = &r.d.fmt[index]
         else:
-            fmt = bcf_get_fmt(hdr, r, key)
+            bkey = force_bytes(key)
+            fmt = bcf_get_fmt(hdr, r, bkey)
             if not fmt:
                 raise KeyError('unknown format')
 
@@ -1198,7 +1214,7 @@ cdef class VariantRecordFormat(object):
         cdef int i, n = r.n_fmt
 
         for i in range(n):
-            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id)
+            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1249,7 +1265,8 @@ cdef VariantRecordFormat makeVariantRecordFormat(VariantRecord record):
     if not record:
         raise ValueError('invalid VariantRecord')
 
-    cdef VariantRecordFormat format = VariantRecordFormat.__new__(VariantRecordFormat)
+    cdef VariantRecordFormat format = VariantRecordFormat.__new__(
+        VariantRecordFormat)
     format.record = record
 
     return format
@@ -1257,7 +1274,8 @@ cdef VariantRecordFormat makeVariantRecordFormat(VariantRecord record):
 
 #TODO: Add a getmeta method to return the corresponding VariantMetadata?
 cdef class VariantRecordInfo(object):
-    """mapping from info metadata name to value for info data present in a :class:`VariantRecord` object."""
+    """mapping from info metadata name to value for info data present in a
+    :class:`VariantRecord` object."""
 
     def __len__(self):
         return self.record.ptr.n_info
@@ -1268,7 +1286,9 @@ cdef class VariantRecordInfo(object):
     def __getitem__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef bcf_info_t *info = bcf_get_info(hdr, r, key)
+
+        bkey = force_bytes(key)
+        cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
         if not info:
             raise KeyError('Unknown INFO field: {}'.format(key))
@@ -1281,7 +1301,7 @@ cdef class VariantRecordInfo(object):
         cdef int i, n = r.n_info
 
         for i in range(n):
-            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.info[i].key)
+            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.info[i].key))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1372,7 +1392,8 @@ cdef class VariantRecordSamples(object):
         if isinstance(key, int):
             sample_index = key
         else:
-            sample_index = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, key)
+            bkey = force_bytes(key)
+            sample_index = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, bkey)
             if sample_index < 0:
                 raise KeyError('invalid sample name')
 
@@ -1387,7 +1408,7 @@ cdef class VariantRecordSamples(object):
         cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield hdr.samples[i]
+            yield force_str(hdr.samples[i])
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1407,7 +1428,8 @@ cdef class VariantRecordSamples(object):
         if isinstance(key, int):
             sample_index = key
         else:
-            sample_index = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, key)
+            bkey = force_bytes(key)
+            sample_index = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, bkey)
             if sample_index < 0:
                 raise KeyError('invalid sample name')
 
@@ -1457,7 +1479,8 @@ cdef VariantRecordSamples makeVariantRecordSamples(VariantRecord record):
     if not record:
         raise ValueError('invalid VariantRecord')
 
-    cdef VariantRecordSamples samples = VariantRecordSamples.__new__(VariantRecordSamples)
+    cdef VariantRecordSamples samples = VariantRecordSamples.__new__(
+        VariantRecordSamples)
     samples.record = record
 
     return samples
@@ -1485,7 +1508,7 @@ cdef class VariantRecord(object):
     property chrom:
         """chromosome/contig name"""
         def __get__(self):
-            return bcf_hdr_id2name(self.header.ptr, self.ptr.rid)
+            return force_str(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
         def __set__(self, chrom):
             cdef vdict_t *d = <vdict_t*>self.header.ptr.dict[BCF_DT_CTG]
             cdef khint_t k = kh_get_vdict(d, chrom)
@@ -1496,7 +1519,7 @@ cdef class VariantRecord(object):
     property contig:
         """chromosome/contig name"""
         def __get__(self):
-            return bcf_hdr_id2name(self.header.ptr, self.ptr.rid)
+            return force_str(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
         def __set__(self, chrom):
             cdef vdict_t *d = <vdict_t*>self.header.ptr.dict[BCF_DT_CTG]
             cdef khint_t k = kh_get_vdict(d, chrom)
@@ -1590,7 +1613,7 @@ cdef class VariantRecord(object):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
             id = self.ptr.d.id
-            return id if id != b'.' else None
+            return force_str(id) if id != b'.' else None
         def __set__(self, id):
             cdef char *idstr = NULL
             if id is not None:
@@ -1603,7 +1626,7 @@ cdef class VariantRecord(object):
         def __get__(self):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            return self.ptr.d.allele[0] if self.ptr.d.allele else None
+            return force_str(self.ptr.d.allele[0] if self.ptr.d.allele else None)
         def __set__(self, ref):
             alleles = list(self.alleles)
             alleles[0] = ref
@@ -1616,7 +1639,8 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             if not self.ptr.d.allele:
                 return None
-            return tuple(self.ptr.d.allele[i] for i in range(self.ptr.n_allele))
+            return tuple(force_str(self.ptr.d.allele[i])
+                         for i in range(self.ptr.n_allele))
         def __set__(self, values):
             if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
@@ -1631,7 +1655,8 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             if self.ptr.n_allele < 2 or not self.ptr.d.allele:
                 return None
-            return tuple(self.ptr.d.allele[i] for i in range(1,self.ptr.n_allele))
+            return tuple(force_str(self.ptr.d.allele[i])
+                         for i in range(1,self.ptr.n_allele))
         def __set__(self, alts):
             alleles = [self.ref]
             alleles.extend(alts)
@@ -1715,7 +1740,9 @@ cdef VariantRecord makeVariantRecord(VariantHeader header, bcf1_t *r):
 
 cdef class VariantRecordSample(object):
     """Data for a single sample from a :class:`VariantRecord` object.
-       Provides data accessors for genotypes and a mapping interface from format name to values.
+       Provides data accessors for genotypes and a mapping interface
+       from format name to values.
+
     """
 
     property name:
@@ -1728,7 +1755,7 @@ cdef class VariantRecordSample(object):
             if self.index < 0 or self.index >= n:
                 raise ValueError('invalid sample index')
 
-            return hdr.samples[self.index]
+            return force_str(hdr.samples[self.index])
 
     property allele_indices:
         """allele indices for called genotype, if present.  Otherwise None"""
@@ -1794,6 +1821,10 @@ cdef class VariantRecordSample(object):
             cdef int16_t *data16
             cdef int32_t *data32
             alleles = []
+
+            # AH: not sure why this should be NULL, but see issue #203
+            if r.d.allele == NULL:
+                return tuple(["."] * nalleles)
 
             if fmt0.type == BCF_BT_INT8:
                 data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
@@ -1886,7 +1917,8 @@ cdef class VariantRecordSample(object):
                 raise IndexError('invalid format index')
             fmt = r.d.fmt + index
         else:
-            fmt = bcf_get_fmt(hdr, r, key)
+            bkey = force_bytes(key)
+            fmt = bcf_get_fmt(hdr, r, bkey)
 
         if not fmt:
             raise KeyError('invalid format requested')
@@ -1894,7 +1926,9 @@ cdef class VariantRecordSample(object):
         if is_gt_fmt(hdr, fmt):
             return self.alleles
         elif fmt.p and fmt.n and fmt.size:
-            return bcf_array_to_object(fmt.p + self.index * fmt.size, fmt.type, fmt.n, scalar=1)
+            # FIXME: Py3 byte conversion for strings?
+            return bcf_array_to_object(fmt.p + self.index * fmt.size,
+                                       fmt.type, fmt.n, scalar=1)
         else:
             return None
 
@@ -1904,7 +1938,7 @@ cdef class VariantRecordSample(object):
         cdef int i, n = r.n_fmt
 
         for i in range(n):
-            yield bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id)
+            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -2360,7 +2394,9 @@ cdef class VariantFile(object):
 
     def __dealloc__(self):
         if self.htsfile:
-            hts_close(self.htsfile)
+            # empty file causes segfault on closing, check if that is the case
+            if hts_get_bgzfp(self.htsfile).fp != NULL:
+                hts_close(self.htsfile)
             self.htsfile = NULL
 
     def __enter__(self):
@@ -2371,15 +2407,18 @@ cdef class VariantFile(object):
         return False
 
     property category:
-        """General file format category.  One of UNKNOWN, ALIGNMENTS, VARIANTS, INDEX, REGIONS"""
+        """General file format category.  One of UNKNOWN, ALIGNMENTS,
+        VARIANTS, INDEX, REGIONS"""
         def __get__(self):
             if not self.htsfile:
                 raise ValueError('metadata not available on closed file')
             return FORMAT_CATEGORIES[self.htsfile.format.category]
 
     property format:
-        """File format.
-           One of UNKNOWN, BINARY_FORMAT, TEXT_FORMAT, SAM, BAM, BAI, CRAM, CRAI, VCF, BCF, CSI, GZI, TBI, BED.
+        """File format.  
+        
+        One of UNKNOWN, BINARY_FORMAT, TEXT_FORMAT, SAM, BAM,
+        BAI, CRAM, CRAI, VCF, BCF, CSI, GZI, TBI, BED.
         """
         def __get__(self):
             if not self.htsfile:
@@ -2391,10 +2430,13 @@ cdef class VariantFile(object):
         def __get__(self):
             if not self.htsfile:
                 raise ValueError('metadata not available on closed file')
-            return self.htsfile.format.version.major, self.htsfile.format.version.minor
+            return (self.htsfile.format.version.major,
+                    self.htsfile.format.version.minor)
 
     property compression:
-        """File compression.  One of NONE, GZIP, BGZF, CUSTOM."""
+        """File compression.  
+        
+        One of NONE, GZIP, BGZF, CUSTOM."""
         def __get__(self):
             if not self.htsfile:
                 raise ValueError('metadata not available on closed file')
@@ -2414,7 +2456,9 @@ cdef class VariantFile(object):
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
         if self.htsfile:
-            hts_close(self.htsfile)
+            # empty file causes segfault on closing, check if that is the case
+            if hts_get_bgzfp(self.htsfile).fp != NULL:
+                hts_close(self.htsfile)
             self.htsfile = NULL
         self.header = self.index = None
 
@@ -2427,8 +2471,9 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if self.mode[0] != b'r':
-            raise ValueError('cannot iterate over Variantfile opened for writing')
+        if not self.mode.startswith(b'r'):
+            raise ValueError(
+                'cannot iterate over Variantfile opened for writing')
 
         self.is_reading = 1
         return self
@@ -2461,7 +2506,8 @@ cdef class VariantFile(object):
 
         cdef VariantFile vars = VariantFile.__new__(VariantFile)
         cdef bcf_hdr_t *hdr
-        cdef char *cfilename, *cmode
+        cdef char *cfilename
+        cdef char *cmode
 
         # FIXME: re-open using fd or else header and index could be invalid
         cfilename, cmode = self.filename, self.mode
@@ -2493,7 +2539,9 @@ cdef class VariantFile(object):
 
         return vars
 
-    def open(self, filename, mode=None, VariantHeader header=None, drop_samples=False):
+    def open(self, filename, mode=None,
+             VariantHeader header=None,
+             drop_samples=False):
         """open a vcf/bcf file.
 
         If open is called on an existing VariantFile, the current file will be
@@ -2502,7 +2550,8 @@ cdef class VariantFile(object):
         cdef bcf_hdr_t *hdr
         cdef hts_idx_t *idx
         cdef tbx_t *tidx
-        cdef char *cfilename, *cmode
+        cdef char *cfilename
+        cdef char *cmode
 
         # close a previously opened file
         if self.is_open:
@@ -2522,21 +2571,21 @@ cdef class VariantFile(object):
         if mode not in ('r','w','rb','wb', 'wh', 'wbu', 'rU', 'wb0'):
             raise ValueError('invalid file opening mode `{}`'.format(mode))
 
-        mode = mode.encode('ascii')
-
         # for htslib, wbu seems to not work
-        if mode == b'wbu':
-            mode = b'wb0'
+        if mode == 'wbu':
+            mode = 'wb0'
 
-        self.mode = mode
+        self.mode = mode = force_bytes(mode)
         self.filename = filename = encode_filename(filename)
         self.drop_samples = bool(drop_samples)
 
         # FIXME: Use htsFormat when it is available
-        self.is_remote = filename.startswith(b'http:') or filename.startswith(b'ftp:')
+        self.is_remote = filename.startswith(b'http:') or \
+                         filename.startswith(b'ftp:')
+
         self.is_stream = filename == b'-'
 
-        if mode[0] == b'w':
+        if mode.startswith(b'w'):
             # open file for writing
 
             # header structure (used for writing)
@@ -2545,37 +2594,45 @@ cdef class VariantFile(object):
             else:
                 raise ValueError('a VariantHeader must be specified')
 
-            # open file. Header gets written to file at the same time for bam files
-            # and sam files (in the latter case, the mode needs to be wh)
+            # open file. Header gets written to file at the same time
+            # for bam files and sam files (in the latter case, the
+            # mode needs to be wh)
             cfilename, cmode = filename, mode
             with nogil:
                 self.htsfile = hts_open(cfilename, cmode)
 
             if not self.htsfile:
-                raise ValueError("could not open file `{}` (mode='{}')".format((filename, mode)))
+                raise ValueError(
+                    "could not open file `{}` (mode='{}')".format(
+                        (filename, mode)))
 
             with nogil:
                 bcf_hdr_write(self.htsfile, self.header.ptr)
 
-        elif mode[0] == b'r':
+        if mode.startswith(b'r'):
             # open file for reading
-            if filename != b'-' and not self.is_remote and not os.path.exists(filename):
+            if filename != b'-' and not self.is_remote \
+               and not os.path.exists(filename):
                 raise IOError('file `{}` not found'.format(filename))
 
             cfilename, cmode = filename, mode
             with nogil:
                 self.htsfile = hts_open(cfilename, cmode)
-
+                
             if not self.htsfile:
-                raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format((filename, mode)))
+                raise ValueError(
+                    "could not open file `{}` (mode='{}') - "
+                    "is it VCF/BCF format?".format((filename, mode)))
 
             with nogil:
                 hdr = bcf_hdr_read(self.htsfile)
+
             self.header = makeVariantHeader(hdr)
 
             if not self.header:
-                raise ValueError("file `{}` does not have valid header (mode='{}') - is it BCF format?".format((filename, mode)))
-
+                raise ValueError(
+                    "file `{}` does not have valid header (mode='{}') - "
+                    "is it VCF/BCF format?".format((filename, mode)))
             # check for index and open if present
             if self.htsfile.format.format == bcf:
                 cfilename = filename
@@ -2583,7 +2640,7 @@ cdef class VariantFile(object):
                     idx = bcf_index_load(cfilename)
                 self.index = makeBCFIndex(self.header, idx)
             else:
-                tabix_filename = filename + '.tbi'
+                tabix_filename = filename + b'.tbi'
                 cfilename = tabix_filename
                 with nogil:
                     tidx = tbx_index_load(cfilename)
@@ -2591,13 +2648,16 @@ cdef class VariantFile(object):
 
             if not self.is_stream:
                 self.start_offset = self.tell()
+        else:
+            raise ValueError("unknown mode {}".format(mode))
 
     def reset(self):
         """reset file position to beginning of file just after the header."""
         return self.seek(self.start_offset, 0)
 
     def seek(self, uint64_t offset):
-        """move file pointer to position *offset*, see :meth:`pysam.VariantFile.tell`."""
+        """move file pointer to position *offset*, see
+        :meth:`pysam.VariantFile.tell`."""
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
         if self.is_stream:
@@ -2652,8 +2712,9 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if self.mode[0] != b'r':
-            raise ValueError('cannot fetch from Variantfile opened for writing')
+        if not self.mode.startswith(b'r'):
+            raise ValueError('cannot fetch from Variantfile opened '
+                             'for writing')
 
         if contig is None and region is None:
             self.is_reading = 1
@@ -2694,8 +2755,9 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if self.mode[0] != b'r':
-            raise ValueError('cannot subset samples from Variantfile opened for writing')
+        if not self.mode.startswith(b'r'):
+            raise ValueError('cannot subset samples from Variantfile '
+                             'opened for writing')
 
         if self.is_reading:
             raise ValueError('cannot subset samples after fetching records')

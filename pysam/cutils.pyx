@@ -2,12 +2,18 @@ import types
 import sys
 import string
 import re
+import tempfile
+import os
+import io
+from contextlib import contextmanager
 
 from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyBytes_Check, PyUnicode_Check
-
 from cpython cimport array as c_array
-cimport cython
+from libc.stdlib cimport calloc, free
+from libc.string cimport strncpy
+from libc.stdio cimport fprintf, stderr, fflush
+from libc.stdio cimport stdout as c_stdout
 
 #####################################################################
 # hard-coded constants
@@ -69,13 +75,13 @@ cpdef qualities_to_qualitystring(qualities, int offset=33):
 ########################################################################
 ## Python 3 compatibility functions
 ########################################################################
-IS_PYTHON3 = PY_MAJOR_VERSION >= 3
+cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
 cdef from_string_and_size(char* s, size_t length):
-    if PY_MAJOR_VERSION < 3:
-        return s[:length]
-    else:
+    if IS_PYTHON3:
         return s[:length].decode("ascii")
+    else:
+        return s[:length]
 
 # filename encoding (copied from lxml.etree.pyx)
 cdef str _FILENAME_ENCODING
@@ -103,7 +109,7 @@ cdef bytes force_bytes(object s, encoding="ascii"):
     u"""convert string or unicode object to bytes, assuming
     ascii encoding.
     """
-    if PY_MAJOR_VERSION < 3:
+    if not IS_PYTHON3:
         return s
     elif s is None:
         return None
@@ -113,9 +119,6 @@ cdef bytes force_bytes(object s, encoding="ascii"):
         return s.encode(encoding)
     else:
         raise TypeError(u"Argument must be string, bytes or unicode.")
-
-cdef bytes force_cmdline_bytes(object s, encoding="ascii"):
-    return force_bytes(s)
 
 cdef charptr_to_str(char* s, encoding="ascii"):
     if s == NULL:
@@ -214,6 +217,194 @@ cpdef parse_region(reference=None,
             'invalid region: start (%i) > end (%i)' % (rstart, rend))
 
     return force_bytes(reference), rstart, rend
+
+
+@contextmanager
+def stdout_redirector(to=os.devnull):
+    '''
+    import os
+
+    with stdout_redirected(to=filename):
+        print("from Python")
+        os.system("echo non-Python applications are also supported")
+
+    see http://stackoverflow.com/questions/5081657/how-do-i-prevent-a-c-shared-library-to-print-on-stdout-in-python/17954769#17954769
+    '''
+    fd = sys.stdout.fileno()
+
+    def _redirect_stdout(to):
+        # flush C-level stdout
+        try:
+            fflush(c_stdout)
+            sys.stdout.close()
+        except (OSError, IOError):
+            # some tools close stdout
+            # Py3: OSError
+            # Py2: IOError
+            pass
+
+        # fd writes to 'to' file
+        os.dup2(to.fileno(), fd)
+        # Python writes to fd
+        if IS_PYTHON3:
+            sys.stdout = io.TextIOWrapper(
+                os.fdopen(fd, 'wb'))
+        else:
+            sys.stdout = os.fdopen(fd, 'w')
+        
+    with os.fdopen(os.dup(fd), 'w') as old_stdout:
+        _redirect_stdout(to)
+        try:
+            yield # allow code to be run with the redirected stdout
+        finally:
+            _redirect_stdout(old_stdout)
+            # restore stdout.
+            # buffering and flags may be different
+
+# def stdout_redirector(stream):
+#     """
+#     See discussion in:
+
+#     http://eli.thegreenplace.net/2015/redirecting-all-kinds-of-stdout-in-python/
+#     """
+
+#     # The original fd stdout points to. Usually 1 on POSIX systems.
+#     original_stdout_fd = sys.stdout.fileno()
+#     print ("original_fd=", original_stdout_fd)
+#     def _redirect_stdout(to_fd):
+#         """Redirect stdout to the given file descriptor."""
+#         # Flush the C-level buffer stdout
+#         fflush(c_stdout)
+#         # Flush and close sys.stdout - also closes the file descriptor
+#         # (fd)
+#         sys.stdout.close()
+#         # Make original_stdout_fd point to the same file as to_fd
+#         os.dup2(to_fd, original_stdout_fd)
+#         # Create a new sys.stdout that points to the redirected fd
+#         if IS_PYTHON3:
+#             sys.stdout = io.TextIOWrapper(
+#                 os.fdopen(original_stdout_fd, 'wb'))
+
+#     # Save a copy of the original stdout fd in saved_stdout_fd
+#     saved_stdout_fd = os.dup(original_stdout_fd)
+#     try:
+#         # Create a temporary file and redirect stdout to it
+#         tfile = tempfile.TemporaryFile(mode='w+b')
+#         _redirect_stdout(tfile.fileno())
+#         # Yield to caller, then redirect stdout back to the saved fd
+#         yield
+#         _redirect_stdout(saved_stdout_fd)
+#         # Copy contents of temporary file to the given stream
+#         tfile.flush()
+#         tfile.seek(0, io.SEEK_SET)
+#         stream.write(tfile.read())
+#     finally:
+#         tfile.close()
+#         os.close(saved_stdout_fd)
+
+
+def _pysam_dispatch(collection,
+                    method,
+                    args=(),
+                    catch_stdout=True):
+    '''call ``method`` in samtools/bcftools providing arguments in args.
+    
+    .. note:: 
+       This method redirects stdout to capture it 
+       from samtools. If for some reason stdout disappears
+       the reason might be in this method.
+
+    .. note::
+       This method captures stdout and stderr using temporary files,
+       which are then read into memory in their entirety. This method
+       is slow and might cause large memory overhead.
+
+    Catching of stdout can be turned of by setting *catch_stdout* to
+    False.
+
+    See http://bytes.com/topic/c/answers/487231-how-capture-stdout-temporarily
+    on the topic of redirecting stderr/stdout.
+
+    '''
+
+    # note that debugging this module can be a problem
+    # as stdout/stderr will not appear on the terminal
+    # some special cases
+    if method == "index":
+        if not os.path.exists(args[0]):
+            raise IOError("No such file or directory: '%s'" % args[0])
+
+    # redirect stderr and stdout to file
+    stderr_h, stderr_f = tempfile.mkstemp()
+    pysam_set_stderr(stderr_h)
+
+    # setup the function call to samtools/bcftools main
+    cdef char ** cargs
+    cdef int i, n, retval, l
+
+    n = len(args)
+    method = force_bytes(method)
+    collection = force_bytes(collection)
+    args = [force_bytes(a) for a in args]
+
+    # allocate two more for first (dummy) argument (contains command)
+    cdef int extra_args = 0
+    if method == b"index":
+        extra_args = 1
+    # add extra arguments for commands accepting optional arguments
+    # such as 'samtools index x.bam [out.index]'
+    cargs = <char**>calloc(n + 2 + extra_args, sizeof(char *))
+    cargs[0] = collection
+    cargs[1] = method
+
+    # create copies of strings - getopt for long options permutes
+    # arguments
+    for i from 0 <= i < n:
+        l = len(args[i])
+        cargs[i + 2] = <char *>calloc(l + 1, sizeof(char))
+        strncpy(cargs[i + 2], args[i], l)
+    
+    # reset getopt
+    reset_getopt()
+
+    # call samtools/bcftools
+    if catch_stdout:
+        with tempfile.TemporaryFile(mode='w+b') as tfile:
+            with stdout_redirector(tfile):
+                if collection == b"samtools":
+                    retval = samtools_main(n + 2, cargs)
+                elif collection == b"bcftools":
+                    retval = bcftools_main(n + 2, cargs)
+            tfile.flush()
+            tfile.seek(0)
+            # do not force str, as output might be binary,
+            # for example BAM, VCF.gz, etc.
+            out_stdout = tfile.read()
+    else:
+        if collection == b"samtools":
+            retval = samtools_main(n + 2, cargs)
+        elif collection == b"bcftools":
+            retval = bcftools_main(n + 2, cargs)
+        out_stdout = None
+
+    for i from 0 <= i < n:
+        free(cargs[i + 2])
+    free(cargs)
+
+    # get error messages
+    pysam_unset_stderr()
+    out_stderr = []
+    try:
+        with open(stderr_f, "r") as inf:
+            out_stderr = inf.readlines()
+    except UnicodeDecodeError:
+        with open( stderr_f, "rb") as inf:
+            # read binary output
+            out_stderr = inf.read()
+    finally:
+        os.remove(stderr_f)
+
+    return retval, out_stderr, out_stdout
 
 
 __all__ = ["qualitystring_to_array",
