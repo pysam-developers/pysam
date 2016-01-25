@@ -323,11 +323,9 @@ else:
 
 #######################################################
 extra_compile_args = ["-Wno-error=declaration-after-statement",
-                      "-DSAMTOOLS=1",
-                      "-DHAVE_HMAC=1",
-                      "-DHAVE_LIBCURL=1"]
+                      "-DSAMTOOLS=1"]
 define_macros = [('_FILE_OFFSET_BITS', '64'),
-                   ('_USE_KNETFILE', '')]
+                 ('_USE_KNETFILE', '')]
 
 chtslib = Extension(
     "pysam.libchtslib",
