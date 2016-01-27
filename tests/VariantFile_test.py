@@ -119,5 +119,22 @@ class TestHeader(unittest.TestCase):
             self.assertEqual(x[:-1], str(y))
 
 
+class TestIndexFilename(unittest.TestCase):
+
+    filenames = [('example_vcf40.vcf.gz', 'example_vcf40.vcf.tbi'),
+                 ('example_vcf40.vcf.gz', 'example_vcf40.vcf.gz.csi'),
+                 ('example_vcf40.bcf',    'example_vcf40.bcf.csi')]
+
+    def testOpen(self):
+        for fn, idx_fn in self.filenames:
+            fn = os.path.join(DATADIR, fn)
+            idx_fn = os.path.join(DATADIR, idx_fn)
+
+            v = pysam.VariantFile(fn, index_filename=idx_fn)
+
+            self.assertEqual(len(list(v.fetch('20'))), 3)
+
+
+
 if __name__ == "__main__":
     unittest.main()
