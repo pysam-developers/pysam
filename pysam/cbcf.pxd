@@ -141,13 +141,14 @@ cdef class VariantFile(object):
     cdef htsFile *htsfile                  # pointer to htsFile structure
     cdef int64_t  start_offset             # BGZF offset of first record
 
-    cdef readonly object     filename      # filename as supplied by user
-    cdef readonly object     mode          # file opening mode
+    cdef readonly object     filename       # filename as supplied by user
+    cdef readonly object     mode           # file opening mode
+    cdef readonly object     index_filename # filename of index, if supplied by user
 
     cdef readonly VariantHeader  header
-    cdef readonly BaseIndex  index
+    cdef readonly BaseIndex      index
 
-    cdef readonly bint       drop_samples  # true if sample information is to be ignored
+    cdef readonly bint           drop_samples  # true if sample information is to be ignored
 
     # FIXME: Temporary, use htsFormat when it is available
     cdef readonly bint       is_bcf        # true if file is a bcf file

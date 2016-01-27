@@ -1089,7 +1089,7 @@ cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
 ########################################################################
 
 cdef class VariantRecordFilter(object):
-    """mapping from filter index or name to :class:`VariantMetadata` 
+    """mapping from filter index or name to :class:`VariantMetadata`
     object for filters set on a :class:`VariantRecord` object."""
 
     def __len__(self):
@@ -2361,7 +2361,7 @@ cdef class TabixIterator(BaseIterator):
 
 
 cdef class VariantFile(object):
-    """*(filename, mode=None, header=None, drop_samples=False)*
+    """*(filename, mode=None, index_filename=None, header=None, drop_samples=False)*
 
     A :term:`VCF`/:term:`BCF` formatted file. The file is automatically
     opened.
@@ -2393,15 +2393,16 @@ cdef class VariantFile(object):
         self.htsfile = NULL
 
     def __init__(self, *args, **kwargs):
-        self.header       = None
-        self.index        = None
-        self.filename     = None
-        self.mode         = None
-        self.is_stream    = False
-        self.is_remote    = False
-        self.is_reading   = False
-        self.drop_samples = False
-        self.start_offset = -1
+        self.header         = None
+        self.index          = None
+        self.filename       = None
+        self.mode           = None
+        self.index_filename = None
+        self.is_stream      = False
+        self.is_remote      = False
+        self.is_reading     = False
+        self.drop_samples   = False
+        self.start_offset   = -1
 
         self.open(*args, **kwargs)
 
@@ -2428,8 +2429,8 @@ cdef class VariantFile(object):
             return FORMAT_CATEGORIES[self.htsfile.format.category]
 
     property format:
-        """File format.  
-        
+        """File format.
+
         One of UNKNOWN, BINARY_FORMAT, TEXT_FORMAT, SAM, BAM,
         BAI, CRAM, CRAI, VCF, BCF, CSI, GZI, TBI, BED.
         """
@@ -2447,8 +2448,8 @@ cdef class VariantFile(object):
                     self.htsfile.format.version.minor)
 
     property compression:
-        """File compression.  
-        
+        """File compression.
+
         One of NONE, GZIP, BGZF, CUSTOM."""
         def __get__(self):
             if not self.htsfile:
@@ -2532,16 +2533,17 @@ cdef class VariantFile(object):
 
         # minimize overhead by re-using header and index.  This approach is
         # currently risky, but see above for how this can be mitigated.
-        vars.header       = self.header
-        vars.index        = self.index
+        vars.header         = self.header
+        vars.index          = self.index
 
-        vars.filename     = self.filename
-        vars.mode         = self.mode
-        vars.drop_samples = self.drop_samples
-        vars.is_stream    = self.is_stream
-        vars.is_remote    = self.is_remote
-        vars.is_reading   = self.is_reading
-        vars.start_offset = self.start_offset
+        vars.filename       = self.filename
+        vars.mode           = self.mode
+        vars.index_filename = self.index_filename
+        vars.drop_samples   = self.drop_samples
+        vars.is_stream      = self.is_stream
+        vars.is_remote      = self.is_remote
+        vars.is_reading     = self.is_reading
+        vars.start_offset   = self.start_offset
 
         if self.htsfile.is_bin:
             vars.seek(self.tell())
@@ -2553,6 +2555,7 @@ cdef class VariantFile(object):
         return vars
 
     def open(self, filename, mode=None,
+             index_filename=None,
              VariantHeader header=None,
              drop_samples=False):
         """open a vcf/bcf file.
@@ -2564,6 +2567,7 @@ cdef class VariantFile(object):
         cdef hts_idx_t *idx
         cdef tbx_t *tidx
         cdef char *cfilename
+        cdef char *cindex_filename = NULL
         cdef char *cmode
 
         # close a previously opened file
@@ -2590,7 +2594,12 @@ cdef class VariantFile(object):
 
         self.mode = mode = force_bytes(mode)
         self.filename = filename = encode_filename(filename)
+        if index_filename is not None:
+            self.index_filename = index_filename = encode_filename(index_filename)
+        else:
+            self.index_filename = None
         self.drop_samples = bool(drop_samples)
+        self.header = None
 
         # FIXME: Use htsFormat when it is available
         self.is_remote = filename.startswith(b'http:') or \
@@ -2600,6 +2609,8 @@ cdef class VariantFile(object):
 
         if mode.startswith(b'w'):
             # open file for writing
+            if index_filename is not None:
+                raise ValueError('Cannot specify an index filename when writing a VCF/BCF file')
 
             # header structure (used for writing)
             if header:
@@ -2631,32 +2642,40 @@ cdef class VariantFile(object):
             cfilename, cmode = filename, mode
             with nogil:
                 self.htsfile = hts_open(cfilename, cmode)
-                
+
             if not self.htsfile:
                 raise ValueError(
                     "could not open file `{}` (mode='{}') - "
-                    "is it VCF/BCF format?".format((filename, mode)))
+                    "is it VCF/BCF format?".format(filename, mode))
+
+            if self.htsfile.format.format not in (bcf, vcf):
+                raise ValueError(
+                    "invalid file `{}` (mode='{}') - "
+                    "is it VCF/BCF format?".format(filename, mode))
 
             with nogil:
                 hdr = bcf_hdr_read(self.htsfile)
 
-            self.header = makeVariantHeader(hdr)
-
-            if not self.header:
+            try:
+                self.header = makeVariantHeader(hdr)
+            except ValueError:
                 raise ValueError(
                     "file `{}` does not have valid header (mode='{}') - "
-                    "is it VCF/BCF format?".format((filename, mode)))
+                    "is it VCF/BCF format?".format(filename, mode))
+
             # check for index and open if present
             if self.htsfile.format.format == bcf:
-                cfilename = filename
+                if index_filename is not None:
+                    cindex_filename = index_filename
                 with nogil:
-                    idx = bcf_index_load(cfilename)
+                    idx = bcf_index_load2(cfilename, cindex_filename)
                 self.index = makeBCFIndex(self.header, idx)
-            else:
-                tabix_filename = filename + b'.tbi'
-                cfilename = tabix_filename
+
+            elif self.htsfile.format.compression == bgzf:
+                if index_filename is not None:
+                    cindex_filename = index_filename
                 with nogil:
-                    tidx = tbx_index_load(cfilename)
+                    tidx = tbx_index_load2(cfilename, cindex_filename)
                 self.index = makeTabixIndex(tidx)
 
             if not self.is_stream:
@@ -2719,8 +2738,9 @@ cdef class VariantFile(object):
         If only *contig* is set, all records on *contig* will be fetched.
         If both *region* and *contig* are given, an exception is raised.
 
-        Note that a :term:`VCF` file without a tabix index (.tbi) or a
-        :term:`BCF` file without a CSI index can only be read sequentially.
+        Note that a bgzipped :term:`VCF`.gz file without a tabix/CSI index
+        (.tbi/.csi) or a :term:`BCF` file without a CSI index can only be
+        read sequentially.
         """
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
