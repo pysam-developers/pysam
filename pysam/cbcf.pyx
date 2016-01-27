@@ -1042,17 +1042,18 @@ cdef class VariantHeader(object):
         cdef int quoted
 
         bkey = force_bytes(key)
-        bvalue = force_bytes(value)
         try:
             hrec.key = strdup(bkey)
 
             if value is not None:
+                bvalue = force_bytes(value)
                 hrec.value = strdup(bvalue)
             else:
                 for key, value in items:
                     bcf_hrec_add_key(hrec, bkey, len(key))
 
                     value = str(value)
+                    bvalue = force_bytes(value)
                     quoted = strpbrk(bvalue, ' ;,"\t<>') != NULL
                     bcf_hrec_set_val(hrec, hrec.nkeys-1, bvalue, len(value), quoted)
         except:
@@ -2633,7 +2634,7 @@ cdef class VariantFile(object):
             with nogil:
                 bcf_hdr_write(self.htsfile, self.header.ptr)
 
-        if mode.startswith(b'r'):
+        elif mode.startswith(b'r'):
             # open file for reading
             if filename != b'-' and not self.is_remote \
                and not os.path.exists(filename):
