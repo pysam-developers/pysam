@@ -59,8 +59,9 @@ def configure_library(library_dir, env_options=None, options=[]):
             if retcode != 0:
                 return False
             else:
-                print "# successful configure run with options {}".format(
-                    option)
+                print (
+                    "# successful configure run with options {}".format(
+                        option))
                 return True
         except OSError as e:
             return False
@@ -198,7 +199,7 @@ else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
 
-print "# htslib mode is {}".format(HTSLIB_MODE)
+print ("# htslib mode is {}".format(HTSLIB_MODE))
 
 
 if HTSLIB_MODE in ['shared', 'separate']:
@@ -343,16 +344,6 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
     sys.exit(0)
 
 
-###################
-# populate headers
-# mkdir pysam/include pysam/include/win32
-# touch pysam/include/__init__.py pysam/include/win32/__init__.py
-# cp samtools/*.h pysam/*.h pysam/include
-# cp samtools/win32/*.h pysam/include/win32
-
-
-
-#######################################################
 parts = ["samtools",
          "bcftools",
          "htslib",
@@ -387,7 +378,6 @@ else:
 classifiers = """
 Development Status :: 3 - Beta
 Operating System :: MacOS :: MacOS X
-Operating System :: OS Independent
 Operating System :: POSIX
 Operating System :: POSIX :: Linux
 Operating System :: Unix
@@ -397,7 +387,7 @@ Topic :: Scientific/Engineering :: Bioinformatics
 """
 
 #######################################################
-# Windows compatibility
+# Windows compatibility - currently broken
 if platform.system() == 'Windows':
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
@@ -406,10 +396,10 @@ else:
     os_c_files = []
 
 #######################################################
-extra_compile_args = ["-Wno-error=declaration-after-statement",
-                      "-DSAMTOOLS=1"]
-define_macros = [('_FILE_OFFSET_BITS', '64'),
-                 ('_USE_KNETFILE', '')]
+# for python 3.4, see for example
+# http://stackoverflow.com/questions/25587039/error-compiling-rpy2-on-python3-4-due-to-werror-declaration-after-statement
+extra_compile_args = ["-Wno-error=declaration-after-statement"]
+define_macros = []
 
 chtslib = Extension(
     "pysam.libchtslib",

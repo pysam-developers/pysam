@@ -1,7 +1,7 @@
-import glob
 import os
 import unittest
 import pysam
+import gzip
 
 DATADIR="cbcf_data"
 from tabix_test import loadAndConvert
@@ -90,7 +90,7 @@ class TestOpening(unittest.TestCase):
 class TestHeader(unittest.TestCase):
 
     filename = "example_vcf40.vcf"
-    
+
     def testStr(self):
 
         fn = os.path.join(DATADIR, self.filename)
