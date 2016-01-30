@@ -364,8 +364,13 @@ def _pysam_dispatch(collection,
         cargs[i + 2] = <char *>calloc(l + 1, sizeof(char))
         strncpy(cargs[i + 2], args[i], l)
     
-    # reset getopt
-    reset_getopt()
+    # reset getopt. On OsX there getopt reset is different
+    # between getopt and getopt_long
+    if method in [b'index', b'cat', b'quickcheck',
+                  b'faidx', b'kprobaln']:
+        set_optind(1)
+    else:
+        set_optind(0)
 
     # call samtools/bcftools
     if catch_stdout:

@@ -27,14 +27,14 @@ void pysam_unset_stderr(void)
   pysamerr = fopen("/dev/null", "w");
 }
 
-void reset_getopt(void)
+void set_optind(int val)
 {
   // setting this in cython via 
   // "from posix.unistd cimport optind"
   // did not work.
   //
   // setting to 0 forces a complete re-initialization
-  optind = 0;
+  optind = val;
 }
 
 

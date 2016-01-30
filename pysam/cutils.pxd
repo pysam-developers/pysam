@@ -31,4 +31,4 @@ cdef extern from "pysam_util.h":
     int bcftools_main(int argc, char *argv[])
     void pysam_set_stderr(int fd)
     void pysam_unset_stderr()
-    void reset_getopt()
+    void set_optind(int)
