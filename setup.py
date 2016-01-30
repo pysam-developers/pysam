@@ -19,16 +19,90 @@ http://pysam.readthedocs.org/en/stable
 
 '''
 
-import os
-import sys
-import glob
-import shutil
-import hashlib
-import re
+import collections
 import fnmatch
+import glob
+import hashlib
+import os
 import platform
+import re
+import shutil
+import subprocess
+import sys
+from contextlib import contextmanager
+from setuptools import Extension, setup
 
-name = "pysam"
+
+@contextmanager
+def changedir(path):
+    save_dir = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(save_dir)
+
+
+def configure_library(library_dir, env_options=None, options=[]):
+
+    configure_script = os.path.join(library_dir, "configure")
+
+    if not os.path.exists(configure_script):
+        raise ValueError(
+            "configure script {} does not exist".format(configure_script))
+
+    def run_configure(option):
+        try:
+            retcode = subprocess.call(
+                " ".join(("./configure", option)),
+                shell=True)
+            if retcode != 0:
+                return False
+            else:
+                print (
+                    "# successful configure run with options {}".format(
+                        option))
+                return True
+        except OSError as e:
+            return False
+
+    with changedir(library_dir):
+        if env_options is not None:
+            if run_configure(env_options):
+                return True
+
+        for option in options:
+            if run_configure(option):
+                break
+
+
+def locate(pattern, root=os.curdir):
+    '''Locate all files matching supplied filename pattern in and below
+    supplied root directory.
+    '''
+    for path, dirs, files in os.walk(os.path.abspath(root)):
+        for filename in fnmatch.filter(files, pattern):
+            yield os.path.join(path, filename)
+
+
+def _update_pysam_files(cf, destdir):
+    '''update pysam files applying redirection of ouput'''
+    for filename in cf:
+        if not filename:
+            continue
+        dest = filename + ".pysam.c"
+        with open(filename) as infile:
+            with open(dest, "w") as outfile:
+                outfile.write('#include "pysam.h"\n\n')
+                outfile.write(
+                    re.sub("stderr", "pysamerr", "".join(infile.readlines())))
+            with open(os.path.join(destdir, "pysam.h"), "w")as outfile:
+                outfile.write("""#ifndef PYSAM_H
+#define PYSAM_H
+#include "stdio.h"
+extern FILE * pysamerr;
+#endif
+""")
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -53,7 +127,7 @@ import version
 version = version.__version__
 
 # exclude sources that contains a main function
-exclude = {
+EXCLUDE = {
     "samtools": ("razip.c",
                  "bgzip.c",
                  "main.c",
@@ -93,7 +167,8 @@ if HTSLIB_LIBRARY_DIR:
     chtslib_sources = []
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
-    htslib_libraries = ['hts', "curl"]
+    htslib_libraries = ['hts']
+
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
     # htslib
@@ -101,11 +176,12 @@ elif HTSLIB_MODE == 'separate':
         x for x in
         glob.glob(os.path.join("htslib", "*.c")) +
         glob.glob(os.path.join("htslib", "cram", "*.c"))
-        if x not in exclude["htslib"]]
+        if x not in EXCLUDE["htslib"]]
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
-    htslib_libraries = ["curl"]
+    htslib_libraries = []
+
 elif HTSLIB_MODE == 'shared':
     # link each pysam component against the same
     # htslib built from sources included in the pysam
@@ -115,41 +191,50 @@ elif HTSLIB_MODE == 'shared':
         x for x in
         glob.glob(os.path.join("htslib", "*.c")) +
         glob.glob(os.path.join("htslib", "cram", "*.c"))
-        if x not in exclude["htslib"]]
+        if x not in EXCLUDE["htslib"]]
     htslib_library_dirs = ['pysam']
     htslib_include_dirs = ['htslib']
-    htslib_libraries = ['chtslib', "curl"]
+    htslib_libraries = ['chtslib']
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
 
-def locate(pattern, root=os.curdir):
-    '''Locate all files matching supplied filename pattern in and below
-    supplied root directory.
-    '''
-    for path, dirs, files in os.walk(os.path.abspath(root)):
-        for filename in fnmatch.filter(files, pattern):
-            yield os.path.join(path, filename)
+print ("# htslib mode is {}".format(HTSLIB_MODE))
 
 
-def _update_pysam_files(cf, destdir):
-    '''update pysam files applying redirection of ouput'''
-    for filename in cf:
-        if not filename:
-            continue
-        dest = filename + ".pysam.c"
-        with open(filename) as infile:
-            with open(dest, "w") as outfile:
-                outfile.write('#include "pysam.h"\n\n')
-                outfile.write(
-                    re.sub("stderr", "pysamerr", "".join(infile.readlines())))
-            with open(os.path.join(destdir, "pysam.h"), "w")as outfile:
-                outfile.write("""#ifndef PYSAM_H
-#define PYSAM_H
-#include "stdio.h"
-extern FILE * pysamerr;
-#endif
-""")
+if HTSLIB_MODE in ['shared', 'separate']:
+
+    configure_library(
+        "htslib",
+        os.environ.get('HTSLIB_COMPILE_OPTIONS', None),
+        ["--enable-libcurl --enable-plugins",
+         "--enable-plugins",
+         ""])
+
+    HTSLIB_MODE = "builtin"
+
+# build config.py
+with open(os.path.join("pysam", "config.py"), "w") as outf:
+    outf.write('HTSLIB_MODE = "{}"\n'.format(HTSLIB_MODE))
+    config_values = collections.defaultdict(int)
+
+    if HTSLIB_MODE == "builtin":
+        with open(os.path.join("htslib", "config.h")) as inf:
+            for line in inf:
+                if line.startswith("#define"):
+                    key, value = re.match(
+                        "#define (\S+)\s+(\S+)", line).groups()
+                    config_values[key] = int(value)
+            for key in ["ENABLE_PLUGINS",
+                        "HAVE_COMMONCRYPTO",
+                        "HAVE_GMTIME_R",
+                        "HAVE_HMAC",
+                        "HAVE_IRODS",
+                        "HAVE_LIBCURL",
+                        "HAVE_MMAP"]:
+                outf.write("{} = {}\n".format(key, config_values[key]))
+
+
 
 #################################################################
 # Importing samtools and htslib
@@ -178,10 +263,10 @@ if len(sys.argv) >= 2 and sys.argv[1] == "import":
         raise ValueError("import requires dest src")
 
     dest, srcdir = sys.argv[2:4]
-    if dest not in exclude:
+    if dest not in EXCLUDE:
         raise ValueError("import expected one of %s" %
-                         ",".join(exclude.keys()))
-    exclude = exclude[dest]
+                         ",".join(EXCLUDE.keys()))
+    exclude = EXCLUDE[dest]
     destdir = os.path.abspath(dest)
     srcdir = os.path.abspath(srcdir)
     if not os.path.exists(srcdir):
@@ -259,16 +344,6 @@ if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
     sys.exit(0)
 
 
-###################
-# populate headers
-# mkdir pysam/include pysam/include/win32
-# touch pysam/include/__init__.py pysam/include/win32/__init__.py
-# cp samtools/*.h pysam/*.h pysam/include
-# cp samtools/win32/*.h pysam/include/win32
-
-from setuptools import Extension, setup
-
-#######################################################
 parts = ["samtools",
          "bcftools",
          "htslib",
@@ -303,7 +378,6 @@ else:
 classifiers = """
 Development Status :: 3 - Beta
 Operating System :: MacOS :: MacOS X
-Operating System :: OS Independent
 Operating System :: POSIX
 Operating System :: POSIX :: Linux
 Operating System :: Unix
@@ -313,7 +387,7 @@ Topic :: Scientific/Engineering :: Bioinformatics
 """
 
 #######################################################
-# Windows compatibility
+# Windows compatibility - currently broken
 if platform.system() == 'Windows':
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
@@ -322,10 +396,10 @@ else:
     os_c_files = []
 
 #######################################################
-extra_compile_args = ["-Wno-error=declaration-after-statement",
-                      "-DSAMTOOLS=1"]
-define_macros = [('_FILE_OFFSET_BITS', '64'),
-                 ('_USE_KNETFILE', '')]
+# for python 3.4, see for example
+# http://stackoverflow.com/questions/25587039/error-compiling-rpy2-on-python3-4-due-to-werror-declaration-after-statement
+extra_compile_args = ["-Wno-error=declaration-after-statement"]
+define_macros = []
 
 chtslib = Extension(
     "pysam.libchtslib",
@@ -484,7 +558,7 @@ cbcf = Extension(
 )
 
 metadata = {
-    'name': name,
+    'name': "psyam",
     'version': version,
     'description': "pysam",
     'long_description': __doc__,
