@@ -680,16 +680,13 @@ cdef bcf_info_del_value(VariantRecord record, key):
 cdef bcf_format_get_value(VariantRecordSample sample, key):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
-    cdef int index, count, scalar
+    cdef int count, scalar
 
     bkey = force_bytes(key)
     cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
     if not fmt or not fmt.p:
-        if isinstance(key, int):
-            raise IndexError('invalid format index')
-        else:
-            raise KeyError('invalid format requested')
+        raise KeyError('invalid FORMAT')
 
     if is_gt_fmt(hdr, fmt.id):
         return sample.alleles
@@ -710,7 +707,6 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int fmt_id
-    cdef int index
     cdef vdict_t *d
     cdef khiter_t k
     cdef int fmt_type, value_count, scalar, alloc_len
@@ -1085,7 +1081,6 @@ cdef class VariantHeaderMetadata(object):
             idpair = hdr.id[BCF_DT_ID] + i
             if idpair.key and idpair.val and idpair.val.info[self.type] & 0xF != 0xF:
                 n += 1
-
         return n
 
     def __bool__(self):
@@ -1097,7 +1092,6 @@ cdef class VariantHeaderMetadata(object):
             idpair = hdr.id[BCF_DT_ID] + i
             if idpair.key and idpair.val and idpair.val.info[self.type] & 0xF != 0xF:
                 return True
-
         return False
 
     def __getitem__(self, key):
@@ -1520,21 +1514,20 @@ cdef class VariantHeader(object):
         cdef bcf_hrec_t *hrec = <bcf_hrec_t*>calloc(1, sizeof(bcf_hrec_t))
         cdef int quoted
 
-        bkey = force_bytes(key)
         try:
-            hrec.key = strdup(bkey)
+            key = force_bytes(key)
+            hrec.key = strdup(key)
 
             if value is not None:
-                bvalue = force_bytes(value)
-                hrec.value = strdup(bvalue)
+                hrec.value = strdup(force_bytes(value))
             else:
                 for key, value in items:
-                    bcf_hrec_add_key(hrec, bkey, len(key))
+                    key = force_bytes(key)
+                    bcf_hrec_add_key(hrec, key, len(key))
 
-                    value = str(value)
-                    bvalue = force_bytes(value)
-                    quoted = strpbrk(bvalue, ' ;,"\t<>') != NULL
-                    bcf_hrec_set_val(hrec, hrec.nkeys-1, bvalue, len(value), quoted)
+                    value = force_bytes(str(value))
+                    quoted = strpbrk(value, ' ;,"\t<>') != NULL
+                    bcf_hrec_set_val(hrec, hrec.nkeys-1, value, len(value), quoted)
         except:
             bcf_hrec_destroy(hrec)
             raise
@@ -2937,9 +2930,7 @@ cdef class VariantFile(object):
 
     def __dealloc__(self):
         if self.htsfile:
-            # empty file causes segfault on closing, check if that is the case
-            if hts_get_bgzfp(self.htsfile).fp != NULL:
-                hts_close(self.htsfile)
+            hts_close(self.htsfile)
             self.htsfile = NULL
 
     def __enter__(self):
@@ -2999,9 +2990,7 @@ cdef class VariantFile(object):
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
         if self.htsfile:
-            # empty file causes segfault on closing, check if that is the case
-            if hts_get_bgzfp(self.htsfile).fp != NULL:
-                hts_close(self.htsfile)
+            hts_close(self.htsfile)
             self.htsfile = NULL
         self.header = self.index = None
 
@@ -3224,7 +3213,7 @@ cdef class VariantFile(object):
         if self.is_stream:
             raise OSError('seek not available in streams')
 
-        cdef int ret
+        cdef int64_t ret
         if self.htsfile.format.compression != no_compression:
             with nogil:
                 ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
@@ -3233,7 +3222,6 @@ cdef class VariantFile(object):
                 ret = hts_useek(self.htsfile, offset, SEEK_SET)
         return ret
 
-
     def tell(self):
         """return current file position, see :meth:`pysam.VariantFile.seek`."""
         if not self.is_open:
@@ -3241,7 +3229,7 @@ cdef class VariantFile(object):
         if self.is_stream:
             raise OSError('tell not available in streams')
 
-        cdef int ret
+        cdef int64_t ret
         if self.htsfile.format.compression != no_compression:
             with nogil:
                 ret = bgzf_tell(hts_get_bgzfp(self.htsfile))
@@ -3302,8 +3290,8 @@ cdef class VariantFile(object):
         if not self.mode.startswith(b'w'):
             raise ValueError('cannot write to a Variantfile opened for reading')
 
-        if record.header is not self.header:
-            raise ValueError('Writing records from a different VariantFile is not yet supported')
+        #if record.header is not self.header:
+        #    raise ValueError('Writing records from a different VariantFile is not yet supported')
 
         cdef int ret
 
