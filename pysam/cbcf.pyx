@@ -189,10 +189,11 @@ import os
 import sys
 
 from libc.string cimport strcmp, strpbrk
+from libc.stdint cimport INT8_MAX, INT16_MAX, INT32_MAX
 
 cimport cython
 
-from cpython cimport PyBytes_Check, PyUnicode_Check
+from cpython cimport PyBytes_Check, PyUnicode_Check, PyString_FromStringAndSize
 from cpython.version cimport PY_MAJOR_VERSION
 
 __all__ = ['VariantFile', 'VariantHeader']
@@ -227,6 +228,10 @@ from pysam.cutils cimport encode_filename, from_string_and_size
 ########################################################################
 
 
+cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
+    return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt_id), "GT") == 0
+
+
 cdef tuple char_array_to_tuple(const char **a, int n, int free_after=0):
     if not a:
         return None
@@ -237,7 +242,7 @@ cdef tuple char_array_to_tuple(const char **a, int n, int free_after=0):
             free(a)
 
 
-cdef bcf_array_to_object(void *data, int type, int n, int scalar=0):
+cdef bcf_array_to_object(void *data, int type, int n, int count, int scalar):
     cdef char    *datac
     cdef int8_t  *data8
     cdef int16_t *data16
@@ -250,7 +255,13 @@ cdef bcf_array_to_object(void *data, int type, int n, int scalar=0):
 
     if type == BCF_BT_CHAR:
         datac = <char *>data
-        value = datac[:n] if datac[0] != bcf_str_missing else None
+        while n and datac[n-1] == bcf_str_vector_end:
+            n -= 1
+        value = force_str(datac[:n]) if datac[0] != bcf_str_missing else None
+        # FIXME: Need to know length?  Report errors?  Pad with missing values?  Not clear what to do.
+
+        value = tuple(v or None for v in value.split(',')) if value else ()
+        # FIXME: Need to know length?  Report errors?  Pad with missing values?  Not clear what to do.
     else:
         value = []
         if type == BCF_BT_INT8:
@@ -280,45 +291,489 @@ cdef bcf_array_to_object(void *data, int type, int n, int scalar=0):
         else:
             raise TypeError('unsupported info type code')
 
-        if not value:
+    # FIXME: Need to know length?  Report errors?  Pad with missing values?  Not clear what to do.
+    if not value:
+        if scalar:
             value = None
-        elif scalar and len(value) == 1:
-            value = value[0]
+        elif count <= 0:
+            value = ()
         else:
-            value = tuple(value)
+            value = (None,)*count
+    elif scalar:
+        assert len(value) == 1
+        value = value[0]
+    else:
+        value = tuple(value)
 
     return value
 
 
-cdef object bcf_info_value(const bcf_info_t *z):
-    cdef char *s
+cdef bcf_object_to_array(values, void *data, int bt_type, int n, int vlen):
+    cdef char    *datac
+    cdef int8_t  *data8
+    cdef int16_t *data16
+    cdef int32_t *data32
+    cdef float   *dataf
+    cdef int      i, value_count = len(values)
 
+    assert(value_count <= n)
+
+    if bt_type == BCF_BT_CHAR:
+        if not isinstance(values, str):
+            values = ','.join(force_bytes(v) if v is not None else b'' for v in values)
+            value_count = len(values)
+        assert(value_count <= n)
+        datac = <char *>data
+        memcpy(datac, <char *>values, value_count)
+        for i in range(value_count, n):
+            datac[i] = 0
+    elif bt_type == BCF_BT_INT8:
+        datai8 = <int8_t *>data
+        for i in range(value_count):
+            val = values[i]
+            datai8[i] = val if val is not None else bcf_int8_missing
+        for i in range(value_count, n):
+            datai8[i] = bcf_int8_vector_end
+    elif bt_type == BCF_BT_INT16:
+        datai16 = <int16_t *>data
+        for i in range(value_count):
+            val = values[i]
+            datai16[i] = val if val is not None else bcf_int16_missing
+        for i in range(value_count, n):
+            datai16[i] = bcf_int16_vector_end
+    elif bt_type == BCF_BT_INT32:
+        datai32 = <int32_t *>data
+        for i in range(value_count):
+            val = values[i]
+            datai32[i] = val if val is not None else bcf_int32_missing
+        for i in range(value_count, n):
+            datai32[i] = bcf_int32_vector_end
+    elif bt_type == BCF_BT_FLOAT:
+        dataf = <float *>data
+        for i in range(value_count):
+            val = values[i]
+            if val is None:
+                bcf_float_set(dataf + i, bcf_float_missing)
+            else:
+                dataf[i] = val
+        for i in range(value_count, n):
+            bcf_float_set(dataf + i, bcf_float_vector_end)
+    else:
+        raise TypeError('unsupported type')
+
+
+cdef bcf_empty_array(int type, int n, int vlen):
+    cdef char    *datac
+    cdef int32_t *data32
+    cdef float   *dataf
+    cdef int      i
+
+    if n <= 0:
+        raise ValueError('Cannot create empty array')
+
+    if type == BCF_HT_STR:
+        value = PyString_FromStringAndSize(NULL, sizeof(char)*n)
+        datac = <char *>value
+        for i in range(n):
+            datac[i] = bcf_str_missing if not vlen else bcf_str_vector_end
+    elif type == BCF_HT_INT:
+        value = PyString_FromStringAndSize(NULL, sizeof(int32_t)*n)
+        data32 = <int32_t *><char *>value
+        for i in range(n):
+            data32[i] = bcf_int32_missing if not vlen else bcf_int32_vector_end
+    elif type == BCF_HT_REAL:
+        value = PyString_FromStringAndSize(NULL, sizeof(float)*n)
+        dataf = <float *><char *>value
+        for i in range(n):
+            bcf_float_set(dataf + i, bcf_float_missing if not vlen else bcf_float_vector_end)
+    else:
+        raise TypeError('unsupported header type code')
+
+    return value
+
+
+cdef bcf_copy_expand_array(void *src_data, int src_type, int src_values,
+                           void *dst_data, int dst_type, int dst_values,
+                           int vlen):
+    cdef char    *src_datac
+    cdef char    *dst_datac
+    cdef int8_t  *src_datai8
+    cdef int16_t *src_datai16
+    cdef int32_t *src_datai32
+    cdef int32_t *dst_datai
+    cdef float   *src_dataf
+    cdef float   *dst_dataf
+    cdef int src_size, dst_size, i, j, val
+
+    if src_values > dst_values:
+        raise ValueError('Cannot copy arrays with src_values={} > dst_values={}'.format(src_values, dst_values))
+
+    if src_type == dst_type == BCF_BT_CHAR:
+        src_datac = <char *>src_data
+        dst_datac = <char *>dst_data
+        memcpy(src_datac, dst_datac, src_values)
+        for i in range(src_values, dst_values):
+            dst_datac[i] = 0
+    elif src_type == BCF_BT_INT8 and dst_type == BCF_BT_INT32:
+        src_datai8 = <int8_t *>src_data
+        dst_datai  = <int32_t *>dst_data
+        for i in range(src_values):
+            val = src_datai8[i]
+            if val == bcf_int8_missing:
+                val = bcf_int32_missing
+            elif val == bcf_int8_vector_end:
+                val = bcf_int32_vector_end
+            dst_datai[i] = val
+        for i in range(src_values, dst_values):
+            dst_datai[i] = bcf_int32_missing if not vlen else bcf_int32_vector_end
+    elif src_type == BCF_BT_INT16 and dst_type == BCF_BT_INT32:
+        src_datai16 = <int16_t *>src_data
+        dst_datai   = <int32_t *>dst_data
+        for i in range(src_values):
+            val = src_datai16[i]
+            if val == bcf_int16_missing:
+                val = bcf_int32_missing
+            elif val == bcf_int16_vector_end:
+                val = bcf_int32_vector_end
+            dst_datai[i] = val
+        for i in range(src_values, dst_values):
+            dst_datai[i] = bcf_int32_missing if not vlen else bcf_int32_vector_end
+    elif src_type == BCF_BT_INT32 and dst_type == BCF_BT_INT32:
+        src_datai32 = <int32_t *>src_data
+        dst_datai   = <int32_t *>dst_data
+        for i in range(src_values):
+            dst_datai[i] = src_datai32[i]
+        for i in range(src_values, dst_values):
+            dst_datai[i] = bcf_int32_missing if not vlen else bcf_int32_vector_end
+    elif src_type == BCF_BT_FLOAT and dst_type == BCF_BT_FLOAT:
+        src_dataf = <float *>src_data
+        dst_dataf = <float *>dst_data
+        for i in range(src_values):
+            dst_dataf[i] = src_dataf[i]
+        for i in range(src_values, dst_values):
+            bcf_float_set(dst_dataf + i, bcf_float_missing if not vlen else bcf_float_vector_end)
+    else:
+        raise TypeError('unsupported types')
+
+
+cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, int *count, int *scalar):
+    cdef bcf_hdr_t *hdr = record.header.ptr
+    cdef bcf1_t *r = record.ptr
+    cdef int length = bcf_hdr_id2length(hdr, hl_type, id)
+    cdef int number = bcf_hdr_id2number(hdr, hl_type, id)
+
+    scalar[0] = 0
+
+    if length == BCF_VL_FIXED:
+        if number == 1:
+            scalar[0] = 1
+        count[0] = number
+    elif length == BCF_VL_R:
+        count[0] = r.n_allele
+    elif length == BCF_VL_A:
+        count[0] = r.n_allele - 1
+    elif length == BCF_VL_G:
+        count[0] = r.n_allele * (r.n_allele + 1) // 2
+    elif length == BCF_VL_VAR:
+        count[0] = -1
+    else:
+        raise ValueError('Unknown format length')
+
+
+cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
+    cdef bcf_hdr_t *hdr = record.header.ptr
+
+    # FIXME: Allowing z==NULL is probably a very bad idea
     if not z:
         return None
-    elif z.len == 0:
-        value = True
+
+    cdef char *s
+    cdef int scalar, count
+    bcf_get_value_count(record, BCF_HL_INFO, z.key, &count, &scalar)
+
+    if z.len == 0:
+        if  bcf_hdr_id2type(hdr, BCF_HL_INFO, z.key) == BCF_HT_FLAG:
+            value = True
+        elif scalar:
+            value = None
+        else:
+            value = ()
     elif z.len == 1:
         if z.type == BCF_BT_INT8:
-            value = z.v1.i if z.v1.i != bcf_int8_missing else None
+            if z.v1.i == bcf_int8_missing:
+                value = None
+            elif z.v1.i == bcf_int8_vector_end:
+                value = ()
+            else:
+                value = z.v1.i
         elif z.type == BCF_BT_INT16:
-            value = z.v1.i if z.v1.i != bcf_int16_missing else None
+            if z.v1.i == bcf_int16_missing:
+                value = None
+            elif z.v1.i == bcf_int16_vector_end:
+                value = ()
+            else:
+                value = z.v1.i
         elif z.type == BCF_BT_INT32:
-            value = z.v1.i if z.v1.i != bcf_int32_missing else None
+            if z.v1.i == bcf_int32_missing:
+                value = None
+            elif z.v1.i == bcf_int32_vector_end:
+                value = ()
+            else:
+                value = z.v1.i
         elif z.type == BCF_BT_FLOAT:
-            value = z.v1.f if not bcf_float_is_missing(z.v1.f) else None
+            if bcf_float_is_missing(z.v1.f):
+                value = None
+            elif bcf_float_is_vector_end(z.v1.f):
+                value = ()
+            else:
+                value = z.v1.f
         elif z.type == BCF_BT_CHAR:
-            s = <char *>&z.v1.i
-            value = force_str(s) if not s or s[0] != bcf_str_missing else None
+            value = force_str(chr(z.v1.i))
         else:
             raise TypeError('unsupported info type code')
+
+        if not scalar and value != ():
+            value = (value,)
     else:
-        value = bcf_array_to_object(z.vptr, z.type, z.len)
+        value = bcf_array_to_object(z.vptr, z.type, z.len, count, scalar)
 
     return value
 
 
-cdef inline int is_gt_fmt(bcf_hdr_t *hdr, bcf_fmt_t *fmt):
-    return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id), "GT") == 0
+cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_type, int id,
+                             int bt_type, int bt_len,
+                             int *value_count, int *scalar, int *realloc):
+
+    bcf_get_value_count(record, hl_type, id, value_count, scalar)
+
+    # Validate values now that we know the type and size
+    values = (value,) if not isinstance(value, tuple) else value
+
+    # Validate values now that we know the type and size
+    if value_count[0] != -1 and value_count[0] != len(values):
+        if scalar[0]:
+            raise TypeError('value expected to be scalar'.format(value_count[0]))
+        else:
+            raise TypeError('values expected to be {:d}-tuple'.format(value_count[0]))
+
+    if ht_type == BCF_HT_REAL:
+        if not all(v is None or isinstance(v, (float, int)) for v in values):
+            raise TypeError('invalid value for Float format')
+    elif ht_type == BCF_HT_INT:
+        if not all(v is None or (isinstance(v, (float, int)) and int(v) == v) for v in values):
+            raise TypeError('invalid value for Integer format')
+        if not all(v is None or bcf_int32_missing < v <= INT32_MAX for v in values):
+            raise ValueError('Integer value too small/large to store in VCF/BCF')
+    elif ht_type == BCF_HT_STR:
+        values = ','.join(force_bytes(v) if v is not None else b'' for v in values)
+    else:
+        raise TypeError('unsupported type')
+
+    realloc[0] = 0
+    if len(values) <= 1 and hl_type == BCF_HL_INFO:
+        realloc[0] = 0
+    elif len(values) > bt_len:
+        realloc[0] = 1
+    elif bt_type == BCF_BT_INT8 and not all(v is None or bcf_int8_missing < v <= INT8_MAX for v in values):
+        realloc[0] = 1
+    elif bt_type == BCF_BT_INT16 and not all(v is None or bcf_int16_missing < v <= INT16_MAX for v in values):
+        realloc[0] = 1
+
+    return values
+
+
+cdef bcf_info_set_value(VariantRecord record, key, value):
+    cdef bcf_hdr_t *hdr = record.header.ptr
+    cdef bcf1_t *r = record.ptr
+    cdef vdict_t *d
+    cdef khiter_t k
+    cdef int info_id, info_type, value_count, scalar, alloc_len
+    cdef int i, alloc_size, realloc, vlen = 0
+    cdef int dst_size, dst_type
+
+    bkey = force_bytes(key)
+    cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
+
+    if info:
+        info_id = info.key
+    else:
+        d = <vdict_t *>hdr.dict[BCF_DT_ID]
+        k = kh_get_vdict(d, bkey)
+
+        if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_INFO] & 0xF == 0xF:
+            raise KeyError('unknown INFO')
+
+        info_id = kh_val_vdict(d, k).id
+
+    info_type = bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id)
+    values = bcf_check_values(record, value, BCF_HL_INFO, info_type, info_id,
+                              info.type if info else -1, info.len if info else -1,
+                              &value_count, &scalar, &realloc)
+    vlen = value_count < 0
+    value_count = len(values)
+
+    # If we can, write updated values to existing allocated storage
+    if info and not realloc:
+        r.d.shared_dirty = 1
+
+        if value_count == 0:
+            info.len = 0
+            # FIXME: Check if need to free vptr if info.len > 0?
+        elif value_count == 1:
+            # FIXME: Check if need to free vptr if info.len > 0?
+            if info.type == BCF_BT_INT8 or info.type == BCF_BT_INT16 or info.type == BCF_BT_INT32:
+                bcf_object_to_array(values, &info.v1.i, BCF_BT_INT32, 1, vlen)
+            elif info.type == BCF_BT_FLOAT:
+                bcf_object_to_array(values, &info.v1.f, BCF_BT_FLOAT, 1, vlen)
+            else:
+                raise TypeError('unsupported info type code')
+            info.len = 1
+        else:
+            bcf_object_to_array(values, info.vptr, info.type, info.len, vlen)
+        return
+
+    alloc_len = max(1, value_count)
+    if info and info.len > alloc_len:
+        alloc_len = info.len
+
+    new_values = bcf_empty_array(info_type, alloc_len, vlen)
+    cdef char *valp = <char *>new_values
+
+    if info_type == BCF_HT_INT:
+        dst_type = BCF_BT_INT32
+    elif info_type == BCF_HT_REAL:
+        dst_type = BCF_BT_FLOAT
+    elif info_type == BCF_HT_STR:
+        dst_type = BCF_BT_CHAR
+    else:
+        raise ValueError('Unsupported INFO type')
+
+    bcf_object_to_array(values, valp, dst_type, alloc_len, vlen)
+
+    if bcf_update_info(hdr, r, key, valp, alloc_len, info_type) < 0:
+        raise ValueError('Unable to update INFO values')
+
+
+cdef bcf_format_get_value(VariantRecordSample sample, key):
+    cdef bcf_hdr_t *hdr = sample.record.header.ptr
+    cdef bcf1_t *r = sample.record.ptr
+    cdef bcf_fmt_t *fmt
+    cdef int index, count, scalar
+
+    bkey = force_bytes(key)
+    fmt = bcf_record_get_format(sample.record, bkey)
+
+    if not fmt:
+        if isinstance(key, int):
+            raise IndexError('invalid format index')
+        else:
+            raise KeyError('invalid format requested')
+
+    if is_gt_fmt(hdr, fmt.id):
+        return sample.alleles
+
+    bcf_get_value_count(sample.record, BCF_HL_FMT, fmt.id, &count, &scalar)
+
+    if fmt.p and fmt.n and fmt.size:
+        return bcf_array_to_object(fmt.p + sample.index * fmt.size, fmt.type, fmt.n, count, scalar)
+    elif scalar:
+        return None
+    elif count <= 0:
+        return ()
+    else:
+        return (None,)*count
+
+
+cdef bcf_format_set_value(VariantRecordSample sample, key, value):
+    cdef bcf_hdr_t *hdr = sample.record.header.ptr
+    cdef bcf1_t *r = sample.record.ptr
+    cdef bcf_fmt_t *fmt
+    cdef int fmt_id
+    cdef int index
+    cdef vdict_t *d
+    cdef khiter_t k
+    cdef int fmt_type, value_count, scalar, alloc_len
+    cdef int i, n, alloc_size, realloc, vlen = 0
+    cdef int dst_size, dst_type
+
+    bkey = force_bytes(key)
+    fmt = bcf_record_get_format(sample.record, bkey)
+
+    if fmt:
+        fmt_id = fmt.id
+    else:
+        d = <vdict_t *>hdr.dict[BCF_DT_ID]
+        k = kh_get_vdict(d, bkey)
+
+        if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_FMT] & 0xF == 0xF:
+            raise KeyError('unknown format')
+
+        fmt_id = kh_val_vdict(d, k).id
+
+    if is_gt_fmt(hdr, fmt_id):
+        raise ValueError('cannot set alleles yet')
+
+    fmt_type = bcf_hdr_id2type(hdr, BCF_HL_FMT, fmt_id)
+    values = bcf_check_values(sample.record, value, BCF_HL_FMT, fmt_type, fmt_id,
+                              fmt.type if fmt else -1, fmt.n if fmt else -1,
+                              &value_count, &scalar, &realloc)
+    vlen = value_count < 0
+    value_count = len(values)
+
+    # If we can, write updated values to existing allocated storage
+    if fmt and not realloc:
+        r.d.indiv_dirty = 1
+        bcf_object_to_array(values, fmt.p + sample.index * fmt.size, fmt.type, fmt.n, vlen)
+        return
+
+    alloc_len = max(1, value_count)
+    if fmt and fmt.n > alloc_len:
+        alloc_len = fmt.n
+
+    n = bcf_hdr_nsamples(hdr)
+    new_values = bcf_empty_array(fmt_type, n*alloc_len, vlen)
+    cdef char *valp = <char *>new_values
+
+    if fmt_type == BCF_HT_INT:
+        dst_type = BCF_BT_INT32
+        dst_size = sizeof(int32_t) * alloc_len
+    elif fmt_type == BCF_HT_REAL:
+        dst_type = BCF_BT_FLOAT
+        dst_size = sizeof(float) * alloc_len
+    elif fmt_type == BCF_HT_STR:
+        dst_type = BCF_BT_CHAR
+        dst_size = sizeof(char) * alloc_len
+    else:
+        raise ValueError('Unsupported FORMAT type')
+
+    if fmt and n > 1:
+        for i in range(n):
+            bcf_copy_expand_array(fmt.p + i*fmt.size, fmt.type, fmt.n,
+                                  valp  + i*dst_size, dst_type, alloc_len,
+                                  vlen)
+
+    bcf_object_to_array(values, valp + sample.index*dst_size, dst_type, alloc_len, vlen)
+
+    if bcf_update_format(hdr, r, key, valp, n*alloc_len, fmt_type) < 0:
+        raise ValueError('Unable to update format values')
+
+
+cdef bcf_fmt_t *bcf_record_get_format(VariantRecord record, key):
+    cdef bcf_hdr_t *hdr = record.header.ptr
+    cdef bcf1_t *r = record.ptr
+    cdef bcf_fmt_t *fmt = NULL
+    cdef int n = r.n_fmt
+    cdef int index
+
+    if isinstance(key, int):
+        index = key
+        if 0 <= index < n:
+            fmt = r.d.fmt + index
+    else:
+        bkey = force_bytes(key)
+        fmt = bcf_get_fmt(hdr, r, bkey)
+
+    return fmt
 
 
 ########################################################################
@@ -1199,21 +1654,12 @@ cdef class VariantRecordFormat(object):
         return self.record.ptr.n_fmt != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *hdr = self.record.header.ptr
-        cdef bcf1_t *r = self.record.ptr
-        cdef bcf_fmt_t *fmt
-        cdef int index
-        cdef int n = r.n_fmt
+        cdef bcf_fmt_t *fmt = bcf_record_get_format(self.record, key)
 
-        if isinstance(key, int):
-            index = key
-            if index < 0 or index >= n:
+        if not fmt:
+            if isinstance(key, int):
                 raise IndexError('invalid format index')
-            fmt = &r.d.fmt[index]
-        else:
-            bkey = force_bytes(key)
-            fmt = bcf_get_fmt(hdr, r, bkey)
-            if not fmt:
+            else:
                 raise KeyError('unknown format')
 
         return makeVariantMetadata(self.record.header, BCF_HL_FMT, fmt.id)
@@ -1304,7 +1750,10 @@ cdef class VariantRecordInfo(object):
         if not info:
             raise KeyError('Unknown INFO field: {}'.format(key))
 
-        return bcf_info_value(info)
+        return bcf_info_get_value(self.record, info)
+
+    def __setitem__(self, key, value):
+        bcf_info_set_value(self.record, key, value)
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
@@ -1341,7 +1790,7 @@ cdef class VariantRecordInfo(object):
 
         for i in range(n):
             info = &r.d.info[i]
-            yield bcf_info_value(info)
+            yield bcf_info_get_value(self.record, info)
 
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
@@ -1353,7 +1802,7 @@ cdef class VariantRecordInfo(object):
         for i in range(n):
             info = &r.d.info[i]
             key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
-            value = bcf_info_value(info)
+            value = bcf_info_get_value(self.record, info)
             yield force_str(key), value
 
     def keys(self):
@@ -1587,7 +2036,7 @@ cdef class VariantRecord(object):
             if qual is not None:
                 self.ptr.qual = qual
             else:
-                memcpy(&self.ptr.qual, &bcf_float_missing, 4)
+                bcf_float_set(&self.ptr.qual, bcf_float_missing)
 
 #   property n_info:
 #       def __get__(self):
@@ -1781,7 +2230,7 @@ cdef class VariantRecordSample(object):
                 return None
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(hdr, fmt0)
+            cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
 
             if not gt0 or not fmt0.n:
                 return None
@@ -1824,21 +2273,20 @@ cdef class VariantRecordSample(object):
                 return None
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(hdr, fmt0)
+            cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
 
             if not gt0 or not fmt0.n:
                 return None
+
+            # AH: not sure why this should be NULL, but see issue #203
+            if r.d.allele == NULL:
+                return (None,)*nalleles
 
             cdef int32_t  a
             cdef int8_t  *data8
             cdef int16_t *data16
             cdef int32_t *data32
             alleles = []
-
-            # AH: not sure why this should be NULL, but see issue #203
-            if r.d.allele == NULL:
-                return tuple(["."] * nalleles)
-
             if fmt0.type == BCF_BT_INT8:
                 data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
@@ -1874,7 +2322,7 @@ cdef class VariantRecordSample(object):
                 return False
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(hdr, fmt0)
+            cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
 
             if not gt0 or not fmt0.n:
                 return False
@@ -1919,31 +2367,10 @@ cdef class VariantRecordSample(object):
         return self.record.ptr.n_fmt != 0
 
     def __getitem__(self, key):
-        cdef bcf_hdr_t *hdr = self.record.header.ptr
-        cdef bcf1_t *r = self.record.ptr
-        cdef bcf_fmt_t *fmt
-        cdef int index
+        return bcf_format_get_value(self, key)
 
-        if isinstance(key, int):
-            index = key
-            if index < 0 or index >= r.n_fmt:
-                raise IndexError('invalid format index')
-            fmt = r.d.fmt + index
-        else:
-            bkey = force_bytes(key)
-            fmt = bcf_get_fmt(hdr, r, bkey)
-
-        if not fmt:
-            raise KeyError('invalid format requested')
-
-        if is_gt_fmt(hdr, fmt):
-            return self.alleles
-        elif fmt.p and fmt.n and fmt.size:
-            # FIXME: Py3 byte conversion for strings?
-            return bcf_array_to_object(fmt.p + self.index * fmt.size,
-                                       fmt.type, fmt.n, scalar=1)
-        else:
-            return None
+    def __setitem__(self, key, value):
+        bcf_format_set_value(self, key, value)
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
@@ -2769,7 +3196,13 @@ cdef class VariantFile(object):
         returns the number of bytes written.
         """
         if not self.is_open:
-            return 0
+            return ValueError('I/O operation on closed file')
+
+        if not self.mode.startswith(b'w'):
+            raise ValueError('cannot write to a Variantfile opened for reading')
+
+        if record.header is not self.header:
+            raise ValueError('Writing records from a different VariantFile is not yet supported')
 
         cdef int ret
 
