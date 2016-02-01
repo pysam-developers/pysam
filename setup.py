@@ -558,7 +558,7 @@ cbcf = Extension(
 )
 
 metadata = {
-    'name': "psyam",
+    'name': "pysam",
     'version': version,
     'description': "pysam",
     'long_description': __doc__,
