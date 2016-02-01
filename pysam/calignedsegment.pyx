@@ -1852,7 +1852,7 @@ cdef class AlignedSegment:
             s += 1
 
             if with_value_type:
-                result.append((charptr_to_str(auxtag), value, auxtype))
+                result.append((charptr_to_str(auxtag), value, chr(auxtype)))
             else:
                 result.append((charptr_to_str(auxtag), value))
 
