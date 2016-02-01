@@ -17,6 +17,6 @@ void pysam_unset_stderr(void);
 
 int pysam_dispatch(int argc, char *argv[]);
 
-void reset_getopt(void);
+void set_optind(int);
 
 #endif

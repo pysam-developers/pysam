@@ -15,6 +15,10 @@ tests/*.fai
 tests/pysam_data
 tests/cbcf_data
 
+htslib/config.log
+htslib/config.mk
+pysam/config.py
+
 # cython files
 pysam/TabProxies.c
 pysam/csamtools.c
