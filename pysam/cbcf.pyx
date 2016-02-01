@@ -846,9 +846,7 @@ cdef class VariantHeaderRecord(object):
 
     def __bool__(self):
         cdef bcf_hrec_t *r = self.ptr
-        cdef int i
-        for i in range(r.nkeys):
-            yield r.keys[i]
+        return r.nkeys != 0
 
     def __getitem__(self, key):
         """get attribute value"""
@@ -1695,6 +1693,7 @@ cdef class VariantRecordFormat(object):
             fmt = &r.d.fmt[i]
             if fmt and fmt.p:
                 return True
+        return False
 
     def __getitem__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
@@ -2460,6 +2459,7 @@ cdef class VariantRecordSample(object):
             fmt = &r.d.fmt[i]
             if fmt and fmt.p:
                 return True
+        return False
 
     def __getitem__(self, key):
         return bcf_format_get_value(self, key)
