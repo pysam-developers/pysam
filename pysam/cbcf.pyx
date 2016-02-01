@@ -614,7 +614,7 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
     # If we can, write updated values to existing allocated storage
     if info and not realloc:
-        r.d.shared_dirty = 1
+        r.d.shared_dirty |= BCF1_DIRTY_INF
 
         if value_count == 0:
             info.len = 0
@@ -654,16 +654,38 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
         raise ValueError('Unable to update INFO values')
 
 
+cdef bcf_info_del_value(VariantRecord record, key):
+    cdef bcf_hdr_t *hdr = record.header.ptr
+    cdef bcf1_t *r = record.ptr
+    cdef int value_count, scalar
+
+    bkey = force_bytes(key)
+    cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
+
+    if not info:
+        raise KeyError(key)
+
+    bcf_get_value_count(record, BCF_HL_INFO, info.key, &value_count, &scalar)
+
+    if value_count <= 0:
+        null_value = ()
+    elif scalar:
+        null_value = None
+    else:
+        null_value = (None,)*value_count
+
+    bcf_info_set_value(record, key, null_value)
+
+
 cdef bcf_format_get_value(VariantRecordSample sample, key):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
-    cdef bcf_fmt_t *fmt
     cdef int index, count, scalar
 
     bkey = force_bytes(key)
-    fmt = bcf_record_get_format(sample.record, bkey)
+    cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
-    if not fmt:
+    if not fmt or not fmt.p:
         if isinstance(key, int):
             raise IndexError('invalid format index')
         else:
@@ -687,7 +709,6 @@ cdef bcf_format_get_value(VariantRecordSample sample, key):
 cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
-    cdef bcf_fmt_t *fmt
     cdef int fmt_id
     cdef int index
     cdef vdict_t *d
@@ -697,7 +718,7 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     cdef int dst_size, dst_type
 
     bkey = force_bytes(key)
-    fmt = bcf_record_get_format(sample.record, bkey)
+    cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
     if fmt:
         fmt_id = fmt.id
@@ -758,22 +779,27 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
         raise ValueError('Unable to update format values')
 
 
-cdef bcf_fmt_t *bcf_record_get_format(VariantRecord record, key):
-    cdef bcf_hdr_t *hdr = record.header.ptr
-    cdef bcf1_t *r = record.ptr
-    cdef bcf_fmt_t *fmt = NULL
-    cdef int n = r.n_fmt
-    cdef int index
+cdef bcf_format_del_value(VariantRecordSample sample, key):
+    cdef bcf_hdr_t *hdr = sample.record.header.ptr
+    cdef bcf1_t *r = sample.record.ptr
+    cdef int value_count, scalar
 
-    if isinstance(key, int):
-        index = key
-        if 0 <= index < n:
-            fmt = r.d.fmt + index
+    bkey = force_bytes(key)
+    cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
+
+    if not fmt or not fmt.p:
+        raise KeyError(key)
+
+    bcf_get_value_count(sample.record, BCF_HL_FMT, fmt.id, &value_count, &scalar)
+
+    if value_count <= 0:
+        null_value = ()
+    elif scalar:
+        null_value = None
     else:
-        bkey = force_bytes(key)
-        fmt = bcf_get_fmt(hdr, r, bkey)
+        null_value = (None,)*value_count
 
-    return fmt
+    bcf_format_set_value(sample, key, null_value)
 
 
 ########################################################################
@@ -1648,29 +1674,63 @@ cdef class VariantRecordFormat(object):
     object for formats present in a :class:`VariantRecord` object."""
 
     def __len__(self):
-        return self.record.ptr.n_fmt
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef int i, n = 0
+        cdef bcf_fmt_t *fmt
+
+        for i in range(n.n_fmt):
+            fmt = &r.d.fmt[i]
+            if fmt and fmt.p:
+                n += 1
+        return n
 
     def __bool__(self):
-        return self.record.ptr.n_fmt != 0
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef int i
+        cdef bcf_fmt_t *fmt
+
+        for i in range(r.n_fmt):
+            fmt = &r.d.fmt[i]
+            if fmt and fmt.p:
+                return True
 
     def __getitem__(self, key):
-        cdef bcf_fmt_t *fmt = bcf_record_get_format(self.record, key)
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
 
-        if not fmt:
-            if isinstance(key, int):
-                raise IndexError('invalid format index')
-            else:
-                raise KeyError('unknown format')
+        bkey = force_bytes(key)
+        cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
+
+        if not fmt or not fmt.p:
+            raise KeyError('unknown format')
 
         return makeVariantMetadata(self.record.header, BCF_HL_FMT, fmt.id)
+
+    def __delitem__(self, key):
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+
+        bkey = force_bytes(key)
+        cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
+
+        if not fmt or not fmt.p:
+            raise KeyError('unknown format')
+
+        if bcf_update_format(hdr, r, key, fmt.p, 0, fmt.type) < 0:
+            raise ValueError('Unable to delete FORMAT')
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
+        cdef bcf_fmt_t *fmt
         cdef int i, n = r.n_fmt
 
         for i in range(n):
-            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id))
+            fmt = &r.d.fmt[i]
+            if fmt and fmt.p:
+                yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1684,7 +1744,7 @@ cdef class VariantRecordFormat(object):
         cdef bcf1_t *r = self.record.ptr
         bkey = force_bytes(key)
         cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
-        return fmt != NULL
+        return fmt != NULL and fmt.p != NULL
 
     def iterkeys(self):
         """D.iterkeys() -> an iterator over the keys of D"""
@@ -1747,7 +1807,7 @@ cdef class VariantRecordInfo(object):
         bkey = force_bytes(key)
         cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
-        if not info:
+        if not info or not info.vptr:
             raise KeyError('Unknown INFO field: {}'.format(key))
 
         return bcf_info_get_value(self.record, info)
@@ -1755,13 +1815,29 @@ cdef class VariantRecordInfo(object):
     def __setitem__(self, key, value):
         bcf_info_set_value(self.record, key, value)
 
+    def __delitem__(self, key):
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+
+        bkey = force_bytes(key)
+        cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
+
+        if not info or not info.vptr:
+            raise KeyError('Unknown INFO field: {}'.format(key))
+
+        if bcf_update_info(hdr, r, bkey, NULL, 0, info.type) < 0:
+            raise ValueError('Unable to delete INFO')
+
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
+        cdef bcf_info_t *info
         cdef int i, n = r.n_info
 
         for i in range(n):
-            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.info[i].key))
+            info = &r.d.info[i]
+            if info and info.vptr:
+                yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, info.key))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1790,7 +1866,8 @@ cdef class VariantRecordInfo(object):
 
         for i in range(n):
             info = &r.d.info[i]
-            yield bcf_info_get_value(self.record, info)
+            if info and info.vptr:
+                yield bcf_info_get_value(self.record, info)
 
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
@@ -1801,9 +1878,10 @@ cdef class VariantRecordInfo(object):
 
         for i in range(n):
             info = &r.d.info[i]
-            key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
-            value = bcf_info_get_value(self.record, info)
-            yield force_str(key), value
+            if info and info.vptr:
+                key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
+                value = bcf_info_get_value(self.record, info)
+                yield force_str(key), value
 
     def keys(self):
         """D.keys() -> list of D's keys"""
@@ -2361,10 +2439,27 @@ cdef class VariantRecordSample(object):
             return phased
 
     def __len__(self):
-        return self.record.ptr.n_fmt
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef int i, n = 0
+        cdef bcf_fmt_t *fmt
+
+        for i in range(r.n_fmt):
+            fmt = &r.d.fmt[i]
+            if fmt and fmt.p:
+                n += 1
+        return n
 
     def __bool__(self):
-        return self.record.ptr.n_fmt != 0
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef int i
+        cdef bcf_fmt_t *fmt
+
+        for i in range(r.n_fmt):
+            fmt = &r.d.fmt[i]
+            if fmt and fmt.p:
+                return True
 
     def __getitem__(self, key):
         return bcf_format_get_value(self, key)
@@ -2372,13 +2467,19 @@ cdef class VariantRecordSample(object):
     def __setitem__(self, key, value):
         bcf_format_set_value(self, key, value)
 
+    def __delitem__(self, key):
+        bcf_format_del_value(self, key)
+
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
+        cdef bcf_fmt_t *fmt
         cdef int i, n = r.n_fmt
 
         for i in range(n):
-            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.fmt[i].id))
+            fmt = &r.d.fmt[i]
+            if fmt and fmt.p:
+                yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -2392,7 +2493,7 @@ cdef class VariantRecordSample(object):
         cdef bcf1_t *r = self.record.ptr
         bkey = force_bytes(key)
         cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
-        return fmt != NULL
+        return fmt != NULL and fmt.p != NULL
 
     def iterkeys(self):
         """D.iterkeys() -> an iterator over the keys of D"""
