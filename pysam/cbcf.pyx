@@ -319,8 +319,8 @@ cdef bcf_object_to_array(values, void *data, int bt_type, int n, int vlen):
     assert(value_count <= n)
 
     if bt_type == BCF_BT_CHAR:
-        if not isinstance(values, str):
-            values = ','.join(force_bytes(v) if v is not None else b'' for v in values)
+        if not isinstance(values, (str, bytes)):
+            values = b','.join(force_bytes(v) if v is not None else b'' for v in values)
             value_count = len(values)
         assert(value_count <= n)
         datac = <char *>data
@@ -567,7 +567,7 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
         if not all(v is None or bcf_int32_missing < v <= INT32_MAX for v in values):
             raise ValueError('Integer value too small/large to store in VCF/BCF')
     elif ht_type == BCF_HT_STR:
-        values = ','.join(force_bytes(v) if v is not None else b'' for v in values)
+        values = b','.join(force_bytes(v) if v is not None else b'' for v in values)
     else:
         raise TypeError('unsupported type')
 
@@ -652,7 +652,7 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
     bcf_object_to_array(values, valp, dst_type, alloc_len, vlen)
 
-    if bcf_update_info(hdr, r, key, valp, alloc_len, info_type) < 0:
+    if bcf_update_info(hdr, r, bkey, valp, alloc_len, info_type) < 0:
         raise ValueError('Unable to update INFO values')
 
 
@@ -676,7 +676,7 @@ cdef bcf_info_del_value(VariantRecord record, key):
     else:
         null_value = (None,)*value_count
 
-    bcf_info_set_value(record, key, null_value)
+    bcf_info_set_value(record, bkey, null_value)
 
 
 cdef bcf_format_get_value(VariantRecordSample sample, key):
@@ -773,7 +773,7 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
 
     bcf_object_to_array(values, valp + sample.index*dst_size, dst_type, alloc_len, vlen)
 
-    if bcf_update_format(hdr, r, key, valp, n*alloc_len, fmt_type) < 0:
+    if bcf_update_format(hdr, r, bkey, valp, n*alloc_len, fmt_type) < 0:
         raise ValueError('Unable to update format values')
 
 
@@ -797,7 +797,7 @@ cdef bcf_format_del_value(VariantRecordSample sample, key):
     else:
         null_value = (None,)*value_count
 
-    bcf_format_set_value(sample, key, null_value)
+    bcf_format_set_value(sample, bkey, null_value)
 
 
 ########################################################################
@@ -920,8 +920,8 @@ cdef class VariantHeaderRecord(object):
         if r.type == BCF_HL_GEN:
             return force_str('##{}={}'.format(self.key, self.value))
         else:
-            attrs = ','.join('{}={}'.format(k, v) for k,v in self.attrs if k != 'IDX')
-            return force_str('##{}=<{}>'.format(self.key or self.type, attrs))
+            attrs = b','.join('{}={}'.format(k, v) for k,v in self.attrs if k != b'IDX')
+            return force_str(b'##{}=<{}>'.format(self.key or self.type, attrs))
 
 
 cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *hdr):
@@ -1473,7 +1473,7 @@ cdef class VariantHeader(object):
                 'missing {:d} requested samples'.format(
                     len(missing_samples)))
 
-        keep_samples = force_bytes(','.join(keep_samples))
+        keep_samples = force_bytes(b','.join(keep_samples))
         cdef char *keep = <char *>keep_samples if keep_samples else NULL
         cdef ret = bcf_hdr_set_samples(self.ptr, keep, 0)
 
@@ -1740,7 +1740,7 @@ cdef class VariantRecordFormat(object):
         if not fmt or not fmt.p:
             raise KeyError('unknown format')
 
-        if bcf_update_format(hdr, r, key, fmt.p, 0, fmt.type) < 0:
+        if bcf_update_format(hdr, r, bkey, fmt.p, 0, fmt.type) < 0:
             raise ValueError('Unable to delete FORMAT')
 
     def clear(self):
@@ -2230,7 +2230,7 @@ cdef class VariantRecord(object):
             values = [force_bytes(v) for v in values]
             if b'' in values:
                 raise ValueError('cannot set null allele')
-            values = ','.join(values)
+            values = b','.join(values)
             if bcf_update_alleles_str(self.header.ptr, r, values) < 0:
                 raise ValueError('Error updating alleles')
 
