@@ -193,7 +193,7 @@ from libc.stdint cimport INT8_MAX, INT16_MAX, INT32_MAX
 
 cimport cython
 
-from cpython cimport PyBytes_Check, PyUnicode_Check, PyString_FromStringAndSize
+from cpython cimport PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
 from cpython.version cimport PY_MAJOR_VERSION
 
 __all__ = ['VariantFile', 'VariantHeader']
@@ -372,17 +372,17 @@ cdef bcf_empty_array(int type, int n, int vlen):
         raise ValueError('Cannot create empty array')
 
     if type == BCF_HT_STR:
-        value = PyString_FromStringAndSize(NULL, sizeof(char)*n)
+        value = PyBytes_FromStringAndSize(NULL, sizeof(char)*n)
         datac = <char *>value
         for i in range(n):
             datac[i] = bcf_str_missing if not vlen else bcf_str_vector_end
     elif type == BCF_HT_INT:
-        value = PyString_FromStringAndSize(NULL, sizeof(int32_t)*n)
+        value = PyBytes_FromStringAndSize(NULL, sizeof(int32_t)*n)
         data32 = <int32_t *><char *>value
         for i in range(n):
             data32[i] = bcf_int32_missing if not vlen else bcf_int32_vector_end
     elif type == BCF_HT_REAL:
-        value = PyString_FromStringAndSize(NULL, sizeof(float)*n)
+        value = PyBytes_FromStringAndSize(NULL, sizeof(float)*n)
         dataf = <float *><char *>value
         for i in range(n):
             bcf_float_set(dataf + i, bcf_float_missing if not vlen else bcf_float_vector_end)
@@ -464,7 +464,9 @@ cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, int *count, 
 
     scalar[0] = 0
 
-    if length == BCF_VL_FIXED:
+    if hl_type==BCF_HL_FMT and is_gt_fmt(hdr, id):
+        count[0] = number
+    elif length == BCF_VL_FIXED:
         if number == 1:
             scalar[0] = 1
         count[0] = number
@@ -689,7 +691,7 @@ cdef bcf_format_get_value(VariantRecordSample sample, key):
         raise KeyError('invalid FORMAT')
 
     if is_gt_fmt(hdr, fmt.id):
-        return sample.alleles
+        return sample.allele_indices
 
     bcf_get_value_count(sample.record, BCF_HL_FMT, fmt.id, &count, &scalar)
 
@@ -1562,8 +1564,8 @@ cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
 ########################################################################
 
 cdef class VariantRecordFilter(object):
-    """mapping from filter index or name to :class:`VariantMetadata`
-    object for filters set on a :class:`VariantRecord` object."""
+    """Filters set on a :class:`VariantRecord` object, presented as a mapping from
+       filter index or name to :class:`VariantMetadata` object"""
 
     def __len__(self):
         return self.record.ptr.d.n_flt
@@ -1597,12 +1599,44 @@ cdef class VariantRecordFilter(object):
 
         return makeVariantMetadata(self.record.header, BCF_HL_FLT, id)
 
+    def __delitem__(self, key):
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef int index, id
+        cdef int n = r.d.n_flt
+
+        if isinstance(key, int):
+            index = key
+
+            if index < 0 or index >= n:
+                raise IndexError('invalid filter index')
+
+            id = r.d.flt[index]
+        else:
+            if key == '.':
+                key = 'PASS'
+
+            bkey = force_bytes(key)
+            id = bcf_hdr_id2int(hdr, BCF_DT_ID, bkey)
+
+            if not bcf_hdr_idinfo_exists(hdr, BCF_HL_FLT, id) \
+               or not bcf_has_filter(hdr, self.record.ptr, bkey):
+                raise KeyError('Invalid filter')
+
+        bcf_remove_filter(hdr, r, id, 0)
+
+    def clear(self):
+        """Clear all filters"""
+        cdef bcf1_t *r = self.record.ptr
+        r.d.shared_dirty |= BCF1_DIRTY_FLT
+        r.d.n_flt = 0
+
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef int i, n = r.d.n_flt
+        cdef int i
 
-        for i in range(n):
+        for i in range(r.d.n_flt):
             yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.flt[i]))
 
     def get(self, key, default=None):
@@ -1661,18 +1695,16 @@ cdef VariantRecordFilter makeVariantRecordFilter(VariantRecord record):
 
 
 cdef class VariantRecordFormat(object):
-    """mapping from format name or index to :class:`VariantMetadata`
-    object for formats present in a :class:`VariantRecord` object."""
+    """Format data present for each sample in a :class:`VariantRecord` object,
+       presented as mapping from format name to :class:`VariantMetadata` object."""
 
     def __len__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = 0
-        cdef bcf_fmt_t *fmt
 
         for i in range(n.n_fmt):
-            fmt = &r.d.fmt[i]
-            if fmt and fmt.p:
+            if r.d.fmt[i].p:
                 n += 1
         return n
 
@@ -1680,11 +1712,9 @@ cdef class VariantRecordFormat(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i
-        cdef bcf_fmt_t *fmt
 
         for i in range(r.n_fmt):
-            fmt = &r.d.fmt[i]
-            if fmt and fmt.p:
+            if r.d.fmt[i].p:
                 return True
         return False
 
@@ -1713,15 +1743,31 @@ cdef class VariantRecordFormat(object):
         if bcf_update_format(hdr, r, key, fmt.p, 0, fmt.type) < 0:
             raise ValueError('Unable to delete FORMAT')
 
+    def clear(self):
+        """Clear all formats for all samples within the associated
+           :class:`VariantRecord` instance"""
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef bcf_fmt_t *fmt
+        cdef const char *key
+        cdef int i
+
+        for i in reversed(range(r.n_fmt)):
+            fmt = &r.d.fmt[i]
+            if fmt.p:
+                key = bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id)
+                if bcf_update_format(hdr, r, key, fmt.p, 0, fmt.type) < 0:
+                    raise ValueError('Unable to delete FORMAT')
+
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_fmt_t *fmt
-        cdef int i, n = r.n_fmt
+        cdef int i
 
-        for i in range(n):
+        for i in range(r.n_fmt):
             fmt = &r.d.fmt[i]
-            if fmt and fmt.p:
+            if fmt.p:
                 yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
@@ -1783,8 +1829,8 @@ cdef VariantRecordFormat makeVariantRecordFormat(VariantRecord record):
 
 #TODO: Add a getmeta method to return the corresponding VariantMetadata?
 cdef class VariantRecordInfo(object):
-    """mapping from info metadata name to value for info data present in a
-    :class:`VariantRecord` object."""
+    """Info data stored in a :class:`VariantRecord` object, presented as a
+       mapping from info metadata name to value."""
 
     def __len__(self):
         return self.record.ptr.n_info
@@ -1820,13 +1866,28 @@ cdef class VariantRecordInfo(object):
         if bcf_update_info(hdr, r, bkey, NULL, 0, info.type) < 0:
             raise ValueError('Unable to delete INFO')
 
+    def clear(self):
+        """Clear all info data"""
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef bcf_info_t *info
+        cdef const char *key
+        cdef int i
+
+        for i in range(r.n_info):
+            info = &r.d.info[i]
+            if info and info.vptr:
+                key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
+                if bcf_update_info(hdr, r, key, NULL, 0, info.type) < 0:
+                    raise ValueError('Unable to delete INFO')
+
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_info_t *info
-        cdef int i, n = r.n_info
+        cdef int i
 
-        for i in range(n):
+        for i in range(r.n_info):
             info = &r.d.info[i]
             if info and info.vptr:
                 yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, info.key))
@@ -1854,9 +1915,9 @@ cdef class VariantRecordInfo(object):
         """D.itervalues() -> an iterator over the values of D"""
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_info_t *info
-        cdef int i, n = r.n_info
+        cdef int i
 
-        for i in range(n):
+        for i in range(r.n_info):
             info = &r.d.info[i]
             if info and info.vptr:
                 yield bcf_info_get_value(self.record, info)
@@ -1866,9 +1927,9 @@ cdef class VariantRecordInfo(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_info_t *info
-        cdef int i, n = r.n_info
+        cdef int i
 
-        for i in range(n):
+        for i in range(r.n_info):
             info = &r.d.info[i]
             if info and info.vptr:
                 key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
@@ -2108,44 +2169,21 @@ cdef class VariantRecord(object):
             else:
                 bcf_float_set(&self.ptr.qual, bcf_float_missing)
 
-#   property n_info:
-#       def __get__(self):
-#            if bcf_unpack(self.ptr, BCF_UN_INFO) < 0:
-#               raise ValueError('Error unpacking BCFRecord')
-#           return self.ptr.n_info
-
 #   property n_allele:
 #       def __get__(self):
 #           return self.ptr.n_allele
-
-#   property n_fmt:
-#       def __get__(self):
-#           return self.ptr.n_fmt
 
 #   property n_sample:
 #       def __get__(self):
 #           return self.ptr.n_sample
 
-#   property shared:
-#       def __get__(self):
-#           return self.ptr.shared.s
-
-#   property indiv:
-#       def __get__(self):
-#           return self.ptr.indiv.s
-
-#   property n_flt:
-#       def __get__(self):
-#           if bcf_unpack(self.ptr, BCF_UN_FLT) < 0:
-#               raise ValueError('Error unpacking VariantRecord')
-#           return self.ptr.d.n_flt
-
     property id:
         """record identifier or None if not available"""
         def __get__(self):
-            if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            id = self.ptr.d.id
+            id = r.d.id
             return force_str(id) if id != b'.' else None
         def __set__(self, id):
             cdef char *idstr = NULL
@@ -2157,43 +2195,62 @@ cdef class VariantRecord(object):
     property ref:
         """reference allele"""
         def __get__(self):
-            if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            return force_str(self.ptr.d.allele[0] if self.ptr.d.allele else None)
+            return force_str(r.d.allele[0] if r.d.allele else None)
         def __set__(self, ref):
-            alleles = list(self.alleles)
-            alleles[0] = ref
+            #FIXME: Set alleles directly -- this is stupid
+            if not ref:
+                raise ValueError('ref allele cannot be null')
+            cdef bcf1_t *r = self.ptr
+            ref = force_bytes(ref)
+            if r.d.allele and r.n_allele:
+                alleles = [r.d.allele[i] for i in range(r.n_allele)]
+                alleles[0] = ref
+            else:
+                alleles = [ref]
             self.alleles = alleles
 
     property alleles:
         """tuple of reference allele followed by alt alleles"""
         def __get__(self):
-            if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            if not self.ptr.d.allele:
+            if not r.d.allele:
                 return None
-            return tuple(force_str(self.ptr.d.allele[i])
-                         for i in range(self.ptr.n_allele))
+            return tuple(force_str(r.d.allele[i])
+                         for i in range(r.n_allele))
         def __set__(self, values):
-            if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
+            #FIXME: Set alleles directly -- this is stupid
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            values = force_bytes(','.join(values))
-            if bcf_update_alleles_str(self.header.ptr, self.ptr, values) < 0:
+            values = [force_bytes(v) for v in values]
+            if b'' in values:
+                raise ValueError('cannot set null allele')
+            values = ','.join(values)
+            if bcf_update_alleles_str(self.header.ptr, r, values) < 0:
                 raise ValueError('Error updating alleles')
 
     property alts:
         """tuple of alt alleles"""
         def __get__(self):
-            if bcf_unpack(self.ptr, BCF_UN_STR) < 0:
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            if self.ptr.n_allele < 2 or not self.ptr.d.allele:
+            if r.n_allele < 2 or not r.d.allele:
                 return None
-            return tuple(force_str(self.ptr.d.allele[i])
-                         for i in range(1,self.ptr.n_allele))
-        def __set__(self, alts):
-            alleles = [self.ref]
-            alleles.extend(alts)
-            self.alleles = alleles
+            return tuple(force_str(r.d.allele[i]) for i in range(1,r.n_allele))
+        def __set__(self, values):
+            #FIXME: Set alleles directly -- this is stupid
+            cdef bcf1_t *r = self.ptr
+            values = [force_bytes(v) for v in values]
+            if b'' in values:
+                raise ValueError('cannot set null alt allele')
+            ref  = [r.d.allele[0] if r.d.allele and r.n_allele else b'.']
+            self.alleles = ref + values
 
     property filter:
         """filter information (see :class:`VariantRecordFilter`)"""
@@ -2274,7 +2331,6 @@ cdef class VariantRecordSample(object):
     """Data for a single sample from a :class:`VariantRecord` object.
        Provides data accessors for genotypes and a mapping interface
        from format name to values.
-
     """
 
     property name:
@@ -2315,21 +2371,24 @@ cdef class VariantRecordSample(object):
                 for i in range(fmt0.n):
                     if data8[i] == bcf_int8_vector_end:
                         break
-                    alleles.append( (data8[i] >> 1) - 1 )
+                    alleles.append(bcf_gt_allele(data8[i]))
             elif fmt0.type == BCF_BT_INT16:
                 data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data16[i] == bcf_int16_vector_end:
                         break
-                    alleles.append( (data16[i] >> 1) - 1 )
+                    alleles.append(bcf_gt_allele(data16[i]))
             elif fmt0.type == BCF_BT_INT32:
                 data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data32[i] == bcf_int32_vector_end:
                         break
-                    alleles.append( (data32[i] >> 1) - 1 )
+                    alleles.append(bcf_gt_allele(data32[i]))
 
             return tuple(alleles)
+
+        def __set__(self, values):
+            self['GT'] = values
 
     property alleles:
         """alleles for called genotype, if present.  Otherwise None"""
@@ -2362,24 +2421,27 @@ cdef class VariantRecordSample(object):
                 for i in range(fmt0.n):
                     if data8[i] == bcf_int8_vector_end:
                         break
-                    a = (data8[i] >> 1) - 1
+                    a = bcf_gt_allele(data8[i])
                     alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
             elif fmt0.type == BCF_BT_INT16:
                 data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data16[i] == bcf_int16_vector_end:
                         break
-                    a = (data16[i] >> 1) - 1
+                    a = bcf_gt_allele(data16[i])
                     alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
             elif fmt0.type == BCF_BT_INT32:
                 data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data32[i] == bcf_int32_vector_end:
                         break
-                    a = (data32[i] >> 1) - 1
+                    a = bcf_gt_allele(data32[i])
                     alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
-
             return tuple(alleles)
+
+        def __set__(self, values):
+            alleles = self.record.alleles
+            self['GT'] = tuple(alleles.index(v) if v is not None else None for v in values)
 
     property phased:
         """False if genotype is missing or any allele is unphased.  Otherwise True."""
@@ -2434,11 +2496,9 @@ cdef class VariantRecordSample(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = 0
-        cdef bcf_fmt_t *fmt
 
         for i in range(r.n_fmt):
-            fmt = &r.d.fmt[i]
-            if fmt and fmt.p:
+            if r.d.fmt[i].p:
                 n += 1
         return n
 
@@ -2446,11 +2506,9 @@ cdef class VariantRecordSample(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i
-        cdef bcf_fmt_t *fmt
 
         for i in range(r.n_fmt):
-            fmt = &r.d.fmt[i]
-            if fmt and fmt.p:
+            if r.d.fmt[i].p:
                 return True
         return False
 
@@ -2463,15 +2521,27 @@ cdef class VariantRecordSample(object):
     def __delitem__(self, key):
         bcf_format_del_value(self, key)
 
+    def clear(self):
+        """Clear all format data (including genotype) for this sample"""
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef bcf_fmt_t *fmt
+        cdef int i
+
+        for i in range(r.n_fmt):
+            fmt = &r.d.fmt[i]
+            if fmt.p:
+                bcf_format_del_value(self, bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
+
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_fmt_t *fmt
-        cdef int i, n = r.n_fmt
+        cdef int i
 
-        for i in range(n):
+        for i in range(r.n_fmt):
             fmt = &r.d.fmt[i]
-            if fmt and fmt.p:
+            if r.d.fmt[i].p:
                 yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
