@@ -9,7 +9,9 @@ from pkg_resources import Distribution
 
 if sys.platform == 'darwin':
     config_vars = get_config_vars()
-    config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '-Wl,-x')
+    config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
+    config_vars['SHLIB_EXT'] = '.so'
+    config_vars['SO'] = '.so'
 
 
 def is_pip_install():
@@ -62,6 +64,7 @@ class cy_build_ext(build_ext):
                 ext.extra_link_args = []
             ext.extra_link_args += ['-dynamiclib',
                                     '-Wl,-headerpad_max_install_names',
-                                    '-Wl,-install_name,%s' % linker_path]
+                                    '-Wl,-install_name,%s' % linker_path,
+                                    '-Wl,-x']
 
         build_ext.build_extension(self, ext)
