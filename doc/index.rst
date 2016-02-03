@@ -12,10 +12,11 @@ next-generation sequencing methods.
 This module provides a low-level wrapper around the htslib_ C-API as
 using `cython`_ and a high-level API for convenient access to the data
 in *SAM/BAM* formatted files. Also included is an interface to the
-samtools_ command line utilities and the tabix_ C-API for reading
+samtools_ and bcftools_ command line utilities and the tabix_ C-API for reading
 compressed and indexed tabular data.
 
-The current version wraps *htslib-1.2.1* and *samtools-1.2*.
+The current version wraps *htslib-1.3*, *samtools-1.3* and
+*bcftools-1.3*.
 
 Contents
 --------
