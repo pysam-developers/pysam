@@ -22,7 +22,7 @@ To install the latest release, type::
 
     pip install pysam
 
-See the Installation notes about 
+See the :ref:`Installation notes <installation>` for details.
 
 Contents
 --------
