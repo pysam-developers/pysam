@@ -207,15 +207,19 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
 
+EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
 
 if HTSLIB_SOURCE == "builtin":
-    EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
+
     if htslib_configure_options is None:
         htslib_sources = [x for x in htslib_sources
                           if x not in EXCLUDE_HTSLIB]
+        shared_htslib_sources = [x for x in shared_htslib_sources
+                                 if x not in EXCLUDE_HTSLIB]
     else:
         if "--enable-libcurl" in htslib_configure_options:
             htslib_libraries.extend(["curl", "crypto"])
+    print ("htslib_sources={}".format(htslib_sources))
 
 
 parts = ["samtools",
