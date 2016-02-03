@@ -50,7 +50,7 @@ fi
 
 popd
 
-# install code
+# install code from the repository
 python setup.py install
 
 # change into tests directory. Otherwise,
@@ -71,3 +71,9 @@ make -C cbcf_data
 # -v: verbose output
 nosetests -s -v 
 
+# build source tar-ball and test installation from tar-ball
+cd ..
+python setup.py sdist
+tar -xvzf dist/pysam-*.tar.gz
+cd pysam-*
+python setup.py install
