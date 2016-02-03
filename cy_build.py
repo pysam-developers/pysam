@@ -61,8 +61,6 @@ class cy_build_ext(build_ext):
             if not ext.extra_link_args:
                 ext.extra_link_args = []
             ext.extra_link_args += ['-dynamiclib',
-                                    '-undefined', 'dynamic_lookup',
-                                    '-shared',
                                     '-Wl,-headerpad_max_install_names',
                                     '-Wl,-install_name,%s' % linker_path]
 
