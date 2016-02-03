@@ -485,6 +485,9 @@ cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, int *count, 
 cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
     cdef bcf_hdr_t *hdr = record.header.ptr
 
+    if bcf_unpack(record.ptr, BCF_UN_INFO) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
     # FIXME: Allowing z==NULL is probably a very bad idea
     if not z:
         return None
@@ -593,6 +596,9 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
     cdef int i, alloc_size, realloc, vlen = 0
     cdef int dst_size, dst_type
 
+    if bcf_unpack(r, BCF_UN_INFO) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
     bkey = force_bytes(key)
     cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
@@ -661,6 +667,9 @@ cdef bcf_info_del_value(VariantRecord record, key):
     cdef bcf1_t *r = record.ptr
     cdef int value_count, scalar
 
+    if bcf_unpack(r, BCF_UN_INFO) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
     bkey = force_bytes(key)
     cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
@@ -683,6 +692,9 @@ cdef bcf_format_get_value(VariantRecordSample sample, key):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int count, scalar
+
+    if bcf_unpack(r, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
 
     bkey = force_bytes(key)
     cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
@@ -714,6 +726,9 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     cdef int fmt_type, value_count, scalar, alloc_len
     cdef int i, n, alloc_size, realloc, vlen = 0
     cdef int dst_size, dst_type
+
+    if bcf_unpack(r, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
 
     bkey = force_bytes(key)
     cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
@@ -781,6 +796,9 @@ cdef bcf_format_del_value(VariantRecordSample sample, key):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int value_count, scalar
+
+    if bcf_unpack(r, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
 
     bkey = force_bytes(key)
     cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
@@ -918,10 +936,10 @@ cdef class VariantHeaderRecord(object):
     def __str__(self):
         cdef bcf_hrec_t *r = self.ptr
         if r.type == BCF_HL_GEN:
-            return force_str('##{}={}'.format(self.key, self.value))
+            return '##{}={}'.format(self.key, self.value)
         else:
-            attrs = b','.join('{}={}'.format(k, v) for k,v in self.attrs if k != b'IDX')
-            return force_str(b'##{}=<{}>'.format(self.key or self.type, attrs))
+            attrs = ','.join('{}={}'.format(k, v) for k,v in self.attrs if k != 'IDX')
+            return '##{}=<{}>'.format(self.key or self.type, attrs)
 
 
 cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *hdr):
@@ -1703,7 +1721,7 @@ cdef class VariantRecordFormat(object):
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = 0
 
-        for i in range(n.n_fmt):
+        for i in range(r.n_fmt):
             if r.d.fmt[i].p:
                 n += 1
         return n
@@ -2276,7 +2294,7 @@ cdef class VariantRecord(object):
     property samples:
         """sample data (see :class:`VariantRecordSamples`)"""
         def __get__(self):
-            if bcf_unpack(self.ptr, BCF_UN_IND) < 0:
+            if bcf_unpack(self.ptr, BCF_UN_ALL) < 0:
                 raise ValueError('Error unpacking VariantRecord')
             return makeVariantRecordSamples(self)
 
@@ -2352,6 +2370,9 @@ cdef class VariantRecordSample(object):
             cdef bcf1_t *r = self.record.ptr
             cdef int32_t n = bcf_hdr_nsamples(hdr)
 
+            if bcf_unpack(r, BCF_UN_ALL) < 0:
+                raise ValueError('Error unpacking VariantRecord')
+
             if self.index < 0 or self.index >= n or not r.n_fmt:
                 return None
 
@@ -2396,6 +2417,10 @@ cdef class VariantRecordSample(object):
             cdef bcf_hdr_t *hdr = self.record.header.ptr
             cdef bcf1_t *r = self.record.ptr
             cdef int32_t nsamples = bcf_hdr_nsamples(hdr)
+
+            if bcf_unpack(r, BCF_UN_ALL) < 0:
+                raise ValueError('Error unpacking VariantRecord')
+
             cdef int32_t nalleles = r.n_allele
 
             if self.index < 0 or self.index >= nsamples or not r.n_fmt:
@@ -2437,7 +2462,7 @@ cdef class VariantRecordSample(object):
                         break
                     a = bcf_gt_allele(data32[i])
                     alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
-            return tuple(alleles)
+            return tuple(force_str(a) for a in alleles)
 
         def __set__(self, values):
             alleles = self.record.alleles
@@ -2449,6 +2474,9 @@ cdef class VariantRecordSample(object):
             cdef bcf_hdr_t *hdr = self.record.header.ptr
             cdef bcf1_t *r = self.record.ptr
             cdef int32_t n = bcf_hdr_nsamples(hdr)
+
+            if bcf_unpack(r, BCF_UN_ALL) < 0:
+                raise ValueError('Error unpacking VariantRecord')
 
             if self.index < 0 or self.index >= n or not r.n_fmt:
                 return False
@@ -2497,6 +2525,9 @@ cdef class VariantRecordSample(object):
         cdef bcf1_t *r = self.record.ptr
         cdef int i, n = 0
 
+        if bcf_unpack(r, BCF_UN_FMT) < 0:
+            raise ValueError('Error unpacking VariantRecord')
+
         for i in range(r.n_fmt):
             if r.d.fmt[i].p:
                 n += 1
@@ -2506,6 +2537,9 @@ cdef class VariantRecordSample(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int i
+
+        if bcf_unpack(r, BCF_UN_FMT) < 0:
+            raise ValueError('Error unpacking VariantRecord')
 
         for i in range(r.n_fmt):
             if r.d.fmt[i].p:
