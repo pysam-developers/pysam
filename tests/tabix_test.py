@@ -1054,24 +1054,11 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
             else:
                 return str(f)
 
-        try:
-            gt_field = smp.keys().index("GT")
-        except ValueError:
-            gt_field = None
-
-        if smp.allele_indices:
-            alleles = [x if x >= 0 else "." for x in  smp.allele_indices]
-        else:
-            alleles = "."
-
-        if smp.phased:
-            alleles = "|".join(map(str, alleles))
-        else:
-            alleles = "/".join(map(str, alleles))
-
         v = smp.values()
-        if gt_field is not None:
-            v[gt_field] = alleles
+
+        if 'GT' in smp:
+            alleles = [str(a) if a>=0 else '.' for a in smp.allele_indices]
+            v[0] = '/|'[smp.phased].join(alleles)
 
         comp = ":".join(map(convert_field, v))
 
