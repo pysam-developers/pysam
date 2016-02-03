@@ -57,9 +57,6 @@ def configure_library(library_dir, env_options=None, options=[]):
             if retcode != 0:
                 return False
             else:
-                print (
-                    "# successful configure run with options {}".format(
-                        option))
                 return True
         except OSError as e:
             return False
@@ -72,7 +69,7 @@ def configure_library(library_dir, env_options=None, options=[]):
         for option in options:
             if run_configure(option):
                 return option
-    return False
+    return None
 
 
 # How to link against HTSLIB
@@ -136,6 +133,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
         ["--enable-libcurl"])
 
     HTSLIB_SOURCE = "builtin"
+    print ("# htslib configure options: {}".str(htslib_configure_options))
 
     if htslib_configure_options is None:
         # create empty config.h file
