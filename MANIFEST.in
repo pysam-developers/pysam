@@ -13,10 +13,16 @@ include pysam/c*.pyx
 include pysam/c*.c
 include pysam/*.c
 include pysam/*.h
+include samtools/configure
+include samtools/config.mk.in
+include samtools/config.h.in
 include samtools/*.h
 include samtools/*/*.h
 include htslib/*.c
 include htslib/*.h
+include htslib/configure
+include htslib/config.mk.in
+include htslib/config.h.in
 include htslib/htslib/*.h
 include htslib/cram/*.c
 include htslib/cram/*.h

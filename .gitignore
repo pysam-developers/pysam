@@ -15,6 +15,9 @@ tests/*.fai
 tests/pysam_data
 tests/cbcf_data
 
+samtools/config.h
+htslib/config.status
+htslib/config.h
 htslib/config.log
 htslib/config.mk
 pysam/config.py
