@@ -166,9 +166,6 @@ elif HTSLIB_MODE == 'separate':
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
     htslib_libraries = []
-    if htslib_configure_options and \
-       "--enable-libcurl" in htslib_configure_options:
-        htslib_libraries.extend(["curl", "crypto"])
 
 elif HTSLIB_MODE == 'shared':
 
@@ -185,12 +182,9 @@ elif HTSLIB_MODE == 'shared':
     htslib_include_dirs = ['htslib']
     htslib_libraries = ['chtslib']
 
-    if htslib_configure_options and \
-       "--enable-libcurl" in htslib_configure_options:
-        htslib_libraries.extend(["curl", "crypto"])
-
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
+
 
 # build config.py
 with open(os.path.join("pysam", "config.py"), "w") as outf:
@@ -212,6 +206,17 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_LIBCURL",
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
+
+
+if HTSLIB_SOURCE == "builtin":
+    EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
+    if htslib_configure_options is None:
+        htslib_sources = [x for x in htslib_sources
+                          if x not in EXCLUDE_HTSLIB]
+    else:
+        if "--enable-libcurl" in htslib_configure_options:
+            htslib_libraries.extend(["curl", "crypto"])
+
 
 parts = ["samtools",
          "bcftools",
