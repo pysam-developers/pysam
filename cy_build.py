@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 
 from Cython.Distutils import build_ext
@@ -15,7 +16,13 @@ if sys.platform == 'darwin':
 
 
 def is_pip_install():
-    return "_" in os.environ and os.environ["_"].endswith("pip")
+    if "_" in os.environ and os.environ["_"].endswith("pip"):
+        return True
+    if "pip-egg-info" in sys.argv:
+        return True
+    if re.search("/pip-.*-build/", __file__):
+        return True
+    return False
 
 
 class CyExtension(Extension):
