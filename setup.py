@@ -180,7 +180,7 @@ elif HTSLIB_MODE == 'separate':
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
-    htslib_libraries = []
+    htslib_libraries = ["curl", "crypto"]
 
 elif HTSLIB_MODE == 'shared':
     # link each pysam component against the same
@@ -207,9 +207,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
     configure_library(
         "htslib",
         os.environ.get('HTSLIB_COMPILE_OPTIONS', None),
-        ["--enable-libcurl --enable-plugins",
-         "--enable-plugins",
-         ""])
+        ["--enable-libcurl"])
 
     HTSLIB_MODE = "builtin"
 
@@ -522,7 +520,7 @@ cfaidx = Extension(
 
 ctabixproxies = Extension(
     "pysam.ctabixproxies",
-    [source_pattern % "tabixproxies"] + 
+    [source_pattern % "tabixproxies"] +
     os_c_files,
     library_dirs=[],
     include_dirs=include_os,
@@ -534,7 +532,7 @@ ctabixproxies = Extension(
 
 cvcf = Extension(
     "pysam.cvcf",
-    [source_pattern % "vcf"] + 
+    [source_pattern % "vcf"] +
     os_c_files,
     library_dirs=[],
     include_dirs=["htslib"] + include_os + htslib_include_dirs,
@@ -546,7 +544,7 @@ cvcf = Extension(
 
 cbcf = Extension(
     "pysam.cbcf",
-    [source_pattern % "bcf"] + 
+    [source_pattern % "bcf"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
