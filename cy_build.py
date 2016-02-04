@@ -61,15 +61,16 @@ class cy_build_ext(build_ext):
                 linker_path = os.path.join(pkg_root, relative_module_path)
             elif "bdist_wheel" in sys.argv or is_pip_install():
                 # making a wheel, or pip is secretly involved
-                linker_path = os.path.join(get_python_lib(), relative_module_path)
+                linker_path = os.path.join("@rpath", relative_module_path)
             else:
                 # making an egg: `python setup.py install` default behavior
                 egg_name = '%s.egg' % self._get_egg_name()
-                linker_path = os.path.join(get_python_lib(), egg_name, relative_module_path)
+                linker_path = os.path.join("@rpath", egg_name, relative_module_path)
 
             if not ext.extra_link_args:
                 ext.extra_link_args = []
             ext.extra_link_args += ['-dynamiclib',
+                                    '-rpath', get_python_lib(),
                                     '-Wl,-headerpad_max_install_names',
                                     '-Wl,-install_name,%s' % linker_path,
                                     '-Wl,-x']
