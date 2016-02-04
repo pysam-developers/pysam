@@ -193,8 +193,9 @@ from libc.stdint cimport INT8_MAX, INT16_MAX, INT32_MAX
 
 cimport cython
 
-from cpython cimport PyBytes_Check, PyUnicode_Check, PyBytes_FromStringAndSize
-from cpython.version cimport PY_MAJOR_VERSION
+from cpython.ref    cimport Py_INCREF
+from cpython.tuple  cimport PyTuple_New, PyTuple_SET_ITEM
+from cpython.bytes  cimport PyBytes_FromStringAndSize
 
 __all__ = ['VariantFile', 'VariantHeader']
 
@@ -218,7 +219,7 @@ cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 ## Python 3 compatibility functions
 ########################################################################
 
-from pysam.cutils cimport force_bytes, force_str, charptr_to_str
+from pysam.cutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
 from pysam.cutils cimport encode_filename, from_string_and_size
 
 
@@ -257,7 +258,7 @@ cdef bcf_array_to_object(void *data, int type, int n, int count, int scalar):
         datac = <char *>data
         while n and datac[n-1] == bcf_str_vector_end:
             n -= 1
-        value = force_str(datac[:n]) if datac[0] != bcf_str_missing else None
+        value = charptr_to_str_w_len(datac, n) if datac[0] != bcf_str_missing else None
         # FIXME: Need to know length?  Report errors?  Pad with missing values?  Not clear what to do.
 
         value = tuple(v or None for v in value.split(',')) if value else ()
@@ -562,13 +563,16 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
             raise TypeError('values expected to be {:d}-tuple'.format(value_count[0]))
 
     if ht_type == BCF_HT_REAL:
-        if not all(v is None or isinstance(v, (float, int)) for v in values):
-            raise TypeError('invalid value for Float format')
+        for v in values:
+            if not(v is None or isinstance(v, (float, int))):
+                raise TypeError('invalid value for Float format')
     elif ht_type == BCF_HT_INT:
-        if not all(v is None or (isinstance(v, (float, int)) and int(v) == v) for v in values):
-            raise TypeError('invalid value for Integer format')
-        if not all(v is None or bcf_int32_missing < v <= INT32_MAX for v in values):
-            raise ValueError('Integer value too small/large to store in VCF/BCF')
+        for v in values:
+            if not(v is None or (isinstance(v, (float, int)) and int(v) == v)):
+                raise TypeError('invalid value for Integer format')
+        for v in values:
+            if not(v is None or bcf_int32_missing < v <= INT32_MAX):
+                raise ValueError('Integer value too small/large to store in VCF/BCF')
     elif ht_type == BCF_HT_STR:
         values = b','.join(force_bytes(v) if v is not None else b'' for v in values)
     else:
@@ -579,10 +583,16 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
         realloc[0] = 0
     elif len(values) > bt_len:
         realloc[0] = 1
-    elif bt_type == BCF_BT_INT8 and not all(v is None or bcf_int8_missing < v <= INT8_MAX for v in values):
-        realloc[0] = 1
-    elif bt_type == BCF_BT_INT16 and not all(v is None or bcf_int16_missing < v <= INT16_MAX for v in values):
-        realloc[0] = 1
+    elif bt_type == BCF_BT_INT8:
+        for v in values:
+            if v is not None and not(bcf_int8_missing < v <= INT8_MAX):
+                realloc[0] = 1
+                break
+    elif bt_type == BCF_BT_INT16:
+        for v in values:
+            if v is not None and not(bcf_int16_missing < v <= INT16_MAX):
+                realloc[0] = 1
+                break
 
     return values
 
@@ -839,21 +849,21 @@ cdef class VariantHeaderRecord(object):
         """header key (the part before '=', in FILTER/INFO/FORMAT/contig/fileformat etc.)"""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
-            return force_str(r.key) if r.key else None
+            return charptr_to_str(r.key) if r.key else None
 
     property value:
         """header value.  Set only for generic lines, None for FILTER/INFO, etc."""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
-            return force_str(r.value) if r.value else None
+            return charptr_to_str(r.value) if r.value else None
 
     property attrs:
         """sequence of additional header attributes"""
         def __get__(self):
             cdef bcf_hrec_t *r = self.ptr
             cdef int i
-            return tuple((force_str(r.keys[i]) if r.keys[i] else None,
-                          force_str(r.vals[i]) if r.vals[i] else None)
+            return tuple((charptr_to_str(r.keys[i]) if r.keys[i] else None,
+                          charptr_to_str(r.vals[i]) if r.vals[i] else None)
                          for i in range(r.nkeys))
 
     def __len__(self):
@@ -868,9 +878,10 @@ cdef class VariantHeaderRecord(object):
         """get attribute value"""
         cdef bcf_hrec_t *r = self.ptr
         cdef int i
+        bkey = force_bytes(key)
         for i in range(r.nkeys):
-            if r.keys[i] and r.keys[i] == key:
-                return force_str(r.vals[i]) if r.vals[i] else None
+            if r.keys[i] and r.keys[i] == bkey:
+                return charptr_to_str(r.vals[i]) if r.vals[i] else None
         raise KeyError('cannot find metadata key')
 
     def __iter__(self):
@@ -878,7 +889,7 @@ cdef class VariantHeaderRecord(object):
         cdef int i
         for i in range(r.nkeys):
             if r.keys[i]:
-                yield force_str(r.keys[i])
+                yield charptr_to_str(r.keys[i])
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -905,7 +916,7 @@ cdef class VariantHeaderRecord(object):
         cdef int i
         for i in range(r.nkeys):
             if r.keys[i]:
-                yield force_str(r.vals[i]) if r.vals[i] else None
+                yield charptr_to_str(r.vals[i]) if r.vals[i] else None
 
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
@@ -913,8 +924,7 @@ cdef class VariantHeaderRecord(object):
         cdef int i
         for i in range(r.nkeys):
             if r.keys[i]:
-                yield force_str(r.keys[i]), force_str(r.vals[i]) \
-                    if r.vals[i] else None
+                yield (charptr_to_str(r.keys[i]), charptr_to_str(r.vals[i]) if r.vals[i] else None)
 
     def keys(self):
         """D.keys() -> list of D's keys"""
@@ -996,7 +1006,7 @@ cdef class VariantMetadata(object):
         """metadata name"""
         def __get__(self):
             cdef bcf_hdr_t *hdr = self.header.ptr
-            return force_str(hdr.id[BCF_DT_ID][self.id].key)
+            return charptr_to_str(hdr.id[BCF_DT_ID][self.id].key)
 
     # Q: Should this be exposed?
     property id:
@@ -1117,7 +1127,9 @@ cdef class VariantHeaderMetadata(object):
     def __getitem__(self, key):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_ID]
-        cdef khiter_t k = kh_get_vdict(d, key)
+
+        bkey = force_bytes(key)
+        cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
             raise KeyError('invalid filter')
@@ -1132,7 +1144,7 @@ cdef class VariantHeaderMetadata(object):
         for i in range(hdr.n[BCF_DT_ID]):
             idpair = hdr.id[BCF_DT_ID] + i
             if idpair.key and idpair.val and idpair.val.info[self.type] & 0xF != 0xF:
-                yield force_str(idpair.key)
+                yield charptr_to_str(idpair.key)
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1199,7 +1211,7 @@ cdef class VariantContig(object):
         """contig name"""
         def __get__(self):
             cdef bcf_hdr_t *hdr = self.header.ptr
-            return force_str(hdr.id[BCF_DT_CTG][self.id].key)
+            return charptr_to_str(hdr.id[BCF_DT_CTG][self.id].key)
 
     property id:
         """contig internal id number"""
@@ -1277,7 +1289,7 @@ cdef class VariantHeaderContigs(object):
         assert n == hdr.n[BCF_DT_CTG]
 
         for i in range(n):
-            yield force_str(bcf_hdr_id2name(hdr, i))
+            yield charptr_to_str(bcf_hdr_id2name(hdr, i))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1361,14 +1373,14 @@ cdef class VariantHeaderSamples(object):
         if i < 0 or i >= n:
             raise IndexError('invalid sample index')
 
-        return force_str(hdr.samples[i])
+        return charptr_to_str(hdr.samples[i])
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield force_str(hdr.samples[i])
+            yield charptr_to_str(hdr.samples[i])
 
     def __contains__(self, key):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -1503,9 +1515,10 @@ cdef class VariantHeader(object):
         cdef int hlen
         cdef char *hstr = bcf_hdr_fmt_text(self.ptr, 0, &hlen)
 
-        ret = hstr[:hlen]
-        free(hstr)
-        return force_str(ret)
+        try:
+            return charptr_to_str_w_len(hstr, hlen)
+        finally:
+            free(hstr)
 
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
@@ -1655,7 +1668,7 @@ cdef class VariantRecordFilter(object):
         cdef int i
 
         for i in range(r.d.n_flt):
-            yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.flt[i]))
+            yield charptr_to_str(bcf_hdr_int2id(hdr, BCF_DT_ID, r.d.flt[i]))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1786,7 +1799,7 @@ cdef class VariantRecordFormat(object):
         for i in range(r.n_fmt):
             fmt = &r.d.fmt[i]
             if fmt.p:
-                yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
+                yield charptr_to_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1908,7 +1921,7 @@ cdef class VariantRecordInfo(object):
         for i in range(r.n_info):
             info = &r.d.info[i]
             if info and info.vptr:
-                yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, info.key))
+                yield charptr_to_str(bcf_hdr_int2id(hdr, BCF_DT_ID, info.key))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -1952,7 +1965,7 @@ cdef class VariantRecordInfo(object):
             if info and info.vptr:
                 key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
                 value = bcf_info_get_value(self.record, info)
-                yield force_str(key), value
+                yield charptr_to_str(key), value
 
     def keys(self):
         """D.keys() -> list of D's keys"""
@@ -2018,7 +2031,7 @@ cdef class VariantRecordSamples(object):
         cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield force_str(hdr.samples[i])
+            yield charptr_to_str(hdr.samples[i])
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -2065,7 +2078,7 @@ cdef class VariantRecordSamples(object):
         cdef int32_t i, n = bcf_hdr_nsamples(hdr)
 
         for i in range(n):
-            yield force_str(hdr.samples[i]), makeVariantRecordSample(self.record, i)
+            yield (charptr_to_str(hdr.samples[i]), makeVariantRecordSample(self.record, i))
 
     def keys(self):
         """D.keys() -> list of D's keys"""
@@ -2118,7 +2131,7 @@ cdef class VariantRecord(object):
     property chrom:
         """chromosome/contig name"""
         def __get__(self):
-            return force_str(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
+            return charptr_to_str(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
         def __set__(self, chrom):
             cdef vdict_t *d = <vdict_t*>self.header.ptr.dict[BCF_DT_CTG]
             bchrom = force_bytes(chrom)
@@ -2130,7 +2143,7 @@ cdef class VariantRecord(object):
     property contig:
         """chromosome/contig name"""
         def __get__(self):
-            return force_str(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
+            return charptr_to_str(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
         def __set__(self, chrom):
             cdef vdict_t *d = <vdict_t*>self.header.ptr.dict[BCF_DT_CTG]
             bchrom = force_bytes(chrom)
@@ -2201,8 +2214,7 @@ cdef class VariantRecord(object):
             cdef bcf1_t *r = self.ptr
             if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            id = r.d.id
-            return force_str(id) if id != b'.' else None
+            return charptr_to_str(r.d.id) if r.d.id != b'.' else None
         def __set__(self, id):
             cdef char *idstr = NULL
             if id is not None:
@@ -2216,7 +2228,7 @@ cdef class VariantRecord(object):
             cdef bcf1_t *r = self.ptr
             if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
-            return force_str(r.d.allele[0] if r.d.allele else None)
+            return charptr_to_str(r.d.allele[0]) if r.d.allele else None
         def __set__(self, ref):
             #FIXME: Set alleles directly -- this is stupid
             if not ref:
@@ -2238,8 +2250,12 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             if not r.d.allele:
                 return None
-            return tuple(force_str(r.d.allele[i])
-                         for i in range(r.n_allele))
+            cdef tuple res = PyTuple_New(r.n_allele)
+            for i in range(r.n_allele):
+                a = charptr_to_str(r.d.allele[i])
+                PyTuple_SET_ITEM(res, i, a)
+                Py_INCREF(a)
+            return res
         def __set__(self, values):
             #FIXME: Set alleles directly -- this is stupid
             cdef bcf1_t *r = self.ptr
@@ -2260,7 +2276,12 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             if r.n_allele < 2 or not r.d.allele:
                 return None
-            return tuple(force_str(r.d.allele[i]) for i in range(1,r.n_allele))
+            cdef tuple res = PyTuple_New(r.n_allele - 1)
+            for i in range(1, r.n_allele):
+                a = charptr_to_str(r.d.allele[i])
+                PyTuple_SET_ITEM(res, i - 1, a)
+                Py_INCREF(a)
+            return res
         def __set__(self, values):
             #FIXME: Set alleles directly -- this is stupid
             cdef bcf1_t *r = self.ptr
@@ -2317,7 +2338,7 @@ cdef class VariantRecord(object):
         #        break
         #    line.l -= 1
 
-        ret = force_str(line.s[:line.l])
+        ret = charptr_to_str_w_len(line.s, line.l)
 
         if line.m:
             free(line.s)
@@ -2361,7 +2382,7 @@ cdef class VariantRecordSample(object):
             if self.index < 0 or self.index >= n:
                 raise ValueError('invalid sample index')
 
-            return force_str(hdr.samples[self.index])
+            return charptr_to_str(hdr.samples[self.index])
 
     property allele_indices:
         """allele indices for called genotype, if present.  Otherwise None"""
@@ -2447,22 +2468,22 @@ cdef class VariantRecordSample(object):
                     if data8[i] == bcf_int8_vector_end:
                         break
                     a = bcf_gt_allele(data8[i])
-                    alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
+                    alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
             elif fmt0.type == BCF_BT_INT16:
                 data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data16[i] == bcf_int16_vector_end:
                         break
                     a = bcf_gt_allele(data16[i])
-                    alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
+                    alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
             elif fmt0.type == BCF_BT_INT32:
                 data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data32[i] == bcf_int32_vector_end:
                         break
                     a = bcf_gt_allele(data32[i])
-                    alleles.append(r.d.allele[a] if 0 <= a < nalleles else None)
-            return tuple(force_str(a) for a in alleles)
+                    alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
+            return tuple(alleles)
 
         def __set__(self, values):
             alleles = self.record.alleles
@@ -2576,7 +2597,7 @@ cdef class VariantRecordSample(object):
         for i in range(r.n_fmt):
             fmt = &r.d.fmt[i]
             if r.d.fmt[i].p:
-                yield force_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
+                yield charptr_to_str(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
@@ -3087,7 +3108,7 @@ cdef class VariantFile(object):
                 raise ValueError('metadata not available on closed file')
             cdef char *desc = hts_format_description(&self.htsfile.format)
             try:
-                return force_str(desc)
+                return charptr_to_str(desc)
             finally:
                 free(desc)
 
