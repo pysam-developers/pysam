@@ -15,7 +15,7 @@ The typical installation will be through pypi_::
 
    pip install pysam
 
-This will compile the ``builtin`` htslib source code within pysam. 
+This will compile the ``builtin`` htslib source code within pysam.
 
 htslib_ can be configured at compilation to turn on additional
 features such support using encrypted configurations, enable plugins,
@@ -30,7 +30,7 @@ Options can be passed to the configure script explicitely by
 setting the environment variable `HTSLIB_CONFIGURE_OPTIONS`.
 For example::
 
-  export HTSLIB_CONFIGURE_OPTIONS=--enable-plugings
+  export HTSLIB_CONFIGURE_OPTIONS=--enable-plugins
   pip install pysam
 
 External
