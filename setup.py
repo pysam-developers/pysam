@@ -10,7 +10,7 @@ SAM/BAM formatted files. Also included is an interface to the samtools
 command line utilities and the tabix C-API for reading compressed and
 indexed tabular data.
 
-The current version wraps htslib-1.3 and samtools-1.3.
+The current version wraps htslib-1.3, samtools-1.3 and bcftools-1.3.
 
 See:
 http://www.htslib.org
@@ -20,18 +20,16 @@ http://pysam.readthedocs.org/en/stable
 '''
 
 import collections
-import fnmatch
 import glob
-import hashlib
 import os
 import platform
 import re
-import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
 from setuptools import Extension, setup
 
+IS_PYTHON3 = sys.version_info[0] >= 3
 
 @contextmanager
 def changedir(path):
@@ -59,9 +57,6 @@ def configure_library(library_dir, env_options=None, options=[]):
             if retcode != 0:
                 return False
             else:
-                print (
-                    "# successful configure run with options {}".format(
-                        option))
                 return True
         except OSError as e:
             return False
@@ -69,42 +64,13 @@ def configure_library(library_dir, env_options=None, options=[]):
     with changedir(library_dir):
         if env_options is not None:
             if run_configure(env_options):
-                return True
+                return env_options
 
         for option in options:
             if run_configure(option):
-                break
+                return option
+    return None
 
-
-def locate(pattern, root=os.curdir):
-    '''Locate all files matching supplied filename pattern in and below
-    supplied root directory.
-    '''
-    for path, dirs, files in os.walk(os.path.abspath(root)):
-        for filename in fnmatch.filter(files, pattern):
-            yield os.path.join(path, filename)
-
-
-def _update_pysam_files(cf, destdir):
-    '''update pysam files applying redirection of ouput'''
-    for filename in cf:
-        if not filename:
-            continue
-        dest = filename + ".pysam.c"
-        with open(filename) as infile:
-            with open(dest, "w") as outfile:
-                outfile.write('#include "pysam.h"\n\n')
-                outfile.write(
-                    re.sub("stderr", "pysamerr", "".join(infile.readlines())))
-            with open(os.path.join(destdir, "pysam.h"), "w")as outfile:
-                outfile.write("""#ifndef PYSAM_H
-#define PYSAM_H
-#include "stdio.h"
-extern FILE * pysamerr;
-#endif
-""")
-
-IS_PYTHON3 = sys.version_info[0] >= 3
 
 # How to link against HTSLIB
 # separate: use included htslib and include in each extension
@@ -156,8 +122,27 @@ EXCLUDE = {
                'htslib/hfile_irods.c'),
     }
 
-# destination directories for import of samtools and tabix
-samtools_dest = os.path.abspath("samtools")
+print ("# htslib mode is {}".format(HTSLIB_MODE))
+
+configure_options = None
+
+if HTSLIB_MODE in ['shared', 'separate']:
+    htslib_configure_options = configure_library(
+        "htslib",
+        os.environ.get('HTSLIB_CONFIGURE_OPTIONS', None),
+        ["--enable-libcurl"])
+
+    HTSLIB_SOURCE = "builtin"
+    print ("# htslib configure options: {}".format(
+        str(htslib_configure_options)))
+
+    if htslib_configure_options is None:
+        # create empty config.h file
+        with open("htslib/config.h", "w") as outf:
+            outf.write(
+                "/* empty config.h created by pysam */\n")
+            outf.write(
+                "/* conservative compilation options */")
 
 if HTSLIB_LIBRARY_DIR:
     # linking against a shared, externally installed htslib version, no
@@ -183,6 +168,7 @@ elif HTSLIB_MODE == 'separate':
     htslib_libraries = []
 
 elif HTSLIB_MODE == 'shared':
+
     # link each pysam component against the same
     # htslib built from sources included in the pysam
     # package.
@@ -195,30 +181,17 @@ elif HTSLIB_MODE == 'shared':
     htslib_library_dirs = ['pysam']
     htslib_include_dirs = ['htslib']
     htslib_libraries = ['chtslib']
+
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
 
-print ("# htslib mode is {}".format(HTSLIB_MODE))
-
-
-if HTSLIB_MODE in ['shared', 'separate']:
-
-    configure_library(
-        "htslib",
-        os.environ.get('HTSLIB_COMPILE_OPTIONS', None),
-        ["--enable-libcurl --enable-plugins",
-         "--enable-plugins",
-         ""])
-
-    HTSLIB_MODE = "builtin"
-
 # build config.py
 with open(os.path.join("pysam", "config.py"), "w") as outf:
-    outf.write('HTSLIB_MODE = "{}"\n'.format(HTSLIB_MODE))
+    outf.write('HTSLIB = "{}"\n'.format(HTSLIB_SOURCE))
     config_values = collections.defaultdict(int)
 
-    if HTSLIB_MODE == "builtin":
+    if HTSLIB_SOURCE == "builtin":
         with open(os.path.join("htslib", "config.h")) as inf:
             for line in inf:
                 if line.startswith("#define"):
@@ -234,114 +207,19 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
 
+EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
 
+if HTSLIB_SOURCE == "builtin":
 
-#################################################################
-# Importing samtools and htslib
-#
-# For htslib, simply copy the whole release tar-ball
-# into the directory "htslib" and recreate the file version.h
-#
-# rm -rf htslib
-# mv download/htslib htslib
-# git checkout -- htslib/version.h
-# Edit the file htslib/version.h to set the right version number.
-#
-# For samtools, type:
-# rm -rf samtools
-# python setup.py import samtools download/samtools
-# Manually, then:
-# modify config.h to set compatibility flags
-# change bamtk.c.pysam.c/main to bamtk.c.pysam.c/samtools_main
-#
-# For bcftools, type:
-# rm -rf bedtools
-# python setup.py import bedtools download/bedtools
-
-if len(sys.argv) >= 2 and sys.argv[1] == "import":
-    if len(sys.argv) != 4:
-        raise ValueError("import requires dest src")
-
-    dest, srcdir = sys.argv[2:4]
-    if dest not in EXCLUDE:
-        raise ValueError("import expected one of %s" %
-                         ",".join(EXCLUDE.keys()))
-    exclude = EXCLUDE[dest]
-    destdir = os.path.abspath(dest)
-    srcdir = os.path.abspath(srcdir)
-    if not os.path.exists(srcdir):
-        raise IOError(
-            "source directory `%s` does not exist." % srcdir)
-
-    cfiles = locate("*.c", srcdir)
-    hfiles = locate("*.h", srcdir)
-
-    # remove unwanted files and htslib subdirectory.
-    cfiles = [x for x in cfiles if os.path.basename(x) not in exclude
-              and not re.search("htslib-", x)]
-
-    hfiles = [x for x in hfiles if os.path.basename(x) not in exclude
-              and not re.search("htslib-", x)]
-
-    ncopied = 0
-
-    def _compareAndCopy(src, srcdir, destdir, exclude):
-
-        d, f = os.path.split(src)
-        common_prefix = os.path.commonprefix((d, srcdir))
-        subdir = re.sub(common_prefix, "", d)[1:]
-        targetdir = os.path.join(destdir, subdir)
-        if not os.path.exists(targetdir):
-            os.makedirs(targetdir)
-        old_file = os.path.join(targetdir, f)
-        if os.path.exists(old_file):
-            md5_old = hashlib.md5(
-                "".join(open(old_file, "r").readlines())).digest()
-            md5_new = hashlib.md5(
-                "".join(open(src, "r").readlines())).digest()
-            if md5_old != md5_new:
-                raise ValueError(
-                    "incompatible files for %s and %s" %
-                    (old_file, src))
-
-        shutil.copy(src, targetdir)
-        return old_file
-
-    for src_file in hfiles:
-        _compareAndCopy(src_file, srcdir, destdir, exclude)
-        ncopied += 1
-
-    cf = []
-    for src_file in cfiles:
-        cf.append(_compareAndCopy(src_file,
-                                  srcdir,
-                                  destdir,
-                                  exclude))
-        ncopied += 1
-
-    sys.stdout.write(
-        "installed latest source code from %s: "
-        "%i files copied\n" % (srcdir, ncopied))
-    # redirect stderr to pysamerr and replace bam.h with a stub.
-    sys.stdout.write("applying stderr redirection\n")
-
-    _update_pysam_files(cf, destdir)
-
-    sys.exit(0)
-
-
-if len(sys.argv) >= 2 and sys.argv[1] == "refresh":
-    sys.stdout.write("refreshing latest source code from .c to .pysam.c")
-    # redirect stderr to pysamerr and replace bam.h with a stub.
-    sys.stdout.write("applying stderr redirection")
-    for destdir in ('samtools', ):
-        pysamcfiles = locate("*.pysam.c", destdir)
-        for f in pysamcfiles:
-            os.remove(f)
-        cfiles = locate("*.c", destdir)
-        _update_pysam_files(cfiles, destdir)
-
-    sys.exit(0)
+    if htslib_configure_options is None:
+        htslib_sources = [x for x in htslib_sources
+                          if x not in EXCLUDE_HTSLIB]
+        shared_htslib_sources = [x for x in shared_htslib_sources
+                                 if x not in EXCLUDE_HTSLIB]
+    else:
+        if "--enable-libcurl" in htslib_configure_options:
+            htslib_libraries.extend(["curl", "crypto"])
+    print ("htslib_sources={}".format(htslib_sources))
 
 
 parts = ["samtools",
@@ -362,6 +240,13 @@ except ImportError:
     # no Cython available - use existing C code
     cmdclass = {}
     source_pattern = "pysam/c%s.c"
+    fn = source_pattern % "htslib"
+    if not os.path.exists(fn):
+        raise ValueError(
+            "no cython installed, but can not find {}."
+            "Make sure that cython is installed when building "
+            "from the repository"
+            .format(fn))
 else:
     # remove existing files to recompute
     # necessary to be both compatible for python 2.7 and 3.3
@@ -522,7 +407,7 @@ cfaidx = Extension(
 
 ctabixproxies = Extension(
     "pysam.ctabixproxies",
-    [source_pattern % "tabixproxies"] + 
+    [source_pattern % "tabixproxies"] +
     os_c_files,
     library_dirs=[],
     include_dirs=include_os,
@@ -534,7 +419,7 @@ ctabixproxies = Extension(
 
 cvcf = Extension(
     "pysam.cvcf",
-    [source_pattern % "vcf"] + 
+    [source_pattern % "vcf"] +
     os_c_files,
     library_dirs=[],
     include_dirs=["htslib"] + include_os + htslib_include_dirs,
@@ -546,7 +431,7 @@ cvcf = Extension(
 
 cbcf = Extension(
     "pysam.cbcf",
-    [source_pattern % "bcf"] + 
+    [source_pattern % "bcf"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,

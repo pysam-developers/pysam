@@ -8,6 +8,8 @@ include COPYING
 include INSTALL
 include KNOWN_BUGS
 include THANKS
+include cy_build.py
+include requirements.txt
 include pysam/c*.pxd
 include pysam/c*.pyx
 include pysam/c*.c

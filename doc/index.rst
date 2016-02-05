@@ -1,7 +1,7 @@
 pysam: htslib interface for python
 ==================================
 
-:Author: Andreas Heger and contributors
+:Author: Andreas Heger, Kevin Jacobs and contributors
 :Date: |today|
 :Version: |version|
 
@@ -12,10 +12,17 @@ next-generation sequencing methods.
 This module provides a low-level wrapper around the htslib_ C-API as
 using `cython`_ and a high-level API for convenient access to the data
 in *SAM/BAM* formatted files. Also included is an interface to the
-samtools_ command line utilities and the tabix_ C-API for reading
-compressed and indexed tabular data.
+samtools_ and bcftools_ command line utilities and the tabix_ C-API
+for reading compressed and indexed tabular data.
 
-The current version wraps *htslib-1.2.1* and *samtools-1.2*.
+The current version wraps *htslib-1.3*, *samtools-1.3* and
+*bcftools-1.3*.
+
+To install the latest release, type::
+
+    pip install pysam
+
+See the :ref:`Installation notes <installation>` for details.
 
 Contents
 --------
@@ -25,6 +32,7 @@ Contents
 
    api.rst
    usage.rst
+   installation.rst
    faq.rst
    developer.rst
    release.rst
