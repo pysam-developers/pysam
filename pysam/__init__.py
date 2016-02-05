@@ -43,9 +43,26 @@ from pysam.version import __version__, __samtools_version__
 def get_include():
     '''return a list of include directories.'''
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-    return [dirname,
-            os.path.join(dirname, 'include', 'htslib'),
-            os.path.join(dirname, 'include', 'samtools')]
+
+    #
+    # Header files may be stored in different relative locations
+    # depending on installation mode (e.g., `python setup.py install`,
+    # `python setup.py develop`. The first entry in each list is
+    # where develop-mode headers can be found.
+    #
+    htslib_possibilities = [os.path.join(dirname, '..', 'htslib'),
+                            os.path.join(dirname, 'include', 'htslib')]
+    samtool_possibilities = [os.path.join(dirname, '..', 'samtools'),
+                             os.path.join(dirname, 'include', 'samtools')]
+
+    includes = [dirname]
+    for header_locations in [htslib_possibilities, samtool_possibilities]:
+        for header_location in header_locations:
+            if os.path.exists(header_location):
+                includes.append(os.path.abspath(header_location))
+                break
+
+    return includes
 
 
 def get_defines():
