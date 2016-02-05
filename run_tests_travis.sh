@@ -4,6 +4,11 @@ pushd .
 
 WORKDIR=`pwd`
 
+if [ $TRAVIS_OS_NAME == "osx" ]; then
+	brew update
+	brew install python --universal --framework
+fi
+
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
 
