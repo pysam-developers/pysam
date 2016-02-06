@@ -28,7 +28,9 @@ include htslib/config.h.in
 include htslib/htslib/*.h
 include htslib/cram/*.c
 include htslib/cram/*.h
+include cy_build.py
 include pysam.py
+include requirements.txt
 
 # pysam tests
 include tests/00README.txt
