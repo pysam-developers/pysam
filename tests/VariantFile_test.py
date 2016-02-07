@@ -2,6 +2,7 @@ import os
 import unittest
 import pysam
 import gzip
+from TestUtils import get_temp_filename, check_lines_equal
 
 DATADIR="cbcf_data"
 from tabix_test import loadAndConvert
@@ -264,6 +265,95 @@ class TestIndexFilename(unittest.TestCase):
             v = pysam.VariantFile(fn, index_filename=idx_fn)
 
             self.assertEqual(len(list(v.fetch('20'))), 3)
+
+
+class TestConstructionVCFWithContigs(unittest.TestCase):
+    """construct VariantFile from scratch."""
+
+    filename = "example_vcf42_withcontigs.vcf"
+
+    def complete_test(self, fn_in, fn_out):
+
+        check_lines_equal(
+            self, fn_in, fn_out, sort=True,
+            filter_f=lambda x: not x.startswith("##contig"))
+        os.unlink(fn_out)
+
+    def testConstructionWithRecords(self):
+
+        fn_in = os.path.join(DATADIR, self.filename)
+        fn_out = get_temp_filename(suffix=".vcf")
+        vcf_in = pysam.VariantFile(fn_in)
+
+        header = pysam.VariantHeader()
+
+        for record in vcf_in.header.records:
+            header.add_record(record)
+
+        fn = str("tmp_VariantFileTest_testConstructionWithRecords") + ".vcf"
+        vcf_out = pysam.VariantFile(fn, "w", header=header)
+        for record in vcf_in:
+            # currently segfaults here:
+            # vcf_out.write(record)
+            pass
+        return
+
+        vcf_out.close()
+        self.complete_test(fn_in, fn_out)
+
+    def testConstructionFromCopy(self):
+
+        fn_in = os.path.join(DATADIR, self.filename)
+        fn_out = get_temp_filename(suffix=".vcf")
+        vcf_in = pysam.VariantFile(fn_in)
+
+        vcf_out = pysam.VariantFile(fn_out, "w", header=vcf_in.header)
+        for record in vcf_in:
+            vcf_out.write(record)
+
+        vcf_out.close()
+
+        self.complete_test(fn_in, fn_out)
+
+    def testConstructionWithLines(self):
+
+        fn_in = os.path.join(DATADIR, self.filename)
+        fn_out = get_temp_filename(suffix=".vcf")
+        vcf_in = pysam.VariantFile(fn_in)
+
+        header = pysam.VariantHeader()
+        for sample in vcf_in.header.samples:
+            header.add_sample(sample)
+
+        for hr in vcf_in.header.records:
+            header.add_line(str(hr))
+
+        vcf_out = pysam.VariantFile(fn_out, "w", header=header)
+
+        for record in vcf_in:
+            vcf_out.write(record)
+
+        vcf_out.close()
+        vcf_in.close()
+
+        self.complete_test(fn_in, fn_out)
+
+# Currently segfaults for VCFs without contigs
+# class TestConstructionVCFWithoutContigs(TestConstructionVCFWithContigs):
+#     """construct VariantFile from scratch."""
+#     filename = "example_vcf40.vcf"
+
+
+class TestConstructionVCFGZWithContigs(TestConstructionVCFWithContigs):
+    """construct VariantFile from scratch."""
+
+    filename = "example_vcf42_withcontigs.vcf.gz"
+
+
+class TestConstructionVCFGZWithoutContigs(TestConstructionVCFWithContigs):
+    """construct VariantFile from scratch."""
+
+    filename = "example_vcf42.vcf.gz"
 
 
 
