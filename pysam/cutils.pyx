@@ -128,6 +128,14 @@ cdef charptr_to_str(char* s, encoding="ascii"):
     else:
         return s.decode(encoding)
 
+cdef charptr_to_str_w_len(char* s, size_t n, encoding="ascii"):
+    if s == NULL:
+        return None
+    if PY_MAJOR_VERSION < 3:
+        return s[:n]
+    else:
+        return s[:n].decode(encoding)
+
 cdef bytes charptr_to_bytes(char* s, encoding="ascii"):
     if s == NULL:
         return None

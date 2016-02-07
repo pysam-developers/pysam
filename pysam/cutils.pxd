@@ -20,6 +20,7 @@ cpdef qualities_to_qualitystring(qualities, int offset=*)
 ########################################################################
 cdef charptr_to_str(char *s, encoding=*)
 cdef bytes charptr_to_bytes(char *s, encoding=*)
+cdef charptr_to_str_w_len(char* s, size_t n, encoding=*)
 cdef force_str(object s, encoding=*)
 cdef bytes force_bytes(object s, encoding=*)
 cdef bytes encode_filename(object filename)
