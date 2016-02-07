@@ -812,7 +812,9 @@ class TestVCFFromVCF(TestVCF):
     # tests failing on opening
     fail_on_opening = ((24, "Error HEADING_NOT_SEPARATED_BY_TABS"),
                        )
-    
+
+    fail_on_samples = []
+
     check_samples = False
     coordinate_offset = 1
 
@@ -878,92 +880,102 @@ class TestVCFFromVCF(TestVCF):
 
         fn = os.path.basename(self.filename)
 
-        for x, msg in self.fail_on_parsing:
-            if "%i.vcf" % x == fn:
-                self.assertRaises(ValueError, list, itr)
-                break
+        for vcf_code, msg in self.fail_on_parsing:
+            if "%i.vcf" % vcf_code == fn:
+                self.assertRaises((ValueError,
+                                   AssertionError),
+                                  list, itr)
+                return
                 # python 2.7
                 # self.assertRaisesRegexp(
                 # ValueError, re.compile(msg), self.vcf.parse, f)
-        else:
-            # do the actual parsing
-            for x, r in enumerate(itr):
-                c = self.compare[x]
-                for y, field in enumerate(self.columns):
-                    # it is ok to have a missing format column
-                    if y == 8 and y == len(c):
-                        continue
 
-                    val = self.get_field_value(r, field)
-                    if field == "pos":
-                        self.assertEqual(int(c[y]) - self.coordinate_offset, val)
-                    elif field == "alt" or field == "alts":
-                        cc, vv = self.alt2value(c[y], val)
-                        if cc != vv:
-                            # import pdb; pdb.set_trace()
-                            pass
-                        self.assertEqual(
-                            cc, vv,
-                            "mismatch in field %s: expected %s, got %s" %
-                            (field, cc, vv))
+        check_samples = self.check_samples
+        for vcf_code, msg in self.fail_on_samples:
+            if "%i.vcf" % vcf_code == fn:
+                check_samples = False
 
-                    elif field == "filter":
-                        cc, vv = self.filter2value(c[y], val)
-                        self.assertEqual(
-                            cc, vv,
-                            "mismatch in field %s: expected %s, got %s" %
-                            (field, cc, vv))
+        for x, r in enumerate(itr):
+            c = self.compare[x]
+            for y, field in enumerate(self.columns):
+                # it is ok to have a missing format column
+                if y == 8 and y == len(c):
+                    continue
 
-                    elif field == "info":
-                        # tests for info field not implemented
+                val = self.get_field_value(r, field)
+                if field == "pos":
+                    self.assertEqual(int(c[y]) - self.coordinate_offset,
+                                     val)
+                elif field == "alt" or field == "alts":
+                    cc, vv = self.alt2value(c[y], val)
+                    if cc != vv:
+                        # import pdb; pdb.set_trace()
                         pass
+                    self.assertEqual(
+                        cc, vv,
+                        "mismatch in field %s: expected %s, got %s" %
+                        (field, cc, vv))
 
-                    elif field == "qual" and c[y] == ".":
+                elif field == "filter":
+                    cc, vv = self.filter2value(c[y], val)
+                    self.assertEqual(
+                        cc, vv,
+                        "mismatch in field %s: expected %s, got %s" %
+                        (field, cc, vv))
+
+                elif field == "info":
+                    # tests for info field not implemented
+                    pass
+
+                elif field == "qual" and c[y] == ".":
+                    self.assertEqual(
+                        self.missing_quality, val,
+                        "mismatch in field %s: expected %s, got %s" %
+                        (field, c[y], val))
+
+                elif field == "format":
+                    # format field converted to list
+                    self.assertEqual(
+                        c[y].split(":"), list(val),
+                        "mismatch in field %s: expected %s, got %s" %
+                        (field, c[y], val))
+
+                elif type(val) in (int, float):
+                    if c[y] == ".":
                         self.assertEqual(
-                            self.missing_quality, val,
+                            None, val,
                             "mismatch in field %s: expected %s, got %s" %
                             (field, c[y], val))
-
-                    elif field == "format":
-                        # format field converted to list
-                        self.assertEqual(
-                            c[y].split(":"), list(val),
+                    else:
+                        self.assertAlmostEqual(
+                            float(c[y]), float(val), 2,
                             "mismatch in field %s: expected %s, got %s" %
                             (field, c[y], val))
-
-                    elif type(val) in (int, float):
-                        if c[y] == ".":
-                            self.assertEqual(
-                                None, val,
-                                "mismatch in field %s: expected %s, got %s" %
-                                (field, c[y], val))
-                        else:
-                            self.assertAlmostEqual(
-                                float(c[y]), float(val), 2,
-                                "mismatch in field %s: expected %s, got %s" %
-                                (field, c[y], val))
+                else:
+                    if c[y] == ".":
+                        ref_val = self.missing_value
                     else:
-                        if c[y] == ".":
-                            ref_val = self.missing_value
-                        else:
-                            ref_val = c[y]
+                        ref_val = c[y]
+                    self.assertEqual(
+                        ref_val, val,
+                        "mismatch in field %s: expected %s(%s), got %s(%s)" %
+                        (field, ref_val, type(ref_val), val, type(val)))
+            # parse samples
+            if check_samples:
+                if len(c) == 8:
+                    for x, s in enumerate(r.samples):
                         self.assertEqual(
-                            ref_val, val,
-                            "mismatch in field %s: expected %s(%s), got %s(%s)" %
-                            (field, ref_val, type(ref_val), val, type(val)))
-                # parse samples
-                if self.check_samples:
-                    if len(c) == 8:
-                        for x, s in enumerate(r.samples):
-                            self.assertEqual([], r.samples[s].values(),
-                                "mismatch in sample {}: "
-                                "expected [], got {}, src={}, line={}".format(
-                                    s, r.samples[s].values(),
-                                    r.samples[s].items(), r))
-                    else:
-                        for x, s in enumerate(r.samples):
-                            ref, comp = self.sample2value(c[9 + x], r.samples[s])
-                            self.compare_samples(ref, comp, s, r)
+                            [], r.samples[s].values(),
+                            "mismatch in sample {}: "
+                            "expected [], got {}, src={}, line={}".format(
+                                s, r.samples[s].values(),
+                                r.samples[s].items(), r))
+                else:
+                    for x, s in enumerate(r.samples):
+                        ref, comp = self.sample2value(
+                            c[9 + x],
+                            r.samples[s])
+                        self.compare_samples(ref, comp, s, r)
 
     def compare_samples(self, ref, comp, s, r):
 
@@ -981,7 +993,7 @@ class TestVCFFromVCF(TestVCF):
                 is_float = True
                 try:
                     a = float(a)
-                    b = float(a)
+                    b = float(b)
                 except ValueError:
                     is_float = False
 
@@ -1026,6 +1038,12 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
     fail_on_opening = []
     coordinate_offset = 0
     check_samples = True
+    fail_on_samples = [
+        (9, "PL field not defined. Expected to be scalar, but is array"),
+        (12, "PL field not defined. Expected to be scalar, but is array"),
+        (18, "PL field not defined. Expected to be scalar, but is array"),
+    ]
+
     # value returned for missing values
     missing_value = None
     missing_quality = None
@@ -1057,7 +1075,7 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
         v = smp.values()
 
         if 'GT' in smp:
-            alleles = [str(a) if a>=0 else '.' for a in smp.allele_indices]
+            alleles = [str(a) if a >= 0 else '.' for a in smp.allele_indices]
             v[0] = '/|'[smp.phased].join(alleles)
 
         comp = ":".join(map(convert_field, v))

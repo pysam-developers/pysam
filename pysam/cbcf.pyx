@@ -1097,7 +1097,10 @@ cdef class VariantHeaderMetadata(object):
             if number is None:
                 number = '.'
 
-            items = [('ID', id), ('Number', number), ('Type', type), ('Description', description)]
+            items = [('ID', id),
+                     ('Number', number),
+                     ('Type', type),
+                     ('Description', description)]
 
         items += kwargs.items()
         self.header.add_meta(METADATA_TYPES[self.type], items=items)
@@ -2399,7 +2402,6 @@ cdef class VariantRecordSample(object):
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
             cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
-
             if not gt0 or not fmt0.n:
                 return None
 
@@ -2413,19 +2415,29 @@ cdef class VariantRecordSample(object):
                 for i in range(fmt0.n):
                     if data8[i] == bcf_int8_vector_end:
                         break
-                    alleles.append(bcf_gt_allele(data8[i]))
+                    if bcf_gt_is_missing(data8[i]):
+                        alleles.append(None)
+                    else:
+                        alleles.append(bcf_gt_allele(data8[i]))
             elif fmt0.type == BCF_BT_INT16:
                 data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data16[i] == bcf_int16_vector_end:
                         break
-                    alleles.append(bcf_gt_allele(data16[i]))
+                    if bcf_gt_is_missing(data16[i]):
+                        alleles.append(None)
+                    else:
+                        alleles.append(bcf_gt_allele(data16[i]))
+
             elif fmt0.type == BCF_BT_INT32:
                 data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data32[i] == bcf_int32_vector_end:
                         break
-                    alleles.append(bcf_gt_allele(data32[i]))
+                    if bcf_gt_is_missing(data32[i]):
+                        alleles.append(None)
+                    else:
+                        alleles.append(bcf_gt_allele(data32[i]))
 
             return tuple(alleles)
 

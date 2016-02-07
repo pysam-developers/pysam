@@ -272,7 +272,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
 
     filename = "example_vcf42_withcontigs.vcf"
 
-    def complete_test(self, fn_in, fn_out):
+    def complete_check(self, fn_in, fn_out):
 
         check_lines_equal(
             self, fn_in, fn_out, sort=True,
@@ -299,7 +299,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
         return
 
         vcf_out.close()
-        self.complete_test(fn_in, fn_out)
+        self.complete_check(fn_in, fn_out)
 
     def testConstructionFromCopy(self):
 
@@ -313,7 +313,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
 
         vcf_out.close()
 
-        self.complete_test(fn_in, fn_out)
+        self.complete_check(fn_in, fn_out)
 
     def testConstructionWithLines(self):
 
@@ -336,7 +336,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
         vcf_out.close()
         vcf_in.close()
 
-        self.complete_test(fn_in, fn_out)
+        self.complete_check(fn_in, fn_out)
 
 # Currently segfaults for VCFs without contigs
 # class TestConstructionVCFWithoutContigs(TestConstructionVCFWithContigs):
