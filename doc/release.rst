@@ -5,7 +5,8 @@ Release notes
 Release 0.8.5
 =============
 
-* upgraded to htslib 1.3
+* upgrade to htslib 1.3
+* python 3 compatibility tested throughout.
 * added a first set of bcftools commands in the pysam.bcftools
   submodule.
 * samtools commands are now in the pysam.samtools module. For
@@ -16,6 +17,11 @@ Release 0.8.5
   compatibility. To replicate the previous behaviour in py2.7, use::
 
      pysam.samtools.view(self.filename).splitlines(True)
+
+* get_tags() returns the tag type as a character, not an integer (#
+* TabixFile now raises ValueError on indices created by tabix <1.0 (#206)
+* improve OSX installation and develop mode
+* FastxIterator now handles empty sequences (#204)
 
 Release 0.8.4
 =============
