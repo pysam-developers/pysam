@@ -329,8 +329,7 @@ cdef bcf_array_to_object(void *data, int type, int n, int count, int scalar):
             value = ()
         else:
             value = (None,)*count
-    elif scalar:
-        assert len(value) == 1
+    elif scalar and len(value) == 1:
         value = value[0]
     else:
         value = tuple(value)
@@ -2464,37 +2463,50 @@ cdef class VariantRecordSample(object):
                 raise ValueError('Error unpacking VariantRecord')
 
             if self.index < 0 or self.index >= n or not r.n_fmt:
-                return None
+                return ()
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
             cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
 
             if not gt0 or not fmt0.n:
-                return None
+                return ()
 
             cdef int8_t  *data8
             cdef int16_t *data16
             cdef int32_t *data32
-            alleles = []
+            cdef int32_t a, nalleles = r.n_allele
+            cdef list alleles = []
 
             if fmt0.type == BCF_BT_INT8:
                 data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data8[i] == bcf_int8_vector_end:
                         break
-                    alleles.append(bcf_gt_allele(data8[i]))
+                    elif data8[i] == bcf_int8_missing:
+                        a = -1
+                    else:
+                        a = bcf_gt_allele(data8[i])
+                    alleles.append(a if 0 <= a < nalleles else None)
             elif fmt0.type == BCF_BT_INT16:
                 data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data16[i] == bcf_int16_vector_end:
                         break
-                    alleles.append(bcf_gt_allele(data16[i]))
+                    elif data16[i] == bcf_int16_missing:
+                        a = -1
+                    else:
+                        a = bcf_gt_allele(data16[i])
+                    alleles.append(a if 0 <= a < nalleles else None)
             elif fmt0.type == BCF_BT_INT32:
                 data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
                 for i in range(fmt0.n):
                     if data32[i] == bcf_int32_vector_end:
                         break
-                    alleles.append(bcf_gt_allele(data32[i]))
+                    elif data32[i] == bcf_int32_missing:
+                        a = -1
+                    else:
+                        a = bcf_gt_allele(data32[i])
+                    alleles.append(a if 0 <= a < nalleles else None)
 
             return tuple(alleles)
 
@@ -2514,13 +2526,13 @@ cdef class VariantRecordSample(object):
             cdef int32_t nalleles = r.n_allele
 
             if self.index < 0 or self.index >= nsamples or not r.n_fmt:
-                return None
+                return ()
 
             cdef bcf_fmt_t *fmt0 = r.d.fmt
             cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
 
             if not gt0 or not fmt0.n:
-                return None
+                return ()
 
             # AH: not sure why this should be NULL, but see issue #203
             if r.d.allele == NULL:
