@@ -2714,7 +2714,7 @@ cdef class VariantRecordSample(object):
             return bcf_format_get_allele_indices(self)
         def __set__(self, values):
             self['GT'] = values
-        def __del__(self, values):
+        def __del__(self):
             self['GT'] = ()
 
     property alleles:
@@ -2723,7 +2723,7 @@ cdef class VariantRecordSample(object):
             return bcf_format_get_alleles(self)
         def __set__(self, values):
             self['GT'] = values
-        def __del__(self, values):
+        def __del__(self):
             self['GT'] = ()
 
     property phased:
