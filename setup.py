@@ -1,14 +1,17 @@
 #! /usr/bin/python
 
-'''The SAM/BAM/CRAM format is a way to store efficiently large numbers
-of alignments, such as those routinely are created by next-generation
-sequencing methods.
+'''pysam - a python module for reading, manipulating and writing
+genomic data sets.
+
+pysam is a lightweight wrapper of the htslib C-API and provides
+facilities to read and write SAM/BAM/VCF/BCF/BED/GFF/GTF/FASTA/FASTQ
+files as well as access to the command line functionality of the
+samtools and bcftools packages. The module supports compression and
+random access through indexing.
 
 This module provides a low-level wrapper around the htslib C-API as
-using cython and a high-level API for convenient access to the data in
-SAM/BAM formatted files. Also included is an interface to the samtools
-command line utilities and the tabix C-API for reading compressed and
-indexed tabular data.
+using cython and a high-level API for convenient access to the data
+within standard genomic file formats.
 
 The current version wraps htslib-1.3, samtools-1.3 and bcftools-1.3.
 
