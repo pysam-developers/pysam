@@ -624,6 +624,40 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
     return values
 
 
+cdef bcf_encode_alleles(VariantRecord record, values):
+    cdef bcf1_t *r = record.ptr
+    cdef int32_t nalleles = r.n_allele
+    cdef list gt_values = []
+    cdef char *s
+    cdef int i
+
+    if not values:
+        return ()
+
+    if not isinstance(values, (list, tuple)):
+        values = (values,)
+
+    for value in values:
+        if value is None:
+            gt_values.append(None)
+        elif isinstance(value, (str, bytes)):
+            bvalue = force_bytes(value)
+            s = bvalue
+            for i in range(r.n_allele):
+                if strcmp(r.d.allele[i], s) != 0:
+                    gt_values.append(bcf_gt_unphased(i))
+                    break
+            else:
+                raise ValueError('Unknown allele')
+        else:
+            i = value
+            if not (0 <= i < nalleles):
+                raise ValueError('Invalid allele index')
+            gt_values.append(bcf_gt_unphased(i))
+
+    return gt_values
+
+
 cdef bcf_info_set_value(VariantRecord record, key, value):
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
@@ -746,7 +780,7 @@ cdef bcf_format_get_value(VariantRecordSample sample, key):
         raise KeyError('invalid FORMAT')
 
     if is_gt_fmt(hdr, fmt.id):
-        return sample.allele_indices
+        return bcf_format_get_allele_indices(sample)
 
     bcf_get_value_count(sample.record, BCF_HL_FMT, fmt.id, &count, &scalar)
 
@@ -787,17 +821,18 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
 
         fmt_id = kh_val_vdict(d, k).id
 
-    if is_gt_fmt(hdr, fmt_id):
-        raise ValueError('cannot set alleles yet')
-
     fmt_type = bcf_hdr_id2type(hdr, BCF_HL_FMT, fmt_id)
 
     if fmt_type == BCF_HT_FLAG:
         raise ValueError('Flag types are not allowed on FORMATs')
 
+    if is_gt_fmt(hdr, fmt_id):
+        value = bcf_encode_alleles(sample.record, value)
+
     values = bcf_check_values(sample.record, value, BCF_HL_FMT, fmt_type, fmt_id,
                               fmt.type if fmt else -1, fmt.n if fmt else -1,
                               &value_count, &scalar, &realloc)
+
     vlen = value_count < 0
     value_count = len(values)
 
@@ -863,6 +898,221 @@ cdef bcf_format_del_value(VariantRecordSample sample, key):
         null_value = (None,)*value_count
 
     bcf_format_set_value(sample, bkey, null_value)
+
+
+cdef bcf_format_get_allele_indices(VariantRecordSample sample):
+    cdef bcf_hdr_t *hdr = sample.record.header.ptr
+    cdef bcf1_t *r = sample.record.ptr
+    cdef int32_t n = bcf_hdr_nsamples(hdr)
+
+    if bcf_unpack(r, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
+    if sample.index < 0 or sample.index >= n or not r.n_fmt:
+        return ()
+
+    cdef bcf_fmt_t *fmt0 = r.d.fmt
+    cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
+
+    if not gt0 or not fmt0.n:
+        return ()
+
+    cdef int8_t  *data8
+    cdef int16_t *data16
+    cdef int32_t *data32
+    cdef int32_t a, nalleles = r.n_allele
+    cdef list alleles = []
+
+    if fmt0.type == BCF_BT_INT8:
+        data8 = <int8_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data8[i] == bcf_int8_vector_end:
+                break
+            elif data8[i] == bcf_int8_missing:
+                a = -1
+            else:
+                a = bcf_gt_allele(data8[i])
+            alleles.append(a if 0 <= a < nalleles else None)
+    elif fmt0.type == BCF_BT_INT16:
+        data16 = <int16_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data16[i] == bcf_int16_vector_end:
+                break
+            elif data16[i] == bcf_int16_missing:
+                a = -1
+            else:
+                a = bcf_gt_allele(data16[i])
+            alleles.append(a if 0 <= a < nalleles else None)
+    elif fmt0.type == BCF_BT_INT32:
+        data32 = <int32_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data32[i] == bcf_int32_vector_end:
+                break
+            elif data32[i] == bcf_int32_missing:
+                a = -1
+            else:
+                a = bcf_gt_allele(data32[i])
+            alleles.append(a if 0 <= a < nalleles else None)
+
+    return tuple(alleles)
+
+
+cdef bcf_format_get_alleles(VariantRecordSample sample):
+    cdef bcf_hdr_t *hdr = sample.record.header.ptr
+    cdef bcf1_t *r = sample.record.ptr
+    cdef int32_t nsamples = bcf_hdr_nsamples(hdr)
+
+    if bcf_unpack(r, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
+    cdef int32_t nalleles = r.n_allele
+
+    if sample.index < 0 or sample.index >= nsamples or not r.n_fmt:
+        return ()
+
+    cdef bcf_fmt_t *fmt0 = r.d.fmt
+    cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
+
+    if not gt0 or not fmt0.n:
+        return ()
+
+    cdef int32_t  a
+    cdef int8_t  *data8
+    cdef int16_t *data16
+    cdef int32_t *data32
+    alleles = []
+    if fmt0.type == BCF_BT_INT8:
+        data8 = <int8_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data8[i] == bcf_int8_vector_end:
+                break
+            a = bcf_gt_allele(data8[i])
+            alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
+    elif fmt0.type == BCF_BT_INT16:
+        data16 = <int16_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data16[i] == bcf_int16_vector_end:
+                break
+            a = bcf_gt_allele(data16[i])
+            alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
+    elif fmt0.type == BCF_BT_INT32:
+        data32 = <int32_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data32[i] == bcf_int32_vector_end:
+                break
+            a = bcf_gt_allele(data32[i])
+            alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
+    return tuple(alleles)
+
+
+cdef bint bcf_sample_get_phased(VariantRecordSample sample):
+    cdef bcf_hdr_t *hdr = sample.record.header.ptr
+    cdef bcf1_t *r = sample.record.ptr
+    cdef int32_t n = bcf_hdr_nsamples(hdr)
+
+    if bcf_unpack(r, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
+    if sample.index < 0 or sample.index >= n or not r.n_fmt:
+        return False
+
+    cdef bcf_fmt_t *fmt0 = r.d.fmt
+    cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
+
+    if not gt0 or not fmt0.n:
+        return False
+
+    cdef int8_t  *data8
+    cdef int16_t *data16
+    cdef int32_t *data32
+
+    cdef bint phased = False
+
+    if fmt0.type == BCF_BT_INT8:
+        data8 = <int8_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data8[i] == bcf_int8_vector_end:
+                break
+            elif data8[i] == bcf_int8_missing:
+                continue
+            elif i and not bcf_gt_is_phased(data8[i]):
+                return False
+            else:
+                phased = True
+    elif fmt0.type == BCF_BT_INT16:
+        data16 = <int16_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data16[i] == bcf_int16_vector_end:
+                break
+            elif data16[i] == bcf_int16_missing:
+                continue
+            elif i and not bcf_gt_is_phased(data16[i]):
+                return False
+            else:
+                phased = True
+    elif fmt0.type == BCF_BT_INT32:
+        data32 = <int32_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data32[i] == bcf_int32_vector_end:
+                break
+            elif data32[i] == bcf_int32_missing:
+                continue
+            elif i and not bcf_gt_is_phased(data32[i]):
+                return False
+            else:
+                phased = True
+
+    return phased
+
+
+cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
+    cdef bcf_hdr_t *hdr = sample.record.header.ptr
+    cdef bcf1_t *r = sample.record.ptr
+    cdef int32_t n = bcf_hdr_nsamples(hdr)
+
+    if bcf_unpack(r, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
+    if sample.index < 0 or sample.index >= n or not r.n_fmt:
+        return
+
+    cdef bcf_fmt_t *fmt0 = r.d.fmt
+    cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
+
+    if not gt0 or not fmt0.n:
+        raise ValueError('Cannot set phased before genotype is set')
+
+    cdef int8_t  *data8
+    cdef int16_t *data16
+    cdef int32_t *data32
+
+    if fmt0.type == BCF_BT_INT8:
+        data8 = <int8_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data8[i] == bcf_int8_vector_end:
+                break
+            elif data8[i] == bcf_int8_missing:
+                continue
+            elif i:
+                data8[i] = (data8[i] & 0xFE) | phased
+    elif fmt0.type == BCF_BT_INT16:
+        data16 = <int16_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data16[i] == bcf_int16_vector_end:
+                break
+            elif data16[i] == bcf_int16_missing:
+                continue
+            elif i:
+                data16[i] = (data16[i] & 0xFFFE) | phased
+    elif fmt0.type == BCF_BT_INT32:
+        data32 = <int32_t *>(fmt0.p + sample.index * fmt0.size)
+        for i in range(fmt0.n):
+            if data32[i] == bcf_int32_vector_end:
+                break
+            elif data32[i] == bcf_int32_missing:
+                continue
+            elif i:
+                data32[i] = (data32[i] & 0xFFFFFFFE) | phased
 
 
 ########################################################################
@@ -2325,7 +2575,6 @@ cdef class VariantRecord(object):
                 Py_INCREF(a)
             return res
         def __set__(self, values):
-            #FIXME: Set alleles directly -- this is stupid
             cdef bcf1_t *r = self.ptr
             if bcf_unpack(r, BCF_UN_STR) < 0:
                 raise ValueError('Error unpacking VariantRecord')
@@ -2455,172 +2704,27 @@ cdef class VariantRecordSample(object):
     property allele_indices:
         """allele indices for called genotype, if present.  Otherwise None"""
         def __get__(self):
-            cdef bcf_hdr_t *hdr = self.record.header.ptr
-            cdef bcf1_t *r = self.record.ptr
-            cdef int32_t n = bcf_hdr_nsamples(hdr)
-
-            if bcf_unpack(r, BCF_UN_ALL) < 0:
-                raise ValueError('Error unpacking VariantRecord')
-
-            if self.index < 0 or self.index >= n or not r.n_fmt:
-                return ()
-
-            cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
-
-            if not gt0 or not fmt0.n:
-                return ()
-
-            cdef int8_t  *data8
-            cdef int16_t *data16
-            cdef int32_t *data32
-            cdef int32_t a, nalleles = r.n_allele
-            cdef list alleles = []
-
-            if fmt0.type == BCF_BT_INT8:
-                data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data8[i] == bcf_int8_vector_end:
-                        break
-                    elif data8[i] == bcf_int8_missing:
-                        a = -1
-                    else:
-                        a = bcf_gt_allele(data8[i])
-                    alleles.append(a if 0 <= a < nalleles else None)
-            elif fmt0.type == BCF_BT_INT16:
-                data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data16[i] == bcf_int16_vector_end:
-                        break
-                    elif data16[i] == bcf_int16_missing:
-                        a = -1
-                    else:
-                        a = bcf_gt_allele(data16[i])
-                    alleles.append(a if 0 <= a < nalleles else None)
-            elif fmt0.type == BCF_BT_INT32:
-                data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data32[i] == bcf_int32_vector_end:
-                        break
-                    elif data32[i] == bcf_int32_missing:
-                        a = -1
-                    else:
-                        a = bcf_gt_allele(data32[i])
-                    alleles.append(a if 0 <= a < nalleles else None)
-
-            return tuple(alleles)
-
+            return bcf_format_get_allele_indices(self)
         def __set__(self, values):
             self['GT'] = values
+        def __del__(self, values):
+            self['GT'] = ()
 
     property alleles:
         """alleles for called genotype, if present.  Otherwise None"""
         def __get__(self):
-            cdef bcf_hdr_t *hdr = self.record.header.ptr
-            cdef bcf1_t *r = self.record.ptr
-            cdef int32_t nsamples = bcf_hdr_nsamples(hdr)
-
-            if bcf_unpack(r, BCF_UN_ALL) < 0:
-                raise ValueError('Error unpacking VariantRecord')
-
-            cdef int32_t nalleles = r.n_allele
-
-            if self.index < 0 or self.index >= nsamples or not r.n_fmt:
-                return ()
-
-            cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
-
-            if not gt0 or not fmt0.n:
-                return ()
-
-            # AH: not sure why this should be NULL, but see issue #203
-            if r.d.allele == NULL:
-                return (None,)*nalleles
-
-            cdef int32_t  a
-            cdef int8_t  *data8
-            cdef int16_t *data16
-            cdef int32_t *data32
-            alleles = []
-            if fmt0.type == BCF_BT_INT8:
-                data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data8[i] == bcf_int8_vector_end:
-                        break
-                    a = bcf_gt_allele(data8[i])
-                    alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
-            elif fmt0.type == BCF_BT_INT16:
-                data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data16[i] == bcf_int16_vector_end:
-                        break
-                    a = bcf_gt_allele(data16[i])
-                    alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
-            elif fmt0.type == BCF_BT_INT32:
-                data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data32[i] == bcf_int32_vector_end:
-                        break
-                    a = bcf_gt_allele(data32[i])
-                    alleles.append(charptr_to_str(r.d.allele[a]) if 0 <= a < nalleles else None)
-            return tuple(alleles)
-
+            return bcf_format_get_alleles(self)
         def __set__(self, values):
-            alleles = self.record.alleles
-            self['GT'] = tuple(alleles.index(v) if v is not None else None for v in values)
+            self['GT'] = values
+        def __del__(self, values):
+            self['GT'] = ()
 
     property phased:
         """False if genotype is missing or any allele is unphased.  Otherwise True."""
         def __get__(self):
-            cdef bcf_hdr_t *hdr = self.record.header.ptr
-            cdef bcf1_t *r = self.record.ptr
-            cdef int32_t n = bcf_hdr_nsamples(hdr)
-
-            if bcf_unpack(r, BCF_UN_ALL) < 0:
-                raise ValueError('Error unpacking VariantRecord')
-
-            if self.index < 0 or self.index >= n or not r.n_fmt:
-                return False
-
-            cdef bcf_fmt_t *fmt0 = r.d.fmt
-            cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
-
-            if not gt0 or not fmt0.n:
-                return False
-
-            cdef int8_t  *data8
-            cdef int16_t *data16
-            cdef int32_t *data32
-
-            phased = False
-
-            if fmt0.type == BCF_BT_INT8:
-                data8 = <int8_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data8[i] == bcf_int8_vector_end:
-                        break
-                    if i and data8[i] & 1 == 0:
-                        return False
-                    phased = True
-            elif fmt0.type == BCF_BT_INT16:
-                data16 = <int16_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data16[i] == bcf_int16_vector_end:
-                        break
-                    if i and data16[i] & 1 == 0:
-                        return False
-                    phased = True
-            elif fmt0.type == BCF_BT_INT32:
-                data32 = <int32_t *>(fmt0.p + self.index * fmt0.size)
-                for i in range(fmt0.n):
-                    if data32[i] == bcf_int32_vector_end:
-                        break
-                    if i and data32[i] & 1 == 0:
-                        return False
-                    phased = True
-
-            return phased
+            return bcf_sample_get_phased(self)
+        def __set__(self, value):
+            bcf_sample_set_phased(self, value)
 
     def __len__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
@@ -2938,8 +3042,10 @@ cdef class BCFIterator(BaseIterator):
             if contig is None:
                 raise ValueError  # FIXME
 
-            bcontig = force_bytes(contig)
-            rid = index.refmap.get(bcontig, -1)
+            try:
+                rid = index.refmap[contig]
+            except KeyError:
+                raise('Unknown contig specified')
 
             if start is None:
                 start = 0
