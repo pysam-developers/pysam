@@ -580,12 +580,11 @@ cdef class AlignmentFile:
                             "- is it SAM format?" % mode )
                     # self.header.ignore_sam_err = True
 
-            # disabled for autodetection to work needs to be disabled
-            # so that reading from sam-files without headers works
             if check_sq and self.header.n_targets == 0:
                 raise ValueError(
-                    ("file header is empty (mode='%s') - "
-                     "is it SAM/BAM format?") % mode)
+                    ("file has no sequences defined (mode='%s') - "
+                     "is it SAM/BAM format? Consider opening with "
+                     "check_seq=True") % mode)
 
         if self.htsfile == NULL:
             raise IOError("could not open file `%s`" % filename )

@@ -771,6 +771,22 @@ class TestIO(unittest.TestCase):
         self.assertEqual(samfile.unmapped, 0)
         self.assertEqual(samfile.nocoordinate, 0)
 
+    def testEmptyWithHeaderBAM(self):
+        self.assertRaises(
+            ValueError,
+            pysam.Samfile,
+            os.path.join(DATADIR, "example_empty_with_header.bam"),
+            "rb")
+
+        samfile = pysam.Samfile(
+            os.path.join(DATADIR, "example_empty_with_header.bam"),
+            "rb",
+            check_sq=False)
+        self.assertEqual(samfile.mapped, 0)
+        self.assertEqual(samfile.unmapped, 0)
+        self.assertEqual(samfile.nocoordinate, 0)
+        self.assertEqual([], list(samfile.fetch()))
+
     def testOpenFromFilename(self):
 
         samfile = pysam.AlignmentFile(
