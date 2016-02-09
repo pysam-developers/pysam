@@ -5,13 +5,14 @@
 ## Cython wrapper for htslib VCF/BCF reader/writer
 ###############################################################################
 #
-# NOTICE: This code is incomplete and preliminary.  It does offer a nearly
-#         complete immutable Pythonic interface to VCF/BCF metadata and data
-#         with reading and writing capability, but has no capability (yet)
-#         to mutate the resulting data (beyond dropping all samples).
-#         Documentation still needs to be written and a unit test suite is
-#         in the works.  The code is also superficially specific to Python 2
-#         and will require a bit of work to properly adapt to Python 3.
+# NOTICE: This code is incomplete and preliminary.  It offers a nearly
+#         complete Pythonic interface to VCF/BCF metadata and data with
+#         reading and writing capability.  It has limited capability to to
+#         mutate the resulting data.  Documentation and a unit test suite
+#         are in the works.  The code is best tested under Python 2, but
+#         should also work with Python 3.  Please report any remaining
+#         str/bytes issues on the github site when using Python 3 and I'll
+#         fix them promptly.
 #
 # Here is a minimal example of how to use the API:
 #
@@ -2477,6 +2478,11 @@ cdef class VariantRecord(object):
             if pos < 1:
                 raise ValueError('Position must be positive')
             # FIXME: check start <= stop?
+            #   KBJ: Can't or else certain mutating operations will become
+            #        difficult or impossible.  e.g.  having to delete
+            #        info['END'] before being able to reset pos is going to
+            #        create subtle bugs.  Better to check this when writing
+            #        records.
             self.ptr.pos = pos - 1
 
     property start:
@@ -2487,6 +2493,7 @@ cdef class VariantRecord(object):
             if start < 0:
                 raise ValueError('Start coordinate must be non-negative')
             # FIXME: check start <= stop?
+            #   KBJ: See above.
             self.ptr.pos = start
 
     property stop:
