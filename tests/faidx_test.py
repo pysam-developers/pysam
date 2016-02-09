@@ -3,6 +3,8 @@ import unittest
 import os
 import gzip
 
+from TestUtils import checkURL
+
 DATADIR = "pysam_data"
 
 
@@ -161,6 +163,22 @@ class TestFastxFileWithEmptySequence(unittest.TestCase):
         f = self.filetype(fn)
         l = len(list(f))
         self.assertEqual(ref_num, l)
+
+
+class TestRemoteFileFTP(unittest.TestCase):
+    '''test remote access.
+    '''
+
+    url = "ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa"
+
+
+    def testFTPView(self):
+        if not checkURL(self.url):
+            return
+        f = pysam.Fastafile(self.url)
+        self.assertEqual(
+            len(f.fetch("chr1", 0, 1000)),
+            1000)
 
 
 if __name__ == "__main__":

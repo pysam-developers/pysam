@@ -452,6 +452,7 @@ cdef class AlignmentFile:
         # FIXME: Use htsFormat when it is available
         self.is_stream = filename == b"-"
         self.is_remote = filename.startswith(b"http:") or \
+                         filename.startswith(b"https:") or \
                          filename.startswith(b"ftp:")
 
         cdef char * ctext

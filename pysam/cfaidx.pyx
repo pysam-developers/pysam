@@ -1,4 +1,4 @@
- # cython: embedsignature=True
+# cython: embedsignature=True
 # cython: profile=True
 ###############################################################################
 ###############################################################################
@@ -47,6 +47,7 @@
 ###############################################################################
 import sys
 import os
+import re
 from cpython cimport array
 
 from cpython cimport PyErr_SetString, \
@@ -88,6 +89,10 @@ cdef class FastaFile:
     filename : string
         Filename of fasta file to be opened.
 
+    filepath_index : string
+        Optional, filename of the index. By default this is
+        the filename + ".fai".
+
     Raises
     ------
     
@@ -117,7 +122,7 @@ cdef class FastaFile:
 
         return faidx_nseq(self.fastafile)
 
-    def _open(self, filename):
+    def _open(self, filename, filepath_index=None):
         '''open an indexed fasta file.
 
         This method expects an indexed fasta file.
@@ -126,20 +131,39 @@ cdef class FastaFile:
         # close a previously opened file
         if self.fastafile != NULL:
             self.close()
+
         self._filename = encode_filename(filename)
+
+        self.is_remote = filename.startswith(b"http:") or \
+                         filename.startswith(b"https:") or \
+                         filename.startswith(b"ftp:")
+
         cdef char *cfilename = self._filename
+
+        # open file for reading
+        if (filename != b"-"
+            and not self.is_remote
+            and not os.path.exists(filename)):
+            raise IOError("file `%s` not found" % filename)
+
         with nogil:
             self.fastafile = fai_load(cfilename)
 
         if self.fastafile == NULL:
             raise IOError("could not open file `%s`" % filename)
 
-        # read index
-        if not os.path.exists(self._filename + b".fai"):
-            raise ValueError("could not locate index file")
+        if self.is_remote:
+            filepath_index = os.path.basename(
+                re.sub("[^:]+:[/]*", "", filename)) + b".fai"
+        elif filepath_index is None:
+            filepath_index = self._filename + b".fai"
 
-        with open( self._filename + b".fai" ) as inf:
-            data = [ x.split("\t") for x in inf ]
+        if not os.path.exists(filepath_index):
+            raise ValueError("could not locate index file {}".format(
+                filepath_index))
+            
+        with open(filepath_index) as inf:
+            data = [x.split("\t") for x in inf]
             self._references = tuple(x[0] for x in data)
             self._lengths = tuple(int(x[1]) for x in data)
             self.reference2length = dict(zip(self._references, self._lengths))
