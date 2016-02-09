@@ -504,7 +504,7 @@ class TestParser(unittest.TestCase):
         b = copy.copy(a)
         self.assertEqual(a, b)
 
-        
+
 
 class TestIterators(unittest.TestCase):
 
@@ -1075,7 +1075,7 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
         v = smp.values()
 
         if 'GT' in smp:
-            alleles = [str(a) if a >= 0 else '.' for a in smp.allele_indices]
+            alleles = [str(a) if a is not None else '.' for a in smp.allele_indices]
             v[0] = '/|'[smp.phased].join(alleles)
 
         comp = ":".join(map(convert_field, v))
@@ -1168,7 +1168,7 @@ def _TestMultipleIteratorsHelper(filename, multiple_iterators):
 
 
 class TestBackwardsCompatibility(unittest.TestCase):
-    """check if error is raised if a tabix file from an 
+    """check if error is raised if a tabix file from an
     old version is accessed from pysam"""
 
     def check(self, filename, raises=None):
@@ -1178,7 +1178,7 @@ class TestBackwardsCompatibility(unittest.TestCase):
             self.assertEqual(len(list(tf.fetch())), len(ref))
         else:
             self.assertRaises(raises, tf.fetch)
-        
+
     def testVCF0v23(self):
         self.check(os.path.join(DATADIR, "example_0v23.vcf.gz"),
                    ValueError)
