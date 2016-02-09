@@ -450,8 +450,6 @@ cdef class AlignmentFile:
         self._filename = filename = encode_filename(filename)
 
         # FIXME: Use htsFormat when it is available
-        self.is_bam = len(mode) > 1 and mode[1] == 'b'
-        self.is_cram = len(mode) > 1 and mode[1] == 'c'
         self.is_stream = filename == b"-"
         self.is_remote = filename.startswith(b"http:") or \
                          filename.startswith(b"ftp:")
@@ -524,6 +522,9 @@ cdef class AlignmentFile:
                 with nogil:
                     self.htsfile = hts_open(cfilename, cmode)
 
+            self.is_bam = self.htsfile.is_bin
+            self.is_cram = self.htsfile.is_cram
+
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
@@ -559,6 +560,9 @@ cdef class AlignmentFile:
                 raise ValueError(
                     "could not open file (mode='%s') - "
                     "is it SAM/BAM format?" % mode)
+
+            self.is_bam = self.htsfile.is_bin
+            self.is_cram = self.htsfile.is_cram
 
             # bam files require a valid header
             if self.is_bam or self.is_cram:
@@ -1447,6 +1451,13 @@ cdef class AlignmentFile:
             with nogil:
                 n = hts_idx_get_n_no_coor(self.index)
             return n
+
+    property format:
+        '''string describing the file format'''
+        def __get__(self):
+            if not self.is_open():
+                raise ValueError( "I/O operation on closed file" )
+            return hts_format_description(&self.htsfile.format)
 
     property text:
         '''string with the full contents of the :term:`sam file` header as a

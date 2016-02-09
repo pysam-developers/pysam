@@ -408,6 +408,17 @@ class TestIO(unittest.TestCase):
         infile = pysam.AlignmentFile(
             os.path.join(DATADIR, input_filename),
             input_mode)
+
+        if "b" in input_mode:
+            self.assertTrue(infile.is_bam)
+            self.assertFalse(infile.is_cram)
+        elif "c" in input_mode:
+            self.assertFalse(infile.is_bam)
+            self.assertTrue(infile.is_cram)
+        else:
+            self.assertFalse(infile.is_cram)
+            self.assertFalse(infile.is_bam)
+
         if use_template:
             outfile = pysam.AlignmentFile(
                 output_filename,
@@ -1509,7 +1520,9 @@ class TestWrongFormat(unittest.TestCase):
     def testOpenBamAsSam(self):
         # test fails, needs to be implemented.
         # sam.fetch() fails on reading, not on opening
-        # self.assertRaises( ValueError, pysam.AlignmentFile, 'ex1.bam', 'r' )
+        #self.assertRaises(ValueError, pysam.AlignmentFile,
+        #                  os.path.join(DATADIR, 'ex1.bam'),
+        #                  'r')
         pass
 
     def testOpenFastaAsSam(self):
