@@ -38,6 +38,7 @@ cdef extern from "pysam_stream.h" nogil:
                     int * dret)
 
 cdef class FastaFile:
+    cdef bint is_remote
     cdef object _filename, _references, _lengths, reference2length
     cdef faidx_t* fastafile
     cdef char* _fetch(self, char* reference,

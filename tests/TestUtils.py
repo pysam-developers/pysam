@@ -2,7 +2,9 @@ import sys
 import os
 import pysam
 import difflib
-
+import gzip
+import inspect
+import tempfile
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -20,6 +22,13 @@ if IS_PYTHON3:
 else:
     def force_str(s):
         return s
+
+
+def openfile(fn):
+    if fn.endswith(".gz"):
+        return gzip.open(fn)
+    else:
+        return open(fn)
 
 
 def checkBinaryEqual(filename1, filename2):
@@ -128,3 +137,35 @@ def checkFieldEqual(cls, read1, read2, exclude=[]):
         cls.assertEqual(getattr(read1, n), getattr(read2, n),
                         "attribute mismatch for %s: %s != %s" %
                         (n, getattr(read1, n), getattr(read2, n)))
+
+
+def check_lines_equal(cls, a, b, sort=False, filter_f=None):
+    """check if contents of two files are equal comparing line-wise.
+
+    sort: bool
+       sort contents of both files before comparing.
+    filter_f:
+       remover lines in both a and b where expression is True
+    """
+
+    aa = openfile(a).readlines()
+    bb = openfile(b).readlines()
+
+    if filter_f is not None:
+        aa = [x for x in aa if not filter_f]
+        bb = [x for x in bb if not filter_f]
+    if sort:
+        cls.assertEqual(sorted(aa), sorted(bb))
+    else:
+        cls.assertEqual(aa, bb)
+
+
+def get_temp_filename(suffix=""):
+    caller_name = inspect.getouterframes(inspect.currentframe(), 2)[1][3]
+    f = tempfile.NamedTemporaryFile(
+        prefix="tmp_{}_".format(caller_name),
+        suffix=suffix,
+        delete=False,
+        dir=".")
+    f.close()
+    return f.name

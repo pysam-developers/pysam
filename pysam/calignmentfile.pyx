@@ -450,10 +450,9 @@ cdef class AlignmentFile:
         self._filename = filename = encode_filename(filename)
 
         # FIXME: Use htsFormat when it is available
-        self.is_bam = len(mode) > 1 and mode[1] == 'b'
-        self.is_cram = len(mode) > 1 and mode[1] == 'c'
         self.is_stream = filename == b"-"
         self.is_remote = filename.startswith(b"http:") or \
+                         filename.startswith(b"https:") or \
                          filename.startswith(b"ftp:")
 
         cdef char * ctext
@@ -524,6 +523,9 @@ cdef class AlignmentFile:
                 with nogil:
                     self.htsfile = hts_open(cfilename, cmode)
 
+            self.is_bam = self.htsfile.is_bin
+            self.is_cram = self.htsfile.is_cram
+
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
@@ -560,6 +562,9 @@ cdef class AlignmentFile:
                     "could not open file (mode='%s') - "
                     "is it SAM/BAM format?" % mode)
 
+            self.is_bam = self.htsfile.is_bin
+            self.is_cram = self.htsfile.is_cram
+
             # bam files require a valid header
             if self.is_bam or self.is_cram:
                 with nogil:
@@ -580,12 +585,11 @@ cdef class AlignmentFile:
                             "- is it SAM format?" % mode )
                     # self.header.ignore_sam_err = True
 
-            # disabled for autodetection to work needs to be disabled
-            # so that reading from sam-files without headers works
             if check_sq and self.header.n_targets == 0:
                 raise ValueError(
-                    ("file header is empty (mode='%s') - "
-                     "is it SAM/BAM format?") % mode)
+                    ("file has no sequences defined (mode='%s') - "
+                     "is it SAM/BAM format? Consider opening with "
+                     "check_seq=True") % mode)
 
         if self.htsfile == NULL:
             raise IOError("could not open file `%s`" % filename )
@@ -1448,6 +1452,13 @@ cdef class AlignmentFile:
             with nogil:
                 n = hts_idx_get_n_no_coor(self.index)
             return n
+
+    property format:
+        '''string describing the file format'''
+        def __get__(self):
+            if not self.is_open():
+                raise ValueError( "I/O operation on closed file" )
+            return hts_format_description(&self.htsfile.format)
 
     property text:
         '''string with the full contents of the :term:`sam file` header as a

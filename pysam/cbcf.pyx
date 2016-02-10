@@ -1385,7 +1385,10 @@ cdef class VariantHeaderMetadata(object):
             if number is None:
                 number = '.'
 
-            items = [('ID', id), ('Number', number), ('Type', type), ('Description', description)]
+            items = [('ID', id),
+                     ('Number', number),
+                     ('Type', type),
+                     ('Description', description)]
 
         items += kwargs.items()
         self.header.add_meta(METADATA_TYPES[self.type], items=items)
