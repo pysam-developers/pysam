@@ -2540,6 +2540,9 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             return bcf_str_cache_get_charptr(r.d.id) if r.d.id != b'.' else None
         def __set__(self, id):
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
+                raise ValueError('Error unpacking VariantRecord')
             cdef char *idstr = NULL
             if id is not None:
                 bid = force_bytes(id)
@@ -2555,6 +2558,9 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             return charptr_to_str(r.d.allele[0]) if r.d.allele else None
         def __set__(self, ref):
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
+                raise ValueError('Error unpacking VariantRecord')
             #FIXME: Set alleles directly -- this is stupid
             if not ref:
                 raise ValueError('ref allele cannot be null')
@@ -2609,6 +2615,8 @@ cdef class VariantRecord(object):
         def __set__(self, values):
             #FIXME: Set alleles directly -- this is stupid
             cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
+                raise ValueError('Error unpacking VariantRecord')
             values = [force_bytes(v) for v in values]
             if b'' in values:
                 raise ValueError('cannot set null alt allele')
