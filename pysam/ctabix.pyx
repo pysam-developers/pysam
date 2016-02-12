@@ -72,7 +72,7 @@ from pysam.chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_close, bgzf_write, gzFile, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    tbx_destroy, gzopen, gzclose, gzerror, gzdopen
+    tbx_destroy, gzopen, gzclose, gzerror, gzdopen, hisremote
 
 from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
@@ -317,9 +317,9 @@ cdef class TabixFile:
         self.tabixfile = NULL
 
         filename_index = index or (filename + ".tbi")
-        self.isremote = filename.startswith("http:") or filename.startswith("ftp:")
+        self.is_remote = hisremote(filename)
 
-        if not self.isremote:
+        if not self.is_remote:
             if not os.path.exists(filename):
                 raise IOError("file `%s` not found" % filename)
 
@@ -419,7 +419,7 @@ cdef class TabixFile:
                 region = reference
 
         # get iterator
-        cdef hts_itr_t * iter
+        cdef hts_itr_t * itr
         cdef char *cstr
         cdef TabixFile fileobj
 
@@ -431,16 +431,18 @@ cdef class TabixFile:
 
         if region is None:
             # without region or reference - iterate from start
-            iter = tbx_itr_queryi(fileobj.index,
-                                  HTS_IDX_START,
-                                  0,
-                                  0)
+            with nogil:
+                itr = tbx_itr_queryi(fileobj.index,
+                                      HTS_IDX_START,
+                                      0,
+                                      0)
         else:
             s = force_bytes(region, encoding=fileobj.encoding)
             cstr = s
-            iter = tbx_itr_querys(fileobj.index, cstr)
+            with nogil:
+                itr = tbx_itr_querys(fileobj.index, cstr)
 
-        if iter == NULL:
+        if itr == NULL:
             if region is None:
                 if len(self.contigs) > 0:
                     # when accessing a tabix file created prior tabix 1.0
@@ -469,7 +471,7 @@ cdef class TabixFile:
             a = TabixIteratorParsed(parser)
 
         a.tabixfile = fileobj
-        a.iterator = iter
+        a.iterator = itr
 
         return a
 
@@ -517,7 +519,7 @@ cdef class TabixFile:
         '''
         
         def __get__(self):
-            if self.isremote:
+            if self.is_remote:
                 raise AttributeError(
                     "the header is not available for remote files")
             return GZIteratorHead(self.filename)
@@ -588,11 +590,12 @@ cdef class TabixIterator:
         cdef int retval
 
         while 1:
-            retval = tbx_itr_next(
-                self.tabixfile.tabixfile,
-                self.tabixfile.index,
-                self.iterator,
-                &self.buffer)
+            with nogil:
+                retval = tbx_itr_next(
+                    self.tabixfile.tabixfile,
+                    self.tabixfile.index,
+                    self.iterator,
+                    &self.buffer)
 
             if retval < 0:
                 break

@@ -202,6 +202,8 @@ from cpython.bytes   cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DecodeASCII
 from cpython.version cimport PY_MAJOR_VERSION
 
+from pysam.chtslib cimport hisremote
+
 __all__ = ['VariantFile', 'VariantHeader']
 
 ########################################################################
@@ -3443,10 +3445,7 @@ cdef class VariantFile(object):
         self.drop_samples = bool(drop_samples)
         self.header = None
 
-        # FIXME: Use htsFormat when it is available
-        self.is_remote = filename.startswith(b'http:') or \
-                         filename.startswith(b'ftp:')
-
+        self.is_remote = hisremote(filename)
         self.is_stream = filename == b'-'
 
         if mode.startswith(b'w'):
