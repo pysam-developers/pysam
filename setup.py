@@ -222,7 +222,8 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
 if HTSLIB_SOURCE == "builtin":
     EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
     if htslib_configure_options is None:
-        print "# could not configure htslib, choosing conservative defaults"
+        print ("# could not configure htslib, choosing "
+               "conservative defaults")
         htslib_sources = [x for x in htslib_sources
                           if x not in EXCLUDE_HTSLIB]
         shared_htslib_sources = [x for x in shared_htslib_sources
