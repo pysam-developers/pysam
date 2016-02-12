@@ -86,48 +86,56 @@ def configure_library(library_dir, env_options=None, options=[]):
 #         pysam.
 # external: use shared libhts.so compiled outside of
 #           pysam
-HTSLIB_MODE = "separate"
+HTSLIB_MODE = "shared"
 HTSLIB_LIBRARY_DIR = os.environ.get('HTSLIB_LIBRARY_DIR', None)
 HTSLIB_INCLUDE_DIR = os.environ.get('HTSLIB_INCLUDE_DIR', None)
+
+# Check if cython is available
+#
+# If cython is available, the pysam will be built using cython from
+# the .pyx files. If no cython is available, the C-files included in the
+# distribution will be used.
+try:
+    from cy_build import CyExtension as Extension, cy_build_ext as build_ext
+    source_pattern = "pysam/c%s.pyx"
+    cmdclass = {'build_ext': build_ext}
+    HTSLIB_MODE = "shared"
+except ImportError:
+    # no Cython available - use existing C code
+    cmdclass = {}
+    source_pattern = "pysam/c%s.c"
+    # Set mode to separate, as "shared" not fully tested yet.
+    HTSLIB_MODE = "separate"
 
 # collect pysam version
 sys.path.insert(0, "pysam")
 import version
 version = version.__version__
 
-# exclude sources that contains a main function
+# exclude sources that contain a main function
 EXCLUDE = {
-    "samtools": ("razip.c",
-                 "bgzip.c",
-                 "main.c",
-                 "calDepth.c",
-                 "bam2bed.c",
-                 "wgsim.c",
-                 "md5fa.c",
-                 "md5sum-lite.c",
-                 "maq2sam.c",
-                 "bamcheck.c",
-                 "chk_indel.c",
-                 "vcf-miniview.c",
-                 "htslib-1.3",   # do not import twice
-                 "hfile_irods.c",  # requires irods library
-             ),
-    "bcftools": ("test",
-                 "plugins",
-                 "peakfit.c",
-                 "peakfit.h",
-                 # needs to renamed, name conflict with samtools reheader
-                 "reheader.c",
-                 "polysomy.c"),
-    "htslib": ('htslib/tabix.c',
-               'htslib/bgzip.c',
-               'htslib/htsfile.c',
-               'htslib/hfile_irods.c'),
-    }
+    "samtools": (
+        "razip.c", "bgzip.c", "main.c",
+        "calDepth.c", "bam2bed.c", "wgsim.c",
+        "md5fa.c", "md5sum-lite.c", "maq2sam.c",
+        "bamcheck.c", "chk_indel.c", "vcf-miniview.c",
+        "htslib-1.3",   # do not import twice
+        "hfile_irods.c",  # requires irods library
+    ),
+    "bcftools": (
+        "test", "plugins", "peakfit.c",
+        "peakfit.h",
+        # needs to renamed, name conflict with samtools reheader
+        "reheader.c",
+        "polysomy.c"),
+    "htslib": (
+        'htslib/tabix.c', 'htslib/bgzip.c',
+        'htslib/htsfile.c', 'htslib/hfile_irods.c'),
+}
 
 print ("# htslib mode is {}".format(HTSLIB_MODE))
 
-configure_options = None
+htslib_configure_options = None
 
 if HTSLIB_MODE in ['shared', 'separate']:
     htslib_configure_options = configure_library(
@@ -181,7 +189,7 @@ elif HTSLIB_MODE == 'shared':
         glob.glob(os.path.join("htslib", "*.c")) +
         glob.glob(os.path.join("htslib", "cram", "*.c"))
         if x not in EXCLUDE["htslib"]]
-    htslib_library_dirs = ['pysam']
+    htslib_library_dirs = ['pysam', "."]
     htslib_include_dirs = ['htslib']
     htslib_libraries = ['chtslib']
 
@@ -210,11 +218,11 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
 
-EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
 
 if HTSLIB_SOURCE == "builtin":
-
+    EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
     if htslib_configure_options is None:
+        print "# could not configure htslib, choosing conservative defaults"
         htslib_sources = [x for x in htslib_sources
                           if x not in EXCLUDE_HTSLIB]
         shared_htslib_sources = [x for x in shared_htslib_sources
@@ -222,8 +230,6 @@ if HTSLIB_SOURCE == "builtin":
     else:
         if "--enable-libcurl" in htslib_configure_options:
             htslib_libraries.extend(["curl", "crypto"])
-    print ("htslib_sources={}".format(htslib_sources))
-
 
 parts = ["samtools",
          "bcftools",
@@ -237,30 +243,24 @@ parts = ["samtools",
          "vcf",
          "bcf"]
 
-try:
-    from cy_build import CyExtension as Extension, cy_build_ext as build_ext
-except ImportError:
-    # no Cython available - use existing C code
-    cmdclass = {}
-    source_pattern = "pysam/c%s.c"
-    fn = source_pattern % "htslib"
-    if not os.path.exists(fn):
-        raise ValueError(
-            "no cython installed, but can not find {}."
-            "Make sure that cython is installed when building "
-            "from the repository"
-            .format(fn))
-else:
-    # remove existing files to recompute
-    # necessary to be both compatible for python 2.7 and 3.3
-    if IS_PYTHON3:
-        for part in parts:
-            try:
-                os.unlink("pysam/c%s.c" % part)
-            except:
-                pass
-    source_pattern = "pysam/c%s.pyx"
-    cmdclass = {'build_ext': build_ext}
+# remove existing files to recompute
+# necessary to be both compatible for python 2.7 and 3.3
+if IS_PYTHON3:
+    for part in parts:
+        try:
+            os.unlink("pysam/c%s.c" % part)
+        except:
+            pass
+
+# Exit if there are no pre-compiled files and no cython available
+fn = source_pattern % "htslib"
+if not os.path.exists(fn):
+    raise ValueError(
+        "no cython installed, but can not find {}."
+        "Make sure that cython is installed when building "
+        "from the repository"
+        .format(fn))
+
 
 #######################################################
 classifiers = """
@@ -286,7 +286,8 @@ else:
 #######################################################
 # for python 3.4, see for example
 # http://stackoverflow.com/questions/25587039/error-compiling-rpy2-on-python3-4-due-to-werror-declaration-after-statement
-extra_compile_args = ["-Wno-error=declaration-after-statement"]
+extra_compile_args = ["-Wno-error=declaration-after-statement",
+                      "-Wno-unused"]
 define_macros = []
 
 chtslib = Extension(
@@ -296,8 +297,9 @@ chtslib = Extension(
     shared_htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["pysam"] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
+    libraries=["z"] + [x for x in htslib_libraries if x != "chtslib"],
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -316,7 +318,8 @@ csamfile = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -336,6 +339,7 @@ calignmentfile = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
+    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
@@ -356,7 +360,8 @@ calignedsegment = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -370,7 +375,8 @@ ctabix = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["pysam"] + include_os + htslib_include_dirs,
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -387,7 +393,8 @@ cutils = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["samtools", "bcftools", "pysam"] +
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["samtools", "bcftools", "pysam", "."] +
     include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
@@ -401,7 +408,8 @@ cfaidx = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["pysam"] + include_os + htslib_include_dirs,
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -413,6 +421,7 @@ ctabixproxies = Extension(
     [source_pattern % "tabixproxies"] +
     os_c_files,
     library_dirs=[],
+    runtime_library_dirs = htslib_library_dirs,
     include_dirs=include_os,
     libraries=["z"],
     language="c",
@@ -425,7 +434,8 @@ cvcf = Extension(
     [source_pattern % "vcf"] +
     os_c_files,
     library_dirs=[],
-    include_dirs=["htslib"] + include_os + htslib_include_dirs,
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
     libraries=["z"],
     language="c",
     extra_compile_args=extra_compile_args,
@@ -438,7 +448,8 @@ cbcf = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["htslib"] + include_os + htslib_include_dirs,
+    runtime_library_dirs = htslib_library_dirs,
+    include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
     libraries=["z"] + htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
