@@ -10,6 +10,40 @@ use the github URL: https://github.com/pysam-developers/pysam.
 As pysam is a wrapper around htslib and the samtools package, I
 suggest cite `Li et al (2009) <http://www.ncbi.nlm.nih.gov/pubmed/19505943>`.
 
+Is pysam thread-save?
+=====================
+
+Pysam is a mix of python and C code. Instructions within python are
+generally made thread-safe through python's `global interpreter lock`_
+(GIL_). This ensures that python data structures will always be in a
+consistent state. 
+
+If an external function outside python is called, the programmer has a
+choice to keep the GIL in place or to release it. Keeping the GIL in
+place will make sure that all python threads wait until the external
+function has completed. This is a safe option and ensures
+thread-safety.
+
+Alternatively, the GIL can be released while the external function is
+called. This will allow other threads to run concurrently. This can be
+beneficial if the external function is expected to halt, for example
+when waiting for data to read or write. However, to achieve
+thread-safety, the external function needs to implememented with
+thread-safety in mind. This means that there can be no shared state
+between threads, or if there is shared, it needs to be controlled to
+prevent any access conflicts.
+
+Pysam generally uses the latter option and aims to release the GIL for
+I/O intensive tasks. This is generally fine, but thread-safety of all
+parts have not been fully tested. 
+
+A related issue is when different threads read from the same file
+objec - or the same thread uses two iterators over a file. There is
+only a single file-position for each opened file. To prevent this from
+hapeding, use the option ``mulitple_iterator=True`` when calling
+a fetch() method. This will return an iterator on a newly opened
+file.
+
 pysam coordinates are wrong
 ===========================
 
@@ -114,8 +148,8 @@ index, use the ``until_eof=True`::
         print (r)
 
 	
-BAM files with a large number of reference sequences is slow
-============================================================
+BAM files with a large number of reference sequences are slow
+=============================================================
 
 If you have many reference sequences in a bam file, the following
 might be slow::
@@ -194,7 +228,7 @@ Again, the iteration finishes as the temporary iterator created
 by pileup goes out of scope. The solution is to keep a handle
 to the iterator that remains alive::
 
-    i = AlignmentFile('ex1.bam').pileup( 'chr1', 1000, 1010)
+    i = AlignmentFile('ex1.bam').pileup('chr1', 1000, 1010)
     p = next(i)
     for pp in p.pileups:
         print pp
@@ -225,6 +259,6 @@ cython_ when building pysam. There are some known incompatibilities:
 * Python 3.4 requires cython 0.20.2 or later (see `here
   <https://github.com/pysam-developers/pysam/issues/37>`_)
 
-
+.. _global interpreter lock: https://en.wikipedia.org/wiki/Global_interpreter_lock
 
 
