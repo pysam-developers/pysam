@@ -32,7 +32,7 @@ import sys
 from contextlib import contextmanager
 from setuptools import Extension, setup
 
-IS_PYTHON3 = sys.version_info[0] >= 3
+IS_PYTHON3 = sys.version_info.major >= 3
 
 
 @contextmanager
@@ -197,9 +197,18 @@ elif HTSLIB_MODE == 'shared':
     external_htslib_libraries = ['z']
 
     if IS_PYTHON3:
-        internal_htslib_libraries = ["chtslib.{}{}".format(
-            sys.implementation.cache_tag,
-            sys.abiflags)]
+        # Is there a principled way to get library naming convention?
+        # Where can I get the "gnu" from
+        if sys.version_info.minor >= 5:
+            internal_htslib_libraries = ["chtslib.{}{}-{}-{}-gnu".format(
+                sys.implementation.cache_tag,
+                sys.abiflags,
+                platform.machine(),
+                sys.platform)]
+        else:
+            internal_htslib_libraries = ["chtslib.{}{}".format(
+                sys.implementation.cache_tag,
+                sys.abiflags)]
     else:
         internal_htslib_libraries = ["chtslib"]
 
@@ -301,7 +310,8 @@ else:
 # declaration-after-statement
 extra_compile_args = ["-Wno-error=declaration-after-statement",
                       "-Wno-unused",
-                      "-Wno-strict-prototypes"]
+                      "-Wno-strict-prototypes",
+                      "-Wno-sign-compare"]
 define_macros = []
 
 chtslib = Extension(
