@@ -34,6 +34,7 @@ from setuptools import Extension, setup
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
+
 @contextmanager
 def changedir(path):
     save_dir = os.getcwd()
@@ -163,7 +164,8 @@ if HTSLIB_LIBRARY_DIR:
     chtslib_sources = []
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
-    htslib_libraries = ['hts']
+    internal_htslib_libraries = []
+    external_htslib_libraries = ['z', 'hts']
 
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
@@ -176,7 +178,8 @@ elif HTSLIB_MODE == 'separate':
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
-    htslib_libraries = []
+    internal_htslib_libraries = []
+    external_htslib_libraries = ['z']
 
 elif HTSLIB_MODE == 'shared':
 
@@ -191,7 +194,14 @@ elif HTSLIB_MODE == 'shared':
         if x not in EXCLUDE["htslib"]]
     htslib_library_dirs = ['pysam', "."]
     htslib_include_dirs = ['htslib']
-    htslib_libraries = ['chtslib']
+    external_htslib_libraries = ['z']
+
+    if IS_PYTHON3:
+        internal_htslib_libraries = ["chtslib.{}{}".format(
+            sys.implementation.cache_tag,
+            sys.abiflags)]
+    else:
+        internal_htslib_libraries = ["chtslib"]
 
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
@@ -230,7 +240,7 @@ if HTSLIB_SOURCE == "builtin":
                                  if x not in EXCLUDE_HTSLIB]
     else:
         if "--enable-libcurl" in htslib_configure_options:
-            htslib_libraries.extend(["curl", "crypto"])
+            external_htslib_libraries.extend(["curl", "crypto"])
 
 parts = ["samtools",
          "bcftools",
@@ -286,9 +296,12 @@ else:
 
 #######################################################
 # for python 3.4, see for example
-# http://stackoverflow.com/questions/25587039/error-compiling-rpy2-on-python3-4-due-to-werror-declaration-after-statement
+# http://stackoverflow.com/questions/25587039/
+# error-compiling-rpy2-on-python3-4-due-to-werror-
+# declaration-after-statement
 extra_compile_args = ["-Wno-error=declaration-after-statement",
-                      "-Wno-unused"]
+                      "-Wno-unused",
+                      "-Wno-strict-prototypes"]
 define_macros = []
 
 chtslib = Extension(
@@ -298,9 +311,9 @@ chtslib = Extension(
     shared_htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
+    runtime_library_dirs=htslib_library_dirs,
     include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=["z"] + [x for x in htslib_libraries if x != "chtslib"],
+    libraries=external_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -319,9 +332,8 @@ csamfile = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -340,9 +352,8 @@ calignmentfile = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -361,9 +372,8 @@ calignedsegment = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -376,9 +386,8 @@ ctabix = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -394,10 +403,9 @@ cutils = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["samtools", "bcftools", "pysam", "."] +
     include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -409,9 +417,8 @@ cfaidx = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -422,9 +429,8 @@ ctabixproxies = Extension(
     [source_pattern % "tabixproxies"] +
     os_c_files,
     library_dirs=[],
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=include_os,
-    libraries=["z"],
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -435,9 +441,8 @@ cvcf = Extension(
     [source_pattern % "vcf"] +
     os_c_files,
     library_dirs=[],
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=["z"],
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -449,9 +454,8 @@ cbcf = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    runtime_library_dirs = htslib_library_dirs,
     include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=["z"] + htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
