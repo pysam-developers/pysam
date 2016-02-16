@@ -2202,7 +2202,6 @@ cdef class PileupRead:
             return self._is_tail
 
     property is_refskip:
-        """ 1 if the base on the padded read 
         def __get__(self):
             return self._is_refskip
 
