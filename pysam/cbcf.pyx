@@ -237,7 +237,7 @@ from pysam.cutils cimport encode_filename, from_string_and_size
 
 cdef dict bcf_str_cache = {}
 
-cdef inline bcf_str_cache_get_charptr(char* s):
+cdef inline bcf_str_cache_get_charptr(const char* s):
     if s == NULL:
         return None
 
