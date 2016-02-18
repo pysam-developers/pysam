@@ -2567,7 +2567,6 @@ cdef class VariantRecord(object):
             #FIXME: Set alleles directly -- this is stupid
             if not ref:
                 raise ValueError('ref allele cannot be null')
-            cdef bcf1_t *r = self.ptr
             ref = force_bytes(ref)
             if r.d.allele and r.n_allele:
                 alleles = [r.d.allele[i] for i in range(r.n_allele)]
