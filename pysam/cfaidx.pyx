@@ -60,7 +60,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 from pysam.chtslib cimport \
     faidx_nseq, fai_load, fai_destroy, fai_fetch, \
     faidx_seq_len, \
-    faidx_fetch_seq, gzopen, gzclose
+    faidx_fetch_seq, gzopen, gzclose, hisremote
 
 from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
@@ -134,10 +134,7 @@ cdef class FastaFile:
 
         self._filename = encode_filename(filename)
 
-        self.is_remote = filename.startswith(b"http:") or \
-                         filename.startswith(b"https:") or \
-                         filename.startswith(b"ftp:")
-
+        self.is_remote = hisremote(filename)
         cdef char *cfilename = self._filename
 
         # open file for reading

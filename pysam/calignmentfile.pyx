@@ -64,6 +64,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
 from pysam.calignedsegment cimport makeAlignedSegment, makePileupColumn
+from pysam.chtslib cimport hisremote
 
 cimport cython
 
@@ -451,9 +452,7 @@ cdef class AlignmentFile:
 
         # FIXME: Use htsFormat when it is available
         self.is_stream = filename == b"-"
-        self.is_remote = filename.startswith(b"http:") or \
-                         filename.startswith(b"https:") or \
-                         filename.startswith(b"ftp:")
+        self.is_remote = hisremote(filename)
 
         cdef char * ctext
         cdef hFILE * fp

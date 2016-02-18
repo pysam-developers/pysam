@@ -66,7 +66,7 @@ cdef class TabixFile:
     cdef tbx_t * index
 
     # flag indicating whether file is remote
-    cdef int isremote
+    cdef int is_remote
 
     cdef _filename
     cdef _filename_index

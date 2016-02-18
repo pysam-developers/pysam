@@ -18,10 +18,11 @@ Release 0.8.5
 
      pysam.samtools.view(self.filename).splitlines(True)
 
-* get_tags() returns the tag type as a character, not an integer (#
+* get_tags() returns the tag type as a character, not an integer (#214)
 * TabixFile now raises ValueError on indices created by tabix <1.0 (#206)
 * improve OSX installation and develop mode
 * FastxIterator now handles empty sequences (#204)
+* TabixFile.isremote is not TabixFile.is_remote in line with AlignmentFile
 
 Release 0.8.4
 =============

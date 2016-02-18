@@ -51,6 +51,9 @@ class cy_build_ext(build_ext):
         if isinstance(ext, CyExtension) and ext._init_func:
             ext._init_func(ext)
 
+        if not self.inplace:
+            ext.library_dirs.append(os.path.join(self.build_lib, "pysam"))
+
         if sys.platform == 'darwin':
 
             relative_module_path = ext.name.replace(".", os.sep) + get_config_vars()["SO"]
@@ -74,5 +77,10 @@ class cy_build_ext(build_ext):
                                     '-Wl,-headerpad_max_install_names',
                                     '-Wl,-install_name,%s' % linker_path,
                                     '-Wl,-x']
+        else:
+            if not ext.extra_link_args:
+                ext.extra_link_args = []
 
+            ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
+                                    
         build_ext.build_extension(self, ext)

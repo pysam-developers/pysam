@@ -2170,7 +2170,14 @@ cdef class PileupRead:
                 return self._qpos
 
     property indel:
-        """indel length; 0 for no indel, positive for ins and negative            for del"""
+        """indel length for the position follwing the current pileup site.
+
+        This quantity peeks ahead to the next cigar operation in this
+        alignment. If the next operation is and insertion, indel will
+        be positve. If the next operation is a deletion, it will be
+        negation. 0 if the next operation is not an indel.
+
+        """
         def __get__(self):
             return self._indel
 
@@ -2185,10 +2192,12 @@ cdef class PileupRead:
             return self._is_del
 
     property is_head:
+        """1 iff the base on the padded read is the left-most base."""
         def __get__(self):
             return self._is_head
 
     property is_tail:
+        """1 iff the base on the padded read is the right-most base."""
         def __get__(self):
             return self._is_tail
 
