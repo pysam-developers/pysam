@@ -2109,7 +2109,8 @@ cdef class PileupColumn:
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append(makePileupRead(&(self.plp[0][x]), self._alignment_file))
+                pileups.append(makePileupRead(&(self.plp[0][x]),
+                                              self._alignment_file))
             return pileups
 
     ########################################################

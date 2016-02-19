@@ -1,8 +1,11 @@
 import os
 import pysam
 import unittest
-from TestUtils import checkFieldEqual
+import collections
 import copy
+
+from TestUtils import checkFieldEqual
+
 
 SAMTOOLS = "samtools"
 WORKDIR = "pysam_test_work"
@@ -342,6 +345,26 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.query_alignment_length, 20)
         a.cigarstring = "1S20M1S"
         self.assertEqual(a.query_alignment_length, 20)
+
+
+class TestAlignedPairs(unittest.TestCase):
+    filename = os.path.join(DATADIR, "example_aligned_pairs.bam")
+
+    def testReferenceBases(self):
+        """reference bases should always be the same nucleotide
+        """
+        reference_bases = collections.defaultdict(list)        
+        with pysam.AlignmentFile(self.filename) as inf:
+            for c in inf.pileup():
+                for r in c.pileups:
+                    for read, ref, base in r.alignment.get_aligned_pairs(
+                            with_seq=True):
+                        if ref is None:
+                            continue
+                        reference_bases[ref].append(base.upper())
+
+        for x, y in reference_bases.items():
+            self.assertEqual(len(set(y)), 1)
 
 
 class TestTags(ReadTest):
