@@ -133,9 +133,8 @@ cdef class FastaFile:
             self.close()
 
         self._filename = encode_filename(filename)
-
-        self.is_remote = hisremote(filename)
         cdef char *cfilename = self._filename
+        self.is_remote = hisremote(cfilename)
 
         # open file for reading
         if (filename != b"-"

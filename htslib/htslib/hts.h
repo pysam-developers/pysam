@@ -97,10 +97,14 @@ enum htsCompression {
     compression_maximum = 32767
 };
 
+typedef struct htsVersion {
+  short major, minor;
+} htsVersion;
+
 typedef struct htsFormat {
     enum htsFormatCategory category;
     enum htsExactFormat format;
-    struct { short major, minor; } version;
+    struct htsVersion version;
     enum htsCompression compression;
     short compression_level;  // currently unused
     void *specific;  // format specific options; see struct hts_opt.

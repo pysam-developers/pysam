@@ -522,8 +522,10 @@ cdef class AlignmentFile:
                 with nogil:
                     self.htsfile = hts_open(cfilename, cmode)
 
-            self.is_bam = self.htsfile.is_bin
-            self.is_cram = self.htsfile.is_cram
+            # htsfile.format does not get set until writing, so use
+            # the format specifier explicitely given by the user.
+            self.is_bam = "b" in mode
+            self.is_cram = "c" in mode
 
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
@@ -561,8 +563,8 @@ cdef class AlignmentFile:
                     "could not open file (mode='%s') - "
                     "is it SAM/BAM format?" % mode)
 
-            self.is_bam = self.htsfile.is_bin
-            self.is_cram = self.htsfile.is_cram
+            self.is_bam = self.htsfile.format.format == bam
+            self.is_cram = self.htsfile.format.format == cram
 
             # bam files require a valid header
             if self.is_bam or self.is_cram:

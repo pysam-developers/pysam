@@ -11,6 +11,7 @@ long hts_utell(htsFile *fp);
 int hts_set_verbosity(int verbosity);
 int hts_get_verbosity();
 
+
 KHASH_MAP_INIT_STR(vdict, bcf_idinfo_t)
 typedef khash_t(vdict) vdict_t;
 
