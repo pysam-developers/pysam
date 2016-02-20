@@ -1,11 +1,11 @@
 .. _Usage: 
 
-====================================
-Working with BAM/SAM-formatted files
-====================================
+=========================================
+Working with BAM/CRAM/SAM-formatted files
+=========================================
 
-Opening a samfile
-=================
+Opening a file
+==============
 
 To begin with, import the pysam module and open a
 :class:`pysam.AlignmentFile`::
@@ -19,6 +19,11 @@ To open a :term:`SAM` file, type::
 
    import pysam
    samfile = pysam.AlignmentFile("ex1.sam", "r")
+
+:term:`CRAM` files are identified by a ``c`` qualifier::
+
+   import pysam
+   samfile = pysam.AlignmentFile("ex1.cram", "rc")
 
 Fetching reads mapped to a :term:`region`
 =========================================
@@ -38,30 +43,6 @@ sequence.  Note that it will also return reads that are only partially
 overlapping with the :term:`region`. Thus the reads returned might
 span a region that is larger than the one queried.
 
-..
-   The
-   first method follows the :term:`csamtools` API and  works 
-   via a callback function. The callback will be executed for each 
-   alignment in a :term:`region`::
-
-      def my_fetch_callback(alignment):
-	  print str(alignment)
-
-      samfile.fetch('seq1', 10, 20, callback = my_fetch_callback)
-
-   Using a function object, work can be done on the alignments. The
-   code below simply counts aligned reads::
-
-      class Counter:
-	  def __init__(self):
-	      self.counts = 0
-	  def __call__(self, alignment):
-	      self.counts += 1
-
-      c = Counter()
-      samfile.fetch( 'seq1', 10, 20, callback = c )
-      print "counts=", c.counts
-
 Using the pileup-engine
 =======================
 
@@ -71,14 +52,6 @@ particular position. In the typical view of reads stacking vertically
 on top of the reference sequence similar to a multiple alignment,
 :term:`fetching` iterates over the rows of this implied multiple
 alignment while a :term:`pileup` iterates over the :term:`columns`.
-
-..
-   Again, there are two principal methods to iterate.
-   The first works via a callback function::
-
-      def my_pileup_callback( pileups ):
-	  print str(pileups)
-      samfile.pileup( 'seq1', 10, 20, callback = my_pileup_callback )
 
 Calling :meth:`~pysam.AlignmentFile.pileup` will return an iterator
 over each :term:`column` (reference base) of a specified
@@ -92,11 +65,11 @@ some additional information::
       print (str(x))
  
 
-Creating SAM/BAM files from scratch
-===================================
+Creating BAM/CRAM/SAM files from scratch
+========================================
 
-The following example shows how a new BAM file is constructed from
-scratch.  The important part here is that the
+The following example shows how a new :term:`BAM` file is constructed
+from scratch.  The important part here is that the
 :class:`pysam.AlignmentFile` class needs to receive the sequence
 identifiers. These can be given either as a dictionary in a header
 structure, as lists of names and sizes, or from a template file.
@@ -106,23 +79,22 @@ Here, we use a header dictionary::
                'SQ': [{'LN': 1575, 'SN': 'chr1'}, 
                       {'LN': 1584, 'SN': 'chr2'}] }
 
-   outfile = pysam.AlignmentFile(tmpfilename, "wh", header=header)
-   a = pysam.AlignedSegment()
-   a.query_name = "read_28833_29006_6945"
-   a.query_sequence="AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
-   a.flag = 99
-   a.reference_id = 0
-   a.reference_start = 32
-   a.mapping_quality = 20
-   a.cigar = ((0,10), (2,1), (0,25))
-   a.next_reference_id = 0
-   a.next_reference_start=199
-   a.template_length=167
-   a.query_qualities = pysam.qualitystring_to_array("<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
-   a.tags = (("NM", 1),
-	     ("RG", "L1"))
-   outfile.write(a)
-   outfile.close()
+   with pysam.AlignmentFile(tmpfilename, "wb", header=header) as outf:
+       a = pysam.AlignedSegment()
+       a.query_name = "read_28833_29006_6945"
+       a.query_sequence="AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
+       a.flag = 99
+       a.reference_id = 0
+       a.reference_start = 32
+       a.mapping_quality = 20
+       a.cigar = ((0,10), (2,1), (0,25))
+       a.next_reference_id = 0
+       a.next_reference_start=199
+       a.template_length=167
+       a.query_qualities = pysam.qualitystring_to_array("<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<")
+       a.tags = (("NM", 1),
+		 ("RG", "L1"))
+       outf.write(a)
 
 Using streams
 =============
@@ -145,7 +117,7 @@ formatted file on stdout::
    for s in infile:
        outfile.write(s)
 
-Note, only the file open mode needs to changed from ``r`` to ``rb``.
+Note that the file open mode needs to changed from ``r`` to ``rb``.
 
 =====================================
 Using samtools commands within python
@@ -188,8 +160,8 @@ available using the :meth:`getMessages` method::
 
    pysam.sort.getMessage()
 
-Note that only the output from the last invocation of a command
-is stored.
+Note that only the output from the last invocation of a command is
+stored.
 
 In order for pysam to make the output of samtools commands accessible
 the stdout stream needs to be redirected. This is the default

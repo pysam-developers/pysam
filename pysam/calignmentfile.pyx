@@ -11,11 +11,11 @@
 # class IndexedReads    index a SAM/BAM/CRAM file by query name while keeping
 #                       the original sort order intact
 # 
-# Additionally this module defines numerous additional classes that are part
-# of the internal API. These are:
+# Additionally this module defines numerous additional classes that
+# are part of the internal API. These are:
 # 
-# Various iterator classes to iterate over alignments in sequential (IteratorRow)
-# or in a stacked fashion (IteratorColumn):
+# Various iterator classes to iterate over alignments in sequential
+# (IteratorRow) or in a stacked fashion (IteratorColumn):
 # 
 # class IteratorRow
 # class IteratorRowRegion
@@ -210,8 +210,7 @@ cdef bam_hdr_t * build_header(new_header):
 
 
 cdef class AlignmentFile:
-    """
-    AlignmentFile(filepath_or_object, mode=None, template=None,
+    """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
     filename=None)
@@ -255,15 +254,16 @@ cdef class AlignmentFile:
     ----------
     mode : string
         `mode` should be ``r`` for reading or ``w`` for writing. The
-        default is text mode (:term:`SAM`). For binary (:term:`BAM`) I/O
-        you should append ``b`` for compressed or ``u`` for uncompressed
-        :term:`BAM` output.  Use ``h`` to output header information in
-        text (:term:`TAM`) mode.
+        default is text mode (:term:`SAM`). For binary (:term:`BAM`)
+        I/O you should append ``b`` for compressed or ``u`` for
+        uncompressed :term:`BAM` output.  Use ``h`` to output header
+        information in text (:term:`TAM`) mode. Use ``c`` for
+        :term:`CRAM` formatted files.
 
-        If ``b`` is present, it must immediately follow ``r`` or ``w``.
-        Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and
-        ``wb0``. For instance, to open a :term:`BAM` formatted file for
-        reading, type::
+        If ``b`` is present, it must immediately follow ``r`` or
+        ``w``.  Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``,
+        ``wbu``, ``wb0``, ``rc`` and ``wc``. For instance, to open a
+        :term:`BAM` formatted file for reading, type::
 
            f = pysam.AlignmentFile('ex1.bam','rb')
 
@@ -278,11 +278,10 @@ cdef class AlignmentFile:
 
     header :  dict
         when writing, build header from a multi-level dictionary. The
-        first level are the four types ('HD', 'SQ', ...). The
-        second level are a list of lines, with each line being a
-        list of tag-value pairs. The header is constructed first
-        from all the defined fields, followed by user tags in
-        alphabetical order.
+        first level are the four types ('HD', 'SQ', ...). The second
+        level are a list of lines, with each line being a list of
+        tag-value pairs. The header is constructed first from all the
+        defined fields, followed by user tags in alphabetical order.
 
     text : string
         when writing, use the string provided as the header
@@ -291,24 +290,26 @@ cdef class AlignmentFile:
         see referece_lengths
 
     reference_lengths : list
-        when writing, build header from list of chromosome names and lengths.
-        By default, 'SQ' and 'LN' tags will be added to the header
-        text. This option can be changed by unsetting the flag
+        when writing, build header from list of chromosome names and
+        lengths.  By default, 'SQ' and 'LN' tags will be added to the
+        header text. This option can be changed by unsetting the flag
         `add_sq_text`.
 
     add_sq_text : bool
-        do not add 'SQ' and 'LN' tags to header. This option permits construction
-        :term:`SAM` formatted files without a header.
+        do not add 'SQ' and 'LN' tags to header. This option permits
+        construction :term:`SAM` formatted files without a header.
 
     check_header : bool
         when reading, check if header is present (default=True)
 
     check_sq : bool
-        when reading, check if SQ entries are present in header (default=True) 
+        when reading, check if SQ entries are present in header
+        (default=True)
 
     filename : string
         Alternative to filepath_or_object. Filename of the file
         to be opened.
+
     """
 
     def __cinit__(self, *args, **kwargs):
