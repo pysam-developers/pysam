@@ -2115,11 +2115,11 @@ cdef class IteratorColumn:
     cdef int cnext(self):
         '''perform next iteration.
         '''
-        with nogil:
-            self.plp = bam_plp_auto(self.pileup_iter,
-                                    &self.tid,
-                                    &self.pos,
-                                    &self.n_plp)
+        # do not release gil here because of call-backs
+        self.plp = bam_plp_auto(self.pileup_iter,
+                                &self.tid,
+                                &self.pos,
+                                &self.n_plp)
 
     cdef char * getSequence(self):
         '''return current reference sequence underlying the iterator.

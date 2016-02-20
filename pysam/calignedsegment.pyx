@@ -2170,6 +2170,16 @@ cdef class PileupRead:
             else:
                 return self._qpos
 
+    property query_position_or_next:
+        """position of the read base at the pileup site, 0-based.
+
+        If the current position is a deletion, returns the next
+        aligned base.
+
+        """
+        def __get__(self):
+            return self._qpos
+
     property indel:
         """indel length for the position follwing the current pileup site.
 

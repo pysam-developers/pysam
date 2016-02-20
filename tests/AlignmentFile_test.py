@@ -2178,6 +2178,26 @@ class TestCountCoverage(unittest.TestCase):
         self.assertEqual(fast_counts[3], manual_counts[3])
 
 
+class TestPileupQueryPosition(unittest.TestCase):
+    
+    filename = "test_query_position.bam"
+
+    def testPileup(self):
+        last = {}
+        with pysam.AlignmentFile(os.path.join(DATADIR, self.filename)) as inf:
+            for col in inf.pileup():
+                for r in col.pileups:
+                    # print r.alignment.query_name
+                    # print r.query_position, r.query_position_or_next, r.is_del
+                    if r.is_del:
+                        self.assertEqual(r.query_position, None)
+                        self.assertEqual(r.query_position_or_next,
+                                         last[r.alignment.query_name] + 1)
+                    else:
+                        self.assertNotEqual(r.query_position, None)
+                        last[r.alignment.query_name] = r.query_position
+
+
 class TestLogging(unittest.TestCase):
 
     '''test around bug issue 42,
