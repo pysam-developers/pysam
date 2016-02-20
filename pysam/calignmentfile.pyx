@@ -2011,11 +2011,12 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
         if d.seq != NULL:
             free(d.seq)
         d.tid = b.core.tid
-        d.seq = faidx_fetch_seq(
-            d.fastafile,
-            d.header.target_name[d.tid],
-            0, MAX_POS,
-            &d.seq_len)
+        with nogil:
+            d.seq = faidx_fetch_seq(
+                d.fastafile,
+                d.header.target_name[d.tid],
+                0, MAX_POS,
+                &d.seq_len)
 
         if d.seq == NULL:
             raise ValueError(
@@ -2114,10 +2115,11 @@ cdef class IteratorColumn:
     cdef int cnext(self):
         '''perform next iteration.
         '''
-        self.plp = bam_plp_auto(self.pileup_iter,
-                                &self.tid,
-                                &self.pos,
-                                &self.n_plp )
+        with nogil:
+            self.plp = bam_plp_auto(self.pileup_iter,
+                                    &self.tid,
+                                    &self.pos,
+                                    &self.n_plp)
 
     cdef char * getSequence(self):
         '''return current reference sequence underlying the iterator.
@@ -2126,13 +2128,15 @@ cdef class IteratorColumn:
 
     property seq_len:
         '''current sequence length.'''
-        def __get__(self): return self.iterdata.seq_len
+        def __get__(self):
+            return self.iterdata.seq_len
 
     def addReference(self, Fastafile fastafile):
        '''
        add reference sequences in `fastafile` to iterator.'''
        self.fastafile = fastafile
-       if self.iterdata.seq != NULL: free(self.iterdata.seq)
+       if self.iterdata.seq != NULL:
+           free(self.iterdata.seq)
        self.iterdata.tid = -1
        self.iterdata.fastafile = self.fastafile.fastafile
 
@@ -2174,23 +2178,27 @@ cdef class IteratorColumn:
         self._free_pileup_iter()
 
         if self.stepper is None or self.stepper == "all":
-            self.pileup_iter = bam_plp_init(
-                <bam_plp_auto_f>&__advance_all,
-                &self.iterdata)
+            with nogil:
+                self.pileup_iter = bam_plp_init(
+                    <bam_plp_auto_f>&__advance_all,
+                    &self.iterdata)
         elif self.stepper == "nofilter":
-            self.pileup_iter = bam_plp_init(
-                <bam_plp_auto_f>&__advance_nofilter,
-                &self.iterdata)
+            with nogil:
+                self.pileup_iter = bam_plp_init(
+                    <bam_plp_auto_f>&__advance_nofilter,
+                    &self.iterdata)
         elif self.stepper == "samtools":
-            self.pileup_iter = bam_plp_init(
-                <bam_plp_auto_f>&__advance_snpcalls,
-                &self.iterdata)
+            with nogil:
+                self.pileup_iter = bam_plp_init(
+                    <bam_plp_auto_f>&__advance_snpcalls,
+                    &self.iterdata)
         else:
             raise ValueError(
                 "unknown stepper option `%s` in IteratorColumn" % self.stepper)
 
         if self.max_depth:
-            bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
+            with nogil:
+                bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
 
         # bam_plp_set_mask( self.pileup_iter, self.mask )
 
@@ -2205,12 +2213,14 @@ cdef class IteratorColumn:
 
         # invalidate sequence if different tid
         if self.tid != tid:
-            if self.iterdata.seq != NULL: free( self.iterdata.seq )
+            if self.iterdata.seq != NULL:
+                free(self.iterdata.seq)
             self.iterdata.seq = NULL
             self.iterdata.tid = -1
 
         # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
-        bam_plp_reset(self.pileup_iter)
+        with nogil:
+            bam_plp_reset(self.pileup_iter)
 
     cdef _free_pileup_iter(self):
         '''free the memory alloc'd by bam_plp_init.
@@ -2219,9 +2229,10 @@ cdef class IteratorColumn:
         another pileup_iter, or else memory will be lost.
         '''
         if self.pileup_iter != <bam_plp_t>NULL:
-            bam_plp_reset(self.pileup_iter)
-            bam_plp_destroy(self.pileup_iter)
-            self.pileup_iter = <bam_plp_t>NULL
+            with nogil:
+                bam_plp_reset(self.pileup_iter)
+                bam_plp_destroy(self.pileup_iter)
+                self.pileup_iter = <bam_plp_t>NULL
 
     def __dealloc__(self):
         # reset in order to avoid memory leak messages for iterators
@@ -2245,7 +2256,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
                   **kwargs ):
 
         # initialize iterator
-        self.setupIteratorData( tid, start, end, 1 )
+        self.setupIteratorData(tid, start, end, 1)
         self.start = start
         self.end = end
         self.truncate = truncate
@@ -2297,10 +2308,10 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
             # return result, if within same reference
             if self.plp != NULL:
                 return makePileupColumn(&self.plp,
-                                       self.tid,
-                                       self.pos,
-                                       self.n_plp,
-                                       self.samfile)
+                                        self.tid,
+                                        self.pos,
+                                        self.n_plp,
+                                        self.samfile)
                 
             # otherwise, proceed to next reference or stop
             self.tid += 1
@@ -2308,8 +2319,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                 self.setupIteratorData(self.tid, 0, MAX_POS, 0)
             else:
                 raise StopIteration
-
-
 
 
 cdef class SNPCall:
