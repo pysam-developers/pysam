@@ -295,23 +295,26 @@ Topic :: Scientific/Engineering :: Bioinformatics
 """
 
 #######################################################
-# Windows compatibility - currently broken
+
+#######################################################
+# Windows compatibility - untested
 if platform.system() == 'Windows':
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
+    extra_compile_args = []
 else:
     include_os = []
     os_c_files = []
+    # for python 3.4, see for example
+    # http://stackoverflow.com/questions/25587039/
+    # error-compiling-rpy2-on-python3-4-due-to-werror-
+    # declaration-after-statement
+    extra_compile_args = [
+        "-Wno-unused",
+        "-Wno-strict-prototypes",
+        "-Wno-sign-compare",
+        "-Wno-error=declaration-after-statement"]
 
-#######################################################
-# for python 3.4, see for example
-# http://stackoverflow.com/questions/25587039/
-# error-compiling-rpy2-on-python3-4-due-to-werror-
-# declaration-after-statement
-extra_compile_args = ["-Wno-error=declaration-after-statement",
-                      "-Wno-unused",
-                      "-Wno-strict-prototypes",
-                      "-Wno-sign-compare"]
 define_macros = []
 
 chtslib = Extension(
