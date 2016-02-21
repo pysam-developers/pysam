@@ -4,7 +4,7 @@ pushd .
 
 WORKDIR=`pwd`
 
-#Install conda
+#Install miniconda python
 if [ $TRAVIS_OS_NAME == "osx" ]; then
 	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 	bash Miniconda3-latest-MacOSX-x86_64.sh -b
@@ -13,10 +13,9 @@ else
 	bash Miniconda3-latest-Linux-x86_64.sh -b
 fi
 
-export PATH=~/miniconda3/bin:$PATH
-conda create -q -y --name testenv python=$CONDA_PY cython numpy
+# Create and export a new conda environment with the target python version
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy
 source activate testenv
-
 
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
