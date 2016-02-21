@@ -95,7 +95,7 @@ cdef class FastaFile:
 
     Raises
     ------
-    
+
     ValueError
         if index file is missing
 
@@ -157,7 +157,7 @@ cdef class FastaFile:
         if not os.path.exists(filepath_index):
             raise ValueError("could not locate index file {}".format(
                 filepath_index))
-            
+
         with open(filepath_index) as inf:
             data = [x.split("\t") for x in inf]
             self._references = tuple(x[0] for x in data)
@@ -182,8 +182,8 @@ cdef class FastaFile:
         return False
 
     property closed:
-        """"bool indicating the current state of the file object. 
-        This is a read-only attribute; the close() method changes the value. 
+        """"bool indicating the current state of the file object.
+        This is a read-only attribute; the close() method changes the value.
         """
         def __get__(self):
             return not self.is_open()
@@ -223,14 +223,14 @@ cdef class FastaFile:
 
         Alternatively, a samtools :term:`region` string can be
         supplied.
-        
+
         If any of the coordinates are missing they will be replaced by the
         minimum (`start`) or maximum (`end`) coordinate.
 
         Note that region strings are 1-based, while `start` and `end` denote
         an interval in python coordinates.
         The region is specified by :term:`reference`, `start` and `end`.
-        
+
         Returns
         -------
 
@@ -241,7 +241,7 @@ cdef class FastaFile:
 
         IndexError
             if the coordinates are out of range
-            
+
         ValueError
             if the region is invalid
 
@@ -311,13 +311,16 @@ cdef class FastaFile:
 
 
 cdef class FastqProxy:
+    """A single entry in a fastq file."""
     def __init__(self): pass
 
     property name:
+        """The name of each entry in the fastq file."""
         def __get__(self):
             return charptr_to_str(self._delegate.name.s)
 
     property sequence:
+        """The sequence of each entry in the fastq file."""
         def __get__(self):
             return charptr_to_str(self._delegate.seq.s)
 
@@ -329,6 +332,7 @@ cdef class FastqProxy:
                 return None
 
     property quality:
+        """The quality score of each entry in the fastq file, represented as characters"""
         def __get__(self):
             if self._delegate.qual.l:
                 return charptr_to_str(self._delegate.qual.s)
@@ -351,7 +355,7 @@ cdef class FastqProxy:
         return self.tostring()
 
     cpdef array.array get_quality_array(self, int offset=33):
-        '''return quality values as array after subtracting offset.'''
+        '''return quality values as numpy integer array after subtracting offset.'''
         if self.quality is None:
             return None
         return qualitystring_to_array(force_bytes(self.quality),
@@ -409,18 +413,32 @@ cdef class FastxFile:
     filename : string
         Filename of fasta/fastq file to be opened.
 
-    persist : bool 
+    persist : bool
 
         If True (default) make a copy of the entry in the file during
         iteration. If set to False, no copy will be made. This will
         permit faster iteration, but an entry will not persist when
         the iteration continues.
-        
+
+    Notes
+    -----
+    Prior to version 0.8.2, this was called FastqFile.
+
     Raises
     ------
-    
+
     IOError
         if file could not be opened
+
+
+    Examples
+    --------
+    >>> with pysam.FastxFile(filename) as fh:
+    ...    for entry in fh:
+    ...        print(entry.name)
+    ...        print(entry.sequence)
+    ...        print(entry.comment)
+    ...        print(entry.quality)
 
     """
     def __cinit__(self, *args, **kwargs):
@@ -467,7 +485,7 @@ cdef class FastxFile:
             if self.entry:
                 kseq_destroy(self.entry)
                 self.entry = NULL
-            
+
     def __dealloc__(self):
         self.close()
 
@@ -480,8 +498,8 @@ cdef class FastxFile:
         return False
 
     property closed:
-        """"bool indicating the current state of the file object. 
-        This is a read-only attribute; the close() method changes the value. 
+        """"bool indicating the current state of the file object.
+        This is a read-only attribute; the close() method changes the value.
         """
         def __get__(self):
             return not self.is_open()
@@ -521,6 +539,7 @@ cdef class FastxFile:
 
 # Compatibility Layer for pysam 0.8.1
 cdef class FastqFile(FastxFile):
+    """FastqFile is deprecated: use FastxFile instead!"""
     pass
 
 # Compatibility Layer for pysam < 0.8
@@ -531,5 +550,3 @@ __all__ = ["FastaFile",
            "FastqFile",
            "FastxFile",
            "Fastafile"]
-
-
