@@ -7,16 +7,13 @@ WORKDIR=`pwd`
 #Install conda
 if [ $TRAVIS_OS_NAME == "osx" ]; then
 	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
-	bash Miniconda3-latest-MacOSX-x86_64.sh -b -p /anaconda
+	bash Miniconda3-latest-MacOSX-x86_64.sh -b
 else:
 	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-	bash Miniconda3-latest-Linux-x86_64.sh -b -p /anaconda
+	bash Miniconda3-latest-Linux-x86_64.sh -b
 fi
 
-
-mkdir -p /anaconda/conda-bld/osx-64 # workaround for bug in current conda
-mkdir -p /anaconda/conda-bld/linux-64 # workaround for bug in current conda
-export PATH=/anaconda/bin:$PATH
+export PATH=~/miniconda3/bin:$PATH
 conda create --name testenv python=$CONDA_PY cython numpy
 source activate testenv
 
