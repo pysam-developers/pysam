@@ -74,19 +74,46 @@ class TestOpening(unittest.TestCase):
 
         os.unlink("tmp_testEmptyFile.vcf")
 
-    def testEmptyFileVCFGZ(self):
+    def testEmptyFileVCFGZWithIndex(self):
         with open("tmp_testEmptyFile.vcf", "w"):
             pass
 
-        pysam.tabix_compress("tmp_testEmptyFile.vcf",
-                             "tmp_testEmptyFile.vcf.gz")
+        pysam.tabix_index("tmp_testEmptyFile.vcf",
+                          preset="vcf",
+                          force=True)
 
         self.assertRaises(ValueError, pysam.VariantFile,
                           "tmp_testEmptyFile.vcf.gz")
 
-        os.unlink("tmp_testEmptyFile.vcf")
         os.unlink("tmp_testEmptyFile.vcf.gz")
+        os.unlink("tmp_testEmptyFile.vcf.gz.tbi")
 
+    def testEmptyFileVCFGZWithoutIndex(self):
+        with open("tmp_testEmptyFileWithoutIndex.vcf", "w"):
+            pass
+
+        pysam.tabix_compress("tmp_testEmptyFileWithoutIndex.vcf",
+                             "tmp_testEmptyFileWithoutIndex.vcf.gz",
+                             force=True)
+
+        self.assertRaises(ValueError, pysam.VariantFile,
+                          "tmp_testEmptyFileWithoutIndex.vcf.gz")
+
+        os.unlink("tmp_testEmptyFileWithoutIndex.vcf")
+        os.unlink("tmp_testEmptyFileWithoutIndex.vcf.gz")
+
+    def testEmptyFileVCFOnlyHeader(self):
+        with pysam.VariantFile(os.path.join(
+                DATADIR,
+                "example_vcf42_only_header.vcf")) as inf:
+            self.assertEqual(len(list(inf.fetch())), 0)
+
+    def testEmptyFileVCFGZOnlyHeader(self):
+        with pysam.VariantFile(os.path.join(
+                DATADIR,
+                "example_vcf42_only_header.vcf")) as inf:
+            self.assertEqual(len(list(inf.fetch())), 0)
+        
 
 class TestHeader(unittest.TestCase):
 
