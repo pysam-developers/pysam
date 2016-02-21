@@ -5,7 +5,8 @@ pushd .
 WORKDIR=`pwd`
 
 if [ $TRAVIS_OS_NAME == "osx" ]; then
-
+	# install Rust
+  curl -sSf http://static.rust-lang.org/rustup.sh | sudo sh -s -- --channel=nightly -y --disable-sudo
 	# install conda
 	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 	sudo bash Miniconda3-latest-MacOSX-x86_64.sh -b -p /anaconda
