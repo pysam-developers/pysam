@@ -332,7 +332,7 @@ cdef class FastqProxy:
                 return None
 
     property quality:
-        """The quality score of each entry in the fastq file, represented as characters"""
+        """The quality score of each entry in the fastq file, represented as a string."""
         def __get__(self):
             if self._delegate.qual.l:
                 return charptr_to_str(self._delegate.qual.s)
