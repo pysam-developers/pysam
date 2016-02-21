@@ -5,8 +5,17 @@ pushd .
 WORKDIR=`pwd`
 
 if [ $TRAVIS_OS_NAME == "osx" ]; then
-	brew update
-	brew install python --universal --framework
+
+	# install conda
+	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+	sudo bash Miniconda3-latest-MacOSX-x86_64.sh -b -p /anaconda
+	sudo chown -R $USER /anaconda
+	mkdir -p /anaconda/conda-bld/osx-64 # workaround for bug in current conda
+	mkdir -p /anaconda/conda-bld/linux-64 # workaround for bug in current conda
+	export PATH=/anaconda/bin:$PATH
+	conda create --name testenv python=$TRAVIS_PYTHON_VERSION cython numpy
+	source activate testenv
+
 fi
 
 # create a new folder to store external tools
@@ -24,7 +33,7 @@ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$WORKDIR/external-tools/htslib-1.3
 # install samtools, compile against htslib
 cd $WORKDIR/external-tools
 curl -L http://downloads.sourceforge.net/project/samtools/samtools/1.3/samtools-1.3.tar.bz2 > samtools-1.3.tar.bz2
-tar xjvf samtools-1.3.tar.bz2 
+tar xjvf samtools-1.3.tar.bz2
 cd samtools-1.3
 ./configure --with-htslib=../htslib-1.3
 make
@@ -67,14 +76,14 @@ cd tests
 # create auxilliary data
 echo
 echo 'building test data'
-echo 
+echo
 make -C pysam_data
 make -C cbcf_data
 
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch
 # -v: verbose output
-nosetests -s -v 
+nosetests -s -v
 
 # build source tar-ball and test installation from tar-ball
 cd ..
