@@ -12,7 +12,7 @@ if [ $TRAVIS_OS_NAME == "osx" ]; then
 	mkdir -p /anaconda/conda-bld/osx-64 # workaround for bug in current conda
 	mkdir -p /anaconda/conda-bld/linux-64 # workaround for bug in current conda
 	export PATH=/anaconda/bin:$PATH
-	conda create --name testenv python=$TRAVIS_PYTHON_VERSION cython numpy
+	conda create --name testenv cython numpy
 	source activate testenv
 
 fi

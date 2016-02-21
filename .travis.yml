@@ -2,7 +2,7 @@ os:
   - linx
   - osx
 
-language: python
+language: c
 sudo: required
 
 python:
