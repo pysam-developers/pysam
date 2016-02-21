@@ -409,18 +409,21 @@ class TestParser(unittest.TestCase):
     def testRead(self):
 
         for x, r in enumerate(self.tabix.fetch(parser=pysam.asTuple())):
-            self.assertEqual(self.compare[x], list(r))
-            self.assertEqual(len(self.compare[x]), len(r))
+            c = self.compare[x]
+            self.assertEqual(c, list(r))
+            self.assertEqual(len(c), len(r))
 
             # test indexing
-            for c in range(0, len(r)):
-                self.assertEqual(self.compare[x][c], r[c])
+            for y in range(0, len(r)):
+                self.assertEqual(c[y], r[y])
 
             # test slicing access
-            for c in range(0, len(r) - 1):
-                for cc in range(c + 1, len(r)):
-                    self.assertEqual(self.compare[x][c:cc],
-                                     r[c:cc])
+            for y in range(0, len(r) - 1):
+                for cc in range(y + 1, len(r)):
+                    self.assertEqual(c[y:cc],
+                                     r[y:cc])
+            self.assertEqual("\t".join(map(str, c)),
+                             str(r))
 
     def testWrite(self):
 
@@ -601,6 +604,8 @@ class TestGTF(TestParser):
             if r.feature != 'gene':
                 self.assertTrue(r.transcript_id.startswith("ENST"))
             self.assertEqual(c[0], r.contig)
+            self.assertEqual("\t".join(map(str, c)),
+                             str(r))
 
 
 class TestIterationMalformattedGTFFiles(unittest.TestCase):
@@ -646,6 +651,8 @@ class TestBed(unittest.TestCase):
             self.assertEqual(int(c[1]), r.start)
             self.assertEqual(int(c[2]), r.end)
             self.assertEqual(list(c), list(r))
+            self.assertEqual("\t".join(map(str, c)),
+                             str(r))
 
     def testWrite(self):
 
@@ -666,6 +673,7 @@ class TestBed(unittest.TestCase):
             self.assertEqual(int(c[2]) + 1, r.end)
             self.assertEqual(str(int(c[2]) + 1), r[2])
 
+            
 
 class TestVCF(unittest.TestCase):
 
@@ -751,6 +759,8 @@ class TestVCFFromTabix(TestVCF):
 
             for y in range(len(c) - ncolumns):
                 self.assertEqual(c[ncolumns + y], r[y])
+            self.assertEqual("\t".join(map(str, c)),
+                             str(r))
 
     def testWrite(self):
 

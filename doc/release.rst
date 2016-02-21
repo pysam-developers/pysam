@@ -32,7 +32,6 @@ Release 0.8.5
      optional libraries such as libcurl. Configure behaviour can be
      controlled by setting the environmet variable HTSLIB_CONFIGURE_OPTIONS.
 
-
 Release 0.8.4
 =============
 
