@@ -3,6 +3,7 @@ os:
   - osx
 
 language: c
+sudo: required
 
 python:
   - "2.7"
