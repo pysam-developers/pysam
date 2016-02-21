@@ -14,7 +14,7 @@ else
 fi
 
 # Create and export a new conda environment with the target python version
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose
 source activate testenv
 
 # create a new folder to store external tools
