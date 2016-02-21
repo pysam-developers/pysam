@@ -100,7 +100,7 @@ tabix indexed tab-separated file formats with genomic data::
 
    import pysam
    tabixfile = pysam.TabixFile("example.gtf.gz")
-   
+
    for gtf in tabixfile.fetch("chr1", 1000, 2000):
        print (gtf.contig, gtf.start, gtf.end, gtf.gene_id)
 
@@ -197,8 +197,13 @@ Fasta files
 Fastq files
 -----------
 
-.. autoclass:: pysam.FastqFile
+.. autoclass:: pysam.FastxFile
    :members:
+
+
+.. autoclass:: pysam.cfaidx.FastqProxy
+   :members:
+
 
 VCF files
 ---------
@@ -208,4 +213,3 @@ VCF files
 
 .. autoclass:: pysam.VariantHeader
    :members:
-
