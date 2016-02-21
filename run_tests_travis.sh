@@ -14,7 +14,7 @@ else
 fi
 
 export PATH=~/miniconda3/bin:$PATH
-conda create --name testenv python=$CONDA_PY cython numpy
+conda create -q -y --name testenv python=$CONDA_PY cython numpy
 source activate testenv
 
 
