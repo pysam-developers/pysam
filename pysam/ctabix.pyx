@@ -530,7 +530,8 @@ cdef class TabixFile:
             cdef char ** sequences
             cdef int nsequences
             
-            sequences = tbx_seqnames(self.index, &nsequences) 
+            with nogil:
+                sequences = tbx_seqnames(self.index, &nsequences)
             cdef int x
             result = []
             for x from 0 <= x < nsequences:

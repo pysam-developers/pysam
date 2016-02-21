@@ -133,9 +133,8 @@ cdef class FastaFile:
             self.close()
 
         self._filename = encode_filename(filename)
-
-        self.is_remote = hisremote(filename)
         cdef char *cfilename = self._filename
+        self.is_remote = hisremote(cfilename)
 
         # open file for reading
         if (filename != b"-"
@@ -265,7 +264,8 @@ cdef class FastaFile:
             return ""
 
         ref = reference
-        length = faidx_seq_len(self.fastafile, ref)
+        with nogil:
+            length = faidx_seq_len(self.fastafile, ref)
         if length == -1:
             raise KeyError("sequence '%s' not present" % reference)
         if rstart >= length:

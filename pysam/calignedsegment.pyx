@@ -2109,7 +2109,8 @@ cdef class PileupColumn:
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append(makePileupRead(&(self.plp[0][x]), self._alignment_file))
+                pileups.append(makePileupRead(&(self.plp[0][x]),
+                                              self._alignment_file))
             return pileups
 
     ########################################################
@@ -2168,6 +2169,16 @@ cdef class PileupRead:
                 return None
             else:
                 return self._qpos
+
+    property query_position_or_next:
+        """position of the read base at the pileup site, 0-based.
+
+        If the current position is a deletion, returns the next
+        aligned base.
+
+        """
+        def __get__(self):
+            return self._qpos
 
     property indel:
         """indel length for the position follwing the current pileup site.

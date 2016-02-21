@@ -11,11 +11,11 @@
 # class IndexedReads    index a SAM/BAM/CRAM file by query name while keeping
 #                       the original sort order intact
 # 
-# Additionally this module defines numerous additional classes that are part
-# of the internal API. These are:
+# Additionally this module defines numerous additional classes that
+# are part of the internal API. These are:
 # 
-# Various iterator classes to iterate over alignments in sequential (IteratorRow)
-# or in a stacked fashion (IteratorColumn):
+# Various iterator classes to iterate over alignments in sequential
+# (IteratorRow) or in a stacked fashion (IteratorColumn):
 # 
 # class IteratorRow
 # class IteratorRowRegion
@@ -210,8 +210,7 @@ cdef bam_hdr_t * build_header(new_header):
 
 
 cdef class AlignmentFile:
-    """
-    AlignmentFile(filepath_or_object, mode=None, template=None,
+    """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
     filename=None)
@@ -255,15 +254,16 @@ cdef class AlignmentFile:
     ----------
     mode : string
         `mode` should be ``r`` for reading or ``w`` for writing. The
-        default is text mode (:term:`SAM`). For binary (:term:`BAM`) I/O
-        you should append ``b`` for compressed or ``u`` for uncompressed
-        :term:`BAM` output.  Use ``h`` to output header information in
-        text (:term:`TAM`) mode.
+        default is text mode (:term:`SAM`). For binary (:term:`BAM`)
+        I/O you should append ``b`` for compressed or ``u`` for
+        uncompressed :term:`BAM` output.  Use ``h`` to output header
+        information in text (:term:`TAM`) mode. Use ``c`` for
+        :term:`CRAM` formatted files.
 
-        If ``b`` is present, it must immediately follow ``r`` or ``w``.
-        Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and
-        ``wb0``. For instance, to open a :term:`BAM` formatted file for
-        reading, type::
+        If ``b`` is present, it must immediately follow ``r`` or
+        ``w``.  Valid modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``,
+        ``wbu``, ``wb0``, ``rc`` and ``wc``. For instance, to open a
+        :term:`BAM` formatted file for reading, type::
 
            f = pysam.AlignmentFile('ex1.bam','rb')
 
@@ -278,11 +278,10 @@ cdef class AlignmentFile:
 
     header :  dict
         when writing, build header from a multi-level dictionary. The
-        first level are the four types ('HD', 'SQ', ...). The
-        second level are a list of lines, with each line being a
-        list of tag-value pairs. The header is constructed first
-        from all the defined fields, followed by user tags in
-        alphabetical order.
+        first level are the four types ('HD', 'SQ', ...). The second
+        level are a list of lines, with each line being a list of
+        tag-value pairs. The header is constructed first from all the
+        defined fields, followed by user tags in alphabetical order.
 
     text : string
         when writing, use the string provided as the header
@@ -291,24 +290,26 @@ cdef class AlignmentFile:
         see referece_lengths
 
     reference_lengths : list
-        when writing, build header from list of chromosome names and lengths.
-        By default, 'SQ' and 'LN' tags will be added to the header
-        text. This option can be changed by unsetting the flag
+        when writing, build header from list of chromosome names and
+        lengths.  By default, 'SQ' and 'LN' tags will be added to the
+        header text. This option can be changed by unsetting the flag
         `add_sq_text`.
 
     add_sq_text : bool
-        do not add 'SQ' and 'LN' tags to header. This option permits construction
-        :term:`SAM` formatted files without a header.
+        do not add 'SQ' and 'LN' tags to header. This option permits
+        construction :term:`SAM` formatted files without a header.
 
     check_header : bool
         when reading, check if header is present (default=True)
 
     check_sq : bool
-        when reading, check if SQ entries are present in header (default=True) 
+        when reading, check if SQ entries are present in header
+        (default=True)
 
     filename : string
         Alternative to filepath_or_object. Filename of the file
         to be opened.
+
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -522,8 +523,10 @@ cdef class AlignmentFile:
                 with nogil:
                     self.htsfile = hts_open(cfilename, cmode)
 
-            self.is_bam = self.htsfile.is_bin
-            self.is_cram = self.htsfile.is_cram
+            # htsfile.format does not get set until writing, so use
+            # the format specifier explicitely given by the user.
+            self.is_bam = "b" in mode
+            self.is_cram = "c" in mode
 
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
@@ -561,8 +564,8 @@ cdef class AlignmentFile:
                     "could not open file (mode='%s') - "
                     "is it SAM/BAM format?" % mode)
 
-            self.is_bam = self.htsfile.is_bin
-            self.is_cram = self.htsfile.is_cram
+            self.is_bam = self.htsfile.format.format == bam
+            self.is_cram = self.htsfile.format.format == cram
 
             # bam files require a valid header
             if self.is_bam or self.is_cram:
@@ -848,8 +851,8 @@ cdef class AlignmentFile:
         If only `reference` is set, all reads aligned to `reference`
         will be fetched.
 
-        Note that a :term:`SAM` file does not allow random access. If
-        `region` or `reference` are given, an exception is raised.
+        A :term:`SAM` file does not allow random access. If `region`
+        or `reference` are given, an exception is raised.
 
         :class:`~pysam.FastaFile`
         :class:`~pysam.IteratorRow`
@@ -1118,15 +1121,15 @@ cdef class AlignmentFile:
               start=None,
               end=None,
               region=None,
-              until_eof=False):
-        '''
-        count the number of reads in :term:`region`
+              until_eof=False,
+              read_callback="nofilter"):
+        '''count the number of reads in :term:`region`
 
         The region is specified by :term:`reference`, `start` and
         `end`. Alternatively, a :term:`samtools` :term:`region` string
         can be supplied.
 
-        Note that a :term:`SAM` file does not allow random access and if 
+        A :term:`SAM` file does not allow random access and if
         `region` or `reference` are given, an exception is raised.
 
         Parameters
@@ -1140,10 +1143,30 @@ cdef class AlignmentFile:
 
         end : int
             end of the genomic region
+        
+        region : string
+            a region string in samtools format.
 
         until_eof : bool
             count until the end of the file, possibly including 
             unmapped reads as well.
+
+        read_callback: string or function
+
+            select a call-back to ignore reads when counting. It can
+            be either a string with the following values:
+
+            ``all``
+                skip reads in which any of the following
+                flags are set: BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL,
+                BAM_FDUP
+
+            ``nofilter``
+                uses every single read
+
+            Alternatively, `read_callback` can be a function
+            ``check_read(read)`` that should return True only for
+            those reads that shall be included in the counting.
 
         Raises
         ------
@@ -1158,11 +1181,28 @@ cdef class AlignmentFile:
         if not self.is_open():
             raise ValueError( "I/O operation on closed file" )
 
+        cdef int filter_method = 0
+        if read_callback == "all":
+            filter_method = 1
+        elif read_callback == "nofilter":
+            filter_method = 2
+
         for read in self.fetch(reference=reference,
                                start=start,
                                end=end,
                                region=region,
                                until_eof=until_eof):
+            # apply filter
+            if filter_method == 1:
+                # filter = "all"
+                if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
+                    continue
+            elif filter_method == 2:
+                # filter = "nofilter"
+                pass
+            else:
+                if not read_callback(read):
+                    continue
             counter += 1
 
         return counter
@@ -2008,11 +2048,12 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
         if d.seq != NULL:
             free(d.seq)
         d.tid = b.core.tid
-        d.seq = faidx_fetch_seq(
-            d.fastafile,
-            d.header.target_name[d.tid],
-            0, MAX_POS,
-            &d.seq_len)
+        with nogil:
+            d.seq = faidx_fetch_seq(
+                d.fastafile,
+                d.header.target_name[d.tid],
+                0, MAX_POS,
+                &d.seq_len)
 
         if d.seq == NULL:
             raise ValueError(
@@ -2111,10 +2152,11 @@ cdef class IteratorColumn:
     cdef int cnext(self):
         '''perform next iteration.
         '''
+        # do not release gil here because of call-backs
         self.plp = bam_plp_auto(self.pileup_iter,
                                 &self.tid,
                                 &self.pos,
-                                &self.n_plp )
+                                &self.n_plp)
 
     cdef char * getSequence(self):
         '''return current reference sequence underlying the iterator.
@@ -2123,13 +2165,15 @@ cdef class IteratorColumn:
 
     property seq_len:
         '''current sequence length.'''
-        def __get__(self): return self.iterdata.seq_len
+        def __get__(self):
+            return self.iterdata.seq_len
 
     def addReference(self, Fastafile fastafile):
        '''
        add reference sequences in `fastafile` to iterator.'''
        self.fastafile = fastafile
-       if self.iterdata.seq != NULL: free(self.iterdata.seq)
+       if self.iterdata.seq != NULL:
+           free(self.iterdata.seq)
        self.iterdata.tid = -1
        self.iterdata.fastafile = self.fastafile.fastafile
 
@@ -2171,23 +2215,27 @@ cdef class IteratorColumn:
         self._free_pileup_iter()
 
         if self.stepper is None or self.stepper == "all":
-            self.pileup_iter = bam_plp_init(
-                <bam_plp_auto_f>&__advance_all,
-                &self.iterdata)
+            with nogil:
+                self.pileup_iter = bam_plp_init(
+                    <bam_plp_auto_f>&__advance_all,
+                    &self.iterdata)
         elif self.stepper == "nofilter":
-            self.pileup_iter = bam_plp_init(
-                <bam_plp_auto_f>&__advance_nofilter,
-                &self.iterdata)
+            with nogil:
+                self.pileup_iter = bam_plp_init(
+                    <bam_plp_auto_f>&__advance_nofilter,
+                    &self.iterdata)
         elif self.stepper == "samtools":
-            self.pileup_iter = bam_plp_init(
-                <bam_plp_auto_f>&__advance_snpcalls,
-                &self.iterdata)
+            with nogil:
+                self.pileup_iter = bam_plp_init(
+                    <bam_plp_auto_f>&__advance_snpcalls,
+                    &self.iterdata)
         else:
             raise ValueError(
                 "unknown stepper option `%s` in IteratorColumn" % self.stepper)
 
         if self.max_depth:
-            bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
+            with nogil:
+                bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
 
         # bam_plp_set_mask( self.pileup_iter, self.mask )
 
@@ -2202,12 +2250,14 @@ cdef class IteratorColumn:
 
         # invalidate sequence if different tid
         if self.tid != tid:
-            if self.iterdata.seq != NULL: free( self.iterdata.seq )
+            if self.iterdata.seq != NULL:
+                free(self.iterdata.seq)
             self.iterdata.seq = NULL
             self.iterdata.tid = -1
 
         # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
-        bam_plp_reset(self.pileup_iter)
+        with nogil:
+            bam_plp_reset(self.pileup_iter)
 
     cdef _free_pileup_iter(self):
         '''free the memory alloc'd by bam_plp_init.
@@ -2216,9 +2266,10 @@ cdef class IteratorColumn:
         another pileup_iter, or else memory will be lost.
         '''
         if self.pileup_iter != <bam_plp_t>NULL:
-            bam_plp_reset(self.pileup_iter)
-            bam_plp_destroy(self.pileup_iter)
-            self.pileup_iter = <bam_plp_t>NULL
+            with nogil:
+                bam_plp_reset(self.pileup_iter)
+                bam_plp_destroy(self.pileup_iter)
+                self.pileup_iter = <bam_plp_t>NULL
 
     def __dealloc__(self):
         # reset in order to avoid memory leak messages for iterators
@@ -2242,7 +2293,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
                   **kwargs ):
 
         # initialize iterator
-        self.setupIteratorData( tid, start, end, 1 )
+        self.setupIteratorData(tid, start, end, 1)
         self.start = start
         self.end = end
         self.truncate = truncate
@@ -2294,10 +2345,10 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
             # return result, if within same reference
             if self.plp != NULL:
                 return makePileupColumn(&self.plp,
-                                       self.tid,
-                                       self.pos,
-                                       self.n_plp,
-                                       self.samfile)
+                                        self.tid,
+                                        self.pos,
+                                        self.n_plp,
+                                        self.samfile)
                 
             # otherwise, proceed to next reference or stop
             self.tid += 1
@@ -2305,8 +2356,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                 self.setupIteratorData(self.tid, 0, MAX_POS, 0)
             else:
                 raise StopIteration
-
-
 
 
 cdef class SNPCall:

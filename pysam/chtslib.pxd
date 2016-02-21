@@ -406,6 +406,8 @@ cdef extern from "htslib/hts.h" nogil:
         htsExactFormat    format
         htsVersion        version
         htsCompression    compression
+        short             compression_level
+        void              *specific  
 
     ctypedef struct htsFile:
         uint8_t  is_bin

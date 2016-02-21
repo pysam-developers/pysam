@@ -2178,6 +2178,26 @@ class TestCountCoverage(unittest.TestCase):
         self.assertEqual(fast_counts[3], manual_counts[3])
 
 
+class TestPileupQueryPosition(unittest.TestCase):
+    
+    filename = "test_query_position.bam"
+
+    def testPileup(self):
+        last = {}
+        with pysam.AlignmentFile(os.path.join(DATADIR, self.filename)) as inf:
+            for col in inf.pileup():
+                for r in col.pileups:
+                    # print r.alignment.query_name
+                    # print r.query_position, r.query_position_or_next, r.is_del
+                    if r.is_del:
+                        self.assertEqual(r.query_position, None)
+                        self.assertEqual(r.query_position_or_next,
+                                         last[r.alignment.query_name] + 1)
+                    else:
+                        self.assertNotEqual(r.query_position, None)
+                        last[r.alignment.query_name] = r.query_position
+
+
 class TestLogging(unittest.TestCase):
 
     '''test around bug issue 42,
@@ -2304,6 +2324,46 @@ class TestAlignmentFileUtilityFunctions(unittest.TestCase):
         self.assertEqual(samfile.mapped, 3235)
         self.assertEqual(samfile.unmapped, 35)
         self.assertEqual(samfile.nocoordinate, 0)
+
+
+class TestMappedUnmapped(unittest.TestCase):
+    filename = "test_mapped_unmapped.bam"
+
+    def testMapped(self):
+
+        with pysam.AlignmentFile(os.path.join(DATADIR,
+                                              self.filename)) as inf:
+            unmapped_flag = 0
+            unmapped_nopos = 0
+            mapped_flag = 0
+            for x in inf.fetch(until_eof=True):
+                if x.is_unmapped:
+                    if x.reference_id < 0:
+                        unmapped_nopos += 1
+                    else:
+                        unmapped_flag += 1
+                else:
+                    mapped_flag += 1
+
+            self.assertEqual(inf.mapped, mapped_flag)
+            self.assertEqual(inf.unmapped, unmapped_flag + unmapped_nopos)
+
+            inf.reset()
+            self.assertEqual(inf.count(),
+                             inf.mapped + unmapped_flag)
+
+            inf.reset()
+            self.assertEqual(inf.count(until_eof=True),
+                             inf.mapped + unmapped_flag + unmapped_nopos)
+
+            inf.reset()
+            self.assertEqual(inf.count(read_callback="all"),
+                             inf.mapped)
+
+            inf.reset()
+            self.assertEqual(inf.count(until_eof=True, read_callback="all"),
+                             inf.mapped)
+
 
 
 class TestSamtoolsProxy(unittest.TestCase):
