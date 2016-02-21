@@ -355,7 +355,7 @@ cdef class FastqProxy:
         return self.tostring()
 
     cpdef array.array get_quality_array(self, int offset=33):
-        '''return quality values as numpy integer array after subtracting offset.'''
+        '''return quality values as integer array after subtracting offset.'''
         if self.quality is None:
             return None
         return qualitystring_to_array(force_bytes(self.quality),
