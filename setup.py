@@ -88,8 +88,9 @@ def configure_library(library_dir, env_options=None, options=[]):
 # external: use shared libhts.so compiled outside of
 #           pysam
 HTSLIB_MODE = "shared"
-HTSLIB_LIBRARY_DIR = os.environ.get('HTSLIB_LIBRARY_DIR', None)
-HTSLIB_INCLUDE_DIR = os.environ.get('HTSLIB_INCLUDE_DIR', None)
+HTSLIB_LIBRARY_DIR = os.environ.get("HTSLIB_LIBRARY_DIR", None)
+HTSLIB_INCLUDE_DIR = os.environ.get("HTSLIB_INCLUDE_DIR", None)
+HTSLIB_CONFIGURE_OPTIONS = os.environ.get("HTSLIB_CONFIGURE_OPTIONS", None)
 
 # Check if cython is available
 #
@@ -141,7 +142,7 @@ htslib_configure_options = None
 if HTSLIB_MODE in ['shared', 'separate']:
     htslib_configure_options = configure_library(
         "htslib",
-        os.environ.get('HTSLIB_CONFIGURE_OPTIONS', None),
+        HTSLIB_CONFIGURE_OPTIONS,
         ["--enable-libcurl"])
 
     HTSLIB_SOURCE = "builtin"
