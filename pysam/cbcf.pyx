@@ -237,7 +237,7 @@ from pysam.cutils cimport encode_filename, from_string_and_size
 
 cdef dict bcf_str_cache = {}
 
-cdef inline bcf_str_cache_get_charptr(char* s):
+cdef inline bcf_str_cache_get_charptr(const char* s):
     if s == NULL:
         return None
 
@@ -265,7 +265,7 @@ cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
     return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt_id), "GT") == 0
 
 
-cdef tuple char_array_to_tuple(const char **a, int n, int free_after=0):
+cdef tuple char_array_to_tuple(const char **a, ssize_t n, int free_after=0):
     if not a:
         return None
     try:
@@ -275,7 +275,7 @@ cdef tuple char_array_to_tuple(const char **a, int n, int free_after=0):
             free(a)
 
 
-cdef bcf_array_to_object(void *data, int type, int n, int count, int scalar):
+cdef bcf_array_to_object(void *data, int type, ssize_t n, ssize_t count, int scalar):
     cdef char    *datac
     cdef int8_t  *data8
     cdef int16_t *data16
@@ -340,13 +340,13 @@ cdef bcf_array_to_object(void *data, int type, int n, int count, int scalar):
     return value
 
 
-cdef bcf_object_to_array(values, void *data, int bt_type, int n, int vlen):
+cdef bcf_object_to_array(values, void *data, int bt_type, ssize_t n, int vlen):
     cdef char    *datac
     cdef int8_t  *data8
     cdef int16_t *data16
     cdef int32_t *data32
     cdef float   *dataf
-    cdef int      i, value_count = len(values)
+    cdef ssize_t  i, value_count = len(values)
 
     assert(value_count <= n)
 
@@ -394,7 +394,7 @@ cdef bcf_object_to_array(values, void *data, int bt_type, int n, int vlen):
         raise TypeError('unsupported type')
 
 
-cdef bcf_empty_array(int type, int n, int vlen):
+cdef bcf_empty_array(int type, ssize_t n, int vlen):
     cdef char    *datac
     cdef int32_t *data32
     cdef float   *dataf
@@ -424,8 +424,8 @@ cdef bcf_empty_array(int type, int n, int vlen):
     return value
 
 
-cdef bcf_copy_expand_array(void *src_data, int src_type, int src_values,
-                           void *dst_data, int dst_type, int dst_values,
+cdef bcf_copy_expand_array(void *src_data, int src_type, ssize_t src_values,
+                           void *dst_data, int dst_type, ssize_t dst_values,
                            int vlen):
     cdef char    *src_datac
     cdef char    *dst_datac
@@ -435,7 +435,8 @@ cdef bcf_copy_expand_array(void *src_data, int src_type, int src_values,
     cdef int32_t *dst_datai
     cdef float   *src_dataf
     cdef float   *dst_dataf
-    cdef int src_size, dst_size, i, j, val
+    cdef ssize_t src_size, dst_size, i, j
+    cdef int val
 
     if src_values > dst_values:
         raise ValueError('Cannot copy arrays with src_values={} > dst_values={}'.format(src_values, dst_values))
@@ -488,7 +489,7 @@ cdef bcf_copy_expand_array(void *src_data, int src_type, int src_values,
         raise TypeError('unsupported types')
 
 
-cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, int *count, int *scalar):
+cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, ssize_t *count, int *scalar):
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
     cdef int length = bcf_hdr_id2length(hdr, hl_type, id)
@@ -518,7 +519,9 @@ cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
     cdef bcf_hdr_t *hdr = record.header.ptr
 
     cdef char *s
-    cdef int scalar, count
+    cdef ssize_t count
+    cdef int scalar
+
     bcf_get_value_count(record, BCF_HL_INFO, z.key, &count, &scalar)
 
     if z.len == 0:
@@ -570,9 +573,9 @@ cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
     return value
 
 
-cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_type, int id,
-                             int bt_type, int bt_len,
-                             int *value_count, int *scalar, int *realloc):
+cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_type,
+                             int id, int bt_type, ssize_t bt_len, ssize_t *value_count,
+                             int *scalar, int *realloc):
 
     bcf_get_value_count(record, hl_type, id, value_count, scalar)
 
@@ -666,9 +669,8 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
     cdef bcf1_t *r = record.ptr
     cdef vdict_t *d
     cdef khiter_t k
-    cdef int info_id, info_type, value_count, scalar, alloc_len
-    cdef int i, alloc_size, realloc, vlen = 0
-    cdef int dst_size, dst_type
+    cdef int info_id, info_type, scalar, dst_type, realloc, vlen = 0
+    cdef ssize_t i, value_count, alloc_len, alloc_size, dst_size
 
     if bcf_unpack(r, BCF_UN_INFO) < 0:
         raise ValueError('Error unpacking VariantRecord')
@@ -738,14 +740,15 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
     bcf_object_to_array(values, valp, dst_type, alloc_len, vlen)
 
-    if bcf_update_info(hdr, r, bkey, valp, alloc_len, info_type) < 0:
+    if bcf_update_info(hdr, r, bkey, valp, <int>alloc_len, info_type) < 0:
         raise ValueError('Unable to update INFO values')
 
 
 cdef bcf_info_del_value(VariantRecord record, key):
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
-    cdef int value_count, scalar
+    cdef ssize_t value_count
+    cdef int scalar
 
     if bcf_unpack(r, BCF_UN_INFO) < 0:
         raise ValueError('Error unpacking VariantRecord')
@@ -771,7 +774,8 @@ cdef bcf_info_del_value(VariantRecord record, key):
 cdef bcf_format_get_value(VariantRecordSample sample, key):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
-    cdef int count, scalar
+    cdef ssize_t count
+    cdef int scalar
 
     if bcf_unpack(r, BCF_UN_ALL) < 0:
         raise ValueError('Error unpacking VariantRecord')
@@ -803,9 +807,8 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     cdef int fmt_id
     cdef vdict_t *d
     cdef khiter_t k
-    cdef int fmt_type, value_count, scalar, alloc_len
-    cdef int i, n, alloc_size, realloc, vlen = 0
-    cdef int dst_size, dst_type
+    cdef int fmt_type, scalar, realloc, dst_type, vlen = 0
+    cdef ssize_t i, n, value_count, alloc_size, alloc_len, dst_size
 
     if bcf_unpack(r, BCF_UN_ALL) < 0:
         raise ValueError('Error unpacking VariantRecord')
@@ -873,14 +876,15 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
 
     bcf_object_to_array(values, valp + sample.index*dst_size, dst_type, alloc_len, vlen)
 
-    if bcf_update_format(hdr, r, bkey, valp, n*alloc_len, fmt_type) < 0:
+    if bcf_update_format(hdr, r, bkey, valp, <int>(n*alloc_len), fmt_type) < 0:
         raise ValueError('Unable to update format values')
 
 
 cdef bcf_format_del_value(VariantRecordSample sample, key):
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
-    cdef int value_count, scalar
+    cdef ssize_t value_count
+    cdef int scalar
 
     if bcf_unpack(r, BCF_UN_ALL) < 0:
         raise ValueError('Error unpacking VariantRecord')
@@ -1849,11 +1853,11 @@ cdef class VariantHeader(object):
             else:
                 for key, value in items:
                     key = force_bytes(key)
-                    bcf_hrec_add_key(hrec, key, len(key))
+                    bcf_hrec_add_key(hrec, key, <int>len(key))
 
                     value = force_bytes(str(value))
                     quoted = strpbrk(value, ' ;,"\t<>') != NULL
-                    bcf_hrec_set_val(hrec, hrec.nkeys-1, value, len(value), quoted)
+                    bcf_hrec_set_val(hrec, hrec.nkeys-1, value, <int>len(value), quoted)
         except:
             bcf_hrec_destroy(hrec)
             raise
@@ -2545,6 +2549,9 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             return bcf_str_cache_get_charptr(r.d.id) if r.d.id != b'.' else None
         def __set__(self, id):
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
+                raise ValueError('Error unpacking VariantRecord')
             cdef char *idstr = NULL
             if id is not None:
                 bid = force_bytes(id)
@@ -2560,10 +2567,12 @@ cdef class VariantRecord(object):
                 raise ValueError('Error unpacking VariantRecord')
             return charptr_to_str(r.d.allele[0]) if r.d.allele else None
         def __set__(self, ref):
+            cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
+                raise ValueError('Error unpacking VariantRecord')
             #FIXME: Set alleles directly -- this is stupid
             if not ref:
                 raise ValueError('ref allele cannot be null')
-            cdef bcf1_t *r = self.ptr
             ref = force_bytes(ref)
             if r.d.allele and r.n_allele:
                 alleles = [r.d.allele[i] for i in range(r.n_allele)]
@@ -2614,6 +2623,8 @@ cdef class VariantRecord(object):
         def __set__(self, values):
             #FIXME: Set alleles directly -- this is stupid
             cdef bcf1_t *r = self.ptr
+            if bcf_unpack(r, BCF_UN_STR) < 0:
+                raise ValueError('Error unpacking VariantRecord')
             values = [force_bytes(v) for v in values]
             if b'' in values:
                 raise ValueError('cannot set null alt allele')
@@ -3542,7 +3553,7 @@ cdef class VariantFile(object):
                 ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
         else:
             with nogil:
-                ret = hts_useek(self.htsfile, offset, SEEK_SET)
+                ret = hts_useek(self.htsfile, <int>offset, SEEK_SET)
         return ret
 
     def tell(self):

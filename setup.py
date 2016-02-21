@@ -197,15 +197,12 @@ elif HTSLIB_MODE == 'shared':
     external_htslib_libraries = ['z']
 
     if IS_PYTHON3:
-        # Is there a principled way to get library naming convention?
-        # Where can I get the "gnu" from
+        import sysconfig
         if sys.version_info.minor >= 5:
-            internal_htslib_libraries = ["chtslib.{}{}-{}-{}-gnu".format(
-                sys.implementation.cache_tag,
-                sys.abiflags,
-                platform.machine(),
-                sys.platform)]
+            internal_htslib_libraries = ["chtslib.{}".format(
+                sysconfig.get_config_var('SOABI'))]
         else:
+            # KBJ: This doesn't work for me on OS X with Python 3.4.  Libs have no platform tags.
             internal_htslib_libraries = ["chtslib.{}{}".format(
                 sys.implementation.cache_tag,
                 sys.abiflags)]
