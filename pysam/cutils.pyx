@@ -77,7 +77,7 @@ cpdef qualities_to_qualitystring(qualities, int offset=33):
 ########################################################################
 cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
-cdef from_string_and_size(char* s, size_t length):
+cdef from_string_and_size(const char* s, size_t length):
     if IS_PYTHON3:
         return s[:length].decode("ascii")
     else:
@@ -120,7 +120,7 @@ cdef bytes force_bytes(object s, encoding="ascii"):
     else:
         raise TypeError(u"Argument must be string, bytes or unicode.")
 
-cdef charptr_to_str(char* s, encoding="ascii"):
+cdef charptr_to_str(const char* s, encoding="ascii"):
     if s == NULL:
         return None
     if PY_MAJOR_VERSION < 3:
@@ -128,7 +128,7 @@ cdef charptr_to_str(char* s, encoding="ascii"):
     else:
         return s.decode(encoding)
 
-cdef charptr_to_str_w_len(char* s, size_t n, encoding="ascii"):
+cdef charptr_to_str_w_len(const char* s, size_t n, encoding="ascii"):
     if s == NULL:
         return None
     if PY_MAJOR_VERSION < 3:
@@ -136,7 +136,7 @@ cdef charptr_to_str_w_len(char* s, size_t n, encoding="ascii"):
     else:
         return s[:n].decode(encoding)
 
-cdef bytes charptr_to_bytes(char* s, encoding="ascii"):
+cdef bytes charptr_to_bytes(const char* s, encoding="ascii"):
     if s == NULL:
         return None
     else:
