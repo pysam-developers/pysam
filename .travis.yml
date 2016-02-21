@@ -5,13 +5,12 @@ os:
 language: c
 sudo: required
 
-python:
-  - "2.7"
-  - "3.3"
-  - "3.4"
-  - "3.5"
-
-sudo: false
+env:
+  matrix:
+    - CONDA_PY=27
+    - CONDA_PY=33
+    - CONDA_PY=34
+    - CONDA_PY=35
 
 addons:
   apt:
