@@ -14,7 +14,7 @@ else
 fi
 
 # Create and export a new conda environment with the target python version
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose curl
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose
 source ~/miniconda3/bin/activate testenv
 
 # Hack to force linking to anaconda libraries rather than system libraries
@@ -24,7 +24,7 @@ export DYLD_LIBRARY_PATH=~/miniconda3/envs/testenv/lib/:$DYLD_LIBRARY_PATH
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
 
-# install htslib 
+# install htslib
 cd $WORKDIR/external-tools
 curl -L https://github.com/samtools/htslib/releases/download/1.3/htslib-1.3.tar.bz2 > htslib-1.3.tar.bz2
 tar xjvf htslib-1.3.tar.bz2
