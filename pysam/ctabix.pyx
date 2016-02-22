@@ -772,16 +772,17 @@ def tabix_compress(filename_in,
     is set.
     '''
 
-    if not force and os.path.exists(filename_out ):
+    if not force and os.path.exists(filename_out):
         raise IOError(
-            "Filename '%s' already exists, use *force* to overwrite" % filename_out)
+            "Filename '%s' already exists, use *force* to "
+            "overwrite" % filename_out)
 
     cdef int WINDOW_SIZE
     cdef int c, r
     cdef void * buffer
     cdef BGZF * fp
     cdef int fd_src
-
+    cdef bint is_empty = True
     cdef int O_RDONLY
     O_RDONLY = os.O_RDONLY
 
@@ -792,19 +793,21 @@ def tabix_compress(filename_in,
     with nogil:
         fp = bgzf_open(cfn, "w")
     if fp == NULL:
-        raise IOError("could not open '%s' for writing" % (filename_out, ))
+        raise IOError("could not open '%s' for writing" % filename_out)
 
     fn = encode_filename(filename_in)
     fd_src = open(fn, O_RDONLY)
     if fd_src == 0:
-        raise IOError("could not open '%s' for reading" % (filename_in, ))
+        raise IOError("could not open '%s' for reading" % filename_in)
 
     buffer = malloc(WINDOW_SIZE)
     c = 1
-
+    
     while c > 0:
         with nogil:
             c = read(fd_src, buffer, WINDOW_SIZE)
+            if c > 0:
+                is_empty = False
             r = bgzf_write(fp, buffer, c)
         if r < 0:
             free(buffer)
@@ -813,11 +816,14 @@ def tabix_compress(filename_in,
     free(buffer)
     r = bgzf_close(fp)
     if r < 0:
-        raise OSError("writing to file %s failed" % filename_out)
+        raise OSError("error %i when writing to file %s" % (r, filename_out))
 
     r = close(fd_src)
+    # an empty file will return with -1, thus ignore this.
     if r < 0:
-        raise OSError("error when closing file %s" % filename_in)
+        if not (r == -1 and is_empty):
+            raise OSError("error %i when closing file %s" % (r, filename_in))
+
 
 def tabix_index( filename, 
                  force = False,

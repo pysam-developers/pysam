@@ -23,6 +23,14 @@ Release 0.8.5
 * improve OSX installation and develop mode
 * FastxIterator now handles empty sequences (#204)
 * TabixFile.isremote is not TabixFile.is_remote in line with AlignmentFile
+* AlignmentFile.count() has extra optional argument read_callback
+* setup.py has been changed to:
+   * install a single builtin htslib library. Previously, each pysam
+     module contained its own version. This reduces compilation time
+     and code bloat.
+   * run configure for the builtin htslib library in order to detect
+     optional libraries such as libcurl. Configure behaviour can be
+     controlled by setting the environmet variable HTSLIB_CONFIGURE_OPTIONS.
 
 Release 0.8.4
 =============

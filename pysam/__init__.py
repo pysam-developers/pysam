@@ -1,8 +1,9 @@
-from pysam.libchtslib import *
+import os
+import sys
 
+from pysam.libchtslib import *
 from pysam.cutils import *
 import pysam.cutils as cutils
-
 import pysam.cfaidx as cfaidx
 from pysam.cfaidx import *
 import pysam.ctabix as ctabix
@@ -18,10 +19,9 @@ from pysam.cvcf import *
 import pysam.cbcf as cbcf
 from pysam.cbcf import *
 from pysam.utils import SamtoolsError
-
 import pysam.Pileup as Pileup
-import os
 from pysam.samtools import *
+import pysam.config
 
 # export all the symbols from separate modules
 __all__ = \
@@ -67,8 +67,8 @@ def get_include():
 
 def get_defines():
     '''return a list of defined compilation parameters.'''
-    return [('_FILE_OFFSET_BITS', '64'),
-            ('_USE_KNETFILE', '')]
+    return [] #('_FILE_OFFSET_BITS', '64'),
+    # ('_USE_KNETFILE', '')]
 
 
 def get_libraries():
@@ -76,11 +76,22 @@ def get_libraries():
     # Note that this list does not include csamtools.so as there are
     # numerous name conflicts with libchtslib.so.
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-    return [os.path.join(dirname, x) for x in (
-        'libchtslib.so',
-        'ctabixproxies.so',
-        'cfaidx.so',
-        'csamfile.so',
-        'cvcf.so',
-        'cbcf.so',
-        'ctabix.so')]
+    pysam_libs = ['ctabixproxies',
+                  'cfaidx',
+                  'csamfile',
+                  'cvcf',
+                  'cbcf',
+                  'ctabix']
+    if pysam.config.HTSLIB == "builtin":
+        pysam_libs.append('libchtslib')
+
+    if sys.version_info.major >= 3:
+        if sys.version_info.minor >= 5:
+            return [os.path.join(dirname, x + ".{}.so".format(
+                sysconfig.get_config_var('SOABI'))) for x in pysam_libs]
+        else:
+            return [os.path.join(dirname, x + ".{}{}.so".format(
+                sys.implementation.cache_tag,
+                sys.abiflags)) for x in pysam_libs]
+    else:
+        return [os.path.join(dirname, x + ".so") for x in pysam_libs]

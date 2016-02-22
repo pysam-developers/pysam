@@ -88,8 +88,9 @@ def configure_library(library_dir, env_options=None, options=[]):
 # external: use shared libhts.so compiled outside of
 #           pysam
 HTSLIB_MODE = "shared"
-HTSLIB_LIBRARY_DIR = os.environ.get('HTSLIB_LIBRARY_DIR', None)
-HTSLIB_INCLUDE_DIR = os.environ.get('HTSLIB_INCLUDE_DIR', None)
+HTSLIB_LIBRARY_DIR = os.environ.get("HTSLIB_LIBRARY_DIR", None)
+HTSLIB_INCLUDE_DIR = os.environ.get("HTSLIB_INCLUDE_DIR", None)
+HTSLIB_CONFIGURE_OPTIONS = os.environ.get("HTSLIB_CONFIGURE_OPTIONS", None)
 
 # Check if cython is available
 #
@@ -134,18 +135,18 @@ EXCLUDE = {
         'htslib/htsfile.c', 'htslib/hfile_irods.c'),
 }
 
-print ("# htslib mode is {}".format(HTSLIB_MODE))
+print ("# pysam: htslib mode is {}".format(HTSLIB_MODE))
 
 htslib_configure_options = None
 
 if HTSLIB_MODE in ['shared', 'separate']:
     htslib_configure_options = configure_library(
         "htslib",
-        os.environ.get('HTSLIB_CONFIGURE_OPTIONS', None),
+        HTSLIB_CONFIGURE_OPTIONS,
         ["--enable-libcurl"])
 
     HTSLIB_SOURCE = "builtin"
-    print ("# htslib configure options: {}".format(
+    print ("# pysam: htslib configure options: {}".format(
         str(htslib_configure_options)))
 
     if htslib_configure_options is None:
@@ -197,15 +198,12 @@ elif HTSLIB_MODE == 'shared':
     external_htslib_libraries = ['z']
 
     if IS_PYTHON3:
-        # Is there a principled way to get library naming convention?
-        # Where can I get the "gnu" from
+        import sysconfig
         if sys.version_info.minor >= 5:
-            internal_htslib_libraries = ["chtslib.{}{}-{}-{}-gnu".format(
-                sys.implementation.cache_tag,
-                sys.abiflags,
-                platform.machine(),
-                sys.platform)]
+            internal_htslib_libraries = ["chtslib.{}".format(
+                sysconfig.get_config_var('SOABI'))]
         else:
+            # KBJ: This doesn't work for me on OS X with Python 3.4.  Libs have no platform tags.
             internal_htslib_libraries = ["chtslib.{}{}".format(
                 sys.implementation.cache_tag,
                 sys.abiflags)]
@@ -241,15 +239,22 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
 if HTSLIB_SOURCE == "builtin":
     EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
     if htslib_configure_options is None:
-        print ("# could not configure htslib, choosing "
+        print ("# pysam: could not configure htslib, choosing "
                "conservative defaults")
         htslib_sources = [x for x in htslib_sources
                           if x not in EXCLUDE_HTSLIB]
         shared_htslib_sources = [x for x in shared_htslib_sources
                                  if x not in EXCLUDE_HTSLIB]
-    else:
-        if "--enable-libcurl" in htslib_configure_options:
-            external_htslib_libraries.extend(["curl", "crypto"])
+    elif "--disable-libcurl" in htslib_configure_options:
+        print ("# pysam: libcurl has been disabled")
+        htslib_sources = [x for x in htslib_sources
+                          if x not in EXCLUDE_HTSLIB]
+        shared_htslib_sources = [x for x in shared_htslib_sources
+                                 if x not in EXCLUDE_HTSLIB]
+    elif "--enable-libcurl" in htslib_configure_options:
+        print ("# pysam: libcurl of builtin htslib has been enabled, "
+               "adding shared libcurl and libcrypto")
+        external_htslib_libraries.extend(["curl", "crypto"])
 
 parts = ["samtools",
          "bcftools",

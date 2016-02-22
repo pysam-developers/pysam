@@ -851,8 +851,8 @@ cdef class AlignmentFile:
         If only `reference` is set, all reads aligned to `reference`
         will be fetched.
 
-        Note that a :term:`SAM` file does not allow random access. If
-        `region` or `reference` are given, an exception is raised.
+        A :term:`SAM` file does not allow random access. If `region`
+        or `reference` are given, an exception is raised.
 
         :class:`~pysam.FastaFile`
         :class:`~pysam.IteratorRow`
@@ -1121,15 +1121,15 @@ cdef class AlignmentFile:
               start=None,
               end=None,
               region=None,
-              until_eof=False):
-        '''
-        count the number of reads in :term:`region`
+              until_eof=False,
+              read_callback="nofilter"):
+        '''count the number of reads in :term:`region`
 
         The region is specified by :term:`reference`, `start` and
         `end`. Alternatively, a :term:`samtools` :term:`region` string
         can be supplied.
 
-        Note that a :term:`SAM` file does not allow random access and if 
+        A :term:`SAM` file does not allow random access and if
         `region` or `reference` are given, an exception is raised.
 
         Parameters
@@ -1143,10 +1143,30 @@ cdef class AlignmentFile:
 
         end : int
             end of the genomic region
+        
+        region : string
+            a region string in samtools format.
 
         until_eof : bool
             count until the end of the file, possibly including 
             unmapped reads as well.
+
+        read_callback: string or function
+
+            select a call-back to ignore reads when counting. It can
+            be either a string with the following values:
+
+            ``all``
+                skip reads in which any of the following
+                flags are set: BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL,
+                BAM_FDUP
+
+            ``nofilter``
+                uses every single read
+
+            Alternatively, `read_callback` can be a function
+            ``check_read(read)`` that should return True only for
+            those reads that shall be included in the counting.
 
         Raises
         ------
@@ -1161,11 +1181,28 @@ cdef class AlignmentFile:
         if not self.is_open():
             raise ValueError( "I/O operation on closed file" )
 
+        cdef int filter_method = 0
+        if read_callback == "all":
+            filter_method = 1
+        elif read_callback == "nofilter":
+            filter_method = 2
+
         for read in self.fetch(reference=reference,
                                start=start,
                                end=end,
                                region=region,
                                until_eof=until_eof):
+            # apply filter
+            if filter_method == 1:
+                # filter = "all"
+                if (read.flag & (0x4 | 0x100 | 0x200 | 0x400)):
+                    continue
+            elif filter_method == 2:
+                # filter = "nofilter"
+                pass
+            else:
+                if not read_callback(read):
+                    continue
             counter += 1
 
         return counter
