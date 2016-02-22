@@ -18,8 +18,8 @@ fi
 source ~/miniconda3/bin/activate testenv
 
 # Hack to force linking to anaconda libraries rather than system libraries
-export LD_LIBRARY_PATH=~/miniconda3/envs/testenv/lib/:$LD_LIBRARY_PATH
-export DYLD_LIBRARY_PATH=~/miniconda3/envs/testenv/lib/:$DYLD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
+export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
 
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
