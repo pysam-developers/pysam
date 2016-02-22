@@ -14,8 +14,12 @@ else
 fi
 
 # Create and export a new conda environment with the target python version
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose curl
 source ~/miniconda3/bin/activate testenv
+
+# Hack to force linking to anaconda libraries rather than system libraries
+export LD_LIBRARY_PATH=~/miniconda3/envs/testenv/lib/:$LD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH=~/miniconda3/envs/testenv/lib/:$DYLD_LIBRARY_PATH
 
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
