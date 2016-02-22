@@ -24,7 +24,7 @@ export DYLD_LIBRARY_PATH=~/miniconda3/envs/testenv/lib/:$DYLD_LIBRARY_PATH
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
 
-# install htslib
+# install htslib 
 cd $WORKDIR/external-tools
 curl -L https://github.com/samtools/htslib/releases/download/1.3/htslib-1.3.tar.bz2 > htslib-1.3.tar.bz2
 tar xjvf htslib-1.3.tar.bz2
