@@ -135,7 +135,7 @@ EXCLUDE = {
         'htslib/htsfile.c', 'htslib/hfile_irods.c'),
 }
 
-print ("# htslib mode is {}".format(HTSLIB_MODE))
+print ("# pysam: htslib mode is {}".format(HTSLIB_MODE))
 
 htslib_configure_options = None
 
@@ -146,7 +146,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
         ["--enable-libcurl"])
 
     HTSLIB_SOURCE = "builtin"
-    print ("# htslib configure options: {}".format(
+    print ("# pysam: htslib configure options: {}".format(
         str(htslib_configure_options)))
 
     if htslib_configure_options is None:
@@ -239,15 +239,22 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
 if HTSLIB_SOURCE == "builtin":
     EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
     if htslib_configure_options is None:
-        print ("# could not configure htslib, choosing "
+        print ("# pysam: could not configure htslib, choosing "
                "conservative defaults")
         htslib_sources = [x for x in htslib_sources
                           if x not in EXCLUDE_HTSLIB]
         shared_htslib_sources = [x for x in shared_htslib_sources
                                  if x not in EXCLUDE_HTSLIB]
-    else:
-        if "--enable-libcurl" in htslib_configure_options:
-            external_htslib_libraries.extend(["curl", "crypto"])
+    elif "--disable-libcurl" in htslib_configure_options:
+        print ("# pysam: libcurl has been disabled")
+        htslib_sources = [x for x in htslib_sources
+                          if x not in EXCLUDE_HTSLIB]
+        shared_htslib_sources = [x for x in shared_htslib_sources
+                                 if x not in EXCLUDE_HTSLIB]
+    elif "--enable-libcurl" in htslib_configure_options:
+        print ("# pysam: libcurl of builtin htslib has been enabled, "
+               "adding shared libcurl and libcrypto")
+        external_htslib_libraries.extend(["curl", "crypto"])
 
 parts = ["samtools",
          "bcftools",
