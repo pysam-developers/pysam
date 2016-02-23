@@ -21,6 +21,10 @@ source ~/miniconda3/bin/activate testenv
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
 export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
 
+# Need to make C compiler and linker use the anaconda includes and libraries:
+export PREFIX=~/miniconda3/
+export CFLAGS="-I${PREFIX}/include -L${PREFIX}/lib"
+
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
 
