@@ -1647,9 +1647,11 @@ cdef class AlignmentFile:
             
     # Compatibility functions for pysam < 0.8.3
     def gettid(self, reference):
+        """deprecated, use get_tid() instead"""
         return self.get_tid(reference)
         
     def getrname(self, tid):
+        """deprecated, use get_reference_name() instead"""
         return self.get_reference_name(tid)
 
 

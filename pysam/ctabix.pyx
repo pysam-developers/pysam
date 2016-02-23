@@ -1187,6 +1187,7 @@ def tabix_iterator(infile, parser):
 #            return tabix_generic_iterator( infile, parser )
     
 cdef class Tabixfile(TabixFile):
+    """Tabixfile is deprecated: use TabixFile instead"""
     pass
 
 
