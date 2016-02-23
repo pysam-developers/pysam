@@ -13,9 +13,11 @@ else
 	bash Miniconda3-latest-Linux-x86_64.sh -b
 fi
 
-# Create and export a new conda environment with the target python version
+# Create a new conda environment with the target python version
 ~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose
-source ~/miniconda3/bin/activate testenv
+
+# Add new conda environment to PATH
+export PATH=~/miniconda3/envs/testenv/bin/:$PATH
 
 # Hack to force linking to anaconda libraries rather than system libraries
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
