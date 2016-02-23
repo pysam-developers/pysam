@@ -1449,7 +1449,7 @@ cdef class AlignedSegment:
         # read sequence, cigar and MD tag are consistent.
 
         if _with_seq:
-            ref_seq = force_str(build_alignment_sequence(src))
+            ref_seq = force_str(self.get_reference_sequence())
             if ref_seq is None:
                 raise ValueError("MD tag not present")
 
@@ -1462,7 +1462,6 @@ cdef class AlignedSegment:
         pos = src.core.pos
         qpos = 0
         cigar_p = pysam_bam_get_cigar(src)
-
         for k from 0 <= k < pysam_get_n_cigar(src):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT

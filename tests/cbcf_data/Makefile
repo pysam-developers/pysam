@@ -14,6 +14,9 @@ all: $(VCFGZ) $(BCF)
 	bcftools view -O b $< -o $@
 	bcftools index $@
 
+example_empty.bcf: %.vcf.gz
+	touch $@
+
 clean:
 	rm -f *.gz *.tbi *.csi *.bcf
 

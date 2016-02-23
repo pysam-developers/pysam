@@ -586,7 +586,13 @@ class TestTags(ReadTest):
             "AAAGGGAAA",
             a.get_reference_sequence())
 
-                  
+        a.cigarstring = "5M2D2I2M"
+        a.set_tag("MD", "4C^TT2")
+        a.query_sequence = "A" * 9
+        self.assertEqual(
+            "AAAAcTTAA",
+            a.get_reference_sequence())
+
 class TestCopy(ReadTest):
     
     def testCopy(self):
