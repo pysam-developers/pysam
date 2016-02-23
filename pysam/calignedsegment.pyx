@@ -474,42 +474,89 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
     return dest
 
 
+cdef inline uint32_t get_alignment_length(bam1_t * src):
+    cdef int k = 0
+    cdef uint32_t l = 0
+    cdef uint32_t * cigar_p = bam_get_cigar(src)
+
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        l += cigar_p[k] >> BAM_CIGAR_SHIFT
+    return l
+
+
 # TODO: avoid string copying for getSequenceInRange, reconstituneSequenceFromMD, ...
-cdef inline bytes reconstituteSequenceFromMD(bam1_t * src):
-    """return reference sequence from MD tag.
+cdef inline bytes build_alignment_sequence(bam1_t * src):
+    """return expanded sequence from MD tag.
+
+    The sequence includes substitutions and both insertions in the
+    reference as well as deletions to the reference sequence. Combine
+    with the cigar string to reconstitute the query or the reference
+    sequence.
 
     Returns
     -------
 
     None, if no MD tag is present.
+
     """
 
-    cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
-
-    if md_tag_ptr == NULL:
-        return None
-
-    cdef uint32_t start, end
-    start = getQueryStart(src)
-    end = getQueryEnd(src)
-
+    cdef uint32_t start = getQueryStart(src)
+    cdef uint32_t end = getQueryEnd(src)
     # get read sequence, taking into account soft-clipping
     r = getSequenceInRange(src, start, end)
     cdef char * read_sequence = r
-
-    cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
-    cdef int md_idx = 0
-    cdef int r_idx = 0
+    
+    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    cdef uint32_t r_idx = 0
+    cdef int op
+    cdef uint32_t k, i, l
     cdef int nmatches = 0
     cdef int x = 0
     cdef int s_idx = 0
 
-    # maximum length of sequence is read length + inserts in MD tag + \0
-    cdef uint32_t max_len = end - start + strlen(md_tag) + 1
-    cdef char * s = <char*>calloc(max_len, sizeof(char))
+    cdef uint32_t max_len = get_alignment_length(src)
+    cdef char * s = <char*>calloc(max_len + 1, sizeof(char))
     if s == NULL:
         raise ValueError(
             "could not allocated sequence of length %i" % max_len)
+
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
+        l = cigar_p[k] >> BAM_CIGAR_SHIFT
+        if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
+            for i from 0 <= i < l:
+                s[s_idx] = read_sequence[r_idx] 
+                r_idx += 1
+                s_idx += 1
+        elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+            for i from 0 <= i < l:
+                s[s_idx] = '-'
+                s_idx += 1
+        elif op == BAM_CINS:
+            for i from 0 <= i < l:
+                # encode insertions into reference as lowercase
+                s[s_idx] = read_sequence[r_idx] + 32
+                r_idx += 1
+                s_idx += 1
+        elif op == BAM_CSOFT_CLIP:
+            pass
+        elif op == BAM_CHARD_CLIP:
+            pass # advances neither
+        elif op == BAM_CPAD:
+            raise NotImplementedError(
+                "Padding (BAM_CPAD, 6) is currently not supported. "
+                "Please implement. Sorry about that.")
+
+    cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")    
+    if md_tag_ptr == NULL:
+        seq = PyBytes_FromStringAndSize(s, s_idx)
+        free(s)
+        return seq
+
+    cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
+    cdef int md_idx = 0
+    s_idx = 0
+
     while md_tag[md_idx] != 0:
         # c is numerical
         if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
@@ -518,29 +565,36 @@ cdef inline bytes reconstituteSequenceFromMD(bam1_t * src):
             md_idx += 1
             continue
         else:
-            # save matches up to this point
-            for x from r_idx <= x < r_idx + nmatches:
-                s[s_idx] = read_sequence[x]
+            # save matches up to this point, skipping insertions
+            for x from 0 <= x < nmatches:
+                while s[s_idx] >= 'a':
+                    s_idx += 1
                 s_idx += 1
+            while s[s_idx] >= 'a':
+                s_idx += 1
+
             r_idx += nmatches
             nmatches = 0
-
             if md_tag[md_idx] == '^':
                 md_idx += 1
                 while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
+                    assert s[s_idx] == '-'
                     s[s_idx] = md_tag[md_idx]
                     s_idx += 1
                     md_idx += 1
             else:
-                # convert mismatch to lower case
+                # save mismatch and change to lower case
                 s[s_idx] = md_tag[md_idx] + 32
                 s_idx += 1
                 r_idx += 1
                 md_idx += 1
 
-    # save matches up to this point
-    for x from r_idx <= x < r_idx + nmatches:
-        s[s_idx] = read_sequence[x]
+    # save matches up to this point, skipping insertions
+    for x from 0 <= x < nmatches:
+        while s[s_idx] >= 'a':
+            s_idx += 1
+        s_idx += 1
+    while s[s_idx] >= 'a':
         s_idx += 1
 
     seq = PyBytes_FromStringAndSize(s, s_idx)
@@ -1323,7 +1377,40 @@ cdef class AlignedSegment:
 
         This method requires the MD tag to be set.
         """
-        return force_str(reconstituteSequenceFromMD(self._delegate))
+        cdef uint32_t k, i
+        cdef int op
+        cdef bam1_t * src = self._delegate
+        
+        ref_seq = force_str(build_alignment_sequence(src))
+        if ref_seq is None:
+            raise ValueError("MD tag not present")
+
+        cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+        cdef uint32_t r_idx = 0
+        result = []
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+            if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
+                for i from 0 <= i < l:
+                    result.append(ref_seq[r_idx])
+                    r_idx += 1
+            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+                for i from 0 <= i < l:
+                    result.append(ref_seq[r_idx])
+                    r_idx += 1
+            elif op == BAM_CINS:
+                r_idx += l
+            elif op == BAM_CSOFT_CLIP:
+                pass
+            elif op == BAM_CHARD_CLIP:
+                pass # advances neither
+            elif op == BAM_CPAD:
+                raise NotImplementedError(
+                    "Padding (BAM_CPAD, 6) is currently not supported. "
+                    "Please implement. Sorry about that.")
+
+        return "".join(result)
 
 
     def get_aligned_pairs(self, matches_only=False, with_seq=False):
@@ -1351,7 +1438,7 @@ cdef class AlignedSegment:
         aligned_pairs : list of tuples
 
         """
-        cdef uint32_t k, i, pos, qpos, r_idx
+        cdef uint32_t k, i, pos, qpos, r_idx, l
         cdef int op
         cdef uint32_t * cigar_p
         cdef bam1_t * src = self._delegate
@@ -1362,7 +1449,7 @@ cdef class AlignedSegment:
         # read sequence, cigar and MD tag are consistent.
 
         if _with_seq:
-            ref_seq = force_str(reconstituteSequenceFromMD(src))
+            ref_seq = force_str(build_alignment_sequence(src))
             if ref_seq is None:
                 raise ValueError("MD tag not present")
 

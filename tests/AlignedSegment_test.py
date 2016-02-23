@@ -511,23 +511,25 @@ class TestTags(ReadTest):
             "ctgAAAAAcgt",
             a.get_reference_sequence())
 
-        # insertions are silent
+        # insertions are silent in the reference sequence
         a.cigarstring = "5M1I5M"
         a.query_sequence = "A" * 5 + "C" + "A" * 5
-        a.set_tag('MD', "11")
+        a.set_tag('MD', "10")
         self.assertEqual(
-            a.query_sequence,
-            a.get_reference_sequence())
+            a.get_reference_sequence(),
+            "A" * 10)
 
         a.cigarstring = "1I10M"
+        a.query_sequence = "C" * 1 + "A" * 10
         self.assertEqual(
-            a.query_sequence,
-            a.get_reference_sequence())
+            a.get_reference_sequence(),
+            "A" * 10)
 
         a.cigarstring = "10M1I"
+        a.query_sequence = "A" * 10 + "C" * 1
         self.assertEqual(
-            a.query_sequence,
-            a.get_reference_sequence())
+            a.get_reference_sequence(),
+            "A" * 10)
 
         a.cigarstring = "5M1D5M"
         a.query_sequence = "A" * 10
@@ -536,7 +538,7 @@ class TestTags(ReadTest):
             "A" * 5 + "C" + "A" * 5,
             a.get_reference_sequence())
 
-        a.cigarstring = "5M1D5M"
+        a.cigarstring = "5M3D5M"
         a.query_sequence = "A" * 10
         a.set_tag('MD', "5^CCC5")
         self.assertEqual(
@@ -546,9 +548,9 @@ class TestTags(ReadTest):
         # softclipping
         a.cigarstring = "5S5M1D5M5S"
         a.query_sequence = "G" * 5 + "A" * 10 + "G" * 5
-        a.set_tag('MD', "10")
+        a.set_tag('MD', "5^C5")
         self.assertEqual(
-            "A" * 10,
+            "A" * 5 + "C" + "A" * 5,
             a.get_reference_sequence())
 
         # all together
@@ -560,14 +562,31 @@ class TestTags(ReadTest):
             a.get_reference_sequence())
 
         # all together
-        a.cigarstring = "5S5M1D2I5M5S"
+        a.cigarstring = "5S5M1I2D5M5S"
         a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
         a.set_tag('MD', "2C2^TC5")
         self.assertEqual(
             "AAcAATCAAAAA",
             a.get_reference_sequence())
 
+        a.cigarstring = "5S5M2D1I5M5S"
+        a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
+        a.set_tag('MD', "2C2^TC5")
+        self.assertEqual(
+            "AAcAATCAAAAA",
+            a.get_reference_sequence())
 
+        # insertion in reference overlapping deletion in reference
+        # read: AACCCCA---AAA
+        # ref:  AA----AGGGAAA
+        a.cigarstring = "2M4I1M3D3M"
+        a.set_tag("MD", "3^GGG3")
+        a.query_sequence = "AACCCCAAAA"
+        self.assertEqual(
+            "AAAGGGAAA",
+            a.get_reference_sequence())
+
+                  
 class TestCopy(ReadTest):
     
     def testCopy(self):
