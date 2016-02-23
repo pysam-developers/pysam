@@ -30,7 +30,13 @@ Release 0.8.5
      and code bloat.
    * run configure for the builtin htslib library in order to detect
      optional libraries such as libcurl. Configure behaviour can be
-     controlled by setting the environmet variable HTSLIB_CONFIGURE_OPTIONS.
+     controlled by setting the environmet variable
+     HTSLIB_CONFIGURE_OPTIONS.
+* get_reference_sequence() now returns the reference sequence and not
+  something looking like it. This bug had effects on
+  get_aligned_pairs(with_seq=True), see #225. If you have relied on on
+  get_aligned_pairs(with_seq=True) in pysam-0.8.4, please check your
+  results.
 
 Release 0.8.4
 =============
