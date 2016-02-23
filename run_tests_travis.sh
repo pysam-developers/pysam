@@ -76,6 +76,10 @@ make -C cbcf_data
 # -v: verbose output
 nosetests -s -v 
 
+if [ $? != 0 ]; then
+    exit 1
+fi
+
 # build source tar-ball and test installation from tar-ball
 cd ..
 python setup.py sdist
