@@ -539,11 +539,12 @@ cdef class FastxFile:
 
 # Compatibility Layer for pysam 0.8.1
 cdef class FastqFile(FastxFile):
-    """FastqFile is deprecated: use FastxFile instead!"""
+    """FastqFile is deprecated: use FastxFile instead"""
     pass
 
 # Compatibility Layer for pysam < 0.8
 cdef class Fastafile(FastaFile):
+    """Fastafile is deprecated: use FastaFile instead"""
     pass
 
 __all__ = ["FastaFile",
