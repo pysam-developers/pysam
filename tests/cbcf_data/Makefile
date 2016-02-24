@@ -1,4 +1,5 @@
-VCF=$(wildcard *.vcf)
+ALL_VCF=$(wildcard *.vcf)
+VCF=$(filter-out example_empty.vcf,$(ALL_VCF))
 
 VCFGZ=$(VCF:%.vcf=%.vcf.gz)
 BCF=$(VCF:%.vcf=%.bcf)
