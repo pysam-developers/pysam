@@ -137,7 +137,7 @@ cdef class FastaFile:
         self.is_remote = hisremote(cfilename)
 
         # open file for reading
-        if (filename != b"-"
+        if (self._filename != b"-"
             and not self.is_remote
             and not os.path.exists(filename)):
             raise IOError("file `%s` not found" % filename)
@@ -150,9 +150,9 @@ cdef class FastaFile:
 
         if self.is_remote:
             filepath_index = os.path.basename(
-                re.sub("[^:]+:[/]*", "", filename)) + b".fai"
+                re.sub("[^:]+:[/]*", "", filename)) + ".fai"
         elif filepath_index is None:
-            filepath_index = self._filename + b".fai"
+            filepath_index = filename + ".fai"
 
         if not os.path.exists(filepath_index):
             raise ValueError("could not locate index file {}".format(
@@ -471,8 +471,8 @@ cdef class FastxFile:
 
         self.persist = persist
 
-        filename = encode_filename(filename)
-        cdef char *cfilename = filename
+        self._filename = encode_filename(filename)
+        cdef char *cfilename = self._filename
         with nogil:
             self.fastqfile = gzopen(cfilename, "r")
             self.entry = kseq_init(self.fastqfile)
