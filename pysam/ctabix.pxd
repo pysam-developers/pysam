@@ -68,8 +68,8 @@ cdef class TabixFile:
     # flag indicating whether file is remote
     cdef int is_remote
 
-    cdef _filename
-    cdef _filename_index
+    cdef object _filename
+    cdef object _filename_index
 
     cdef Parser parser
 
