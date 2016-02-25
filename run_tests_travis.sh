@@ -19,7 +19,7 @@ fi
 # Add new conda environment to PATH
 export PATH=~/miniconda3/envs/testenv/bin/:$PATH
 
-# Hack to force linking to anaconda libraries rather than system libraries
+# Hack to force linking to anaconda libraries rather than system libraries 
 #export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
 #export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
 
