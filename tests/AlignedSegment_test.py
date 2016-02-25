@@ -486,7 +486,7 @@ class TestTags(ReadTest):
             after = entry.get_tags()
             self.assertEqual(after, before)
 
-    def testMDTag(self):
+    def testMDTagMatchOnly(self):
         a = self.buildRead()
 
         # Substitutions only
@@ -496,21 +496,24 @@ class TestTags(ReadTest):
         self.assertEqual(
             "AAAAActgAAAAAcgtAAAAA",
             a.get_reference_sequence())
-        print ("DB 1")
+
         a.cigarstring = "21M"
         a.query_sequence = "A" * 21
         a.set_tag('MD', "5CTG5CGT5")
         self.assertEqual(
             "AAAAActgAAAAAcgtAAAAA",
             a.get_reference_sequence())
-        print ("DB 2")
+
         a.cigarstring = "11M"
         a.query_sequence = "A" * 11
         a.set_tag('MD', "CTG5CGT")
         self.assertEqual(
             "ctgAAAAAcgt",
             a.get_reference_sequence())
-        print ("DB 3")
+
+    def testMDTagInsertions(self):
+        a = self.buildRead()
+
         # insertions are silent in the reference sequence
         a.cigarstring = "5M1I5M"
         a.query_sequence = "A" * 5 + "C" + "A" * 5
@@ -518,26 +521,29 @@ class TestTags(ReadTest):
         self.assertEqual(
             a.get_reference_sequence(),
             "A" * 10)
-        print ("DB 4")
+
         a.cigarstring = "1I10M"
         a.query_sequence = "C" * 1 + "A" * 10
         self.assertEqual(
             a.get_reference_sequence(),
             "A" * 10)
-        print ("DB 5")
+
         a.cigarstring = "10M1I"
         a.query_sequence = "A" * 10 + "C" * 1
         self.assertEqual(
             a.get_reference_sequence(),
             "A" * 10)
-        print ("DB 6")
+
+    def testMDTagDeletions(self):
+        a = self.buildRead()
+
         a.cigarstring = "5M1D5M"
         a.query_sequence = "A" * 10
         a.set_tag('MD', "5^C5")
         self.assertEqual(
             "A" * 5 + "C" + "A" * 5,
             a.get_reference_sequence())
-        print ("DB 7")
+
         a.cigarstring = "5M3D5M"
         a.query_sequence = "A" * 10
         a.set_tag('MD', "5^CCC5")
@@ -545,7 +551,9 @@ class TestTags(ReadTest):
             "A" * 5 + "C" * 3 + "A" * 5,
             a.get_reference_sequence())
 
-        print ("DB 8")
+    def testMDTagSoftClipping(self):
+        a = self.buildRead()
+
         # softclipping
         a.cigarstring = "5S5M1D5M5S"
         a.query_sequence = "G" * 5 + "A" * 10 + "G" * 5
@@ -554,7 +562,6 @@ class TestTags(ReadTest):
             "A" * 5 + "C" + "A" * 5,
             a.get_reference_sequence())
 
-        print ("DB 9")
         # all together
         a.cigarstring = "5S5M1D5M1I5M5S"
         a.query_sequence = "G" * 5 + "A" * 16 + "G" * 5
@@ -562,6 +569,9 @@ class TestTags(ReadTest):
         self.assertEqual(
             "AAcAATAAAAAAAAAA",
             a.get_reference_sequence())
+
+    def testMDTagComplex(self):
+        a = self.buildRead()
 
         print ("DB 10")
         # all together
