@@ -499,7 +499,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     None, if no MD tag is present.
 
     """
-    printf("DB C1")
+    print ("DB C1")
     cdef uint32_t start = getQueryStart(src)
     cdef uint32_t end = getQueryEnd(src)
     # get read sequence, taking into account soft-clipping
@@ -599,7 +599,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
 
     seq = PyBytes_FromStringAndSize(s, s_idx)
     free(s)
-    printf("DB C2")
+    print ("DB C2")
     return seq
 
 
