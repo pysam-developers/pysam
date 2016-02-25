@@ -519,6 +519,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     if s == NULL:
         raise ValueError(
             "could not allocated sequence of length %i" % max_len)
+    print ("DB 2")
 
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
@@ -546,6 +547,8 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             raise NotImplementedError(
                 "Padding (BAM_CPAD, 6) is currently not supported. "
                 "Please implement. Sorry about that.")
+
+    print ("DB 3")
 
     cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")    
     if md_tag_ptr == NULL:
@@ -589,6 +592,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 r_idx += 1
                 md_idx += 1
 
+    print ("DB 4")
     # save matches up to this point, skipping insertions
     for x from 0 <= x < nmatches:
         while s[s_idx] >= 'a':
@@ -597,8 +601,11 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     while s[s_idx] >= 'a':
         s_idx += 1
 
+    print ("DB 5")
+
     seq = PyBytes_FromStringAndSize(s, s_idx)
     free(s)
+    print ("DB 6")
     return seq
 
 
