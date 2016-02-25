@@ -26,6 +26,7 @@ export PATH=~/miniconda3/envs/testenv/bin/:$PATH
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
 export CFLAGS="-I${PREFIX}/include -L${PREFIX}/lib"
+export HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"
 
 # create a new folder to store external tools
 mkdir -p $WORKDIR/external-tools
