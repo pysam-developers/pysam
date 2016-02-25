@@ -505,7 +505,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     # get read sequence, taking into account soft-clipping
     r = getSequenceInRange(src, start, end)
     cdef char * read_sequence = r
-    
+    print ("DB C2")    
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
     cdef uint32_t r_idx = 0
     cdef int op
@@ -519,7 +519,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     if s == NULL:
         raise ValueError(
             "could not allocated sequence of length %i" % max_len)
-
+    print ("DB C3")    
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
@@ -546,17 +546,17 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             raise NotImplementedError(
                 "Padding (BAM_CPAD, 6) is currently not supported. "
                 "Please implement. Sorry about that.")
-
+    print ("DB C4")    
     cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")    
     if md_tag_ptr == NULL:
         seq = PyBytes_FromStringAndSize(s, s_idx)
         free(s)
         return seq
-
+    print ("DB C5")    
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
     s_idx = 0
-
+    print ("DB C6")    
     while md_tag[md_idx] != 0:
         # c is numerical
         if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
@@ -588,7 +588,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 s_idx += 1
                 r_idx += 1
                 md_idx += 1
-
+    print ("DB C7")    
     # save matches up to this point, skipping insertions
     for x from 0 <= x < nmatches:
         while s[s_idx] >= 'a':
@@ -596,10 +596,10 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         s_idx += 1
     while s[s_idx] >= 'a':
         s_idx += 1
-
+    print ("DB C8")    
     seq = PyBytes_FromStringAndSize(s, s_idx)
     free(s)
-    print ("DB C2")
+    print ("DB C9")
     return seq
 
 
