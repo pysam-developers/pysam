@@ -513,9 +513,11 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef int nmatches = 0
     cdef int x = 0
     cdef int s_idx = 0
-
+    print ("DB C2A")    
     cdef uint32_t max_len = get_alignment_length(src)
+    print ("DB C2B")    
     cdef char * s = <char*>calloc(max_len + 1, sizeof(char))
+    print ("DB C2C")    
     if s == NULL:
         raise ValueError(
             "could not allocated sequence of length %i" % max_len)
