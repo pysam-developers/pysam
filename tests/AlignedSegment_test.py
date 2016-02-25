@@ -576,8 +576,11 @@ class TestTags(ReadTest):
         print ("DB 10")
         # all together
         a.cigarstring = "5S5M1I2D5M5S"
+        print ("DB 10a")
         a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
+        print ("DB 10b")
         a.set_tag('MD', "2C2^TC5")
+        print ("DB 10c")
         self.assertEqual(
             "AAcAATCAAAAA",
             a.get_reference_sequence())
