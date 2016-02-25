@@ -317,7 +317,11 @@ cdef class TabixFile:
         self.tabixfile = NULL
 
         filename_index = index or (filename + ".tbi")
-        self.is_remote = hisremote(filename)
+        # encode all the strings to pass to tabix
+        self._filename = encode_filename(filename)
+        self._filename_index = encode_filename(filename_index)
+
+        self.is_remote = hisremote(self._filename)
 
         if not self.is_remote:
             if not os.path.exists(filename):
@@ -326,22 +330,15 @@ cdef class TabixFile:
             if not os.path.exists(filename_index):
                 raise IOError("index `%s` not found" % filename_index)
 
-        self._filename = filename
-        self._filename_index = filename_index
-
-        # encode all the strings to pass to tabix
-        _encoded_filename = encode_filename(filename)
-        _encoded_index = encode_filename(filename_index)
-
         # open file
-        cdef char *cfilename = _encoded_filename
+        cdef char *cfilename = self._filename
         with nogil:
             self.tabixfile = hts_open(cfilename, 'r')
 
         if self.tabixfile == NULL:
             raise IOError("could not open file `%s`" % filename)
         
-        cfilename = _encoded_index
+        cfilename = self._filename_index
         with nogil:
             self.index = tbx_index_load(cfilename)
 
