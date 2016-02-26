@@ -477,16 +477,12 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
 cdef inline uint32_t get_alignment_length(bam1_t * src):
     cdef int k = 0
     cdef uint32_t l = 0
-    print ("DB D2A")    
     cdef uint32_t * cigar_p = bam_get_cigar(src)
     cdef int op
     cdef int n = pysam_get_n_cigar(src)
-    print ("DB D2B", n)    
     for k from 0 <= k < n:
-        print ("DB ", k)    
         op = cigar_p[k] & BAM_CIGAR_MASK
         l += cigar_p[k] >> BAM_CIGAR_SHIFT
-    print ("DB D2C")    
     return l
 
 
@@ -505,13 +501,11 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     None, if no MD tag is present.
 
     """
-    print ("DB C1")
     cdef uint32_t start = getQueryStart(src)
     cdef uint32_t end = getQueryEnd(src)
     # get read sequence, taking into account soft-clipping
     r = getSequenceInRange(src, start, end)
     cdef char * read_sequence = r
-    print ("DB C2")    
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
     cdef uint32_t r_idx = 0
     cdef int op
@@ -519,15 +513,12 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef int nmatches = 0
     cdef int x = 0
     cdef int s_idx = 0
-    print ("DB C2A")    
     cdef uint32_t max_len = get_alignment_length(src)
-    print ("DB C2B")    
     cdef char * s = <char*>calloc(max_len + 1, sizeof(char))
-    print ("DB C2C")    
     if s == NULL:
         raise ValueError(
             "could not allocated sequence of length %i" % max_len)
-    print ("DB C3")    
+
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
@@ -554,17 +545,17 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             raise NotImplementedError(
                 "Padding (BAM_CPAD, 6) is currently not supported. "
                 "Please implement. Sorry about that.")
-    print ("DB C4")    
+
     cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")    
     if md_tag_ptr == NULL:
         seq = PyBytes_FromStringAndSize(s, s_idx)
         free(s)
         return seq
-    print ("DB C5")    
+
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
     s_idx = 0
-    print ("DB C6")    
+
     while md_tag[md_idx] != 0:
         # c is numerical
         if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
@@ -596,7 +587,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 s_idx += 1
                 r_idx += 1
                 md_idx += 1
-    print ("DB C7")    
+
     # save matches up to this point, skipping insertions
     for x from 0 <= x < nmatches:
         while s[s_idx] >= 'a':
@@ -604,10 +595,10 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         s_idx += 1
     while s[s_idx] >= 'a':
         s_idx += 1
-    print ("DB C8")    
+
     seq = PyBytes_FromStringAndSize(s, s_idx)
     free(s)
-    print ("DB C9")
+
     return seq
 
 
@@ -1388,14 +1379,11 @@ cdef class AlignedSegment:
         """
         cdef uint32_t k, i
         cdef int op
-        print ("DB A1")
         cdef bam1_t * src = self._delegate
-        print ("DB A2")
         ref_seq = force_str(build_alignment_sequence(src))
         if ref_seq is None:
             raise ValueError("MD tag not present")
 
-        print ("DB A3")
         cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
         cdef uint32_t r_idx = 0
         result = []
