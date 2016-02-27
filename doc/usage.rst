@@ -256,10 +256,61 @@ To iterate through a VCF/BCF formatted file use
 Meta-information in the variant file can be accessed through the 
 :py:attr:`~pysam.VariantFile.header` attribute which is of type 
 :class:`~pysam.VariantHeader`. The header provides access to
-meta-information stored in the :term:`vcf` header such as 
-contigs, info fields, samples, formats::
+meta-information stored in the :term:`vcf` header::
 
-   bcf_in.header
+   >>> print (bcf_in.header)
+   ##fileformat=VCFv4.2
+   ##FILTER=<ID=PASS,Description="All filters passed">
+   ##fileDate=20090805
+   ##source=myImputationProgramV3.1
+   ##reference=1000GenomesPilot-NCBI36
+   ##phasing=partial
+   ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples
+   With Data">
+   ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+   ##INFO=<ID=AF,Number=.,Type=Float,Description="Allele Frequency">
+   ##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele">
+   ##INFO=<ID=DB,Number=0,Type=Flag,Description="dbSNP membership, build
+   129">
+   ##INFO=<ID=H2,Number=0,Type=Flag,Description="HapMap2 membership">
+   ##FILTER=<ID=q10,Description="Quality below 10">
+   ##FILTER=<ID=s50,Description="Less than 50% of samples have data">
+   ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+   ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+   ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+   ##FORMAT=<ID=HQ,Number=2,Type=Integer,Description="Haplotype Quality">
+   ##contig=<ID=M>
+   ##contig=<ID=17>
+   ##contig=<ID=20>
+   ##bcftools_viewVersion=1.3+htslib-1.3
+   ##bcftools_viewCommand=view -O b -o example_vcf42.bcf
+   example_vcf42.vcf.gz
+   #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO   FORMAT    NA00001 NA00002 NA0000
+  
+Individual meta-information such as contigs, info fields, samples,
+formats can be retrieved from the
+:py:attr:`~pysam.VariantFile.header`. Generally, attributes provide
+views on the underlying htslib data structures::
+
+   >>> print (bcf_in.header.contigs)
+   <pysam.cbcf.VariantHeaderContigs object at 0xf250f8>
+
+To convert these views to native python types, iterate through the views::
+
+   >>> print list((bcf_in.header.contigs))
+   ['M', '17', '20']
+   >>> print list((bcf_in.header.filters))
+   ['PASS', 'q10', 's50']
+   >>> print list((bcf_in.header.info))
+   ['NS', 'DP', 'AF', 'AA', 'DB', 'H2']
+
+
+
+
+
+
+
+
 
 
 ===============
