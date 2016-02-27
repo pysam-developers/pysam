@@ -253,6 +253,12 @@ To iterate through a VCF/BCF formatted file use
    for rec in bcf_in.fetch('chr1', 100000, 200000):
        bcf_out.write(rec)
 
+:meth:`_pysam.VariantFile.fetch()` iterates over
+:class:`~pysam.VariantRecord` objects which provides
+
+
+
+
 Meta-information in the variant file can be accessed through the 
 :py:attr:`~pysam.VariantFile.header` attribute which is of type 
 :class:`~pysam.VariantHeader`. The header provides access to
@@ -303,8 +309,8 @@ To convert these views to native python types, iterate through the views::
    ['PASS', 'q10', 's50']
    >>> print list((bcf_in.header.info))
    ['NS', 'DP', 'AF', 'AA', 'DB', 'H2']
-
-
+   >>> print list((bcf_in.header.samples))
+   ['NA00001', 'NA00002', 'NA00003']
 
 
 
