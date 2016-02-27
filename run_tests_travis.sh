@@ -14,7 +14,7 @@ else
 fi
 
 # Create a new conda environment with the target python version
-~/miniconda3/bin/conda install conda-build
+~/miniconda3/bin/conda install conda-build -y
 ~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose conda-build
 
 # Add new conda environment to PATH
