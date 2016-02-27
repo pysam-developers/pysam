@@ -474,15 +474,13 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
     return dest
 
 
-cdef inline uint32_t get_alignment_length(bam1_t * src):
+cdef uint32_t get_alignment_length(bam1_t * src):
     cdef int k = 0
     cdef uint32_t l = 0
     cdef uint32_t * cigar_p = bam_get_cigar(src)
     cdef int op
     cdef int n = pysam_get_n_cigar(src)
-    # print ("DB", n)
     for k from 0 <= k < n:
-        print ("DB", k, n)
         op = cigar_p[k] & BAM_CIGAR_MASK
         l += cigar_p[k] >> BAM_CIGAR_SHIFT
     return l
