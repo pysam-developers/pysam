@@ -574,7 +574,6 @@ class TestTags(ReadTest):
         a = self.buildRead()
 
         if "TRAVIS" not in os.environ:
-            print ("test 1")
             # the following tests fail with segfault on travis
             # but pass in local environment. The error is 
             # in calignedsegment.get_alignment_length 
