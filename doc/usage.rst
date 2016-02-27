@@ -242,7 +242,7 @@ form:
 Working with VCF/BCF formatted files
 ====================================
 
-To iterate through a VCF/BCF formatted file tabular file use
+To iterate through a VCF/BCF formatted file use
 :class:`~pysam.VariantFile`::
 
    from pysam import VariantFile
@@ -253,9 +253,9 @@ To iterate through a VCF/BCF formatted file tabular file use
    for rec in bcf_in.fetch('chr1', 100000, 200000):
        bcf_out.write(rec)
 
-.. note::
+Meta-information in the variant file can be accessed in the
+:meth:`~pysam.VariantFile.header`. 
 
-   The VCF/BCF API is preliminary and incomplete.
 
 ===============
 Extending pysam
