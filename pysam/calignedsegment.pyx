@@ -506,19 +506,28 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     None, if no MD tag is present.
 
     """
+    if src == NULL:
+        return None
+
     cdef uint32_t start = getQueryStart(src)
     cdef uint32_t end = getQueryEnd(src)
     # get read sequence, taking into account soft-clipping
     r = getSequenceInRange(src, start, end)
     cdef char * read_sequence = r
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    if cigar_p == NULL:
+        return None
+
     cdef uint32_t r_idx = 0
     cdef int op
-    cdef uint32_t k, i, l
+    cdef uint32_t k, i, l, x
     cdef int nmatches = 0
-    cdef int x = 0
     cdef int s_idx = 0
-    cdef uint32_t max_len = get_alignment_length(src)
+    cdef uint32_t max_len = 0 
+
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        max_len += cigar_p[k] >> BAM_CIGAR_SHIFT
+
     if max_len == 0:
         raise ValueError("could not determine alignment length")
 
