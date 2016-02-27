@@ -526,6 +526,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef uint32_t max_len = 0 
 
     for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
         max_len += cigar_p[k] >> BAM_CIGAR_SHIFT
 
     if max_len == 0:

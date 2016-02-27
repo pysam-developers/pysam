@@ -74,7 +74,8 @@ make -C cbcf_data
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch
 # -v: verbose output
-nosetests -s -v 
+python AlignedSegment_test.py TestTags.testMDTagComplex
+# nosetests -s -v 
 
 if [ $? != 0 ]; then
     exit 1
