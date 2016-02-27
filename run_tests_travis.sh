@@ -15,7 +15,7 @@ fi
 
 # Create a new conda environment with the target python version
 ~/miniconda3/bin/conda install conda-build -y
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose conda-build
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose
 
 # Add new conda environment to PATH
 export PATH=~/miniconda3/envs/testenv/bin/:$PATH
@@ -76,7 +76,7 @@ fi
 popd
 
 # Try building conda recipe first
-conda-build ci/conda-recipe/
+conda-build ci/conda-recipe/ --python=$CONDA_PY
 
 # install code from the repository
 python setup.py install
