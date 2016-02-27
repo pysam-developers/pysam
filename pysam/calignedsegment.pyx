@@ -474,10 +474,12 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
     return dest
 
 
-cdef uint32_t get_alignment_length(bam1_t * src):
+cdef inline uint32_t get_alignment_length(bam1_t * src):
     cdef int k = 0
     cdef uint32_t l = 0
     cdef uint32_t * cigar_p = bam_get_cigar(src)
+    if cigar_p == NULL:
+        return 0
     cdef int op
     cdef int n = pysam_get_n_cigar(src)
     for k from 0 <= k < n:
@@ -514,6 +516,9 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef int x = 0
     cdef int s_idx = 0
     cdef uint32_t max_len = get_alignment_length(src)
+    if max_len == 0:
+        raise ValueError("could not determine alignment length")
+
     cdef char * s = <char*>calloc(max_len + 1, sizeof(char))
     if s == NULL:
         raise ValueError(
