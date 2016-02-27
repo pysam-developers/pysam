@@ -76,7 +76,7 @@ fi
 popd
 
 # Try building conda recipe first
-conda-build ci/conda-recipe/ --python=$CONDA_PY
+~/miniconda3/bin/conda-build ci/conda-recipe/ --python=$CONDA_PY
 
 # install code from the repository
 python setup.py install
