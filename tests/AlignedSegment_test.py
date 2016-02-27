@@ -595,16 +595,16 @@ class TestTags(ReadTest):
                 "AAcAATCAAAAA",
                 a.get_reference_sequence())
 
-            print ("test 3")
-            # insertion in reference overlapping deletion in reference
-            # read: AACCCCA---AAA
-            # ref:  AA----AGGGAAA
-            a.cigarstring = "2M4I1M3D3M"
-            a.set_tag("MD", "3^GGG3")
-            a.query_sequence = "AACCCCAAAA"
-            self.assertEqual(
-                "AAAGGGAAA",
-                a.get_reference_sequence())
+        print ("test 3")
+        # insertion in reference overlapping deletion in reference
+        # read: AACCCCA---AAA
+        # ref:  AA----AGGGAAA
+        a.cigarstring = "2M4I1M3D3M"
+        a.set_tag("MD", "3^GGG3")
+        a.query_sequence = "AACCCCAAAA"
+        self.assertEqual(
+            "AAAGGGAAA",
+            a.get_reference_sequence())
 
         a.cigarstring = "5M2D2I2M"
         a.set_tag("MD", "4C^TT2")

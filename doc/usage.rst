@@ -253,8 +253,13 @@ To iterate through a VCF/BCF formatted file use
    for rec in bcf_in.fetch('chr1', 100000, 200000):
        bcf_out.write(rec)
 
-Meta-information in the variant file can be accessed in the
-:meth:`~pysam.VariantFile.header`. 
+Meta-information in the variant file can be accessed through the 
+:py:attr:`~pysam.VariantFile.header` attribute which is of type 
+:class:`~pysam.VariantHeader`. The header provides access to
+meta-information stored in the :term:`vcf` header such as 
+contigs, info fields, samples, formats::
+
+   bcf_in.header
 
 
 ===============
