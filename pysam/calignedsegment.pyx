@@ -484,8 +484,8 @@ cdef inline uint32_t get_alignment_length(bam1_t * src):
         return 0
     cdef int op
     cdef int n = pysam_get_n_cigar(src)
-    print ("test")
     for k from 0 <= k < n:
+        print ("test", k)
         op = cigar_p[k] & BAM_CIGAR_MASK
         l += cigar_p[k] >> BAM_CIGAR_SHIFT
     return l
