@@ -76,6 +76,7 @@ fi
 popd
 
 # Try building conda recipe first
+echo "Building pysam with conda-build"
 ~/miniconda3/bin/conda-build ci/conda-recipe/ --python=$CONDA_PY
 
 # install code from the repository
