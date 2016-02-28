@@ -554,46 +554,38 @@ class TestTags(ReadTest):
     def testMDTagSoftClipping(self):
         a = self.buildRead()
 
-        if "TRAVIS" not in os.environ or True:
-            # softclipping
-            a.cigarstring = "5S5M1D5M5S"
-            a.query_sequence = "G" * 5 + "A" * 10 + "G" * 5
-            a.set_tag('MD', "5^C5")
-            self.assertEqual(
-                "A" * 5 + "C" + "A" * 5,
-                a.get_reference_sequence())
-            
-            # all together
-            a.cigarstring = "5S5M1D5M1I5M5S"
-            a.query_sequence = "G" * 5 + "A" * 16 + "G" * 5
-            a.set_tag('MD', "2C2^T10")
-            self.assertEqual(
-                "AAcAATAAAAAAAAAA",
-                a.get_reference_sequence())
+        # softclipping
+        a.cigarstring = "5S5M1D5M5S"
+        a.query_sequence = "G" * 5 + "A" * 10 + "G" * 5
+        a.set_tag('MD', "5^C5")
+        self.assertEqual(
+            "A" * 5 + "C" + "A" * 5,
+            a.get_reference_sequence())
+        
+        # all together
+        a.cigarstring = "5S5M1D5M1I5M5S"
+        a.query_sequence = "G" * 5 + "A" * 16 + "G" * 5
+        a.set_tag('MD', "2C2^T10")
+        self.assertEqual(
+            "AAcAATAAAAAAAAAA",
+            a.get_reference_sequence())
 
     def testMDTagComplex(self):
         a = self.buildRead()
 
-        if "TRAVIS" not in os.environ or True:
-            # the following tests fail with segfault on travis
-            # but pass in local environment. The error is 
-            # in calignedsegment.get_alignment_length 
-            # and can be fixed by adding a print statement.
-            #
-            # all together
-            a.cigarstring = "5S5M1I2D5M5S"
-            a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
-            a.set_tag('MD', "2C2^TC5")
-            self.assertEqual(
-                "AAcAATCAAAAA",
-                a.get_reference_sequence())
-
-            a.cigarstring = "5S5M2D1I5M5S"
-            a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
-            a.set_tag('MD', "2C2^TC5")
-            self.assertEqual(
-                "AAcAATCAAAAA",
-                a.get_reference_sequence())
+        a.cigarstring = "5S5M1I2D5M5S"
+        a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
+        a.set_tag('MD', "2C2^TC5")
+        self.assertEqual(
+            "AAcAATCAAAAA",
+            a.get_reference_sequence())
+        
+        a.cigarstring = "5S5M2D1I5M5S"
+        a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
+        a.set_tag('MD', "2C2^TC5")
+        self.assertEqual(
+            "AAcAATCAAAAA",
+            a.get_reference_sequence())
 
         # insertion in reference overlapping deletion in reference
         # read: AACCCCA---AAA
