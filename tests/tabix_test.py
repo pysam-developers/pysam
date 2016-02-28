@@ -70,10 +70,12 @@ def checkBinaryEqual(filename1, filename2):
     if os.path.getsize(filename1) != os.path.getsize(filename2):
         return False
 
-    infile1 = open(filename1, "rb")
-    infile2 = open(filename2, "rb")
-
-    d1, d2 = infile1.read(), infile2.read()
+    with open(filename1, "rb") as infile:
+        d1 = infile.read()
+       
+    with open(filename2, "rb") as infile:
+        d2 = infile.read()
+ 
     found = False
     for c1, c2 in zip(d1, d2):
         if c1 != c2:
@@ -81,8 +83,6 @@ def checkBinaryEqual(filename1, filename2):
     else:
         found = True
 
-    infile1.close()
-    infile2.close()
     return found
 
 
@@ -113,12 +113,10 @@ class TestCompression(unittest.TestCase):
 
     def setUp(self):
 
-        self.tmpfilename = "tmp_%i" % id(self)
-        infile = gzip.open(self.filename, "rb")
-        outfile = open(self.tmpfilename, "wb")
-        outfile.write(infile.read())
-        outfile.close()
-        infile.close()
+        self.tmpfilename = "tmp_TestCompression_%i" % id(self)
+        with gzip.open(self.filename, "rb") as infile, \
+             open(self.tmpfilename, "wb") as outfile:
+            outfile.write(infile.read())
 
     def testCompression(self):
         '''see also issue 106'''
@@ -177,14 +175,13 @@ class IterationTest(unittest.TestCase):
     def setUp(self):
 
         lines = []
-        inf = gzip.open(self.filename, "rb")
-        for line in inf:
-            line = line.decode('ascii')
-            if line.startswith("#"):
-                if not self.with_comments:
-                    continue
-            lines.append(line)
-        inf.close()
+        with gzip.open(self.filename, "rb") as inf:
+            for line in inf:
+                line = line.decode('ascii')
+                if line.startswith("#"):
+                    if not self.with_comments:
+                        continue
+                lines.append(line)
 
         # creates index of contig, start, end, adds content without newline.
         self.compare = [
@@ -253,11 +250,10 @@ class TestGZFile(IterationTest):
     def setUp(self):
 
         IterationTest.setUp(self)
-
-        self.iter = pysam.GZIterator(self.filename)
+        self.gzfile = pysam.GZIterator(self.filename)
 
     def testAll(self):
-        result = list(self.iter)
+        result = list(self.gzfile)
         ref = self.getSubset()
         self.checkPairwise(result, ref)
 
@@ -362,13 +358,12 @@ class TestIterationWithoutComments(IterationTest):
 
     def testHeader(self):
         ref = []
-        inf = gzip.open(self.filename)
-        for x in inf:
-            x = x.decode("ascii")
-            if not x.startswith("#"):
-                break
-            ref.append(x[:-1].encode('ascii'))
-        inf.close()
+        with gzip.open(self.filename) as inf:
+            for x in inf:
+                x = x.decode("ascii")
+                if not x.startswith("#"):
+                    break
+                ref.append(x[:-1].encode('ascii'))
 
         header = list(self.tabix.header)
         self.assertEqual(ref, header)
@@ -377,11 +372,14 @@ class TestIterationWithoutComments(IterationTest):
         '''test repeated opening of the same file.'''
         def func1():
             # opens any tabix file
-            inf = pysam.TabixFile(self.filename)
-            return
-
-        for i in range(10000):
+            with pysam.TabixFile(self.filename) as inf:
+                pass
+            
+        for i in range(1000):
             func1()
+
+    def tearDown(self):
+        self.tabix.close()
 
 
 class TestIterationWithComments(TestIterationWithoutComments):
@@ -475,11 +473,9 @@ class TestParser(unittest.TestCase):
     def testIteratorUncompressed(self):
         '''test iteration from uncompressed file.'''
         tmpfilename = 'tmp_testIteratorUncompressed'
-        infile = gzip.open(self.filename, "rb")
-        outfile = open(tmpfilename, "wb")
-        outfile.write(infile.read())
-        outfile.close()
-        infile.close()
+        with gzip.open(self.filename, "rb") as infile, \
+             open(tmpfilename, "wb") as outfile:
+            outfile.write(infile.read())
 
         with open(tmpfilename) as infile:
             for x, r in enumerate(pysam.tabix_iterator(
@@ -509,7 +505,6 @@ class TestParser(unittest.TestCase):
         self.assertEqual(a, b)
 
 
-
 class TestIterators(unittest.TestCase):
 
     filename = os.path.join(DATADIR, "example.gtf.gz")
@@ -523,11 +518,9 @@ class TestIterators(unittest.TestCase):
         self.tabix = pysam.TabixFile(self.filename)
         self.compare = loadAndConvert(self.filename)
         self.tmpfilename_uncompressed = 'tmp_TestIterators'
-        infile = gzip.open(self.filename, "rb")
-        outfile = open(self.tmpfilename_uncompressed, "wb")
-        outfile.write(infile.read())
-        outfile.close()
-        infile.close()
+        with gzip.open(self.filename, "rb") as infile, \
+             open(self.tmpfilename_uncompressed, "wb") as outfile:
+            outfile.write(infile.read())
 
     def open(self):
 
@@ -539,21 +532,20 @@ class TestIterators(unittest.TestCase):
 
     def testIteration(self):
 
-        infile = self.open()
+        with self.open() as infile:
+            for x, r in enumerate(self.iterator(infile, self.parser())):
+                self.assertEqual(self.compare[x], list(r))
+                self.assertEqual(len(self.compare[x]), len(r))
 
-        for x, r in enumerate(self.iterator(infile, self.parser())):
-            self.assertEqual(self.compare[x], list(r))
-            self.assertEqual(len(self.compare[x]), len(r))
+                # test indexing
+                for c in range(0, len(r)):
+                    self.assertEqual(self.compare[x][c], r[c])
 
-            # test indexing
-            for c in range(0, len(r)):
-                self.assertEqual(self.compare[x][c], r[c])
-
-            # test slicing access
-            for c in range(0, len(r) - 1):
-                for cc in range(c + 1, len(r)):
-                    self.assertEqual(self.compare[x][c:cc],
-                                     r[c:cc])
+                # test slicing access
+                for c in range(0, len(r) - 1):
+                    for cc in range(c + 1, len(r)):
+                        self.assertEqual(self.compare[x][c:cc],
+                                         r[c:cc])
 
     def testClosedFile(self):
         '''test for error when iterating from closed file.'''
@@ -619,19 +611,23 @@ class TestIterationMalformattedGTFFiles(unittest.TestCase):
 
     def testGTFTooManyFields(self):
 
-        iterator = self.iterator(
-            gzip.open(os.path.join(DATADIR,
-                                   "gtf_toomany_fields.gtf.gz")),
-            parser=self.parser())
-        self.assertRaises(ValueError, iterator.next)
+        with gzip.open(os.path.join(
+                DATADIR,
+                "gtf_toomany_fields.gtf.gz")) as infile:
+            iterator = self.iterator(
+                infile,
+                parser=self.parser())
+            self.assertRaises(ValueError, iterator.next)
 
     def testGTFTooFewFields(self):
 
-        iterator = self.iterator(
-            gzip.open(os.path.join(DATADIR,
-                                   "gtf_toofew_fields.gtf.gz")),
-            parser=self.parser())
-        self.assertRaises(ValueError, iterator.next)
+        with gzip.open(os.path.join(
+                DATADIR,
+                "gtf_toofew_fields.gtf.gz")) as infile:
+            iterator = self.iterator(
+                infile,
+                parser=self.parser())
+            self.assertRaises(ValueError, iterator.next)
 
 
 class TestBed(unittest.TestCase):
@@ -674,7 +670,9 @@ class TestBed(unittest.TestCase):
             self.assertEqual(int(c[2]) + 1, r.end)
             self.assertEqual(str(int(c[2]) + 1), r[2])
 
-            
+    def tearDown(self):
+        self.tabix.close()
+
 
 class TestVCF(unittest.TestCase):
 
@@ -706,13 +704,15 @@ if IS_PYTHON3:
         def testFromTabix(self):
 
             # use ascii encoding - should raise error
-            t = pysam.TabixFile(self.tmpfilename + ".gz", encoding="ascii")
-            results = list(t.fetch(parser=pysam.asVCF()))
-            self.assertRaises(UnicodeDecodeError, getattr, results[1], "id")
+            with pysam.TabixFile(
+                    self.tmpfilename + ".gz", encoding="ascii") as t:
+                results = list(t.fetch(parser=pysam.asVCF()))
+                self.assertRaises(UnicodeDecodeError, getattr, results[1], "id")
 
-            t = pysam.TabixFile(self.tmpfilename + ".gz", encoding="utf-8")
-            results = list(t.fetch(parser=pysam.asVCF()))
-            self.assertEqual(getattr(results[1], "id"), u"Rene\xe9")
+            with pysam.TabixFile(
+                    self.tmpfilename + ".gz", encoding="utf-8") as t:
+                results = list(t.fetch(parser=pysam.asVCF()))
+                self.assertEqual(getattr(results[1], "id"), u"Rene\xe9")
 
         def testFromVCF(self):
             self.vcf = pysam.VCF()
@@ -804,6 +804,9 @@ class TestVCFFromTabix(TestVCF):
                 c[ncolumns + y] = "test_%i" % y
                 r[y] = "test_%i" % y
                 self.assertEqual(c[ncolumns + y], r[y])
+                
+    def tearDown(self):
+        self.tabix.close()
 
 
 class TestVCFFromVCF(TestVCF):
@@ -1025,6 +1028,7 @@ class TestVCFFromVCF(TestVCF):
                             s, ref, comp,
                             r.samples[s].items(), r))
 
+
 ############################################################################
 # create a test class for each example vcf file.
 # Two samples are created -
@@ -1141,6 +1145,10 @@ class TestRemoteFileHTTP(unittest.TestCase):
                           self.remote_file,
                           "header")
 
+    def tearDown(self):
+        self.remote_file.close()
+        self.local_file.close()
+
 
 class TestIndexArgument(unittest.TestCase):
 
@@ -1153,12 +1161,16 @@ class TestIndexArgument(unittest.TestCase):
     def testFetchAll(self):
         shutil.copyfile(self.filename_src, self.filename_dst)
         shutil.copyfile(self.index_src, self.index_dst)
-        same_basename_file = pysam.TabixFile(
-            self.filename_src, "r", index=self.index_src)
-        same_basename_results = list(same_basename_file.fetch())
-        diff_index_file = pysam.TabixFile(
-            self.filename_dst, "r", index=self.index_dst)
-        diff_index_result = list(diff_index_file.fetch())
+
+        with pysam.TabixFile(
+            self.filename_src, "r", index=self.index_src) as \
+            same_basename_file:
+            same_basename_results = list(same_basename_file.fetch())
+
+        with pysam.TabixFile(
+            self.filename_dst, "r", index=self.index_dst) as \
+            diff_index_file:
+            diff_index_result = list(diff_index_file.fetch())
 
         self.assertEqual(len(same_basename_results), len(diff_index_result))
         for x, y in zip(same_basename_results, diff_index_result):
@@ -1183,12 +1195,12 @@ class TestBackwardsCompatibility(unittest.TestCase):
     old version is accessed from pysam"""
 
     def check(self, filename, raises=None):
-        tf = pysam.TabixFile(filename)
-        ref = loadAndConvert(filename)
-        if raises is None:
-            self.assertEqual(len(list(tf.fetch())), len(ref))
-        else:
-            self.assertRaises(raises, tf.fetch)
+        with pysam.TabixFile(filename) as tf:
+            ref = loadAndConvert(filename)
+            if raises is None:
+                self.assertEqual(len(list(tf.fetch())), len(ref))
+            else:
+                self.assertRaises(raises, tf.fetch)
 
     def testVCF0v23(self):
         self.check(os.path.join(DATADIR, "example_0v23.vcf.gz"),
@@ -1223,22 +1235,22 @@ class TestMultipleIterators(unittest.TestCase):
     def testJoinedIterators(self):
 
         # two iterators working on the same file
-        tabix = pysam.TabixFile(self.filename)
-        a = tabix.fetch(parser=pysam.asGTF()).next()
-        b = tabix.fetch(parser=pysam.asGTF()).next()
-        # the first two lines differ only by the feature field
-        self.assertEqual(a.feature, "UTR")
-        self.assertEqual(b.feature, "exon")
-        self.assertEqual(re.sub("UTR", "", str(a)),
-                         re.sub("exon", "", str(b)))
+        with pysam.TabixFile(self.filename) as tabix:
+            a = tabix.fetch(parser=pysam.asGTF()).next()
+            b = tabix.fetch(parser=pysam.asGTF()).next()
+            # the first two lines differ only by the feature field
+            self.assertEqual(a.feature, "UTR")
+            self.assertEqual(b.feature, "exon")
+            self.assertEqual(re.sub("UTR", "", str(a)),
+                             re.sub("exon", "", str(b)))
 
     def testDisjointIterators(self):
         # two iterators working on the same file
-        tabix = pysam.TabixFile(self.filename)
-        a = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
-        b = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
-        # both iterators are at top of file
-        self.assertEqual(str(a), str(b))
+        with pysam.TabixFile(self.filename) as tabix:
+            a = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
+            b = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
+            # both iterators are at top of file
+            self.assertEqual(str(a), str(b))
 
     def testScope(self):
         # technically it does not really test if the scope is correct
@@ -1251,11 +1263,11 @@ class TestMultipleIterators(unittest.TestCase):
 
     def testDoubleFetch(self):
 
-        f = pysam.TabixFile(self.filename)
+        with pysam.TabixFile(self.filename) as f: 
 
-        for a, b in zip(f.fetch(multiple_iterators=True),
-                        f.fetch(multiple_iterators=True)):
-            self.assertEqual(str(a), str(b))
+            for a, b in zip(f.fetch(multiple_iterators=True),
+                            f.fetch(multiple_iterators=True)):
+                self.assertEqual(str(a), str(b))
 
 
 class TestContextManager(unittest.TestCase):
