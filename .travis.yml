@@ -1,16 +1,16 @@
 os:
   - linx
-#  - osx
+  - osx
 
-language: python
+language: c
+sudo: required
 
-python:
-  - "2.7"
-  - "3.3"
-  - "3.4"
-  - "3.5"
-
-sudo: false
+env:
+  matrix:
+    - CONDA_PY=2.7
+    - CONDA_PY=3.3
+    - CONDA_PY=3.4
+    - CONDA_PY=3.5
 
 addons:
   apt:
