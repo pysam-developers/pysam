@@ -44,8 +44,9 @@ class cy_build_ext(build_ext):
 
     def _get_egg_name(self):
         ei_cmd = self.get_finalized_command("egg_info")
-        return Distribution(None, None, ei_cmd.egg_name, ei_cmd.egg_version, get_python_version(),
-                            self.distribution.has_ext_modules() and self.plat_name).egg_name()
+        return Distribution(
+            None, None, ei_cmd.egg_name, ei_cmd.egg_version, get_python_version(),
+            self.distribution.has_ext_modules() and self.plat_name).egg_name()
 
     def build_extension(self, ext):
         if isinstance(ext, CyExtension) and ext._init_func:
