@@ -554,7 +554,7 @@ class TestTags(ReadTest):
     def testMDTagSoftClipping(self):
         a = self.buildRead()
 
-        if "TRAVIS" not in os.environ:
+        if "TRAVIS" not in os.environ or True:
             # softclipping
             a.cigarstring = "5S5M1D5M5S"
             a.query_sequence = "G" * 5 + "A" * 10 + "G" * 5
@@ -574,7 +574,7 @@ class TestTags(ReadTest):
     def testMDTagComplex(self):
         a = self.buildRead()
 
-        if "TRAVIS" not in os.environ:
+        if "TRAVIS" not in os.environ or True:
             # the following tests fail with segfault on travis
             # but pass in local environment. The error is 
             # in calignedsegment.get_alignment_length 

@@ -477,6 +477,7 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
 cdef inline uint32_t get_alignment_length(bam1_t * src):
     cdef int k = 0
     cdef uint32_t l = 0
+    return 1000
     if src == NULL:
         return 0
     cdef uint32_t * cigar_p = bam_get_cigar(src)
