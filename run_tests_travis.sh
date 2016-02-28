@@ -81,7 +81,7 @@ popd
 # install code from the repository
 python setup.py install
 
-find build/
+# find build/
 
 # change into tests directory. Otherwise,
 # 'import pysam' will import the repository,

@@ -55,7 +55,6 @@ class cy_build_ext(build_ext):
         if not self.inplace:
             ext.library_dirs.append(os.path.join(self.build_lib, "pysam"))
 
-        print ("platform is", sys.platform)
         if sys.platform == 'darwin':
 
             relative_module_path = ext.name.replace(".", os.sep) + get_config_vars()["SO"]

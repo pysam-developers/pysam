@@ -203,10 +203,13 @@ elif HTSLIB_MODE == 'shared':
             internal_htslib_libraries = ["chtslib.{}".format(
                 sysconfig.get_config_var('SOABI'))]
         else:
-            # KBJ: This doesn't work for me on OS X with Python 3.4.  Libs have no platform tags.
-            internal_htslib_libraries = ["chtslib.{}{}".format(
-                sys.implementation.cache_tag,
-                sys.abiflags)]
+            if sys.platform == "darwin":
+                # On OSX, python 3.3 and 3.4 Libs have no platform tags.
+                internal_htslib_libraries = ["chtslib"]
+            else:
+                internal_htslib_libraries = ["chtslib.{}{}".format(
+                    sys.implementation.cache_tag,
+                    sys.abiflags)]
     else:
         internal_htslib_libraries = ["chtslib"]
 
