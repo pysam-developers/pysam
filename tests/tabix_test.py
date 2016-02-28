@@ -372,14 +372,11 @@ class TestIterationWithoutComments(IterationTest):
         '''test repeated opening of the same file.'''
         def func1():
             # opens any tabix file
-            inf = pysam.TabixFile(self.filename)
-            return inf
+            with pysam.TabixFile(self.filename) as inf:
+                pass
             
-        files = []
         for i in range(1000):
-            files.append(func1())
-        for f in files:
-            f.close()
+            func1()
 
     def tearDown(self):
         self.tabix.close()
