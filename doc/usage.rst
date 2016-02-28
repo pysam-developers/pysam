@@ -242,7 +242,7 @@ form:
 Working with VCF/BCF formatted files
 ====================================
 
-To iterate through a VCF/BCF formatted file tabular file use
+To iterate through a VCF/BCF formatted file use
 :class:`~pysam.VariantFile`::
 
    from pysam import VariantFile
@@ -253,9 +253,103 @@ To iterate through a VCF/BCF formatted file tabular file use
    for rec in bcf_in.fetch('chr1', 100000, 200000):
        bcf_out.write(rec)
 
-.. note::
+:meth:`_pysam.VariantFile.fetch()` iterates over
+:class:`~pysam.VariantRecord` objects which provides access to
+simple variant attributes such as :class:`~pysam.VariantRecord.contig`,
+:class:`~pysam.VariantRecord.pos`, :class:`~pysam.VariantRecord.ref`::
 
-   The VCF/BCF API is preliminary and incomplete.
+   for rec in bcf_in.fetch():
+       print (rec.pos)
+
+but also to complex attributes such as the contents to the
+:term:`info`, :term:`format` and :term:`genotype` columns. These
+complex attributes are views on the underlying htslib data structures
+and provide dictionary-like access to the data::
+
+   for rec in bcf_in.fetch():
+       print (rec.info)
+       print (rec.info.keys())
+       print (rec.info["DP"])
+
+The :py:attr:`~pysam.VariantFile.header` attribute
+(:class:`~pysam.VariantHeader`) provides access information
+stored in the :term:`vcf` header. The complete header can be printed::
+
+   >>> print (bcf_in.header)
+   ##fileformat=VCFv4.2
+   ##FILTER=<ID=PASS,Description="All filters passed">
+   ##fileDate=20090805
+   ##source=myImputationProgramV3.1
+   ##reference=1000GenomesPilot-NCBI36
+   ##phasing=partial
+   ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples
+   With Data">
+   ##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+   ##INFO=<ID=AF,Number=.,Type=Float,Description="Allele Frequency">
+   ##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele">
+   ##INFO=<ID=DB,Number=0,Type=Flag,Description="dbSNP membership, build
+   129">
+   ##INFO=<ID=H2,Number=0,Type=Flag,Description="HapMap2 membership">
+   ##FILTER=<ID=q10,Description="Quality below 10">
+   ##FILTER=<ID=s50,Description="Less than 50% of samples have data">
+   ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+   ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+   ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+   ##FORMAT=<ID=HQ,Number=2,Type=Integer,Description="Haplotype Quality">
+   ##contig=<ID=M>
+   ##contig=<ID=17>
+   ##contig=<ID=20>
+   ##bcftools_viewVersion=1.3+htslib-1.3
+   ##bcftools_viewCommand=view -O b -o example_vcf42.bcf
+   example_vcf42.vcf.gz
+   #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO   FORMAT    NA00001 NA00002 NA0000
+  
+Individual contents such as contigs, info fields, samples, formats can
+be retrieved as attributes from :py:attr:`~pysam.VariantFile.header`::
+
+   >>> print (bcf_in.header.contigs)
+   <pysam.cbcf.VariantHeaderContigs object at 0xf250f8>
+
+To convert these views to native python types, iterate through the views::
+
+   >>> print list((bcf_in.header.contigs))
+   ['M', '17', '20']
+   >>> print list((bcf_in.header.filters))
+   ['PASS', 'q10', 's50']
+   >>> print list((bcf_in.header.info))
+   ['NS', 'DP', 'AF', 'AA', 'DB', 'H2']
+   >>> print list((bcf_in.header.samples))
+   ['NA00001', 'NA00002', 'NA00003']
+
+Alternatively, it is possible to iterate through all records in the
+header returning objects of type :py:class:`~pysam.VariantHeaderRecord`:: ::
+
+   >>> for x in bcf_in.header.records:
+   >>>    print (x)
+   >>>    print (x.type, x.key)
+   GENERIC fileformat
+   FILTER FILTER
+   GENERIC fileDate
+   GENERIC source
+   GENERIC reference
+   GENERIC phasing
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   FILTER FILTER
+   FILTER FILTER
+   FORMAT FORMAT
+   FORMAT FORMAT
+   FORMAT FORMAT
+   FORMAT FORMAT
+   CONTIG contig
+   CONTIG contig
+   CONTIG contig
+   GENERIC bcftools_viewVersion
+   GENERIC bcftools_viewCommand
 
 ===============
 Extending pysam

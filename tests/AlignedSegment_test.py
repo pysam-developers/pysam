@@ -486,10 +486,9 @@ class TestTags(ReadTest):
             after = entry.get_tags()
             self.assertEqual(after, before)
 
-    def testMDTag(self):
+    def testMDTagMatchOnly(self):
         a = self.buildRead()
-        # TODO: enable
-        return
+
         # Substitutions only
         a.cigarstring = "21M"
         a.query_sequence = "A" * 21
@@ -512,6 +511,9 @@ class TestTags(ReadTest):
             "ctgAAAAAcgt",
             a.get_reference_sequence())
 
+    def testMDTagInsertions(self):
+        a = self.buildRead()
+
         # insertions are silent in the reference sequence
         a.cigarstring = "5M1I5M"
         a.query_sequence = "A" * 5 + "C" + "A" * 5
@@ -532,6 +534,9 @@ class TestTags(ReadTest):
             a.get_reference_sequence(),
             "A" * 10)
 
+    def testMDTagDeletions(self):
+        a = self.buildRead()
+
         a.cigarstring = "5M1D5M"
         a.query_sequence = "A" * 10
         a.set_tag('MD', "5^C5")
@@ -546,6 +551,9 @@ class TestTags(ReadTest):
             "A" * 5 + "C" * 3 + "A" * 5,
             a.get_reference_sequence())
 
+    def testMDTagSoftClipping(self):
+        a = self.buildRead()
+
         # softclipping
         a.cigarstring = "5S5M1D5M5S"
         a.query_sequence = "G" * 5 + "A" * 10 + "G" * 5
@@ -553,7 +561,7 @@ class TestTags(ReadTest):
         self.assertEqual(
             "A" * 5 + "C" + "A" * 5,
             a.get_reference_sequence())
-
+        
         # all together
         a.cigarstring = "5S5M1D5M1I5M5S"
         a.query_sequence = "G" * 5 + "A" * 16 + "G" * 5
@@ -562,14 +570,16 @@ class TestTags(ReadTest):
             "AAcAATAAAAAAAAAA",
             a.get_reference_sequence())
 
-        # all together
+    def testMDTagComplex(self):
+        a = self.buildRead()
+
         a.cigarstring = "5S5M1I2D5M5S"
         a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
         a.set_tag('MD', "2C2^TC5")
         self.assertEqual(
             "AAcAATCAAAAA",
             a.get_reference_sequence())
-
+        
         a.cigarstring = "5S5M2D1I5M5S"
         a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
         a.set_tag('MD', "2C2^TC5")
@@ -593,6 +603,7 @@ class TestTags(ReadTest):
         self.assertEqual(
             "AAAAcTTAA",
             a.get_reference_sequence())
+
 
 class TestCopy(ReadTest):
     

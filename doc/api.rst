@@ -213,3 +213,9 @@ VCF files
 
 .. autoclass:: pysam.VariantHeader
    :members:
+
+.. autoclass:: pysam.VariantRecord
+   :members:
+
+.. autoclass:: pysam.VariantHeaderRecord
+   :members:

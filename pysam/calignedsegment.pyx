@@ -477,9 +477,17 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
 cdef inline uint32_t get_alignment_length(bam1_t * src):
     cdef int k = 0
     cdef uint32_t l = 0
+    if src == NULL:
+        return 0
     cdef uint32_t * cigar_p = bam_get_cigar(src)
-
-    for k from 0 <= k < pysam_get_n_cigar(src):
+    if cigar_p == NULL:
+        return 0
+    cdef int op
+    cdef int n = pysam_get_n_cigar(src)
+    for k from 0 <= k < n:
+        op = cigar_p[k] & BAM_CIGAR_MASK
+        if op == BAM_CSOFT_CLIP or op == BAM_CHARD_CLIP:
+            continue
         l += cigar_p[k] >> BAM_CIGAR_SHIFT
     return l
 
@@ -499,22 +507,28 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     None, if no MD tag is present.
 
     """
+    if src == NULL:
+        return None
 
     cdef uint32_t start = getQueryStart(src)
     cdef uint32_t end = getQueryEnd(src)
     # get read sequence, taking into account soft-clipping
     r = getSequenceInRange(src, start, end)
     cdef char * read_sequence = r
-    
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    if cigar_p == NULL:
+        return None
+
     cdef uint32_t r_idx = 0
     cdef int op
-    cdef uint32_t k, i, l
+    cdef uint32_t k, i, l, x
     cdef int nmatches = 0
-    cdef int x = 0
     cdef int s_idx = 0
 
     cdef uint32_t max_len = get_alignment_length(src)
+    if max_len == 0:
+        raise ValueError("could not determine alignment length")
+
     cdef char * s = <char*>calloc(max_len + 1, sizeof(char))
     if s == NULL:
         raise ValueError(
@@ -599,6 +613,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
 
     seq = PyBytes_FromStringAndSize(s, s_idx)
     free(s)
+
     return seq
 
 
@@ -1380,7 +1395,6 @@ cdef class AlignedSegment:
         cdef uint32_t k, i
         cdef int op
         cdef bam1_t * src = self._delegate
-        
         ref_seq = force_str(build_alignment_sequence(src))
         if ref_seq is None:
             raise ValueError("MD tag not present")

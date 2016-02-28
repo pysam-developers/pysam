@@ -42,12 +42,13 @@ def loadAndConvert(filename, encode=True):
     '''
     data = []
     if filename.endswith(".gz"):
-        for line in gzip.open(filename):
-            line = line.decode("ascii")
-            if line.startswith("#"):
-                continue
-            d = line.strip().split("\t")
-            data.append(d)
+        with gzip.open(filename) as inf:
+            for line in inf:
+                line = line.decode("ascii")
+                if line.startswith("#"):
+                    continue
+                d = line.strip().split("\t")
+                data.append(d)
     else:
         with open(filename) as f:
             for line in f:

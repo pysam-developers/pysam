@@ -204,7 +204,10 @@ from cpython.version cimport PY_MAJOR_VERSION
 
 from pysam.chtslib cimport hisremote
 
-__all__ = ['VariantFile', 'VariantHeader']
+__all__ = ['VariantFile',
+           'VariantHeader',
+           'VariantHeaderRecord',
+           'VariantRecord']
 
 ########################################################################
 ########################################################################
