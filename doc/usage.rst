@@ -254,15 +254,26 @@ To iterate through a VCF/BCF formatted file use
        bcf_out.write(rec)
 
 :meth:`_pysam.VariantFile.fetch()` iterates over
-:class:`~pysam.VariantRecord` objects which provides
+:class:`~pysam.VariantRecord` objects which provides access to
+simple variant attributes such as :class:`~pysam.VariantRecord.contig`,
+:class:`~pysam.VariantRecord.pos`, :class:`~pysam.VariantRecord.ref`::
 
+   for rec in bcf_in.fetch():
+       print (rec.pos)
 
+but also to complex attributes such as the contents to the
+:term:`info`, :term:`format` and :term:`genotype` columns. These
+complex attributes are views on the underlying htslib data structures
+and provide dictionary-like access to the data::
 
+   for rec in bcf_in.fetch():
+       print (rec.info)
+       print (rec.info.keys())
+       print (rec.info["DP"])
 
-Meta-information in the variant file can be accessed through the 
-:py:attr:`~pysam.VariantFile.header` attribute which is of type 
-:class:`~pysam.VariantHeader`. The header provides access to
-meta-information stored in the :term:`vcf` header::
+The :py:attr:`~pysam.VariantFile.header` attribute
+(:class:`~pysam.VariantHeader`) provides access information
+stored in the :term:`vcf` header. The complete header can be printed::
 
    >>> print (bcf_in.header)
    ##fileformat=VCFv4.2
@@ -293,10 +304,8 @@ meta-information stored in the :term:`vcf` header::
    example_vcf42.vcf.gz
    #CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO   FORMAT    NA00001 NA00002 NA0000
   
-Individual meta-information such as contigs, info fields, samples,
-formats can be retrieved from the
-:py:attr:`~pysam.VariantFile.header`. Generally, attributes provide
-views on the underlying htslib data structures::
+Individual contents such as contigs, info fields, samples, formats can
+be retrieved as attributes from :py:attr:`~pysam.VariantFile.header`::
 
    >>> print (bcf_in.header.contigs)
    <pysam.cbcf.VariantHeaderContigs object at 0xf250f8>
@@ -312,12 +321,35 @@ To convert these views to native python types, iterate through the views::
    >>> print list((bcf_in.header.samples))
    ['NA00001', 'NA00002', 'NA00003']
 
+Alternatively, it is possible to iterate through all records in the
+header returning objects of type :py:class:`~pysam.VariantHeaderRecord`:: ::
 
-
-
-
-
-
+   >>> for x in bcf_in.header.records:
+   >>>    print (x)
+   >>>    print (x.type, x.key)
+   GENERIC fileformat
+   FILTER FILTER
+   GENERIC fileDate
+   GENERIC source
+   GENERIC reference
+   GENERIC phasing
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   INFO INFO
+   FILTER FILTER
+   FILTER FILTER
+   FORMAT FORMAT
+   FORMAT FORMAT
+   FORMAT FORMAT
+   FORMAT FORMAT
+   CONTIG contig
+   CONTIG contig
+   CONTIG contig
+   GENERIC bcftools_viewVersion
+   GENERIC bcftools_viewCommand
 
 ===============
 Extending pysam
