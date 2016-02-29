@@ -79,6 +79,13 @@ popd
 echo "Building pysam with conda-build"
 ~/miniconda3/bin/conda-build ci/conda-recipe/ --python=$CONDA_PY
 
+# DEBUG INFO on SO files
+if [ $TRAVIS_OS_NAME == "osx" ]; then
+	otool -L ~/miniconda3/envs/_test/lib/python2.7/site-packages/pysam/*.so
+else
+	ldd ~/miniconda3/envs/_test/lib/python2.7/site-packages/pysam/*.so
+fi
+
 if [ $? != 0 ]; then
     exit 1
 fi
