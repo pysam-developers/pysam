@@ -394,38 +394,9 @@ cdef class AlignmentFile:
         if referencelengths is not None:
             reference_lengths = referencelengths
 
-        # read mode autodetection
+        # autodetection for read
         if mode is None:
-            try:
-                self._open(filepath_or_object,
-                           'rb',
-                           template=template,
-                           reference_names=reference_names,
-                           reference_lengths=reference_lengths,
-                           reference_filename=reference_filename,
-                           text=text,
-                           header=header,
-                           port=port,
-                           check_header=check_header,
-                           check_sq=check_sq,
-                           filepath_index=filepath_index)
-                return
-            except ValueError, msg:
-                pass
-
-            self._open(filepath_or_object,
-                       'r',
-                       template=template,
-                       reference_names=reference_names,
-                       reference_lengths=reference_lengths,
-                       reference_filename=reference_filename,
-                       text=text,
-                       header=header,
-                       port=port,
-                       check_header=check_header,
-                       check_sq=check_sq,
-                       filepath_index=filepath_index)
-            return
+            mode = "r"
 
         assert mode in ("r", "w", "rb", "wb", "wh",
                         "wbu", "rU", "wb0",
