@@ -57,6 +57,7 @@ import collections
 import re
 import warnings
 import array
+import StringIO
 
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
@@ -412,6 +413,12 @@ cdef class AlignmentFile:
             filename = filepath_or_object.name
             if filepath_or_object.closed:
                 raise ValueError('I/O operation on closed file')
+        elif isinstance(filepath_or_object, StringIO.StringIO):
+            filename = "stringio"
+            raise NotImplementedError(
+                "access from StringIO objects not supported")
+            if filepath_or_object.closed:
+                raise ValueError('I/O operation on closed StringIO object')
         else:
             filename = filepath_or_object
 

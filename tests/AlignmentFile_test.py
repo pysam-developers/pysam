@@ -13,6 +13,7 @@ import collections
 import subprocess
 import logging
 import array
+import StringIO
 from functools import partial
 
 import pysam
@@ -364,9 +365,22 @@ class BasicTestCRAMFromFile(BasicTestCRAMFromFetch):
 
     def setUp(self):
         f = open(os.path.join(DATADIR, "ex3.cram"))
-        self.samfile = pysam.AlignmentFile(
-            f, "rc")
+        self.samfile = pysam.AlignmentFile(f, "rc")
         self.reads = [r for r in self.samfile]
+
+
+class BasicTestSAMFromStringIO(BasicTestBAMFromFetch):
+
+    def testRaises(self):
+        statement = "samtools view -h {}".format(
+                os.path.join(DATADIR, "ex3.bam"))
+        stdout = subprocess.check_output(statement.split(" "))
+        bam = StringIO.StringIO()
+        bam.write(stdout)
+        bam.seek(0)
+        self.assertRaises(NotImplementedError,
+                          pysam.AlignmentFile, bam)
+        # self.reads = [r for r in samfile]
 
 
 ##################################################
