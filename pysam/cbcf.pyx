@@ -202,7 +202,11 @@ from cpython.bytes   cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DecodeASCII
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.chtslib cimport hisremote
+from pysam.chtslib   cimport hisremote
+
+
+from warnings         import warn
+
 
 __all__ = ['VariantFile',
            'VariantHeader',
@@ -3412,7 +3416,7 @@ cdef class VariantFile(object):
 
         return vars
 
-    def open(self, filename, mode=None,
+    def open(self, filename, mode='rb',
              index_filename=None,
              VariantHeader header=None,
              drop_samples=False):
@@ -3422,6 +3426,7 @@ cdef class VariantFile(object):
         closed and a new file will be opened.
         """
         cdef bcf_hdr_t *hdr
+        cdef BGZF *bgzfp
         cdef hts_idx_t *idx
         cdef tbx_t *tidx
         cdef char *cfilename
@@ -3431,17 +3436,6 @@ cdef class VariantFile(object):
         # close a previously opened file
         if self.is_open:
             self.close()
-
-        # read mode autodetection
-        if mode is None:
-            try:
-                self.open(filename, 'rb', header=header)
-                return
-            except ValueError, msg:
-                pass
-
-            self.open(filename, 'r', header=header)
-            return
 
         if mode not in ('r','w','rb','wb', 'wh', 'wbu', 'rU', 'wb0'):
             raise ValueError('invalid file opening mode `{}`'.format(mode))
@@ -3481,17 +3475,14 @@ cdef class VariantFile(object):
                 self.htsfile = hts_open(cfilename, cmode)
 
             if not self.htsfile:
-                raise ValueError(
-                    "could not open file `{}` (mode='{}')".format(
-                        (filename, mode)))
+                raise ValueError("could not open file `{}` (mode='{}')".format((filename, mode)))
 
             with nogil:
                 bcf_hdr_write(self.htsfile, self.header.ptr)
 
         elif mode.startswith(b'r'):
             # open file for reading
-            if filename != b'-' and not self.is_remote \
-               and not os.path.exists(filename):
+            if filename != b'-' and not self.is_remote and not os.path.exists(filename):
                 raise IOError('file `{}` not found'.format(filename))
 
             cfilename, cmode = filename, mode
@@ -3499,14 +3490,15 @@ cdef class VariantFile(object):
                 self.htsfile = hts_open(cfilename, cmode)
 
             if not self.htsfile:
-                raise ValueError(
-                    "could not open file `{}` (mode='{}') - "
-                    "is it VCF/BCF format?".format(filename, mode))
+                raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
 
             if self.htsfile.format.format not in (bcf, vcf):
-                raise ValueError(
-                    "invalid file `{}` (mode='{}') - "
-                    "is it VCF/BCF format?".format(filename, mode))
+                raise ValueError("invalid file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+
+            if self.htsfile.format.compression == bgzf:
+                bgzfp = hts_get_bgzfp(self.htsfile)
+                if bgzfp and bgzf_check_EOF(bgzfp) == 0:
+                    warn('[%s] Warning: no BGZF EOF marker; file may be truncated'.format(filename))
 
             with nogil:
                 hdr = bcf_hdr_read(self.htsfile)
@@ -3514,9 +3506,7 @@ cdef class VariantFile(object):
             try:
                 self.header = makeVariantHeader(hdr)
             except ValueError:
-                raise ValueError(
-                    "file `{}` does not have valid header (mode='{}') - "
-                    "is it VCF/BCF format?".format(filename, mode))
+                raise ValueError("file `{}` does not have valid header (mode='{}') - is it VCF/BCF format?".format(filename, mode))
 
             # check for index and open if present
             if self.htsfile.format.format == bcf:
