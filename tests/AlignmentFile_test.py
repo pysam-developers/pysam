@@ -13,7 +13,11 @@ import collections
 import subprocess
 import logging
 import array
-import StringIO
+if sys.version_info.major >= 3:
+    from io import StringIO
+else:
+    from StringIO import StringIO
+
 from functools import partial
 
 import pysam
@@ -375,8 +379,11 @@ class BasicTestSAMFromStringIO(BasicTestBAMFromFetch):
         statement = "samtools view -h {}".format(
                 os.path.join(DATADIR, "ex3.bam"))
         stdout = subprocess.check_output(statement.split(" "))
-        bam = StringIO.StringIO()
-        bam.write(stdout)
+        bam = StringIO()
+        if sys.version_info.major >= 3:
+            bam.write(stdout.decode('ascii'))
+        else:
+            bam.write(stdout)
         bam.seek(0)
         self.assertRaises(NotImplementedError,
                           pysam.AlignmentFile, bam)

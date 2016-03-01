@@ -57,7 +57,6 @@ import collections
 import re
 import warnings
 import array
-import StringIO
 
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
@@ -66,6 +65,11 @@ from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
 from pysam.calignedsegment cimport makeAlignedSegment, makePileupColumn
 from pysam.chtslib cimport hisremote
+
+if PY_MAJOR_VERSION >= 3:
+    from io import StringIO
+else:
+    from StringIO import StringIO
 
 cimport cython
 
@@ -408,17 +412,18 @@ cdef class AlignmentFile:
         if self.htsfile != NULL:
             self.close()
 
-        # check if we are working with a File object
-        if hasattr(filepath_or_object, "fileno"):
-            filename = filepath_or_object.name
-            if filepath_or_object.closed:
-                raise ValueError('I/O operation on closed file')
-        elif isinstance(filepath_or_object, StringIO.StringIO):
+        # StringIO not supported
+        if isinstance(filepath_or_object, StringIO):
             filename = "stringio"
             raise NotImplementedError(
                 "access from StringIO objects not supported")
             if filepath_or_object.closed:
                 raise ValueError('I/O operation on closed StringIO object')
+        # check if we are working with a File object
+        elif hasattr(filepath_or_object, "fileno"):
+            filename = filepath_or_object.name
+            if filepath_or_object.closed:
+                raise ValueError('I/O operation on closed file')
         else:
             filename = filepath_or_object
 
