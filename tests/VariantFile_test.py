@@ -113,7 +113,37 @@ class TestOpening(unittest.TestCase):
                 DATADIR,
                 "example_vcf42_only_header.vcf")) as inf:
             self.assertEqual(len(list(inf.fetch())), 0)
-        
+
+    def testDetectVCF(self):
+        with pysam.VariantFile(os.path.join(DATADIR,
+            "example_vcf40.vcf")) as inf:
+            self.assertEqual(inf.category, 'VARIANTS')
+            self.assertEqual(inf.format, 'VCF')
+            self.assertEqual(inf.compression, 'NONE')
+            self.assertFalse(inf.is_remote)
+            self.assertFalse(inf.is_stream)
+            self.assertEqual(len(list(inf.fetch())), 5)
+
+    def testDetectVCFGZ(self):
+        with pysam.VariantFile(os.path.join(DATADIR,
+            "example_vcf40.vcf.gz")) as inf:
+            self.assertEqual(inf.category, 'VARIANTS')
+            self.assertEqual(inf.format, 'VCF')
+            self.assertEqual(inf.compression, 'BGZF')
+            self.assertFalse(inf.is_remote)
+            self.assertFalse(inf.is_stream)
+            self.assertEqual(len(list(inf.fetch())), 5)
+
+    def testDetectBCF(self):
+        with pysam.VariantFile(os.path.join(DATADIR,
+            "example_vcf40.bcf")) as inf:
+            self.assertEqual(inf.category, 'VARIANTS')
+            self.assertEqual(inf.format, 'BCF')
+            self.assertEqual(inf.compression, 'BGZF')
+            self.assertFalse(inf.is_remote)
+            self.assertFalse(inf.is_stream)
+            self.assertEqual(len(list(inf.fetch())), 5)
+
 
 class TestHeader(unittest.TestCase):
 
@@ -280,7 +310,7 @@ class TestParsing(unittest.TestCase):
 
 class TestIndexFilename(unittest.TestCase):
 
-    filenames = [('example_vcf40.vcf.gz', 'example_vcf40.vcf.tbi'),
+    filenames = [('example_vcf40.vcf.gz', 'example_vcf40.vcf.gz.tbi'),
                  ('example_vcf40.vcf.gz', 'example_vcf40.vcf.gz.csi'),
                  ('example_vcf40.bcf',    'example_vcf40.bcf.csi')]
 

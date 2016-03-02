@@ -13,6 +13,11 @@ import collections
 import subprocess
 import logging
 import array
+if sys.version_info.major >= 3:
+    from io import StringIO
+else:
+    from StringIO import StringIO
+
 from functools import partial
 
 import pysam
@@ -364,9 +369,25 @@ class BasicTestCRAMFromFile(BasicTestCRAMFromFetch):
 
     def setUp(self):
         f = open(os.path.join(DATADIR, "ex3.cram"))
-        self.samfile = pysam.AlignmentFile(
-            f, "rc")
+        self.samfile = pysam.AlignmentFile(f, "rc")
         self.reads = [r for r in self.samfile]
+
+
+class BasicTestSAMFromStringIO(BasicTestBAMFromFetch):
+
+    def testRaises(self):
+        statement = "samtools view -h {}".format(
+                os.path.join(DATADIR, "ex3.bam"))
+        stdout = subprocess.check_output(statement.split(" "))
+        bam = StringIO()
+        if sys.version_info.major >= 3:
+            bam.write(stdout.decode('ascii'))
+        else:
+            bam.write(stdout)
+        bam.seek(0)
+        self.assertRaises(NotImplementedError,
+                          pysam.AlignmentFile, bam)
+        # self.reads = [r for r in samfile]
 
 
 ##################################################
@@ -700,17 +721,6 @@ class TestIO(unittest.TestCase):
         # write on closed file
         self.assertEqual(0, samfile.write(None))
 
-    def testAutoDetection(self):
-        '''test if autodetection works.'''
-
-        # TODO
-        # samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex3.sam"))
-        # self.assertRaises(ValueError, samfile.fetch, 'chr1')
-        # samfile.close()
-
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex3.bam"))
-        samfile.fetch('chr1')
-        samfile.close()
 
     # TOOD
     # def testReadingFromSamFileWithoutHeader(self):
@@ -804,6 +814,40 @@ class TestIO(unittest.TestCase):
             filename=os.path.join(DATADIR, "ex1.bam"),
             mode="rb")
         self.assertEqual(len(list(samfile.fetch())), 3270)
+
+
+class TestAutoDetect(unittest.TestCase):
+
+    def testSAM(self):
+        """test SAM autodetection."""
+
+        with pysam.AlignmentFile(
+                os.path.join(DATADIR, "ex3.sam")) as inf:
+            self.assertFalse(inf.is_bam)
+            self.assertFalse(inf.is_cram)
+
+            self.assertRaises(ValueError, inf.fetch, 'chr1')
+
+    def testBAM(self):
+        """test BAM autodetection."""
+
+        with pysam.AlignmentFile(
+                os.path.join(DATADIR, "ex3.bam")) as inf:
+            self.assertTrue(inf.is_bam)
+            self.assertFalse(inf.is_cram)
+            self.assertEqual(len(list(inf.fetch('chr1'))), 1)
+            self.assertEqual(len(list(inf.fetch('chr2'))), 3)
+
+    def testCRAM(self):
+        """test CRAM autodetection."""
+
+        with pysam.AlignmentFile(
+                os.path.join(DATADIR, "ex3.cram")) as inf:
+            self.assertFalse(inf.is_bam)
+            self.assertTrue(inf.is_cram)
+            self.assertEqual(len(list(inf.fetch('chr1'))), 1)
+            self.assertEqual(len(list(inf.fetch('chr2'))), 3)
+
 
 ##################################################
 #

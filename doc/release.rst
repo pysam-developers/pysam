@@ -2,8 +2,30 @@
 Release notes
 =============
 
-Release 0.8.5
+Release 0.9.0
 =============
+
+Overview
+--------
+
+The 0.9.0 release upgrades htslib to htslib 1.3 and numerous other
+enchancements and bugfixes. See below for a detailed list.
+
+`Htslib 1.3 <https://github.com/samtools/htslib/releases/tag/1.3>`_
+comes with additional capabilities for remote file access which depend
+on the presence of optional system libraries. As a consequence, the
+installation script :file:`setup.py` has become more complex. For an
+overview, see :ref:`installation`.  We have tested installation on
+linux and OS X, but could not capture all variations. It is possible
+that a 0.9.1 release might follow soon addressing installation issues.
+
+The :py:class:`~.pysam.VariantFile` class provides access to
+:term:`vcf` and :term:`bcf` formatted files. The class is certainly
+usable and interface is reaching completion, but the API and the
+functionality is subject to change.
+
+Detailed release notes
+----------------------
 
 * upgrade to htslib 1.3
 * python 3 compatibility tested throughout.
@@ -37,6 +59,7 @@ Release 0.8.5
   get_aligned_pairs(with_seq=True), see #225. If you have relied on on
   get_aligned_pairs(with_seq=True) in pysam-0.8.4, please check your
   results.
+* improved autodetection of file formats in AlignmentFile and VariantFile.
 
 Release 0.8.4
 =============
