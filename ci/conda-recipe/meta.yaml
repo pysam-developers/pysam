@@ -9,8 +9,7 @@ build:
   number: 0
   rpaths:
     - lib/
-    - {{ "lib/python%s/site-packages/" % environ.get('PY_VER', 0) }}
-
+    - {{ "lib/python%s/site-packages/pysam/" % environ.get('PY_VER', 0) }}
 
 requirements:
   build:
