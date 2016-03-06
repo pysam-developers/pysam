@@ -22,14 +22,5 @@ if [ "$(uname)" == "Darwin" ]; then
   install_name_tool -change @rpath/pysam/libchtslib.so @rpath/python${PY_VER}/site-packages/pysam/libchtslib.so ${SP_DIR}/pysam/cvcf.so
   otool -L ${SP_DIR}/pysam/*.so
 else
-	CURRENT_RPATH=`patchelf --print-rpath ${SP_DIR}/pysam/cvcf.so`
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/calignedsegment.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/calignmentfile.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cbcf.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cfaidx.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/csamfile.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/ctabix.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/ctabixproxies.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cutils.so
-  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cvcf.so
+	echo "Skipping rpath workaround on linux"
 fi
