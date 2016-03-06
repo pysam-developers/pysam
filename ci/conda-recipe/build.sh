@@ -23,13 +23,13 @@ if [ "$(uname)" == "Darwin" ]; then
   otool -L ${SP_DIR}/pysam/*.so
 else
 	CURRENT_RPATH=`patchelf --print-rpath ${SP_DIR}/pysam/cvcf.so`
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/calignedsegment.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/calignmentfile.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cbcf.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cfaidx.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/csamfile.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/ctabix.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/ctabixproxies.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cutils.so
-  patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cvcf.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/calignedsegment.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/calignmentfile.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cbcf.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cfaidx.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/csamfile.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/ctabix.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/ctabixproxies.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cutils.so
+  #patchelf --set-rpath ./:$CURRENT_RPATH ${SP_DIR}/pysam/cvcf.so
 fi
