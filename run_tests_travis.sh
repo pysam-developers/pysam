@@ -79,6 +79,10 @@ popd
 echo "Building pysam with conda-build"
 ~/miniconda3/bin/conda-build ci/conda-recipe/ --python=$CONDA_PY
 
+if [ $? != 0 ]; then
+    exit 1
+fi
+
 
 # install code from the repository
 python setup.py install
