@@ -1,13 +1,5 @@
 #!/bin/bash
 
-
-if [ $PY_VER == "3.5" ] && [ "$(uname)" == "Darwin" ]; then
-  SO_SUFFIX=".cpython-35m-darwin.so"
-else
-  SO_SUFFIX=".so"
-fi
-
-echo SO_SUFFIX
 # Use internal htslib
 chmod a+x ./htslib/configure
 export CFLAGS="-I${PREFIX}/include -L${PREFIX}/lib"
@@ -19,7 +11,13 @@ $PYTHON setup.py install --old-and-unmanageable
 # Hack to find SO filenames, which are different on py35 and greater.
 # We only manually adjust rpath on OSX, so we don't need to deal with linux sufix.
 
+if [ $PY_VER == "3.5" ] && [ "$(uname)" == "Darwin" ]; then
+  SO_SUFFIX=".cpython-35m-darwin.so"
+else
+  SO_SUFFIX=".so"
+fi
 
+echo SO_SUFFIX
 
 # Hacky workaround to fix rpath pathing issues
 if [ "$(uname)" == "Darwin" ]; then
