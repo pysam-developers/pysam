@@ -17,7 +17,7 @@ def test_bedcov_old_style_output():
 
 def test_idxstats_parse():
     bam_filename = "./pysam_data/ex2.bam"
-    idxstats_string = pysam.idxstats(bam_filename, old_style_output=True)
+    idxstats_string = pysam.idxstats(bam_filename, old_style_output=False)
     lines = idxstats_string.splitlines()
     for line in lines:
         splt = line.split("\t")
@@ -27,7 +27,7 @@ def test_idxstats_parse():
 def test_bedcov():
     bam_filename = "./pysam_data/ex1.bam"
     bed_filename = "./pysam_data/ex1.bed"
-    bedcov_string = pysam.bedcov(bed_filename, bam_filename, old_style_output=True)
+    bedcov_string = pysam.bedcov(bed_filename, bam_filename, old_style_output=False)
     lines = bedcov_string.splitlines()
     for line in lines:
         fields = line.split('\t')
