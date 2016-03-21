@@ -46,14 +46,21 @@ class PysamDispatcher(object):
         '''execute a samtools command.
 
         Keyword arguments:
-        catch_stdout -- redirect stdout from the samtools command and return as variable (default True)
+        catch_stdout -- redirect stdout from the samtools command and
+            return as variable (default True)
         raw -- ignore any parsers associated with this samtools command.
+        split_lines -- return stdout and stderr as a list of strings.
         '''
         retval, stderr, stdout = _pysam_dispatch(
             self.collection,
             self.dispatch,
             args,
             catch_stdout=kwargs.get("catch_stdout", True))
+
+        if kwargs.get("split_lines", False):
+            stdout = stdout.splitlines()
+            if stderr:
+                stderr = stderr.splitlines()
 
         if retval:
             raise SamtoolsError(
@@ -84,5 +91,5 @@ class PysamDispatcher(object):
         '''return the samtools usage information for this command'''
         retval, stderr, stdout = csamtools._samtools_dispatch(
             self.dispatch)
-        return "".join(stderr)
+        return stderr
 
