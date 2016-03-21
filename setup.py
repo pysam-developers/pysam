@@ -155,7 +155,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
             outf.write(
                 "/* empty config.h created by pysam */\n")
             outf.write(
-                "/* conservative compilation options */")
+                "/* conservative compilation options */\n")
 
 if HTSLIB_LIBRARY_DIR:
     # linking against a shared, externally installed htslib version, no
@@ -258,6 +258,16 @@ if HTSLIB_SOURCE == "builtin":
         print ("# pysam: libcurl of builtin htslib has been enabled, "
                "adding shared libcurl and libcrypto")
         external_htslib_libraries.extend(["curl", "crypto"])
+
+# create empty config.h files if they have not been created automatically
+# or created by the user:
+for fn in "samtools/config.h", "htslib/config.h":
+    if not os.path.exists(fn):
+        with open(fn, "w") as outf:
+            outf.write(
+                "/* empty config.h created by pysam */\n")
+            outf.write(
+                "/* conservative compilation options */\n")
 
 parts = ["samtools",
          "bcftools",
