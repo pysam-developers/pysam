@@ -16,7 +16,7 @@ def test_bedcov_split_lines():
     for line in lines:
         print(line)
         print(type(line))
-        fields = str(line).split('\t')  # Need to cast byte to string for py3k
+        fields = line.decode('utf-8').split('\t')  # Need to cast byte to string for py3k
         assert len(fields) in [4, 5], "bedcov should give tab delimited output with 4 or 5 fields.  Split line (%s) gives %d fields." % (fields, len(fields))
 
 def test_idxstats_parse():
@@ -28,7 +28,7 @@ def test_idxstats_parse():
     for line in lines:
         print(line)
         print(type(line))
-        splt = str(line).split("\t")  # Need to cast byte to string for py3k
+        splt = line.decode('utf-8').split("\t")  # Need to cast byte to string for py3k
         _seqname, _seqlen, nmapped, _nunmapped = splt
 
 
@@ -42,5 +42,5 @@ def test_bedcov():
     for line in lines:
         print(line)
         print(type(line))
-        fields = str(line).split('\t')  # Need to cast byte to string for py3k
+        fields = line.decode('utf-8').split('\t')  # Need to cast byte to string for py3k
         assert len(fields) in [4, 5], "bedcov should give tab delimited output with 4 or 5 fields.  Split line (%s) gives %d fields." % (fields, len(fields))
