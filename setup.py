@@ -458,9 +458,8 @@ cfaidx = Extension(
 ctabixproxies = Extension(
     "pysam.ctabixproxies",
     [source_pattern % "tabixproxies"] +
-    htslib_sources +
     os_c_files,
-    library_dirs=[],
+    library_dirs=htslib_library_dirs,
     include_dirs=include_os,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
@@ -472,7 +471,7 @@ cvcf = Extension(
     "pysam.cvcf",
     [source_pattern % "vcf"] +
     os_c_files,
-    library_dirs=[],
+    library_dirs=htslib_library_dirs,
     include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
