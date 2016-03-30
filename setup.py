@@ -458,6 +458,7 @@ cfaidx = Extension(
 ctabixproxies = Extension(
     "pysam.ctabixproxies",
     [source_pattern % "tabixproxies"] +
+    htslib_sources +
     os_c_files,
     library_dirs=[],
     include_dirs=include_os,
