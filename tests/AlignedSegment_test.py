@@ -3,6 +3,7 @@ import pysam
 import unittest
 import collections
 import copy
+import array
 
 from TestUtils import checkFieldEqual
 
@@ -319,7 +320,7 @@ class TestAlignedSegment(ReadTest):
              (None, 25, 'T'), (None, 26, 'T'),
              (5, 27, 'A'), (6, 28, 'A'), (7, 29, 'A'), (8, 30, 'A')]
             )
-        
+
         a.cigarstring = "5M2D2I2M"
         a.set_tag("MD", "4C^TT2")
         self.assertEqual(
@@ -353,7 +354,7 @@ class TestAlignedPairs(unittest.TestCase):
     def testReferenceBases(self):
         """reference bases should always be the same nucleotide
         """
-        reference_bases = collections.defaultdict(list)        
+        reference_bases = collections.defaultdict(list)
         with pysam.AlignmentFile(self.filename) as inf:
             for c in inf.pileup():
                 for r in c.pileups:
@@ -389,6 +390,16 @@ class TestTags(ReadTest):
         self.assertEqual(False, a.has_tag("NM"))
         # check if deleting a non-existing tag is fine
         a.set_tag("NM", None)
+        a.set_tag("NM", None)
+
+    def testArrayTags(self):
+        read = self.buildRead()
+        dtypes = "bhlBHLfd"  # Currently dtypes l, L, and d are failing
+        for dtype in dtypes:
+            key = "F" + dtype
+            read.set_tag(key, array.array(dtype, range(10)))
+            ary = read.get_tag(key)
+
 
     def testAddTagsType(self):
         a = self.buildRead()
@@ -561,7 +572,7 @@ class TestTags(ReadTest):
         self.assertEqual(
             "A" * 5 + "C" + "A" * 5,
             a.get_reference_sequence())
-        
+
         # all together
         a.cigarstring = "5S5M1D5M1I5M5S"
         a.query_sequence = "G" * 5 + "A" * 16 + "G" * 5
@@ -579,7 +590,7 @@ class TestTags(ReadTest):
         self.assertEqual(
             "AAcAATCAAAAA",
             a.get_reference_sequence())
-        
+
         a.cigarstring = "5S5M2D1I5M5S"
         a.query_sequence = "G" * 5 + "A" * 11 + "G" * 5
         a.set_tag('MD', "2C2^TC5")
@@ -606,7 +617,7 @@ class TestTags(ReadTest):
 
 
 class TestCopy(ReadTest):
-    
+
     def testCopy(self):
         a = self.buildRead()
         b = copy.copy(a)
