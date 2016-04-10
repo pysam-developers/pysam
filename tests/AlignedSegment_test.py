@@ -394,13 +394,22 @@ class TestTags(ReadTest):
 
     def testArrayTags(self):
         read = self.buildRead()
-        dtypes = "bhlBHLfd"  # Currently dtypes l, L, and d are failing
-        for dtype in dtypes:
+        supported_dtypes = "bhBHf"
+        unsupported_dtypes = "lLd"
+
+        for dtype in supported_dtypes:
             key = "F" + dtype
             read.set_tag(key, array.array(dtype, range(10)))
             ary = read.get_tag(key)
 
+        for dtype in unsupported_dtypes:
+            key = "F" + dtype
+            self.assertRaises(ValueError,
+                              read.set_tag,
+                              key,
+                              array.array(dtype, range(10)))
 
+        
     def testAddTagsType(self):
         a = self.buildRead()
         a.tags = None

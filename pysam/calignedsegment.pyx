@@ -93,16 +93,16 @@ cdef inline char map_typecode_htslib_to_python(uint8_t s):
 
     # map type from htslib to python array
     cdef char * f = strchr(htslib_types, s)
+
     if f == NULL:
-        raise ValueError("unknown htslib tag typecode '%s'" % chr(s))
+        return 0
     return parray_types[f - htslib_types]
 
 cdef inline uint8_t map_typecode_python_to_htslib(char s):
     """determine value type from type code of array"""
     cdef char * f = strchr(parray_types, s)
     if f == NULL:
-        raise ValueError(
-            "unknown conversion for array typecode '%s'" % s)
+        return 0
     return htslib_types[f - parray_types]
 
 # optional tag data manipulation
@@ -229,6 +229,8 @@ cdef inline packTags(tags):
     """
     fmts, args = ["<"], []
     
+    cdef char array_typecode
+
     datatype2format = {
         b'c': ('b', 1),
         b'C': ('B', 1),
@@ -273,9 +275,14 @@ cdef inline packTags(tags):
         elif isinstance(value, array.array):
             # binary tags from arrays
             if valuetype is None:
-                valuetype = force_bytes(chr(
-                    map_typecode_python_to_htslib(ord(value.typecode))))
+                array_typecode = map_typecode_python_to_htslib(ord(value.typecode))
 
+                if array_typecode == 0:
+                    raise ValueError("unsupported type code '{}'"
+                                     .format(value.typecode))
+
+                valuetype = force_bytes(chr(array_typecode))
+                    
             if valuetype not in datatype2format:
                 raise ValueError("invalid value type '%s' (%s)" %
                                  (valuetype, type(valuetype)))
