@@ -733,8 +733,8 @@ cdef class BedProxy(NamedTupleProxy):
 
         # do automatic conversion
         self.contig = self.fields[0]
-        self.start = atoi( self.fields[1] ) 
-        self.end = atoi( self.fields[2] )
+        self.start = atoi(self.fields[1]) 
+        self.end = atoi(self.fields[2])
 
     # __setattr__ in base class seems to take precedence
     # hence implement setters in __setattr__

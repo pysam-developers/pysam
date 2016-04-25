@@ -532,7 +532,7 @@ cdef class TabixFile:
             cdef int x
             result = []
             for x from 0 <= x < nsequences:
-                result.append(sequences[x])
+                result.append(force_str(sequences[x]))
             
             # htslib instructions:
             # only free container, not the sequences themselves

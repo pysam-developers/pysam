@@ -351,7 +351,7 @@ class TestIterationWithoutComments(IterationTest):
         self.tabix.fetch("chr1", 100, 100)
 
     def testGetContigs(self):
-        self.assertEqual(sorted(self.tabix.contigs), [b"chr1", b"chr2"])
+        self.assertEqual(sorted(self.tabix.contigs), ["chr1", "chr2"])
         # check that contigs is read-only
         self.assertRaises(
             AttributeError, setattr, self.tabix, "contigs", ["chr1", "chr2"])
