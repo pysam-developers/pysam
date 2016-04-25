@@ -8,6 +8,8 @@ from libc.stdlib cimport atoi, atol, atof
 from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
 
+import collections
+
 cdef char *StrOrEmpty(char * buffer):
      if buffer == NULL:
          return ""
@@ -88,7 +90,8 @@ cdef class TupleProxy:
         elif op == 3:  # != operator
             return self.compare(other) != 0
         else:
-            return NotImplemented
+            err_msg = "op {0} isn't implemented yet".format(op)
+            raise NotImplementedError(err_msg)
 
     cdef take(self, char * buffer, size_t nbytes):
         '''start presenting buffer.
@@ -423,29 +426,34 @@ cdef class GTFProxy(TupleProxy):
                 return float(v)
 
         def __set__(self, value):
-            self._setindex(5, value)
+            self._setindex(5, str(value))
 
     property strand:
         '''feature strand.'''
-        def __get__(self ):
-            return self._getindex(6)
+        def __get__(self):
+           return self._getindex(6)
         def __set__(self, value ):
             self._setindex(6, value)
 
     property frame:
        '''feature frame.'''
        def __get__(self):
-           return self._getindex(7)
+            v = self._getindex(7)
+            if v == "" or v[0] == '.':
+                return None
+            else:
+                return int(v)
+
        def __set__(self, value):
-           self._setindex(7, value)
+           self._setindex(7, str(value))
 
     property attributes:
         '''feature attributes (as a string).'''
         def __get__(self): 
             if self.hasOwnAttributes:
-                return self._attributes
+                return force_str(self._attributes)
             else:
-                return self._getindex(8)
+                return force_str(self._getindex(8))
         def __set__( self, value): 
             if self.hasOwnAttributes:
                 free(self._attributes)
@@ -481,7 +489,7 @@ cdef class GTFProxy(TupleProxy):
         # Remove white space to prevent a last empty field.
         fields = [x.strip() for x in attributes.strip().split("; ")]
         
-        result = {}
+        result = collections.OrderedDict()
 
         for f in fields:
 
@@ -529,7 +537,7 @@ cdef class GTFProxy(TupleProxy):
             else:
                 aa.append( '%s %s' % (k,str(v)) )
 
-        a = "; ".join( aa ) + ";"
+        a = force_bytes("; ".join(aa) + ";")
         p = a
         l = len(a)
         self._attributes = <char *>calloc(l + 1, sizeof(char))
@@ -554,7 +562,7 @@ cdef class GTFProxy(TupleProxy):
                  toDot(self.score),
                  self.strand,
                  self.frame,
-                 self.attributes ) )
+                 self.attributes))
         else: 
             return TupleProxy.__str__(self)
 
@@ -637,6 +645,26 @@ cdef class GTFProxy(TupleProxy):
         r = self.asDict()
         r[name] = value
         self.fromDict(r)
+
+    def __cmp__(self, other):
+        return (self.contig, self.strand, self.start) < \
+            (other.contig, other.strand, other.start)
+
+    # python 3 compatibility
+    def __richcmp__(GTFProxy self, GTFProxy other, int op):
+        if op == 0:
+            return (self.contig, self.strand, self.start) < \
+                (other.contig, other.strand, other.start)
+        elif op == 1:
+            return (self.contig, self.strand, self.start) <= \
+                (other.contig, other.strand, other.start)
+        elif op == 2:
+            return self.compare(other) == 0
+        elif op == 3:
+            return self.compare(other) != 0
+        else:
+            err_msg = "op {0} isn't implemented yet".format(op)
+            raise NotImplementedError(err_msg)
 
 
 cdef class NamedTupleProxy(TupleProxy):

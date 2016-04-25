@@ -505,6 +505,36 @@ class TestParser(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+class TestGTF(TestParser):
+
+    def testRead(self):
+
+        for x, r in enumerate(self.tabix.fetch(parser=pysam.asGTF())):
+            c = self.compare[x]
+            self.assertEqual(len(c), len(r))
+            self.assertEqual(list(c), list(r))
+            self.assertEqual(c, str(r).split("\t"))
+            self.assertTrue(r.gene_id.startswith("ENSG"))
+            if r.feature != 'gene':
+                self.assertTrue(r.transcript_id.startswith("ENST"))
+            self.assertEqual(c[0], r.contig)
+            self.assertEqual("\t".join(map(str, c)),
+                             str(r))
+
+    def testSetting(self):
+
+        for r in self.tabix.fetch(parser=pysam.asGTF()):
+            r.contig = r.contig + "_test"          
+            r.source = r.source + "_test"
+            r.feature = r.feature + "_test"
+            r.start += 10
+            r.end += 10
+            r.score = 20
+            r.strand = "+"
+            r.frame = 0
+            r.attributes = 'gene_id "0001";'
+
+
 class TestIterators(unittest.TestCase):
 
     filename = os.path.join(DATADIR, "example.gtf.gz")
@@ -582,23 +612,6 @@ class TestIteratorsFileCompressed(TestIterators):
 class TestIteratorsFileUncompressed(TestIterators):
     iterator = pysam.tabix_file_iterator
     is_compressed = False
-
-
-class TestGTF(TestParser):
-
-    def testRead(self):
-
-        for x, r in enumerate(self.tabix.fetch(parser=pysam.asGTF())):
-            c = self.compare[x]
-            self.assertEqual(len(c), len(r))
-            self.assertEqual(list(c), list(r))
-            self.assertEqual(c, str(r).split("\t"))
-            self.assertTrue(r.gene_id.startswith("ENSG"))
-            if r.feature != 'gene':
-                self.assertTrue(r.transcript_id.startswith("ENST"))
-            self.assertEqual(c[0], r.contig)
-            self.assertEqual("\t".join(map(str, c)),
-                             str(r))
 
 
 class TestIterationMalformattedGTFFiles(unittest.TestCase):

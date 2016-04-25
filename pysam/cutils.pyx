@@ -244,6 +244,8 @@ def stdout_redirector(to=os.devnull):
         # flush C-level stdout
         try:
             fflush(c_stdout)
+            # do not close, repeated calls fail with
+            # Bad file descriptor
             sys.stdout.close()
         except (OSError, IOError):
             # some tools close stdout
