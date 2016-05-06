@@ -58,8 +58,3 @@ python 2.7 contains pre-built C-files and cython needs not be present
 during installation. However, when installing the source tarball on
 python 3 or building from the repository, these pre-built C-files are
 not present and cython needs to be installed beforehand.
-
-
-
-
-
