@@ -10,7 +10,7 @@ use the github URL: https://github.com/pysam-developers/pysam.
 As pysam is a wrapper around htslib and the samtools package, I
 suggest cite `Li et al (2009) <http://www.ncbi.nlm.nih.gov/pubmed/19505943>`.
 
-Is pysam thread-save?
+Is pysam thread-safe?
 =====================
 
 Pysam is a mix of python and C code. Instructions within python are
