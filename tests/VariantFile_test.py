@@ -413,6 +413,28 @@ class TestConstructionVCFGZWithoutContigs(TestConstructionVCFWithContigs):
     filename = "example_vcf42.vcf.gz"
 
 
+class TestSettingRecordValues(unittest.TestCase):
+
+    filename = "example_vcf40.vcf"
+
+    def testSetQual(self):
+        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+            record = next(inf)
+            self.assertEqual(record.qual, 47)
+            record.qual = record.qual
+            self.assertEqual(record.qual, 47)
+            record.qual = 10
+            self.assertEqual(record.qual, 10)
+            self.assertEqual(str(record).split("\t")[5], "10")
+
+    def testGenotype(self):
+        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+            record = next(inf)
+            sample = record.samples["NA00001"]
+            print (sample["GT"])
+            self.assertEqual(sample["GT"], (0, 0))
+#	Fails with TypeError
+#            sample["GT"] = sample["GT"]
 
 if __name__ == "__main__":
     unittest.main()
