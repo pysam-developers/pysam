@@ -15,7 +15,7 @@ manually modifying one line in Makefile.
 
 curl
 
-Pysam requires Python (2.6 or greater) and Cython (0.22 or greater).
+Pysam requires Python (2.7 or greater) and Cython (0.22 or greater).
 It has not been tested on many other platforms.
 
 Compilation
