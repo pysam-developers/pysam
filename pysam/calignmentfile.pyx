@@ -112,7 +112,8 @@ VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
                                "UR", "SP"),
                       "RG" : ("ID", "SM", "LB", "DS", 
                               "PU", "PI", "CN", "DT",
-                              "PL", "FO", "KS", "PG"),
+                              "PL", "FO", "KS", "PG",
+                              "PM"),
                       "PG" : ("PN", "ID", "VN", "CL", 
                               "PP"),}
 
