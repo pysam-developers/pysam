@@ -393,6 +393,8 @@ cdef class GTFProxy(TupleProxy):
         def __get__(self):
             return self._getindex(1)
         def __set__(self, value):
+            if value is None:
+                value = "."
             self._setindex(1, value)
 
     property feature:
@@ -400,6 +402,8 @@ cdef class GTFProxy(TupleProxy):
         def __get__(self):
             return self._getindex(2)
         def __set__(self, value):
+            if value is None:
+                value = "."
             self._setindex(2, value)
 
     property start:
@@ -426,6 +430,8 @@ cdef class GTFProxy(TupleProxy):
                 return float(v)
 
         def __set__(self, value):
+            if value is None:
+                value = "."
             self._setindex(5, str(value))
 
     property strand:
@@ -433,6 +439,8 @@ cdef class GTFProxy(TupleProxy):
         def __get__(self):
            return self._getindex(6)
         def __set__(self, value ):
+            if value is None:
+                value = "."
             self._setindex(6, value)
 
     property frame:
@@ -445,7 +453,9 @@ cdef class GTFProxy(TupleProxy):
                 return int(v)
 
        def __set__(self, value):
-           self._setindex(7, str(value))
+            if value is None:
+                value = "."
+            self._setindex(7, str(value))
 
     property attributes:
         '''feature attributes (as a string).'''
@@ -560,8 +570,8 @@ cdef class GTFProxy(TupleProxy):
                  str(self.start+1),
                  str(self.end),
                  toDot(self.score),
-                 self.strand,
-                 self.frame,
+                 toDot(self.strand),
+                 toDot(self.frame),
                  self.attributes))
         else: 
             return TupleProxy.__str__(self)
