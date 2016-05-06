@@ -2,6 +2,12 @@
 Release notes
 =============
 
+Release 0.9.1
+=============
+
+* do not require cython for python 3 install, fixes #260
+* FastaFile does not accept filepath_index any more, see #270
+
 Release 0.9.0
 =============
 
