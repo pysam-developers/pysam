@@ -81,7 +81,8 @@ Glossary
 
       In alignments with soft clipping part of the query sequence
       are not aligned. The unaligned query sequence is still part
-      of the alignment record. This is in difference to hard clipped reads.
+      of the alignment record. This is in difference to 
+      :term:`hard clipped` reads.
 
    hard clipping
    hard clipped
