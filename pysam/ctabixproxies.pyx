@@ -448,7 +448,7 @@ cdef class GTFProxy(TupleProxy):
        def __get__(self):
             v = self._getindex(7)
             if v == "" or v[0] == '.':
-                return None
+                return v
             else:
                 return int(v)
 
