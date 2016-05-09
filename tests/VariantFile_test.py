@@ -436,5 +436,17 @@ class TestSettingRecordValues(unittest.TestCase):
 #	Fails with TypeError
 #            sample["GT"] = sample["GT"]
 
+class TestSubsetting(unittest.TestCase):
+    
+    filename = "example_vcf42.vcf.gz"
+    
+    def testSubsetting(self):
+        with pysam.VariantFile(os.path.join(DATADIR,
+                                            self.filename)) as inf:
+            inf.subset_samples(["NA00001"])
+
+
+
+
 if __name__ == "__main__":
     unittest.main()
