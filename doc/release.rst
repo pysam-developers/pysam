@@ -5,6 +5,10 @@ Release notes
 Release 0.9.1
 =============
 
+This is a bugfix release addressing some installation problems
+in pysam 0.9.0, in particular:
+
+* patch included htslib to work with older libcurl versions, fixes #262.
 * do not require cython for python 3 install, fixes #260
 * FastaFile does not accept filepath_index any more, see #270
 * add AlignedSegment.get_cigar_stats method.

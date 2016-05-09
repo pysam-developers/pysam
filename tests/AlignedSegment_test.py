@@ -356,19 +356,19 @@ class TestCigarStats(ReadTest):
 
         a.cigarstring = None
         self.assertEqual(
-            map(list, a.get_cigar_stats()),
+            [list(x) for x in a.get_cigar_stats()],
             [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
         a.cigarstring = "10M"
         self.assertEqual(
-            map(list, a.get_cigar_stats()),
+            [list(x) for x in a.get_cigar_stats()],
             [[10, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
         a.cigarstring = "10M2I2M"
         self.assertEqual(
-            map(list, a.get_cigar_stats()),
+            [list(x) for x in a.get_cigar_stats()],
             [[12, 2, 0, 0, 0, 0, 0, 0, 0, 0],
              [2, 1, 0, 0, 0, 0, 0, 0, 0, 0]])
 
@@ -378,19 +378,19 @@ class TestCigarStats(ReadTest):
             expected[0][i] = 2
             expected[1][i] = 1
             self.assertEqual(
-                map(list, a.get_cigar_stats()),
+                [list(x) for x in a.get_cigar_stats()],
                 expected)
         
         a.cigarstring = "10M"
         a.set_tag("NM", 5)
         self.assertEqual(
-            map(list, a.get_cigar_stats()),
+            [list(x) for x in a.get_cigar_stats()],
             [[10, 0, 0, 0, 0, 0, 0, 0, 0, 5],
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
         
         a.cigarstring = None
         self.assertEqual(
-            map(list, a.get_cigar_stats()),
+            [list(x) for x in a.get_cigar_stats()],
             [[0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
