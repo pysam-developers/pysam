@@ -12,6 +12,8 @@ in pysam 0.9.0, in particular:
 * do not require cython for python 3 install, fixes #260
 * FastaFile does not accept filepath_index any more, see #270
 * add AlignedSegment.get_cigar_stats method.
+* py3 bugfix in VariantFile.subset_samples, fixes #272
+* add missing sysconfig import, fixes #278
 
 Release 0.9.0
 =============
