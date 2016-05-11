@@ -398,6 +398,29 @@ cdef extern from "htslib/hts.h" nogil:
         no_compression, gzip, bgzf, custom
         compression_maximum
 
+    enum hts_fmt_option:
+        CRAM_OPT_DECODE_MD,
+        CRAM_OPT_PREFIX,
+        CRAM_OPT_VERBOSITY,
+        CRAM_OPT_SEQS_PER_SLICE,
+        CRAM_OPT_SLICES_PER_CONTAINER,
+        CRAM_OPT_RANGE,
+        CRAM_OPT_VERSION,
+        CRAM_OPT_EMBED_REF,
+        CRAM_OPT_IGNORE_MD5,
+        CRAM_OPT_REFERENCE,
+        CRAM_OPT_MULTI_SEQ_PER_SLICE,
+        CRAM_OPT_NO_REF,
+        CRAM_OPT_USE_BZIP2,
+        CRAM_OPT_SHARED_REF,
+        CRAM_OPT_NTHREADS,
+        CRAM_OPT_THREAD_POOL,
+        CRAM_OPT_USE_LZMA,
+        CRAM_OPT_USE_RANS,
+        CRAM_OPT_REQUIRED_FIELDS,
+        HTS_OPT_COMPRESSION_LEVEL,
+        HTS_OPT_NTHREADS,
+
     ctypedef struct htsVersion:
         short major, minor
 
@@ -519,7 +542,7 @@ cdef extern from "htslib/hts.h" nogil:
     # @param opt The CRAM_OPT_* option.
     # @param ... Optional arguments, dependent on the option used.
     # @return    0 for success, or negative if an error occurred.
-    #int hts_set_opt(htsFile *fp, hts_fmt_option opt, ...)
+    int hts_set_opt(htsFile *fp, hts_fmt_option opt, ...)
 
     int hts_getline(htsFile *fp, int delimiter, kstring_t *str)
     char **hts_readlines(const char *fn, int *_n)
