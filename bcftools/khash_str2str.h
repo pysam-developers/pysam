@@ -1,6 +1,6 @@
 /*  khash_str2str.h -- C-string to C-string hash table.
 
-    Copyright (C) 2014 Genome Research Ltd.
+    Copyright (C) 2014,2016 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -57,6 +57,23 @@ static inline void khash_str2str_destroy_free(void *_hash)
     if (hash == 0) return;
     for (k = 0; k < kh_end(hash); ++k)
         if (kh_exist(hash, k)) free((char*)kh_key(hash, k));
+    kh_destroy(str2str, hash);
+}
+
+/*
+ *  Destroys the hash structure, the keys and the values
+ */
+static inline void khash_str2str_destroy_free_all(void *_hash)
+{
+    khash_t(str2str) *hash = (khash_t(str2str)*)_hash;
+    khint_t k;
+    if (hash == 0) return;
+    for (k = 0; k < kh_end(hash); ++k)
+        if (kh_exist(hash, k))
+        {
+            free((char*)kh_key(hash, k));
+            free((char*)kh_val(hash, k));
+        }
     kh_destroy(str2str, hash);
 }
 

@@ -2,7 +2,7 @@
 
 /*  vcfannotate.c -- Annotate and edit VCF/BCF files.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2016 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -122,7 +122,7 @@ typedef struct _args_t
 
     char **argv, *output_fname, *targets_fname, *regions_list, *header_fname;
     char *remove_annots, *columns, *rename_chrs, *sample_names, *mark_sites;
-    int argc, drop_header, tgts_is_vcf, mark_sites_logic;
+    int argc, drop_header, record_cmd_line, tgts_is_vcf, mark_sites_logic;
 }
 args_t;
 
@@ -811,6 +811,135 @@ static int vcf_setter_format_gt(args_t *args, bcf1_t *line, annot_col_t *col, vo
         return bcf_update_genotypes(args->hdr_out,line,args->tmpi3,nsrc*bcf_hdr_nsamples(args->hdr_out));
     }
 }
+static int count_vals(annot_line_t *tab, int icol_beg, int icol_end)
+{
+    int i, nmax = 0;
+    for (i=icol_beg; i<icol_end; i++)
+    {
+        char *str = tab->cols[i], *end = str;
+        if ( str[0]=='.' && !str[1] ) 
+        {
+            // missing value
+            if ( !nmax ) nmax = 1;
+            continue;
+        }
+        int n = 1;
+        while ( *end )
+        {
+            if ( *end==',' ) n++;
+            end++;
+        }
+        if ( nmax<n ) nmax = n;
+    }
+    return nmax;
+}
+static int setter_format_int(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
+{
+    annot_line_t *tab = (annot_line_t*) data;
+    int nsmpl = bcf_hdr_nsamples(args->hdr_out);
+    assert( col->icol+nsmpl <= tab->ncols );
+    int nvals = count_vals(tab,col->icol,col->icol+nsmpl);
+    assert( nvals>0 );
+    hts_expand(int32_t,nvals*nsmpl,args->mtmpi,args->tmpi);
+
+    int icol = col->icol, ismpl;
+    for (ismpl=0; ismpl<nsmpl; ismpl++)
+    {
+        int32_t *ptr = args->tmpi + ismpl*nvals;
+        int ival = 0;
+
+        char *str = tab->cols[icol];
+        while ( *str )
+        {
+            if ( str[0]=='.' && (!str[1] || str[1]==',') )  // missing value
+            {
+                ptr[ival++] = bcf_int32_missing;
+                str += str[1] ? 2 : 1;
+                continue;
+            }
+
+            char *end = str;
+            ptr[ival] = strtol(str, &end, 10); 
+            if ( end==str )
+                error("Could not parse %s at %s:%d .. [%s]\n", col->hdr_key,bcf_seqname(args->hdr,line),line->pos+1,tab->cols[col->icol]);
+
+            ival++;
+            str = *end ? end+1 : end;
+        }
+        while ( ival<nvals ) ptr[ival++] = bcf_int32_vector_end;
+        icol++;
+    }
+    return bcf_update_format_int32(args->hdr_out,line,col->hdr_key,args->tmpi,nsmpl*nvals);
+}
+static int setter_format_real(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
+{
+    annot_line_t *tab = (annot_line_t*) data;
+    int nsmpl = bcf_hdr_nsamples(args->hdr_out);
+    assert( col->icol+nsmpl <= tab->ncols );
+    int nvals = count_vals(tab,col->icol,col->icol+nsmpl);
+    assert( nvals>0 );
+    hts_expand(float,nvals*nsmpl,args->mtmpf,args->tmpf);
+
+    int icol = col->icol, ismpl;
+    for (ismpl=0; ismpl<nsmpl; ismpl++)
+    {
+        float *ptr = args->tmpf + ismpl*nvals;
+        int ival = 0;
+
+        char *str = tab->cols[icol];
+        while ( *str )
+        {
+            if ( str[0]=='.' && (!str[1] || str[1]==',') )  // missing value
+            {
+                bcf_float_set_missing(ptr[ival]); 
+                ival++;
+                str += str[1] ? 2 : 1;
+                continue;
+            }
+
+            char *end = str;
+            ptr[ival] = strtod(str, &end); 
+            if ( end==str )
+                error("Could not parse %s at %s:%d .. [%s]\n", col->hdr_key,bcf_seqname(args->hdr,line),line->pos+1,tab->cols[col->icol]);
+
+            ival++;
+            str = *end ? end+1 : end;
+        }
+        while ( ival<nvals ) { bcf_float_set_vector_end(ptr[ival]); ival++; }
+        icol++;
+    }
+    return bcf_update_format_float(args->hdr_out,line,col->hdr_key,args->tmpf,nsmpl*nvals);
+}
+static int setter_format_str(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
+{
+    annot_line_t *tab = (annot_line_t*) data;
+    int nsmpl = bcf_hdr_nsamples(args->hdr_out);
+    assert( col->icol+nsmpl <= tab->ncols );
+
+    int i, max_len = 0;
+    for (i=col->icol; i<col->icol+nsmpl; i++)
+    {
+        int len = strlen(tab->cols[i]);
+        if ( max_len < len ) max_len = len;
+    }
+    hts_expand(char,max_len*nsmpl,args->mtmps,args->tmps);
+
+    int icol = col->icol, ismpl;
+    for (ismpl=0; ismpl<nsmpl; ismpl++)
+    {
+        char *ptr = args->tmps + ismpl*max_len;
+        char *str = tab->cols[icol];
+        i = 0;
+        while ( str[i] )
+        {
+            ptr[i] = str[i];
+            i++;
+        }
+        while ( i<max_len ) ptr[i++] = 0;
+        icol++;
+    }
+    return bcf_update_format_char(args->hdr_out,line,col->hdr_key,args->tmps,nsmpl*max_len);
+}
 static int vcf_setter_format_int(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
     bcf1_t *rec = (bcf1_t*) data;
@@ -1129,7 +1258,7 @@ static void init_columns(args_t *args)
     kstring_t str = {0,0,0}, tmp = {0,0,0};
     char *ss = args->columns, *se = ss;
     args->ncols = 0;
-    int i = -1, has_fmt_str = 0, force_samples = -1;
+    int icol = -1, has_fmt_str = 0, force_samples = -1;
     while ( *ss )
     {
         if ( *se && *se!=',' ) { se++; continue; }
@@ -1137,22 +1266,22 @@ static void init_columns(args_t *args)
         if ( *ss=='+' ) { replace = REPLACE_MISSING; ss++; }
         else if ( *ss=='-' ) { replace = REPLACE_EXISTING; ss++; }
         else if ( *ss=='=' ) { replace = SET_OR_APPEND; ss++; }
-        i++;
+        icol++;
         str.l = 0;
         kputsn(ss, se-ss, &str);
         if ( !str.s[0] || !strcasecmp("-",str.s) ) ;
-        else if ( !strcasecmp("CHROM",str.s) ) args->chr_idx = i;
-        else if ( !strcasecmp("POS",str.s) ) args->from_idx = i;
-        else if ( !strcasecmp("FROM",str.s) ) args->from_idx = i;
-        else if ( !strcasecmp("TO",str.s) ) args->to_idx = i;
-        else if ( !strcasecmp("REF",str.s) ) args->ref_idx = i;
-        else if ( !strcasecmp("ALT",str.s) ) args->alt_idx = i;
+        else if ( !strcasecmp("CHROM",str.s) ) args->chr_idx = icol;
+        else if ( !strcasecmp("POS",str.s) ) args->from_idx = icol;
+        else if ( !strcasecmp("FROM",str.s) ) args->from_idx = icol;
+        else if ( !strcasecmp("TO",str.s) ) args->to_idx = icol;
+        else if ( !strcasecmp("REF",str.s) ) args->ref_idx = icol;
+        else if ( !strcasecmp("ALT",str.s) ) args->alt_idx = icol;
         else if ( !strcasecmp("ID",str.s) )
         {
             if ( replace==REPLACE_EXISTING ) error("Apologies, the -ID feature has not been implemented yet.\n");
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
-            col->icol = i;
+            col->icol = icol;
             col->replace = replace;
             col->setter = args->tgts_is_vcf ? vcf_setter_id : setter_id;
             col->hdr_key = strdup(str.s);
@@ -1162,7 +1291,7 @@ static void init_columns(args_t *args)
             if ( replace==REPLACE_EXISTING ) error("Apologies, the -FILTER feature has not been implemented yet.\n");
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
-            col->icol = i;
+            col->icol = icol;
             col->replace = replace;
             col->setter = args->tgts_is_vcf ? vcf_setter_filter : setter_filter;
             col->hdr_key = strdup(str.s);
@@ -1189,7 +1318,7 @@ static void init_columns(args_t *args)
             if ( replace==SET_OR_APPEND ) error("Apologies, the =QUAL feature has not been implemented yet.\n");
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
-            col->icol = i;
+            col->icol = icol;
             col->replace = replace;
             col->setter = args->tgts_is_vcf ? vcf_setter_qual : setter_qual;
             col->hdr_key = strdup(str.s);
@@ -1264,30 +1393,38 @@ static void init_columns(args_t *args)
         }
         else if ( !strncasecmp("FORMAT/",str.s, 7) || !strncasecmp("FMT/",str.s,4) )
         {
-            if ( !args->tgts_is_vcf )
-                error("Error: FORMAT fields can be carried over from a VCF file only.\n");
-
             char *key = str.s + (!strncasecmp("FMT/",str.s,4) ? 4 : 7);
             if ( force_samples<0 ) force_samples = replace;
-            if ( force_samples>=0 && replace!=REPLACE_ALL ) force_samples = replace;;
-            bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->files->readers[1].header, BCF_HL_FMT, "ID", key, NULL);
-            tmp.l = 0;
-            bcf_hrec_format(hrec, &tmp);
-            bcf_hdr_append(args->hdr_out, tmp.s);
-            bcf_hdr_sync(args->hdr_out);
+            if ( force_samples>=0 && replace!=REPLACE_ALL ) force_samples = replace;
+            if ( args->tgts_is_vcf )
+            {
+                bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->files->readers[1].header, BCF_HL_FMT, "ID", key, NULL);
+                tmp.l = 0;
+                bcf_hrec_format(hrec, &tmp);
+                bcf_hdr_append(args->hdr_out, tmp.s);
+                bcf_hdr_sync(args->hdr_out);
+            }
             int hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, key);
+            if ( !bcf_hdr_idinfo_exists(args->hdr_out,BCF_HL_FMT,hdr_id) )
+                error("The tag \"%s\" is not defined in %s\n", str.s, args->targets_fname);
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
-            col->icol = -1;
+            if ( !args->tgts_is_vcf )
+            {
+                col->icol = icol;
+                icol += bcf_hdr_nsamples(args->hdr_out) - 1;
+            }
+            else
+                col->icol = -1;
             col->replace = replace;
             col->hdr_key = strdup(key);
             if ( !strcasecmp("GT",key) ) col->setter = vcf_setter_format_gt;
             else
                 switch ( bcf_hdr_id2type(args->hdr_out,BCF_HL_FMT,hdr_id) )
                 {
-                    case BCF_HT_INT:    col->setter = vcf_setter_format_int; break;
-                    case BCF_HT_REAL:   col->setter = vcf_setter_format_real; break;
-                    case BCF_HT_STR:    col->setter = vcf_setter_format_str; has_fmt_str = 1; break;
+                    case BCF_HT_INT:    col->setter = args->tgts_is_vcf ? vcf_setter_format_int  : setter_format_int; break;
+                    case BCF_HT_REAL:   col->setter = args->tgts_is_vcf ? vcf_setter_format_real : setter_format_real; break;
+                    case BCF_HT_STR:    col->setter = args->tgts_is_vcf ? vcf_setter_format_str  : setter_format_str; has_fmt_str = 1; break;
                     default: error("The type of %s not recognised (%d)\n", str.s,bcf_hdr_id2type(args->hdr_out,BCF_HL_FMT,hdr_id));
                 }
         }
@@ -1316,7 +1453,7 @@ static void init_columns(args_t *args)
 
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
-            col->icol = i;
+            col->icol = icol;
             col->replace = replace;
             col->hdr_key = strdup(str.s);
             col->number  = bcf_hdr_id2length(args->hdr_out,BCF_HL_INFO,hdr_id);
@@ -1340,11 +1477,12 @@ static void init_columns(args_t *args)
     if ( skip_fmt ) khash_str2int_destroy_free(skip_fmt);
     if ( has_fmt_str )
     {
-        int n = bcf_hdr_nsamples(args->hdr_out) > bcf_hdr_nsamples(args->files->readers[1].header) ? bcf_hdr_nsamples(args->hdr_out) : bcf_hdr_nsamples(args->files->readers[1].header);
+        int n = bcf_hdr_nsamples(args->hdr_out);
+        if ( args->tgts_is_vcf && n<bcf_hdr_nsamples(args->files->readers[1].header) ) n = bcf_hdr_nsamples(args->files->readers[1].header);
         args->tmpp  = (char**)malloc(sizeof(char*)*n);
         args->tmpp2 = (char**)malloc(sizeof(char*)*n);
     }
-    if ( force_samples>=0 )
+    if ( force_samples>=0 && args->tgts_is_vcf )
         set_samples(args, args->files->readers[1].header, args->hdr, force_samples==REPLACE_ALL ? 0 : 1);
 }
 
@@ -1421,7 +1559,7 @@ static void init_data(args_t *args)
             args->mark_sites,args->mark_sites_logic==MARK_LISTED?"":"not ",args->mark_sites);
     }
 
-    bcf_hdr_append_version(args->hdr_out, args->argc, args->argv, "bcftools_annotate");
+     if (args->record_cmd_line) bcf_hdr_append_version(args->hdr_out, args->argc, args->argv, "bcftools_annotate");
     if ( !args->drop_header )
     {
         if ( args->rename_chrs ) rename_chrs(args, args->rename_chrs);
@@ -1519,8 +1657,10 @@ static void buffer_annot_lines(args_t *args, bcf1_t *line, int start_pos, int en
         }
         if ( args->ref_idx != -1 )
         {
-            assert( args->ref_idx < tmp->ncols );
-            assert( args->alt_idx < tmp->ncols );
+            if ( args->ref_idx >= tmp->ncols ) 
+                error("Could not parse the line, expected %d+ columns, found %d:\n\t%s\n",args->ref_idx+1,tmp->ncols,args->tgts->line.s);
+            if ( args->alt_idx >= tmp->ncols )
+                error("Could not parse the line, expected %d+ columns, found %d:\n\t%s\n",args->alt_idx+1,tmp->ncols,args->tgts->line.s);
             tmp->nals = 2;
             hts_expand(char*,tmp->nals,tmp->mals,tmp->als);
             tmp->als[0] = tmp->cols[args->ref_idx];
@@ -1626,9 +1766,10 @@ static void usage(args_t *args)
     fprintf(pysamerr, "   -c, --columns <list>           list of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
     fprintf(pysamerr, "   -e, --exclude <expr>           exclude sites for which the expression is true (see man page for details)\n");
     fprintf(pysamerr, "   -h, --header-lines <file>      lines which should be appended to the VCF header\n");
-    fprintf(pysamerr, "   -I, --set-id [+]<format>       set ID column, see man pagee for details\n");
-    fprintf(pysamerr, "   -i, --include <expr>           select sites for which the expression is true (see man pagee for details)\n");
+    fprintf(pysamerr, "   -I, --set-id [+]<format>       set ID column, see man page for details\n");
+    fprintf(pysamerr, "   -i, --include <expr>           select sites for which the expression is true (see man page for details)\n");
     fprintf(pysamerr, "   -m, --mark-sites [+-]<tag>     add INFO/tag flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
+    fprintf(pysamerr, "       --no-version               do not append version and command line to the header\n");
     fprintf(pysamerr, "   -o, --output <file>            write output to a file [standard output]\n");
     fprintf(pysamerr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(pysamerr, "   -r, --regions <region>         restrict to comma-separated list of regions\n");
@@ -1651,6 +1792,7 @@ int main_vcfannotate(int argc, char *argv[])
     args->output_fname = "-";
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
     args->ref_idx = args->alt_idx = args->chr_idx = args->from_idx = args->to_idx = -1;
     args->set_ids_replace = 1;
     int regions_is_file = 0;
@@ -1673,6 +1815,7 @@ int main_vcfannotate(int argc, char *argv[])
         {"header-lines",required_argument,NULL,'h'},
         {"samples",required_argument,NULL,'s'},
         {"samples-file",required_argument,NULL,'S'},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
     while ((c = getopt_long(argc, argv, "h:?o:O:r:R:a:x:c:i:e:S:s:I:m:",loptions,NULL)) >= 0)
@@ -1707,6 +1850,7 @@ int main_vcfannotate(int argc, char *argv[])
             case 'h': args->header_fname = optarg; break;
             case  1 : args->rename_chrs = optarg; break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args->record_cmd_line = 0; break;
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }

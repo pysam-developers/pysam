@@ -368,14 +368,31 @@ static void flush_viterbi(args_t *args)
             }
         }
 
-        // update the transition matrix tprob
+        // update the transition matrix
+        int n = 1;
         for (i=0; i<2; i++)
         {
-            int n = 0;
             for (j=0; j<2; j++) n += MAT(tcounts,2,i,j);
-            if ( !n) error("fixme: state %d not observed\n", i+1);
-            for (j=0; j<2; j++) MAT(tcounts,2,i,j) /= n;
         }
+        for (i=0; i<2; i++)
+        {
+            for (j=0; j<2; j++)
+            {
+                // no transition to i-th state was observed, set to a small number
+                if ( !MAT(tcounts,2,i,j) ) MAT(tcounts,2,i,j) = 0.1/n;
+                else MAT(tcounts,2,i,j) /= n;
+            }
+        }
+
+        // normalize
+        for (i=0; i<2; i++)
+        {
+            double norm = 0;
+            for (j=0; j<2; j++) norm += MAT(tcounts,2,j,i);
+            assert( norm!=0 );
+            for (j=0; j<2; j++) MAT(tcounts,2,j,i) /= norm;
+        }
+
         if ( args->genmap_fname || args->rec_rate > 0 )
             hmm_set_tprob(args->hmm, tcounts, 0);
         else
@@ -385,14 +402,16 @@ static void flush_viterbi(args_t *args)
         deltaz = fabs(MAT(tprob_arr,2,1,0)-t2az_prev);
         delthw = fabs(MAT(tprob_arr,2,0,1)-t2hw_prev);
         niter++;
-
-        fprintf(stderr,"%d: %f %f\n", niter,deltaz,delthw);
+        fprintf(stderr,"Viterbi training, iteration %d: dAZ=%e dHW=%e\tP(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", 
+            niter,deltaz,delthw,
+            MAT(tprob_arr,2,STATE_HW,STATE_HW),MAT(tprob_arr,2,STATE_AZ,STATE_HW),
+            MAT(tprob_arr,2,STATE_AZ,STATE_AZ),MAT(tprob_arr,2,STATE_HW,STATE_AZ));
     }
     while ( deltaz > 0.0 || delthw > 0.0 );
-    fprintf(stderr, "Viterbi training converged in %d iterations to", niter);
     double *tprob_arr = hmm_get_tprob(args->hmm);
-    for (i=0; i<2; i++) for (j=0; j<2; j++) fprintf(stderr, " %f", MAT(tprob_arr,2,i,j));
-    fprintf(stderr, "\n");
+    fprintf(stderr, "Viterbi training converged in %d iterations to P(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", niter,
+            MAT(tprob_arr,2,STATE_HW,STATE_HW),MAT(tprob_arr,2,STATE_AZ,STATE_HW),
+            MAT(tprob_arr,2,STATE_AZ,STATE_AZ),MAT(tprob_arr,2,STATE_HW,STATE_AZ));
     
     // output the results
     for (i=0; i<args->nrids; i++)
@@ -400,12 +419,16 @@ static void flush_viterbi(args_t *args)
         int ioff = args->rid_offs[i];
         int nsites = (i+1==args->nrids ? args->nsites : args->rid_offs[i+1]) - ioff;
         hmm_run_viterbi(args->hmm, nsites, args->eprob+ioff*2, args->sites+ioff);
+        hmm_run_fwd_bwd(args->hmm, nsites, args->eprob+ioff*2, args->sites+ioff);
         uint8_t *vpath = hmm_get_viterbi_path(args->hmm);
+        double  *fwd   = hmm_get_fwd_bwd_prob(args->hmm);
 
         const char *chr = bcf_hdr_id2name(args->hdr,args->rids[i]);
         for (j=0; j<nsites; j++)
         {
-            printf("%s\t%d\t%d\t..\n", chr,args->sites[ioff+j]+1,vpath[j*2]==STATE_AZ ? 1 : 0);
+            int state = vpath[j*2];
+            double pval = fwd[j*2 + state];
+            printf("%s\t%d\t%d\t%e\n", chr,args->sites[ioff+j]+1,state==STATE_AZ ? 1 : 0, pval);
         }
     }
 }

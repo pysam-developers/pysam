@@ -24,6 +24,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
 
+#include <config.h>
+
 #include "../../bam_sort.c"
 #include <assert.h>
 #include <regex.h>
@@ -49,7 +51,7 @@ void dump_header(bam_hdr_t* hdr) {
 static int populate_merged_header(bam_hdr_t *hdr, merged_header_t *merged_hdr) {
     trans_tbl_t dummy;
     int res;
-    res = trans_tbl_init(merged_hdr, hdr, &dummy, 0, 0, NULL);
+    res = trans_tbl_init(merged_hdr, hdr, &dummy, 0, 0, 1, NULL);
     trans_tbl_destroy(&dummy);
     return res;
 }
@@ -361,7 +363,7 @@ int main(int argc, char**argv)
         dump_header(translate);
     }
     if (verbose) printf("RUN test 1\n");
-    trans_tbl_init(merged_hdr, translate, &tbl_1, false, false, NULL);
+    trans_tbl_init(merged_hdr, translate, &tbl_1, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
     if (verbose) printf("END RUN test 1\n");
@@ -398,7 +400,7 @@ int main(int argc, char**argv)
         dump_header(translate);
     }
     if (verbose) printf("RUN test 2\n");
-    trans_tbl_init(merged_hdr, translate, &tbl_2, false, false, NULL);
+    trans_tbl_init(merged_hdr, translate, &tbl_2, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
     if (verbose) printf("END RUN test 2\n");
@@ -434,7 +436,7 @@ int main(int argc, char**argv)
         dump_header(translate);
      }
     if (verbose) printf("RUN test 3\n");
-    trans_tbl_init(merged_hdr, translate, &tbl_3, false, false, NULL);
+    trans_tbl_init(merged_hdr, translate, &tbl_3, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
     if (verbose) printf("END RUN test 3\n");
@@ -470,7 +472,7 @@ int main(int argc, char**argv)
         dump_header(translate);
     }
     if (verbose) printf("RUN test 4\n");
-    trans_tbl_init(merged_hdr, translate, &tbl_4, false, false, NULL);
+    trans_tbl_init(merged_hdr, translate, &tbl_4, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
     if (verbose) printf("END RUN test 4\n");
@@ -507,7 +509,7 @@ int main(int argc, char**argv)
         dump_header(translate);
     }
     if (verbose) printf("RUN test 5\n");
-    trans_tbl_init(merged_hdr, translate, &tbl_5, false, false, NULL);
+    trans_tbl_init(merged_hdr, translate, &tbl_5, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
     if (verbose) printf("END RUN test 5\n");
@@ -543,7 +545,7 @@ int main(int argc, char**argv)
         dump_header(translate);
     }
     if (verbose) printf("RUN test 6\n");
-    trans_tbl_init(merged_hdr, translate, &tbl_6, false, false, "filename");
+    trans_tbl_init(merged_hdr, translate, &tbl_6, false, false, true, "filename");
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
     if (verbose) printf("END RUN test 6\n");

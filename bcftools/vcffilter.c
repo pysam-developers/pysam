@@ -71,7 +71,7 @@ typedef struct _args_t
     int output_type, n_threads;
 
     char **argv, *output_fname, *targets_list, *regions_list;
-    int argc;
+    int argc, record_cmd_line;
 }
 args_t;
 
@@ -149,7 +149,7 @@ static void init_data(args_t *args)
         }
     }
 
-    bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_filter");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_filter");
 
     if ( args->filter_str )
         args->filter = filter_init(args->hdr, args->filter_str);
@@ -408,6 +408,7 @@ static void usage(args_t *args)
     fprintf(stderr, "    -G, --IndelGap <int>          filter clusters of indels separated by <int> or fewer base pairs allowing only one to pass\n");
     fprintf(stderr, "    -i, --include <expr>          include only sites for which the expression is true (see man page for details\n");
     fprintf(stderr, "    -m, --mode [+x]               \"+\": do not replace but add to existing FILTER; \"x\": reset filters at sites which pass\n");
+    fprintf(stderr, "        --no-version              do not append version and command line to the header\n");
     fprintf(stderr, "    -o, --output <file>           write output to a file [standard output]\n");
     fprintf(stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(stderr, "    -r, --regions <region>        restrict to comma-separated list of regions\n");
@@ -430,6 +431,7 @@ int main_vcffilter(int argc, char *argv[])
     args->output_fname = "-";
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
     int regions_is_file = 0, targets_is_file = 0;
 
     static struct option loptions[] =
@@ -448,6 +450,7 @@ int main_vcffilter(int argc, char *argv[])
         {"threads",required_argument,NULL,9},
         {"SnpGap",required_argument,NULL,'g'},
         {"IndelGap",required_argument,NULL,'G'},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
     char *tmp;
@@ -488,6 +491,7 @@ int main_vcffilter(int argc, char *argv[])
                 else error("The argument to -S not recognised: %s\n", optarg);
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args->record_cmd_line = 0; break;
             case 'h':
             case '?': usage(args);
             default: error("Unknown argument: %s\n", optarg);

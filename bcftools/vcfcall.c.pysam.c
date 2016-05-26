@@ -2,7 +2,7 @@
 
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2016 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -70,7 +70,7 @@ void error(const char *format, ...);
 typedef struct
 {
     int flag;   // combination of CF_* flags above
-    int output_type, n_threads;
+    int output_type, n_threads, record_cmd_line;
     htsFile *bcf_in, *out_fh;
     char *bcf_fname, *output_fname;
     char **samples;             // for subsampling and ploidy
@@ -176,6 +176,11 @@ static ploidy_predef_t ploidy_predefs[] =
       .ploidy =
           "*  * *     M 1\n"
           "*  * *     F 0\n"
+    },
+    { .alias  = "1",
+      .about  = "Treat all samples as haploid",
+      .ploidy =
+          "*  * *     * 1\n"
     },
     {
         .alias  = NULL,
@@ -383,7 +388,7 @@ static void init_data(args_t *args)
     if ( args->regions )
     {
         if ( bcf_sr_set_regions(args->aux.srs, args->regions, args->regions_is_file)<0 )
-            error("Failed to read the targets: %s\n", args->regions);
+            error("Failed to read the regions: %s\n", args->regions);
     }
 
     if ( !bcf_sr_add_reader(args->aux.srs, args->bcf_fname) ) error("Failed to open %s: %s\n", args->bcf_fname,bcf_sr_strerror(args->aux.srs->errnum));
@@ -398,9 +403,21 @@ static void init_data(args_t *args)
             if ( 3*args->aux.nfams!=args->nsamples ) error("Expected only trios in %s, sorry!\n", args->samples_fname);
             fprintf(pysamerr,"Detected %d samples in %d trio families\n", args->nsamples,args->aux.nfams);
         }
+    }
+    if ( args->ploidy  )
+    {
         args->nsex = ploidy_nsex(args->ploidy);
         args->sex2ploidy = (int*) calloc(args->nsex,sizeof(int));
         args->sex2ploidy_prev = (int*) calloc(args->nsex,sizeof(int));
+        if ( !args->nsamples )
+        {
+            args->nsamples = bcf_hdr_nsamples(args->aux.hdr);
+            args->sample2sex = (int*) malloc(sizeof(int)*args->nsamples);
+            for (i=0; i<args->nsamples; i++) args->sample2sex[i] = 0;
+        }
+    }
+    if ( args->nsamples )
+    {
         args->aux.ploidy = (uint8_t*) malloc(args->nsamples);
         for (i=0; i<args->nsamples; i++) args->aux.ploidy[i] = 2;
         for (i=0; i<args->nsex; i++) args->sex2ploidy_prev[i] = 2;
@@ -420,9 +437,12 @@ static void init_data(args_t *args)
     else
     {
         args->aux.hdr = bcf_hdr_dup(bcf_sr_get_header(args->aux.srs,0));
-        for (i=0; i<args->nsamples; i++)
-            if ( bcf_hdr_id2int(args->aux.hdr,BCF_DT_SAMPLE,args->samples[i])<0 )
-                error("No such sample: %s\n", args->samples[i]);
+        if ( args->samples )
+        {
+            for (i=0; i<args->nsamples; i++)
+                if ( bcf_hdr_id2int(args->aux.hdr,BCF_DT_SAMPLE,args->samples[i])<0 )
+                    error("No such sample: %s\n", args->samples[i]);
+        }
     }
 
     args->out_fh = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
@@ -441,7 +461,7 @@ static void init_data(args_t *args)
     bcf_hdr_remove(args->aux.hdr, BCF_HL_INFO, "QS");
     bcf_hdr_remove(args->aux.hdr, BCF_HL_INFO, "I16");
 
-    bcf_hdr_append_version(args->aux.hdr, args->argc, args->argv, "bcftools_call");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->aux.hdr, args->argc, args->argv, "bcftools_call");
     bcf_hdr_write(args->out_fh, args->aux.hdr);
 
     if ( args->flag&CF_INS_MISSED ) init_missed_line(args);
@@ -453,7 +473,10 @@ static void destroy_data(args_t *args)
     else if ( args->flag & CF_MCALL ) mcall_destroy(&args->aux);
     else if ( args->flag & CF_QCALL ) qcall_destroy(&args->aux);
     int i;
-    for (i=0; i<args->nsamples; i++) free(args->samples[i]);
+    if ( args->samples )
+    {
+        for (i=0; i<args->nsamples; i++) free(args->samples[i]);
+    }
     if ( args->aux.fams )
     {
         for (i=0; i<args->aux.nfams; i++) free(args->aux.fams[i].name);
@@ -581,6 +604,7 @@ static void usage(args_t *args)
     fprintf(pysamerr, "Usage:   bcftools call [options] <in.vcf.gz>\n");
     fprintf(pysamerr, "\n");
     fprintf(pysamerr, "File format options:\n");
+    fprintf(pysamerr, "       --no-version                do not append version and command line to the header\n");
     fprintf(pysamerr, "   -o, --output <file>             write output to a file [standard output]\n");
     fprintf(pysamerr, "   -O, --output-type <b|u|z|v>     output type: 'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
     fprintf(pysamerr, "       --ploidy <assembly>[?]      predefined ploidy, 'list' to print available settings, append '?' for details\n");
@@ -636,6 +660,7 @@ int main_vcfcall(int argc, char *argv[])
     args.output_fname   = "-";
     args.output_type    = FT_VCF;
     args.n_threads = 0;
+    args.record_cmd_line = 1;
     args.aux.trio_Pm_SNPs = 1 - 1e-8;
     args.aux.trio_Pm_ins  = args.aux.trio_Pm_del  = 1 - 1e-9;
 
@@ -670,6 +695,7 @@ int main_vcfcall(int argc, char *argv[])
         {"ploidy-file",required_argument,NULL,2},
         {"chromosome-X",no_argument,NULL,'X'},
         {"chromosome-Y",no_argument,NULL,'Y'},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
 
@@ -729,6 +755,7 @@ int main_vcfcall(int argc, char *argv[])
             case 's': args.samples_fname = optarg; break;
             case 'S': args.samples_fname = optarg; args.samples_is_file = 1; break;
             case  9 : args.n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args.record_cmd_line = 0; break;
             default: usage(&args);
         }
     }

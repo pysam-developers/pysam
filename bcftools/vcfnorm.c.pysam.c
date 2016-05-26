@@ -2,7 +2,7 @@
 
 /*  vcfnorm.c -- Left-align and normalize indels.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2016 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -78,6 +78,7 @@ typedef struct
     char **argv, *output_fname, *ref_fname, *vcf_fname, *region, *targets;
     int argc, rmdup, output_type, n_threads, check_ref, strict_filter, do_indels;
     int nchanged, nskipped, nsplit, ntotal, mrows_op, mrows_collapse, parsimonious;
+    int record_cmd_line;
 }
 args_t;
 
@@ -297,17 +298,19 @@ static int realign(args_t *args, bcf1_t *line)
         if ( i>0 && als[i].l==als[0].l && !strcasecmp(als[0].s,als[i].s) ) return ERR_DUP_ALLELE;
     }
 
-
     // trim from right
     int ori_pos = line->pos;
     while (1)
     {
         // is the rightmost base identical in all alleles?
+        int min_len = als[0].l;
         for (i=1; i<line->n_allele; i++)
         {
             if ( als[0].s[ als[0].l-1 ]!=als[i].s[ als[i].l-1 ] ) break;
+            if ( als[i].l < min_len ) min_len = als[i].l;
         }
         if ( i!=line->n_allele ) break; // there are differences, cannot be trimmed
+        if ( min_len<=1 && line->pos==0 ) break;
 
         int pad_from_left = 0;
         for (i=0; i<line->n_allele; i++) // trim all alleles
@@ -345,7 +348,7 @@ static int realign(args_t *args, bcf1_t *line)
             if ( als[0].s[ntrim_left]!=als[i].s[ntrim_left] ) break;
             if ( min_len > als[i].l - ntrim_left ) min_len = als[i].l - ntrim_left;
         }
-        if ( i!=line->n_allele || min_len==1 ) break; // there are differences, cannot be trimmed
+        if ( i!=line->n_allele || min_len<=1 ) break; // there are differences, cannot be trimmed
         ntrim_left++;
     }
     if ( ntrim_left )
@@ -1289,7 +1292,7 @@ static void merge_format_string(args_t *args, bcf1_t **lines, int nlines, bcf_fm
     {
         kstring_t *tmp = &args->tmp_str[i];
         kputsn(tmp->s,tmp->l,&str);
-        for (j=tmp->l; j<max_len; j++) kputc(0,tmp);
+        for (j=tmp->l; j<max_len; j++) kputc('\0',&str);
     }
     args->ntmp_arr2 = str.m;
     args->tmp_arr2  = (uint8_t*)str.s;
@@ -1583,7 +1586,7 @@ static void normalize_vcf(args_t *args)
     htsFile *out = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
     if ( out == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out, args->n_threads);
-    bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_norm");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_norm");
     bcf_hdr_write(out, args->hdr);
 
     int prev_rid = -1, prev_pos = -1, prev_type = 0;
@@ -1643,7 +1646,6 @@ static void normalize_vcf(args_t *args)
             if ( args->lines[ilast]->pos - args->lines[i]->pos < args->buf_win ) break;
             j++;
         }
-        if ( args->rbuf.n==args->rbuf.m ) j = 1;
         if ( j>0 ) flush_buffer(args, out, j);
     }
     flush_buffer(args, out, args->rbuf.n);
@@ -1668,6 +1670,7 @@ static void usage(void)
     fprintf(pysamerr, "    -d, --rm-dup <type>               remove duplicate snps|indels|both|any\n");
     fprintf(pysamerr, "    -f, --fasta-ref <file>            reference sequence\n");
     fprintf(pysamerr, "    -m, --multiallelics <-|+>[type]   split multiallelics (-) or join biallelics (+), type: snps|indels|both|any [both]\n");
+    fprintf(pysamerr, "        --no-version                  do not append version and command line to the header\n");
     fprintf(pysamerr, "    -N, --do-not-normalize            do not normalize indels (with -m or -c s)\n");
     fprintf(pysamerr, "    -o, --output <file>               write output to a file [standard output]\n");
     fprintf(pysamerr, "    -O, --output-type <type>          'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
@@ -1676,8 +1679,8 @@ static void usage(void)
     fprintf(pysamerr, "    -s, --strict-filter               when merging (-m+), merged site is PASS only if all sites being merged PASS\n");
     fprintf(pysamerr, "    -t, --targets <region>            similar to -r but streams rather than index-jumps\n");
     fprintf(pysamerr, "    -T, --targets-file <file>         similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "    -w, --site-win <int>              buffer for sorting lines which changed position during realignment [1000]\n");
     fprintf(pysamerr, "        --threads <int>               number of extra output compression threads [0]\n");
+    fprintf(pysamerr, "    -w, --site-win <int>              buffer for sorting lines which changed position during realignment [1000]\n");
     fprintf(pysamerr, "\n");
     exit(1);
 }
@@ -1691,6 +1694,7 @@ int main_vcfnorm(int argc, char *argv[])
     args->output_fname = "-";
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
     args->aln_win = 100;
     args->buf_win = 1000;
     args->mrows_collapse = COLLAPSE_BOTH;
@@ -1716,6 +1720,7 @@ int main_vcfnorm(int argc, char *argv[])
         {"threads",required_argument,NULL,9},
         {"check-ref",required_argument,NULL,'c'},
         {"strict-filter",no_argument,NULL,'s'},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
     char *tmp;
@@ -1773,6 +1778,7 @@ int main_vcfnorm(int argc, char *argv[])
                 if ( *tmp ) error("Could not parse argument: --site-win %s\n", optarg);
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args->record_cmd_line = 0; break;
             case 'h':
             case '?': usage();
             default: error("Unknown argument: %s\n", optarg);

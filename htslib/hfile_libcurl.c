@@ -92,7 +92,7 @@ static int easy_errno(CURL *easy, CURLcode err)
 
 #if LIBCURL_VERSION_NUM >= 0x071505
     case CURLE_NOT_BUILT_IN:
-      return ENOSYS;
+        return ENOSYS;
 #endif
 
     case CURLE_COULDNT_RESOLVE_PROXY:
@@ -121,10 +121,6 @@ static int easy_errno(CURL *easy, CURLcode err)
             return http_status_errno(lval);
         else
             return EIO;
-
-    case CURLE_WRITE_ERROR:
-    case CURLE_READ_ERROR:
-        return ENOTRECOVERABLE; // Indicates bugs in our callback routines
 
     case CURLE_OUT_OF_MEMORY:
         return ENOMEM;

@@ -19,9 +19,32 @@
 # For bcftools, type:
 # rm -rf bedtools
 # python import.py bedtools download/bedtools
-import os
-import sys
 import fnmatch
+import os
+import re
+import shutil
+import sys
+
+
+EXCLUDE = {
+    "samtools": (
+        "razip.c", "bgzip.c", "main.c", "bamtk.c",
+        "calDepth.c", "bam2bed.c", "wgsim.c",
+        "md5fa.c", "md5sum-lite.c", "maq2sam.c",
+        "bamcheck.c", "chk_indel.c", "vcf-miniview.c",
+        "htslib-1.3",   # do not import twice
+        "hfile_irods.c",  # requires irods library
+    ),
+    "bcftools": (
+        "test", "plugins", "peakfit.c", "main.c",
+        "peakfit.h",
+        # needs to renamed, name conflict with samtools reheader
+        "reheader.c",
+        "polysomy.c"),
+    "htslib": (
+        'htslib/tabix.c', 'htslib/bgzip.c',
+        'htslib/htsfile.c', 'htslib/hfile_irods.c'),
+}
 
 
 def locate(pattern, root=os.curdir):
@@ -57,7 +80,7 @@ if len(sys.argv) >= 1:
     if len(sys.argv) != 3:
         raise ValueError("import requires dest src")
 
-    dest, srcdir = sys.argv[2:4]
+    dest, srcdir = sys.argv[1:3]
     if dest not in EXCLUDE:
         raise ValueError("import expected one of %s" %
                          ",".join(EXCLUDE.keys()))

@@ -2,7 +2,7 @@
 
 /*  bamtk.c -- main samtools command front-end.
 
-    Copyright (C) 2008-2015 Genome Research Ltd.
+    Copyright (C) 2008-2016 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -23,6 +23,8 @@ THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
+
+#include <config.h>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -161,9 +163,8 @@ int samtools_main(int argc, char *argv[])
     setmode(fileno(stdout), O_BINARY);
     setmode(fileno(stdin),  O_BINARY);
 #endif
-
     if (argc < 2) { usage(pysamerr); return 1; }
-    
+
     if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0) {
         if (argc == 2) { usage(stdout); return 0; }
 
@@ -173,6 +174,7 @@ int samtools_main(int argc, char *argv[])
         argv++;
         argc = 2;
     }
+
     int ret = 0;
     if (strcmp(argv[1], "view") == 0)           ret = main_samview(argc-1, argv+1);
     else if (strcmp(argv[1], "import") == 0)    ret = main_import(argc-1, argv+1);
@@ -215,7 +217,7 @@ int samtools_main(int argc, char *argv[])
         printf(
 "samtools %s\n"
 "Using htslib %s\n"
-"Copyright (C) 2015 Genome Research Ltd.\n",
+"Copyright (C) 2016 Genome Research Ltd.\n",
                samtools_version(), hts_version());
     }
     else if (strcmp(argv[1], "--version-only") == 0) {
