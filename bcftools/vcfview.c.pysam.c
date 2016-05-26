@@ -74,6 +74,7 @@ typedef struct _args_t
     int sample_is_file, force_samples;
     char *include_types, *exclude_types;
     int include, exclude;
+    int record_cmd_line;
     htsFile *out;
 }
 args_t;
@@ -88,7 +89,8 @@ static void init_data(args_t *args)
         bcf_hdr_append(args->hdr,"##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Allele count in genotypes\">");
         bcf_hdr_append(args->hdr,"##INFO=<ID=AN,Number=1,Type=Integer,Description=\"Total number of alleles in called genotypes\">");
     }
-    bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_view");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_view");
+    else bcf_hdr_sync(args->hdr);
 
     // setup sample data
     if (args->sample_names)
@@ -487,6 +489,7 @@ static void usage(args_t *args)
     fprintf(pysamerr, "    -G,   --drop-genotypes              drop individual genotype information (after subsetting if -s option set)\n");
     fprintf(pysamerr, "    -h/H, --header-only/--no-header     print the header only/suppress the header in VCF output\n");
     fprintf(pysamerr, "    -l,   --compression-level [0-9]     compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
+    fprintf(pysamerr, "          --no-version                  do not append version and command line to the header\n");
     fprintf(pysamerr, "    -o,   --output-file <file>          output file name [stdout]\n");
     fprintf(pysamerr, "    -O,   --output-type <b|u|z|v>       b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(pysamerr, "    -r, --regions <region>              restrict to comma-separated list of regions\n");
@@ -531,6 +534,7 @@ int main_vcfview(int argc, char *argv[])
     args->update_info = 1;
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
     int targets_is_file = 0, regions_is_file = 0;
 
     static struct option loptions[] =
@@ -571,6 +575,7 @@ int main_vcfview(int argc, char *argv[])
         {"max-af",required_argument,NULL,'Q'},
         {"phased",no_argument,NULL,'p'},
         {"exclude-phased",no_argument,NULL,'P'},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
     char *tmp;
@@ -680,6 +685,7 @@ int main_vcfview(int argc, char *argv[])
                 break;
             }
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args->record_cmd_line = 0; break;
             case '?': usage(args);
             default: error("Unknown argument: %s\n", optarg);
         }

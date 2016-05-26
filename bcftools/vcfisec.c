@@ -58,7 +58,7 @@ typedef struct
     htsFile **fh_out;
     char **argv, *prefix, *output_fname, **fnames, *write_files, *targets_list, *regions_list;
     char *isec_exact;
-    int argc;
+    int argc, record_cmd_line;
 }
 args_t;
 
@@ -143,7 +143,7 @@ void isec_vcf(args_t *args)
         out_fh = hts_open(args->output_fname? args->output_fname : "-",hts_bcf_wmode(args->output_type));
         if ( out_fh == NULL ) error("Can't write to %s: %s\n", args->output_fname? args->output_fname : "standard output", strerror(errno));
         if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
-        bcf_hdr_append_version(files->readers[args->iwrite].header,args->argc,args->argv,"bcftools_isec");
+        if (args->record_cmd_line) bcf_hdr_append_version(files->readers[args->iwrite].header,args->argc,args->argv,"bcftools_isec");
         bcf_hdr_write(out_fh, files->readers[args->iwrite].header);
     }
     if ( !args->nwrite && !out_std && !args->prefix )
@@ -351,7 +351,7 @@ static void init_data(args_t *args)
                 args->fh_out[i] = hts_open(args->fnames[i], hts_bcf_wmode(args->output_type));  \
                 if ( !args->fh_out[i] ) error("Could not open %s\n", args->fnames[i]); \
                 if ( args->n_threads ) hts_set_threads(args->fh_out[i], args->n_threads); \
-                bcf_hdr_append_version(args->files->readers[j].header,args->argc,args->argv,"bcftools_isec"); \
+                if (args->record_cmd_line) bcf_hdr_append_version(args->files->readers[j].header,args->argc,args->argv,"bcftools_isec"); \
                 bcf_hdr_write(args->fh_out[i], args->files->readers[j].header); \
             }
             if ( !args->nwrite || args->write[0] )
@@ -456,6 +456,7 @@ static void usage(void)
     fprintf(stderr, "    -e, --exclude <expr>          exclude sites for which the expression is true\n");
     fprintf(stderr, "    -f, --apply-filters <list>    require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
     fprintf(stderr, "    -i, --include <expr>          include only sites for which the expression is true\n");
+    fprintf(stderr, "        --no-version                  do not append version and command line to the header\n");
     fprintf(stderr, "    -n, --nfiles [+-=~]<int>      output positions present in this many (=), this many or more (+), this many or fewer (-), the exact (~) files\n");
     fprintf(stderr, "    -o, --output <file>           write output to a file [standard output]\n");
     fprintf(stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
@@ -464,8 +465,8 @@ static void usage(void)
     fprintf(stderr, "    -R, --regions-file <file>     restrict to regions listed in a file\n");
     fprintf(stderr, "    -t, --targets <region>        similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
-    fprintf(stderr, "    -w, --write <list>            list of files to write with -p given as 1-based indexes. By default, all files are written\n");
     fprintf(stderr, "        --threads <int>           number of extra output compression threads [0]\n");
+    fprintf(stderr, "    -w, --write <list>            list of files to write with -p given as 1-based indexes. By default, all files are written\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "   # Create intersection and complements of two sets saving the output in dir/*\n");
@@ -492,6 +493,7 @@ int main_vcfisec(int argc, char *argv[])
     args->output_fname = NULL;
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
     int targets_is_file = 0, regions_is_file = 0;
 
     static struct option loptions[] =
@@ -512,6 +514,7 @@ int main_vcfisec(int argc, char *argv[])
         {"output",required_argument,NULL,'o'},
         {"output-type",required_argument,NULL,'O'},
         {"threads",required_argument,NULL,9},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
     while ((c = getopt_long(argc, argv, "hc:r:R:p:n:w:t:T:Cf:o:O:i:e:",loptions,NULL)) >= 0) {
@@ -560,6 +563,7 @@ int main_vcfisec(int argc, char *argv[])
                 }
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args->record_cmd_line = 0; break;
             case 'h':
             case '?': usage();
             default: error("Unknown argument: %s\n", optarg);

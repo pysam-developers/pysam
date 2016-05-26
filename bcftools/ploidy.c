@@ -1,5 +1,5 @@
-/* 
-    Copyright (C) 2014 Genome Research Ltd.
+/*
+    Copyright (C) 2014-2016 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -98,7 +98,7 @@ int ploidy_parse(const char *line, char **chr_beg, char **chr_end, reg_t *reg, v
         ploidy->id2sex[ploidy->nsex-1] = strdup(ploidy->tmp_str.s);
         sp->sex = khash_str2int_inc(ploidy->sex2id, ploidy->id2sex[ploidy->nsex-1]);
         ploidy->sex2dflt = (int*) realloc(ploidy->sex2dflt,sizeof(int)*ploidy->nsex);
-        ploidy->sex2dflt[ploidy->nsex-1] = ploidy->dflt;
+        ploidy->sex2dflt[ploidy->nsex-1] = -1;
     }
 
     ss = se;
@@ -106,8 +106,8 @@ int ploidy_parse(const char *line, char **chr_beg, char **chr_end, reg_t *reg, v
     if ( !*se ) error("Could not parse: %s\n", line);
     sp->ploidy = strtol(ss,&se,10);
     if ( ss==se ) error("Could not parse: %s\n", line);
-    if ( sp->ploidy < ploidy->min ) ploidy->min = sp->ploidy;
-    if ( sp->ploidy > ploidy->max ) ploidy->max = sp->ploidy;
+    if ( ploidy->min<0 || sp->ploidy < ploidy->min ) ploidy->min = sp->ploidy;
+    if ( ploidy->max<0 || sp->ploidy > ploidy->max ) ploidy->max = sp->ploidy;
 
     // Special case, chr="*" stands for a default value
     if ( default_ploidy_def )
@@ -119,19 +119,32 @@ int ploidy_parse(const char *line, char **chr_beg, char **chr_end, reg_t *reg, v
     return 0;
 }
 
+static void _set_defaults(ploidy_t *ploidy, int dflt)
+{
+    int i;
+    if ( khash_str2int_get(ploidy->sex2id, "*", &i) == 0 ) dflt = ploidy->sex2dflt[i];
+    for (i=0; i<ploidy->nsex; i++)
+        if ( ploidy->sex2dflt[i]==-1 ) ploidy->sex2dflt[i] = dflt;
+
+    ploidy->dflt = dflt;
+    if ( ploidy->min<0 || dflt < ploidy->min ) ploidy->min = dflt;
+    if ( ploidy->max<0 || dflt > ploidy->max ) ploidy->max = dflt;
+}
+
 ploidy_t *ploidy_init(const char *fname, int dflt)
 {
     ploidy_t *pld = (ploidy_t*) calloc(1,sizeof(ploidy_t));
     if ( !pld ) return NULL;
 
-    pld->dflt = pld->min = pld->max = dflt;
+    pld->min = pld->max = -1;
     pld->sex2id = khash_str2int_init();
     pld->idx = regidx_init(fname,ploidy_parse,NULL,sizeof(sex_ploidy_t),pld);
     if ( !pld->idx )
     {
         ploidy_destroy(pld);
-        pld = NULL;
+        return NULL;
     }
+    _set_defaults(pld,dflt);
     return pld;
 }
 
@@ -140,7 +153,7 @@ ploidy_t *ploidy_init_string(const char *str, int dflt)
     ploidy_t *pld = (ploidy_t*) calloc(1,sizeof(ploidy_t));
     if ( !pld ) return NULL;
 
-    pld->dflt = pld->min = pld->max = dflt;
+    pld->min = pld->max = -1;
     pld->sex2id = khash_str2int_init();
     pld->idx = regidx_init(NULL,ploidy_parse,NULL,sizeof(sex_ploidy_t),pld);
 
@@ -160,6 +173,7 @@ ploidy_t *ploidy_init_string(const char *str, int dflt)
     regidx_insert(pld->idx,NULL);
     free(tmp.s);
 
+    _set_defaults(pld,dflt);
     return pld;
 }
 

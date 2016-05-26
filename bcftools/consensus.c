@@ -623,7 +623,7 @@ int main_consensus(int argc, char *argv[])
         {"chain",1,0,'c'},
         {0,0,0,0}
     };
-    char c;
+    int c;
     while ((c = getopt_long(argc, argv, "h?s:1iH:f:o:m:c:",loptions,NULL)) >= 0) 
     {
         switch (c) 

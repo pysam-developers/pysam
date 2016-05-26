@@ -120,7 +120,7 @@ typedef struct
     htsFile *out_fh;
     bcf_hdr_t *out_hdr;
     char **argv;
-    int argc, n_threads;
+    int argc, n_threads, record_cmd_line;
 }
 args_t;
 
@@ -860,7 +860,7 @@ int copy_string_field(char *src, int isrc, int src_len, kstring_t *dst, int idst
     }
     if ( ith_src!=isrc ) return -1; // requested field not found
     int end_src = start_src;
-    while ( end_src<src_len && src[end_src]!=',' ) end_src++;
+    while ( end_src<src_len && src[end_src] && src[end_src]!=',' ) end_src++;
 
     int nsrc_cpy = end_src - start_src;
     if ( nsrc_cpy==1 && src[start_src]=='.' ) return 0;   // don't write missing values, dst is already initialized
@@ -1915,7 +1915,7 @@ void merge_vcf(args_t *args)
             char buf[10]; snprintf(buf,10,"%d",i+1);
             merge_headers(args->out_hdr, args->files->readers[i].header,buf,args->force_samples);
         }
-        bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_merge");
+        if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_merge");
         bcf_hdr_sync(args->out_hdr);
     }
     info_rules_init(args);
@@ -1964,6 +1964,7 @@ static void usage(void)
     fprintf(pysamerr, "    -i, --info-rules <tag:method,..>   rules for merging INFO fields (method is one of sum,avg,min,max,join) or \"-\" to turn off the default [DP:sum,DP4:sum]\n");
     fprintf(pysamerr, "    -l, --file-list <file>             read file names from the file\n");
     fprintf(pysamerr, "    -m, --merge <string>               allow multiallelic records for <snps|indels|both|all|none|id>, see man page for details [both]\n");
+    fprintf(pysamerr, "        --no-version                   do not append version and command line to the header\n");
     fprintf(pysamerr, "    -o, --output <file>                write output to a file [standard output]\n");
     fprintf(pysamerr, "    -O, --output-type <b|u|z|v>        'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
     fprintf(pysamerr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
@@ -1982,6 +1983,7 @@ int main_vcfmerge(int argc, char *argv[])
     args->output_fname = "-";
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
     args->collapse = COLLAPSE_BOTH;
     int regions_is_file = 0;
 
@@ -2000,6 +2002,7 @@ int main_vcfmerge(int argc, char *argv[])
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
         {"info-rules",required_argument,NULL,'i'},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
     while ((c = getopt_long(argc, argv, "hm:f:r:R:o:O:i:l:",loptions,NULL)) >= 0) {
@@ -2034,6 +2037,7 @@ int main_vcfmerge(int argc, char *argv[])
             case  2 : args->header_only = 1; break;
             case  3 : args->force_samples = 1; break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args->record_cmd_line = 0; break;
             case 'h':
             case '?': usage();
             default: error("Unknown argument: %s\n", optarg);

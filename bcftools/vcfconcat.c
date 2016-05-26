@@ -31,13 +31,15 @@ THE SOFTWARE.  */
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/kseq.h>
+#include <htslib/bgzf.h>
+#include <htslib/tbx.h> // for hts_get_bgzfp()
 #include "bcftools.h"
 
 typedef struct _args_t
 {
     bcf_srs_t *files;
     htsFile *out_fh;
-    int output_type, n_threads;
+    int output_type, n_threads, record_cmd_line;
     bcf_hdr_t *out_hdr;
     int *seen_seq;
 
@@ -50,7 +52,7 @@ typedef struct _args_t
 
     char **argv, *output_fname, *file_list, **fnames, *remove_dups, *regions_list;
     int argc, nfnames, allow_overlaps, phased_concat, regions_is_file;
-    int compact_PS, phase_set_changed;
+    int compact_PS, phase_set_changed, naive_concat;
 }
 args_t;
 
@@ -106,7 +108,7 @@ static void init_data(args_t *args)
         bcf_hdr_append(args->out_hdr,"##FORMAT=<ID=PQ,Number=1,Type=Integer,Description=\"Phasing Quality (bigger is better)\">");
         bcf_hdr_append(args->out_hdr,"##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase Set\">");
     }
-    bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_concat");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_concat");
     args->out_fh = hts_open(args->output_fname,hts_bcf_wmode(args->output_type));
     if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(args->out_fh, args->n_threads);
@@ -176,8 +178,11 @@ static void destroy_data(args_t *args)
     for (i=0; i<args->nfnames; i++) free(args->fnames[i]);
     free(args->fnames);
     if ( args->files ) bcf_sr_destroy(args->files);
-    if ( hts_close(args->out_fh)!=0 ) error("hts_close error\n");
-    bcf_hdr_destroy(args->out_hdr);
+    if ( args->out_fh )
+    {
+        if ( hts_close(args->out_fh)!=0 ) error("hts_close error\n");
+    }
+    if ( args->out_hdr ) bcf_hdr_destroy(args->out_hdr);
     free(args->seen_seq);
     free(args->start_pos);
     free(args->swap_phase);
@@ -550,6 +555,108 @@ static void concat(args_t *args)
     }
 }
 
+static void naive_concat(args_t *args)
+{
+    // only compressed BCF atm
+    BGZF *bgzf_out = bgzf_open(args->output_fname,"w");;
+
+    const size_t page_size = 32768;
+    char *buf = (char*) malloc(page_size);
+    kstring_t tmp = {0,0,0};
+    int i;
+    for (i=0; i<args->nfnames; i++)
+    {
+        htsFile *hts_fp = hts_open(args->fnames[i],"r");
+        if ( !hts_fp ) error("Failed to open: %s\n", args->fnames[i]);
+        htsFormat type = *hts_get_format(hts_fp);
+
+        if ( type.format==vcf ) error("The --naive option currently works only for compressed BCFs, sorry :-/\n");
+        if ( type.compression!=bgzf ) error("The --naive option currently works only for compressed BCFs, sorry :-/\n");
+
+        BGZF *fp = hts_get_bgzfp(hts_fp);
+        if ( !fp || bgzf_read_block(fp) != 0 || !fp->block_length )
+            error("Failed to read %s: %s\n", args->fnames[i], strerror(errno));
+
+        uint8_t magic[5];
+        if ( bgzf_read(fp, magic, 5) != 5 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+        if (strncmp((char*)magic, "BCF\2\2", 5) != 0) error("Invalid BCF magic string in %s\n", args->fnames[i]);
+
+        if ( bgzf_read(fp, &tmp.l, 4) != 4 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+        hts_expand(char,tmp.l,tmp.m,tmp.s);
+        if ( bgzf_read(fp, tmp.s, tmp.l) != tmp.l ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+
+        // write only the first header
+        if ( i==0 )
+        {
+            if ( bgzf_write(bgzf_out, "BCF\2\2", 5) !=5 ) error("Failed to write %d bytes to %s\n", 5,args->output_fname);
+            if ( bgzf_write(bgzf_out, &tmp.l, 4) !=4 ) error("Failed to write %d bytes to %s\n", 4,args->output_fname);
+            if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("Failed to write %d bytes to %s\n", tmp.l,args->output_fname);
+        }
+
+        // Output all non-header data that were read together with the header block
+        int nskip = fp->block_offset;
+        if ( fp->block_length - nskip > 0 )
+        {
+            if ( bgzf_write(bgzf_out, fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("Error: %d\n",fp->errcode);
+        }
+        if ( bgzf_flush(bgzf_out)<0 ) error("Error: %d\n",bgzf_out->errcode);
+
+
+        // Stream the rest of the file as it is, without recompressing, but remove BGZF EOF blocks
+        ssize_t nread, ncached = 0, nwr;
+        const int neof = 28;
+        char cached[neof];
+        while (1)
+        {
+            nread = bgzf_raw_read(fp, buf, page_size);
+
+            // page_size boundary may occur in the middle of the EOF block, so we need to cache the blocks' ends
+            if ( nread<=0 ) break;
+            if ( nread<=neof )      // last block
+            {
+                if ( ncached )
+                {
+                    // flush the part of the cache that won't be needed
+                    nwr = bgzf_raw_write(bgzf_out, cached, nread);
+                    if (nwr != nread) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)nread);
+
+                    // make space in the cache so that we can append to the end
+                    if ( nread!=neof ) memmove(cached,cached+nread,neof-nread);
+                }
+
+                // fill the cache and check for eof outside this loop
+                memcpy(cached+neof-nread,buf,nread);
+                break;
+            }
+
+            // not the last block, flush the cache if full
+            if ( ncached )
+            {
+                nwr = bgzf_raw_write(bgzf_out, cached, ncached);
+                if (nwr != ncached) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)ncached);
+                ncached = 0;
+            }
+
+            // fill the cache
+            nread -= neof;
+            memcpy(cached,buf+nread,neof);
+            ncached = neof;
+
+            nwr = bgzf_raw_write(bgzf_out, buf, nread);
+            if (nwr != nread) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)nread);
+        }
+        if ( ncached && memcmp(cached,"\037\213\010\4\0\0\0\0\0\377\6\0\102\103\2\0\033\0\3\0\0\0\0\0\0\0\0\0",neof) )
+        {
+            nwr = bgzf_raw_write(bgzf_out, cached, neof);
+            if (nwr != neof) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)neof);
+        }
+        if (hts_close(hts_fp)) error("Close failed: %s\n",args->fnames[i]);
+    }
+    free(buf);
+    free(tmp.s);
+    if (bgzf_close(bgzf_out) < 0) error("Error: %d\n",bgzf_out->errcode);
+}
+
 static void usage(args_t *args)
 {
     fprintf(stderr, "\n");
@@ -558,7 +665,9 @@ static void usage(args_t *args)
     fprintf(stderr, "         concatenate chromosome VCFs into one VCF, or combine a SNP VCF and an indel\n");
     fprintf(stderr, "         VCF into one. The input files must be sorted by chr and position. The files\n");
     fprintf(stderr, "         must be given in the correct order to produce sorted VCF on output unless\n");
-    fprintf(stderr, "         the -a, --allow-overlaps option is specified.\n");
+    fprintf(stderr, "         the -a, --allow-overlaps option is specified. With the --naive option, the files\n");
+    fprintf(stderr, "         are concatenated without being recompressed, which is very fast but dangerous\n");
+    fprintf(stderr, "         if the BCF headers differ.\n");
     fprintf(stderr, "Usage:   bcftools concat [options] <A.vcf.gz> [<B.vcf.gz> [...]]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
@@ -568,6 +677,8 @@ static void usage(args_t *args)
     fprintf(stderr, "   -D, --remove-duplicates        Alias for -d none\n");
     fprintf(stderr, "   -f, --file-list <file>         Read the list of files from a file.\n");
     fprintf(stderr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
+    fprintf(stderr, "       --no-version               do not append version and command line to the header\n");
+    fprintf(stderr, "   -n, --naive                    Concatenate BCF files without recompression (dangerous, use with caution)\n");
     fprintf(stderr, "   -o, --output <file>            Write output to a file [standard output]\n");
     fprintf(stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(stderr, "   -q, --min-PQ <int>             Break phase set if phasing quality is lower than <int> [30]\n");
@@ -586,10 +697,12 @@ int main_vcfconcat(int argc, char *argv[])
     args->output_fname = "-";
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
     args->min_PQ  = 30;
 
     static struct option loptions[] =
     {
+        {"naive",no_argument,NULL,'n'},
         {"compact-PS",no_argument,NULL,'c'},
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
@@ -602,10 +715,11 @@ int main_vcfconcat(int argc, char *argv[])
         {"threads",required_argument,NULL,9},
         {"file-list",required_argument,NULL,'f'},
         {"min-PQ",required_argument,NULL,'q'},
+        {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:r:R:c",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:r:R:cn",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'c': args->compact_PS = 1; break;
@@ -617,6 +731,7 @@ int main_vcfconcat(int argc, char *argv[])
                 args->min_PQ = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --min-PQ %s\n", optarg);
                 break;
+            case 'n': args->naive_concat = 1; break;
             case 'a': args->allow_overlaps = 1; break;
             case 'l': args->phased_concat = 1; break;
             case 'f': args->file_list = optarg; break;
@@ -631,6 +746,7 @@ int main_vcfconcat(int argc, char *argv[])
                 };
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case  8 : args->record_cmd_line = 0; break;
             case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
@@ -654,6 +770,15 @@ int main_vcfconcat(int argc, char *argv[])
     if ( !args->nfnames ) usage(args);
     if ( args->remove_dups && !args->allow_overlaps ) error("The -D option is supported only with -a\n");
     if ( args->regions_list && !args->allow_overlaps ) error("The -r/-R option is supported only with -a\n");
+    if ( args->naive_concat )
+    {
+        if ( args->allow_overlaps ) error("The option --naive cannot be combined with --allow-overlaps\n");
+        if ( args->phased_concat ) error("The option --naive cannot be combined with --ligate\n");
+        naive_concat(args);
+        destroy_data(args);
+        free(args);
+        return 0;
+    }
     init_data(args);
     concat(args);
     destroy_data(args);

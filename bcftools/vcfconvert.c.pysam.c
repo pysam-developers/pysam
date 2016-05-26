@@ -68,7 +68,7 @@ struct _args_t
     int nsamples, *samples, sample_is_file, targets_is_file, regions_is_file, output_type;
     char **argv, *sample_list, *targets_list, *regions_list, *tag, *columns;
     char *outfname, *infname, *ref_fname;
-    int argc, n_threads;
+    int argc, n_threads, record_cmd_line;
 };
 
 static void destroy_data(args_t *args)
@@ -371,7 +371,7 @@ static void gensample_to_vcf(args_t *args)
     bcf_hdr_append(args->header, "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">");
     bcf_hdr_append(args->header, "##FORMAT=<ID=GP,Number=G,Type=Float,Description=\"Genotype Probabilities\">");
     bcf_hdr_printf(args->header, "##contig=<ID=%s,length=%d>", args->str.s,0x7fffffff);   // MAX_CSI_COOR
-    bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
 
     int i, nsamples;
     char **samples = hts_readlist(sample_fname, 1, &nsamples);
@@ -491,7 +491,7 @@ static void haplegendsample_to_vcf(args_t *args)
     bcf_hdr_append(args->header, "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position of the variant described in this record\">");
     bcf_hdr_append(args->header, "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">");
     bcf_hdr_printf(args->header, "##contig=<ID=%s,length=%d>", args->str.s,0x7fffffff);   // MAX_CSI_COOR
-    bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
 
     int i, nrows, nsamples;
     char **samples = hts_readlist(sample_fname, 1, &nrows);
@@ -608,7 +608,7 @@ static void hapsample_to_vcf(args_t *args)
     bcf_hdr_append(args->header, "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position of the variant described in this record\">");
     bcf_hdr_append(args->header, "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">");
     bcf_hdr_printf(args->header, "##contig=<ID=%s,length=%d>", args->str.s,0x7fffffff);   // MAX_CSI_COOR
-    bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
 
     int i, nsamples;
     char **samples = hts_readlist(sample_fname, 1, &nsamples);
@@ -1145,7 +1145,7 @@ static void tsv_to_vcf(args_t *args)
     args->header = bcf_hdr_init("w");
     bcf_hdr_set_chrs(args->header, args->ref);
     bcf_hdr_append(args->header, "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">");
-    bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
+    if (args->record_cmd_line) bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
 
     int i, n;
     char **smpls = hts_readlist(args->sample_list, args->sample_is_file, &n);
@@ -1243,7 +1243,7 @@ static void gvcf_to_vcf(args_t *args)
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
 
     bcf_hdr_t *hdr = bcf_sr_get_header(args->files,0);
-    bcf_hdr_append_version(hdr, args->argc, args->argv, "bcftools_convert");
+    if (args->record_cmd_line) bcf_hdr_append_version(hdr, args->argc, args->argv, "bcftools_convert");
     bcf_hdr_write(out_fh,hdr);
 
     int32_t *itmp = NULL, nitmp = 0;
@@ -1306,11 +1306,12 @@ static void usage(void)
     fprintf(pysamerr, "   -S, --samples-file <file>   file of samples to include\n");
     fprintf(pysamerr, "   -t, --targets <region>      similar to -r but streams rather than index-jumps\n");
     fprintf(pysamerr, "   -T, --targets-file <file>   similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "       --threads <int>         number of extra output compression threads [0]\n");
     fprintf(pysamerr, "\n");
     fprintf(pysamerr, "VCF output options:\n");
+    fprintf(pysamerr, "       --no-version               do not append version and command line to the header\n");
     fprintf(pysamerr, "   -o, --output <file>            output file name [stdout]\n");
     fprintf(pysamerr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(pysamerr, "       --threads <int>            number of extra output compression threads [0]\n");
     fprintf(pysamerr, "\n");
     fprintf(pysamerr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
     fprintf(pysamerr, "   -G, --gensample2vcf <...>   <prefix>|<gen-file>,<sample-file>\n");
@@ -1361,6 +1362,7 @@ int main_vcfconvert(int argc, char *argv[])
     args->outfname = "-";
     args->output_type = FT_VCF;
     args->n_threads = 0;
+    args->record_cmd_line = 1;
 
     static struct option loptions[] =
     {
@@ -1389,6 +1391,7 @@ int main_vcfconvert(int argc, char *argv[])
         {"haplegendsample2vcf",required_argument,NULL,'H'},
         {"columns",required_argument,NULL,'c'},
         {"fasta-ref",required_argument,NULL,'f'},
+        {"no-version",no_argument,NULL,10},
         {NULL,0,NULL,0}
     };
     while ((c = getopt_long(argc, argv, "?h:r:R:s:S:t:T:i:e:g:G:o:O:c:f:H:",loptions,NULL)) >= 0) {
@@ -1426,6 +1429,7 @@ int main_vcfconvert(int argc, char *argv[])
                 break;
             case 'h': args->convert_func = vcf_to_haplegendsample; args->outfname = optarg; break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case 10 : args->record_cmd_line = 0; break;
             case '?': usage();
             default: error("Unknown argument: %s\n", optarg);
         }

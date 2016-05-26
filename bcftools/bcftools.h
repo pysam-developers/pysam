@@ -26,6 +26,7 @@ THE SOFTWARE.  */
 #define BCFTOOLS_H
 
 #include <stdarg.h>
+#include <htslib/hts_defs.h>
 #include <htslib/vcf.h>
 #include <math.h>
 
@@ -37,7 +38,7 @@ THE SOFTWARE.  */
 #define FT_STDIN (1<<3)
 
 char *bcftools_version(void);
-void error(const char *format, ...);
+void error(const char *format, ...) HTS_NORETURN;
 void bcf_hdr_append_version(bcf_hdr_t *hdr, int argc, char **argv, const char *cmd);
 const char *hts_bcf_wmode(int file_type);
 

@@ -3,7 +3,7 @@
 
 /*  vcfindex.c -- Index bgzip compressed VCF/BCF files for random access.
 
-    Copyright (C) 2014 Genome Research Ltd.
+    Copyright (C) 2014-2016 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -179,6 +179,7 @@ int main_vcfindex(int argc, char *argv[])
     if (stats) return vcf_index_stats(fname, stats);
 
     htsFile *fp = hts_open(fname,"r"); 
+    if ( !fp ) error("Failed to read %s\n", fname);
     htsFormat type = *hts_get_format(fp);
     hts_close(fp);
 

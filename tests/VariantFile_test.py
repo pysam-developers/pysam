@@ -177,6 +177,10 @@ class TestHeader(unittest.TestCase):
             self.assertEqual(x[:-1], str(y))
 
 
+class TestHeaderNoRecords(unittest.TestCase):
+
+    filename = "example_norecords.vcf"
+
 # These tests need to be separate and start from newly opened files.  This
 # is because htslib's parser is lazy and the pysam API needs to trigger
 # appropriate parsing when accessing each time of data.  Failure to do so
@@ -411,6 +415,12 @@ class TestConstructionVCFGZWithoutContigs(TestConstructionVCFWithContigs):
     """construct VariantFile from scratch."""
 
     filename = "example_vcf42.vcf.gz"
+
+
+class TestConstructionVCFGZNoRecords(TestConstructionVCFWithContigs):
+    """construct VariantFile from scratch."""
+
+    filename = "example_norecords.vcf.gz"
 
 
 
