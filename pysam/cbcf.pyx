@@ -1807,7 +1807,7 @@ cdef class VariantHeader(object):
                 'missing {:d} requested samples'.format(
                     len(missing_samples)))
 
-        keep_samples = force_bytes(b','.join(keep_samples))
+        keep_samples = force_bytes(','.join(keep_samples))
         cdef char *keep = <char *>keep_samples if keep_samples else NULL
         cdef ret = bcf_hdr_set_samples(self.ptr, keep, 0)
 

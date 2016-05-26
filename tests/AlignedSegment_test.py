@@ -348,6 +348,53 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.query_alignment_length, 20)
 
 
+class TestCigarStats(ReadTest):
+    
+    def testStats(self):
+        
+        a = self.buildRead()
+
+        a.cigarstring = None
+        self.assertEqual(
+            [list(x) for x in a.get_cigar_stats()],
+            [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+        a.cigarstring = "10M"
+        self.assertEqual(
+            [list(x) for x in a.get_cigar_stats()],
+            [[10, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+        a.cigarstring = "10M2I2M"
+        self.assertEqual(
+            [list(x) for x in a.get_cigar_stats()],
+            [[12, 2, 0, 0, 0, 0, 0, 0, 0, 0],
+             [2, 1, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+        for i, x in enumerate("MIDNSHP=X"):
+            a.cigarstring = "2{}".format(x)
+            expected = [[0] * 10, [0] * 10]
+            expected[0][i] = 2
+            expected[1][i] = 1
+            self.assertEqual(
+                [list(x) for x in a.get_cigar_stats()],
+                expected)
+        
+        a.cigarstring = "10M"
+        a.set_tag("NM", 5)
+        self.assertEqual(
+            [list(x) for x in a.get_cigar_stats()],
+            [[10, 0, 0, 0, 0, 0, 0, 0, 0, 5],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+        
+        a.cigarstring = None
+        self.assertEqual(
+            [list(x) for x in a.get_cigar_stats()],
+            [[0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+
 class TestAlignedPairs(unittest.TestCase):
     filename = os.path.join(DATADIR, "example_aligned_pairs.bam")
 
@@ -408,7 +455,6 @@ class TestTags(ReadTest):
                               read.set_tag,
                               key,
                               array.array(dtype, range(10)))
-
         
     def testAddTagsType(self):
         a = self.buildRead()

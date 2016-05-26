@@ -2,6 +2,7 @@ import pysam
 import unittest
 import os
 import gzip
+import shutil
 
 from TestUtils import checkURL
 
@@ -54,6 +55,53 @@ class TestFastaFile(unittest.TestCase):
 
     def tearDown(self):
         self.file.close()
+
+
+class TestFastaFilePathIndex(unittest.TestCase):
+
+    filename = os.path.join(DATADIR, "ex1.fa")
+
+    def testGarbageIndex(self):
+        self.assertRaises(NotImplementedError,
+                          pysam.FastaFile,
+                          self.filename,
+                          filepath_index="garbage.fa.fai")
+        return
+
+        self.assertRaises(ValueError,
+                          pysam.FastaFile,
+                          self.filename,
+                          filepath_index="garbage.fa.fai")
+
+    def testOpenWithoutIndex(self):
+        faidx = pysam.FastaFile(self.filename)
+        faidx.close()
+
+    def testOpenWithStandardIndex(self):
+        self.assertRaises(NotImplementedError,
+                          pysam.FastaFile,
+                          self.filename,
+                          filepath_index=self.filename + ".fai")
+        return
+
+        faidx = pysam.FastaFile(self.filename,
+                                filepath_index=self.filename + ".fai")
+        faidx.close()
+
+    def testOpenWithOtherIndex(self):
+        return
+        tmpfilename = "tmp_" + os.path.basename(self.filename)
+        shutil.copyfile(self.filename, tmpfilename)
+        faidx = pysam.FastaFile(tmpfilename,
+                                filepath_index=self.filename + ".fai")
+        faidx.close()
+        # index should not be auto-generated
+        self.assertFalse(os.path.exists(tmpfilename + ".fai"))
+        os.unlink(tmpfilename)
+
+class TestFastaFilePathIndexCompressed(TestFastaFilePathIndex):
+    
+    filename = os.path.join(DATADIR, "ex1.fa.gz")
 
 
 class TestFastxFileFastq(unittest.TestCase):

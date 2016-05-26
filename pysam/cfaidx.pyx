@@ -136,6 +136,11 @@ cdef class FastaFile:
         cdef char *cfilename = self._filename
         self.is_remote = hisremote(cfilename)
 
+        if filepath_index is not None:
+            raise NotImplementedError(
+                "setting an explicit path for the index "
+                "is not implemented")
+
         # open file for reading
         if (self._filename != b"-"
             and not self.is_remote

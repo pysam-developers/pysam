@@ -63,6 +63,7 @@ from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
 from libc.string cimport strchr
+from cpython cimport array as c_array
 
 from pysam.cutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
@@ -77,6 +78,7 @@ cdef char * parray_types = 'bBhHiIf'
 
 # cigar code to character and vice versa
 cdef char* CODE2CIGAR= "MIDNSHP=X"
+cdef int NCIGAR_CODES = 9
 
 if PY_MAJOR_VERSION >= 3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
@@ -1433,7 +1435,6 @@ cdef class AlignedSegment:
 
         return "".join(result)
 
-
     def get_aligned_pairs(self, matches_only=False, with_seq=False):
         """a list of aligned read (query) and reference positions.
 
@@ -1603,6 +1604,81 @@ cdef class AlignedSegment:
                 pos += l
 
         return overlap
+
+    def get_cigar_stats(self):
+        """summary of operations in cigar string.
+
+        The output order in the array is "MIDNSHP=X" followed by a
+        field for the NM tag. If the NM tag is not present, this
+        field will always be 0.
+
+        +-----+--------------+-----+
+        |M    |BAM_CMATCH    |0    |
+        +-----+--------------+-----+
+        |I    |BAM_CINS      |1    |
+        +-----+--------------+-----+
+        |D    |BAM_CDEL      |2    |
+        +-----+--------------+-----+
+        |N    |BAM_CREF_SKIP |3    |
+        +-----+--------------+-----+
+        |S    |BAM_CSOFT_CLIP|4    |
+        +-----+--------------+-----+
+        |H    |BAM_CHARD_CLIP|5    |
+        +-----+--------------+-----+
+        |P    |BAM_CPAD      |6    |
+        +-----+--------------+-----+
+        |=    |BAM_CEQUAL    |7    |
+        +-----+--------------+-----+
+        |X    |BAM_CDIFF     |8    |
+        +-----+--------------+-----+
+        |NM   |NM tag        |9    |
+        +-----+--------------+-----+
+
+        If no cigar string is present, empty arrays will be returned.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        arrays : two arrays. The first contains the nucleotide counts within
+           each cigar operation, the second contains the number of blocks for
+           each cigar operation.
+
+        """
+        
+        cdef int nfields = NCIGAR_CODES + 1
+
+        cdef c_array.array base_counts = array.array(
+            "I",
+            [0] * nfields)
+        cdef uint32_t [:] base_view = base_counts
+        cdef c_array.array block_counts = array.array(
+            "I",
+            [0] * nfields)
+        cdef uint32_t [:] block_view = block_counts
+
+        cdef bam1_t * src = self._delegate
+        cdef int op
+        cdef uint32_t l
+        cdef int32_t k
+        cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+
+        if cigar_p == NULL:
+            return None
+
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            l = cigar_p[k] >> BAM_CIGAR_SHIFT
+            base_view[op] += l
+            block_view[op] += 1
+
+        cdef uint8_t * v = bam_aux_get(src, 'NM')
+        if v != NULL:
+            base_view[nfields - 1] = <int32_t>bam_aux2i(v)
+
+        return base_counts, block_counts
 
     #####################################################
     ## Unsorted as yet

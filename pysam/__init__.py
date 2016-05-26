@@ -1,5 +1,6 @@
 import os
 import sys
+import sysconfig
 
 from pysam.libchtslib import *
 from pysam.cutils import *
@@ -22,6 +23,7 @@ from pysam.utils import SamtoolsError
 import pysam.Pileup as Pileup
 from pysam.samtools import *
 import pysam.config
+
 
 # export all the symbols from separate modules
 __all__ = \
