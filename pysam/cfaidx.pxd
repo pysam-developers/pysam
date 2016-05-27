@@ -6,7 +6,7 @@ from libc.stdio cimport FILE, printf
 cimport cython
 
 from cpython cimport array
-from pysam.chtslib cimport faidx_t, gzFile, kstring_t
+from pysam.chtslib cimport faidx_t, kstring_t, BGZF
 
 # These functions are put here and not in chtslib.pxd in order
 # to avoid warnings for unused functions.
@@ -21,13 +21,10 @@ cdef extern from "pysam_stream.h" nogil:
         kstring_t seq
         kstring_t qual
 
-    gzFile gzopen(char *, char *)
-    kseq_t *kseq_init(gzFile)
+    kseq_t *kseq_init(BGZF *)
     int kseq_read(kseq_t *)
     void kseq_destroy(kseq_t *)
-    int gzclose(gzFile)
-
-    kstream_t *ks_init(gzFile)
+    kstream_t *ks_init(BGZF *)
     void ks_destroy(kstream_t *)
 
     # Retrieve characters from stream until delimiter
@@ -62,9 +59,10 @@ cdef class PersistentFastqProxy:
 
 cdef class FastxFile:
     cdef object _filename
-    cdef gzFile fastqfile
+    cdef BGZF * fastqfile
     cdef kseq_t * entry
     cdef bint persist
+    cdef bint is_remote
 
     cdef kseq_t * getCurrent(self)
     cdef int cnext(self)

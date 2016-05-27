@@ -69,10 +69,10 @@ from cpython.version cimport PY_MAJOR_VERSION
 cimport pysam.ctabixproxies as ctabixproxies
 
 from pysam.chtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
-    BGZF, bgzf_open, bgzf_close, bgzf_write, gzFile, \
+    BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    tbx_destroy, gzopen, gzclose, gzerror, gzdopen, hisremote
+    tbx_destroy, hisremote
 
 from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
@@ -681,7 +681,7 @@ cdef class GZIterator:
         filename = encode_filename(filename)
         cdef char *cfilename = filename
         with nogil:
-            self.gzipfile = gzopen(cfilename, "r")
+            self.gzipfile = bgzf_open(cfilename, "r")
         self._filename = filename
         self.kstream = ks_init(self.gzipfile)
         self.encoding = encoding
@@ -693,7 +693,7 @@ cdef class GZIterator:
     def __dealloc__(self):
         '''close file.'''
         if self.gzipfile != NULL:
-            gzclose(self.gzipfile)
+            bgzf_close(self.gzipfile)
             self.gzipfile = NULL
         if self.buffer.s != NULL:
             free(self.buffer.s)
@@ -1003,10 +1003,10 @@ def tabix_index( filename,
 #########################################################
 ## Iterators for parsing through unindexed files.
 #########################################################
-cdef buildGzipError(void *gzfp):
-    cdef int errnum = 0
-    cdef char *s = gzerror(gzfp, &errnum)
-    return "error (%d): %s (%d: %s)" % (errno, strerror(errno), errnum, s)
+# cdef buildGzipError(void *gzfp):
+#     cdef int errnum = 0
+#     cdef char *s = gzerror(gzfp, &errnum)
+#     return "error (%d): %s (%d: %s)" % (errno, strerror(errno), errnum, s)
 
 
 cdef class tabix_file_iterator:
@@ -1034,7 +1034,7 @@ cdef class tabix_file_iterator:
         # in this case gzread will directly read from the file without decompression. 
         # When reading, this will be detected automatically by looking 
         # for the magic two-byte gzip header. 
-        self.fh = gzdopen(self.duplicated_fd, 'r')
+        self.fh = bgzf_dopen(self.duplicated_fd, 'r')
 
         if self.fh == NULL: 
             raise IOError('%s' % strerror(errno))
@@ -1076,14 +1076,14 @@ cdef class tabix_file_iterator:
             # gzgets terminates at \n, no need to test
 
             # parser creates a copy
-            return self.parser.parse( b, self.buffer.l)
+            return self.parser.parse(b, self.buffer.l)
 
         raise StopIteration
 
     def __dealloc__(self):
         free(self.buffer.s)
         ks_destroy(self.kstream)
-        gzclose(self.fh)
+        bgzf_close(self.fh)
         
     def __next__(self):
         return self.__cnext__()

@@ -2,6 +2,7 @@ import os
 import unittest
 import pysam
 import gzip
+import subprocess
 from TestUtils import get_temp_filename, check_lines_equal
 
 DATADIR="cbcf_data"
@@ -446,7 +447,10 @@ class TestSubsetting(unittest.TestCase):
             inf.subset_samples(["NA00001"])
 
 
-
-
 if __name__ == "__main__":
+    # build data files
+    print ("building data files")
+    subprocess.call("make -C %s" % DATADIR, shell=True)
+    print ("starting tests")
     unittest.main()
+    print ("completed tests")

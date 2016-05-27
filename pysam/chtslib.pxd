@@ -9,20 +9,6 @@ cdef extern from "Python.h":
    FILE* PyFile_AsFile(object)
 
 
-cdef extern from "zlib.h" nogil:
-  ctypedef void * gzFile
-  ctypedef int64_t z_off_t
-
-  int gzclose(gzFile fp)
-  int gzread(gzFile fp, void *buf, unsigned int n)
-  char *gzerror(gzFile fp, int *errnum)
-
-  gzFile gzopen( char *path, char *mode)
-  gzFile gzdopen (int fd, char *mode)
-  char * gzgets(gzFile file, char *buf, int len)
-  int gzeof(gzFile file)
-
-
 cdef extern from "htslib/kstring.h" nogil:
     ctypedef struct kstring_t:
         size_t l, m

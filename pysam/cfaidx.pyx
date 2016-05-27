@@ -60,7 +60,8 @@ from cpython.version cimport PY_MAJOR_VERSION
 from pysam.chtslib cimport \
     faidx_nseq, fai_load, fai_destroy, fai_fetch, \
     faidx_seq_len, \
-    faidx_fetch_seq, gzopen, gzclose, hisremote
+    faidx_fetch_seq, hisremote, \
+    bgzf_open, bgzf_close
 
 from pysam.cutils cimport force_bytes, force_str, charptr_to_str
 from pysam.cutils cimport encode_filename, from_string_and_size
@@ -469,24 +470,30 @@ cdef class FastxFile:
             on the file continues.
 
         '''
-        self.close()
-
-        if not os.path.exists(filename):
-            raise IOError("no such file or directory: %s" % filename)
-
-        self.persist = persist
+        if self.fastqfile != NULL:
+            self.close()
 
         self._filename = encode_filename(filename)
         cdef char *cfilename = self._filename
+        self.is_remote = hisremote(cfilename)
+
+        # open file for reading
+        if (self._filename != b"-"
+            and not self.is_remote
+            and not os.path.exists(filename)):
+            raise IOError("file `%s` not found" % filename)
+
+        self.persist = persist
+
         with nogil:
-            self.fastqfile = gzopen(cfilename, "r")
+            self.fastqfile = bgzf_open(cfilename, "r")
             self.entry = kseq_init(self.fastqfile)
         self._filename = filename
 
     def close(self):
         '''close the file.'''
         if self.entry != NULL:
-            gzclose(self.fastqfile)
+            bgzf_close(self.fastqfile)
             if self.entry:
                 kseq_destroy(self.entry)
                 self.entry = NULL
