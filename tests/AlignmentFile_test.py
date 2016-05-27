@@ -1840,7 +1840,7 @@ class TestBTagBam(TestBTagSam):
     filename = os.path.join(DATADIR, 'example_btag.bam')
 
 
-class TestDoubleFetch(unittest.TestCase):
+class TestDoubleFetchBam(unittest.TestCase):
 
     '''check if two iterators on the same bamfile are independent.'''
 
@@ -1874,6 +1874,10 @@ class TestDoubleFetch(unittest.TestCase):
                         samfile1.fetch(until_eof=True,
                                        multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)
+
+
+class TestDoubleFetchCram(TestDoubleFetchBam):
+    filename = os.path.join(DATADIR, 'ex1.cram')
 
 
 class TestRemoteFileFTP(unittest.TestCase):
