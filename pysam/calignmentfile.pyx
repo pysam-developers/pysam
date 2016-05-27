@@ -855,7 +855,7 @@ cdef class AlignmentFile:
 
         multiple_iterators : bool
            
-           If `multiple_iterators` is True (default) multiple
+           If `multiple_iterators` is True, multiple
            iterators on the same file can be used at the same time. The
            iterator returned will receive its own copy of a filehandle to
            the file effectively re-opening the file. Re-opening a file
