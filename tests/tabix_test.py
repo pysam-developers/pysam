@@ -1137,6 +1137,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
     local = os.path.join(DATADIR, "example.gtf.gz")
 
     def setUp(self):
+        if not checkURL(self.url):
+            return
+
         self.remote_file = pysam.TabixFile(self.url, "r")
         self.local_file = pysam.TabixFile(self.local, "r")
 
@@ -1152,6 +1155,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
             self.assertEqual(x, y)
 
     def testHeader(self):
+        if not checkURL(self.url):
+            return
+
         self.assertEqual(list(self.local_file.header), [])
         self.assertRaises(AttributeError,
                           getattr,
@@ -1159,6 +1165,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
                           "header")
 
     def tearDown(self):
+        if not checkURL(self.url):
+            return
+
         self.remote_file.close()
         self.local_file.close()
 

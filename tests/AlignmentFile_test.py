@@ -2466,6 +2466,10 @@ class TestExplicitIndex(unittest.TestCase):
             filepath_index=os.path.join(DATADIR, 'ex1.cram.crai'))
 
     def testRemoteExplicitIndexBAM(self):
+        if not checkURL(
+            "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam"):
+            return
+
         samfile = pysam.AlignmentFile(
             "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam",
             "rb",

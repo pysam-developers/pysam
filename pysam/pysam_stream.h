@@ -5,7 +5,8 @@
 
 // #######################################################
 // fastq parsing
-KSEQ_INIT(gzFile, gzread)
+// KSEQ_INIT(gzFile, gzread)
+KSEQ_INIT(BGZF *, bgzf_read)
 
 //KSTREAM_INIT( gzFile, gzread, 16384)
 

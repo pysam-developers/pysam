@@ -14,7 +14,7 @@ cdef extern from "unistd.h" nogil:
     int close(int fd)
 
 from pysam.chtslib cimport hts_idx_t, hts_itr_t, htsFile, \
-    gzFile, tbx_t, kstring_t
+    tbx_t, kstring_t, BGZF
 
 # These functions are put here and not in chtslib.pxd in order
 # to avoid warnings for unused functions.
@@ -29,13 +29,10 @@ cdef extern from "pysam_stream.h" nogil:
         kstring_t seq
         kstring_t qual
 
-    gzFile gzopen(char *, char *)
-    kseq_t *kseq_init(gzFile)
+    kseq_t *kseq_init(BGZF *)
     int kseq_read(kseq_t *)
     void kseq_destroy(kseq_t *)
-    int gzclose(gzFile)
-
-    kstream_t *ks_init(gzFile)
+    kstream_t *ks_init(BGZF *)
     void ks_destroy(kstream_t *)
 
     # Retrieve characters from stream until delimiter
@@ -47,7 +44,7 @@ cdef extern from "pysam_stream.h" nogil:
 
 
 cdef class tabix_file_iterator:
-    cdef gzFile fh
+    cdef BGZF * fh
     cdef kstream_t * kstream
     cdef kstring_t buffer
     cdef size_t size
@@ -104,7 +101,7 @@ cdef class TabixIteratorParsed(TabixIterator):
 
 cdef class GZIterator:
     cdef object _filename
-    cdef gzFile gzipfile
+    cdef BGZF * gzipfile
     cdef kstream_t * kstream
     cdef kstring_t buffer
     cdef int __cnext__(self)
