@@ -219,7 +219,7 @@ cdef class AlignmentFile:
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
-    filename=None)
+    reference_filename=None, filename=None)
 
     A :term:`SAM`/:term:`BAM` formatted file. 
 
@@ -249,8 +249,8 @@ cdef class AlignmentFile:
         4. The names (`reference_names`) and lengths
            (`reference_lengths`) are supplied directly as lists.
 
-    For writing a CRAM file, the filename of the reference can be 
-    added through a fasta formatted file (`reference_filename`)
+    When reading or writing a CRAM file, the filename of a FASTA-formatted
+    reference can be specified with `reference_filename`.
 
     By default, if a file is opened in mode 'r', it is checked
     for a valid header (`check_header` = True) and a definition of
@@ -311,6 +311,12 @@ cdef class AlignmentFile:
     check_sq : bool
         when reading, check if SQ entries are present in header
         (default=True)
+
+    reference_filename : string
+        Path to a FASTA-formatted reference file. Valid only for CRAM files.
+        When reading a CRAM file, this overrides both ``$REF_PATH`` and the URL
+        specified in the header (``UR`` tag), which are normally used to find
+        the reference.
 
     filename : string
         Alternative to filepath_or_object. Filename of the file
@@ -391,6 +397,7 @@ cdef class AlignmentFile:
         will be closed and a new file will be opened.
         '''
         cdef char *cfilename
+        cdef char *creference_filename
         cdef char *cindexname
         cdef char *cmode
 
@@ -434,6 +441,8 @@ cdef class AlignmentFile:
 
         cdef bytes bmode = mode.encode('ascii')
         self._filename = filename = encode_filename(filename)
+        self._reference_filename = reference_filename = encode_filename(
+            reference_filename)
 
         # FIXME: Use htsFormat when it is available
         self.is_stream = filename == b"-"
@@ -516,10 +525,8 @@ cdef class AlignmentFile:
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
             if self.is_cram and reference_filename:
-                # note that fn_aux takes ownership, so create
-                # a copy
-                fn = encode_filename(reference_filename)
-                self.htsfile.fn_aux = strdup(fn)
+                # note that fn_aux takes ownership, so create a copy
+                self.htsfile.fn_aux = strdup(self._reference_filename)
 
             # write header to htsfile
             if self.is_bam or self.is_cram or "h" in mode:
@@ -570,6 +577,13 @@ cdef class AlignmentFile:
                             "file does not have valid header (mode='%s') "
                             "- is it SAM format?" % mode )
                     # self.header.ignore_sam_err = True
+
+            # set filename with reference sequences
+            if self.is_cram and reference_filename:
+                creference_filename = self._reference_filename
+                hts_set_opt(self.htsfile,
+                            CRAM_OPT_REFERENCE,
+                            creference_filename)
 
             if check_sq and self.header.n_targets == 0:
                 raise ValueError(
@@ -1666,6 +1680,7 @@ cdef class IteratorRow:
 
     def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
         cdef char *cfilename
+        cdef char *creference_filename
         
         if not samfile.is_open():
             raise ValueError("I/O operation on closed file")
@@ -1687,6 +1702,13 @@ cdef class IteratorRow:
                 self.header = sam_hdr_read(self.htsfile)
             assert self.header != NULL
             self.owns_samfile = True
+            # options specific to CRAM files
+            if samfile.is_cram and samfile._reference_filename:
+                creference_filename = samfile._reference_filename
+                hts_set_opt(self.htsfile,
+                            CRAM_OPT_REFERENCE,
+                            creference_filename)
+
         else:
             self.htsfile = self.samfile.htsfile
             self.owns_samfile = False
