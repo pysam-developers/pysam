@@ -39,6 +39,7 @@ ctypedef struct __iterdata:
 cdef class AlignmentFile:
 
     cdef object _filename
+    cdef object _reference_filename
 
     # pointer to htsFile structure
     cdef htsFile * htsfile

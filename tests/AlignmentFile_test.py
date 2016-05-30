@@ -858,10 +858,13 @@ class TestIteratorRowBAM(unittest.TestCase):
 
     filename = os.path.join(DATADIR, "ex2.bam")
     mode = "rb"
+    reference_filename = None
 
     def setUp(self):
         self.samfile = pysam.AlignmentFile(
-            self.filename, self.mode,
+            self.filename,
+            self.mode,
+            reference_filename=self.reference_filename,
         )
 
     def checkRange(self, rnge):
@@ -1034,9 +1037,9 @@ class TestIteratorRowCRAM(TestIteratorRowBAM):
     mode = "rc"
 
 
-class TestIteratorRowCRAM(TestIteratorRowBAM):
-    filename = os.path.join(DATADIR, "ex2.cram")
-    mode = "rc"
+class TestIteratorRowCRAMWithReferenceFilename(TestIteratorRowCRAM):
+    reference_filename = os.path.join(DATADIR, "ex1.fa")
+
 
 ##########################################################
 ##########################################################
@@ -1840,15 +1843,15 @@ class TestBTagBam(TestBTagSam):
     filename = os.path.join(DATADIR, 'example_btag.bam')
 
 
-class TestDoubleFetch(unittest.TestCase):
-
+class TestDoubleFetchBAM(unittest.TestCase):
     '''check if two iterators on the same bamfile are independent.'''
 
     filename = os.path.join(DATADIR, 'ex1.bam')
+    mode = "rb"
 
     def testDoubleFetch(self):
 
-        samfile1 = pysam.AlignmentFile(self.filename, 'rb')
+        samfile1 = pysam.AlignmentFile(self.filename, self.mode)
 
         for a, b in zip(samfile1.fetch(multiple_iterators=True),
                         samfile1.fetch(multiple_iterators=True)):
@@ -1856,25 +1859,39 @@ class TestDoubleFetch(unittest.TestCase):
 
     def testDoubleFetchWithRegion(self):
 
-        samfile1 = pysam.AlignmentFile(self.filename, 'rb')
-        chr, start, stop = 'chr1', 200, 3000000
+        samfile1 = pysam.AlignmentFile(self.filename, self.mode)
+        contig, start, stop = 'chr1', 200, 3000000
         # just making sure the test has something to catch
-        self.assertTrue(len(list(samfile1.fetch(chr, start, stop))) > 0)
+        self.assertTrue(len(list(samfile1.fetch(contig, start, stop))) > 0)
 
-        for a, b in zip(samfile1.fetch(chr, start, stop),
-                        samfile1.fetch(chr, start, stop,
+        # The following fails for CRAM files:
+        # for a, b in zip(samfile1.fetch(contig, start, stop,
+        #                               multiple_iterators=True),
+        for a, b in zip(samfile1.fetch(contig, start, stop,
+                                       multiple_iterators=True),
+                        samfile1.fetch(contig, start, stop,
                                        multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)
 
     def testDoubleFetchUntilEOF(self):
 
-        samfile1 = pysam.AlignmentFile(self.filename, 'rb')
+        samfile1 = pysam.AlignmentFile(self.filename, self.mode)
 
         for a, b in zip(samfile1.fetch(until_eof=True),
                         samfile1.fetch(until_eof=True,
                                        multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)
 
+
+class TestDoubleFetchCRAM(TestDoubleFetchBAM):
+    filename = os.path.join(DATADIR, 'ex2.cram')
+    mode = "rc"
+
+
+class TestDoubleFetchCRAMWithReference(TestDoubleFetchBAM):
+    filename = os.path.join(DATADIR, 'ex2.cram')
+    mode = "rc"
+    reference_filename = os.path.join(DATADIR, 'ex1.fa')
 
 class TestRemoteFileFTP(unittest.TestCase):
 

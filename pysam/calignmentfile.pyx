@@ -397,6 +397,7 @@ cdef class AlignmentFile:
         will be closed and a new file will be opened.
         '''
         cdef char *cfilename
+        cdef char *creference_filename
         cdef char *cindexname
         cdef char *cmode
 
@@ -440,6 +441,8 @@ cdef class AlignmentFile:
 
         cdef bytes bmode = mode.encode('ascii')
         self._filename = filename = encode_filename(filename)
+        self._reference_filename = reference_filename = encode_filename(
+            reference_filename)
 
         # FIXME: Use htsFormat when it is available
         self.is_stream = filename == b"-"
@@ -522,10 +525,8 @@ cdef class AlignmentFile:
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
             if self.is_cram and reference_filename:
-                # note that fn_aux takes ownership, so create
-                # a copy
-                fn = encode_filename(reference_filename)
-                self.htsfile.fn_aux = strdup(fn)
+                # note that fn_aux takes ownership, so create a copy
+                self.htsfile.fn_aux = strdup(self._reference_filename)
 
             # write header to htsfile
             if self.is_bam or self.is_cram or "h" in mode:
@@ -579,8 +580,10 @@ cdef class AlignmentFile:
 
             # set filename with reference sequences
             if self.is_cram and reference_filename:
-                fn = encode_filename(reference_filename)
-                hts_set_opt(self.htsfile, CRAM_OPT_REFERENCE, fn)
+                creference_filename = self._reference_filename
+                hts_set_opt(self.htsfile,
+                            CRAM_OPT_REFERENCE,
+                            creference_filename)
 
             if check_sq and self.header.n_targets == 0:
                 raise ValueError(
@@ -1677,6 +1680,7 @@ cdef class IteratorRow:
 
     def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
         cdef char *cfilename
+        cdef char *creference_filename
         
         if not samfile.is_open():
             raise ValueError("I/O operation on closed file")
@@ -1698,6 +1702,13 @@ cdef class IteratorRow:
                 self.header = sam_hdr_read(self.htsfile)
             assert self.header != NULL
             self.owns_samfile = True
+            # options specific to CRAM files
+            if samfile.is_cram and samfile._reference_filename:
+                creference_filename = samfile._reference_filename
+                hts_set_opt(self.htsfile,
+                            CRAM_OPT_REFERENCE,
+                            creference_filename)
+
         else:
             self.htsfile = self.samfile.htsfile
             self.owns_samfile = False
