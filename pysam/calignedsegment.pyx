@@ -77,15 +77,15 @@ cdef char * parray_types = 'bBhHiIf'
 # translation tables
 
 # cigar code to character and vice versa
-cdef char* CODE2CIGAR= "MIDNSHP=X"
-cdef int NCIGAR_CODES = 9
+cdef char* CODE2CIGAR= "MIDNSHP=XB"
+cdef int NCIGAR_CODES = 10
 
 if PY_MAJOR_VERSION >= 3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
 else:
     CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
 
-CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=X])")
+CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
 
 #####################################################################
 # typecode guessing
