@@ -29,13 +29,13 @@ DEALINGS IN THE SOFTWARE.  */
 #include "../../bam_sort.c"
 
 void dump_rtrans(int* rtrans, int n, int n_targets) {
-    printf("->n_targets:(%d)\n", n_targets);
+    fprintf(pysam_stdout, "->n_targets:(%d)\n", n_targets);
     int i, j;
     for (i = 0; i < n; ++i) {
-        fprintf(pysamerr, "%d",rtrans[i*n_targets+0]);
+        fprintf(pysam_stderr, "%d",rtrans[i*n_targets+0]);
         for (j = 1; j < n_targets; ++j)
-            fprintf(pysamerr, "\t%d",rtrans[i*n_targets+j]);
-        fprintf(pysamerr, "\n");
+            fprintf(pysam_stderr, "\t%d",rtrans[i*n_targets+j]);
+        fprintf(pysam_stderr, "\n");
     }
 }
 
@@ -64,7 +64,7 @@ bool check_test_1(trans_tbl_t* tbl, int* rtrans) {
 }
 
 
-int main(int argc, char**argv)
+int samtools_test_rtrans_build_main(int argc, char**argv)
 {
     const int NUM_TESTS = 1;
     int verbose = 0;
@@ -83,7 +83,7 @@ int main(int argc, char**argv)
     const long GIMMICK_SEED = 0x1234330e;
     srand48(GIMMICK_SEED);
 
-    if (verbose) printf("BEGIN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 1\n");
     // setup
     trans_tbl_t tbl_1[2];
     int n_targets_1 = 3;
@@ -94,29 +94,29 @@ int main(int argc, char**argv)
     if (verbose > 1) {
         // dump_trans_tid
     }
-    if (verbose) printf("RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 1\n");
     rtrans_1 = rtrans_build(n_1, n_targets_1, &tbl_1[0]);
-    if (verbose) printf("END RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 1\n");
     if (verbose > 1) {
-        printf("rtrans\n");
+        fprintf(pysam_stdout, "rtrans\n");
         dump_rtrans(rtrans_1, n_1, n_targets_1);
     }
     if (check_test_1(&tbl_1[0], rtrans_1)) {
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 1\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 1\n");
     }
     // teardown
     trans_tbl_destroy(&tbl_1[0]);
     trans_tbl_destroy(&tbl_1[1]);
     free(rtrans_1);
-    if (verbose) printf("END test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END test 1\n");
 
     if (success == NUM_TESTS) {
         return 0;
     } else {
-        fprintf(pysamerr, "%d failures %d successes\n", failure, success);
+        fprintf(pysam_stderr, "%d failures %d successes\n", failure, success);
         return 1;
     }
 }

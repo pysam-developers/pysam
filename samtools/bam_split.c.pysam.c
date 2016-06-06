@@ -95,7 +95,7 @@ static void usage(FILE *write_to)
 // Takes the command line options and turns them into something we can understand
 static parsed_opts_t* parse_args(int argc, char** argv)
 {
-    if (argc == 1) { usage(stdout); return NULL; }
+    if (argc == 1) { usage(pysam_stdout); return NULL; }
 
     const char* optstring = "vf:u:";
     char* delim;
@@ -133,7 +133,7 @@ static parsed_opts_t* parse_args(int argc, char** argv)
             if (parse_sam_global_opt(opt, optarg, lopts, &retval->ga) == 0) break;
             /* else fall-through */
         case '?':
-            usage(stdout);
+            usage(pysam_stdout);
             free(retval);
             return NULL;
         }
@@ -145,8 +145,8 @@ static parsed_opts_t* parse_args(int argc, char** argv)
     argv += optind;
 
     if (argc != 1) {
-        fprintf(pysamerr, "Invalid number of arguments: %d\n", argc);
-        usage(pysamerr);
+        fprintf(pysam_stderr, "Invalid number of arguments: %d\n", argc);
+        usage(pysam_stderr);
         free(retval);
         return NULL;
     }
@@ -187,11 +187,11 @@ static char* expand_format_string(const char* format_string, const char* basenam
                     kputs("bam", &str);
                 break;
             case '\0':
-                // Error is: fprintf(pysamerr, "bad format string, trailing %%\n");
+                // Error is: fprintf(pysam_stderr, "bad format string, trailing %%\n");
                 free(str.s);
                 return NULL;
             default:
-                // Error is: fprintf(pysamerr, "bad format string, unknown format specifier\n");
+                // Error is: fprintf(pysam_stderr, "bad format string, unknown format specifier\n");
                 free(str.s);
                 return NULL;
         }
@@ -325,19 +325,19 @@ static state_t* init(parsed_opts_t* opts)
 {
     state_t* retval = calloc(sizeof(state_t), 1);
     if (!retval) {
-        fprintf(pysamerr, "Out of memory");
+        fprintf(pysam_stderr, "Out of memory");
         return NULL;
     }
 
     retval->merged_input_file = sam_open_format(opts->merged_input_name, "rb", &opts->ga.in);
     if (!retval->merged_input_file) {
-        fprintf(pysamerr, "Could not open input file (%s)\n", opts->merged_input_name);
+        fprintf(pysam_stderr, "Could not open input file (%s)\n", opts->merged_input_name);
         free(retval);
         return NULL;
     }
     retval->merged_input_header = sam_hdr_read(retval->merged_input_file);
     if (retval->merged_input_header == NULL) {
-        fprintf(pysamerr, "Could not read header for file '%s'\n",
+        fprintf(pysam_stderr, "Could not read header for file '%s'\n",
                 opts->merged_input_name);
         cleanup_state(retval, false);
         return NULL;
@@ -347,13 +347,13 @@ static state_t* init(parsed_opts_t* opts)
         if (opts->unaccounted_header_name) {
             samFile* hdr_load = sam_open_format(opts->unaccounted_header_name, "r", &opts->ga.in);
             if (!hdr_load) {
-                fprintf(pysamerr, "Could not open unaccounted header file (%s)\n", opts->unaccounted_header_name);
+                fprintf(pysam_stderr, "Could not open unaccounted header file (%s)\n", opts->unaccounted_header_name);
                 cleanup_state(retval, false);
                 return NULL;
             }
             retval->unaccounted_header = sam_hdr_read(hdr_load);
             if (retval->unaccounted_header == NULL) {
-                fprintf(pysamerr, "Could not read header for file '%s'\n",
+                fprintf(pysam_stderr, "Could not read header for file '%s'\n",
                         opts->unaccounted_header_name);
                 cleanup_state(retval, false);
                 return NULL;
@@ -365,7 +365,7 @@ static state_t* init(parsed_opts_t* opts)
 
         retval->unaccounted_file = sam_open_format(opts->unaccounted_name, "wb", &opts->ga.out);
         if (retval->unaccounted_file == NULL) {
-            fprintf(pysamerr, "Could not open unaccounted output file: %s\n", opts->unaccounted_name);
+            fprintf(pysam_stderr, "Could not open unaccounted output file: %s\n", opts->unaccounted_name);
             cleanup_state(retval, false);
             return NULL;
         }
@@ -373,14 +373,14 @@ static state_t* init(parsed_opts_t* opts)
 
     // Open output files for RGs
     if (!count_RG(retval->merged_input_header, &retval->output_count, &retval->rg_id)) return NULL;
-    if (opts->verbose) fprintf(pysamerr, "@RG's found %zu\n",retval->output_count);
+    if (opts->verbose) fprintf(pysam_stderr, "@RG's found %zu\n",retval->output_count);
 
     retval->rg_output_file_name = (char **)calloc(retval->output_count, sizeof(char *));
     retval->rg_output_file = (samFile**)calloc(retval->output_count, sizeof(samFile*));
     retval->rg_output_header = (bam_hdr_t**)calloc(retval->output_count, sizeof(bam_hdr_t*));
     retval->rg_hash = kh_init_c2i();
     if (!retval->rg_output_file_name || !retval->rg_output_file || !retval->rg_output_header || !retval->rg_hash) {
-        fprintf(pysamerr, "Could not allocate memory for output file array. Out of memory?");
+        fprintf(pysam_stderr, "Could not allocate memory for output file array. Out of memory?");
         cleanup_state(retval, false);
         return NULL;
     }
@@ -388,7 +388,7 @@ static state_t* init(parsed_opts_t* opts)
     char* dirsep = strrchr(opts->merged_input_name, '/');
     char* input_base_name = strdup(dirsep? dirsep+1 : opts->merged_input_name);
     if (!input_base_name) {
-        fprintf(pysamerr, "Out of memory\n");
+        fprintf(pysam_stderr, "Out of memory\n");
         cleanup_state(retval, false);
         return NULL;
     }
@@ -405,7 +405,7 @@ static state_t* init(parsed_opts_t* opts)
                                                &opts->ga.out);
 
         if ( output_filename == NULL ) {
-            fprintf(pysamerr, "Error expanding output filename format string.\n");
+            fprintf(pysam_stderr, "Error expanding output filename format string.\n");
             cleanup_state(retval, false);
             free(input_base_name);
             return NULL;
@@ -414,7 +414,7 @@ static state_t* init(parsed_opts_t* opts)
         retval->rg_output_file_name[i] = output_filename;
         retval->rg_output_file[i] = sam_open_format(output_filename, "wb", &opts->ga.out);
         if (retval->rg_output_file[i] == NULL) {
-            fprintf(pysamerr, "Could not open output file: %s\n", output_filename);
+            fprintf(pysam_stderr, "Could not open output file: %s\n", output_filename);
             cleanup_state(retval, false);
             free(input_base_name);
             return NULL;
@@ -428,7 +428,7 @@ static state_t* init(parsed_opts_t* opts)
         // Set and edit header
         retval->rg_output_header[i] = bam_hdr_dup(retval->merged_input_header);
         if ( !filter_header_rg(retval->rg_output_header[i], retval->rg_id[i]) ) {
-            fprintf(pysamerr, "Could not rewrite header for file: %s\n", output_filename);
+            fprintf(pysam_stderr, "Could not rewrite header for file: %s\n", output_filename);
             cleanup_state(retval, false);
             free(input_base_name);
             return NULL;
@@ -443,13 +443,13 @@ static state_t* init(parsed_opts_t* opts)
 static bool split(state_t* state)
 {
     if (state->unaccounted_file && sam_hdr_write(state->unaccounted_file, state->unaccounted_header) != 0) {
-        fprintf(pysamerr, "Could not write output file header\n");
+        fprintf(pysam_stderr, "Could not write output file header\n");
         return false;
     }
     size_t i;
     for (i = 0; i < state->output_count; i++) {
         if (sam_hdr_write(state->rg_output_file[i], state->rg_output_header[i]) != 0) {
-            fprintf(pysamerr, "Could not write output file header for '%s'\n",
+            fprintf(pysam_stderr, "Could not write output file header for '%s'\n",
                     state->rg_output_file_name[i]);
             return false;
         }
@@ -463,7 +463,7 @@ static bool split(state_t* state)
         bam_destroy1(file_read);
         file_read = NULL;
         if (r < -1) {
-            fprintf(pysamerr, "Could not read first input record\n");
+            fprintf(pysam_stderr, "Could not read first input record\n");
             return false;
         }
     }
@@ -484,7 +484,7 @@ static bool split(state_t* state)
             // if found write to the appropriate untangled bam
             int i = kh_val(state->rg_hash,iter);
             if (sam_write1(state->rg_output_file[i], state->rg_output_header[i], file_read) < 0) {
-                fprintf(pysamerr, "Could not write to output file '%s'\n",
+                fprintf(pysam_stderr, "Could not write to output file '%s'\n",
                         state->rg_output_file_name[i]);
                 bam_destroy1(file_read);
                 return false;
@@ -493,15 +493,15 @@ static bool split(state_t* state)
             // otherwise write to the unaccounted bam if there is one or fail
             if (state->unaccounted_file == NULL) {
                 if (tag) {
-                    fprintf(pysamerr, "Read \"%s\" with unaccounted for tag \"%s\".\n", bam_get_qname(file_read), bam_aux2Z(tag));
+                    fprintf(pysam_stderr, "Read \"%s\" with unaccounted for tag \"%s\".\n", bam_get_qname(file_read), bam_aux2Z(tag));
                 } else {
-                    fprintf(pysamerr, "Read \"%s\" has no RG tag.\n", bam_get_qname(file_read));
+                    fprintf(pysam_stderr, "Read \"%s\" has no RG tag.\n", bam_get_qname(file_read));
                 }
                 bam_destroy1(file_read);
                 return false;
             } else {
                 if (sam_write1(state->unaccounted_file, state->unaccounted_header, file_read) < 0) {
-                    fprintf(pysamerr, "Could not write to unaccounted output file\n");
+                    fprintf(pysam_stderr, "Could not write to unaccounted output file\n");
                     bam_destroy1(file_read);
                     return false;
                 }
@@ -514,7 +514,7 @@ static bool split(state_t* state)
             bam_destroy1(file_read);
             file_read = NULL;
             if (r < -1) {
-                fprintf(pysamerr, "Could not read input record\n");
+                fprintf(pysam_stderr, "Could not read input record\n");
                 return false;
             }
         }
@@ -531,7 +531,7 @@ static int cleanup_state(state_t* status, bool check_close)
     if (status->unaccounted_header) bam_hdr_destroy(status->unaccounted_header);
     if (status->unaccounted_file) {
         if (sam_close(status->unaccounted_file) < 0 && check_close) {
-            fprintf(pysamerr, "Error on closing unaccounted file\n");
+            fprintf(pysam_stderr, "Error on closing unaccounted file\n");
             ret = -1;
         }
     }
@@ -542,7 +542,7 @@ static int cleanup_state(state_t* status, bool check_close)
             bam_hdr_destroy(status->rg_output_header[i]);
         if (status->rg_output_file && status->rg_output_file[i]) {
             if (sam_close(status->rg_output_file[i]) < 0 && check_close) {
-                fprintf(pysamerr, "Error on closing output file '%s'\n",
+                fprintf(pysam_stderr, "Error on closing output file '%s'\n",
                         status->rg_output_file_name[i]);
                 ret = -1;
             }

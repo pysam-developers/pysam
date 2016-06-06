@@ -87,7 +87,7 @@ args_t;
 
 static chain_t* init_chain(chain_t *chain, int ref_ori_pos)
 {
-//     fprintf(pysamerr, "init_chain(*chain, ref_ori_pos=%d)\n", ref_ori_pos);
+//     fprintf(pysam_stderr, "init_chain(*chain, ref_ori_pos=%d)\n", ref_ori_pos);
     chain = (chain_t*) calloc(1,sizeof(chain_t));
     chain->num = 0;
     chain->block_lengths = NULL;
@@ -157,7 +157,7 @@ static void print_chain(args_t *args)
 
 static void push_chain_gap(chain_t *chain, int ref_start, int ref_len, int alt_start, int alt_len)
 {
-//     fprintf(pysamerr, "push_chain_gap(*chain, ref_start=%d, ref_len=%d, alt_start=%d, alt_len=%d)\n", ref_start, ref_len, alt_start, alt_len);
+//     fprintf(pysam_stderr, "push_chain_gap(*chain, ref_start=%d, ref_len=%d, alt_start=%d, alt_len=%d)\n", ref_start, ref_len, alt_start, alt_len);
     int num = chain->num;
 
     if (ref_start <= chain->ref_last_block_ori) {
@@ -218,7 +218,7 @@ static void init_data(args_t *args)
         args->fp_out = fopen(args->output_fname,"w");
         if ( ! args->fp_out ) error("Failed to create %s: %s\n", args->output_fname, strerror(errno));
     }
-    else args->fp_out = stdout;
+    else args->fp_out = pysam_stdout;
 }
 
 static void destroy_data(args_t *args)
@@ -257,7 +257,7 @@ static void init_region(args_t *args, char *line)
         }
     }
     args->rid = bcf_hdr_name2id(args->hdr,line);
-    if ( args->rid<0 ) fprintf(pysamerr,"Warning: Sequence \"%s\" not in %s\n", line,args->fname);
+    if ( args->rid<0 ) fprintf(pysam_stderr,"Warning: Sequence \"%s\" not in %s\n", line,args->fname);
     args->fa_buf.l = 0;
     args->fa_length = 0;
     args->fa_end_pos = to;
@@ -342,7 +342,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
 
     if ( rec->pos <= args->fa_frz_pos )
     {
-        fprintf(pysamerr,"The site %s:%d overlaps with another variant, skipping...\n", bcf_seqname(args->hdr,rec),rec->pos+1);
+        fprintf(pysam_stderr,"The site %s:%d overlaps with another variant, skipping...\n", bcf_seqname(args->hdr,rec),rec->pos+1);
         return;
     }
     if ( args->mask )
@@ -428,7 +428,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     }
     else if ( strncasecmp(rec->d.allele[0],args->fa_buf.s+idx,rec->rlen) )
     {
-        // fprintf(pysamerr,"%d .. [%s], idx=%d ori=%d off=%d\n",args->fa_ori_pos,args->fa_buf.s,idx,args->fa_ori_pos,args->fa_mod_off);
+        // fprintf(pysam_stderr,"%d .. [%s], idx=%d ori=%d off=%d\n",args->fa_ori_pos,args->fa_buf.s,idx,args->fa_ori_pos,args->fa_mod_off);
         char tmp = 0;
         if ( args->fa_buf.l - idx > rec->rlen ) 
         { 
@@ -589,23 +589,23 @@ static void consensus(args_t *args)
 
 static void usage(args_t *args)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Create consensus sequence by applying VCF variants to a reference\n");
-    fprintf(pysamerr, "         fasta file.\n");
-    fprintf(pysamerr, "Usage:   bcftools consensus [OPTIONS] <file.vcf>\n");
-    fprintf(pysamerr, "Options:\n");
-    fprintf(pysamerr, "    -f, --fasta-ref <file>     reference sequence in fasta format\n");
-    fprintf(pysamerr, "    -H, --haplotype <1|2>      apply variants for the given haplotype\n");
-    fprintf(pysamerr, "    -i, --iupac-codes          output variants in the form of IUPAC ambiguity codes\n");
-    fprintf(pysamerr, "    -m, --mask <file>          replace regions with N\n");
-    fprintf(pysamerr, "    -o, --output <file>        write output to a file [standard output]\n");
-    fprintf(pysamerr, "    -c, --chain <file>         write a chain file for liftover\n");
-    fprintf(pysamerr, "    -s, --sample <name>        apply variants of the given sample\n");
-    fprintf(pysamerr, "Examples:\n");
-    fprintf(pysamerr, "   # Get the consensus for one region. The fasta header lines are then expected\n");
-    fprintf(pysamerr, "   # in the form \">chr:from-to\".\n");
-    fprintf(pysamerr, "   samtools faidx ref.fa 8:11870-11890 | bcftools consensus in.vcf.gz > out.fa\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Create consensus sequence by applying VCF variants to a reference\n");
+    fprintf(pysam_stderr, "         fasta file.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools consensus [OPTIONS] <file.vcf>\n");
+    fprintf(pysam_stderr, "Options:\n");
+    fprintf(pysam_stderr, "    -f, --fasta-ref <file>     reference sequence in fasta format\n");
+    fprintf(pysam_stderr, "    -H, --haplotype <1|2>      apply variants for the given haplotype\n");
+    fprintf(pysam_stderr, "    -i, --iupac-codes          output variants in the form of IUPAC ambiguity codes\n");
+    fprintf(pysam_stderr, "    -m, --mask <file>          replace regions with N\n");
+    fprintf(pysam_stderr, "    -o, --output <file>        write output to a file [standard output]\n");
+    fprintf(pysam_stderr, "    -c, --chain <file>         write a chain file for liftover\n");
+    fprintf(pysam_stderr, "    -s, --sample <name>        apply variants of the given sample\n");
+    fprintf(pysam_stderr, "Examples:\n");
+    fprintf(pysam_stderr, "   # Get the consensus for one region. The fasta header lines are then expected\n");
+    fprintf(pysam_stderr, "   # in the form \">chr:from-to\".\n");
+    fprintf(pysam_stderr, "   samtools faidx ref.fa 8:11870-11890 | bcftools consensus in.vcf.gz > out.fa\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 

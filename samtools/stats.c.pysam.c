@@ -1242,7 +1242,7 @@ void init_regions(stats_t *stats, const char *file)
         if ( tid < 0 )
         {
             if ( !warned )
-                fprintf(pysamerr,"Warning: Some sequences not present in the BAM, e.g. \"%s\". This message is printed only once.\n", line.s);
+                fprintf(pysam_stderr,"Warning: Some sequences not present in the BAM, e.g. \"%s\". This message is printed only once.\n", line.s);
             warned = 1;
             continue;
         }
@@ -1336,7 +1336,7 @@ void init_group_id(stats_t *stats, const char *id)
         {
             khiter_t k = kh_get(kh_rg, stats->rg_hash, key);
             if ( k != kh_end(stats->rg_hash) )
-                fprintf(pysamerr, "[init_group_id] The group ID not unique: \"%s\"\n", key);
+                fprintf(pysam_stderr, "[init_group_id] The group ID not unique: \"%s\"\n", key);
             int ret;
             k = kh_put(kh_rg, stats->rg_hash, key, &ret);
             kh_value(stats->rg_hash, k) = val;
@@ -1346,7 +1346,7 @@ void init_group_id(stats_t *stats, const char *id)
     if ( !n )
         error("The sample or read group \"%s\" not present.\n", id);
 #else
-    fprintf(pysamerr, "Samtools-htslib: init_group_id() header parsing not yet implemented\n");
+    fprintf(pysam_stderr, "Samtools-htslib: init_group_id() header parsing not yet implemented\n");
     abort();
 #endif
 }
@@ -1356,35 +1356,35 @@ static void error(const char *format, ...)
 {
     if ( !format )
     {
-        printf("About: The program collects statistics from BAM files. The output can be visualized using plot-bamstats.\n");
-        printf("Usage: samtools stats [OPTIONS] file.bam\n");
-        printf("       samtools stats [OPTIONS] file.bam chr:from-to\n");
-        printf("Options:\n");
-        printf("    -c, --coverage <int>,<int>,<int>    Coverage distribution min,max,step [1,1000,1]\n");
-        printf("    -d, --remove-dups                   Exclude from statistics reads marked as duplicates\n");
-        printf("    -f, --required-flag  <str|int>      Required flag, 0 for unset. See also `samtools flags` [0]\n");
-        printf("    -F, --filtering-flag <str|int>      Filtering flag, 0 for unset. See also `samtools flags` [0]\n");
-        printf("        --GC-depth <float>              the size of GC-depth bins (decreasing bin size increases memory requirement) [2e4]\n");
-        printf("    -h, --help                          This help message\n");
-        printf("    -i, --insert-size <int>             Maximum insert size [8000]\n");
-        printf("    -I, --id <string>                   Include only listed read group or sample name\n");
-        printf("    -l, --read-length <int>             Include in the statistics only reads with the given read length []\n");
-        printf("    -m, --most-inserts <float>          Report only the main part of inserts [0.99]\n");
-        printf("    -P, --split-prefix <str>            Path or string prefix for filepaths output by -S (default is input filename)\n");
-        printf("    -q, --trim-quality <int>            The BWA trimming parameter [0]\n");
-        printf("    -r, --ref-seq <file>                Reference sequence (required for GC-depth and mismatches-per-cycle calculation).\n");
-        printf("    -s, --sam                           Ignored (input format is auto-detected).\n");
-        printf("    -S, --split <tag>                   Also write statistics to separate files split by tagged field.\n");
-        printf("    -t, --target-regions <file>         Do stats in these regions only. Tab-delimited file chr,from,to, 1-based, inclusive.\n");
-        printf("    -x, --sparse                        Suppress outputting IS rows where there are no insertions.\n");
-        sam_global_opt_help(stdout, "-.--.");
-        printf("\n");
+        fprintf(pysam_stdout, "About: The program collects statistics from BAM files. The output can be visualized using plot-bamstats.\n");
+        fprintf(pysam_stdout, "Usage: samtools stats [OPTIONS] file.bam\n");
+        fprintf(pysam_stdout, "       samtools stats [OPTIONS] file.bam chr:from-to\n");
+        fprintf(pysam_stdout, "Options:\n");
+        fprintf(pysam_stdout, "    -c, --coverage <int>,<int>,<int>    Coverage distribution min,max,step [1,1000,1]\n");
+        fprintf(pysam_stdout, "    -d, --remove-dups                   Exclude from statistics reads marked as duplicates\n");
+        fprintf(pysam_stdout, "    -f, --required-flag  <str|int>      Required flag, 0 for unset. See also `samtools flags` [0]\n");
+        fprintf(pysam_stdout, "    -F, --filtering-flag <str|int>      Filtering flag, 0 for unset. See also `samtools flags` [0]\n");
+        fprintf(pysam_stdout, "        --GC-depth <float>              the size of GC-depth bins (decreasing bin size increases memory requirement) [2e4]\n");
+        fprintf(pysam_stdout, "    -h, --help                          This help message\n");
+        fprintf(pysam_stdout, "    -i, --insert-size <int>             Maximum insert size [8000]\n");
+        fprintf(pysam_stdout, "    -I, --id <string>                   Include only listed read group or sample name\n");
+        fprintf(pysam_stdout, "    -l, --read-length <int>             Include in the statistics only reads with the given read length []\n");
+        fprintf(pysam_stdout, "    -m, --most-inserts <float>          Report only the main part of inserts [0.99]\n");
+        fprintf(pysam_stdout, "    -P, --split-prefix <str>            Path or string prefix for filepaths output by -S (default is input filename)\n");
+        fprintf(pysam_stdout, "    -q, --trim-quality <int>            The BWA trimming parameter [0]\n");
+        fprintf(pysam_stdout, "    -r, --ref-seq <file>                Reference sequence (required for GC-depth and mismatches-per-cycle calculation).\n");
+        fprintf(pysam_stdout, "    -s, --sam                           Ignored (input format is auto-detected).\n");
+        fprintf(pysam_stdout, "    -S, --split <tag>                   Also write statistics to separate files split by tagged field.\n");
+        fprintf(pysam_stdout, "    -t, --target-regions <file>         Do stats in these regions only. Tab-delimited file chr,from,to, 1-based, inclusive.\n");
+        fprintf(pysam_stdout, "    -x, --sparse                        Suppress outputting IS rows where there are no insertions.\n");
+        sam_global_opt_help(pysam_stdout, "-.--.");
+        fprintf(pysam_stdout, "\n");
     }
     else
     {
         va_list ap;
         va_start(ap, format);
-        vfprintf(pysamerr, format, ap);
+        vfprintf(pysam_stderr, format, ap);
         va_end(ap);
     }
     exit(1);
@@ -1710,13 +1710,13 @@ int main_stats(int argc, char *argv[])
         }
 
         if (ret < -1) {
-            fprintf(pysamerr, "Failure while decoding file\n");
+            fprintf(pysam_stderr, "Failure while decoding file\n");
             return 1;
         }
     }
 
     round_buffer_flush(all_stats, -1);
-    output_stats(stdout, all_stats, sparse);
+    output_stats(pysam_stdout, all_stats, sparse);
     if (info->split_tag)
         output_split_stats(split_hash, bam_fname, sparse);
 

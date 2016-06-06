@@ -267,7 +267,7 @@ static void init_data(args_t *args)
     args->hmm = hmm_init(args->nstates, args->tprob, 10000);
     hmm_init_states(args->hmm, args->iprobs);
 
-    args->summary_fh = stdout;
+    args->summary_fh = pysam_stdout;
     if ( args->output_dir )
     {
         init_sample_files(&args->query_sample, args->output_dir);
@@ -306,7 +306,7 @@ static void py_plot_cnv(char *script, float th)
 
     char *cmd = msprintf("python %s -p %f", script, th);
     int ret = system(cmd);
-    if ( ret) fprintf(pysamerr, "The command returned non-zero status %d: %s\n", ret, cmd);
+    if ( ret) fprintf(pysam_stderr, "The command returned non-zero status %d: %s\n", ret, cmd);
     free(cmd);
 }
 
@@ -641,7 +641,7 @@ static int set_observed_prob(args_t *args, sample_t *smpl, int isite)
     cn3_baf /= norm;
 
     #if DBG0
-    if ( args->verbose ) fprintf(pysamerr,"%f\t%f %f %f\n", baf,cn1_baf,cn2_baf,cn3_baf);
+    if ( args->verbose ) fprintf(pysam_stderr,"%f\t%f %f %f\n", baf,cn1_baf,cn2_baf,cn3_baf);
     #endif
 
     double cn1_lrr = exp(-(lrr + 0.45)*(lrr + 0.45)/smpl->lrr_dev2);
@@ -866,7 +866,7 @@ static int update_sample_args(args_t *args, sample_t *smpl, int ismpl)
     baf_AA_dev2 /= norm_baf_AA_dev2;
     if ( baf_dev2 < baf_AA_dev2 )  baf_dev2 = baf_AA_dev2;
     double max_mean_cn3 = 0.5 - sqrt(baf_dev2)*1.644854;    // R: qnorm(0.95)=1.644854
-    //fprintf(pysamerr,"dev=%f  AA_dev=%f  max_mean_cn3=%f  mean_cn3=%f\n", baf_dev2,baf_AA_dev2,max_mean_cn3,mean_cn3);
+    //fprintf(pysam_stderr,"dev=%f  AA_dev=%f  max_mean_cn3=%f  mean_cn3=%f\n", baf_dev2,baf_AA_dev2,max_mean_cn3,mean_cn3);
     assert( max_mean_cn3>0 );
 
     double new_frac = 1./mean_cn3 - 2;
@@ -936,13 +936,13 @@ static void cnv_flush_viterbi(args_t *args)
     if ( args->optimize_frac )
     {
         int niter = 0;
-        fprintf(pysamerr,"Attempting to estimate the fraction of aberrant cells (chr %s):\n", bcf_hdr_id2name(args->hdr,args->prev_rid));
+        fprintf(pysam_stderr,"Attempting to estimate the fraction of aberrant cells (chr %s):\n", bcf_hdr_id2name(args->hdr,args->prev_rid));
         do
         {
-            fprintf(pysamerr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
+            fprintf(pysam_stderr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
             if ( args->control_sample.name )
-                fprintf(pysamerr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
-            fprintf(pysamerr,"\n");
+                fprintf(pysam_stderr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
+            fprintf(pysam_stderr,"\n");
             set_emission_probs(args);
             hmm_run_fwd_bwd(hmm, args->nsites, args->eprob, args->sites);
         }
@@ -958,10 +958,10 @@ static void cnv_flush_viterbi(args_t *args)
             if ( args->control_sample.name ) set_gauss_params(args, &args->control_sample);
         }
 
-        fprintf(pysamerr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
+        fprintf(pysam_stderr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
         if ( args->control_sample.name )
-            fprintf(pysamerr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
-        fprintf(pysamerr,"\n");
+            fprintf(pysam_stderr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
+        fprintf(pysam_stderr,"\n");
     }
     set_emission_probs(args);
 
@@ -971,7 +971,7 @@ static void cnv_flush_viterbi(args_t *args)
         double ori_ii = avg_ii_prob(nstates,hmm_get_tprob(hmm));
         hmm_run_baum_welch(hmm, args->nsites, args->eprob, args->sites);
         double new_ii = avg_ii_prob(nstates,hmm_get_tprob(hmm));
-        fprintf(pysamerr,"%e\t%e\t%e\n", ori_ii,new_ii,new_ii-ori_ii);
+        fprintf(pysam_stderr,"%e\t%e\t%e\n", ori_ii,new_ii,new_ii-ori_ii);
         double *tprob = init_tprob_matrix(nstates, 1-new_ii, args->same_prob);
         hmm_set_tprob(args->hmm, tprob, 10000);
         double *tprob_arr = hmm_get_tprob(hmm);
@@ -983,9 +983,9 @@ static void cnv_flush_viterbi(args_t *args)
             {
                 for (j=0; j<nstates; j++)
                 {
-                    printf(" %.15f", MAT(tprob_arr,nstates,j,i));
+                    fprintf(pysam_stdout, " %.15f", MAT(tprob_arr,nstates,j,i));
                 }
-                printf("\n");
+                fprintf(pysam_stdout, "\n");
             }
             break;
         }
@@ -1176,33 +1176,33 @@ static void cnv_next_line(args_t *args, bcf1_t *line)
 
 static void usage(args_t *args)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Copy number variation caller, requires Illumina's B-allele frequency (BAF) and Log R\n");
-    fprintf(pysamerr, "         Ratio intensity (LRR). The HMM considers the following copy number states: CN 2\n");
-    fprintf(pysamerr, "         (normal), 1 (single-copy loss), 0 (complete loss), 3 (single-copy gain)\n");
-    fprintf(pysamerr, "Usage:   bcftools cnv [OPTIONS] <file.vcf>\n");
-    fprintf(pysamerr, "General Options:\n");
-    fprintf(pysamerr, "    -c, --control-sample <string>      optional control sample name to highlight differences\n");
-    fprintf(pysamerr, "    -f, --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
-    fprintf(pysamerr, "    -o, --output-dir <path>            \n");
-    fprintf(pysamerr, "    -p, --plot-threshold <float>       plot aberrant chromosomes with quality at least 'float'\n");
-    fprintf(pysamerr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(pysamerr, "    -s, --query-sample <string>        query samply name\n");
-    fprintf(pysamerr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
-    fprintf(pysamerr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "HMM Options:\n");
-    fprintf(pysamerr, "    -a, --aberrant <float[,float]>     fraction of aberrant cells in query and control [1.0,1.0]\n");
-    fprintf(pysamerr, "    -b, --BAF-weight <float>           relative contribution from BAF [1]\n");
-    fprintf(pysamerr, "    -d, --BAF-dev <float[,float]>      expected BAF deviation in query and control [0.04,0.04]\n"); // experimental
-    fprintf(pysamerr, "    -e, --err-prob <float>             uniform error probability [1e-4]\n");
-    fprintf(pysamerr, "    -k, --LRR-dev <float[,float]>      expected LRR deviation [0.2,0.2]\n"); // experimental
-    fprintf(pysamerr, "    -l, --LRR-weight <float>           relative contribution from LRR [0.2]\n");
-    fprintf(pysamerr, "    -L, --LRR-smooth-win <int>         window of LRR moving average smoothing [10]\n");
-    fprintf(pysamerr, "    -O, --optimize <float>             estimate fraction of aberrant cells down to <float> [1.0]\n");
-    fprintf(pysamerr, "    -P, --same-prob <float>            prior probability of -s/-c being the same [0.5]\n");
-    fprintf(pysamerr, "    -x, --xy-prob <float>              P(x|y) transition probability [1e-9]\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Copy number variation caller, requires Illumina's B-allele frequency (BAF) and Log R\n");
+    fprintf(pysam_stderr, "         Ratio intensity (LRR). The HMM considers the following copy number states: CN 2\n");
+    fprintf(pysam_stderr, "         (normal), 1 (single-copy loss), 0 (complete loss), 3 (single-copy gain)\n");
+    fprintf(pysam_stderr, "Usage:   bcftools cnv [OPTIONS] <file.vcf>\n");
+    fprintf(pysam_stderr, "General Options:\n");
+    fprintf(pysam_stderr, "    -c, --control-sample <string>      optional control sample name to highlight differences\n");
+    fprintf(pysam_stderr, "    -f, --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
+    fprintf(pysam_stderr, "    -o, --output-dir <path>            \n");
+    fprintf(pysam_stderr, "    -p, --plot-threshold <float>       plot aberrant chromosomes with quality at least 'float'\n");
+    fprintf(pysam_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "    -s, --query-sample <string>        query samply name\n");
+    fprintf(pysam_stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "HMM Options:\n");
+    fprintf(pysam_stderr, "    -a, --aberrant <float[,float]>     fraction of aberrant cells in query and control [1.0,1.0]\n");
+    fprintf(pysam_stderr, "    -b, --BAF-weight <float>           relative contribution from BAF [1]\n");
+    fprintf(pysam_stderr, "    -d, --BAF-dev <float[,float]>      expected BAF deviation in query and control [0.04,0.04]\n"); // experimental
+    fprintf(pysam_stderr, "    -e, --err-prob <float>             uniform error probability [1e-4]\n");
+    fprintf(pysam_stderr, "    -k, --LRR-dev <float[,float]>      expected LRR deviation [0.2,0.2]\n"); // experimental
+    fprintf(pysam_stderr, "    -l, --LRR-weight <float>           relative contribution from LRR [0.2]\n");
+    fprintf(pysam_stderr, "    -L, --LRR-smooth-win <int>         window of LRR moving average smoothing [10]\n");
+    fprintf(pysam_stderr, "    -O, --optimize <float>             estimate fraction of aberrant cells down to <float> [1.0]\n");
+    fprintf(pysam_stderr, "    -P, --same-prob <float>            prior probability of -s/-c being the same [0.5]\n");
+    fprintf(pysam_stderr, "    -x, --xy-prob <float>              P(x|y) transition probability [1e-9]\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 
@@ -1379,7 +1379,7 @@ int main_vcfcnv(int argc, char *argv[])
     }
     cnv_next_line(args, NULL);
     create_plots(args);
-    fprintf(pysamerr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);
+    fprintf(pysam_stderr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);
     destroy_data(args);
     free(args);
     return 0;

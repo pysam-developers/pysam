@@ -288,7 +288,7 @@ void mcall_init(call_t *call)
         call->theta *= aM;
         if ( call->theta >= 1 )
         {
-            fprintf(pysamerr,"The prior is too big (theta*aM=%.2f), going with 0.99\n", call->theta);
+            fprintf(pysam_stderr,"The prior is too big (theta*aM=%.2f), going with 0.99\n", call->theta);
             call->theta = 0.99;
         }
         call->theta = log(call->theta);
@@ -516,13 +516,13 @@ float calc_ICB(int nref, int nalt, int nhets, int ndiploid)
     double q = 2*fref*falt;                 // probability of a het, assuming HWE
     double mean = q*ndiploid;
 
-    //fprintf(pysamerr,"\np=%e N=%d k=%d  .. nref=%d nalt=%d nhets=%d ndiploid=%d\n", q,ndiploid,nhets, nref,nalt,nhets,ndiploid);
+    //fprintf(pysam_stderr,"\np=%e N=%d k=%d  .. nref=%d nalt=%d nhets=%d ndiploid=%d\n", q,ndiploid,nhets, nref,nalt,nhets,ndiploid);
 
     // Can we use normal approximation? The second condition is for performance only
     // and is not well justified.
     if ( (mean>10 && (1-q)*ndiploid>10 ) || ndiploid>200 )
     {
-        //fprintf(pysamerr,"out: mean=%e  p=%e\n", mean,exp(-0.5*(nhets-mean)*(nhets-mean)/(mean*(1-q))));
+        //fprintf(pysam_stderr,"out: mean=%e  p=%e\n", mean,exp(-0.5*(nhets-mean)*(nhets-mean)/(mean*(1-q))));
         return exp(-0.5*(nhets-mean)*(nhets-mean)/(mean*(1-q)));
     }
 
@@ -1032,12 +1032,12 @@ static void mcall_call_trio_genotypes(call_t *call, bcf1_t *rec, int nals, int n
                 if ( igt==GT_SKIP ) continue;
                 lk += gl[igt];
                 npresent++;
-                // fprintf(pysamerr," %e", gl[igt]);
+                // fprintf(pysam_stderr," %e", gl[igt]);
             }
-            // fprintf(pysamerr,"\t\t");
+            // fprintf(pysam_stderr,"\t\t");
             double Pkij = npresent==3 ? (double)2/(trio[itr]>>12) : 1;  // with missing genotypes Pkij's are different
             lk += log(1 - trio_Pm * (1 - Pkij));
-            // fprintf(pysamerr,"%d%d%d\t%e\t%.2f\n", trio[itr]>>8&0xf,trio[itr]>>4&0xf,trio[itr]&0xf, lk, Pkij);
+            // fprintf(pysam_stderr,"%d%d%d\t%e\t%.2f\n", trio[itr]>>8&0xf,trio[itr]>>4&0xf,trio[itr]&0xf, lk, Pkij);
             if ( c_lk < lk ) { c_lk = lk; c_itr = trio[itr]; }
             if ( uc_itr==trio[itr] ) uc_is_mendelian = 1;
         }
@@ -1045,10 +1045,10 @@ static void mcall_call_trio_genotypes(call_t *call, bcf1_t *rec, int nals, int n
         if ( !uc_is_mendelian )
         {
             uc_lk += log(1 - trio_Pm);
-            // fprintf(pysamerr,"c_lk=%e uc_lk=%e c_itr=%d%d%d uc_itr=%d%d%d\n", c_lk,uc_lk,c_itr>>8&0xf,c_itr>>4&0xf,c_itr&0xf,uc_itr>>8&0xf,uc_itr>>4&0xf,uc_itr&0xf);
+            // fprintf(pysam_stderr,"c_lk=%e uc_lk=%e c_itr=%d%d%d uc_itr=%d%d%d\n", c_lk,uc_lk,c_itr>>8&0xf,c_itr>>4&0xf,c_itr&0xf,uc_itr>>8&0xf,uc_itr>>4&0xf,uc_itr&0xf);
             if ( c_lk < uc_lk ) { c_lk = uc_lk; c_itr = uc_itr; }
         }
-        // fprintf(pysamerr,"best_lk=%e best_itr=%d%d%d uc_itr=%d%d%d\n", c_lk,c_itr>>8&0xf,c_itr>>4&0xf,c_itr&0xf,uc_itr>>8&0xf,uc_itr>>4&0xf,uc_itr&0xf);
+        // fprintf(pysam_stderr,"best_lk=%e best_itr=%d%d%d uc_itr=%d%d%d\n", c_lk,c_itr>>8&0xf,c_itr>>4&0xf,c_itr&0xf,uc_itr>>8&0xf,uc_itr>>4&0xf,uc_itr&0xf);
 
         // Set genotypes for father, mother, child and calculate genotype qualities
         for (i=0; i<3; i++)
@@ -1429,7 +1429,7 @@ int mcall(call_t *call, bcf1_t *rec)
     int out_als, nout;
     if ( nals > 8*sizeof(out_als) )
     { 
-        fprintf(pysamerr,"Too many alleles at %s:%d, skipping.\n", bcf_seqname(call->hdr,rec),rec->pos+1); 
+        fprintf(pysam_stderr,"Too many alleles at %s:%d, skipping.\n", bcf_seqname(call->hdr,rec),rec->pos+1); 
         return 0; 
     }
     nout = mcall_find_best_alleles(call, nals, &out_als);
@@ -1473,7 +1473,7 @@ int mcall(call_t *call, bcf1_t *rec)
         {
             if ( nout>4 ) 
             { 
-                fprintf(pysamerr,"Too many alleles at %s:%d, skipping.\n", bcf_seqname(call->hdr,rec),rec->pos+1); 
+                fprintf(pysam_stderr,"Too many alleles at %s:%d, skipping.\n", bcf_seqname(call->hdr,rec),rec->pos+1); 
                 return 0; 
             }
             mcall_call_trio_genotypes(call, rec, nals,nout,out_als);

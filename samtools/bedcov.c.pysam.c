@@ -90,9 +90,9 @@ int main_bedcov(int argc, char *argv[])
         if (usage) break;
     }
     if (usage || optind + 2 > argc) {
-        fprintf(pysamerr, "Usage: samtools bedcov [options] <in.bed> <in1.bam> [...]\n\n");
-        fprintf(pysamerr, "  -Q INT       Only count bases of at least INT quality [0]\n");
-        sam_global_opt_help(pysamerr, "-.--.");
+        fprintf(pysam_stderr, "Usage: samtools bedcov [options] <in.bed> <in1.bam> [...]\n\n");
+        fprintf(pysam_stderr, "  -Q INT       Only count bases of at least INT quality [0]\n");
+        sam_global_opt_help(pysam_stderr, "-.--.");
         return 1;
     }
     memset(&str, 0, sizeof(kstring_t));
@@ -106,13 +106,13 @@ int main_bedcov(int argc, char *argv[])
         if (aux[i]->fp)
             idx[i] = sam_index_load(aux[i]->fp, argv[i+optind+1]);
         if (aux[i]->fp == 0 || idx[i] == 0) {
-            fprintf(pysamerr, "ERROR: fail to open index BAM file '%s'\n", argv[i+optind+1]);
+            fprintf(pysam_stderr, "ERROR: fail to open index BAM file '%s'\n", argv[i+optind+1]);
             return 2;
         }
         // TODO bgzf_set_cache_size(aux[i]->fp, 20);
         aux[i]->header = sam_hdr_read(aux[i]->fp);
         if (aux[i]->header == NULL) {
-            fprintf(pysamerr, "ERROR: failed to read header for '%s'\n",
+            fprintf(pysam_stderr, "ERROR: failed to read header for '%s'\n",
                     argv[i+optind+1]);
             return 2;
         }
@@ -155,12 +155,12 @@ int main_bedcov(int argc, char *argv[])
             kputc('\t', &str);
             kputl(cnt[i], &str);
         }
-        puts(str.s);
+        fputs(str.s, pysam_stdout) & fputc('\n', pysam_stdout);
         bam_mplp_destroy(mplp);
         continue;
 
 bed_error:
-        fprintf(pysamerr, "Errors in BED line '%s'\n", str.s);
+        fprintf(pysam_stderr, "Errors in BED line '%s'\n", str.s);
     }
     free(n_plp); free(plp);
     ks_destroy(ks);

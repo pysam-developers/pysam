@@ -83,7 +83,7 @@ static void debug(const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
-    vfprintf(pysamerr, format, ap);
+    vfprintf(pysam_stderr, format, ap);
     va_end(ap);
 }
 
@@ -777,8 +777,8 @@ void *sam_header_merge(int n, const void **_dicts)
 
                 if ( status==2 )
                 {
-                    print_header_line(pysamerr,tmpl_hlines->data);
-                    print_header_line(pysamerr,out_hlines->data);
+                    print_header_line(pysam_stderr,tmpl_hlines->data);
+                    print_header_line(pysam_stderr,out_hlines->data);
                     debug("Conflicting lines, cannot merge the headers.\n");
                     return 0;
                 }

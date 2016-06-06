@@ -35,40 +35,40 @@ DEALINGS IN THE SOFTWARE.  */
 #include <unistd.h>
 
 void dump_read(bam1_t* b) {
-    printf("->core.tid:(%d)\n", b->core.tid);
-    printf("->core.pos:(%d)\n", b->core.pos);
-    printf("->core.bin:(%d)\n", b->core.bin);
-    printf("->core.qual:(%d)\n", b->core.qual);
-    printf("->core.l_qname:(%d)\n", b->core.l_qname);
-    printf("->core.flag:(%d)\n", b->core.flag);
-    printf("->core.n_cigar:(%d)\n", b->core.n_cigar);
-    printf("->core.l_qseq:(%d)\n", b->core.l_qseq);
-    printf("->core.mtid:(%d)\n", b->core.mtid);
-    printf("->core.mpos:(%d)\n", b->core.mpos);
-    printf("->core.isize:(%d)\n", b->core.isize);
+    fprintf(pysam_stdout, "->core.tid:(%d)\n", b->core.tid);
+    fprintf(pysam_stdout, "->core.pos:(%d)\n", b->core.pos);
+    fprintf(pysam_stdout, "->core.bin:(%d)\n", b->core.bin);
+    fprintf(pysam_stdout, "->core.qual:(%d)\n", b->core.qual);
+    fprintf(pysam_stdout, "->core.l_qname:(%d)\n", b->core.l_qname);
+    fprintf(pysam_stdout, "->core.flag:(%d)\n", b->core.flag);
+    fprintf(pysam_stdout, "->core.n_cigar:(%d)\n", b->core.n_cigar);
+    fprintf(pysam_stdout, "->core.l_qseq:(%d)\n", b->core.l_qseq);
+    fprintf(pysam_stdout, "->core.mtid:(%d)\n", b->core.mtid);
+    fprintf(pysam_stdout, "->core.mpos:(%d)\n", b->core.mpos);
+    fprintf(pysam_stdout, "->core.isize:(%d)\n", b->core.isize);
     if (b->data) {
-        printf("->data:");
+        fprintf(pysam_stdout, "->data:");
         int i;
         for (i = 0; i < b->l_data; ++i) {
-            printf("%x ", b->data[i]);
+            fprintf(pysam_stdout, "%x ", b->data[i]);
         }
-        printf("\n");
+        fprintf(pysam_stdout, "\n");
     }
     if (b->core.l_qname) {
-        printf("qname: %s\n",bam_get_qname(b));
+        fprintf(pysam_stdout, "qname: %s\n",bam_get_qname(b));
     }
     if (b->core.l_qseq) {
-        printf("qseq:");
+        fprintf(pysam_stdout, "qseq:");
         int i;
         for (i = 0; i < b->core.l_qseq; ++i) {
-            printf("%c",seq_nt16_str[seq_nt16_table[bam_seqi(bam_get_seq(b),i)]]);
+            fprintf(pysam_stdout, "%c",seq_nt16_str[seq_nt16_table[bam_seqi(bam_get_seq(b),i)]]);
         }
-        printf("\n");
-        printf("qual:");
+        fprintf(pysam_stdout, "\n");
+        fprintf(pysam_stdout, "qual:");
         for (i = 0; i < b->core.l_qseq; ++i) {
-            printf("%c",bam_get_qual(b)[i]);
+            fprintf(pysam_stdout, "%c",bam_get_qual(b)[i]);
         }
-        printf("\n");
+        fprintf(pysam_stdout, "\n");
 
     }
 
@@ -77,18 +77,18 @@ void dump_read(bam1_t* b) {
         uint8_t* aux = bam_get_aux(b);
 
         while (i < bam_get_l_aux(b)) {
-            printf("%.2s:%c:",aux+i,*(aux+i+2));
+            fprintf(pysam_stdout, "%.2s:%c:",aux+i,*(aux+i+2));
             i += 2;
             switch (*(aux+i)) {
                 case 'Z':
-                    while (*(aux+1+i) != '\0') { putc(*(aux+1+i), stdout); ++i; }
+                    while (*(aux+1+i) != '\0') { putc(*(aux+1+i), pysam_stdout); ++i; }
                     break;
             }
-            putc('\n',stdout);
+            putc('\n',pysam_stdout);
             ++i;++i;
         }
     }
-    printf("\n");
+    fprintf(pysam_stdout, "\n");
 }
 
 void trans_tbl_test_init(trans_tbl_t* tbl, int32_t n_targets)
@@ -336,7 +336,7 @@ void setup_test_6(bam1_t** b_in, trans_tbl_t* tbl) {
 }
 
 
-int main(int argc, char**argv)
+int samtools_test_bam_translate_main(int argc, char**argv)
 {
     // test state
     const int NUM_TESTS = 6;
@@ -357,30 +357,30 @@ int main(int argc, char**argv)
 
     bam1_t* b;
 
-    // Setup pysamerr redirect
+    // Setup pysam_stderr redirect
     kstring_t res = { 0, 0, NULL };
-    FILE* orig_pysamerr = fdopen(dup(STDERR_FILENO), "a"); // Save pysamerr
+    FILE* orig_pysam_stderr = fdopen(dup(STDERR_FILENO), "a"); // Save pysam_stderr
     char* tempfname = (optind < argc)? argv[optind] : "test_bam_translate.tmp";
     FILE* check = NULL;
 
     // setup
-    if (verbose) printf("BEGIN test 1\n");  // TID test
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 1\n");  // TID test
     trans_tbl_t tbl1;
     setup_test_1(&b,&tbl1);
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
-    if (verbose) printf("RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 1\n");
 
     // test
-    xfreopen(tempfname, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     bam_translate(b, &tbl1);
-    fclose(pysamerr);
+    fclose(pysam_stderr);
 
-    if (verbose) printf("END RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 1\n");
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
 
@@ -392,33 +392,33 @@ int main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 1\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 1\n");
     }
     fclose(check);
 
     // teardown
     bam_destroy1(b);
     trans_tbl_destroy(&tbl1);
-    if (verbose) printf("END test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END test 1\n");
 
     // setup
-    if (verbose) printf("BEGIN test 2\n");  // RG exists and translate test
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 2\n");  // RG exists and translate test
     trans_tbl_t tbl2;
     setup_test_2(&b,&tbl2);
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
-    if (verbose) printf("RUN test 2\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 2\n");
 
     // test
-    xfreopen(tempfname, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     bam_translate(b, &tbl2);
-    fclose(pysamerr);
+    fclose(pysam_stderr);
 
-    if (verbose) printf("END RUN test 2\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 2\n");
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
 
@@ -430,33 +430,33 @@ int main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 2\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 2\n");
     }
     fclose(check);
 
     // teardown
     bam_destroy1(b);
     trans_tbl_destroy(&tbl2);
-    if (verbose) printf("END test 2\n");
+    if (verbose) fprintf(pysam_stdout, "END test 2\n");
 
-    if (verbose) printf("BEGIN test 3\n");  // PG exists and translate  test
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 3\n");  // PG exists and translate  test
     // setup
     trans_tbl_t tbl3;
     setup_test_3(&b,&tbl3);
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
-    if (verbose) printf("RUN test 3\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 3\n");
 
     // test
-    xfreopen(tempfname, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     bam_translate(b, &tbl3);
-    fclose(pysamerr);
+    fclose(pysam_stderr);
 
-    if (verbose) printf("END RUN test 3\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 3\n");
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
 
@@ -468,33 +468,33 @@ int main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 3\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 3\n");
     }
     fclose(check);
 
     // teardown
     bam_destroy1(b);
     trans_tbl_destroy(&tbl3);
-    if (verbose) printf("END test 3\n");
+    if (verbose) fprintf(pysam_stdout, "END test 3\n");
 
-    if (verbose) printf("BEGIN test 4\n");  // RG test non-existent
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 4\n");  // RG test non-existent
     // setup
     trans_tbl_t tbl4;
     setup_test_4(&b,&tbl4);
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
-    if (verbose) printf("RUN test 4\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 4\n");
 
     // test
-    xfreopen(tempfname, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     bam_translate(b, &tbl4);
-    fclose(pysamerr);
+    fclose(pysam_stderr);
 
-    if (verbose) printf("END RUN test 4\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 4\n");
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
     // check result
@@ -505,32 +505,32 @@ int main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 4\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 4\n");
     }
     fclose(check);
 
     // teardown
     bam_destroy1(b);
     trans_tbl_destroy(&tbl4);
-    if (verbose) printf("END test 4\n");
+    if (verbose) fprintf(pysam_stdout, "END test 4\n");
 
-    if (verbose) printf("BEGIN test 5\n");  // PG test non-existent
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 5\n");  // PG test non-existent
     // setup
     trans_tbl_t tbl5;
     setup_test_5(&b,&tbl5);
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
-        printf("RUN test 5\n");
+        fprintf(pysam_stdout, "RUN test 5\n");
     }
     // test
-    xfreopen(tempfname, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     bam_translate(b, &tbl5);
-    fclose(pysamerr);
+    fclose(pysam_stderr);
 
-    if (verbose) printf("END RUN test 5\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 5\n");
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
 
@@ -542,33 +542,33 @@ int main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 5\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 5\n");
     }
     fclose(check);
 
     // teardown
     bam_destroy1(b);
     trans_tbl_destroy(&tbl5);
-    if (verbose) printf("END test 5\n");
+    if (verbose) fprintf(pysam_stdout, "END test 5\n");
 
-    if (verbose) printf("BEGIN test 6\n");  // RG and PG exists and translate test
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 6\n");  // RG and PG exists and translate test
     // setup
     trans_tbl_t tbl6;
     setup_test_6(&b,&tbl6);
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
-    if (verbose) printf("RUN test 6\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 6\n");
 
     // test
-    xfreopen(tempfname, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     bam_translate(b, &tbl6);
-    fclose(pysamerr);
+    fclose(pysam_stderr);
 
-    if (verbose) printf("END RUN test 6\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 6\n");
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_read(b);
     }
 
@@ -580,21 +580,21 @@ int main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 6\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 6\n");
     }
     fclose(check);
 
     // teardown
     bam_destroy1(b);
     trans_tbl_destroy(&tbl6);
-    if (verbose) printf("END test 6\n");
+    if (verbose) fprintf(pysam_stdout, "END test 6\n");
 
     // Cleanup
     free(res.s);
     remove(tempfname);
     if (failure > 0)
-        fprintf(orig_pysamerr, "%d failures %d successes\n", failure, success);
-    fclose(orig_pysamerr);
+        fprintf(orig_pysam_stderr, "%d failures %d successes\n", failure, success);
+    fclose(orig_pysam_stderr);
 
     return (success == NUM_TESTS)? EXIT_SUCCESS : EXIT_FAILURE;
 }

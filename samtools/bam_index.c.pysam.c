@@ -63,12 +63,12 @@ int bam_index(int argc, char *argv[])
         case 'c': csi = 1; break;
         case 'm': csi = 1; min_shift = atoi(optarg); break;
         default:
-            index_usage(pysamerr);
+            index_usage(pysam_stderr);
             return 1;
         }
 
     if (optind == argc) {
-        index_usage(stdout);
+        index_usage(pysam_stdout);
         return 1;
     }
 
@@ -93,31 +93,31 @@ int bam_idxstats(int argc, char *argv[])
     samFile* fp;
 
     if (argc < 2) {
-        fprintf(pysamerr, "Usage: samtools idxstats <in.bam>\n");
+        fprintf(pysam_stderr, "Usage: samtools idxstats <in.bam>\n");
         return 1;
     }
     fp = sam_open(argv[1], "r");
-    if (fp == NULL) { fprintf(pysamerr, "[%s] fail to open BAM.\n", __func__); return 1; }
+    if (fp == NULL) { fprintf(pysam_stderr, "[%s] fail to open BAM.\n", __func__); return 1; }
     header = sam_hdr_read(fp);
     if (header == NULL) {
-        fprintf(pysamerr, "[%s] failed to read header for '%s'.\n",
+        fprintf(pysam_stderr, "[%s] failed to read header for '%s'.\n",
                 __func__, argv[1]);
         return 1;
     }
     idx = sam_index_load(fp, argv[1]);
-    if (idx == NULL) { fprintf(pysamerr, "[%s] fail to load the index.\n", __func__); return 1; }
+    if (idx == NULL) { fprintf(pysam_stderr, "[%s] fail to load the index.\n", __func__); return 1; }
 
     int i;
     for (i = 0; i < header->n_targets; ++i) {
         // Print out contig name and length
-        printf("%s\t%d", header->target_name[i], header->target_len[i]);
+        fprintf(pysam_stdout, "%s\t%d", header->target_name[i], header->target_len[i]);
         // Now fetch info about it from the meta bin
         uint64_t u, v;
         hts_idx_get_stat(idx, i, &u, &v);
-        printf("\t%" PRIu64 "\t%" PRIu64 "\n", u, v);
+        fprintf(pysam_stdout, "\t%" PRIu64 "\t%" PRIu64 "\n", u, v);
     }
     // Dump information about unmapped reads
-    printf("*\t0\t0\t%" PRIu64 "\n", hts_idx_get_n_no_coor(idx));
+    fprintf(pysam_stdout, "*\t0\t0\t%" PRIu64 "\n", hts_idx_get_n_no_coor(idx));
     bam_hdr_destroy(header);
     hts_idx_destroy(idx);
     sam_close(fp);

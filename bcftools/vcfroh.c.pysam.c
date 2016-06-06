@@ -167,12 +167,12 @@ static void init_data(args_t *args)
         args->hmm = hmm_init(2, tprob, 10000);
 
     // print header
-    printf("# This file was produced by: bcftools roh(%s+htslib-%s)\n", bcftools_version(),hts_version());
-    printf("# The command line was:\tbcftools %s", args->argv[0]);
+    fprintf(pysam_stdout, "# This file was produced by: bcftools roh(%s+htslib-%s)\n", bcftools_version(),hts_version());
+    fprintf(pysam_stdout, "# The command line was:\tbcftools %s", args->argv[0]);
     for (i=1; i<args->argc; i++)
-        printf(" %s",args->argv[i]);
-    printf("\n#\n");
-    printf("# [1]Chromosome\t[2]Position\t[3]State (0:HW, 1:AZ)\t[4]Quality\n");
+        fprintf(pysam_stdout, " %s",args->argv[i]);
+    fprintf(pysam_stdout, "\n#\n");
+    fprintf(pysam_stdout, "# [1]Chromosome\t[2]Position\t[3]State (0:HW, 1:AZ)\t[4]Quality\n");
 }
 
 static void destroy_data(args_t *args)
@@ -336,7 +336,7 @@ static void flush_viterbi(args_t *args)
         {
             int state = vpath[i*2]==STATE_AZ ? 1 : 0;
             double *pval = fwd + i*2;
-            printf("%s\t%d\t%d\t%.1f\n", chr,args->sites[i]+1, state, phred_score(1.0-pval[state]));
+            fprintf(pysam_stdout, "%s\t%d\t%d\t%.1f\n", chr,args->sites[i]+1, state, phred_score(1.0-pval[state]));
         }
         return;
     }
@@ -404,14 +404,14 @@ static void flush_viterbi(args_t *args)
         deltaz = fabs(MAT(tprob_arr,2,1,0)-t2az_prev);
         delthw = fabs(MAT(tprob_arr,2,0,1)-t2hw_prev);
         niter++;
-        fprintf(pysamerr,"Viterbi training, iteration %d: dAZ=%e dHW=%e\tP(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", 
+        fprintf(pysam_stderr,"Viterbi training, iteration %d: dAZ=%e dHW=%e\tP(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", 
             niter,deltaz,delthw,
             MAT(tprob_arr,2,STATE_HW,STATE_HW),MAT(tprob_arr,2,STATE_AZ,STATE_HW),
             MAT(tprob_arr,2,STATE_AZ,STATE_AZ),MAT(tprob_arr,2,STATE_HW,STATE_AZ));
     }
     while ( deltaz > 0.0 || delthw > 0.0 );
     double *tprob_arr = hmm_get_tprob(args->hmm);
-    fprintf(pysamerr, "Viterbi training converged in %d iterations to P(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", niter,
+    fprintf(pysam_stderr, "Viterbi training converged in %d iterations to P(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", niter,
             MAT(tprob_arr,2,STATE_HW,STATE_HW),MAT(tprob_arr,2,STATE_AZ,STATE_HW),
             MAT(tprob_arr,2,STATE_AZ,STATE_AZ),MAT(tprob_arr,2,STATE_HW,STATE_AZ));
     
@@ -430,7 +430,7 @@ static void flush_viterbi(args_t *args)
         {
             int state = vpath[j*2];
             double pval = fwd[j*2 + state];
-            printf("%s\t%d\t%d\t%e\n", chr,args->sites[ioff+j]+1,state==STATE_AZ ? 1 : 0, pval);
+            fprintf(pysam_stdout, "%s\t%d\t%d\t%e\n", chr,args->sites[ioff+j]+1,state==STATE_AZ ? 1 : 0, pval);
         }
     }
 }
@@ -647,7 +647,7 @@ static void vcfroh(args_t *args, bcf1_t *line)
 
     if ( skip_rid )
     {
-        fprintf(pysamerr,"Skipping the sequence, no genmap for %s\n", bcf_seqname(args->hdr,line));
+        fprintf(pysam_stderr,"Skipping the sequence, no genmap for %s\n", bcf_seqname(args->hdr,line));
         args->skip_rid = line->rid;
         return;
     }
@@ -680,30 +680,30 @@ static void vcfroh(args_t *args, bcf1_t *line)
 
 static void usage(args_t *args)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   HMM model for detecting runs of autozygosity.\n");
-    fprintf(pysamerr, "Usage:   bcftools roh [options] <in.vcf.gz>\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "General Options:\n");
-    fprintf(pysamerr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
-    fprintf(pysamerr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
-    fprintf(pysamerr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
-    fprintf(pysamerr, "    -e, --estimate-AF <file>           calculate AC,AN counts on the fly, using either all samples (\"-\") or samples listed in <file>\n");
-    fprintf(pysamerr, "    -G, --GTs-only <float>             use GTs, ignore PLs, use <float> for PL of unseen genotypes. Safe value to use is 30 to account for GT errors.\n");
-    fprintf(pysamerr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
-    fprintf(pysamerr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\" is replaced with chromosome name\n");
-    fprintf(pysamerr, "    -M, --rec-rate <float>             constant recombination rate per bp\n");
-    fprintf(pysamerr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(pysamerr, "    -s, --sample <sample>              sample to analyze\n");
-    fprintf(pysamerr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
-    fprintf(pysamerr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "HMM Options:\n");
-    fprintf(pysamerr, "    -a, --hw-to-az <float>             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
-    fprintf(pysamerr, "    -H, --az-to-hw <float>             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
-    fprintf(pysamerr, "    -V, --viterbi-training             perform Viterbi training to estimate transition probabilities\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   HMM model for detecting runs of autozygosity.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools roh [options] <in.vcf.gz>\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "General Options:\n");
+    fprintf(pysam_stderr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
+    fprintf(pysam_stderr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
+    fprintf(pysam_stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
+    fprintf(pysam_stderr, "    -e, --estimate-AF <file>           calculate AC,AN counts on the fly, using either all samples (\"-\") or samples listed in <file>\n");
+    fprintf(pysam_stderr, "    -G, --GTs-only <float>             use GTs, ignore PLs, use <float> for PL of unseen genotypes. Safe value to use is 30 to account for GT errors.\n");
+    fprintf(pysam_stderr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
+    fprintf(pysam_stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\" is replaced with chromosome name\n");
+    fprintf(pysam_stderr, "    -M, --rec-rate <float>             constant recombination rate per bp\n");
+    fprintf(pysam_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "    -s, --sample <sample>              sample to analyze\n");
+    fprintf(pysam_stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "HMM Options:\n");
+    fprintf(pysam_stderr, "    -a, --hw-to-az <float>             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
+    fprintf(pysam_stderr, "    -H, --az-to-hw <float>             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
+    fprintf(pysam_stderr, "    -V, --viterbi-training             perform Viterbi training to estimate transition probabilities\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 
@@ -810,7 +810,7 @@ int main_vcfroh(int argc, char *argv[])
         vcfroh(args, args->files->readers[0].buffer[0]);
     }
     vcfroh(args, NULL);
-    fprintf(pysamerr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);
+    fprintf(pysam_stderr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);
     destroy_data(args);
     free(args);
     return 0;

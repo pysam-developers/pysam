@@ -23,7 +23,7 @@ from functools import partial
 import pysam
 import pysam.samtools
 from TestUtils import checkBinaryEqual, checkURL, \
-    checkSamtoolsViewEqual, checkFieldEqual, force_str
+    check_samtools_view_equal, checkFieldEqual, force_str
 
 
 DATADIR = "pysam_data"
@@ -490,7 +490,7 @@ class TestIO(unittest.TestCase):
                        "tmp_ex2.cram",
                        "rc", "wc",
                        sequence_filename="pysam_data/ex1.fa",
-                       checkf=checkSamtoolsViewEqual)
+                       checkf=check_samtools_view_equal)
 
     def testSAM2BAM(self):
         self.checkEcho("ex2.sam",
@@ -512,7 +512,7 @@ class TestIO(unittest.TestCase):
                        "rb", "wc",
                        sequence_filename="pysam_data/ex1.fa",
                        checkf=partial(
-                           checkSamtoolsViewEqual,
+                           check_samtools_view_equal,
                            without_header=True))
 
     def testCRAM2BAM(self):
@@ -523,7 +523,7 @@ class TestIO(unittest.TestCase):
                        "rc", "wb",
                        sequence_filename="pysam_data/ex1.fa",
                        checkf=partial(
-                           checkSamtoolsViewEqual,
+                           check_samtools_view_equal,
                            without_header=True))
 
     def testSAM2CRAM(self):
@@ -533,7 +533,7 @@ class TestIO(unittest.TestCase):
                        "r", "wc",
                        sequence_filename="pysam_data/ex1.fa",
                        checkf=partial(
-                           checkSamtoolsViewEqual,
+                           check_samtools_view_equal,
                            without_header=True))
 
     def testCRAM2SAM(self):
@@ -543,7 +543,7 @@ class TestIO(unittest.TestCase):
                        "rc", "wh",
                        sequence_filename="pysam_data/ex1.fa",
                        checkf=partial(
-                           checkSamtoolsViewEqual,
+                           check_samtools_view_equal,
                            without_header=True))
 
     # Disabled - should work, files are not binary equal, but are
@@ -1868,7 +1868,7 @@ class TestDoubleFetchBAM(unittest.TestCase):
         # for a, b in zip(samfile1.fetch(contig, start, stop,
         #                               multiple_iterators=True),
         for a, b in zip(samfile1.fetch(contig, start, stop,
-                                       multiple_iterators=True),
+                                       multiple_iterators=False),
                         samfile1.fetch(contig, start, stop,
                                        multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)
@@ -1892,6 +1892,7 @@ class TestDoubleFetchCRAMWithReference(TestDoubleFetchBAM):
     filename = os.path.join(DATADIR, 'ex2.cram')
     mode = "rc"
     reference_filename = os.path.join(DATADIR, 'ex1.fa')
+
 
 class TestRemoteFileFTP(unittest.TestCase):
 

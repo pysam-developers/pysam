@@ -185,7 +185,7 @@ static int html_drawaln(struct AbstractTview* tv, int tid, int pos)
             fprintf(ptr->out,"<span");
                 while(css<32)
                     {
-                    //if(y>1) fprintf(pysamerr,"css=%d pow2=%d vs %d\n",css,(1 << (css)),ptr->screen[y][x].attributes);
+                    //if(y>1) fprintf(pysam_stderr,"css=%d pow2=%d vs %d\n",css,(1 << (css)),ptr->screen[y][x].attributes);
                     if(( (ptr->screen[y][x].attributes) & (1 << (css)))!=0)
                         {
 
@@ -324,12 +324,12 @@ tview_t* html_tv_init(const char *fn, const char *fn_fa, const char *samples,
     tview_t* base=(tview_t*)tv;
     if(tv==0)
         {
-        fprintf(pysamerr,"Calloc failed\n");
+        fprintf(pysam_stderr,"Calloc failed\n");
         return 0;
         }
     tv->row_count=0;
     tv->screen=NULL;
-    tv->out=stdout;
+    tv->out=pysam_stdout;
     tv->attributes=0;
     base_tv_init(base,fn,fn_fa,samples,fmt);
     /* initialize callbacks */

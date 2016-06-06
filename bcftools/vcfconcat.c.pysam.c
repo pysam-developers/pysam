@@ -236,7 +236,7 @@ static void phased_flush(args_t *args)
         {
             if ( !gt_absent_warned )
             {
-                fprintf(pysamerr,"GT is not present at %s:%d. (This warning is printed only once.)\n", bcf_seqname(ahdr,arec), arec->pos+1);
+                fprintf(pysam_stderr,"GT is not present at %s:%d. (This warning is printed only once.)\n", bcf_seqname(ahdr,arec), arec->pos+1);
                 gt_absent_warned = 1;
             }
             continue;
@@ -247,7 +247,7 @@ static void phased_flush(args_t *args)
         {
             if ( !gt_absent_warned )
             {
-                fprintf(pysamerr,"GT is not present at %s:%d. (This warning is printed only once.)\n", bcf_seqname(bhdr,brec), brec->pos+1);
+                fprintf(pysam_stderr,"GT is not present at %s:%d. (This warning is printed only once.)\n", bcf_seqname(bhdr,brec), brec->pos+1);
                 gt_absent_warned = 1;
             }
             continue;
@@ -661,33 +661,33 @@ static void naive_concat(args_t *args)
 
 static void usage(args_t *args)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Concatenate or combine VCF/BCF files. All source files must have the same sample\n");
-    fprintf(pysamerr, "         columns appearing in the same order. The program can be used, for example, to\n");
-    fprintf(pysamerr, "         concatenate chromosome VCFs into one VCF, or combine a SNP VCF and an indel\n");
-    fprintf(pysamerr, "         VCF into one. The input files must be sorted by chr and position. The files\n");
-    fprintf(pysamerr, "         must be given in the correct order to produce sorted VCF on output unless\n");
-    fprintf(pysamerr, "         the -a, --allow-overlaps option is specified. With the --naive option, the files\n");
-    fprintf(pysamerr, "         are concatenated without being recompressed, which is very fast but dangerous\n");
-    fprintf(pysamerr, "         if the BCF headers differ.\n");
-    fprintf(pysamerr, "Usage:   bcftools concat [options] <A.vcf.gz> [<B.vcf.gz> [...]]\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Options:\n");
-    fprintf(pysamerr, "   -a, --allow-overlaps           First coordinate of the next file can precede last record of the current file.\n");
-    fprintf(pysamerr, "   -c, --compact-PS               Do not output PS tag at each site, only at the start of a new phase set block.\n");
-    fprintf(pysamerr, "   -d, --rm-dups <string>         Output duplicate records present in multiple files only once: <snps|indels|both|all|none>\n");
-    fprintf(pysamerr, "   -D, --remove-duplicates        Alias for -d none\n");
-    fprintf(pysamerr, "   -f, --file-list <file>         Read the list of files from a file.\n");
-    fprintf(pysamerr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
-    fprintf(pysamerr, "       --no-version               do not append version and command line to the header\n");
-    fprintf(pysamerr, "   -n, --naive                    Concatenate BCF files without recompression (dangerous, use with caution)\n");
-    fprintf(pysamerr, "   -o, --output <file>            Write output to a file [standard output]\n");
-    fprintf(pysamerr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysamerr, "   -q, --min-PQ <int>             Break phase set if phasing quality is lower than <int> [30]\n");
-    fprintf(pysamerr, "   -r, --regions <region>         Restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "   -R, --regions-file <file>      Restrict to regions listed in a file\n");
-    fprintf(pysamerr, "       --threads <int>            Number of extra output compression threads [0]\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Concatenate or combine VCF/BCF files. All source files must have the same sample\n");
+    fprintf(pysam_stderr, "         columns appearing in the same order. The program can be used, for example, to\n");
+    fprintf(pysam_stderr, "         concatenate chromosome VCFs into one VCF, or combine a SNP VCF and an indel\n");
+    fprintf(pysam_stderr, "         VCF into one. The input files must be sorted by chr and position. The files\n");
+    fprintf(pysam_stderr, "         must be given in the correct order to produce sorted VCF on output unless\n");
+    fprintf(pysam_stderr, "         the -a, --allow-overlaps option is specified. With the --naive option, the files\n");
+    fprintf(pysam_stderr, "         are concatenated without being recompressed, which is very fast but dangerous\n");
+    fprintf(pysam_stderr, "         if the BCF headers differ.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools concat [options] <A.vcf.gz> [<B.vcf.gz> [...]]\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Options:\n");
+    fprintf(pysam_stderr, "   -a, --allow-overlaps           First coordinate of the next file can precede last record of the current file.\n");
+    fprintf(pysam_stderr, "   -c, --compact-PS               Do not output PS tag at each site, only at the start of a new phase set block.\n");
+    fprintf(pysam_stderr, "   -d, --rm-dups <string>         Output duplicate records present in multiple files only once: <snps|indels|both|all|none>\n");
+    fprintf(pysam_stderr, "   -D, --remove-duplicates        Alias for -d none\n");
+    fprintf(pysam_stderr, "   -f, --file-list <file>         Read the list of files from a file.\n");
+    fprintf(pysam_stderr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
+    fprintf(pysam_stderr, "       --no-version               do not append version and command line to the header\n");
+    fprintf(pysam_stderr, "   -n, --naive                    Concatenate BCF files without recompression (dangerous, use with caution)\n");
+    fprintf(pysam_stderr, "   -o, --output <file>            Write output to a file [standard output]\n");
+    fprintf(pysam_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(pysam_stderr, "   -q, --min-PQ <int>             Break phase set if phasing quality is lower than <int> [30]\n");
+    fprintf(pysam_stderr, "   -r, --regions <region>         Restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "   -R, --regions-file <file>      Restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "       --threads <int>            Number of extra output compression threads [0]\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 

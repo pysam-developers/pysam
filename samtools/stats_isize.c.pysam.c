@@ -96,7 +96,7 @@ static void sparse_set_f(isize_data_t data, int at, isize_insert_t field, uint64
             kh_value(h, it) = rec;
             a->max = max(at, a->max);
         } else {
-            fprintf(pysamerr, "%s\n", "Failed to allocate memory for isize_sparse_record_t");
+            fprintf(pysam_stderr, "%s\n", "Failed to allocate memory for isize_sparse_record_t");
             exit(11);
         }
     } else {

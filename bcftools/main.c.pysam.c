@@ -218,24 +218,24 @@ static void usage(FILE *fp)
 
 int bcftools_main(int argc, char *argv[])
 {
-    if (argc < 2) { usage(pysamerr); return 1; }
+    if (argc < 2) { usage(pysam_stderr); return 1; }
 
     if (strcmp(argv[1], "version") == 0 || strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
-        printf("bcftools %s\nUsing htslib %s\nCopyright (C) 2016 Genome Research Ltd.\n", bcftools_version(), hts_version());
+        fprintf(pysam_stdout, "bcftools %s\nUsing htslib %s\nCopyright (C) 2016 Genome Research Ltd.\n", bcftools_version(), hts_version());
 #if USE_GPL
-        printf("License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n");
+        fprintf(pysam_stdout, "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n");
 #else
-        printf("License Expat: The MIT/Expat license\n");
+        fprintf(pysam_stdout, "License Expat: The MIT/Expat license\n");
 #endif
-        printf("This is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n");
+        fprintf(pysam_stdout, "This is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n");
         return 0;
     }
     else if (strcmp(argv[1], "--version-only") == 0) {
-        printf("%s+htslib-%s\n", bcftools_version(), hts_version());
+        fprintf(pysam_stdout, "%s+htslib-%s\n", bcftools_version(), hts_version());
         return 0;
     }
     else if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
-        if (argc == 2) { usage(stdout); return 0; }
+        if (argc == 2) { usage(pysam_stdout); return 0; }
         // Otherwise change "bcftools help COMMAND [...]" to "bcftools COMMAND";
         // main_xyz() functions by convention display the subcommand's usage
         // when invoked without any arguments.
@@ -260,7 +260,7 @@ int bcftools_main(int argc, char *argv[])
         }
         i++;
     }
-    fprintf(pysamerr, "[E::%s] unrecognized command '%s'\n", __func__, argv[1]);
+    fprintf(pysam_stderr, "[E::%s] unrecognized command '%s'\n", __func__, argv[1]);
     return 1;
 }
 

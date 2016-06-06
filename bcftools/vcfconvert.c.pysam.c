@@ -211,13 +211,13 @@ static int tsv_setter_gt_gp(tsv_t *tsv, bcf1_t *rec, void *usr)
     {
         float aa,ab,bb;
         aa = strtod(tsv->ss, &tsv->se);
-        if ( tsv->ss==tsv->se ) { fprintf(pysamerr,"Could not parse first value of %d-th sample\n", i+1); return -1; }
+        if ( tsv->ss==tsv->se ) { fprintf(pysam_stderr,"Could not parse first value of %d-th sample\n", i+1); return -1; }
         tsv->ss = tsv->se+1;
         ab = strtod(tsv->ss, &tsv->se);
-        if ( tsv->ss==tsv->se ) { fprintf(pysamerr,"Could not parse second value of %d-th sample\n", i+1); return -1; }
+        if ( tsv->ss==tsv->se ) { fprintf(pysam_stderr,"Could not parse second value of %d-th sample\n", i+1); return -1; }
         tsv->ss = tsv->se+1;
         bb = strtod(tsv->ss, &tsv->se);
-        if ( tsv->ss==tsv->se ) { fprintf(pysamerr,"Could not parse third value of %d-th sample\n", i+1); return -1; }
+        if ( tsv->ss==tsv->se ) { fprintf(pysam_stderr,"Could not parse third value of %d-th sample\n", i+1); return -1; }
         tsv->ss = tsv->se+1;
 
         if ( args->rev_als ) { float tmp = bb; bb = aa; aa = tmp; }
@@ -263,7 +263,7 @@ static int tsv_setter_haps(tsv_t *tsv, bcf1_t *rec, void *usr)
             if ( !ss[0] || !ss[1] || !ss[2] ||
                  (up && (!ss[3] || !ss[4]) ) )
             {
-                fprintf(pysamerr,"Wrong number of fields at %d-th sample ([%c][%c][%c]). ",i+1,ss[0],ss[1],ss[2]);
+                fprintf(pysam_stderr,"Wrong number of fields at %d-th sample ([%c][%c][%c]). ",i+1,ss[0],ss[1],ss[2]);
                 return -1;
             }
 
@@ -282,7 +282,7 @@ static int tsv_setter_haps(tsv_t *tsv, bcf1_t *rec, void *usr)
                 args->gts[2*i+all] = bcf_int32_vector_end;
                 break;
             default :
-                fprintf(pysamerr,"Could not parse: [%c][%s]\n", ss[all*2+up],tsv->ss);
+                fprintf(pysam_stderr,"Could not parse: [%c][%s]\n", ss[all*2+up],tsv->ss);
                 return -1; 
             }
             if( ss[all*2+up+1]=='*' ) up = up + 1;
@@ -290,7 +290,7 @@ static int tsv_setter_haps(tsv_t *tsv, bcf1_t *rec, void *usr)
         
         if(up && up != 2)
         {
-            fprintf(pysamerr,"Missing unphased marker '*': [%c][%s]", ss[2+up], tsv->ss);
+            fprintf(pysam_stderr,"Missing unphased marker '*': [%c][%s]", ss[2+up], tsv->ss);
             return -1;
         }
 
@@ -304,8 +304,8 @@ static int tsv_setter_haps(tsv_t *tsv, bcf1_t *rec, void *usr)
     }
     if ( tsv->ss[(nsamples-1)*4+3+nup] )
     {
-        fprintf(pysamerr,"nup: %d", nup);
-        fprintf(pysamerr,"Wrong number of fields (%d-th column = [%c]). ", nsamples*2,tsv->ss[(nsamples-1)*4+nup]);
+        fprintf(pysam_stderr,"nup: %d", nup);
+        fprintf(pysam_stderr,"Wrong number of fields (%d-th column = [%c]). ", nsamples*2,tsv->ss[(nsamples-1)*4+nup]);
         return -1;
     }
 
@@ -417,7 +417,7 @@ static void gensample_to_vcf(args_t *args)
     free(args->flt);
     tsv_destroy(tsv);
 
-    fprintf(pysamerr,"Number of processed rows: \t%d\n", args->n.total);
+    fprintf(pysam_stderr,"Number of processed rows: \t%d\n", args->n.total);
 }
 
 static void haplegendsample_to_vcf(args_t *args)
@@ -554,7 +554,7 @@ static void haplegendsample_to_vcf(args_t *args)
     tsv_destroy(hap_tsv);
     tsv_destroy(leg_tsv);
 
-    fprintf(pysamerr,"Number of processed rows: \t%d\n", args->n.total);
+    fprintf(pysam_stderr,"Number of processed rows: \t%d\n", args->n.total);
 }
 
 static void hapsample_to_vcf(args_t *args)
@@ -653,7 +653,7 @@ static void hapsample_to_vcf(args_t *args)
     free(args->gts);
     tsv_destroy(tsv);
 
-    fprintf(pysamerr,"Number of processed rows: \t%d\n", args->n.total);
+    fprintf(pysam_stderr,"Number of processed rows: \t%d\n", args->n.total);
 }
 
 static void vcf_to_gensample(args_t *args)
@@ -710,8 +710,8 @@ static void vcf_to_gensample(args_t *args)
     if ( gen_fname && (strlen(gen_fname)<3 || strcasecmp(".gz",gen_fname+strlen(gen_fname)-3)) ) gen_compressed = 0;
     if ( sample_fname && strlen(sample_fname)>3 && strcasecmp(".gz",sample_fname+strlen(sample_fname)-3)==0 ) sample_compressed = 0;
 
-    if (gen_fname) fprintf(pysamerr, "Gen file: %s\n", gen_fname);
-    if (sample_fname) fprintf(pysamerr, "Sample file: %s\n", sample_fname);
+    if (gen_fname) fprintf(pysam_stderr, "Gen file: %s\n", gen_fname);
+    if (sample_fname) fprintf(pysam_stderr, "Sample file: %s\n", sample_fname);
 
     // write samples file
     if (sample_fname) {
@@ -755,7 +755,7 @@ static void vcf_to_gensample(args_t *args)
         // biallelic required
         if ( line->n_allele>2 ) {
             if (!non_biallelic)
-                fprintf(pysamerr, "Warning: non-biallelic records are skipped. Consider splitting multi-allelic records into biallelic records using 'bcftools norm -m-'.\n");
+                fprintf(pysam_stderr, "Warning: non-biallelic records are skipped. Consider splitting multi-allelic records into biallelic records using 'bcftools norm -m-'.\n");
             non_biallelic++;
             continue;
         }
@@ -774,7 +774,7 @@ static void vcf_to_gensample(args_t *args)
             nok++;
         }
     }
-    fprintf(pysamerr, "%d records written, %d skipped: %d/%d/%d/%d no-ALT/non-biallelic/filtered/duplicated\n", 
+    fprintf(pysam_stderr, "%d records written, %d skipped: %d/%d/%d/%d no-ALT/non-biallelic/filtered/duplicated\n", 
         nok, no_alt+non_biallelic+filtered+ndup, no_alt, non_biallelic, filtered, ndup);
 
     if ( str.m ) free(str.s);
@@ -826,9 +826,9 @@ static void vcf_to_haplegendsample(args_t *args)
     if ( legend_fname && (strlen(legend_fname)<3 || strcasecmp(".gz",legend_fname+strlen(legend_fname)-3)) ) legend_compressed = 0;
     if ( sample_fname && strlen(sample_fname)>3 && strcasecmp(".gz",sample_fname+strlen(sample_fname)-3)==0 ) sample_compressed = 0;
 
-    if (hap_fname) fprintf(pysamerr, "Haps file: %s\n", hap_fname);
-    if (legend_fname) fprintf(pysamerr, "Legend file: %s\n", legend_fname);
-    if (sample_fname) fprintf(pysamerr, "Sample file: %s\n", sample_fname);
+    if (hap_fname) fprintf(pysam_stderr, "Haps file: %s\n", hap_fname);
+    if (legend_fname) fprintf(pysam_stderr, "Legend file: %s\n", legend_fname);
+    if (sample_fname) fprintf(pysam_stderr, "Sample file: %s\n", sample_fname);
 
     // write samples file
     if (sample_fname) {
@@ -879,7 +879,7 @@ static void vcf_to_haplegendsample(args_t *args)
         // biallelic required
         if ( line->n_allele>2 ) {
             if (!non_biallelic)
-                fprintf(pysamerr, "Warning: non-biallelic records are skipped. Consider splitting multi-allelic records into biallelic records using 'bcftools norm -m-'.\n");
+                fprintf(pysam_stderr, "Warning: non-biallelic records are skipped. Consider splitting multi-allelic records into biallelic records using 'bcftools norm -m-'.\n");
             non_biallelic++;
             continue;
         }
@@ -906,7 +906,7 @@ static void vcf_to_haplegendsample(args_t *args)
         }
         nok++;
     }
-    fprintf(pysamerr, "%d records written, %d skipped: %d/%d/%d no-ALT/non-biallelic/filtered\n", nok,no_alt+non_biallelic+filtered, no_alt, non_biallelic, filtered);
+    fprintf(pysam_stderr, "%d records written, %d skipped: %d/%d/%d no-ALT/non-biallelic/filtered\n", nok,no_alt+non_biallelic+filtered, no_alt, non_biallelic, filtered);
     if ( str.m ) free(str.s);
     if ( hout && bgzf_close(hout)!=0 ) error("Error closing %s: %s\n", hap_fname, strerror(errno));
     if ( lout && bgzf_close(lout)!=0 ) error("Error closing %s: %s\n", legend_fname, strerror(errno));
@@ -968,8 +968,8 @@ static void vcf_to_hapsample(args_t *args)
     if ( hap_fname && (strlen(hap_fname)<3 || strcasecmp(".gz",hap_fname+strlen(hap_fname)-3)) ) hap_compressed = 0;
     if ( sample_fname && strlen(sample_fname)>3 && strcasecmp(".gz",sample_fname+strlen(sample_fname)-3)==0 ) sample_compressed = 0;
 
-    if (hap_fname) fprintf(pysamerr, "Haps file: %s\n", hap_fname);
-    if (sample_fname) fprintf(pysamerr, "Sample file: %s\n", sample_fname);
+    if (hap_fname) fprintf(pysam_stderr, "Haps file: %s\n", hap_fname);
+    if (sample_fname) fprintf(pysam_stderr, "Sample file: %s\n", sample_fname);
 
     // write samples file
     if (sample_fname) {
@@ -1013,7 +1013,7 @@ static void vcf_to_hapsample(args_t *args)
         // biallelic required
         if ( line->n_allele>2 ) {
             if (!non_biallelic)
-                fprintf(pysamerr, "Warning: non-biallelic records are skipped. Consider splitting multi-allelic records into biallelic records using 'bcftools norm -m-'.\n");
+                fprintf(pysam_stderr, "Warning: non-biallelic records are skipped. Consider splitting multi-allelic records into biallelic records using 'bcftools norm -m-'.\n");
             non_biallelic++;
             continue;
         }
@@ -1029,7 +1029,7 @@ static void vcf_to_hapsample(args_t *args)
         }
         nok++;
     }
-    fprintf(pysamerr, "%d records written, %d skipped: %d/%d/%d no-ALT/non-biallelic/filtered\n", nok, no_alt+non_biallelic+filtered, no_alt, non_biallelic, filtered);
+    fprintf(pysam_stderr, "%d records written, %d skipped: %d/%d/%d no-ALT/non-biallelic/filtered\n", nok, no_alt+non_biallelic+filtered, no_alt, non_biallelic, filtered);
     if ( str.m ) free(str.s);
     if ( hout && bgzf_close(hout)!=0 ) error("Error closing %s: %s\n", hap_fname, strerror(errno));
     if (hap_fname) free(hap_fname);
@@ -1197,13 +1197,13 @@ static void tsv_to_vcf(args_t *args)
     free(args->str.s);
     free(args->gts);
 
-    fprintf(pysamerr,"Rows total: \t%d\n", args->n.total);
-    fprintf(pysamerr,"Rows skipped: \t%d\n", args->n.skipped);
-    fprintf(pysamerr,"Missing GTs: \t%d\n", args->n.missing);
-    fprintf(pysamerr,"Hom RR: \t%d\n", args->n.hom_rr);
-    fprintf(pysamerr,"Het RA: \t%d\n", args->n.het_ra);
-    fprintf(pysamerr,"Hom AA: \t%d\n", args->n.hom_aa);
-    fprintf(pysamerr,"Het AA: \t%d\n", args->n.het_aa);
+    fprintf(pysam_stderr,"Rows total: \t%d\n", args->n.total);
+    fprintf(pysam_stderr,"Rows skipped: \t%d\n", args->n.skipped);
+    fprintf(pysam_stderr,"Missing GTs: \t%d\n", args->n.missing);
+    fprintf(pysam_stderr,"Hom RR: \t%d\n", args->n.hom_rr);
+    fprintf(pysam_stderr,"Het RA: \t%d\n", args->n.het_ra);
+    fprintf(pysam_stderr,"Hom AA: \t%d\n", args->n.hom_aa);
+    fprintf(pysam_stderr,"Het AA: \t%d\n", args->n.het_aa);
 }
 
 static void vcf_to_vcf(args_t *args)
@@ -1291,66 +1291,66 @@ static void gvcf_to_vcf(args_t *args)
 
 static void usage(void)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Converts VCF/BCF to other formats and back. See man page for file\n");
-    fprintf(pysamerr, "         formats details. When specifying output files explicitly instead\n");
-    fprintf(pysamerr, "         of with <prefix>, one can use '-' for stdout and '.' to suppress.\n");
-    fprintf(pysamerr, "Usage:   bcftools convert [OPTIONS] <input_file>\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "VCF input options:\n");
-    fprintf(pysamerr, "   -e, --exclude <expr>        exclude sites for which the expression is true\n");
-    fprintf(pysamerr, "   -i, --include <expr>        select sites for which the expression is true\n");
-    fprintf(pysamerr, "   -r, --regions <region>      restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "   -R, --regions-file <file>   restrict to regions listed in a file\n");
-    fprintf(pysamerr, "   -s, --samples <list>        list of samples to include\n");
-    fprintf(pysamerr, "   -S, --samples-file <file>   file of samples to include\n");
-    fprintf(pysamerr, "   -t, --targets <region>      similar to -r but streams rather than index-jumps\n");
-    fprintf(pysamerr, "   -T, --targets-file <file>   similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "VCF output options:\n");
-    fprintf(pysamerr, "       --no-version               do not append version and command line to the header\n");
-    fprintf(pysamerr, "   -o, --output <file>            output file name [stdout]\n");
-    fprintf(pysamerr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysamerr, "       --threads <int>            number of extra output compression threads [0]\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
-    fprintf(pysamerr, "   -G, --gensample2vcf <...>   <prefix>|<gen-file>,<sample-file>\n");
-    fprintf(pysamerr, "   -g, --gensample <...>       <prefix>|<gen-file>,<sample-file>\n");
-    fprintf(pysamerr, "       --tag <string>          tag to take values for .gen file: GT,PL,GL,GP [GT]\n");
-    fprintf(pysamerr, "       --chrom                 output chromosome in first column instead of CHROM:POS_REF_ALT\n");
-    fprintf(pysamerr, "       --vcf-ids               output VCF IDs in second column instead of CHROM:POS_REF_ALT\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "gVCF conversion:\n");
-    fprintf(pysamerr, "       --gvcf2vcf              expand gVCF reference blocks\n");
-    fprintf(pysamerr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "HAP/SAMPLE conversion (output from SHAPEIT):\n");
-    fprintf(pysamerr, "       --hapsample2vcf <...>   <prefix>|<haps-file>,<sample-file>\n");
-    fprintf(pysamerr, "       --hapsample <...>       <prefix>|<haps-file>,<sample-file>\n");
-    fprintf(pysamerr, "       --haploid2diploid       convert haploid genotypes to diploid homozygotes\n");
-    fprintf(pysamerr, "       --vcf-ids               output VCF IDs instead of CHROM:POS_REF_ALT\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "HAP/LEGEND/SAMPLE conversion:\n");
-    fprintf(pysamerr, "   -H, --haplegendsample2vcf <...>  <prefix>|<hap-file>,<legend-file>,<sample-file>\n");
-    fprintf(pysamerr, "   -h, --haplegendsample <...>      <prefix>|<hap-file>,<legend-file>,<sample-file>\n");
-    fprintf(pysamerr, "       --haploid2diploid            convert haploid genotypes to diploid homozygotes\n");
-    fprintf(pysamerr, "       --vcf-ids                    output VCF IDs instead of CHROM:POS_REF_ALT\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "TSV conversion:\n");
-    fprintf(pysamerr, "       --tsv2vcf <file>        \n");
-    fprintf(pysamerr, "   -c, --columns <string>      columns of the input tsv file [ID,CHROM,POS,AA]\n");
-    fprintf(pysamerr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
-    fprintf(pysamerr, "   -s, --samples <list>        list of sample names\n");
-    fprintf(pysamerr, "   -S, --samples-file <file>   file of sample names\n");
-    fprintf(pysamerr, "\n");
-    // fprintf(pysamerr, "PLINK options:\n");
-    // fprintf(pysamerr, "   -p, --plink <prefix>|<ped>,<map>,<fam>|<bed>,<bim>,<fam>|<tped>,<tfam>\n");
-    // fprintf(pysamerr, "       --tped              make tped file instead\n");
-    // fprintf(pysamerr, "       --bin               make binary bed/fam/bim files\n");
-    // fprintf(pysamerr, "\n");
-    // fprintf(pysamerr, "PBWT options:\n");
-    // fprintf(pysamerr, "   -b, --pbwt          <prefix> or <pbwt>,<sites>,<sample>,<missing>\n");
-    // fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Converts VCF/BCF to other formats and back. See man page for file\n");
+    fprintf(pysam_stderr, "         formats details. When specifying output files explicitly instead\n");
+    fprintf(pysam_stderr, "         of with <prefix>, one can use '-' for pysam_stdout and '.' to suppress.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools convert [OPTIONS] <input_file>\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "VCF input options:\n");
+    fprintf(pysam_stderr, "   -e, --exclude <expr>        exclude sites for which the expression is true\n");
+    fprintf(pysam_stderr, "   -i, --include <expr>        select sites for which the expression is true\n");
+    fprintf(pysam_stderr, "   -r, --regions <region>      restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "   -R, --regions-file <file>   restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "   -s, --samples <list>        list of samples to include\n");
+    fprintf(pysam_stderr, "   -S, --samples-file <file>   file of samples to include\n");
+    fprintf(pysam_stderr, "   -t, --targets <region>      similar to -r but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "   -T, --targets-file <file>   similar to -R but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "VCF output options:\n");
+    fprintf(pysam_stderr, "       --no-version               do not append version and command line to the header\n");
+    fprintf(pysam_stderr, "   -o, --output <file>            output file name [pysam_stdout]\n");
+    fprintf(pysam_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(pysam_stderr, "       --threads <int>            number of extra output compression threads [0]\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
+    fprintf(pysam_stderr, "   -G, --gensample2vcf <...>   <prefix>|<gen-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "   -g, --gensample <...>       <prefix>|<gen-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "       --tag <string>          tag to take values for .gen file: GT,PL,GL,GP [GT]\n");
+    fprintf(pysam_stderr, "       --chrom                 output chromosome in first column instead of CHROM:POS_REF_ALT\n");
+    fprintf(pysam_stderr, "       --vcf-ids               output VCF IDs in second column instead of CHROM:POS_REF_ALT\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "gVCF conversion:\n");
+    fprintf(pysam_stderr, "       --gvcf2vcf              expand gVCF reference blocks\n");
+    fprintf(pysam_stderr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "HAP/SAMPLE conversion (output from SHAPEIT):\n");
+    fprintf(pysam_stderr, "       --hapsample2vcf <...>   <prefix>|<haps-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "       --hapsample <...>       <prefix>|<haps-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "       --haploid2diploid       convert haploid genotypes to diploid homozygotes\n");
+    fprintf(pysam_stderr, "       --vcf-ids               output VCF IDs instead of CHROM:POS_REF_ALT\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "HAP/LEGEND/SAMPLE conversion:\n");
+    fprintf(pysam_stderr, "   -H, --haplegendsample2vcf <...>  <prefix>|<hap-file>,<legend-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "   -h, --haplegendsample <...>      <prefix>|<hap-file>,<legend-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "       --haploid2diploid            convert haploid genotypes to diploid homozygotes\n");
+    fprintf(pysam_stderr, "       --vcf-ids                    output VCF IDs instead of CHROM:POS_REF_ALT\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "TSV conversion:\n");
+    fprintf(pysam_stderr, "       --tsv2vcf <file>        \n");
+    fprintf(pysam_stderr, "   -c, --columns <string>      columns of the input tsv file [ID,CHROM,POS,AA]\n");
+    fprintf(pysam_stderr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
+    fprintf(pysam_stderr, "   -s, --samples <list>        list of sample names\n");
+    fprintf(pysam_stderr, "   -S, --samples-file <file>   file of sample names\n");
+    fprintf(pysam_stderr, "\n");
+    // fprintf(pysam_stderr, "PLINK options:\n");
+    // fprintf(pysam_stderr, "   -p, --plink <prefix>|<ped>,<map>,<fam>|<bed>,<bim>,<fam>|<tped>,<tfam>\n");
+    // fprintf(pysam_stderr, "       --tped              make tped file instead\n");
+    // fprintf(pysam_stderr, "       --bin               make binary bed/fam/bim files\n");
+    // fprintf(pysam_stderr, "\n");
+    // fprintf(pysam_stderr, "PBWT options:\n");
+    // fprintf(pysam_stderr, "   -b, --pbwt          <prefix> or <pbwt>,<sites>,<sample>,<missing>\n");
+    // fprintf(pysam_stderr, "\n");
     exit(1);
 }
 

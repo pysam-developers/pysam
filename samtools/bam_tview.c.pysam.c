@@ -70,7 +70,7 @@ int base_tv_init(tview_t* tv, const char *fn, const char *fn_fa,
     tv->fp = sam_open_format(fn, "r", fmt);
     if(tv->fp == NULL)
     {
-        fprintf(pysamerr,"sam_open %s. %s\n", fn,fn_fa);
+        fprintf(pysam_stderr,"sam_open %s. %s\n", fn,fn_fa);
         exit(EXIT_FAILURE);
     }
     // TODO bgzf_set_cache_size(tv->fp->fp.bgzf, 8 * 1024 *1024);
@@ -79,13 +79,13 @@ int base_tv_init(tview_t* tv, const char *fn, const char *fn_fa,
     tv->header = sam_hdr_read(tv->fp);
     if(tv->header == NULL)
     {
-        fprintf(pysamerr,"Cannot read '%s'.\n", fn);
+        fprintf(pysam_stderr,"Cannot read '%s'.\n", fn);
         exit(EXIT_FAILURE);
     }
     tv->idx = sam_index_load(tv->fp, fn);
     if (tv->idx == NULL)
     {
-        fprintf(pysamerr,"Cannot read index for '%s'.\n", fn);
+        fprintf(pysam_stderr,"Cannot read index for '%s'.\n", fn);
         exit(EXIT_FAILURE);
     }
     tv->lplbuf = bam_lplbuf_init(tv_pl_func, tv);
@@ -299,7 +299,7 @@ int base_draw_aln(tview_t *tv, int tid, int pos)
         free(str);
         if ( !tv->ref )
         {
-            fprintf(pysamerr,"Could not read the reference sequence. Is it seekable (plain text or compressed + .gzi indexed with bgzip)?\n");
+            fprintf(pysam_stderr,"Could not read the reference sequence. Is it seekable (plain text or compressed + .gzi indexed with bgzip)?\n");
             exit(1);
         }
     }
@@ -328,19 +328,19 @@ static void error(const char *format, ...)
 {
     if ( !format )
     {
-        fprintf(pysamerr,
+        fprintf(pysam_stderr,
 "Usage: samtools tview [options] <aln.bam> [ref.fasta]\n"
 "Options:\n"
 "   -d display      output as (H)tml or (C)urses or (T)ext \n"
 "   -p chr:pos      go directly to this position\n"
 "   -s STR          display only reads from this sample or group\n");
-        sam_global_opt_help(pysamerr, "-.--.");
+        sam_global_opt_help(pysam_stderr, "-.--.");
     }
     else
     {
         va_list ap;
         va_start(ap, format);
-        vfprintf(pysamerr, format, ap);
+        vfprintf(pysam_stderr, format, ap);
         va_end(ap);
     }
     exit(-1);
@@ -430,7 +430,7 @@ int bam_tview_main(int argc, char *argv[])
         }
         if ( i==tv->header->n_targets )
         {
-            fprintf(pysamerr,"None of the BAM sequence names present in the fasta file\n");
+            fprintf(pysam_stderr,"None of the BAM sequence names present in the fasta file\n");
             exit(EXIT_FAILURE);
         }
         tv->curr_tid = i;

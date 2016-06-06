@@ -319,8 +319,8 @@ int main_samview(int argc, char *argv[])
         case 'x':
             {
                 if (strlen(optarg) != 2) {
-                    fprintf(pysamerr, "main_samview: Error parsing -x auxiliary tags should be exactly two characters long.\n");
-                    return usage(pysamerr, EXIT_FAILURE, is_long_help);
+                    fprintf(pysam_stderr, "main_samview: Error parsing -x auxiliary tags should be exactly two characters long.\n");
+                    return usage(pysam_stderr, EXIT_FAILURE, is_long_help);
                 }
                 settings.remove_aux = (char**)realloc(settings.remove_aux, sizeof(char*) * (++settings.remove_aux_len));
                 settings.remove_aux[settings.remove_aux_len-1] = optarg;
@@ -329,7 +329,7 @@ int main_samview(int argc, char *argv[])
 
         default:
             if (parse_sam_global_opt(c, optarg, lopts, &ga) != 0)
-                return usage(pysamerr, EXIT_FAILURE, is_long_help);
+                return usage(pysam_stderr, EXIT_FAILURE, is_long_help);
             break;
         }
     }
@@ -349,7 +349,7 @@ int main_samview(int argc, char *argv[])
         strcat(out_mode, tmp);
         strcat(out_un_mode, tmp);
     }
-    if (argc == optind && isatty(STDIN_FILENO)) return usage(stdout, EXIT_SUCCESS, is_long_help); // potential memory leak...
+    if (argc == optind && isatty(STDIN_FILENO)) return usage(pysam_stdout, EXIT_SUCCESS, is_long_help); // potential memory leak...
 
     fn_in = (optind < argc)? argv[optind] : "-";
     // generate the fn_list if necessary
@@ -363,13 +363,13 @@ int main_samview(int argc, char *argv[])
 
     if (fn_list) {
         if (hts_set_fai_filename(in, fn_list) != 0) {
-            fprintf(pysamerr, "[main_samview] failed to use reference \"%s\".\n", fn_list);
+            fprintf(pysam_stderr, "[main_samview] failed to use reference \"%s\".\n", fn_list);
             ret = 1;
             goto view_end;
         }
     }
     if ((header = sam_hdr_read(in)) == 0) {
-        fprintf(pysamerr, "[main_samview] fail to read the header from \"%s\".\n", fn_in);
+        fprintf(pysam_stderr, "[main_samview] fail to read the header from \"%s\".\n", fn_in);
         ret = 1;
         goto view_end;
     }
@@ -389,7 +389,7 @@ int main_samview(int argc, char *argv[])
         }
         if (fn_list) {
             if (hts_set_fai_filename(out, fn_list) != 0) {
-                fprintf(pysamerr, "[main_samview] failed to use reference \"%s\".\n", fn_list);
+                fprintf(pysam_stderr, "[main_samview] failed to use reference \"%s\".\n", fn_list);
                 ret = 1;
                 goto view_end;
             }
@@ -398,7 +398,7 @@ int main_samview(int argc, char *argv[])
             out_mode[1] == 'b' || out_mode[1] == 'c' ||
             (ga.out.format != sam && ga.out.format != unknown_format))  {
             if (sam_hdr_write(out, header) != 0) {
-                fprintf(pysamerr, "[main_samview] failed to write the SAM header\n");
+                fprintf(pysam_stderr, "[main_samview] failed to write the SAM header\n");
                 ret = 1;
                 goto view_end;
             }
@@ -411,7 +411,7 @@ int main_samview(int argc, char *argv[])
             }
             if (fn_list) {
                 if (hts_set_fai_filename(un_out, fn_list) != 0) {
-                    fprintf(pysamerr, "[main_samview] failed to use reference \"%s\".\n", fn_list);
+                    fprintf(pysam_stderr, "[main_samview] failed to use reference \"%s\".\n", fn_list);
                     ret = 1;
                     goto view_end;
                 }
@@ -420,7 +420,7 @@ int main_samview(int argc, char *argv[])
                 out_un_mode[1] == 'b' || out_un_mode[1] == 'c' ||
                 (ga.out.format != sam && ga.out.format != unknown_format))  {
                 if (sam_hdr_write(un_out, header) != 0) {
-                    fprintf(pysamerr, "[main_samview] failed to write the SAM header\n");
+                    fprintf(pysam_stderr, "[main_samview] failed to write the SAM header\n");
                     ret = 1;
                     goto view_end;
                 }
@@ -443,7 +443,7 @@ int main_samview(int argc, char *argv[])
             }
         }
         if (r < -1) {
-            fprintf(pysamerr, "[main_samview] truncated file.\n");
+            fprintf(pysam_stderr, "[main_samview] truncated file.\n");
             ret = 1;
         }
         bam_destroy1(b);
@@ -452,7 +452,7 @@ int main_samview(int argc, char *argv[])
         bam1_t *b;
         hts_idx_t *idx = sam_index_load(in, fn_in); // load index
         if (idx == 0) { // index is unavailable
-            fprintf(pysamerr, "[main_samview] random alignment retrieval only works for indexed BAM or CRAM files.\n");
+            fprintf(pysam_stderr, "[main_samview] random alignment retrieval only works for indexed BAM or CRAM files.\n");
             ret = 1;
             goto view_end;
         }
@@ -463,9 +463,9 @@ int main_samview(int argc, char *argv[])
             if (iter == NULL) { // region invalid or reference name not found
                 int beg, end;
                 if (hts_parse_reg(argv[i], &beg, &end))
-                    fprintf(pysamerr, "[main_samview] region \"%s\" specifies an unknown reference name. Continue anyway.\n", argv[i]);
+                    fprintf(pysam_stderr, "[main_samview] region \"%s\" specifies an unknown reference name. Continue anyway.\n", argv[i]);
                 else
-                    fprintf(pysamerr, "[main_samview] region \"%s\" could not be parsed. Continue anyway.\n", argv[i]);
+                    fprintf(pysam_stderr, "[main_samview] region \"%s\" could not be parsed. Continue anyway.\n", argv[i]);
                 continue;
             }
             // fetch alignments
@@ -479,7 +479,7 @@ int main_samview(int argc, char *argv[])
             }
             hts_itr_destroy(iter);
             if (result < -1) {
-                fprintf(pysamerr, "[main_samview] retrieval of region \"%s\" failed due to truncated file or corrupt BAM index file\n", argv[i]);
+                fprintf(pysam_stderr, "[main_samview] retrieval of region \"%s\" failed due to truncated file or corrupt BAM index file\n", argv[i]);
                 ret = 1;
                 break;
             }
@@ -490,7 +490,7 @@ int main_samview(int argc, char *argv[])
 
 view_end:
     if (is_count && ret == 0)
-        printf("%" PRId64 "\n", count);
+        fprintf(pysam_stdout, "%" PRId64 "\n", count);
 
     // close files, free and return
     if (in) check_sam_close("view", in, fn_in, "standard input", &ret);
@@ -528,7 +528,7 @@ static int usage(FILE *fp, int exit_status, int is_long_help)
 "  -h       include header in SAM output\n"
 "  -H       print SAM header only (no alignments)\n"
 "  -c       print only the count of matching records\n"
-"  -o FILE  output file name [stdout]\n"
+"  -o FILE  output file name [pysam_stdout]\n"
 "  -U FILE  output reads not selected by filters to FILE [null]\n"
 // extra input
 "  -t FILE  FILE listing reference names and lengths (see long help) [null]\n"
@@ -601,7 +601,7 @@ int main_import(int argc, char *argv[])
     int argc2, ret;
     char **argv2;
     if (argc != 4) {
-        fprintf(pysamerr, "Usage: samtools import <in.ref_list> <in.sam> <out.bam>\n");
+        fprintf(pysam_stderr, "Usage: samtools import <in.ref_list> <in.sam> <out.bam>\n");
         return 1;
     }
     argc2 = 6;
@@ -788,10 +788,10 @@ static bool parse_opts(int argc, char *argv[], bam2fq_opts_t** opts_out)
             case 's': opts->fnse = optarg; break;
             case 't': opts->copy_tags = true; break;
             case 'v': opts->def_qual = atoi(optarg); break;
-            case '?': bam2fq_usage(pysamerr, argv[0]); free(opts); return false;
+            case '?': bam2fq_usage(pysam_stderr, argv[0]); free(opts); return false;
             default:
                 if (parse_sam_global_opt(c, optarg, lopts, &opts->ga) != 0) {
-                    bam2fq_usage(pysamerr, argv[0]); free(opts); return false;
+                    bam2fq_usage(pysam_stderr, argv[0]); free(opts); return false;
                 }
                 break;
         }
@@ -800,8 +800,8 @@ static bool parse_opts(int argc, char *argv[], bam2fq_opts_t** opts_out)
     if (opts->fnr[1] || opts->fnr[2]) opts->has12 = false;
 
     if (opts->def_qual < 0 || 93 < opts->def_qual) {
-        fprintf(pysamerr, "Invalid -v default quality %i, allowed range 0 to 93\n", opts->def_qual);
-        bam2fq_usage(pysamerr, argv[0]);
+        fprintf(pysam_stderr, "Invalid -v default quality %i, allowed range 0 to 93\n", opts->def_qual);
+        bam2fq_usage(pysam_stderr, argv[0]);
         free(opts);
         return true;
     }
@@ -813,20 +813,20 @@ static bool parse_opts(int argc, char *argv[], bam2fq_opts_t** opts_out)
         opts->filetype = FASTA;
     } else {
         print_error("bam2fq", "Unrecognised type call \"%s\", this should be impossible... but you managed it!", type_str);
-        bam2fq_usage(pysamerr, argv[0]);
+        bam2fq_usage(pysam_stderr, argv[0]);
         free(opts);
         return false;
     }
 
     if ((argc - (optind)) == 0) {
-        bam2fq_usage(stdout, argv[0]);
+        bam2fq_usage(pysam_stdout, argv[0]);
         free(opts);
         return false;
     }
 
     if ((argc - (optind)) != 1) {
-        fprintf(pysamerr, "Too many arguments.\n");
-        bam2fq_usage(pysamerr, argv[0]);
+        fprintf(pysam_stderr, "Too many arguments.\n");
+        bam2fq_usage(pysam_stderr, argv[0]);
         free(opts);
         return false;
     }
@@ -855,12 +855,12 @@ static bool init_state(const bam2fq_opts_t* opts, bam2fq_state_t** state_out)
     uint32_t rf = SAM_QNAME | SAM_FLAG | SAM_SEQ | SAM_QUAL;
     if (opts->use_oq) rf |= SAM_AUX;
     if (hts_set_opt(state->fp, CRAM_OPT_REQUIRED_FIELDS, rf)) {
-        fprintf(pysamerr, "Failed to set CRAM_OPT_REQUIRED_FIELDS value\n");
+        fprintf(pysam_stderr, "Failed to set CRAM_OPT_REQUIRED_FIELDS value\n");
         free(state);
         return false;
     }
     if (hts_set_opt(state->fp, CRAM_OPT_DECODE_MD, 0)) {
-        fprintf(pysamerr, "Failed to set CRAM_OPT_DECODE_MD value\n");
+        fprintf(pysam_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
         free(state);
         return false;
     }
@@ -883,13 +883,13 @@ static bool init_state(const bam2fq_opts_t* opts, bam2fq_state_t** state_out)
                 return false;
             }
         } else {
-            state->fpr[i] = stdout;
+            state->fpr[i] = pysam_stdout;
         }
     }
 
     state->h = sam_hdr_read(state->fp);
     if (state->h == NULL) {
-        fprintf(pysamerr, "Failed to read header for \"%s\"\n", opts->fn_input);
+        fprintf(pysam_stderr, "Failed to read header for \"%s\"\n", opts->fn_input);
         free(state);
         return false;
     }
@@ -906,7 +906,7 @@ static bool destroy_state(const bam2fq_opts_t *opts, bam2fq_state_t *state, int*
     if (state->fpse && fclose(state->fpse)) { print_error_errno("bam2fq", "Error closing singleton file \"%s\"", opts->fnse); valid = false; }
     int i;
     for (i = 0; i < 3; ++i) {
-        if (state->fpr[i] != stdout && fclose(state->fpr[i])) { print_error_errno("bam2fq", "Error closing r%d file \"%s\"", i, opts->fnr[i]); valid = false; }
+        if (state->fpr[i] != pysam_stdout && fclose(state->fpr[i])) { print_error_errno("bam2fq", "Error closing r%d file \"%s\"", i, opts->fnr[i]); valid = false; }
     }
     free(state);
     return valid;
@@ -972,7 +972,7 @@ static bool bam2fq_mainloop_singletontrack(bam2fq_state_t *state)
         int b_score = bam_get_qual(b)[0] != 0xff? 2 : 1;
         if (b_score > score[which_readpart(b)]) {
             if(!bam1_to_fq(b, &linebuf[which_readpart(b)], state)) {
-                fprintf(pysamerr, "[%s] Error converting read to FASTA/Q\n", __func__);
+                fprintf(pysam_stderr, "[%s] Error converting read to FASTA/Q\n", __func__);
                 return false;
             }
             score[which_readpart(b)] = b_score;
@@ -987,8 +987,8 @@ static bool bam2fq_mainloop_singletontrack(bam2fq_state_t *state)
     free(linebuf[0].s);
     free(linebuf[1].s);
     free(linebuf[2].s);
-    fprintf(pysamerr, "[M::%s] discarded %" PRId64 " singletons\n", __func__, n_singletons);
-    fprintf(pysamerr, "[M::%s] processed %" PRId64 " reads\n", __func__, n_reads);
+    fprintf(pysam_stderr, "[M::%s] discarded %" PRId64 " singletons\n", __func__, n_singletons);
+    fprintf(pysam_stderr, "[M::%s] processed %" PRId64 " reads\n", __func__, n_reads);
 
     return valid;
 }
@@ -1015,7 +1015,7 @@ static bool bam2fq_mainloop(bam2fq_state_t *state)
     free(linebuf.s);
     bam_destroy1(b);
 
-    fprintf(pysamerr, "[M::%s] processed %" PRId64 " reads\n", __func__, n_reads);
+    fprintf(pysam_stderr, "[M::%s] processed %" PRId64 " reads\n", __func__, n_reads);
     return true;
 }
 

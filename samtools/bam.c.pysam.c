@@ -51,7 +51,7 @@ int bam_view1(const bam_header_t *header, const bam1_t *b)
     char *s = bam_format1(header, b);
     int ret = -1;
     if (!s) return -1;
-    if (puts(s) != EOF) ret = 0;
+    if (fputs(s, pysam_stdout) & fputc('\n', pysam_stdout) != EOF) ret = 0;
     free(s);
     return ret;
 }

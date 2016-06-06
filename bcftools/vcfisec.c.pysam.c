@@ -136,7 +136,7 @@ void isec_vcf(args_t *args)
     kstring_t str = {0,0,0};
     htsFile *out_fh = NULL;
 
-    // When only one VCF is output, print VCF to stdout or -o file
+    // When only one VCF is output, print VCF to pysam_stdout or -o file
     int out_std = 0;
     if ( args->nwrite==1 && !args->prefix ) out_std = 1;
     if ( args->targets_list && files->nreaders==1 ) out_std = 1;
@@ -149,7 +149,7 @@ void isec_vcf(args_t *args)
         bcf_hdr_write(out_fh, files->readers[args->iwrite].header);
     }
     if ( !args->nwrite && !out_std && !args->prefix )
-        fprintf(pysamerr,"Note: -w option not given, printing list of sites...\n");
+        fprintf(pysam_stderr,"Note: -w option not given, printing list of sites...\n");
 
     int n;
     while ( (n=bcf_sr_next_line(files)) )
@@ -402,7 +402,7 @@ static void init_data(args_t *args)
             if ( args->fh_sites == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
         }
         else
-            args->fh_sites = stdout;
+            args->fh_sites = pysam_stdout;
     }
 }
 
@@ -448,41 +448,41 @@ static void destroy_data(args_t *args)
 
 static void usage(void)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Create intersections, unions and complements of VCF files.\n");
-    fprintf(pysamerr, "Usage:   bcftools isec [options] <A.vcf.gz> <B.vcf.gz> [...]\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Options:\n");
-    fprintf(pysamerr, "    -c, --collapse <string>       treat as identical records with <snps|indels|both|all|some|none>, see man page for details [none]\n");
-    fprintf(pysamerr, "    -C, --complement              output positions present only in the first file but missing in the others\n");
-    fprintf(pysamerr, "    -e, --exclude <expr>          exclude sites for which the expression is true\n");
-    fprintf(pysamerr, "    -f, --apply-filters <list>    require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
-    fprintf(pysamerr, "    -i, --include <expr>          include only sites for which the expression is true\n");
-    fprintf(pysamerr, "        --no-version                  do not append version and command line to the header\n");
-    fprintf(pysamerr, "    -n, --nfiles [+-=~]<int>      output positions present in this many (=), this many or more (+), this many or fewer (-), the exact (~) files\n");
-    fprintf(pysamerr, "    -o, --output <file>           write output to a file [standard output]\n");
-    fprintf(pysamerr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysamerr, "    -p, --prefix <dir>            if given, subset each of the input files accordingly, see also -w\n");
-    fprintf(pysamerr, "    -r, --regions <region>        restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "    -R, --regions-file <file>     restrict to regions listed in a file\n");
-    fprintf(pysamerr, "    -t, --targets <region>        similar to -r but streams rather than index-jumps\n");
-    fprintf(pysamerr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "        --threads <int>           number of extra output compression threads [0]\n");
-    fprintf(pysamerr, "    -w, --write <list>            list of files to write with -p given as 1-based indexes. By default, all files are written\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Examples:\n");
-    fprintf(pysamerr, "   # Create intersection and complements of two sets saving the output in dir/*\n");
-    fprintf(pysamerr, "   bcftools isec A.vcf.gz B.vcf.gz -p dir\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "   # Filter sites in A and B (but not in C) and create intersection\n");
-    fprintf(pysamerr, "   bcftools isec -e'MAF<0.01' -i'dbSNP=1' -e - A.vcf.gz B.vcf.gz C.vcf.gz -p dir\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "   # Extract and write records from A shared by both A and B using exact allele match\n");
-    fprintf(pysamerr, "   bcftools isec A.vcf.gz B.vcf.gz -p dir -n =2 -w 1\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "   # Extract records private to A or B comparing by position only\n");
-    fprintf(pysamerr, "   bcftools isec A.vcf.gz B.vcf.gz -p dir -n -1 -c all\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Create intersections, unions and complements of VCF files.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools isec [options] <A.vcf.gz> <B.vcf.gz> [...]\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Options:\n");
+    fprintf(pysam_stderr, "    -c, --collapse <string>       treat as identical records with <snps|indels|both|all|some|none>, see man page for details [none]\n");
+    fprintf(pysam_stderr, "    -C, --complement              output positions present only in the first file but missing in the others\n");
+    fprintf(pysam_stderr, "    -e, --exclude <expr>          exclude sites for which the expression is true\n");
+    fprintf(pysam_stderr, "    -f, --apply-filters <list>    require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
+    fprintf(pysam_stderr, "    -i, --include <expr>          include only sites for which the expression is true\n");
+    fprintf(pysam_stderr, "        --no-version                  do not append version and command line to the header\n");
+    fprintf(pysam_stderr, "    -n, --nfiles [+-=~]<int>      output positions present in this many (=), this many or more (+), this many or fewer (-), the exact (~) files\n");
+    fprintf(pysam_stderr, "    -o, --output <file>           write output to a file [standard output]\n");
+    fprintf(pysam_stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(pysam_stderr, "    -p, --prefix <dir>            if given, subset each of the input files accordingly, see also -w\n");
+    fprintf(pysam_stderr, "    -r, --regions <region>        restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "    -R, --regions-file <file>     restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "    -t, --targets <region>        similar to -r but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "        --threads <int>           number of extra output compression threads [0]\n");
+    fprintf(pysam_stderr, "    -w, --write <list>            list of files to write with -p given as 1-based indexes. By default, all files are written\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Examples:\n");
+    fprintf(pysam_stderr, "   # Create intersection and complements of two sets saving the output in dir/*\n");
+    fprintf(pysam_stderr, "   bcftools isec A.vcf.gz B.vcf.gz -p dir\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "   # Filter sites in A and B (but not in C) and create intersection\n");
+    fprintf(pysam_stderr, "   bcftools isec -e'MAF<0.01' -i'dbSNP=1' -e - A.vcf.gz B.vcf.gz C.vcf.gz -p dir\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "   # Extract and write records from A shared by both A and B using exact allele match\n");
+    fprintf(pysam_stderr, "   bcftools isec A.vcf.gz B.vcf.gz -p dir -n =2 -w 1\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "   # Extract records private to A or B comparing by position only\n");
+    fprintf(pysam_stderr, "   bcftools isec A.vcf.gz B.vcf.gz -p dir -n -1 -c all\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 
