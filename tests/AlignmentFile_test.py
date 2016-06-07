@@ -1864,11 +1864,11 @@ class TestDoubleFetchBAM(unittest.TestCase):
         # just making sure the test has something to catch
         self.assertTrue(len(list(samfile1.fetch(contig, start, stop))) > 0)
 
-        # The following fails for CRAM files:
-        # for a, b in zip(samfile1.fetch(contig, start, stop,
-        #                               multiple_iterators=True),
+        # see Issue #293
+        # The following fails for CRAM files, but works for BAM
+        # files when the first is multiple_iterators=False:
         for a, b in zip(samfile1.fetch(contig, start, stop,
-                                       multiple_iterators=False),
+                                       multiple_iterators=True),
                         samfile1.fetch(contig, start, stop,
                                        multiple_iterators=True)):
             self.assertEqual(a.compare(b), 0)

@@ -14,6 +14,7 @@ from libc.stdlib cimport calloc, free
 from libc.string cimport strncpy
 from libc.stdio cimport fprintf, stderr, fflush
 from libc.stdio cimport stdout as c_stdout
+from posix.fcntl cimport open as c_open, O_WRONLY
 
 #####################################################################
 # hard-coded constants
@@ -230,11 +231,13 @@ cpdef parse_region(reference=None,
 def _pysam_dispatch(collection,
                     method,
                     args=None,
-                    catch_stdout=True):
+                    catch_stdout=True,
+                    save_stdout=None):
     '''call ``method`` in samtools/bcftools providing arguments in args.
     
-    Catching of stdout can be turned of by setting *catch_stdout* to
+    Catching of stdout can be turned off by setting *catch_stdout* to
     False.
+
     '''
 
     if method == "index":
@@ -251,8 +254,18 @@ def _pysam_dispatch(collection,
     pysam_set_stderr(stderr_h)
 
     # redirect stdout to file
-    if catch_stdout:
+    if save_stdout:
+        stdout_f = save_stdout
+        stdout_h = c_open(force_bytes(stdout_f),
+                          O_WRONLY)
+        if stdout_h == -1:
+            raise OSError("error while opening {} for writing".format(stdout_f))
+
+        pysam_set_stdout_fn(force_bytes(stdout_f))
+        pysam_set_stdout(stdout_h)
+    elif catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
+
         MAP_STDOUT_OPTIONS = {
             "samtools": {
                 "view": "-o {}",
@@ -274,7 +287,7 @@ def _pysam_dispatch(collection,
 
         if stdout_option is not None:
             os.close(stdout_h)
-            pysam_set_stdout_fn(stdout_f)
+            pysam_set_stdout_fn(force_bytes(stdout_f))
             args.extend(stdout_option.format(stdout_f).split(" "))
         else:
             pysam_set_stdout(stdout_h)
@@ -342,7 +355,10 @@ def _pysam_dispatch(collection,
     pysam_unset_stderr()
     out_stderr = _collect(stderr_f)
 
-    if catch_stdout:
+    if save_stdout:
+        pysam_unset_stdout()
+        out_stdout = None
+    elif catch_stdout:
         pysam_unset_stdout()
         out_stdout = _collect(stdout_f)
     else:

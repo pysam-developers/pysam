@@ -14,6 +14,10 @@ in pysam 0.9.0, in particular:
 * add AlignedSegment.get_cigar_stats method.
 * py3 bugfix in VariantFile.subset_samples, fixes #272
 * add missing sysconfig import, fixes #278
+* do not redirect stdout, but instead write to a separately
+  created file. This should resolve issues when pysam is used
+  in notebooks or other environments that redirect stdout.
+* wrap htslib-1.3.1, samtools-1.3.1 and bcftools-1.3.1
 
 Release 0.9.0
 =============

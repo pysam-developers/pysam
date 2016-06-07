@@ -16,7 +16,7 @@ import sys
 import subprocess
 import shutil
 from TestUtils import checkBinaryEqual, check_lines_equal, \
-    check_samtools_view_equal
+    check_samtools_view_equal, get_temp_filename, force_bytes
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -189,7 +189,7 @@ class SamtoolsTest(unittest.TestCase):
         if ">" in statement:
             with open(pysam_targets[-1], "wb") as outfile:
                 if output is not None:
-                    outfile = outfile.write(output)
+                    outfile.write(force_bytes(output))
 
         for samtools_target, pysam_target in zip(samtools_targets,
                                                  pysam_targets):
@@ -251,10 +251,22 @@ class StdoutTest(unittest.TestCase):
         self.assertEqual(r, None)
 
     def testDoubleCalling(self):
+        # The following would fail if there is an
+        # issue with stdout being improperly caught.
         retvals = pysam.idxstats(
             os.path.join(DATADIR, "ex1.bam"))
         retvals = pysam.idxstats(
             os.path.join(DATADIR, "ex1.bam"))
+
+    def testSaveStdout(self):
+        outfile = get_temp_filename(suffix=".tsv")
+        r = pysam.samtools.flagstat(
+            os.path.join(DATADIR, "ex1.bam"),
+            save_stdout=outfile)
+        self.assertEqual(r, None)
+        with open(outfile) as inf:
+            r = inf.read()
+        self.assertTrue(len(r) > 0)
 
 
 class PysamTest(SamtoolsTest):

@@ -18,15 +18,25 @@ else:
 
 if IS_PYTHON3:
     def force_str(s):
-        return s.decode('ascii')
+        try:
+            return s.decode('ascii')
+        except AttributeError:
+            return s
+    def force_bytes(s):
+        try:
+            return s.encode('ascii')
+        except AttributeError:
+            return s
 else:
     def force_str(s):
+        return s
+    def force_bytes(s):
         return s
 
 
 def openfile(fn):
     if fn.endswith(".gz"):
-        return gzip.open(fn)
+        return gzip.open(fn, "rt", encoding="utf-8")
     else:
         return open(fn)
 
