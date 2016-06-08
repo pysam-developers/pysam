@@ -1162,13 +1162,21 @@ class TestRemoteFileHTTP(unittest.TestCase):
 
     def setUp(self):
         if not checkURL(self.url):
+            self.remote_file = None
             return
 
         self.remote_file = pysam.TabixFile(self.url, "r")
         self.local_file = pysam.TabixFile(self.local, "r")
 
+    def tearDown(self):
+        if self.remote_file is None:
+            return
+
+        self.remote_file.close()
+        self.local_file.close()
+
     def testFetchAll(self):
-        if not checkURL(self.url):
+        if self.remote_file is None:
             return
 
         remote_result = list(self.remote_file.fetch())
@@ -1179,7 +1187,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
             self.assertEqual(x, y)
 
     def testHeader(self):
-        if not checkURL(self.url):
+        if self.remote_file is None:
             return
 
         self.assertEqual(list(self.local_file.header), [])
@@ -1187,13 +1195,6 @@ class TestRemoteFileHTTP(unittest.TestCase):
                           getattr,
                           self.remote_file,
                           "header")
-
-    def tearDown(self):
-        if not checkURL(self.url):
-            return
-
-        self.remote_file.close()
-        self.local_file.close()
 
 
 class TestIndexArgument(unittest.TestCase):

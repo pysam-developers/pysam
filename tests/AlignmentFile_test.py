@@ -1943,10 +1943,11 @@ class TestRemoteFileHTTP(unittest.TestCase):
         if not checkURL(self.url):
             return
 
-        samfile = pysam.AlignmentFile(self.url, "rb")
-        result = list(samfile.fetch(region=self.region))
-        samfile_local = pysam.AlignmentFile(self.local, "rb")
-        ref = list(samfile_local.fetch(region=self.region))
+        with pysam.AlignmentFile(self.url, "rb") as samfile:
+            result = list(samfile.fetch(region=self.region))
+
+        with pysam.AlignmentFile(self.local, "rb") as samfile_local:
+            ref = list(samfile_local.fetch(region=self.region))
 
         self.assertEqual(len(ref), len(result))
         for x, y in zip(result, ref):
@@ -1956,10 +1957,11 @@ class TestRemoteFileHTTP(unittest.TestCase):
         if not checkURL(self.url):
             return
 
-        samfile = pysam.AlignmentFile(self.url, "rb")
-        result = list(samfile.fetch())
-        samfile_local = pysam.AlignmentFile(self.local, "rb")
-        ref = list(samfile_local.fetch())
+        with pysam.AlignmentFile(self.url, "rb") as samfile:
+            result = list(samfile.fetch())
+
+        with pysam.AlignmentFile(self.local, "rb") as samfile_local:
+            ref = list(samfile_local.fetch())
 
         self.assertEqual(len(ref), len(result))
         for x, y in zip(result, ref):
