@@ -270,6 +270,9 @@ class TestIterationWithoutComments(IterationTest):
         IterationTest.setUp(self)
         self.tabix = pysam.TabixFile(self.filename)
 
+    def tearDown(self):
+        self.tabix.close()
+
     def testRegionStrings(self):
         """test if access with various region strings
         works"""
@@ -374,12 +377,9 @@ class TestIterationWithoutComments(IterationTest):
             # opens any tabix file
             with pysam.TabixFile(self.filename) as inf:
                 pass
-            
+
         for i in range(1000):
             func1()
-
-    def tearDown(self):
-        self.tabix.close()
 
 
 class TestIterationWithComments(TestIterationWithoutComments):
@@ -404,6 +404,9 @@ class TestParser(unittest.TestCase):
 
         self.tabix = pysam.TabixFile(self.filename)
         self.compare = loadAndConvert(self.filename)
+
+    def tearDown(self):
+        self.tabix.close()
 
     def testRead(self):
 
@@ -552,6 +555,10 @@ class TestIterators(unittest.TestCase):
              open(self.tmpfilename_uncompressed, "wb") as outfile:
             outfile.write(infile.read())
 
+    def tearDown(self):
+        self.tabix.close()
+        os.unlink(self.tmpfilename_uncompressed)
+
     def open(self):
 
         if self.is_compressed:
@@ -595,9 +602,6 @@ class TestIterators(unittest.TestCase):
         infile.close()
         # Not implemented
         # self.assertRaises(ValueError, i.next)
-
-    def tearUp(self):
-        os.unlink(self.tmpfilename_uncompressed)
 
 
 class TestIteratorsGenericCompressed(TestIterators):
@@ -651,6 +655,9 @@ class TestBed(unittest.TestCase):
         self.tabix = pysam.TabixFile(self.filename)
         self.compare = loadAndConvert(self.filename)
 
+    def tearDown(self):
+        self.tabix.close()
+
     def testRead(self):
 
         for x, r in enumerate(self.tabix.fetch(parser=pysam.asBed())):
@@ -682,9 +689,6 @@ class TestBed(unittest.TestCase):
             r.end += 1
             self.assertEqual(int(c[2]) + 1, r.end)
             self.assertEqual(str(int(c[2]) + 1), r[2])
-
-    def tearDown(self):
-        self.tabix.close()
 
 
 class TestVCF(unittest.TestCase):
@@ -748,6 +752,9 @@ class TestVCFFromTabix(TestVCF):
 
         self.tabix = pysam.TabixFile(self.tmpfilename + ".gz")
         self.compare = loadAndConvert(self.filename)
+
+    def tearDown(self):
+        self.tabix.close()
 
     def testRead(self):
 
@@ -817,9 +824,6 @@ class TestVCFFromTabix(TestVCF):
                 c[ncolumns + y] = "test_%i" % y
                 r[y] = "test_%i" % y
                 self.assertEqual(c[ncolumns + y], r[y])
-                
-    def tearDown(self):
-        self.tabix.close()
 
 
 class TestVCFFromVCF(TestVCF):
@@ -856,6 +860,9 @@ class TestVCFFromVCF(TestVCF):
         self.vcf = pysam.VCF()
         self.compare = loadAndConvert(self.filename, encode=False)
 
+    def tearDown(self):
+        self.vcf.close()
+
     def testConnecting(self):
 
         fn = os.path.basename(self.filename)
@@ -869,15 +876,25 @@ class TestVCFFromVCF(TestVCF):
 
     def get_iterator(self):
 
-        f = open(self.filename)
-        fn = os.path.basename(self.filename)
+        with open(self.filename) as f:
+            fn = os.path.basename(self.filename)
 
-        for x, msg in self.fail_on_opening:
-            if "%i.vcf" % x == fn:
-                self.assertRaises(ValueError, self.vcf.parse, f)
-                return
+            for x, msg in self.fail_on_opening:
+                if "%i.vcf" % x == fn:
+                    self.assertRaises(ValueError, self.vcf.parse, f)
+                    return
 
-        return self.vcf.parse(f)
+            for vcf_code, msg in self.fail_on_parsing:
+                if "%i.vcf" % vcf_code == fn:
+                    self.assertRaises((ValueError,
+                                       AssertionError),
+                                      list, self.vcf.parse(f))
+                    return
+                # python 2.7
+                # self.assertRaisesRegexp(
+                # ValueError, re.compile(msg), self.vcf.parse, f)
+
+            return list(self.vcf.parse(f))
 
     def get_field_value(self, record, field):
         return record[field]
@@ -1076,6 +1093,8 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
     missing_value = None
     missing_quality = None
 
+    vcf = None
+
     def filter2value(self, r, v):
         if r == "PASS":
             return ["PASS"], list(v)
@@ -1117,9 +1136,14 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
         TestVCF.setUp(self)
         self.compare = loadAndConvert(self.filename, encode=False)
 
+    def tearDown(self):
+        if self.vcf:
+            self.vcf.close()
+        self.vcf = None
+
     def get_iterator(self):
-        vcf = pysam.VariantFile(self.filename)
-        return vcf.fetch()
+        self.vcf = pysam.VariantFile(self.filename)
+        return self.vcf.fetch()
 
     def get_field_value(self, record, field):
         return getattr(record, field)
@@ -1185,13 +1209,11 @@ class TestIndexArgument(unittest.TestCase):
         shutil.copyfile(self.index_src, self.index_dst)
 
         with pysam.TabixFile(
-            self.filename_src, "r", index=self.index_src) as \
-            same_basename_file:
+                self.filename_src, "r", index=self.index_src) as same_basename_file:
             same_basename_results = list(same_basename_file.fetch())
 
         with pysam.TabixFile(
-            self.filename_dst, "r", index=self.index_dst) as \
-            diff_index_file:
+                self.filename_dst, "r", index=self.index_dst) as diff_index_file:
             diff_index_result = list(diff_index_file.fetch())
 
         self.assertEqual(len(same_basename_results), len(diff_index_result))
@@ -1285,7 +1307,7 @@ class TestMultipleIterators(unittest.TestCase):
 
     def testDoubleFetch(self):
 
-        with pysam.TabixFile(self.filename) as f: 
+        with pysam.TabixFile(self.filename) as f:
 
             for a, b in zip(f.fetch(multiple_iterators=True),
                             f.fetch(multiple_iterators=True)):

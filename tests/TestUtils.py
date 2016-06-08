@@ -36,7 +36,10 @@ else:
 
 def openfile(fn):
     if fn.endswith(".gz"):
-        return gzip.open(fn, "rt", encoding="utf-8")
+        try:
+            return gzip.open(fn, "rt", encoding="utf-8")
+        except TypeError:
+            return gzip.open(fn, "r")
     else:
         return open(fn)
 

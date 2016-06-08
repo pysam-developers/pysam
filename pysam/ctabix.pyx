@@ -697,7 +697,8 @@ cdef class GZIterator:
             self.gzipfile = NULL
         if self.buffer.s != NULL:
             free(self.buffer.s)
-        ks_destroy(self.kstream)
+        if self.kstream != NULL:
+            ks_destroy(self.kstream)
 
     def __iter__(self):
         return self

@@ -49,6 +49,9 @@ class BasicTestBAMFromFetch(unittest.TestCase):
             "rb")
         self.reads = list(self.samfile.fetch())
 
+    def tearDown(self):
+        self.samfile.close()
+
     def testARqname(self):
         self.assertEqual(
             self.reads[0].query_name,
@@ -261,9 +264,6 @@ class BasicTestBAMFromFetch(unittest.TestCase):
         self.assertEqual(self.reads[0].opt("XT"), "U")
         self.assertEqual(self.reads[1].opt("XT"), "R")
 
-    def tearDown(self):
-        self.samfile.close()
-
 
 class BasicTestSAMFromFetch(BasicTestBAMFromFetch):
 
@@ -426,42 +426,42 @@ class TestIO(unittest.TestCase):
         The *checkf* is used to determine if the files are
         equal.
         '''
-        infile = pysam.AlignmentFile(
-            os.path.join(DATADIR, input_filename),
-            input_mode)
 
-        if "b" in input_mode:
-            self.assertTrue(infile.is_bam)
-            self.assertFalse(infile.is_cram)
-        elif "c" in input_mode:
-            self.assertFalse(infile.is_bam)
-            self.assertTrue(infile.is_cram)
-        else:
-            self.assertFalse(infile.is_cram)
-            self.assertFalse(infile.is_bam)
+        with pysam.AlignmentFile(
+                os.path.join(DATADIR, input_filename),
+                input_mode) as infile:
 
-        if use_template:
-            outfile = pysam.AlignmentFile(
-                output_filename,
-                output_mode,
-                reference_filename=sequence_filename,
-                template=infile)
-        else:
-            outfile = pysam.AlignmentFile(
-                output_filename,
-                output_mode,
-                reference_names=infile.references,
-                reference_lengths=infile.lengths,
-                reference_filename=sequence_filename,
-                add_sq_text=False)
+            if "b" in input_mode:
+                self.assertTrue(infile.is_bam)
+                self.assertFalse(infile.is_cram)
+            elif "c" in input_mode:
+                self.assertFalse(infile.is_bam)
+                self.assertTrue(infile.is_cram)
+            else:
+                self.assertFalse(infile.is_cram)
+                self.assertFalse(infile.is_bam)
 
-        iter = infile.fetch()
+            if use_template:
+                outfile = pysam.AlignmentFile(
+                    output_filename,
+                    output_mode,
+                    reference_filename=sequence_filename,
+                    template=infile)
+            else:
+                outfile = pysam.AlignmentFile(
+                    output_filename,
+                    output_mode,
+                    reference_names=infile.references,
+                    reference_lengths=infile.lengths,
+                    reference_filename=sequence_filename,
+                    add_sq_text=False)
 
-        for x in iter:
-            outfile.write(x)
+            iter = infile.fetch()
 
-        infile.close()
-        outfile.close()
+            for x in iter:
+                outfile.write(x)
+
+            outfile.close()
 
         self.assertTrue(checkf(
             os.path.join(DATADIR, reference_filename),
@@ -867,6 +867,9 @@ class TestIteratorRowBAM(unittest.TestCase):
             reference_filename=self.reference_filename,
         )
 
+    def tearDown(self):
+        self.samfile.close()
+
     def checkRange(self, rnge):
         '''compare results from iterator with those from samtools.'''
         ps = list(self.samfile.fetch(region=rnge))
@@ -913,9 +916,6 @@ class TestIteratorRowBAM(unittest.TestCase):
                 # this includes empty ranges
                 self.checkRange("%s:%i-%i" %
                                 (contig, start, start + 90))
-
-    def tearDown(self):
-        self.samfile.close()
 
 
 class TestIteratorRowAllBAM(unittest.TestCase):
@@ -1851,36 +1851,35 @@ class TestDoubleFetchBAM(unittest.TestCase):
 
     def testDoubleFetch(self):
 
-        samfile1 = pysam.AlignmentFile(self.filename, self.mode)
-
-        for a, b in zip(samfile1.fetch(multiple_iterators=True),
-                        samfile1.fetch(multiple_iterators=True)):
-            self.assertEqual(a.compare(b), 0)
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            for a, b in zip(samfile1.fetch(multiple_iterators=True),
+                            samfile1.fetch(multiple_iterators=True)):
+                self.assertEqual(a.compare(b), 0)
 
     def testDoubleFetchWithRegion(self):
 
-        samfile1 = pysam.AlignmentFile(self.filename, self.mode)
-        contig, start, stop = 'chr1', 200, 3000000
-        # just making sure the test has something to catch
-        self.assertTrue(len(list(samfile1.fetch(contig, start, stop))) > 0)
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            contig, start, stop = 'chr1', 200, 3000000
+            # just making sure the test has something to catch
+            self.assertTrue(len(list(samfile1.fetch(contig, start, stop))) > 0)
 
-        # see Issue #293
-        # The following fails for CRAM files, but works for BAM
-        # files when the first is multiple_iterators=False:
-        for a, b in zip(samfile1.fetch(contig, start, stop,
-                                       multiple_iterators=True),
-                        samfile1.fetch(contig, start, stop,
-                                       multiple_iterators=True)):
-            self.assertEqual(a.compare(b), 0)
+            # see Issue #293
+            # The following fails for CRAM files, but works for BAM
+            # files when the first is multiple_iterators=False:
+            for a, b in zip(samfile1.fetch(contig, start, stop,
+                                           multiple_iterators=True),
+                            samfile1.fetch(contig, start, stop,
+                                           multiple_iterators=True)):
+                self.assertEqual(a.compare(b), 0)
 
     def testDoubleFetchUntilEOF(self):
 
-        samfile1 = pysam.AlignmentFile(self.filename, self.mode)
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
 
-        for a, b in zip(samfile1.fetch(until_eof=True),
-                        samfile1.fetch(until_eof=True,
-                                       multiple_iterators=True)):
-            self.assertEqual(a.compare(b), 0)
+            for a, b in zip(samfile1.fetch(until_eof=True),
+                            samfile1.fetch(until_eof=True,
+                                           multiple_iterators=True)):
+                self.assertEqual(a.compare(b), 0)
 
 
 class TestDoubleFetchCRAM(TestDoubleFetchBAM):
@@ -2027,6 +2026,10 @@ class TestPileup(unittest.TestCase):
         self.samfile = pysam.AlignmentFile(self.samfilename)
         self.fastafile = pysam.Fastafile(self.fastafilename)
 
+    def tearDown(self):
+        self.samfile.close()
+        self.fastafile.close()
+
     def checkEqual(self, references, iterator):
 
         for x, column in enumerate(iterator):
@@ -2087,6 +2090,10 @@ class TestCountCoverage(unittest.TestCase):
             samfile.write(read)
         samfile.close()
         pysam.samtools.index("test_count_coverage_read_all.bam")
+
+    def tearDown(self):
+        self.samfile.close()
+        self.fastafile.close()
 
     def count_coverage_python(self, bam, chrom, start, stop,
                               read_callback,
@@ -2179,23 +2186,26 @@ class TestCountCoverage(unittest.TestCase):
         self.assertEqual(fast_counts[3], manual_counts[3])
 
     def test_count_coverage_read_all(self):
-        samfile = pysam.AlignmentFile("test_count_coverage_read_all.bam")
+
         chrom = 'chr1'
         start = 0
         stop = 2000
 
         def filter(read):
             return not (read.flag & (0x4 | 0x100 | 0x200 | 0x400))
-        fast_counts = samfile.count_coverage(
-            chrom, start, stop,
-            read_callback='all',
-            #read_callback = lambda read: ~(read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
-            quality_threshold=0)
-        manual_counts = samfile.count_coverage(
-            chrom, start, stop,
-            read_callback=lambda read: not(
-                read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
-            quality_threshold=0)
+
+        with pysam.AlignmentFile("test_count_coverage_read_all.bam") as samfile:
+
+            fast_counts = samfile.count_coverage(
+                chrom, start, stop,
+                read_callback='all',
+                #read_callback = lambda read: ~(read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
+                quality_threshold=0)
+            manual_counts = samfile.count_coverage(
+                chrom, start, stop,
+                read_callback=lambda read: not(
+                    read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
+                quality_threshold=0)
 
         os.unlink("test_count_coverage_read_all.bam")
         os.unlink("test_count_coverage_read_all.bam.bai")
@@ -2220,18 +2230,20 @@ class TestCountCoverage(unittest.TestCase):
             samfile.write(read)
         samfile.close()
         pysam.samtools.index("test_count_coverage_nofilter.bam")
-        samfile = pysam.AlignmentFile("test_count_coverage_nofilter.bam")
         chr = 'chr1'
         start = 0
         stop = 2000
-        fast_counts = samfile.count_coverage(chr, start, stop,
-                                             read_callback='nofilter',
-                                             quality_threshold=0)
 
-        manual_counts = self.count_coverage_python(samfile, chr, start, stop,
-                                                   read_callback=lambda x: True,
-                                                   quality_threshold=0)
-        samfile.close()
+        with pysam.AlignmentFile("test_count_coverage_nofilter.bam") as samfile:
+
+            fast_counts = samfile.count_coverage(chr, start, stop,
+                                                 read_callback='nofilter',
+                                                 quality_threshold=0)
+
+            manual_counts = self.count_coverage_python(samfile, chr, start, stop,
+                                                       read_callback=lambda x: True,
+                                                       quality_threshold=0)
+
         os.unlink("test_count_coverage_nofilter.bam")
         os.unlink("test_count_coverage_nofilter.bam.bai")
         self.assertEqual(fast_counts[0], manual_counts[0])
@@ -2241,7 +2253,7 @@ class TestCountCoverage(unittest.TestCase):
 
 
 class TestPileupQueryPosition(unittest.TestCase):
-    
+
     filename = "test_query_position.bam"
 
     def testPileup(self):
@@ -2278,8 +2290,8 @@ class TestLogging(unittest.TestCase):
             log_hand.setFormatter(formatter)
             logger.addHandler(log_hand)
 
-        bam = pysam.AlignmentFile(bamfile, 'rb')
-        cols = bam.pileup()
+        with pysam.AlignmentFile(bamfile, 'rb') as bam:
+            cols = bam.pileup()
         self.assertTrue(True)
 
     def testFail1(self):
@@ -2310,40 +2322,41 @@ class TestAlignmentFileUtilityFunctions(unittest.TestCase):
 
     def testCount(self):
 
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                      "rb")
+        with pysam.AlignmentFile(
+                os.path.join(DATADIR, "ex1.bam"),
+                "rb") as samfile:
 
-        for contig in ("chr1", "chr2"):
-            for start in range(0, 2000, 100):
-                end = start + 1
-                self.assertEqual(
-                    len(list(samfile.fetch(contig, start, end))),
-                    samfile.count(contig, start, end),
-                    'number mismatch for %s:%i-%i %i != %i' % (
-                        contig, start, end,
+            for contig in ("chr1", "chr2"):
+                for start in range(0, 2000, 100):
+                    end = start + 1
+                    self.assertEqual(
                         len(list(samfile.fetch(contig, start, end))),
-                        samfile.count(contig, start, end)))
+                        samfile.count(contig, start, end),
+                        'number mismatch for %s:%i-%i %i != %i' % (
+                            contig, start, end,
+                            len(list(samfile.fetch(contig, start, end))),
+                            samfile.count(contig, start, end)))
 
-                # test empty intervals
-                self.assertEqual(
-                    len(list(samfile.fetch(contig, start, start))),
-                    samfile.count(contig, start, start),
-                    'number mismatch for %s:%i-%i %i != %i' % (
-                        contig, start, start,
+                    # test empty intervals
+                    self.assertEqual(
                         len(list(samfile.fetch(contig, start, start))),
-                        samfile.count(contig, start, start)))
+                        samfile.count(contig, start, start),
+                        'number mismatch for %s:%i-%i %i != %i' % (
+                            contig, start, start,
+                            len(list(samfile.fetch(contig, start, start))),
+                            samfile.count(contig, start, start)))
 
-                # test half empty intervals
-                self.assertEqual(len(list(samfile.fetch(contig, start))),
-                                 samfile.count(contig, start))
+                    # test half empty intervals
+                    self.assertEqual(len(list(samfile.fetch(contig, start))),
+                                     samfile.count(contig, start))
 
-                self.assertEqual(
-                    len(list(samfile.fetch(contig, start))),
-                    samfile.count(contig, start),
-                    'number mismatch for %s:%i %i != %i' % (
-                        contig, start,
+                    self.assertEqual(
                         len(list(samfile.fetch(contig, start))),
-                        samfile.count(contig, start)))
+                        samfile.count(contig, start),
+                        'number mismatch for %s:%i %i != %i' % (
+                            contig, start,
+                            len(list(samfile.fetch(contig, start))),
+                            samfile.count(contig, start)))
 
     def testMate(self):
         '''test mate access.'''
@@ -2357,35 +2370,35 @@ class TestAlignmentFileUtilityFunctions(unittest.TestCase):
         for x in readnames:
             counts[x] += 1
 
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                      "rb")
+        with pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
+                                 "rb") as samfile:
 
-        for read in samfile.fetch():
-            if not read.is_paired:
-                self.assertRaises(ValueError, samfile.mate, read)
-            elif read.mate_is_unmapped:
-                self.assertRaises(ValueError, samfile.mate, read)
-            else:
-                if counts[read.query_name] == 1:
+            for read in samfile.fetch():
+                if not read.is_paired:
+                    self.assertRaises(ValueError, samfile.mate, read)
+                elif read.mate_is_unmapped:
                     self.assertRaises(ValueError, samfile.mate, read)
                 else:
-                    mate = samfile.mate(read)
-                    self.assertEqual(read.query_name, mate.query_name)
-                    self.assertEqual(read.is_read1, mate.is_read2)
-                    self.assertEqual(read.is_read2, mate.is_read1)
-                    self.assertEqual(
-                        read.reference_start, mate.next_reference_start)
-                    self.assertEqual(
-                        read.next_reference_start, mate.reference_start)
+                    if counts[read.query_name] == 1:
+                        self.assertRaises(ValueError, samfile.mate, read)
+                    else:
+                        mate = samfile.mate(read)
+                        self.assertEqual(read.query_name, mate.query_name)
+                        self.assertEqual(read.is_read1, mate.is_read2)
+                        self.assertEqual(read.is_read2, mate.is_read1)
+                        self.assertEqual(
+                            read.reference_start, mate.next_reference_start)
+                        self.assertEqual(
+                            read.next_reference_start, mate.reference_start)
 
     def testIndexStats(self):
         '''test if total number of mapped/unmapped reads is correct.'''
 
-        samfile = pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
-                                      "rb")
-        self.assertEqual(samfile.mapped, 3235)
-        self.assertEqual(samfile.unmapped, 35)
-        self.assertEqual(samfile.nocoordinate, 0)
+        with pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"),
+                                 "rb") as samfile:
+            self.assertEqual(samfile.mapped, 3235)
+            self.assertEqual(samfile.unmapped, 35)
+            self.assertEqual(samfile.nocoordinate, 0)
 
 
 class TestMappedUnmapped(unittest.TestCase):
@@ -2470,30 +2483,29 @@ class TestAlignmentFileIndex(unittest.TestCase):
 class TestExplicitIndex(unittest.TestCase):
 
     def testExplicitIndexBAM(self):
-        samfile = pysam.AlignmentFile(
-            os.path.join(DATADIR, "explicit_index.bam"),
-            "rb",
-            filepath_index=os.path.join(DATADIR, 'ex1.bam.bai'))
-                                      
-        samfile.fetch("chr1")
+        with pysam.AlignmentFile(
+                os.path.join(DATADIR, "explicit_index.bam"),
+                "rb",
+                filepath_index=os.path.join(DATADIR, 'ex1.bam.bai')) as samfile:
+            samfile.fetch("chr1")
 
     def testExplicitIndexCRAM(self):
-        samfile = pysam.AlignmentFile(
-            os.path.join(DATADIR, "explicit_index.cram"),
-            "rc",
-            filepath_index=os.path.join(DATADIR, 'ex1.cram.crai'))
+        with pysam.AlignmentFile(
+                os.path.join(DATADIR, "explicit_index.cram"),
+                "rc",
+                filepath_index=os.path.join(DATADIR, 'ex1.cram.crai')) as samfile:
+            samfile.fetch("chr1")
 
     def testRemoteExplicitIndexBAM(self):
         if not checkURL(
-            "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam"):
+                "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam"):
             return
 
-        samfile = pysam.AlignmentFile(
-            "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam",
-            "rb",
-            filepath_index=os.path.join(DATADIR, 'ex1.bam.bai'))
-
-        samfile.fetch("chr1")
+        with pysam.AlignmentFile(
+                "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam",
+                "rb",
+                filepath_index=os.path.join(DATADIR, 'ex1.bam.bai')) as samfile:
+            samfile.fetch("chr1")
 
 
 class TestVerbosity(unittest.TestCase):

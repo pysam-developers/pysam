@@ -380,14 +380,14 @@ class TestCigarStats(ReadTest):
             self.assertEqual(
                 [list(x) for x in a.get_cigar_stats()],
                 expected)
-        
+
         a.cigarstring = "10M"
         a.set_tag("NM", 5)
         self.assertEqual(
             [list(x) for x in a.get_cigar_stats()],
             [[10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
-        
+
         a.cigarstring = None
         self.assertEqual(
             [list(x) for x in a.get_cigar_stats()],
