@@ -67,7 +67,7 @@ bool check_test_2(const parsed_opts_t* opts) {
     return true;
 }
 
-int main(int argc, char**argv)
+int samtools_test_parse_args_main(int argc, char**argv)
 {
     // test state
     const int NUM_TESTS = 2;
@@ -82,7 +82,7 @@ int main(int argc, char**argv)
                 ++verbose;
                 break;
             default:
-                printf(
+                fprintf(pysam_stdout, 
                        "usage: test_parse_args [-v]\n\n"
                        " -v verbose output\n"
                        );
@@ -90,58 +90,58 @@ int main(int argc, char**argv)
         }
     }
 
-    // Setup stdout and pysamerr redirect
-    kstring_t res_stdout = { 0, 0, NULL };
-    kstring_t res_pysamerr = { 0, 0, NULL };
-    FILE* orig_stdout = fdopen(dup(STDOUT_FILENO), "a"); // Save pysamerr
-    FILE* orig_pysamerr = fdopen(dup(STDERR_FILENO), "a"); // Save pysamerr
-    char* tempfname_stdout = (optind < argc)? argv[optind] : "test_parse_args.tmp.o";
-    char* tempfname_pysamerr = (optind < argc)? argv[optind] : "test_parse_args.tmp.e";
-    FILE* check_stdout = NULL;
-    FILE* check_pysamerr = NULL;
+    // Setup pysam_stdout and pysam_stderr redirect
+    kstring_t res_pysam_stdout = { 0, 0, NULL };
+    kstring_t res_pysam_stderr = { 0, 0, NULL };
+    FILE* orig_pysam_stdout = fdopen(dup(STDOUT_FILENO), "a"); // Save pysam_stderr
+    FILE* orig_pysam_stderr = fdopen(dup(STDERR_FILENO), "a"); // Save pysam_stderr
+    char* tempfname_pysam_stdout = (optind < argc)? argv[optind] : "test_parse_args.tmp.o";
+    char* tempfname_pysam_stderr = (optind < argc)? argv[optind] : "test_parse_args.tmp.e";
+    FILE* check_pysam_stdout = NULL;
+    FILE* check_pysam_stderr = NULL;
 
     // Cleanup getopt
     optind = 1;
 
     // setup
-    if (verbose) fprintf(orig_stdout,"BEGIN test 1\n");  // test eliminating a tag that isn't there
+    if (verbose) fprintf(orig_pysam_stdout,"BEGIN test 1\n");  // test eliminating a tag that isn't there
     int argc_1;
     char** argv_1;
     setup_test_1(&argc_1, &argv_1);
     if (verbose > 1) {
-        fprintf(orig_stdout, "argc: %d\n", argc_1);
+        fprintf(orig_pysam_stdout, "argc: %d\n", argc_1);
     }
-    if (verbose) fprintf(orig_stdout,"RUN test 1\n");
+    if (verbose) fprintf(orig_pysam_stdout,"RUN test 1\n");
 
     // test
-    xfreopen(tempfname_stdout, "w", stdout); // Redirect stdout to pipe
-    xfreopen(tempfname_pysamerr, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname_pysam_stdout, "w", pysam_stdout); // Redirect pysam_stdout to pipe
+    xfreopen(tempfname_pysam_stderr, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     parsed_opts_t* result_1 = parse_args(argc_1, argv_1);
-    fclose(stdout);
-    fclose(pysamerr);
+    fclose(pysam_stdout);
+    fclose(pysam_stderr);
 
-    if (verbose) fprintf(orig_stdout, "END RUN test 1\n");
+    if (verbose) fprintf(orig_pysam_stdout, "END RUN test 1\n");
     if (verbose > 1) {
-        fprintf(orig_stdout, "argc: %d\n", argc_1);
+        fprintf(orig_pysam_stdout, "argc: %d\n", argc_1);
     }
 
     // check result
-    res_stdout.l = res_pysamerr.l = 0;
-    check_stdout = fopen(tempfname_stdout, "r");
-    check_pysamerr = fopen(tempfname_pysamerr, "r");
+    res_pysam_stdout.l = res_pysam_stderr.l = 0;
+    check_pysam_stdout = fopen(tempfname_pysam_stdout, "r");
+    check_pysam_stderr = fopen(tempfname_pysam_stderr, "r");
     if ( !result_1
-        && kgetline(&res_stdout, (kgets_func *)fgets, check_stdout) >= 0
-        && !feof(check_stdout)
-        && res_stdout.l > 0
-        && kgetline(&res_pysamerr, (kgets_func *)fgets, check_pysamerr) < 0
-        && (feof(check_pysamerr) || res_pysamerr.l == 0)) {
+        && kgetline(&res_pysam_stdout, (kgets_func *)fgets, check_pysam_stdout) >= 0
+        && !feof(check_pysam_stdout)
+        && res_pysam_stdout.l > 0
+        && kgetline(&res_pysam_stderr, (kgets_func *)fgets, check_pysam_stderr) < 0
+        && (feof(check_pysam_stderr) || res_pysam_stderr.l == 0)) {
         ++success;
     } else {
         ++failure;
-        if (verbose) fprintf(orig_stdout, "FAIL test 1\n");
+        if (verbose) fprintf(orig_pysam_stdout, "FAIL test 1\n");
     }
-    fclose(check_pysamerr);
-    fclose(check_stdout);
+    fclose(check_pysam_stderr);
+    fclose(check_pysam_stdout);
 
     // teardown
     cleanup_opts(result_1);
@@ -150,49 +150,49 @@ int main(int argc, char**argv)
         free(argv_1[i]);
     }
     free(argv_1);
-    if (verbose) fprintf(orig_stdout, "END test 1\n");
+    if (verbose) fprintf(orig_pysam_stdout, "END test 1\n");
 
     // Cleanup getopt
     optind = 1;
 
-    if (verbose) fprintf(orig_stdout, "BEGIN test 2\n");  // test eliminating a tag that is there
+    if (verbose) fprintf(orig_pysam_stdout, "BEGIN test 2\n");  // test eliminating a tag that is there
     int argc_2;
     char** argv_2;
     setup_test_2(&argc_2, &argv_2);
     if (verbose > 1) {
-        fprintf(orig_stdout, "argc: %d\n", argc_2);
+        fprintf(orig_pysam_stdout, "argc: %d\n", argc_2);
     }
-    if (verbose) fprintf(orig_stdout, "RUN test 2\n");
+    if (verbose) fprintf(orig_pysam_stdout, "RUN test 2\n");
 
     // test
-    xfreopen(tempfname_stdout, "w", stdout); // Redirect stdout to pipe
-    xfreopen(tempfname_pysamerr, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname_pysam_stdout, "w", pysam_stdout); // Redirect pysam_stdout to pipe
+    xfreopen(tempfname_pysam_stderr, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     parsed_opts_t* result_2 = parse_args(argc_2, argv_2);
-    fclose(stdout);
-    fclose(pysamerr);
+    fclose(pysam_stdout);
+    fclose(pysam_stderr);
 
-    if (verbose) fprintf(orig_stdout, "END RUN test 2\n");
+    if (verbose) fprintf(orig_pysam_stdout, "END RUN test 2\n");
     if (verbose > 1) {
-        fprintf(orig_stdout, "argc: %d\n", argc_2);
+        fprintf(orig_pysam_stdout, "argc: %d\n", argc_2);
     }
 
     // check result
-    res_stdout.l = res_pysamerr.l = 0;
-    check_stdout = fopen(tempfname_stdout, "r");
-    check_pysamerr = fopen(tempfname_pysamerr, "r");
+    res_pysam_stdout.l = res_pysam_stderr.l = 0;
+    check_pysam_stdout = fopen(tempfname_pysam_stdout, "r");
+    check_pysam_stderr = fopen(tempfname_pysam_stderr, "r");
     if ( result_2
         && check_test_2(result_2)
-        && kgetline(&res_stdout, (kgets_func *)fgets, check_stdout) < 0
-        && (feof(check_stdout) || res_stdout.l == 0)
-        && kgetline(&res_pysamerr, (kgets_func *)fgets, check_pysamerr) < 0
-        && (feof(check_pysamerr) || res_pysamerr.l == 0)) {
+        && kgetline(&res_pysam_stdout, (kgets_func *)fgets, check_pysam_stdout) < 0
+        && (feof(check_pysam_stdout) || res_pysam_stdout.l == 0)
+        && kgetline(&res_pysam_stderr, (kgets_func *)fgets, check_pysam_stderr) < 0
+        && (feof(check_pysam_stderr) || res_pysam_stderr.l == 0)) {
         ++success;
     } else {
         ++failure;
-        if (verbose) fprintf(orig_stdout, "FAIL test 2\n");
+        if (verbose) fprintf(orig_pysam_stdout, "FAIL test 2\n");
     }
-    fclose(check_stdout);
-    fclose(check_pysamerr);
+    fclose(check_pysam_stdout);
+    fclose(check_pysam_stderr);
 
     // teardown
     cleanup_opts(result_2);
@@ -202,18 +202,18 @@ int main(int argc, char**argv)
     }
     free(argv_2);
 
-    if (verbose) fprintf(orig_stdout, "END test 2\n");
+    if (verbose) fprintf(orig_pysam_stdout, "END test 2\n");
 
 
     // Cleanup
-    free(res_stdout.s);
-    free(res_pysamerr.s);
-    remove(tempfname_stdout);
-    remove(tempfname_pysamerr);
-    fclose(orig_stdout);
+    free(res_pysam_stdout.s);
+    free(res_pysam_stderr.s);
+    remove(tempfname_pysam_stdout);
+    remove(tempfname_pysam_stderr);
+    fclose(orig_pysam_stdout);
     if (failure > 0)
-        fprintf(orig_pysamerr, "%d failures %d successes\n", failure, success);
-    fclose(orig_pysamerr);
+        fprintf(orig_pysam_stderr, "%d failures %d successes\n", failure, success);
+    fclose(orig_pysam_stderr);
 
     return (success == NUM_TESTS)? EXIT_SUCCESS : EXIT_FAILURE;
 }

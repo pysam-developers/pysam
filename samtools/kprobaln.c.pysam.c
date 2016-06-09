@@ -146,7 +146,7 @@ int kpa_glocal(const uint8_t *_ref, int l_ref, const uint8_t *_query, int l_quer
 			fi[u+1] = EI * (m[1] * fi1[v10+0] + m[4] * fi1[v10+1]);
 			fi[u+2] = m[2] * fi[v01+0] + m[8] * fi[v01+2];
 			sum += fi[u] + fi[u+1] + fi[u+2];
-//			fprintf(pysamerr, "F (%d,%d;%d): %lg,%lg,%lg\n", i, k, u, fi[u], fi[u+1], fi[u+2]); // DEBUG
+//			fprintf(pysam_stderr, "F (%d,%d;%d): %lg,%lg,%lg\n", i, k, u, fi[u], fi[u+1], fi[u+2]); // DEBUG
 		}
 		// rescale
 		s[i] = sum;
@@ -201,7 +201,7 @@ int kpa_glocal(const uint8_t *_ref, int l_ref, const uint8_t *_query, int l_quer
 			bi[u+0] = e * m[0] + EI * m[1] * bi1[v10+1] + m[2] * bi[v01+2]; // bi1[v11] has been foled into e.
 			bi[u+1] = e * m[3] + EI * m[4] * bi1[v10+1];
 			bi[u+2] = (e * m[6] + m[8] * bi[v01+2]) * y;
-//			fprintf(pysamerr, "B (%d,%d;%d): %lg,%lg,%lg\n", i, k, u, bi[u], bi[u+1], bi[u+2]); // DEBUG
+//			fprintf(pysam_stderr, "B (%d,%d;%d): %lg,%lg,%lg\n", i, k, u, bi[u], bi[u+1], bi[u+2]); // DEBUG
 		}
 		// rescale
 		set_u(_beg, bw, i, beg); set_u(_end, bw, i, end); _end += 2;
@@ -238,7 +238,7 @@ int kpa_glocal(const uint8_t *_ref, int l_ref, const uint8_t *_query, int l_quer
 		if (state) state[i-1] = max_k;
 		if (q) k = (int)(-4.343 * log(1. - max) + .499), q[i-1] = k > 100? 99 : k;
 #ifdef _MAIN
-		fprintf(pysamerr, "(%.10lg,%.10lg) (%d,%d:%c,%c:%d) %lg\n", pb, sum, i-1, max_k>>2,
+		fprintf(pysam_stderr, "(%.10lg,%.10lg) (%d,%d:%c,%c:%d) %lg\n", pb, sum, i-1, max_k>>2,
 				"ACGT"[query[i]], "ACGT"[ref[(max_k>>2)+1]], max_k&3, max); // DEBUG
 #endif
 	}
@@ -252,7 +252,7 @@ int kpa_glocal(const uint8_t *_ref, int l_ref, const uint8_t *_query, int l_quer
 
 #ifdef _MAIN
 #include <unistd.h>
-int main(int argc, char *argv[])
+int samtools_kprobaln_main(int argc, char *argv[])
 {
 	uint8_t conv[256], *iqual, *ref, *query;
 	int c, l_ref, l_query, i, q = 30, b = 10, P;
@@ -263,7 +263,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	if (optind + 2 > argc) {
-		fprintf(pysamerr, "Usage: %s [-q %d] [-b %d] <ref> <query>\n", argv[0], q, b); // example: acttc attc
+		fprintf(pysam_stderr, "Usage: %s [-q %d] [-b %d] <ref> <query>\n", argv[0], q, b); // example: acttc attc
 		return 1;
 	}
 	memset(conv, 4, 256);
@@ -277,7 +277,7 @@ int main(int argc, char *argv[])
 	memset(iqual, q, l_query);
 	kpa_par_def.bw = b;
 	P = kpa_glocal(ref, l_ref, query, l_query, iqual, &kpa_par_alt, 0, 0);
-	fprintf(pysamerr, "%d\n", P);
+	fprintf(pysam_stderr, "%d\n", P);
 	free(iqual);
 	return 0;
 }

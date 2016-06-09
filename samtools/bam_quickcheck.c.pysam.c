@@ -71,7 +71,7 @@ int main_quickcheck(int argc, char** argv)
             verbose++;
             break;
         default:
-            usage_quickcheck(pysamerr);
+            usage_quickcheck(pysam_stderr);
             return 1;
         }
     }
@@ -80,12 +80,12 @@ int main_quickcheck(int argc, char** argv)
     argv += optind;
 
     if (argc < 1) {
-        usage_quickcheck(stdout);
+        usage_quickcheck(pysam_stdout);
         return 1;
     }
 
     if (verbose >= 2) {
-        fprintf(pysamerr, "verbosity set to %d\n", verbose);
+        fprintf(pysam_stderr, "verbosity set to %d\n", verbose);
     }
 
     if (verbose >= 4) {
@@ -99,55 +99,55 @@ int main_quickcheck(int argc, char** argv)
         char* fn = argv[i];
         int file_state = 0;
 
-        if (verbose >= 3) fprintf(pysamerr, "checking %s\n", fn);
+        if (verbose >= 3) fprintf(pysam_stderr, "checking %s\n", fn);
 
         // attempt to open
         htsFile *hts_fp = hts_open(fn, "r");
         if (hts_fp == NULL) {
-            if (verbose >= 2) fprintf(pysamerr, "%s could not be opened for reading\n", fn);
+            if (verbose >= 2) fprintf(pysam_stderr, "%s could not be opened for reading\n", fn);
             file_state |= 2;
         }
         else {
-            if (verbose >= 3) fprintf(pysamerr, "opened %s\n", fn);
+            if (verbose >= 3) fprintf(pysam_stderr, "opened %s\n", fn);
             // make sure we have sequence data
             const htsFormat *fmt = hts_get_format(hts_fp);
             if (fmt->category != sequence_data ) {
-                if (verbose >= 2) fprintf(pysamerr, "%s was not identified as sequence data\n", fn);
+                if (verbose >= 2) fprintf(pysam_stderr, "%s was not identified as sequence data\n", fn);
                 file_state |= 4;
             }
             else {
-                if (verbose >= 3) fprintf(pysamerr, "%s is sequence data\n", fn);
+                if (verbose >= 3) fprintf(pysam_stderr, "%s is sequence data\n", fn);
                 // check header
                 bam_hdr_t *header = sam_hdr_read(hts_fp);
                 if (header->n_targets <= 0) {
-                    if (verbose >= 2) fprintf(pysamerr, "%s had no targets in header\n", fn);
+                    if (verbose >= 2) fprintf(pysam_stderr, "%s had no targets in header\n", fn);
                     file_state |= 8;
                 }
                 else {
-                    if (verbose >= 3) fprintf(pysamerr, "%s has %d targets in header\n", fn, header->n_targets);
+                    if (verbose >= 3) fprintf(pysam_stderr, "%s has %d targets in header\n", fn, header->n_targets);
                 }
 
                 // only check EOF on BAM for now
                 // TODO implement and use hts_check_EOF() to include CRAM support
                 if (fmt->format == bam) {
                     if (bgzf_check_EOF(hts_fp->fp.bgzf) <= 0) {
-                        if (verbose >= 2) fprintf(pysamerr, "%s was missing EOF block\n", fn);
+                        if (verbose >= 2) fprintf(pysam_stderr, "%s was missing EOF block\n", fn);
                         file_state |= 16;
                     }
                     else {
-                        if (verbose >= 3) fprintf(pysamerr, "%s has good EOF block\n", fn);
+                        if (verbose >= 3) fprintf(pysam_stderr, "%s has good EOF block\n", fn);
                     }
                 }
             }
 
             if (hts_close(hts_fp) < 0) {
                 file_state |= 32;
-                if (verbose >= 2) fprintf(pysamerr, "%s did not close cleanly\n", fn);
+                if (verbose >= 2) fprintf(pysam_stderr, "%s did not close cleanly\n", fn);
             }
         }
 
         if (file_state > 0 && verbose >= 1) {
-            fprintf(stdout, "%s\n", fn);
+            fprintf(pysam_stdout, "%s\n", fn);
         }
         ret |= file_state;
     }

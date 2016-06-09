@@ -172,11 +172,11 @@ static void add_plugin_paths(args_t *args, const char *path)
                 args->plugin_paths = (char**) realloc(args->plugin_paths,sizeof(char*)*(args->nplugin_paths+1));
                 args->plugin_paths[args->nplugin_paths] = dir;
                 args->nplugin_paths++;
-                if ( args->verbose ) fprintf(pysamerr, "plugin directory %s .. ok\n", dir);
+                if ( args->verbose ) fprintf(pysam_stderr, "plugin directory %s .. ok\n", dir);
             }
             else
             {
-                if ( args->verbose ) fprintf(pysamerr, "plugin directory %s .. %s\n", dir, strerror(errno));
+                if ( args->verbose ) fprintf(pysam_stderr, "plugin directory %s .. %s\n", dir, strerror(errno));
                 free(dir);
             }
 
@@ -214,8 +214,8 @@ static void *dlopen_plugin(args_t *args, const char *fname)
             handle = dlopen(tmp, RTLD_NOW); // valgrind complains about unfreed memory, not our problem though
             if ( args->verbose )
             {
-                if ( !handle ) fprintf(pysamerr,"%s:\n\tdlopen   .. %s\n", tmp,dlerror());
-                else fprintf(pysamerr,"%s:\n\tdlopen   .. ok\n", tmp);
+                if ( !handle ) fprintf(pysam_stderr,"%s:\n\tdlopen   .. %s\n", tmp,dlerror());
+                else fprintf(pysam_stderr,"%s:\n\tdlopen   .. ok\n", tmp);
             }
             free(tmp);
             if ( handle ) return handle;
@@ -225,8 +225,8 @@ static void *dlopen_plugin(args_t *args, const char *fname)
     handle = dlopen(fname, RTLD_NOW);
     if ( args->verbose )
     {
-        if ( !handle ) fprintf(pysamerr,"%s:\n\tdlopen   .. %s\n", fname,dlerror());
-        else fprintf(pysamerr,"%s:\n\tdlopen   .. ok\n", fname);
+        if ( !handle ) fprintf(pysam_stderr,"%s:\n\tdlopen   .. %s\n", fname,dlerror());
+        else fprintf(pysam_stderr,"%s:\n\tdlopen   .. ok\n", fname);
     }
 
     return handle;
@@ -234,11 +234,11 @@ static void *dlopen_plugin(args_t *args, const char *fname)
 
 static void print_plugin_usage_hint(void)
 {
-    fprintf(pysamerr, "\nNo functional bcftools plugins were found");
+    fprintf(pysam_stderr, "\nNo functional bcftools plugins were found");
     if ( !getenv("BCFTOOLS_PLUGINS") )
-        fprintf(pysamerr,". The environment variable BCFTOOLS_PLUGINS is not set.\n\n");
+        fprintf(pysam_stderr,". The environment variable BCFTOOLS_PLUGINS is not set.\n\n");
     else
-        fprintf(pysamerr,
+        fprintf(pysam_stderr,
                 " in\n\tBCFTOOLS_PLUGINS=\"%s\".\n\n"
                 "- Is the plugin path correct?\n\n"
                 "- Run \"bcftools plugin -lv\" for more detailed error output.\n"
@@ -268,19 +268,19 @@ static int load_plugin(args_t *args, const char *fname, int exit_on_error, plugi
     if ( ret )
         plugin->init = NULL;
     else
-        if ( args->verbose ) fprintf(pysamerr,"\tinit     .. ok\n");
+        if ( args->verbose ) fprintf(pysam_stderr,"\tinit     .. ok\n");
 
     plugin->run = (dl_run_f) dlsym(plugin->handle, "run");
     ret = dlerror();
     if ( ret )
         plugin->run = NULL;
     else
-        if ( args->verbose ) fprintf(pysamerr,"\trun      .. ok\n");
+        if ( args->verbose ) fprintf(pysam_stderr,"\trun      .. ok\n");
 
     if ( !plugin->init && !plugin->run )
     {
         if ( exit_on_error ) error("Could not initialize %s, neither run or init found \n", plugin->name);
-        else if ( args->verbose ) fprintf(pysamerr,"\tinit/run .. not found\n");
+        else if ( args->verbose ) fprintf(pysam_stderr,"\tinit/run .. not found\n");
         return -1;
     }
 
@@ -289,7 +289,7 @@ static int load_plugin(args_t *args, const char *fname, int exit_on_error, plugi
     if ( ret )
     {
         if ( exit_on_error ) error("Could not initialize %s, version string not found\n", plugin->name);
-        else if ( args->verbose ) fprintf(pysamerr,"\tversion  .. not found\n");
+        else if ( args->verbose ) fprintf(pysam_stderr,"\tversion  .. not found\n");
         return -1;
     }
 
@@ -337,12 +337,12 @@ static void init_plugin(args_t *args)
     args->plugin.version(&bver, &hver);
     if ( strcmp(bver,bcftools_version()) && !warned_bcftools )
     {
-        fprintf(pysamerr,"WARNING: bcftools version mismatch .. bcftools at %s, the plugin \"%s\" at %s\n", bcftools_version(),args->plugin.name,bver);
+        fprintf(pysam_stderr,"WARNING: bcftools version mismatch .. bcftools at %s, the plugin \"%s\" at %s\n", bcftools_version(),args->plugin.name,bver);
         warned_bcftools = 1;
     }
     if ( strcmp(hver,hts_version()) && !warned_htslib )
     {
-        fprintf(pysamerr,"WARNING: htslib version mismatch .. bcftools at %s, the plugin \"%s\" at %s\n", hts_version(),args->plugin.name,hver);
+        fprintf(pysam_stderr,"WARNING: htslib version mismatch .. bcftools at %s, the plugin \"%s\" at %s\n", hts_version(),args->plugin.name,hver);
         warned_htslib = 1;
     }
     args->drop_header += ret;
@@ -394,8 +394,8 @@ static int list_plugins(args_t *args)
         qsort(plugins, nplugins, sizeof(plugins[0]), cmp_plugin_name);
 
         for (i=0; i<nplugins; i++)
-            printf("\n-- %s --\n%s", plugins[i].name, plugins[i].about());
-        printf("\n");
+            fprintf(pysam_stdout, "\n-- %s --\n%s", plugins[i].name, plugins[i].about());
+        fprintf(pysam_stdout, "\n");
     }
     else
         print_plugin_usage_hint();
@@ -442,29 +442,29 @@ static void destroy_data(args_t *args)
 
 static void usage(args_t *args)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Run user defined plugin\n");
-    fprintf(pysamerr, "Usage:   bcftools plugin <name> [OPTIONS] <file> [-- PLUGIN_OPTIONS]\n");
-    fprintf(pysamerr, "         bcftools +name [OPTIONS] <file>  [-- PLUGIN_OPTIONS]\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "VCF input options:\n");
-    fprintf(pysamerr, "   -e, --exclude <expr>        exclude sites for which the expression is true\n");
-    fprintf(pysamerr, "   -i, --include <expr>        select sites for which the expression is true\n");
-    fprintf(pysamerr, "   -r, --regions <region>      restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "   -R, --regions-file <file>   restrict to regions listed in a file\n");
-    fprintf(pysamerr, "   -t, --targets <region>      similar to -r but streams rather than index-jumps\n");
-    fprintf(pysamerr, "   -T, --targets-file <file>   similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "VCF output options:\n");
-    fprintf(pysamerr, "       --no-version            do not append version and command line to the header\n");
-    fprintf(pysamerr, "   -o, --output <file>         write output to a file [standard output]\n");
-    fprintf(pysamerr, "   -O, --output-type <type>    'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
-    fprintf(pysamerr, "       --threads <int>         number of extra output compression threads [0]\n");
-    fprintf(pysamerr, "Plugin options:\n");
-    fprintf(pysamerr, "   -h, --help                  list plugin's options\n");
-    fprintf(pysamerr, "   -l, --list-plugins          list available plugins. See BCFTOOLS_PLUGINS environment variable and man page for details\n");
-    fprintf(pysamerr, "   -v, --verbose               print debugging information on plugin failure\n");
-    fprintf(pysamerr, "   -V, --version               print version string and exit\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Run user defined plugin\n");
+    fprintf(pysam_stderr, "Usage:   bcftools plugin <name> [OPTIONS] <file> [-- PLUGIN_OPTIONS]\n");
+    fprintf(pysam_stderr, "         bcftools +name [OPTIONS] <file>  [-- PLUGIN_OPTIONS]\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "VCF input options:\n");
+    fprintf(pysam_stderr, "   -e, --exclude <expr>        exclude sites for which the expression is true\n");
+    fprintf(pysam_stderr, "   -i, --include <expr>        select sites for which the expression is true\n");
+    fprintf(pysam_stderr, "   -r, --regions <region>      restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "   -R, --regions-file <file>   restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "   -t, --targets <region>      similar to -r but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "   -T, --targets-file <file>   similar to -R but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "VCF output options:\n");
+    fprintf(pysam_stderr, "       --no-version            do not append version and command line to the header\n");
+    fprintf(pysam_stderr, "   -o, --output <file>         write output to a file [standard output]\n");
+    fprintf(pysam_stderr, "   -O, --output-type <type>    'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
+    fprintf(pysam_stderr, "       --threads <int>         number of extra output compression threads [0]\n");
+    fprintf(pysam_stderr, "Plugin options:\n");
+    fprintf(pysam_stderr, "   -h, --help                  list plugin's options\n");
+    fprintf(pysam_stderr, "   -l, --list-plugins          list available plugins. See BCFTOOLS_PLUGINS environment variable and man page for details\n");
+    fprintf(pysam_stderr, "   -v, --verbose               print debugging information on plugin failure\n");
+    fprintf(pysam_stderr, "   -V, --version               print version string and exit\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 
@@ -552,17 +552,17 @@ int main_plugin(int argc, char *argv[])
     {
         const char *bver, *hver;
         args->plugin.version(&bver, &hver);
-        printf("bcftools  %s using htslib %s\n", bcftools_version(), hts_version());
-        printf("plugin at %s using htslib %s\n\n", bver, hver);
+        fprintf(pysam_stdout, "bcftools  %s using htslib %s\n", bcftools_version(), hts_version());
+        fprintf(pysam_stdout, "plugin at %s using htslib %s\n\n", bver, hver);
         return 0;
     }
 
     if ( usage_only )
     {
         if ( args->plugin.usage )
-            fprintf(pysamerr,"%s",args->plugin.usage());
+            fprintf(pysam_stderr,"%s",args->plugin.usage());
         else
-            fprintf(pysamerr,"Usage: bcftools +%s [General Options] -- [Plugin Options]\n",plugin_name);
+            fprintf(pysam_stderr,"Usage: bcftools +%s [General Options] -- [Plugin Options]\n",plugin_name);
         return 0;
     }
 

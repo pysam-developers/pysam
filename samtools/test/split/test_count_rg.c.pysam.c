@@ -42,7 +42,7 @@ void setup_test_1(bam_hdr_t** hdr_in)
     (*hdr_in)->l_text = strlen(test1);
 }
 
-int main(int argc, char**argv)
+int samtools_test_count_rg_main(int argc, char**argv)
 {
     // test state
     const int NUM_TESTS = 1;
@@ -57,7 +57,7 @@ int main(int argc, char**argv)
                 ++verbose;
                 break;
             default:
-                printf(
+                fprintf(pysam_stdout, 
                        "usage: test_count_rg [-v]\n\n"
                        " -v verbose output\n"
                        );
@@ -66,32 +66,32 @@ int main(int argc, char**argv)
     }
 
 
-    // Setup pysamerr redirect
+    // Setup pysam_stderr redirect
     kstring_t res = { 0, 0, NULL };
-    FILE* orig_pysamerr = fdopen(dup(STDERR_FILENO), "a"); // Save pysamerr
+    FILE* orig_pysam_stderr = fdopen(dup(STDERR_FILENO), "a"); // Save pysam_stderr
     char* tempfname = (optind < argc)? argv[optind] : "test_count_rg.tmp";
     FILE* check = NULL;
 
     // setup
-    if (verbose) printf("BEGIN test 1\n");  // TID test
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 1\n");  // TID test
     bam_hdr_t* hdr1;
     size_t count;
     char** output;
     setup_test_1(&hdr1);
     if (verbose > 1) {
-        printf("hdr1\n");
+        fprintf(pysam_stdout, "hdr1\n");
         dump_hdr(hdr1);
     }
-    if (verbose) printf("RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 1\n");
 
     // test
-    xfreopen(tempfname, "w", pysamerr); // Redirect pysamerr to pipe
+    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
     bool result_1 = count_RG(hdr1, &count, &output);
-    fclose(pysamerr);
+    fclose(pysam_stderr);
 
-    if (verbose) printf("END RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 1\n");
     if (verbose > 1) {
-        printf("b\n");
+        fprintf(pysam_stdout, "b\n");
         dump_hdr(hdr1);
     }
 
@@ -103,7 +103,7 @@ int main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) printf("FAIL test 1\n");
+        if (verbose) fprintf(pysam_stdout, "FAIL test 1\n");
     }
     fclose(check);
 
@@ -114,14 +114,14 @@ int main(int argc, char**argv)
     }
     free(output);
     bam_hdr_destroy(hdr1);
-    if (verbose) printf("END test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END test 1\n");
 
     // Cleanup
     free(res.s);
     remove(tempfname);
     if (failure > 0)
-        fprintf(orig_pysamerr, "%d failures %d successes\n", failure, success);
-    fclose(orig_pysamerr);
+        fprintf(orig_pysam_stderr, "%d failures %d successes\n", failure, success);
+    fclose(orig_pysam_stderr);
 
     return (success == NUM_TESTS)? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -181,14 +181,14 @@ static int tview_func(uint32_t tid, uint32_t pos, int n, const bam_pileup1_t *pl
     }
     tv->n_pre = l;
 /*
-    fprintf(pysamerr, "%d\t", pos+1);
+    fprintf(pysam_stderr, "%d\t", pos+1);
     for (i = 0; i < n; ++i) {
         const bam_pileup1_t *p = pl + i;
-        if (p->is_head) fprintf(pysamerr, "^");
-        if (p->is_tail) fprintf(pysamerr, "$");
-        fprintf(pysamerr, "%d,", p->level);
+        if (p->is_head) fprintf(pysam_stderr, "^");
+        if (p->is_tail) fprintf(pysam_stderr, "$");
+        fprintf(pysam_stderr, "%d,", p->level);
     }
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
 */
     return 0;
 }

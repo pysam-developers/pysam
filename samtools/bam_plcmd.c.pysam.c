@@ -250,7 +250,7 @@ static int mplp_func(void *data, bam1_t *b)
         if (ma->conf->fai && b->core.tid >= 0) {
             has_ref = mplp_get_ref(ma, b->core.tid, &ref, &ref_len);
             if (has_ref && ref_len <= b->core.pos) { // exclude reads outside of the reference sequence
-                fprintf(pysamerr,"[%s] Skipping because %d is outside of %d [ref:%d]\n",
+                fprintf(pysam_stderr,"[%s] Skipping because %d is outside of %d [ref:%d]\n",
                         __func__, b->core.pos, ref_len, b->core.tid);
                 skip = 1;
                 continue;
@@ -287,7 +287,7 @@ static void group_smpl(mplp_pileup_t *m, bam_sample_t *sm, kstring_t *buf,
             if (id < 0) id = bam_smpl_rg2smid(sm, fn[i], 0, buf);
             if (id < 0 || id >= m->n) {
                 assert(q); // otherwise a bug
-                fprintf(pysamerr, "[%s] Read group %s used in file %s but absent from the header or an alignment missing read group.\n", __func__, (char*)q+1, fn[i]);
+                fprintf(pysam_stderr, "[%s] Read group %s used in file %s but absent from the header or an alignment missing read group.\n", __func__, (char*)q+1, fn[i]);
                 exit(EXIT_FAILURE);
             }
             if (m->n_plp[id] == m->m_plp[id]) {
@@ -338,7 +338,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
     sm = bam_smpl_init();
 
     if (n == 0) {
-        fprintf(pysamerr,"[%s] no input file/data given\n", __func__);
+        fprintf(pysam_stderr,"[%s] no input file/data given\n", __func__);
         exit(EXIT_FAILURE);
     }
 
@@ -349,15 +349,15 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
         data[i]->fp = sam_open_format(fn[i], "rb", &conf->ga.in);
         if ( !data[i]->fp )
         {
-            fprintf(pysamerr, "[%s] failed to open %s: %s\n", __func__, fn[i], strerror(errno));
+            fprintf(pysam_stderr, "[%s] failed to open %s: %s\n", __func__, fn[i], strerror(errno));
             exit(EXIT_FAILURE);
         }
         if (hts_set_opt(data[i]->fp, CRAM_OPT_DECODE_MD, 0)) {
-            fprintf(pysamerr, "Failed to set CRAM_OPT_DECODE_MD value\n");
+            fprintf(pysam_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
             exit(EXIT_FAILURE);
         }
         if (conf->fai_fname && hts_set_fai_filename(data[i]->fp, conf->fai_fname) != 0) {
-            fprintf(pysamerr, "[%s] failed to process %s: %s\n",
+            fprintf(pysam_stderr, "[%s] failed to process %s: %s\n",
                     __func__, conf->fai_fname, strerror(errno));
             exit(EXIT_FAILURE);
         }
@@ -365,7 +365,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
         data[i]->ref = &mp_ref;
         h_tmp = sam_hdr_read(data[i]->fp);
         if ( !h_tmp ) {
-            fprintf(pysamerr,"[%s] fail to read the header of %s\n", __func__, fn[i]);
+            fprintf(pysam_stderr,"[%s] fail to read the header of %s\n", __func__, fn[i]);
             exit(EXIT_FAILURE);
         }
         bam_smpl_add(sm, fn[i], (conf->flag&MPLP_IGNORE_RG)? 0 : h_tmp->text);
@@ -374,11 +374,11 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
         if (conf->reg) {
             hts_idx_t *idx = sam_index_load(data[i]->fp, fn[i]);
             if (idx == NULL) {
-                fprintf(pysamerr, "[%s] fail to load index for %s\n", __func__, fn[i]);
+                fprintf(pysam_stderr, "[%s] fail to load index for %s\n", __func__, fn[i]);
                 exit(EXIT_FAILURE);
             }
             if ( (data[i]->iter=sam_itr_querys(idx, h_tmp, conf->reg)) == 0) {
-                fprintf(pysamerr, "[E::%s] fail to parse region '%s' with %s\n", __func__, conf->reg, fn[i]);
+                fprintf(pysam_stderr, "[E::%s] fail to parse region '%s' with %s\n", __func__, conf->reg, fn[i]);
                 exit(EXIT_FAILURE);
             }
             if (i == 0) beg0 = data[i]->iter->beg, end0 = data[i]->iter->end;
@@ -403,7 +403,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
     gplp.m_plp = calloc(sm->n, sizeof(int));
     gplp.plp = calloc(sm->n, sizeof(bam_pileup1_t*));
 
-    fprintf(pysamerr, "[%s] %d samples in %d input files\n", __func__, sm->n, n);
+    fprintf(pysam_stderr, "[%s] %d samples in %d input files\n", __func__, sm->n, n);
     // write the VCF header
     if (conf->flag & MPLP_BCF)
     {
@@ -415,7 +415,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
 
         bcf_fp = bcf_open(conf->output_fname? conf->output_fname : "-", mode);
         if (bcf_fp == NULL) {
-            fprintf(pysamerr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname? conf->output_fname : "standard output", strerror(errno));
+            fprintf(pysam_stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname? conf->output_fname : "standard output", strerror(errno));
             exit(EXIT_FAILURE);
         }
 
@@ -531,10 +531,10 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
         }
     }
     else {
-        pileup_fp = conf->output_fname? fopen(conf->output_fname, "w") : stdout;
+        pileup_fp = conf->output_fname? fopen(conf->output_fname, "w") : pysam_stdout;
 
         if (pileup_fp == NULL) {
-            fprintf(pysamerr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname, strerror(errno));
+            fprintf(pysam_stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
@@ -544,10 +544,10 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
     if ( conf->flag & MPLP_SMART_OVERLAPS ) bam_mplp_init_overlaps(iter);
     max_depth = conf->max_depth;
     if (max_depth * sm->n > 1<<20)
-        fprintf(pysamerr, "(%s) Max depth is above 1M. Potential memory hog!\n", __func__);
+        fprintf(pysam_stderr, "(%s) Max depth is above 1M. Potential memory hog!\n", __func__);
     if (max_depth * sm->n < 8000) {
         max_depth = 8000 / sm->n;
-        fprintf(pysamerr, "<%s> Set max per-file depth to %d\n", __func__, max_depth);
+        fprintf(pysam_stderr, "<%s> Set max per-file depth to %d\n", __func__, max_depth);
     }
     max_indel_depth = conf->max_indel_depth * sm->n;
     bam_mplp_set_maxcnt(iter, max_depth);
@@ -641,7 +641,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn)
                             if ( c < conf->min_baseQ ) continue;
 
                             if (last++) putc(',', pileup_fp);
-                            fprintf(pileup_fp, "%d", plp[i][j].qpos + 1); // FIXME: printf() is very slow...
+                            fprintf(pileup_fp, "%d", plp[i][j].qpos + 1); // FIXME: fprintf(pysam_stdout, ) is very slow...
                         }
                     }
                 }
@@ -697,7 +697,7 @@ int read_file_list(const char *file_list,int *n,char **argv[])
     FILE *fh = fopen(file_list,"r");
     if ( !fh )
     {
-        fprintf(pysamerr,"%s: %s\n", file_list,strerror(errno));
+        fprintf(pysam_stderr,"%s: %s\n", file_list,strerror(errno));
         return 1;
     }
 
@@ -719,9 +719,9 @@ int read_file_list(const char *file_list,int *n,char **argv[])
             for (i=0; i<len; i++)
                 if (!isprint(buf[i])) { safe_to_print = 0; break; }
             if ( safe_to_print )
-                fprintf(pysamerr,"The file list \"%s\" appears broken, could not locate: %s\n", file_list,buf);
+                fprintf(pysam_stderr,"The file list \"%s\" appears broken, could not locate: %s\n", file_list,buf);
             else
-                fprintf(pysamerr,"Does the file \"%s\" really contain a list of files and do all exist?\n", file_list);
+                fprintf(pysam_stderr,"Does the file \"%s\" really contain a list of files and do all exist?\n", file_list);
             return 1;
         }
 
@@ -732,7 +732,7 @@ int read_file_list(const char *file_list,int *n,char **argv[])
     fclose(fh);
     if ( !nfiles )
     {
-        fprintf(pysamerr,"No files read from %s\n", file_list);
+        fprintf(pysam_stderr,"No files read from %s\n", file_list);
         return 1;
     }
     *argv = files;
@@ -748,11 +748,11 @@ int parse_format_flag(const char *str)
     for(i=0; i<n_tags; i++)
     {
         if ( !strcasecmp(tags[i],"DP") ) flag |= B2B_FMT_DP;
-        else if ( !strcasecmp(tags[i],"DV") ) { flag |= B2B_FMT_DV; fprintf(pysamerr, "[warning] tag DV functional, but deprecated. Please switch to `AD` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"DV") ) { flag |= B2B_FMT_DV; fprintf(pysam_stderr, "[warning] tag DV functional, but deprecated. Please switch to `AD` in future.\n"); }
         else if ( !strcasecmp(tags[i],"SP") ) flag |= B2B_FMT_SP;
-        else if ( !strcasecmp(tags[i],"DP4") ) { flag |= B2B_FMT_DP4; fprintf(pysamerr, "[warning] tag DP4 functional, but deprecated. Please switch to `ADF` and `ADR` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"DPR") ) { flag |= B2B_FMT_DPR; fprintf(pysamerr, "[warning] tag DPR functional, but deprecated. Please switch to `AD` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"INFO/DPR") ) { flag |= B2B_INFO_DPR; fprintf(pysamerr, "[warning] tag INFO/DPR functional, but deprecated. Please switch to `INFO/AD` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"DP4") ) { flag |= B2B_FMT_DP4; fprintf(pysam_stderr, "[warning] tag DP4 functional, but deprecated. Please switch to `ADF` and `ADR` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"DPR") ) { flag |= B2B_FMT_DPR; fprintf(pysam_stderr, "[warning] tag DPR functional, but deprecated. Please switch to `AD` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"INFO/DPR") ) { flag |= B2B_INFO_DPR; fprintf(pysam_stderr, "[warning] tag INFO/DPR functional, but deprecated. Please switch to `INFO/AD` in future.\n"); }
         else if ( !strcasecmp(tags[i],"AD") ) flag |= B2B_FMT_AD;
         else if ( !strcasecmp(tags[i],"ADF") ) flag |= B2B_FMT_ADF;
         else if ( !strcasecmp(tags[i],"ADR") ) flag |= B2B_FMT_ADR;
@@ -761,7 +761,7 @@ int parse_format_flag(const char *str)
         else if ( !strcasecmp(tags[i],"INFO/ADR") ) flag |= B2B_INFO_ADR;
         else
         {
-            fprintf(pysamerr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
+            fprintf(pysam_stderr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
             exit(EXIT_FAILURE);
         }
         free(tags[i]);
@@ -923,11 +923,11 @@ int bam_mpileup(int argc, char *argv[])
         case 'x': mplp.flag &= ~MPLP_SMART_OVERLAPS; break;
         case  1 :
             mplp.rflag_require = bam_str2flag(optarg);
-            if ( mplp.rflag_require<0 ) { fprintf(pysamerr,"Could not parse --rf %s\n", optarg); return 1; }
+            if ( mplp.rflag_require<0 ) { fprintf(pysam_stderr,"Could not parse --rf %s\n", optarg); return 1; }
             break;
         case  2 :
             mplp.rflag_filter = bam_str2flag(optarg);
-            if ( mplp.rflag_filter<0 ) { fprintf(pysamerr,"Could not parse --ff %s\n", optarg); return 1; }
+            if ( mplp.rflag_filter<0 ) { fprintf(pysam_stderr,"Could not parse --ff %s\n", optarg); return 1; }
             break;
         case  3 : mplp.output_fname = optarg; break;
         case  4 : mplp.openQ = atoi(optarg); break;
@@ -951,9 +951,9 @@ int bam_mpileup(int argc, char *argv[])
         case 'v': mplp.flag |= MPLP_BCF | MPLP_VCF; break;
         case 'u': mplp.flag |= MPLP_NO_COMP | MPLP_BCF; break;
         case 'B': mplp.flag &= ~MPLP_REALN; break;
-        case 'D': mplp.fmt_flag |= B2B_FMT_DP; fprintf(pysamerr, "[warning] samtools mpileup option `-D` is functional, but deprecated. Please switch to `-t DP` in future.\n"); break;
-        case 'S': mplp.fmt_flag |= B2B_FMT_SP; fprintf(pysamerr, "[warning] samtools mpileup option `-S` is functional, but deprecated. Please switch to `-t SP` in future.\n"); break;
-        case 'V': mplp.fmt_flag |= B2B_FMT_DV; fprintf(pysamerr, "[warning] samtools mpileup option `-V` is functional, but deprecated. Please switch to `-t DV` in future.\n"); break;
+        case 'D': mplp.fmt_flag |= B2B_FMT_DP; fprintf(pysam_stderr, "[warning] samtools mpileup option `-D` is functional, but deprecated. Please switch to `-t DP` in future.\n"); break;
+        case 'S': mplp.fmt_flag |= B2B_FMT_SP; fprintf(pysam_stderr, "[warning] samtools mpileup option `-S` is functional, but deprecated. Please switch to `-t SP` in future.\n"); break;
+        case 'V': mplp.fmt_flag |= B2B_FMT_DV; fprintf(pysam_stderr, "[warning] samtools mpileup option `-V` is functional, but deprecated. Please switch to `-t DV` in future.\n"); break;
         case 'I': mplp.flag |= MPLP_NO_INDEL; break;
         case 'E': mplp.flag |= MPLP_REDO_BAQ; break;
         case '6': mplp.flag |= MPLP_ILLUMINA13; break;
@@ -983,7 +983,7 @@ int bam_mpileup(int argc, char *argv[])
                 char buf[1024];
                 mplp.rghash = khash_str2int_init();
                 if ((fp_rg = fopen(optarg, "r")) == NULL)
-                    fprintf(pysamerr, "(%s) Fail to open file %s. Continue anyway.\n", __func__, optarg);
+                    fprintf(pysam_stderr, "(%s) Fail to open file %s. Continue anyway.\n", __func__, optarg);
                 while (!feof(fp_rg) && fscanf(fp_rg, "%s", buf) > 0) // this is not a good style, but forgive me...
                     khash_str2int_inc(mplp.rghash, strdup(buf));
                 fclose(fp_rg);
@@ -994,7 +994,7 @@ int bam_mpileup(int argc, char *argv[])
             if (parse_sam_global_opt(c, optarg, lopts, &mplp.ga) == 0) break;
             /* else fall-through */
         case '?':
-            print_usage(pysamerr, &mplp);
+            print_usage(pysam_stderr, &mplp);
             return 1;
         }
     }
@@ -1006,13 +1006,13 @@ int bam_mpileup(int argc, char *argv[])
 
     if ( !(mplp.flag&MPLP_REALN) && mplp.flag&MPLP_REDO_BAQ )
     {
-        fprintf(pysamerr,"Error: The -B option cannot be combined with -E\n");
+        fprintf(pysam_stderr,"Error: The -B option cannot be combined with -E\n");
         return 1;
     }
     if (use_orphan) mplp.flag &= ~MPLP_NO_ORPHAN;
     if (argc == 1)
     {
-        print_usage(pysamerr, &mplp);
+        print_usage(pysam_stderr, &mplp);
         return 1;
     }
     int ret;

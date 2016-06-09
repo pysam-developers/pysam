@@ -360,7 +360,7 @@ static int bcf_get_info_value(bcf1_t *line, int info_id, int ivec, void *value)
         case BCF_BT_INT16: BRANCH(int16_t, p[j]==bcf_int16_missing, p[j]==bcf_int16_vector_end, int); break;
         case BCF_BT_INT32: BRANCH(int32_t, p[j]==bcf_int32_missing, p[j]==bcf_int32_vector_end, int); break;
         case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(p[j]), bcf_float_is_vector_end(p[j]), float); break;
-        default: fprintf(pysamerr,"todo: type %d\n", info->type); exit(1); break;
+        default: fprintf(pysam_stderr,"todo: type %d\n", info->type); exit(1); break;
     }
     #undef BRANCH
     return -1;  // this shouldn't happen
@@ -586,7 +586,7 @@ gt_length_too_big:
             case BCF_BT_INT8:  BRANCH(int8_t); break;
             case BCF_BT_INT16: BRANCH(int16_t); break;
             case BCF_BT_INT32: BRANCH(int32_t); break;
-            default: fprintf(pysamerr,"FIXME: type %d in bcf_format_gt?\n", fmt->type); abort(); break;
+            default: fprintf(pysam_stderr,"FIXME: type %d in bcf_format_gt?\n", fmt->type); abort(); break;
         }
         #undef BRANCH
 
@@ -1045,7 +1045,7 @@ static int vector_logic_or(token_t *atok, token_t *btok, int or_type)
         { \
             if ( (atok)->values[0] CMP_OP (btok)->values[0] ) { pass_site = 1; } \
         } \
-        /*fprintf(pysamerr,"pass=%d\n", pass_site);*/ \
+        /*fprintf(pysam_stderr,"pass=%d\n", pass_site);*/ \
         (ret) = pass_site; \
     } \
 }
@@ -1394,16 +1394,16 @@ static void filter_debug_print(token_t *toks, token_t **tok_ptrs, int ntoks)
         if ( tok->tok_type==TOK_VAL )
         {
             if ( tok->key )
-                fprintf(pysamerr,"%s", tok->key);
+                fprintf(pysam_stderr,"%s", tok->key);
             else if ( tok->tag )
-                fprintf(pysamerr,"%s", tok->tag);
+                fprintf(pysam_stderr,"%s", tok->tag);
             else
-                fprintf(pysamerr,"%e", tok->threshold);
+                fprintf(pysam_stderr,"%e", tok->threshold);
         }
         else
-            fprintf(pysamerr,"%c", TOKEN_STRING[tok->tok_type]);
-        if ( tok->setter ) fprintf(pysamerr,"\t[setter %p]", tok->setter);
-        fprintf(pysamerr,"\n");
+            fprintf(pysam_stderr,"%c", TOKEN_STRING[tok->tok_type]);
+        if ( tok->setter ) fprintf(pysam_stderr,"\t[setter %p]", tok->setter);
+        fprintf(pysam_stderr,"\n");
     }
 }
 
@@ -1427,8 +1427,8 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
         ret = filters_next_token(&tmp, &len);
         if ( ret==-1 ) error("Missing quotes in: %s\n", str);
 
-        //fprintf(pysamerr,"token=[%c] .. [%s] %d\n", TOKEN_STRING[ret], tmp, len);
-        //int i; for (i=0; i<nops; i++) fprintf(pysamerr," .%c.", TOKEN_STRING[ops[i]]); fprintf(pysamerr,"\n");
+        //fprintf(pysam_stderr,"token=[%c] .. [%s] %d\n", TOKEN_STRING[ret], tmp, len);
+        //int i; for (i=0; i<nops; i++) fprintf(pysam_stderr," .%c.", TOKEN_STRING[ops[i]]); fprintf(pysam_stderr,"\n");
 
         if ( ret==TOK_LFT )         // left bracket
         {

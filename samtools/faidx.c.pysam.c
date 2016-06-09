@@ -42,14 +42,14 @@ static void error(const char *format, ...)
     {
         va_list ap;
         va_start(ap, format);
-        vfprintf(pysamerr, format, ap);
+        vfprintf(pysam_stderr, format, ap);
         va_end(ap);
     }
     else
     {
-        fprintf(pysamerr, "\n");
-        fprintf(pysamerr, "Usage:   samtools faidx <file.fa|file.fa.gz> [<reg> [...]]\n");
-        fprintf(pysamerr, "\n");
+        fprintf(pysam_stderr, "\n");
+        fprintf(pysam_stderr, "Usage:   samtools faidx <file.fa|file.fa.gz> [<reg> [...]]\n");
+        fprintf(pysam_stderr, "\n");
     }
     exit(-1);
 }
@@ -82,15 +82,15 @@ int faidx_main(int argc, char *argv[])
 
     while ( ++optind<argc )
     {
-        printf(">%s\n", argv[optind]);
+        fprintf(pysam_stdout, ">%s\n", argv[optind]);
         int i, j, seq_len;
         char *seq = fai_fetch(fai, argv[optind], &seq_len);
         if ( seq_len < 0 ) error("Failed to fetch sequence in %s\n", argv[optind]);
         for (i=0; i<seq_len; i+=60)
         {
             for (j=0; j<60 && i+j<seq_len; j++)
-                putchar(seq[i+j]);
-            putchar('\n');
+                fputc(seq[i+j], pysam_stdout);
+            fputc('\n', pysam_stdout);
         }
         free(seq);
     }

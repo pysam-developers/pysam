@@ -104,7 +104,7 @@ char *msprintf(const char *fmt, ...)
 /*
  *  char *t, *p = str;
  *  t = column_next(p, '\t');
- *  if ( strlen("<something>")==t-p && !strncmp(p,"<something>",t-p) ) printf("found!\n");
+ *  if ( strlen("<something>")==t-p && !strncmp(p,"<something>",t-p) ) fprintf(pysam_stdout, "found!\n");
  *
  *  char *t;
  *  t = column_next(str, '\t'); if ( !*t ) error("expected field\n", str);
@@ -574,7 +574,7 @@ static void do_train(args_t *args)
             fprintf(fp,"%e\t%f\t%f\n", prev_score, (float)igood/ngood, (float)ibad/nbad);
         if ( !printed && (float)igood/ngood > 0.9 )
         {
-            printf("%.2f\t%.2f\t%e\t# %% of bad [1] and good [2] sites at a cutoff [3]\n", 100.*ibad/nbad,100.*igood/ngood,prev_score);
+            fprintf(pysam_stdout, "%.2f\t%.2f\t%e\t# %% of bad [1] and good [2] sites at a cutoff [3]\n", 100.*ibad/nbad,100.*igood/ngood,prev_score);
             printed = 1;
         }
 
@@ -582,7 +582,7 @@ static void do_train(args_t *args)
         else if ( igood<ngood ) prev_score = good[igood];
         else prev_score = bad[ibad];
     }
-    if ( !printed ) printf("%.2f\t%.2f\t%e\t# %% of bad [1] and good [2] sites at a cutoff [3]\n", 100.*ibad/nbad,100.*igood/ngood,prev_score);
+    if ( !printed ) fprintf(pysam_stdout, "%.2f\t%.2f\t%e\t# %% of bad [1] and good [2] sites at a cutoff [3]\n", 100.*ibad/nbad,100.*igood/ngood,prev_score);
     if ( fp )
     {
         if ( fclose(fp) ) error("%s.eval: fclose failed: %s\n",args->prefix,strerror(errno));
@@ -607,36 +607,36 @@ static void do_classify(args_t *args)
             case MERGE_MAX: score = get_max_score(args, -1); break;
             case MERGE_AVG: score = get_avg_score(args, -1); break;
         }
-        printf("%e\n", 1.0 - score/max_score);
+        fprintf(pysam_stdout, "%e\n", 1.0 - score/max_score);
     }
     annots_reader_close(args);
 }
 
 static void usage(void)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   SOM (Self-Organizing Map) filtering.\n");
-    fprintf(pysamerr, "Usage:   bcftools som --train    [options] <annots.tab.gz>\n");
-    fprintf(pysamerr, "         bcftools som --classify [options]\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Model training options:\n");
-    fprintf(pysamerr, "    -f, --nfold <int>                  n-fold cross-validation (number of maps) [5]\n");
-    fprintf(pysamerr, "    -p, --prefix <string>              prefix of output files\n");
-    fprintf(pysamerr, "    -s, --size <int>                   map size [20]\n");
-    fprintf(pysamerr, "    -t, --train                        \n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Classifying options:\n");
-    fprintf(pysamerr, "    -c, --classify                     \n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Experimental training options (no reason to change):\n");
-    fprintf(pysamerr, "    -b, --bmu-threshold <float>        threshold for selection of best-matching unit [0.9]\n");
-    fprintf(pysamerr, "    -d, --som-dimension <int>          SOM dimension [2]\n");
-    fprintf(pysamerr, "    -e, --exclude-bad                  exclude bad sites from training, use for evaluation only\n");
-    fprintf(pysamerr, "    -l, --learning-rate <float>        learning rate [1.0]\n");
-    fprintf(pysamerr, "    -m, --merge <min|max|avg>          -f merge algorithm [avg]\n");
-    fprintf(pysamerr, "    -n, --ntrain-sites <int>           effective number of training sites [number of good sites]\n");
-    fprintf(pysamerr, "    -r, --random-seed <int>            random seed, 0 for time() [1]\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   SOM (Self-Organizing Map) filtering.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools som --train    [options] <annots.tab.gz>\n");
+    fprintf(pysam_stderr, "         bcftools som --classify [options]\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Model training options:\n");
+    fprintf(pysam_stderr, "    -f, --nfold <int>                  n-fold cross-validation (number of maps) [5]\n");
+    fprintf(pysam_stderr, "    -p, --prefix <string>              prefix of output files\n");
+    fprintf(pysam_stderr, "    -s, --size <int>                   map size [20]\n");
+    fprintf(pysam_stderr, "    -t, --train                        \n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Classifying options:\n");
+    fprintf(pysam_stderr, "    -c, --classify                     \n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Experimental training options (no reason to change):\n");
+    fprintf(pysam_stderr, "    -b, --bmu-threshold <float>        threshold for selection of best-matching unit [0.9]\n");
+    fprintf(pysam_stderr, "    -d, --som-dimension <int>          SOM dimension [2]\n");
+    fprintf(pysam_stderr, "    -e, --exclude-bad                  exclude bad sites from training, use for evaluation only\n");
+    fprintf(pysam_stderr, "    -l, --learning-rate <float>        learning rate [1.0]\n");
+    fprintf(pysam_stderr, "    -m, --merge <min|max|avg>          -f merge algorithm [avg]\n");
+    fprintf(pysam_stderr, "    -n, --ntrain-sites <int>           effective number of training sites [number of good sites]\n");
+    fprintf(pysam_stderr, "    -r, --random-seed <int>            random seed, 0 for time() [1]\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 
@@ -692,7 +692,7 @@ int main_vcfsom(int argc, char *argv[])
             case 'd':
                 args->ndim = atoi(optarg);
                 if ( args->ndim<2 ) error("Expected -d >=2, got %d\n", args->ndim);
-                if ( args->ndim>3 ) fprintf(pysamerr,"Warning: This will take a long time and is not going to make the results better: -d %d\n", args->ndim);
+                if ( args->ndim>3 ) fprintf(pysam_stderr,"Warning: This will take a long time and is not going to make the results better: -d %d\n", args->ndim);
                 break;
             case 't': args->action = SOM_TRAIN; break;
             case 'c': args->action = SOM_CLASSIFY; break;

@@ -18,15 +18,28 @@ else:
 
 if IS_PYTHON3:
     def force_str(s):
-        return s.decode('ascii')
+        try:
+            return s.decode('ascii')
+        except AttributeError:
+            return s
+    def force_bytes(s):
+        try:
+            return s.encode('ascii')
+        except AttributeError:
+            return s
 else:
     def force_str(s):
+        return s
+    def force_bytes(s):
         return s
 
 
 def openfile(fn):
     if fn.endswith(".gz"):
-        return gzip.open(fn)
+        try:
+            return gzip.open(fn, "rt", encoding="utf-8")
+        except TypeError:
+            return gzip.open(fn, "r")
     else:
         return open(fn)
 
@@ -59,8 +72,9 @@ def checkBinaryEqual(filename1, filename2):
     return found
 
 
-def checkSamtoolsViewEqual(filename1, filename2,
-                           without_header=False):
+def check_samtools_view_equal(
+        filename1, filename2,
+        without_header=False):
     '''return true if the two files are equal in their
     content through samtools view.
     '''
@@ -139,7 +153,7 @@ def checkFieldEqual(cls, read1, read2, exclude=[]):
                         (n, getattr(read1, n), getattr(read2, n)))
 
 
-def check_lines_equal(cls, a, b, sort=False, filter_f=None):
+def check_lines_equal(cls, a, b, sort=False, filter_f=None, msg=None):
     """check if contents of two files are equal comparing line-wise.
 
     sort: bool
@@ -147,17 +161,17 @@ def check_lines_equal(cls, a, b, sort=False, filter_f=None):
     filter_f:
        remover lines in both a and b where expression is True
     """
-
     aa = openfile(a).readlines()
     bb = openfile(b).readlines()
 
     if filter_f is not None:
-        aa = [x for x in aa if not filter_f]
-        bb = [x for x in bb if not filter_f]
+        aa = [x for x in aa if not filter_f(x)]
+        bb = [x for x in bb if not filter_f(x)]
+
     if sort:
-        cls.assertEqual(sorted(aa), sorted(bb))
+        cls.assertEqual(sorted(aa), sorted(bb), msg)
     else:
-        cls.assertEqual(aa, bb)
+        cls.assertEqual(aa, bb, msg)
 
 
 def get_temp_filename(suffix=""):

@@ -12,23 +12,26 @@
 # For samtools, type:
 # rm -rf samtools
 # python import.py samtools download/samtools
+#
 # Manually, then:
 # modify config.h to set compatibility flags
-# change bamtk.c.pysam.c/main to bamtk.c.pysam.c/samtools_main
 #
 # For bcftools, type:
 # rm -rf bedtools
 # python import.py bedtools download/bedtools
+# rm -rf bedtools/test bedtools/plugins
+
 import fnmatch
 import os
 import re
 import shutil
 import sys
+import hashlib
 
 
 EXCLUDE = {
     "samtools": (
-        "razip.c", "bgzip.c", "main.c", "bamtk.c",
+        "razip.c", "bgzip.c", "main.c",
         "calDepth.c", "bam2bed.c", "wgsim.c",
         "md5fa.c", "md5sum-lite.c", "maq2sam.c",
         "bamcheck.c", "chk_indel.c", "vcf-miniview.c",
@@ -36,7 +39,7 @@ EXCLUDE = {
         "hfile_irods.c",  # requires irods library
     ),
     "bcftools": (
-        "test", "plugins", "peakfit.c", "main.c",
+        "test", "plugins", "peakfit.c",
         "peakfit.h",
         # needs to renamed, name conflict with samtools reheader
         "reheader.c",
@@ -45,6 +48,13 @@ EXCLUDE = {
         'htslib/tabix.c', 'htslib/bgzip.c',
         'htslib/htsfile.c', 'htslib/hfile_irods.c'),
 }
+
+
+MAIN = {
+    "samtools": "bamtk",
+    "bcftools": "main"
+}
+
 
 
 def locate(pattern, root=os.curdir):
@@ -58,20 +68,57 @@ def locate(pattern, root=os.curdir):
 
 def _update_pysam_files(cf, destdir):
     '''update pysam files applying redirection of ouput'''
+    basename = os.path.basename(destdir)
     for filename in cf:
         if not filename:
             continue
         dest = filename + ".pysam.c"
         with open(filename) as infile:
+            lines = "".join(infile.readlines())
             with open(dest, "w") as outfile:
                 outfile.write('#include "pysam.h"\n\n')
-                outfile.write(
-                    re.sub("stderr", "pysamerr", "".join(infile.readlines())))
+                subname, _ = os.path.splitext(os.path.basename(filename))
+                if subname in MAIN.get(basename, []):
+                    lines = re.sub("int main\(", "int {}_main(".format(
+                        basename), lines)
+                else:
+                    lines = re.sub("int main\(", "int {}_{}_main(".format(
+                        basename, subname), lines)
+                lines = re.sub("stderr", "pysam_stderr", lines)
+                lines = re.sub("stdout", "pysam_stdout", lines)
+                lines = re.sub(" printf\(", " fprintf(pysam_stdout, ", lines)
+                lines = re.sub("([^kf])puts\(([^)]+)\)",
+                               r"\1fputs(\2, pysam_stdout) & fputc('\\n', pysam_stdout)",
+                               lines)
+                lines = re.sub("putchar\(([^)]+)\)",
+                               r"fputc(\1, pysam_stdout)", lines)
+
+                fn = os.path.basename(filename)
+                # some specific fixes:
+                SPECIFIC_SUBSTITUTIONS = {
+                    "bam_md.c": (
+                        'sam_open_format("-", mode_w',
+                        'sam_open_format(pysam_stdout_fn, mode_w'),
+                    "phase.c": (
+                        'putc("ACGT"[f->seq[j] == 1? (c&3, pysam_stdout) : (c>>16&3)]);',
+                        'putc("ACGT"[f->seq[j] == 1? (c&3) : (c>>16&3)], pysam_stdout);'),
+                    "cut_target.c": (
+                        'putc(33 + (cns[j]>>8>>2, pysam_stdout));',
+                        'putc(33 + (cns[j]>>8>>2), pysam_stdout);')
+                    }
+                if fn in SPECIFIC_SUBSTITUTIONS:
+                    lines = lines.replace(
+                        SPECIFIC_SUBSTITUTIONS[fn][0],
+                        SPECIFIC_SUBSTITUTIONS[fn][1])
+                outfile.write(lines)
+
             with open(os.path.join(destdir, "pysam.h"), "w")as outfile:
                 outfile.write("""#ifndef PYSAM_H
 #define PYSAM_H
 #include "stdio.h"
-extern FILE * pysamerr;
+extern FILE * pysam_stderr;
+extern FILE * pysam_stdout;
+extern const char * pysam_stdout_fn;
 #endif
 """)
 

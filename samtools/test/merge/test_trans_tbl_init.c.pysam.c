@@ -36,16 +36,16 @@ typedef struct refseq_info {
 } refseq_info_t;
 
 void dump_header(bam_hdr_t* hdr) {
-    printf("->n_targets:(%d)\n", hdr->n_targets);
+    fprintf(pysam_stdout, "->n_targets:(%d)\n", hdr->n_targets);
     int i;
     for (i = 0; i < hdr->n_targets; ++i) {
-        printf("->target_name[%d]:(%s)\n",i,hdr->target_name[i]);
-        printf("->target_len[%d]:(%d)\n",i,hdr->target_len[i]);
+        fprintf(pysam_stdout, "->target_name[%d]:(%s)\n",i,hdr->target_name[i]);
+        fprintf(pysam_stdout, "->target_len[%d]:(%d)\n",i,hdr->target_len[i]);
     }
 
-    printf("->text:(");
-    fwrite((void*)hdr->text, (size_t) hdr->l_text, 1, stdout);
-    printf(")\n");
+    fprintf(pysam_stdout, "->text:(");
+    fwrite((void*)hdr->text, (size_t) hdr->l_text, 1, pysam_stdout);
+    fprintf(pysam_stdout, ")\n");
 }
 
 static int populate_merged_header(bam_hdr_t *hdr, merged_header_t *merged_hdr) {
@@ -327,7 +327,7 @@ bool check_test_6(bam_hdr_t* translate, bam_hdr_t* out, trans_tbl_t* tbl) {
     return true;
 }
 
-int main(int argc, char**argv)
+int samtools_test_trans_tbl_init_main(int argc, char**argv)
 {
     const int NUM_TESTS = 6;
     int verbose = 0;
@@ -351,7 +351,7 @@ int main(int argc, char**argv)
     bam_hdr_t* out;
     bam_hdr_t* translate;
 
-    if (verbose) printf("BEGIN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 1\n");
     // setup
     trans_tbl_t tbl_1;
     merged_header_t *merged_hdr = init_merged_header();
@@ -359,36 +359,36 @@ int main(int argc, char**argv)
     assert(translate);
     // test
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
     }
-    if (verbose) printf("RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 1\n");
     trans_tbl_init(merged_hdr, translate, &tbl_1, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
-    if (verbose) printf("END RUN test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 1\n");
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
-        printf("out\n");
+        fprintf(pysam_stdout, "out\n");
         dump_header(out);
     }
     if (check_test_1(translate, out, &tbl_1)) {
-        if (verbose) printf("Test 1 : PASS\n");
+        if (verbose) fprintf(pysam_stdout, "Test 1 : PASS\n");
         ++success;
     } else {
-        if (verbose) printf("Test 1 : FAIL\n");
-        fprintf(pysamerr, "Test 1 : FAIL\n");
+        if (verbose) fprintf(pysam_stdout, "Test 1 : FAIL\n");
+        fprintf(pysam_stderr, "Test 1 : FAIL\n");
         ++failure;
     }
     // teardown
     bam_hdr_destroy(translate);
     bam_hdr_destroy(out);
     trans_tbl_destroy(&tbl_1);
-    if (verbose) printf("END test 1\n");
+    if (verbose) fprintf(pysam_stdout, "END test 1\n");
 
     // test
-    if (verbose) printf("BEGIN test 2\n");
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 2\n");
     // reinit
     trans_tbl_t tbl_2;
 
@@ -396,108 +396,108 @@ int main(int argc, char**argv)
     translate = setup_test_2(merged_hdr);
     assert(translate);
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
     }
-    if (verbose) printf("RUN test 2\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 2\n");
     trans_tbl_init(merged_hdr, translate, &tbl_2, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
-    if (verbose) printf("END RUN test 2\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 2\n");
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
-        printf("out\n");
+        fprintf(pysam_stdout, "out\n");
         dump_header(out);
     }
     if (check_test_2(translate, out, &tbl_2)) {
-        if (verbose) printf("Test 2 : PASS\n");
+        if (verbose) fprintf(pysam_stdout, "Test 2 : PASS\n");
         ++success;
     } else {
-        if (verbose) printf("Test 2 : FAIL\n");
-        fprintf(pysamerr, "Test 2 : FAIL\n");
+        if (verbose) fprintf(pysam_stdout, "Test 2 : FAIL\n");
+        fprintf(pysam_stderr, "Test 2 : FAIL\n");
         ++failure;
     }
     // teardown
     bam_hdr_destroy(translate);
     bam_hdr_destroy(out);
     trans_tbl_destroy(&tbl_2);
-    if (verbose) printf("END test 2\n");
+    if (verbose) fprintf(pysam_stdout, "END test 2\n");
 
     // test
-    if (verbose) printf("BEGIN test 3\n");
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 3\n");
     // reinit
     trans_tbl_t tbl_3;
     merged_hdr = init_merged_header();
     translate = setup_test_3(merged_hdr);
     assert(translate);
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
      }
-    if (verbose) printf("RUN test 3\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 3\n");
     trans_tbl_init(merged_hdr, translate, &tbl_3, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
-    if (verbose) printf("END RUN test 3\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 3\n");
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
-        printf("out\n");
+        fprintf(pysam_stdout, "out\n");
         dump_header(out);
     }
     if (check_test_3(translate, out, &tbl_3)) {
-        if (verbose) printf("Test 3 : PASS\n");
+        if (verbose) fprintf(pysam_stdout, "Test 3 : PASS\n");
         ++success;
     } else {
-        if (verbose) printf("Test 3 : FAIL\n");
-        fprintf(pysamerr, "Test 3 : FAIL\n");
+        if (verbose) fprintf(pysam_stdout, "Test 3 : FAIL\n");
+        fprintf(pysam_stderr, "Test 3 : FAIL\n");
         ++failure;
     }
     // teardown
     bam_hdr_destroy(translate);
     bam_hdr_destroy(out);
     trans_tbl_destroy(&tbl_3);
-    if (verbose) printf("END test 3\n");
+    if (verbose) fprintf(pysam_stdout, "END test 3\n");
 
     // test
-    if (verbose) printf("BEGIN test 4\n");
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 4\n");
     // reinit
     trans_tbl_t tbl_4;
     merged_hdr = init_merged_header();
     translate = setup_test_4(merged_hdr);
     assert(translate);
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
     }
-    if (verbose) printf("RUN test 4\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 4\n");
     trans_tbl_init(merged_hdr, translate, &tbl_4, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
-    if (verbose) printf("END RUN test 4\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 4\n");
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
-        printf("out\n");
+        fprintf(pysam_stdout, "out\n");
         dump_header(out);
     }
     if (check_test_4(translate, out, &tbl_4)) {
-        if (verbose) printf("Test 4 : PASS\n");
+        if (verbose) fprintf(pysam_stdout, "Test 4 : PASS\n");
         ++success;
     } else {
-        if (verbose) printf("Test 4 : FAIL\n");
-        fprintf(pysamerr, "Test 4 : FAIL\n");
+        if (verbose) fprintf(pysam_stdout, "Test 4 : FAIL\n");
+        fprintf(pysam_stderr, "Test 4 : FAIL\n");
         ++failure;
     }
     // teardown
     bam_hdr_destroy(translate);
     bam_hdr_destroy(out);
     trans_tbl_destroy(&tbl_4);
-    if (verbose) printf("END test 4\n");
+    if (verbose) fprintf(pysam_stdout, "END test 4\n");
 
     // test
-    if (verbose) printf("BEGIN test 5\n");
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 5\n");
     // reinit
     trans_tbl_t tbl_5;
     merged_hdr = init_merged_header();
@@ -505,74 +505,74 @@ int main(int argc, char**argv)
     assert(translate);
     if (verbose > 1) {
 
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
     }
-    if (verbose) printf("RUN test 5\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 5\n");
     trans_tbl_init(merged_hdr, translate, &tbl_5, false, false, true, NULL);
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
-    if (verbose) printf("END RUN test 5\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 5\n");
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
-        printf("out\n");
+        fprintf(pysam_stdout, "out\n");
         dump_header(out);
     }
     if (check_test_5(translate, out, &tbl_5)) {
-        if (verbose) printf("Test 5 : PASS\n");
+        if (verbose) fprintf(pysam_stdout, "Test 5 : PASS\n");
         ++success;
     } else {
-        if (verbose) printf("Test 5 : FAIL\n");
-        fprintf(pysamerr, "Test 5 : FAIL\n");
+        if (verbose) fprintf(pysam_stdout, "Test 5 : FAIL\n");
+        fprintf(pysam_stderr, "Test 5 : FAIL\n");
         ++failure;
     }
     // teardown
     bam_hdr_destroy(translate);
     bam_hdr_destroy(out);
     trans_tbl_destroy(&tbl_5);
-    if (verbose) printf("END test 5\n");
+    if (verbose) fprintf(pysam_stdout, "END test 5\n");
 
     // test
-    if (verbose) printf("BEGIN test 6\n");
+    if (verbose) fprintf(pysam_stdout, "BEGIN test 6\n");
     // reinit
     trans_tbl_t tbl_6;
     merged_hdr = init_merged_header();
     translate = setup_test_6(merged_hdr);
     assert(translate);
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
     }
-    if (verbose) printf("RUN test 6\n");
+    if (verbose) fprintf(pysam_stdout, "RUN test 6\n");
     trans_tbl_init(merged_hdr, translate, &tbl_6, false, false, true, "filename");
     out = finish_merged_header(merged_hdr);
     free_merged_header(merged_hdr);
-    if (verbose) printf("END RUN test 6\n");
+    if (verbose) fprintf(pysam_stdout, "END RUN test 6\n");
     if (verbose > 1) {
-        printf("translate\n");
+        fprintf(pysam_stdout, "translate\n");
         dump_header(translate);
-        printf("out\n");
+        fprintf(pysam_stdout, "out\n");
         dump_header(out);
     }
     if (check_test_6(translate, out, &tbl_6)) {
-        if (verbose) printf("Test 6 : PASS\n");
+        if (verbose) fprintf(pysam_stdout, "Test 6 : PASS\n");
         ++success;
     } else {
-        if (verbose) printf("Test 6 : FAIL\n");
-        fprintf(pysamerr, "Test 6 : FAIL\n");
+        if (verbose) fprintf(pysam_stdout, "Test 6 : FAIL\n");
+        fprintf(pysam_stderr, "Test 6 : FAIL\n");
         ++failure;
     }
     // teardown
     bam_hdr_destroy(translate);
     bam_hdr_destroy(out);
     trans_tbl_destroy(&tbl_6);
-    if (verbose) printf("END test 6\n");
+    if (verbose) fprintf(pysam_stdout, "END test 6\n");
 
     if (success == NUM_TESTS) {
         return 0;
     } else {
-        fprintf(pysamerr, "%d failures %d successes\n", failure, success);
+        fprintf(pysam_stderr, "%d failures %d successes\n", failure, success);
         return 1;
     }
 }

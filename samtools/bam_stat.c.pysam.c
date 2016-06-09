@@ -83,7 +83,7 @@ bam_flagstat_t *bam_flagstat_core(samFile *fp, bam_hdr_t *h)
         flagstat_loop(s, c);
     bam_destroy1(b);
     if (ret != -1)
-        fprintf(pysamerr, "[bam_flagstat_core] Truncated file? Continue anyway.\n");
+        fprintf(pysam_stderr, "[bam_flagstat_core] Truncated file? Continue anyway.\n");
     return s;
 }
 
@@ -122,16 +122,16 @@ int bam_flagstat(int argc, char *argv[])
         switch (c) {
         case INPUT_FMT_OPTION:
             if (hts_opt_add(&in_opts, optarg) < 0)
-                usage_exit(pysamerr, EXIT_FAILURE);
+                usage_exit(pysam_stderr, EXIT_FAILURE);
             break;
         default:
-            usage_exit(pysamerr, EXIT_FAILURE);
+            usage_exit(pysam_stderr, EXIT_FAILURE);
         }
     }
 
     if (argc != optind+1) {
-        if (argc == optind) usage_exit(stdout, EXIT_SUCCESS);
-        else usage_exit(pysamerr, EXIT_FAILURE);
+        if (argc == optind) usage_exit(pysam_stdout, EXIT_SUCCESS);
+        else usage_exit(pysam_stderr, EXIT_FAILURE);
     }
     fp = sam_open(argv[optind], "r");
     if (fp == NULL) {
@@ -139,40 +139,40 @@ int bam_flagstat(int argc, char *argv[])
         return 1;
     }
     if (hts_opt_apply(fp, in_opts)) {
-        fprintf(pysamerr, "Failed to apply input-fmt-options\n");
+        fprintf(pysam_stderr, "Failed to apply input-fmt-options\n");
         return 1;
     }
 
     if (hts_set_opt(fp, CRAM_OPT_REQUIRED_FIELDS,
                     SAM_FLAG | SAM_MAPQ | SAM_RNEXT)) {
-        fprintf(pysamerr, "Failed to set CRAM_OPT_REQUIRED_FIELDS value\n");
+        fprintf(pysam_stderr, "Failed to set CRAM_OPT_REQUIRED_FIELDS value\n");
         return 1;
     }
 
     if (hts_set_opt(fp, CRAM_OPT_DECODE_MD, 0)) {
-        fprintf(pysamerr, "Failed to set CRAM_OPT_DECODE_MD value\n");
+        fprintf(pysam_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
         return 1;
     }
 
     header = sam_hdr_read(fp);
     if (header == NULL) {
-        fprintf(pysamerr, "Failed to read header for \"%s\"\n", argv[optind]);
+        fprintf(pysam_stderr, "Failed to read header for \"%s\"\n", argv[optind]);
         return 1;
     }
     s = bam_flagstat_core(fp, header);
-    printf("%lld + %lld in total (QC-passed reads + QC-failed reads)\n", s->n_reads[0], s->n_reads[1]);
-    printf("%lld + %lld secondary\n", s->n_secondary[0], s->n_secondary[1]);
-    printf("%lld + %lld supplementary\n", s->n_supp[0], s->n_supp[1]);
-    printf("%lld + %lld duplicates\n", s->n_dup[0], s->n_dup[1]);
-    printf("%lld + %lld mapped (%s : %s)\n", s->n_mapped[0], s->n_mapped[1], percent(b0, s->n_mapped[0], s->n_reads[0]), percent(b1, s->n_mapped[1], s->n_reads[1]));
-    printf("%lld + %lld paired in sequencing\n", s->n_pair_all[0], s->n_pair_all[1]);
-    printf("%lld + %lld read1\n", s->n_read1[0], s->n_read1[1]);
-    printf("%lld + %lld read2\n", s->n_read2[0], s->n_read2[1]);
-    printf("%lld + %lld properly paired (%s : %s)\n", s->n_pair_good[0], s->n_pair_good[1], percent(b0, s->n_pair_good[0], s->n_pair_all[0]), percent(b1, s->n_pair_good[1], s->n_pair_all[1]));
-    printf("%lld + %lld with itself and mate mapped\n", s->n_pair_map[0], s->n_pair_map[1]);
-    printf("%lld + %lld singletons (%s : %s)\n", s->n_sgltn[0], s->n_sgltn[1], percent(b0, s->n_sgltn[0], s->n_pair_all[0]), percent(b1, s->n_sgltn[1], s->n_pair_all[1]));
-    printf("%lld + %lld with mate mapped to a different chr\n", s->n_diffchr[0], s->n_diffchr[1]);
-    printf("%lld + %lld with mate mapped to a different chr (mapQ>=5)\n", s->n_diffhigh[0], s->n_diffhigh[1]);
+    fprintf(pysam_stdout, "%lld + %lld in total (QC-passed reads + QC-failed reads)\n", s->n_reads[0], s->n_reads[1]);
+    fprintf(pysam_stdout, "%lld + %lld secondary\n", s->n_secondary[0], s->n_secondary[1]);
+    fprintf(pysam_stdout, "%lld + %lld supplementary\n", s->n_supp[0], s->n_supp[1]);
+    fprintf(pysam_stdout, "%lld + %lld duplicates\n", s->n_dup[0], s->n_dup[1]);
+    fprintf(pysam_stdout, "%lld + %lld mapped (%s : %s)\n", s->n_mapped[0], s->n_mapped[1], percent(b0, s->n_mapped[0], s->n_reads[0]), percent(b1, s->n_mapped[1], s->n_reads[1]));
+    fprintf(pysam_stdout, "%lld + %lld paired in sequencing\n", s->n_pair_all[0], s->n_pair_all[1]);
+    fprintf(pysam_stdout, "%lld + %lld read1\n", s->n_read1[0], s->n_read1[1]);
+    fprintf(pysam_stdout, "%lld + %lld read2\n", s->n_read2[0], s->n_read2[1]);
+    fprintf(pysam_stdout, "%lld + %lld properly paired (%s : %s)\n", s->n_pair_good[0], s->n_pair_good[1], percent(b0, s->n_pair_good[0], s->n_pair_all[0]), percent(b1, s->n_pair_good[1], s->n_pair_all[1]));
+    fprintf(pysam_stdout, "%lld + %lld with itself and mate mapped\n", s->n_pair_map[0], s->n_pair_map[1]);
+    fprintf(pysam_stdout, "%lld + %lld singletons (%s : %s)\n", s->n_sgltn[0], s->n_sgltn[1], percent(b0, s->n_sgltn[0], s->n_pair_all[0]), percent(b1, s->n_sgltn[1], s->n_pair_all[1]));
+    fprintf(pysam_stdout, "%lld + %lld with mate mapped to a different chr\n", s->n_diffchr[0], s->n_diffchr[1]);
+    fprintf(pysam_stdout, "%lld + %lld with mate mapped to a different chr (mapQ>=5)\n", s->n_diffhigh[0], s->n_diffhigh[1]);
     free(s);
     bam_hdr_destroy(header);
     sam_close(fp);

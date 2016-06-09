@@ -81,7 +81,7 @@ int parse_sam_global_opt(int c, const char *optarg, const struct option *lopt,
     }
 
     if (!lopt->name) {
-        fprintf(pysamerr, "Unexpected global option: %s\n", lopt->name);
+        fprintf(pysam_stderr, "Unexpected global option: %s\n", lopt->name);
         return -1;
     }
 

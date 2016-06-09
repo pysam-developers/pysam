@@ -37,7 +37,7 @@ DEALINGS IN THE SOFTWARE.  */
 void xfreopen(const char *path, const char *mode, FILE *stream)
 {
     if (freopen(path, mode, stream) == NULL) {
-        fprintf(pysamerr, __FILE__": error reopening %s: %s\n",
+        fprintf(pysam_stderr, __FILE__": error reopening %s: %s\n",
                 path, strerror(errno));
         exit(2);
     }
@@ -45,13 +45,13 @@ void xfreopen(const char *path, const char *mode, FILE *stream)
 
 void dump_hdr(const bam_hdr_t* hdr)
 {
-    printf("n_targets: %d\n", hdr->n_targets);
-    printf("ignore_sam_err: %d\n", hdr->ignore_sam_err);
-    printf("l_text: %u\n", hdr->l_text);
-    printf("idx\ttarget_len\ttarget_name:\n");
+    fprintf(pysam_stdout, "n_targets: %d\n", hdr->n_targets);
+    fprintf(pysam_stdout, "ignore_sam_err: %d\n", hdr->ignore_sam_err);
+    fprintf(pysam_stdout, "l_text: %u\n", hdr->l_text);
+    fprintf(pysam_stdout, "idx\ttarget_len\ttarget_name:\n");
     int32_t target;
     for (target = 0; target < hdr->n_targets; ++target) {
-        printf("%d\t%u\t\"%s\"\n", target, hdr->target_len[target], hdr->target_name[target]);
+        fprintf(pysam_stdout, "%d\t%u\t\"%s\"\n", target, hdr->target_len[target], hdr->target_name[target]);
     }
-    printf("text: \"%s\"\n", hdr->text);
+    fprintf(pysam_stdout, "text: \"%s\"\n", hdr->text);
 }

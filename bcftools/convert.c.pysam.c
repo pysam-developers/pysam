@@ -197,7 +197,7 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
             case BCF_BT_INT32: if ( info->v1.i==bcf_int32_missing ) kputc('.', str); else kputw(info->v1.i, str); break;
             case BCF_BT_FLOAT: if ( bcf_float_is_missing(info->v1.f) ) kputc('.', str); else ksprintf(str, "%g", info->v1.f); break;
             case BCF_BT_CHAR:  kputc(info->v1.i, str); break;
-            default: fprintf(pysamerr,"todo: type %d\n", info->type); exit(1); break;
+            default: fprintf(pysam_stderr,"todo: type %d\n", info->type); exit(1); break;
         }
     }
     else if ( fmt->subscript >=0 )
@@ -218,7 +218,7 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
             case BCF_BT_INT16: BRANCH(int16_t, val==bcf_int16_missing, val==bcf_int16_vector_end, kputw(val, str)); break;
             case BCF_BT_INT32: BRANCH(int32_t, val==bcf_int32_missing, val==bcf_int32_vector_end, kputw(val, str)); break;
             case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(val), bcf_float_is_vector_end(val), ksprintf(str, "%g", val)); break;
-            default: fprintf(pysamerr,"todo: type %d\n", info->type); exit(1); break;
+            default: fprintf(pysam_stderr,"todo: type %d\n", info->type); exit(1); break;
         }
         #undef BRANCH
     }
@@ -730,7 +730,7 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
             else if ( id>=0 && bcf_hdr_idinfo_exists(convert->header,BCF_HL_INFO,id) )
             {
                 fmt->type = T_INFO;
-                fprintf(pysamerr,"Warning: Assuming INFO/%s\n", key);
+                fprintf(pysam_stderr,"Warning: Assuming INFO/%s\n", key);
             }
         }
     }
@@ -896,7 +896,7 @@ convert_t *convert_init(bcf_hdr_t *hdr, int *samples, int nsamples, const char *
     char *p = convert->format_str;
     while ( *p )
     {
-        //fprintf(pysamerr,"<%s>\n", p);
+        //fprintf(pysam_stderr,"<%s>\n", p);
         switch (*p)
         {
             case '[': is_gtf = 1; p++; break;

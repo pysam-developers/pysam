@@ -40,20 +40,20 @@ DEALINGS IN THE SOFTWARE.  */
 
 static void usage(void)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Index bgzip compressed VCF/BCF files for random access.\n");
-    fprintf(pysamerr, "Usage:   bcftools index [options] <in.bcf>|<in.vcf.gz>\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Indexing options:\n");
-    fprintf(pysamerr, "    -c, --csi            generate CSI-format index for VCF/BCF files [default]\n");
-    fprintf(pysamerr, "    -f, --force          overwrite index if it already exists\n");
-    fprintf(pysamerr, "    -m, --min-shift INT  set minimal interval size for CSI indices to 2^INT [14]\n");
-    fprintf(pysamerr, "    -t, --tbi            generate TBI-format index for VCF files\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Stats options:\n");
-    fprintf(pysamerr, "    -n, --nrecords       print number of records based on existing index file\n");
-    fprintf(pysamerr, "    -s, --stats   print per contig stats based on existing index file\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Index bgzip compressed VCF/BCF files for random access.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools index [options] <in.bcf>|<in.vcf.gz>\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Indexing options:\n");
+    fprintf(pysam_stderr, "    -c, --csi            generate CSI-format index for VCF/BCF files [default]\n");
+    fprintf(pysam_stderr, "    -f, --force          overwrite index if it already exists\n");
+    fprintf(pysam_stderr, "    -m, --min-shift INT  set minimal interval size for CSI indices to 2^INT [14]\n");
+    fprintf(pysam_stderr, "    -t, --tbi            generate TBI-format index for VCF files\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Stats options:\n");
+    fprintf(pysam_stderr, "    -n, --nrecords       print number of records based on existing index file\n");
+    fprintf(pysam_stderr, "    -s, --stats   print per contig stats based on existing index file\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 
@@ -61,7 +61,7 @@ int vcf_index_stats(char *fname, int stats)
 {
     char *fn_out = NULL;
     FILE *out;
-    out = fn_out ? fopen(fn_out, "w") : stdout;
+    out = fn_out ? fopen(fn_out, "w") : pysam_stdout;
 
     const char **seq;
     int i, nseq;
@@ -69,23 +69,23 @@ int vcf_index_stats(char *fname, int stats)
     hts_idx_t *idx = NULL;
 
     htsFile *fp = hts_open(fname,"r");
-    if ( !fp ) { fprintf(pysamerr,"Could not read %s\n", fname); return 1; }
+    if ( !fp ) { fprintf(pysam_stderr,"Could not read %s\n", fname); return 1; }
     bcf_hdr_t *hdr = bcf_hdr_read(fp);
-    if ( !hdr ) { fprintf(pysamerr,"Could not read the header: %s\n", fname); return 1; }
+    if ( !hdr ) { fprintf(pysam_stderr,"Could not read the header: %s\n", fname); return 1; }
 
     if ( hts_get_format(fp)->format==vcf )
     {
         tbx = tbx_index_load(fname);
-        if ( !tbx ) { fprintf(pysamerr,"Could not load TBI index: %s\n", fname); return 1; }
+        if ( !tbx ) { fprintf(pysam_stderr,"Could not load TBI index: %s\n", fname); return 1; }
     }
     else if ( hts_get_format(fp)->format==bcf )
     {
         idx = bcf_index_load(fname);
-        if ( !idx ) { fprintf(pysamerr,"Could not load CSI index: %s\n", fname); return 1; }
+        if ( !idx ) { fprintf(pysam_stderr,"Could not load CSI index: %s\n", fname); return 1; }
     }
     else
     {
-        fprintf(pysamerr,"Could not detect the file type as VCF or BCF: %s\n", fname);
+        fprintf(pysam_stderr,"Could not detect the file type as VCF or BCF: %s\n", fname);
         return 1;
     }
 
@@ -108,7 +108,7 @@ int vcf_index_stats(char *fname, int stats)
         bcf1_t *rec = bcf_init1();
         if (bcf_read1(fp, hdr, rec) >= 0)
         {
-            fprintf(pysamerr,"%s index of %s does not contain any count metadata. Please re-index with a newer version of bcftools or tabix.\n", tbx ? "TBI" : "CSI", fname);
+            fprintf(pysam_stderr,"%s index of %s does not contain any count metadata. Please re-index with a newer version of bcftools or tabix.\n", tbx ? "TBI" : "CSI", fname);
             return 1;
         }
         bcf_destroy1(rec);
@@ -161,17 +161,17 @@ int main_vcfindex(int argc, char *argv[])
     if ( optind==argc ) usage();
     if (stats>2)
     {
-        fprintf(pysamerr, "[E::%s] expected only one of --stats or --nrecords options\n", __func__);
+        fprintf(pysam_stderr, "[E::%s] expected only one of --stats or --nrecords options\n", __func__);
         return 1;
     }
     if (tbi && min_shift>0)
     {
-        fprintf(pysamerr, "[E::%s] min-shift option only expected for CSI indices \n", __func__);
+        fprintf(pysam_stderr, "[E::%s] min-shift option only expected for CSI indices \n", __func__);
         return 1;
     }
     if (min_shift < 0 || min_shift > 30)
     {
-        fprintf(pysamerr, "[E::%s] expected min_shift in range [0,30] (%d)\n", __func__, min_shift);
+        fprintf(pysam_stderr, "[E::%s] expected min_shift in range [0,30] (%d)\n", __func__, min_shift);
         return 1;
     }
 
@@ -185,24 +185,24 @@ int main_vcfindex(int argc, char *argv[])
 
     if ( (type.format!=bcf && type.format!=vcf) || type.compression!=bgzf )
     {
-        fprintf(pysamerr, "[E::%s] unknown filetype; expected bgzip compressed VCF or BCF\n", __func__);
+        fprintf(pysam_stderr, "[E::%s] unknown filetype; expected bgzip compressed VCF or BCF\n", __func__);
         if ( type.compression!=bgzf )
-            fprintf(pysamerr, "[E::%s] was the VCF/BCF compressed with bgzip?\n", __func__);
+            fprintf(pysam_stderr, "[E::%s] was the VCF/BCF compressed with bgzip?\n", __func__);
         return 1;
     }
     if (tbi && type.format==bcf)
     {
-        fprintf(pysamerr, "[Warning] TBI-index does not work for BCF files. Generating CSI instead.\n");
+        fprintf(pysam_stderr, "[Warning] TBI-index does not work for BCF files. Generating CSI instead.\n");
         tbi = 0; min_shift = BCF_LIDX_SHIFT;
     }
     if (min_shift == 0 && type.format==bcf)
     {
-        fprintf(pysamerr, "[E::%s] Require min_shift>0 for BCF files.\n", __func__);
+        fprintf(pysam_stderr, "[E::%s] Require min_shift>0 for BCF files.\n", __func__);
         return 1;
     }
     if (!tbi && type.format==vcf && min_shift == 0)
     {
-        fprintf(pysamerr, "[Warning] min-shift set to 0 for VCF file. Generating TBI file.\n");
+        fprintf(pysam_stderr, "[Warning] min-shift set to 0 for VCF file. Generating TBI file.\n");
         tbi = 1;
     }
 
@@ -217,7 +217,7 @@ int main_vcfindex(int argc, char *argv[])
             stat(fname, &stat_file);
             if ( stat_file.st_mtime <= stat_tbi.st_mtime )
             {
-                fprintf(pysamerr,"[E::%s] the index file exists. Please use '-f' to overwrite.\n", __func__);
+                fprintf(pysam_stderr,"[E::%s] the index file exists. Please use '-f' to overwrite.\n", __func__);
                 return 1;
             }
         }
@@ -227,7 +227,7 @@ int main_vcfindex(int argc, char *argv[])
     {
         if ( bcf_index_build(fname, min_shift) != 0 )
         {
-            fprintf(pysamerr,"[E::%s] bcf_index_build failed for %s\n", __func__, fname);
+            fprintf(pysam_stderr,"[E::%s] bcf_index_build failed for %s\n", __func__, fname);
             return 1;
         }
     }
@@ -235,7 +235,7 @@ int main_vcfindex(int argc, char *argv[])
     {
         if ( tbx_index_build(fname, min_shift, &tbx_conf_vcf) != 0 )
         {
-            fprintf(pysamerr,"[E::%s] tbx_index_build failed for %s\n", __func__, fname);
+            fprintf(pysam_stderr,"[E::%s] tbx_index_build failed for %s\n", __func__, fname);
             return 1;
         }
     }

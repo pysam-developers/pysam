@@ -61,7 +61,7 @@ void teardown_1(khash_t(kh_rg)* test_result, char* header)
     free(header);
 }
 
-int main(int argc, char** argv)
+int samtools_test_get_rg_sample_main(int argc, char** argv)
 {
     const int NUM_TESTS = 1;
     int success = 0;
@@ -79,7 +79,7 @@ int main(int argc, char** argv)
     if (success == NUM_TESTS) {
         return 0;
     } else {
-        fprintf(pysamerr, "%d failures %d successes\n", failure, success);
+        fprintf(pysam_stderr, "%d failures %d successes\n", failure, success);
         return 1;
     }
 }

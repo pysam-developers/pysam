@@ -392,8 +392,8 @@ static int phase(phaseg_t *g, const char *chr, int vpos, uint64_t *cns, nseq_t *
     i = clean_seqs(vpos, hash); // i is true if hash has an element with its vpos >= vpos
     min_pos = i? cns[vpos]>>32 : 0x7fffffff;
     if (vpos == 1) {
-        printf("PS\t%s\t%d\t%d\n", chr, (int)(cns[0]>>32) + 1, (int)(cns[0]>>32) + 1);
-        printf("M0\t%s\t%d\t%d\t%c\t%c\t%d\t0\t0\t0\t0\n//\n", chr, (int)(cns[0]>>32) + 1, (int)(cns[0]>>32) + 1,
+        fprintf(pysam_stdout, "PS\t%s\t%d\t%d\n", chr, (int)(cns[0]>>32) + 1, (int)(cns[0]>>32) + 1);
+        fprintf(pysam_stdout, "M0\t%s\t%d\t%d\t%c\t%c\t%d\t0\t0\t0\t0\n//\n", chr, (int)(cns[0]>>32) + 1, (int)(cns[0]>>32) + 1,
             "ACGTX"[cns[0]&3], "ACGTX"[cns[0]>>16&3], g->vpos_shift + 1);
         for (k = 0; k < kh_end(hash); ++k) {
             if (kh_exist(hash, k)) {
@@ -411,7 +411,7 @@ static int phase(phaseg_t *g, const char *chr, int vpos, uint64_t *cns, nseq_t *
     { // phase
         int **cnt;
         uint64_t *mask;
-        printf("PS\t%s\t%d\t%d\n", chr, (int)(cns[0]>>32) + 1, (int)(cns[vpos-1]>>32) + 1);
+        fprintf(pysam_stdout, "PS\t%s\t%d\t%d\n", chr, (int)(cns[0]>>32) + 1, (int)(cns[vpos-1]>>32) + 1);
         sitemask = calloc(vpos, 1);
         cnt = count_all(g->k, vpos, hash);
         path = dynaprog(g->k, vpos, cnt);
@@ -432,13 +432,13 @@ static int phase(phaseg_t *g, const char *chr, int vpos, uint64_t *cns, nseq_t *
         }
     }
     for (i = 0; i < n_masked; ++i)
-        printf("FL\t%s\t%d\t%d\n", chr, (int)(regmask[i]>>32) + 1, (int)regmask[i] + 1);
+        fprintf(pysam_stdout, "FL\t%s\t%d\t%d\n", chr, (int)(regmask[i]>>32) + 1, (int)regmask[i] + 1);
     for (i = 0; i < vpos; ++i) {
         uint64_t x = pcnt[i];
         int8_t c[2];
         c[0] = (cns[i]&0xffff)>>2 == 0? 4 : (cns[i]&3);
         c[1] = (cns[i]>>16&0xffff)>>2 == 0? 4 : (cns[i]>>16&3);
-        printf("M%d\t%s\t%d\t%d\t%c\t%c\t%d\t%d\t%d\t%d\t%d\n", sitemask[i]+1, chr, (int)(cns[0]>>32) + 1, (int)(cns[i]>>32) + 1, "ACGTX"[c[path[i]]], "ACGTX"[c[1-path[i]]],
+        fprintf(pysam_stdout, "M%d\t%s\t%d\t%d\t%c\t%c\t%d\t%d\t%d\t%d\t%d\n", sitemask[i]+1, chr, (int)(cns[0]>>32) + 1, (int)(cns[i]>>32) + 1, "ACGTX"[c[path[i]]], "ACGTX"[c[1-path[i]]],
             i + g->vpos_shift + 1, (int)(x&0xffff), (int)(x>>16&0xffff), (int)(x>>32&0xffff), (int)(x>>48&0xffff));
     }
     free(path); free(pcnt); free(regmask); free(sitemask);
@@ -450,17 +450,17 @@ static int phase(phaseg_t *g, const char *chr, int vpos, uint64_t *cns, nseq_t *
     ks_introsort_rseq(n_seqs, seqs);
     for (i = 0; i < n_seqs; ++i) {
         frag_t *f = seqs[i];
-        printf("EV\t0\t%s\t%d\t40\t%dM\t*\t0\t0\t", chr, f->vpos + 1 + g->vpos_shift, f->vlen);
+        fprintf(pysam_stdout, "EV\t0\t%s\t%d\t40\t%dM\t*\t0\t0\t", chr, f->vpos + 1 + g->vpos_shift, f->vlen);
         for (j = 0; j < f->vlen; ++j) {
             uint32_t c = cns[f->vpos + j];
-            if (f->seq[j] == 0) putchar('N');
-            else putchar("ACGT"[f->seq[j] == 1? (c&3) : (c>>16&3)]);
+            if (f->seq[j] == 0) fputc('N', pysam_stdout);
+            else fputc("ACGT"[f->seq[j] == 1? (c&3) : (c>>16&3)], pysam_stdout);
         }
-        printf("\t*\tYP:i:%d\tYF:i:%d\tYI:i:%d\tYO:i:%d\tYS:i:%d\n", f->phase, f->flip, f->in, f->out, f->beg+1);
+        fprintf(pysam_stdout, "\t*\tYP:i:%d\tYF:i:%d\tYI:i:%d\tYO:i:%d\tYS:i:%d\n", f->phase, f->flip, f->in, f->out, f->beg+1);
     }
     free(seqs);
-    printf("//\n");
-    fflush(stdout);
+    fprintf(pysam_stdout, "//\n");
+    fflush(pysam_stdout);
     g->vpos_shift += vpos;
     if (dump_aln(g, min_pos, hash) < 0) return -1;
     return vpos;
@@ -609,20 +609,20 @@ int main_phase(int argc, char *argv[])
         if (usage) break;
     }
     if (usage || argc == optind) {
-        fprintf(pysamerr, "\n");
-        fprintf(pysamerr, "Usage:   samtools phase [options] <in.bam>\n\n");
-        fprintf(pysamerr, "Options: -k INT    block length [%d]\n", g.k);
-        fprintf(pysamerr, "         -b STR    prefix of BAMs to output [null]\n");
-        fprintf(pysamerr, "         -q INT    min het phred-LOD [%d]\n", g.min_varLOD);
-        fprintf(pysamerr, "         -Q INT    min base quality in het calling [%d]\n", g.min_baseQ);
-        fprintf(pysamerr, "         -D INT    max read depth [%d]\n", g.max_depth);
-//      fprintf(pysamerr, "         -l FILE   list of sites to phase [null]\n");
-        fprintf(pysamerr, "         -F        do not attempt to fix chimeras\n");
-        fprintf(pysamerr, "         -A        drop reads with ambiguous phase\n");
-//      fprintf(pysamerr, "         -e        do not discover SNPs (effective with -l)\n");
-        fprintf(pysamerr, "\n");
+        fprintf(pysam_stderr, "\n");
+        fprintf(pysam_stderr, "Usage:   samtools phase [options] <in.bam>\n\n");
+        fprintf(pysam_stderr, "Options: -k INT    block length [%d]\n", g.k);
+        fprintf(pysam_stderr, "         -b STR    prefix of BAMs to output [null]\n");
+        fprintf(pysam_stderr, "         -q INT    min het phred-LOD [%d]\n", g.min_varLOD);
+        fprintf(pysam_stderr, "         -Q INT    min base quality in het calling [%d]\n", g.min_baseQ);
+        fprintf(pysam_stderr, "         -D INT    max read depth [%d]\n", g.max_depth);
+//      fprintf(pysam_stderr, "         -l FILE   list of sites to phase [null]\n");
+        fprintf(pysam_stderr, "         -F        do not attempt to fix chimeras\n");
+        fprintf(pysam_stderr, "         -A        drop reads with ambiguous phase\n");
+//      fprintf(pysam_stderr, "         -e        do not discover SNPs (effective with -l)\n");
+        fprintf(pysam_stderr, "\n");
 
-        sam_global_opt_help(pysamerr, "-....");
+        sam_global_opt_help(pysam_stderr, "-....");
 
         return 1;
     }
@@ -633,7 +633,7 @@ int main_phase(int argc, char *argv[])
     }
     g.fp_hdr = sam_hdr_read(g.fp);
     if (g.fp_hdr == NULL) {
-        fprintf(pysamerr, "[%s] Failed to read header for '%s'\n",
+        fprintf(pysam_stderr, "[%s] Failed to read header for '%s'\n",
                 __func__, argv[optind]);
         return 1;
     }
@@ -656,20 +656,20 @@ int main_phase(int argc, char *argv[])
     seqs = kh_init(64);
     em = errmod_init(1. - 0.83);
     bases = calloc(g.max_depth, 2);
-    printf("CC\n");
-    printf("CC\tDescriptions:\nCC\n");
-    printf("CC\t  CC      comments\n");
-    printf("CC\t  PS      start of a phase set\n");
-    printf("CC\t  FL      filtered region\n");
-    printf("CC\t  M[012]  markers; 0 for singletons, 1 for phased and 2 for filtered\n");
-    printf("CC\t  EV      supporting reads; SAM format\n");
-    printf("CC\t  //      end of a phase set\nCC\n");
-    printf("CC\tFormats of PS, FL and M[012] lines (1-based coordinates):\nCC\n");
-    printf("CC\t  PS  chr  phaseSetStart  phaseSetEnd\n");
-    printf("CC\t  FL  chr  filterStart    filterEnd\n");
-    printf("CC\t  M?  chr  PS  pos  allele0  allele1  hetIndex  #supports0  #errors0  #supp1  #err1\n");
-    printf("CC\nCC\n");
-    fflush(stdout);
+    fprintf(pysam_stdout, "CC\n");
+    fprintf(pysam_stdout, "CC\tDescriptions:\nCC\n");
+    fprintf(pysam_stdout, "CC\t  CC      comments\n");
+    fprintf(pysam_stdout, "CC\t  PS      start of a phase set\n");
+    fprintf(pysam_stdout, "CC\t  FL      filtered region\n");
+    fprintf(pysam_stdout, "CC\t  M[012]  markers; 0 for singletons, 1 for phased and 2 for filtered\n");
+    fprintf(pysam_stdout, "CC\t  EV      supporting reads; SAM format\n");
+    fprintf(pysam_stdout, "CC\t  //      end of a phase set\nCC\n");
+    fprintf(pysam_stdout, "CC\tFormats of PS, FL and M[012] lines (1-based coordinates):\nCC\n");
+    fprintf(pysam_stdout, "CC\t  PS  chr  phaseSetStart  phaseSetEnd\n");
+    fprintf(pysam_stdout, "CC\t  FL  chr  filterStart    filterEnd\n");
+    fprintf(pysam_stdout, "CC\t  M?  chr  PS  pos  allele0  allele1  hetIndex  #supports0  #errors0  #supp1  #err1\n");
+    fprintf(pysam_stdout, "CC\nCC\n");
+    fflush(pysam_stdout);
     while ((plp = bam_plp_auto(iter, &tid, &pos, &n)) != 0) {
         int i, k, c, tmp, dophase = 1, in_set = 0;
         float q[16];
@@ -776,7 +776,7 @@ int main_phase(int argc, char *argv[])
         int res = 0;
         for (c = 0; c <= 2; ++c) {
             if (sam_close(g.out[c]) < 0) {
-                fprintf(pysamerr, "[%s] error on closing '%s'\n",
+                fprintf(pysam_stderr, "[%s] error on closing '%s'\n",
                         __func__, g.out_name[c]);
                 res = 1;
             }

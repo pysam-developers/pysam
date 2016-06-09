@@ -177,7 +177,9 @@ cdef class FastaFile:
             self.fastafile = NULL
 
     def __dealloc__(self):
-        self.close()
+        if self.fastafile != NULL:
+            fai_destroy(self.fastafile)
+            self.fastafile = NULL
 
     # context manager interface
     def __enter__(self):
@@ -492,14 +494,18 @@ cdef class FastxFile:
 
     def close(self):
         '''close the file.'''
-        if self.entry != NULL:
+        if self.fastqfile != NULL:
             bgzf_close(self.fastqfile)
-            if self.entry:
-                kseq_destroy(self.entry)
-                self.entry = NULL
+            self.fastqfile = NULL
+        if self.entry != NULL:
+            kseq_destroy(self.entry)
+            self.entry = NULL
 
     def __dealloc__(self):
-        self.close()
+        if self.fastqfile != NULL:
+            bgzf_close(self.fastqfile)
+        if self.entry:
+            kseq_destroy(self.entry)
 
     # context manager interface
     def __enter__(self):

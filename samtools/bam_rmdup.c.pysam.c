@@ -156,7 +156,7 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
             if (c->tid != last_tid) {
                 clear_best(aux, 0);
                 if (kh_size(del_set)) { // check
-                    fprintf(pysamerr, "[bam_rmdup_core] %llu unmatched pairs\n", (long long)kh_size(del_set));
+                    fprintf(pysam_stderr, "[bam_rmdup_core] %llu unmatched pairs\n", (long long)kh_size(del_set));
                     clear_del_set(del_set);
                 }
                 if ((int)c->tid == -1) { // append unmapped reads
@@ -167,7 +167,7 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
                     break;
                 }
                 last_tid = c->tid;
-                fprintf(pysamerr, "[bam_rmdup_core] processing reference %s...\n", hdr->target_name[c->tid]);
+                fprintf(pysam_stderr, "[bam_rmdup_core] processing reference %s...\n", hdr->target_name[c->tid]);
             }
         }
         if (!(c->flag&BAM_FPAIRED) || (c->flag&(BAM_FUNMAP|BAM_FMUNMAP)) || (c->mtid >= 0 && c->tid != c->mtid)) {
@@ -189,7 +189,7 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
                     bam_copy1(p, b); // replaced as b
                 } else kh_put(name, del_set, strdup(bam_get_qname(b)), &ret); // b will be removed
                 if (ret == 0)
-                    fprintf(pysamerr, "[bam_rmdup_core] inconsistent BAM file for pair '%s'. Continue anyway.\n", bam_get_qname(b));
+                    fprintf(pysam_stderr, "[bam_rmdup_core] inconsistent BAM file for pair '%s'. Continue anyway.\n", bam_get_qname(b));
             } else { // not found in best_hash
                 kh_val(q->best_hash, k) = bam_dup1(b);
                 stack_insert(&stack, kh_val(q->best_hash, k));
@@ -206,7 +206,7 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
         last_pos = c->pos;
     }
     if (r < -1) {
-        fprintf(pysamerr, "[%s] failed to read input file\n", __func__);
+        fprintf(pysam_stderr, "[%s] failed to read input file\n", __func__);
         goto fail;
     }
 
@@ -214,7 +214,7 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
         if (kh_exist(aux, k)) {
             lib_aux_t *q = &kh_val(aux, k);
             if (dump_best(&stack, out, hdr) < 0) goto write_fail;
-            fprintf(pysamerr, "[bam_rmdup_core] %lld / %lld = %.4lf in library '%s'\n", (long long)q->n_removed,
+            fprintf(pysam_stderr, "[bam_rmdup_core] %lld / %lld = %.4lf in library '%s'\n", (long long)q->n_removed,
                     (long long)q->n_checked, (double)q->n_removed/q->n_checked, kh_key(aux, k));
             kh_destroy(pos, q->best_hash);
             free((char*)kh_key(aux, k));
@@ -255,12 +255,12 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
 int bam_rmdupse_core(samFile *in, bam_hdr_t *hdr, samFile *out, int force_se);
 
 static int rmdup_usage(void) {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Usage:  samtools rmdup [-sS] <input.srt.bam> <output.bam>\n\n");
-    fprintf(pysamerr, "Option: -s    rmdup for SE reads\n");
-    fprintf(pysamerr, "        -S    treat PE reads as SE in rmdup (force -s)\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Usage:  samtools rmdup [-sS] <input.srt.bam> <output.bam>\n\n");
+    fprintf(pysam_stderr, "Option: -s    rmdup for SE reads\n");
+    fprintf(pysam_stderr, "        -S    treat PE reads as SE in rmdup (force -s)\n");
 
-    sam_global_opt_help(pysamerr, "-....");
+    sam_global_opt_help(pysam_stderr, "-....");
     return 1;
 }
 
@@ -296,7 +296,7 @@ int bam_rmdup(int argc, char *argv[])
     }
     header = sam_hdr_read(in);
     if (header == NULL || header->n_targets == 0) {
-        fprintf(pysamerr, "[bam_rmdup] input SAM does not have header. Abort!\n");
+        fprintf(pysam_stderr, "[bam_rmdup] input SAM does not have header. Abort!\n");
         return 1;
     }
 
@@ -317,7 +317,7 @@ int bam_rmdup(int argc, char *argv[])
     bam_hdr_destroy(header);
     sam_close(in);
     if (sam_close(out) < 0) {
-        fprintf(pysamerr, "[bam_rmdup] error closing output file\n");
+        fprintf(pysam_stderr, "[bam_rmdup] error closing output file\n");
         ret = 1;
     }
     return ret;

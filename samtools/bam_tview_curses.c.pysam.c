@@ -304,7 +304,7 @@ tview_t* curses_tv_init(const char *fn, const char *fn_fa, const char *samples,
     tview_t* base=(tview_t*)tv;
     if(tv==0)
         {
-        fprintf(pysamerr,"Calloc failed\n");
+        fprintf(pysam_stderr,"Calloc failed\n");
         return 0;
         }
 

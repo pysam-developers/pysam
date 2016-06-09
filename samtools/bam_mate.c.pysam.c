@@ -192,7 +192,7 @@ static int bam_mating_core(samFile* in, samFile* out, int remove_reads, int prop
     str.l = str.m = 0; str.s = 0;
     header = sam_hdr_read(in);
     if (header == NULL) {
-        fprintf(pysamerr, "[bam_mating_core] ERROR: Couldn't read header\n");
+        fprintf(pysam_stderr, "[bam_mating_core] ERROR: Couldn't read header\n");
         return 1;
     }
     // Accept unknown, unsorted, or queryname sort order, but error on coordinate sorted.
@@ -203,7 +203,7 @@ static int bam_mating_core(samFile* in, samFile* out, int remove_reads, int prop
         // Looking for SO:coordinate within the @HD line only
         // (e.g. must ignore in a @CO comment line later in header)
         if ((p != 0) && (p < q)) {
-            fprintf(pysamerr, "[bam_mating_core] ERROR: Coordinate sorted, require grouped/sorted by queryname.\n");
+            fprintf(pysam_stderr, "[bam_mating_core] ERROR: Coordinate sorted, require grouped/sorted by queryname.\n");
             goto fail;
         }
     }
@@ -330,7 +330,7 @@ void usage(FILE* where)
 
     fprintf(where,
 "\n"
-"As elsewhere in samtools, use '-' as the filename for stdin/stdout. The input\n"
+"As elsewhere in samtools, use '-' as the filename for stdin/pysam_stdout. The input\n"
 "file must be grouped by read name (e.g. sorted by name). Coordinated sorted\n"
 "input is not accepted.\n");
 }
@@ -347,7 +347,7 @@ int bam_mating(int argc, char *argv[])
     };
 
     // parse args
-    if (argc == 1) { usage(stdout); return 0; }
+    if (argc == 1) { usage(pysam_stdout); return 0; }
     while ((c = getopt_long(argc, argv, "rpcO:", lopts, NULL)) >= 0) {
         switch (c) {
             case 'r': remove_reads = 1; break;
@@ -355,10 +355,10 @@ int bam_mating(int argc, char *argv[])
             case 'c': add_ct = 1; break;
             default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
                       /* else fall-through */
-            case '?': usage(pysamerr); goto fail;
+            case '?': usage(pysam_stderr); goto fail;
         }
     }
-    if (optind+1 >= argc) { usage(pysamerr); goto fail; }
+    if (optind+1 >= argc) { usage(pysam_stderr); goto fail; }
 
     // init
     if ((in = sam_open_format(argv[optind], "rb", &ga.in)) == NULL) {
@@ -377,7 +377,7 @@ int bam_mating(int argc, char *argv[])
     // cleanup
     sam_close(in);
     if (sam_close(out) < 0) {
-        fprintf(pysamerr, "[bam_mating] error while closing output file\n");
+        fprintf(pysam_stderr, "[bam_mating] error while closing output file\n");
         res = 1;
     }
 

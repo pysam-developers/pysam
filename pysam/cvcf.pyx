@@ -114,6 +114,7 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
     def __init__(self, vcf):
         self.vcf = vcf
         self.encoding = vcf.encoding
+
         # if len(data) != len(self.vcf._samples):
         #     self.vcf.error(str(data),
         #                self.BAD_NUMBER_OF_COLUMNS,
@@ -133,7 +134,7 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
     def error(self, line, error, opt=None):
         '''raise error.'''
         # pass to vcf file for error handling
-        return self.vcf.error( line, error, opt )
+        return self.vcf.error(line, error, opt)
 
     cdef update(self, char * buffer, size_t nbytes):
         '''update internal data.
@@ -349,6 +350,7 @@ class VCF(object):
         if leftalign: self._leftalign = leftalign
         self._lines = lines
         self.encoding = "ascii"
+        self.tabixfile = None
 
     def error(self,line,error,opt=None):
         if error in self._ignored_errors: return
@@ -1046,6 +1048,15 @@ class VCF(object):
         self.encoding=encoding
         self.tabixfile = pysam.Tabixfile(filename, encoding=encoding)
         self._parse_header(self.tabixfile.header)
+
+    def __del__(self):
+        self.close()
+        self.tabixfile = None
+
+    def close(self):
+        if self.tabixfile:
+            self.tabixfile.close()
+            self.tabixfile = None
 
     def fetch(self,
               reference=None,

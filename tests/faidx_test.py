@@ -115,6 +115,9 @@ class TestFastxFileFastq(unittest.TestCase):
                                   persist=self.persist)
         self.has_quality = self.filename.endswith('.fq')
 
+    def tearDown(self):
+        self.file.close()
+
     def checkFirst(self, s):
         # test first entry
         self.assertEqual(s.sequence, "GGGAACAGGGGGGTGCACTAATGCGCTCCACGCCC")
@@ -208,8 +211,8 @@ class TestFastxFileWithEmptySequence(unittest.TestCase):
         with gzip.open(fn) as inf:
             ref_num = len(list(inf)) / 4
 
-        f = self.filetype(fn)
-        l = len(list(f))
+        with self.filetype(fn) as f:
+            l = len(list(f))
         self.assertEqual(ref_num, l)
 
 
@@ -223,10 +226,10 @@ class TestRemoteFileFTP(unittest.TestCase):
     def testFTPView(self):
         if not checkURL(self.url):
             return
-        f = pysam.Fastafile(self.url)
-        self.assertEqual(
-            len(f.fetch("chr1", 0, 1000)),
-            1000)
+        with pysam.Fastafile(self.url) as f:
+            self.assertEqual(
+                len(f.fetch("chr1", 0, 1000)),
+                1000)
 
 
 if __name__ == "__main__":

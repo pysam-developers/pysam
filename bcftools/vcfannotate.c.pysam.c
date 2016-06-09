@@ -265,7 +265,7 @@ static void init_remove_annots(args_t *args)
             int id = bcf_hdr_id2int(args->hdr,BCF_DT_ID,str.s);
             if ( !bcf_hdr_idinfo_exists(args->hdr,type,id) )
             {
-                fprintf(pysamerr,"Warning: The tag \"%s\" not defined in the header\n", str.s);
+                fprintf(pysam_stderr,"Warning: The tag \"%s\" not defined in the header\n", str.s);
                 args->nrm--;
             }
             else if ( (type==BCF_HL_FMT && keep_fmt) || (type==BCF_HL_INFO && keep_info) )
@@ -1139,7 +1139,7 @@ static void set_samples(args_t *args, bcf_hdr_t *src, bcf_hdr_t *dst, int need_s
             return;    // the same samples in both files
 
         if ( !nmatch ) error("No matching samples found in the source and the destination file\n");
-        if ( nmatch!=bcf_hdr_nsamples(src) || nmatch!=bcf_hdr_nsamples(dst) ) fprintf(pysamerr,"%d sample(s) in common\n", nmatch);
+        if ( nmatch!=bcf_hdr_nsamples(src) || nmatch!=bcf_hdr_nsamples(dst) ) fprintf(pysam_stderr,"%d sample(s) in common\n", nmatch);
 
         args->nsample_map = bcf_hdr_nsamples(dst);
         args->sample_map  = (int*) malloc(sizeof(int)*args->nsample_map);
@@ -1757,29 +1757,29 @@ static void annotate(args_t *args, bcf1_t *line)
 
 static void usage(args_t *args)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Annotate and edit VCF/BCF files.\n");
-    fprintf(pysamerr, "Usage:   bcftools annotate [options] <in.vcf.gz>\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Options:\n");
-    fprintf(pysamerr, "   -a, --annotations <file>       VCF file or tabix-indexed file with annotations: CHR\\tPOS[\\tVALUE]+\n");
-    fprintf(pysamerr, "   -c, --columns <list>           list of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
-    fprintf(pysamerr, "   -e, --exclude <expr>           exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(pysamerr, "   -h, --header-lines <file>      lines which should be appended to the VCF header\n");
-    fprintf(pysamerr, "   -I, --set-id [+]<format>       set ID column, see man page for details\n");
-    fprintf(pysamerr, "   -i, --include <expr>           select sites for which the expression is true (see man page for details)\n");
-    fprintf(pysamerr, "   -m, --mark-sites [+-]<tag>     add INFO/tag flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
-    fprintf(pysamerr, "       --no-version               do not append version and command line to the header\n");
-    fprintf(pysamerr, "   -o, --output <file>            write output to a file [standard output]\n");
-    fprintf(pysamerr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysamerr, "   -r, --regions <region>         restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "   -R, --regions-file <file>      restrict to regions listed in a file\n");
-    fprintf(pysamerr, "       --rename-chrs <file>       rename sequences according to map file: from\\tto\n");
-    fprintf(pysamerr, "   -s, --samples [^]<list>        comma separated list of samples to annotate (or exclude with \"^\" prefix)\n");
-    fprintf(pysamerr, "   -S, --samples-file [^]<file>   file of samples to annotate (or exclude with \"^\" prefix)\n");
-    fprintf(pysamerr, "   -x, --remove <list>            list of annotations to remove (e.g. ID,INFO/DP,FORMAT/DP,FILTER). See man page for details\n");
-    fprintf(pysamerr, "       --threads <int>            number of extra output compression threads [0]\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Annotate and edit VCF/BCF files.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools annotate [options] <in.vcf.gz>\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Options:\n");
+    fprintf(pysam_stderr, "   -a, --annotations <file>       VCF file or tabix-indexed file with annotations: CHR\\tPOS[\\tVALUE]+\n");
+    fprintf(pysam_stderr, "   -c, --columns <list>           list of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
+    fprintf(pysam_stderr, "   -e, --exclude <expr>           exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(pysam_stderr, "   -h, --header-lines <file>      lines which should be appended to the VCF header\n");
+    fprintf(pysam_stderr, "   -I, --set-id [+]<format>       set ID column, see man page for details\n");
+    fprintf(pysam_stderr, "   -i, --include <expr>           select sites for which the expression is true (see man page for details)\n");
+    fprintf(pysam_stderr, "   -m, --mark-sites [+-]<tag>     add INFO/tag flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
+    fprintf(pysam_stderr, "       --no-version               do not append version and command line to the header\n");
+    fprintf(pysam_stderr, "   -o, --output <file>            write output to a file [standard output]\n");
+    fprintf(pysam_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(pysam_stderr, "   -r, --regions <region>         restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "   -R, --regions-file <file>      restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "       --rename-chrs <file>       rename sequences according to map file: from\\tto\n");
+    fprintf(pysam_stderr, "   -s, --samples [^]<list>        comma separated list of samples to annotate (or exclude with \"^\" prefix)\n");
+    fprintf(pysam_stderr, "   -S, --samples-file [^]<file>   file of samples to annotate (or exclude with \"^\" prefix)\n");
+    fprintf(pysam_stderr, "   -x, --remove <list>            list of annotations to remove (e.g. ID,INFO/DP,FORMAT/DP,FILTER). See man page for details\n");
+    fprintf(pysam_stderr, "       --threads <int>            number of extra output compression threads [0]\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 

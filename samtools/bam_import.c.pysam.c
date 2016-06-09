@@ -62,6 +62,6 @@ bam_header_t *sam_header_read2(const char *fn)
     free(str->s); free(str);
     header = sam_hdr_parse(samstr.l, samstr.s? samstr.s : "");
     free(samstr.s);
-    fprintf(pysamerr, "[sam_header_read2] %d sequences loaded.\n", n_targets);
+    fprintf(pysam_stderr, "[sam_header_read2] %d sequences loaded.\n", n_targets);
     return header;
 }

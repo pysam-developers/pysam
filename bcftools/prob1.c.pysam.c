@@ -128,7 +128,7 @@ int bcf_p1_set_n1(bcf_p1aux_t *b, int n1)
 {
     if (n1 == 0 || n1 >= b->n) return -1;
     if (b->M != b->n * 2) {
-        fprintf(pysamerr, "[%s] unable to set `n1' when there are haploid samples.\n", __func__);
+        fprintf(pysam_stderr, "[%s] unable to set `n1' when there are haploid samples.\n", __func__);
         return -1;
     }
     b->n1 = n1;
@@ -523,9 +523,9 @@ int bcf_p1_cal(call_t *call, bcf1_t *b, int do_contrast, bcf_p1aux_t *ma, bcf_p1
 void bcf_p1_dump_afs(bcf_p1aux_t *ma)
 {
     int k;
-    fprintf(pysamerr, "[afs]");
+    fprintf(pysam_stderr, "[afs]");
     for (k = 0; k <= ma->M; ++k)
-        fprintf(pysamerr, " %d:%.3lf", k, ma->afs[ma->M - k]);
-    fprintf(pysamerr, "\n");
+        fprintf(pysam_stderr, " %d:%.3lf", k, ma->afs[ma->M - k]);
+    fprintf(pysam_stderr, "\n");
     memset(ma->afs, 0, sizeof(double) * (ma->M + 1));
 }

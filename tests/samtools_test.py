@@ -15,7 +15,8 @@ import glob
 import sys
 import subprocess
 import shutil
-from TestUtils import checkBinaryEqual
+from TestUtils import checkBinaryEqual, check_lines_equal, \
+    check_samtools_view_equal, get_temp_filename, force_bytes
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -132,7 +133,7 @@ class SamtoolsTest(unittest.TestCase):
                  samtools_version))
 
     def setUp(self):
-        '''setup tests. 
+        '''setup tests.
 
         For setup, all commands will be run before the first test is
         executed. Individual tests will then just compare the output
@@ -146,7 +147,7 @@ class SamtoolsTest(unittest.TestCase):
             os.makedirs(WORKDIR)
 
         for f in self.requisites:
-            shutil.copy(os.path.join(DATADIR, f), 
+            shutil.copy(os.path.join(DATADIR, f),
                         os.path.join(WORKDIR, f))
 
         self.savedir = os.getcwd()
@@ -184,13 +185,11 @@ class SamtoolsTest(unittest.TestCase):
         output = pysam_method(*pysam_parts,
                               raw=True,
                               catch_stdout=True)
-        
         # sys.stdout.write(" pysam ok\n")
-
         if ">" in statement:
             with open(pysam_targets[-1], "wb") as outfile:
                 if output is not None:
-                    outfile = outfile.write(output)
+                    outfile.write(force_bytes(output))
 
         for samtools_target, pysam_target in zip(samtools_targets,
                                                  pysam_targets):
@@ -204,17 +203,26 @@ class SamtoolsTest(unittest.TestCase):
             else:
                 samtools_files = [samtools_target]
                 pysam_files = [pysam_target]
-                
+
             for s, p in zip(samtools_files, pysam_files):
-                self.assertTrue(
-                    checkBinaryEqual(s, p),
-                    "%s failed: files %s and %s are not the same" %
-                    (command, s, p))
+                binary_equal = checkBinaryEqual(s, p)
+                error_msg = "%s failed: files %s and %s are not the same" % (command, s, p)
+                if binary_equal:
+                    continue
+                if s.endswith(".bam"):
+                    self.assertTrue(
+                        check_samtools_view_equal(
+                            s, p, without_header=True),
+                        error_msg)
+                check_lines_equal(
+                    self, s, p,
+                    filter_f=lambda x: x.startswith("#"),
+                    msg=error_msg)
 
     def testStatements(self):
         for statement in self.statements:
             self.check_statement(statement)
-        
+
     def tearDown(self):
         if os.path.exists(WORKDIR):
             shutil.rmtree(WORKDIR)
@@ -242,11 +250,29 @@ class StdoutTest(unittest.TestCase):
             catch_stdout=False)
         self.assertEqual(r, None)
 
+    def testDoubleCalling(self):
+        # The following would fail if there is an
+        # issue with stdout being improperly caught.
+        retvals = pysam.idxstats(
+            os.path.join(DATADIR, "ex1.bam"))
+        retvals = pysam.idxstats(
+            os.path.join(DATADIR, "ex1.bam"))
+
+    def testSaveStdout(self):
+        outfile = get_temp_filename(suffix=".tsv")
+        r = pysam.samtools.flagstat(
+            os.path.join(DATADIR, "ex1.bam"),
+            save_stdout=outfile)
+        self.assertEqual(r, None)
+        with open(outfile) as inf:
+            r = inf.read()
+        self.assertTrue(len(r) > 0)
+
 
 class PysamTest(SamtoolsTest):
     """check access to samtools command in the pysam 
     main package.
-    
+
     This is for backwards capability.
     """
 

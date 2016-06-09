@@ -62,7 +62,7 @@ void py_plot(char *script)
     int len = strlen(script);
     char *cmd = !strcmp(".py",script+len-3) ? msprintf("python %s", script) : msprintf("python %s.py", script);
     int ret = system(cmd);
-    if ( ret ) fprintf(pysamerr, "The command returned non-zero status %d: %s\n", ret, cmd);
+    if ( ret ) fprintf(pysam_stderr, "The command returned non-zero status %d: %s\n", ret, cmd);
     free(cmd);
 }
 
@@ -272,7 +272,7 @@ static int init_gt2ipl(args_t *args, bcf1_t *gt_line, bcf1_t *sm_line, int *gt2i
             gt2ipl[ bcf_ij2G(j,i) ] = k<=l ? bcf_ij2G(k,l) : bcf_ij2G(l,k);
         }
     }
-    //for (i=0; i<n_gt2ipl; i++) printf("%d .. %d\n", i,gt2ipl[i]);
+    //for (i=0; i<n_gt2ipl; i++) fprintf(pysam_stdout, "%d .. %d\n", i,gt2ipl[i]);
     return 1;
 }
 
@@ -353,11 +353,11 @@ static void check_gt(args_t *args)
         if ( bcf_hdr_id2int(args->sm_hdr, BCF_DT_ID, "GT")<0 )
             error("[E::%s] Neither PL nor GT present in the header of %s\n", __func__, args->files->readers[0].fname);
         if ( !args->no_PLs )
-            fprintf(pysamerr,"Warning: PL not present in the header of %s, using GT instead\n", args->files->readers[0].fname);
+            fprintf(pysam_stderr,"Warning: PL not present in the header of %s, using GT instead\n", args->files->readers[0].fname);
         fake_pls = 1;
     }
 
-    FILE *fp = args->plot ? open_file(NULL, "w", "%s.tab", args->plot) : stdout;
+    FILE *fp = args->plot ? open_file(NULL, "w", "%s.tab", args->plot) : pysam_stdout;
     print_header(args, fp);
 
     int tgt_isample = -1, query_isample = 0;
@@ -370,7 +370,7 @@ static void check_gt(args_t *args)
     {
         if ( tgt_isample==-1 )
         {
-            fprintf(pysamerr,"No target sample selected for comparison, using the first sample in %s: %s\n", args->gt_fname,args->gt_hdr->samples[0]);
+            fprintf(pysam_stderr,"No target sample selected for comparison, using the first sample in %s: %s\n", args->gt_fname,args->gt_hdr->samples[0]);
             tgt_isample = 0;
         }
     }
@@ -556,12 +556,12 @@ static void cross_check_gts(args_t *args)
         if ( bcf_hdr_id2int(args->sm_hdr, BCF_DT_ID, "GT")<0 )
             error("[E::%s] Neither PL nor GT present in the header of %s\n", __func__, args->files->readers[0].fname);
         if ( !args->no_PLs )
-            fprintf(pysamerr,"Warning: PL not present in the header of %s, using GT instead\n", args->files->readers[0].fname);
+            fprintf(pysam_stderr,"Warning: PL not present in the header of %s, using GT instead\n", args->files->readers[0].fname);
         fake_pls = 1;
     }
     if ( bcf_hdr_id2int(args->sm_hdr, BCF_DT_ID, "DP")<0 ) ignore_dp = 1;
 
-    FILE *fp = args->plot ? open_file(NULL, "w", "%s.tab", args->plot) : stdout;
+    FILE *fp = args->plot ? open_file(NULL, "w", "%s.tab", args->plot) : pysam_stdout;
     print_header(args, fp);
     if ( args->all_sites ) fprintf(fp,"# [1]SD, Average Site Discordance\t[2]Chromosome\t[3]Position\t[4]Number of available pairs\t[5]Average discordance\n");
 
@@ -640,8 +640,8 @@ static void cross_check_gts(args_t *args)
     if ( args->tmp_arr ) free(args->tmp_arr);
     if ( is_hom ) free(is_hom);
 
-    if ( pl_warned ) fprintf(pysamerr, "[W::%s] PL was not found at %d site(s)\n", __func__, pl_warned);
-    if ( dp_warned ) fprintf(pysamerr, "[W::%s] DP was not found at %d site(s)\n", __func__, dp_warned);
+    if ( pl_warned ) fprintf(pysam_stderr, "[W::%s] PL was not found at %d site(s)\n", __func__, pl_warned);
+    if ( dp_warned ) fprintf(pysam_stderr, "[W::%s] DP was not found at %d site(s)\n", __func__, dp_warned);
 
     // Output samples sorted by average discordance
     double *score  = (double*) calloc(nsamples,sizeof(double));
@@ -709,23 +709,23 @@ static char *init_prefix(char *prefix)
 
 static void usage(void)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   Check sample identity. With no -g BCF given, multi-sample cross-check is performed.\n");
-    fprintf(pysamerr, "Usage:   bcftools gtcheck [options] [-g <genotypes.vcf.gz>] <query.vcf.gz>\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Options:\n");
-    fprintf(pysamerr, "    -a, --all-sites                 output comparison for all sites\n");
-    fprintf(pysamerr, "    -g, --genotypes <file>          genotypes to compare against\n");
-    fprintf(pysamerr, "    -G, --GTs-only <int>            use GTs, ignore PLs, using <int> for unseen genotypes [99]\n");
-    fprintf(pysamerr, "    -H, --homs-only                 homozygous genotypes only (useful for low coverage data)\n");
-    fprintf(pysamerr, "    -p, --plot <prefix>             plot\n");
-    fprintf(pysamerr, "    -r, --regions <region>          restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "    -R, --regions-file <file>       restrict to regions listed in a file\n");
-    fprintf(pysamerr, "    -s, --query-sample <string>     query sample (by default the first sample is checked)\n");
-    fprintf(pysamerr, "    -S, --target-sample <string>    target sample in the -g file (used only for plotting)\n");
-    fprintf(pysamerr, "    -t, --targets <region>          similar to -r but streams rather than index-jumps\n");
-    fprintf(pysamerr, "    -T, --targets-file <file>       similar to -R but streams rather than index-jumps\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   Check sample identity. With no -g BCF given, multi-sample cross-check is performed.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools gtcheck [options] [-g <genotypes.vcf.gz>] <query.vcf.gz>\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Options:\n");
+    fprintf(pysam_stderr, "    -a, --all-sites                 output comparison for all sites\n");
+    fprintf(pysam_stderr, "    -g, --genotypes <file>          genotypes to compare against\n");
+    fprintf(pysam_stderr, "    -G, --GTs-only <int>            use GTs, ignore PLs, using <int> for unseen genotypes [99]\n");
+    fprintf(pysam_stderr, "    -H, --homs-only                 homozygous genotypes only (useful for low coverage data)\n");
+    fprintf(pysam_stderr, "    -p, --plot <prefix>             plot\n");
+    fprintf(pysam_stderr, "    -r, --regions <region>          restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "    -R, --regions-file <file>       restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "    -s, --query-sample <string>     query sample (by default the first sample is checked)\n");
+    fprintf(pysam_stderr, "    -S, --target-sample <string>    target sample in the -g file (used only for plotting)\n");
+    fprintf(pysam_stderr, "    -t, --targets <region>          similar to -r but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "    -T, --targets-file <file>       similar to -R but streams rather than index-jumps\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 

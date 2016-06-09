@@ -51,7 +51,7 @@ KSTREAM_INIT(gzFile, gzread, 16384)
 // a fatal error
 static void fatal(const char *msg)
 {
-    fprintf(pysamerr, "E %s\n", msg);
+    fprintf(pysam_stderr, "E %s\n", msg);
     exit(1);
 }
 // remove pads
@@ -66,7 +66,7 @@ static void remove_pads(const kstring_t *src, kstring_t *dst)
     dst->l = j;
 }
 
-int main(int argc, char *argv[])
+int samtools_ace2sam_main(int argc, char *argv[])
 {
     gzFile fp;
     kstream_t *ks;
@@ -82,13 +82,13 @@ int main(int argc, char *argv[])
         }
     }
     if (argc == optind) {
-        fprintf(pysamerr, "\nUsage:   ace2sam [-pc] <in.ace>\n\n");
-        fprintf(pysamerr, "Options: -p     output padded SAM\n");
-        fprintf(pysamerr, "         -c     write the contig sequence in SAM\n\n");
-        fprintf(pysamerr, "Notes: 1. Fields must appear in the following order: (CO->[BQ]->(AF)->(RD->QA))\n");
-        fprintf(pysamerr, "       2. The order of reads in AF and in RD must be identical\n");
-        fprintf(pysamerr, "       3. Except in BQ, words and numbers must be separated by a single SPACE or TAB\n");
-        fprintf(pysamerr, "       4. This program writes the headerless SAM to stdout and header to pysamerr\n\n");
+        fprintf(pysam_stderr, "\nUsage:   ace2sam [-pc] <in.ace>\n\n");
+        fprintf(pysam_stderr, "Options: -p     output padded SAM\n");
+        fprintf(pysam_stderr, "         -c     write the contig sequence in SAM\n\n");
+        fprintf(pysam_stderr, "Notes: 1. Fields must appear in the following order: (CO->[BQ]->(AF)->(RD->QA))\n");
+        fprintf(pysam_stderr, "       2. The order of reads in AF and in RD must be identical\n");
+        fprintf(pysam_stderr, "       3. Except in BQ, words and numbers must be separated by a single SPACE or TAB\n");
+        fprintf(pysam_stderr, "       4. This program writes the headerless SAM to pysam_stdout and header to pysam_stderr\n\n");
         return 1;
     }
 
@@ -113,14 +113,14 @@ int main(int argc, char *argv[])
                 if (t[1].s[i] != '*') ++k;
             }
             // write out the SAM header and contig sequences
-            fprintf(pysamerr, "H @SQ\tSN:%s\tLN:%llu\n", t[0].s, (unsigned long long)(t[is_padded?1:2].l)); // The SAM header line
+            fprintf(pysam_stderr, "H @SQ\tSN:%s\tLN:%llu\n", t[0].s, (unsigned long long)(t[is_padded?1:2].l)); // The SAM header line
             cns = &t[is_padded?1:2];
-            fprintf(pysamerr, "S >%s\n", t[0].s);
+            fprintf(pysam_stderr, "S >%s\n", t[0].s);
             for (i = 0; i < cns->l; i += LINE_LEN) {
-                fputs("S ", pysamerr);
+                fputs("S ", pysam_stderr);
                 for (k = 0; k < LINE_LEN && i + k < cns->l; ++k)
-                    fputc(cns->s[i + k], pysamerr);
-                fputc('\n', pysamerr);
+                    fputc(cns->s[i + k], pysam_stderr);
+                fputc('\n', pysam_stderr);
             }
 
 #define __padded2cigar(sp) do { \
@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
             if (write_cns) t[4].s[--t[4].l] = 0; // remove the trailing "*"
             for (i = 0; i < t[2].l; ++i) { // read the consensus quality
                 int q;
-                if (ks_getuntil(ks, 0, &s, &dret) < 0) fprintf(pysamerr, "E truncated contig quality\n");
+                if (ks_getuntil(ks, 0, &s, &dret) < 0) fprintf(pysam_stderr, "E truncated contig quality\n");
                 if (s.l) {
                     q = atoi(s.s) + 33;
                     if (q > 126) q = 126;
@@ -163,12 +163,12 @@ int main(int argc, char *argv[])
             }
             if (dret != '\n') ks_getuntil(ks, '\n', &s, &dret);
             ks_getuntil(ks, '\n', &s, &dret); // skip the empty line
-            if (write_cns) puts(t[4].s); t[4].l = 0;
+            if (write_cns) fputs(t[4].s, pysam_stdout) & fputc('\n', pysam_stdout); t[4].l = 0;
         } else if (strcmp(s.s, "AF") == 0) { // padded read position
             int reversed, neg, pos;
             if (t[0].l == 0) fatal("come to 'AF' before reading 'CO'");
             if (write_cns) {
-                if (t[4].l) puts(t[4].s);
+                if (t[4].l) fputs(t[4].s, pysam_stdout) & fputc('\n', pysam_stdout);
                 t[4].l = 0;
             }
             ks_getuntil(ks, 0, &s, &dret); // read name
@@ -241,7 +241,7 @@ int main(int argc, char *argv[])
             kputs("\t*\t0\t0\t", &t[4]); // empty MRNM, MPOS and TLEN
             kputsn(t[3].s, t[3].l, &t[4]); // unpadded SEQ
             kputs("\t*", &t[4]); // QUAL
-            puts(t[4].s); // print to stdout
+            fputs(t[4].s, pysam_stdout) & fputc('\n', pysam_stdout); // print to pysam_stdout
             ++af_i;
         } else if (dret != '\n') ks_getuntil(ks, '\n', &s, &dret);
     }

@@ -10,7 +10,6 @@ from tabix_test import loadAndConvert
 
 
 def read_header(filename):
-
     data = []
     if filename.endswith(".gz"):
         for line in gzip.open(filename):
@@ -22,6 +21,7 @@ def read_header(filename):
             for line in f:
                 if line.startswith("#"):
                     data.append(line)
+
     return data
 
 
@@ -136,8 +136,9 @@ class TestOpening(unittest.TestCase):
             self.assertEqual(len(list(inf.fetch())), 5)
 
     def testDetectBCF(self):
-        with pysam.VariantFile(os.path.join(DATADIR,
-            "example_vcf40.bcf")) as inf:
+        with pysam.VariantFile(os.path.join(
+                DATADIR,
+                "example_vcf40.bcf")) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'BCF')
             self.assertEqual(inf.compression, 'BGZF')
@@ -334,7 +335,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
 
         check_lines_equal(
             self, fn_in, fn_out, sort=True,
-            filter_f=lambda x: not x.startswith("##contig"))
+            filter_f=lambda x: x.startswith("##contig"))
         os.unlink(fn_out)
 
     def testConstructionWithRecords(self):

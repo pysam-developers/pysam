@@ -114,7 +114,7 @@ static void init_data(args_t *args)
             for (i=0; i<nsmpl; i++) {
                 if (!khash_str2int_has_key(hdr_samples,smpl[i])) {
                     if (args->force_samples) {
-                        fprintf(pysamerr, "Warn: exclude called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
+                        fprintf(pysam_stderr, "Warn: exclude called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
                     } else {
                         error("Error: exclude called for sample that does not exist in header: \"%s\". Use \"--force-samples\" to ignore this error.\n", smpl[i]);
                     }
@@ -135,7 +135,7 @@ static void init_data(args_t *args)
             for (i=0; i<nsmpl; i++) {
                 if (!khash_str2int_has_key(hdr_samples,smpl[i])) {
                     if (args->force_samples) {
-                        fprintf(pysamerr, "Warn: subset called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
+                        fprintf(pysam_stderr, "Warn: subset called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
                         continue;
                     } else {
                         error("Error: subset called for sample that does not exist in header: \"%s\". Use \"--force-samples\" to ignore this error.\n", smpl[i]);
@@ -149,7 +149,7 @@ static void init_data(args_t *args)
         free(smpl);
         khash_str2int_destroy(hdr_samples);
         if (args->n_samples == 0) {
-            fprintf(pysamerr, "Warn: subsetting has removed all samples\n");
+            fprintf(pysam_stderr, "Warn: subsetting has removed all samples\n");
             args->sites_only = 1;
         }
     }
@@ -160,7 +160,7 @@ static void init_data(args_t *args)
     // determine variant types to include/exclude
     if (args->include_types || args->exclude_types) {
         if (args->include_types && args->exclude_types) {
-            fprintf(pysamerr, "Error: only supply one of --include-types, --exclude-types options\n");
+            fprintf(pysam_stderr, "Error: only supply one of --include-types, --exclude-types options\n");
             exit(1);
         }
         char **type_list = 0;
@@ -188,8 +188,8 @@ static void init_data(args_t *args)
                 else if (strcmp(type_list[i], "mnps") == 0) args->include |= VCF_MNP;
                 else if (strcmp(type_list[i], "other") == 0) args->include |= VCF_OTHER;
                 else {
-                    fprintf(pysamerr, "[E::%s] unknown type\n", type_list[i]);
-                    fprintf(pysamerr, "Accepted types are snps, indels, mnps, other\n");
+                    fprintf(pysam_stderr, "[E::%s] unknown type\n", type_list[i]);
+                    fprintf(pysam_stderr, "Accepted types are snps, indels, mnps, other\n");
                     exit(1);
                 }
             }
@@ -202,8 +202,8 @@ static void init_data(args_t *args)
                 else if (strcmp(type_list[i], "mnps") == 0) args->exclude |= VCF_MNP;
                 else if (strcmp(type_list[i], "other") == 0) args->exclude |= VCF_OTHER;
                 else {
-                    fprintf(pysamerr, "[E::%s] unknown type\n", type_list[i]);
-                    fprintf(pysamerr, "Accepted types are snps, indels, mnps, other\n");
+                    fprintf(pysam_stderr, "[E::%s] unknown type\n", type_list[i]);
+                    fprintf(pysam_stderr, "Accepted types are snps, indels, mnps, other\n");
                     exit(1);
                 }
             }
@@ -292,7 +292,7 @@ int bcf_all_phased(const bcf_hdr_t *header, bcf1_t *line)
                 case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_vector_end); break;
                 case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_vector_end); break;
                 case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_vector_end); break;
-                default: fprintf(pysamerr, "[E::%s] todo: fmt_type %d\n", __func__, fmt_ptr->type); exit(1); break;
+                default: fprintf(pysam_stderr, "[E::%s] todo: fmt_type %d\n", __func__, fmt_ptr->type); exit(1); break;
             }
             #undef BRANCH_INT
             if (!sample_phased) {
@@ -481,45 +481,45 @@ void set_allele_type (int *atype, char *atype_string)
 
 static void usage(args_t *args)
 {
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "About:   VCF/BCF conversion, view, subset and filter VCF/BCF files.\n");
-    fprintf(pysamerr, "Usage:   bcftools view [options] <in.vcf.gz> [region1 [...]]\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Output options:\n");
-    fprintf(pysamerr, "    -G,   --drop-genotypes              drop individual genotype information (after subsetting if -s option set)\n");
-    fprintf(pysamerr, "    -h/H, --header-only/--no-header     print the header only/suppress the header in VCF output\n");
-    fprintf(pysamerr, "    -l,   --compression-level [0-9]     compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
-    fprintf(pysamerr, "          --no-version                  do not append version and command line to the header\n");
-    fprintf(pysamerr, "    -o,   --output-file <file>          output file name [stdout]\n");
-    fprintf(pysamerr, "    -O,   --output-type <b|u|z|v>       b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysamerr, "    -r, --regions <region>              restrict to comma-separated list of regions\n");
-    fprintf(pysamerr, "    -R, --regions-file <file>           restrict to regions listed in a file\n");
-    fprintf(pysamerr, "    -t, --targets [^]<region>           similar to -r but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
-    fprintf(pysamerr, "    -T, --targets-file [^]<file>        similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
-    fprintf(pysamerr, "        --threads <int>                 number of extra output compression threads [0]\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Subset options:\n");
-    fprintf(pysamerr, "    -a, --trim-alt-alleles        trim alternate alleles not seen in the subset\n");
-    fprintf(pysamerr, "    -I, --no-update               do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
-    fprintf(pysamerr, "    -s, --samples [^]<list>       comma separated list of samples to include (or exclude with \"^\" prefix)\n");
-    fprintf(pysamerr, "    -S, --samples-file [^]<file>  file of samples to include (or exclude with \"^\" prefix)\n");
-    fprintf(pysamerr, "        --force-samples           only warn about unknown subset samples\n");
-    fprintf(pysamerr, "\n");
-    fprintf(pysamerr, "Filter options:\n");
-    fprintf(pysamerr, "    -c/C, --min-ac/--max-ac <int>[:<type>]      minimum/maximum count for non-reference (nref), 1st alternate (alt1), least frequent\n");
-    fprintf(pysamerr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
-    fprintf(pysamerr, "    -f,   --apply-filters <list>                require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
-    fprintf(pysamerr, "    -g,   --genotype [^]<hom|het|miss>          require one or more hom/het/missing genotype or, if prefixed with \"^\", exclude sites with hom/het/missing genotypes\n");
-    fprintf(pysamerr, "    -i/e, --include/--exclude <expr>            select/exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(pysamerr, "    -k/n, --known/--novel                       select known/novel sites only (ID is not/is '.')\n");
-    fprintf(pysamerr, "    -m/M, --min-alleles/--max-alleles <int>     minimum/maximum number of alleles listed in REF and ALT (e.g. -m2 -M2 for biallelic sites)\n");
-    fprintf(pysamerr, "    -p/P, --phased/--exclude-phased             select/exclude sites where all samples are phased\n");
-    fprintf(pysamerr, "    -q/Q, --min-af/--max-af <float>[:<type>]    minimum/maximum frequency for non-reference (nref), 1st alternate (alt1), least frequent\n");
-    fprintf(pysamerr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
-    fprintf(pysamerr, "    -u/U, --uncalled/--exclude-uncalled         select/exclude sites without a called genotype\n");
-    fprintf(pysamerr, "    -v/V, --types/--exclude-types <list>        select/exclude comma-separated list of variant types: snps,indels,mnps,other [null]\n");
-    fprintf(pysamerr, "    -x/X, --private/--exclude-private           select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
-    fprintf(pysamerr, "\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "About:   VCF/BCF conversion, view, subset and filter VCF/BCF files.\n");
+    fprintf(pysam_stderr, "Usage:   bcftools view [options] <in.vcf.gz> [region1 [...]]\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Output options:\n");
+    fprintf(pysam_stderr, "    -G,   --drop-genotypes              drop individual genotype information (after subsetting if -s option set)\n");
+    fprintf(pysam_stderr, "    -h/H, --header-only/--no-header     print the header only/suppress the header in VCF output\n");
+    fprintf(pysam_stderr, "    -l,   --compression-level [0-9]     compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
+    fprintf(pysam_stderr, "          --no-version                  do not append version and command line to the header\n");
+    fprintf(pysam_stderr, "    -o,   --output-file <file>          output file name [pysam_stdout]\n");
+    fprintf(pysam_stderr, "    -O,   --output-type <b|u|z|v>       b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(pysam_stderr, "    -r, --regions <region>              restrict to comma-separated list of regions\n");
+    fprintf(pysam_stderr, "    -R, --regions-file <file>           restrict to regions listed in a file\n");
+    fprintf(pysam_stderr, "    -t, --targets [^]<region>           similar to -r but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
+    fprintf(pysam_stderr, "    -T, --targets-file [^]<file>        similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
+    fprintf(pysam_stderr, "        --threads <int>                 number of extra output compression threads [0]\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Subset options:\n");
+    fprintf(pysam_stderr, "    -a, --trim-alt-alleles        trim alternate alleles not seen in the subset\n");
+    fprintf(pysam_stderr, "    -I, --no-update               do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
+    fprintf(pysam_stderr, "    -s, --samples [^]<list>       comma separated list of samples to include (or exclude with \"^\" prefix)\n");
+    fprintf(pysam_stderr, "    -S, --samples-file [^]<file>  file of samples to include (or exclude with \"^\" prefix)\n");
+    fprintf(pysam_stderr, "        --force-samples           only warn about unknown subset samples\n");
+    fprintf(pysam_stderr, "\n");
+    fprintf(pysam_stderr, "Filter options:\n");
+    fprintf(pysam_stderr, "    -c/C, --min-ac/--max-ac <int>[:<type>]      minimum/maximum count for non-reference (nref), 1st alternate (alt1), least frequent\n");
+    fprintf(pysam_stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
+    fprintf(pysam_stderr, "    -f,   --apply-filters <list>                require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
+    fprintf(pysam_stderr, "    -g,   --genotype [^]<hom|het|miss>          require one or more hom/het/missing genotype or, if prefixed with \"^\", exclude sites with hom/het/missing genotypes\n");
+    fprintf(pysam_stderr, "    -i/e, --include/--exclude <expr>            select/exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(pysam_stderr, "    -k/n, --known/--novel                       select known/novel sites only (ID is not/is '.')\n");
+    fprintf(pysam_stderr, "    -m/M, --min-alleles/--max-alleles <int>     minimum/maximum number of alleles listed in REF and ALT (e.g. -m2 -M2 for biallelic sites)\n");
+    fprintf(pysam_stderr, "    -p/P, --phased/--exclude-phased             select/exclude sites where all samples are phased\n");
+    fprintf(pysam_stderr, "    -q/Q, --min-af/--max-af <float>[:<type>]    minimum/maximum frequency for non-reference (nref), 1st alternate (alt1), least frequent\n");
+    fprintf(pysam_stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
+    fprintf(pysam_stderr, "    -u/U, --uncalled/--exclude-uncalled         select/exclude sites without a called genotype\n");
+    fprintf(pysam_stderr, "    -v/V, --types/--exclude-types <list>        select/exclude comma-separated list of variant types: snps,indels,mnps,other [null]\n");
+    fprintf(pysam_stderr, "    -x/X, --private/--exclude-private           select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
+    fprintf(pysam_stderr, "\n");
     exit(1);
 }
 

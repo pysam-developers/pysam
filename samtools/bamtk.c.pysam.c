@@ -73,13 +73,13 @@ const char *samtools_version()
 
 static void vprint_error_core(const char *subcommand, const char *format, va_list args, const char *extra)
 {
-    fflush(stdout);
-    if (subcommand && *subcommand) fprintf(pysamerr, "samtools %s: ", subcommand);
-    else fprintf(pysamerr, "samtools: ");
-    vfprintf(pysamerr, format, args);
-    if (extra) fprintf(pysamerr, ": %s\n", extra);
-    else fprintf(pysamerr, "\n");
-    fflush(pysamerr);
+    fflush(pysam_stdout);
+    if (subcommand && *subcommand) fprintf(pysam_stderr, "samtools %s: ", subcommand);
+    else fprintf(pysam_stderr, "samtools: ");
+    vfprintf(pysam_stderr, format, args);
+    if (extra) fprintf(pysam_stderr, ": %s\n", extra);
+    else fprintf(pysam_stderr, "\n");
+    fflush(pysam_stderr);
 }
 
 void print_error(const char *subcommand, const char *format, ...)
@@ -160,13 +160,13 @@ static void usage(FILE *fp)
 int samtools_main(int argc, char *argv[])
 {
 #ifdef _WIN32
-    setmode(fileno(stdout), O_BINARY);
+    setmode(fileno(pysam_stdout), O_BINARY);
     setmode(fileno(stdin),  O_BINARY);
 #endif
-    if (argc < 2) { usage(pysamerr); return 1; }
+    if (argc < 2) { usage(pysam_stderr); return 1; }
 
     if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0) {
-        if (argc == 2) { usage(stdout); return 0; }
+        if (argc == 2) { usage(pysam_stdout); return 0; }
 
         // Otherwise change "samtools help COMMAND [...]" to "samtools COMMAND";
         // main_xyz() functions by convention display the subcommand's usage
@@ -209,22 +209,22 @@ int samtools_main(int argc, char *argv[])
     else if (strcmp(argv[1], "quickcheck") == 0)  ret = main_quickcheck(argc-1, argv+1);
     else if (strcmp(argv[1], "addreplacerg") == 0) ret = main_addreplacerg(argc-1, argv+1);
     else if (strcmp(argv[1], "pileup") == 0) {
-        fprintf(pysamerr, "[main] The `pileup' command has been removed. Please use `mpileup' instead.\n");
+        fprintf(pysam_stderr, "[main] The `pileup' command has been removed. Please use `mpileup' instead.\n");
         return 1;
     }
     else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
     else if (strcmp(argv[1], "--version") == 0) {
-        printf(
+        fprintf(pysam_stdout, 
 "samtools %s\n"
 "Using htslib %s\n"
 "Copyright (C) 2016 Genome Research Ltd.\n",
                samtools_version(), hts_version());
     }
     else if (strcmp(argv[1], "--version-only") == 0) {
-        printf("%s+htslib-%s\n", samtools_version(), hts_version());
+        fprintf(pysam_stdout, "%s+htslib-%s\n", samtools_version(), hts_version());
     }
     else {
-        fprintf(pysamerr, "[main] unrecognized command '%s'\n", argv[1]);
+        fprintf(pysam_stderr, "[main] unrecognized command '%s'\n", argv[1]);
         return 1;
     }
     return ret;

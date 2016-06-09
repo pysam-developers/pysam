@@ -48,14 +48,17 @@ class PysamDispatcher(object):
         Keyword arguments:
         catch_stdout -- redirect stdout from the samtools command and
             return as variable (default True)
+        save_stdout -- redirect stdout to a filename.
         raw -- ignore any parsers associated with this samtools command.
-        split_lines -- return stdout and stderr as a list of strings.
+        split_lines -- return stdout (if catch_stdout is True and stderr
+                       as a list of strings.
         '''
         retval, stderr, stdout = _pysam_dispatch(
             self.collection,
             self.dispatch,
             args,
-            catch_stdout=kwargs.get("catch_stdout", True))
+            catch_stdout=kwargs.get("catch_stdout", True),
+            save_stdout=kwargs.get("save_stdout", None))
 
         if kwargs.get("split_lines", False):
             stdout = stdout.splitlines()
