@@ -18,6 +18,9 @@ in pysam 0.9.0, in particular:
   created file. This should resolve issues when pysam is used
   in notebooks or other environments that redirect stdout.
 * wrap htslib-1.3.1, samtools-1.3.1 and bcftools-1.3.1
+* use bgzf throughout instead of gzip
+* allow specifying a fasta reference for CRAM file when opening
+  for both read and write, fixes #280
 
 Release 0.9.0
 =============
