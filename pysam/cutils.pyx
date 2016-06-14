@@ -297,7 +297,6 @@ def _pysam_dispatch(collection,
     # setup the function call to samtools/bcftools main
     cdef char ** cargs
     cdef int i, n, retval, l
-
     n = len(args)
     method = force_bytes(method)
     collection = force_bytes(collection)

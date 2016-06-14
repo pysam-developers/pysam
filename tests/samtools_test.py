@@ -243,6 +243,28 @@ class EmptyIndexTest(unittest.TestCase):
         self.assertRaises(IOError, pysam.samtools.index,
                           "exdoesntexist.bam")
 
+class TestReturnType(unittest.TestCase):
+    
+    def testReturnValueString(self):
+        retval = pysam.idxstats(os.path.join(DATADIR, "ex1.bam"))
+        if IS_PYTHON3:
+            self.assertFalse(isinstance(retval, bytes))
+            self.assertTrue(isinstance(retval, str))
+        else:
+            self.assertTrue(isinstance(retval, bytes))
+            self.assertTrue(isinstance(retval, basestring))
+
+    def testReturnValueData(self):
+        args = "-O BAM {}".format(os.path.join(DATADIR, "ex1.bam")).split(" ")
+        retval = pysam.view(*args)
+
+        if IS_PYTHON3:
+            self.assertTrue(isinstance(retval, bytes))
+            self.assertFalse(isinstance(retval, str))
+        else:
+            self.assertTrue(isinstance(retval, bytes))
+            self.assertTrue(isinstance(retval, basestring))
+
 
 class StdoutTest(unittest.TestCase):
     '''test if stdout can be redirected.'''

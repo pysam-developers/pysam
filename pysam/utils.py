@@ -71,8 +71,8 @@ class PysamDispatcher(object):
                 "stdout=%s, stderr=%s" %
                 (self.collection,
                  retval, 
-                 "\n".join(stdout),
-                 "\n".join(stderr)))
+                 stdout,
+                 stderr))
 
         self.stderr = stderr
 
