@@ -222,7 +222,7 @@ class SamtoolsTest(unittest.TestCase):
     def testStatements(self):
         for statement in self.statements:
             if (statement.startswith("calmd") and 
-                list(sys.version_info[:2]) = [3,3]):
+                list(sys.version_info[:2]) == [3, 3]):
                 # skip calmd test, fails only on python 3.3.5
                 # in linux (empty output). Works in OsX and passes
                 # for 3.4 and 3.5
