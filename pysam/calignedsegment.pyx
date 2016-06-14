@@ -510,6 +510,13 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     with the cigar string to reconstitute the query or the reference
     sequence.
 
+    Positions corresponding to `N` (skipped region from the reference)
+    in the CIGAR string will not appear in the returned sequence. The
+    MD should correspondingly not contain these. Thus proper tags are::
+    
+       Deletion from the reference:   cigar=5M1D5M    MD=5^C5
+       Skipped region from reference: cigar=5M1N5M    MD=10
+
     Returns
     -------
 
@@ -551,10 +558,12 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 s[s_idx] = read_sequence[r_idx] 
                 r_idx += 1
                 s_idx += 1
-        elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+        elif op == BAM_CDEL:
             for i from 0 <= i < l:
                 s[s_idx] = '-'
                 s_idx += 1
+        elif op == BAM_CREF_SKIP:
+            pass
         elif op == BAM_CINS:
             for i from 0 <= i < l:
                 # encode insertions into reference as lowercase
@@ -1418,10 +1427,12 @@ cdef class AlignedSegment:
                 for i from 0 <= i < l:
                     result.append(ref_seq[r_idx])
                     r_idx += 1
-            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+            elif op == BAM_CDEL:
                 for i from 0 <= i < l:
                     result.append(ref_seq[r_idx])
                     r_idx += 1
+            elif op == BAM_CREF_SKIP:
+                pass
             elif op == BAM_CINS:
                 r_idx += l
             elif op == BAM_CSOFT_CLIP:
@@ -1513,7 +1524,7 @@ cdef class AlignedSegment:
                 else:
                     qpos += l
 
-            elif op == BAM_CDEL or op == BAM_CREF_SKIP:
+            elif op == BAM_CDEL:
                 if not _matches_only:
                     if _with_seq:
                         for i from pos <= i < pos + l:
@@ -1526,6 +1537,17 @@ cdef class AlignedSegment:
 
             elif op == BAM_CHARD_CLIP:
                 pass # advances neither
+
+            elif op == BAM_CREF_SKIP:
+                if not _matches_only:
+                    if _with_seq:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, None))
+                    else:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i))
+
+                pos += l
 
             elif op == BAM_CPAD:
                 raise NotImplementedError(

@@ -332,6 +332,34 @@ class TestAlignedSegment(ReadTest):
              (7, 27, 'A'), (8, 28, 'A')]
             )
 
+    def test_get_aligned_pairs_skip_reference(self):
+        a = self.buildRead()
+        a.query_sequence = "A" * 10
+        a.cigarstring = "5M1N5M"
+        a.set_tag("MD", "10")
+
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [(0, 20, 'A'), (1, 21, 'A'), (2, 22, 'A'),
+             (3, 23, 'A'), (4, 24, 'A'), (None, 25, None),
+             (5, 26, 'A'), (6, 27, 'A'), (7, 28, 'A'),
+             (8, 29, 'A'), (9, 30, 'A')])
+
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=False),
+            [(0, 20), (1, 21), (2, 22),
+             (3, 23), (4, 24), (None, 25),
+             (5, 26), (6, 27), (7, 28),
+             (8, 29), (9, 30)])
+
+        self.assertEqual(
+            a.get_aligned_pairs(matches_only=True, with_seq=False),
+            [(0, 20), (1, 21),
+             (2, 22), (3, 23),
+             (4, 24), (5, 26),
+             (6, 27), (7, 28),
+             (8, 29), (9, 30)])
+
     def testNoSequence(self):
         '''issue 176: retrieving length without query sequence
         with soft-clipping.
@@ -615,6 +643,23 @@ class TestTags(ReadTest):
         a.set_tag('MD', "5^CCC5")
         self.assertEqual(
             "A" * 5 + "C" * 3 + "A" * 5,
+            a.get_reference_sequence())
+
+    def testMDTagRefSkipping(self):
+        a = self.buildRead()
+
+        a.cigarstring = "5M1N5M"
+        a.query_sequence = "A" * 10
+        a.set_tag('MD', "10")
+        self.assertEqual(
+            "A" * 10,
+            a.get_reference_sequence())
+
+        a.cigarstring = "5M3N5M"
+        a.query_sequence = "A" * 10
+        a.set_tag('MD', "10")
+        self.assertEqual(
+            "A" * 10,
             a.get_reference_sequence())
 
     def testMDTagSoftClipping(self):
