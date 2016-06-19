@@ -18,10 +18,12 @@ The latest version is available through `pypi
    pip install pysam
 
 If you are using the conda packaging manager (e.g. miniconda or anaconda),
-you can install pysam from the bioconda `channel <https://bioconda.github.io/>`_:
+you can install pysam from the `bioconda channel <https://bioconda.github.io/>`_:
 
    conda config --add channels r
+
    conda config --add channels bioconda
+
    conda install pysam
 
 
