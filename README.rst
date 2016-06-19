@@ -14,18 +14,15 @@ includes an interface for tabix_.
 
 The latest version is available through `pypi
 <https://pypi.python.org/pypi/pysam>`_. To install, simply type::
-  
+
    pip install pysam
 
 If you are using the conda packaging manager (e.g. miniconda or anaconda),
-you can install pysam from the bioconda channel (https://bioconda.github.io/):
+you can install pysam from the bioconda `channel <https://bioconda.github.io/>`_:
 
-```bash
-conda config --add channels r
-conda config --add channels bioconda
-
-conda install pysam
-```
+   conda config --add channels r
+   conda config --add channels bioconda
+   conda install pysam
 
 
 Pysam documentation is available through https://readthedocs.org/ from
