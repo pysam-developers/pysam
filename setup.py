@@ -87,10 +87,21 @@ def configure_library(library_dir, env_options=None, options=[]):
 #         pysam.
 # external: use shared libhts.so compiled outside of
 #           pysam
-HTSLIB_MODE = "shared"
+HTSLIB_MODE = os.environ.get("HTSLIB_MODE","shared")
 HTSLIB_LIBRARY_DIR = os.environ.get("HTSLIB_LIBRARY_DIR", None)
 HTSLIB_INCLUDE_DIR = os.environ.get("HTSLIB_INCLUDE_DIR", None)
 HTSLIB_CONFIGURE_OPTIONS = os.environ.get("HTSLIB_CONFIGURE_OPTIONS", None)
+HTSLIB_SOURCE = None
+
+package_list = ['pysam',
+                'pysam.include',
+                'pysam.include.samtools',
+                'pysam.include.bcftools',
+                'pysam.include.samtools.win32']
+package_dirs = {'pysam': 'pysam',
+                'pysam.include.samtools': 'samtools',
+                'pysam.include.bcftools': 'bcftools'}
+config_headers = ["samtools/config.h"]
 
 # Check if cython is available
 #
@@ -101,13 +112,15 @@ try:
     from cy_build import CyExtension as Extension, cy_build_ext as build_ext
     source_pattern = "pysam/c%s.pyx"
     cmdclass = {'build_ext': build_ext}
-    HTSLIB_MODE = "shared"
+    if HTSLIB_MODE != "external":
+        HTSLIB_MODE = "shared"
 except ImportError:
     # no Cython available - use existing C code
     cmdclass = {}
     source_pattern = "pysam/c%s.c"
     # Set mode to separate, as "shared" not fully tested yet.
-    HTSLIB_MODE = "separate"
+    if HTSLIB_MODE != "external":
+        HTSLIB_MODE = "separate"
 
 # collect pysam version
 sys.path.insert(0, "pysam")
@@ -140,6 +153,10 @@ print ("# pysam: htslib mode is {}".format(HTSLIB_MODE))
 htslib_configure_options = None
 
 if HTSLIB_MODE in ['shared', 'separate']:
+    package_list += ['pysam.include.htslib',
+                     'pysam.include.htslib.htslib']
+    package_dirs.update({'pysam.include.htslib':'htslib'})
+
     htslib_configure_options = configure_library(
         "htslib",
         HTSLIB_CONFIGURE_OPTIONS,
@@ -149,6 +166,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
     print ("# pysam: htslib configure options: {}".format(
         str(htslib_configure_options)))
 
+    config_headers += ["htslib/config.h"]
     if htslib_configure_options is None:
         # create empty config.h file
         with open("htslib/config.h", "w") as outf:
@@ -261,7 +279,7 @@ if HTSLIB_SOURCE == "builtin":
 
 # create empty config.h files if they have not been created automatically
 # or created by the user:
-for fn in "samtools/config.h", "htslib/config.h":
+for fn in config_headers:
     if not os.path.exists(fn):
         with open(fn, "w") as outf:
             outf.write(
@@ -493,13 +511,7 @@ metadata = {
     'license': "MIT",
     'platforms': "ALL",
     'url': "https://github.com/pysam-developers/pysam",
-    'packages': ['pysam',
-                 'pysam.include',
-                 'pysam.include.htslib',
-                 'pysam.include.htslib.htslib',
-                 'pysam.include.samtools',
-                 'pysam.include.bcftools',
-                 'pysam.include.samtools.win32'],
+    'packages': package_list,
     'requires': ['cython (>=0.21)'],
     'ext_modules': [chtslib,
                     csamfile,
@@ -512,10 +524,7 @@ metadata = {
                     cfaidx,
                     cutils],
     'cmdclass': cmdclass,
-    'package_dir': {'pysam': 'pysam',
-                    'pysam.include.htslib': 'htslib',
-                    'pysam.include.samtools': 'samtools',
-                    'pysam.include.bcftools': 'bcftools'},
+    'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h'], },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe': False,
