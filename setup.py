@@ -118,9 +118,6 @@ except ImportError:
     # no Cython available - use existing C code
     cmdclass = {}
     source_pattern = "pysam/c%s.c"
-    # Set mode to separate, as "shared" not fully tested yet.
-    if HTSLIB_MODE != "external":
-        HTSLIB_MODE = "separate"
 
 # collect pysam version
 sys.path.insert(0, "pysam")
