@@ -105,9 +105,13 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
-# build source tar-ball and test installation from tar-ball
+# build source tar-ball
 cd ..
 python setup.py sdist
-tar -xvzf dist/pysam-*.tar.gz
-cd pysam-*
-python setup.py install
+
+# test pip installation from tar-ball with cython
+pip install dist/pysam-*.tar.gz
+
+# attempt pip installation without cython
+conda remove cython
+pip install --force-reinstall --upgrade dist/pysam-*.tar.gz
