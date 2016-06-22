@@ -19,9 +19,11 @@ include samtools/configure
 include samtools/config.mk.in
 include samtools/config.h.in
 include samtools/*.h
+exclude samtools/config.h
 include samtools/*/*.h
 include htslib/*.c
 include htslib/*.h
+exclude htslib/config.h
 include htslib/configure
 include htslib/config.mk.in
 include htslib/config.h.in
