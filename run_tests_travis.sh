@@ -109,9 +109,34 @@ fi
 cd ..
 python setup.py sdist
 
+if [ $? != 0 ]; then
+    exit 1
+fi
+
 # test pip installation from tar-ball with cython
+echo "pip installing with cython"
 pip install dist/pysam-*.tar.gz
 
+if [ $? != 0 ]; then
+    exit 1
+fi
+
 # attempt pip installation without cython
+echo "pip installing without cython"
 conda remove cython
 pip install --force-reinstall --upgrade dist/pysam-*.tar.gz
+
+if [ $? != 0 ]; then
+    exit 1
+fi
+
+# attempt pip installation without cython and without
+# command line options
+echo "pip installing without cython and no configure options"
+export HTSLIB_CONFIGURE_OPTIONS=""
+pip install --force-reinstall --upgrade dist/pysam-*.tar.gz
+
+if [ $? != 0 ]; then
+    exit 1
+fi
+
