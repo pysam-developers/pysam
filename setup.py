@@ -231,7 +231,6 @@ elif HTSLIB_MODE == 'shared':
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
-
 # build config.py
 with open(os.path.join("pysam", "config.py"), "w") as outf:
     outf.write('HTSLIB = "{}"\n'.format(HTSLIB_SOURCE))
@@ -252,19 +251,23 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_LIBCURL",
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
-                print "config_option: {}={}".format(key, config_values[key])
+                print ("# pysam: config_option: {}={}".format(key, config_values[key]))
 
 if HTSLIB_SOURCE == "builtin":
     EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
+    exclude_libcurl = False
     if htslib_configure_options is None:
         print ("# pysam: could not configure htslib, choosing "
                "conservative defaults")
-        htslib_sources = [x for x in htslib_sources
-                          if x not in EXCLUDE_HTSLIB]
-        shared_htslib_sources = [x for x in shared_htslib_sources
-                                 if x not in EXCLUDE_HTSLIB]
+        exclude_libcurl = True
     elif "--disable-libcurl" in htslib_configure_options:
-        print ("# pysam: libcurl has been disabled")
+        print ("# pysam: libcurl has been disabled through configure options")
+        exclude_libcurl = True
+    elif config_values["HAVE_HMAC"] == 0 or config_values["HAVE_LIBCURL"] == 0:
+        print ("# pysam: libcurl has not been found - disabled")
+        exclude_libcurl = True
+
+    if exclude_libcurl:
         htslib_sources = [x for x in htslib_sources
                           if x not in EXCLUDE_HTSLIB]
         shared_htslib_sources = [x for x in shared_htslib_sources
