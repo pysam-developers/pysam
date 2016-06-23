@@ -113,6 +113,10 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
+# check for presence of config.h files
+echo "checking for presence of config.h files in tar-ball"
+tar -tvzf dist/pysam-*.tar.gz | grep "config.h"
+
 # test pip installation from tar-ball with cython
 echo "pip installing with cython"
 pip install dist/pysam-*.tar.gz
@@ -123,7 +127,7 @@ fi
 
 # attempt pip installation without cython
 echo "pip installing without cython"
-conda remove cython
+~/miniconda3/bin/conda remove cython
 pip install --force-reinstall --upgrade dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
@@ -139,4 +143,3 @@ pip install --force-reinstall --upgrade dist/pysam-*.tar.gz
 if [ $? != 0 ]; then
     exit 1
 fi
-

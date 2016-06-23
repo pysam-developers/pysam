@@ -252,7 +252,7 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_LIBCURL",
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
-
+                print "config_option: {}={}".format(key, config_values[key])
 
 if HTSLIB_SOURCE == "builtin":
     EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
