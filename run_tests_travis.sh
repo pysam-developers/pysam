@@ -115,7 +115,11 @@ fi
 
 # check for presence of config.h files
 echo "checking for presence of config.h files in tar-ball"
-tar -tvzf dist/pysam-*.tar.gz | grep "config.h"
+tar -tvzf dist/pysam-*.tar.gz | grep "config.h$"
+
+if [ $? != 1 ]; then
+    exit 1
+fi
 
 # test pip installation from tar-ball with cython
 echo "pip installing with cython"
