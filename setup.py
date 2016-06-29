@@ -87,7 +87,7 @@ def configure_library(library_dir, env_options=None, options=[]):
 #         pysam.
 # external: use shared libhts.so compiled outside of
 #           pysam
-HTSLIB_MODE = os.environ.get("HTSLIB_MODE","shared")
+HTSLIB_MODE = os.environ.get("HTSLIB_MODE", "shared")
 HTSLIB_LIBRARY_DIR = os.environ.get("HTSLIB_LIBRARY_DIR", None)
 HTSLIB_INCLUDE_DIR = os.environ.get("HTSLIB_INCLUDE_DIR", None)
 HTSLIB_CONFIGURE_OPTIONS = os.environ.get("HTSLIB_CONFIGURE_OPTIONS", None)
@@ -110,14 +110,18 @@ config_headers = ["samtools/config.h"]
 # distribution will be used.
 try:
     from cy_build import CyExtension as Extension, cy_build_ext as build_ext
+    print ("# pysam: cython is available - using cythonize if necessary")
     source_pattern = "pysam/c%s.pyx"
     cmdclass = {'build_ext': build_ext}
     if HTSLIB_MODE != "external":
         HTSLIB_MODE = "shared"
 except ImportError:
+    print ("# pysam: no cython available - using pre-compiled C")
     # no Cython available - use existing C code
     cmdclass = {}
     source_pattern = "pysam/c%s.c"
+    if HTSLIB_MODE != "external":
+        HTSLIB_MODE = "shared"
 
 # collect pysam version
 sys.path.insert(0, "pysam")
@@ -146,7 +150,8 @@ EXCLUDE = {
 }
 
 print ("# pysam: htslib mode is {}".format(HTSLIB_MODE))
-
+print ("# pysam: HTSLIB_CONFIGURE_OPTIONS={}".format(
+    HTSLIB_CONFIGURE_OPTIONS))
 htslib_configure_options = None
 
 if HTSLIB_MODE in ['shared', 'separate']:
@@ -266,6 +271,8 @@ if HTSLIB_SOURCE == "builtin":
     elif config_values["HAVE_HMAC"] == 0 or config_values["HAVE_LIBCURL"] == 0:
         print ("# pysam: libcurl has not been found - disabled")
         exclude_libcurl = True
+    else:
+        print ("# pysam: libcurl is enabled")
 
     if exclude_libcurl:
         htslib_sources = [x for x in htslib_sources
