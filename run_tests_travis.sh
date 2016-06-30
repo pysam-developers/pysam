@@ -99,7 +99,7 @@ make -C cbcf_data
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch
 # -v: verbose output
-# nosetests -s -v
+nosetests -s -v
 
 if [ $? != 0 ]; then
     exit 1
@@ -113,21 +113,21 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
-# # check for presence of config.h files
-# echo "checking for presence of config.h files in tar-ball"
-# tar -tvzf dist/pysam-*.tar.gz | grep "config.h$"
+# check for presence of config.h files
+echo "checking for presence of config.h files in tar-ball"
+tar -tvzf dist/pysam-*.tar.gz | grep "config.h$"
 
-# if [ $? != 1 ]; then
-#     exit 1
-# fi
+if [ $? != 1 ]; then
+    exit 1
+fi
 
-# # test pip installation from tar-ball with cython
-# echo "pip installing with cython"
-# pip install --verbose --no-deps --no-use-wheel dist/pysam-*.tar.gz
+# test pip installation from tar-ball with cython
+echo "pip installing with cython"
+pip install --verbose --no-deps --no-use-wheel dist/pysam-*.tar.gz
 
-# if [ $? != 0 ]; then
-#     exit 1
-# fi
+if [ $? != 0 ]; then
+    exit 1
+fi
 
 # attempt pip installation without cython
 echo "pip installing without cython"

@@ -29,6 +29,7 @@ import platform
 import re
 import subprocess
 import sys
+import sysconfig
 from contextlib import contextmanager
 from setuptools import Extension, setup
 
@@ -76,6 +77,16 @@ def configure_library(library_dir, env_options=None, options=[]):
     return None
 
 
+def distutils_dir_name(dname):
+    """Returns the name of a distutils build directory
+    see: http://stackoverflow.com/questions/14320220/
+               testing-python-c-libraries-get-build-path
+    """
+    f = "{dirname}.{platform}-{version[0]}.{version[1]}"
+    return f.format(dirname=dname,
+                    platform=sysconfig.get_platform(),
+                    version=sys.version_info)
+
 # How to link against HTSLIB
 # separate: use included htslib and include in each extension
 #           module. No dependencies between modules and works
@@ -103,22 +114,26 @@ package_dirs = {'pysam': 'pysam',
                 'pysam.include.bcftools': 'bcftools'}
 config_headers = ["samtools/config.h"]
 
+from cy_build import CyExtension as Extension, cy_build_ext as build_ext
+
+cmdclass = {'build_ext': build_ext}
+
 # Check if cython is available
 #
 # If cython is available, the pysam will be built using cython from
 # the .pyx files. If no cython is available, the C-files included in the
 # distribution will be used.
 try:
-    from cy_build import CyExtension as Extension, cy_build_ext as build_ext
+    import cython
+    HAVE_CYTHON = True
     print ("# pysam: cython is available - using cythonize if necessary")
     source_pattern = "pysam/c%s.pyx"
-    cmdclass = {'build_ext': build_ext}
     if HTSLIB_MODE != "external":
         HTSLIB_MODE = "shared"
 except ImportError:
+    HAVE_CYTHON = False
     print ("# pysam: no cython available - using pre-compiled C")
     # no Cython available - use existing C code
-    cmdclass = {}
     source_pattern = "pysam/c%s.c"
     if HTSLIB_MODE != "external":
         HTSLIB_MODE = "shared"
@@ -213,12 +228,16 @@ elif HTSLIB_MODE == 'shared':
         glob.glob(os.path.join("htslib", "*.c")) +
         glob.glob(os.path.join("htslib", "cram", "*.c"))
         if x not in EXCLUDE["htslib"]]
-    htslib_library_dirs = ['pysam', "."]
+    htslib_library_dirs = [
+        'pysam',
+        ".",
+        os.path.join("build", distutils_dir_name("lib"),
+                     "pysam")]
+
     htslib_include_dirs = ['htslib']
     external_htslib_libraries = ['z']
 
     if IS_PYTHON3:
-        import sysconfig
         if sys.version_info.minor >= 5:
             internal_htslib_libraries = ["chtslib.{}".format(
                 sysconfig.get_config_var('SOABI'))]

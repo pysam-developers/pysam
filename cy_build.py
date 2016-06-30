@@ -2,7 +2,11 @@ import os
 import re
 import sys
 
-from Cython.Distutils import build_ext
+try:
+    from Cython.Distutils import build_ext
+except ImportError:
+    from setuptools.command.build_ext import build_ext
+
 from distutils.extension import Extension
 from distutils.sysconfig import get_config_vars, get_python_lib, get_python_version
 from pkg_resources import Distribution
@@ -49,6 +53,7 @@ class cy_build_ext(build_ext):
             self.distribution.has_ext_modules() and self.plat_name).egg_name()
 
     def build_extension(self, ext):
+
         if isinstance(ext, CyExtension) and ext._init_func:
             ext._init_func(ext)
 
