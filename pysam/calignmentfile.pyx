@@ -589,7 +589,7 @@ cdef class AlignmentFile:
                 raise ValueError(
                     ("file has no sequences defined (mode='%s') - "
                      "is it SAM/BAM format? Consider opening with "
-                     "check_seq=True") % mode)
+                     "check_sq=False") % mode)
 
         if self.htsfile == NULL:
             raise IOError("could not open file `%s`" % filename )
