@@ -61,6 +61,9 @@ def run_configure(option):
 
 def run_make_print_config():
     stdout = subprocess.check_output(["make", "print-config"])
+    if IS_PYTHON3:
+        stdout = stdout.decode("ascii")
+
     result = dict([[x.strip() for x in line.split("=")]
                    for line in stdout.splitlines()])
     return result
