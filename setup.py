@@ -211,7 +211,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
     external_htslib_libraries = ['z']
     if "LIBS" in htslib_make_options:
         external_htslib_libraries.extend(
-            [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ")])
+            [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
 
     shared_htslib_sources = [re.sub("\.o", ".c", os.path.join("htslib", x))
                              for x in
