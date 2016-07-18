@@ -1435,8 +1435,7 @@ class TestHeaderWriteRead(unittest.TestCase):
 
     def check_read_write(self, flag_write, header):
 
-        # fn = get_temp_filename()
-        fn = "/ifs/devel/andreas/pysam/tests/tmp_check_read_write_bEDboi"
+        fn = get_temp_filename()
         with pysam.AlignmentFile(
                 fn,
                 flag_write,
