@@ -46,6 +46,29 @@ def changedir(path):
         os.chdir(save_dir)
 
 
+def run_configure(option):
+    try:
+        retcode = subprocess.call(
+            " ".join(("./configure", option)),
+            shell=True)
+        if retcode != 0:
+            return False
+        else:
+            return True
+    except OSError as e:
+        return False
+
+
+def run_make_print_config():
+    stdout = subprocess.check_output(["make", "print-config"])
+    if IS_PYTHON3:
+        stdout = stdout.decode("ascii")
+
+    result = dict([[x.strip() for x in line.split("=")]
+                   for line in stdout.splitlines()])
+    return result
+
+
 def configure_library(library_dir, env_options=None, options=[]):
 
     configure_script = os.path.join(library_dir, "configure")
@@ -53,18 +76,6 @@ def configure_library(library_dir, env_options=None, options=[]):
     if not os.path.exists(configure_script):
         raise ValueError(
             "configure script {} does not exist".format(configure_script))
-
-    def run_configure(option):
-        try:
-            retcode = subprocess.call(
-                " ".join(("./configure", option)),
-                shell=True)
-            if retcode != 0:
-                return False
-            else:
-                return True
-        except OSError as e:
-            return False
 
     with changedir(library_dir):
         if env_options is not None:
@@ -74,6 +85,7 @@ def configure_library(library_dir, env_options=None, options=[]):
         for option in options:
             if run_configure(option):
                 return option
+
     return None
 
 
@@ -177,7 +189,8 @@ if HTSLIB_MODE in ['shared', 'separate']:
     htslib_configure_options = configure_library(
         "htslib",
         HTSLIB_CONFIGURE_OPTIONS,
-        ["--enable-libcurl"])
+        ["--enable-libcurl",
+         "--disable-libcurl"])
 
     HTSLIB_SOURCE = "builtin"
     print ("# pysam: htslib configure options: {}".format(
@@ -191,6 +204,23 @@ if HTSLIB_MODE in ['shared', 'separate']:
                 "/* empty config.h created by pysam */\n")
             outf.write(
                 "/* conservative compilation options */\n")
+
+    with changedir("htslib"):
+        htslib_make_options = run_make_print_config()
+
+    for key, value in htslib_make_options.items():
+        print ("# pysam: htslib_config {}={}".format(key, value))
+
+    external_htslib_libraries = ['z']
+    if "LIBS" in htslib_make_options:
+        external_htslib_libraries.extend(
+            [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
+
+    shared_htslib_sources = [re.sub("\.o", ".c", os.path.join("htslib", x))
+                             for x in
+                             htslib_make_options["LIBHTS_OBJS"].split(" ")]
+
+    htslib_sources = []
 
 if HTSLIB_LIBRARY_DIR:
     # linking against a shared, externally installed htslib version, no
@@ -206,36 +236,24 @@ if HTSLIB_LIBRARY_DIR:
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
     # htslib
-    htslib_sources = [
-        x for x in
-        glob.glob(os.path.join("htslib", "*.c")) +
-        glob.glob(os.path.join("htslib", "cram", "*.c"))
-        if x not in EXCLUDE["htslib"]]
+    htslib_sources = shared_htslib_sources
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
     internal_htslib_libraries = []
-    external_htslib_libraries = ['z']
 
 elif HTSLIB_MODE == 'shared':
-
     # link each pysam component against the same
     # htslib built from sources included in the pysam
     # package.
-    htslib_sources = []
-    shared_htslib_sources = [
-        x for x in
-        glob.glob(os.path.join("htslib", "*.c")) +
-        glob.glob(os.path.join("htslib", "cram", "*.c"))
-        if x not in EXCLUDE["htslib"]]
     htslib_library_dirs = [
         'pysam',
         ".",
-        os.path.join("build", distutils_dir_name("lib"),
+        os.path.join("build",
+                     distutils_dir_name("lib"),
                      "pysam")]
 
     htslib_include_dirs = ['htslib']
-    external_htslib_libraries = ['z']
 
     if IS_PYTHON3:
         if sys.version_info.minor >= 5:
@@ -276,32 +294,6 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
                 print ("# pysam: config_option: {}={}".format(key, config_values[key]))
-
-if HTSLIB_SOURCE == "builtin":
-    EXCLUDE_HTSLIB = ["htslib/hfile_libcurl.c"]
-    exclude_libcurl = False
-    if htslib_configure_options is None:
-        print ("# pysam: could not configure htslib, choosing "
-               "conservative defaults")
-        exclude_libcurl = True
-    elif "--disable-libcurl" in htslib_configure_options:
-        print ("# pysam: libcurl has been disabled through configure options")
-        exclude_libcurl = True
-    elif config_values["HAVE_HMAC"] == 0 or config_values["HAVE_LIBCURL"] == 0:
-        print ("# pysam: libcurl has not been found - disabled")
-        exclude_libcurl = True
-    else:
-        print ("# pysam: libcurl is enabled")
-
-    if exclude_libcurl:
-        htslib_sources = [x for x in htslib_sources
-                          if x not in EXCLUDE_HTSLIB]
-        shared_htslib_sources = [x for x in shared_htslib_sources
-                                 if x not in EXCLUDE_HTSLIB]
-    elif "--enable-libcurl" in htslib_configure_options:
-        print ("# pysam: libcurl of builtin htslib has been enabled, "
-               "adding shared libcurl and libcrypto")
-        external_htslib_libraries.extend(["curl", "crypto"])
 
 # create empty config.h files if they have not been created automatically
 # or created by the user:

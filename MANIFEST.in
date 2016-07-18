@@ -24,6 +24,8 @@ include samtools/*/*.h
 include htslib/*.c
 include htslib/*.h
 exclude htslib/config.h
+include htslib/Makefile
+include htslib/htslib_vars.mk
 include htslib/configure
 include htslib/config.mk.in
 include htslib/config.h.in

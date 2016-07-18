@@ -9,6 +9,8 @@ import unittest
 import os
 import shutil
 import sys
+import re
+import copy
 import collections
 import subprocess
 import logging
@@ -23,7 +25,8 @@ from functools import partial
 import pysam
 import pysam.samtools
 from TestUtils import checkBinaryEqual, checkURL, \
-    check_samtools_view_equal, checkFieldEqual, force_str
+    check_samtools_view_equal, checkFieldEqual, force_str, \
+    get_temp_filename
 
 
 DATADIR = "pysam_data"
@@ -1393,6 +1396,72 @@ class TestHeader1000Genomes(unittest.TestCase):
         f = pysam.AlignmentFile(self.bamfile, "rb")
         data = f.header.copy()
         self.assertTrue(data)
+
+
+class TestHeaderWriteRead(unittest.TestCase):
+    header = {'SQ': [{'LN': 1575, 'SN': 'chr1'},
+                     {'LN': 1584, 'SN': 'chr2'}],
+              'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891',
+                      'PU': 'SC_1_10', "CN": "name:with:colon"},
+                     {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891',
+                      'PU': 'SC_2_12', "CN": "name:with:colon"}],
+              'PG': [{'ID': 'P1', 'VN': '1.0', 'CL': 'tool'},
+                     {'ID': 'P2', 'VN': '1.1', 'CL': 'tool with in option -R a\tb',
+                      'PP': 'P1'}],
+              'HD': {'VN': '1.0'},
+              'CO': ['this is a comment', 'this is another comment'],
+    }
+
+    def compare_headers(self, a, b):
+        '''compare two headers a and b.
+
+        Ignore M5 and UR field as they are set application specific.
+        '''
+        for ak, av in a.items():
+            self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
+            self.assertEqual(
+                len(av), len(b[ak]),
+                "unequal number of entries for key {}: {} vs {}"
+                .format(ak, av, b[ak]))
+
+            for row_a, row_b in zip(av, b[ak]):
+                if isinstance(row_b, dict):
+                    for x in ["M5", "UR"]:
+                        try:
+                            del row_b[x]
+                        except KeyError:
+                            pass
+                self.assertEqual(row_a, row_b)
+
+    def check_read_write(self, flag_write, header):
+
+        fn = get_temp_filename()
+        with pysam.AlignmentFile(
+                fn,
+                flag_write,
+                header=header,
+                reference_filename="pysam_data/ex1.fa") as outf:
+            a = pysam.AlignedSegment()
+            a.query_name = "abc"
+            outf.write(a)
+
+        with pysam.AlignmentFile(fn) as inf:
+            read_header = inf.header
+
+        os.unlink(fn)
+        self.compare_headers(header, read_header)
+
+    def test_SAM(self):
+        self.check_read_write("wh", self.header)
+
+    def test_BAM(self):
+        self.check_read_write("wb", self.header)
+
+    def test_CRAM(self):
+        header = copy.copy(self.header)
+        # for CRAM, \t needs to be quoted:
+        header['PG'][1]['CL'] = re.sub(r"\t", r"\\\\t", header['PG'][1]['CL'])
+        self.check_read_write("wc", header)
 
 
 class TestUnmappedReads(unittest.TestCase):

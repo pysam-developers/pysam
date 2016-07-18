@@ -106,16 +106,17 @@ KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                        "PG" : {"ID" : str, "PN" : str, "CL" : str, 
                                "PP" : str, "DS" : str, "VN" : str,},}
 
-# output order of fields within records
+# output order of fields within records. Ensure that CL is at
+# the end as parsing a CL will ignore any subsequent records.
 VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
                       "SQ" : ("SN", "LN", "AS", "M5",
                                "UR", "SP"),
-                      "RG" : ("ID", "SM", "LB", "DS", 
-                              "PU", "PI", "CN", "DT",
+                      "RG" : ("ID", "CN", "SM", "LB",
+                              "PU", "PI", "DT", "DS",
                               "PL", "FO", "KS", "PG",
                               "PM"),
-                      "PG" : ("PN", "ID", "VN", "CL", 
-                              "PP"),}
+                      "PG" : ("PN", "ID", "VN", "PP",
+                              "DS", "CL"),}
 
 
 def build_header_line(fields, record):
