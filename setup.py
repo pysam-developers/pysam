@@ -77,7 +77,6 @@ def configure_library(library_dir, env_options=None, options=[]):
         raise ValueError(
             "configure script {} does not exist".format(configure_script))
 
-
     with changedir(library_dir):
         if env_options is not None:
             if run_configure(env_options):
@@ -190,7 +189,8 @@ if HTSLIB_MODE in ['shared', 'separate']:
     htslib_configure_options = configure_library(
         "htslib",
         HTSLIB_CONFIGURE_OPTIONS,
-        ["--enable-libcurl"])
+        ["--enable-libcurl",
+         "--disable-libcurl"])
 
     HTSLIB_SOURCE = "builtin"
     print ("# pysam: htslib configure options: {}".format(
