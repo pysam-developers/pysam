@@ -2448,7 +2448,7 @@ cdef class PileupRead:
             return self._is_tail
 
     property is_refskip:
-        """1 iff the base on the padded read is a skipped in the reference, i.e. an insertion"""
+        """1 iff the base on the padded read is skipped in the reference, i.e. an insertion"""
         def __get__(self):
             return self._is_refskip
 
