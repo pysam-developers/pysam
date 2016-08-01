@@ -775,7 +775,7 @@ cdef class AlignedSegment:
         ----------
 
         htsfile -- AlignmentFile object to map numerical
-                   identifers to chromosome names.
+                   identifiers to chromosome names.
         """
 
         cdef kstring_t line
@@ -2288,7 +2288,7 @@ cdef class AlignedSegment:
 
 
 cdef class PileupColumn:
-    '''A pileup of reads at a particular reference sequence postion
+    '''A pileup of reads at a particular reference sequence position
     (:term:`column`). A pileup column contains all the reads that map
     to a certain target base.
 
@@ -2416,11 +2416,11 @@ cdef class PileupRead:
             return self._qpos
 
     property indel:
-        """indel length for the position follwing the current pileup site.
+        """indel length for the position following the current pileup site.
 
         This quantity peeks ahead to the next cigar operation in this
-        alignment. If the next operation is and insertion, indel will
-        be positve. If the next operation is a deletion, it will be
+        alignment. If the next operation is an insertion, indel will
+        be positive. If the next operation is a deletion, it will be
         negation. 0 if the next operation is not an indel.
 
         """

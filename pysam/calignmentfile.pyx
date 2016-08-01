@@ -1055,7 +1055,7 @@ cdef class AlignmentFile:
         ----------
 
         stepper : string
-           The stepper controlls how the iterator advances.
+           The stepper controls how the iterator advances.
            Possible options for the stepper are
 
            ``all``
