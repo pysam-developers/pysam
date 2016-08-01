@@ -230,7 +230,7 @@ cdef inline packTags(tags):
     to be used in a call to struct.pack_into.
     """
     fmts, args = ["<"], []
-    
+
     cdef char array_typecode
 
     datatype2format = {
@@ -284,7 +284,7 @@ cdef inline packTags(tags):
                                      .format(value.typecode))
 
                 valuetype = force_bytes(chr(array_typecode))
-                    
+
             if valuetype not in datatype2format:
                 raise ValueError("invalid value type '%s' (%s)" %
                                  (valuetype, type(valuetype)))
@@ -513,7 +513,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     Positions corresponding to `N` (skipped region from the reference)
     in the CIGAR string will not appear in the returned sequence. The
     MD should correspondingly not contain these. Thus proper tags are::
-    
+
        Deletion from the reference:   cigar=5M1D5M    MD=5^C5
        Skipped region from reference: cigar=5M1N5M    MD=10
 
@@ -555,7 +555,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
         if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
             for i from 0 <= i < l:
-                s[s_idx] = read_sequence[r_idx] 
+                s[s_idx] = read_sequence[r_idx]
                 r_idx += 1
                 s_idx += 1
         elif op == BAM_CDEL:
@@ -579,7 +579,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 "Padding (BAM_CPAD, 6) is currently not supported. "
                 "Please implement. Sorry about that.")
 
-    cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")    
+    cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
     if md_tag_ptr == NULL:
         seq = PyBytes_FromStringAndSize(s, s_idx)
         free(s)
@@ -788,7 +788,7 @@ cdef class AlignedSegment:
             raise ValueError('sam_format failed')
 
         ret = force_str(line.s[:line.l])
-        
+
         if line.m:
             free(line.s)
 
@@ -1669,7 +1669,7 @@ cdef class AlignedSegment:
            each cigar operation.
 
         """
-        
+
         cdef int nfields = NCIGAR_CODES + 1
 
         cdef c_array.array base_counts = array.array(
@@ -2448,6 +2448,7 @@ cdef class PileupRead:
             return self._is_tail
 
     property is_refskip:
+        """1 iff the base on the padded read is part of CIGAR N op."""
         def __get__(self):
             return self._is_refskip
 
