@@ -1356,8 +1356,6 @@ cdef class AlignmentFile:
                     last_read_pos = read_loc
         return res
 
-
-
     def close(self):
         '''
         closes the :class:`pysam.AlignmentFile`.'''

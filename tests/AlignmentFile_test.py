@@ -2342,6 +2342,7 @@ class TestPileupQueryPosition(unittest.TestCase):
                         self.assertNotEqual(r.query_position, None)
                         last[r.alignment.query_name] = r.query_position
 
+
 class TestFindIntrons(unittest.TestCase):
     samfilename = "pysam_data/ex_spliced.bam"
 
@@ -2380,8 +2381,6 @@ class TestFindIntrons(unittest.TestCase):
             (17368, 17605): 7,
             })
         self.assertEqual(should,  splice_sites)
-
-
 
 
 class TestLogging(unittest.TestCase):
