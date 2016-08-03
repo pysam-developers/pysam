@@ -2342,6 +2342,47 @@ class TestPileupQueryPosition(unittest.TestCase):
                         self.assertNotEqual(r.query_position, None)
                         last[r.alignment.query_name] = r.query_position
 
+class TestFindIntrons(unittest.TestCase):
+    samfilename = "pysam_data/ex_spliced.bam"
+
+    def setUp(self):
+        self.samfile = pysam.AlignmentFile(self.samfilename)
+
+    def tearDown(self):
+        self.samfile.close()
+
+    def test_total(self):
+        all_read_counts = self.samfile.count()
+        splice_sites = self.samfile.find_introns(self.samfile.fetch())
+        self.assertEqual(sum(splice_sites.values()), all_read_counts -1)  # there is a single unspliced read in there
+         
+    def test_first(self):
+        reads = list(self.samfile.fetch())[:10]
+        splice_sites = self.samfile.find_introns(reads)
+        starts = [14792+38 - 1]
+        stops = [14792+38 + 140 - 1]
+        self.assertEqual(len(splice_sites), 1)
+        self.assertTrue((starts[0], stops[0]) in splice_sites)
+        self.assertEqual(splice_sites[(starts[0], stops[0])], 9) # first one is the unspliced read
+
+    def test_all(self):
+        reads = list(self.samfile.fetch())
+        splice_sites = self.samfile.find_introns(reads)
+        should = collections.Counter({
+            (14829, 14969): 33,
+            (15038, 15795): 24,
+            (15947, 16606): 3,
+            (16765, 16857): 9,
+            (16765, 16875): 1,
+            (17055, 17232): 19,
+            (17055, 17605): 3,
+            (17055, 17914): 1,
+            (17368, 17605): 7,
+            })
+        self.assertEqual(should,  splice_sites)
+
+
+
 
 class TestLogging(unittest.TestCase):
 
