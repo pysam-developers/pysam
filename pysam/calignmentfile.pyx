@@ -97,7 +97,8 @@ VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
 # default type conversions within SAM header records
 KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                        "SQ" : {"SN" : str, "LN" : int, "AS" : str, 
-                               "M5" : str, "SP" : str, "UR" : str,},
+                               "M5" : str, "SP" : str, "UR" : str,
+                               "AH" : str,},
                        "RG" : {"ID" : str, "CN" : str, "DS" : str,
                                "DT" : str, "FO" : str, "KS" : str,
                                "LB" : str, "PG" : str, "PI" : str,
@@ -110,7 +111,7 @@ KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
 # the end as parsing a CL will ignore any subsequent records.
 VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
                       "SQ" : ("SN", "LN", "AS", "M5",
-                               "UR", "SP"),
+                               "UR", "SP", "AH"),
                       "RG" : ("ID", "CN", "SM", "LB",
                               "PU", "PI", "DT", "DS",
                               "PL", "FO", "KS", "PG",
