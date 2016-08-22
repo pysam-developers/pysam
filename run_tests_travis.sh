@@ -15,7 +15,7 @@ fi
 
 # Create a new conda environment with the target python version
 ~/miniconda3/bin/conda install conda-build -y
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose psutil
 
 # Add new conda environment to PATH
 export PATH=~/miniconda3/envs/testenv/bin/:$PATH
@@ -135,7 +135,7 @@ fi
 echo "pip installing without cython"
 ~/miniconda3/bin/conda remove cython
 ~/miniconda3/bin/conda list
-echo "pthyon is" `which python`
+echo "python is" `which python`
 pip install --verbose --no-deps --no-use-wheel --force-reinstall --upgrade dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
