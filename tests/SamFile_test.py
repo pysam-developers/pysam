@@ -941,8 +941,8 @@ class TestIteratorColumn2(unittest.TestCase):
 
 class TestHeaderSam(unittest.TestCase):
 
-    header = {'SQ': [{'LN': 1575, 'SN': 'chr1'},
-                     {'LN': 1584, 'SN': 'chr2'}],
+    header = {'SQ': [{'LN': 1575, 'SN': 'chr1', 'AH': 'chr1:5000000-5010000'},
+                     {'LN': 1584, 'SN': 'chr2', 'AH': '*'}],
               'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891', 'PU': 'SC_1_10', "CN": "name:with:colon"},
                      {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891', 'PU': 'SC_2_12', "CN": "name:with:colon"}],
               'PG': [{'ID': 'P1', 'VN': '1.0'}, {'ID': 'P2', 'VN': '1.1'}],
