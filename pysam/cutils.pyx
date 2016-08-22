@@ -36,10 +36,10 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
     if qualities is None:
         return None
     cdef int x
-    
+
     cdef c_array.array result
     result = c_array.clone(qualities, len(qualities), zero=False)
-    
+
     for x from 0 <= x < len(qualities):
         result[x] = qualities[x] + offset
     return force_str(result.tostring())
@@ -110,9 +110,7 @@ cdef bytes force_bytes(object s, encoding="ascii"):
     u"""convert string or unicode object to bytes, assuming
     ascii encoding.
     """
-    if not IS_PYTHON3:
-        return s
-    elif s is None:
+    if s is None:
         return None
     elif PyBytes_Check(s):
         return s
