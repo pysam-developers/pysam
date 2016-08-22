@@ -1330,6 +1330,33 @@ cdef class AlignmentFile:
 
         return count_a, count_c, count_g, count_t
 
+    def find_introns(self, read_iterator):
+        """Return a dictionary {(start, stop): count}
+        Listing the intronic sites in the reads (identified by 'N' in the cigar strings),
+        and their support ( = number of reads ).
+
+        read_iterator can be the result of a .fetch(...) call.
+        Or it can be a generator filtering such reads. Example
+        samfile.find_introns((read for read in samfile.fetch(...) if read.is_reverse)
+
+
+        """
+        import collections
+        res = collections.Counter()
+        for r in read_iterator:
+            if 'N' in r.cigarstring:
+                last_read_pos = False
+                for read_loc, genome_loc in r.get_aligned_pairs():
+                    if read_loc is None and last_read_pos:
+                        start = genome_loc
+                    elif read_loc and last_read_pos is None:
+                        stop = genome_loc  # we are right exclusive ,so this is correct
+                        res[(start, stop)] += 1
+                        del start
+                        del stop
+                    last_read_pos = read_loc
+        return res
+
     def close(self):
         '''
         closes the :class:`pysam.AlignmentFile`.'''
