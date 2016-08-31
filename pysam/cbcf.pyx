@@ -2451,6 +2451,10 @@ cdef class VariantRecord(object):
             bcf_destroy1(self.ptr)
             self.ptr = NULL
 
+    def copy(self):
+        """return a copy of this VariantRecord object"""
+        return makeVariantRecord(self.header, bcf_dup(self.ptr))
+
     property rid:
         """internal reference id number"""
         def __get__(self):
@@ -2520,6 +2524,8 @@ cdef class VariantRecord(object):
             if stop < self.ptr.pos:
                 raise ValueError('Stop coordinate must be greater than or equal to start')
             self.ptr.rlen = stop - self.ptr.pos
+            if self.ptr.rlen != len(self.ref) or 'END' in self.info:
+                self.info['END'] = stop
 
     property rlen:
         """record length on chrom/contig (typically rec.stop - rec.start unless END info is supplied)"""
@@ -2529,6 +2535,8 @@ cdef class VariantRecord(object):
             if rlen < 0:
                 raise ValueError('Reference length must be non-negative')
             self.ptr.rlen = rlen
+            if self.ptr.rlen != len(self.ref) or 'END' in self.info:
+                self.info['END'] = self.ptr.pos + self.ptr.rlen
 
     property qual:
         """phred scaled quality score or None if not available"""
