@@ -3566,7 +3566,7 @@ cdef class VariantFile(object):
 
     def reset(self):
         """reset file position to beginning of file just after the header."""
-        return self.seek(self.start_offset, 0)
+        return self.seek(self.start_offset)
 
     def seek(self, uint64_t offset):
         """move file pointer to position *offset*, see
