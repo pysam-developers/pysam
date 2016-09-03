@@ -581,17 +581,20 @@ cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
 
 
 cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_type,
-                             int id, int bt_type, ssize_t bt_len, ssize_t *value_count,
-                             int *scalar, int *realloc):
+                             int id, int bt_type, ssize_t bt_len,
+                             ssize_t *value_count, int *scalar, int *realloc):
 
     bcf_get_value_count(record, hl_type, id, value_count, scalar)
 
     # Validate values now that we know the type and size
-    values = (value,) if not isinstance(value, tuple) else value
+    values = (value,) if not isinstance(value, (list, tuple)) else value
 
     # Validate values now that we know the type and size
     if ht_type == BCF_HT_FLAG:
         value_count[0] = 1
+    elif hl_type == BCF_HL_FMT and is_gt_fmt(record.header.ptr, id):
+        # KBJ: htslib lies about the cardinality of GT fields-- they're really VLEN (-1)
+        value_count[0] = -1
 
     if value_count[0] != -1 and value_count[0] != len(values):
         if scalar[0]:
@@ -698,7 +701,8 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
     info_type = bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id)
     values = bcf_check_values(record, value, BCF_HL_INFO, info_type, info_id,
-                              info.type if info else -1, info.len if info else -1,
+                              info.type if info else -1,
+                              info.len  if info else -1,
                               &value_count, &scalar, &realloc)
 
     if info_type == BCF_HT_FLAG:
@@ -841,9 +845,12 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
 
     if is_gt_fmt(hdr, fmt_id):
         value = bcf_encode_alleles(sample.record, value)
+        # KBJ: GT field is considered to be a string by the VCF header but BCF represents it as INT.
+        fmt_type = BCF_HT_INT
 
     values = bcf_check_values(sample.record, value, BCF_HL_FMT, fmt_type, fmt_id,
-                              fmt.type if fmt else -1, fmt.n if fmt else -1,
+                              fmt.type if fmt else -1,
+                              fmt.n    if fmt else -1,
                               &value_count, &scalar, &realloc)
 
     vlen = value_count < 0
