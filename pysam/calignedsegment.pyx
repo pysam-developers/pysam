@@ -955,7 +955,7 @@ cdef class AlignedSegment:
         in the BAM/SAM file. The length of a query is 0 if there is no
         sequence in the BAM/SAM file. In those cases, the read length
         can be inferred from the CIGAR alignment, see
-        :meth:`pysam.AlignmentFile.infer_query_length.`.
+        :meth:`pysam.AlignedSegment.infer_query_length`.
 
         The length includes soft-clipped bases and is equal to
         ``len(query_sequence)``.
