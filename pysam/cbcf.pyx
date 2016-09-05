@@ -647,7 +647,7 @@ cdef bcf_encode_alleles(VariantRecord record, values):
     cdef char *s
     cdef int i
 
-    if not values:
+    if values is None:
         return ()
 
     if not isinstance(values, (list, tuple)):
@@ -655,7 +655,7 @@ cdef bcf_encode_alleles(VariantRecord record, values):
 
     for value in values:
         if value is None:
-            gt_values.append(None)
+            gt_values.append(bcf_gt_missing)
         elif isinstance(value, (str, bytes)):
             bvalue = force_bytes(value)
             s = bvalue
@@ -949,7 +949,7 @@ cdef bcf_format_get_allele_indices(VariantRecordSample sample):
         for i in range(fmt0.n):
             if data8[i] == bcf_int8_vector_end:
                 break
-            elif data8[i] == bcf_int8_missing:
+            elif data8[i] == bcf_gt_missing:
                 a = -1
             else:
                 a = bcf_gt_allele(data8[i])
@@ -959,7 +959,7 @@ cdef bcf_format_get_allele_indices(VariantRecordSample sample):
         for i in range(fmt0.n):
             if data16[i] == bcf_int16_vector_end:
                 break
-            elif data16[i] == bcf_int16_missing:
+            elif data16[i] == bcf_gt_missing:
                 a = -1
             else:
                 a = bcf_gt_allele(data16[i])
@@ -969,7 +969,7 @@ cdef bcf_format_get_allele_indices(VariantRecordSample sample):
         for i in range(fmt0.n):
             if data32[i] == bcf_int32_vector_end:
                 break
-            elif data32[i] == bcf_int32_missing:
+            elif data32[i] == bcf_gt_missing:
                 a = -1
             else:
                 a = bcf_gt_allele(data32[i])
