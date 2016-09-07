@@ -1440,9 +1440,25 @@ cdef class VariantHeaderMetadata(object):
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
-            raise KeyError('invalid filter')
+            raise KeyError('invalid key')
 
         return makeVariantMetadata(self.header, self.type, kh_val_vdict(d, k).id)
+
+    def __delitem__(self, key):
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_ID]
+
+        bkey = force_bytes(key)
+        cdef khiter_t k = kh_get_vdict(d, bkey)
+
+        if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
+            raise KeyError('invalid key')
+
+        bcf_hdr_remove(hdr, self.type, bkey)
+
+    def clear(self):
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        bcf_hdr_remove(hdr, self.type, NULL)
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -2458,6 +2474,12 @@ cdef class VariantRecord(object):
     def copy(self):
         """return a copy of this VariantRecord object"""
         return makeVariantRecord(self.header, bcf_dup(self.ptr))
+
+    def translate(self, VariantHeader dst_header):
+        cdef bcf_hdr_t *src_hdr = self.header.ptr
+        cdef bcf_hdr_t *dst_hdr = dst_header.ptr
+        if src_hdr != dst_hdr:
+            bcf_translate(dst_hdr, src_hdr, self.ptr)
 
     @property
     def rid(self):
