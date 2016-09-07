@@ -1763,6 +1763,9 @@ cdef class VariantHeader(object):
     def copy(self):
         return makeVariantHeader(bcf_hdr_dup(self.ptr))
 
+    def merge(self, VariantHeader header):
+        bcf_hdr_merge(self.ptr, header.ptr)
+
     @property
     def version(self):
         """VCF version"""
