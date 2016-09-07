@@ -337,12 +337,9 @@ cdef inline int32_t calculateQueryLength(bam1_t * src):
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
 
-        if op == BAM_CMATCH or \
-           op == BAM_CINS or \
+        if op == BAM_CMATCH or op == BAM_CINS or \
            op == BAM_CSOFT_CLIP or \
-           op == BAM_CHARD_CLIP or \
-           op == BAM_CEQUAL or \
-           op == BAM_CDIFF:
+           op == BAM_CEQUAL or op == BAM_CDIFF:
             qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
 
     return qpos
