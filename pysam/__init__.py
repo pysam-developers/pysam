@@ -19,6 +19,8 @@ import pysam.cvcf as cvcf
 from pysam.cvcf import *
 import pysam.cbcf as cbcf
 from pysam.cbcf import *
+import pysam.cbgzf as cbgzf
+from pysam.cbgzf import *
 from pysam.utils import SamtoolsError
 import pysam.Pileup as Pileup
 from pysam.samtools import *
@@ -32,6 +34,7 @@ __all__ = \
     ctabix.__all__ +\
     cvcf.__all__ +\
     cbcf.__all__ +\
+    cbgzf.__all__ +\
     cfaidx.__all__ +\
     calignmentfile.__all__ +\
     calignedsegment.__all__ +\
