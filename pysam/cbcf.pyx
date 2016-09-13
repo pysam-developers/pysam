@@ -3066,10 +3066,7 @@ cdef class TabixIndex(BaseIndex):
         cdef int n
         cdef const char **refs = tbx_seqnames(self.ptr, &n)
 
-        if not refs:
-            raise ValueError('Cannot retrieve reference sequence names')
-
-        self.refs = char_array_to_tuple(refs, n, free_after=1)
+        self.refs = char_array_to_tuple(refs, n, free_after=1) if refs else ()
         self.refmap = { r:i for i,r in enumerate(self.refs) }
 
     def __dealloc__(self):
@@ -3505,8 +3502,11 @@ cdef class VariantFile(object):
         if self.is_open:
             self.close()
 
-        if mode not in ('r','w','rb','wb', 'wh', 'wbu', 'rU', 'wb0'):
+        if mode not in ('r', 'w', 'wg', 'wu', 'wz', 'w0', 'wb0'):
             raise ValueError('invalid file opening mode `{}`'.format(mode))
+
+        if mode == 'w' and filename.endswith('.gz'):
+            mode = 'wz'
 
         # for htslib, wbu seems to not work
         if mode == 'wbu':
