@@ -3305,13 +3305,14 @@ cdef class VariantFile(object):
     modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and ``wb0``.
     For instance, to open a :term:`BCF` formatted file for reading, type::
 
-        f = pysam.VariantFile('ex1.bcf','rb')
+        f = pysam.VariantFile('ex1.bcf','r')
 
-    If mode is not specified, we will try to auto-detect in the order 'rb',
-    'r', thus both the following should work::
+    If mode is not specified, we will try to auto-detect the file type.  All
+    of the following should work::
 
         f1 = pysam.VariantFile('ex1.bcf')
         f2 = pysam.VariantFile('ex1.vcf')
+        f3 = pysam.VariantFile('ex1.vcf.gz')
 
     If an index for a variant file exists (.csi or .tbi), it will be opened
     automatically.  Without an index random access to records via
@@ -3481,7 +3482,7 @@ cdef class VariantFile(object):
 
         return vars
 
-    def open(self, filename, mode='rb',
+    def open(self, filename, mode='r',
              index_filename=None,
              VariantHeader header=None,
              drop_samples=False):
@@ -3502,7 +3503,7 @@ cdef class VariantFile(object):
         if self.is_open:
             self.close()
 
-        if mode not in ('r', 'w', 'wg', 'wu', 'wz', 'w0', 'wb0', 'wbu'):
+        if mode not in ('r', 'rb', 'w', 'wg', 'wu', 'wz', 'w0', 'wb0', 'wbu'):
             raise ValueError('invalid file opening mode `{}`'.format(mode))
 
         if mode == 'w' and filename.endswith('.gz'):
