@@ -3502,7 +3502,7 @@ cdef class VariantFile(object):
         if self.is_open:
             self.close()
 
-        if mode not in ('r', 'w', 'wg', 'wu', 'wz', 'w0', 'wb0'):
+        if mode not in ('r', 'w', 'wg', 'wu', 'wz', 'w0', 'wb0', 'wbu'):
             raise ValueError('invalid file opening mode `{}`'.format(mode))
 
         if mode == 'w' and filename.endswith('.gz'):
