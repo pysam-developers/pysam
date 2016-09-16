@@ -64,9 +64,14 @@ def run_make_print_config():
     if IS_PYTHON3:
         stdout = stdout.decode("ascii")
 
-    result = dict([[x.strip() for x in line.split("=")]
-                   for line in stdout.splitlines()])
-    return result
+    make_print_config = {}
+    for line in stdout.splitlines():
+        if "=" in line:
+            row = line.split("=")
+            if len(row) == 2:
+                make_print_config.update(
+                    {row[0].strip(): row[1].strip()})
+    return make_print_config
 
 
 def configure_library(library_dir, env_options=None, options=[]):
