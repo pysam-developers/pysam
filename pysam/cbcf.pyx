@@ -3613,11 +3613,23 @@ cdef class VariantFile(object):
         if self.is_open:
             self.close()
 
-        if mode not in ('r', 'rb', 'w', 'wg', 'wu', 'wz', 'w0', 'wb0', 'wbu'):
-            raise ValueError('invalid file opening mode `{}`'.format(mode))
+        if not mode or mode[0] not in 'rwa':
+            raise ValueError('mode must begin with r, w or a')
 
-        if mode == 'w' and filename.endswith('.gz'):
-            mode = 'wz'
+        format_modes = [m for m in mode[1:] if m in 'bcguz']
+        if len(format_modes) > 1:
+            raise ValueError('mode contains conflicting format specifiers: {}'.format(''.join(format_modes)))
+
+        invalid_modes = [m for m in mode[1:] if m not in 'bcguz0123456789ex']
+        if invalid_modes:
+            raise ValueError('invalid mode options: {}'.format(''.join(invalid_modes)))
+
+        # Autodetect mode from filename
+        if mode == 'w':
+            if filename.endswith('.gz'):
+                mode = 'wz'
+            elif filename.endswith('.bcf'):
+                mode = 'wb'
 
         # for htslib, wbu seems to not work
         if mode == 'wbu':
