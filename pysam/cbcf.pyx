@@ -268,6 +268,10 @@ cdef inline bcf_str_cache_get_charptr(const char* s):
 ########################################################################
 
 
+cdef inline bint check_header_id(bcf_hdr_t *hdr, int hl_type, int id):
+    return id > 0 and id < hdr.n[BCF_DT_ID] and bcf_hdr_idinfo_exists(hdr, hl_type, id)
+
+
 cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
     return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt_id), "GT") == 0
 
@@ -499,6 +503,10 @@ cdef bcf_copy_expand_array(void *src_data, int src_type, ssize_t src_values,
 cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, ssize_t *count, int *scalar):
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
+
+    if not check_header_id(hdr, hl_type, id):
+        raise ValueError('Invalid header')
+
     cdef int length = bcf_hdr_id2length(hdr, hl_type, id)
     cdef int number = bcf_hdr_id2number(hdr, hl_type, id)
 
@@ -699,6 +707,9 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
         info_id = kh_val_vdict(d, k).id
 
+    if not check_header_id(hdr, BCF_HL_INFO, info_id):
+        raise ValueError('Invalid header')
+
     info_type = bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id)
     values = bcf_check_values(record, value, BCF_HL_INFO, info_type, info_id,
                               info.type if info else -1,
@@ -837,6 +848,9 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
             raise KeyError('unknown format')
 
         fmt_id = kh_val_vdict(d, k).id
+
+    if not check_header_id(hdr, BCF_HL_FMT, fmt_id):
+        raise ValueError('Invalid header')
 
     fmt_type = bcf_hdr_id2type(hdr, BCF_HL_FMT, fmt_id)
 
@@ -1141,9 +1155,27 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
 ## Variant Header objects
 ########################################################################
 
+
+cdef bcf_header_remove_hrec(VariantHeader header, int i):
+    cdef bcf_hdr_t *hdr = header.ptr
+
+    if i < 0 or i >= hdr.nhrec:
+        raise ValueError('Invalid header record index')
+
+    cdef bcf_hrec_t *hrec = hdr.hrec[i]
+    hdr.nhrec -= 1
+
+    if i < hdr.nhrec:
+        memmove(&hdr.hrec[i], &hdr.hrec[i+1], (hdr.nhrec-i)*sizeof(bcf_hrec_t*))
+
+    bcf_hrec_destroy(hrec)
+    hdr.hrec[hdr.nhrec] = NULL
+    hdr.dirty = 1
+
+
 #FIXME: implement a full mapping interface
-#FIXME: passing bcf_hrec_t*  may not be the safest approach once mutating
-#       operations are allowed.
+#FIXME: passing bcf_hrec_t* is not safe, since we cannot control the
+#       object lifetime.
 cdef class VariantHeaderRecord(object):
     """header record from a :class:`VariantHeader` object"""
 
@@ -1151,24 +1183,28 @@ cdef class VariantHeaderRecord(object):
     def type(self):
         """header type: FILTER, INFO, FORMAT, CONTIG, STRUCTURED, or GENERIC"""
         cdef bcf_hrec_t *r = self.ptr
+        if not r:
+            return None
         return METADATA_TYPES[r.type]
 
     @property
     def key(self):
         """header key (the part before '=', in FILTER/INFO/FORMAT/contig/fileformat etc.)"""
         cdef bcf_hrec_t *r = self.ptr
-        return bcf_str_cache_get_charptr(r.key) if r.key else None
+        return bcf_str_cache_get_charptr(r.key) if r and r.key else None
 
     @property
     def value(self):
         """header value.  Set only for generic lines, None for FILTER/INFO, etc."""
         cdef bcf_hrec_t *r = self.ptr
-        return charptr_to_str(r.value) if r.value else None
+        return charptr_to_str(r.value) if r and r.value else None
 
     @property
     def attrs(self):
         """sequence of additional header attributes"""
         cdef bcf_hrec_t *r = self.ptr
+        if not r:
+            return ()
         cdef int i
         return tuple((bcf_str_cache_get_charptr(r.keys[i]) if r.keys[i] else None,
                       charptr_to_str(r.vals[i]) if r.vals[i] else None)
@@ -1176,24 +1212,27 @@ cdef class VariantHeaderRecord(object):
 
     def __len__(self):
         cdef bcf_hrec_t *r = self.ptr
-        return r.nkeys
+        return r.nkeys if r else 0
 
     def __bool__(self):
         cdef bcf_hrec_t *r = self.ptr
-        return r.nkeys != 0
+        return r != NULL and r.nkeys != 0
 
     def __getitem__(self, key):
         """get attribute value"""
         cdef bcf_hrec_t *r = self.ptr
         cdef int i
-        bkey = force_bytes(key)
-        for i in range(r.nkeys):
-            if r.keys[i] and r.keys[i] == bkey:
-                return charptr_to_str(r.vals[i]) if r.vals[i] else None
+        if r:
+            bkey = force_bytes(key)
+            for i in range(r.nkeys):
+                if r.keys[i] and r.keys[i] == bkey:
+                    return charptr_to_str(r.vals[i]) if r.vals[i] else None
         raise KeyError('cannot find metadata key')
 
     def __iter__(self):
         cdef bcf_hrec_t *r = self.ptr
+        if not r:
+            return
         cdef int i
         for i in range(r.nkeys):
             if r.keys[i]:
@@ -1221,6 +1260,8 @@ cdef class VariantHeaderRecord(object):
     def itervalues(self):
         """D.itervalues() -> an iterator over the values of D"""
         cdef bcf_hrec_t *r = self.ptr
+        if not r:
+            return
         cdef int i
         for i in range(r.nkeys):
             if r.keys[i]:
@@ -1229,6 +1270,8 @@ cdef class VariantHeaderRecord(object):
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
         cdef bcf_hrec_t *r = self.ptr
+        if not r:
+            return
         cdef int i
         for i in range(r.nkeys):
             if r.keys[i]:
@@ -1253,11 +1296,25 @@ cdef class VariantHeaderRecord(object):
 
     def __str__(self):
         cdef bcf_hrec_t *r = self.ptr
+        if not r:
+            raise ValueError('cannot convert deleted record to str')
         if r.type == BCF_HL_GEN:
             return '##{}={}'.format(self.key, self.value)
         else:
             attrs = ','.join('{}={}'.format(k, v) for k,v in self.attrs if k != 'IDX')
             return '##{}=<{}>'.format(self.key or self.type, attrs)
+
+    # FIXME: Not safe -- causes trivial segfaults at the moment
+    def remove(self):
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef bcf_hrec_t *r = self.ptr
+        if not r:
+            return
+        assert(r.key)
+        cdef char *key = r.key if r.type == BCF_HL_GEN else r.value
+        print('Removing header type={} key={} value={} hdr={}'.format(METADATA_TYPES[r.type], r.key, r.value, key))
+        bcf_hdr_remove(hdr, r.type, key)
+        self.ptr = NULL
 
 
 cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_t *hdr):
@@ -1325,8 +1382,13 @@ cdef class VariantMetadata(object):
     def number(self):
         """metadata number (i.e. cardinality)"""
         cdef bcf_hdr_t *hdr = self.header.ptr
-        if not bcf_hdr_idinfo_exists(hdr, self.type, self.id) or self.type == BCF_HL_FLT:
+
+        if not check_header_id(hdr, self.type, self.id):
+            raise ValueError('Invalid header id')
+
+        if self.type == BCF_HL_FLT:
             return None
+
         cdef int l = bcf_hdr_id2length(hdr, self.type, self.id)
         if l == BCF_VL_FIXED:
             return bcf_hdr_id2number(hdr, self.type, self.id)
@@ -1339,7 +1401,10 @@ cdef class VariantMetadata(object):
     def type(self):
         """metadata value type"""
         cdef bcf_hdr_t *hdr = self.header.ptr
-        if not bcf_hdr_idinfo_exists(hdr, self.type, self.id) or self.type == BCF_HL_FLT:
+        if not check_header_id(hdr, self.type, self.id):
+            raise ValueError('Invalid header id')
+
+        if self.type == BCF_HL_FLT:
             return None
         return VALUE_TYPES[bcf_hdr_id2type(hdr, self.type, self.id)]
 
@@ -1355,12 +1420,17 @@ cdef class VariantMetadata(object):
     def record(self):
         """:class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object"""
         cdef bcf_hdr_t *hdr = self.header.ptr
-        if not bcf_hdr_idinfo_exists(hdr, self.type, self.id):
-            return None
+        if not check_header_id(hdr, self.type, self.id):
+            raise ValueError('Invalid header id')
         cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_ID][self.id].val.hrec[self.type]
         if not hrec:
             return None
         return makeVariantHeaderRecord(self.header, hrec)
+
+    def remove_header(self):
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef const char *bkey = hdr.id[BCF_DT_ID][self.id].key
+        bcf_hdr_remove(hdr, self.type, bkey)
 
 
 cdef VariantMetadata makeVariantMetadata(VariantHeader header, int type, int id):
@@ -1444,7 +1514,7 @@ cdef class VariantHeaderMetadata(object):
 
         return makeVariantMetadata(self.header, self.type, kh_val_vdict(d, k).id)
 
-    def __delitem__(self, key):
+    def remove_header(self, key):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_ID]
 
@@ -1455,10 +1525,12 @@ cdef class VariantHeaderMetadata(object):
             raise KeyError('invalid key')
 
         bcf_hdr_remove(hdr, self.type, bkey)
+        #bcf_hdr_sync(hdr)
 
-    def clear(self):
+    def clear_header(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
         bcf_hdr_remove(hdr, self.type, NULL)
+        #bcf_hdr_sync(hdr)
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -1556,6 +1628,11 @@ cdef class VariantContig(object):
         cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_CTG][self.id].val.hrec[0]
         return makeVariantHeaderRecord(self.header, hrec)
 
+    def remove_header(self):
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef const char *bkey = hdr.id[BCF_DT_CTG][self.id].key
+        bcf_hdr_remove(hdr, BCF_HL_CTG, bkey)
+
 
 cdef VariantContig makeVariantContig(VariantHeader header, int id):
     if not header:
@@ -1604,6 +1681,32 @@ cdef class VariantHeaderContigs(object):
         cdef int id = kh_val_vdict(d, k).id
 
         return makeVariantContig(self.header, id)
+
+    def remove_header(self, key):
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef int index
+        cdef const char *bkey
+        cdef vdict_t *d
+        cdef khiter_t k
+
+        if isinstance(key, int):
+            index = key
+            if index < 0 or index >= hdr.n[BCF_DT_CTG]:
+                raise IndexError('invalid contig index')
+            bkey = hdr.id[BCF_DT_CTG][self.id].key
+        else:
+            d = <vdict_t *>hdr.dict[BCF_DT_CTG]
+            key = force_bytes(key)
+            if kh_get_vdict(d, key) == kh_end(d):
+                raise KeyError('invalid contig')
+            bkey = key
+
+        bcf_hdr_remove(hdr, BCF_HL_CTG, bkey)
+
+    def clear_header(self):
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        bcf_hdr_remove(hdr, BCF_HL_CTG, NULL)
+        #bcf_hdr_sync(hdr)
 
     def __iter__(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -1811,11 +1914,9 @@ cdef class VariantHeader(object):
 
         i.e. it is just a dict that reflects the state of alt records
         at the time it is created.
-
         """
         return {record['ID']:record for record in self.records
                 if record.key.upper() == 'ALT' }
-
 
     # only safe to do when opening an htsfile
     cdef _subset_samples(self, include_samples):
@@ -1951,8 +2052,7 @@ cdef class VariantRecordFilter(object):
             bkey = force_bytes(key)
             id = bcf_hdr_id2int(hdr, BCF_DT_ID, bkey)
 
-            if not bcf_hdr_idinfo_exists(hdr, BCF_HL_FLT, id) \
-               or not bcf_has_filter(hdr, self.record.ptr, bkey):
+            if not check_header_id(hdr, BCF_HL_FLT, id) or not bcf_has_filter(hdr, r, bkey):
                 raise KeyError('Invalid filter')
 
         return makeVariantMetadata(self.record.header, BCF_HL_FLT, id)
@@ -1977,8 +2077,7 @@ cdef class VariantRecordFilter(object):
             bkey = force_bytes(key)
             id = bcf_hdr_id2int(hdr, BCF_DT_ID, bkey)
 
-            if not bcf_hdr_idinfo_exists(hdr, BCF_HL_FLT, id) \
-               or not bcf_has_filter(hdr, self.record.ptr, bkey):
+            if not check_header_id(hdr, BCF_HL_FLT, id) or not bcf_has_filter(hdr, r, bkey):
                 raise KeyError('Invalid filter')
 
         bcf_remove_filter(hdr, r, id, 0)
@@ -2219,6 +2318,9 @@ cdef class VariantRecordInfo(object):
             info_id = kh_val_vdict(d, k).id
         else:
             info_id = info.key
+
+        if not check_header_id(hdr, BCF_HL_INFO, info_id):
+            raise ValueError('Invalid header')
 
         if bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id) == BCF_HT_FLAG:
             return info != NULL and info.vptr != NULL
@@ -2500,7 +2602,11 @@ cdef class VariantRecord(object):
     @property
     def chrom(self):
         """chromosome/contig name"""
-        return bcf_str_cache_get_charptr(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef int rid = self.ptr.rid
+        if rid < 0 or rid >= hdr.n[BCF_DT_CTG]:
+            raise ValueError('Invalid header')
+        return bcf_str_cache_get_charptr(bcf_hdr_id2name(hdr, rid))
 
     @chrom.setter
     def chrom(self, value):
@@ -2514,7 +2620,11 @@ cdef class VariantRecord(object):
     @property
     def contig(self):
         """chromosome/contig name"""
-        return bcf_str_cache_get_charptr(bcf_hdr_id2name(self.header.ptr, self.ptr.rid))
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef int rid = self.ptr.rid
+        if rid < 0 or rid >= hdr.n[BCF_DT_CTG]:
+            raise ValueError('Invalid header')
+        return bcf_str_cache_get_charptr(bcf_hdr_id2name(hdr, rid))
 
     @contig.setter
     def contig(self, value):
@@ -3066,10 +3176,7 @@ cdef class TabixIndex(BaseIndex):
         cdef int n
         cdef const char **refs = tbx_seqnames(self.ptr, &n)
 
-        if not refs:
-            raise ValueError('Cannot retrieve reference sequence names')
-
-        self.refs = char_array_to_tuple(refs, n, free_after=1)
+        self.refs = char_array_to_tuple(refs, n, free_after=1) if refs else ()
         self.refmap = { r:i for i,r in enumerate(self.refs) }
 
     def __dealloc__(self):
@@ -3308,13 +3415,14 @@ cdef class VariantFile(object):
     modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and ``wb0``.
     For instance, to open a :term:`BCF` formatted file for reading, type::
 
-        f = pysam.VariantFile('ex1.bcf','rb')
+        f = pysam.VariantFile('ex1.bcf','r')
 
-    If mode is not specified, we will try to auto-detect in the order 'rb',
-    'r', thus both the following should work::
+    If mode is not specified, we will try to auto-detect the file type.  All
+    of the following should work::
 
         f1 = pysam.VariantFile('ex1.bcf')
         f2 = pysam.VariantFile('ex1.vcf')
+        f3 = pysam.VariantFile('ex1.vcf.gz')
 
     If an index for a variant file exists (.csi or .tbi), it will be opened
     automatically.  Without an index random access to records via
@@ -3484,7 +3592,7 @@ cdef class VariantFile(object):
 
         return vars
 
-    def open(self, filename, mode='rb',
+    def open(self, filename, mode='r',
              index_filename=None,
              VariantHeader header=None,
              drop_samples=False):
@@ -3505,8 +3613,23 @@ cdef class VariantFile(object):
         if self.is_open:
             self.close()
 
-        if mode not in ('r','w','rb','wb', 'wh', 'wbu', 'rU', 'wb0'):
-            raise ValueError('invalid file opening mode `{}`'.format(mode))
+        if not mode or mode[0] not in 'rwa':
+            raise ValueError('mode must begin with r, w or a')
+
+        format_modes = [m for m in mode[1:] if m in 'bcguz']
+        if len(format_modes) > 1:
+            raise ValueError('mode contains conflicting format specifiers: {}'.format(''.join(format_modes)))
+
+        invalid_modes = [m for m in mode[1:] if m not in 'bcguz0123456789ex']
+        if invalid_modes:
+            raise ValueError('invalid mode options: {}'.format(''.join(invalid_modes)))
+
+        # Autodetect mode from filename
+        if mode == 'w':
+            if filename.endswith('.gz'):
+                mode = 'wz'
+            elif filename.endswith('.bcf'):
+                mode = 'wb'
 
         # for htslib, wbu seems to not work
         if mode == 'wbu':

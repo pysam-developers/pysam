@@ -519,6 +519,19 @@ cbcf = Extension(
     define_macros=define_macros
 )
 
+cbgzf = Extension(
+    "pysam.cbgzf",
+    [source_pattern % "bgzf"] +
+    htslib_sources +
+    os_c_files,
+    library_dirs=htslib_library_dirs,
+    include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
+    language="c",
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
+)
+
 metadata = {
     'name': "pysam",
     'version': version,
@@ -539,6 +552,7 @@ metadata = {
                     ctabixproxies,
                     cvcf,
                     cbcf,
+                    cbgzf,
                     cfaidx,
                     cutils],
     'cmdclass': cmdclass,
