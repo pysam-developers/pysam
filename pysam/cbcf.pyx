@@ -269,7 +269,7 @@ cdef inline bcf_str_cache_get_charptr(const char* s):
 
 
 cdef inline bint check_header_id(bcf_hdr_t *hdr, int hl_type, int id):
-    return id > 0 and id < hdr.n[BCF_DT_ID] and bcf_hdr_idinfo_exists(hdr, hl_type, id)
+    return id >= 0 and id < hdr.n[BCF_DT_ID] and bcf_hdr_idinfo_exists(hdr, hl_type, id)
 
 
 cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
@@ -2056,6 +2056,23 @@ cdef class VariantRecordFilter(object):
                 raise KeyError('Invalid filter')
 
         return makeVariantMetadata(self.record.header, BCF_HL_FLT, id)
+
+    def add(self, key):
+        """Add a new filter"""
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef int id
+
+        if key == '.':
+            key = 'PASS'
+
+        bkey = force_bytes(key)
+        id = bcf_hdr_id2int(hdr, BCF_DT_ID, bkey)
+
+        if not check_header_id(hdr, BCF_HL_FLT, id):
+            raise KeyError('Invalid filter')
+
+        bcf_add_filter(hdr, r, id)
 
     def __delitem__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
