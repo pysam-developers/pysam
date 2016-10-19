@@ -501,6 +501,9 @@ cdef bcf_copy_expand_array(void *src_data, int src_type, ssize_t src_values,
 
 
 cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, ssize_t *count, int *scalar):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
 
@@ -531,6 +534,9 @@ cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, ssize_t *cou
 
 
 cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
 
     cdef char *s
@@ -592,6 +598,9 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
                              int id, int bt_type, ssize_t bt_len,
                              ssize_t *value_count, int *scalar, int *realloc):
 
+    if record is None:
+        raise ValueError('record must not be None')
+
     bcf_get_value_count(record, hl_type, id, value_count, scalar)
 
     # Validate values now that we know the type and size
@@ -649,6 +658,9 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
 
 
 cdef bcf_encode_alleles(VariantRecord record, values):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf1_t *r = record.ptr
     cdef int32_t nalleles = r.n_allele
     cdef list gt_values = []
@@ -683,6 +695,9 @@ cdef bcf_encode_alleles(VariantRecord record, values):
 
 
 cdef bcf_info_set_value(VariantRecord record, key, value):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
     cdef vdict_t *d
@@ -767,6 +782,9 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
 
 cdef bcf_info_del_value(VariantRecord record, key):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
     cdef ssize_t value_count
@@ -794,6 +812,9 @@ cdef bcf_info_del_value(VariantRecord record, key):
 
 
 cdef bcf_format_get_value(VariantRecordSample sample, key):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef ssize_t count
@@ -824,6 +845,9 @@ cdef bcf_format_get_value(VariantRecordSample sample, key):
 
 
 cdef bcf_format_set_value(VariantRecordSample sample, key, value):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int fmt_id
@@ -909,6 +933,9 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
 
 
 cdef bcf_format_del_value(VariantRecordSample sample, key):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef ssize_t value_count
@@ -936,6 +963,9 @@ cdef bcf_format_del_value(VariantRecordSample sample, key):
 
 
 cdef bcf_format_get_allele_indices(VariantRecordSample sample):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t n = bcf_hdr_nsamples(hdr)
@@ -993,6 +1023,9 @@ cdef bcf_format_get_allele_indices(VariantRecordSample sample):
 
 
 cdef bcf_format_get_alleles(VariantRecordSample sample):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t nsamples = bcf_hdr_nsamples(hdr)
@@ -1041,6 +1074,9 @@ cdef bcf_format_get_alleles(VariantRecordSample sample):
 
 
 cdef bint bcf_sample_get_phased(VariantRecordSample sample):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t n = bcf_hdr_nsamples(hdr)
@@ -1101,6 +1137,9 @@ cdef bint bcf_sample_get_phased(VariantRecordSample sample):
 
 
 cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t n = bcf_hdr_nsamples(hdr)
@@ -1157,6 +1196,9 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
 
 
 cdef bcf_header_remove_hrec(VariantHeader header, int i):
+    if header is None:
+        raise ValueError('header must not be None')
+
     cdef bcf_hdr_t *hdr = header.ptr
 
     if i < 0 or i >= hdr.nhrec:
@@ -1867,6 +1909,8 @@ cdef class VariantHeader(object):
         return makeVariantHeader(bcf_hdr_dup(self.ptr))
 
     def merge(self, VariantHeader header):
+        if header is None:
+            raise ValueError('header must not be None')
         bcf_hdr_merge(self.ptr, header.ptr)
 
     @property
@@ -1950,6 +1994,9 @@ cdef class VariantHeader(object):
 
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
+        if record is None:
+            raise ValueError('record must not be None')
+
         cdef bcf_hrec_t *r = record.ptr
 
         if r.type == BCF_HL_GEN:
@@ -2598,6 +2645,9 @@ cdef class VariantRecord(object):
         return makeVariantRecord(self.header, bcf_dup(self.ptr))
 
     def translate(self, VariantHeader dst_header):
+        if dst_header is None:
+            raise ValueError('dst_header must not be None')
+
         cdef bcf_hdr_t *src_hdr = self.header.ptr
         cdef bcf_hdr_t *dst_hdr = dst_header.ptr
         if src_hdr != dst_hdr:
@@ -2760,7 +2810,7 @@ cdef class VariantRecord(object):
             raise ValueError('Error unpacking VariantRecord')
         #FIXME: Set alleles directly -- this is stupid
         if not value:
-            raise ValueError('ref allele cannot be null')
+            raise ValueError('ref allele must not be null')
         value = force_bytes(value)
         if r.d.allele and r.n_allele:
             alleles = [r.d.allele[i] for i in range(r.n_allele)]
@@ -3235,6 +3285,8 @@ cdef void _stop_BCFIterator(BCFIterator self, bcf1_t *record):
 
 cdef class BCFIterator(BaseIterator):
     def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+        if bcf is None:
+            raise ValueError('bcf must not be None')
 
         if not isinstance(bcf.index, BCFIndex):
             raise ValueError('bcf index required')
@@ -3327,6 +3379,9 @@ cdef class TabixIterator(BaseIterator):
         self.line_buffer.s = NULL
 
     def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+        if bcf is None:
+            raise ValueError('bcf must not be None')
+
         if not isinstance(bcf.index, TabixIndex):
             raise ValueError('tabix index required')
 
@@ -3816,6 +3871,9 @@ cdef class VariantFile(object):
 
         returns the number of bytes written.
         """
+        if record is None:
+            raise ValueError('record must not be None')
+
         if not self.is_open:
             return ValueError('I/O operation on closed file')
 
