@@ -3151,10 +3151,7 @@ cdef class BCFIndex(object):
         cdef int n
         cdef const char **refs = bcf_index_seqnames(self.ptr, self.header.ptr, &n)
 
-        if not refs:
-            raise ValueError('Cannot retrieve reference sequence names')
-
-        self.refs = char_array_to_tuple(refs, n, free_after=1)
+        self.refs = char_array_to_tuple(refs, n, free_after=1) if refs else ()
         self.refmap = { r:i for i,r in enumerate(self.refs) }
 
     def __dealloc__(self):
