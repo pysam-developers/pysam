@@ -7,8 +7,7 @@
 #
 # NOTICE: This code is incomplete and preliminary.  It offers a nearly
 #         complete Pythonic interface to VCF/BCF metadata and data with
-#         reading and writing capability.  It has limited capability to to
-#         mutate the resulting data.  Documentation and a unit test suite
+#         reading and writing capability.  Documentation and a unit test suite
 #         are in the works.  The code is best tested under Python 2, but
 #         should also work with Python 3.  Please report any remaining
 #         str/bytes issues on the github site when using Python 3 and I'll
@@ -43,126 +42,22 @@
 #     user	1m3.502s
 #     sys	0m3.459s
 #
-# Here is a quick tour through the API::
-#
-#     VariantFile(filename, mode=None, header=None, drop_samples=False)
-#
-#         Attributes / Properties
-#
-#             htsfile:      htsFile*                             [private]
-#             start_offset: BGZF offset of first record          [private]
-#             filename:     filename                             [read only]
-#             mode:         mode                                 [read only]
-#             header:       VariantHeader object                 [read only]
-#             index:        TabixIndex, BCFIndex or None         [read only]
-#             drop_samples: sample information is to be ignored  [read only]
-#
-#             is_stream:    file is stdin/stdout                 [read only]
-#             is_remote:    file is not on the local filesystem  [read only]
-#             is_reading:   file has begun reading records       [read only]
-#             category:     file format general category         [read only]
-#             format:       file format                          [read only]
-#             version:      tuple of (major, minor) format version [read only]
-#             compression:  file compression
-#             description:  vaguely human readable description of  [read only]
-#                           file format.
-#
-#         Methods:
-#             copy()
-#             close()
-#             open(filename, mode=None, header=None, drop_samples=False)
-#             reset()
-#             seek(offset)
-#             tell()
-#             fetch(contig=None, start=None, stop=None, region=None, reopen=False)
-#             subset_samples(include_samples)
-#
-#     VariantHeader()
-#
-#         version:      VCF version
-#         samples:      sequence-like access to samples
-#         records:      sequence-like access to partially parsed headers
-#         contigs:      mapping-like object for contig name -> VariantContig
-#
-#         filters:      mapping-like object for filter name -> VariantMetadata
-#         info:         mapping-like object for info name -> VariantMetadata
-#         formats:      mapping-like object for formats name -> VariantMetadata
-#
-#     VariantRecord(...)
-#
-#         header:       VariantHeader object
-#         rid:          reference id (i.e. tid)
-#         chrom:        chromosome/contig string
-#         contig:       synonym for chrom
-#         pos:          1-based start position (inclusive)
-#         start:        0-based start position (inclusive)
-#         stop:         0-based stop position (exclusive)
-#         rlen:         reference length (stop - start)
-#         id:           record identifier
-#         ref:          reference allele
-#         alleles:      alleles (ref followed by alts)
-#         alts:         alt alleles
-#         qual:         quality (float)
-#         filter:       mapping-like object for filter name -> type info
-#         info:         mapping-like object for info name -> value
-#         format:       mapping-like object for format name -> type info
-#         samples:      mapping-like object of sample genotypes & attrs
-#
-#     VariantRecordSample(...)
-#
-#         name:           sample name
-#         index:          sample index
-#         allele_indices: tuple of allele indices (ref=0, alt=1..len(alts), missing=-1)
-#         alleles:        tuple of alleles (missing=None)
-#
-#         VariantRecordSample is also a mapping object from formats to values
-#
-#     VariantContig(...)
-#
-#         id:           reference id (i.e. tid)
-#         name:         chromosome/contig string
-#         length:       contig length if provided, else None
-#         header:       defining VariantHeaderRecord
-#
-#     VariantMetadata(...) # for FILTER, INFO and FORMAT metadata
-#
-#         id:           internal id
-#         name:         metadata name
-#         type:         value data type
-#         number:       number of values
-#         header:       defining VariantHeaderRecord
-#
-#    VariantHeaderRecord(...)  # replace with single tuple of key/value pairs?
-#
-#        type:          record type
-#        key:           first record key
-#        value:         first record value
-#        attrs:         remaining key/value pairs
-#
 ###############################################################################
 #
-# TODO list for next major sprint:
+# TODO list:
 #
 #   * more genotype methods
 #   * unit test suite (perhaps py.test based)
 #   * documentation
-#   * htslib 1.2 format info
-#
-# For later sprints:
-#
-#   * ability to create indices
-#   * mutable header and record data
 #   * pickle support
-#   * Python 3 support
 #   * left/right locus normalization
-#   * parallel iteration (like synced_bcf_reader)
 #   * fix reopen to re-use fd
 #
 ###############################################################################
 #
 # The MIT License
 #
-# Copyright (c) 2015 Kevin Jacobs (jacobs@bioinformed.com)
+# Copyright (c) 2015,2016 Kevin Jacobs (jacobs@bioinformed.com)
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -501,6 +396,9 @@ cdef bcf_copy_expand_array(void *src_data, int src_type, ssize_t src_values,
 
 
 cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, ssize_t *count, int *scalar):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
 
@@ -531,6 +429,9 @@ cdef bcf_get_value_count(VariantRecord record, int hl_type, int id, ssize_t *cou
 
 
 cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
 
     cdef char *s
@@ -592,6 +493,9 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
                              int id, int bt_type, ssize_t bt_len,
                              ssize_t *value_count, int *scalar, int *realloc):
 
+    if record is None:
+        raise ValueError('record must not be None')
+
     bcf_get_value_count(record, hl_type, id, value_count, scalar)
 
     # Validate values now that we know the type and size
@@ -649,6 +553,9 @@ cdef object bcf_check_values(VariantRecord record, value, int hl_type, int ht_ty
 
 
 cdef bcf_encode_alleles(VariantRecord record, values):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf1_t *r = record.ptr
     cdef int32_t nalleles = r.n_allele
     cdef list gt_values = []
@@ -683,6 +590,9 @@ cdef bcf_encode_alleles(VariantRecord record, values):
 
 
 cdef bcf_info_set_value(VariantRecord record, key, value):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
     cdef vdict_t *d
@@ -767,6 +677,9 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
 
 cdef bcf_info_del_value(VariantRecord record, key):
+    if record is None:
+        raise ValueError('record must not be None')
+
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
     cdef ssize_t value_count
@@ -794,6 +707,9 @@ cdef bcf_info_del_value(VariantRecord record, key):
 
 
 cdef bcf_format_get_value(VariantRecordSample sample, key):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef ssize_t count
@@ -824,6 +740,9 @@ cdef bcf_format_get_value(VariantRecordSample sample, key):
 
 
 cdef bcf_format_set_value(VariantRecordSample sample, key, value):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int fmt_id
@@ -909,6 +828,9 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
 
 
 cdef bcf_format_del_value(VariantRecordSample sample, key):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef ssize_t value_count
@@ -936,6 +858,9 @@ cdef bcf_format_del_value(VariantRecordSample sample, key):
 
 
 cdef bcf_format_get_allele_indices(VariantRecordSample sample):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t n = bcf_hdr_nsamples(hdr)
@@ -993,6 +918,9 @@ cdef bcf_format_get_allele_indices(VariantRecordSample sample):
 
 
 cdef bcf_format_get_alleles(VariantRecordSample sample):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t nsamples = bcf_hdr_nsamples(hdr)
@@ -1041,6 +969,9 @@ cdef bcf_format_get_alleles(VariantRecordSample sample):
 
 
 cdef bint bcf_sample_get_phased(VariantRecordSample sample):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t n = bcf_hdr_nsamples(hdr)
@@ -1101,6 +1032,9 @@ cdef bint bcf_sample_get_phased(VariantRecordSample sample):
 
 
 cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
+    if sample is None:
+        raise ValueError('sample must not be None')
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int32_t n = bcf_hdr_nsamples(hdr)
@@ -1157,6 +1091,9 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
 
 
 cdef bcf_header_remove_hrec(VariantHeader header, int i):
+    if header is None:
+        raise ValueError('header must not be None')
+
     cdef bcf_hdr_t *hdr = header.ptr
 
     if i < 0 or i >= hdr.nhrec:
@@ -1178,6 +1115,8 @@ cdef bcf_header_remove_hrec(VariantHeader header, int i):
 #       object lifetime.
 cdef class VariantHeaderRecord(object):
     """header record from a :class:`VariantHeader` object"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     @property
     def type(self):
@@ -1296,13 +1235,22 @@ cdef class VariantHeaderRecord(object):
 
     def __str__(self):
         cdef bcf_hrec_t *r = self.ptr
+
         if not r:
             raise ValueError('cannot convert deleted record to str')
-        if r.type == BCF_HL_GEN:
-            return '##{}={}'.format(self.key, self.value)
-        else:
-            attrs = ','.join('{}={}'.format(k, v) for k,v in self.attrs if k != 'IDX')
-            return '##{}=<{}>'.format(self.key or self.type, attrs)
+
+        cdef kstring_t hrec_str
+        hrec_str.l = hrec_str.m = 0
+        hrec_str.s = NULL
+
+        bcf_hrec_format(r, &hrec_str)
+
+        ret = charptr_to_str_w_len(hrec_str.s, hrec_str.l)
+
+        if hrec_str.m:
+            free(hrec_str.s)
+
+        return ret
 
     # FIXME: Not safe -- causes trivial segfaults at the moment
     def remove(self):
@@ -1333,6 +1281,8 @@ cdef VariantHeaderRecord makeVariantHeaderRecord(VariantHeader header, bcf_hrec_
 
 cdef class VariantHeaderRecords(object):
     """sequence of :class:`VariantHeaderRecord` object from a :class:`VariantHeader` object"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
         return self.header.ptr.nhrec
@@ -1365,6 +1315,8 @@ cdef VariantHeaderRecords makeVariantHeaderRecords(VariantHeader header):
 
 cdef class VariantMetadata(object):
     """filter, info or format metadata record from a :class:`VariantHeader` object"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     @property
     def name(self):
@@ -1453,6 +1405,8 @@ cdef VariantMetadata makeVariantMetadata(VariantHeader header, int type, int id)
 
 cdef class VariantHeaderMetadata(object):
     """mapping from filter, info or format name to :class:`VariantMetadata` object"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def add(self, id, number, type, description, **kwargs):
         """Add a new filter, info or format record"""
@@ -1602,6 +1556,8 @@ cdef VariantHeaderMetadata makeVariantHeaderMetadata(VariantHeader header, int32
 
 cdef class VariantContig(object):
     """contig metadata from a :class:`VariantHeader`"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     @property
     def name(self):
@@ -1650,6 +1606,8 @@ cdef VariantContig makeVariantContig(VariantHeader header, int id):
 
 cdef class VariantHeaderContigs(object):
     """mapping from contig name or index to :class:`VariantContig` object."""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -1785,6 +1743,8 @@ cdef VariantHeaderContigs makeVariantHeaderContigs(VariantHeader header):
 
 cdef class VariantHeaderSamples(object):
     """sequence of sample names from a :class:`VariantHeader` object"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
         return bcf_hdr_nsamples(self.header.ptr)
@@ -1839,7 +1799,6 @@ cdef VariantHeaderSamples makeVariantHeaderSamples(VariantHeader header):
 
 cdef class VariantHeader(object):
     """header information for a :class:`VariantFile` object"""
-
     #FIXME: Add structured proxy
     #FIXME: Add generic proxy
     #FIXME: Add mutable methods
@@ -1867,6 +1826,8 @@ cdef class VariantHeader(object):
         return makeVariantHeader(bcf_hdr_dup(self.ptr))
 
     def merge(self, VariantHeader header):
+        if header is None:
+            raise ValueError('header must not be None')
         bcf_hdr_merge(self.ptr, header.ptr)
 
     @property
@@ -1948,15 +1909,23 @@ cdef class VariantHeader(object):
         finally:
             free(hstr)
 
+    cpdef VariantRecord new_record(self):
+        """Create a new empty VariantRecord"""
+        r = makeVariantRecord(self, bcf_init())
+        r.ptr.n_sample = bcf_hdr_nsamples(self.ptr)
+        return r
+
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
-        cdef bcf_hrec_t *r = record.ptr
+        if record is None:
+            raise ValueError('record must not be None')
 
-        if r.type == BCF_HL_GEN:
-            self.add_meta(r.key, r.value)
-        else:
-            items = [(k,v) for k,v in record.attrs if k != 'IDX']
-            self.add_meta(r.key, items=items)
+        cdef bcf_hrec_t *hrec = bcf_hrec_dup(record.ptr)
+
+        bcf_hdr_add_hrec(self.ptr, hrec)
+
+        if self.ptr.dirty:
+            bcf_hdr_sync(self.ptr)
 
     def add_line(self, line):
         """Add a metadata line to this header"""
@@ -2025,6 +1994,8 @@ cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
 cdef class VariantRecordFilter(object):
     """Filters set on a :class:`VariantRecord` object, presented as a mapping from
        filter index or name to :class:`VariantMetadata` object"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
         return self.record.ptr.d.n_flt
@@ -2171,6 +2142,8 @@ cdef VariantRecordFilter makeVariantRecordFilter(VariantRecord record):
 cdef class VariantRecordFormat(object):
     """Format data present for each sample in a :class:`VariantRecord` object,
        presented as mapping from format name to :class:`VariantMetadata` object."""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
@@ -2294,8 +2267,7 @@ cdef VariantRecordFormat makeVariantRecordFormat(VariantRecord record):
     if not record:
         raise ValueError('invalid VariantRecord')
 
-    cdef VariantRecordFormat format = VariantRecordFormat.__new__(
-        VariantRecordFormat)
+    cdef VariantRecordFormat format = VariantRecordFormat.__new__(VariantRecordFormat)
     format.record = record
 
     return format
@@ -2305,6 +2277,9 @@ cdef VariantRecordFormat makeVariantRecordFormat(VariantRecord record):
 cdef class VariantRecordInfo(object):
     """Info data stored in a :class:`VariantRecord` object, presented as a
        mapping from info metadata name to value."""
+
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
         return self.record.ptr.n_info
@@ -2473,6 +2448,8 @@ cdef VariantRecordInfo makeVariantRecordInfo(VariantRecord record):
 
 cdef class VariantRecordSamples(object):
     """mapping from sample index or name to :class:`VariantRecordSample` object."""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
         return bcf_hdr_nsamples(self.record.header.ptr)
@@ -2587,6 +2564,8 @@ cdef VariantRecordSamples makeVariantRecordSamples(VariantRecord record):
 
 cdef class VariantRecord(object):
     """Variant record"""
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     def __dealloc__(self):
         if self.ptr:
@@ -2598,9 +2577,17 @@ cdef class VariantRecord(object):
         return makeVariantRecord(self.header, bcf_dup(self.ptr))
 
     def translate(self, VariantHeader dst_header):
+        if dst_header is None:
+            raise ValueError('dst_header must not be None')
+
         cdef bcf_hdr_t *src_hdr = self.header.ptr
         cdef bcf_hdr_t *dst_hdr = dst_header.ptr
+
         if src_hdr != dst_hdr:
+            if self.ptr.n_sample != bcf_hdr_nsamples(dst_hdr):
+                msg = 'Cannot translate record.  Number of samples does not match header ({} vs {})'
+                raise ValueError(msg.format(self.ptr.n_sample, bcf_hdr_nsamples(dst_hdr)))
+
             bcf_translate(dst_hdr, src_hdr, self.ptr)
 
     @property
@@ -2760,7 +2747,7 @@ cdef class VariantRecord(object):
             raise ValueError('Error unpacking VariantRecord')
         #FIXME: Set alleles directly -- this is stupid
         if not value:
-            raise ValueError('ref allele cannot be null')
+            raise ValueError('ref allele must not be null')
         value = force_bytes(value)
         if r.d.allele and r.n_allele:
             alleles = [r.d.allele[i] for i in range(r.n_allele)]
@@ -2885,6 +2872,27 @@ cdef VariantRecord makeVariantRecord(VariantHeader header, bcf1_t *r):
     if not r:
         raise ValueError('cannot create VariantRecord')
 
+    if r.errcode:
+        msg = []
+        #if r.errcode & BCF_ERR_CTG_UNDEF:
+        #    msg.append('undefined contig')
+        #if r.errcode & BCF_ERR_TAG_UNDEF:
+        #    msg.append('undefined tag')
+        if r.errcode & BCF_ERR_NCOLS:
+            msg.append('invalid number of columns')
+        if r.errcode & BCF_ERR_LIMITS:
+            msg.append('limits violated')
+        if r.errcode & BCF_ERR_CHAR:
+            msg.append('invalid character found')
+        if r.errcode & BCF_ERR_CTG_INVALID:
+            msg.append('invalid contig')
+        if r.errcode & BCF_ERR_TAG_INVALID:
+            msg.append('invalid tag')
+
+        if msg:
+            msg = ', '.join(msg)
+            raise ValueError('Error(s) reading record: {}'.format(msg))
+
     cdef VariantRecord record = VariantRecord.__new__(VariantRecord)
     record.header = header
     record.ptr = r
@@ -2903,6 +2911,8 @@ cdef class VariantRecordSample(object):
        Provides data accessors for genotypes and a mapping interface
        from format name to values.
     """
+    def __init__(self, *args, **kwargs):
+        raise TypeError('this class cannot be instantiated from Python')
 
     @property
     def name(self):
@@ -3151,10 +3161,7 @@ cdef class BCFIndex(object):
         cdef int n
         cdef const char **refs = bcf_index_seqnames(self.ptr, self.header.ptr, &n)
 
-        if not refs:
-            raise ValueError('Cannot retrieve reference sequence names')
-
-        self.refs = char_array_to_tuple(refs, n, free_after=1)
+        self.refs = char_array_to_tuple(refs, n, free_after=1) if refs else ()
         self.refmap = { r:i for i,r in enumerate(self.refs) }
 
     def __dealloc__(self):
@@ -3238,6 +3245,8 @@ cdef void _stop_BCFIterator(BCFIterator self, bcf1_t *record):
 
 cdef class BCFIterator(BaseIterator):
     def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+        if bcf is None:
+            raise ValueError('bcf must not be None')
 
         if not isinstance(bcf.index, BCFIndex):
             raise ValueError('bcf index required')
@@ -3330,6 +3339,9 @@ cdef class TabixIterator(BaseIterator):
         self.line_buffer.s = NULL
 
     def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+        if bcf is None:
+            raise ValueError('bcf must not be None')
+
         if not isinstance(bcf.index, TabixIndex):
             raise ValueError('tabix index required')
 
@@ -3461,6 +3473,7 @@ cdef class VariantFile(object):
         self.is_remote      = False
         self.is_reading     = False
         self.drop_samples   = False
+        self.header_written = False
         self.start_offset   = -1
 
         self.open(*args, **kwargs)
@@ -3527,8 +3540,15 @@ cdef class VariantFile(object):
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
         if self.htsfile:
+            # Write header if no records were written
+            if self.htsfile.is_write and not self.header_written:
+                self.header_written = True
+                with nogil:
+                    bcf_hdr_write(self.htsfile, self.header.ptr)
+
             hts_close(self.htsfile)
             self.htsfile = NULL
+
         self.header = self.index = None
 
     @property
@@ -3536,13 +3556,22 @@ cdef class VariantFile(object):
         """return True if VariantFile is open and in a valid state."""
         return self.htsfile != NULL
 
+    @property
+    def is_write(self):
+        """return True if VariantFile is open for writing"""
+        return self.htsfile != NULL and self.htsfile.is_write != 0
+
+    @property
+    def is_read(self):
+        """return True if VariantFile is open for reading"""
+        return self.htsfile != NULL and self.htsfile.is_write == 0
+
     def __iter__(self):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'r'):
-            raise ValueError(
-                'cannot iterate over Variantfile opened for writing')
+        if self.htsfile.is_write:
+            raise ValueError('cannot iterate over Variantfile opened for writing')
 
         self.is_reading = 1
         return self
@@ -3599,6 +3628,7 @@ cdef class VariantFile(object):
         vars.is_remote      = self.is_remote
         vars.is_reading     = self.is_reading
         vars.start_offset   = self.start_offset
+        vars.header_written = self.header_written
 
         if self.htsfile.is_bin:
             vars.seek(self.tell())
@@ -3663,6 +3693,7 @@ cdef class VariantFile(object):
 
         self.is_remote = hisremote(filename)
         self.is_stream = filename == b'-'
+        self.header_written = False
 
         if mode.startswith(b'w'):
             # open file for writing
@@ -3673,20 +3704,16 @@ cdef class VariantFile(object):
             if header:
                 self.header = header.copy()
             else:
-                raise ValueError('a VariantHeader must be specified')
+                self.header = VariantHeader()
+                #raise ValueError('a VariantHeader must be specified')
 
-            # open file. Header gets written to file at the same time
-            # for bam files and sam files (in the latter case, the
-            # mode needs to be wh)
+            # Header is not written until the first write or on close
             cfilename, cmode = filename, mode
             with nogil:
                 self.htsfile = hts_open(cfilename, cmode)
 
             if not self.htsfile:
                 raise ValueError("could not open file `{}` (mode='{}')".format((filename, mode)))
-
-            with nogil:
-                bcf_hdr_write(self.htsfile, self.header.ptr)
 
         elif mode.startswith(b'r'):
             # open file for reading
@@ -3797,9 +3824,8 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'r'):
-            raise ValueError('cannot fetch from Variantfile opened '
-                             'for writing')
+        if self.htsfile.is_write:
+            raise ValueError('cannot fetch from Variantfile opened for writing')
 
         if contig is None and region is None:
             self.is_reading = 1
@@ -3813,20 +3839,37 @@ cdef class VariantFile(object):
         self.is_reading = 1
         return self.index.fetch(self, contig, start, stop, region, reopen)
 
+    cpdef VariantRecord new_record(self):
+        """Create a new empty VariantRecord"""
+        return self.header.new_record()
+
     cpdef int write(self, VariantRecord record) except -1:
         """
         write a single :class:`pysam.VariantRecord` to disk.
 
         returns the number of bytes written.
         """
+        if record is None:
+            raise ValueError('record must not be None')
+
         if not self.is_open:
             return ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'w'):
+        if not self.htsfile.is_write:
             raise ValueError('cannot write to a Variantfile opened for reading')
 
+        if not self.header_written:
+            self.header_written = True
+            with nogil:
+                bcf_hdr_write(self.htsfile, self.header.ptr)
+
         #if record.header is not self.header:
+        #    record.translate(self.header)
         #    raise ValueError('Writing records from a different VariantFile is not yet supported')
+
+        if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
+            msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
+            raise ValueError(msg.format(record.ptr.n_sample, bcf_hdr_nsamples(self.header.ptr)))
 
         cdef int ret
 
@@ -3846,9 +3889,8 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'r'):
-            raise ValueError('cannot subset samples from Variantfile '
-                             'opened for writing')
+        if self.htsfile.is_write:
+            raise ValueError('cannot subset samples from Variantfile opened for writing')
 
         if self.is_reading:
             raise ValueError('cannot subset samples after fetching records')

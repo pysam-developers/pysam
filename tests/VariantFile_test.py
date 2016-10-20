@@ -171,12 +171,12 @@ class TestHeader(unittest.TestCase):
         # remove last header line starting with #CHROM
         ref.pop()
         ref = sorted(ref)
-        comp = sorted([str(x) for x in v.header.records])
+        comp = sorted(str(x) for x in v.header.records)
 
         self.assertEqual(len(ref), len(comp))
 
         for x, y in zip(ref, comp):
-            self.assertEqual(x[:-1], str(y))
+            self.assertEqual(x, y)
 
 
 # These tests need to be separate and start from newly opened files.  This
@@ -332,7 +332,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
     filename = "example_vcf42_withcontigs.vcf"
 
     def complete_check(self, fn_in, fn_out):
-
+        self.maxDiff = None
         check_lines_equal(
             self, fn_in, fn_out, sort=True,
             filter_f=lambda x: x.startswith("##contig"))
@@ -349,14 +349,15 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
         for record in vcf_in.header.records:
             header.add_record(record)
 
-        fn = str("tmp_VariantFileTest_testConstructionWithRecords") + ".vcf"
-        vcf_out = pysam.VariantFile(fn, "w", header=header)
-        for record in vcf_in:
-            # currently segfaults here:
-            # vcf_out.write(record)
-            pass
-        return
+        for sample in vcf_in.header.samples:
+            header.add_sample(sample)
 
+        vcf_out = pysam.VariantFile(fn_out, "w", header=header)
+        for record in vcf_in:
+            record.translate(header)
+            vcf_out.write(record)
+
+        vcf_in.close()
         vcf_out.close()
         self.complete_check(fn_in, fn_out)
 
@@ -370,6 +371,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
         for record in vcf_in:
             vcf_out.write(record)
 
+        vcf_in.close()
         vcf_out.close()
 
         self.complete_check(fn_in, fn_out)
@@ -397,8 +399,8 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
 
         self.complete_check(fn_in, fn_out)
 
-# Currently segfaults for VCFs without contigs
-# class TestConstructionVCFWithoutContigs(TestConstructionVCFWithContigs):
+
+#class TestConstructionVCFWithoutContigs(TestConstructionVCFWithContigs):
 #     """construct VariantFile from scratch."""
 #     filename = "example_vcf40.vcf"
 
@@ -435,8 +437,7 @@ class TestSettingRecordValues(unittest.TestCase):
             sample = record.samples["NA00001"]
             print (sample["GT"])
             self.assertEqual(sample["GT"], (0, 0))
-#	Fails with TypeError
-#            sample["GT"] = sample["GT"]
+            sample["GT"] = sample["GT"]
 
 class TestSubsetting(unittest.TestCase):
     
