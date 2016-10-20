@@ -1235,13 +1235,22 @@ cdef class VariantHeaderRecord(object):
 
     def __str__(self):
         cdef bcf_hrec_t *r = self.ptr
+
         if not r:
             raise ValueError('cannot convert deleted record to str')
-        if r.type == BCF_HL_GEN:
-            return '##{}={}'.format(self.key, self.value)
-        else:
-            attrs = ','.join('{}={}'.format(k, v) for k,v in self.attrs if k != 'IDX')
-            return '##{}=<{}>'.format(self.key or self.type, attrs)
+
+        cdef kstring_t hrec_str
+        hrec_str.l = hrec_str.m = 0
+        hrec_str.s = NULL
+
+        bcf_hrec_format(r, &hrec_str)
+
+        ret = charptr_to_str_w_len(hrec_str.s, hrec_str.l)
+
+        if hrec_str.m:
+            free(hrec_str.s)
+
+        return ret
 
     # FIXME: Not safe -- causes trivial segfaults at the moment
     def remove(self):
@@ -1911,13 +1920,12 @@ cdef class VariantHeader(object):
         if record is None:
             raise ValueError('record must not be None')
 
-        cdef bcf_hrec_t *r = record.ptr
+        cdef bcf_hrec_t *hrec = bcf_hrec_dup(record.ptr)
 
-        if r.type == BCF_HL_GEN:
-            self.add_meta(r.key, r.value)
-        else:
-            items = [(k,v) for k,v in record.attrs if k != 'IDX']
-            self.add_meta(r.key, items=items)
+        bcf_hdr_add_hrec(self.ptr, hrec)
+
+        if self.ptr.dirty:
+            bcf_hdr_sync(self.ptr)
 
     def add_line(self, line):
         """Add a metadata line to this header"""
@@ -2574,7 +2582,12 @@ cdef class VariantRecord(object):
 
         cdef bcf_hdr_t *src_hdr = self.header.ptr
         cdef bcf_hdr_t *dst_hdr = dst_header.ptr
+
         if src_hdr != dst_hdr:
+            if self.ptr.n_sample != bcf_hdr_nsamples(dst_hdr):
+                msg = 'Cannot translate record.  Number of samples does not match header ({} vs {})'
+                raise ValueError(msg.format(self.ptr.n_sample, bcf_hdr_nsamples(dst_hdr)))
+
             bcf_translate(dst_hdr, src_hdr, self.ptr)
 
     @property
@@ -2858,6 +2871,27 @@ cdef VariantRecord makeVariantRecord(VariantHeader header, bcf1_t *r):
 
     if not r:
         raise ValueError('cannot create VariantRecord')
+
+    if r.errcode:
+        msg = []
+        #if r.errcode & BCF_ERR_CTG_UNDEF:
+        #    msg.append('undefined contig')
+        #if r.errcode & BCF_ERR_TAG_UNDEF:
+        #    msg.append('undefined tag')
+        if r.errcode & BCF_ERR_NCOLS:
+            msg.append('invalid number of columns')
+        if r.errcode & BCF_ERR_LIMITS:
+            msg.append('limits violated')
+        if r.errcode & BCF_ERR_CHAR:
+            msg.append('invalid character found')
+        if r.errcode & BCF_ERR_CTG_INVALID:
+            msg.append('invalid contig')
+        if r.errcode & BCF_ERR_TAG_INVALID:
+            msg.append('invalid tag')
+
+        if msg:
+            msg = ', '.join(msg)
+            raise ValueError('Error(s) reading record: {}'.format(msg))
 
     cdef VariantRecord record = VariantRecord.__new__(VariantRecord)
     record.header = header
@@ -3507,7 +3541,7 @@ cdef class VariantFile(object):
         """closes the :class:`pysam.VariantFile`."""
         if self.htsfile:
             # Write header if no records were written
-            if not self.is_reading and not self.header_written:
+            if self.htsfile.is_write and not self.header_written:
                 self.header_written = True
                 with nogil:
                     bcf_hdr_write(self.htsfile, self.header.ptr)
@@ -3522,13 +3556,22 @@ cdef class VariantFile(object):
         """return True if VariantFile is open and in a valid state."""
         return self.htsfile != NULL
 
+    @property
+    def is_write(self):
+        """return True if VariantFile is open for writing"""
+        return self.htsfile != NULL and self.htsfile.is_write != 0
+
+    @property
+    def is_read(self):
+        """return True if VariantFile is open for reading"""
+        return self.htsfile != NULL and self.htsfile.is_write == 0
+
     def __iter__(self):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'r'):
-            raise ValueError(
-                'cannot iterate over Variantfile opened for writing')
+        if self.htsfile.is_write:
+            raise ValueError('cannot iterate over Variantfile opened for writing')
 
         self.is_reading = 1
         return self
@@ -3781,9 +3824,8 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'r'):
-            raise ValueError('cannot fetch from Variantfile opened '
-                             'for writing')
+        if self.htsfile.is_write:
+            raise ValueError('cannot fetch from Variantfile opened for writing')
 
         if contig is None and region is None:
             self.is_reading = 1
@@ -3813,7 +3855,7 @@ cdef class VariantFile(object):
         if not self.is_open:
             return ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'w'):
+        if not self.htsfile.is_write:
             raise ValueError('cannot write to a Variantfile opened for reading')
 
         if not self.header_written:
@@ -3822,7 +3864,12 @@ cdef class VariantFile(object):
                 bcf_hdr_write(self.htsfile, self.header.ptr)
 
         #if record.header is not self.header:
+        #    record.translate(self.header)
         #    raise ValueError('Writing records from a different VariantFile is not yet supported')
+
+        if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
+            msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
+            raise ValueError(msg.format(record.ptr.n_sample, bcf_hdr_nsamples(self.header.ptr)))
 
         cdef int ret
 
@@ -3842,9 +3889,8 @@ cdef class VariantFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
 
-        if not self.mode.startswith(b'r'):
-            raise ValueError('cannot subset samples from Variantfile '
-                             'opened for writing')
+        if self.htsfile.is_write:
+            raise ValueError('cannot subset samples from Variantfile opened for writing')
 
         if self.is_reading:
             raise ValueError('cannot subset samples after fetching records')
