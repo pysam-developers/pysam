@@ -1290,6 +1290,9 @@ cdef extern from "htslib/vcf.h" nogil:
     uint8_t BCF_ERR_TAG_UNDEF
     uint8_t BCF_ERR_NCOLS
     uint8_t BCF_ERR_LIMITS
+    uint8_t BCF_ERR_CHAR
+    uint8_t BCF_ERR_CTG_INVALID
+    uint8_t BCF_ERR_TAG_INVALID
 
     # The bcf1_t structure corresponds to one VCF/BCF line. Reading from VCF file
     # is slower because the string is first to be parsed, packed into BCF line
