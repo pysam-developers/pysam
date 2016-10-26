@@ -2,7 +2,7 @@ import os
 import sys
 import sysconfig
 
-from pysam.libchtslib import *
+from pysam.chtslib import *
 from pysam.cutils import *
 import pysam.cutils as cutils
 import pysam.cfaidx as cfaidx
@@ -29,7 +29,7 @@ import pysam.config
 
 # export all the symbols from separate modules
 __all__ = \
-    libchtslib.__all__ +\
+    chtslib.__all__ +\
     cutils.__all__ +\
     ctabix.__all__ +\
     cvcf.__all__ +\
@@ -88,7 +88,7 @@ def get_libraries():
                   'cbcf',
                   'ctabix']
     if pysam.config.HTSLIB == "builtin":
-        pysam_libs.append('libchtslib')
+        pysam_libs.append('chtslib')
 
     if sys.version_info.major >= 3:
         if sys.version_info.minor >= 5:
