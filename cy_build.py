@@ -87,6 +87,7 @@ class cy_build_ext(build_ext):
             if not ext.extra_link_args:
                 ext.extra_link_args = []
 
-            ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
+            libname = ext.name.split('.')[-1] + get_config_vars()["SO"]
+            ext.extra_link_args += ['-Wl,-rpath,$ORIGIN', '-Wl,-soname,' + libname]
                                     
         build_ext.build_extension(self, ext)
