@@ -1,5 +1,5 @@
-from pysam.calignmentfile cimport AlignmentFile, AlignedSegment
-from pysam.ctabix cimport Tabixfile
+from pysam.libcalignmentfile cimport AlignmentFile, AlignedSegment
+from pysam.libctabix cimport Tabixfile
 
 cdef AlignmentFile samfile
 cdef Tabixfile tabixfile
