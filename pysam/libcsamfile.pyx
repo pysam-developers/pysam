@@ -19,7 +19,7 @@ from cpython cimport PyErr_SetString, \
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.calignmentfile cimport AlignmentFile, AlignedSegment
+from pysam.libcalignmentfile cimport AlignmentFile, AlignedSegment
 
 
 cdef class Samfile(AlignmentFile):

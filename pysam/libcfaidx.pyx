@@ -57,15 +57,15 @@ from cpython cimport PyErr_SetString, \
 
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.chtslib cimport \
+from pysam.libchtslib cimport \
     faidx_nseq, fai_load, fai_destroy, fai_fetch, \
     faidx_seq_len, \
     faidx_fetch_seq, hisremote, \
     bgzf_open, bgzf_close
 
-from pysam.cutils cimport force_bytes, force_str, charptr_to_str
-from pysam.cutils cimport encode_filename, from_string_and_size
-from pysam.cutils cimport qualitystring_to_array, parse_region
+from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
+from pysam.libcutils cimport encode_filename, from_string_and_size
+from pysam.libcutils cimport qualitystring_to_array, parse_region
 
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
@@ -371,7 +371,7 @@ cdef class FastqProxy:
 
 cdef class PersistentFastqProxy:
     """
-    Python container for pysam.cfaidx.FastqProxy with persistence.
+    Python container for pysam.libcfaidx.FastqProxy with persistence.
     Needed to compare multiple fastq records from the same file.
     """
     def __init__(self, FastqProxy FastqRead):

@@ -1,4 +1,4 @@
-from pysam.cutils import _pysam_dispatch
+from pysam.libcutils import _pysam_dispatch
 
 
 class SamtoolsError(Exception):

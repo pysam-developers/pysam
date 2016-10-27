@@ -13,7 +13,7 @@ cdef extern from "unistd.h" nogil:
     ssize_t read(int fd, void *buf, size_t count)
     int close(int fd)
 
-from pysam.chtslib cimport hts_idx_t, hts_itr_t, htsFile, \
+from pysam.libchtslib cimport hts_idx_t, hts_itr_t, htsFile, \
     tbx_t, kstring_t, BGZF
 
 # These functions are put here and not in chtslib.pxd in order

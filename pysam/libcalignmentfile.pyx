@@ -61,10 +61,10 @@ import array
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.cutils cimport force_bytes, force_str, charptr_to_str
-from pysam.cutils cimport encode_filename, from_string_and_size
-from pysam.calignedsegment cimport makeAlignedSegment, makePileupColumn
-from pysam.chtslib cimport hisremote
+from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
+from pysam.libcutils cimport encode_filename, from_string_and_size
+from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
+from pysam.libchtslib cimport hisremote
 
 if PY_MAJOR_VERSION >= 3:
     from io import StringIO

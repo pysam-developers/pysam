@@ -54,10 +54,10 @@ from libc.stdlib cimport atoi
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 
-cimport pysam.ctabix as ctabix
-cimport pysam.ctabixproxies as ctabixproxies
+cimport pysam.libctabix as libctabix
+cimport pysam.libctabixproxies as libctabixproxies
 
-from pysam.cutils cimport force_str
+from pysam.libcutils cimport force_str
 
 import pysam
 
@@ -101,7 +101,7 @@ FORMAT = namedtuple('FORMAT','id numbertype number type description missingvalue
 #
 ###########################################################################################################
 
-cdef class VCFRecord( ctabixproxies.TupleProxy):
+cdef class VCFRecord(libctabixproxies.TupleProxy):
     '''vcf record.
 
     initialized from data and vcf meta
@@ -141,7 +141,7 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
 
         nbytes does not include the terminal '\0'.
         '''
-        ctabixproxies.TupleProxy.update(self, buffer, nbytes)
+        libctabixproxies.TupleProxy.update(self, buffer, nbytes)
 
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here
@@ -238,7 +238,7 @@ cdef class VCFRecord( ctabixproxies.TupleProxy):
         return result
 
 
-cdef class asVCFRecord(ctabix.Parser):
+cdef class asVCFRecord(libctabix.Parser):
     '''converts a :term:`tabix row` into a VCF record.'''
     cdef vcffile
     def __init__(self, vcffile):

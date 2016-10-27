@@ -65,9 +65,9 @@ from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
 from libc.string cimport strchr
 from cpython cimport array as c_array
 
-from pysam.cutils cimport force_bytes, force_str, \
+from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
-from pysam.cutils cimport qualities_to_qualitystring, qualitystring_to_array, \
+from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
 
 # Constants for binary tag conversion

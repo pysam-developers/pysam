@@ -97,7 +97,7 @@ from cpython.bytes   cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DecodeASCII
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.chtslib   cimport hisremote
+from pysam.libchtslib cimport hisremote
 
 
 from warnings         import warn
@@ -128,8 +128,8 @@ cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 ## Python 3 compatibility functions
 ########################################################################
 
-from pysam.cutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
-from pysam.cutils cimport encode_filename, from_string_and_size
+from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
+from pysam.libcutils cimport encode_filename, from_string_and_size
 
 
 ########################################################################
