@@ -125,7 +125,7 @@ fi
 
 # test pip installation from tar-ball with cython
 echo "pip installing with cython"
-pip install --verbose --no-deps --no-use-wheel dist/pysam-*.tar.gz
+pip install --verbose --no-deps --no-binary=:all: dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
     exit 1
@@ -136,7 +136,7 @@ echo "pip installing without cython"
 ~/miniconda3/bin/conda remove cython
 ~/miniconda3/bin/conda list
 echo "python is" `which python`
-pip install --verbose --no-deps --no-use-wheel --force-reinstall --upgrade dist/pysam-*.tar.gz
+pip install --verbose --no-deps --no-binary=:all: --force-reinstall --upgrade dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
     exit 1
@@ -146,7 +146,7 @@ fi
 # command line options
 echo "pip installing without cython and no configure options"
 export HTSLIB_CONFIGURE_OPTIONS=""
-pip install --verbose --no-deps --no-use-wheel --force-reinstall --upgrade dist/pysam-*.tar.gz
+pip install --verbose --no-deps --no-binary=:all: --force-reinstall --upgrade dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
     exit 1
