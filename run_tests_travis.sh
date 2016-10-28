@@ -6,12 +6,12 @@ WORKDIR=`pwd`
 
 #Install miniconda python
 if [ $TRAVIS_OS_NAME == "osx" ]; then
-	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
-	bash Miniconda3-latest-MacOSX-x86_64.sh -b
+	wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -o Miniconda3.sh
 else
-	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-	bash Miniconda3-latest-Linux-x86_64.sh -b
+	wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o Miniconda3.sh
 fi
+
+bash Miniconda3.sh -b
 
 # Create a new conda environment with the target python version
 ~/miniconda3/bin/conda install conda-build -y
