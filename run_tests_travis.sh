@@ -130,7 +130,7 @@ fi
 
 # attempt pip installation without cython
 echo "pip installing without cython"
-~/miniconda3/bin/conda remove cython
+~/miniconda3/bin/conda remove -y cython
 ~/miniconda3/bin/conda list
 echo "python is" `which python`
 pip install --verbose --no-deps --no-binary=:all: --force-reinstall --upgrade dist/pysam-*.tar.gz
