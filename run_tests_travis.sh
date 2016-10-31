@@ -107,9 +107,10 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
-# build source tar-ball
+# build source tar-ball. Make sure to build so that .pyx files
+# are cythonized.
 cd ..
-python setup.py sdist
+python setup.py build sdist
 
 if [ $? != 0 ]; then
     exit 1
