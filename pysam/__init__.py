@@ -3,24 +3,24 @@ import sys
 import sysconfig
 
 from pysam.libchtslib import *
-from pysam.cutils import *
-import pysam.cutils as cutils
-import pysam.cfaidx as cfaidx
-from pysam.cfaidx import *
-import pysam.ctabix as ctabix
-from pysam.ctabix import *
-import pysam.csamfile as csamfile
-from pysam.csamfile import *
-import pysam.calignmentfile as calignmentfile
-from pysam.calignmentfile import *
-import pysam.calignedsegment as calignedsegment
-from pysam.calignedsegment import *
-import pysam.cvcf as cvcf
-from pysam.cvcf import *
-import pysam.cbcf as cbcf
-from pysam.cbcf import *
-import pysam.cbgzf as cbgzf
-from pysam.cbgzf import *
+from pysam.libcutils import *
+import pysam.libcutils as libcutils
+import pysam.libcfaidx as libcfaidx
+from pysam.libcfaidx import *
+import pysam.libctabix as libctabix
+from pysam.libctabix import *
+import pysam.libcsamfile as libcsamfile
+from pysam.libcsamfile import *
+import pysam.libcalignmentfile as libcalignmentfile
+from pysam.libcalignmentfile import *
+import pysam.libcalignedsegment as libcalignedsegment
+from pysam.libcalignedsegment import *
+import pysam.libcvcf as libcvcf
+from pysam.libcvcf import *
+import pysam.libcbcf as libcbcf
+from pysam.libcbcf import *
+import pysam.libcbgzf as libcbgzf
+from pysam.libcbgzf import *
 from pysam.utils import SamtoolsError
 import pysam.Pileup as Pileup
 from pysam.samtools import *
@@ -30,15 +30,15 @@ import pysam.config
 # export all the symbols from separate modules
 __all__ = \
     libchtslib.__all__ +\
-    cutils.__all__ +\
-    ctabix.__all__ +\
-    cvcf.__all__ +\
-    cbcf.__all__ +\
-    cbgzf.__all__ +\
-    cfaidx.__all__ +\
-    calignmentfile.__all__ +\
-    calignedsegment.__all__ +\
-    csamfile.__all__ +\
+    libcutils.__all__ +\
+    libctabix.__all__ +\
+    libcvcf.__all__ +\
+    libcbcf.__all__ +\
+    libcbgzf.__all__ +\
+    libcfaidx.__all__ +\
+    libcalignmentfile.__all__ +\
+    libcalignedsegment.__all__ +\
+    libcsamfile.__all__ +\
     ["SamtoolsError"] +\
     ["Pileup"]
 
@@ -78,25 +78,17 @@ def get_defines():
 
 def get_libraries():
     '''return a list of libraries to link against.'''
-    # Note that this list does not include csamtools.so as there are
+    # Note that this list does not include libcsamtools.so as there are
     # numerous name conflicts with libchtslib.so.
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-    pysam_libs = ['ctabixproxies',
-                  'cfaidx',
-                  'csamfile',
-                  'cvcf',
-                  'cbcf',
-                  'ctabix']
+    pysam_libs = ['libctabixproxies',
+                  'libcfaidx',
+                  'libcsamfile',
+                  'libcvcf',
+                  'libcbcf',
+                  'libctabix']
     if pysam.config.HTSLIB == "builtin":
         pysam_libs.append('libchtslib')
 
-    if sys.version_info.major >= 3:
-        if sys.version_info.minor >= 5:
-            return [os.path.join(dirname, x + ".{}.so".format(
-                sysconfig.get_config_var('SOABI'))) for x in pysam_libs]
-        else:
-            return [os.path.join(dirname, x + ".{}{}.so".format(
-                sys.implementation.cache_tag,
-                sys.abiflags)) for x in pysam_libs]
-    else:
-        return [os.path.join(dirname, x + ".so") for x in pysam_libs]
+    so = sysconfig.get_config_var('SO')
+    return [os.path.join(dirname, x + so) for x in pysam_libs]

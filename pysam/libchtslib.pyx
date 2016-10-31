@@ -1,7 +1,7 @@
 # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
-from pysam.chtslib cimport *
+from pysam.libchtslib cimport *
 
 cpdef set_verbosity(int verbosity):
     u"""Set htslib's hts_verbose global variable to the specified value.

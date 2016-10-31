@@ -1,6 +1,6 @@
-from pysam.calignmentfile cimport AlignmentFile, AlignedSegment
-from pysam.calignmentfile cimport BAM_FPROPER_PAIR, BAM_FPAIRED
-from pysam.calignedsegment cimport pysam_get_flag
+from pysam.libcalignmentfile cimport AlignmentFile, AlignedSegment
+from pysam.libcalignmentfile cimport BAM_FPROPER_PAIR, BAM_FPAIRED
+from pysam.libcalignedsegment cimport pysam_get_flag
 
 def count(AlignmentFile samfile):
     cdef int is_proper = 0

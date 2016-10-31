@@ -144,14 +144,14 @@ try:
     import cython
     HAVE_CYTHON = True
     print ("# pysam: cython is available - using cythonize if necessary")
-    source_pattern = "pysam/c%s.pyx"
+    source_pattern = "pysam/libc%s.pyx"
     if HTSLIB_MODE != "external":
         HTSLIB_MODE = "shared"
 except ImportError:
     HAVE_CYTHON = False
     print ("# pysam: no cython available - using pre-compiled C")
     # no Cython available - use existing C code
-    source_pattern = "pysam/c%s.c"
+    source_pattern = "pysam/libc%s.c"
     if HTSLIB_MODE != "external":
         HTSLIB_MODE = "shared"
 
@@ -235,7 +235,6 @@ if HTSLIB_LIBRARY_DIR:
     chtslib_sources = []
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
-    internal_htslib_libraries = []
     external_htslib_libraries = ['z', 'hts']
 
 elif HTSLIB_MODE == 'separate':
@@ -245,7 +244,6 @@ elif HTSLIB_MODE == 'separate':
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
-    internal_htslib_libraries = []
 
 elif HTSLIB_MODE == 'shared':
     # link each pysam component against the same
@@ -254,29 +252,14 @@ elif HTSLIB_MODE == 'shared':
     htslib_library_dirs = [
         'pysam',
         ".",
-        os.path.join("build",
-                     distutils_dir_name("lib"),
-                     "pysam")]
+        os.path.join("build", distutils_dir_name("lib"), "pysam")]
 
     htslib_include_dirs = ['htslib']
 
-    if IS_PYTHON3:
-        if sys.version_info.minor >= 5:
-            internal_htslib_libraries = ["chtslib.{}".format(
-                sysconfig.get_config_var('SOABI'))]
-        else:
-            if sys.platform == "darwin":
-                # On OSX, python 3.3 and 3.4 Libs have no platform tags.
-                internal_htslib_libraries = ["chtslib"]
-            else:
-                internal_htslib_libraries = ["chtslib.{}{}".format(
-                    sys.implementation.cache_tag,
-                    sys.abiflags)]
-    else:
-        internal_htslib_libraries = ["chtslib"]
-
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
+
+internal_htslib_libraries = [os.path.splitext("chtslib{}".format(sysconfig.get_config_var('SO')))[0]]
 
 # build config.py
 with open(os.path.join("pysam", "config.py"), "w") as outf:
@@ -387,7 +370,7 @@ chtslib = Extension(
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
 csamfile = Extension(
-    "pysam.csamfile",
+    "pysam.libcsamfile",
     [source_pattern % "samfile",
      "pysam/htslib_util.c",
      "pysam/samfile_util.c",
@@ -407,7 +390,7 @@ csamfile = Extension(
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
 calignmentfile = Extension(
-    "pysam.calignmentfile",
+    "pysam.libcalignmentfile",
     [source_pattern % "alignmentfile",
      "pysam/htslib_util.c",
      "pysam/samfile_util.c",
@@ -427,7 +410,7 @@ calignmentfile = Extension(
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
 calignedsegment = Extension(
-    "pysam.calignedsegment",
+    "pysam.libcalignedsegment",
     [source_pattern % "alignedsegment",
      "pysam/htslib_util.c",
      "pysam/samfile_util.c",
@@ -443,7 +426,7 @@ calignedsegment = Extension(
 )
 
 ctabix = Extension(
-    "pysam.ctabix",
+    "pysam.libctabix",
     [source_pattern % "tabix",
      "pysam/tabix_util.c"] +
     htslib_sources +
@@ -457,7 +440,7 @@ ctabix = Extension(
 )
 
 cutils = Extension(
-    "pysam.cutils",
+    "pysam.libcutils",
     [source_pattern % "utils", "pysam/pysam_util.c"] +
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
     # glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
@@ -475,7 +458,7 @@ cutils = Extension(
 )
 
 cfaidx = Extension(
-    "pysam.cfaidx",
+    "pysam.libcfaidx",
     [source_pattern % "faidx"] +
     htslib_sources +
     os_c_files,
@@ -488,7 +471,7 @@ cfaidx = Extension(
 )
 
 ctabixproxies = Extension(
-    "pysam.ctabixproxies",
+    "pysam.libctabixproxies",
     [source_pattern % "tabixproxies"] +
     os_c_files,
     library_dirs=htslib_library_dirs,
@@ -500,7 +483,7 @@ ctabixproxies = Extension(
 )
 
 cvcf = Extension(
-    "pysam.cvcf",
+    "pysam.libcvcf",
     [source_pattern % "vcf"] +
     os_c_files,
     library_dirs=htslib_library_dirs,
@@ -512,7 +495,7 @@ cvcf = Extension(
 )
 
 cbcf = Extension(
-    "pysam.cbcf",
+    "pysam.libcbcf",
     [source_pattern % "bcf"] +
     htslib_sources +
     os_c_files,
@@ -525,7 +508,7 @@ cbcf = Extension(
 )
 
 cbgzf = Extension(
-    "pysam.cbgzf",
+    "pysam.libcbgzf",
     [source_pattern % "bgzf"] +
     htslib_sources +
     os_c_files,

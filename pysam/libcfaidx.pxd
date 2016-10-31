@@ -6,7 +6,7 @@ from libc.stdio cimport FILE, printf
 cimport cython
 
 from cpython cimport array
-from pysam.chtslib cimport faidx_t, kstring_t, BGZF
+from pysam.libchtslib cimport faidx_t, kstring_t, BGZF
 
 # These functions are put here and not in chtslib.pxd in order
 # to avoid warnings for unused functions.
@@ -50,7 +50,7 @@ cdef class FastqProxy:
 
 cdef class PersistentFastqProxy:
     """
-    Python container for pysam.cfaidx.FastqProxy with persistence.
+    Python container for pysam.libcfaidx.FastqProxy with persistence.
     """
     cdef public str comment, quality, sequence, name
     cdef cython.str tostring(self)
