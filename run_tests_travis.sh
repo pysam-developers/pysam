@@ -6,23 +6,19 @@ WORKDIR=`pwd`
 
 #Install miniconda python
 if [ $TRAVIS_OS_NAME == "osx" ]; then
-	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
-	bash Miniconda3-latest-MacOSX-x86_64.sh -b
+	wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O Miniconda3.sh
 else
-	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-	bash Miniconda3-latest-Linux-x86_64.sh -b
+	wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O Miniconda3.sh --no-check-certificate  # Default OS versions are old and have SSL / CERT issues
 fi
+
+bash Miniconda3.sh -b
 
 # Create a new conda environment with the target python version
 ~/miniconda3/bin/conda install conda-build -y
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose psutil
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose psutil pip
 
-# Add new conda environment to PATH
-export PATH=~/miniconda3/envs/testenv/bin/:$PATH
-
-# Hack to force linking to anaconda libraries rather than system libraries
-#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
-#export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
+# activate testenv environment
+source ~/miniconda3/bin/activate testenv
 
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
