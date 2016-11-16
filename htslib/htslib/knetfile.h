@@ -27,6 +27,7 @@
 #ifndef KNETFILE_H
 #define KNETFILE_H
 
+#include <sys/types.h>
 #include <stdint.h>
 #include <fcntl.h>
 

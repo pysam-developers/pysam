@@ -144,14 +144,14 @@ try:
     import cython
     HAVE_CYTHON = True
     print ("# pysam: cython is available - using cythonize if necessary")
-    source_pattern = "pysam/c%s.pyx"
+    source_pattern = "pysam/libc%s.pyx"
     if HTSLIB_MODE != "external":
         HTSLIB_MODE = "shared"
 except ImportError:
     HAVE_CYTHON = False
     print ("# pysam: no cython available - using pre-compiled C")
     # no Cython available - use existing C code
-    source_pattern = "pysam/c%s.c"
+    source_pattern = "pysam/libc%s.c"
     if HTSLIB_MODE != "external":
         HTSLIB_MODE = "shared"
 
@@ -252,18 +252,14 @@ elif HTSLIB_MODE == 'shared':
     htslib_library_dirs = [
         'pysam',
         ".",
-        os.path.join("build",
-                     distutils_dir_name("lib"),
-                     "pysam")]
+        os.path.join("build", distutils_dir_name("lib"), "pysam")]
 
     htslib_include_dirs = ['htslib']
 
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
-internal_htslib_libraries = ["build/{}/pysam/chtslib{}".format(
-        distutils_dir_name("lib"),
-        sysconfig.get_config_var('SO'))]
+internal_htslib_libraries = [os.path.splitext("chtslib{}".format(sysconfig.get_config_var('SO')))[0]]
 
 # build config.py
 with open(os.path.join("pysam", "config.py"), "w") as outf:
@@ -355,7 +351,7 @@ else:
 define_macros = []
 
 chtslib = Extension(
-    "pysam.chtslib",
+    "pysam.libchtslib",
     [source_pattern % "htslib",
      "pysam/htslib_util.c"] +
     shared_htslib_sources +
@@ -374,7 +370,7 @@ chtslib = Extension(
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
 csamfile = Extension(
-    "pysam.csamfile",
+    "pysam.libcsamfile",
     [source_pattern % "samfile",
      "pysam/htslib_util.c",
      "pysam/samfile_util.c",
@@ -383,10 +379,9 @@ csamfile = Extension(
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
@@ -395,7 +390,7 @@ csamfile = Extension(
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
 calignmentfile = Extension(
-    "pysam.calignmentfile",
+    "pysam.libcalignmentfile",
     [source_pattern % "alignmentfile",
      "pysam/htslib_util.c",
      "pysam/samfile_util.c",
@@ -404,10 +399,9 @@ calignmentfile = Extension(
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
@@ -416,7 +410,7 @@ calignmentfile = Extension(
 # Selected ones have been copied into samfile_utils.c
 # Needs to be devolved somehow.
 calignedsegment = Extension(
-    "pysam.calignedsegment",
+    "pysam.libcalignedsegment",
     [source_pattern % "alignedsegment",
      "pysam/htslib_util.c",
      "pysam/samfile_util.c",
@@ -425,30 +419,28 @@ calignedsegment = Extension(
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
 ctabix = Extension(
-    "pysam.ctabix",
+    "pysam.libctabix",
     [source_pattern % "tabix",
      "pysam/tabix_util.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
 cutils = Extension(
-    "pysam.cutils",
+    "pysam.libcutils",
     [source_pattern % "utils", "pysam/pysam_util.c"] +
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
     # glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
@@ -459,78 +451,72 @@ cutils = Extension(
     library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["samtools", "bcftools", "pysam", "."] +
     include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
 cfaidx = Extension(
-    "pysam.cfaidx",
+    "pysam.libcfaidx",
     [source_pattern % "faidx"] +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
 ctabixproxies = Extension(
-    "pysam.ctabixproxies",
+    "pysam.libctabixproxies",
     [source_pattern % "tabixproxies"] +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=include_os,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
 cvcf = Extension(
-    "pysam.cvcf",
+    "pysam.libcvcf",
     [source_pattern % "vcf"] +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
 cbcf = Extension(
-    "pysam.cbcf",
+    "pysam.libcbcf",
     [source_pattern % "bcf"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 
 cbgzf = Extension(
-    "pysam.cbgzf",
+    "pysam.libcbgzf",
     [source_pattern % "bgzf"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
     include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
-    extra_link_args=internal_htslib_libraries,
     define_macros=define_macros
 )
 

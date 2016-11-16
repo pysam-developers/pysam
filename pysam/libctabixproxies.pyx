@@ -5,8 +5,8 @@ from libc.string cimport strcpy, strlen, memcmp, memcpy, memchr, strstr, strchr
 from libc.stdlib cimport free, malloc, calloc, realloc
 from libc.stdlib cimport atoi, atol, atof
 
-from pysam.cutils cimport force_bytes, force_str, charptr_to_str
-from pysam.cutils cimport encode_filename, from_string_and_size
+from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
+from pysam.libcutils cimport encode_filename, from_string_and_size
 
 import collections
 

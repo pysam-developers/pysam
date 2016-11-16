@@ -1,4 +1,4 @@
-from pysam.chtslib cimport *
+from pysam.libchtslib cimport *
 
 cdef extern from "htslib_util.h":
 
@@ -32,7 +32,7 @@ cdef extern from "htslib_util.h":
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
 
-from pysam.calignmentfile cimport AlignmentFile
+from pysam.libcalignmentfile cimport AlignmentFile
 ctypedef AlignmentFile AlignmentFile_t
 
 

@@ -3,7 +3,7 @@ os:
   - osx
 
 language: c
-sudo: required
+sudo: false
 
 env:
   matrix:

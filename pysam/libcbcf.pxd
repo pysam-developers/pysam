@@ -32,7 +32,7 @@ from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 from libc.stdlib cimport malloc, calloc, realloc, free
 from libc.string cimport memcpy, memcmp, memmove, strncpy, strlen, strdup
 
-from pysam.chtslib cimport *
+from pysam.libchtslib cimport *
 
 
 cdef class VariantHeader(object):
@@ -148,6 +148,8 @@ cdef class VariantFile(object):
     cdef readonly bint       is_remote      # true if file is not on the local filesystem
     cdef readonly bint       is_reading     # true if file has begun reading records
     cdef readonly bint       header_written # true if header has already been written
+
+    cdef htsFile *_open_htsfile(self) except? NULL
 
     cpdef VariantRecord new_record(self)
 

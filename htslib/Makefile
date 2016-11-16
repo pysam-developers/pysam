@@ -92,7 +92,7 @@ HTSPREFIX =
 include htslib_vars.mk
 
 
-PACKAGE_VERSION  = 1.3.1
+PACKAGE_VERSION  = 1.3.2
 LIBHTS_SOVERSION = 1
 
 
@@ -127,6 +127,11 @@ version.h:
 print-version:
 	@echo $(PACKAGE_VERSION)
 
+print-config:
+	@echo LDFLAGS = $(LDFLAGS)
+	@echo LIBHTS_OBJS = $(LIBHTS_OBJS)
+	@echo LIBS = $(LIBS)
+	@echo PLATFORM = $(PLATFORM)
 
 .SUFFIXES: .bundle .c .o .pico .so
 
@@ -224,11 +229,6 @@ libhts.a: $(LIBHTS_OBJS)
 	$(AR) -rc $@ $(LIBHTS_OBJS)
 	-$(RANLIB) $@
 
-print-config:
-	@echo LDFLAGS = $(LDFLAGS)
-	@echo LIBHTS_OBJS = $(LIBHTS_OBJS)
-	@echo LIBS = $(LIBS)
-	@echo PLATFORM = $(PLATFORM)
 
 # The target here is libhts.so, as that is the built file that other rules
 # depend upon and that is used when -lhts appears in other program's recipes.
@@ -425,7 +425,6 @@ force:
 
 .PHONY: all check clean distclean distdir force
 .PHONY: install install-pkgconfig installdirs lib-shared lib-static
-.PHONY: maintainer-clean mostlyclean plugins print-version print-config
-.PHONY: tags test testclean
+.PHONY: maintainer-clean mostlyclean plugins print-version print-config tags test testclean
 .PHONY: clean-so install-so
 .PHONY: clean-dylib install-dylib

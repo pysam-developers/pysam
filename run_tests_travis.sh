@@ -6,23 +6,19 @@ WORKDIR=`pwd`
 
 #Install miniconda python
 if [ $TRAVIS_OS_NAME == "osx" ]; then
-	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
-	bash Miniconda3-latest-MacOSX-x86_64.sh -b
+	wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O Miniconda3.sh
 else
-	curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-	bash Miniconda3-latest-Linux-x86_64.sh -b
+	wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O Miniconda3.sh --no-check-certificate  # Default OS versions are old and have SSL / CERT issues
 fi
+
+bash Miniconda3.sh -b
 
 # Create a new conda environment with the target python version
 ~/miniconda3/bin/conda install conda-build -y
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose psutil
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose psutil pip
 
-# Add new conda environment to PATH
-export PATH=~/miniconda3/envs/testenv/bin/:$PATH
-
-# Hack to force linking to anaconda libraries rather than system libraries
-#export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
-#export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/miniconda3/envs/testenv/lib/
+# activate testenv environment
+source ~/miniconda3/bin/activate testenv
 
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
@@ -107,9 +103,10 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
-# build source tar-ball
+# build source tar-ball. Make sure to build so that .pyx files
+# are cythonized.
 cd ..
-python setup.py sdist
+python setup.py build sdist
 
 if [ $? != 0 ]; then
     exit 1
@@ -125,7 +122,7 @@ fi
 
 # test pip installation from tar-ball with cython
 echo "pip installing with cython"
-pip install --verbose --no-deps --no-use-wheel dist/pysam-*.tar.gz
+pip install --verbose --no-deps --no-binary=:all: dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
     exit 1
@@ -133,10 +130,10 @@ fi
 
 # attempt pip installation without cython
 echo "pip installing without cython"
-~/miniconda3/bin/conda remove cython
+~/miniconda3/bin/conda remove -y cython
 ~/miniconda3/bin/conda list
 echo "python is" `which python`
-pip install --verbose --no-deps --no-use-wheel --force-reinstall --upgrade dist/pysam-*.tar.gz
+pip install --verbose --no-deps --no-binary=:all: --force-reinstall --upgrade dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
     exit 1
@@ -146,7 +143,7 @@ fi
 # command line options
 echo "pip installing without cython and no configure options"
 export HTSLIB_CONFIGURE_OPTIONS=""
-pip install --verbose --no-deps --no-use-wheel --force-reinstall --upgrade dist/pysam-*.tar.gz
+pip install --verbose --no-deps --no-binary=:all: --force-reinstall --upgrade dist/pysam-*.tar.gz
 
 if [ $? != 0 ]; then
     exit 1

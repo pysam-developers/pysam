@@ -4,9 +4,9 @@ from libc.stdlib cimport malloc, calloc, realloc, free
 from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 from libc.stdio cimport FILE, printf
 
-from pysam.cfaidx cimport faidx_t, Fastafile
-from pysam.calignedsegment cimport AlignedSegment
-from pysam.chtslib cimport *
+from pysam.libcfaidx cimport faidx_t, Fastafile
+from pysam.libcalignedsegment cimport AlignedSegment
+from pysam.libchtslib cimport *
 
 from cpython cimport array
 cimport cython

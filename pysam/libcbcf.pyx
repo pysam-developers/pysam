@@ -84,7 +84,8 @@ from __future__ import division, print_function
 import os
 import sys
 
-from libc.string cimport strcmp, strpbrk
+from libc.errno  cimport errno
+from libc.string cimport strcmp, strpbrk, strerror
 from libc.stdint cimport INT8_MAX, INT16_MAX, INT32_MAX
 
 cimport cython
@@ -97,7 +98,7 @@ from cpython.bytes   cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DecodeASCII
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.chtslib   cimport hisremote
+from pysam.libchtslib cimport hisremote
 
 
 from warnings         import warn
@@ -128,8 +129,8 @@ cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 ## Python 3 compatibility functions
 ########################################################################
 
-from pysam.cutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
-from pysam.cutils cimport encode_filename, from_string_and_size
+from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
+from pysam.libcutils cimport encode_filename, from_string_and_size
 
 
 ########################################################################
@@ -449,33 +450,13 @@ cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
             value = ()
     elif z.len == 1:
         if z.type == BCF_BT_INT8:
-            if z.v1.i == bcf_int8_missing:
-                value = None
-            elif z.v1.i == bcf_int8_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int8_missing else None
         elif z.type == BCF_BT_INT16:
-            if z.v1.i == bcf_int16_missing:
-                value = None
-            elif z.v1.i == bcf_int16_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int16_missing else None
         elif z.type == BCF_BT_INT32:
-            if z.v1.i == bcf_int32_missing:
-                value = None
-            elif z.v1.i == bcf_int32_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int32_missing else None
         elif z.type == BCF_BT_FLOAT:
-            if bcf_float_is_missing(z.v1.f):
-                value = None
-            elif bcf_float_is_vector_end(z.v1.f):
-                value = ()
-            else:
-                value = z.v1.f
+            value = z.v1.f if not bcf_float_is_missing(z.v1.f) else None
         elif z.type == BCF_BT_CHAR:
             value = force_str(chr(z.v1.i))
         else:
@@ -3276,7 +3257,7 @@ cdef class BCFIterator(BaseIterator):
             try:
                 rid = index.refmap[contig]
             except KeyError:
-                raise('Unknown contig specified')
+                raise ValueError('Unknown contig specified')
 
             if start is None:
                 start = 0
@@ -3604,13 +3585,9 @@ cdef class VariantFile(object):
 
         cdef VariantFile vars = VariantFile.__new__(VariantFile)
         cdef bcf_hdr_t *hdr
-        cdef char *cfilename
-        cdef char *cmode
 
         # FIXME: re-open using fd or else header and index could be invalid
-        cfilename, cmode = self.filename, self.mode
-        with nogil:
-            vars.htsfile = hts_open(cfilename, cmode)
+        vars.htsfile = self._open_htsfile()
 
         if not vars.htsfile:
             raise ValueError('Cannot re-open htsfile')
@@ -3638,6 +3615,37 @@ cdef class VariantFile(object):
             makeVariantHeader(hdr)
 
         return vars
+
+    cdef htsFile *_open_htsfile(self) except? NULL:
+        cdef char *cfilename
+        cdef char *cmode = self.mode
+        cdef int fd
+
+        if isinstance(self.filename, bytes):
+            cfilename = self.filename
+            with nogil:
+                return hts_open(cfilename, cmode)
+        else:
+            if isinstance(self.filename, int):
+                fd = self.filename
+            else:
+                fd = self.filename.fileno()
+
+            smode = self.mode.replace(b'b',b'').replace(b'c',b'')
+            if b'b' in self.mode:
+                smode += b'b'
+            elif b'c' in self.mode:
+                smode += b'c'
+            cmode = smode
+
+            hfile = hdopen(fd, cmode)
+            if hfile == NULL:
+                raise IOError('Cannot create hfile')
+
+            filename = encode_filename('fd:{}'.format(fd))
+            cfilename = filename
+            with nogil:
+                return hts_hopen(hfile, cfilename, cmode)
 
     def open(self, filename, mode='r',
              index_filename=None,
@@ -3672,7 +3680,7 @@ cdef class VariantFile(object):
             raise ValueError('invalid mode options: {}'.format(''.join(invalid_modes)))
 
         # Autodetect mode from filename
-        if mode == 'w':
+        if mode == 'w' and isinstance(filename, str):
             if filename.endswith('.gz'):
                 mode = 'wz'
             elif filename.endswith('.bcf'):
@@ -3683,16 +3691,24 @@ cdef class VariantFile(object):
             mode = 'wb0'
 
         self.mode = mode = force_bytes(mode)
-        self.filename = filename = encode_filename(filename)
+        if isinstance(filename, str):
+            filename = encode_filename(filename)
+            self.is_remote = hisremote(filename)
+            self.is_stream = filename == b'-'
+        else:
+            self.is_remote = False
+            self.is_stream = True
+
+        self.filename = filename
+
         if index_filename is not None:
             self.index_filename = index_filename = encode_filename(index_filename)
         else:
             self.index_filename = None
+
         self.drop_samples = bool(drop_samples)
         self.header = None
 
-        self.is_remote = hisremote(filename)
-        self.is_stream = filename == b'-'
         self.header_written = False
 
         if mode.startswith(b'w'):
@@ -3708,21 +3724,18 @@ cdef class VariantFile(object):
                 #raise ValueError('a VariantHeader must be specified')
 
             # Header is not written until the first write or on close
-            cfilename, cmode = filename, mode
-            with nogil:
-                self.htsfile = hts_open(cfilename, cmode)
+            self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
-                raise ValueError("could not open file `{}` (mode='{}')".format((filename, mode)))
+                raise ValueError("could not open file `{}` (mode='{}')".format(filename, mode))
 
         elif mode.startswith(b'r'):
             # open file for reading
-            if filename != b'-' and not self.is_remote and not os.path.exists(filename):
+            if isinstance(filename, (str, bytes)) and filename != b'-' and not self.is_remote \
+                                                  and not os.path.exists(filename):
                 raise IOError('file `{}` not found'.format(filename))
 
-            cfilename, cmode = filename, mode
-            with nogil:
-                self.htsfile = hts_open(cfilename, cmode)
+            self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
                 raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
@@ -3742,6 +3755,11 @@ cdef class VariantFile(object):
                 self.header = makeVariantHeader(hdr)
             except ValueError:
                 raise ValueError("file `{}` does not have valid header (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+
+            if isinstance(self.filename, bytes):
+                cfilename = self.filename
+            else:
+                cfilename = NULL
 
             # check for index and open if present
             if self.htsfile.format.format == bcf:
@@ -3877,7 +3895,7 @@ cdef class VariantFile(object):
             ret = bcf_write1(self.htsfile, self.header.ptr, record.ptr)
 
         if ret < 0:
-            raise ValueError('write failed')
+            raise IOError('write failed: {}'.format(force_str(strerror(errno))))
 
         return ret
 

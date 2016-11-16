@@ -14,8 +14,8 @@ from libc.stdlib cimport malloc, calloc, realloc, free
 from cpython.object cimport PyObject
 from cpython.bytes  cimport PyBytes_FromStringAndSize, _PyBytes_Resize
 
-from pysam.cutils   cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
-from pysam.chtslib  cimport *
+from pysam.libcutils   cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
+from pysam.libchtslib  cimport *
 
 
 __all__ = ["BGZFile"]
