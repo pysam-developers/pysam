@@ -449,33 +449,13 @@ cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
             value = ()
     elif z.len == 1:
         if z.type == BCF_BT_INT8:
-            if z.v1.i == bcf_int8_missing:
-                value = None
-            elif z.v1.i == bcf_int8_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int8_missing else None
         elif z.type == BCF_BT_INT16:
-            if z.v1.i == bcf_int16_missing:
-                value = None
-            elif z.v1.i == bcf_int16_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int16_missing else None
         elif z.type == BCF_BT_INT32:
-            if z.v1.i == bcf_int32_missing:
-                value = None
-            elif z.v1.i == bcf_int32_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int32_missing else None
         elif z.type == BCF_BT_FLOAT:
-            if bcf_float_is_missing(z.v1.f):
-                value = None
-            elif bcf_float_is_vector_end(z.v1.f):
-                value = ()
-            else:
-                value = z.v1.f
+            value = z.v1.f if not bcf_float_is_missing(z.v1.f) else None
         elif z.type == BCF_BT_CHAR:
             value = force_str(chr(z.v1.i))
         else:
@@ -3276,7 +3256,7 @@ cdef class BCFIterator(BaseIterator):
             try:
                 rid = index.refmap[contig]
             except KeyError:
-                raise('Unknown contig specified')
+                raise ValueError('Unknown contig specified')
 
             if start is None:
                 start = 0
