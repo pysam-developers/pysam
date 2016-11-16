@@ -149,6 +149,8 @@ cdef class VariantFile(object):
     cdef readonly bint       is_reading     # true if file has begun reading records
     cdef readonly bint       header_written # true if header has already been written
 
+    cdef htsFile *_open_htsfile(self) except? NULL
+
     cpdef VariantRecord new_record(self)
 
     cpdef int write(self, VariantRecord record) except -1
