@@ -60,7 +60,7 @@ def run_configure(option):
 
 
 def run_make_print_config():
-    stdout = subprocess.check_output(["make", "print-config"])
+    stdout = subprocess.check_output(["make", "-s", "print-config"])
     if IS_PYTHON3:
         stdout = stdout.decode("ascii")
 
