@@ -88,6 +88,12 @@ else:
 CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
 
 #####################################################################
+# C multiplication with wrapping around
+cdef inline uint32_t c_mul(uint32_t a, uint32_t b):
+    return (a * b) & 0xffffffff
+
+
+#####################################################################
 # typecode guessing
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
     """map an htslib typecode to the corresponding python typecode
@@ -754,18 +760,17 @@ cdef class AlignedSegment:
             return NotImplemented
 
     def __hash__(self):
-        cdef bam1_t * src
-        src = self._delegate
-        # shift and xor values in the core structure
-        # make sure tid and mtid are shifted by different amounts
-        # should variable length data be included?
-        cdef uint32_t hash_value = src.core.tid << 24 ^ \
-            src.core.pos << 16 ^ \
-            src.core.qual << 8 ^ \
-            src.core.flag ^ \
-            src.core.isize << 24 ^ \
-            src.core.mtid << 16 ^ \
-            src.core.mpos << 8
+        cdef bam1_t * src = self._delegate
+        cdef int x
+
+        # see http://effbot.org/zone/python-hash.htm
+        cdef uint8_t * c = <uint8_t *>&src.core
+        cdef uint32_t hash_value = c[0]
+        for x from 1 <= x < sizeof(bam1_core_t):
+            hash_value = c_mul(hash_value, 1000003) ^ c[x]
+        c = <uint8_t *>src.data
+        for x from 0 <= x < src.l_data:
+            hash_value = c_mul(hash_value, 1000003) ^ c[x]
 
         return hash_value
 
