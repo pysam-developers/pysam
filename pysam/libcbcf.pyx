@@ -84,7 +84,7 @@ from __future__ import division, print_function
 import os
 import sys
 
-from libc.errno  cimport errno
+from libc.errno  cimport errno, EPIPE
 from libc.string cimport strcmp, strpbrk, strerror
 from libc.stdint cimport INT8_MAX, INT16_MAX, INT32_MAX
 
@@ -3520,6 +3520,8 @@ cdef class VariantFile(object):
 
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
+        cdef int ret = 0
+        self.header = self.index = None
         if self.htsfile:
             # Write header if no records were written
             if self.htsfile.is_write and not self.header_written:
@@ -3527,10 +3529,15 @@ cdef class VariantFile(object):
                 with nogil:
                     bcf_hdr_write(self.htsfile, self.header.ptr)
 
-            hts_close(self.htsfile)
+            ret = hts_close(self.htsfile)
             self.htsfile = NULL
 
-        self.header = self.index = None
+        if ret < 0:
+            global errno
+            if errno == EPIPE:
+                errno = 0
+            else:
+                raise OSError(errno, force_str(strerror(errno)))
 
     @property
     def is_open(self):
@@ -3895,7 +3902,7 @@ cdef class VariantFile(object):
             ret = bcf_write1(self.htsfile, self.header.ptr, record.ptr)
 
         if ret < 0:
-            raise IOError('write failed: {}'.format(force_str(strerror(errno))))
+            raise IOError(errno, strerror(errno))
 
         return ret
 
