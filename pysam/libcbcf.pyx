@@ -98,7 +98,7 @@ from cpython.bytes   cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DecodeASCII
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.libchtslib cimport hisremote
+from pysam.libchtslib cimport HTSFile, hisremote
 
 
 from warnings         import warn
@@ -119,10 +119,6 @@ cdef tuple VALUE_TYPES = ('Flag', 'Integer', 'Float', 'String')
 cdef tuple METADATA_TYPES = ('FILTER', 'INFO', 'FORMAT', 'CONTIG', 'STRUCTURED', 'GENERIC')
 cdef tuple METADATA_LENGTHS = ('FIXED', 'VARIABLE', 'A', 'G', 'R')
 
-cdef tuple FORMAT_CATEGORIES = ('UNKNOWN', 'ALIGNMENTS', 'VARIANTS', 'INDEX', 'REGIONS')
-cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', 'BAI', 'CRAM', 'CRAI',
-                      'VCF', 'BCF', 'CSI', 'GZI', 'TBI', 'BED')
-cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 
 ########################################################################
 ########################################################################
@@ -3411,7 +3407,7 @@ cdef class TabixIterator(BaseIterator):
 ########################################################################
 
 
-cdef class VariantFile(object):
+cdef class VariantFile(HTSFile):
     """*(filename, mode=None, index_filename=None, header=None, drop_samples=False)*
 
     A :term:`VCF`/:term:`BCF` formatted file. The file is automatically
@@ -3459,65 +3455,6 @@ cdef class VariantFile(object):
 
         self.open(*args, **kwargs)
 
-    def __dealloc__(self):
-        if self.htsfile:
-            hts_close(self.htsfile)
-            self.htsfile = NULL
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-        return False
-
-    @property
-    def category(self):
-        """General file format category.  One of UNKNOWN, ALIGNMENTS,
-        VARIANTS, INDEX, REGIONS"""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return FORMAT_CATEGORIES[self.htsfile.format.category]
-
-    @property
-    def format(self):
-        """File format.
-
-        One of UNKNOWN, BINARY_FORMAT, TEXT_FORMAT, SAM, BAM,
-        BAI, CRAM, CRAI, VCF, BCF, CSI, GZI, TBI, BED.
-        """
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return FORMATS[self.htsfile.format.format]
-
-    @property
-    def version(self):
-        """Tuple of file format version numbers (major, minor)"""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return (self.htsfile.format.version.major,
-                self.htsfile.format.version.minor)
-
-    @property
-    def compression(self):
-        """File compression.
-
-        One of NONE, GZIP, BGZF, CUSTOM."""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return COMPRESSION[self.htsfile.format.compression]
-
-    @property
-    def description(self):
-        """Vaguely human readable description of the file format"""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        cdef char *desc = hts_format_description(&self.htsfile.format)
-        try:
-            return charptr_to_str(desc)
-        finally:
-            free(desc)
-
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
         cdef int ret = 0
@@ -3538,21 +3475,6 @@ cdef class VariantFile(object):
                 errno = 0
             else:
                 raise OSError(errno, force_str(strerror(errno)))
-
-    @property
-    def is_open(self):
-        """return True if VariantFile is open and in a valid state."""
-        return self.htsfile != NULL
-
-    @property
-    def is_write(self):
-        """return True if VariantFile is open for writing"""
-        return self.htsfile != NULL and self.htsfile.is_write != 0
-
-    @property
-    def is_read(self):
-        """return True if VariantFile is open for reading"""
-        return self.htsfile != NULL and self.htsfile.is_write == 0
 
     def __iter__(self):
         if not self.is_open:
@@ -3622,37 +3544,6 @@ cdef class VariantFile(object):
             makeVariantHeader(hdr)
 
         return vars
-
-    cdef htsFile *_open_htsfile(self) except? NULL:
-        cdef char *cfilename
-        cdef char *cmode = self.mode
-        cdef int fd
-
-        if isinstance(self.filename, bytes):
-            cfilename = self.filename
-            with nogil:
-                return hts_open(cfilename, cmode)
-        else:
-            if isinstance(self.filename, int):
-                fd = self.filename
-            else:
-                fd = self.filename.fileno()
-
-            smode = self.mode.replace(b'b',b'').replace(b'c',b'')
-            if b'b' in self.mode:
-                smode += b'b'
-            elif b'c' in self.mode:
-                smode += b'c'
-            cmode = smode
-
-            hfile = hdopen(fd, cmode)
-            if hfile == NULL:
-                raise IOError('Cannot create hfile')
-
-            filename = encode_filename('fd:{}'.format(fd))
-            cfilename = filename
-            with nogil:
-                return hts_hopen(hfile, cfilename, cmode)
 
     def open(self, filename, mode='r',
              index_filename=None,
@@ -3792,38 +3683,6 @@ cdef class VariantFile(object):
         """reset file position to beginning of file just after the header."""
         return self.seek(self.start_offset)
 
-    def seek(self, uint64_t offset):
-        """move file pointer to position *offset*, see
-        :meth:`pysam.VariantFile.tell`."""
-        if not self.is_open:
-            raise ValueError('I/O operation on closed file')
-        if self.is_stream:
-            raise OSError('seek not available in streams')
-
-        cdef int64_t ret
-        if self.htsfile.format.compression != no_compression:
-            with nogil:
-                ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
-        else:
-            with nogil:
-                ret = hts_useek(self.htsfile, <int>offset, SEEK_SET)
-        return ret
-
-    def tell(self):
-        """return current file position, see :meth:`pysam.VariantFile.seek`."""
-        if not self.is_open:
-            raise ValueError('I/O operation on closed file')
-        if self.is_stream:
-            raise OSError('tell not available in streams')
-
-        cdef int64_t ret
-        if self.htsfile.format.compression != no_compression:
-            with nogil:
-                ret = bgzf_tell(hts_get_bgzfp(self.htsfile))
-        else:
-            with nogil:
-                ret = hts_utell(self.htsfile)
-        return ret
 
     def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False):
         """fetch records in a :term:`region` using 0-based indexing. The

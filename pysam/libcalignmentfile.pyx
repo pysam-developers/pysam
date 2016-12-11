@@ -64,7 +64,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
-from pysam.libchtslib cimport hisremote
+from pysam.libchtslib cimport HTSFile, hisremote
 
 if PY_MAJOR_VERSION >= 3:
     from io import StringIO
@@ -217,7 +217,7 @@ cdef bam_hdr_t * build_header(new_header):
     return dest
 
 
-cdef class AlignmentFile:
+cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
@@ -327,13 +327,12 @@ cdef class AlignmentFile:
     """
 
     def __cinit__(self, *args, **kwargs):
-
         self.htsfile = NULL
-        self._filename = None
-        self.is_bam = False
+        self.filename = None
+        self.mode = None
         self.is_stream = False
-        self.is_cram = False
         self.is_remote = False
+        self.index = NULL
 
         if "filename" in kwargs:
             args = [kwargs["filename"]]
@@ -343,10 +342,6 @@ cdef class AlignmentFile:
 
         # allocate memory for iterator
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
-
-    def is_open(self):
-        '''return true if htsfile has been opened.'''
-        return self.htsfile != NULL
 
     def has_index(self):
         """return true if htsfile has an existing (and opened) index.
@@ -442,8 +437,8 @@ cdef class AlignmentFile:
             mode = "wb0"
 
         cdef bytes bmode = mode.encode('ascii')
-        self._filename = filename = encode_filename(filename)
-        self._reference_filename = reference_filename = encode_filename(
+        self.filename = filename = encode_filename(filename)
+        self.reference_filename = reference_filename = encode_filename(
             reference_filename)
 
         # FIXME: Use htsFormat when it is available
@@ -478,10 +473,8 @@ cdef class AlignmentFile:
                 n = 0
                 for x in reference_names:
                     n += len(x) + 1
-                self.header.target_name = <char**>calloc(
-                    n, sizeof(char*))
-                self.header.target_len = <uint32_t*>calloc(
-                    n, sizeof(uint32_t))
+                self.header.target_name = <char**>calloc(n, sizeof(char*))
+                self.header.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
                 for x from 0 <= x < self.header.n_targets:
                     self.header.target_len[x] = reference_lengths[x]
                     name = reference_names[x]
@@ -518,20 +511,24 @@ cdef class AlignmentFile:
                 with nogil:
                     self.htsfile = hts_open(cfilename, cmode)
 
-            # htsfile.format does not get set until writing, so use
-            # the format specifier explicitely given by the user.
-            self.is_bam = "b" in mode
-            self.is_cram = "c" in mode
+            # fill in what we know about the format in htsfile.format
+            self.htsfile.format.category = sequence_data
+            if "b" in mode:
+                self.htsfile.format.format = bam
+            elif "c" in mode:
+                self.htsfile.format.format = cram
+            else:
+                self.htsfile.format.format = sam
 
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
-            if self.is_cram and reference_filename:
+            if "c" in mode and reference_filename:
                 # note that fn_aux takes ownership, so create a copy
-                self.htsfile.fn_aux = strdup(self._reference_filename)
+                self.htsfile.fn_aux = strdup(self.reference_filename)
 
             # write header to htsfile
-            if self.is_bam or self.is_cram or "h" in mode:
+            if "b" in mode or "c" in mode or "h" in mode:
                 with nogil:
                     sam_hdr_write(self.htsfile, self.header)
 
@@ -557,8 +554,8 @@ cdef class AlignmentFile:
                     "could not open file (mode='%s') - "
                     "is it SAM/BAM format?" % mode)
 
-            self.is_bam = self.htsfile.format.format == bam
-            self.is_cram = self.htsfile.format.format == cram
+            if self.htsfile.format.category != sequence_data:
+                raise ValueError("file does not contain alignment data")
 
             # bam files require a valid header
             if self.is_bam or self.is_cram:
@@ -582,7 +579,7 @@ cdef class AlignmentFile:
 
             # set filename with reference sequences
             if self.is_cram and reference_filename:
-                creference_filename = self._reference_filename
+                creference_filename = self.reference_filename
                 hts_set_opt(self.htsfile,
                             CRAM_OPT_REFERENCE,
                             creference_filename)
@@ -680,71 +677,6 @@ cdef class AlignmentFile:
             raise ValueError("reference_id %i out of range 0<=tid<%i" % 
                              (tid, self.header.n_targets))
         return charptr_to_str(self.header.target_name[tid])
-
-    def reset(self):
-        """reset file position to beginning of file just after
-        the header.
-
-        Returns
-        -------
-
-        The file position after moving the file pointer.
-
-        """
-        return self.seek(self.start_offset, 0)
-
-    def seek(self, uint64_t offset, int where=0):
-        """move file pointer to position `offset`, see
-        :meth:`pysam.AlignmentFile.tell`.
-
-        Parameters
-        ----------
-        
-        offset : int
-
-        position of the read/write pointer within the file.
-
-        where : int
-    
-        optional and defaults to 0 which means absolute file
-        positioning, other values are 1 which means seek relative to
-        the current position and 2 means seek relative to the file's
-        end.
-        
-        Returns
-        -------
-        
-        the file position after moving the file pointer
-
-        """
-
-        if not self.is_open():
-            raise ValueError("I/O operation on closed file")
-        if not self.is_bam:
-            raise NotImplementedError(
-                "seek only available in bam files")
-        if self.is_stream:
-            raise OSError("seek no available in streams")
-
-        cdef uint64_t pos
-        with nogil:
-            pos = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, where)
-        return pos
-
-    def tell(self):
-        """
-        return current file position.
-        """
-        if not self.is_open():
-            raise ValueError("I/O operation on closed file")
-        if not (self.is_bam or self.is_cram):
-            raise NotImplementedError(
-                "seek only available in bam files")
-
-        cdef uint64_t pos
-        with nogil:
-            pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
-        return pos
 
     def parse_region(self,
                      reference=None,
@@ -1432,17 +1364,9 @@ cdef class AlignmentFile:
     ###############################################################
     ## properties
     ###############################################################
-    property closed:
-        """bool indicating the current state of the file object. 
-        This is a read-only attribute; the close() method changes the value. 
-        """
-        def __get__(self):
-            return not self.is_open()
-
-    property filename:
-        """filename associated with this object. This is a read-only attribute."""
-        def __get__(self):
-            return self._filename
+    @property
+    def closed(self):
+        return self.is_closed
 
     property nreferences:
         """"int with the number of :term:`reference` sequences in the file.
@@ -1518,13 +1442,6 @@ cdef class AlignmentFile:
             with nogil:
                 n = hts_idx_get_n_no_coor(self.index)
             return n
-
-    property format:
-        '''string describing the file format'''
-        def __get__(self):
-            if not self.is_open():
-                raise ValueError( "I/O operation on closed file" )
-            return hts_format_description(&self.htsfile.format)
 
     property text:
         '''string with the full contents of the :term:`sam file` header as a
@@ -1721,7 +1638,7 @@ cdef class IteratorRow:
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if multiple_iterators:
-            cfilename = samfile._filename
+            cfilename = samfile.filename
             with nogil:
                 self.htsfile = hts_open(cfilename, 'r')
             assert self.htsfile != NULL
@@ -1732,8 +1649,8 @@ cdef class IteratorRow:
             assert self.header != NULL
             self.owns_samfile = True
             # options specific to CRAM files
-            if samfile.is_cram and samfile._reference_filename:
-                creference_filename = samfile._reference_filename
+            if samfile.is_cram and samfile.reference_filename:
+                creference_filename = samfile.reference_filename
                 hts_set_opt(self.htsfile,
                             CRAM_OPT_REFERENCE,
                             creference_filename)
@@ -2490,7 +2407,7 @@ cdef class IndexedReads:
         # multiple_iterators the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if multiple_iterators:
-            cfilename = samfile._filename
+            cfilename = samfile.filename
             with nogil:
                 self.htsfile = hts_open(cfilename, 'r')
             assert self.htsfile != NULL

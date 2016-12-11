@@ -129,27 +129,17 @@ cdef class TabixIterator(BaseIterator):
     cdef kstring_t line_buffer
 
 
-cdef class VariantFile(object):
-    cdef htsFile *htsfile                  # pointer to htsFile structure
-    cdef int64_t  start_offset             # BGZF offset of first record
-
-    cdef readonly object     filename       # filename as supplied by user
-    cdef readonly object     mode           # file opening mode
-    cdef readonly object     index_filename # filename of index, if supplied by user
-
+cdef class VariantFile(HTSFile):
     cdef readonly VariantHeader  header
     cdef readonly BaseIndex      index
 
     cdef readonly bint           drop_samples  # true if sample information is to be ignored
 
     # FIXME: Temporary, use htsFormat when it is available
-    cdef readonly bint       is_bcf         # true if file is a bcf file
     cdef readonly bint       is_stream      # true if not a seekable file but a stream
     cdef readonly bint       is_remote      # true if file is not on the local filesystem
     cdef readonly bint       is_reading     # true if file has begun reading records
     cdef readonly bint       header_written # true if header has already been written
-
-    cdef htsFile *_open_htsfile(self) except? NULL
 
     cpdef VariantRecord new_record(self)
 
