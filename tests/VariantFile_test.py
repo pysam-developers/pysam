@@ -340,7 +340,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
             self.assertEqual(inf.version, (4, 2))
             self.assertEqual(inf.compression, self.compression)
             self.assertEqual(inf.description, self.description)
-            self.assertEqual(inf.is_open, True)
+            self.assertTrue(inf.is_open)
             self.assertEqual(inf.is_read, True)
             self.assertEqual(inf.is_write, False)
 
@@ -445,7 +445,7 @@ class TestSettingRecordValues(unittest.TestCase):
             self.assertEqual(inf.version, (4, 0))
             self.assertEqual(inf.compression, 'NONE')
             self.assertEqual(inf.description, 'VCF version 4.0 variant calling text')
-            self.assertEqual(inf.is_open, True)
+            self.assertTrue(inf.is_open)
             self.assertEqual(inf.is_read, True)
             self.assertEqual(inf.is_write, False)
 
