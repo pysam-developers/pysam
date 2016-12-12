@@ -41,6 +41,8 @@ class CallableValue(object):
         return self.value
     def __bool__(self):
         return self.value
+    def __nonzero__(self):
+        return self.value
     def __eq__(self, other):
         return self.value == other
     def __ne__(self, other):
