@@ -7,6 +7,9 @@ from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
 
+__all__ = ["get_verbosity", "set_verbosity"]
+
+
 ########################################################################
 ########################################################################
 ## Constants
@@ -20,18 +23,12 @@ cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 
 
 cpdef set_verbosity(int verbosity):
-    u"""Set htslib's hts_verbose global variable to the specified value.
-    """
+    """Set htslib's hts_verbose global variable to the specified value."""
     return hts_set_verbosity(verbosity)
 
 cpdef get_verbosity():
-    u"""Return the value of htslib's hts_verbose global variable.
-    """
+    """Return the value of htslib's hts_verbose global variable."""
     return hts_get_verbosity()
-
-__all__ = [
-    "get_verbosity",
-    "set_verbosity"]
 
 
 class CallableValue(object):
@@ -120,47 +117,56 @@ cdef class HTSFile(object):
 
     @property
     def is_open(self):
-        """return True if VariantFile is open and in a valid state."""
+        """return True if HTSFile is open and in a valid state."""
         return CTrue if self.htsfile != NULL else CFalse
 
     @property
     def is_closed(self):
-        """return True if VariantFile is open and in a valid state."""
+        """return True if HTSFile is closed."""
+        return self.htsfile == NULL
+
+    @property
+    def closed(self):
+        """return True if HTSFile is closed."""
         return self.htsfile == NULL
 
     @property
     def is_write(self):
-        """return True if VariantFile is open for writing"""
+        """return True if HTSFile is open for writing"""
         return self.htsfile != NULL and self.htsfile.is_write != 0
 
     @property
     def is_read(self):
-        """return True if VariantFile is open for reading"""
+        """return True if HTSFile is open for reading"""
         return self.htsfile != NULL and self.htsfile.is_write == 0
 
     @property
     def is_sam(self):
+        """return True if HTSFile is reading or writing a SAM alignment file"""
         return self.htsfile != NULL and self.htsfile.format.format == sam
 
     @property
     def is_bam(self):
+        """return True if HTSFile is reading or writing a BAM alignment file"""
         return self.htsfile != NULL and self.htsfile.format.format == bam
 
     @property
     def is_cram(self):
+        """return True if HTSFile is reading or writing a BAM alignment file"""
         return self.htsfile != NULL and self.htsfile.format.format == cram
 
     @property
     def is_vcf(self):
+        """return True if HTSFile is reading or writing a VCF variant file"""
         return self.htsfile != NULL and self.htsfile.format.format == vcf
 
     @property
     def is_bcf(self):
+        """return True if HTSFile is reading or writing a BCF variant file"""
         return self.htsfile != NULL and self.htsfile.format.format == bcf
 
     def reset(self):
-        """reset file position to beginning of file just after
-        the header.
+        """reset file position to beginning of file just after the header.
 
         Returns
         -------
@@ -171,8 +177,7 @@ cdef class HTSFile(object):
         return self.seek(self.start_offset)
 
     def seek(self, uint64_t offset):
-        """move file pointer to position *offset*, see
-        :meth:`pysam.HTSFile.tell`."""
+        """move file pointer to position *offset*, see :meth:`pysam.HTSFile.tell`."""
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
         if self.is_stream:

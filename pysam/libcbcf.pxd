@@ -136,8 +136,6 @@ cdef class VariantFile(HTSFile):
     cdef readonly bint           drop_samples  # true if sample information is to be ignored
 
     # FIXME: Temporary, use htsFormat when it is available
-    cdef readonly bint       is_stream      # true if not a seekable file but a stream
-    cdef readonly bint       is_remote      # true if file is not on the local filesystem
     cdef readonly bint       is_reading     # true if file has begun reading records
     cdef readonly bint       header_written # true if header has already been written
 

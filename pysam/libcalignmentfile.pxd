@@ -43,10 +43,7 @@ cdef class AlignmentFile(HTSFile):
     cdef hts_idx_t *index
     # header structure
     cdef bam_hdr_t * header
-    # true if not a file but a stream
-    cdef readonly bint is_stream
-    # true if file is not on the local filesystem
-    cdef readonly bint is_remote
+
     # current read within iteration
     cdef bam1_t * b
 

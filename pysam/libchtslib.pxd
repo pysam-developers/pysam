@@ -1902,12 +1902,14 @@ cdef extern from "htslib/vcfutils.h" nogil:
 
 
 cdef class HTSFile(object):
-    cdef htsFile *htsfile               # pointer to htsFile structure
+    cdef          htsFile *htsfile       # pointer to htsFile structure
+    cdef          int64_t start_offset   # BGZF offset of first record
 
-    cdef readonly object filename       # filename as supplied by user
-    cdef readonly object mode           # file opening mode
-    cdef readonly object index_filename # filename of index, if supplied by user
+    cdef readonly object  filename       # filename as supplied by user
+    cdef readonly object  mode           # file opening mode
+    cdef readonly object  index_filename # filename of index, if supplied by user
 
-    cdef int64_t  start_offset          # BGZF offset of first record
+    cdef readonly bint    is_stream      # Is htsfile a non-seekable stream
+    cdef readonly bint    is_remote      # Is htsfile a remote stream
 
     cdef htsFile *_open_htsfile(self) except? NULL
