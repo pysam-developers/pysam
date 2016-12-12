@@ -361,7 +361,7 @@ cdef class AlignmentFile(HTSFile):
             if htsfile is closed or index could not be opened.
         """
 
-        if not self.is_open():
+        if not self.is_open:
             raise ValueError("I/O operation on closed file")
         if not self.is_bam and not self.is_cram:
             raise AttributeError(
@@ -662,7 +662,7 @@ cdef class AlignmentFile(HTSFile):
 
         returns -1 if reference is not known.
         """
-        if not self.is_open():
+        if not self.is_open:
             raise ValueError("I/O operation on closed file")
         reference = force_bytes(reference)
         return bam_name2id(self.header, reference)
@@ -671,7 +671,7 @@ cdef class AlignmentFile(HTSFile):
         """
         return :term:`reference` name corresponding to numerical :term:`tid`
         """
-        if not self.is_open():
+        if not self.is_open:
             raise ValueError("I/O operation on closed file")
         if not 0 <= tid < self.header.n_targets:
             raise ValueError("reference_id %i out of range 0<=tid<%i" % 
@@ -824,7 +824,7 @@ cdef class AlignmentFile(HTSFile):
         """
         cdef int rtid, rstart, rend, has_coord
 
-        if not self.is_open():
+        if not self.is_open:
             raise ValueError( "I/O operation on closed file" )
 
         has_coord, rtid, rstart, rend = self.parse_region(
@@ -1025,7 +1025,7 @@ cdef class AlignmentFile(HTSFile):
         """
         cdef int rtid, rstart, rend, has_coord
 
-        if not self.is_open():
+        if not self.is_open:
             raise ValueError("I/O operation on closed file")
 
         has_coord, rtid, rstart, rend = self.parse_region(
@@ -1110,8 +1110,8 @@ cdef class AlignmentFile(HTSFile):
         cdef AlignedSegment read
         cdef long counter = 0
 
-        if not self.is_open():
-            raise ValueError( "I/O operation on closed file" )
+        if not self.is_open:
+            raise ValueError("I/O operation on closed file")
 
         cdef int filter_method = 0
         if read_callback == "all":
@@ -1270,8 +1270,6 @@ cdef class AlignmentFile(HTSFile):
         read_iterator can be the result of a .fetch(...) call.
         Or it can be a generator filtering such reads. Example
         samfile.find_introns((read for read in samfile.fetch(...) if read.is_reverse)
-
-
         """
         import collections
         res = collections.Counter()
@@ -1333,7 +1331,7 @@ cdef class AlignmentFile(HTSFile):
         int : the number of bytes written. If the file is closed,
               this will be 0.
         '''
-        if not self.is_open():
+        if not self.is_open:
             return 0
 
         cdef int ret
@@ -1364,15 +1362,11 @@ cdef class AlignmentFile(HTSFile):
     ###############################################################
     ## properties
     ###############################################################
-    @property
-    def closed(self):
-        return self.is_closed
-
     property nreferences:
         """"int with the number of :term:`reference` sequences in the file.
         This is a read-only attribute."""
         def __get__(self):
-            if not self.is_open():
+            if not self.is_open:
                 raise ValueError("I/O operation on closed file")
             return self.header.n_targets
 
@@ -1380,7 +1374,7 @@ cdef class AlignmentFile(HTSFile):
         """tuple with the names of :term:`reference` sequences. This is a 
         read-only attribute"""
         def __get__(self):
-            if not self.is_open(): raise ValueError( "I/O operation on closed file" )
+            if not self.is_open: raise ValueError( "I/O operation on closed file" )
             t = []
             for x from 0 <= x < self.header.n_targets:
                 t.append(charptr_to_str(self.header.target_name[x]))
@@ -1393,7 +1387,7 @@ cdef class AlignmentFile(HTSFile):
 
         """
         def __get__(self):
-            if not self.is_open():
+            if not self.is_open:
                 raise ValueError("I/O operation on closed file")
             t = []
             for x from 0 <= x < self.header.n_targets:
@@ -1453,7 +1447,7 @@ cdef class AlignmentFile(HTSFile):
         representation of the header.
         '''
         def __get__(self):
-            if not self.is_open():
+            if not self.is_open:
                 raise ValueError( "I/O operation on closed file" )
             return from_string_and_size(self.header.text, self.header.l_text)
 
@@ -1480,7 +1474,7 @@ cdef class AlignmentFile(HTSFile):
 
         """
         def __get__(self):
-            if not self.is_open():
+            if not self.is_open:
                 raise ValueError( "I/O operation on closed file" )
 
             result = {}
@@ -1558,7 +1552,7 @@ cdef class AlignmentFile(HTSFile):
     ## and multiple_iterators)
     ## Possible solutions: deprecate or open new file handle
     def __iter__(self):
-        if not self.is_open():
+        if not self.is_open:
             raise ValueError("I/O operation on closed file")
 
         if not self.is_bam and self.header.n_targets == 0:
@@ -1628,7 +1622,7 @@ cdef class IteratorRow:
         cdef char *cfilename
         cdef char *creference_filename
         
-        if not samfile.is_open():
+        if not samfile.is_open:
             raise ValueError("I/O operation on closed file")
 
         # makes sure that samfile stays alive as long as the
