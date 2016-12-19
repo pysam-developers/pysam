@@ -1899,3 +1899,17 @@ cdef extern from "htslib/vcfutils.h" nogil:
     # @i,j:  allele indexes, 0-based, i<=j
     # Returns index to the Number=G diploid array
     uint32_t bcf_ij2G(uint32_t i, uint32_t j)
+
+
+cdef class HTSFile(object):
+    cdef          htsFile *htsfile       # pointer to htsFile structure
+    cdef          int64_t start_offset   # BGZF offset of first record
+
+    cdef readonly object  filename       # filename as supplied by user
+    cdef readonly object  mode           # file opening mode
+    cdef readonly object  index_filename # filename of index, if supplied by user
+
+    cdef readonly bint    is_stream      # Is htsfile a non-seekable stream
+    cdef readonly bint    is_remote      # Is htsfile a remote stream
+
+    cdef htsFile *_open_htsfile(self) except? NULL

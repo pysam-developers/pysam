@@ -36,33 +36,16 @@ ctypedef struct __iterdata:
     int seq_len
 
 
-cdef class AlignmentFile:
-
-    cdef object _filename
-    cdef object _reference_filename
-
-    # pointer to htsFile structure
-    cdef htsFile * htsfile
+cdef class AlignmentFile(HTSFile):
+    cdef readonly object reference_filename
 
     # pointer to index
     cdef hts_idx_t *index
     # header structure
     cdef bam_hdr_t * header
-    # true if file is bam format
-    cdef readonly bint is_bam
-    # true if file is bam format
-    cdef readonly bint is_cram
-    # true if not a file but a stream
-    cdef readonly bint is_stream
-    # true if file is not on the local filesystem
-    cdef readonly bint is_remote
+
     # current read within iteration
     cdef bam1_t * b
-    # file opening mode
-    cdef char * mode
-
-    # beginning of read section
-    cdef int64_t start_offset
 
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
@@ -70,11 +53,13 @@ cdef class AlignmentFile:
     # write an aligned read
     cpdef int write(self, AlignedSegment read) except -1
 
+
 cdef class PileupColumn:
     cdef bam_pileup1_t ** plp
     cdef int tid
     cdef int pos
     cdef int n_pu
+
 
 cdef class PileupRead:
     cdef AlignedSegment _alignment
@@ -86,6 +71,7 @@ cdef class PileupRead:
     cdef uint32_t _is_tail
     cdef uint32_t _is_refskip
 
+
 cdef class IteratorRow:
     cdef int retval
     cdef bam1_t * b
@@ -93,6 +79,7 @@ cdef class IteratorRow:
     cdef htsFile * htsfile
     cdef bam_hdr_t * header
     cdef int owns_samfile
+
 
 cdef class IteratorRowRegion(IteratorRow):
     cdef hts_itr_t * iter
@@ -109,15 +96,18 @@ cdef class IteratorRowAll(IteratorRow):
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
+
 cdef class IteratorRowAllRefs(IteratorRow):
     cdef int         tid
     cdef IteratorRowRegion rowiter
+
 
 cdef class IteratorRowSelection(IteratorRow):
     cdef int current_pos
     cdef positions
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
+
 
 cdef class IteratorColumn:
 
@@ -147,13 +137,16 @@ cdef class IteratorColumn:
     cdef reset(self, tid, start, end)
     cdef _free_pileup_iter(self)
 
+
 cdef class IteratorColumnRegion(IteratorColumn):
     cdef int start
     cdef int end
     cdef int truncate
 
+
 cdef class IteratorColumnAllRefs(IteratorColumn):
     pass
+
 
 cdef class IndexedReads:
     cdef AlignmentFile samfile
@@ -161,4 +154,3 @@ cdef class IndexedReads:
     cdef index
     cdef int owns_samfile
     cdef bam_hdr_t * header
-

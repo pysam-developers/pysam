@@ -14,7 +14,8 @@ cdef extern from "unistd.h" nogil:
     int close(int fd)
 
 from pysam.libchtslib cimport hts_idx_t, hts_itr_t, htsFile, \
-    tbx_t, kstring_t, BGZF
+    tbx_t, kstring_t, BGZF, HTSFile
+
 
 # These functions are put here and not in chtslib.pxd in order
 # to avoid warnings for unused functions.
@@ -55,39 +56,38 @@ cdef class tabix_file_iterator:
 
     cdef __cnext__(self)
 
-cdef class TabixFile:
 
-    # pointer to tabixfile
-    cdef htsFile * tabixfile
+cdef class TabixFile(HTSFile):
     # pointer to index structure
     cdef tbx_t * index
 
-    # flag indicating whether file is remote
-    cdef int is_remote
-
-    cdef object _filename
-    cdef object _filename_index
+    cdef readonly object filename_index
 
     cdef Parser parser
 
     cdef encoding    
 
+
 cdef class Parser:
     cdef encoding
-
     cdef parse(self, char * buffer, int len)
+
 
 cdef class asTuple(Parser):
     cdef parse(self, char * buffer, int len)
 
+
 cdef class asGTF(Parser):
     pass
+
 
 cdef class asBed(Parser):
     pass
 
+
 cdef class asVCF(Parser):
     pass
+
 
 cdef class TabixIterator:
     cdef hts_itr_t * iterator
@@ -96,8 +96,10 @@ cdef class TabixIterator:
     cdef encoding
     cdef int __cnext__(self)
 
+
 cdef class TabixIteratorParsed(TabixIterator):
     cdef Parser parser
+
 
 cdef class GZIterator:
     cdef object _filename
@@ -107,13 +109,15 @@ cdef class GZIterator:
     cdef int __cnext__(self)
     cdef encoding
 
+
 cdef class GZIteratorHead(GZIterator):
     pass
+
 
 cdef class GZIteratorParsed(GZIterator):
     cdef Parser parser
 
+
 # Compatibility Layer for pysam < 0.8
 cdef class Tabixfile(TabixFile):
     pass
-

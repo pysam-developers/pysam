@@ -785,6 +785,11 @@ cdef class AlignedSegment:
         htsfile -- AlignmentFile object to map numerical
                    identifiers to chromosome names.
         """
+        cdef int n_targets = htsfile.header.n_targets
+
+        if self._delegate.core.tid >= n_targets \
+            or self._delegate.core.mtid >= n_targets:
+            raise ValueError('htsfile does not match aligned segment')
 
         cdef kstring_t line
         line.l = line.m = 0

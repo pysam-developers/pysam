@@ -330,6 +330,19 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
     """construct VariantFile from scratch."""
 
     filename = "example_vcf42_withcontigs.vcf"
+    compression = 'NONE'
+    description = 'VCF version 4.2 variant calling text'
+
+    def testBase(self):
+        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+            self.assertEqual(inf.category, 'VARIANTS')
+            self.assertEqual(inf.format, 'VCF')
+            self.assertEqual(inf.version, (4, 2))
+            self.assertEqual(inf.compression, self.compression)
+            self.assertEqual(inf.description, self.description)
+            self.assertTrue(inf.is_open)
+            self.assertEqual(inf.is_read, True)
+            self.assertEqual(inf.is_write, False)
 
     def complete_check(self, fn_in, fn_out):
         self.maxDiff = None
@@ -409,17 +422,32 @@ class TestConstructionVCFGZWithContigs(TestConstructionVCFWithContigs):
     """construct VariantFile from scratch."""
 
     filename = "example_vcf42_withcontigs.vcf.gz"
+    compression = 'BGZF'
+    description = 'VCF version 4.2 BGZF-compressed variant calling data'
 
 
 class TestConstructionVCFGZWithoutContigs(TestConstructionVCFWithContigs):
     """construct VariantFile from scratch."""
 
     filename = "example_vcf42.vcf.gz"
+    compression = 'BGZF'
+    description = 'VCF version 4.2 BGZF-compressed variant calling data'
 
 
 class TestSettingRecordValues(unittest.TestCase):
 
     filename = "example_vcf40.vcf"
+
+    def testBase(self):
+        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+            self.assertEqual(inf.category, 'VARIANTS')
+            self.assertEqual(inf.format, 'VCF')
+            self.assertEqual(inf.version, (4, 0))
+            self.assertEqual(inf.compression, 'NONE')
+            self.assertEqual(inf.description, 'VCF version 4.0 variant calling text')
+            self.assertTrue(inf.is_open)
+            self.assertEqual(inf.is_read, True)
+            self.assertEqual(inf.is_write, False)
 
     def testSetQual(self):
         with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:

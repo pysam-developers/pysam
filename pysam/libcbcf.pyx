@@ -84,7 +84,8 @@ from __future__ import division, print_function
 import os
 import sys
 
-from libc.string cimport strcmp, strpbrk
+from libc.errno  cimport errno, EPIPE
+from libc.string cimport strcmp, strpbrk, strerror
 from libc.stdint cimport INT8_MAX, INT16_MAX, INT32_MAX
 
 cimport cython
@@ -97,7 +98,7 @@ from cpython.bytes   cimport PyBytes_FromStringAndSize
 from cpython.unicode cimport PyUnicode_DecodeASCII
 from cpython.version cimport PY_MAJOR_VERSION
 
-from pysam.libchtslib cimport hisremote
+from pysam.libchtslib cimport HTSFile, hisremote
 
 
 from warnings         import warn
@@ -118,10 +119,6 @@ cdef tuple VALUE_TYPES = ('Flag', 'Integer', 'Float', 'String')
 cdef tuple METADATA_TYPES = ('FILTER', 'INFO', 'FORMAT', 'CONTIG', 'STRUCTURED', 'GENERIC')
 cdef tuple METADATA_LENGTHS = ('FIXED', 'VARIABLE', 'A', 'G', 'R')
 
-cdef tuple FORMAT_CATEGORIES = ('UNKNOWN', 'ALIGNMENTS', 'VARIANTS', 'INDEX', 'REGIONS')
-cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', 'BAI', 'CRAM', 'CRAI',
-                      'VCF', 'BCF', 'CSI', 'GZI', 'TBI', 'BED')
-cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 
 ########################################################################
 ########################################################################
@@ -449,33 +446,13 @@ cdef object bcf_info_get_value(VariantRecord record, const bcf_info_t *z):
             value = ()
     elif z.len == 1:
         if z.type == BCF_BT_INT8:
-            if z.v1.i == bcf_int8_missing:
-                value = None
-            elif z.v1.i == bcf_int8_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int8_missing else None
         elif z.type == BCF_BT_INT16:
-            if z.v1.i == bcf_int16_missing:
-                value = None
-            elif z.v1.i == bcf_int16_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int16_missing else None
         elif z.type == BCF_BT_INT32:
-            if z.v1.i == bcf_int32_missing:
-                value = None
-            elif z.v1.i == bcf_int32_vector_end:
-                value = ()
-            else:
-                value = z.v1.i
+            value = z.v1.i if z.v1.i != bcf_int32_missing else None
         elif z.type == BCF_BT_FLOAT:
-            if bcf_float_is_missing(z.v1.f):
-                value = None
-            elif bcf_float_is_vector_end(z.v1.f):
-                value = ()
-            else:
-                value = z.v1.f
+            value = z.v1.f if not bcf_float_is_missing(z.v1.f) else None
         elif z.type == BCF_BT_CHAR:
             value = force_str(chr(z.v1.i))
         else:
@@ -3276,7 +3253,7 @@ cdef class BCFIterator(BaseIterator):
             try:
                 rid = index.refmap[contig]
             except KeyError:
-                raise('Unknown contig specified')
+                raise ValueError('Unknown contig specified')
 
             if start is None:
                 start = 0
@@ -3430,7 +3407,7 @@ cdef class TabixIterator(BaseIterator):
 ########################################################################
 
 
-cdef class VariantFile(object):
+cdef class VariantFile(HTSFile):
     """*(filename, mode=None, index_filename=None, header=None, drop_samples=False)*
 
     A :term:`VCF`/:term:`BCF` formatted file. The file is automatically
@@ -3478,67 +3455,10 @@ cdef class VariantFile(object):
 
         self.open(*args, **kwargs)
 
-    def __dealloc__(self):
-        if self.htsfile:
-            hts_close(self.htsfile)
-            self.htsfile = NULL
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-        return False
-
-    @property
-    def category(self):
-        """General file format category.  One of UNKNOWN, ALIGNMENTS,
-        VARIANTS, INDEX, REGIONS"""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return FORMAT_CATEGORIES[self.htsfile.format.category]
-
-    @property
-    def format(self):
-        """File format.
-
-        One of UNKNOWN, BINARY_FORMAT, TEXT_FORMAT, SAM, BAM,
-        BAI, CRAM, CRAI, VCF, BCF, CSI, GZI, TBI, BED.
-        """
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return FORMATS[self.htsfile.format.format]
-
-    @property
-    def version(self):
-        """Tuple of file format version numbers (major, minor)"""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return (self.htsfile.format.version.major,
-                self.htsfile.format.version.minor)
-
-    @property
-    def compression(self):
-        """File compression.
-
-        One of NONE, GZIP, BGZF, CUSTOM."""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        return COMPRESSION[self.htsfile.format.compression]
-
-    @property
-    def description(self):
-        """Vaguely human readable description of the file format"""
-        if not self.htsfile:
-            raise ValueError('metadata not available on closed file')
-        cdef char *desc = hts_format_description(&self.htsfile.format)
-        try:
-            return charptr_to_str(desc)
-        finally:
-            free(desc)
-
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
+        cdef int ret = 0
+        self.header = self.index = None
         if self.htsfile:
             # Write header if no records were written
             if self.htsfile.is_write and not self.header_written:
@@ -3546,25 +3466,15 @@ cdef class VariantFile(object):
                 with nogil:
                     bcf_hdr_write(self.htsfile, self.header.ptr)
 
-            hts_close(self.htsfile)
+            ret = hts_close(self.htsfile)
             self.htsfile = NULL
 
-        self.header = self.index = None
-
-    @property
-    def is_open(self):
-        """return True if VariantFile is open and in a valid state."""
-        return self.htsfile != NULL
-
-    @property
-    def is_write(self):
-        """return True if VariantFile is open for writing"""
-        return self.htsfile != NULL and self.htsfile.is_write != 0
-
-    @property
-    def is_read(self):
-        """return True if VariantFile is open for reading"""
-        return self.htsfile != NULL and self.htsfile.is_write == 0
+        if ret < 0:
+            global errno
+            if errno == EPIPE:
+                errno = 0
+            else:
+                raise OSError(errno, force_str(strerror(errno)))
 
     def __iter__(self):
         if not self.is_open:
@@ -3604,13 +3514,9 @@ cdef class VariantFile(object):
 
         cdef VariantFile vars = VariantFile.__new__(VariantFile)
         cdef bcf_hdr_t *hdr
-        cdef char *cfilename
-        cdef char *cmode
 
         # FIXME: re-open using fd or else header and index could be invalid
-        cfilename, cmode = self.filename, self.mode
-        with nogil:
-            vars.htsfile = hts_open(cfilename, cmode)
+        vars.htsfile = self._open_htsfile()
 
         if not vars.htsfile:
             raise ValueError('Cannot re-open htsfile')
@@ -3672,7 +3578,7 @@ cdef class VariantFile(object):
             raise ValueError('invalid mode options: {}'.format(''.join(invalid_modes)))
 
         # Autodetect mode from filename
-        if mode == 'w':
+        if mode == 'w' and isinstance(filename, str):
             if filename.endswith('.gz'):
                 mode = 'wz'
             elif filename.endswith('.bcf'):
@@ -3683,16 +3589,24 @@ cdef class VariantFile(object):
             mode = 'wb0'
 
         self.mode = mode = force_bytes(mode)
-        self.filename = filename = encode_filename(filename)
+        if isinstance(filename, str):
+            filename = encode_filename(filename)
+            self.is_remote = hisremote(filename)
+            self.is_stream = filename == b'-'
+        else:
+            self.is_remote = False
+            self.is_stream = True
+
+        self.filename = filename
+
         if index_filename is not None:
             self.index_filename = index_filename = encode_filename(index_filename)
         else:
             self.index_filename = None
+
         self.drop_samples = bool(drop_samples)
         self.header = None
 
-        self.is_remote = hisremote(filename)
-        self.is_stream = filename == b'-'
         self.header_written = False
 
         if mode.startswith(b'w'):
@@ -3708,21 +3622,18 @@ cdef class VariantFile(object):
                 #raise ValueError('a VariantHeader must be specified')
 
             # Header is not written until the first write or on close
-            cfilename, cmode = filename, mode
-            with nogil:
-                self.htsfile = hts_open(cfilename, cmode)
+            self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
-                raise ValueError("could not open file `{}` (mode='{}')".format((filename, mode)))
+                raise ValueError("could not open file `{}` (mode='{}')".format(filename, mode))
 
         elif mode.startswith(b'r'):
             # open file for reading
-            if filename != b'-' and not self.is_remote and not os.path.exists(filename):
+            if isinstance(filename, (str, bytes)) and filename != b'-' and not self.is_remote \
+                                                  and not os.path.exists(filename):
                 raise IOError('file `{}` not found'.format(filename))
 
-            cfilename, cmode = filename, mode
-            with nogil:
-                self.htsfile = hts_open(cfilename, cmode)
+            self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
                 raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
@@ -3742,6 +3653,11 @@ cdef class VariantFile(object):
                 self.header = makeVariantHeader(hdr)
             except ValueError:
                 raise ValueError("file `{}` does not have valid header (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+
+            if isinstance(self.filename, bytes):
+                cfilename = self.filename
+            else:
+                cfilename = NULL
 
             # check for index and open if present
             if self.htsfile.format.format == bcf:
@@ -3767,38 +3683,6 @@ cdef class VariantFile(object):
         """reset file position to beginning of file just after the header."""
         return self.seek(self.start_offset)
 
-    def seek(self, uint64_t offset):
-        """move file pointer to position *offset*, see
-        :meth:`pysam.VariantFile.tell`."""
-        if not self.is_open:
-            raise ValueError('I/O operation on closed file')
-        if self.is_stream:
-            raise OSError('seek not available in streams')
-
-        cdef int64_t ret
-        if self.htsfile.format.compression != no_compression:
-            with nogil:
-                ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
-        else:
-            with nogil:
-                ret = hts_useek(self.htsfile, <int>offset, SEEK_SET)
-        return ret
-
-    def tell(self):
-        """return current file position, see :meth:`pysam.VariantFile.seek`."""
-        if not self.is_open:
-            raise ValueError('I/O operation on closed file')
-        if self.is_stream:
-            raise OSError('tell not available in streams')
-
-        cdef int64_t ret
-        if self.htsfile.format.compression != no_compression:
-            with nogil:
-                ret = bgzf_tell(hts_get_bgzfp(self.htsfile))
-        else:
-            with nogil:
-                ret = hts_utell(self.htsfile)
-        return ret
 
     def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False):
         """fetch records in a :term:`region` using 0-based indexing. The
@@ -3877,7 +3761,7 @@ cdef class VariantFile(object):
             ret = bcf_write1(self.htsfile, self.header.ptr, record.ptr)
 
         if ret < 0:
-            raise ValueError('write failed')
+            raise IOError(errno, strerror(errno))
 
         return ret
 

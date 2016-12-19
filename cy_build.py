@@ -16,7 +16,6 @@ if sys.platform == 'darwin':
     config_vars = get_config_vars()
     config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
     config_vars['SHLIB_EXT'] = '.so'
-    config_vars['SO'] = '.so'
 
 
 def is_pip_install():
@@ -61,7 +60,6 @@ class cy_build_ext(build_ext):
             ext.library_dirs.append(os.path.join(self.build_lib, "pysam"))
 
         if sys.platform == 'darwin':
-
             relative_module_path = ext.name.replace(".", os.sep) + get_config_vars()["SO"]
 
             if "develop" in sys.argv or "test" in sys.argv:

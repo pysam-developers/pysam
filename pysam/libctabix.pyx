@@ -72,7 +72,7 @@ from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    tbx_destroy, hisremote
+    tbx_destroy, hisremote, region_list
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
@@ -290,14 +290,16 @@ cdef class TabixFile:
     """
     def __cinit__(self,
                   filename,
-                  mode = 'r',
+                  mode='r',
                   parser=None,
                   index=None,
                   encoding="ascii",
                   *args,
                   **kwargs ):
 
-        self.tabixfile = NULL
+        self.htsfile = NULL
+        self.is_remote = False
+        self.is_stream = False
         self.parser = parser
         self._open(filename, mode, index, *args, **kwargs)
         self.encoding = encoding
@@ -307,21 +309,22 @@ cdef class TabixFile:
                mode='r',
                index=None,
               ):
-        '''open a :term:`tabix file` for reading.
-        '''
+        '''open a :term:`tabix file` for reading.'''
 
-        assert mode in ("r",), "invalid file opening mode `%s`" % mode
+        if mode != 'r':
+            raise ValueError("invalid file opening mode `%s`" % mode)
 
-        if self.tabixfile != NULL:
+        if self.htsfile != NULL:
             self.close()
-        self.tabixfile = NULL
+        self.htsfile = NULL
 
         filename_index = index or (filename + ".tbi")
         # encode all the strings to pass to tabix
-        self._filename = encode_filename(filename)
-        self._filename_index = encode_filename(filename_index)
+        self.filename = encode_filename(filename)
+        self.filename_index = encode_filename(filename_index)
 
-        self.is_remote = hisremote(self._filename)
+        self.is_stream = self.filename == b'-'
+        self.is_remote = hisremote(self.filename)
 
         if not self.is_remote:
             if not os.path.exists(filename):
@@ -331,35 +334,36 @@ cdef class TabixFile:
                 raise IOError("index `%s` not found" % filename_index)
 
         # open file
-        cdef char *cfilename = self._filename
+        cdef char *cfilename = self.filename
         with nogil:
-            self.tabixfile = hts_open(cfilename, 'r')
+            self.htsfile = hts_open(cfilename, 'r')
 
-        if self.tabixfile == NULL:
+        if self.htsfile == NULL:
             raise IOError("could not open file `%s`" % filename)
         
-        cfilename = self._filename_index
+        #if self.htsfile.format.category != region_list:
+        #    raise ValueError("file does not contain region data")
+
+        cfilename = self.filename_index
         with nogil:
             self.index = tbx_index_load(cfilename)
 
         if self.index == NULL:
             raise IOError("could not open index for `%s`" % filename)
 
+        if not self.is_stream:
+            self.start_offset = self.tell()
+
     def _dup(self):
         '''return a copy of this tabix file.
         
         The file is being re-opened.
         '''
-        return TabixFile(self._filename,
+        return TabixFile(self.filename,
                          mode="r", 
                          parser=self.parser,
-                         index=self._filename_index,
+                         index=self.filename_index,
                          encoding=self.encoding)
-
-    def is_open(self):
-        '''return true if samfile has been opened.'''
-        return self.tabixfile != NULL
-
 
     def fetch(self, 
               reference=None,
@@ -472,33 +476,11 @@ cdef class TabixFile:
 
         return a
 
-    # context manager interface
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-        return False
-
     ###############################################################
     ###############################################################
     ###############################################################
     ## properties
     ###############################################################
-    property closed:
-        """"bool indicating the current state of the file object. 
-        This is a read-only attribute; the close() method changes the value. 
-        """
-        def __get__(self):
-            return not self.is_open()
-
-    property filename:
-        '''filename associated with this object.'''
-        def __get__(self):
-            if not self.is_open():
-                raise ValueError("I/O operation on closed file")
-            return self._filename
-
     property header:
         '''the file header.
 
@@ -543,9 +525,9 @@ cdef class TabixFile:
     def close(self):
         '''
         closes the :class:`pysam.TabixFile`.'''
-        if self.tabixfile != NULL:
-            hts_close(self.tabixfile)
-            self.tabixfile = NULL
+        if self.htsfile != NULL:
+            hts_close(self.htsfile)
+            self.htsfile = NULL
         if self.index != NULL:
             tbx_destroy(self.index)
             self.index = NULL
@@ -554,9 +536,9 @@ cdef class TabixFile:
         # remember: dealloc cannot call other python methods
         # note: no doc string
         # note: __del__ is not called.
-        if self.tabixfile != NULL:
-            hts_close(self.tabixfile)
-            self.tabixfile = NULL
+        if self.htsfile != NULL:
+            hts_close(self.htsfile)
+            self.htsfile = NULL
         if self.index != NULL:
             tbx_destroy(self.index)
 
@@ -582,7 +564,7 @@ cdef class TabixIterator:
         Return -5 if file has been closed when this function
         was called.
         '''
-        if self.tabixfile.tabixfile == NULL:
+        if self.tabixfile.htsfile == NULL:
             return -5
 
         cdef int retval
@@ -590,7 +572,7 @@ cdef class TabixIterator:
         while 1:
             with nogil:
                 retval = tbx_itr_next(
-                    self.tabixfile.tabixfile,
+                    self.tabixfile.htsfile,
                     self.tabixfile.index,
                     self.iterator,
                     &self.buffer)
