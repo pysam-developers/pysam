@@ -145,15 +145,11 @@ try:
     HAVE_CYTHON = True
     print ("# pysam: cython is available - using cythonize if necessary")
     source_pattern = "pysam/libc%s.pyx"
-    if HTSLIB_MODE != "external":
-        HTSLIB_MODE = "shared"
 except ImportError:
     HAVE_CYTHON = False
     print ("# pysam: no cython available - using pre-compiled C")
     # no Cython available - use existing C code
     source_pattern = "pysam/libc%s.c"
-    if HTSLIB_MODE != "external":
-        HTSLIB_MODE = "shared"
 
 # collect pysam version
 sys.path.insert(0, "pysam")
