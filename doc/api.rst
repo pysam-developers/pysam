@@ -201,7 +201,7 @@ Fastq files
    :members:
 
 
-.. autoclass:: pysam.cfaidx.FastqProxy
+.. autoclass:: pysam.FastqProxy
    :members:
 
 

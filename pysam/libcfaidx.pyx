@@ -568,4 +568,5 @@ cdef class Fastafile(FastaFile):
 __all__ = ["FastaFile",
            "FastqFile",
            "FastxFile",
-           "Fastafile"]
+           "Fastafile",
+           "FastqProxy"]

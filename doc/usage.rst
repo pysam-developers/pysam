@@ -197,12 +197,22 @@ be retrieved by numeric index:
     for row in tbx.fetch("chr1", 1000, 2000):
          print ("chromosome is", row[0])
 
-By providing a parser argument to :class:`~pysam.AlignmentFile.fetch`
+By providing a parser to :class:`~pysam.AlignmentFile.fetch`
 or :class:`~pysam.TabixFile`, the data will we presented in parsed
-form:
+form::
 
     for row in tbx.fetch("chr1", 1000, 2000, parser=pysam.asTuple()):
          print ("chromosome is", row.contig)
+         print ("first field (chrom)=", row[0])
+
+Pre-built parsers are available for :term:`bed`
+(:class:`~pysam.asBed`) formatted files and :term:`gtf`
+(:class:`~pysam.asGTF`) formatted files. Thus, additional fields
+become available through named access, for example::
+
+    for row in tbx.fetch("chr1", 1000, 2000, parser=pysam.asBed()):
+         print ("name is", row.name)
+
 
 .. Currently inactivated as pileup deprecated
 .. Using the samtools SNP caller
