@@ -821,6 +821,11 @@ cdef class AlignedSegment:
         def __set__(self, qname):
             if qname is None or len(qname) == 0:
                 return
+
+            if len(qname) >= 255:
+                raise ValueError("query length out of range {} > 254".format(
+                    len(qname)))
+
             qname = force_bytes(qname)
             cdef bam1_t * src
             cdef int l
