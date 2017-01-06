@@ -623,7 +623,9 @@ cdef class AlignmentFile(HTSFile):
                 else:
                     if self.is_bam \
                             and not os.path.exists(filename + b".bai") \
-                            and not os.path.exists(filename[:-4] + b".bai"):
+                            and not os.path.exists(filename[:-4] + b".bai") \
+                            and not os.path.exists(filename + b".csi") \
+                            and not os.path.exists(filename[:-4] + b".csi"):
                         self.index = NULL
                         has_index = False
                     elif self.is_cram \

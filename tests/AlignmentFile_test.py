@@ -818,6 +818,15 @@ class TestIO(unittest.TestCase):
             mode="rb")
         self.assertEqual(len(list(samfile.fetch())), 3270)
 
+    def testBAMWithCSIIndex(self):
+        '''see issue 116'''
+        input_filename = os.path.join(DATADIR, "ex1_csi.bam")
+        samfile = pysam.AlignmentFile(input_filename,
+                                      "rb",
+                                      check_sq=False)
+        samfile.fetch('chr2')
+
+
 
 class TestAutoDetect(unittest.TestCase):
 

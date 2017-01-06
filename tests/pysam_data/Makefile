@@ -18,7 +18,8 @@ all: ex1.pileup.gz \
 	empty.bam empty.bam.bai \
 	explicit_index.bam explicit_index.cram \
 	faidx_empty_seq.fq.gz \
-	ex1.fa.gz ex1.fa.gz.fai
+	ex1.fa.gz ex1.fa.gz.fai \
+	ex1_csi.bam
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
@@ -44,6 +45,7 @@ uncompressed.bam: ex2.sam
 
 ex1.fa.fai:ex1.fa
 		samtools faidx ex1.fa
+
 ex1.bam:ex1.sam.gz ex1.fa.fai
 		samtools import ex1.fa.fai ex1.sam.gz ex1.bam
 
@@ -55,6 +57,10 @@ ex1.pileup.gz:ex1.bam ex1.fa
 
 ex2_truncated.bam: ex2.bam
 	head -c 124000 ex2.bam > ex2_truncated.bam
+
+ex1_csi.bam: ex1.bam
+	cp ex1.bam ex1_csi.bam
+	samtools index -c ex1_csi.bam
 
 empty.bam: ex2.sam
 	grep "^@" $< | samtools view -Sb - > $@
