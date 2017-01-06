@@ -15,6 +15,10 @@ bash Miniconda3.sh -b
 
 # Create a new conda environment with the target python version
 ~/miniconda3/bin/conda install conda-build -y
+conda config --add channels conda-forge
+conda config --add channels defaults
+conda config --add channels r
+conda config --add channels bioconda
 ~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy nose psutil pip samtools bcftools htslib
 
 # activate testenv environment
