@@ -25,7 +25,7 @@ conda config --add channels defaults
 conda config --add channels r
 conda config --add channels bioconda
 
-conda install samtools bcftools htslib
+conda install -y samtools bcftools htslib
 
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
