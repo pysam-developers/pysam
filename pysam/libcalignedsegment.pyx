@@ -2446,7 +2446,8 @@ cdef class PileupRead:
             return self._indel
 
     property level:
-        """the level of the read in the "viewer" mode"""
+        """the level of the read in the "viewer" mode. Note that this value
+        is currently not computed."""
         def __get__(self):
             return self._level
 
