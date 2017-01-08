@@ -223,6 +223,7 @@ cdef class HTSFile(object):
             else:
                 fd = self.filename.fileno()
 
+            # Replicate mode normalization done in hts_open_format
             smode = self.mode.replace(b'b', b'').replace(b'c', b'')
             if b'b' in self.mode:
                 smode += b'b'
@@ -234,7 +235,12 @@ cdef class HTSFile(object):
             if hfile == NULL:
                 raise IOError('Cannot create hfile')
 
-            filename = encode_filename('fd:{}'.format(fd))
+            try:
+                filename = self.filename.name
+            except AttributeError:
+                filename = '<fd:{}>'.format(fd)
+
+            filename = encode_filename(filename)
             cfilename = filename
             with nogil:
                 return hts_hopen(hfile, cfilename, cmode)
