@@ -489,9 +489,9 @@ int main_samview(int argc, char *argv[])
     }
 
 view_end:
-    if (is_count && ret == 0)
+    if (is_count && ret == 0) 
         fprintf(pysam_stdout, "%" PRId64 "\n", count);
-
+    
     // close files, free and return
     if (in) check_sam_close("view", in, fn_in, "standard input", &ret);
     if (out) check_sam_close("view", out, fn_out, "standard output", &ret);

@@ -281,7 +281,9 @@ def _pysam_dispatch(collection,
             if method not in ("index", "roh", "stats"):
                 stdout_option = "-o {}"
         elif method in MAP_STDOUT_OPTIONS[collection]:
-            stdout_option = MAP_STDOUT_OPTIONS[collection][method]
+            # special case - samtools view -c outputs on stdout
+            if not(method == "view" and "-c" in args):
+                stdout_option = MAP_STDOUT_OPTIONS[collection][method]
 
         if stdout_option is not None:
             os.close(stdout_h)

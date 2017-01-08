@@ -71,6 +71,7 @@ class SamtoolsTest(unittest.TestCase):
     # an output file.
     statements = [
         "view ex1.bam > %(out)s_ex1.view",
+        "view -c ex1.bam > %(out)s_ex1.count",
         # ("view -bT ex1.fa -o %(out)s_ex1.view2 ex1.sam",
         "sort ex1.bam -o %(out)s_ex1.sort.bam",
         "mpileup ex1.bam > %(out)s_ex1.pileup",
