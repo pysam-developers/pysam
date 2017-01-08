@@ -3589,11 +3589,12 @@ cdef class VariantFile(HTSFile):
             mode = 'wb0'
 
         self.mode = mode = force_bytes(mode)
-        if isinstance(filename, str):
+        try:
             filename = encode_filename(filename)
             self.is_remote = hisremote(filename)
             self.is_stream = filename == b'-'
-        else:
+        except TypeError:
+            filename = filename
             self.is_remote = False
             self.is_stream = True
 
@@ -3660,14 +3661,14 @@ cdef class VariantFile(HTSFile):
                 cfilename = NULL
 
             # check for index and open if present
-            if self.htsfile.format.format == bcf:
+            if self.htsfile.format.format == bcf and cfilename:
                 if index_filename is not None:
                     cindex_filename = index_filename
                 with nogil:
                     idx = bcf_index_load2(cfilename, cindex_filename)
                 self.index = makeBCFIndex(self.header, idx)
 
-            elif self.htsfile.format.compression == bgzf:
+            elif self.htsfile.format.compression == bgzf and cfilename:
                 if index_filename is not None:
                     cindex_filename = index_filename
                 with nogil:
