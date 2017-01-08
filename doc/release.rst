@@ -2,6 +2,27 @@
 Release notes
 =============
 
+Release 0.10.0
+==============
+
+This release implements further functionality in the VariantFile API
+and includes several bugfixes:
+
+* treat special case -c option in samtools view outputs to stdout even
+  if -o given, fixes #315
+* permit reading BAM files with CSI index, closes #370
+* raise Error if query name exceeds maximum length, fixes #373
+* new method to compute hash value for AlignedSegment
+* AlignmentFile, VariantFile and TabixFile all inherit from HTSFile
+* Avoid segfault by detecting out of range reference_id and
+  next_reference in AlignedSegment.tostring
+* Issue #355: Implement streams using file descriptors for VariantFile
+* upgrade to htslib 1.3.2
+* fix compilation with musl libc
+* Issue #316, #360: Rename all Cython modules to have lib as a prefix
+* Issue #332, hardclipped bases in cigar included by
+  pysam.AlignedSegment.infer_query_length()
+
 Release 0.9.1
 =============
 
