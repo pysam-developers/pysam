@@ -1,8 +1,15 @@
 import os
+import sys
 import unittest
 import pysam
 import gzip
 import subprocess
+
+try:
+    from pathlib import Path
+except ImportError:
+    Path = None
+
 from TestUtils import get_temp_filename, check_lines_equal
 
 DATADIR="cbcf_data"
@@ -74,6 +81,17 @@ class TestOpening(unittest.TestCase):
                           "tmp_testEmptyFile.vcf")
 
         os.unlink("tmp_testEmptyFile.vcf")
+
+
+    if Path and sys.version_info >= (3,6):
+        def testEmptyFileVCFFromPath(self):
+            with open("tmp_testEmptyFile.vcf", "w"):
+                pass
+
+            self.assertRaises(ValueError, pysam.VariantFile,
+                              Path("tmp_testEmptyFile.vcf"))
+
+            os.unlink("tmp_testEmptyFile.vcf")
 
     def testEmptyFileVCFGZWithIndex(self):
         with open("tmp_testEmptyFile.vcf", "w"):
@@ -194,6 +212,13 @@ class TestParsing(unittest.TestCase):
         v = pysam.VariantFile(fn)
         chrom = [rec.chrom for rec in v]
         self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
+
+    if Path and sys.version_info >= (3,6):
+        def testChromFromPath(self):
+            fn = os.path.join(DATADIR, self.filename)
+            v = pysam.VariantFile(Path(fn))
+            chrom = [rec.chrom for rec in v]
+            self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
 
     def testPos(self):
         fn = os.path.join(DATADIR, self.filename)

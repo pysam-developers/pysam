@@ -7,7 +7,7 @@ import os
 import io
 from contextlib import contextmanager
 
-from cpython.version cimport PY_MAJOR_VERSION
+from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
 from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython cimport array as c_array
 from libc.stdlib cimport calloc, free
@@ -76,6 +76,7 @@ cpdef qualities_to_qualitystring(qualities, int offset=33):
 ########################################################################
 ## Python 3 compatibility functions
 ########################################################################
+
 cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
 cdef from_string_and_size(const char* s, size_t length):
@@ -84,30 +85,28 @@ cdef from_string_and_size(const char* s, size_t length):
     else:
         return s[:length]
 
-# filename encoding (copied from lxml.etree.pyx)
-cdef str _FILENAME_ENCODING
-_FILENAME_ENCODING = sys.getfilesystemencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = sys.getdefaultencoding()
-if _FILENAME_ENCODING is None:
-    _FILENAME_ENCODING = 'ascii'
 
-#cdef char* _C_FILENAME_ENCODING
-#_C_FILENAME_ENCODING = <char*>_FILENAME_ENCODING
+# filename encoding (adapted from lxml.etree.pyx)
+cdef str FILENAME_ENCODING = sys.getfilesystemencoding() or sys.getdefaultencoding() or 'ascii'
+
 
 cdef bytes encode_filename(object filename):
     """Make sure a filename is 8-bit encoded (or None)."""
     if filename is None:
         return None
+    elif PY_MAJOR_VERSION >= 3 and PY_MINOR_VERSION >= 2:
+        # Added to support path-like objects
+        return os.fsencode(filename)
     elif PyBytes_Check(filename):
         return filename
     elif PyUnicode_Check(filename):
-        return filename.encode(_FILENAME_ENCODING)
+        return filename.encode(FILENAME_ENCODING)
     else:
-        raise TypeError(u"Argument must be string or unicode.")
+        raise TypeError("Argument must be string or unicode.")
+
 
 cdef bytes force_bytes(object s, encoding="ascii"):
-    u"""convert string or unicode object to bytes, assuming
+    """convert string or unicode object to bytes, assuming
     ascii encoding.
     """
     if s is None:
@@ -117,7 +116,8 @@ cdef bytes force_bytes(object s, encoding="ascii"):
     elif PyUnicode_Check(s):
         return s.encode(encoding)
     else:
-        raise TypeError(u"Argument must be string, bytes or unicode.")
+        raise TypeError("Argument must be string, bytes or unicode.")
+
 
 cdef charptr_to_str(const char* s, encoding="ascii"):
     if s == NULL:
@@ -127,6 +127,7 @@ cdef charptr_to_str(const char* s, encoding="ascii"):
     else:
         return s.decode(encoding)
 
+
 cdef charptr_to_str_w_len(const char* s, size_t n, encoding="ascii"):
     if s == NULL:
         return None
@@ -135,11 +136,13 @@ cdef charptr_to_str_w_len(const char* s, size_t n, encoding="ascii"):
     else:
         return s[:n].decode(encoding)
 
+
 cdef bytes charptr_to_bytes(const char* s, encoding="ascii"):
     if s == NULL:
         return None
     else:
         return s
+
 
 cdef force_str(object s, encoding="ascii"):
     """Return s converted to str type of current Python
@@ -153,6 +156,7 @@ cdef force_str(object s, encoding="ascii"):
     else:
         # assume unicode
         return s
+
 
 cpdef parse_region(reference=None,
                    start=None,
