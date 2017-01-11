@@ -22,6 +22,14 @@ and includes several bugfixes:
 * Issue #316, #360: Rename all Cython modules to have lib as a prefix
 * Issue #332, hardclipped bases in cigar included by
   pysam.AlignedSegment.infer_query_length()
+* Added support for Python 3.6 filename encoding protocol
+* Issue #371, fix incorrect parsing of scalar INFO and FORMAT fields in VariantRecord
+* Issue #331, fix failure in VariantFile.reset() method
+* Issue #314, add VariantHeader.new_record(), VariantFile.new_record() and
+  VariantRecord.copy() methods to create new VariantRecord objects
+* Added VariantRecordFilter.add() method to allow setting new VariantRecord filters
+* Preliminary (potentially unsafe) support for removing and altering header metadata
+* Many minor fixes and improvements to VariantFile and related objects
 
 Release 0.9.1
 =============
