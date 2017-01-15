@@ -1231,19 +1231,19 @@ class TestAlignedRead(ReadTest):
         self.assertEqual(a.seq, None)
         self.assertEqual(a.qual, None)
         self.assertEqual(a.flag, 0)
-        self.assertEqual(a.rname, 0)
+        self.assertEqual(a.rname, -1)
         self.assertEqual(a.mapq, 0)
         self.assertEqual(a.cigar, [])
         self.assertEqual(a.tags, [])
-        self.assertEqual(a.mrnm, 0)
-        self.assertEqual(a.mpos, 0)
+        self.assertEqual(a.mrnm, -1)
+        self.assertEqual(a.mpos, -1)
         self.assertEqual(a.isize, 0)
 
     def testStrOfEmptyRead(self):
         a = pysam.AlignedRead()
         s = str(a)
         self.assertEqual(
-            "None\t0\t0\t0\t0\tNone\t0\t0\t0\tNone\tNone\t[]",
+            "None\t0\t-1\t-1\t0\tNone\t-1\t-1\t0\tNone\tNone\t[]",
             s)
 
     def buildRead(self):
