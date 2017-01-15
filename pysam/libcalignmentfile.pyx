@@ -435,7 +435,6 @@ cdef class AlignmentFile(HTSFile):
             if filepath_or_object.closed:
                 raise ValueError('I/O operation on closed file')
             self.filename = filepath_or_object
-            printf("fd closed? %i\n", fcntl(int(self.filename.fileno()), F_GETFD))
             filename = filepath_or_object.name
             self.is_remote = False
             self.is_stream = True
@@ -1289,19 +1288,23 @@ cdef class AlignmentFile(HTSFile):
     def close(self):
         '''
         closes the :class:`pysam.AlignmentFile`.'''
-        cdef int ret = 0
 
-        # close associated file object as well. Necessary to avoid
+        if self.htsfile == NULL:
+            return
+
+        # close associated file object. Necessary to avoid
         # a double-close warning message:
         # close failed in file object destructor:
         # IOError: [Errno 9] Bad file descriptor
-        if hasattr(self.filename, "fileno"):
-            self.filename.close()
+        # if hasattr(self.filename, "fileno"):
+        #    self.filename.close()
+        # printf("fd closed? %i\n", fcntl(int(self.filename.fileno()), F_GETFD))
+        # if fcntl(int(self.filename.fileno()), F_GETFD) >= 0:
+        #     self.filename.close()
 
-        if self.htsfile != NULL:
-            ret = hts_close(self.htsfile)
-            hts_idx_destroy(self.index);
-            self.htsfile = NULL
+        cdef int ret = hts_close(self.htsfile)
+        hts_idx_destroy(self.index);
+        self.htsfile = NULL
 
         if ret < 0:
             global errno
@@ -1309,6 +1312,7 @@ cdef class AlignmentFile(HTSFile):
                 errno = 0
             else:
                 raise OSError(errno, force_str(strerror(errno)))
+
 
     def __dealloc__(self):
         # remember: dealloc cannot call other methods

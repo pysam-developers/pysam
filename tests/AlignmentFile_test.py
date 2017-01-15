@@ -691,7 +691,7 @@ class TestIO(unittest.TestCase):
         samfile = pysam.AlignmentFile(f, "rb")
         f.close()
         self.assertTrue(f.closed)
-        # access to Samfile should still work
+        # access to Samfile still works
         self.checkEcho("ex1.bam",
                        "ex1.bam",
                        "tmp_ex1.bam",
