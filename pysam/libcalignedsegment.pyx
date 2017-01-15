@@ -674,8 +674,9 @@ cdef class AlignedSegment:
         self._delegate.data = <uint8_t *>calloc(
             self._delegate.m_data, 1)
         self._delegate.l_data = 0
-        # set some data, necessary for valid SAM output
-        self._delegate.core.l_qname = 1
+        # set some data to make read approximately legit.
+        # Note, SAM writing fails with q_name of length 0
+        self._delegate.core.l_qname = 0
         self._delegate.core.tid = -1
         self._delegate.core.pos = -1
         self._delegate.core.mtid = -1

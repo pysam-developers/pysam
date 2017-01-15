@@ -46,19 +46,19 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.query_sequence, None)
         self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), None)
         self.assertEqual(a.flag, 0)
-        self.assertEqual(a.reference_id, 0)
+        self.assertEqual(a.reference_id, -1)
         self.assertEqual(a.mapping_quality, 0)
         self.assertEqual(a.cigartuples, None)
         self.assertEqual(a.tags, [])
-        self.assertEqual(a.next_reference_id, 0)
-        self.assertEqual(a.next_reference_start, 0)
+        self.assertEqual(a.next_reference_id, -1)
+        self.assertEqual(a.next_reference_start, -1)
         self.assertEqual(a.template_length, 0)
 
     def testStrOfEmptyRead(self):
         a = pysam.AlignedSegment()
         s = str(a)
         self.assertEqual(
-            "None\t0\t0\t0\t0\tNone\t0\t0\t0\tNone\tNone\t[]",
+            "None\t0\t-1\t-1\t0\tNone\t-1\t-1\t0\tNone\tNone\t[]",
             s)
 
     def testSettingTagInEmptyRead(self):
