@@ -674,6 +674,12 @@ cdef class AlignedSegment:
         self._delegate.data = <uint8_t *>calloc(
             self._delegate.m_data, 1)
         self._delegate.l_data = 0
+        # set some data, necessary for valid SAM output
+        self._delegate.core.l_qname = 1
+        self._delegate.core.tid = -1
+        self._delegate.core.pos = -1
+        self._delegate.core.mtid = -1
+        self._delegate.core.mpos = -1
 
         # caching for selected fields
         self.cache_query_qualities = None
@@ -840,7 +846,6 @@ cdef class AlignedSegment:
                              pysam_get_l_qname(src),
                              l,
                              <uint8_t*>p)
-
 
             pysam_set_l_qname(src, l)
 

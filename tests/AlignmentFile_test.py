@@ -2560,7 +2560,6 @@ class TestMappedUnmapped(unittest.TestCase):
                              inf.mapped)
 
 
-
 class TestSamtoolsProxy(unittest.TestCase):
 
     '''tests for sanity checking access to samtools functions.'''
@@ -2640,6 +2639,35 @@ class TestVerbosity(unittest.TestCase):
         self.assertEqual(new, 0)
         self.assertEqual(pysam.get_verbosity(), 3)
 
+
+class TestSanityCheckingSAM(unittest.TestCase):
+    
+    mode = "w"
+
+    def check_write(self, read):
+        
+        fn = "test_sanity_check.bam"
+        names = ["chr1"]
+        lengths = [10000]
+        with pysam.AlignmentFile(
+                fn, 
+                self.mode,
+                reference_names=names,
+                reference_lengths=lengths) as outf:
+            outf.write(read)
+
+        #if os.path.exists(fn):
+        #    os.unlink(fn)
+            
+    def test_empty_read_gives_value_error(self):
+        read = pysam.AlignedSegment()
+        self.check_write(read)
+
+
+class TestSanityCheckingBAM(TestSanityCheckingSAM):
+    
+    mode = "wb"
+    
 
 if __name__ == "__main__":
     # build data files
