@@ -3630,8 +3630,8 @@ cdef class VariantFile(HTSFile):
 
         elif mode.startswith(b'r'):
             # open file for reading
-            if isinstance(filename, (str, bytes)) and filename != b'-' and not self.is_remote \
-                                                  and not os.path.exists(filename):
+            
+            if not self._exists():
                 raise IOError('file `{}` not found'.format(filename))
 
             self.htsfile = self._open_htsfile()

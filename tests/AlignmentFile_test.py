@@ -29,7 +29,8 @@ from TestUtils import checkBinaryEqual, checkURL, \
     get_temp_filename
 
 
-DATADIR = "pysam_data"
+DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                       "pysam_data"))
 
 
 ##################################################
@@ -353,9 +354,9 @@ class BasicTestBAMFromFilename(BasicTestBAMFromFetch):
 class BasicTestBAMFromFile(BasicTestBAMFromFetch):
 
     def setUp(self):
-        f = open(os.path.join(DATADIR, "ex3.bam"))
+        self.f = open(os.path.join(DATADIR, "ex3.bam"))
         self.samfile = pysam.AlignmentFile(
-            f, "rb")
+            self.f, "rb")
         self.reads = [r for r in self.samfile]
 
 

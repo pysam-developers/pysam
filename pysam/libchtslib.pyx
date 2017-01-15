@@ -1,6 +1,8 @@
 # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
+import os
+
 from pysam.libchtslib cimport *
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
@@ -244,3 +246,12 @@ cdef class HTSFile(object):
             cfilename = filename
             with nogil:
                 return hts_hopen(hfile, cfilename, cmode)
+
+    def _exists(self):
+        """return False iff file is local, a file and exists.
+        """
+        if (isinstance(self.filename, (str, bytes)) and
+            self.filename != b'-' and not self.is_remote and 
+            not os.path.exists(self.filename)):
+            return False
+        return True
