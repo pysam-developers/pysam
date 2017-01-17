@@ -3,6 +3,8 @@
 # adds doc-strings for sphinx
 import os
 
+from posix.unistd cimport dup
+
 from pysam.libchtslib cimport *
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
@@ -213,7 +215,7 @@ cdef class HTSFile(object):
     cdef htsFile *_open_htsfile(self) except? NULL:
         cdef char *cfilename
         cdef char *cmode = self.mode
-        cdef int fd
+        cdef int fd, dup_fd
 
         if isinstance(self.filename, bytes):
             cfilename = self.filename
@@ -224,6 +226,8 @@ cdef class HTSFile(object):
                 fd = self.filename
             else:
                 fd = self.filename.fileno()
+                
+            dup_fd = dup(fd)
 
             # Replicate mode normalization done in hts_open_format
             smode = self.mode.replace(b'b', b'').replace(b'c', b'')
@@ -233,7 +237,7 @@ cdef class HTSFile(object):
                 smode += b'c'
             cmode = smode
 
-            hfile = hdopen(fd, cmode)
+            hfile = hdopen(dup_fd, cmode)
             if hfile == NULL:
                 raise IOError('Cannot create hfile')
 

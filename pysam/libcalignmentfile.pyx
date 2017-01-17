@@ -1292,18 +1292,8 @@ cdef class AlignmentFile(HTSFile):
         if self.htsfile == NULL:
             return
 
-        # close associated file object. Necessary to avoid
-        # a double-close warning message:
-        # close failed in file object destructor:
-        # IOError: [Errno 9] Bad file descriptor
-        # if hasattr(self.filename, "fileno"):
-        #    self.filename.close()
-        # printf("fd closed? %i\n", fcntl(int(self.filename.fileno()), F_GETFD))
-        # if fcntl(int(self.filename.fileno()), F_GETFD) >= 0:
-        #     self.filename.close()
-
         cdef int ret = hts_close(self.htsfile)
-        hts_idx_destroy(self.index);
+        hts_idx_destroy(self.index)
         self.htsfile = NULL
 
         if ret < 0:
@@ -1312,7 +1302,6 @@ cdef class AlignmentFile(HTSFile):
                 errno = 0
             else:
                 raise OSError(errno, force_str(strerror(errno)))
-
 
     def __dealloc__(self):
         # remember: dealloc cannot call other methods
@@ -1326,14 +1315,24 @@ cdef class AlignmentFile(HTSFile):
         # AH: I have removed the call to close. Even though it is working,
         # it seems to be dangerous according to the documentation as the
         # object be partially deconstructed already.
+        cdef int ret = 0
+
         if self.htsfile != NULL:
-            hts_close(self.htsfile)
+            ret = hts_close(self.htsfile)
             hts_idx_destroy(self.index);
             self.htsfile = NULL
 
         bam_destroy1(self.b)
         if self.header != NULL:
             bam_hdr_destroy(self.header)
+
+
+        if ret < 0:
+            global errno
+            if errno == EPIPE:
+                errno = 0
+            else:
+                raise OSError(errno, force_str(strerror(errno)))
             
     cpdef int write(self, AlignedSegment read) except -1:
         '''
