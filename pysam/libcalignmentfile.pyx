@@ -430,24 +430,29 @@ cdef class AlignmentFile(HTSFile):
             filename = None
             self.is_remote = False
             self.is_stream = True
-        # reading from a File object, set filename to its fileno
+        # reading from a File object or other object with fileno
         elif hasattr(filepath_or_object, "fileno"):
             if filepath_or_object.closed:
                 raise ValueError('I/O operation on closed file')
             self.filename = filepath_or_object
-            filename = filepath_or_object.name
+            # .name can be TextIOWrapper
+            filename = str(filepath_or_object.name)
+            filename = encode_filename(self.filename)
+            cfilename = filename
             self.is_remote = False
             self.is_stream = True
+        # what remains is a filename
         else:
-            filename = self.filename = filepath_or_object
-            self.is_remote = hisremote(self.filename)
+            self.filename = filename = encode_filename(filepath_or_object)
+            cfilename = filename
+            self.is_remote = hisremote(cfilename)
             self.is_stream = self.filename == b'-'
 
         # for htslib, wbu seems to not work
         if mode == "wbu":
             mode = "wb0"
 
-        self.mode = mode = force_bytes(mode)
+        self.mode = force_bytes(mode)
         self.reference_filename = reference_filename = encode_filename(
             reference_filename)
 
@@ -600,8 +605,6 @@ cdef class AlignmentFile(HTSFile):
         if mode[0] == "r" and (self.is_bam or self.is_cram):
             # open index for remote files
             if self.is_remote and not filepath_index:
-                cfilename = filename
-
                 with nogil:
                     self.index = hts_idx_load(cfilename, format_index)
                 if self.index == NULL:
@@ -609,7 +612,6 @@ cdef class AlignmentFile(HTSFile):
                         "unable to open remote index for '%s'" % cfilename)
             else:
                 has_index = True
-                cfilename = filename
                 if filepath_index:
                     if not os.path.exists(filepath_index):
                         warnings.warn(
