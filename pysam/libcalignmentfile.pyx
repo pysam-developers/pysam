@@ -1363,7 +1363,8 @@ cdef class AlignmentFile(HTSFile):
         #      when ret == -1 we get a "SystemError: error return without
         #      exception set".
         if ret < 0:
-            raise ValueError('sam write failed')
+            raise IOError(
+            "sam_write1 failed with error code {}".format(ret))
 
         return ret
 
