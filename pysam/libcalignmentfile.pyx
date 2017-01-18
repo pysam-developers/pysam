@@ -436,8 +436,7 @@ cdef class AlignmentFile(HTSFile):
                 raise ValueError('I/O operation on closed file')
             self.filename = filepath_or_object
             # .name can be TextIOWrapper
-            filename = str(filepath_or_object.name)
-            filename = encode_filename(self.filename)
+            filename = encode_filename(str(filepath_or_object.name))
             cfilename = filename
             self.is_remote = False
             self.is_stream = True

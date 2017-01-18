@@ -354,26 +354,26 @@ class BasicTestBAMFromFilename(BasicTestBAMFromFetch):
 class BasicTestBAMFromFile(BasicTestBAMFromFetch):
 
     def setUp(self):
-        self.f = open(os.path.join(DATADIR, "ex3.bam"))
-        self.samfile = pysam.AlignmentFile(
-            self.f, "rb")
+        with open(os.path.join(DATADIR, "ex3.bam")) as f:
+            self.samfile = pysam.AlignmentFile(
+                f, "rb")
         self.reads = [r for r in self.samfile]
 
 
 class BasicTestSAMFromFile(BasicTestBAMFromFetch):
 
     def setUp(self):
-        f = open(os.path.join(DATADIR, "ex3.sam"))
-        self.samfile = pysam.AlignmentFile(
-            f, "r")
+        with open(os.path.join(DATADIR, "ex3.sam")) as f:
+            self.samfile = pysam.AlignmentFile(
+                f, "r")
         self.reads = [r for r in self.samfile]
 
 
 class BasicTestCRAMFromFile(BasicTestCRAMFromFetch):
 
     def setUp(self):
-        f = open(os.path.join(DATADIR, "ex3.cram"))
-        self.samfile = pysam.AlignmentFile(f, "rc")
+        with open(os.path.join(DATADIR, "ex3.cram")) as f:
+            self.samfile = pysam.AlignmentFile(f, "rc")
         self.reads = [r for r in self.samfile]
 
 
