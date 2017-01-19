@@ -601,7 +601,7 @@ cdef class AlignmentFile(HTSFile):
                             "unable to open index at %s" % cfilename)
                         self.index = NULL
                         has_index = False
-                else:
+                elif filename is not None:
                     if self.is_bam \
                             and not os.path.exists(filename + b".bai") \
                             and not os.path.exists(filename[:-4] + b".bai") \
@@ -614,6 +614,9 @@ cdef class AlignmentFile(HTSFile):
                             and not os.path.exists(filename[:-5] + b".crai"):
                         self.index = NULL
                         has_index = False
+                else:
+                    self.index = NULL
+                    has_index = False
 
                 if has_index:
                     # returns NULL if there is no index or index could
