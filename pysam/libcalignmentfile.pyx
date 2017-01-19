@@ -396,10 +396,10 @@ cdef class AlignmentFile(HTSFile):
         If _open is called on an existing file, the current file
         will be closed and a new file will be opened.
         '''
-        cdef char *cfilename
-        cdef char *creference_filename
-        cdef char *cindexname
-        cdef char *cmode
+        cdef char *cfilename = NULL
+        cdef char *creference_filename = NULL
+        cdef char *cindexname = NULL
+        cdef char *cmode = NULL
 
         # for backwards compatibility:
         if referencenames is not None:
@@ -436,8 +436,11 @@ cdef class AlignmentFile(HTSFile):
                 raise ValueError('I/O operation on closed file')
             self.filename = filepath_or_object
             # .name can be TextIOWrapper
-            filename = encode_filename(str(filepath_or_object.name))
-            cfilename = filename
+            try:
+                filename = encode_filename(str(filepath_or_object.name))
+                cfilename = filename
+            except AttributeError:
+                filename = None
             self.is_remote = False
             self.is_stream = True
         # what remains is a filename
@@ -621,7 +624,6 @@ cdef class AlignmentFile(HTSFile):
                             self.index = sam_index_load2(self.htsfile,
                                                          cfilename,
                                                          cindexname)
-
                     else:
                         with nogil:
                             self.index = sam_index_load(self.htsfile,

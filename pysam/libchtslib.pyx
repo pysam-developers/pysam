@@ -254,8 +254,7 @@ cdef class HTSFile(object):
     def _exists(self):
         """return False iff file is local, a file and exists.
         """
-        if (isinstance(self.filename, (str, bytes)) and
-            self.filename != b'-' and not self.is_remote and 
-            not os.path.exists(self.filename)):
-            return False
-        return True
+        return (not isinstance(self.filename, (str, bytes)) or
+                self.filename == b'-' or
+                self.is_remote or
+                os.path.exists(self.filename))
