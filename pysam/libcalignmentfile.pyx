@@ -513,25 +513,6 @@ cdef class AlignmentFile(HTSFile):
 
             self.htsfile = self._open_htsfile()
 
-            # # open file (hts_open is synonym with sam_open)
-            # cfilename, cmode = filename, bmode
-            # if hasattr(filepath_or_object, "fileno"):
-            #     fp = hdopen(filepath_or_object.fileno(), cmode)
-            #     with nogil:
-            #         self.htsfile = hts_hopen(fp, cfilename, cmode)
-            # else:
-            #     with nogil:
-            #         self.htsfile = hts_open(cfilename, cmode)
-
-            # fill in what we know about the format in htsfile.format
-            self.htsfile.format.category = sequence_data
-            if "b" in mode:
-                self.htsfile.format.format = bam
-            elif "c" in mode:
-                self.htsfile.format.format = cram
-            else:
-                self.htsfile.format.format = sam
-
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
