@@ -242,7 +242,8 @@ cdef class HTSFile(object):
                 raise IOError('Cannot create hfile')
 
             try:
-                filename = self.filename.name
+                # filename.name can be an int
+                filename = str(self.filename.name)
             except AttributeError:
                 filename = '<fd:{}>'.format(fd)
 
