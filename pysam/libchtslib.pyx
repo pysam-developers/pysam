@@ -60,6 +60,7 @@ cdef class HTSFile(object):
     """
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
+        self.duplicate_filehandle = True
 
     def __dealloc__(self):
         if self.htsfile:
@@ -226,8 +227,11 @@ cdef class HTSFile(object):
                 fd = self.filename
             else:
                 fd = self.filename.fileno()
-                
-            dup_fd = dup(fd)
+               
+            if self.duplicate_filehandle:
+                dup_fd = dup(fd)
+            else:
+                dup_fd = fd
 
             # Replicate mode normalization done in hts_open_format
             smode = self.mode.replace(b'b', b'').replace(b'c', b'')

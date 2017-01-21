@@ -1911,5 +1911,6 @@ cdef class HTSFile(object):
 
     cdef readonly bint    is_stream      # Is htsfile a non-seekable stream
     cdef readonly bint    is_remote      # Is htsfile a remote stream
+    cdef readonly bint	  duplicate_filehandle   # Duplicate filehandle when opening via fh
 
     cdef htsFile *_open_htsfile(self) except? NULL

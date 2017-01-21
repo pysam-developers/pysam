@@ -60,7 +60,6 @@ import array
 
 from libc.errno  cimport errno, EPIPE
 from libc.string cimport strcmp, strpbrk, strerror
-from posix.fcntl cimport fcntl, F_GETFD
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -224,7 +223,7 @@ cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
-    reference_filename=None, filename=None)
+    reference_filename=None, filename=None, duplicate_filehandle=True)
 
     A :term:`SAM`/:term:`BAM` formatted file. 
 
@@ -327,6 +326,14 @@ cdef class AlignmentFile(HTSFile):
         Alternative to filepath_or_object. Filename of the file
         to be opened.
 
+    duplicate_filehandle: bool 
+        By default, file handles passed either directly or through
+        File-like objects will be duplicated before passing them to
+        htslib. The duplication prevents issues where the same stream
+        will be closed by htslib and through destruction of the
+        high-level python object. Set to False to turn off
+        duplication.
+
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -390,7 +397,8 @@ cdef class AlignmentFile(HTSFile):
               check_sq=True,
               filepath_index=None,
               referencenames=None,
-              referencelengths=None):
+              referencelengths=None,
+              duplicate_filehandle=True):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
@@ -419,6 +427,8 @@ cdef class AlignmentFile(HTSFile):
                         "wbu", "rU", "wb0",
                         "rc", "wc"), \
             "invalid file opening mode `%s`" % mode
+
+        self.duplicate_filehandle = duplicate_filehandle
 
         # StringIO not supported
         if isinstance(filepath_or_object, StringIO):
