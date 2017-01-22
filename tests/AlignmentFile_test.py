@@ -29,7 +29,8 @@ from TestUtils import checkBinaryEqual, checkURL, \
     get_temp_filename
 
 
-DATADIR = "pysam_data"
+DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                       "pysam_data"))
 
 
 ##################################################
@@ -353,26 +354,53 @@ class BasicTestBAMFromFilename(BasicTestBAMFromFetch):
 class BasicTestBAMFromFile(BasicTestBAMFromFetch):
 
     def setUp(self):
-        f = open(os.path.join(DATADIR, "ex3.bam"))
-        self.samfile = pysam.AlignmentFile(
-            f, "rb")
+        with open(os.path.join(DATADIR, "ex3.bam")) as f:
+            self.samfile = pysam.AlignmentFile(
+                f, "rb")
+        self.reads = [r for r in self.samfile]
+
+
+class BasicTestBAMFromFileNo(BasicTestBAMFromFetch):
+
+    def setUp(self):
+        with open(os.path.join(DATADIR, "ex3.bam")) as f:
+            self.samfile = pysam.AlignmentFile(
+                f.fileno(), "rb")
         self.reads = [r for r in self.samfile]
 
 
 class BasicTestSAMFromFile(BasicTestBAMFromFetch):
 
     def setUp(self):
-        f = open(os.path.join(DATADIR, "ex3.sam"))
-        self.samfile = pysam.AlignmentFile(
-            f, "r")
+        with open(os.path.join(DATADIR, "ex3.sam")) as f:
+            self.samfile = pysam.AlignmentFile(
+                f, "r")
+        self.reads = [r for r in self.samfile]
+
+
+class BasicTestSAMFromFileNo(BasicTestBAMFromFetch):
+
+    def setUp(self):
+        with open(os.path.join(DATADIR, "ex3.sam")) as f:
+            self.samfile = pysam.AlignmentFile(
+                f.fileno(), "r")
         self.reads = [r for r in self.samfile]
 
 
 class BasicTestCRAMFromFile(BasicTestCRAMFromFetch):
 
     def setUp(self):
-        f = open(os.path.join(DATADIR, "ex3.cram"))
-        self.samfile = pysam.AlignmentFile(f, "rc")
+        with open(os.path.join(DATADIR, "ex3.cram")) as f:
+            self.samfile = pysam.AlignmentFile(f, "rc")
+        self.reads = [r for r in self.samfile]
+
+
+class BasicTestCRAMFromFileNo(BasicTestCRAMFromFetch):
+
+    def setUp(self):
+        with open(os.path.join(DATADIR, "ex3.cram")) as f:
+            self.samfile = pysam.AlignmentFile(
+                f.fileno(), "rc")
         self.reads = [r for r in self.samfile]
 
 
@@ -690,7 +718,7 @@ class TestIO(unittest.TestCase):
         samfile = pysam.AlignmentFile(f, "rb")
         f.close()
         self.assertTrue(f.closed)
-        # access to Samfile should still work
+        # access to Samfile still works
         self.checkEcho("ex1.bam",
                        "ex1.bam",
                        "tmp_ex1.bam",

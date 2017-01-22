@@ -3408,34 +3408,57 @@ cdef class TabixIterator(BaseIterator):
 
 
 cdef class VariantFile(HTSFile):
-    """*(filename, mode=None, index_filename=None, header=None, drop_samples=False)*
+    """*(filename, mode=None, index_filename=None, header=None, drop_samples=False,
+    duplicate_filehandle=True)*
 
     A :term:`VCF`/:term:`BCF` formatted file. The file is automatically
     opened.
 
-    *mode* should be ``r`` for reading or ``w`` for writing. The default is
-    text mode (:term:`VCF`).  For binary (:term:`BCF`) I/O you should append
-    ``b`` for compressed or ``u`` for uncompressed :term:`BCF` output.
+    If an index for a variant file exists (.csi or .tbi), it will be
+    opened automatically.  Without an index random access to records
+    via :meth:`fetch` is disabled.
 
-    If ``b`` is present, it must immediately follow ``r`` or ``w``.  Valid
-    modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and ``wb0``.
-    For instance, to open a :term:`BCF` formatted file for reading, type::
+    For writing, a :class:`VariantHeader` object must be provided,
+    typically obtained from another :term:`VCF` file/:term:`BCF`
+    file.
 
-        f = pysam.VariantFile('ex1.bcf','r')
+    Parameters
+    ----------
+    mode : string
+        *mode* should be ``r`` for reading or ``w`` for writing. The default is
+        text mode (:term:`VCF`).  For binary (:term:`BCF`) I/O you should append
+        ``b`` for compressed or ``u`` for uncompressed :term:`BCF` output.
 
-    If mode is not specified, we will try to auto-detect the file type.  All
-    of the following should work::
+        If ``b`` is present, it must immediately follow ``r`` or ``w``.  Valid
+        modes are ``r``, ``w``, ``wh``, ``rb``, ``wb``, ``wbu`` and ``wb0``.
+        For instance, to open a :term:`BCF` formatted file for reading, type::
 
-        f1 = pysam.VariantFile('ex1.bcf')
-        f2 = pysam.VariantFile('ex1.vcf')
-        f3 = pysam.VariantFile('ex1.vcf.gz')
+            f = pysam.VariantFile('ex1.bcf','r')
 
-    If an index for a variant file exists (.csi or .tbi), it will be opened
-    automatically.  Without an index random access to records via
-    :meth:`fetch` is disabled.
+        If mode is not specified, we will try to auto-detect the file type.  All
+        of the following should work::
 
-    For writing, a :class:`VariantHeader` object must be provided, typically
-    obtained from another :term:`VCF` file/:term:`BCF` file.
+            f1 = pysam.VariantFile('ex1.bcf')
+            f2 = pysam.VariantFile('ex1.vcf')
+            f3 = pysam.VariantFile('ex1.vcf.gz')
+
+    index_filename : string
+        Explicit path to an index file.
+
+    header : VariantHeader
+        :class:`VariantHeader` object required for writing.
+
+    drop_samples: bool
+        Ignore sample information when reading.
+
+    duplicate_filehandle: bool 
+        By default, file handles passed either directly or through
+        File-like objects will be duplicated before passing them to
+        htslib. The duplication prevents issues where the same stream
+        will be closed by htslib and through destruction of the
+        high-level python object. Set to False to turn off
+        duplication.
+
     """
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
@@ -3548,7 +3571,8 @@ cdef class VariantFile(HTSFile):
     def open(self, filename, mode='r',
              index_filename=None,
              VariantHeader header=None,
-             drop_samples=False):
+             drop_samples=False,
+             duplicate_filehandle=True):
         """open a vcf/bcf file.
 
         If open is called on an existing VariantFile, the current file will be
@@ -3568,6 +3592,8 @@ cdef class VariantFile(HTSFile):
 
         if not mode or mode[0] not in 'rwa':
             raise ValueError('mode must begin with r, w or a')
+
+        self.duplicate_filehandle = duplicate_filehandle
 
         format_modes = [m for m in mode[1:] if m in 'bcguz']
         if len(format_modes) > 1:
@@ -3630,8 +3656,8 @@ cdef class VariantFile(HTSFile):
 
         elif mode.startswith(b'r'):
             # open file for reading
-            if isinstance(filename, (str, bytes)) and filename != b'-' and not self.is_remote \
-                                                  and not os.path.exists(filename):
+            
+            if not self._exists():
                 raise IOError('file `{}` not found'.format(filename))
 
             self.htsfile = self._open_htsfile()

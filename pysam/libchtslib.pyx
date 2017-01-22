@@ -1,6 +1,10 @@
 # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
+import os
+
+from posix.unistd cimport dup
+
 from pysam.libchtslib cimport *
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
@@ -56,6 +60,7 @@ cdef class HTSFile(object):
     """
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
+        self.duplicate_filehandle = True
 
     def __dealloc__(self):
         if self.htsfile:
@@ -211,7 +216,7 @@ cdef class HTSFile(object):
     cdef htsFile *_open_htsfile(self) except? NULL:
         cdef char *cfilename
         cdef char *cmode = self.mode
-        cdef int fd
+        cdef int fd, dup_fd
 
         if isinstance(self.filename, bytes):
             cfilename = self.filename
@@ -222,6 +227,11 @@ cdef class HTSFile(object):
                 fd = self.filename
             else:
                 fd = self.filename.fileno()
+               
+            if self.duplicate_filehandle:
+                dup_fd = dup(fd)
+            else:
+                dup_fd = fd
 
             # Replicate mode normalization done in hts_open_format
             smode = self.mode.replace(b'b', b'').replace(b'c', b'')
@@ -231,12 +241,13 @@ cdef class HTSFile(object):
                 smode += b'c'
             cmode = smode
 
-            hfile = hdopen(fd, cmode)
+            hfile = hdopen(dup_fd, cmode)
             if hfile == NULL:
                 raise IOError('Cannot create hfile')
 
             try:
-                filename = self.filename.name
+                # filename.name can be an int
+                filename = str(self.filename.name)
             except AttributeError:
                 filename = '<fd:{}>'.format(fd)
 
@@ -244,3 +255,11 @@ cdef class HTSFile(object):
             cfilename = filename
             with nogil:
                 return hts_hopen(hfile, cfilename, cmode)
+
+    def _exists(self):
+        """return False iff file is local, a file and exists.
+        """
+        return (not isinstance(self.filename, (str, bytes)) or
+                self.filename == b'-' or
+                self.is_remote or
+                os.path.exists(self.filename))

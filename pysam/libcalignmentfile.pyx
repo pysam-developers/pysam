@@ -58,6 +58,8 @@ import re
 import warnings
 import array
 
+from libc.errno  cimport errno, EPIPE
+from libc.string cimport strcmp, strpbrk, strerror
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -221,7 +223,7 @@ cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
-    reference_filename=None, filename=None)
+    reference_filename=None, filename=None, duplicate_filehandle=True)
 
     A :term:`SAM`/:term:`BAM` formatted file. 
 
@@ -324,6 +326,14 @@ cdef class AlignmentFile(HTSFile):
         Alternative to filepath_or_object. Filename of the file
         to be opened.
 
+    duplicate_filehandle: bool 
+        By default, file handles passed either directly or through
+        File-like objects will be duplicated before passing them to
+        htslib. The duplication prevents issues where the same stream
+        will be closed by htslib and through destruction of the
+        high-level python object. Set to False to turn off
+        duplication.
+
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -387,22 +397,27 @@ cdef class AlignmentFile(HTSFile):
               check_sq=True,
               filepath_index=None,
               referencenames=None,
-              referencelengths=None):
+              referencelengths=None,
+              duplicate_filehandle=True):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
         will be closed and a new file will be opened.
         '''
-        cdef char *cfilename
-        cdef char *creference_filename
-        cdef char *cindexname
-        cdef char *cmode
+        cdef char *cfilename = NULL
+        cdef char *creference_filename = NULL
+        cdef char *cindexname = NULL
+        cdef char *cmode = NULL
 
         # for backwards compatibility:
         if referencenames is not None:
             reference_names = referencenames
         if referencelengths is not None:
             reference_lengths = referencelengths
+
+        # close a previously opened file
+        if self.is_open:
+            self.close()
 
         # autodetection for read
         if mode is None:
@@ -413,37 +428,45 @@ cdef class AlignmentFile(HTSFile):
                         "rc", "wc"), \
             "invalid file opening mode `%s`" % mode
 
-        # close a previously opened file
-        if self.htsfile != NULL:
-            self.close()
+        self.duplicate_filehandle = duplicate_filehandle
 
         # StringIO not supported
         if isinstance(filepath_or_object, StringIO):
-            filename = "stringio"
             raise NotImplementedError(
                 "access from StringIO objects not supported")
-            if filepath_or_object.closed:
-                raise ValueError('I/O operation on closed StringIO object')
-        # check if we are working with a File object
+        # reading from a file descriptor
+        elif isinstance(filepath_or_object, int):
+            self.filename = filepath_or_object
+            filename = None
+            self.is_remote = False
+            self.is_stream = True
+        # reading from a File object or other object with fileno
         elif hasattr(filepath_or_object, "fileno"):
-            filename = filepath_or_object.name
             if filepath_or_object.closed:
                 raise ValueError('I/O operation on closed file')
+            self.filename = filepath_or_object
+            # .name can be TextIOWrapper
+            try:
+                filename = encode_filename(str(filepath_or_object.name))
+                cfilename = filename
+            except AttributeError:
+                filename = None
+            self.is_remote = False
+            self.is_stream = True
+        # what remains is a filename
         else:
-            filename = filepath_or_object
+            self.filename = filename = encode_filename(filepath_or_object)
+            cfilename = filename
+            self.is_remote = hisremote(cfilename)
+            self.is_stream = self.filename == b'-'
 
         # for htslib, wbu seems to not work
         if mode == "wbu":
             mode = "wb0"
 
-        cdef bytes bmode = mode.encode('ascii')
-        self.filename = filename = encode_filename(filename)
+        self.mode = force_bytes(mode)
         self.reference_filename = reference_filename = encode_filename(
             reference_filename)
-
-        # FIXME: Use htsFormat when it is available
-        self.is_stream = filename == b"-"
-        self.is_remote = hisremote(filename)
 
         cdef char * ctext
         cdef hFILE * fp
@@ -501,24 +524,7 @@ cdef class AlignmentFile(HTSFile):
                         strlen(ctext), sizeof(char))
                     memcpy(self.header.text, ctext, strlen(ctext))
 
-            # open file (hts_open is synonym with sam_open)
-            cfilename, cmode = filename, bmode
-            if hasattr(filepath_or_object, "fileno"):
-                fp = hdopen(filepath_or_object.fileno(), cmode)
-                with nogil:
-                    self.htsfile = hts_hopen(fp, cfilename, cmode)
-            else:
-                with nogil:
-                    self.htsfile = hts_open(cfilename, cmode)
-
-            # fill in what we know about the format in htsfile.format
-            self.htsfile.format.category = sequence_data
-            if "b" in mode:
-                self.htsfile.format.format = bam
-            elif "c" in mode:
-                self.htsfile.format.format = cram
-            else:
-                self.htsfile.format.format = sam
+            self.htsfile = self._open_htsfile()
 
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
@@ -534,20 +540,10 @@ cdef class AlignmentFile(HTSFile):
 
         elif mode[0] == "r":
             # open file for reading
-            if (filename != b"-"
-                and not self.is_remote
-                and not os.path.exists(filename)):
-                raise IOError("file `%s` not found" % filename)
-
-            # open file (hts_open is synonym with sam_open)
-            cfilename, cmode = filename, bmode
-            if hasattr(filepath_or_object, "fileno"):
-                fp = hdopen(filepath_or_object.fileno(), cmode)
-                with nogil:
-                    self.htsfile = hts_hopen(fp, cfilename, cmode)
-            else:
-                with nogil:
-                    self.htsfile = hts_open(cfilename, cmode)
+            if not self._exists():
+                raise IOError("file `%s` not found" % self.filename)
+                
+            self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
                 raise ValueError(
@@ -590,8 +586,7 @@ cdef class AlignmentFile(HTSFile):
                      "is it SAM/BAM format? Consider opening with "
                      "check_sq=False") % mode)
 
-        if self.htsfile == NULL:
-            raise IOError("could not open file `%s`" % filename )
+        assert self.htsfile != NULL
 
         # check for index and open if present
         cdef int format_index = -1
@@ -601,11 +596,8 @@ cdef class AlignmentFile(HTSFile):
             format_index = HTS_FMT_CRAI
 
         if mode[0] == "r" and (self.is_bam or self.is_cram):
-
             # open index for remote files
             if self.is_remote and not filepath_index:
-                cfilename = filename
-
                 with nogil:
                     self.index = hts_idx_load(cfilename, format_index)
                 if self.index == NULL:
@@ -613,14 +605,13 @@ cdef class AlignmentFile(HTSFile):
                         "unable to open remote index for '%s'" % cfilename)
             else:
                 has_index = True
-                cfilename = filename
                 if filepath_index:
                     if not os.path.exists(filepath_index):
                         warnings.warn(
                             "unable to open index at %s" % cfilename)
                         self.index = NULL
                         has_index = False
-                else:
+                elif filename is not None:
                     if self.is_bam \
                             and not os.path.exists(filename + b".bai") \
                             and not os.path.exists(filename[:-4] + b".bai") \
@@ -633,6 +624,9 @@ cdef class AlignmentFile(HTSFile):
                             and not os.path.exists(filename[:-5] + b".crai"):
                         self.index = NULL
                         has_index = False
+                else:
+                    self.index = NULL
+                    has_index = False
 
                 if has_index:
                     # returns NULL if there is no index or index could
@@ -643,7 +637,6 @@ cdef class AlignmentFile(HTSFile):
                             self.index = sam_index_load2(self.htsfile,
                                                          cfilename,
                                                          cindexname)
-
                     else:
                         with nogil:
                             self.index = sam_index_load(self.htsfile,
@@ -1292,10 +1285,20 @@ cdef class AlignmentFile(HTSFile):
     def close(self):
         '''
         closes the :class:`pysam.AlignmentFile`.'''
-        if self.htsfile != NULL:
-            hts_close(self.htsfile)
-            hts_idx_destroy(self.index);
-            self.htsfile = NULL
+
+        if self.htsfile == NULL:
+            return
+
+        cdef int ret = hts_close(self.htsfile)
+        hts_idx_destroy(self.index)
+        self.htsfile = NULL
+
+        if ret < 0:
+            global errno
+            if errno == EPIPE:
+                errno = 0
+            else:
+                raise OSError(errno, force_str(strerror(errno)))
 
     def __dealloc__(self):
         # remember: dealloc cannot call other methods
@@ -1309,14 +1312,24 @@ cdef class AlignmentFile(HTSFile):
         # AH: I have removed the call to close. Even though it is working,
         # it seems to be dangerous according to the documentation as the
         # object be partially deconstructed already.
+        cdef int ret = 0
+
         if self.htsfile != NULL:
-            hts_close(self.htsfile)
+            ret = hts_close(self.htsfile)
             hts_idx_destroy(self.index);
             self.htsfile = NULL
 
         bam_destroy1(self.b)
         if self.header != NULL:
             bam_hdr_destroy(self.header)
+
+
+        if ret < 0:
+            global errno
+            if errno == EPIPE:
+                errno = 0
+            else:
+                raise OSError(errno, force_str(strerror(errno)))
             
     cpdef int write(self, AlignedSegment read) except -1:
         '''
@@ -1347,7 +1360,8 @@ cdef class AlignmentFile(HTSFile):
         #      when ret == -1 we get a "SystemError: error return without
         #      exception set".
         if ret < 0:
-            raise ValueError('sam write failed')
+            raise IOError(
+            "sam_write1 failed with error code {}".format(ret))
 
         return ret
 

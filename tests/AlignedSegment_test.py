@@ -784,5 +784,6 @@ class TestAsString(unittest.TestCase):
             for s, p in zip(reference, pysamf):
                 self.assertEqual(s, p.tostring(pysamf))
 
+
 if __name__ == "__main__":
     unittest.main()
