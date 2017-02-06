@@ -246,8 +246,8 @@ elif HTSLIB_MODE == 'shared':
     # htslib built from sources included in the pysam
     # package.
     htslib_library_dirs = [
-        "pysam",  # location of utility C modules such as htslib_util.c
-        ".",
+        "pysam",  # when using setup.py develop?
+        ".",  # when using setup.py develop?
         os.path.join("build", distutils_dir_name("lib"), "pysam")]
 
     htslib_include_dirs = ['htslib']
