@@ -281,6 +281,9 @@ cdef inline packTags(tags):
                          len(value)] + list(value))
 
         elif isinstance(value, array.array):
+            valuetype = value.typecode
+            if valuetype not in datatype2format:
+                valuetype = None
             # binary tags from arrays
             if valuetype is None:
                 array_typecode = map_typecode_python_to_htslib(ord(value.typecode))
