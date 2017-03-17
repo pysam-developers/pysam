@@ -255,7 +255,10 @@ elif HTSLIB_MODE == 'shared':
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
-internal_htslib_libraries = [os.path.splitext("chtslib{}".format(sysconfig.get_config_var('SO')))[0]]
+if IS_PYTHON3:
+    internal_htslib_libraries = ["chtslib.{}".format(sysconfig.get_config_var('SOABI'))]
+else:
+    internal_htslib_libraries = [os.path.splitext("chtslib{}".format(sysconfig.get_config_var('SO')))[0]]
 
 # build config.py
 with open(os.path.join("pysam", "config.py"), "w") as outf:
