@@ -148,7 +148,7 @@ static ploidy_predef_t ploidy_predefs[] =
           "*  * *     F 2\n"
     },
     { .alias  = "GRCh38",
-      .about  = "Human Genome reference assembly GRCh38 / hg38, plain chromosome naming (1,2,3,..)",
+      .about  = "Human Genome reference assembly GRCh38 / hg38",
       .ploidy =
           "X 1 9999 M 1\n"
           "X 2781480 155701381 M 1\n"
@@ -277,7 +277,7 @@ static void set_samples(args_t *args, const char *fn, int is_file)
 
     args->samples_map = (int*) malloc(sizeof(int)*bcf_hdr_nsamples(args->aux.hdr)); // for subsetting
     args->sample2sex  = (int*) malloc(sizeof(int)*bcf_hdr_nsamples(args->aux.hdr));
-    int dflt_sex_id = ploidy_add_sex(args->ploidy, "F");
+    int dflt_sex_id = ploidy_nsex(args->ploidy) - 1;
     for (i=0; i<bcf_hdr_nsamples(args->aux.hdr); i++) args->sample2sex[i] = dflt_sex_id;
 
     int *old2new = (int*) malloc(sizeof(int)*bcf_hdr_nsamples(args->aux.hdr));
@@ -296,6 +296,7 @@ static void set_samples(args_t *args, const char *fn, int is_file)
 
         int ismpl = bcf_hdr_id2int(args->aux.hdr, BCF_DT_SAMPLE, ss);
         if ( ismpl < 0 ) { fprintf(pysam_stderr,"Warning: No such sample in the VCF: %s\n",ss); continue; }
+        if ( old2new[ismpl] != -1 ) { fprintf(pysam_stderr,"Warning: The sample is listed multiple times: %s\n",ss); continue; }
 
         ss = se+1;
         while ( *ss && isspace(*ss) ) ss++;
@@ -413,18 +414,24 @@ static void init_data(args_t *args)
         {
             args->nsamples = bcf_hdr_nsamples(args->aux.hdr);
             args->sample2sex = (int*) malloc(sizeof(int)*args->nsamples);
-            for (i=0; i<args->nsamples; i++) args->sample2sex[i] = 0;
+            for (i=0; i<args->nsamples; i++) args->sample2sex[i] = args->nsex - 1;
         }
     }
     if ( args->nsamples )
     {
         args->aux.ploidy = (uint8_t*) malloc(args->nsamples);
-        for (i=0; i<args->nsamples; i++) args->aux.ploidy[i] = 2;
-        for (i=0; i<args->nsex; i++) args->sex2ploidy_prev[i] = 2;
+        for (i=0; i<args->nsamples; i++) args->aux.ploidy[i] = ploidy_max(args->ploidy);
+        for (i=0; i<args->nsex; i++) args->sex2ploidy_prev[i] = ploidy_max(args->ploidy);
+        for (i=0; i<args->nsamples; i++) 
+            if ( args->sample2sex[i] >= args->nsex ) args->sample2sex[i] = args->nsex - 1;
     }
 
-    if ( args->gvcf ) 
+    if ( args->gvcf )
+    {
+        int id = bcf_hdr_id2int(args->aux.hdr,BCF_DT_ID,"DP");
+        if ( id<0 || !bcf_hdr_idinfo_exists(args->aux.hdr,BCF_HL_FMT,id) ) error("--gvcf output mode requires FORMAT/DP tag, which is not present in the input header\n");
         gvcf_update_header(args->gvcf, args->aux.hdr);
+    }
 
     if ( args->samples_map )
     {
@@ -556,7 +563,6 @@ static void set_ploidy(args_t *args, bcf1_t *rec)
         else
             args->aux.ploidy[i] = args->sex2ploidy[args->sample2sex[i]];
     }
-
     int *tmp = args->sex2ploidy; args->sex2ploidy = args->sex2ploidy_prev; args->sex2ploidy_prev = tmp;
 }
 
@@ -571,7 +577,10 @@ ploidy_t *init_ploidy(char *alias)
 
     if ( !pld->alias )
     {
-        fprintf(pysam_stderr,"Predefined ploidies:\n");
+        fprintf(pysam_stderr,"\nPRE-DEFINED PLOIDY FILES\n\n");
+        fprintf(pysam_stderr," * Columns are: CHROM,FROM,TO,SEX,PLOIDY\n");
+        fprintf(pysam_stderr," * Coordinates are 1-based inclusive.\n");
+        fprintf(pysam_stderr," * A '*' means any value not otherwise defined.\n\n");
         pld = ploidy_predefs;
         while ( pld->alias )
         {
@@ -620,6 +629,7 @@ static void usage(args_t *args)
     fprintf(pysam_stderr, "Input/output options:\n");
     fprintf(pysam_stderr, "   -A, --keep-alts                 keep all possible alternate alleles at variant sites\n");
     fprintf(pysam_stderr, "   -f, --format-fields <list>      output format fields: GQ,GP (lowercase allowed) []\n");
+    fprintf(pysam_stderr, "   -F, --prior-freqs <AN,AC>       use prior allele frequencies\n");
     fprintf(pysam_stderr, "   -g, --gvcf <int>,[...]          group non-variant sites into gVCF blocks by minimum per-sample DP\n");
     fprintf(pysam_stderr, "   -i, --insert-missed             output also sites missed by mpileup but present in -T\n");
     fprintf(pysam_stderr, "   -M, --keep-masked-ref           keep sites with masked reference allele (REF=N)\n");
@@ -632,7 +642,7 @@ static void usage(args_t *args)
     fprintf(pysam_stderr, "   -m, --multiallelic-caller       alternative model for multiallelic and rare-variant calling (conflicts with -c)\n");
     fprintf(pysam_stderr, "   -n, --novel-rate <float>,[...]  likelihood of novel mutation for constrained trio calling, see man page for details [1e-8,1e-9,1e-9]\n");
     fprintf(pysam_stderr, "   -p, --pval-threshold <float>    variant if P(ref|D)<FLOAT with -c [0.5]\n");
-    fprintf(pysam_stderr, "   -P, --prior <float>             mutation rate (use bigger for greater sensitivity) [1.1e-3]\n");
+    fprintf(pysam_stderr, "   -P, --prior <float>             mutation rate (use bigger for greater sensitivity), use with -m [1.1e-3]\n");
 
     // todo (and more)
     // fprintf(pysam_stderr, "\nContrast calling and association test options:\n");
@@ -669,6 +679,7 @@ int main_vcfcall(int argc, char *argv[])
     {
         {"help",no_argument,NULL,'h'},
         {"format-fields",required_argument,NULL,'f'},
+        {"prior-freqs",required_argument,NULL,'F'},
         {"gvcf",required_argument,NULL,'g'},
         {"output",required_argument,NULL,'o'},
         {"output-type",required_argument,NULL,'O'},
@@ -700,7 +711,7 @@ int main_vcfcall(int argc, char *argv[])
     };
 
     char *tmp = NULL;
-    while ((c = getopt_long(argc, argv, "h?o:O:r:R:s:S:t:T:ANMV:vcmp:C:n:P:f:ig:XY", loptions, NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h?o:O:r:R:s:S:t:T:ANMV:vcmp:C:n:P:f:ig:XYF:", loptions, NULL)) >= 0)
     {
         switch (c)
         {
@@ -715,6 +726,13 @@ int main_vcfcall(int argc, char *argv[])
             case 'c': args.flag |= CF_CCALL; break;          // the original EM based calling method
             case 'i': args.flag |= CF_INS_MISSED; break;
             case 'v': args.aux.flag |= CALL_VARONLY; break;
+            case 'F':
+                args.aux.prior_AN = optarg;
+                args.aux.prior_AC = strchr(optarg,',');
+                if ( !args.aux.prior_AC ) error("Expected two tags with -F (e.g. AN,AC), got \"%s\"\n",optarg);
+                *args.aux.prior_AC = 0;
+                args.aux.prior_AC++;
+                break;
             case 'g': 
                 args.gvcf = gvcf_init(optarg);
                 if ( !args.gvcf ) error("Could not parse: --gvcf %s\n", optarg);
@@ -772,8 +790,8 @@ int main_vcfcall(int argc, char *argv[])
 
     if ( !ploidy_fname && !ploidy )
     {
-        fprintf(pysam_stderr,"Note: Neither --ploidy nor --ploidy-file given, assuming all sites are diploid\n");
-        args.ploidy = ploidy_init_string("",2);
+        if ( !args.samples_is_file ) fprintf(pysam_stderr,"Note: none of --samples-file, --ploidy or --ploidy-file given, assuming all sites are diploid\n");
+        args.ploidy = ploidy_init_string("* * * 0 0\n* * * 1 1\n* * * 2 2\n",2);
     }
 
     if ( !args.ploidy ) error("Could not initialize ploidy\n");

@@ -268,7 +268,7 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                 if line.startswith("#define"):
                     key, value = re.match(
                         "#define (\S+)\s+(\S+)", line).groups()
-                    config_values[key] = int(value)
+                    config_values[key] = value
             for key in ["ENABLE_PLUGINS",
                         "HAVE_COMMONCRYPTO",
                         "HAVE_GMTIME_R",
@@ -368,8 +368,7 @@ csamfile = Extension(
     "pysam.libcsamfile",
     [source_pattern % "samfile",
      "pysam/htslib_util.c",
-     "pysam/samfile_util.c",
-     "samtools/kprobaln.c"] +
+     "pysam/samfile_util.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
@@ -388,8 +387,7 @@ calignmentfile = Extension(
     "pysam.libcalignmentfile",
     [source_pattern % "alignmentfile",
      "pysam/htslib_util.c",
-     "pysam/samfile_util.c",
-     "samtools/kprobaln.c"] +
+     "pysam/samfile_util.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
@@ -408,8 +406,7 @@ calignedsegment = Extension(
     "pysam.libcalignedsegment",
     [source_pattern % "alignedsegment",
      "pysam/htslib_util.c",
-     "pysam/samfile_util.c",
-     "samtools/kprobaln.c"] +
+     "pysam/samfile_util.c"] +
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
@@ -437,10 +434,34 @@ ctabix = Extension(
 cutils = Extension(
     "pysam.libcutils",
     [source_pattern % "utils", "pysam/pysam_util.c"] +
+    htslib_sources +
+    os_c_files,
+    library_dirs=["pysam"] + htslib_library_dirs,
+    include_dirs=["samtools", "bcftools", "pysam", "."] +
+    include_os + htslib_include_dirs,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
+    language="c",
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
+)
+
+csamtools = Extension(
+    "pysam.libcutils",
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
-    # glob.glob(os.path.join("samtools", "*", "*.pysam.c")) +
+    htslib_sources +
+    os_c_files,
+    library_dirs=["pysam"] + htslib_library_dirs,
+    include_dirs=["samtools", "bcftools", "pysam", "."] +
+    include_os + htslib_include_dirs,
+    libraries=external_htslib_libraries + internal_htslib_libraries,
+    language="c",
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros
+)
+
+cbcftools = Extension(
+    "pysam.libcutils",
     glob.glob(os.path.join("bcftools", "*.pysam.c")) +
-    # glob.glob(os.path.join("bcftools", "*", "*.pysam.c")) +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
@@ -537,6 +558,8 @@ metadata = {
                     cbcf,
                     cbgzf,
                     cfaidx,
+                    csamtools,
+                    cbcftools,
                     cutils],
     'cmdclass': cmdclass,
     'package_dir': package_dirs,

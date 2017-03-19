@@ -2,7 +2,7 @@
 
 /*  bamtk.c -- main samtools command front-end.
 
-    Copyright (C) 2008-2016 Genome Research Ltd.
+    Copyright (C) 2008-2017 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -29,9 +29,8 @@ DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <stdarg.h>
 #include <string.h>
-#include <errno.h>
+
 #include "htslib/hts.h"
 #include "samtools.h"
 #include "version.h"
@@ -69,34 +68,6 @@ int dict_main(int argc, char *argv[]);
 const char *samtools_version()
 {
     return SAMTOOLS_VERSION;
-}
-
-static void vprint_error_core(const char *subcommand, const char *format, va_list args, const char *extra)
-{
-    fflush(pysam_stdout);
-    if (subcommand && *subcommand) fprintf(pysam_stderr, "samtools %s: ", subcommand);
-    else fprintf(pysam_stderr, "samtools: ");
-    vfprintf(pysam_stderr, format, args);
-    if (extra) fprintf(pysam_stderr, ": %s\n", extra);
-    else fprintf(pysam_stderr, "\n");
-    fflush(pysam_stderr);
-}
-
-void print_error(const char *subcommand, const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    vprint_error_core(subcommand, format, args, NULL);
-    va_end(args);
-}
-
-void print_error_errno(const char *subcommand, const char *format, ...)
-{
-    int err = errno;
-    va_list args;
-    va_start(args, format);
-    vprint_error_core(subcommand, format, args, strerror(err));
-    va_end(args);
 }
 
 static void usage(FILE *fp)
@@ -217,7 +188,7 @@ int samtools_main(int argc, char *argv[])
         fprintf(pysam_stdout, 
 "samtools %s\n"
 "Using htslib %s\n"
-"Copyright (C) 2016 Genome Research Ltd.\n",
+"Copyright (C) 2017 Genome Research Ltd.\n",
                samtools_version(), hts_version());
     }
     else if (strcmp(argv[1], "--version-only") == 0) {

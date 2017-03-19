@@ -1079,6 +1079,12 @@ cdef extern from "htslib/sam.h" nogil:
     # Added by AH
     # ctypedef bam_pileup1_t * const_bam_pileup1_t_ptr "const bam_pileup1_t *"
 
+    # ***********************************
+    # * BAQ calculation and realignment *
+    # ***********************************/
+    int sam_cap_mapq(bam1_t *b, const char *ref, int ref_len, int thres)
+    int sam_prob_realn(bam1_t *b, const char *ref, int ref_len, int flag)
+
 
 cdef extern from "htslib/faidx.h" nogil:
 

@@ -1,6 +1,6 @@
 #include "pysam.h"
 
-/*
+/* 
     Copyright (C) 2014-2016 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
@@ -24,7 +24,6 @@
     THE SOFTWARE.
 */
 
-#include <htslib/regidx.h>
 #include <htslib/khash_str2int.h>
 #include <htslib/kseq.h>
 #include <htslib/hts.h>
@@ -37,6 +36,7 @@ struct _ploidy_t
     int dflt, min, max; // ploidy: default, min and max (only explicitly listed)
     int *sex2dflt;
     regidx_t *idx;
+    regitr_t *itr;
     void *sex2id;
     char **id2sex;
     kstring_t tmp_str;
@@ -54,7 +54,7 @@ regidx_t *ploidy_regions(ploidy_t *ploidy)
     return ploidy->idx;
 }
 
-int ploidy_parse(const char *line, char **chr_beg, char **chr_end, reg_t *reg, void *payload, void *usr)
+int ploidy_parse(const char *line, char **chr_beg, char **chr_end, uint32_t *beg, uint32_t *end, void *payload, void *usr)
 {
     int i, ret;
     ploidy_t *ploidy = (ploidy_t*) usr;
@@ -70,7 +70,7 @@ int ploidy_parse(const char *line, char **chr_beg, char **chr_end, reg_t *reg, v
     else
     {
         // Fill CHR,FROM,TO
-        ret = regidx_parse_tab(line,chr_beg,chr_end,reg,NULL,NULL);
+        ret = regidx_parse_tab(line,chr_beg,chr_end,beg,end,NULL,NULL);
         if ( ret!=0 ) return ret;
     }
 
@@ -146,6 +146,7 @@ ploidy_t *ploidy_init(const char *fname, int dflt)
         ploidy_destroy(pld);
         return NULL;
     }
+    pld->itr = regitr_init(pld->idx);
     _set_defaults(pld,dflt);
     return pld;
 }
@@ -158,6 +159,7 @@ ploidy_t *ploidy_init_string(const char *str, int dflt)
     pld->min = pld->max = -1;
     pld->sex2id = khash_str2int_init();
     pld->idx = regidx_init(NULL,ploidy_parse,NULL,sizeof(sex_ploidy_t),pld);
+    pld->itr = regitr_init(pld->idx);
 
     kstring_t tmp = {0,0,0};
     const char *ss = str;
@@ -172,7 +174,6 @@ ploidy_t *ploidy_init_string(const char *str, int dflt)
         while ( *se && isspace(*se) ) se++;
         ss = se;
     }
-    regidx_insert(pld->idx,NULL);
     free(tmp.s);
 
     _set_defaults(pld,dflt);
@@ -182,6 +183,7 @@ ploidy_t *ploidy_init_string(const char *str, int dflt)
 void ploidy_destroy(ploidy_t *ploidy)
 {
     if ( ploidy->sex2id ) khash_str2int_destroy_free(ploidy->sex2id);
+    if ( ploidy->itr ) regitr_destroy(ploidy->itr);
     if ( ploidy->idx ) regidx_destroy(ploidy->idx);
     free(ploidy->id2sex);
     free(ploidy->tmp_str.s);
@@ -191,8 +193,7 @@ void ploidy_destroy(ploidy_t *ploidy)
 
 int ploidy_query(ploidy_t *ploidy, char *seq, int pos, int *sex2ploidy, int *min, int *max)
 {
-    regitr_t itr;
-    int i, ret = regidx_overlap(ploidy->idx, seq,pos,pos, &itr);
+    int i, ret = regidx_overlap(ploidy->idx, seq,pos,pos, ploidy->itr);
 
     if ( !sex2ploidy && !min && !max ) return ret;
 
@@ -209,17 +210,16 @@ int ploidy_query(ploidy_t *ploidy, char *seq, int pos, int *sex2ploidy, int *min
     int _min = INT_MAX, _max = -1;
     if ( sex2ploidy ) for (i=0; i<ploidy->nsex; i++) sex2ploidy[i] = ploidy->dflt;
 
-    while ( REGITR_OVERLAP(itr,pos,pos) )
+    while ( regitr_overlap(ploidy->itr) )
     {
-        int sex = REGITR_PAYLOAD(itr,sex_ploidy_t).sex;
-        int pld = REGITR_PAYLOAD(itr,sex_ploidy_t).ploidy;
+        int sex = regitr_payload(ploidy->itr,sex_ploidy_t).sex;
+        int pld = regitr_payload(ploidy->itr,sex_ploidy_t).ploidy;
         if ( pld!=ploidy->dflt ) 
         {
             if ( sex2ploidy ) sex2ploidy[ sex ] = pld;
             if ( _min > pld ) _min = pld;
             if ( _max < pld ) _max = pld;
         }
-        itr.i++;
     }
     if ( _max==-1 ) _max = _min = ploidy->dflt;
     if ( max ) *max = _max;

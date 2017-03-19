@@ -555,46 +555,114 @@ static void concat(args_t *args)
     }
 }
 
+int print_vcf_gz_header(BGZF *fp, BGZF *bgzf_out, int print_header, kstring_t *tmp)
+{
+    char *buffer = (char*) fp->uncompressed_block;
+
+    // Read the header and find the position of the data block
+    if ( buffer[0]!='#' ) error("Could not parse the header, expected '#', found '%c'\n", buffer[0]);
+
+    int nskip = 1;     // end of the header in the current uncompressed block
+    while (1)
+    {
+        if ( buffer[nskip]=='\n' )
+        {
+            nskip++;
+            if ( nskip>=fp->block_length )
+            {
+                kputsn(buffer,nskip,tmp);
+                if ( bgzf_read_block(fp) != 0 ) return -1;
+                if ( !fp->block_length ) break;
+                nskip = 0;
+            }
+            // The header has finished
+            if ( buffer[nskip]!='#' )
+            {
+                kputsn(buffer,nskip,tmp);
+                break;
+            }
+        }
+        nskip++;
+        if ( nskip>=fp->block_length )
+        {
+            kputsn(buffer,fp->block_length,tmp);
+            if ( bgzf_read_block(fp) != 0 ) return -1;
+            if ( !fp->block_length ) break;
+            nskip = 0;
+        }
+    }
+    if ( print_header )
+    {
+        if ( bgzf_write(bgzf_out,tmp->s,tmp->l) != tmp->l ) error("Failed to write %d bytes\n", tmp->l);
+        tmp->l = 0;
+    }
+    return nskip;
+}
+
+static inline int unpackInt16(const uint8_t *buffer)
+{
+    return buffer[0] | buffer[1] << 8;
+}
+static int check_header(const uint8_t *header)
+{
+    if ( header[0] != 31 || header[1] != 139 || header[2] != 8 ) return -2;
+    return ((header[3] & 4) != 0
+            && unpackInt16((uint8_t*)&header[10]) == 6
+            && header[12] == 'B' && header[13] == 'C'
+            && unpackInt16((uint8_t*)&header[14]) == 2) ? 0 : -1;
+}
 static void naive_concat(args_t *args)
 {
     // only compressed BCF atm
     BGZF *bgzf_out = bgzf_open(args->output_fname,"w");;
 
-    const size_t page_size = 32768;
-    char *buf = (char*) malloc(page_size);
+    const size_t page_size = BGZF_MAX_BLOCK_SIZE;
+    uint8_t *buf = (uint8_t*) malloc(page_size);
     kstring_t tmp = {0,0,0};
-    int i;
+    int i, file_types = 0;
     for (i=0; i<args->nfnames; i++)
     {
         htsFile *hts_fp = hts_open(args->fnames[i],"r");
         if ( !hts_fp ) error("Failed to open: %s\n", args->fnames[i]);
         htsFormat type = *hts_get_format(hts_fp);
 
-        if ( type.format==vcf ) error("The --naive option currently works only for compressed BCFs, sorry :-/\n");
-        if ( type.compression!=bgzf ) error("The --naive option currently works only for compressed BCFs, sorry :-/\n");
+        if ( type.compression!=bgzf )
+            error("The --naive option works only for compressed BCFs or VCFs, sorry :-/\n");
+        file_types |= type.format==vcf ? 1 : 2;
+        if ( file_types==3 )
+            error("The --naive option works only for compressed files of the same type, all BCFs or all VCFs :-/\n");
 
         BGZF *fp = hts_get_bgzfp(hts_fp);
         if ( !fp || bgzf_read_block(fp) != 0 || !fp->block_length )
             error("Failed to read %s: %s\n", args->fnames[i], strerror(errno));
 
-        uint8_t magic[5];
-        if ( bgzf_read(fp, magic, 5) != 5 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
-        if (strncmp((char*)magic, "BCF\2\2", 5) != 0) error("Invalid BCF magic string in %s\n", args->fnames[i]);
-
-        if ( bgzf_read(fp, &tmp.l, 4) != 4 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
-        hts_expand(char,tmp.l,tmp.m,tmp.s);
-        if ( bgzf_read(fp, tmp.s, tmp.l) != tmp.l ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
-
-        // write only the first header
-        if ( i==0 )
+        int nskip;
+        if ( type.format==bcf )
         {
-            if ( bgzf_write(bgzf_out, "BCF\2\2", 5) !=5 ) error("Failed to write %d bytes to %s\n", 5,args->output_fname);
-            if ( bgzf_write(bgzf_out, &tmp.l, 4) !=4 ) error("Failed to write %d bytes to %s\n", 4,args->output_fname);
-            if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("Failed to write %d bytes to %s\n", tmp.l,args->output_fname);
+            uint8_t magic[5];
+            if ( bgzf_read(fp, magic, 5) != 5 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+            if (strncmp((char*)magic, "BCF\2\2", 5) != 0) error("Invalid BCF magic string in %s\n", args->fnames[i]);
+
+            if ( bgzf_read(fp, &tmp.l, 4) != 4 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+            hts_expand(char,tmp.l,tmp.m,tmp.s);
+            if ( bgzf_read(fp, tmp.s, tmp.l) != tmp.l ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+
+            // write only the first header
+            if ( i==0 )
+            {
+                if ( bgzf_write(bgzf_out, "BCF\2\2", 5) !=5 ) error("Failed to write %d bytes to %s\n", 5,args->output_fname);
+                if ( bgzf_write(bgzf_out, &tmp.l, 4) !=4 ) error("Failed to write %d bytes to %s\n", 4,args->output_fname);
+                if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("Failed to write %d bytes to %s\n", tmp.l,args->output_fname);
+            }
+            nskip = fp->block_offset;
+        }
+        else
+        {
+            nskip = print_vcf_gz_header(fp, bgzf_out, i==0?1:0, &tmp);
+            if ( nskip==-1 ) error("Error reading %s\n", args->fnames[i]);
         }
 
         // Output all non-header data that were read together with the header block
-        int nskip = fp->block_offset;
         if ( fp->block_length - nskip > 0 )
         {
             if ( bgzf_write(bgzf_out, fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("Error: %d\n",fp->errcode);
@@ -603,52 +671,22 @@ static void naive_concat(args_t *args)
 
 
         // Stream the rest of the file as it is, without recompressing, but remove BGZF EOF blocks
-        ssize_t nread, ncached = 0, nwr;
-        const int neof = 28;
-        char cached[neof];
+        // The final bgzf eof block will be added by bgzf_close.
+        ssize_t nread, nblock, nwr;
+        const int nheader = 18, neof = 28;
+        const uint8_t *eof = (uint8_t*) "\037\213\010\4\0\0\0\0\0\377\6\0\102\103\2\0\033\0\3\0\0\0\0\0\0\0\0\0";
         while (1)
         {
-            nread = bgzf_raw_read(fp, buf, page_size);
-
-            // page_size boundary may occur in the middle of the EOF block, so we need to cache the blocks' ends
-            if ( nread<=0 ) break;
-            if ( nread<=neof )      // last block
-            {
-                if ( ncached )
-                {
-                    // flush the part of the cache that won't be needed
-                    nwr = bgzf_raw_write(bgzf_out, cached, nread);
-                    if (nwr != nread) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)nread);
-
-                    // make space in the cache so that we can append to the end
-                    if ( nread!=neof ) memmove(cached,cached+nread,neof-nread);
-                }
-
-                // fill the cache and check for eof outside this loop
-                memcpy(cached+neof-nread,buf,nread);
-                break;
-            }
-
-            // not the last block, flush the cache if full
-            if ( ncached )
-            {
-                nwr = bgzf_raw_write(bgzf_out, cached, ncached);
-                if (nwr != ncached) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)ncached);
-                ncached = 0;
-            }
-
-            // fill the cache
-            nread -= neof;
-            memcpy(cached,buf+nread,neof);
-            ncached = neof;
-
+            nread = bgzf_raw_read(fp, buf, nheader);
+            if ( !nread ) break;
+            if ( nread != nheader || check_header(buf)!=0 ) error("Could not parse the header of a bgzf block: %s\n",args->fnames[i]);
+            nblock = unpackInt16(buf+16) + 1;
+            assert( nblock <= page_size && nblock >= nheader );
+            nread += bgzf_raw_read(fp, buf+nheader, nblock - nheader);
+            if ( nread!=nblock ) error("Could not read %d bytes: %s\n",nblock,args->fnames[i]);
+            if ( nread==neof && !memcmp(buf,eof,neof) ) continue;
             nwr = bgzf_raw_write(bgzf_out, buf, nread);
-            if (nwr != nread) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)nread);
-        }
-        if ( ncached && memcmp(cached,"\037\213\010\4\0\0\0\0\0\377\6\0\102\103\2\0\033\0\3\0\0\0\0\0\0\0\0\0",neof) )
-        {
-            nwr = bgzf_raw_write(bgzf_out, cached, neof);
-            if (nwr != neof) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)neof);
+            if ( nwr != nread ) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)nread);
         }
         if (hts_close(hts_fp)) error("Close failed: %s\n",args->fnames[i]);
     }
@@ -677,8 +715,8 @@ static void usage(args_t *args)
     fprintf(stderr, "   -D, --remove-duplicates        Alias for -d none\n");
     fprintf(stderr, "   -f, --file-list <file>         Read the list of files from a file.\n");
     fprintf(stderr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
-    fprintf(stderr, "       --no-version               do not append version and command line to the header\n");
-    fprintf(stderr, "   -n, --naive                    Concatenate BCF files without recompression (dangerous, use with caution)\n");
+    fprintf(stderr, "       --no-version               Do not append version and command line to the header\n");
+    fprintf(stderr, "   -n, --naive                    Concatenate files without recompression (dangerous, use with caution)\n");
     fprintf(stderr, "   -o, --output <file>            Write output to a file [standard output]\n");
     fprintf(stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(stderr, "   -q, --min-PQ <int>             Break phase set if phasing quality is lower than <int> [30]\n");

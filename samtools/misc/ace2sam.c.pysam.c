@@ -163,7 +163,10 @@ int samtools_ace2sam_main(int argc, char *argv[])
             }
             if (dret != '\n') ks_getuntil(ks, '\n', &s, &dret);
             ks_getuntil(ks, '\n', &s, &dret); // skip the empty line
-            if (write_cns) fputs(t[4].s, pysam_stdout) & fputc('\n', pysam_stdout); t[4].l = 0;
+            if (write_cns) {
+                if (t[4].l) fputs(t[4].s, pysam_stdout) & fputc('\n', pysam_stdout);
+                t[4].l = 0;
+            }
         } else if (strcmp(s.s, "AF") == 0) { // padded read position
             int reversed, neg, pos;
             if (t[0].l == 0) fatal("come to 'AF' before reading 'CO'");
