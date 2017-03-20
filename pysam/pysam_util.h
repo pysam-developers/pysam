@@ -34,4 +34,8 @@ int pysam_dispatch(int argc, char *argv[]);
 
 void set_optind(int);
 
+extern int samtools_main(int argc, char *argv[]);
+  
+extern int bcftools_main(int argc, char *argv[]);
+
 #endif

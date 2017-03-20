@@ -437,7 +437,7 @@ cutils = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["samtools", "bcftools", "pysam", "."] +
+    include_dirs=["pysam", "."] +
     include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
@@ -446,12 +446,12 @@ cutils = Extension(
 )
 
 csamtools = Extension(
-    "pysam.libcutils",
+    "pysam.libcsamtools",
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["samtools", "bcftools", "pysam", "."] +
+    include_dirs=["samtools", "pysam", "."] +
     include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
@@ -460,12 +460,12 @@ csamtools = Extension(
 )
 
 cbcftools = Extension(
-    "pysam.libcutils",
+    "pysam.libcbcftools",
     glob.glob(os.path.join("bcftools", "*.pysam.c")) +
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["samtools", "bcftools", "pysam", "."] +
+    include_dirs=["bcftools", "pysam", "."] +
     include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",

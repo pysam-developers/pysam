@@ -3,6 +3,8 @@ import sys
 import sysconfig
 
 from pysam.libchtslib import *
+from pysam.libcsamtools import *
+from pysam.libcbcftools import *
 from pysam.libcutils import *
 import pysam.libcutils as libcutils
 import pysam.libcfaidx as libcfaidx
