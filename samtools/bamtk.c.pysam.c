@@ -40,7 +40,6 @@ int bam_mpileup(int argc, char *argv[]);
 int bam_merge(int argc, char *argv[]);
 int bam_index(int argc, char *argv[]);
 int bam_sort(int argc, char *argv[]);
-int bam_tview_main(int argc, char *argv[]);
 int bam_mating(int argc, char *argv[]);
 int bam_rmdup(int argc, char *argv[]);
 int bam_flagstat(int argc, char *argv[]);
@@ -183,7 +182,7 @@ int samtools_main(int argc, char *argv[])
         fprintf(pysam_stderr, "[main] The `pileup' command has been removed. Please use `mpileup' instead.\n");
         return 1;
     }
-    else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
+/*     else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1); */
     else if (strcmp(argv[1], "--version") == 0) {
         fprintf(pysam_stdout, 
 "samtools %s\n"

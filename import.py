@@ -31,10 +31,22 @@ import hashlib
 
 EXCLUDE = {
     "samtools": (
-        "razip.c", "bgzip.c", "main.c",
-        "calDepth.c", "bam2bed.c", "wgsim.c",
-        "md5fa.c", "md5sum-lite.c", "maq2sam.c",
-        "bamcheck.c", "chk_indel.c", "vcf-miniview.c",
+        "razip.c",
+        "bgzip.c",
+        "main.c",
+        "calDepth.c",
+        "bam2bed.c",
+        "wgsim.c",
+        "bam_tview.c",
+        "bam_tview.h",
+        "bam_tview_html.c",
+        "bam_tview_curses.c",
+        "md5fa.c",
+        "md5sum-lite.c",
+        "maq2sam.c",
+        "bamcheck.c",
+        "chk_indel.c",
+        "vcf-miniview.c",
         "htslib-1.3",   # do not import twice
         "hfile_irods.c",  # requires irods library
     ),
@@ -73,9 +85,10 @@ def _update_pysam_files(cf, destdir):
         if not filename:
             continue
         dest = filename + ".pysam.c"
-        with open(filename) as infile:
+        with open(filename, encoding="utf-8") as infile:
             lines = "".join(infile.readlines())
-            with open(dest, "w") as outfile:
+
+            with open(dest, "w", encoding="utf-8") as outfile:
                 outfile.write('#include "pysam.h"\n\n')
                 subname, _ = os.path.splitext(os.path.basename(filename))
                 if subname in MAIN.get(basename, []):
@@ -161,9 +174,9 @@ if len(sys.argv) >= 1:
         old_file = os.path.join(targetdir, f)
         if os.path.exists(old_file):
             md5_old = hashlib.md5(
-                "".join(open(old_file, "r").readlines())).digest()
+                "".join(open(old_file, "r", encoding="utf-8").readlines()).encode()).digest()
             md5_new = hashlib.md5(
-                "".join(open(src, "r").readlines())).digest()
+                "".join(open(src, "r", encoding="utf-8").readlines()).encode()).digest()
             if md5_old != md5_new:
                 raise ValueError(
                     "incompatible files for %s and %s" %

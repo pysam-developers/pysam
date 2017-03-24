@@ -255,7 +255,15 @@ elif HTSLIB_MODE == 'shared':
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
-internal_htslib_libraries = [os.path.splitext("chtslib{}".format(sysconfig.get_config_var('SO')))[0]]
+shared_library_extension = sysconfig.get_config_var('SO')
+
+internal_htslib_libraries = [
+    os.path.splitext("chtslib{}".format(shared_library_extension))[0]]
+
+internal_tools_libraries = [
+    os.path.splitext("csamtools{}".format(shared_library_extension))[0],
+    os.path.splitext("cbcftools{}".format(shared_library_extension))[0],
+    ]
 
 # build config.py
 with open(os.path.join("pysam", "config.py"), "w") as outf:
@@ -431,6 +439,8 @@ ctabix = Extension(
     define_macros=define_macros
 )
 
+
+
 cutils = Extension(
     "pysam.libcutils",
     [source_pattern % "utils", "pysam/pysam_util.c"] +
@@ -439,7 +449,7 @@ cutils = Extension(
     library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["pysam", "."] +
     include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries + internal_tools_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
@@ -447,6 +457,7 @@ cutils = Extension(
 
 csamtools = Extension(
     "pysam.libcsamtools",
+    [source_pattern % "samtools"] +
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
     htslib_sources +
     os_c_files,
@@ -461,6 +472,7 @@ csamtools = Extension(
 
 cbcftools = Extension(
     "pysam.libcbcftools",
+    [source_pattern % "bcftools"] +
     glob.glob(os.path.join("bcftools", "*.pysam.c")) +
     htslib_sources +
     os_c_files,
