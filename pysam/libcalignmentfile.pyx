@@ -469,7 +469,6 @@ cdef class AlignmentFile(HTSFile):
             reference_filename)
 
         cdef char * ctext
-        cdef hFILE * fp
         ctext = NULL
 
         if mode[0] == 'w':
