@@ -751,10 +751,13 @@ cdef class AlignedSegment:
         if t == o:
             return 0
 
+        cdef uint8_t *a = <uint8_t*>&t.core
+        cdef uint8_t *b = <uint8_t*>&o.core
+        
         retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
-
         if retval:
             return retval
+
         # cmp(t.l_data, o.l_data)
         retval = (t.l_data > o.l_data) - (t.l_data < o.l_data)
         if retval:
@@ -822,13 +825,15 @@ cdef class AlignedSegment:
     property query_name:
         """the query template name (None if not present)"""
         def __get__(self):
-            cdef bam1_t * src
-            src = self._delegate
-            if pysam_get_l_qname(src) == 0:
+
+            cdef bam1_t * src = self._delegate
+            if src.core.l_qname == 0:
                 return None
+
             return charptr_to_str(<char *>pysam_bam_get_qname(src))
 
         def __set__(self, qname):
+
             if qname is None or len(qname) == 0:
                 return
 
@@ -837,34 +842,41 @@ cdef class AlignedSegment:
                     len(qname)))
 
             qname = force_bytes(qname)
-            cdef bam1_t * src
-            cdef int l
-            cdef char * p
-
-            src = self._delegate
-            p = pysam_bam_get_qname(src)
-
+            cdef bam1_t * src = self._delegate
             # the qname is \0 terminated
-            l = len(qname) + 1
+            cdef uint8_t l = len(qname) + 1
+
+            cdef char * p = pysam_bam_get_qname(src)
+            cdef uint8_t l_extranul = 0
+
+            if l % 4 != 0:
+                l_extranul = 4 - l % 4
+
             pysam_bam_update(src,
-                             pysam_get_l_qname(src),
-                             l,
+                             src.core.l_qname,
+                             l + l_extranul,
                              <uint8_t*>p)
 
-            pysam_set_l_qname(src, l)
-
+            src.core.l_extranul = l_extranul
+            src.core.l_qname = l + l_extranul
+            
             # re-acquire pointer to location in memory
             # as it might have moved
             p = pysam_bam_get_qname(src)
 
             strncpy(p, qname, l)
+            # x might be > 255
+            cdef uint16_t x = 0
+
+            for x from l <= x < l + l_extranul:
+                p[x] = '\0'
 
     property flag:
         """properties flag"""
         def __get__(self):
-            return pysam_get_flag(self._delegate)
+            return self._delegate.core.flag
         def __set__(self, flag):
-            pysam_set_flag(self._delegate, flag)
+            self._delegate.core.flag = flag
 
     property reference_name:
         """:term:`reference` name (None if no AlignmentFile is associated)"""
@@ -896,19 +908,17 @@ cdef class AlignedSegment:
             src = self._delegate
             src.core.pos = pos
             if pysam_get_n_cigar(src):
-                pysam_set_bin(src,
-                              hts_reg2bin(
-                                  src.core.pos,
-                                  bam_endpos(src),
-                                  14,
-                                  5))
+                src.core.bin = hts_reg2bin(
+                    src.core.pos,
+                    bam_endpos(src),
+                    14,
+                    5)
             else:
-                pysam_set_bin(src,
-                              hts_reg2bin(
-                                  src.core.pos,
-                                  src.core.pos + 1,
-                                  14,
-                                  5))
+                src.core.bin = hts_reg2bin(
+                    src.core.pos,
+                    src.core.pos + 1,
+                    14,
+                    5)
 
     property mapping_quality:
         """mapping quality"""
@@ -1159,9 +1169,9 @@ cdef class AlignedSegment:
     property bin:
         """properties bin"""
         def __get__(self):
-            return pysam_get_bin(self._delegate)
+            return self._delegate.core.bin
         def __set__(self, bin):
-            pysam_set_bin(self._delegate, bin)
+            self._delegate.core.bin = bin
 
 
     ##########################################################
@@ -1826,12 +1836,11 @@ cdef class AlignedSegment:
                 k += 1
 
             ## setting the cigar string requires updating the bin
-            pysam_set_bin(src,
-                          hts_reg2bin(
-                              src.core.pos,
-                              bam_endpos(src),
-                              14,
-                              5))
+            src.core.bin = hts_reg2bin(
+                src.core.pos,
+                bam_endpos(src),
+                14,
+                5)
 
 
     cpdef set_tag(self,

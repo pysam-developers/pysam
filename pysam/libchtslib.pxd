@@ -809,7 +809,9 @@ cdef extern from "htslib/sam.h" nogil:
         uint8_t qual
         uint8_t l_qname
         uint16_t flag
-        uint16_t n_cigar
+        uint8_t unused1
+        uint8_t l_extranul
+        uint32_t n_cigar
         int32_t l_qseq
         int32_t mtid
         int32_t mpos
@@ -1017,6 +1019,18 @@ cdef extern from "htslib/sam.h" nogil:
     #*** Pileup and Mpileup ***
     #**************************
 
+    #  @abstract Generic pileup 'client data'.
+    #  @discussion The pileup iterator allows setting a constructor and
+    #  destructor function, which will be called every time a sequence is
+    #  fetched and discarded.  This permits caching of per-sequence data in
+    #  a tidy manner during the pileup process.  This union is the cached
+    #  data to be manipulated by the "client" (the caller of pileup).
+    # 
+    union bam_pileup_cd:
+        void *p
+        int64_t i
+        double f
+
     # @abstract Structure for one alignment covering the pileup position.
     # @field  b          pointer to the alignment
     # @field  qpos       position of the read base at the pileup site, 0-based
@@ -1047,6 +1061,7 @@ cdef extern from "htslib/sam.h" nogil:
         uint32_t is_tail
         uint32_t is_refskip
         uint32_t aux
+        bam_pileup_cd cd
 
     ctypedef int (*bam_plp_auto_f)(void *data, bam1_t *b)
     ctypedef int (*bam_test_f)()
