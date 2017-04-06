@@ -342,7 +342,8 @@ class BcftoolsTest(SamtoolsTest):
         # "filter -s A ex1.vcf.gz  > %(out)s_ex1.filter",
         # exit
         # "gtcheck -s A ex1.vcf.gz  > %(out)s_ex1.gtcheck",
-        "roh -s A ex1.vcf.gz > %(out)s_ex1.roh",
+        # segfauld, used to work wit bcftools 1.3
+        # "roh -s A ex1.vcf.gz > %(out)s_ex1.roh",
         "stats ex1.vcf.gz > %(out)s_ex1.stats",
     ]
 

@@ -161,8 +161,10 @@ def check_lines_equal(cls, a, b, sort=False, filter_f=None, msg=None):
     filter_f:
        remover lines in both a and b where expression is True
     """
-    aa = openfile(a).readlines()
-    bb = openfile(b).readlines()
+    with openfile(a) as inf:
+        aa = inf.readlines()
+    with openfile(b) as inf:
+        bb = inf.readlines()
 
     if filter_f is not None:
         aa = [x for x in aa if not filter_f(x)]
