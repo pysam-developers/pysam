@@ -237,16 +237,22 @@ def _pysam_dispatch(collection,
                     method,
                     args=None,
                     catch_stdout=True,
+                    is_usage=False,
                     save_stdout=None):
     '''call ``method`` in samtools/bcftools providing arguments in args.
     
+    By default, stdout is redirected to a temporary file using the patched
+    C sources except for a few commands that have an explicit output option
+    (typically: -o). In these commands (such as samtools view), this explicit
+    option is used. If *is_usage* is True, then these explicit output options
+    will not be used.
+
     Catching of stdout can be turned off by setting *catch_stdout* to
     False.
-
     '''
 
     if method == "index":
-        if not os.path.exists(args[0]):
+        if args and not os.path.exists(args[0]):
             raise IOError("No such file or directory: '%s'" % args[0])
             
     if args is None:
@@ -270,17 +276,16 @@ def _pysam_dispatch(collection,
         pysam_set_stdout(stdout_h)
     elif catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
-
         MAP_STDOUT_OPTIONS = {
-            "samtools": {
-                "view": "-o {}",
-                "mpileup": "-o {}",
-                "depad": "-o {}",
-                "calmd": "",  # uses pysam_stdout_fn
-            },
+        "samtools": {
+            "view": "-o {}",
+            "mpileup": "-o {}",
+            "depad": "-o {}",
+            "calmd": "",  # uses pysam_stdout_fn
+        },
             "bcftools": {}
         }
-
+        
         stdout_option = None
         if collection == "bcftools":
             # in bcftools, most methods accept -o, the exceptions
@@ -292,7 +297,7 @@ def _pysam_dispatch(collection,
             if not(method == "view" and "-c" in args):
                 stdout_option = MAP_STDOUT_OPTIONS[collection][method]
 
-        if stdout_option is not None:
+        if stdout_option is not None and not is_usage:
             os.close(stdout_h)
             pysam_set_stdout_fn(force_bytes(stdout_f))
             args.extend(stdout_option.format(stdout_f).split(" "))

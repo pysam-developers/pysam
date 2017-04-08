@@ -92,7 +92,14 @@ class PysamDispatcher(object):
 
     def usage(self):
         '''return the samtools usage information for this command'''
-        retval, stderr, stdout = csamtools._samtools_dispatch(
-            self.dispatch)
-        return stderr
+        retval, stderr, stdout = _pysam_dispatch(
+            self.collection,
+            self.dispatch,
+            is_usage=True,
+            catch_stdout=True)
+        # some tools write usage to stderr, such as mpileup
+        if stderr:
+            return stderr
+        else:
+            return stdout
 
