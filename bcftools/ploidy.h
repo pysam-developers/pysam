@@ -55,7 +55,7 @@
 #ifndef __PLOIDY_H__
 #define __PLOIDY_H__
 
-#include <htslib/regidx.h>
+#include "regidx.h"
 
 typedef struct _ploidy_t ploidy_t;
 

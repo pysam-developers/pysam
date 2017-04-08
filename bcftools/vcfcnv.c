@@ -266,17 +266,15 @@ static void init_data(args_t *args)
     hmm_init_states(args->hmm, args->iprobs);
 
     args->summary_fh = stdout;
-    if ( args->output_dir )
+    init_sample_files(&args->query_sample, args->output_dir);
+    if ( args->control_sample.name )
     {
-        init_sample_files(&args->query_sample, args->output_dir);
-        if ( args->control_sample.name )
-        {
-            init_sample_files(&args->control_sample, args->output_dir);
-            args->summary_fh = open_file(&args->summary_fname,"w","%s/summary.tab",args->output_dir);
-        }
-        else
-            args->summary_fh = NULL;    // one sample only, no two-file summary
+        init_sample_files(&args->control_sample, args->output_dir);
+        args->summary_fh = open_file(&args->summary_fname,"w","%s/summary.tab",args->output_dir);
     }
+    else
+        args->summary_fh = NULL;    // one sample only, no two-file summary
+        
 
     int i;
     FILE *fh = args->summary_fh ? args->summary_fh : args->query_sample.summary_fh;
@@ -295,6 +293,19 @@ static void init_data(args_t *args)
                 "# RG, Regions\t[2]Chromosome\t[3]Start\t[4]End\t[5]Copy number:%s\t[6]Quality\t[7]nSites\t[8]nHETs\n",
                 args->query_sample.name
                );
+    if ( args->optimize_frac )
+    {
+        fprintf(args->query_sample.summary_fh, "# CF, cell fraction estimate\t[2]Chromosome\t[3]Start\t[4]End\t[5]Cell fraction\t[6]BAF deviation\n");
+        if ( args->control_sample.name )
+        {
+            fprintf(args->control_sample.summary_fh, "# CF, cell fraction estimate\t[2]Chromosome\t[3]Start\t[4]End\t[5]Cell fraction\t[6]BAF deviation\n");
+            fprintf(args->summary_fh, "# CF, cell fraction estimate\t[2]Chromosome\t[3]Start\t[4]End\t"
+                "[5]Cell fraction:%s\t[6]Cell fraction:%s\t[7]BAF deviation:%s\t[8]BAF deviation:%s\n",
+                args->query_sample.name,args->control_sample.name,
+                args->query_sample.name,args->control_sample.name
+                );
+        }
+    }
 }
 
 char *msprintf(const char *fmt, ...);
@@ -556,6 +567,7 @@ static void destroy_data(args_t *args)
     free(args->sites);
     free(args->eprob);
     free(args->tprob);
+    free(args->iprobs);
     free(args->summary_fname);
     free(args->nonref_afs);
     free(args->query_sample.baf);
@@ -960,6 +972,20 @@ static void cnv_flush_viterbi(args_t *args)
         if ( args->control_sample.name )
             fprintf(stderr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
         fprintf(stderr,"\n");
+
+        fprintf(args->query_sample.summary_fh,"CF\t%s\t%d\t%d\t%.2f\t%f\n",
+            bcf_hdr_id2name(args->hdr,args->prev_rid),args->sites[0]+1,args->sites[args->nsites-1]+1,
+            args->query_sample.cell_frac,sqrt(args->query_sample.baf_dev2));
+        if ( args->control_sample.name )
+        {
+            fprintf(args->control_sample.summary_fh,"CF\t%s\t%d\t%d\t%.2f\t%f\n",
+                    bcf_hdr_id2name(args->hdr,args->prev_rid),args->sites[0]+1,args->sites[args->nsites-1]+1,
+                    args->control_sample.cell_frac,sqrt(args->control_sample.baf_dev2));
+            fprintf(args->summary_fh,"CF\t%s\t%d\t%d\t%.2f\t%.2f\t%f\t%f\n",
+                    bcf_hdr_id2name(args->hdr,args->prev_rid),args->sites[0]+1,args->sites[args->nsites-1]+1,
+                    args->query_sample.cell_frac, args->control_sample.cell_frac,
+                    sqrt(args->query_sample.baf_dev2), sqrt(args->control_sample.baf_dev2));
+        }
     }
     set_emission_probs(args);
 
@@ -1351,7 +1377,7 @@ int main_vcfcnv(int argc, char *argv[])
     else fname = argv[optind];
     if ( !fname ) usage(args);
 
-    if ( args->plot_th<=100 && !args->output_dir ) error("Expected -o option with -p\n");
+    if ( !args->output_dir ) error("Expected -o option\n");
     if ( args->regions_list )
     {
         if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )

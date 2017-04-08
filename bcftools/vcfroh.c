@@ -30,11 +30,18 @@ THE SOFTWARE.  */
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/kstring.h>
 #include <htslib/kseq.h>
+#include <htslib/bgzf.h>
+#include <errno.h>
 #include "bcftools.h"
 #include "HMM.h"
+#include "smpl_ilist.h"
 
 #define STATE_HW 0        // normal state, follows Hardy-Weinberg allele frequencies
 #define STATE_AZ 1        // autozygous state
+
+#define OUTPUT_ST (1<<1)
+#define OUTPUT_RG (1<<2)
+#define OUTPUT_GZ (1<<3)
 
 /** Genetic map */
 typedef struct
@@ -43,6 +50,24 @@ typedef struct
     double rate;
 }
 genmap_t;
+
+/** HMM data for each sample */
+typedef struct
+{
+    double *eprob;      // emission probs [2*nsites,msites]
+    uint32_t *sites;    // positions [nsites,msites]
+    int nsites, msites;
+    int igenmap;        // current position in genmap
+    int nused;          // some stats to detect if things didn't go wrong
+    int nrid, *rid, *rid_off;   // for viterbi training, keep all chromosomes
+    void *snapshot;             // hmm snapshot
+    struct {
+        uint32_t beg,end,nqual;
+        double qual;
+        int rid, state;
+    } rg;
+}
+smpl_t;
 
 typedef struct _args_t
 {
@@ -57,29 +82,32 @@ typedef struct _args_t
     double rec_rate;        // constant recombination rate if > 0
 
     hmm_t *hmm;
-    double *eprob;          // emission probs [2*nsites,msites]
-    uint32_t *sites;        // positions [nsites,msites]
-    int nsites, msites;
+    double baum_welch_th;
     int nrids, *rids, *rid_offs;    // multiple chroms with vi_training
+    int nbuf_max, nbuf_olap;
 
-    int32_t *itmp;
-    int nitmp, mitmp;
     float *AFs;
-    int mAFs;
+    int32_t *itmp;
+    int mAFs, nitmp, mitmp, pl_hdr_id, gt_hdr_id;
 
     double pl2p[256], *pdg;
     int32_t skip_rid, prev_rid, prev_pos;
 
-    int ntot, nused;            // some stats to detect if things didn't go awfully wrong
-    int ismpl, nsmpl;           // index of query sample
-    char *estimate_AF, *sample; // list of samples for AF estimate and query sample
-    char **argv, *targets_list, *regions_list, *af_fname, *af_tag;
-    int argc, fake_PLs, snps_only, vi_training;
+    int ntot;                   // some stats to detect if things didn't go wrong
+    smpl_t *smpl;               // HMM data for each sample
+    smpl_ilist_t *af_smpl;      // list of samples to estimate AF from (--estimate-AF)
+    smpl_ilist_t *roh_smpl;     // list of samples to analyze (--samples, --samples-file)
+    char *estimate_AF;          // list of samples for AF estimate and query sample
+    int af_from_PL;             // estimate AF from FMT/PL rather than FMT/GT
+    char **argv, *targets_list, *regions_list, *af_fname, *af_tag, *samples, *buffer_size, *output_fname;
+    int argc, fake_PLs, snps_only, vi_training, samples_is_file, output_type, skip_homref, n_threads;
+    BGZF *out;
+    kstring_t str;
 }
 args_t;
 
 void set_tprob_genmap(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, double *tprob);
-void set_tprob_recrate(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, double *tprob);
+void set_tprob_rrate(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, double *tprob);
 
 void *smalloc(size_t size)
 {
@@ -90,57 +118,137 @@ void *smalloc(size_t size)
 
 static void init_data(args_t *args)
 {
+    int i;
+
     args->prev_rid = args->skip_rid = -1;
     args->hdr = args->files->readers[0].header;
 
-    if ( !args->sample )
-    {
-        if ( bcf_hdr_nsamples(args->hdr)>1 ) error("Missing the option -s, --sample\n");
-        args->sample = strdup(args->hdr->samples[0]);
-    }
     if ( !bcf_hdr_nsamples(args->hdr) ) error("No samples in the VCF?\n");
 
-    // Set samples
-    kstring_t str = {0,0,0};
-    if ( args->estimate_AF && strcmp("-",args->estimate_AF) )
+    if ( !args->fake_PLs )
     {
-        int i, n;
-        char **smpls = hts_readlist(args->estimate_AF, 1, &n);
+        args->pl_hdr_id = bcf_hdr_id2int(args->hdr, BCF_DT_ID, "PL");
+        if ( !bcf_hdr_idinfo_exists(args->hdr,BCF_HL_FMT,args->pl_hdr_id) )
+            error("Error: The FORMAT/PL tag not found in the header, consider running with -G\n");
+        if ( bcf_hdr_id2type(args->hdr,BCF_HL_FMT,args->pl_hdr_id)!=BCF_HT_INT ) 
+            error("Error: The FORMAT/PL tag not defined as Integer in the header\n");
+    }
 
-        // Make sure the query sample is included
-        for (i=0; i<n; i++)
-            if ( !strcmp(args->sample,smpls[i]) ) break;
+    if ( args->estimate_AF )
+    {
+        if ( !strncmp("GT,",args->estimate_AF,3) ) args->estimate_AF += 3;
+        else if ( !strncmp("PL,",args->estimate_AF,3) ) { args->estimate_AF += 3; args->af_from_PL = 1; }
+        if ( strcmp("-",args->estimate_AF) )
+            args->af_smpl = smpl_ilist_init(args->hdr, args->estimate_AF, 1, SMPL_NONE);
+    }
 
-        // Add the query sample if not present
-        if ( i!=n ) kputs(args->sample, &str);
-
-        for (i=0; i<n; i++)
+    if ( args->estimate_AF || args->fake_PLs )
+    {
+        if ( args->af_from_PL )
         {
-            if ( str.l ) kputc(',', &str);
-            kputs(smpls[i], &str);
-            free(smpls[i]);
+            args->pl_hdr_id = bcf_hdr_id2int(args->hdr, BCF_DT_ID, "PL");
+            if ( !bcf_hdr_idinfo_exists(args->hdr,BCF_HL_FMT,args->pl_hdr_id) )
+                error("Error: The FORMAT/PL tag not found in the header\n");
         }
-        free(smpls);
+        else
+        {
+            args->gt_hdr_id = bcf_hdr_id2int(args->hdr, BCF_DT_ID, "GT");
+            if ( !bcf_hdr_idinfo_exists(args->hdr,BCF_HL_FMT,args->gt_hdr_id) )
+                error("Error: The FORMAT/GT tag not found in the header\n");
+        }
     }
-    else if ( !args->estimate_AF )
-        kputs(args->sample, &str);
-
-    if ( str.l )
+    if ( args->fake_PLs )
     {
-        int ret = bcf_hdr_set_samples(args->hdr, str.s, 0);
-        if ( ret<0 ) error("Error parsing the list of samples: %s\n", str.s);
-        else if ( ret>0 ) error("The %d-th sample not found in the VCF\n", ret);
+        args->gt_hdr_id = bcf_hdr_id2int(args->hdr, BCF_DT_ID, "GT");
+        if ( !bcf_hdr_idinfo_exists(args->hdr,BCF_HL_FMT,args->gt_hdr_id) )
+            error("Error: The FORMAT/GT tag not found in the header\n");
     }
 
-    if ( args->af_tag )
-        if ( !bcf_hdr_idinfo_exists(args->hdr,BCF_HL_INFO,bcf_hdr_id2int(args->hdr,BCF_DT_ID,args->af_tag)) )
-            error("No such INFO tag in the VCF: %s\n", args->af_tag);
+    args->roh_smpl = smpl_ilist_init(args->hdr, args->samples, args->samples_is_file, SMPL_NONE);
+    if ( args->samples )
+    {
+        // we may be able to subset to a few samples, for a text VCF this can be a major speedup
+        if ( (bcf_sr_get_reader(args->files,0))->file->format.format==vcf )
+        {
+            kstring_t str = {0,0,0};
+            smpl_ilist_t *tmp = args->roh_smpl, *rmme = NULL;
+            if ( args->af_smpl )
+            {
+                for (i=0; i<args->roh_smpl->n; i++)
+                {
+                    if ( str.l ) kputc(',', &str);
+                    kputs(args->hdr->samples[args->roh_smpl->idx[i]], &str);
+                }
+                for (i=0; i<args->af_smpl->n; i++)
+                {
+                    kputc(',', &str);
+                    kputs(args->hdr->samples[args->af_smpl->idx[i]], &str);
+                }
+                rmme = tmp = smpl_ilist_init(args->hdr, str.s, 0, SMPL_NONE);
+            }
+            if ( tmp->n < bcf_hdr_nsamples(args->hdr) )
+            {
+                str.l = 0;
+                for (i=0; i<tmp->n; i++)
+                {
+                    if ( str.l ) kputc(',', &str);
+                    kputs(args->hdr->samples[tmp->idx[i]], &str);
+                }
+                int ret = bcf_hdr_set_samples(args->hdr, str.s, 0);
+                if ( ret<0 ) error("Error parsing the list of samples: %s\n", str.s);
+                else if ( ret>0 ) error("The %d-th sample not found in the VCF: %s\n", ret,str.s);
 
-    args->nsmpl = bcf_hdr_nsamples(args->hdr);
-    args->ismpl = bcf_hdr_id2int(args->hdr, BCF_DT_SAMPLE, args->sample);
-    free(str.s);
+                // update sample ids
+                smpl_ilist_destroy(args->roh_smpl);
+                args->roh_smpl = smpl_ilist_init(args->hdr, args->samples, args->samples_is_file, SMPL_NONE);
 
-    int i;
+                if ( args->af_smpl )
+                {
+                    smpl_ilist_destroy(args->af_smpl);
+                    args->af_smpl = smpl_ilist_init(args->hdr, args->estimate_AF, 1, SMPL_NONE);
+                }
+            }
+            free(str.s);
+            if ( rmme )
+                smpl_ilist_destroy(rmme);
+        }
+    }
+
+    // check whether all samples are in this list. If so, the lookup will not be needed
+    if ( args->af_smpl && args->af_smpl->n == bcf_hdr_nsamples(args->hdr) )
+    {
+        // all samples are in this list
+        smpl_ilist_destroy(args->af_smpl);
+        args->af_smpl = NULL;
+    }
+
+    if ( args->buffer_size )
+    {
+        args->nbuf_olap = -1;
+        char *end;
+        double tmp = strtod(args->buffer_size,&end);
+        if ( *end )
+        {
+            if ( *end!=',') error("Could not parse: --buffer-size %s\n", args->buffer_size);
+            args->nbuf_olap = strtol(end+1,&end,10);
+            if ( *end || args->nbuf_olap<0 ) error("Could not parse: --bufer-size %s\n", args->buffer_size);
+        }
+        if ( tmp<0 )
+            args->nbuf_max = fabs(tmp)*1e6/(4+8*2)/args->roh_smpl->n;
+        else
+            args->nbuf_max = tmp;
+
+        if ( args->nbuf_olap<0 )
+            args->nbuf_olap = args->nbuf_max*0.01;
+    }
+    fprintf(stderr,"Number of target samples: %d\n", args->roh_smpl->n);
+    fprintf(stderr,"Number of --estimate-AF samples: %d\n", args->af_smpl ? args->af_smpl->n : (args->estimate_AF ? bcf_hdr_nsamples(args->hdr) : 0));
+    fprintf(stderr,"Number of sites in the buffer/overlap: ");
+    if ( args->nbuf_max ) fprintf(stderr,"%d/%d\n", args->nbuf_max,args->nbuf_olap);
+    else fprintf(stderr,"unlimited\n");
+
+    args->smpl = (smpl_t*) calloc(args->roh_smpl->n,sizeof(smpl_t));
+
     for (i=0; i<256; i++) args->pl2p[i] = pow(10., -i/10.);
 
     // Init transition matrix and HMM
@@ -158,32 +266,88 @@ static void init_data(args_t *args)
     else if ( args->rec_rate > 0 )
     {
         args->hmm = hmm_init(2, tprob, 0);
-        hmm_set_tprob_func(args->hmm, set_tprob_recrate, args);
+        hmm_set_tprob_func(args->hmm, set_tprob_rrate, args);
 
     }
     else
         args->hmm = hmm_init(2, tprob, 10000);
 
+    args->out = bgzf_open(strcmp("stdout",args->output_fname)?args->output_fname:"-", args->output_type&OUTPUT_GZ ? "wg" : "wu"); 
+    if ( !args->out ) error("Failed to open %s: %s\n", args->output_fname, strerror(errno));
+
     // print header
-    printf("# This file was produced by: bcftools roh(%s+htslib-%s)\n", bcftools_version(),hts_version());
-    printf("# The command line was:\tbcftools %s", args->argv[0]);
+    args->str.l = 0;
+    ksprintf(&args->str, "# This file was produced by: bcftools roh(%s+htslib-%s)\n", bcftools_version(),hts_version());
+    ksprintf(&args->str, "# The command line was:\tbcftools %s", args->argv[0]);
     for (i=1; i<args->argc; i++)
-        printf(" %s",args->argv[i]);
-    printf("\n#\n");
-    printf("# [1]Chromosome\t[2]Position\t[3]State (0:HW, 1:AZ)\t[4]Quality\n");
+        ksprintf(&args->str, " %s",args->argv[i]);
+    ksprintf(&args->str, "\n#\n");
+    if ( args->output_type & OUTPUT_RG )
+    {
+        i = 2;
+        ksprintf(&args->str, "# RG");
+        ksprintf(&args->str, "\t[%d]Sample", i++);
+        ksprintf(&args->str, "\t[%d]Chromosome", i++);
+        ksprintf(&args->str, "\t[%d]Start", i++);
+        ksprintf(&args->str, "\t[%d]End", i++);
+        ksprintf(&args->str, "\t[%d]Length (bp)", i++);
+        ksprintf(&args->str, "\t[%d]Number of markers", i++);
+        ksprintf(&args->str, "\t[%d]Quality (average fwd-bwd phred score)", i++);
+        ksprintf(&args->str, "\n");
+    }
+    if ( args->output_type & OUTPUT_ST )
+    {
+        i = 2;
+        ksprintf(&args->str, "# ST");
+        ksprintf(&args->str, "\t[%d]Sample", i++);
+        ksprintf(&args->str, "\t[%d]Chromosome", i++);
+        ksprintf(&args->str, "\t[%d]Position", i++);
+        ksprintf(&args->str, "\t[%d]State (0:HW, 1:AZ)", i++);
+        ksprintf(&args->str, "\t[%d]Quality (fwd-bwd phred score)", i++);
+        ksprintf(&args->str, "\n");
+    }
+    if ( args->vi_training)
+    {
+        i = 2;
+        ksprintf(&args->str, "# VT, Viterbi Training");
+        ksprintf(&args->str, "\t[%d]Sample", i++);
+        ksprintf(&args->str, "\t[%d]Iteration", i++);
+        ksprintf(&args->str, "\t[%d]dAZ", i++);
+        ksprintf(&args->str, "\t[%d]dHW", i++);
+        ksprintf(&args->str, "\t[%d]1 - P(HW|HW)", i++);
+        ksprintf(&args->str, "\t[%d]P(AZ|HW)", i++);
+        ksprintf(&args->str, "\t[%d]1 - P(AZ|AZ)", i++);
+        ksprintf(&args->str, "\t[%d]P(HW|AZ)", i++);
+        ksprintf(&args->str, "\n");
+    }
+    if ( bgzf_write(args->out, args->str.s, args->str.l) != args->str.l )
+        error("Error writing %s: %s\n", args->output_fname, strerror(errno));
 }
 
 static void destroy_data(args_t *args)
 {
-    free(args->sites);
-    free(args->eprob);
-    free(args->sample);
+    if ( bgzf_close(args->out)!=0 ) error("Error: close failed .. %s\n", args->output_fname);
+    int i;
+    for (i=0; i<args->roh_smpl->n; i++)
+    {
+        free(args->smpl[i].eprob);
+        free(args->smpl[i].sites);
+        free(args->smpl[i].rid);
+        free(args->smpl[i].rid_off);
+        free(args->smpl[i].snapshot);
+    }
+    free(args->str.s);
+    free(args->smpl);
+    if ( args->af_smpl ) smpl_ilist_destroy(args->af_smpl);
+    smpl_ilist_destroy(args->roh_smpl);
     free(args->rids);
     free(args->rid_offs);
     hmm_destroy(args->hmm);
     bcf_sr_destroy(args->files);
-    free(args->itmp); free(args->AFs); free(args->pdg);
+    free(args->AFs); free(args->pdg);
     free(args->genmap);
+    free(args->itmp);
+    free(args->samples);
 }
 
 static int load_genmap(args_t *args, bcf1_t *line)
@@ -255,7 +419,6 @@ static double get_genmap_rate(args_t *args, int start, int end)
     // position j to be equal or larger than end
     int j = i;
     while ( j+1<args->ngenmap && args->genmap[j].pos < end ) j++;
-
     if ( i==j )
     {
         args->igenmap = i;
@@ -272,14 +435,14 @@ static double get_genmap_rate(args_t *args, int start, int end)
 void set_tprob_genmap(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, double *tprob)
 {
     args_t *args = (args_t*) data;
-    double ci = get_genmap_rate(args, pos - prev_pos, pos);
+    double ci = get_genmap_rate(args, prev_pos, pos);
     MAT(tprob,2,STATE_HW,STATE_AZ) *= ci;
     MAT(tprob,2,STATE_AZ,STATE_HW) *= ci;
     MAT(tprob,2,STATE_AZ,STATE_AZ)  = 1 - MAT(tprob,2,STATE_HW,STATE_AZ);
     MAT(tprob,2,STATE_HW,STATE_HW)  = 1 - MAT(tprob,2,STATE_AZ,STATE_HW);
 }
 
-void set_tprob_recrate(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, double *tprob)
+void set_tprob_rrate(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, double *tprob)
 {
     args_t *args = (args_t*) data;
     double ci = (pos - prev_pos) * args->rec_rate;
@@ -315,132 +478,169 @@ void set_tprob_recrate(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, 
  *
  */
 
-static void flush_viterbi(args_t *args)
+static void flush_viterbi(args_t *args, int ismpl)
 {
-    int i,j;
+    smpl_t *smpl = &args->smpl[ismpl];
+    if ( !smpl->nsites ) return;
 
-    if ( !args->nsites ) return; 
+    const char *name = args->hdr->samples[ args->roh_smpl->idx[ismpl] ];
 
-    if ( !args->vi_training )
+    int i,j,k;
+
+    if ( !args->vi_training ) // single viterbi pass
     {
-        // single viterbi pass, one chromsome
-        hmm_run_viterbi(args->hmm, args->nsites, args->eprob, args->sites);
-        hmm_run_fwd_bwd(args->hmm, args->nsites, args->eprob, args->sites);
+        hmm_restore(args->hmm, smpl->snapshot); 
+        int end = (args->nbuf_max && smpl->nsites >= args->nbuf_max && smpl->nsites > args->nbuf_olap) ? smpl->nsites - args->nbuf_olap : smpl->nsites;
+        if ( end < smpl->nsites )
+            smpl->snapshot = hmm_snapshot(args->hmm, smpl->snapshot, smpl->nsites - args->nbuf_olap - 1);
+
+        args->igenmap = smpl->igenmap;
+        hmm_run_viterbi(args->hmm, smpl->nsites, smpl->eprob, smpl->sites);
+        hmm_run_fwd_bwd(args->hmm, smpl->nsites, smpl->eprob, smpl->sites);
         double *fwd = hmm_get_fwd_bwd_prob(args->hmm);
 
-        const char *chr = bcf_hdr_id2name(args->hdr,args->prev_rid);
-        uint8_t *vpath = hmm_get_viterbi_path(args->hmm);
-        for (i=0; i<args->nsites; i++)
+        const char *chr  = bcf_hdr_id2name(args->hdr,args->prev_rid);
+        uint8_t *vpath   = hmm_get_viterbi_path(args->hmm);
+
+        for (i=0; i<end; i++)
         {
             int state = vpath[i*2]==STATE_AZ ? 1 : 0;
-            double *pval = fwd + i*2;
-            printf("%s\t%d\t%d\t%.1f\n", chr,args->sites[i]+1, state, phred_score(1.0-pval[state]));
+            double qual = phred_score(1.0 - fwd[i*2 + state]);
+            if ( args->output_type & OUTPUT_ST )
+            {
+                args->str.l = 0;
+                ksprintf(&args->str, "ST\t%s\t%s\t%d\t%d\t%.1f\n", name,chr,smpl->sites[i]+1, state, qual);
+                if ( bgzf_write(args->out, args->str.s, args->str.l) != args->str.l ) error("Error writing %s: %s\n", args->output_fname, strerror(errno));
+            }
+
+            if ( args->output_type & OUTPUT_RG )
+            {
+                if ( state!=smpl->rg.state ) 
+                {
+                    if ( !state )   // the region ends, flush
+                    {
+                        args->str.l = 0;
+                        ksprintf(&args->str, "RG\t%s\t%s\t%d\t%d\t%d\t%d\t%.1f\n",name,bcf_hdr_id2name(args->hdr,smpl->rg.rid),
+                                smpl->rg.beg+1,smpl->rg.end+1,smpl->rg.end-smpl->rg.beg+1,smpl->rg.nqual,smpl->rg.qual/smpl->rg.nqual);
+                        if ( bgzf_write(args->out, args->str.s, args->str.l) != args->str.l ) error("Error writing %s: %s\n", args->output_fname, strerror(errno));
+                        smpl->rg.state = 0;
+                    }
+                    else
+                    {
+                        smpl->rg.state = 1;
+                        smpl->rg.beg = smpl->sites[i];
+                        smpl->rg.rid = args->prev_rid;
+                    }
+                }
+                else if ( state )
+                {
+                    smpl->rg.nqual++;
+                    smpl->rg.qual += qual;
+                    smpl->rg.end  = smpl->sites[i];
+                }
+            }
         }
+
+        if ( end < smpl->nsites )
+        {
+            end = smpl->nsites - args->nbuf_olap;
+            memmove(smpl->sites, smpl->sites + end, sizeof(*smpl->sites)*args->nbuf_olap);
+            memmove(smpl->eprob, smpl->eprob + end*2, sizeof(*smpl->eprob)*args->nbuf_olap*2);
+            smpl->nsites  = args->nbuf_olap;
+            smpl->igenmap = args->igenmap;
+        }
+        else
+        {
+            smpl->nsites  = 0;
+            smpl->igenmap = 0;
+
+            if ( smpl->rg.state )
+            {
+                args->str.l = 0;
+                ksprintf(&args->str, "RG\t%s\t%s\t%d\t%d\t%d\t%d\t%.1f\n",name,bcf_hdr_id2name(args->hdr,smpl->rg.rid),
+                        smpl->rg.beg+1,smpl->rg.end+1,smpl->rg.end-smpl->rg.beg+1,smpl->rg.nqual,smpl->rg.qual/smpl->rg.nqual);
+                if ( bgzf_write(args->out, args->str.s, args->str.l) != args->str.l ) error("Error writing %s: %s\n", args->output_fname, strerror(errno));
+                smpl->rg.state = 0;
+            }
+        }
+
         return;
     }
+
 
     // viterbi training, multiple chromosomes
     double t2az_prev, t2hw_prev;
     double deltaz, delthw;
+
+    double *tprob_arr = hmm_get_tprob(args->hmm);
+    MAT(tprob_arr,2,STATE_HW,STATE_HW) = 1 - args->t2AZ;
+    MAT(tprob_arr,2,STATE_HW,STATE_AZ) = args->t2HW;
+    MAT(tprob_arr,2,STATE_AZ,STATE_HW) = args->t2AZ;
+    MAT(tprob_arr,2,STATE_AZ,STATE_AZ) = 1 - args->t2HW; 
+    if ( args->genmap_fname || args->rec_rate > 0 )
+        hmm_set_tprob(args->hmm, tprob_arr, 0);
+    else
+        hmm_set_tprob(args->hmm, tprob_arr, 10000);
+
     int niter = 0;
     do
     {
-        double *tprob_arr = hmm_get_tprob(args->hmm);
-        t2az_prev = MAT(tprob_arr,2,1,0); //args->t2AZ;
-        t2hw_prev = MAT(tprob_arr,2,0,1); //args->t2HW;
-        double tcounts[] = { 0,0,0,0 };
-        for (i=0; i<args->nrids; i++)
+        tprob_arr = hmm_get_tprob(args->hmm);
+        t2az_prev = MAT(tprob_arr,2,STATE_AZ,STATE_HW); //args->t2AZ;
+        t2hw_prev = MAT(tprob_arr,2,STATE_HW,STATE_AZ); //args->t2HW;
+        double tprob_new[] = { 0,0,0,0 };
+        for (i=0; i<smpl->nrid; i++)
         {
-            // run viterbi for each chromosomes. eprob and sites contain
-            // multiple chromosomes, rid_offs mark the boundaries
-            int ioff = args->rid_offs[i];
-            int nsites = (i+1==args->nrids ? args->nsites : args->rid_offs[i+1]) - ioff;
-            hmm_run_viterbi(args->hmm, nsites, args->eprob+ioff*2, args->sites+ioff);
-
-            // what transitions were observed: add to the total counts
-            uint8_t *vpath = hmm_get_viterbi_path(args->hmm);
-            for (j=1; j<nsites; j++)
-            {
-                // count the number of transitions
-                int prev_state = vpath[2*(j-1)];
-                int curr_state = vpath[2*j];
-                MAT(tcounts,2,curr_state,prev_state) += 1;
-            }
-        }
-
-        // update the transition matrix
-        int n = 1;
-        for (i=0; i<2; i++)
-        {
-            for (j=0; j<2; j++) n += MAT(tcounts,2,i,j);
-        }
-        for (i=0; i<2; i++)
-        {
+            int ioff = smpl->rid_off[i];
+            int nsites = (i+1==smpl->nrid ? smpl->nsites : smpl->rid_off[i+1]) - ioff;
+            args->igenmap = 0;
+            tprob_arr = hmm_run_baum_welch(args->hmm, nsites, smpl->eprob+ioff*2, smpl->sites+ioff);
             for (j=0; j<2; j++)
-            {
-                // no transition to i-th state was observed, set to a small number
-                if ( !MAT(tcounts,2,i,j) ) MAT(tcounts,2,i,j) = 0.1/n;
-                else MAT(tcounts,2,i,j) /= n;
-            }
+                for (k=0; k<2; k++) MAT(tprob_new,2,j,k) += MAT(tprob_arr,2,j,k);
         }
-
-        // normalize
-        for (i=0; i<2; i++)
-        {
-            double norm = 0;
-            for (j=0; j<2; j++) norm += MAT(tcounts,2,j,i);
-            assert( norm!=0 );
-            for (j=0; j<2; j++) MAT(tcounts,2,j,i) /= norm;
-        }
+        for (j=0; j<2; j++)
+            for (k=0; k<2; k++) MAT(tprob_new,2,j,k) /= smpl->nrid;
 
         if ( args->genmap_fname || args->rec_rate > 0 )
-            hmm_set_tprob(args->hmm, tcounts, 0);
+            hmm_set_tprob(args->hmm, tprob_new, 0);
         else
-            hmm_set_tprob(args->hmm, tcounts, 10000);
+            hmm_set_tprob(args->hmm, tprob_new, 10000);
 
-        tprob_arr = hmm_get_tprob(args->hmm);
-        deltaz = fabs(MAT(tprob_arr,2,1,0)-t2az_prev);
-        delthw = fabs(MAT(tprob_arr,2,0,1)-t2hw_prev);
+        deltaz = fabs(MAT(tprob_new,2,STATE_AZ,STATE_HW)-t2az_prev);
+        delthw = fabs(MAT(tprob_new,2,STATE_HW,STATE_AZ)-t2hw_prev);
         niter++;
-        fprintf(stderr,"Viterbi training, iteration %d: dAZ=%e dHW=%e\tP(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", 
-            niter,deltaz,delthw,
-            MAT(tprob_arr,2,STATE_HW,STATE_HW),MAT(tprob_arr,2,STATE_AZ,STATE_HW),
-            MAT(tprob_arr,2,STATE_AZ,STATE_AZ),MAT(tprob_arr,2,STATE_HW,STATE_AZ));
+        args->str.l = 0;
+        ksprintf(&args->str, "VT\t%s\t%d\t%e\t%e\t%e\t%e\t%e\t%e\n", 
+            name,niter,deltaz,delthw,
+            1-MAT(tprob_new,2,STATE_HW,STATE_HW),MAT(tprob_new,2,STATE_AZ,STATE_HW),
+            1-MAT(tprob_new,2,STATE_AZ,STATE_AZ),MAT(tprob_new,2,STATE_HW,STATE_AZ));
+        if ( bgzf_write(args->out, args->str.s, args->str.l) != args->str.l ) error("Error writing %s: %s\n", args->output_fname, strerror(errno));
     }
-    while ( deltaz > 0.0 || delthw > 0.0 );
-    double *tprob_arr = hmm_get_tprob(args->hmm);
-    fprintf(stderr, "Viterbi training converged in %d iterations to P(HW|HW)=%e  P(AZ|HW)=%e  P(AZ|AZ)=%e  P(HW|AZ)=%e\n", niter,
-            MAT(tprob_arr,2,STATE_HW,STATE_HW),MAT(tprob_arr,2,STATE_AZ,STATE_HW),
-            MAT(tprob_arr,2,STATE_AZ,STATE_AZ),MAT(tprob_arr,2,STATE_HW,STATE_AZ));
+    while ( deltaz > args->baum_welch_th || delthw > args->baum_welch_th );
     
     // output the results
-    for (i=0; i<args->nrids; i++)
+    for (i=0; i<smpl->nrid; i++)
     {
-        int ioff = args->rid_offs[i];
-        int nsites = (i+1==args->nrids ? args->nsites : args->rid_offs[i+1]) - ioff;
-        hmm_run_viterbi(args->hmm, nsites, args->eprob+ioff*2, args->sites+ioff);
-        hmm_run_fwd_bwd(args->hmm, nsites, args->eprob+ioff*2, args->sites+ioff);
+        int ioff = smpl->rid_off[i];
+        int nsites = (i+1==smpl->nrid ? smpl->nsites : smpl->rid_off[i+1]) - ioff;
+        args->igenmap = 0;
+        hmm_run_viterbi(args->hmm, nsites, smpl->eprob+ioff*2, smpl->sites+ioff);
+        hmm_run_fwd_bwd(args->hmm, nsites, smpl->eprob+ioff*2, smpl->sites+ioff);
         uint8_t *vpath = hmm_get_viterbi_path(args->hmm);
         double  *fwd   = hmm_get_fwd_bwd_prob(args->hmm);
 
-        const char *chr = bcf_hdr_id2name(args->hdr,args->rids[i]);
+        const char *chr = bcf_hdr_id2name(args->hdr,smpl->rid[i]);
         for (j=0; j<nsites; j++)
         {
-            int state = vpath[j*2];
-            double pval = fwd[j*2 + state];
-            printf("%s\t%d\t%d\t%e\n", chr,args->sites[ioff+j]+1,state==STATE_AZ ? 1 : 0, pval);
+            int state = vpath[j*2]==STATE_AZ ? 1 : 0;
+            double *pval = fwd + j*2;
+            args->str.l = 0;
+            ksprintf(&args->str, "ROH\t%s\t%s\t%d\t%d\t%.1f\n", name,chr,smpl->sites[ioff+j]+1, state, phred_score(1.0-pval[state]));
+            if ( bgzf_write(args->out, args->str.s, args->str.l) != args->str.l ) error("Error writing %s: %s\n", args->output_fname, strerror(errno));
         }
     }
 }
 
-static void push_rid(args_t *args, int rid)
-{
-    args->nrids++;
-    args->rids = (int*) realloc(args->rids, args->nrids*sizeof(int));
-    args->rid_offs = (int*) realloc(args->rid_offs, args->nrids*sizeof(int));
-    args->rids[ args->nrids-1 ] = rid;
-    args->rid_offs[ args->nrids-1 ] = args->nsites;
-}
 
 int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq)
 {
@@ -468,27 +668,52 @@ int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq)
     return 0;
 }
 
-int estimate_AF(args_t *args, bcf1_t *line, double *alt_freq)
+int8_t *get_GT(args_t *args, bcf1_t *line)
 {
-    if ( !args->nitmp )
-    {
-        args->nitmp = bcf_get_genotypes(args->hdr, line, &args->itmp, &args->mitmp);
-        if ( args->nitmp != 2*args->nsmpl ) return -1;     // not diploid?
-        args->nitmp /= args->nsmpl;
-    }
+    int i;
+    for (i=0; i<line->n_fmt; i++)
+        if ( line->d.fmt[i].id==args->gt_hdr_id ) break;
+    if ( i==line->n_fmt ) return NULL;        // the tag is not present in this record
 
+    bcf_fmt_t *fmt = &line->d.fmt[i];
+    if ( fmt->n!=2 ) return NULL;             // not diploid
+
+    if ( fmt->type!=BCF_BT_INT8 ) error("This is unexpected, GT type is %d\n", fmt->type);
+    return (int8_t*) fmt->p;
+}
+
+int estimate_AF_from_GT(args_t *args, int8_t *gt, double *alt_freq)
+{
     int i, nalt = 0, nref = 0;
-    for (i=0; i<args->nsmpl; i++)
+    if ( args->af_smpl )        // subset samples for AF estimate
     {
-        int32_t *gt = &args->itmp[i*args->nitmp];
+        for (i=0; i<args->af_smpl->n; i++)
+        {
+            int ismpl = args->af_smpl->idx[i];
+            if ( bcf_gt_is_missing(gt[2*ismpl]) || bcf_gt_is_missing(gt[2*ismpl+1]) ) continue;
 
-        if ( bcf_gt_is_missing(gt[0]) || bcf_gt_is_missing(gt[1]) ) continue;
+            if ( bcf_gt_allele(gt[2*ismpl]) ) nalt++;
+            else nref++;
 
-        if ( bcf_gt_allele(gt[0]) ) nalt++;
-        else nref++;
+            if ( bcf_gt_allele(gt[2*ismpl+1]) ) nalt++;
+            else nref++;
+        }
+    }
+    else                        // all samples used in AF estimate
+    {
+        int8_t *end = gt + 2*bcf_hdr_nsamples(args->hdr);
+        while ( gt < end )
+        {
+            if ( bcf_gt_is_missing(gt[0]) || bcf_gt_is_missing(gt[1]) ) continue;
 
-        if ( bcf_gt_allele(gt[1]) ) nalt++;
-        else nref++;
+            if ( bcf_gt_allele(gt[0]) ) nalt++;
+            else nref++;
+
+            if ( bcf_gt_allele(gt[1]) ) nalt++;
+            else nref++;
+
+            gt += 2;
+        }
     }
     if ( !nalt && !nref ) return -1;
 
@@ -496,105 +721,249 @@ int estimate_AF(args_t *args, bcf1_t *line, double *alt_freq)
     return 0;
 }
 
-
-int parse_line(args_t *args, bcf1_t *line, double *alt_freq, double *pdg)
+int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_freq)
 {
-    args->nitmp = 0;
+    double af = 0;
+    int i, j, naf = 0;
+
+    int irr = bcf_alleles2gt(0,0), ira = bcf_alleles2gt(0,ial), iaa = bcf_alleles2gt(ial,ial);
+    if ( iaa >= fmt_pl->n ) return -1;  // not diploid or wrong number of fields
+    
+    if ( args->af_smpl )        // subset samples for AF estimate
+    {
+        #define BRANCH(type_t) \
+        { \
+            for (i=0; i<args->af_smpl->n; i++) \
+            { \
+                int ismpl = args->af_smpl->idx[i]; \
+                type_t *p = (type_t*)fmt_pl->p + fmt_pl->n*ismpl; \
+                if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
+                if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
+                double prob[3], norm = 0; \
+                prob[0] = p[irr] < (type_t)256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
+                prob[1] = p[ira] < (type_t)256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
+                prob[2] = p[iaa] < (type_t)256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                for (j=0; j<3; j++) norm += prob[j]; \
+                for (j=0; j<3; j++) prob[j] /= norm; \
+                af += 0.5*prob[1] + prob[2]; \
+                naf++; \
+            } \
+        }
+        switch (fmt_pl->type) {
+            case BCF_BT_INT8:  BRANCH(int8_t); break;
+            case BCF_BT_INT16: BRANCH(int16_t); break;
+            case BCF_BT_INT32: BRANCH(int32_t); break;
+            default: fprintf(stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+        }
+        #undef BRANCH
+    }
+    else                        // all samples used in AF estimate
+    {
+        int nsmpl = bcf_hdr_nsamples(args->hdr);
+        #define BRANCH(type_t) \
+        { \
+            type_t *p = (type_t*)fmt_pl->p; \
+            p -= fmt_pl->n; \
+            for (i=0; i<nsmpl; i++) \
+            { \
+                p += fmt_pl->n; \
+                if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
+                if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
+                double prob[3], norm = 0; \
+                prob[0] = p[irr] < (type_t)256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
+                prob[1] = p[ira] < (type_t)256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
+                prob[2] = p[iaa] < (type_t)256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                for (j=0; j<3; j++) norm += prob[j]; \
+                for (j=0; j<3; j++) prob[j] /= norm; \
+                af += 0.5*prob[1] + prob[2]; \
+                naf++; \
+            } \
+        }
+        switch (fmt_pl->type) {
+            case BCF_BT_INT8:  BRANCH(int8_t); break;
+            case BCF_BT_INT16: BRANCH(int16_t); break;
+            case BCF_BT_INT32: BRANCH(int32_t); break;
+            default: fprintf(stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+        }
+        #undef BRANCH
+    }
+    if ( !naf ) return -1;
+
+    *alt_freq = af / naf;
+    return 0;
+}
+
+bcf_fmt_t *get_PL(args_t *args, bcf1_t *line)
+{
+    int i;
+    for (i=0; i<line->n_fmt; i++)
+        if ( line->d.fmt[i].id==args->pl_hdr_id ) return &line->d.fmt[i];
+    return NULL;
+}
+
+int process_line(args_t *args, bcf1_t *line, int ial)
+{
+    if ( !(line->unpacked & BCF_UN_FMT) ) bcf_unpack(line, BCF_UN_FMT);
+
+    double alt_freq;
+    int8_t *GTs = NULL;
+    bcf_fmt_t *fmt_pl = NULL;
 
     // Set allele frequency
-    int ret;
+    int ret = 0, i,j;
     if ( args->af_tag )
     {
         // Use an INFO tag provided by the user
         ret = bcf_get_info_float(args->hdr, line, args->af_tag, &args->AFs, &args->mAFs);
-        if ( ret==1 )
-            *alt_freq = args->AFs[0];
+        if ( ret>0 )
+            alt_freq = args->AFs[ial-1];
         if ( ret==-2 )
             error("Type mismatch for INFO/%s tag at %s:%d\n", args->af_tag, bcf_seqname(args->hdr,line), line->pos+1);
     }
     else if ( args->af_fname ) 
     {
         // Read AF from a file
-        ret = read_AF(args->files->targets, line, alt_freq);
+        ret = read_AF(args->files->targets, line, &alt_freq);
     }
-    else
+    else if ( args->dflt_AF > 0 )
     {
-        // Use GTs or AC/AN: GTs when AC/AN not present or when GTs explicitly requested by --estimate-AF
-        ret = -1;
-        if ( !args->estimate_AF )
-        {
-            int AC = -1, AN = 0;
-            ret = bcf_get_info_int32(args->hdr, line, "AN", &args->itmp, &args->mitmp);
-            if ( ret==1 )
-            {
-                AN = args->itmp[0];
-                ret = bcf_get_info_int32(args->hdr, line, "AC", &args->itmp, &args->mitmp);
-                if ( ret>0 )
-                    AC = args->itmp[0];
-            }
-            if ( AN<=0 || AC<0 ) 
-                ret = -1;
-            else 
-                *alt_freq = (double) AC/AN;
-        }
-        if ( ret==-1 )
-            ret = estimate_AF(args, line, alt_freq);    // reads GTs into args->itmp
+        alt_freq = args->dflt_AF;
     }
-
-    if ( ret<0 ) return ret;
-    if ( *alt_freq==0.0 )
+    else if ( args->estimate_AF )
     {
-        if ( args->dflt_AF==0 ) return -1;       // we skip sites with AF=0
-        *alt_freq = args->dflt_AF;
-    }
-
-    // Set P(D|G)
-    if ( args->fake_PLs )
-    {
-        if ( !args->nitmp )
+        // Estimate AF from GTs or PLs of all samples or samples listed in a file
+        if ( args->af_from_PL )
         {
-            args->nitmp = bcf_get_genotypes(args->hdr, line, &args->itmp, &args->mitmp);
-            if ( args->nitmp != 2*args->nsmpl ) return -1;     // not diploid?
-            args->nitmp /= args->nsmpl;
-        }
-
-        int32_t *gt = &args->itmp[args->ismpl*args->nitmp];
-        if ( bcf_gt_is_missing(gt[0]) || bcf_gt_is_missing(gt[1]) ) return -1;
-
-        int a = bcf_gt_allele(gt[0]);
-        int b = bcf_gt_allele(gt[1]);
-        if ( a!=b )
-        {
-            pdg[0] = pdg[2] = args->unseen_PL;
-            pdg[1] = 1 - 2*args->unseen_PL;
-        }
-        else if ( a==0 )
-        {
-            pdg[0] = 1 - 2*args->unseen_PL;
-            pdg[1] = pdg[2] = args->unseen_PL;
+            fmt_pl = get_PL(args, line);
+            if ( !fmt_pl ) return -1;
+            ret = estimate_AF_from_PL(args, fmt_pl, ial, &alt_freq);
         }
         else
         {
-            pdg[0] = pdg[1] = args->unseen_PL;
-            pdg[2] = 1 - 2*args->unseen_PL;
+            GTs = get_GT(args, line);
+            if ( !GTs ) return -1;
+            ret = estimate_AF_from_GT(args, GTs, &alt_freq);
         }
     }
     else
     {
-        args->nitmp = bcf_get_format_int32(args->hdr, line, "PL", &args->itmp, &args->mitmp);
-        if ( args->nitmp != args->nsmpl*line->n_allele*(line->n_allele+1)/2. ) return -1;     // not diploid?
-        args->nitmp /= args->nsmpl;
+        // Use AC/AN
+        int AC = -1, AN = 0;
+        ret = bcf_get_info_int32(args->hdr, line, "AN", &args->itmp, &args->mitmp);
+        if ( ret==1 )
+        {
+            AN = args->itmp[0];
+            ret = bcf_get_info_int32(args->hdr, line, "AC", &args->itmp, &args->mitmp);
+            if ( ret>0 )
+                AC = args->itmp[0];
+        }
+        if ( AN<=0 || AC<0 ) 
+            ret = -1;
+        else 
+            alt_freq = (double) AC/AN;
+    }
 
-        int32_t *pl = &args->itmp[args->ismpl*args->nitmp];
-        pdg[0] = pl[0] < 256 ? args->pl2p[ pl[0] ] : 1.0;
-        pdg[1] = pl[1] < 256 ? args->pl2p[ pl[1] ] : 1.0;
-        pdg[2] = pl[2] < 256 ? args->pl2p[ pl[2] ] : 1.0;
+    if ( ret<0 ) return ret;
+    if ( alt_freq==0.0 ) return -1;
+
+    int irr = bcf_alleles2gt(0,0), ira = bcf_alleles2gt(0,ial), iaa = bcf_alleles2gt(ial,ial);
+    if ( args->fake_PLs )
+    {
+        if ( !GTs ) GTs = get_GT(args, line);
+    }
+    else
+    {
+        fmt_pl = get_PL(args, line);
+        if ( !fmt_pl ) return -1;
+        if ( iaa >= fmt_pl->n ) return -1;  // not diploid or wrong number of fields
+    }
+
+    for (i=0; i<args->roh_smpl->n; i++)
+    {
+        int ismpl = args->roh_smpl->idx[i];
+
+        // set P(D|G)
+        double pdg[3];
+        if ( args->fake_PLs )
+        {
+            int8_t *gt = GTs + 2*ismpl;
+            if ( bcf_gt_is_missing(gt[0]) || bcf_gt_is_missing(gt[1]) ) continue;
+
+            int a = bcf_gt_allele(gt[0]);
+            int b = bcf_gt_allele(gt[1]);
+            if ( a!=b )
+            {
+                pdg[0] = pdg[2] = args->unseen_PL;
+                pdg[1] = 1 - 2*args->unseen_PL;
+            }
+            else if ( a==0 )
+            {
+                pdg[0] = 1 - args->unseen_PL - args->unseen_PL*args->unseen_PL;
+                pdg[1] = args->unseen_PL;
+                pdg[2] = args->unseen_PL*args->unseen_PL;
+            }
+            else
+            {
+                pdg[0] = args->unseen_PL*args->unseen_PL;
+                pdg[1] = args->unseen_PL;
+                pdg[2] = 1 - args->unseen_PL - args->unseen_PL*args->unseen_PL;
+            }
+        }
+        else
+        {
+            #define BRANCH(type_t) \
+            { \
+                type_t *p = (type_t*)fmt_pl->p + fmt_pl->n*ismpl; \
+                if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
+                if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
+                pdg[0] = p[irr] < (type_t)256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
+                pdg[1] = p[ira] < (type_t)256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
+                pdg[2] = p[iaa] < (type_t)256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+            }
+            switch (fmt_pl->type) {
+                case BCF_BT_INT8:  BRANCH(int8_t); break;
+                case BCF_BT_INT16: BRANCH(int16_t); break;
+                case BCF_BT_INT32: BRANCH(int32_t); break;
+                default: fprintf(stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+            }
+            #undef BRANCH
+        }
 
         double sum = pdg[0] + pdg[1] + pdg[2];
-        if ( !sum ) return -1;
-        pdg[0] /= sum;
-        pdg[1] /= sum;
-        pdg[2] /= sum;
+        if ( !sum ) continue;
+        for (j=0; j<3; j++) pdg[j] /= sum;
+        if ( args->skip_homref && pdg[0]>0.99 ) continue;
+
+        smpl_t *smpl = &args->smpl[i];
+        smpl->nused++;
+
+        if ( smpl->nsites >= smpl->msites )
+        {
+            hts_expand(uint32_t,smpl->nsites+1,smpl->msites,smpl->sites);
+            smpl->eprob = (double*) realloc(smpl->eprob,sizeof(*smpl->eprob)*smpl->msites*2);
+            if ( !smpl->eprob ) error("Error: failed to alloc %d bytes\n", sizeof(*smpl->eprob)*smpl->msites*2);
+        }
+        
+        // Calculate emission probabilities P(D|AZ) and P(D|HW)
+        double *eprob = &smpl->eprob[2*smpl->nsites];
+        eprob[STATE_AZ] = pdg[0]*(1-alt_freq) + pdg[2]*alt_freq;
+        eprob[STATE_HW] = pdg[0]*(1-alt_freq)*(1-alt_freq) + 2*pdg[1]*(1-alt_freq)*alt_freq + pdg[2]*alt_freq*alt_freq;
+        
+        smpl->sites[smpl->nsites] = line->pos;
+        smpl->nsites++;
+
+        if ( args->vi_training )
+        {
+            if ( !smpl->nrid || line->rid!=smpl->rid[smpl->nrid-1] )
+            {
+                smpl->nrid++;
+                smpl->rid = (int*) realloc(smpl->rid,sizeof(*smpl->rid)*smpl->nrid);
+                smpl->rid[smpl->nrid-1] = line->rid;
+                smpl->rid_off = (int*) realloc(smpl->rid_off,sizeof(*smpl->rid_off)*smpl->nrid);
+                smpl->rid_off[smpl->nrid-1] = smpl->nsites - 1;
+            }
+        }
+        else if ( args->nbuf_max && smpl->nsites >= args->nbuf_max ) flush_viterbi(args, i);
     }
 
     return 0;
@@ -602,18 +971,35 @@ int parse_line(args_t *args, bcf1_t *line, double *alt_freq, double *pdg)
 
 static void vcfroh(args_t *args, bcf1_t *line)
 {
+    int i;
+
     // Are we done?
     if ( !line )
     { 
-        flush_viterbi(args);
+        for (i=0; i<args->roh_smpl->n; i++) flush_viterbi(args, i);
         return; 
     }
     args->ntot++;
 
-    // Skip unwanted lines
+    // Skip unwanted lines, for simplicity we consider only biallelic sites 
     if ( line->rid == args->skip_rid ) return;
     if ( line->n_allele==1 ) return;    // no ALT allele
-    if ( line->n_allele!=2 ) return;    // only biallelic sites
+    if ( line->n_allele > 3 ) return;   // cannot be bi-allelic, even with <*>
+
+    // This can be raw callable VCF with the symbolic unseen allele <*>
+    int ial = 0;
+    for (i=1; i<line->n_allele; i++)
+        if ( !strcmp("<*>",line->d.allele[i]) ) { ial = i; break; }
+    if ( ial==0 )    // normal VCF, the symbolic allele is not present
+    {
+        if ( line->n_allele!=2 ) return;    // not biallelic
+        ial = 1;
+    }
+    else
+    {
+        if ( line->n_allele!=3 ) return;    // not biallelic
+        ial = ial==1 ? 2 : 1;               // <*> can come in any order
+    }
     if ( args->snps_only && !bcf_is_snp(line) ) return;
 
     // Initialize genetic map
@@ -623,21 +1009,15 @@ static void vcfroh(args_t *args, bcf1_t *line)
         args->prev_rid = line->rid;
         args->prev_pos = line->pos;
         skip_rid = load_genmap(args, line);
-        if ( !skip_rid && args->vi_training ) push_rid(args, line->rid);
     }
 
     // New chromosome?
     if ( args->prev_rid!=line->rid )
     {
         skip_rid = load_genmap(args, line);
-        if ( args->vi_training )
+        if ( !args->vi_training )
         {
-            if ( !skip_rid ) push_rid(args, line->rid);
-        }
-        else
-        {
-            flush_viterbi(args);
-            args->nsites = 0;
+            for (i=0; i<args->roh_smpl->n; i++) flush_viterbi(args, i);
         }
         args->prev_rid = line->rid;
         args->prev_pos = line->pos;
@@ -655,25 +1035,8 @@ static void vcfroh(args_t *args, bcf1_t *line)
     args->prev_pos = line->pos;
 
 
-    // Ready for the new site
-    int m = args->msites;
-    hts_expand(uint32_t,args->nsites+1,args->msites,args->sites);
-    if ( args->msites!=m )
-        args->eprob = (double*) realloc(args->eprob,sizeof(double)*args->msites*2);
-
-    // Set likelihoods and alternate allele frequencies
-    double alt_freq, pdg[3];
-    if ( parse_line(args, line, &alt_freq, pdg)<0 ) return; // something went wrong
-
-    args->nused++;
-
-    // Calculate emission probabilities P(D|AZ) and P(D|HW)
-    double *eprob = &args->eprob[2*args->nsites];
-    eprob[STATE_AZ] = pdg[0]*(1-alt_freq) + pdg[2]*alt_freq;
-    eprob[STATE_HW] = pdg[0]*(1-alt_freq)*(1-alt_freq) + 2*pdg[1]*(1-alt_freq)*alt_freq + pdg[2]*alt_freq*alt_freq;
-
-    args->sites[args->nsites] = line->pos;
-    args->nsites++;
+    // parse the new line
+    process_line(args, line, ial);
 }
 
 static void usage(args_t *args)
@@ -686,21 +1049,32 @@ static void usage(args_t *args)
     fprintf(stderr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
     fprintf(stderr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
     fprintf(stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
-    fprintf(stderr, "    -e, --estimate-AF <file>           calculate AC,AN counts on the fly, using either all samples (\"-\") or samples listed in <file>\n");
-    fprintf(stderr, "    -G, --GTs-only <float>             use GTs, ignore PLs, use <float> for PL of unseen genotypes. Safe value to use is 30 to account for GT errors.\n");
+    fprintf(stderr, "    -b  --buffer-size <int[,int]>      buffer size and the number of overlapping sites, 0 for unlimited [0]\n");
+    fprintf(stderr, "                                           If the first number is negative, it is interpreted as the maximum memory to\n");
+    fprintf(stderr, "                                           use, in MB. The default overlap is set to roughly 1%% of the buffer size.\n");
+    fprintf(stderr, "    -e, --estimate-AF [TAG],<file>     estimate AF from FORMAT/TAG (GT or PL) of all samples (\"-\") or samples listed\n");
+    fprintf(stderr, "                                            in <file>. If TAG is not given, the frequency is estimated from GT by default\n");
+    fprintf(stderr, "    -G, --GTs-only <float>             use GTs and ignore PLs, instead using <float> for PL of the two least likely genotypes.\n");
+    fprintf(stderr, "                                           Safe value to use is 30 to account for GT errors.\n");
+    fprintf(stderr, "    -i, --ignore-homref                skip hom-ref genotypes (0/0)\n");
     fprintf(stderr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
-    fprintf(stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\" is replaced with chromosome name\n");
+    fprintf(stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\"\n");
+    fprintf(stderr, "                                           is replaced with chromosome name\n");
     fprintf(stderr, "    -M, --rec-rate <float>             constant recombination rate per bp\n");
+    fprintf(stderr, "    -o, --output <file>                write output to a file [standard output]\n");
+    fprintf(stderr, "    -O, --output-type [srz]            output s:per-site, r:regions, z:compressed [sr]\n");
     fprintf(stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
     fprintf(stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(stderr, "    -s, --sample <sample>              sample to analyze\n");
+    fprintf(stderr, "    -s, --samples <list>               list of samples to analyze [all samples]\n");
+    fprintf(stderr, "    -S, --samples-file <file>          file of samples to analyze [all samples]\n");
     fprintf(stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
+    fprintf(stderr, "        --threads <int>                number of extra decompression threads [0]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "HMM Options:\n");
     fprintf(stderr, "    -a, --hw-to-az <float>             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
     fprintf(stderr, "    -H, --az-to-hw <float>             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
-    fprintf(stderr, "    -V, --viterbi-training             perform Viterbi training to estimate transition probabilities\n");
+    fprintf(stderr, "    -V, --viterbi-training <float>     estimate HMM parameters, <float> is the convergence threshold, e.g. 1e-10 (experimental)\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -721,12 +1095,17 @@ int main_vcfroh(int argc, char *argv[])
         {"AF-tag",1,0,0},
         {"AF-file",1,0,1},
         {"AF-dflt",1,0,2},
+        {"buffer-size",1,0,'b'},
+        {"ignore-homref",0,0,'i'},
         {"estimate-AF",1,0,'e'},
+        {"output",1,0,'o'},
+        {"output-type",1,0,'O'},
         {"GTs-only",1,0,'G'},
-        {"sample",1,0,'s'},
+        {"samples",1,0,'s'},
+        {"samples-file",1,0,'S'},
         {"hw-to-az",1,0,'a'},
         {"az-to-hw",1,0,'H'},
-        {"viterbi-training",0,0,'V'},
+        {"viterbi-training",1,0,'V'},
         {"targets",1,0,'t'},
         {"targets-file",1,0,'T'},
         {"regions",1,0,'r'},
@@ -734,12 +1113,13 @@ int main_vcfroh(int argc, char *argv[])
         {"genetic-map",1,0,'m'},
         {"rec-rate",1,0,'M'},
         {"skip-indels",0,0,'I'},
+        {"threads",1,0,9},
         {0,0,0,0}
     };
 
     int naf_opts = 0;
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h?r:R:t:T:H:a:s:m:M:G:Ia:e:V",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "h?r:R:t:T:H:a:s:S:m:M:G:Ia:e:V:b:O:o:i",loptions,NULL)) >= 0) {
         switch (c) {
             case 0: args->af_tag = optarg; naf_opts++; break;
             case 1: args->af_fname = optarg; naf_opts++; break;
@@ -747,7 +1127,15 @@ int main_vcfroh(int argc, char *argv[])
                 args->dflt_AF = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: --AF-dflt %s\n", optarg);
                 break;
+            case 'o': args->output_fname = optarg; break;
+            case 'O': 
+                if ( index(optarg,'s') || index(optarg,'S') ) args->output_type |= OUTPUT_ST;
+                if ( index(optarg,'r') || index(optarg,'R') ) args->output_type |= OUTPUT_RG;
+                if ( index(optarg,'z') || index(optarg,'z') ) args->output_type |= OUTPUT_GZ;
+                break;
             case 'e': args->estimate_AF = optarg; naf_opts++; break;
+            case 'b': args->buffer_size = optarg; break;
+            case 'i': args->skip_homref = 1; break;
             case 'I': args->snps_only = 1; break;
             case 'G':
                 args->fake_PLs = 1; 
@@ -760,7 +1148,8 @@ int main_vcfroh(int argc, char *argv[])
                 args->rec_rate = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -M %s\n", optarg);
                 break;
-            case 's': args->sample = strdup(optarg); break;
+            case 's': args->samples = strdup(optarg); break;
+            case 'S': args->samples = strdup(optarg); args->samples_is_file = 1; break;
             case 'a':
                 args->t2AZ = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -a %s\n", optarg);
@@ -773,14 +1162,28 @@ int main_vcfroh(int argc, char *argv[])
             case 'T': args->targets_list = optarg; targets_is_file = 1; break;
             case 'r': args->regions_list = optarg; break;
             case 'R': args->regions_list = optarg; regions_is_file = 1; break;
-            case 'V': args->vi_training = 1; break;
+            case  9 : args->n_threads = strtol(optarg, 0, 0); break;
+            case 'V': 
+                args->vi_training = 1; 
+                args->baum_welch_th = strtod(optarg,&tmp); 
+                if ( *tmp ) error("Could not parse: --viterbi-training %s\n", optarg);
+                break;
             case 'h': 
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }
+    if ( !args->output_fname ) args->output_fname = "stdout";
+    if ( !args->output_type ) args->output_type = OUTPUT_ST|OUTPUT_RG;
+    char *fname = NULL;
+    if ( optind==argc )
+    {
+        if ( !isatty(fileno((FILE *)stdin)) ) fname = "-";  // reading from stdin
+        else usage(args);
+    }
+    else fname = argv[optind];
 
-    if ( argc<optind+1 ) usage(args);
+    if ( args->vi_training && args->buffer_size ) error("Error: cannot use -b with -V\n");
     if ( args->t2AZ<0 || args->t2AZ>1 ) error("Error: The parameter --hw-to-az is not in [0,1]\n", args->t2AZ);
     if ( args->t2HW<0 || args->t2HW>1 ) error("Error: The parameter --az-to-hw is not in [0,1]\n", args->t2HW);
     if ( naf_opts>1 ) error("Error: The options --AF-tag, --AF-file and -e are mutually exclusive\n");
@@ -800,7 +1203,9 @@ int main_vcfroh(int argc, char *argv[])
         if ( bcf_sr_set_targets(args->files, args->af_fname, 1, 3)<0 )
             error("Failed to read the targets: %s\n", args->af_fname);
     }
-    if ( !bcf_sr_add_reader(args->files, argv[optind]) ) error("Failed to open %s: %s\n", argv[optind],bcf_sr_strerror(args->files->errnum));
+    if ( args->n_threads && bcf_sr_set_threads(args->files, args->n_threads)<0)
+        error("Failed to create threads\n");
+    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
 
     init_data(args);
     while ( bcf_sr_next_line(args->files) )
@@ -808,7 +1213,15 @@ int main_vcfroh(int argc, char *argv[])
         vcfroh(args, args->files->readers[0].buffer[0]);
     }
     vcfroh(args, NULL);
-    fprintf(stderr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);
+    int i, nmin = 0;
+    for (i=0; i<args->roh_smpl->n; i++)
+        if ( !i || args->smpl[i].nused < nmin ) nmin = args->smpl[i].nused;
+    fprintf(stderr,"Number of lines total/processed: %d/%d\n", args->ntot,nmin);
+    if ( nmin==0 )
+    {
+        fprintf(stderr,"No usable sites were found.");
+        if ( !naf_opts && !args->dflt_AF ) fprintf(stderr, " Consider using one of the AF options.\n");
+    }
     destroy_data(args);
     free(args);
     return 0;

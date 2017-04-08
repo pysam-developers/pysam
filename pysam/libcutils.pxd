@@ -28,11 +28,11 @@ cdef from_string_and_size(const char *s, size_t length)
 
 cdef extern from "pysam_util.h":
 
-    int samtools_main(int argc, char *argv[])
-    int bcftools_main(int argc, char *argv[])
     void pysam_set_stderr(int fd)
     void pysam_unset_stderr()
     void pysam_set_stdout(int fd)
     void pysam_set_stdout_fn(const char *)
     void pysam_unset_stdout()
     void set_optind(int)
+    extern int samtools_main(int argc, char *argv[])
+    extern int bcftools_main(int argc, char *argv[])

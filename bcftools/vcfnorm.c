@@ -87,9 +87,20 @@ static inline int replace_iupac_codes(char *seq, int nseq)
     for (i=0; i<nseq; i++)
     {
         char c = toupper(seq[i]);
-        if ( c!='A' && c!='C' && c!='G' && c!='T' ) { seq[i] = 'N'; n++; }
+        if ( c!='A' && c!='C' && c!='G' && c!='T' && c!='N' ) { seq[i] = 'N'; n++; }
     }
     return n;
+}
+static inline int has_non_acgtn(char *seq, int nseq)
+{
+    char *end = nseq ? seq + nseq : seq + UINT32_MAX;   // arbitrary large number
+    while ( *seq && seq<end )
+    {
+        char c = toupper(*seq);
+        if ( c!='A' && c!='C' && c!='G' && c!='T' && c!='N' ) return 1;
+        seq++;
+    }
+    return 0;
 }
 
 static void fix_ref(args_t *args, bcf1_t *line)
@@ -248,10 +259,11 @@ static void fix_dup_alt(args_t *args, bcf1_t *line)
     if ( changed ) bcf_update_genotypes(args->hdr,line,gts,ngts);
 }
 
-#define ERR_DUP_ALLELE      -2
-#define ERR_REF_MISMATCH    -1
-#define ERR_OK              0
-#define ERR_SYMBOLIC        1
+#define ERR_DUP_ALLELE       -2
+#define ERR_REF_MISMATCH     -1
+#define ERR_OK                0
+#define ERR_SYMBOLIC          1
+#define ERR_SPANNING_DELETION 2
 
 static int realign(args_t *args, bcf1_t *line)
 {
@@ -261,13 +273,17 @@ static int realign(args_t *args, bcf1_t *line)
     int i, nref, reflen = strlen(line->d.allele[0]);
     char *ref = faidx_fetch_seq(args->fai, (char*)args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos, line->pos+reflen-1, &nref);
     if ( !ref ) error("faidx_fetch_seq failed at %s:%d\n", args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos+1);
-    replace_iupac_codes(ref,nref);
+    replace_iupac_codes(ref,nref);  // any non-ACGT character in fasta ref is replaced with N
 
-    // does REF contain non-standard bases?
-    if ( replace_iupac_codes(line->d.allele[0],reflen) )
+    // does VCF REF contain non-standard bases?
+    if ( has_non_acgtn(line->d.allele[0],reflen) )
     {
-        args->nchanged++;
-        bcf_update_alleles(args->hdr,line,(const char**)line->d.allele,line->n_allele);
+        if ( args->check_ref==CHECK_REF_EXIT )
+            error("Non-ACGTN reference allele at %s:%d .. REF_SEQ:'%s' vs VCF:'%s'\n", bcf_seqname(args->hdr,line),line->pos+1,ref,line->d.allele[0]);
+        if ( args->check_ref & CHECK_REF_WARN )
+            fprintf(stderr,"NON_ACGTN_REF\t%s\t%d\t%s\n", bcf_seqname(args->hdr,line),line->pos+1,line->d.allele[0]);
+        free(ref);
+        return ERR_REF_MISMATCH;
     }
     if ( strcasecmp(ref,line->d.allele[0]) )
     {
@@ -289,6 +305,15 @@ static int realign(args_t *args, bcf1_t *line)
     for (i=0; i<line->n_allele; i++)
     {
         if ( line->d.allele[i][0]=='<' ) return ERR_SYMBOLIC;  // symbolic allele
+        if ( line->d.allele[i][0]=='*' ) return ERR_SPANNING_DELETION;  // spanning deletion
+        if ( has_non_acgtn(line->d.allele[i],0) )
+        {
+            if ( args->check_ref==CHECK_REF_EXIT )
+                error("Non-ACGTN alternate allele at %s:%d .. REF_SEQ:'%s' vs VCF:'%s'\n", bcf_seqname(args->hdr,line),line->pos+1,ref,line->d.allele[i]);
+            if ( args->check_ref & CHECK_REF_WARN )
+                fprintf(stderr,"NON_ACGTN_ALT\t%s\t%d\t%s\n", bcf_seqname(args->hdr,line),line->pos+1,line->d.allele[i]);
+            return ERR_REF_MISMATCH;
+        }
 
         als[i].l = 0;
         kputs(line->d.allele[i], &als[i]);
@@ -390,18 +415,24 @@ static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int 
         int len = bcf_hdr_id2length(args->hdr,BCF_HL_INFO,info->key); \
         if ( len==BCF_VL_A ) \
         { \
-            assert( ret==src->n_allele-1); \
+            if ( ret!=src->n_allele-1 ) \
+                error("Error: wrong number of fields in INFO/%s at %s:%d, expected %d, found %d\n", \
+                        tag,bcf_seqname(args->hdr,src),src->pos+1,src->n_allele-1,ret); \
             bcf_update_info_##type(args->hdr,dst,tag,vals+ialt,1); \
         } \
         else if ( len==BCF_VL_R ) \
         { \
-            assert( ret==src->n_allele); \
+            if ( ret!=src->n_allele ) \
+                error("Error: wrong number of fields in INFO/%s at %s:%d, expected %d, found %d\n", \
+                        tag,bcf_seqname(args->hdr,src),src->pos+1,src->n_allele,ret); \
             if ( ialt!=0 ) vals[1] = vals[ialt+1]; \
             bcf_update_info_##type(args->hdr,dst,tag,vals,2); \
         } \
         else if ( len==BCF_VL_G ) \
         { \
-            assert( ret==src->n_allele*(src->n_allele+1)/2 ); \
+            if ( ret!=src->n_allele*(src->n_allele+1)/2 ) \
+                error("Error: wrong number of fields in INFO/%s at %s:%d, expected %d, found %d\n", \
+                        tag,bcf_seqname(args->hdr,src),src->pos+1,src->n_allele*(src->n_allele+1)/2,ret); \
             if ( ialt!=0 ) \
             { \
                 vals[1] = vals[bcf_alleles2gt(0,ialt+1)]; \
@@ -545,7 +576,9 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
         } \
         if ( len==BCF_VL_A ) \
         { \
-            assert( nvals==(src->n_allele-1)*nsmpl); \
+            if ( nvals!=(src->n_allele-1)*nsmpl ) \
+                error("Error: wrong number of fields in FMT/%s at %s:%d, expected %d, found %d\n", \
+                    tag,bcf_seqname(args->hdr,src),src->pos+1,(src->n_allele-1)*nsmpl,nvals); \
             nvals /= nsmpl; \
             type_t *src_vals = vals, *dst_vals = vals; \
             for (i=0; i<nsmpl; i++) \
@@ -558,7 +591,9 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
         } \
         else if ( len==BCF_VL_R ) \
         { \
-            assert( nvals==src->n_allele*nsmpl); \
+            if ( nvals!=src->n_allele*nsmpl ) \
+                error("Error: wrong number of fields in FMT/%s at %s:%d, expected %d, found %d\n", \
+                    tag,bcf_seqname(args->hdr,src),src->pos+1,src->n_allele*nsmpl,nvals); \
             nvals /= nsmpl; \
             type_t *src_vals = vals, *dst_vals = vals; \
             for (i=0; i<nsmpl; i++) \
@@ -682,7 +717,10 @@ static void split_format_string(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int i
                 if ( *se==',' ) nfields++;
                 se++;
             }
-            assert( nfields==src->n_allele*(src->n_allele+1)/2 || nfields==src->n_allele );
+            if ( nfields!=src->n_allele*(src->n_allele+1)/2 && nfields!=src->n_allele )
+                error("Error: wrong number of fields in FMT/%s at %s:%d, expected %d or %d, found %d\n",
+                        tag,bcf_seqname(args->hdr,src),src->pos+1,src->n_allele*(src->n_allele+1)/2,src->n_allele,nfields);
+
             int len = 0;
             if ( nfields==src->n_allele )   // haploid
             {
@@ -994,7 +1032,7 @@ static void merge_format_genotype(args_t *args, bcf1_t **lines, int nlines, bcf_
                 else
                 {
                     int ial = bcf_gt_allele(gt2[k]);
-                    assert( ial<args->maps[i].nals );
+                    if ( ial>=args->maps[i].nals ) error("Error at %s:%d: incorrect allele index %d\n",bcf_seqname(args->hdr,lines[i]),lines[i]->pos+1,ial);
                     gt[k] = bcf_gt_unphased( args->maps[i].map[ial] ) | bcf_gt_is_phased(gt[k]);
                 }
             }
@@ -1583,7 +1621,8 @@ static void normalize_vcf(args_t *args)
 {
     htsFile *out = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
     if ( out == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
-    if ( args->n_threads ) hts_set_threads(out, args->n_threads);
+    if ( args->n_threads )
+        hts_set_opt(out, HTS_OPT_THREAD_POOL, args->files->p);
     if (args->record_cmd_line) bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_norm");
     bcf_hdr_write(out, args->hdr);
 
@@ -1666,7 +1705,7 @@ static void usage(void)
     fprintf(stderr, "    -c, --check-ref <e|w|x|s>         check REF alleles and exit (e), warn (w), exclude (x), or set (s) bad sites [e]\n");
     fprintf(stderr, "    -D, --remove-duplicates           remove duplicate lines of the same type.\n");
     fprintf(stderr, "    -d, --rm-dup <type>               remove duplicate snps|indels|both|any\n");
-    fprintf(stderr, "    -f, --fasta-ref <file>            reference sequence\n");
+    fprintf(stderr, "    -f, --fasta-ref <file>            reference sequence (MANDATORY)\n");
     fprintf(stderr, "    -m, --multiallelics <-|+>[type]   split multiallelics (-) or join biallelics (+), type: snps|indels|both|any [both]\n");
     fprintf(stderr, "        --no-version                  do not append version and command line to the header\n");
     fprintf(stderr, "    -N, --do-not-normalize            do not normalize indels (with -m or -c s)\n");
@@ -1677,7 +1716,7 @@ static void usage(void)
     fprintf(stderr, "    -s, --strict-filter               when merging (-m+), merged site is PASS only if all sites being merged PASS\n");
     fprintf(stderr, "    -t, --targets <region>            similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file <file>         similar to -R but streams rather than index-jumps\n");
-    fprintf(stderr, "        --threads <int>               number of extra output compression threads [0]\n");
+    fprintf(stderr, "        --threads <int>               number of extra (de)compression threads [0]\n");
     fprintf(stderr, "    -w, --site-win <int>              buffer for sorting lines which changed position during realignment [1000]\n");
     fprintf(stderr, "\n");
     exit(1);
@@ -1804,6 +1843,7 @@ int main_vcfnorm(int argc, char *argv[])
             error("Failed to read the targets: %s\n", args->targets);
     }
 
+    if ( bcf_sr_set_threads(args->files, args->n_threads)<0 ) error("Failed to create threads\n");
     if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
     if ( args->mrows_op&MROWS_SPLIT && args->rmdup ) error("Cannot combine -D and -m-\n");
     init_data(args);

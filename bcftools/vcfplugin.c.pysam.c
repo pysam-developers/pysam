@@ -2,7 +2,7 @@
 
 /*  vcfplugin.c -- plugin modules for operating on VCF/BCF files.
 
-    Copyright (C) 2013-2015 Genome Research Ltd.
+    Copyright (C) 2013-2016 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -49,7 +49,7 @@ typedef struct _plugin_t plugin_t;
  *   Plugin API:
  *   ----------
  *   const char *about(void)
- *      - short description used by 'bcftools plugin -l'
+ *      - short description used by 'bcftools plugin -lv'
  *
  *   const char *usage(void)
  *      - longer description used by 'bcftools +name -h'
@@ -172,11 +172,11 @@ static void add_plugin_paths(args_t *args, const char *path)
                 args->plugin_paths = (char**) realloc(args->plugin_paths,sizeof(char*)*(args->nplugin_paths+1));
                 args->plugin_paths[args->nplugin_paths] = dir;
                 args->nplugin_paths++;
-                if ( args->verbose ) fprintf(pysam_stderr, "plugin directory %s .. ok\n", dir);
+                if ( args->verbose > 1 ) fprintf(pysam_stderr, "plugin directory %s .. ok\n", dir);
             }
             else
             {
-                if ( args->verbose ) fprintf(pysam_stderr, "plugin directory %s .. %s\n", dir, strerror(errno));
+                if ( args->verbose > 1 ) fprintf(pysam_stderr, "plugin directory %s .. %s\n", dir, strerror(errno));
                 free(dir);
             }
 
@@ -212,7 +212,7 @@ static void *dlopen_plugin(args_t *args, const char *fname)
         {
             tmp = msprintf("%s/%s.so", args->plugin_paths[i],fname);
             handle = dlopen(tmp, RTLD_NOW); // valgrind complains about unfreed memory, not our problem though
-            if ( args->verbose )
+            if ( args->verbose > 1 )
             {
                 if ( !handle ) fprintf(pysam_stderr,"%s:\n\tdlopen   .. %s\n", tmp,dlerror());
                 else fprintf(pysam_stderr,"%s:\n\tdlopen   .. ok\n", tmp);
@@ -223,7 +223,7 @@ static void *dlopen_plugin(args_t *args, const char *fname)
     }
 
     handle = dlopen(fname, RTLD_NOW);
-    if ( args->verbose )
+    if ( args->verbose > 1 )
     {
         if ( !handle ) fprintf(pysam_stderr,"%s:\n\tdlopen   .. %s\n", fname,dlerror());
         else fprintf(pysam_stderr,"%s:\n\tdlopen   .. ok\n", fname);
@@ -268,19 +268,19 @@ static int load_plugin(args_t *args, const char *fname, int exit_on_error, plugi
     if ( ret )
         plugin->init = NULL;
     else
-        if ( args->verbose ) fprintf(pysam_stderr,"\tinit     .. ok\n");
+        if ( args->verbose > 1 ) fprintf(pysam_stderr,"\tinit     .. ok\n");
 
     plugin->run = (dl_run_f) dlsym(plugin->handle, "run");
     ret = dlerror();
     if ( ret )
         plugin->run = NULL;
     else
-        if ( args->verbose ) fprintf(pysam_stderr,"\trun      .. ok\n");
+        if ( args->verbose > 1 ) fprintf(pysam_stderr,"\trun      .. ok\n");
 
     if ( !plugin->init && !plugin->run )
     {
         if ( exit_on_error ) error("Could not initialize %s, neither run or init found \n", plugin->name);
-        else if ( args->verbose ) fprintf(pysam_stderr,"\tinit/run .. not found\n");
+        else if ( args->verbose > 1 ) fprintf(pysam_stderr,"\tinit/run .. not found\n");
         return -1;
     }
 
@@ -289,7 +289,7 @@ static int load_plugin(args_t *args, const char *fname, int exit_on_error, plugi
     if ( ret )
     {
         if ( exit_on_error ) error("Could not initialize %s, version string not found\n", plugin->name);
-        else if ( args->verbose ) fprintf(pysam_stderr,"\tversion  .. not found\n");
+        else if ( args->verbose > 1 ) fprintf(pysam_stderr,"\tversion  .. not found\n");
         return -1;
     }
 
@@ -394,8 +394,13 @@ static int list_plugins(args_t *args)
         qsort(plugins, nplugins, sizeof(plugins[0]), cmp_plugin_name);
 
         for (i=0; i<nplugins; i++)
-            fprintf(pysam_stdout, "\n-- %s --\n%s", plugins[i].name, plugins[i].about());
-        fprintf(pysam_stdout, "\n");
+        {
+            if ( args->verbose )
+                fprintf(pysam_stdout, "\n-- %s --\n%s", plugins[i].name, plugins[i].about());
+            else
+                fprintf(pysam_stdout, "%s\n", plugins[i].name);
+        }
+        if ( args->verbose ) fprintf(pysam_stdout, "\n");
     }
     else
         print_plugin_usage_hint();
@@ -462,7 +467,7 @@ static void usage(args_t *args)
     fprintf(pysam_stderr, "Plugin options:\n");
     fprintf(pysam_stderr, "   -h, --help                  list plugin's options\n");
     fprintf(pysam_stderr, "   -l, --list-plugins          list available plugins. See BCFTOOLS_PLUGINS environment variable and man page for details\n");
-    fprintf(pysam_stderr, "   -v, --verbose               print debugging information on plugin failure\n");
+    fprintf(pysam_stderr, "   -v, --verbose               print verbose information, -vv increases verbosity\n");
     fprintf(pysam_stderr, "   -V, --version               print version string and exit\n");
     fprintf(pysam_stderr, "\n");
     exit(1);
@@ -520,7 +525,7 @@ int main_plugin(int argc, char *argv[])
     {
         switch (c) {
             case 'V': version_only = 1; break;
-            case 'v': args->verbose = 1; break;
+            case 'v': args->verbose++; break;
             case 'o': args->output_fname = optarg; break;
             case 'O':
                 switch (optarg[0]) {

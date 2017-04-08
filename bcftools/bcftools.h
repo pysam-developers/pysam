@@ -30,6 +30,7 @@ THE SOFTWARE.  */
 #include <htslib/vcf.h>
 #include <math.h>
 
+#define FT_TAB_TEXT 0       // custom tab-delimited text file
 #define FT_GZ 1
 #define FT_VCF 2
 #define FT_VCF_GZ (FT_GZ|FT_VCF)

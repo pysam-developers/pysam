@@ -1761,7 +1761,7 @@ class TestDeNovoConstruction(unittest.TestCase):
 
     #     os.unlink(tmpfilename)
 
-    def testBAMPerRead(self):
+    def test_pass_if_reads_binary_equal(self):
         '''check if individual reads are binary equal.'''
         infile = pysam.AlignmentFile(self.bamfile, "rb")
 
