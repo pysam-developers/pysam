@@ -2489,7 +2489,71 @@ cdef class PileupRead:
         def __get__(self):
             return self._is_refskip
 
+
+cpdef enum CIGAR_OPS:
+    CMATCH = 0
+    CINS = 1
+    CDEL = 2
+    CREF_SKIP = 3
+    CSOFT_CLIP = 4
+    CHARD_CLIP = 5
+    CPAD = 6
+    CEQUAL = 7
+    CDIFF = 8
+    CBACK = 9
+
+
+cpdef enum SAM_FLAGS:
+    # the read is paired in sequencing, no matter whether it is mapped in a pair 
+    FPAIRED = 1
+    # the read is mapped in a proper pair 
+    FPROPER_PAIR = 2
+    # the read itself is unmapped; conflictive with FPROPER_PAIR 
+    FUNMAP = 4
+    # the mate is unmapped 
+    FMUNMAP = 8
+    # the read is mapped to the reverse strand 
+    FREVERSE = 16
+    # the mate is mapped to the reverse strand 
+    FMREVERSE = 32
+    # this is read1 
+    FREAD1 = 64
+    # this is read2 
+    FREAD2 = 128
+    # not primary alignment 
+    FSECONDARY = 256
+    # QC failure 
+    FQCFAIL = 512
+    # optical or PCR duplicate 
+    FDUP = 1024
+    # supplementary alignment 
+    FSUPPLEMENTARY = 2048      
+
+
 __all__ = [
     "AlignedSegment",
     "PileupColumn",
-    "PileupRead"]
+    "PileupRead",
+    "CMATCH",
+    "CINS",
+    "CDEL",
+    "CREF_SKIP",
+    "CSOFT_CLIP",
+    "CHARD_CLIP",
+    "CPAD",
+    "CEQUAL",
+    "CDIFF",
+    "CBACK",
+    "FPAIRED",
+    "FPROPER_PAIR",
+    "FUNMAP",
+    "FMUNMAP",
+    "FREVERSE",
+    "FMREVERSE",
+    "FREAD1",
+    "FREAD2",
+    "FSECONDARY",
+    "FQCFAIL",
+    "FDUP",
+    "FSUPPLEMENTARY"]
+

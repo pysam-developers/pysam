@@ -10,16 +10,21 @@ from pysam.libchtslib cimport *
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
-
 __all__ = ["get_verbosity", "set_verbosity"]
 
+# defines imported from samtools
+DEF SEEK_SET = 0
+DEF SEEK_CUR = 1
+DEF SEEK_END = 2
 
 ########################################################################
 ########################################################################
 ## Constants
 ########################################################################
 
+# maximum genomic coordinace
 cdef int   MAX_POS = 2 << 29
+
 cdef tuple FORMAT_CATEGORIES = ('UNKNOWN', 'ALIGNMENTS', 'VARIANTS', 'INDEX', 'REGIONS')
 cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', 'BAI', 'CRAM', 'CRAI',
                       'VCF', 'BCF', 'CSI', 'GZI', 'TBI', 'BED')
