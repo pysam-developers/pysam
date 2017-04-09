@@ -23,19 +23,7 @@ htslib/config.mk
 pysam/config.py
 
 # cython files
-pysam/TabProxies.c
-pysam/csamtools.c
-pysam/ctabix.c
-pysam/cvcf.c
-pysam/chtslib.c  
-pysam/cutils.c
-pysam/calignedsegment.c
-pysam/calignmentfile.c
-pysam/cbcf.c
-pysam/cfaidx.c
-pysam/chtslib.c
-pysam/csamfile.c
-pysam/ctabixproxies.c
+pysam/libc*.c
 
 ###### Generic python ignores below ######
 

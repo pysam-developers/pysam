@@ -76,15 +76,9 @@ else:
 cimport cython
 
 ########################################################
-## Constants and global variables
-
-# defines imported from samtools
-DEF SEEK_SET = 0
-DEF SEEK_CUR = 1
-DEF SEEK_END = 2
-
+## global variables
 # maximum genomic coordinace
-cdef int MAX_POS = 2 << 29
+cdef int  MAX_POS = 2 << 29
 
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : dict,
