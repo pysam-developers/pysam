@@ -237,10 +237,12 @@ class SamtoolsTest(unittest.TestCase):
                 continue
             self.check_statement(statement)
 
+    @unitest.skipIf(sys.platform == "darwin", "not supported, pattern does not match")
     def testUsage(self):
         if self.executable == "bcftools":
             # bcftools usage messages end with exit(1)
             return
+
         for statement in self.statements:
             command = self.get_command(statement)
             pysam_method = getattr(self.module, command)
