@@ -2,6 +2,20 @@
 Release notes
 =============
 
+Release 0.11.0
+==============
+
+This release wraps the latest versions of htslib/samtools/bcftools and
+implements a few bugfixes.
+
+* [#413] Wrap HTSlib/Samtools/BCFtools 1.4 
+* [#422] Fix missing pysam.sort.usage() message
+* [#411] Fix BGZfile initialization bug
+* [#412] Add seek support for BGZFile
+* [#395] Make BGZfile iterable
+* [#433] Correct getQueryEnd
+* [#419] Export SAM enums such as pysam.CMATCH
+
 Release 0.10.0
 ==============
 

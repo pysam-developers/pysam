@@ -88,11 +88,11 @@ The above code outputs::
 Commands available in :term:`csamtools` are available as simple
 function calls. For example::
 
-   pysam.sort("ex1.bam", "output")
+   pysam.sort("-o", "output.bam", "ex1.bam")
 
 corresponds to the command line::
 
-   samtools sort ex1.bam output
+   samtools sort -o output.bam ex1.bam 
 
 Analogous to :class:`~pysam.AlignmentFile`, a
 :class:`~pysam.TabixFile` allows fast random access to compressed and

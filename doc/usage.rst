@@ -123,26 +123,23 @@ Note that the file open mode needs to changed from ``r`` to ``rb``.
 Using samtools commands within python
 =====================================
 
-Commands available in :term:`csamtools` are available
-as simple function calls. For example::
+Commands available in :term:`csamtools` are available as simple
+function calls. Command line options are provided as arguments. For
+example::
 
-   pysam.sort("ex1.bam", "output")
+   pysam.sort("-o", "output.bam", "ex1.bam")
 
 corresponds to the command line::
 
-   samtools sort ex1.bam output
+   samtools sort -o output.bam ex1.bam
 
-Command line options can be provided as arguments::
-   
-   pysam.sort("-n", "ex1.bam", "output")
+Or for example::
 
-or::
-
-   pysam.sort("-m", "1000000", "ex1.bam", "output")
+   pysam.sort("-m", "1000000", "-o", "output.bam", "ex1.bam")
 
 In order to get usage information, try::
 
-   print pysam.sort.usage()
+   print(pysam.sort.usage())
 
 Argument errors raise a :class:`pysam.SamtoolsError`::
 
