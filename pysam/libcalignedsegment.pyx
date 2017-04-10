@@ -328,7 +328,37 @@ cdef inline packTags(tags):
     return "".join(fmts), args
 
 
-cdef inline int32_t calculateQueryLength(bam1_t * src):
+cdef inline int32_t calculateQueryLengthWithoutHardClipping(bam1_t * src):
+    """return query length computed from CIGAR alignment.
+
+    Length ignores hard-clipped bases.
+
+    Return 0 if there is no CIGAR alignment.
+    """
+
+    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+
+    if cigar_p == NULL:
+        return 0
+
+    cdef uint32_t k, qpos
+    cdef int op
+    qpos = 0
+
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
+
+        if op == BAM_CMATCH or \
+           op == BAM_CINS or \
+           op == BAM_CSOFT_CLIP or \
+           op == BAM_CEQUAL or \
+           op == BAM_CDIFF:
+            qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
+
+    return qpos
+
+
+cdef inline int32_t calculateQueryLengthWithHardClipping(bam1_t * src):
     """return query length computed from CIGAR alignment.
 
     Length includes hard-clipped bases.
@@ -1427,26 +1457,25 @@ cdef class AlignedSegment:
 
         return result
 
-    def infer_query_length(self, always=True):
-        """infer query length from CIGAR string.
+    def infer_query_length(self):
+        """infer query length from sequence or CIGAR alignment.
 
-        If *always* is set to True, the read length will be always inferred
-        and includes hard-clipped bases.  If set to False, the length of the
-        read sequence will be returned if it is available and will not
-        include hard-clipped bases.
+        This method deduces the query length from the CIGAR alignment
+        but does not include hard-clipped bases.
 
-        Returns None if CIGAR string is not present.
+        Returns None if CIGAR alignment is not present.
         """
+        return calculateQueryLengthWithoutHardClipping(self._delegate)
 
-        cdef uint32_t * cigar_p
-        cdef bam1_t * src
+    def infer_read_length(self):
+        """infer read length from CIGAR alignment.
 
-        src = self._delegate
+        This method deduces the read length from the CIGAR alignment
+        including hard-clipped bases.
 
-        if not always and src.core.l_qseq:
-            return src.core.l_qseq
-
-        return calculateQueryLength(src)
+        Returns None if CIGAR alignment is not present.
+        """
+        return calculateQueryLengthWithHardClipping(self._delegate)
 
     def get_reference_sequence(self):
         """return the reference sequence.

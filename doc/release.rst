@@ -17,6 +17,7 @@ implements a few bugfixes.
 * [#419] Export SAM enums such as pysam.CMATCH
 * [#415] Fix access by tid in AlignmentFile.fetch()
 * [#405] Writing SAM now outputs a header by default.
+* [#332] split infer_query_length(always) into infer_query_length and infer_read_length
 
 Release 0.10.0
 ==============
