@@ -234,20 +234,46 @@ class TestAlignedSegment(ReadTest):
     def test_infer_query_length(self):
         '''Test infer_query_length on M|=|X|I|D|H|S cigar ops'''
         a = self.buildRead()
-        a.cigarstring = '15M'
-        self.assertEqual(a.infer_query_length(), 15)
-        a.cigarstring = '15='
-        self.assertEqual(a.infer_query_length(), 15)
-        a.cigarstring = '15X'
-        self.assertEqual(a.infer_query_length(), 15)
-        a.cigarstring = '5M5I5M'
-        self.assertEqual(a.infer_query_length(), 15)
-        a.cigarstring = '5M5D5M'
-        self.assertEqual(a.infer_query_length(), 10)
-        a.cigarstring = '5H10M'
-        self.assertEqual(a.infer_query_length(), 15)
-        a.cigarstring = '5S10M'
-        self.assertEqual(a.infer_query_length(), 15)
+        a.cigarstring = '40M'
+        self.assertEqual(a.infer_query_length(), 40)
+        a.cigarstring = '40='
+        self.assertEqual(a.infer_query_length(), 40)
+        a.cigarstring = '40X'
+        self.assertEqual(a.infer_query_length(), 40)
+        a.cigarstring = '20M5I20M'
+        self.assertEqual(a.infer_query_length(), 45)
+        a.cigarstring = '20M5D20M'
+        self.assertEqual(a.infer_query_length(), 40)
+        a.cigarstring = '5H35M'
+        self.assertEqual(a.infer_query_length(), 35)
+        a.cigarstring = '5S35M'
+        self.assertEqual(a.infer_query_length(), 40)
+        a.cigarstring = '35M5H'
+        self.assertEqual(a.infer_query_length(), 35)
+        a.cigarstring = '35M5S'
+        self.assertEqual(a.infer_query_length(), 40)
+
+    def test_infer_read_length(self):
+        '''Test infer_read_length on M|=|X|I|D|H|S cigar ops'''
+        a = self.buildRead()
+        a.cigarstring = '40M'
+        self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = '40='
+        self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = '40X'
+        self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = '20M5I20M'
+        self.assertEqual(a.infer_read_length(), 45)
+        a.cigarstring = '20M5D20M'
+        self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = '5H35M'
+        self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = '5S35M'
+        self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = '35M5H'
+        self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = '35M5S'
+        self.assertEqual(a.infer_read_length(), 40)
 
     def test_get_aligned_pairs_soft_clipping(self):
         a = self.buildRead()
