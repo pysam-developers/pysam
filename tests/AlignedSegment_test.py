@@ -388,9 +388,15 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.query_alignment_length, 20)
         a.cigarstring = "20M1S"
         self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "20M1H"
+        self.assertEqual(a.query_alignment_length, 20)
         a.cigarstring = "1S20M"
         self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1H20M"
+        self.assertEqual(a.query_alignment_length, 20)
         a.cigarstring = "1S20M1S"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1H20M1H"
         self.assertEqual(a.query_alignment_length, 20)
 
     def test_query_length_is_limited(self):
