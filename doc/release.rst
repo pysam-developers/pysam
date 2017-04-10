@@ -15,6 +15,7 @@ implements a few bugfixes.
 * [#395] Make BGZfile iterable
 * [#433] Correct getQueryEnd
 * [#419] Export SAM enums such as pysam.CMATCH
+* [#405] Writing SAM now outputs a header by default.
 
 Release 0.10.0
 ==============
