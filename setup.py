@@ -255,14 +255,14 @@ elif HTSLIB_MODE == 'shared':
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
-shared_library_extension = sysconfig.get_config_var('SO')
-
-internal_htslib_libraries = [
-    os.path.splitext("chtslib{}".format(shared_library_extension))[0]]
+suffix = sysconfig.get_config_var('EXT_SUFFIX')
+if not suffix:
+    suffix = sysconfig.get_config_var('SO')
+internal_htslib_libraries = [os.path.splitext("chtslib{}".format(suffix))[0]]
 
 internal_tools_libraries = [
-    os.path.splitext("csamtools{}".format(shared_library_extension))[0],
-    os.path.splitext("cbcftools{}".format(shared_library_extension))[0],
+    os.path.splitext("csamtools{}".format(suffix))[0],
+    os.path.splitext("cbcftools{}".format(suffix))[0],
     ]
 
 # build config.py

@@ -16,6 +16,7 @@ implements a few bugfixes.
 * [#433] Correct getQueryEnd
 * [#419] Export SAM enums such as pysam.CMATCH
 * [#415] Fix access by tid in AlignmentFile.fetch()
+* [#405] Writing SAM now outputs a header by default.
 
 Release 0.10.0
 ==============

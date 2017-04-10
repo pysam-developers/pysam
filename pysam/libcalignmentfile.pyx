@@ -141,7 +141,7 @@ def build_header_line(fields, record):
 
     return "\t".join(line)
 
-cdef bam_hdr_t * build_header(new_header):
+cdef bam_hdr_t * build_header_from_dict(new_header):
     '''return a new header built from a dictionary in `new_header`.
 
     This method inserts the text field, target_name and target_len.
@@ -149,12 +149,8 @@ cdef bam_hdr_t * build_header(new_header):
 
     lines = []
 
-    # check if hash exists
-
     # create new header and copy old data
-    cdef bam_hdr_t * dest
-
-    dest = bam_hdr_init()
+    cdef bam_hdr_t * dest = bam_hdr_init()
 
     # first: defined tags
     for record in VALID_HEADERS:
@@ -213,13 +209,62 @@ cdef bam_hdr_t * build_header(new_header):
     return dest
 
 
+cdef bam_hdr_t * build_header_from_list(reference_names,
+                                        reference_lengths,
+                                        add_sq_text=True,
+                                        text=None):
+
+    assert len(reference_names) == len(reference_lengths), \
+        "unequal names and lengths of reference sequences"
+
+    cdef bam_hdr_t * dest = bam_hdr_init()
+
+    # allocate and fill header
+    reference_names = [force_bytes(ref) for ref in reference_names]
+    dest.n_targets = len(reference_names)
+    n = 0
+    for x in reference_names:
+        n += len(x) + 1
+    dest.target_name = <char**>calloc(n, sizeof(char*))
+    dest.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
+    for x from 0 <= x < dest.n_targets:
+        dest.target_len[x] = reference_lengths[x]
+        name = reference_names[x]
+        dest.target_name[x] = <char*>calloc(
+            len(name) + 1, sizeof(char))
+        strncpy(dest.target_name[x], name, len(name))
+
+    # Optionally, if there is no text, add a SAM
+    # compatible header to output file.
+    if text is None and add_sq_text:
+        text = []
+        for x from 0 <= x < dest.n_targets:
+            text.append("@SQ\tSN:%s\tLN:%s\n" % \
+                        (force_str(reference_names[x]), 
+                         reference_lengths[x]))
+        text = ''.join(text)
+
+    cdef char * ctext = NULL
+
+    if text is not None:
+        # copy without \0
+        text = force_bytes(text)
+        ctext = text
+        dest.l_text = strlen(ctext)
+        dest.text = <char*>calloc(
+            strlen(ctext), sizeof(char))
+        memcpy(dest.text, ctext, strlen(ctext))
+
+    return dest
+
+
 cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
     reference_filename=None, filename=None, duplicate_filehandle=True)
 
-    A :term:`SAM`/:term:`BAM` formatted file. 
+    A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file. 
 
     If `filepath_or_object` is a string, the file is automatically
     opened. If `filepath_or_object` is a python File object, the
@@ -291,20 +336,27 @@ cdef class AlignmentFile(HTSFile):
         when writing, use the string provided as the header
 
     reference_names : list
-        see referece_lengths
+        see reference_lengths
 
     reference_lengths : list
-        when writing, build header from list of chromosome names and
-        lengths.  By default, 'SQ' and 'LN' tags will be added to the
-        header text. This option can be changed by unsetting the flag
-        `add_sq_text`.
+        when writing or opening a SAM file without header build header
+        from list of chromosome names and lengths.  By default, 'SQ'
+        and 'LN' tags will be added to the header text. This option
+        can be changed by unsetting the flag `add_sq_text`.
 
     add_sq_text : bool
         do not add 'SQ' and 'LN' tags to header. This option permits
         construction :term:`SAM` formatted files without a header.
 
+    add_sam_header : bool
+        when outputting SAM the default is to output a header. This is
+        equivalent to opening the file in 'wh' mode. If this option is
+        set to False, no header will be output. To read such a file,
+        set `check_header=False`.
+
     check_header : bool
-        when reading, check if header is present (default=True)
+        obsolete: when reading a SAM file, check if header is present
+        (default=True)
 
     check_sq : bool
         when reading, check if SQ entries are present in header
@@ -387,6 +439,7 @@ cdef class AlignmentFile(HTSFile):
               header=None,
               port=None,
               add_sq_text=True,
+              add_sam_header=True,
               check_header=True,
               check_sq=True,
               filepath_index=None,
@@ -416,6 +469,9 @@ cdef class AlignmentFile(HTSFile):
         # autodetection for read
         if mode is None:
             mode = "r"
+
+        if add_sam_header and mode == "w":
+            mode = "wh"
 
         assert mode in ("r", "w", "rb", "wb", "wh",
                         "wbu", "rU", "wb0",
@@ -462,9 +518,6 @@ cdef class AlignmentFile(HTSFile):
         self.reference_filename = reference_filename = encode_filename(
             reference_filename)
 
-        cdef char * ctext
-        ctext = NULL
-
         if mode[0] == 'w':
             # open file for writing
 
@@ -472,50 +525,18 @@ cdef class AlignmentFile(HTSFile):
             if template:
                 self.header = bam_hdr_dup(template.header)
             elif header:
-                self.header = build_header(header)
+                self.header = build_header_from_dict(header)
             else:
-                # build header from a target names and lengths
                 assert reference_names and reference_lengths, \
                     ("either supply options `template`, `header` "
                      "or  both `reference_names` and `reference_lengths` "
                      "for writing")
-                assert len(reference_names) == len(reference_lengths), \
-                    "unequal names and lengths of reference sequences"
-
-                # allocate and fill header
-                reference_names = [force_bytes(ref) for ref in reference_names]
-                self.header = bam_hdr_init()
-                self.header.n_targets = len(reference_names)
-                n = 0
-                for x in reference_names:
-                    n += len(x) + 1
-                self.header.target_name = <char**>calloc(n, sizeof(char*))
-                self.header.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
-                for x from 0 <= x < self.header.n_targets:
-                    self.header.target_len[x] = reference_lengths[x]
-                    name = reference_names[x]
-                    self.header.target_name[x] = <char*>calloc(
-                        len(name) + 1, sizeof(char))
-                    strncpy(self.header.target_name[x], name, len(name))
-
-                # Optionally, if there is no text, add a SAM
-                # compatible header to output file.
-                if text is None and add_sq_text:
-                    text = []
-                    for x from 0 <= x < self.header.n_targets:
-                        text.append("@SQ\tSN:%s\tLN:%s\n" % \
-                                    (force_str(reference_names[x]), 
-                                     reference_lengths[x]))
-                    text = ''.join(text)
-
-                if text is not None:
-                    # copy without \0
-                    text = force_bytes(text)
-                    ctext = text
-                    self.header.l_text = strlen(ctext)
-                    self.header.text = <char*>calloc(
-                        strlen(ctext), sizeof(char))
-                    memcpy(self.header.text, ctext, strlen(ctext))
+                # build header from a target names and lengths
+                self.header = build_header_from_list(
+                    reference_names,
+                    reference_lengths,
+                    add_sq_text=add_sq_text,
+                    text=text)
 
             self.htsfile = self._open_htsfile()
 
@@ -555,16 +576,21 @@ cdef class AlignmentFile(HTSFile):
                         "file does not have valid header (mode='%s') "
                         "- is it BAM format?" % mode )
             else:
-                # in sam files it is optional (htsfile full of
-                # unmapped reads)
-                if check_header:
+                # in sam files a header is optional, but requires
+                # reference names and lengths
+                if reference_names and reference_lengths:
+                    self.header = build_header_from_list(
+                        reference_names,
+                        reference_lengths,
+                        add_sq_text=add_sq_text,
+                        text=text)
+                else:
                     with nogil:
                         self.header = sam_hdr_read(self.htsfile)
                     if self.header == NULL:
                         raise ValueError(
-                            "file does not have valid header (mode='%s') "
-                            "- is it SAM format?" % mode )
-                    # self.header.ignore_sam_err = True
+                            "file does not have valid header (mode='%s'), "
+                            "please provide reference_names and reference_lengths")
 
             # set filename with reference sequences
             if self.is_cram and reference_filename:
@@ -853,17 +879,12 @@ cdef class AlignmentFile(HTSFile):
         else:
             if has_coord:
                 raise ValueError(
-                    "fetching by region is not available for sam files")
+                    "fetching by region is not available for SAM files")
 
-            if self.header == NULL:
+            if multiple_iterators == True:
                 raise ValueError(
-                    "fetch called for htsfile without header")
+                    "multiple iterators not implemented for SAM files")
 
-            # check if targets are defined
-            # give warning, sam_read1 segfaults
-            if self.header.n_targets == 0:
-                warnings.warn("fetch called for htsfile without header")
-                
             return IteratorRowAll(self,
                                   multiple_iterators=multiple_iterators)
 
@@ -1572,7 +1593,7 @@ cdef class AlignmentFile(HTSFile):
                 "can not iterate over samfile without header")
         return self
 
-    cdef bam1_t * getCurrent( self ):
+    cdef bam1_t * getCurrent(self):
         return self.b
 
     cdef int cnext(self):
