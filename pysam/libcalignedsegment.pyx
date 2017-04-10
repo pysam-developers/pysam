@@ -61,7 +61,7 @@ import struct
 cimport cython
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
-from cpython cimport PyErr_SetString, PyBytes_FromStringAndSize
+from cpython cimport PyBytes_FromStringAndSize
 from libc.string cimport strchr
 from cpython cimport array as c_array
 
@@ -331,6 +331,8 @@ cdef inline packTags(tags):
 cdef inline int32_t calculateQueryLength(bam1_t * src):
     """return query length computed from CIGAR alignment.
 
+    Length includes hard-clipped bases.
+
     Return 0 if there is no CIGAR alignment.
     """
 
@@ -359,44 +361,45 @@ cdef inline int32_t calculateQueryLength(bam1_t * src):
 
 cdef inline int32_t getQueryStart(bam1_t *src) except -1:
     cdef uint32_t * cigar_p
-    cdef uint32_t k, op
     cdef uint32_t start_offset = 0
+    cdef uint32_t k, op
 
-    if pysam_get_n_cigar(src):
-        cigar_p = pysam_bam_get_cigar(src);
-        for k from 0 <= k < pysam_get_n_cigar(src):
-            op = cigar_p[k] & BAM_CIGAR_MASK
-            if op == BAM_CHARD_CLIP:
-                if start_offset != 0 and start_offset != src.core.l_qseq:
-                    PyErr_SetString(ValueError, 'Invalid clipping in CIGAR string')
-                    return -1
-            elif op == BAM_CSOFT_CLIP:
-                start_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
-            else:
-                break
+    cigar_p = pysam_bam_get_cigar(src);
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
+        if op == BAM_CHARD_CLIP:
+            if start_offset != 0 and start_offset != src.core.l_qseq:
+                raise ValueError('Invalid clipping in CIGAR string')
+        elif op == BAM_CSOFT_CLIP:
+            start_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
+        else:
+            break
 
     return start_offset
 
 
 cdef inline int32_t getQueryEnd(bam1_t *src) except -1:
-    cdef uint32_t * cigar_p
-    cdef uint32_t k, op
+    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
     cdef uint32_t end_offset = src.core.l_qseq
+    cdef uint32_t k, op
 
     # if there is no sequence, compute length from cigar string
     if end_offset == 0:
-        end_offset = calculateQueryLength(src)
-
-    # walk backwards in cigar string
-    if pysam_get_n_cigar(src) > 1:
-        cigar_p = pysam_bam_get_cigar(src);
+        for k from 0 <= k < pysam_get_n_cigar(src):
+            op = cigar_p[k] & BAM_CIGAR_MASK
+            if op == BAM_CMATCH or \
+               op == BAM_CINS or \
+               op == BAM_CEQUAL or \
+               op == BAM_CDIFF or \
+              (op == BAM_CSOFT_CLIP and end_offset == 0):
+                end_offset += cigar_p[k] >> BAM_CIGAR_SHIFT
+    else:
+        # walk backwards in cigar string
         for k from pysam_get_n_cigar(src) > k >= 1:
             op = cigar_p[k] & BAM_CIGAR_MASK
             if op == BAM_CHARD_CLIP:
-                if end_offset != 0 and end_offset != src.core.l_qseq:
-                    PyErr_SetString(ValueError,
-                                    'Invalid clipping in CIGAR string')
-                    return -1
+                if end_offset != src.core.l_qseq:
+                    raise ValueError('Invalid clipping in CIGAR string')
             elif op == BAM_CSOFT_CLIP:
                 end_offset -= cigar_p[k] >> BAM_CIGAR_SHIFT
             else:
@@ -1357,14 +1360,17 @@ cdef class AlignedSegment:
 
         This the index of the first base in :attr:`seq` that is not
         soft-clipped.
-
         """
         def __get__(self):
             return getQueryStart(self._delegate)
 
     property query_alignment_end:
         """end index of the aligned query portion of the sequence (0-based,
-        exclusive)"""
+        exclusive)
+
+        This the index just past the last base in :attr:`seq` that is not
+        soft-clipped.
+        """
         def __get__(self):
             return getQueryEnd(self._delegate)
 
@@ -1422,12 +1428,12 @@ cdef class AlignedSegment:
         return result
 
     def infer_query_length(self, always=True):
-        """inferred read length from CIGAR string.
+        """infer query length from CIGAR string.
 
-        If *always* is set to True, the read length
-        will be always inferred. If set to False, the length
-        of the read sequence will be returned if it is
-        available.
+        If *always* is set to True, the read length will be always inferred
+        and includes hard-clipped bases.  If set to False, the length of the
+        read sequence will be returned if it is available and will not
+        include hard-clipped bases.
 
         Returns None if CIGAR string is not present.
         """
