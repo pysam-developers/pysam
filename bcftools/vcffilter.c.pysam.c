@@ -131,7 +131,8 @@ static void init_data(args_t *args)
                 if ( tmp.s ) kputs(" and ", &tmp);
                 kputs("\"IndelGap\"", &tmp);
             }
-            fprintf(pysam_stderr,"Warning: using %s filter name instead of \"%s\"\n", tmp.s,args->soft_filter);
+            if ( strncmp(tmp.s+1,args->soft_filter,tmp.l-2) )
+                fprintf(pysam_stderr,"Warning: using %s filter name instead of \"%s\"\n", tmp.s,args->soft_filter);
             free(tmp.s);
         }
 

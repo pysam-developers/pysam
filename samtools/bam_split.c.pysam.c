@@ -2,7 +2,7 @@
 
 /*  bam_split.c -- split subcommand.
 
-    Copyright (C) 2013-2015 Genome Research Ltd.
+    Copyright (C) 2013-2016 Genome Research Ltd.
 
     Author: Martin Pollard <mp15@sanger.ac.uk>
 
@@ -36,7 +36,10 @@ DEALINGS IN THE SOFTWARE.  */
 #include <regex.h>
 #include <htslib/khash.h>
 #include <htslib/kstring.h>
+#include <htslib/cram.h>
+#include "htslib/thread_pool.h"
 #include "sam_opts.h"
+#include "samtools.h"
 
 
 KHASH_MAP_INIT_STR(c2i, int)
@@ -63,6 +66,7 @@ struct state {
     samFile** rg_output_file;
     bam_hdr_t** rg_output_header;
     kh_c2i_t* rg_hash;
+    htsThreadPool p;
 };
 
 typedef struct state state_t;
@@ -80,7 +84,7 @@ static void usage(FILE *write_to)
 "  -u FILE1        put reads with no RG tag or an unrecognised RG tag in FILE1\n"
 "  -u FILE1:FILE2  ...and override the header with FILE2\n"
 "  -v              verbose output\n");
-    sam_global_opt_help(write_to, "-....");
+    sam_global_opt_help(write_to, "-....@");
     fprintf(write_to,
 "\n"
 "Format string expansions:\n"
@@ -97,11 +101,11 @@ static parsed_opts_t* parse_args(int argc, char** argv)
 {
     if (argc == 1) { usage(pysam_stdout); return NULL; }
 
-    const char* optstring = "vf:u:";
+    const char* optstring = "vf:u:@:";
     char* delim;
 
     static const struct option lopts[] = {
-        SAM_OPT_GLOBAL_OPTIONS('-', 0, 0, 0, 0),
+        SAM_OPT_GLOBAL_OPTIONS('-', 0, 0, 0, 0, '@'),
         { NULL, 0, NULL, 0 }
     };
 
@@ -145,7 +149,7 @@ static parsed_opts_t* parse_args(int argc, char** argv)
     argv += optind;
 
     if (argc != 1) {
-        fprintf(pysam_stderr, "Invalid number of arguments: %d\n", argc);
+        print_error("split", "Invalid number of arguments: %d", argc);
         usage(pysam_stderr);
         free(retval);
         return NULL;
@@ -272,7 +276,7 @@ static bool count_RG(bam_hdr_t* hdr, size_t* count, char*** output_name)
 
 // Filters a header of @RG lines where ID != id_keep
 // TODO: strip @PG's descended from other RGs and their descendants
-static bool filter_header_rg(bam_hdr_t* hdr, const char* id_keep)
+static bool filter_header_rg(bam_hdr_t* hdr, const char* id_keep, const char *arg_list)
 {
     kstring_t str = {0, 0, NULL};
 
@@ -317,28 +321,52 @@ static bool filter_header_rg(bam_hdr_t* hdr, const char* id_keep)
     free(hdr->text);
     hdr->text = ks_release(&str);
 
+    // Add the PG line
+    SAM_hdr *sh = sam_hdr_parse_(hdr->text, hdr->l_text);
+    if (sam_hdr_add_PG(sh, "samtools",
+                           "VN", samtools_version(),
+                           arg_list ? "CL": NULL,
+                           arg_list ? arg_list : NULL,
+                           NULL) != 0)
+        return -1;
+
+    free(hdr->text);
+    hdr->text = strdup(sam_hdr_str(sh));
+    hdr->l_text = sam_hdr_length(sh);
+    if (!hdr->text)
+        return false;
+    sam_hdr_free(sh);
+
     return true;
 }
 
 // Set the initial state
-static state_t* init(parsed_opts_t* opts)
+static state_t* init(parsed_opts_t* opts, const char *arg_list)
 {
     state_t* retval = calloc(sizeof(state_t), 1);
     if (!retval) {
-        fprintf(pysam_stderr, "Out of memory");
+        print_error_errno("split", "Initialisation failed");
         return NULL;
+    }
+
+    if (opts->ga.nthreads > 0) {
+        if (!(retval->p.pool = hts_tpool_init(opts->ga.nthreads))) {
+            fprintf(pysam_stderr, "Error creating thread pool\n");
+            return NULL;
+        }
     }
 
     retval->merged_input_file = sam_open_format(opts->merged_input_name, "rb", &opts->ga.in);
     if (!retval->merged_input_file) {
-        fprintf(pysam_stderr, "Could not open input file (%s)\n", opts->merged_input_name);
+        print_error_errno("split", "Could not open \"%s\"", opts->merged_input_name);
         free(retval);
         return NULL;
     }
+    if (retval->p.pool)
+        hts_set_opt(retval->merged_input_file, HTS_OPT_THREAD_POOL, &retval->p);
     retval->merged_input_header = sam_hdr_read(retval->merged_input_file);
     if (retval->merged_input_header == NULL) {
-        fprintf(pysam_stderr, "Could not read header for file '%s'\n",
-                opts->merged_input_name);
+        print_error("split", "Could not read header from \"%s\"", opts->merged_input_name);
         cleanup_state(retval, false);
         return NULL;
     }
@@ -347,14 +375,13 @@ static state_t* init(parsed_opts_t* opts)
         if (opts->unaccounted_header_name) {
             samFile* hdr_load = sam_open_format(opts->unaccounted_header_name, "r", &opts->ga.in);
             if (!hdr_load) {
-                fprintf(pysam_stderr, "Could not open unaccounted header file (%s)\n", opts->unaccounted_header_name);
+                print_error_errno("split", "Could not open unaccounted header file \"%s\"", opts->unaccounted_header_name);
                 cleanup_state(retval, false);
                 return NULL;
             }
             retval->unaccounted_header = sam_hdr_read(hdr_load);
             if (retval->unaccounted_header == NULL) {
-                fprintf(pysam_stderr, "Could not read header for file '%s'\n",
-                        opts->unaccounted_header_name);
+                print_error("split", "Could not read header from \"%s\"", opts->unaccounted_header_name);
                 cleanup_state(retval, false);
                 return NULL;
             }
@@ -365,10 +392,12 @@ static state_t* init(parsed_opts_t* opts)
 
         retval->unaccounted_file = sam_open_format(opts->unaccounted_name, "wb", &opts->ga.out);
         if (retval->unaccounted_file == NULL) {
-            fprintf(pysam_stderr, "Could not open unaccounted output file: %s\n", opts->unaccounted_name);
+            print_error_errno("split", "Could not open unaccounted output file \"%s\"", opts->unaccounted_name);
             cleanup_state(retval, false);
             return NULL;
         }
+        if (retval->p.pool)
+            hts_set_opt(retval->unaccounted_file, HTS_OPT_THREAD_POOL, &retval->p);
     }
 
     // Open output files for RGs
@@ -380,7 +409,7 @@ static state_t* init(parsed_opts_t* opts)
     retval->rg_output_header = (bam_hdr_t**)calloc(retval->output_count, sizeof(bam_hdr_t*));
     retval->rg_hash = kh_init_c2i();
     if (!retval->rg_output_file_name || !retval->rg_output_file || !retval->rg_output_header || !retval->rg_hash) {
-        fprintf(pysam_stderr, "Could not allocate memory for output file array. Out of memory?");
+        print_error_errno("split", "Could not initialise output file array");
         cleanup_state(retval, false);
         return NULL;
     }
@@ -388,7 +417,7 @@ static state_t* init(parsed_opts_t* opts)
     char* dirsep = strrchr(opts->merged_input_name, '/');
     char* input_base_name = strdup(dirsep? dirsep+1 : opts->merged_input_name);
     if (!input_base_name) {
-        fprintf(pysam_stderr, "Out of memory\n");
+        print_error_errno("split", "Filename manipulation failed");
         cleanup_state(retval, false);
         return NULL;
     }
@@ -405,7 +434,7 @@ static state_t* init(parsed_opts_t* opts)
                                                &opts->ga.out);
 
         if ( output_filename == NULL ) {
-            fprintf(pysam_stderr, "Error expanding output filename format string.\n");
+            print_error("split", "Error expanding output filename format string");
             cleanup_state(retval, false);
             free(input_base_name);
             return NULL;
@@ -414,11 +443,13 @@ static state_t* init(parsed_opts_t* opts)
         retval->rg_output_file_name[i] = output_filename;
         retval->rg_output_file[i] = sam_open_format(output_filename, "wb", &opts->ga.out);
         if (retval->rg_output_file[i] == NULL) {
-            fprintf(pysam_stderr, "Could not open output file: %s\n", output_filename);
+            print_error_errno("split", "Could not open \"%s\"", output_filename);
             cleanup_state(retval, false);
             free(input_base_name);
             return NULL;
         }
+        if (retval->p.pool)
+            hts_set_opt(retval->rg_output_file[i], HTS_OPT_THREAD_POOL, &retval->p);
 
         // Record index in hash
         int ret;
@@ -427,8 +458,8 @@ static state_t* init(parsed_opts_t* opts)
 
         // Set and edit header
         retval->rg_output_header[i] = bam_hdr_dup(retval->merged_input_header);
-        if ( !filter_header_rg(retval->rg_output_header[i], retval->rg_id[i]) ) {
-            fprintf(pysam_stderr, "Could not rewrite header for file: %s\n", output_filename);
+        if ( !filter_header_rg(retval->rg_output_header[i], retval->rg_id[i], arg_list) ) {
+            print_error("split", "Could not rewrite header for \"%s\"", output_filename);
             cleanup_state(retval, false);
             free(input_base_name);
             return NULL;
@@ -443,14 +474,13 @@ static state_t* init(parsed_opts_t* opts)
 static bool split(state_t* state)
 {
     if (state->unaccounted_file && sam_hdr_write(state->unaccounted_file, state->unaccounted_header) != 0) {
-        fprintf(pysam_stderr, "Could not write output file header\n");
+        print_error_errno("split", "Could not write output file header");
         return false;
     }
     size_t i;
     for (i = 0; i < state->output_count; i++) {
         if (sam_hdr_write(state->rg_output_file[i], state->rg_output_header[i]) != 0) {
-            fprintf(pysam_stderr, "Could not write output file header for '%s'\n",
-                    state->rg_output_file_name[i]);
+            print_error_errno("split", "Could not write file header to \"%s\"", state->rg_output_file_name[i]);
             return false;
         }
     }
@@ -463,7 +493,7 @@ static bool split(state_t* state)
         bam_destroy1(file_read);
         file_read = NULL;
         if (r < -1) {
-            fprintf(pysam_stderr, "Could not read first input record\n");
+            print_error("split", "Could not read first input record");
             return false;
         }
     }
@@ -484,8 +514,7 @@ static bool split(state_t* state)
             // if found write to the appropriate untangled bam
             int i = kh_val(state->rg_hash,iter);
             if (sam_write1(state->rg_output_file[i], state->rg_output_header[i], file_read) < 0) {
-                fprintf(pysam_stderr, "Could not write to output file '%s'\n",
-                        state->rg_output_file_name[i]);
+                print_error_errno("split", "Could not write to \"%s\"", state->rg_output_file_name[i]);
                 bam_destroy1(file_read);
                 return false;
             }
@@ -501,7 +530,7 @@ static bool split(state_t* state)
                 return false;
             } else {
                 if (sam_write1(state->unaccounted_file, state->unaccounted_header, file_read) < 0) {
-                    fprintf(pysam_stderr, "Could not write to unaccounted output file\n");
+                    print_error_errno("split", "Could not write to unaccounted output file");
                     bam_destroy1(file_read);
                     return false;
                 }
@@ -514,7 +543,7 @@ static bool split(state_t* state)
             bam_destroy1(file_read);
             file_read = NULL;
             if (r < -1) {
-                fprintf(pysam_stderr, "Could not read input record\n");
+                print_error("split", "Could not read input record");
                 return false;
             }
         }
@@ -531,7 +560,7 @@ static int cleanup_state(state_t* status, bool check_close)
     if (status->unaccounted_header) bam_hdr_destroy(status->unaccounted_header);
     if (status->unaccounted_file) {
         if (sam_close(status->unaccounted_file) < 0 && check_close) {
-            fprintf(pysam_stderr, "Error on closing unaccounted file\n");
+            print_error("split", "Error on closing unaccounted file");
             ret = -1;
         }
     }
@@ -542,8 +571,7 @@ static int cleanup_state(state_t* status, bool check_close)
             bam_hdr_destroy(status->rg_output_header[i]);
         if (status->rg_output_file && status->rg_output_file[i]) {
             if (sam_close(status->rg_output_file[i]) < 0 && check_close) {
-                fprintf(pysam_stderr, "Error on closing output file '%s'\n",
-                        status->rg_output_file_name[i]);
+                print_error("split", "Error on closing output file \"%s\"", status->rg_output_file_name[i]);
                 ret = -1;
             }
         }
@@ -558,6 +586,9 @@ static int cleanup_state(state_t* status, bool check_close)
     kh_destroy_c2i(status->rg_hash);
     free(status->rg_id);
     free(status);
+
+    if (status->p.pool)
+        hts_tpool_destroy(status->p.pool);
 
     return ret;
 }
@@ -576,9 +607,10 @@ static void cleanup_opts(parsed_opts_t* opts)
 int main_split(int argc, char** argv)
 {
     int ret = 1;
+    char *arg_list = stringify_argv(argc+1, argv-1);
     parsed_opts_t* opts = parse_args(argc, argv);
     if (!opts) goto cleanup_opts;
-    state_t* status = init(opts);
+    state_t* status = init(opts, arg_list);
     if (!status) goto cleanup_opts;
 
     if (!split(status)) {
@@ -590,6 +622,7 @@ int main_split(int argc, char** argv)
 
 cleanup_opts:
     cleanup_opts(opts);
+    free(arg_list);
 
     return ret;
 }

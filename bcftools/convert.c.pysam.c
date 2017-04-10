@@ -2,7 +2,7 @@
 
 /*  convert.c -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2017 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -64,13 +64,19 @@ THE SOFTWARE.  */
 #define T_IUPAC_GT     23
 #define T_GT_TO_HAP    24   // not publicly advertised
 #define T_GT_TO_HAP2   25   // not publicly advertised
+#define T_TBCSQ        26
+#define T_END          27
+#define T_POS0         28
+#define T_END0         29
 
 typedef struct _fmt_t
 {
     int type, id, is_gt_field, ready, subscript;
     char *key;
     bcf_fmt_t *fmt;
+    void *usr;                  // user data (optional)
     void (*handler)(convert_t *, bcf1_t *, struct _fmt_t *, int, kstring_t *);
+    void (*destroy)(void*);     // clean user data (optional)
 }
 fmt_t;
 
@@ -90,9 +96,19 @@ struct _convert_t
     int allow_undef_tags;
 };
 
+typedef struct
+{
+    kstring_t hap1,hap2;
+    char **str;
+    int n, m;
+}
+bcsq_t;
 
 static void process_chrom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputs(convert->header->id[BCF_DT_CTG][line->rid].key, str); }
 static void process_pos(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputw(line->pos+1, str); }
+static void process_pos0(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputw(line->pos, str); }
+static void process_end(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputw(line->pos+line->rlen, str); }
+static void process_end0(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputw(line->pos+line->rlen-1, str); }
 static void process_id(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputs(line->d.id, str); }
 static void process_ref(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputs(line->d.allele[0], str); }
 static void process_alt(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
@@ -127,7 +143,7 @@ static void process_first_alt(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
 static void process_qual(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
     if ( bcf_float_is_missing(line->qual) ) kputc('.', str);
-    else ksprintf(str, "%g", line->qual);
+    else kputd(line->qual, str);
 }
 static void process_filter(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
@@ -195,7 +211,7 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
             case BCF_BT_INT8:  if ( info->v1.i==bcf_int8_missing ) kputc('.', str); else kputw(info->v1.i, str); break;
             case BCF_BT_INT16: if ( info->v1.i==bcf_int16_missing ) kputc('.', str); else kputw(info->v1.i, str); break;
             case BCF_BT_INT32: if ( info->v1.i==bcf_int32_missing ) kputc('.', str); else kputw(info->v1.i, str); break;
-            case BCF_BT_FLOAT: if ( bcf_float_is_missing(info->v1.f) ) kputc('.', str); else ksprintf(str, "%g", info->v1.f); break;
+            case BCF_BT_FLOAT: if ( bcf_float_is_missing(info->v1.f) ) kputc('.', str); else kputd(info->v1.f, str); break;
             case BCF_BT_CHAR:  kputc(info->v1.i, str); break;
             default: fprintf(pysam_stderr,"todo: type %d\n", info->type); exit(1); break;
         }
@@ -217,7 +233,7 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
             case BCF_BT_INT8:  BRANCH(int8_t,  val==bcf_int8_missing,  val==bcf_int8_vector_end,  kputw(val, str)); break;
             case BCF_BT_INT16: BRANCH(int16_t, val==bcf_int16_missing, val==bcf_int16_vector_end, kputw(val, str)); break;
             case BCF_BT_INT32: BRANCH(int32_t, val==bcf_int32_missing, val==bcf_int32_vector_end, kputw(val, str)); break;
-            case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(val), bcf_float_is_vector_end(val), ksprintf(str, "%g", val)); break;
+            case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(val), bcf_float_is_vector_end(val), kputd(val, str)); break;
             default: fprintf(pysam_stderr,"todo: type %d\n", info->type); exit(1); break;
         }
         #undef BRANCH
@@ -228,6 +244,7 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
 static void init_format(convert_t *convert, bcf1_t *line, fmt_t *fmt)
 {
     fmt->id = bcf_hdr_id2int(convert->header, BCF_DT_ID, fmt->key);
+    if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT,fmt->id) ) fmt->id = -1;
     fmt->fmt = NULL;
     if ( fmt->id >= 0 )
     {
@@ -263,7 +280,7 @@ static void process_format(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isa
             if ( bcf_float_is_missing(ptr[fmt->subscript]) || bcf_float_is_vector_end(ptr[fmt->subscript]) )
                 kputc('.', str);
             else
-                ksprintf(str, "%g", ptr[fmt->subscript]);
+                kputd(ptr[fmt->subscript], str);
         }
         else if ( fmt->fmt->type != BCF_BT_CHAR )
         {
@@ -317,6 +334,111 @@ static void process_tgt(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isampl
             kputc('.', str);
     }
     if (l == 0) kputc('.', str);
+}
+static void destroy_tbcsq(void *usr)
+{
+    if ( !usr ) return;
+    bcsq_t *csq = (bcsq_t*) usr;
+    free(csq->hap1.s);
+    free(csq->hap2.s);
+    if ( csq->n )
+        free(csq->str[0]);
+    free(csq->str);
+    free(csq);
+}
+static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
+{
+    if ( !fmt->ready )
+    {
+        init_format(convert, line, fmt);
+
+        bcsq_t *csq;
+        if ( fmt->usr )
+        {
+            csq = (bcsq_t*) fmt->usr;
+            if ( csq->n )
+                free(csq->str[0]);
+            csq->n = 0;
+        }
+        else
+            csq = (bcsq_t*) calloc(1,sizeof(bcsq_t));
+        fmt->usr = csq;
+
+        int i=0, len = 0;
+        char *tmp = NULL;
+        if ( bcf_get_info_string(convert->header,line,fmt->key,&tmp,&len)<0 )
+        {
+            csq->n = 0;
+            return;
+        }
+        do
+        {
+            csq->n++;
+            hts_expand(char*, csq->n, csq->m, csq->str);
+            csq->str[ csq->n-1 ] = tmp + i;
+            while ( i<len && tmp[i]!=',' ) i++;
+            if ( i<len && tmp[i]==',' ) tmp[i++] = 0;
+        }
+        while ( i<len );
+    }
+
+    bcsq_t *csq = (bcsq_t*)fmt->usr;
+
+    if ( fmt->fmt==NULL || !csq->n ) return;
+
+    csq->hap1.l = 0;
+    csq->hap2.l = 0;
+
+    int mask = fmt->subscript==0 ? 3 : 1;   // merge both haplotypes if subscript==0
+
+    #define BRANCH(type_t, nbits) { \
+        type_t *x = (type_t*)(fmt->fmt->p + isample*fmt->fmt->size); \
+        int i,j; \
+        if ( fmt->subscript<=0 || fmt->subscript==1 ) \
+        { \
+            for (j=0; j < fmt->fmt->n; j++) \
+            { \
+                type_t val = x[j]; \
+                if ( !val ) continue; \
+                for (i=0; i<nbits; i+=2) \
+                    if ( val & (mask<<i) ) { kputs(csq->str[(j*32+i)/2], &csq->hap1); kputc_(',', &csq->hap1); } \
+            } \
+        } \
+        if ( fmt->subscript<0 || fmt->subscript==2 ) \
+        { \
+            for (j=0; j < fmt->fmt->n; j++) \
+            { \
+                type_t val = x[j]; \
+                if ( !val ) continue; \
+                for (i=1; i<nbits; i+=2) \
+                    if ( val & (1<<i) ) { kputs(csq->str[(j*32+i)/2], &csq->hap2); kputc_(',', &csq->hap2); } \
+            } \
+        } \
+    }
+    switch (fmt->fmt->type)
+    {
+        case BCF_BT_INT8:  BRANCH(uint8_t, 8); break;
+        case BCF_BT_INT16: BRANCH(uint16_t,16); break;
+        case BCF_BT_INT32: BRANCH(uint32_t,32); break;
+        default: error("Unexpected type: %d\n", fmt->fmt->type); exit(1); break;
+    }
+    #undef BRANCH
+
+    if ( !csq->hap1.l && !csq->hap2.l ) return;
+
+    if ( csq->hap1.l ) csq->hap1.s[--csq->hap1.l] = 0;
+    if ( csq->hap2.l ) csq->hap2.s[--csq->hap2.l] = 0;
+
+    if ( fmt->subscript<0 )
+    {
+        kputs(csq->hap1.l?csq->hap1.s:".", str);
+        kputc_('\t', str);
+        kputs(csq->hap2.l?csq->hap2.s:".", str);
+    }
+    else if ( fmt->subscript<2 )
+        kputs(csq->hap1.l?csq->hap1.s:".", str);
+    else
+        kputs(csq->hap2.l?csq->hap2.s:".", str);
 }
 static void init_format_iupac(convert_t *convert, bcf1_t *line, fmt_t *fmt)
 {
@@ -599,103 +721,260 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
     // the allele (0/1) and the asterisk (*); e.g., "0* 1*" for a
     // heterozygous genotype of unknown phase.
 
-    int m, n, i;
+    int i, gt_id = bcf_hdr_id2int(convert->header, BCF_DT_ID, "GT");
+    if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT,gt_id) )
+        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
+    if ( !(line->unpacked & BCF_UN_FMT) ) bcf_unpack(line, BCF_UN_FMT);
+    bcf_fmt_t *fmt_gt = NULL;
+    for (i=0; i<line->n_fmt; i++)
+        if ( line->d.fmt[i].id==gt_id ) { fmt_gt = &line->d.fmt[i]; break; }
+    if ( !fmt_gt )
+        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
 
-    m = convert->ndat / sizeof(int32_t);
-    n = bcf_get_genotypes(convert->header, line, &convert->dat, &m);
-    convert->ndat = m * sizeof(int32_t);
+    // Alloc all memory in advance to avoid kput routines. The biggest allowed allele index is 99
+    if ( line->n_allele > 100 )
+        error("Too many alleles (%d) at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+    if ( ks_resize(str, str->l+convert->nsamples*8) != 0 )
+        error("Could not alloc %d bytes\n", str->l + convert->nsamples*8);
 
-    if ( n<=0 )
-    {
-        // Throw an error or silently proceed?
-        //
-        // for (i=0; i<convert->nsamples; i++) kputs(" ...", str);
-        // return;
+    if ( fmt_gt->type!=BCF_BT_INT8 )    // todo: use BRANCH_INT if the VCF is valid
+        error("Uh, too many alleles (%d) or redundant BCF representation at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
 
-        error("Error parsing GT tag at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
-    }
-
-    n /= convert->nsamples;
+    int8_t *ptr = ((int8_t*) fmt_gt->p) - fmt_gt->n;
     for (i=0; i<convert->nsamples; i++)
     {
-        int32_t *ptr = (int32_t*)convert->dat + i*n;
-        int j;
-        for (j=0; j<n; j++)
-            if ( ptr[j]==bcf_int32_vector_end ) break;
-
-        if (i>0) kputs(" ", str); // no space separation for first column
-        if ( j==2 )
+        ptr += fmt_gt->n;
+        if ( ptr[0]==2 )
         {
-            // diploid
-            if ( bcf_gt_is_missing(ptr[0]) || bcf_gt_is_missing(ptr[1]) ) {
-                kputs("? ?", str);
+            if ( ptr[1]==3 ) /* 0|0 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = ' ';
             }
-            else if ( bcf_gt_is_phased(ptr[1])) {
-                ksprintf(str, "%d %d", bcf_gt_allele(ptr[0]), bcf_gt_allele(ptr[1]));
+            else if ( ptr[1]==5 ) /* 0|1 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = ' ';
             }
-            else {
-                ksprintf(str, "%d* %d*", bcf_gt_allele(ptr[0]), bcf_gt_allele(ptr[1]));
+            else if ( ptr[1]==bcf_int8_vector_end ) /* 0 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==2 ) /* 0/0 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==4 ) /* 0/1 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_missing(ptr[1]) ) /* 0/. */
+            {
+                str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_phased(ptr[1]) ) /* 0|x */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = ' ';
+            }
+            else /* 0/x */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = '*'; str->s[str->l++] = ' ';
             }
         }
-        else if ( j==1 )
+        else if ( ptr[0]==4 )
         {
-            // haploid
-            if ( bcf_gt_is_missing(ptr[0]) )
-                kputs("? -", str);
-            else if ( bcf_gt_allele(ptr[0])==1 )
-                kputs("1 -", str);       // first ALT allele
-            else
-                kputs("0 -", str);       // REF or something else than first ALT
+            if ( ptr[1]==3 ) /* 1|0 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==5 ) /* 1|1 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==bcf_int8_vector_end ) /* 1 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==2 ) /* 1/0 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==4 ) /* 1/1 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_missing(ptr[1]) ) /* 1/. */
+            {
+                str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_phased(ptr[1]) )    /* 1|x */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = ' ';
+            }
+            else /* 1/x */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
         }
-        else error("FIXME: not ready for ploidy %d\n", j);
+        else if ( bcf_gt_is_missing(ptr[0]) )
+        {
+            if ( ptr[1]==bcf_int8_vector_end ) 
+            {
+                str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
+            }
+            else 
+            { 
+                str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
+            }
+        }
+        else if ( ptr[1]==bcf_int8_vector_end )
+        {
+            /* use REF for something else than first ALT */
+            str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
+        }
+        else
+        {
+            kputw(bcf_gt_allele(ptr[0]),str);
+            if ( bcf_gt_is_phased(ptr[1]) ) str->s[str->l++] = '*';
+            str->s[str->l++] = ' ';
+            kputw(bcf_gt_allele(ptr[1]),str);
+            if ( bcf_gt_is_phased(ptr[1]) ) str->s[str->l++] = '*';
+            str->s[str->l++] = ' ';
+        }
     }
+    str->s[--str->l] = 0;     // delete the last space
 }
 static void process_gt_to_hap2(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
     // same as process_gt_to_hap but converts haploid genotypes into diploid
-    int m, n, i;
 
-    m = convert->ndat / sizeof(int32_t);
-    n = bcf_get_genotypes(convert->header, line, &convert->dat, &m);
-    convert->ndat = m * sizeof(int32_t);
+    int i, gt_id = bcf_hdr_id2int(convert->header, BCF_DT_ID, "GT");
+    if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT,gt_id) )
+        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
+    if ( !(line->unpacked & BCF_UN_FMT) ) bcf_unpack(line, BCF_UN_FMT);
+    bcf_fmt_t *fmt_gt = NULL;
+    for (i=0; i<line->n_fmt; i++)
+        if ( line->d.fmt[i].id==gt_id ) { fmt_gt = &line->d.fmt[i]; break; }
+    if ( !fmt_gt )
+        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
 
-    if ( n<=0 )
-        error("Error parsing GT tag at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
+    // Alloc all memory in advance to avoid kput routines. The biggest allowed allele index is 99
+    if ( line->n_allele > 100 )
+        error("Too many alleles (%d) at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+    if ( ks_resize(str, str->l+convert->nsamples*8) != 0 )
+        error("Could not alloc %d bytes\n", str->l + convert->nsamples*8);
 
-    n /= convert->nsamples;
+    if ( fmt_gt->type!=BCF_BT_INT8 )    // todo: use BRANCH_INT if the VCF is valid
+        error("Uh, too many alleles (%d) or redundant BCF representation at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+
+    int8_t *ptr = ((int8_t*) fmt_gt->p) - fmt_gt->n;
     for (i=0; i<convert->nsamples; i++)
     {
-        int32_t *ptr = (int32_t*)convert->dat + i*n;
-        int j;
-        for (j=0; j<n; j++)
-            if ( ptr[j]==bcf_int32_vector_end ) break;
-
-        if (i>0) kputs(" ", str); // no space separation for first column
-        if ( j==2 )
+        ptr += fmt_gt->n;
+        if ( ptr[0]==2 )
         {
-            // diploid
-            if ( bcf_gt_is_missing(ptr[0]) || bcf_gt_is_missing(ptr[1]) ) {
-                kputs("? ?", str);
+            if ( ptr[1]==3 ) /* 0|0 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = ' ';
             }
-            else if ( bcf_gt_is_phased(ptr[1])) {
-                ksprintf(str, "%d %d", bcf_gt_allele(ptr[0]), bcf_gt_allele(ptr[1]));
+            else if ( ptr[1]==5 ) /* 0|1 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = ' ';
             }
-            else {
-                ksprintf(str, "%d* %d*", bcf_gt_allele(ptr[0]), bcf_gt_allele(ptr[1]));
+            else if ( ptr[1]==bcf_int8_vector_end ) /* 0 -> 0|0 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==2 ) /* 0/0 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==4 ) /* 0/1 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_missing(ptr[1]) ) /* 0/. */
+            {
+                str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_phased(ptr[1]) ) /* 0|x */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = ' ';
+            }
+            else /* 0/x */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = '*'; str->s[str->l++] = ' ';
             }
         }
-        else if ( j==1 )
+        else if ( ptr[0]==4 )
         {
-            // haploid
-            if ( bcf_gt_is_missing(ptr[0]) )
-                kputs("? ?", str);
-            else if ( bcf_gt_allele(ptr[0])==1 )
-                kputs("1 1", str);       // first ALT allele
-            else
-                kputs("0 0", str);       // REF or something else than first ALT
+            if ( ptr[1]==3 ) /* 1|0 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==5 ) /* 1|1 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==bcf_int8_vector_end ) /* 1 -> 1|1 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==2 ) /* 1/0 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[1]==4 ) /* 1/1 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' '; str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_missing(ptr[1]) ) /* 1/. */
+            {
+                str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
+            }
+            else if ( bcf_gt_is_phased(ptr[1]) )    /* 1|x */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = ' ';
+            }
+            else /* 1/x */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+                kputw(bcf_gt_allele(ptr[1]),str);
+                str->s[str->l++] = '*'; str->s[str->l++] = ' ';
+            }
         }
-        else error("FIXME: not ready for ploidy %d\n", j);
+        else if ( bcf_gt_is_missing(ptr[0]) )
+        {
+            str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
+        }
+        else if ( ptr[1]==bcf_int8_vector_end )
+        {
+            /* use REF for something else than first ALT */
+            str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '0'; str->s[str->l++] = ' ';
+        }
+        else
+        {
+            kputw(bcf_gt_allele(ptr[0]),str);
+            if ( bcf_gt_is_phased(ptr[1]) ) str->s[str->l++] = '*';
+            str->s[str->l++] = ' ';
+            kputw(bcf_gt_allele(ptr[1]),str);
+            if ( bcf_gt_is_phased(ptr[1]) ) str->s[str->l++] = '*';
+            str->s[str->l++] = ' ';
+        }
     }
+    str->s[--str->l] = 0;     // delete the last space
 }
 
 static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
@@ -711,6 +990,8 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
     fmt->key   = key ? strdup(key) : NULL;
     fmt->is_gt_field = is_gtf;
     fmt->subscript = -1;
+    fmt->usr     = NULL;
+    fmt->destroy = NULL;
 
     // Allow non-format tags, such as CHROM, INFO, etc., to appear amongst the format tags.
     if ( key )
@@ -720,6 +1001,9 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
         {
             if ( !strcmp("CHROM",key) ) { fmt->type = T_CHROM; }
             else if ( !strcmp("POS",key) ) { fmt->type = T_POS; }
+            else if ( !strcmp("POS0",key) ) { fmt->type = T_POS0; }
+            else if ( !strcmp("END",key) ) { fmt->type = T_END; }
+            else if ( !strcmp("END0",key) ) { fmt->type = T_END0; }
             else if ( !strcmp("ID",key) ) { fmt->type = T_ID; }
             else if ( !strcmp("REF",key) ) { fmt->type = T_REF; }
             else if ( !strcmp("ALT",key) ) { fmt->type = T_ALT; }
@@ -744,6 +1028,9 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
         case T_GP_TO_PROB3: fmt->handler = &process_gp_to_prob3; break;
         case T_CHROM: fmt->handler = &process_chrom; break;
         case T_POS: fmt->handler = &process_pos; break;
+        case T_POS0: fmt->handler = &process_pos0; break;
+        case T_END: fmt->handler = &process_end; break;
+        case T_END0: fmt->handler = &process_end0; break;
         case T_ID: fmt->handler = &process_id; break;
         case T_REF: fmt->handler = &process_ref; break;
         case T_ALT: fmt->handler = &process_alt; break;
@@ -761,15 +1048,17 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
         case T_IUPAC_GT: fmt->handler = &process_iupac_gt; convert->max_unpack |= BCF_UN_FMT; break;
         case T_GT_TO_HAP: fmt->handler = &process_gt_to_hap; convert->max_unpack |= BCF_UN_FMT; break;
         case T_GT_TO_HAP2: fmt->handler = &process_gt_to_hap2; convert->max_unpack |= BCF_UN_FMT; break;
-        case T_LINE: fmt->handler = &process_line; break;
+        case T_TBCSQ: fmt->handler = &process_tbcsq; fmt->destroy = &destroy_tbcsq; convert->max_unpack |= BCF_UN_FMT; break;
+        case T_LINE: fmt->handler = &process_line; convert->max_unpack |= BCF_UN_FMT; break;
         default: error("TODO: handler for type %d\n", fmt->type);
     }
-    if ( key )
+    if ( key && fmt->type==T_INFO )
     {
-        if ( fmt->type==T_INFO )
+        fmt->id = bcf_hdr_id2int(convert->header, BCF_DT_ID, key);
+        if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_INFO,fmt->id) )
         {
-            fmt->id = bcf_hdr_id2int(convert->header, BCF_DT_ID, key);
-            if ( fmt->id==-1 ) convert->undef_info_tag = strdup(key);
+            fmt->id = -1;
+            convert->undef_info_tag = strdup(key);
         }
     }
     return fmt;
@@ -799,6 +1088,16 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
         if ( !strcmp(str.s, "SAMPLE") ) register_tag(convert, T_SAMPLE, "SAMPLE", is_gtf);
         else if ( !strcmp(str.s, "GT") ) register_tag(convert, T_GT, "GT", is_gtf);
         else if ( !strcmp(str.s, "TGT") ) register_tag(convert, T_TGT, "GT", is_gtf);
+        else if ( !strcmp(str.s, "TBCSQ") ) 
+        {
+            fmt_t *fmt = register_tag(convert, T_TBCSQ, "BCSQ", is_gtf);
+            fmt->subscript = parse_subscript(&q);
+            if ( fmt->subscript==-1 )
+            { 
+                if ( !strncmp(q,"{*}",3) ) { fmt->subscript = 0; q += 3; }
+            }
+            else fmt->subscript++;
+        }
         else if ( !strcmp(str.s, "IUPACGT") ) register_tag(convert, T_IUPAC_GT, "GT", is_gtf);
         else if ( !strcmp(str.s, "INFO") )
         {
@@ -821,6 +1120,9 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
     {
         if ( !strcmp(str.s, "CHROM") ) register_tag(convert, T_CHROM, str.s, is_gtf);
         else if ( !strcmp(str.s, "POS") ) register_tag(convert, T_POS, str.s, is_gtf);
+        else if ( !strcmp(str.s, "POS0") ) register_tag(convert, T_POS0, str.s, is_gtf);
+        else if ( !strcmp(str.s, "END") ) register_tag(convert, T_END, str.s, is_gtf);
+        else if ( !strcmp(str.s, "END0") ) register_tag(convert, T_END0, str.s, is_gtf);
         else if ( !strcmp(str.s, "ID") ) register_tag(convert, T_ID, str.s, is_gtf);
         else if ( !strcmp(str.s, "REF") ) register_tag(convert, T_REF, str.s, is_gtf);
         else if ( !strcmp(str.s, "ALT") ) 
@@ -905,6 +1207,8 @@ convert_t *convert_init(bcf_hdr_t *hdr, int *samples, int nsamples, const char *
             default:  p = parse_sep(convert, p, is_gtf); break;
         }
     }
+    if ( is_gtf )
+        error("Could not parse the format string, missing the square bracket \"]\": %s\n", convert->format_str);
 
     if ( nsamples )
     {
@@ -925,7 +1229,10 @@ void convert_destroy(convert_t *convert)
 {
     int i;
     for (i=0; i<convert->nfmt; i++)
+    {
+        if ( convert->fmt[i].destroy ) convert->fmt[i].destroy(convert->fmt[i].usr);
         free(convert->fmt[i].key);
+    }
     free(convert->fmt);
     free(convert->undef_info_tag);
     free(convert->dat);
@@ -986,7 +1293,7 @@ int convert_header(convert_t *convert, kstring_t *str)
 int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
 {
     if ( !convert->allow_undef_tags && convert->undef_info_tag )
-        error("Error: no such tag defined in the VCF header: INFO/%s\n", convert->undef_info_tag);
+        error("Error: no such tag defined in the VCF header: INFO/%s. FORMAT fields must be in square brackets, e.g. \"[ %s]\"\n", convert->undef_info_tag,convert->undef_info_tag);
 
     int l_ori = str->l;
     bcf_unpack(line, convert->max_unpack);
@@ -995,17 +1302,24 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
     str->l = 0;
     for (i=0; i<convert->nfmt; i++)
     {
-        // Genotype fields
+        // Genotype fields. 
         if ( convert->fmt[i].is_gt_field )
         {
             int j = i, js, k;
-            while ( convert->fmt[j].is_gt_field )
+            while ( j<convert->nfmt && convert->fmt[j].is_gt_field )
             {
                 convert->fmt[j].ready = 0;
                 j++;
             }
             for (js=0; js<convert->nsamples; js++)
             {
+                // Here comes a hack designed for TBCSQ. When running on large files,
+                // such as 1000GP, there are too many empty fields in the output and
+                // it's very very slow. Therefore in case the handler does not add
+                // anything to the string, we trim all genotype fields enclosed in square
+                // brackets here. This may be changed in future, time will show...
+                size_t l_start = str->l;
+            
                 int ks = convert->samples[js];
                 for (k=i; k<j; k++)
                 {
@@ -1015,7 +1329,11 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
                             kputc(bcf_sr_has_line(convert->readers,ir)?'1':'0', str);
                     }
                     else if ( convert->fmt[k].handler )
+                    {
+                        size_t l = str->l;
                         convert->fmt[k].handler(convert, line, &convert->fmt[k], ks, str);
+                        if ( l==str->l ) { str->l = l_start; break; }  // only TBCSQ does this
+                    }
                 }
             }
             i = j-1;
@@ -1029,6 +1347,7 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
         }
         else if ( convert->fmt[i].handler )
             convert->fmt[i].handler(convert, line, &convert->fmt[i], -1, str);
+
     }
     return str->l - l_ori;
 }

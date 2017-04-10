@@ -72,6 +72,7 @@ typedef struct
     double trio_Pm_SNPs, trio_Pm_del, trio_Pm_ins;      // P(mendelian) for trio calling, see mcall_call_trio_genotypes()
     int32_t *ugts, *cgts;   // unconstraind and constrained GTs
     uint32_t output_tags;
+    char *prior_AN, *prior_AC;  // reference panel AF tags (AF=AC/AN)
 
     // ccall only
     double indel_frac, min_perm_p, min_lrt;

@@ -222,15 +222,27 @@ class TestRemoteFileFTP(unittest.TestCase):
 
     url = "ftp://ftp-trace.ncbi.nih.gov/1000genomes/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa"
 
-
     def testFTPView(self):
         if not checkURL(self.url):
             return
+
         with pysam.Fastafile(self.url) as f:
             self.assertEqual(
                 len(f.fetch("chr1", 0, 1000)),
                 1000)
 
+    def test_sequence_lengths_are_available(self):
+        if not checkURL(self.url):
+            return
+
+        with pysam.Fastafile(self.url) as f:
+            self.assertEqual(len(f.references), 3366)
+            self.assertTrue("chr1" in f.references)
+            self.assertEqual(f.lengths[0],
+                             248956422)
+            self.assertEqual(f.get_reference_length("chr1"),
+                             248956422)
+        
 
 if __name__ == "__main__":
     unittest.main()

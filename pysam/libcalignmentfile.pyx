@@ -76,15 +76,9 @@ else:
 cimport cython
 
 ########################################################
-## Constants and global variables
-
-# defines imported from samtools
-DEF SEEK_SET = 0
-DEF SEEK_CUR = 1
-DEF SEEK_END = 2
-
+## global variables
 # maximum genomic coordinace
-cdef int MAX_POS = 2 << 29
+cdef int  MAX_POS = 2 << 29
 
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : dict,
@@ -469,7 +463,6 @@ cdef class AlignmentFile(HTSFile):
             reference_filename)
 
         cdef char * ctext
-        cdef hFILE * fp
         ctext = NULL
 
         if mode[0] == 'w':
@@ -2030,10 +2023,12 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
 
         # realign read - changes base qualities
         if d.seq != NULL and is_cns and not is_nobaq: 
-            bam_prob_realn(b, d.seq)
+            # flag:
+            # apply_baq = flag&1, extend_baq = flag>>1&1, redo_baq = flag&4;
+            sam_prob_realn(b, d.seq, d.seq_len, 0)
 
         if d.seq != NULL and capQ_thres > 10:
-            q = bam_cap_mapQ(b, d.seq, capQ_thres)
+            q = sam_cap_mapq(b, d.seq, d.seq_len, capQ_thres)
             if q < 0:
                 skip = 1
             elif b.core.qual > q:

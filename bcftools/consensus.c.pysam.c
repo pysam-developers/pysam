@@ -37,7 +37,7 @@
 #include <htslib/kstring.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/kseq.h>
-#include <htslib/regidx.h>
+#include "regidx.h"
 #include "bcftools.h"
 #include "rbuf.h"
 
@@ -70,6 +70,7 @@ typedef struct
     int nvcf_buf, rid;
 
     regidx_t *mask;
+    regitr_t *itr;
 
     int chain_id;       // chain_id, to provide a unique ID to each chain in the chain output
     chain_t *chain;     // chain structure to store the sequence of ungapped blocks between the ref and alt sequences
@@ -204,6 +205,7 @@ static void init_data(args_t *args)
     {
         args->mask = regidx_init(args->mask_fname,NULL,NULL,0,NULL);
         if ( !args->mask ) error("Failed to initialize mask regions\n");
+        args->itr = regitr_init(args->mask);
     }
     // In case we want to store the chains
     if ( args->chain_fname )
@@ -230,6 +232,7 @@ static void destroy_data(args_t *args)
     free(args->vcf_buf);
     free(args->fa_buf.s);
     if ( args->mask ) regidx_destroy(args->mask);
+    if ( args->itr ) regitr_destroy(args->itr);
     if ( args->chain_fname )
         if ( fclose(args->fp_chain) ) error("Close failed: %s\n", args->chain_fname);
     if ( fclose(args->fp_out) ) error("Close failed: %s\n", args->output_fname);
@@ -411,12 +414,27 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         rec->d.allele[1][0] = gt2iupac(ial,jal);
     }
 
+    int len_diff = 0, alen = 0;
     int idx = rec->pos - args->fa_ori_pos + args->fa_mod_off;
-    if ( idx<0 || idx>=args->fa_buf.l ) 
+    if ( idx<0 )
+    {
+        fprintf(pysam_stderr,"Warning: ignoring overlapping variant starting at %s:%d\n", bcf_seqname(args->hdr,rec),rec->pos+1);
+        return;
+    }
+    if ( rec->rlen > args->fa_buf.l - idx )
+    {
+        rec->rlen = args->fa_buf.l - idx;
+        alen = strlen(rec->d.allele[ialt]);
+        if ( alen > rec->rlen )
+        {
+            rec->d.allele[ialt][rec->rlen] = 0;
+            fprintf(pysam_stderr,"Warning: trimming variant starting at %s:%d\n", bcf_seqname(args->hdr,rec),rec->pos+1);
+        }
+    }
+    if ( idx>=args->fa_buf.l ) 
         error("FIXME: %s:%d .. idx=%d, ori_pos=%d, len=%d, off=%d\n",bcf_seqname(args->hdr,rec),rec->pos+1,idx,args->fa_ori_pos,args->fa_buf.l,args->fa_mod_off);
 
     // sanity check the reference base
-    int len_diff = 0, alen = 0;
     if ( rec->d.allele[ialt][0]=='<' )
     {
         if ( strcasecmp(rec->d.allele[ialt], "<DEL>") )
@@ -497,18 +515,16 @@ static void mask_region(args_t *args, char *seq, int len)
     int start = args->fa_src_pos - len;
     int end   = args->fa_src_pos;
 
-    regitr_t itr;
-    if ( !regidx_overlap(args->mask, chr,start,end, &itr) ) return;
+    if ( !regidx_overlap(args->mask, chr,start,end, args->itr) ) return;
 
     int idx_start, idx_end, i;
-    while ( REGITR_OVERLAP(itr,start,end) )
+    while ( regitr_overlap(args->itr) )
     {
-        idx_start = REGITR_START(itr) - start;
-        idx_end   = REGITR_END(itr) - start;
+        idx_start = args->itr->beg - start;
+        idx_end   = args->itr->end - start;
         if ( idx_start < 0 ) idx_start = 0;
         if ( idx_end >= len ) idx_end = len - 1;
         for (i=idx_start; i<=idx_end; i++) seq[i] = 'N';
-        itr.i++;
     }
 }
 
@@ -521,7 +537,7 @@ static void consensus(args_t *args)
     {
         if ( str.s[0]=='>' )
         {
-            // new sequence encountered, apply all chached variants
+            // new sequence encountered, apply all cached variants
             while ( args->vcf_rbuf.n )
             {
                 if (args->chain) {
@@ -578,7 +594,17 @@ static void consensus(args_t *args)
         }
         if ( !rec_ptr ) flush_fa_buffer(args, 60);
     }
-    if (args->chain) {
+    bcf1_t **rec_ptr = NULL;
+    while ( args->rid>=0 && (rec_ptr = next_vcf_line(args)) )
+    {
+        bcf1_t *rec = *rec_ptr;
+        if ( rec->rid!=args->rid ) break;
+        if ( args->fa_end_pos && rec->pos > args->fa_end_pos ) break;
+        if ( args->fa_ori_pos + args->fa_buf.l - args->fa_mod_off <= rec->pos ) break;
+        apply_variant(args, rec);
+    }
+    if (args->chain)
+    {
         print_chain(args);
         destroy_chain(args);
     }
@@ -590,8 +616,11 @@ static void consensus(args_t *args)
 static void usage(args_t *args)
 {
     fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Create consensus sequence by applying VCF variants to a reference\n");
-    fprintf(pysam_stderr, "         fasta file.\n");
+    fprintf(pysam_stderr, "About: Create consensus sequence by applying VCF variants to a reference fasta\n");
+    fprintf(pysam_stderr, "       file. By default, the program will apply all ALT variants. Using the\n");
+    fprintf(pysam_stderr, "       --sample (and, optionally, --haplotype) option will apply genotype\n");
+    fprintf(pysam_stderr, "       (or haplotype) calls from FORMAT/GT. The program ignores allelic depth\n");
+    fprintf(pysam_stderr, "       information, such as INFO/AD or FORMAT/AD.\n");
     fprintf(pysam_stderr, "Usage:   bcftools consensus [OPTIONS] <file.vcf>\n");
     fprintf(pysam_stderr, "Options:\n");
     fprintf(pysam_stderr, "    -f, --fasta-ref <file>     reference sequence in fasta format\n");

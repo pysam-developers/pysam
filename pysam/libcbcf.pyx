@@ -3481,13 +3481,16 @@ cdef class VariantFile(HTSFile):
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
         cdef int ret = 0
+        cdef VariantHeader header = self.header
+
         self.header = self.index = None
+
         if self.htsfile:
             # Write header if no records were written
-            if self.htsfile.is_write and not self.header_written:
+            if self.htsfile.is_write and not self.header_written and header and header.ptr != NULL:
                 self.header_written = True
                 with nogil:
-                    bcf_hdr_write(self.htsfile, self.header.ptr)
+                    bcf_hdr_write(self.htsfile, header.ptr)
 
             ret = hts_close(self.htsfile)
             self.htsfile = NULL

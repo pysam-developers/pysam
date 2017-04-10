@@ -2,8 +2,10 @@
 #include <assert.h>
 #include <unistd.h>
 #include <stdio.h>
-#include "bam.h"
-#include "bam_endian.h"
+
+/* #include "bam.h" */
+/* #include "bam_endian.h" */
+
 #include "htslib/khash.h"
 #include "htslib/ksort.h"
 #include "htslib/knetfile.h"

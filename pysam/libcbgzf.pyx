@@ -14,9 +14,10 @@ from libc.stdlib cimport malloc, calloc, realloc, free
 from cpython.object cimport PyObject
 from cpython.bytes  cimport PyBytes_FromStringAndSize, _PyBytes_Resize
 
-from pysam.libcutils   cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
-from pysam.libchtslib  cimport *
-
+from pysam.libcutils   cimport force_bytes, encode_filename
+from pysam.libchtslib  cimport bgzf_open, bgzf_index_build_init, bgzf_write, bgzf_read, \
+                               bgzf_flush, bgzf_index_dump, bgzf_close, bgzf_seek, \
+                               bgzf_tell, bgzf_getline, kstring_t, SEEK_SET, BGZF
 
 __all__ = ["BGZFile"]
 
@@ -32,7 +33,7 @@ cdef class BGZFile(object):
     compressed file in text mode, use the gzip.open() function.
     """
     cdef BGZF* bgzf
-    cdef bytes name, index
+    cdef readonly object name, index
 
     def __init__(self, filename, mode=None, index=None):
         """Constructor for the BGZFile class.
@@ -47,10 +48,14 @@ cdef class BGZFile(object):
             raise ValueError("Invalid mode: {!r}".format(mode))
         if not mode:
             mode = 'rb'
-        if mode and 'b' not in mode:
+        elif mode and 'b' not in mode:
             mode += 'b'
-        self.name = force_bytes(filename)
-        self.index = force_bytes(index) if index is not None else None
+
+        mode = force_bytes(mode)
+
+        self.name = encode_filename(filename)
+        self.index = encode_filename(index) if index is not None else None
+
         self.bgzf = bgzf_open(self.name, mode)
 
         if self.bgzf.is_write and index is not None and bgzf_index_build_init(self.bgzf) < 0:
@@ -59,7 +64,7 @@ cdef class BGZFile(object):
     def __dealloc__(self):
         self.close()
 
-    def write(self,data):
+    def write(self, data):
         if not self.bgzf:
             raise ValueError("write() on closed BGZFile object")
 
@@ -177,6 +182,15 @@ cdef class BGZFile(object):
     def seekable(self):
         return True
 
+    def tell(self):
+        if not self.bgzf:
+            raise ValueError("seek() on closed BGZFile object")
+        cdef int64_t off = bgzf_tell(self.bgzf)
+        if off < 0:
+            raise IOError('Error in tell on BGZFFile object')
+
+        return off
+
     def seek(self, offset, whence=io.SEEK_SET):
         if not self.bgzf:
             raise ValueError("seek() on closed BGZFile object")
@@ -198,12 +212,27 @@ cdef class BGZFile(object):
 
         line.l = line.m = 0
         line.s = NULL
-        if bgzf_getline(self.bgzf, '\n', &line) < 0:
-            raise IOError('Error reading line in BGZFFile object')
 
-        ret = charptr_to_str_w_len(line.s, line.l)
+        cdef int ret = bgzf_getline(self.bgzf, '\n', &line)
+        if ret == -1:
+            s = b''
+        elif ret == -2:
+            if line.m:
+                free(line.s)
+            raise IOError('Error reading line in BGZFFile object')
+        else:
+            s = line.s[:line.l]
 
         if line.m:
             free(line.s)
 
-        return ret
+        return s
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = self.readline()
+        if not line:
+            raise StopIteration()
+        return line

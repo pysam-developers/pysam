@@ -2,7 +2,7 @@
 
 /*  test/test.c -- test harness utility routines.
 
-    Copyright (C) 2014 Genome Research Ltd.
+    Copyright (C) 2014, 2016 Genome Research Ltd.
 
     Author: Martin O. Pollard <mp15@sanger.ac.uk>
 
@@ -54,4 +54,10 @@ void dump_hdr(const bam_hdr_t* hdr)
         fprintf(pysam_stdout, "%d\t%u\t\"%s\"\n", target, hdr->target_len[target], hdr->target_name[target]);
     }
     fprintf(pysam_stdout, "text: \"%s\"\n", hdr->text);
+}
+
+// For tests, just return a constant that can be embedded in expected output.
+const char *samtools_version(void)
+{
+    return "x.y.test";
 }

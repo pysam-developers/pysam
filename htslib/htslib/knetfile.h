@@ -27,9 +27,9 @@
 #ifndef KNETFILE_H
 #define KNETFILE_H
 
-#include <sys/types.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <sys/types.h>
 
 #ifndef _WIN32
 #define netread(fd, ptr, len) read(fd, ptr, len)

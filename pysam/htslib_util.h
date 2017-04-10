@@ -92,36 +92,16 @@ static inline int pysam_bam_get_l_aux(bam1_t * b) {
 static inline char pysam_bam_seqi(uint8_t * s, int i) {
   return bam_seqi(s,i);}
 
-// Wrapping bit field access in bam1_core_t
-// bit fields not supported in cython and due
-// to endian-ness it is not clear which part
-// of the bit-field is in the higher or lower bytes.
-static inline uint16_t pysam_get_bin(bam1_t * b) {
-  return b->core.bin;}
-
 static inline uint8_t pysam_get_qual(bam1_t * b) {
   return b->core.qual;}
 
-static inline uint8_t pysam_get_l_qname(bam1_t * b) {
-  return b->core.l_qname;}
-
-static inline uint16_t pysam_get_flag(bam1_t * b) {
-  return b->core.flag;}
 
 static inline uint16_t pysam_get_n_cigar(bam1_t * b) {
   return b->core.n_cigar;}
 
-static inline void pysam_set_bin(bam1_t * b, uint16_t v) {
-  b->core.bin=v;}
-
 static inline void pysam_set_qual(bam1_t * b, uint8_t v) {
   b->core.qual=v;}
 
-static inline void pysam_set_l_qname(bam1_t * b, uint8_t v) {
-  b->core.l_qname=v;}
-
-static inline void pysam_set_flag(bam1_t * b, uint16_t v) {
-  b->core.flag=v;}
 
 static inline void pysam_set_n_cigar(bam1_t * b, uint16_t v) {
   b->core.n_cigar=v;}

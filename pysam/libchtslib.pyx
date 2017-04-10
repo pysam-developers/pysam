@@ -10,16 +10,21 @@ from pysam.libchtslib cimport *
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
-
 __all__ = ["get_verbosity", "set_verbosity"]
 
+# defines imported from samtools
+DEF SEEK_SET = 0
+DEF SEEK_CUR = 1
+DEF SEEK_END = 2
 
 ########################################################################
 ########################################################################
 ## Constants
 ########################################################################
 
+# maximum genomic coordinace
 cdef int   MAX_POS = 2 << 29
+
 cdef tuple FORMAT_CATEGORIES = ('UNKNOWN', 'ALIGNMENTS', 'VARIANTS', 'INDEX', 'REGIONS')
 cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', 'BAI', 'CRAM', 'CRAI',
                       'VCF', 'BCF', 'CSI', 'GZI', 'TBI', 'BED')
@@ -189,12 +194,15 @@ cdef class HTSFile(object):
             raise OSError('seek not available in streams')
 
         cdef int64_t ret
-        if self.htsfile.format.compression != no_compression:
+        if self.htsfile.format.compression == bgzf:
             with nogil:
                 ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
-        else:
+        elif self.htsfile.format.compression == no_compression:
             with nogil:
                 ret = hts_useek(self.htsfile, <int>offset, SEEK_SET)
+        else:
+            raise NotImplementedError("seek not implemented in files compressed by method {}".format(
+                self.htsfile.format.compression))
         return ret
 
     def tell(self):
@@ -205,12 +213,19 @@ cdef class HTSFile(object):
             raise OSError('tell not available in streams')
 
         cdef int64_t ret
-        if self.htsfile.format.compression != no_compression:
+        if self.htsfile.format.compression == bgzf:
             with nogil:
                 ret = bgzf_tell(hts_get_bgzfp(self.htsfile))
-        else:
+        elif self.htsfile.format.compression == no_compression:
             with nogil:
                 ret = hts_utell(self.htsfile)
+        elif self.htsfile.format.format == cram:
+            with nogil:
+                ret = htell(cram_fd_get_fp(self.htsfile.fp.cram))
+        else:
+            raise NotImplementedError("seek not implemented in files compressed by method {}".format(
+                self.htsfile.format.compression))
+
         return ret
 
     cdef htsFile *_open_htsfile(self) except? NULL:

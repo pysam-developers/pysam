@@ -16,6 +16,9 @@ from libc.stdio cimport fprintf, stderr, fflush
 from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY
 
+from libcbcftools cimport bcftools_main
+from libcsamtools cimport samtools_main
+
 #####################################################################
 # hard-coded constants
 cdef int MAX_POS = 2 << 29

@@ -44,6 +44,10 @@ typedef void (*set_tprob_f) (hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *
 hmm_t *hmm_init(int nstates, double *tprob, int ntprob);
 void hmm_set_tprob(hmm_t *hmm, double *tprob, int ntprob);
 
+#define HMM_VIT 1
+#define HMM_FWD 2
+#define HMM_BWD 4
+
 /**
  *   hmm_init_states() - initial state probabilities
  *   @probs:  initial state probabilities or NULL to reset to default
@@ -51,6 +55,20 @@ void hmm_set_tprob(hmm_t *hmm, double *tprob, int ntprob);
  *   If uncalled, all states are initialized with the same likelihood
  */
 void hmm_init_states(hmm_t *hmm, double *probs);
+
+/**
+ *   hmm_snapshot() - take the model's snapshot, intended for sliding HMM
+ *   @snapshot: NULL or snapshot returned by previous hmm_snapshot() call, must be free()-ed by the caller
+ *   @isite:    take the snapshot at i-th step
+ */
+void *hmm_snapshot(hmm_t *hmm, void *snapshot, int isite);
+
+/**
+ *   hmm_restore() - restore model's snapshot, intended for sliding HMM
+ *   @snapshot: snapshot returned by hmm_snapshot() call or NULL to reset
+ *   @isite:    take the snapshot at i-th step
+ */
+void hmm_restore(hmm_t *hmm, void *snapshot);
 
 /**
  *   hmm_get_tprob() - return the array of transition matrices, precalculated
@@ -103,11 +121,11 @@ double *hmm_get_fwd_bwd_prob(hmm_t *hmm);
  *   @eprob:    emission probabilities for each site and state (nsites x nstates)
  *   @sites:    list of positions
  *
- *   Same as hmm_run_fwd_bwd, in addition curr_tprob contains the new
- *   transition probabilities. In this verison, emission probabilities
- *   are not updated.
+ *   Same as hmm_run_fwd_bwd, in addition a pointer to a matrix with the new
+ *   transition probabilities is returned. In this verison, emission
+ *   probabilities are not updated.
  */
-void hmm_run_baum_welch(hmm_t *hmm, int nsites, double *eprob, uint32_t *sites);
+double *hmm_run_baum_welch(hmm_t *hmm, int nsites, double *eprob, uint32_t *sites);
 
 void hmm_destroy(hmm_t *hmm);
 

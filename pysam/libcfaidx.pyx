@@ -59,7 +59,7 @@ from cpython.version cimport PY_MAJOR_VERSION
 
 from pysam.libchtslib cimport \
     faidx_nseq, fai_load, fai_destroy, fai_fetch, \
-    faidx_seq_len, \
+    faidx_seq_len, faidx_iseq, faidx_seq_len, \
     faidx_fetch_seq, hisremote, \
     bgzf_open, bgzf_close
 
@@ -154,21 +154,17 @@ cdef class FastaFile:
         if self.fastafile == NULL:
             raise IOError("could not open file `%s`" % filename)
 
-        if self.is_remote:
-            filepath_index = os.path.basename(
-                re.sub("[^:]+:[/]*", "", filename)) + ".fai"
-        elif filepath_index is None:
-            filepath_index = filename + ".fai"
-
-        if not os.path.exists(filepath_index):
-            raise ValueError("could not locate index file {}".format(
-                filepath_index))
-
-        with open(filepath_index) as inf:
-            data = [x.split("\t") for x in inf]
-            self._references = tuple(x[0] for x in data)
-            self._lengths = tuple(int(x[1]) for x in data)
-            self.reference2length = dict(zip(self._references, self._lengths))
+        cdef int nreferences = faidx_nseq(self.fastafile)
+        cdef int x
+        cdef const char * s
+        self._references = []
+        self._lengths = []
+        for x from 0 <= x < nreferences:
+            s = faidx_iseq(self.fastafile, x)
+            ss = force_str(s)
+            self._references.append(ss)
+            self._lengths.append(faidx_seq_len(self.fastafile, s))
+        self.reference2length = dict(zip(self._references, self._lengths))
 
     def close(self):
         """close the file."""

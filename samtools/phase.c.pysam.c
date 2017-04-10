@@ -33,9 +33,9 @@ DEALINGS IN THE SOFTWARE.  */
 #include <stdint.h>
 #include <math.h>
 #include <zlib.h>
+#include "htslib/hts.h"
 #include "htslib/sam.h"
 #include "htslib/kstring.h"
-#include "errmod.h"
 #include "sam_opts.h"
 #include "samtools.h"
 
@@ -582,7 +582,7 @@ int main_phase(int argc, char *argv[])
 
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
     static const struct option lopts[] = {
-        SAM_OPT_GLOBAL_OPTIONS('-', 0, 0, 0, 0),
+        SAM_OPT_GLOBAL_OPTIONS('-', 0, 0, 0, 0, '-'),
         { NULL, 0, NULL, 0 }
     };
 
@@ -622,7 +622,7 @@ int main_phase(int argc, char *argv[])
 //      fprintf(pysam_stderr, "         -e        do not discover SNPs (effective with -l)\n");
         fprintf(pysam_stderr, "\n");
 
-        sam_global_opt_help(pysam_stderr, "-....");
+        sam_global_opt_help(pysam_stderr, "-....-");
 
         return 1;
     }

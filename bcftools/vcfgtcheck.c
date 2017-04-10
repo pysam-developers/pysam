@@ -35,7 +35,9 @@ THE SOFTWARE.  */
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
+#include <inttypes.h>
 #include "bcftools.h"
+#include "hclust.h"
 
 typedef struct
 {
@@ -43,10 +45,10 @@ typedef struct
     bcf_hdr_t *gt_hdr, *sm_hdr; // VCF with genotypes to compare against and the query VCF
     int ntmp_arr, npl_arr;
     int32_t *tmp_arr, *pl_arr;
-    double *lks, *sites;
+    double *lks, *sites, min_inter_err, max_intra_err;
     int *cnts, *dps, hom_only, cross_check, all_sites;
     char *cwd, **argv, *gt_fname, *plot, *query_sample, *target_sample;
-    int argc, no_PLs;
+    int argc, no_PLs, narr, nsmpl;
 }
 args_t;
 
@@ -133,6 +135,7 @@ static void plot_check(args_t *args, char *target_sample, char *query_sample)
     free(fname);
 }
 
+#if 0
 static void plot_cross_check(args_t *args)
 {
     char *fname;
@@ -214,6 +217,7 @@ static void plot_cross_check(args_t *args)
     py_plot(fname);
     free(fname);
 }
+#endif
 
 static void init_data(args_t *args)
 {
@@ -229,14 +233,6 @@ static void init_data(args_t *args)
         args->cnts  = (int*) calloc(nsamples,sizeof(int));
         args->sites = (double*) calloc(nsamples,sizeof(double));
         args->dps   = (int*) calloc(nsamples,sizeof(int));
-    }
-    else
-    {
-        int nsamples = bcf_hdr_nsamples(args->sm_hdr);
-        int narr = (nsamples-1)*nsamples/2;
-        args->lks  = (double*) calloc(narr,sizeof(double));
-        args->cnts = (int*) calloc(narr,sizeof(int));
-        args->dps  = (int*) calloc(narr,sizeof(int));
     }
 }
 
@@ -524,177 +520,181 @@ static void check_gt(args_t *args)
     }
 }
 
-static inline int is_hom_most_likely(int nals, int *pls)
+// static inline int is_hom_most_likely(int nals, int *pls)
+// {
+//     int ia, ib, idx = 1, min_is_hom = 1, min_pl = pls[0];
+//     for (ia=1; ia<nals; ia++)
+//     {
+//         for (ib=0; ib<ia; ib++)
+//         {
+//             if ( pls[idx] < min_pl ) { min_pl = pls[idx]; min_is_hom = 0; }
+//             idx++;
+//         }
+//         if ( pls[idx] < min_pl ) { min_pl = pls[idx]; min_is_hom = 1; }
+//         idx++;
+//     }
+//     return min_is_hom;
+// }
+
+int process_GT(args_t *args, bcf1_t *line, uint32_t *ntot, uint32_t *ndif)
 {
-    int ia, ib, idx = 1, min_is_hom = 1, min_pl = pls[0];
-    for (ia=1; ia<nals; ia++)
+    int ngt = bcf_get_genotypes(args->sm_hdr, line, &args->tmp_arr, &args->ntmp_arr);
+
+    if ( ngt<=0 ) return 1;                 // GT not present
+    if ( ngt!=args->nsmpl*2 ) return 2;     // not diploid
+    ngt /= args->nsmpl;
+    
+    int i,j, idx = 0;
+    for (i=1; i<args->nsmpl; i++)
     {
-        for (ib=0; ib<ia; ib++)
+        int32_t *a = args->tmp_arr + i*ngt;
+        if ( bcf_gt_is_missing(a[0]) || bcf_gt_is_missing(a[1]) || a[1]==bcf_int32_vector_end ) { idx+=i; continue; }
+        int agt = 1<<bcf_gt_allele(a[0]) | 1<<bcf_gt_allele(a[1]);
+
+        for (j=0; j<i; j++)
         {
-            if ( pls[idx] < min_pl ) { min_pl = pls[idx]; min_is_hom = 0; }
+            int32_t *b = args->tmp_arr + j*ngt;
+            if ( bcf_gt_is_missing(b[0]) || bcf_gt_is_missing(b[1]) || b[1]==bcf_int32_vector_end ) { idx++; continue; }
+            int bgt = 1<<bcf_gt_allele(b[0]) | 1<<bcf_gt_allele(b[1]);
+
+            ntot[idx]++;
+            if ( agt!=bgt ) ndif[idx]++;
             idx++;
         }
-        if ( pls[idx] < min_pl ) { min_pl = pls[idx]; min_is_hom = 1; }
-        idx++;
     }
-    return min_is_hom;
+    return 0;
+}
+int process_PL(args_t *args, bcf1_t *line, uint32_t *ntot, uint32_t *ndif)
+{
+    int npl = bcf_get_format_int32(args->sm_hdr, line, "PL", &args->tmp_arr, &args->ntmp_arr);
+
+    if ( npl<=0 ) return 1;                 // PL not present
+    npl /= args->nsmpl;
+    
+    int i,j,k, idx = 0;
+    for (i=1; i<args->nsmpl; i++)
+    {
+        int32_t *a = args->tmp_arr + i*npl;
+        int imin = -1;
+        for (k=0; k<npl; k++)
+        {
+            if ( a[k]==bcf_int32_vector_end ) break;
+            if ( a[k]==bcf_int32_missing ) continue;
+            if ( imin==-1 || a[imin] > a[k] ) imin = k;
+        }
+        if ( imin<0 ) { idx+=i; continue; }
+
+        for (j=0; j<i; j++)
+        {
+            int32_t *b = args->tmp_arr + j*npl;
+            int jmin = -1;
+            for (k=0; k<npl; k++)
+            {
+                if ( b[k]==bcf_int32_vector_end ) break;
+                if ( b[k]==bcf_int32_missing ) continue;
+                if ( jmin==-1 || b[jmin] > b[k] ) jmin = k;
+            }
+            if ( jmin<0 ) { idx++; continue; }
+
+            ntot[idx]++;
+            if ( imin!=jmin ) ndif[idx]++;
+            idx++;
+        }
+    }
+    return 0;
 }
 
 static void cross_check_gts(args_t *args)
 {
-    int nsamples = bcf_hdr_nsamples(args->sm_hdr), ndp_arr = 0;
-    unsigned int *dp = (unsigned int*) calloc(nsamples,sizeof(unsigned int)), *ndp = (unsigned int*) calloc(nsamples,sizeof(unsigned int)); // this will overflow one day...
-    int fake_pls = args->no_PLs, ignore_dp = 0;
-
-    int i,j,k,idx, pl_warned = 0, dp_warned = 0;
-    int32_t *dp_arr = NULL;
-    int *is_hom = args->hom_only ? (int*) malloc(sizeof(int)*nsamples) : NULL;
+    // Initialize things: check which tags are defined in the header, sample names etc.
     if ( bcf_hdr_id2int(args->sm_hdr, BCF_DT_ID, "PL")<0 )
     {
         if ( bcf_hdr_id2int(args->sm_hdr, BCF_DT_ID, "GT")<0 )
             error("[E::%s] Neither PL nor GT present in the header of %s\n", __func__, args->files->readers[0].fname);
-        if ( !args->no_PLs )
+        if ( !args->no_PLs ) {
             fprintf(stderr,"Warning: PL not present in the header of %s, using GT instead\n", args->files->readers[0].fname);
-        fake_pls = 1;
+            args->no_PLs = 99;
+        }
     }
-    if ( bcf_hdr_id2int(args->sm_hdr, BCF_DT_ID, "DP")<0 ) ignore_dp = 1;
 
-    FILE *fp = args->plot ? open_file(NULL, "w", "%s.tab", args->plot) : stdout;
-    print_header(args, fp);
-    if ( args->all_sites ) fprintf(fp,"# [1]SD, Average Site Discordance\t[2]Chromosome\t[3]Position\t[4]Number of available pairs\t[5]Average discordance\n");
+    args->nsmpl = bcf_hdr_nsamples(args->sm_hdr);
+    args->narr  = (args->nsmpl-1)*args->nsmpl/2;
+
+    uint32_t *ndif = (uint32_t*) calloc(args->narr,4);
+    uint32_t *ntot = (uint32_t*) calloc(args->narr,4);
 
     while ( bcf_sr_next_line(args->files) )
     {
-        bcf1_t *line = args->files->readers[0].buffer[0];
-        bcf_unpack(line, BCF_UN_FMT);
+        bcf1_t *line = bcf_sr_get_line(args->files,0);
 
-        int npl;
-        if ( !fake_pls )
+        // use PLs unless no_PLs is set and GT exists
+        if ( args->no_PLs )
         {
-            npl = bcf_get_format_int32(args->sm_hdr, line, "PL", &args->pl_arr, &args->npl_arr);
-            if ( npl<=0 ) { pl_warned++; continue; }
-            npl /= nsamples;
+            if ( process_GT(args,line,ntot,ndif)==0 ) continue;
         }
-        else
-            npl = fake_PLs(args, args->sm_hdr, line);
-        int mdp = 0;
-        if ( !ignore_dp && (mdp=bcf_get_format_int32(args->sm_hdr, line, "DP", &dp_arr, &ndp_arr)) <= 0 ) dp_warned++;
-
-        if ( args->hom_only )
-        {
-            for (i=0; i<nsamples; i++)
-                is_hom[i] = is_hom_most_likely(line->n_allele, args->pl_arr+i*npl);
-        }
-
-        double sum = 0; int nsum = 0;
-        idx = 0;
-        for (i=0; i<nsamples; i++)
-        {
-            int *ipl = &args->pl_arr[i*npl];
-            if ( *ipl==-1 ) { idx += i; continue; } // missing genotype
-            if ( mdp>0 && (dp_arr[i]==bcf_int32_missing || !dp_arr[i]) ) { idx += i; continue; }
-            if ( args->hom_only && !is_hom[i] ) { idx += i; continue; }
-
-            for (j=0; j<i; j++)
-            {
-                int *jpl = &args->pl_arr[j*npl];
-                if ( *jpl==-1 ) { idx++; continue; } // missing genotype
-                if ( mdp>0 && (dp_arr[j]==bcf_int32_missing || !dp_arr[j]) ) { idx++; continue; }
-                if ( args->hom_only && !is_hom[j] ) { idx++; continue; }
-
-                int min_pl = INT_MAX;
-                for (k=0; k<npl; k++)
-                {
-                    if ( ipl[k]==bcf_int32_missing || jpl[k]==bcf_int32_missing ) break;
-                    if ( ipl[k]==bcf_int32_vector_end || jpl[k]==bcf_int32_vector_end ) { k = npl; break; }
-                    if ( min_pl > ipl[k]+jpl[k] ) min_pl = ipl[k]+jpl[k];
-                }
-                if ( k!=npl ) { idx++; continue; }
-
-                if ( args->all_sites ) { sum += min_pl; nsum++; }
-                args->lks[idx] += min_pl;
-                args->cnts[idx]++;
-
-                if ( mdp>0 )
-                {
-                    args->dps[idx] += dp_arr[i] < dp_arr[j] ? dp_arr[i] : dp_arr[j];
-                    dp[i] += dp_arr[i]; ndp[i]++;
-                    dp[j] += dp_arr[j]; ndp[j]++;
-                }
-                else
-                {
-                    args->dps[idx]++;
-                    dp[i]++; ndp[i]++;
-                    dp[j]++; ndp[j]++;
-                }
-                idx++;
-            }
-        }
-        if ( args->all_sites )
-            fprintf(fp,"SD\t%s\t%d\t%d\t%.0f\n", args->sm_hdr->id[BCF_DT_CTG][line->rid].key, line->pos+1, nsum, nsum?sum/nsum:0);
+        process_PL(args,line,ntot,ndif);
     }
-    if ( dp_arr ) free(dp_arr);
-    if ( args->pl_arr ) free(args->pl_arr);
-    if ( args->tmp_arr ) free(args->tmp_arr);
-    if ( is_hom ) free(is_hom);
+    
+    FILE *fp = stdout;
+    print_header(args, fp);
 
-    if ( pl_warned ) fprintf(stderr, "[W::%s] PL was not found at %d site(s)\n", __func__, pl_warned);
-    if ( dp_warned ) fprintf(stderr, "[W::%s] DP was not found at %d site(s)\n", __func__, dp_warned);
+    float *tmp = (float*)malloc(sizeof(float)*args->nsmpl*(args->nsmpl-1)/2);
 
-    // Output samples sorted by average discordance
-    double *score  = (double*) calloc(nsamples,sizeof(double));
-    args->sites = (double*) calloc(nsamples,sizeof(double));
-    idx = 0;
-    for (i=0; i<nsamples; i++)
+    // Output pairwise distances
+    fprintf(fp, "# ERR, error rate\t[2]Pairwise error rate\t[3]Number of sites compared\t[4]Sample i\t[5]Sample j\n");
+    int i,j, idx = 0;
+    for (i=0; i<args->nsmpl; i++)
     {
         for (j=0; j<i; j++)
         {
-            score[i] += args->lks[idx];
-            score[j] += args->lks[idx];
-            args->sites[i] += args->cnts[idx];
-            args->sites[j] += args->cnts[idx];
+            float err = ntot[idx] ? (float)ndif[idx]/ntot[idx] : 1e-10;
+            fprintf(fp, "ERR\t%f\t%"PRId32"\t%s\t%s\n", err, ntot[idx],args->sm_hdr->samples[i],args->sm_hdr->samples[j]);
+            PDIST(tmp,i,j) = err;
             idx++;
         }
     }
-    for (i=0; i<nsamples; i++)
-        if ( args->sites[i] ) score[i] /= args->sites[i];
-    double **p = (double**) malloc(sizeof(double*)*nsamples), avg_score = 0;
-    for (i=0; i<nsamples; i++) p[i] = &score[i];
-    qsort(p, nsamples, sizeof(int*), cmp_doubleptr);
-    // The average discordance gives the number of differing sites in % with -G1
-    fprintf(fp, "# [1]SM\t[2]Average Discordance\t[3]Average depth\t[4]Average number of sites\t[5]Sample\t[6]Sample ID\n");
-    for (i=0; i<nsamples; i++)
+
+    // Cluster samples
+    int nlist;
+    float clust_max_err = args->max_intra_err;
+    hclust_t *clust = hclust_init(args->nsmpl,tmp);
+    cluster_t *list = hclust_create_list(clust,args->min_inter_err,&clust_max_err,&nlist);
+    fprintf(fp, "# CLUSTER\t[2]Maximum inter-cluster ERR\t[3-]List of samples\n");
+    for (i=0; i<nlist; i++)
     {
-        idx = p[i] - score;
-        double adp = ndp[idx] ? (double)dp[idx]/ndp[idx] : 0;
-        double nsites = args->sites[idx]/(nsamples-1);
-        avg_score += score[idx];
-        fprintf(fp, "SM\t%f\t%.2lf\t%.0lf\t%s\t%d\n", score[idx]*100., adp, nsites, args->sm_hdr->samples[idx],i);
+        fprintf(fp,"CLUSTER\t%f", list[i].dist);
+        for (j=0; j<list[i].nmemb; j++)
+            fprintf(fp,"\t%s",args->sm_hdr->samples[list[i].memb[j]]);
+        fprintf(fp,"\n");
     }
+    hclust_destroy_list(list,nlist);
+    // Debugging output: the cluster graph and data used for deciding
+    char **dbg = hclust_explain(clust,&nlist);
+    for (i=0; i<nlist; i++)
+        fprintf(fp,"DBG\t%s\n", dbg[i]);
+    fprintf(fp, "# TH, clustering threshold\t[2]Value\nTH\t%f\n",clust_max_err);
+    fprintf(fp, "# DOT\t[2]Cluster graph, visualize e.g. as \"this-output.txt | grep ^DOT | cut -f2- | dot -Tsvg -o graph.svg\"\n");
+    fprintf(fp, "DOT\t%s\n", hclust_create_dot(clust,args->sm_hdr->samples,clust_max_err));
+    hclust_destroy(clust);
+    free(tmp);
 
-    //  // Overall score: maximum absolute deviation from the average score
-    //  fprintf(fp, "# [1] MD\t[2]Maximum deviation\t[3]The culprit\n");
-    //  fprintf(fp, "MD\t%f\t%s\n", (score[idx] - avg_score/nsamples)*100., args->sm_hdr->samples[idx]);    // idx still set
-    free(p);
-    free(score);
-    free(dp);
-    free(ndp);
 
-    // Pairwise discordances
+    // Deprecated output for temporary backward compatibility
+    fprintf(fp, "# Warning: The CN block is deprecated and will be removed in future releases. Use ERR instead.\n");
     fprintf(fp, "# [1]CN\t[2]Discordance\t[3]Number of sites\t[4]Average minimum depth\t[5]Sample i\t[6]Sample j\n");
     idx = 0;
-    for (i=0; i<nsamples; i++)
+    for (i=0; i<args->nsmpl; i++)
     {
         for (j=0; j<i; j++)
         {
-            fprintf(fp, "CN\t%.0f\t%d\t%.2f\t%s\t%s\n", args->lks[idx], args->cnts[idx], args->cnts[idx]?(double)args->dps[idx]/args->cnts[idx]:0.0,
-                    args->sm_hdr->samples[i],args->sm_hdr->samples[j]);
+            fprintf(fp, "CN\t%"PRId32"\t%"PRId32"\t0\t%s\t%s\n", ndif[idx], ntot[idx],args->sm_hdr->samples[i],args->sm_hdr->samples[j]);
             idx++;
         }
     }
-    fclose(fp);
-    if ( args->plot )
-        plot_cross_check(args);
+
+    free(ndif);
+    free(ntot);
+    free(args->tmp_arr);
 }
 
 static char *init_prefix(char *prefix)
@@ -713,6 +713,7 @@ static void usage(void)
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    -a, --all-sites                 output comparison for all sites\n");
+    fprintf(stderr, "    -c, --cluster <min,max>         min inter- and max intra-sample error [0.23,-0.3]\n");
     fprintf(stderr, "    -g, --genotypes <file>          genotypes to compare against\n");
     fprintf(stderr, "    -G, --GTs-only <int>            use GTs, ignore PLs, using <int> for unseen genotypes [99]\n");
     fprintf(stderr, "    -H, --homs-only                 homozygous genotypes only (useful for low coverage data)\n");
@@ -736,8 +737,16 @@ int main_vcfgtcheck(int argc, char *argv[])
     char *regions = NULL, *targets = NULL;
     int regions_is_file = 0, targets_is_file = 0;
 
+    // In simulated sample swaps the minimum error was 0.3 and maximum intra-sample error was 0.23
+    //    - min_inter: pairs with smaller err value will be considered identical 
+    //    - max_intra: pairs with err value bigger than abs(max_intra_err) will be considered
+    //                  different. If negative, the cutoff may be heuristically lowered
+    args->min_inter_err =  0.23;
+    args->max_intra_err = -0.3;
+
     static struct option loptions[] =
     {
+        {"cluster",1,0,'c'},
         {"GTs-only",1,0,'G'},
         {"all-sites",0,0,'a'},
         {"homs-only",0,0,'H'},
@@ -753,8 +762,17 @@ int main_vcfgtcheck(int argc, char *argv[])
         {0,0,0,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "hg:p:s:S:Hr:R:at:T:G:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "hg:p:s:S:Hr:R:at:T:G:c:",loptions,NULL)) >= 0) {
         switch (c) {
+            case 'c':
+                args->min_inter_err = strtod(optarg,&tmp);
+                if ( *tmp )
+                {
+                    if ( *tmp!=',') error("Could not parse: -c %s\n", optarg);
+                    args->max_intra_err = strtod(tmp+1,&tmp);
+                    if ( *tmp ) error("Could not parse: -c %s\n", optarg);
+                }
+                break;
             case 'G':
                 args->no_PLs = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --GTs-only %s\n", optarg);

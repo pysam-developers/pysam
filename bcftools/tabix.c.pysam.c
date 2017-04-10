@@ -3,7 +3,7 @@
 /*  tabix.c -- tabix subcommand.
 
     Copyright (C) 2012 Broad Institute.
-    Copyright (C) 2013 Genome Research Ltd.
+    Copyright (C) 2013, 2016 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -34,8 +34,8 @@ THE SOFTWARE.  */
 
 int main_tabix(int argc, char *argv[])
 {
-    int c, min_shift = -1, is_force = 0, is_all = 0;
-    tbx_conf_t conf = tbx_conf_gff, *conf_ptr = NULL;
+    int c, min_shift = -1, is_force = 0, is_all = 0, detect = 1;
+    tbx_conf_t conf = tbx_conf_gff;
     while ((c = getopt(argc, argv, "0fap:s:b:e:S:c:m:")) >= 0)
         if (c == '0') conf.preset |= TBX_UCSC;
         else if (c == 'f') is_force = 1;
@@ -47,13 +47,14 @@ int main_tabix(int argc, char *argv[])
         else if (c == 'c') conf.meta_char = *optarg;
         else if (c == 'S') conf.line_skip = atoi(optarg);
         else if (c == 'p') {
-            if (strcmp(optarg, "gff") == 0) conf_ptr = &tbx_conf_gff;
-            else if (strcmp(optarg, "bed") == 0) conf_ptr = &tbx_conf_bed;
-            else if (strcmp(optarg, "sam") == 0) conf_ptr = &tbx_conf_sam;
-            else if (strcmp(optarg, "vcf") == 0) conf_ptr = &tbx_conf_vcf;
+            if (strcmp(optarg, "gff") == 0) conf = tbx_conf_gff;
+            else if (strcmp(optarg, "bed") == 0) conf = tbx_conf_bed;
+            else if (strcmp(optarg, "sam") == 0) conf = tbx_conf_sam;
+            else if (strcmp(optarg, "vcf") == 0) conf = tbx_conf_vcf;
             else {
                 fprintf(pysam_stderr, "The type '%s' not recognised\n", optarg);
                 return 1;
+            detect = 0;
             }
 
         }
@@ -81,17 +82,16 @@ int main_tabix(int argc, char *argv[])
         bgzf_close(fp);
         free(s.s);
     } else if (optind + 2 > argc) { // create index
-        if ( !conf_ptr )
+        if ( detect )
         {
             // auto-detect file type by file name
             int l = strlen(argv[optind]);
             int strcasecmp(const char *s1, const char *s2);
-            if (l>=7 && strcasecmp(argv[optind]+l-7, ".gff.gz") == 0) conf_ptr = &tbx_conf_gff;
-            else if (l>=7 && strcasecmp(argv[optind]+l-7, ".bed.gz") == 0) conf_ptr = &tbx_conf_bed;
-            else if (l>=7 && strcasecmp(argv[optind]+l-7, ".sam.gz") == 0) conf_ptr = &tbx_conf_sam;
-            else if (l>=7 && strcasecmp(argv[optind]+l-7, ".vcf.gz") == 0) conf_ptr = &tbx_conf_vcf;
+            if (l>=7 && strcasecmp(argv[optind]+l-7, ".gff.gz") == 0) conf = tbx_conf_gff;
+            else if (l>=7 && strcasecmp(argv[optind]+l-7, ".bed.gz") == 0) conf = tbx_conf_bed;
+            else if (l>=7 && strcasecmp(argv[optind]+l-7, ".sam.gz") == 0) conf = tbx_conf_sam;
+            else if (l>=7 && strcasecmp(argv[optind]+l-7, ".vcf.gz") == 0) conf = tbx_conf_vcf;
         }
-        if ( conf_ptr ) conf = *conf_ptr;
 
         if (!is_force) {
             char *fn;

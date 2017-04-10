@@ -388,9 +388,15 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.query_alignment_length, 20)
         a.cigarstring = "20M1S"
         self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "20M1H"
+        self.assertEqual(a.query_alignment_length, 20)
         a.cigarstring = "1S20M"
         self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1H20M"
+        self.assertEqual(a.query_alignment_length, 20)
         a.cigarstring = "1S20M1S"
+        self.assertEqual(a.query_alignment_length, 20)
+        a.cigarstring = "1H20M1H"
         self.assertEqual(a.query_alignment_length, 20)
 
     def test_query_length_is_limited(self):
@@ -783,6 +789,35 @@ class TestAsString(unittest.TestCase):
             os.path.join(DATADIR, "ex2.bam"), "r") as pysamf:
             for s, p in zip(reference, pysamf):
                 self.assertEqual(s, p.tostring(pysamf))
+
+
+class TestEnums(unittest.TestCase):
+    
+    def test_cigar_enums_are_defined(self):
+        self.assertEqual(pysam.CMATCH, 0)
+        self.assertEqual(pysam.CINS, 1)
+        self.assertEqual(pysam.CDEL, 2)
+        self.assertEqual(pysam.CREF_SKIP, 3)
+        self.assertEqual(pysam.CSOFT_CLIP, 4)
+        self.assertEqual(pysam.CHARD_CLIP, 5)
+        self.assertEqual(pysam.CPAD, 6)
+        self.assertEqual(pysam.CEQUAL, 7)
+        self.assertEqual(pysam.CDIFF, 8)
+        self.assertEqual(pysam.CBACK, 9)
+
+    def test_sam_flags_are_defined(self):
+        self.assertEqual(pysam.FPAIRED, 1)
+        self.assertEqual(pysam.FPROPER_PAIR, 2)
+        self.assertEqual(pysam.FUNMAP, 4)
+        self.assertEqual(pysam.FMUNMAP, 8)
+        self.assertEqual(pysam.FREVERSE, 16)
+        self.assertEqual(pysam.FMREVERSE, 32)
+        self.assertEqual(pysam.FREAD1, 64)
+        self.assertEqual(pysam.FREAD2, 128)
+        self.assertEqual(pysam.FSECONDARY, 256)
+        self.assertEqual(pysam.FQCFAIL, 512)
+        self.assertEqual(pysam.FDUP, 1024)
+        self.assertEqual(pysam.FSUPPLEMENTARY, 2048)
 
 
 if __name__ == "__main__":
