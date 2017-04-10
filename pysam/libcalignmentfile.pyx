@@ -704,7 +704,7 @@ cdef class AlignmentFile(HTSFile):
         cdef long long rstart
         cdef long long rend
 
-        if reference is None and tid is None:
+        if reference is None and tid is None and region is None:
             return 0, 0, 0, 0
 
         rtid = -1
