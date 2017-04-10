@@ -439,10 +439,12 @@ class TestIO(unittest.TestCase):
                   input_filename,
                   reference_filename,
                   output_filename,
-                  input_mode, output_mode,
+                  input_mode,
+                  output_mode,
                   sequence_filename=None,
                   use_template=True,
-                  checkf=checkBinaryEqual):
+                  checkf=checkBinaryEqual,
+                  **kwargs):
         '''iterate through *input_filename* writing to
         *output_filename* and comparing the output to
         *reference_filename*.
@@ -477,7 +479,7 @@ class TestIO(unittest.TestCase):
                     output_filename,
                     output_mode,
                     reference_filename=sequence_filename,
-                    template=infile)
+                    template=infile, **kwargs)
             else:
                 outfile = pysam.AlignmentFile(
                     output_filename,
@@ -485,7 +487,8 @@ class TestIO(unittest.TestCase):
                     reference_names=infile.references,
                     reference_lengths=infile.lengths,
                     reference_filename=sequence_filename,
-                    add_sq_text=False)
+                    add_sq_text=False,
+                    **kwargs)
 
             iter = infile.fetch()
 
@@ -508,6 +511,13 @@ class TestIO(unittest.TestCase):
                        "ex2.sam",
                        "tmp_ex2.sam",
                        "r", "wh")
+
+    def testSAM2SAMWithoutHeader(self):
+        self.checkEcho("ex2.sam",
+                       "ex1.sam",
+                       "tmp_ex2.sam",
+                       "r", "w",
+                       add_sam_header=False)
 
     def testBAM2BAM(self):
         self.checkEcho("ex2.bam",
@@ -588,14 +598,6 @@ class TestIO(unittest.TestCase):
     #     self.checkEcho(input_filename, reference_filename, output_filename,
     #                    "rb", "wb", use_template=False)
 
-    # Release 0.8.0
-    # no samfiles without header
-    def testSAM2SAMWithoutHeader(self):
-        self.checkEcho("ex2.sam",
-                       "ex1.sam",
-                       "tmp_ex2.sam",
-                       "r", "w")
-
     def testReadSamWithoutTargetNames(self):
         '''see issue 104.'''
         input_filename = os.path.join(
@@ -614,14 +616,12 @@ class TestIO(unittest.TestCase):
                           input_filename, "r",
                           check_header=True)
 
-        infile = pysam.AlignmentFile(
+        with pysam.AlignmentFile(
             input_filename,
             check_header=False,
-            check_sq=False)
-
-        # TODO
-        # result = list(infile.fetch(until_eof=True))
-        # self.assertEqual(2, len(result))
+            check_sq=False) as infile:
+            result = list(infile.fetch(until_eof=True))
+            self.assertEqual(2, len(result))
 
     def testReadBamWithoutTargetNames(self):
         '''see issue 104.'''
@@ -641,52 +641,43 @@ class TestIO(unittest.TestCase):
                           "r",
                           check_header=True)
 
-        infile = pysam.AlignmentFile(
-            input_filename, check_header=False, check_sq=False)
-        result = list(infile.fetch(until_eof=True))
+        with pysam.AlignmentFile(
+            input_filename, check_sq=False) as infile:
+            result = list(infile.fetch(until_eof=True))
 
-    # TODO
-    def testReadSamWithoutHeader(self):
+    def test_fail_read_sam_without_header(self):
         input_filename = os.path.join(DATADIR, "ex1.sam")
 
-        # reading from a samfile without header is not
-        # implemented
         self.assertRaises(ValueError,
                           pysam.AlignmentFile,
                           input_filename,
                           "r")
 
-        # TODO
-        # without check_header header is no read
-        # leading to segfault
-        # self.assertRaises(ValueError,
-        #                   pysam.AlignmentFile,
-        #                   input_filename,
-        #                   "r",
-        #                   check_header=False)
+    def test_pass_read_sam_without_header_with_refs(self):
+        with pysam.AlignmentFile(os.path.join(DATADIR, "ex1.sam"),
+                                 "r",
+                                 reference_names=["chr1", "chr2"],
+                                 reference_lengths=[1575, 1584]) as samfile:
+            self.assertEqual(len(list(samfile.fetch(until_eof=True))), 3270)
 
-    # TODO
-    # def testReadUnformattedFile(self):
-    #     '''test reading from a file that is not bam/sam formatted'''
-    #     input_filename = os.path.join(DATADIR, 'Makefile')
+    def test_pass_read_sam_with_header_without_header_check(self):
+        with pysam.AlignmentFile(os.path.join(DATADIR, "ex2.sam"),
+                                 "r", check_header=False) as samfile:
+            self.assertEqual(len(list(samfile.fetch(until_eof=True))), 3270)
 
-    #     # bam - file raise error
-    #     self.assertRaises(ValueError,
-    #                       pysam.AlignmentFile,
-    #                       input_filename,
-    #                       "rb")
+    def test_fail_when_reading_unformatted_files(self):
+        '''test reading from a file that is not bam/sam formatted'''
+        input_filename = os.path.join(DATADIR, 'Makefile')
 
-    #     # sam - file error, but can't fetch
-    #     self.assertRaises(ValueError,
-    #                       pysam.AlignmentFile,
-    #                       input_filename,
-    #                       "r")
+        self.assertRaises(ValueError,
+                          pysam.AlignmentFile,
+                          input_filename,
+                          "rb")
 
-    #     self.assertRaises(ValueError,
-    #                       pysam.AlignmentFile,
-    #                       input_filename,
-    #                       "r",
-    #                       check_header=False)
+        self.assertRaises(ValueError,
+                          pysam.AlignmentFile,
+                          input_filename,
+                          "r")
 
     def testBAMWithoutAlignedSegments(self):
         '''see issue 117'''
