@@ -704,6 +704,9 @@ cdef class AlignmentFile(HTSFile):
         cdef long long rstart
         cdef long long rend
 
+        if reference is None and tid is None:
+            return 0, 0, 0, 0
+
         rtid = -1
         rstart = 0
         rend = MAX_POS
@@ -728,11 +731,11 @@ cdef class AlignmentFile(HTSFile):
             if len(parts) >= 3:
                 rend = int(parts[2])
 
-        if not reference:
-            return 0, 0, 0, 0
-
         if tid is not None:
             rtid = tid
+            if rtid < 0 or rtid >= self.header.n_targets:
+                raise IndexError("invalid reference, {} out of range 0-{}".format(
+                        rtid, self.header.n_targets))
         else:
             rtid = self.gettid(reference)
 

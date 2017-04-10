@@ -854,7 +854,23 @@ class TestIO(unittest.TestCase):
                                       check_sq=False)
         samfile.fetch('chr2')
 
-
+    def test_fetch_by_tid(self):
+        with pysam.AlignmentFile(os.path.join(DATADIR, "ex1.bam"), "rb") as samfile:
+            self.assertEqual(len(list(samfile.fetch('chr1'))),
+                             len(list(samfile.fetch(tid=0))))
+            self.assertEqual(len(list(samfile.fetch('chr2'))),
+                             len(list(samfile.fetch(tid=1))))
+            self.assertRaises(
+                IndexError,
+                samfile.fetch,
+                tid=2)
+            self.assertRaises(
+                IndexError,
+                samfile.fetch,
+                tid=-1)
+            self.assertEqual(len(list(samfile.fetch('chr1',start=1000, end=2000))),
+                             len(list(samfile.fetch(tid=0, start=1000, end=2000))))
+            
 
 class TestAutoDetect(unittest.TestCase):
 

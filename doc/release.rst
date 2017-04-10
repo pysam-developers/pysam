@@ -15,6 +15,7 @@ implements a few bugfixes.
 * [#395] Make BGZfile iterable
 * [#433] Correct getQueryEnd
 * [#419] Export SAM enums such as pysam.CMATCH
+* [#415] Fix access by tid in AlignmentFile.fetch()
 
 Release 0.10.0
 ==============
