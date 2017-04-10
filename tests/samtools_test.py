@@ -237,7 +237,7 @@ class SamtoolsTest(unittest.TestCase):
                 continue
             self.check_statement(statement)
 
-    @unitest.skipIf(sys.platform == "darwin", "not supported, pattern does not match")
+    @unittest.skipIf(sys.platform == "darwin", "not supported, pattern does not match")
     def testUsage(self):
         if self.executable == "bcftools":
             # bcftools usage messages end with exit(1)
