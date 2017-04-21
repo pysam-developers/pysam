@@ -1457,14 +1457,19 @@ cdef class AlignedSegment:
 
         return result
 
-    def infer_query_length(self):
+    def infer_query_length(self, always=False):
         """infer query length from sequence or CIGAR alignment.
 
         This method deduces the query length from the CIGAR alignment
         but does not include hard-clipped bases.
 
         Returns None if CIGAR alignment is not present.
+
+        If *always* is set to True, `infer_read_length` is used instead.
+        This is deprecated and only present for backward compatibility.
         """
+        if always is True:
+            return self.infer_read_length()
         return calculateQueryLengthWithoutHardClipping(self._delegate)
 
     def infer_read_length(self):
