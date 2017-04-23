@@ -22,7 +22,7 @@ if ! grep -q docker /proc/1/cgroup; then
   exec docker run --rm -v $(pwd):/io quay.io/pypa/manylinux1_x86_64 /io/$0
 fi
 
-yum install -y zlib-devel
+yum install -y zlib-devel bzip2-devel xz-devel
 
 # Python 2.6 is not supported
 rm -r /opt/python/cp26*
