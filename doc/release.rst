@@ -2,6 +2,13 @@
 Release notes
 =============
 
+Release 0.11.1
+==============
+
+Bugfix release
+
+* [#440] add deprecated 'always' option to infer_query_length for backwards compatibility.
+
 Release 0.11.0
 ==============
 
