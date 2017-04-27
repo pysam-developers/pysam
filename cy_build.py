@@ -66,7 +66,7 @@ class cy_build_ext(build_ext):
                 # develop-mode and tests use local directory
                 pkg_root = os.path.dirname(__file__)
                 linker_path = os.path.join(pkg_root, relative_module_path)
-            elif "bdist_wheel" in sys.argv or is_pip_install():
+            elif "bdist_wheel" in sys.argv or is_pip_install() or "--old-and-unmanageable" in sys.argv:
                 # making a wheel, or pip is secretly involved
                 linker_path = os.path.join("@rpath", relative_module_path)
             else:
@@ -86,5 +86,5 @@ class cy_build_ext(build_ext):
                 ext.extra_link_args = []
 
             ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
-                                    
+
         build_ext.build_extension(self, ext)
