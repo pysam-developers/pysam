@@ -185,19 +185,25 @@ cdef bcf_array_to_object(void *data, int type, ssize_t n, ssize_t count, int sca
     cdef int32_t *data32
     cdef float   *dataf
     cdef int      i
+    cdef bytes    b
 
     if not data or n <= 0:
         return None
 
     if type == BCF_BT_CHAR:
         datac = <char *>data
-        while n and datac[n-1] == bcf_str_vector_end:
-            n -= 1
-        value = charptr_to_str_w_len(datac, n) if datac[0] != bcf_str_missing else None
-        # FIXME: Need to know length?  Report errors?  Pad with missing values?  Not clear what to do.
 
-        value = tuple(v or None for v in value.split(',')) if value else ()
-        # FIXME: Need to know length?  Report errors?  Pad with missing values?  Not clear what to do.
+        if not n:
+            value = ()
+        else:
+            # Check if at least one null terminator is present
+            if datac[n-1] == bcf_str_vector_end:
+                # If so, create a string up to the first null terminator
+                b = datac
+            else:
+                # Otherwise, copy the entire block
+                b = datac[:n]
+            value = tuple(v.decode('ascii') if v and v != bcf_str_missing else None for v in b.split(b','))
     else:
         value = []
         if type == BCF_BT_INT8:
@@ -251,13 +257,13 @@ cdef bcf_object_to_array(values, void *data, int bt_type, ssize_t n, int vlen):
     cdef float   *dataf
     cdef ssize_t  i, value_count = len(values)
 
-    assert(value_count <= n)
+    assert value_count <= n
 
     if bt_type == BCF_BT_CHAR:
         if not isinstance(values, (str, bytes)):
-            values = b','.join(force_bytes(v) if v is not None else b'' for v in values)
+            values = b','.join(force_bytes(v) if v else bcf_str_missing for v in values)
             value_count = len(values)
-        assert(value_count <= n)
+        assert value_count <= n
         datac = <char *>data
         memcpy(datac, <char *>values, value_count)
         for i in range(value_count, n):
@@ -1235,7 +1241,7 @@ cdef class VariantHeaderRecord(object):
         cdef bcf_hrec_t *r = self.ptr
         if not r:
             return
-        assert(r.key)
+        assert r.key
         cdef char *key = r.key if r.type == BCF_HL_GEN else r.value
         print('Removing header type={} key={} value={} hdr={}'.format(METADATA_TYPES[r.type], r.key, r.value, key))
         bcf_hdr_remove(hdr, r.type, key)
@@ -1886,10 +1892,33 @@ cdef class VariantHeader(object):
         finally:
             free(hstr)
 
-    cpdef VariantRecord new_record(self):
+    def new_record(self, contig=None, start=None, stop=None, alleles=None,
+                         id=None, filter=None, qual=None, info=None, **kwargs):
         """Create a new empty VariantRecord"""
         r = makeVariantRecord(self, bcf_init())
         r.ptr.n_sample = bcf_hdr_nsamples(self.ptr)
+
+        if contig is not None:
+            r.contig = contig
+        if start is not None:
+            r.start = start
+        if stop is not None:
+            r.stop = stop
+        if alleles is not None:
+            r.alleles = alleles
+        if id is not None:
+            r.id = id
+        if filter is not None:
+            if isinstance(filter, (list, tuple)):
+                for f in filter:
+                    r.filter.add(f)
+            else:
+                r.filter.add(filter)
+        if qual is not None:
+            r.qual = qual
+        if info:
+            r.info.update(info)
+
         return r
 
     def add_record(self, VariantHeaderRecord record):
@@ -3451,7 +3480,7 @@ cdef class VariantFile(HTSFile):
     drop_samples: bool
         Ignore sample information when reading.
 
-    duplicate_filehandle: bool 
+    duplicate_filehandle: bool
         By default, file handles passed either directly or through
         File-like objects will be duplicated before passing them to
         htslib. The duplication prevents issues where the same stream
@@ -3659,7 +3688,6 @@ cdef class VariantFile(HTSFile):
 
         elif mode.startswith(b'r'):
             # open file for reading
-            
             if not self._exists():
                 raise IOError('file `{}` not found'.format(filename))
 
@@ -3753,7 +3781,7 @@ cdef class VariantFile(HTSFile):
         self.is_reading = 1
         return self.index.fetch(self, contig, start, stop, region, reopen)
 
-    cpdef VariantRecord new_record(self):
+    def new_record(self):
         """Create a new empty VariantRecord"""
         return self.header.new_record()
 
@@ -3784,6 +3812,9 @@ cdef class VariantFile(HTSFile):
         if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
             msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
             raise ValueError(msg.format(record.ptr.n_sample, bcf_hdr_nsamples(self.header.ptr)))
+
+        if 'END' in record.info and self.ptr.pos + record.rlen != record.info['END']:
+            raise ValueError('rec.stop and rec.info["END"] are out of sync')
 
         cdef int ret
 

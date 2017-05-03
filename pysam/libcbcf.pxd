@@ -38,7 +38,6 @@ from pysam.libchtslib cimport *
 cdef class VariantHeader(object):
     cdef bcf_hdr_t *ptr
 
-    cpdef VariantRecord new_record(self)
     cdef _subset_samples(self, include_samples)
 
 
@@ -138,7 +137,5 @@ cdef class VariantFile(HTSFile):
     # FIXME: Temporary, use htsFormat when it is available
     cdef readonly bint       is_reading     # true if file has begun reading records
     cdef readonly bint       header_written # true if header has already been written
-
-    cpdef VariantRecord new_record(self)
 
     cpdef int write(self, VariantRecord record) except -1
