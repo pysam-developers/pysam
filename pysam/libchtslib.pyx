@@ -2,15 +2,18 @@
 # cython: profile=True
 # adds doc-strings for sphinx
 import os
+import io
 
 from posix.unistd cimport dup
+from libc.errno  cimport errno
+from cpython cimport PyBytes_FromStringAndSize
 
 from pysam.libchtslib cimport *
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
-__all__ = ["get_verbosity", "set_verbosity"]
+__all__ = ['get_verbosity', 'set_verbosity', 'HFile', 'HTSFile']
 
 # defines imported from samtools
 DEF SEEK_SET = 0
@@ -40,6 +43,230 @@ cpdef get_verbosity():
     return hts_get_verbosity()
 
 
+cdef class HFile(object):
+    cdef hFILE *fp
+    cdef readonly object name, mode
+
+    def __init__(self, name, mode='r', closedf=True):
+        self._open(name, mode, closefd=True)
+
+    def __dealloc__(self):
+        self.close()
+
+    @property
+    def closed(self):
+        return self.fp == NULL
+
+    cdef _open(self, name, mode, closefd=True):
+        self.name = name
+        self.mode = mode
+
+        mode = force_bytes(mode)
+
+        if isinstance(name, int):
+            if self.fp != NULL:
+                name = dup(name)
+            self.fp = hdopen(name, mode)
+        else:
+            name = encode_filename(name)
+            self.fp = hopen(name, mode)
+
+        if not self.fp:
+            raise OSError(errno, 'failed to open HFile', self.name)
+
+    def close(self):
+        if self.fp == NULL:
+            return
+
+        cdef hFILE *fp = self.fp
+        self.fp = NULL
+
+        if hclose(fp) != 0:
+            raise OSError(herrno(self.fp), 'failed to close HFile', self.name)
+
+    def fileno(self):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+        if isinstance(self.name, int):
+            return self.name
+        else:
+            raise OSError('fileno not available')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, tb):
+        self.close()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = self.readline()
+        if not line:
+            raise StopIteration()
+        return line
+
+    def flush(self):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+        if hflush(self.fp) != 0:
+            raise OSError(herrno(self.fp), 'failed to flush HFile', self.name)
+
+    def isatty(self):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+        return False
+
+    def readable(self):
+        return self.fp != NULL and 'r' in self.mode
+
+    def read(self, Py_ssize_t size=-1):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+
+        if size == 0:
+            return b''
+
+        cdef list parts = []
+        cdef bytes part
+        cdef Py_ssize_t chunk_size, ret, bytes_read = 0
+        cdef char *cpart
+
+        while size == -1 or bytes_read < size:
+            chunk_size = 4096
+            if size != -1:
+                chunk_size = min(chunk_size, size - bytes_read)
+
+            part = PyBytes_FromStringAndSize(NULL, chunk_size)
+            cpart = <char *>part
+            ret = hread(self.fp, <void *>cpart, chunk_size)
+
+            if ret < 0:
+                OSError(herrno(self.fp), 'failed to read HFile', self.name)
+            elif not ret:
+                break
+
+            bytes_read += ret
+
+            if ret < chunk_size:
+                part = cpart[:ret]
+
+            parts.append(part)
+
+        return b''.join(parts)
+
+    def readall(self):
+        return self.read()
+
+    def readinto(self, buf):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+
+        size = len(buf)
+
+        if size == 0:
+            return size
+
+        mv = memoryview(buf)
+        ret = hread(self.fp, <void *>mv, size)
+
+        if ret < 0:
+            OSError(herrno(self.fp), 'failed to read HFile', self.name)
+
+        return ret
+
+    def readline(self, Py_ssize_t size=-1):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+
+        if size == 0:
+            return b''
+
+        cdef list parts = []
+        cdef bytes part
+        cdef Py_ssize_t chunk_size, ret, bytes_read = 0
+        cdef char *cpart
+
+        while size == -1 or bytes_read < size:
+            chunk_size = 4096
+            if size != -1:
+                chunk_size = min(chunk_size, size - bytes_read)
+
+            part = PyBytes_FromStringAndSize(NULL, chunk_size)
+            cpart = <char *>part
+
+            # Python bytes objects allocate an extra byte for a null terminator
+            ret = hgetln(cpart, chunk_size+1, self.fp)
+
+            if ret < 0:
+                OSError(herrno(self.fp), 'failed to read HFile', self.name)
+            elif not ret:
+                break
+
+            bytes_read += ret
+
+            if ret < chunk_size:
+                part = cpart[:ret]
+                cpart = <char *>part
+
+            parts.append(part)
+
+            if cpart[ret-1] == b'\n':
+               break
+
+        return b''.join(parts)
+
+    def readlines(self):
+        return list(self)
+
+    def seek(self, Py_ssize_t offset, int whence=SEEK_SET):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+
+        cdef Py_ssize_t off = hseek(self.fp, offset, whence)
+
+        if off < 0:
+            raise OSError(herrno(self.fp), 'seek failed on HFile', self.name)
+
+        return off
+
+    def tell(self):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+
+        ret = htell(self.fp)
+
+        if ret < 0:
+            raise OSError(herrno(self.fp), 'tell failed on HFile', self.name)
+
+        return ret
+
+    def seekable(self):
+        return self.fp != NULL
+
+    def truncate(self, size=None):
+        raise NotImplementedError()
+
+    def writable(self):
+        return self.fp != NULL and 'w' in self.mode
+
+    def write(self, bytes b):
+        if self.fp == NULL:
+            raise OSError('operation on closed HFile')
+
+        got = hwrite(self.fp, <void *>b, len(b))
+
+        if got < 0:
+            raise OSError(herrno(self.fp), 'write failed on HFile', self.name)
+
+        return got
+
+    def writelines(self, lines):
+        for line in lines:
+            self.write(line)
+
+
 class CallableValue(object):
     def __init__(self, value):
         self.value = value
@@ -67,10 +294,13 @@ cdef class HTSFile(object):
         self.htsfile = NULL
         self.duplicate_filehandle = True
 
-    def __dealloc__(self):
+    def close(self):
         if self.htsfile:
             hts_close(self.htsfile)
             self.htsfile = NULL
+
+    def __dealloc__(self):
+        self.close()
 
     def __enter__(self):
         return self
@@ -242,7 +472,7 @@ cdef class HTSFile(object):
                 fd = self.filename
             else:
                 fd = self.filename.fileno()
-               
+
             if self.duplicate_filehandle:
                 dup_fd = dup(fd)
             else:
