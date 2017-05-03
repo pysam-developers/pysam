@@ -10,9 +10,9 @@ include KNOWN_BUGS
 include THANKS
 include cy_build.py
 include requirements.txt
-include pysam/c*.pxd
-include pysam/c*.pyx
-include pysam/c*.c
+include pysam/libc*.pxd
+include pysam/libc*.pyx
+include pysam/libc*.c
 include pysam/*.c
 include pysam/*.h
 include samtools/configure
