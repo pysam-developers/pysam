@@ -220,7 +220,7 @@ typedef struct
 stats_t;
 KHASH_MAP_INIT_STR(c2stats, stats_t*)
 
-static void error(const char *format, ...);
+static int error(const char *format, ...);
 int is_in_regions(bam1_t *bam_line, stats_t *stats);
 void realloc_buffers(stats_t *stats, int seq_len);
 
@@ -1265,7 +1265,7 @@ void init_regions(stats_t *stats, const char *file)
             stats->regions[tid].pos = realloc(stats->regions[tid].pos,sizeof(pos_t)*stats->regions[tid].mpos);
         }
 
-        if ( (sscanf(&line.s[i+1],"%d %d",&stats->regions[tid].pos[npos].from,&stats->regions[tid].pos[npos].to))!=2 ) error("Could not parse the region [%s]\n", &line.s[i+1]);
+        if ( (sscanf(&line.s[i+1],"%u %u",&stats->regions[tid].pos[npos].from,&stats->regions[tid].pos[npos].to))!=2 ) error("Could not parse the region [%s]\n", &line.s[i+1]);
         if ( prev_tid==-1 || prev_tid!=tid )
         {
             prev_tid = tid;
@@ -1352,7 +1352,7 @@ void init_group_id(stats_t *stats, const char *id)
 }
 
 
-static void error(const char *format, ...)
+static int error(const char *format, ...)
 {
     if ( !format )
     {
@@ -1379,6 +1379,7 @@ static void error(const char *format, ...)
         fprintf(pysam_stdout, "    -x, --sparse                        Suppress outputting IS rows where there are no insertions.\n");
         sam_global_opt_help(pysam_stdout, "-.--.@");
         fprintf(pysam_stdout, "\n");
+	return(0);
     }
     else
     {
@@ -1646,7 +1647,7 @@ int main_stats(int argc, char *argv[])
             case 'S': info->split_tag = optarg; break;
             case 'P': info->split_prefix = optarg; break;
             case '?':
-            case 'h': error(NULL);
+	    case 'h': return(error(NULL));
             default:
                 if (parse_sam_global_opt(opt, optarg, loptions, &ga) != 0)
                     error("Unknown argument: %s\n", optarg);
@@ -1659,7 +1660,7 @@ int main_stats(int argc, char *argv[])
     if ( !bam_fname )
     {
         if ( isatty(STDIN_FILENO) )
-            error(NULL);
+	  return(error(NULL));
         bam_fname = "-";
     }
 
