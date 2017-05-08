@@ -151,6 +151,10 @@
 #include "smpl_ilist.h"
 #include "rbuf.h"
 
+#ifndef __FUNCTION__
+#  define __FUNCTION__ __func__
+#endif
+
 // Logic of the filters: include or exclude sites which match the filters?
 #define FLT_INCLUDE 1
 #define FLT_EXCLUDE 2
@@ -574,6 +578,7 @@ typedef struct _args_t
     int argc, output_type;
     int phase, quiet, local_csq;
     int ncsq_max, nfmt_bcsq;    // maximum number of csq per site that can be accessed from FORMAT/BCSQ
+    int ncsq_small_warned;
     
     int rid;                    // current chromosome
     tr_heap_t *active_tr;       // heap of active transcripts for quick flushing
@@ -870,7 +875,7 @@ void gff_parse_transcript(args_t *args, const char *line, char *ss, ftr_t *ftr)
     int biotype = gff_parse_biotype(ss);
     if ( biotype <= 0 )
     {
-        if ( !gff_ignored_biotype(args, ss) ) fprintf(stderr,"ignored transcript: %s\n",line);
+        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(stderr,"ignored transcript: %s\n",line);
         return;
     }
 
@@ -898,7 +903,7 @@ void gff_parse_gene(args_t *args, const char *line, char *ss, char *chr_beg, cha
     int biotype = gff_parse_biotype(ss);
     if ( biotype <= 0 )
     {
-        if ( !gff_ignored_biotype(args, ss) ) fprintf(stderr,"ignored gene: %s\n",line);
+        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(stderr,"ignored gene: %s\n",line);
         return;
     }
 
@@ -960,7 +965,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
             if ( !ss ) return -1;   // no ID, ignore the line
             if ( !strncmp("chromosome",ss+3,10) ) return -1;
             if ( !strncmp("supercontig",ss+3,11) ) return -1;
-            fprintf(stderr,"ignore: %s\n", line);
+            if ( args->quiet<2 ) fprintf(stderr,"ignored: %s\n", line);
             return -1;
         }
 
@@ -982,7 +987,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     // 7. column: strand
     if ( *ss == '+' ) ftr->strand = STRAND_FWD;
     else if ( *ss == '-' ) ftr->strand = STRAND_REV;
-    else { fprintf(stderr,"Skipping unknown strand: %c\n", *ss); return -1; }
+    else { if ( args->quiet<2 ) fprintf(stderr,"Skipping unknown strand: %c\n", *ss); return -1; }
     ss += 2;
 
     // 8. column: phase (codon offset)
@@ -990,7 +995,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     else if ( *ss == '1' ) ftr->phase = 1;
     else if ( *ss == '2' ) ftr->phase = 2;
     else if ( *ss == '.' ) ftr->phase = 0;      // exons do not have phase
-    else { fprintf(stderr,"Skipping unknown phase: %c, %s\n", *ss, line); return -1; }
+    else { if ( args->quiet<2 ) fprintf(stderr,"Skipping unknown phase: %c, %s\n", *ss, line); return -1; }
     ss += 2;
 
     // substring search for "Parent=transcript:ENST00000437963"
@@ -1266,7 +1271,7 @@ void init_gff(args_t *args)
     kh_destroy(int2tscript,aux->id2tr);
     free(aux->seq);
 
-    if ( khash_str2int_size(aux->ignored_biotypes) )
+    if ( args->quiet<2 && khash_str2int_size(aux->ignored_biotypes) )
     {
         khash_t(str2int) *ign = (khash_t(str2int)*)aux->ignored_biotypes;
         fprintf(stderr,"Ignored the following biotypes:\n");
@@ -2925,8 +2930,18 @@ static inline void hap_stage_vcf(args_t *args, tscript_t *tr, int ismpl, int iha
         int icsq = 2*csq->idx + ihap;
         if ( icsq >= args->ncsq_max ) // more than ncsq_max consequences, so can't fit it in FMT
         {
-            fprintf(stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
-                    args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
+            int print_warning = 1;
+            if ( args->quiet )
+            {
+                if ( args->quiet > 1 || args->ncsq_small_warned ) print_warning = 0;
+                args->ncsq_small_warned = 1;
+            }
+            if ( print_warning )
+            {
+                fprintf(stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
+                        args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
+                if ( args->quiet ) fprintf(stderr,"(This warning is printed only once)\n");
+            }
             break;
         }
         if ( vrec->nfmt < 1 + icsq/32 ) vrec->nfmt = 1 + icsq/32;
@@ -3094,7 +3109,7 @@ void tscript_init_ref(args_t *args, tscript_t *tr, const char *chr)
         char *ref = (char*) malloc(tr->end - tr->beg + 1 + 2*N_REF_PAD);
         for (i=0; i < N_REF_PAD - pad_beg; i++) ref[i] = 'N';
         memcpy(ref+i, tr->ref, len);
-        for (i=0; i < N_REF_PAD - pad_end; i++) ref[i+len+N_REF_PAD] = 'N';
+        for (i=0; i < N_REF_PAD - pad_end; i++) ref[i+len] = 'N';
         free(tr->ref);
         tr->ref = ref;
     }
@@ -3483,8 +3498,18 @@ void csq_stage(args_t *args, csq_t *csq, bcf1_t *rec)
             if ( icsq >= args->ncsq_max ) // more than ncsq_max consequences, so can't fit it in FMT
             {
                 int ismpl = args->smpl->idx[i];
-                fprintf(stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
-                        args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
+                int print_warning = 1;
+                if ( args->quiet )
+                {
+                    if ( args->quiet > 1 || args->ncsq_small_warned ) print_warning = 0;
+                    args->ncsq_small_warned = 1;
+                }
+                if ( print_warning )
+                {
+                    fprintf(stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
+                            args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
+                    if ( args->quiet ) fprintf(stderr,"(This warning is printed only once)\n");
+                }
                 break;
             }
             if ( vrec->nfmt < 1 + icsq/32 ) vrec->nfmt = 1 + icsq/32;
@@ -3667,7 +3692,7 @@ const char *usage(void)
         "   -o, --output <file>             write output to a file [standard output]\n"
         "   -O, --output-type <b|u|z|v|t>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF\n"
         "                                   v: uncompressed VCF, t: plain tab-delimited text output [v]\n"
-        "   -q, --quiet                     suppress warning messages\n"
+        "   -q, --quiet                     suppress warning messages. Can be given two times for even less messages\n"
         "   -r, --regions <region>          restrict to comma-separated list of regions\n"
         "   -R, --regions-file <file>       restrict to regions listed in a file\n"
         "   -s, --samples <-|list>          samples to include or \"-\" to apply all variants and ignore samples\n"
@@ -3722,7 +3747,7 @@ int main_csq(int argc, char *argv[])
         {
             case 'l': args->local_csq = 1; break;
             case 'c': args->bcsq_tag = optarg; break;
-            case 'q': args->quiet = 1; break;
+            case 'q': args->quiet++; break;
             case 'p':
                 switch (optarg[0]) 
                 {

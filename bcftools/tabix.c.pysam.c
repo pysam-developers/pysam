@@ -96,13 +96,15 @@ int main_tabix(int argc, char *argv[])
         if (!is_force) {
             char *fn;
             FILE *fp;
-            fn = (char*)alloca(strlen(argv[optind]) + 5);
+            fn = (char*)malloc(strlen(argv[optind]) + 5);
             strcat(strcpy(fn, argv[optind]), min_shift <= 0? ".tbi" : ".csi");
             if ((fp = fopen(fn, "rb")) != 0) {
                 fclose(fp);
+                free(fn);
                 fprintf(pysam_stderr, "[E::%s] the index file exists; use option '-f' to overwrite\n", __func__);
                 return 1;
             }
+            free(fn);
         }
         if ( tbx_index_build(argv[optind], min_shift, &conf) )
         {

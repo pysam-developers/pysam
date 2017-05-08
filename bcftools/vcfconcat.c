@@ -665,7 +665,7 @@ static void naive_concat(args_t *args)
         // Output all non-header data that were read together with the header block
         if ( fp->block_length - nskip > 0 )
         {
-            if ( bgzf_write(bgzf_out, fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("Error: %d\n",fp->errcode);
+            if ( bgzf_write(bgzf_out, (char *)fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("Error: %d\n",fp->errcode);
         }
         if ( bgzf_flush(bgzf_out)<0 ) error("Error: %d\n",bgzf_out->errcode);
 

@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.  */
 
 #include <stdio.h>
+#include <strings.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <ctype.h>
@@ -471,6 +472,27 @@ static void usage(args_t *args)
     exit(1);
 }
 
+static int is_verbose(int argc, char *argv[])
+{
+    int c, verbose = 0, opterr_ori = opterr;
+    static struct option loptions[] =
+    {
+        {"verbose",no_argument,NULL,'v'},
+        {NULL,0,NULL,0}
+    };
+    opterr = 0;
+    while ((c = getopt_long(argc, argv, "-v",loptions,NULL)) >= 0)
+    {
+        switch (c) {
+            case 'v': verbose++; break;
+            case 1:
+            default: break;
+        }
+    }
+    opterr = opterr_ori;
+    optind = 0;
+    return verbose;
+}
 int main_plugin(int argc, char *argv[])
 {
     int c;
@@ -488,6 +510,7 @@ int main_plugin(int argc, char *argv[])
     char *plugin_name = NULL;
     if ( argv[1][0]!='-' )
     {
+        args->verbose = is_verbose(argc, argv);
         plugin_name = argv[1]; 
         argc--; 
         argv++; 

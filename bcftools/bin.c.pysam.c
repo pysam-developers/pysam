@@ -41,7 +41,7 @@ bin_t *bin_init(const char *list_def, float min, float max)
     bin_t *bin = (bin_t*) calloc(1,sizeof(bin_t));
 
     // a comma indicates a list, otherwise a file
-    int is_file = index(list_def,',') ? 0 : 1;
+    int is_file = strchr(list_def,',') ? 0 : 1;
     int i, nlist;
     char **list = hts_readlist(list_def, is_file, &nlist);
     bin->nbins = nlist;

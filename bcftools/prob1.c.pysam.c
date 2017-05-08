@@ -159,8 +159,9 @@ int test16(bcf1_t *b, anno16_t *a);
 static int cal_pdg(const bcf1_t *b, bcf_p1aux_t *ma)
 {
     int i, j;
-    long *p, tmp;
-    p = (long*) alloca(b->n_allele * sizeof(long));
+    long p_a[16], *p=p_a, tmp;
+    if (b->n_allele > 16)
+        p = (long*) malloc(b->n_allele * sizeof(long));
     memset(p, 0, sizeof(long) * b->n_allele);
 
     // Set P(D|g) for each sample and sum phread likelihoods across all samples to create lk
@@ -179,12 +180,14 @@ static int cal_pdg(const bcf1_t *b, bcf_p1aux_t *ma)
             tmp = p[j], p[j] = p[j-1], p[j-1] = tmp;
     for (i = b->n_allele - 1; i >= 0; --i)
         if ((p[i]&0xf) == 0) break;
+    if (p != p_a)
+        free(p);
     return i;
 }
 
 
-/* f0 is minor allele fraction */
-int bcf_p1_call_gt(const bcf_p1aux_t *ma, double f0, int k)
+/* f0 is freq of the ref allele */
+int bcf_p1_call_gt(const bcf_p1aux_t *ma, double f0, int k, int is_var)
 {
     double sum, g[3];
     double max, f3[3], *pdg = ma->pdg + k * 3;
@@ -205,6 +208,7 @@ int bcf_p1_call_gt(const bcf_p1aux_t *ma, double f0, int k)
         g[i] /= sum;
         if (g[i] > max) max = g[i], max_i = i;
     }
+    if ( !is_var ) { max_i = 2; max = g[2]; }   // force 0/0 genotype if the site is non-variant
     max = 1. - max;
     if (max < 1e-308) max = 1e-308;
     q = (int)(-4.343 * log(max) + .499);

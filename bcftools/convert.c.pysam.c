@@ -533,6 +533,7 @@ static void process_type(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
     if ( line_type & VCF_MNP ) { if (i) kputc(',',str); kputs("MNP", str); i++; }
     if ( line_type & VCF_INDEL ) { if (i) kputc(',',str); kputs("INDEL", str); i++; }
     if ( line_type & VCF_OTHER ) { if (i) kputc(',',str); kputs("OTHER", str); i++; }
+    if ( line_type & VCF_BND ) { if (i) kputc(',',str); kputs("BND", str); i++; }
 }
 static void process_line(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
