@@ -863,37 +863,39 @@ class TestVCFFromVCF(TestVCF):
     def tearDown(self):
         self.vcf.close()
 
-    def testConnecting(self):
+    def open_vcf(self, fn):
+        return self.vcf.connect(fn)
+
+    def get_failure_stage(self):
 
         fn = os.path.basename(self.filename)
         for x, msg in self.fail_on_opening:
-            if "%i.vcf" % x == fn:
-                self.assertRaises(ValueError,
-                                  self.vcf.connect,
-                                  self.tmpfilename + ".gz")
-            else:
-                self.vcf.connect(self.tmpfilename + ".gz")
+            if "{}.vcf".format(x) == fn:
+                return "opening"
+
+        for x, msg in self.fail_on_parsing:
+            if "{}.vcf".format(x) == fn:
+                return "parsing"
+        
+        for x, msg in self.fail_on_samples:
+            if "{}.vcf".format(x) == fn:
+                return "samples"
+
+        return None
+
+    def testConnecting(self):
+
+        if self.get_failure_stage() == "opening":
+            self.assertRaises(ValueError,
+                              self.open_vcf,
+                              self.tmpfilename + ".gz")
+        else:
+            self.open_vcf(self.tmpfilename + ".gz")
 
     def get_iterator(self):
 
         with open(self.filename) as f:
             fn = os.path.basename(self.filename)
-
-            for x, msg in self.fail_on_opening:
-                if "%i.vcf" % x == fn:
-                    self.assertRaises(ValueError, self.vcf.parse, f)
-                    return
-
-            for vcf_code, msg in self.fail_on_parsing:
-                if "%i.vcf" % vcf_code == fn:
-                    self.assertRaises((ValueError,
-                                       AssertionError),
-                                      list, self.vcf.parse(f))
-                    return
-                # python 2.7
-                # self.assertRaisesRegexp(
-                # ValueError, re.compile(msg), self.vcf.parse, f)
-
             return list(self.vcf.parse(f))
 
     def get_field_value(self, record, field):
@@ -918,21 +920,14 @@ class TestVCFFromVCF(TestVCF):
 
     def testParsing(self):
 
+        if self.get_failure_stage() in ("opening", "parsing"):
+            return
+
         itr = self.get_iterator()
         if itr is None:
             return
 
         fn = os.path.basename(self.filename)
-
-        for vcf_code, msg in self.fail_on_parsing:
-            if "%i.vcf" % vcf_code == fn:
-                self.assertRaises((ValueError,
-                                   AssertionError),
-                                  list, itr)
-                return
-                # python 2.7
-                # self.assertRaisesRegexp(
-                # ValueError, re.compile(msg), self.vcf.parse, f)
 
         check_samples = self.check_samples
         for vcf_code, msg in self.fail_on_samples:
@@ -1079,8 +1074,14 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
                "ref", "alts", "qual",
                "filter", "info", "format")
 
-    fail_on_parsing = []
-    fail_on_opening = []
+    fail_on_parsing = [
+        (24, "Could not parse the header, sample line not found"),
+        ("issue85", "empty VCF"),
+    ]
+    fail_on_opening = [
+        (24, "Could not parse the header, sample line not found"),
+        ("issue85", "empty VCF"),
+    ]
     coordinate_offset = 0
     check_samples = True
     fail_on_samples = [
@@ -1148,9 +1149,14 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
     def get_field_value(self, record, field):
         return getattr(record, field)
 
+    def open_vcf(self, fn):
+        with pysam.VariantFile(fn) as inf:
+            pass
+
 
 for vcf_file in vcf_files:
-    n = "TestVCFFromVariantFile_%s" % os.path.basename(vcf_file[:-4])
+    p = os.path.basename(vcf_file[:-4])
+    n = "TestVCFFromVariantFile_%s" % p
     globals()[n] = type(n, (TestVCFFromVariantFile,), dict(filename=vcf_file,))
 
 
