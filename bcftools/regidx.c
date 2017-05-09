@@ -22,6 +22,7 @@
     THE SOFTWARE.
 */
 
+#include <strings.h>
 #include <htslib/hts.h>
 #include <htslib/kstring.h>
 #include <htslib/kseq.h>
@@ -170,7 +171,7 @@ inline int regidx_push(regidx_t *idx, char *chr_beg, char *chr_end, uint32_t beg
     if ( idx->payload_size )
     {
         if ( mreg != list->mreg ) list->dat = realloc(list->dat,idx->payload_size*list->mreg);
-        memcpy(list->dat + idx->payload_size*(list->nreg-1), payload, idx->payload_size);
+        memcpy((char *)list->dat + idx->payload_size*(list->nreg-1), payload, idx->payload_size);
     }
     if ( !list->unsorted && list->nreg>1 && cmp_regs(&list->reg[list->nreg-2],&list->reg[list->nreg-1])>0 ) list->unsorted = 1;
     return 0;
@@ -247,7 +248,7 @@ void regidx_destroy(regidx_t *idx)
         if ( idx->free )
         {
             for (j=0; j<list->nreg; j++)
-                idx->free(list->dat + idx->payload_size*j);
+                idx->free((char *)list->dat + idx->payload_size*j);
         }
         free(list->dat);
         free(list->reg);
@@ -278,7 +279,9 @@ int _reglist_build_index(regidx_t *regidx, reglist_t *list)
             for (i=0; i<list->nreg; i++)
             {
                 size_t iori = ptr[i] - list->reg;
-                memcpy(tmp_dat+i*regidx->payload_size, list->dat+iori*regidx->payload_size, regidx->payload_size);
+                memcpy((char *)tmp_dat+i*regidx->payload_size,
+                       (char *)list->dat+iori*regidx->payload_size,
+                       regidx->payload_size);
             }
             free(list->dat);
             list->dat = tmp_dat;
@@ -386,7 +389,7 @@ int regidx_overlap(regidx_t *regidx, const char *chr, uint32_t beg, uint32_t end
     regitr->beg = list->reg[ireg].beg;
     regitr->end = list->reg[ireg].end;
     if ( regidx->payload_size )
-        regitr->payload = list->dat + regidx->payload_size*ireg;
+        regitr->payload = (char *)list->dat + regidx->payload_size*ireg;
 
     return 1;
 }
@@ -554,7 +557,7 @@ int regitr_overlap(regitr_t *regitr)
     regitr->beg = list->reg[i].beg;
     regitr->end = list->reg[i].end;
     if ( itr->ridx->payload_size )
-        regitr->payload = list->dat + itr->ridx->payload_size*i;
+        regitr->payload = (char *)list->dat + itr->ridx->payload_size*i;
 
     return 1;
 }
@@ -585,7 +588,7 @@ int regitr_loop(regitr_t *regitr)
     regitr->beg = itr->list->reg[itr->ireg].beg;
     regitr->end = itr->list->reg[itr->ireg].end;
     if ( regidx->payload_size )
-        regitr->payload = itr->list->dat + regidx->payload_size*itr->ireg;
+        regitr->payload = (char *)itr->list->dat + regidx->payload_size*itr->ireg;
     itr->ireg++;
 
     return 1;

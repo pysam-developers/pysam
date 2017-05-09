@@ -23,7 +23,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 dnl Process this file with autoconf to produce a configure script
-AC_INIT([HTSlib], m4_esyscmd_s([make --no-print-directory print-version]),
+AC_INIT([HTSlib], m4_esyscmd_s([make print-version]),
         [samtools-help@lists.sourceforge.net], [], [http://www.htslib.org/])
 AC_PREREQ(2.63)  dnl This version introduced 4-argument AC_CHECK_HEADER
 AC_CONFIG_SRCDIR(hts.c)
@@ -181,6 +181,11 @@ is installed.
 
 FAILED.  This error must be resolved in order to build HTSlib successfully.])
 fi
+
+dnl connect() etc. fns are in libc on linux, but libsocket on illumos/Solaris
+libsocket=unneeded
+AC_SEARCH_LIBS(connect, socket, [libsocket=needed], [])
+
 
 if test "$enable_bz2" != no; then
   bz2_devel=ok

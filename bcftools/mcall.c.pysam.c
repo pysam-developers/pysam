@@ -1226,7 +1226,7 @@ void mcall_trim_numberR(call_t *call, bcf1_t *rec, int nals, int nout_als, int o
             {
                 int k = call->als_map[j];
                 if ( k==-1 ) continue;   // to be dropped
-                memcpy(tmp_new+size*k, tmp_ori+size*j, size);
+                memcpy((char *)tmp_new+size*k, (char *)tmp_ori+size*j, size);
             }
             bcf_update_info_int32(call->hdr, rec, key, tmp_new, nout_als);
         }
@@ -1249,8 +1249,8 @@ void mcall_trim_numberR(call_t *call, bcf1_t *rec, int nals, int nout_als, int o
 
         for (j=0; j<nsmpl; j++)
         {
-            void *ptr_src = tmp_ori + j*nals*size;
-            void *ptr_dst = tmp_new + j*nout_als*size;
+            char *ptr_src = (char *)tmp_ori + j*nals*size;
+            char *ptr_dst = (char *)tmp_new + j*nout_als*size;
             int k;
             for (k=0; k<nals; k++)
             {
@@ -1272,7 +1272,7 @@ void mcall_trim_numberR(call_t *call, bcf1_t *rec, int nals, int nout_als, int o
 // NB: in this function we temporarily use calls->als_map for a different
 // purpose to store mapping from new (target) alleles to original alleles.
 //
-static void mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
+static int mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
 {
     bcf_sr_regions_t *tgt = call->srs->targets;
     if ( tgt->nals>5 ) error("Maximum accepted number of alleles is 5, got %d\n", tgt->nals);
@@ -1295,7 +1295,7 @@ static void mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
         call->als[nals] = tgt->als[i];
         j = vcmp_find_allele(call->vcmp, rec->d.allele+1, rec->n_allele - 1, tgt->als[i]);
 
-        if ( j+1==*unseen ) error("Cannot constrain to %s\n",tgt->als[i]);
+        if ( j+1==*unseen ) { fprintf(pysam_stderr,"fixme? Cannot constrain to %s\n",tgt->als[i]); return -1; }
         
         if ( j>=0 )
         {
@@ -1321,7 +1321,7 @@ static void mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
         nals++;
     }
 
-    if ( !has_new && nals==rec->n_allele ) return;
+    if ( !has_new && nals==rec->n_allele ) return 0;
     bcf_update_alleles(call->hdr, rec, (const char**)call->als, nals);
 
     // create mapping from new PL to old PL
@@ -1373,6 +1373,7 @@ static void mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
     bcf_update_info_float(call->hdr, rec, "QS", qsum, nals);
 
     if ( *unseen ) *unseen = nals-1;
+    return 0;
 }
 
 
@@ -1387,7 +1388,7 @@ int mcall(call_t *call, bcf1_t *rec)
     int i, unseen = call->unseen;
 
     // Force alleles when calling genotypes given alleles was requested
-    if ( call->flag & CALL_CONSTR_ALLELES ) mcall_constrain_alleles(call, rec, &unseen);
+    if ( call->flag & CALL_CONSTR_ALLELES && mcall_constrain_alleles(call, rec, &unseen)!=0 ) return -2;
 
     int nsmpl = bcf_hdr_nsamples(call->hdr);
     int nals  = rec->n_allele;

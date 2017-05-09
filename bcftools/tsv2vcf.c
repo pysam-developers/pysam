@@ -24,6 +24,7 @@
 */
 
 #include <ctype.h>
+#include <strings.h>
 #include "tsv2vcf.h"
 
 tsv_t *tsv_init(const char *str)

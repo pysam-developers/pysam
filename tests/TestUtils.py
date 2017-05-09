@@ -78,7 +78,6 @@ def check_samtools_view_equal(
     '''return true if the two files are equal in their
     content through samtools view.
     '''
-
     # strip MD and NM tags, as not preserved in CRAM files
     args = ["-x", "MD", "-x", "NM"]
     if not without_header:

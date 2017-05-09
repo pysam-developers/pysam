@@ -93,7 +93,7 @@ int bam_reheader(BGZF *in, bam_hdr_t *h, int fd,
         goto fail;
     }
     if (in->block_offset < in->block_length) {
-        if (bgzf_write(fp, in->uncompressed_block + in->block_offset, in->block_length - in->block_offset) < 0) goto write_fail;
+        if (bgzf_write(fp, (char *)in->uncompressed_block + in->block_offset, in->block_length - in->block_offset) < 0) goto write_fail;
         if (bgzf_flush(fp) < 0) goto write_fail;
     }
     while ((len = bgzf_raw_read(in, buf, BUF_SIZE)) > 0) {
@@ -248,7 +248,7 @@ int cram_reheader_inplace2(cram_fd *fd, const bam_hdr_t *h, const char *arg_list
     int32_put_blk(b, header_len);
     cram_block_append(b, sam_hdr_str(hdr), header_len);
     // Zero the remaining block
-    memset(cram_block_get_data(b)+cram_block_get_offset(b), 0,
+    memset((char *)cram_block_get_data(b)+cram_block_get_offset(b), 0,
            cram_block_get_uncomp_size(b) - cram_block_get_offset(b));
     // Make sure all sizes and byte-offsets are consistent after memset
     cram_block_set_offset(b, cram_block_get_uncomp_size(b));
@@ -436,7 +436,7 @@ int cram_reheader_inplace(cram_fd *fd, const bam_hdr_t *h, const char *arg_list,
     }
 }
 
-static void usage(FILE *fp, int ret) {
+static int usage(FILE *fp, int ret) {
     fprintf(fp,
            "Usage: samtools reheader [-P] in.header.sam in.bam > out.bam\n"
            "   or  samtools reheader [-P] -i in.header.sam file.bam\n"
@@ -445,7 +445,7 @@ static void usage(FILE *fp, int ret) {
            "    -P, --no-PG      Do not generate an @PG header line.\n"
            "    -i, --in-place   Modify the bam/cram file directly.\n"
            "                     (Defaults to outputting to pysam_stdout.)\n");
-    exit(ret);
+    return(ret);
 }
 
 int main_reheader(int argc, char *argv[])
@@ -466,15 +466,15 @@ int main_reheader(int argc, char *argv[])
         switch (c) {
         case 'P': add_PG = 0; break;
         case 'i': inplace = 1; break;
-        case 'h': usage(pysam_stdout, 0); break;
+        case 'h': return(usage(pysam_stdout, 0)); break;
         default:
             fprintf(pysam_stderr, "Invalid option '%c'\n", c);
-            usage(pysam_stderr, 1);
+            return(usage(pysam_stderr, 1));
         }
     }
 
     if (argc - optind != 2)
-        usage(pysam_stderr, 1);
+      return(usage(pysam_stderr, 1));
 
     { // read the header
         samFile *fph = sam_open(argv[optind], "r");
