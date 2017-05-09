@@ -300,7 +300,9 @@ cdef class HTSFile(object):
             self.htsfile = NULL
 
     def __dealloc__(self):
-        self.close()
+        if self.htsfile:
+            hts_close(self.htsfile)
+            self.htsfile = NULL
 
     def __enter__(self):
         return self
