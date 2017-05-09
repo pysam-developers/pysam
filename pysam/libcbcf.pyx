@@ -228,9 +228,10 @@ cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) exce
     cdef int32_t *gt_arr = NULL
     cdef int ngt = bcf_get_genotypes(hdr, rec, &gt_arr, &ngt)
 
-    if ngt <= 0:
+    if ngt <= 0 or not gt_arr:
         return 0
 
+    assert ngt % rec.n_sample == 0
     cdef int max_ploidy = ngt // rec.n_sample
     cdef int32_t *gt = gt_arr + sample * max_ploidy
     cdef int ploidy = 0
@@ -1309,7 +1310,9 @@ cdef class VariantHeaderRecord(object):
 
     def pop(self, key, default=_nothing):
         if key in self:
+            value = self[key]
             del self[key]
+            return value
         elif default is not _nothing:
             return default
         else:
@@ -1664,7 +1667,7 @@ cdef class VariantContig(object):
         return length if length else None
 
     @property
-    def header(self):
+    def header_record(self):
         """:class:`VariantHeaderRecord` associated with this :class:`VariantContig` object"""
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_CTG][self.id].val.hrec[0]
@@ -2020,7 +2023,7 @@ cdef class VariantHeader(object):
         rec.qual  = qual
 
         if filter is not None:
-            if isinstance(filter, (list, tuple)):
+            if isinstance(filter, (list, tuple, VariantRecordFilter)):
                 for f in filter:
                     rec.filter.add(f)
             else:
@@ -2030,10 +2033,14 @@ cdef class VariantHeader(object):
             rec.info.update(info)
 
         if kwargs:
+            if 'GT' in kwargs:
+                rec.samples[0]['GT'] = kwargs.pop('GT')
             rec.samples[0].update(kwargs)
 
         if samples:
             for i, sample in enumerate(samples):
+                if 'GT' in sample:
+                    rec.samples[i]['GT'] = sample.pop('GT')
                 rec.samples[i].update(sample)
 
         return rec
@@ -2581,7 +2588,9 @@ cdef class VariantRecordInfo(object):
 
     def pop(self, key, default=_nothing):
         if key in self:
+            value = self[key]
             del self[key]
+            return value
         elif default is not _nothing:
             return default
         else:
@@ -2729,7 +2738,9 @@ cdef class VariantRecordSamples(object):
 
     def pop(self, key, default=_nothing):
         if key in self:
+            value = self[key]
             del self[key]
+            return value
         elif default is not _nothing:
             return default
         else:
@@ -2876,12 +2887,6 @@ cdef class VariantRecord(object):
         if s < self.ptr.pos:
             raise ValueError('Stop coordinate must be greater than or equal to start')
         self.ptr.rlen = s - self.ptr.pos
-        #if self.ptr.rlen == len(self.ref):
-        #    self.info.pop('END', None)
-        #    assert 'END' not in self.info
-        #else:
-        #    self.info['END'] = s
-        #    assert self.info['END'] == s
 
     @property
     def rlen(self):
@@ -2894,12 +2899,6 @@ cdef class VariantRecord(object):
         if r < 0:
             raise ValueError('Reference length must be non-negative')
         self.ptr.rlen = r
-        #if self.ptr.rlen == len(self.ref):
-        #    self.info.pop('END', None)
-        #    assert 'END' not in self.info
-        #else:
-        #    self.info['END'] = self.ptr.pos + r
-        #    assert self.info['END'] == self.ptr.pos + r
 
     @property
     def qual(self):
@@ -2966,8 +2965,6 @@ cdef class VariantRecord(object):
             alleles = [value]
         self.alleles = alleles
         self.ptr.rlen = len(value)
-        #self.info.pop('END', None)
-        #assert 'END' not in self.info
 
     @property
     def alleles(self):
@@ -2987,19 +2984,27 @@ cdef class VariantRecord(object):
     @alleles.setter
     def alleles(self, values):
         cdef bcf1_t *r = self.ptr
+
         if bcf_unpack(r, BCF_UN_STR) < 0:
             raise ValueError('Error unpacking VariantRecord')
+
+        if r.n_allele != 0 and r.n_allele != len(values):
+            raise ValueError('Cannot reset number of alleles after initialization')
+
         values = [force_bytes(v) for v in values]
+
         if len(values) < 2:
             raise ValueError('must set at least 2 alleles')
+
         if b'' in values:
             raise ValueError('cannot set null allele')
+
         value = b','.join(values)
+
         if bcf_update_alleles_str(self.header.ptr, r, value) < 0:
             raise ValueError('Error updating alleles')
+
         self.ptr.rlen = len(values[0])
-        #self.info.pop('END', None)
-        #assert 'END' not in self.info
 
     @property
     def alts(self):
@@ -3317,7 +3322,9 @@ cdef class VariantRecordSample(object):
 
     def pop(self, key, default=_nothing):
         if key in self:
+            value = self[key]
             del self[key]
+            return value
         elif default is not _nothing:
             return default
         else:
@@ -3430,7 +3437,9 @@ cdef class BaseIndex(object):
 
     def pop(self, key, default=_nothing):
         if key in self:
+            value = self[key]
             del self[key]
+            return value
         elif default is not _nothing:
             return default
         else:
@@ -4121,13 +4130,6 @@ cdef class VariantFile(HTSFile):
         if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
             msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
             raise ValueError(msg.format(record.ptr.n_sample, bcf_hdr_nsamples(self.header.ptr)))
-
-        #if self.ptr.rlen != len(self.ref):
-        #    self.info['END'] = self.ptr.pos + self.ptr.rlen
-        #    assert self.info['END'] == self.ptr.pos + self.ptr.rlen
-        #else:
-        #    self.info.pop('END', None)
-        #    assert 'END' not in self.info
 
         cdef int ret
 

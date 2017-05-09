@@ -42,40 +42,40 @@ cdef class VariantHeader(object):
 
 
 cdef class VariantHeaderRecord(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
     cdef bcf_hrec_t *ptr
 
 
 cdef class VariantHeaderRecords(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
 
 
 cdef class VariantHeaderContigs(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
 
 
 cdef class VariantHeaderSamples(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
 
 
 cdef class VariantContig(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
     cdef int id
 
 
 cdef class VariantMetadata(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
     cdef int type
     cdef int id
 
 
 cdef class VariantHeaderMetadata(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
     cdef int32_t type
 
 
 cdef class VariantRecord(object):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
     cdef bcf1_t *ptr
 
 
@@ -106,7 +106,7 @@ cdef class BaseIndex(object):
 
 
 cdef class BCFIndex(BaseIndex):
-    cdef VariantHeader header
+    cdef readonly VariantHeader header
     cdef hts_idx_t *ptr
 
 
