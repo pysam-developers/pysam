@@ -2791,6 +2791,7 @@ cdef class VariantRecord(object):
                 raise ValueError(msg.format(self.ptr.n_sample, bcf_hdr_nsamples(dst_hdr)))
 
             bcf_translate(dst_hdr, src_hdr, self.ptr)
+            self.header = dst_header
 
     @property
     def rid(self):
