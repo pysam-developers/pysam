@@ -1323,7 +1323,7 @@ cdef class AlignmentFile(HTSFile):
                 raise OSError(errno, force_str(strerror(errno)))
 
     def __dealloc__(self):
-        cdef int ret
+        cdef int ret = 0
 
         if self.htsfile != NULL:
             ret = hts_close(self.htsfile)
