@@ -260,19 +260,11 @@ static void init_data(args_t *args)
     MAT(tprob,2,STATE_AZ,STATE_HW) = args->t2AZ;
     MAT(tprob,2,STATE_AZ,STATE_AZ) = 1 - args->t2HW; 
 
+    args->hmm = hmm_init(2, tprob, 10000);
     if ( args->genmap_fname ) 
-    {
-        args->hmm = hmm_init(2, tprob, 0);
         hmm_set_tprob_func(args->hmm, set_tprob_genmap, args);
-    }
     else if ( args->rec_rate > 0 )
-    {
-        args->hmm = hmm_init(2, tprob, 0);
         hmm_set_tprob_func(args->hmm, set_tprob_rrate, args);
-
-    }
-    else
-        args->hmm = hmm_init(2, tprob, 10000);
 
     args->out = bgzf_open(strcmp("pysam_stdout",args->output_fname)?args->output_fname:"-", args->output_type&OUTPUT_GZ ? "wg" : "wu"); 
     if ( !args->out ) error("Failed to open %s: %s\n", args->output_fname, strerror(errno));
@@ -386,21 +378,22 @@ static int load_genmap(args_t *args, bcf1_t *line)
         hts_expand(genmap_t,args->ngenmap,args->mgenmap,args->genmap);
         genmap_t *gm = &args->genmap[args->ngenmap-1];
 
+        // position, convert to 0-based
         char *tmp, *end;
         gm->pos = strtol(str.s, &tmp, 10);
         if ( str.s==tmp ) error("Could not parse %s: %s\n", fname, str.s);
+        gm->pos -= 1;
 
         // skip second column
         tmp++;
         while ( *tmp && !isspace(*tmp) ) tmp++;
 
-        // read the genetic map in cM
+        // read the genetic map in cM, scale from % to likelihood
         gm->rate = strtod(tmp+1, &end);
         if ( tmp+1==end ) error("Could not parse %s: %s\n", fname, str.s);
+        gm->rate *= 0.01;
     }
     if ( !args->ngenmap ) error("Genetic map empty?\n");
-    int i;
-    for (i=0; i<args->ngenmap; i++) args->genmap[i].rate /= args->genmap[args->ngenmap-1].rate; // scale to 1
     if ( hts_close(fp) ) error("Close failed\n");
     free(str.s);
     return 0;
@@ -438,6 +431,8 @@ void set_tprob_genmap(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, d
 {
     args_t *args = (args_t*) data;
     double ci = get_genmap_rate(args, prev_pos, pos);
+    if ( args->rec_rate ) ci *= args->rec_rate;
+    if ( ci > 1 ) ci = 1;
     MAT(tprob,2,STATE_HW,STATE_AZ) *= ci;
     MAT(tprob,2,STATE_AZ,STATE_HW) *= ci;
     MAT(tprob,2,STATE_AZ,STATE_AZ)  = 1 - MAT(tprob,2,STATE_HW,STATE_AZ);
@@ -448,6 +443,7 @@ void set_tprob_rrate(hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, do
 {
     args_t *args = (args_t*) data;
     double ci = (pos - prev_pos) * args->rec_rate;
+    if ( ci > 1 ) ci = 1;
     MAT(tprob,2,STATE_HW,STATE_AZ) *= ci;
     MAT(tprob,2,STATE_AZ,STATE_HW) *= ci;
     MAT(tprob,2,STATE_AZ,STATE_AZ)  = 1 - MAT(tprob,2,STATE_HW,STATE_AZ);
@@ -579,10 +575,7 @@ static void flush_viterbi(args_t *args, int ismpl)
     MAT(tprob_arr,2,STATE_HW,STATE_AZ) = args->t2HW;
     MAT(tprob_arr,2,STATE_AZ,STATE_HW) = args->t2AZ;
     MAT(tprob_arr,2,STATE_AZ,STATE_AZ) = 1 - args->t2HW; 
-    if ( args->genmap_fname || args->rec_rate > 0 )
-        hmm_set_tprob(args->hmm, tprob_arr, 0);
-    else
-        hmm_set_tprob(args->hmm, tprob_arr, 10000);
+    hmm_set_tprob(args->hmm, tprob_arr, 10000);
 
     int niter = 0;
     do
@@ -603,10 +596,7 @@ static void flush_viterbi(args_t *args, int ismpl)
         for (j=0; j<2; j++)
             for (k=0; k<2; k++) MAT(tprob_new,2,j,k) /= smpl->nrid;
 
-        if ( args->genmap_fname || args->rec_rate > 0 )
-            hmm_set_tprob(args->hmm, tprob_new, 0);
-        else
-            hmm_set_tprob(args->hmm, tprob_new, 10000);
+        hmm_set_tprob(args->hmm, tprob_new, 10000);
 
         deltaz = fabs(MAT(tprob_new,2,STATE_AZ,STATE_HW)-t2az_prev);
         delthw = fabs(MAT(tprob_new,2,STATE_HW,STATE_AZ)-t2hw_prev);
@@ -1131,9 +1121,9 @@ int main_vcfroh(int argc, char *argv[])
                 break;
             case 'o': args->output_fname = optarg; break;
             case 'O': 
-                if ( index(optarg,'s') || index(optarg,'S') ) args->output_type |= OUTPUT_ST;
-                if ( index(optarg,'r') || index(optarg,'R') ) args->output_type |= OUTPUT_RG;
-                if ( index(optarg,'z') || index(optarg,'z') ) args->output_type |= OUTPUT_GZ;
+                if ( strchr(optarg,'s') || strchr(optarg,'S') ) args->output_type |= OUTPUT_ST;
+                if ( strchr(optarg,'r') || strchr(optarg,'R') ) args->output_type |= OUTPUT_RG;
+                if ( strchr(optarg,'z') || strchr(optarg,'z') ) args->output_type |= OUTPUT_GZ;
                 break;
             case 'e': args->estimate_AF = optarg; naf_opts++; break;
             case 'b': args->buffer_size = optarg; break;

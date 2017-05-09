@@ -7,16 +7,16 @@
 # The principal classes defined in this module are:
 #
 # class AlignmentFile   read/write access to SAM/BAM/CRAM formatted files
-# 
+#
 # class IndexedReads    index a SAM/BAM/CRAM file by query name while keeping
 #                       the original sort order intact
-# 
+#
 # Additionally this module defines numerous additional classes that
 # are part of the internal API. These are:
-# 
+#
 # Various iterator classes to iterate over alignments in sequential
 # (IteratorRow) or in a stacked fashion (IteratorColumn):
-# 
+#
 # class IteratorRow
 # class IteratorRowRegion
 # class IteratorRowHead
@@ -92,7 +92,7 @@ VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
 
 # default type conversions within SAM header records
 KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
-                       "SQ" : {"SN" : str, "LN" : int, "AS" : str, 
+                       "SQ" : {"SN" : str, "LN" : int, "AS" : str,
                                "M5" : str, "SP" : str, "UR" : str,
                                "AH" : str,},
                        "RG" : {"ID" : str, "CN" : str, "DS" : str,
@@ -100,7 +100,7 @@ KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                                "LB" : str, "PG" : str, "PI" : str,
                                "PL" : str, "PM" : str, "PU" : str,
                                "SM" : str,},
-                       "PG" : {"ID" : str, "PN" : str, "CL" : str, 
+                       "PG" : {"ID" : str, "PN" : str, "CL" : str,
                                "PP" : str, "DS" : str, "VN" : str,},}
 
 # output order of fields within records. Ensure that CL is at
@@ -146,8 +146,7 @@ cdef bam_hdr_t * build_header_from_dict(new_header):
 
     This method inserts the text field, target_name and target_len.
     '''
-
-    lines = []
+    cdef list lines = []
 
     # create new header and copy old data
     cdef bam_hdr_t * dest = bam_hdr_init()
@@ -240,7 +239,7 @@ cdef bam_hdr_t * build_header_from_list(reference_names,
         text = []
         for x from 0 <= x < dest.n_targets:
             text.append("@SQ\tSN:%s\tLN:%s\n" % \
-                        (force_str(reference_names[x]), 
+                        (force_str(reference_names[x]),
                          reference_lengths[x]))
         text = ''.join(text)
 
@@ -262,9 +261,10 @@ cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
-    reference_filename=None, filename=None, duplicate_filehandle=True)
+    reference_filename=None, filename=None, duplicate_filehandle=True,
+    ignore_truncation=False)
 
-    A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file. 
+    A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
     If `filepath_or_object` is a string, the file is automatically
     opened. If `filepath_or_object` is a python File object, the
@@ -284,7 +284,7 @@ cdef class AlignmentFile(HTSFile):
            :class:`~pysam.AlignmentFile`).
 
         2. If `header` is given, the header is built from a
-           multi-level dictionary. 
+           multi-level dictionary.
 
         3. If `text` is given, new header text is copied from raw
            text.
@@ -372,7 +372,7 @@ cdef class AlignmentFile(HTSFile):
         Alternative to filepath_or_object. Filename of the file
         to be opened.
 
-    duplicate_filehandle: bool 
+    duplicate_filehandle: bool
         By default, file handles passed either directly or through
         File-like objects will be duplicated before passing them to
         htslib. The duplication prevents issues where the same stream
@@ -380,6 +380,10 @@ cdef class AlignmentFile(HTSFile):
         high-level python object. Set to False to turn off
         duplication.
 
+    ignore_truncation: bool
+        Issue a warning, instead of raising an error if the current file
+        appears to be truncated due to a missing EOF marker.  Only applies
+        to bgzipped formats. (Default=False)
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -445,11 +449,13 @@ cdef class AlignmentFile(HTSFile):
               filepath_index=None,
               referencenames=None,
               referencelengths=None,
-              duplicate_filehandle=True):
+              duplicate_filehandle=True,
+              ignore_truncation=False):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
         will be closed and a new file will be opened.
+
         '''
         cdef char *cfilename = NULL
         cdef char *creference_filename = NULL
@@ -556,7 +562,7 @@ cdef class AlignmentFile(HTSFile):
             # open file for reading
             if not self._exists():
                 raise IOError("file `%s` not found" % self.filename)
-                
+
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
@@ -566,6 +572,8 @@ cdef class AlignmentFile(HTSFile):
 
             if self.htsfile.format.category != sequence_data:
                 raise ValueError("file does not contain alignment data")
+
+            self.check_truncation(ignore_truncation)
 
             # bam files require a valid header
             if self.is_bam or self.is_cram:
@@ -688,7 +696,7 @@ cdef class AlignmentFile(HTSFile):
         if not self.is_open:
             raise ValueError("I/O operation on closed file")
         if not 0 <= tid < self.header.n_targets:
-            raise ValueError("reference_id %i out of range 0<=tid<%i" % 
+            raise ValueError("reference_id %i out of range 0<=tid<%i" %
                              (tid, self.header.n_targets))
         return charptr_to_str(self.header.target_name[tid])
 
@@ -705,7 +713,7 @@ cdef class AlignmentFile(HTSFile):
 
         Alternatively, a samtools :term:`region` string can be
         supplied.
-        
+
         If any of the coordinates are missing they will be replaced by the
         minimum (`start`) or maximum (`end`) coordinate.
 
@@ -714,14 +722,14 @@ cdef class AlignmentFile(HTSFile):
 
         Returns
         -------
-        
+
         tuple :  a tuple of `flag`, :term:`tid`, `start` and `end`. The
         flag indicates whether no coordinates were supplied and the
         genomic region is the complete genomic space.
 
         Raises
         ------
-        
+
         ValueError
            for invalid or out of bounds regions.
 
@@ -786,7 +794,7 @@ cdef class AlignmentFile(HTSFile):
               tid=None,
               until_eof=False,
               multiple_iterators=False):
-        """fetch reads aligned in a :term:`region`. 
+        """fetch reads aligned in a :term:`region`.
 
         See :meth:`AlignmentFile.parse_region` for more information
         on genomic regions.
@@ -811,7 +819,7 @@ cdef class AlignmentFile(HTSFile):
 
         Parameters
         ----------
-        
+
         until_eof : bool
 
            If `until_eof` is True, all reads from the current file
@@ -819,7 +827,7 @@ cdef class AlignmentFile(HTSFile):
            file. Using this option will also fetch unmapped reads.
 
         multiple_iterators : bool
-           
+
            If `multiple_iterators` is True, multiple
            iterators on the same file can be used at the same time. The
            iterator returned will receive its own copy of a filehandle to
@@ -863,7 +871,7 @@ cdef class AlignmentFile(HTSFile):
 
             if has_coord:
                 return IteratorRowRegion(
-                    self, rtid, rstart, rend, 
+                    self, rtid, rstart, rend,
                     multiple_iterators=multiple_iterators)
             else:
                 if until_eof:
@@ -889,7 +897,7 @@ cdef class AlignmentFile(HTSFile):
                                   multiple_iterators=multiple_iterators)
 
     def head(self, n, multiple_iterators=True):
-        '''return an iterator over the first n alignments. 
+        '''return an iterator over the first n alignments.
 
         This iterator is is useful for inspecting the bam-file.
 
@@ -897,15 +905,15 @@ cdef class AlignmentFile(HTSFile):
         ----------
 
         multiple_iterators : bool
-        
+
             is set to True by default in order to
             avoid changing the current file position.
-        
+
         Returns
         -------
-        
+
         an iterator over a collection of reads
-        
+
         '''
         return IteratorRowHead(self, n,
                                multiple_iterators=multiple_iterators)
@@ -920,14 +928,14 @@ cdef class AlignmentFile(HTSFile):
             not re-opened the file.
 
         .. note::
-  
+
            This method is too slow for high-throughput processing.
            If a read needs to be processed with its mate, work
            from a read name sorted file or, better, cache reads.
 
         Returns
         -------
-        
+
         :class:`~pysam.AlignedSegment` : the mate
 
         Raises
@@ -1078,7 +1086,7 @@ cdef class AlignmentFile(HTSFile):
 
         Parameters
         ----------
-        
+
         reference : string
             reference_name of the genomic region (chromosome)
 
@@ -1087,12 +1095,12 @@ cdef class AlignmentFile(HTSFile):
 
         end : int
             end of the genomic region
-        
+
         region : string
             a region string in samtools format.
 
         until_eof : bool
-            count until the end of the file, possibly including 
+            count until the end of the file, possibly including
             unmapped reads as well.
 
         read_callback: string or function
@@ -1152,7 +1160,7 @@ cdef class AlignmentFile(HTSFile):
         return counter
 
     @cython.boundscheck(False)  # we do manual bounds checking
-    def count_coverage(self, 
+    def count_coverage(self,
                        reference=None,
                        start=None,
                        end=None,
@@ -1167,7 +1175,7 @@ cdef class AlignmentFile(HTSFile):
 
         Parameters
         ----------
-        
+
         reference : string
             reference_name of the genomic region (chromosome)
 
@@ -1182,7 +1190,7 @@ cdef class AlignmentFile(HTSFile):
 
         quality_threshold : int
             quality_threshold is the minimum quality score (in phred) a
-            base has to reach to be counted. 
+            base has to reach to be counted.
 
         read_callback: string or function
 
@@ -1213,7 +1221,7 @@ cdef class AlignmentFile(HTSFile):
         four array.arrays of the same length in order A C G T : tuple
 
         """
-        
+
         cdef int _start = start
         cdef int _stop = end
         cdef int length = _stop - _start
@@ -1238,7 +1246,7 @@ cdef class AlignmentFile(HTSFile):
             filter_method = 1
         elif read_callback == "nofilter":
             filter_method = 2
-    
+
         cdef int _threshold = quality_threshold
         for read in self.fetch(reference=reference,
                                start=start,
@@ -1300,15 +1308,21 @@ cdef class AlignmentFile(HTSFile):
         return res
 
     def close(self):
-        '''
-        closes the :class:`pysam.AlignmentFile`.'''
+        '''closes the :class:`pysam.AlignmentFile`.'''
 
         if self.htsfile == NULL:
             return
 
         cdef int ret = hts_close(self.htsfile)
-        hts_idx_destroy(self.index)
         self.htsfile = NULL
+
+        if self.index != NULL:
+            hts_idx_destroy(self.index)
+            self.index = NULL
+
+        if self.header != NULL:
+            bam_hdr_destroy(self.header)
+            self.header = NULL
 
         if ret < 0:
             global errno
@@ -1318,28 +1332,23 @@ cdef class AlignmentFile(HTSFile):
                 raise OSError(errno, force_str(strerror(errno)))
 
     def __dealloc__(self):
-        # remember: dealloc cannot call other methods
-        # note: no doc string
-        # note: __del__ is not called.
-
-        # FIXME[kbj]: isn't self.close a method?  I've been duplicating
-        # close within __dealloc__ (see BCFFile.__dealloc__).  Not a pretty
-        # solution and perhaps unnecessary given that calling self.close has
-        # been working for years.
-        # AH: I have removed the call to close. Even though it is working,
-        # it seems to be dangerous according to the documentation as the
-        # object be partially deconstructed already.
         cdef int ret = 0
 
         if self.htsfile != NULL:
             ret = hts_close(self.htsfile)
-            hts_idx_destroy(self.index);
             self.htsfile = NULL
 
-        bam_destroy1(self.b)
+        if self.index != NULL:
+            hts_idx_destroy(self.index)
+            self.index = NULL
+
         if self.header != NULL:
             bam_hdr_destroy(self.header)
+            self.header = NULL
 
+        if self.b:
+            bam_destroy1(self.b)
+            self.b = NULL
 
         if ret < 0:
             global errno
@@ -1347,7 +1356,7 @@ cdef class AlignmentFile(HTSFile):
                 errno = 0
             else:
                 raise OSError(errno, force_str(strerror(errno)))
-            
+
     cpdef int write(self, AlignedSegment read) except -1:
         '''
         write a single :class:`pysam.AlignedSegment` to disk.
@@ -1359,7 +1368,7 @@ cdef class AlignmentFile(HTSFile):
 
         Returns
         -------
-            
+
         int : the number of bytes written. If the file is closed,
               this will be 0.
         '''
@@ -1404,7 +1413,7 @@ cdef class AlignmentFile(HTSFile):
             return self.header.n_targets
 
     property references:
-        """tuple with the names of :term:`reference` sequences. This is a 
+        """tuple with the names of :term:`reference` sequences. This is a
         read-only attribute"""
         def __get__(self):
             if not self.is_open: raise ValueError( "I/O operation on closed file" )
@@ -1472,10 +1481,10 @@ cdef class AlignmentFile(HTSFile):
 
     property text:
         '''string with the full contents of the :term:`sam file` header as a
-        string. 
+        string.
 
         This is a read-only attribute.
-        
+
         See :attr:`pysam.AlignmentFile.header` to get a parsed
         representation of the header.
         '''
@@ -1485,13 +1494,13 @@ cdef class AlignmentFile(HTSFile):
             return from_string_and_size(self.header.text, self.header.l_text)
 
     property header:
-        """two-level dictionay with header information from the file. 
-        
+        """two-level dictionay with header information from the file.
+
         This is a read-only attribute.
 
         The first level contains the record (``HD``, ``SQ``, etc) and
         the second level contains the fields (``VN``, ``LN``, etc).
-        
+
         The parser is validating and will raise an AssertionError if
         if encounters any record or field tags that are not part of
         the SAM specification. Use the
@@ -1511,7 +1520,7 @@ cdef class AlignmentFile(HTSFile):
                 raise ValueError( "I/O operation on closed file" )
 
             result = {}
-            
+
             if self.header.text != NULL:
                 # convert to python string (note: call self.text to
                 # create 0-terminated string)
@@ -1535,7 +1544,7 @@ cdef class AlignmentFile(HTSFile):
                     x = {}
 
                     for idx, field in enumerate(fields[1:]):
-                        if ":" not in field: 
+                        if ":" not in field:
                             raise ValueError("malformatted header: no ':' in field" )
                         key, value = field.split(":", 1)
                         if key in ("CL",):
@@ -1615,12 +1624,12 @@ cdef class AlignmentFile(HTSFile):
             raise IOError('truncated file')
         else:
             raise StopIteration
-            
+
     # Compatibility functions for pysam < 0.8.3
     def gettid(self, reference):
         """deprecated, use get_tid() instead"""
         return self.get_tid(reference)
-        
+
     def getrname(self, tid):
         """deprecated, use get_reference_name() instead"""
         return self.get_reference_name(tid)
@@ -1654,7 +1663,7 @@ cdef class IteratorRow:
     def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
         cdef char *cfilename
         cdef char *creference_filename
-        
+
         if not samfile.is_open:
             raise ValueError("I/O operation on closed file")
 
@@ -1728,7 +1737,7 @@ cdef class IteratorRowRegion(IteratorRow):
                 tid,
                 beg,
                 end)
-    
+
     def __iter__(self):
         return self
 
@@ -1783,7 +1792,7 @@ cdef class IteratorRowHead(IteratorRow):
     def __iter__(self):
         return self
 
-    cdef bam1_t * getCurrent( self ):
+    cdef bam1_t * getCurrent(self):
         return self.b
 
     cdef int cnext(self):
@@ -1831,7 +1840,7 @@ cdef class IteratorRowAll(IteratorRow):
     def __iter__(self):
         return self
 
-    cdef bam1_t * getCurrent( self ):
+    cdef bam1_t * getCurrent(self):
         return self.b
 
     cdef int cnext(self):
@@ -2005,7 +2014,7 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
     the samtools pileup.
     '''
 
-    # Note that this method requries acces to some 
+    # Note that this method requries acces to some
     # functions in the samtools code base and is thus
     # not htslib only.
     # The functions accessed in samtools are:
@@ -2046,7 +2055,7 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
         skip = 0
 
         # realign read - changes base qualities
-        if d.seq != NULL and is_cns and not is_nobaq: 
+        if d.seq != NULL and is_cns and not is_nobaq:
             # flag:
             # apply_baq = flag&1, extend_baq = flag>>1&1, redo_baq = flag&4;
             sam_prob_realn(b, d.seq, d.seq_len, 0)
@@ -2108,7 +2117,7 @@ cdef class IteratorColumn:
        Valid values are None, "all" (default), "nofilter" or "samtools".
 
        See AlignmentFile.pileup for description.
-    
+
     fastafile
        A :class:`~pysam.FastaFile` object
 
@@ -2290,7 +2299,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
 
             if self.plp == NULL:
                 raise StopIteration
-            
+
             if self.truncate:
                 if self.start > self.pos: continue
                 if self.pos >= self.end: raise StopIteration
@@ -2332,7 +2341,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                         self.pos,
                                         self.n_plp,
                                         self.samfile)
-                
+
             # otherwise, proceed to next reference or stop
             self.tid += 1
             if self.tid < self.samfile.nreferences:
@@ -2484,7 +2493,7 @@ cdef class IndexedReads:
 
         Raises
         ------
-        
+
         KeyError
             if the `query_name` is not in the index.
 

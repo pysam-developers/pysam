@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.  */
 
 #include <stdio.h>
+#include <strings.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <ctype.h>
@@ -306,6 +307,7 @@ static int realign(args_t *args, bcf1_t *line)
     {
         if ( line->d.allele[i][0]=='<' ) return ERR_SYMBOLIC;  // symbolic allele
         if ( line->d.allele[i][0]=='*' ) return ERR_SPANNING_DELETION;  // spanning deletion
+        if ( bcf_get_variant_type(line,i)==VCF_BND ) return ERR_SYMBOLIC;   // breakend, not an error
         if ( has_non_acgtn(line->d.allele[i],0) )
         {
             if ( args->check_ref==CHECK_REF_EXIT )

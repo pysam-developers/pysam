@@ -103,7 +103,7 @@ call_t;
 void error(const char *format, ...);
 
 /*
- *  *call() - return negative value on error or the number of non-reference
+ *  call() - return -1 value on critical error; -2 to skip the site; or the number of non-reference
  *            alleles on success.
  */
 int mcall(call_t *call, bcf1_t *rec);    // multiallic and rare-variant calling model

@@ -26,6 +26,7 @@ THE SOFTWARE.  */
 
 #include <stdarg.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -853,6 +854,7 @@ int main_vcfcall(int argc, char *argv[])
         else
             ret = ccall(&args.aux, bcf_rec);
         if ( ret==-1 ) error("Something is wrong\n");
+        else if ( ret==-2 ) continue;   // skip the site
 
         // Normal output
         if ( (args.aux.flag & CALL_VARONLY) && ret==0 && !args.gvcf ) continue;     // not a variant

@@ -24,6 +24,7 @@ THE SOFTWARE.  */
 
 #include <ctype.h>
 #include <stdlib.h>
+#include <strings.h>
 #include <errno.h>
 #include <math.h>
 #include <wordexp.h>
@@ -33,6 +34,10 @@ THE SOFTWARE.  */
 #include "bcftools.h"
 #include <htslib/hts_defs.h>
 #include <htslib/vcfutils.h>
+
+#ifndef __FUNCTION__
+#  define __FUNCTION__ __func__
+#endif
 
 uint64_t bcf_double_missing    = 0x7ff0000000000001;
 uint64_t bcf_double_vector_end = 0x7ff0000000000002;
@@ -1610,6 +1615,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
             else if ( !strcasecmp(out[ival].key,"indel") || !strcasecmp(out[ival].key,"indels") ) { out[ival].threshold = VCF_INDEL<<1; out[ival].is_str = 0; }
             else if ( !strcasecmp(out[ival].key,"mnp") || !strcasecmp(out[ival].key,"mnps") ) { out[ival].threshold = VCF_MNP<<1; out[ival].is_str = 0; }
             else if ( !strcasecmp(out[ival].key,"other") ) { out[ival].threshold = VCF_OTHER<<1; out[ival].is_str = 0; }
+            else if ( !strcasecmp(out[ival].key,"bnd") ) { out[ival].threshold = VCF_BND<<1; out[ival].is_str = 0; }
             else if ( !strcasecmp(out[ival].key,"ref") ) { out[ival].threshold = 1; out[ival].is_str = 0; }
             else error("The type \"%s\" not recognised: %s\n", out[ival].key, filter->str);
             if ( out[itok].tok_type==TOK_LIKE || out[itok].tok_type==TOK_NLIKE ) out[itok].comparator = filters_cmp_bit_and;

@@ -63,7 +63,10 @@ class SamtoolsTest(unittest.TestCase):
         "ex1.fa", "ex1.fa.fai",
         "ex1.sam.gz",
         "ex1.bam", "ex1.bam.bai",
-        "ex1.sam", "ex2.bam",
+        "ex1.sam",
+        "ex1.sam",
+        "ex2.bam",
+        "ex2.sam",
         "ex1.bed"]
 
     # a list of statements to test
@@ -92,7 +95,7 @@ class SamtoolsTest(unittest.TestCase):
         # unknow option
         # "rmdup -s ex1.bam %(out)s_ex1.rmdup.bam",
         # "merge -f %(out)s_ex1.merge.bam ex1.bam ex1.bam",
-        "reheader ex1.sam ex1.bam > %(out)s_ex1.reheader",
+        "reheader ex2.sam ex1.bam > %(out)s_ex1.reheader.bam",
         "cat -o %(out)s_ex1.cat.bam ex1.bam ex1.bam",
         "targetcut ex1.bam > %(out)s_ex1.targetcut",
         "phase ex1.bam > %(out)s_ex1.phase",
@@ -157,11 +160,14 @@ class SamtoolsTest(unittest.TestCase):
 
         return
 
-    def get_command(self, statement):
+    def get_command(self, statement, map_to_internal=True):
         """return samtools command from statement"""
         parts = statement.split(" ")
         command = parts[0]
-        return self.map_command.get(command, command)
+        if map_to_internal:
+            return self.map_command.get(command, command)
+        else:
+            return command
 
     def check_statement(self, statement):
 
@@ -222,9 +228,10 @@ class SamtoolsTest(unittest.TestCase):
                         check_samtools_view_equal(
                             s, p, without_header=True),
                         error_msg)
-                check_lines_equal(
-                    self, s, p,
-                    filter_f=lambda x: x.startswith("#"),
+                else:
+                    check_lines_equal(
+                        self, s, p,
+                        filter_f=lambda x: x.startswith("#"),
                     msg=error_msg)
 
     def testStatements(self):
@@ -244,12 +251,14 @@ class SamtoolsTest(unittest.TestCase):
             return
 
         for statement in self.statements:
-            command = self.get_command(statement)
-            pysam_method = getattr(self.module, command)
+            command = self.get_command(statement, map_to_internal=False)
+            if command == "bam2fq":
+                continue
+            mapped_command = self.get_command(statement, map_to_internal=True)
+            pysam_method = getattr(self.module, mapped_command)
             usage_msg = pysam_method.usage()
-            expected = "Usage: {} {}".format(self.executable, command)
-            
-            self.assertTrue(expected in usage_msg)
+            expected = "Usage:\s+{} {}".format(self.executable, command)
+            self.assertTrue(re.search(expected, usage_msg) is not None)
 
     def tearDown(self):
         if os.path.exists(WORKDIR):

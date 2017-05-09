@@ -58,10 +58,9 @@ cdef extern from "htslib_util.h" nogil:
 cdef extern from "htslib/hfile.h" nogil:
     ctypedef struct hFILE
 
-    # TODO: since htslib1.4 hopen now accepts varargs
     # @abstract  Open the named file or URL as a stream
     # @return    An hFILE pointer, or NULL (with errno set) if an error occurred.
-    hFILE *hopen(const char *filename, const char *mode)
+    hFILE *hopen(const char *filename, const char *mode, ...)
 
     # @abstract  Associate a stream with an existing open file descriptor
     # @return    An hFILE pointer, or NULL (with errno set) if an error occurred.
@@ -103,6 +102,40 @@ cdef extern from "htslib/hfile.h" nogil:
     # @abstract  Read one character from the stream
     # @return    The character read, or EOF on end-of-file or error
     int hgetc(hFILE *fp)
+
+    # Read from the stream until the delimiter, up to a maximum length
+    #    @param buffer  The buffer into which bytes will be written
+    #    @param size    The size of the buffer
+    #    @param delim   The delimiter (interpreted as an `unsigned char`)
+    #    @param fp      The file stream
+    #    @return  The number of bytes read, or negative on error.
+    #    @since   1.4
+    #
+    # Bytes will be read into the buffer up to and including a delimiter, until
+    # EOF is reached, or _size-1_ bytes have been written, whichever comes first.
+    # The string will then be terminated with a NUL byte (`\0`).
+    ssize_t hgetdelim(char *buffer, size_t size, int delim, hFILE *fp)
+
+    # Read a line from the stream, up to a maximum length
+    #    @param buffer  The buffer into which bytes will be written
+    #    @param size    The size of the buffer
+    #    @param fp      The file stream
+    #    @return  The number of bytes read, or negative on error.
+    #    @since   1.4
+    #
+    # Specialization of hgetdelim() for a `\n` delimiter.
+    ssize_t hgetln(char *buffer, size_t size, hFILE *fp)
+
+    # Read a line from the stream, up to a maximum length
+    #    @param buffer  The buffer into which bytes will be written
+    #    @param size    The size of the buffer (must be > 1 to be useful)
+    #    @param fp      The file stream
+    #    @return  _buffer_ on success, or `NULL` if an error occurred.
+    #    @since   1.4
+    #
+    # This function can be used as a replacement for `fgets(3)`, or together with
+    # kstring's `kgetline()` to read arbitrarily-long lines into a _kstring_t_.
+    char *hgets(char *buffer, int size, hFILE *fp)
 
     # @abstract  Peek at characters to be read without removing them from buffers
     # @param fp      The file stream
@@ -1872,7 +1905,7 @@ cdef extern from "htslib/vcf.h" nogil:
     int bcf_get_format_int32(const bcf_hdr_t *hdr, bcf1_t *line, const char *tag, int32_t **dst, int *ndst)
     int bcf_get_format_float(const bcf_hdr_t *hdr, bcf1_t *line, const char *tag, float **dst, int *ndst)
     int bcf_get_format_char(const bcf_hdr_t *hdr, bcf1_t *line, const char *tag, char **dst, int *ndst)
-    int bcf_get_genotypes(const bcf_hdr_t *hdr, bcf1_t *line, int **dst, int *ndst)
+    int bcf_get_genotypes(const bcf_hdr_t *hdr, bcf1_t *line, int32_t **dst, int *ndst)
     int bcf_get_format_string(const bcf_hdr_t *hdr, bcf1_t *line, const char *tag, char ***dst, int *ndst)
     int bcf_get_format_values(const bcf_hdr_t *hdr, bcf1_t *line, const char *tag, void **dst, int *ndst, int type)
 
