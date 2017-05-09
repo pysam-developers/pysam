@@ -226,7 +226,8 @@ cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) exce
         raise ValueError('genotype is only valid as a format field')
 
     cdef int32_t *gt_arr = NULL
-    cdef int ngt = bcf_get_genotypes(hdr, rec, &gt_arr, &ngt)
+    cdef int ngt = 0
+    ngt = bcf_get_genotypes(hdr, rec, &gt_arr, &ngt)
 
     if ngt <= 0 or not gt_arr:
         return 0
@@ -1309,14 +1310,10 @@ cdef class VariantHeaderRecord(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            value = self[key]
-            del self[key]
-            return value
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -2587,14 +2584,10 @@ cdef class VariantRecordInfo(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            value = self[key]
-            del self[key]
-            return value
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     def __richcmp__(VariantRecordInfo self not None, VariantRecordInfo other not None, int op):
         if op != 2 and op != 3:
@@ -2737,14 +2730,10 @@ cdef class VariantRecordSamples(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            value = self[key]
-            del self[key]
-            return value
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     def __richcmp__(VariantRecordSamples self not None, VariantRecordSamples other not None, int op):
         if op != 2 and op != 3:
@@ -2987,9 +2976,6 @@ cdef class VariantRecord(object):
 
         if bcf_unpack(r, BCF_UN_STR) < 0:
             raise ValueError('Error unpacking VariantRecord')
-
-        if r.n_allele != 0 and r.n_allele != len(values):
-            raise ValueError('Cannot reset number of alleles after initialization')
 
         values = [force_bytes(v) for v in values]
 
@@ -3321,14 +3307,10 @@ cdef class VariantRecordSample(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            value = self[key]
-            del self[key]
-            return value
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     def __richcmp__(VariantRecordSample self not None, VariantRecordSample other not None, int op):
         if op != 2 and op != 3:
@@ -3436,14 +3418,10 @@ cdef class BaseIndex(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            value = self[key]
-            del self[key]
-            return value
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
