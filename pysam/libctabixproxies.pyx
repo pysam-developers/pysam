@@ -10,10 +10,12 @@ from pysam.libcutils cimport encode_filename, from_string_and_size
 
 import collections
 
+
 cdef char *StrOrEmpty(char * buffer):
      if buffer == NULL:
          return ""
      else: return buffer
+
 
 cdef int isNew(char * p, char * buffer, size_t nbytes):
     """return True if `p` is located within `buffer` of size
@@ -21,7 +23,8 @@ cdef int isNew(char * p, char * buffer, size_t nbytes):
     """
     if p == NULL:
         return 0
-    return not (buffer <= p < buffer + nbytes)
+    
+    return not (buffer <= p <= buffer + nbytes)
 
 
 cdef class TupleProxy:
@@ -230,7 +233,7 @@ cdef class TupleProxy:
         self.nfields = field
         if self.nfields < self.getMinFields():
             raise ValueError(
-                "parsing error: fewer that %i fields in line: %s" %
+                "parsing error: fewer than %i fields in line: %s" %
                 (self.getMinFields(), buffer))
 
     def _getindex(self, int index):
@@ -268,7 +271,7 @@ cdef class TupleProxy:
             raise IndexError("list index out of range")
 
         if isNew(self.fields[idx], self.data, self.nbytes):
-            free(self.fields[idx] )
+            free(self.fields[idx])
 
         self.is_modified = 1
 
@@ -350,333 +353,6 @@ def quote(v):
         return str(v)
 
 
-cdef class GTFProxy(TupleProxy):
-    '''Proxy class for access to GTF fields.
-
-    This class represents a GTF entry for fast read-access.
-    Write-access has been added as well, though some care must
-    be taken. If any of the string fields (contig, source, ...)
-    are set, the new value is tied to the lifetime of the
-    argument that was supplied.
-
-    The only exception is the attributes field when set from
-    a dictionary - this field will manage its own memory.
-    '''
-
-    def __cinit__(self): 
-        # automatically calls TupleProxy.__cinit__
-        self.hasOwnAttributes = False
-        self._attributes = NULL
-
-    def __dealloc__(self):
-        # automatically calls TupleProxy.__dealloc__
-        if self.hasOwnAttributes:
-            free(self._attributes)
-
-    cpdef int getMinFields(self):
-        '''return minimum number of fields.'''
-        return 9
-
-    cpdef int getMaxFields(self):
-        '''return max number of fields.'''
-        return 9
-
-    property contig:
-        '''contig of feature.'''
-        def __get__(self):
-            return self._getindex(0)
-        def __set__(self, value):
-            self._setindex(0, value)
-
-    property source:
-        '''feature source.'''
-        def __get__(self):
-            return self._getindex(1)
-        def __set__(self, value):
-            if value is None:
-                value = "."
-            self._setindex(1, value)
-
-    property feature:
-        '''feature name.'''
-        def __get__(self):
-            return self._getindex(2)
-        def __set__(self, value):
-            if value is None:
-                value = "."
-            self._setindex(2, value)
-
-    property start:
-        '''feature start (in 0-based open/closed coordinates).'''
-        def __get__(self ):
-            return int( self._getindex(3)) - 1
-        def __set__(self, value ):
-            self._setindex(3, str(value+1))
-
-    property end:
-        '''feature end (in 0-based open/closed coordinates).'''
-        def __get__(self):
-            return int(self._getindex(4))
-        def __set__(self, value):
-            self._setindex(4, str(value))
-
-    property score:
-        '''feature score.'''
-        def __get__(self): 
-            v = self._getindex(5)
-            if v == "" or v[0] == '.':
-                return None
-            else:
-                return float(v)
-
-        def __set__(self, value):
-            if value is None:
-                value = "."
-            self._setindex(5, str(value))
-
-    property strand:
-        '''feature strand.'''
-        def __get__(self):
-           return self._getindex(6)
-        def __set__(self, value ):
-            if value is None:
-                value = "."
-            self._setindex(6, value)
-
-    property frame:
-       '''feature frame.'''
-       def __get__(self):
-            v = self._getindex(7)
-            if v == "" or v[0] == '.':
-                return v
-            else:
-                return int(v)
-
-       def __set__(self, value):
-            if value is None:
-                value = "."
-            self._setindex(7, str(value))
-
-    property attributes:
-        '''feature attributes (as a string).'''
-        def __get__(self): 
-            if self.hasOwnAttributes:
-                return force_str(self._attributes)
-            else:
-                return force_str(self._getindex(8))
-        def __set__( self, value): 
-            if self.hasOwnAttributes:
-                free(self._attributes)
-                self._attributes = NULL
-                self.hasOwnAttributes = False
-            self._setindex(8, value)
-
-    cdef char * getAttributes(self):
-        '''return pointer to attributes.'''
-        cdef char * attributes
-        if self.hasOwnAttributes:
-            attributes = self._attributes
-        else:
-            attributes = self.fields[8]
-        if attributes == NULL:
-            raise KeyError("no attributes defined GTF entry")
-        return attributes
-
-    def asDict(self):
-        """parse attributes - return as dict
-        """
-
-        # remove comments
-        attributes = self.attributes
-
-        # separate into fields
-        # Fields might contain a ";", for example in ENSEMBL GTF file
-        # for mouse, v78:
-        # ...; transcript_name "TXNRD2;-001"; ....
-        # The current heuristic is to split on a semicolon followed by a
-        # space, see also http://mblab.wustl.edu/GTF22.html
-
-        # Remove white space to prevent a last empty field.
-        fields = [x.strip() for x in attributes.strip().split("; ")]
-        
-        result = collections.OrderedDict()
-
-        for f in fields:
-
-            # strip semicolon (GTF files without a space after the last semicolon)
-            if f.endswith(";"):
-                f = f[:-1]
-
-            # split at most once in order to avoid separating
-            # multi-word values
-            d = [x.strip() for x in f.split(" ", 1)]
-
-            n,v = d[0], d[1]
-            if len(d) > 2:
-                v = d[1:]
-
-            if v[0] == '"' and v[-1] == '"':
-                v = v[1:-1]
-            else:
-                ## try to convert to a value
-                try:
-                    v = float(v)
-                    v = int(v)
-                except ValueError:
-                    pass
-                except TypeError:
-                    pass
-
-            result[n] = v
-        
-        return result
-    
-    def fromDict(self, d):
-        '''set attributes from a dictionary.'''
-        cdef char * p
-        cdef int l
-
-        # clean up if this field is set twice
-        if self.hasOwnAttributes: 
-            free(self._attributes)
-
-        aa = []
-        for k,v in d.items():
-            if isinstance(v, str):
-                aa.append( '%s "%s"' % (k,v) )
-            else:
-                aa.append( '%s %s' % (k,str(v)) )
-
-        a = force_bytes("; ".join(aa) + ";")
-        p = a
-        l = len(a)
-        self._attributes = <char *>calloc(l + 1, sizeof(char))
-        if self._attributes == NULL:
-            raise ValueError("out of memory")
-        memcpy(self._attributes, p, l)
-
-        self.hasOwnAttributes = True
-        self.is_modified = True
-
-    def __str__(self):
-        cdef char * cpy
-        cdef int x
-
-        if self.is_modified:
-            return "\t".join( 
-                (self.contig, 
-                 self.source, 
-                 self.feature, 
-                 str(self.start+1),
-                 str(self.end),
-                 toDot(self.score),
-                 toDot(self.strand),
-                 toDot(self.frame),
-                 self.attributes))
-        else: 
-            return TupleProxy.__str__(self)
-
-    def invert(self, int lcontig):
-        '''invert coordinates to negative strand coordinates
-        
-        This method will only act if the feature is on the
-        negative strand.'''
-
-        if self.strand[0] == '-':
-            start = min(self.start, self.end)
-            end = max(self.start, self.end)
-            self.start, self.end = lcontig - end, lcontig - start
-
-    def keys(self):
-        '''return a list of attributes defined in this entry.'''
-        r = self.attributes
-        return [x.strip().split(" ")[0]
-                # separator is ';' followed by space
-                for x in r.split("; ") if x.strip() != '']
-
-    def __getitem__(self, key):
-        return self.__getattr__(key)
-
-    def __getattr__(self, item):
-        """Generic lookup of attribute from GFF/GTF attributes 
-        Only called if there *isn't* an attribute with this name
-        """
-        cdef char * start
-        cdef char * query
-        cdef char * cpy
-        cdef char * end
-        cdef int l
-
-        #
-        # important to use the getAttributes function.
-        # Using the self.attributes property to access
-        # the attributes caused a hard-to-trace bug
-        # in which fields in the attribute string were
-        # set to 0.
-        # Running through valgrind complained that
-        # memory was accessed in the memory field
-        # that has been released. It is not clear
-        # why this happened and might be a cython bug
-        # (Version 0.16). The valgrind warnings
-        # disappeard after accessing the C data structures
-        # directly and so did the bug.
-        cdef char * attributes = self.getAttributes()
-        if attributes == NULL:
-            raise KeyError("key %s not found, no attributes" % item)
-
-        # add space in order to make sure
-        # to not pick up a field that is a prefix of another field
-        r = force_bytes(item + " ")
-        query = r
-        start = strstr(attributes, query)
-
-        if start == NULL:
-            raise AttributeError("'GTFProxy' has no attribute '%s'" % item)
-
-        start += strlen(query)
-        # skip gaps before
-        while start[0] == ' ':
-            start += 1
-
-        if start[0] == '"':
-            start += 1
-            end = start
-            while end[0] != '\0' and end[0] != '"':
-                end += 1
-            l = end - start
-            result = force_str(PyBytes_FromStringAndSize(start, l),
-                                self.encoding)
-            return result
-        else:
-            return force_str(start, self.encoding)
-
-    def setAttribute(self, name, value):
-        '''convenience method to set an attribute.'''
-        r = self.asDict()
-        r[name] = value
-        self.fromDict(r)
-
-    def __cmp__(self, other):
-        return (self.contig, self.strand, self.start) < \
-            (other.contig, other.strand, other.start)
-
-    # python 3 compatibility
-    def __richcmp__(GTFProxy self, GTFProxy other, int op):
-        if op == 0:
-            return (self.contig, self.strand, self.start) < \
-                (other.contig, other.strand, other.start)
-        elif op == 1:
-            return (self.contig, self.strand, self.start) <= \
-                (other.contig, other.strand, other.start)
-        elif op == 2:
-            return self.compare(other) == 0
-        elif op == 3:
-            return self.compare(other) != 0
-        else:
-            err_msg = "op {0} isn't implemented yet".format(op)
-            raise NotImplementedError(err_msg)
-
-
 cdef class NamedTupleProxy(TupleProxy):
 
     map_key2field = {}
@@ -699,6 +375,290 @@ cdef class NamedTupleProxy(TupleProxy):
                               self.encoding)
         return f(self.fields[idx])
 
+
+cdef dot_or_float(v):
+    if v == "" or v[0] == '.':
+        return None
+    else:
+        return float(v)
+
+
+cdef dot_or_int(v):
+    if v == "" or v[0] == '.':
+        return None
+    else:
+        return float(v)
+
+
+cdef int from1based(v):
+    return atoi(v) - 1
+
+
+cdef str to1based(int v):
+    return str(v + 1)
+
+
+cdef class GTFProxy(NamedTupleProxy):
+    '''Proxy class for access to GTF fields.
+
+    This class represents a GTF entry for fast read-access.
+    Write-access has been added as well, though some care must
+    be taken. If any of the string fields (contig, source, ...)
+    are set, the new value is tied to the lifetime of the
+    argument that was supplied.
+
+    The only exception is the attributes field when set from
+    a dictionary - this field will manage its own memory.
+
+    '''
+    separator = "; "
+
+    map_key2field = {
+        'contig' : (0, (str, str)),
+        'source' : (1, (str, str)),
+        'feature': (2, (str, str)),
+        'start' : (3, (from1based, to1based)),
+        'end' : (4, (int, int)),
+        'score' : (5, (dot_or_float, toDot)),
+        'strand' : (6, (str, str)),
+        'frame' : (7, (dot_or_int, toDot)),
+        'attributes': (8, (str, str))}
+    
+    def __cinit__(self): 
+        # automatically calls TupleProxy.__cinit__
+        self.attribute_dict = None
+        
+    cpdef int getMinFields(self):
+        '''return minimum number of fields.'''
+        return 9
+
+    cpdef int getMaxFields(self):
+        '''return max number of fields.'''
+        return 9
+
+    def asDict(self):
+        """parse attributes - return as dict
+        """
+        return collections.OrderedDict(self.attribute_iterator())
+    
+    def fromDict(self, d):
+        '''set attributes from a dictionary.'''
+        self.attribute_dict = None
+        attribute_string = force_bytes(
+            self.attribute_dict2string(d),
+            self.encoding)
+        self._setindex(8, attribute_string)
+
+    def __str__(self):
+        cdef char * cpy
+        cdef int x
+
+        if self.is_modified:
+            return "\t".join( 
+                (self.contig, 
+                 self.source, 
+                 self.feature, 
+                 str(self.start + 1),
+                 str(self.end),
+                 toDot(self.score),
+                 toDot(self.strand),
+                 toDot(self.frame),
+                 self.attributes))
+        else: 
+            return TupleProxy.__str__(self)
+
+    def invert(self, int lcontig):
+        '''invert coordinates to negative strand coordinates
+        
+        This method will only act if the feature is on the
+        negative strand.'''
+
+        if self.strand[0] == '-':
+            start = min(self.start, self.end)
+            end = max(self.start, self.end)
+            self.start, self.end = lcontig - end, lcontig - start
+
+    def keys(self):
+        '''return a list of attributes defined in this entry.'''
+        if not self.attribute_dict:
+            self.attribute_dict = self.attribute_string2dict(
+                self.attributes)
+        return self.attribute_dict.keys()
+
+    def __getitem__(self, key):
+        return self.__getattr__(key)
+
+    def setAttribute(self, name, value):
+        '''convenience method to set an attribute.
+        '''
+        if not self.attribute_dict:
+            self.attribute_dict = self.attribute_string2dict(
+                self.attributes)
+        self.attribute_dict[name] = value
+
+    def attribute_string2dict(self, s):
+        return collections.OrderedDict(
+            self.attribute_string2iterator(s))
+    
+    def __cmp__(self, other):
+        return (self.contig, self.strand, self.start) < \
+            (other.contig, other.strand, other.start)
+
+    # python 3 compatibility
+    def __richcmp__(GTFProxy self, GTFProxy other, int op):
+        if op == 0:
+            return (self.contig, self.strand, self.start) < \
+                (other.contig, other.strand, other.start)
+        elif op == 1:
+            return (self.contig, self.strand, self.start) <= \
+                (other.contig, other.strand, other.start)
+        elif op == 2:
+            return self.compare(other) == 0
+        elif op == 3:
+            return self.compare(other) != 0
+        else:
+            err_msg = "op {0} isn't implemented yet".format(op)
+            raise NotImplementedError(err_msg)
+
+    def dict2attribute_string(self, d):
+        """convert dictionary to attribute string in GTF format.
+
+        """
+        aa = []
+        for k, v in d.items():
+            if isinstance(v, str):
+                aa.append('{} "{}"'.format(k, v))
+            else:
+                aa.append("{} {}".format(k, str(v)))
+
+        return self.separator.join(aa) + ";"
+
+    def attribute_string2iterator(self, s):
+        """convert attribute string in GTF format to records
+        and iterate over key, value pairs.
+        """
+        
+        # remove comments
+        attributes = force_str(s, encoding=self.encoding)
+
+        # separate into fields
+        # Fields might contain a ";", for example in ENSEMBL GTF file
+        # for mouse, v78:
+        # ...; transcript_name "TXNRD2;-001"; ....
+        # The current heuristic is to split on a semicolon followed by a
+        # space, see also http://mblab.wustl.edu/GTF22.html
+
+        # Remove white space to prevent a last empty field.
+        fields = [x.strip() for x in attributes.strip().split("; ")]
+        for f in fields:
+
+            # strip semicolon (GTF files without a space after the last semicolon)
+            if f.endswith(";"):
+                f = f[:-1]
+
+            # split at most once in order to avoid separating
+            # multi-word values
+            d = [x.strip() for x in f.split(" ", 1)]
+
+            n, v = d[0], d[1]
+            if len(d) > 2:
+                v = d[1:]
+
+            if v[0] == '"' and v[-1] == '"':
+                v = v[1:-1]
+            else:
+                ## try to convert to a value
+                try:
+                    v = float(v)
+                    v = int(v)
+                except ValueError:
+                    pass
+                except TypeError:
+                    pass
+                
+            yield n, v
+       
+    def __getattr__(self, key):
+        """Generic lookup of attribute from GFF/GTF attributes 
+        """
+
+        # Only called if there *isn't* an attribute with this name,
+        # so self.start and self.end will not call __getattr__
+        cdef int idx
+        idx, f = self.map_key2field.get(key, (-1, None))
+        if idx >= 0:
+            # flush attributes if requested
+            if idx == 8:
+                if self.is_modified and self.attribute_dict is not None:
+                    s = self.dict2attribute_string(self.attribute_dict)
+                    TupleProxy._setindex(self, idx, s)
+                    self.attribute_dict = None
+                    return s
+                                         
+            if f[0] == str:
+                return force_str(self.fields[idx],
+                                 self.encoding)
+            else:
+                return f[0](self.fields[idx])
+        else:
+            if self.attribute_dict is None:
+                self.attribute_dict = self.attribute_string2dict(
+                    self.attributes)
+            return self.attribute_dict[key]
+
+    def __setattr__(self, key, value):
+        '''set attribute.'''
+
+        # Note that __setattr__ is called before properties, so __setattr__ and
+        # properties don't mix well. This is different from __getattr__ which is
+        # called after any properties have been resolved.
+        cdef int idx
+        idx, f = self.map_key2field.get(key, (-1, None))
+
+        if idx >= 0:
+            if f[1] == str:
+                s = force_bytes(value,
+                                self.encoding)
+            else:
+                s = str(value)
+            TupleProxy._setindex(self, idx, s)
+        else:
+            if self.attribute_dict is None:
+                self.attribute_dict = self.attribute_string2dict(
+                    self.attributes)
+            self.attribute_dict[key] = value
+            self.is_modified = True
+            
+
+cdef class GFF3Proxy(GTFProxy):
+
+    def dict2attribute_string(self, d):
+        """convert dictionary to attribute string."""
+        return ";".join(["{}={}".format(k, v) for k, v in d.items()])
+        
+    def attribute_string2iterator(self, s):
+        """convert attribute string in GFF3 format to records
+        and iterate over key, value pairs.
+        """
+        
+        for f in (x.strip() for x in s.split(";")):
+            if not f:
+                continue
+
+            key, value = f.split("=", 1)
+            value = value.strip()
+            
+            ## try to convert to a value
+            try:
+                value = float(value)
+                value = int(value)
+            except ValueError:
+                pass
+            except TypeError:
+                pass
+                
+            yield key.strip(), value
+   
 
 cdef class BedProxy(NamedTupleProxy):
     '''Proxy class for access to Bed fields.
@@ -762,7 +722,7 @@ cdef class BedProxy(NamedTupleProxy):
         self.nfields = save_fields
         return retval
 
-    def __setattr__(self, key, value ):
+    def __setattr__(self, key, value):
         '''set attribute.'''
         if key == "start":
             self.start = value
@@ -771,7 +731,8 @@ cdef class BedProxy(NamedTupleProxy):
 
         cdef int idx
         idx, f = self.map_key2field[key]
-        TupleProxy._setindex(self, idx, str(value) )
+        TupleProxy._setindex(self, idx, str(value))
+        
 
 cdef class VCFProxy(NamedTupleProxy):
     '''Proxy class for access to VCF fields.

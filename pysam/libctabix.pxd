@@ -81,6 +81,10 @@ cdef class asGTF(Parser):
     pass
 
 
+cdef class asGFF3(Parser):
+    pass
+
+
 cdef class asBed(Parser):
     pass
 

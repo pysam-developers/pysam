@@ -47,14 +47,14 @@ def loadAndConvert(filename, encode=True):
                 line = line.decode("ascii")
                 if line.startswith("#"):
                     continue
-                d = line.strip().split("\t")
+                d = line[:-1].split("\t")
                 data.append(d)
     else:
         with open(filename) as f:
             for line in f:
                 if line.startswith("#"):
                     continue
-                d = line.strip().split("\t")
+                d = line[:-1].split("\t")
                 data.append(d)
 
     return data
@@ -527,19 +527,57 @@ class TestGTF(TestParser):
     def testSetting(self):
 
         for r in self.tabix.fetch(parser=pysam.asGTF()):
-            r.contig = r.contig + "_test"          
-            r.source = r.source + "_test"
-            r.feature = r.feature + "_test"
+            r.contig = r.contig + "_test_contig"          
+            r.source = r.source + "_test_source"
+            r.feature = r.feature + "_test_feature"
             r.start += 10
             r.end += 10
             r.score = 20
             r.strand = "+"
             r.frame = 0
             r.attributes = 'gene_id "0001";'
+            r.transcript_id = "0002"
+            sr = str(r)
+            self.assertTrue("_test_contig" in sr)
+            self.assertTrue("_test_source" in sr)
+            self.assertTrue("_test_feature" in sr)
+            self.assertTrue("gene_id \"0001\"" in sr)
+            self.assertTrue("transcript_id \"0002\"" in sr)
 
 
+class TestGFF3(TestParser):
+    filename = os.path.join(DATADIR, "example.gff3.gz")
+    def testRead(self):
+        for x, r in enumerate(self.tabix.fetch(parser=pysam.asGFF3())):
+            c = self.compare[x]
+            self.assertEqual(len(c), len(r))
+            self.assertEqual(list(c), list(r))
+            self.assertEqual(c, str(r).split("\t"))
+            self.assertEqual(c[0], r.contig)
+            self.assertEqual("\t".join(map(str, c)),
+                             str(r))
+            self.assertTrue(r.ID.startswith("MI00"))
+
+    def testSetting(self):
+
+        for r in self.tabix.fetch(parser=pysam.asGFF3()):
+            r.contig = r.contig + "_test_contig"          
+            r.source = r.source + "_test_source"
+            r.feature = r.feature + "_test_feature"
+            r.start += 10
+            r.end += 10
+            r.score = 20
+            r.strand = "+"
+            r.frame = 0
+            r.ID="test"
+            sr = str(r)
+            self.assertTrue("_test_contig" in sr)
+            self.assertTrue("_test_source" in sr)
+            self.assertTrue("_test_feature" in sr)
+            self.assertTrue("ID=test" in sr)
+            
+            
 class TestIterators(unittest.TestCase):
-
     filename = os.path.join(DATADIR, "example.gtf.gz")
 
     iterator = pysam.tabix_generic_iterator
