@@ -2,6 +2,31 @@
 Release notes
 =============
 
+Release 0.11.2
+==============
+
+This release wraps htslib/samtools/bcfools versions 1.4.1 in response
+to a security fix in these libraries. Additionaly the following
+issues have been fixed:
+
+VariantFile and related object fixes
+
+* Restore VariantFile.dealloc
+* Correct handling of bcf_str_missing in bcf_array_to_object and
+  bcf_object_to_array
+* Added update() and pop() methods to some dict-like proxy
+  objects
+* Fix handling of INFO/END
+* Add argument to issue a warning instead of an
+  exception if input appears to be truncated
+
+Other features and fixes:
+
+* Make AlignmentFile __dealloc__ and close more
+  stringent
+* Add argument AlignmentFile to issue a warning instead of an
+  exception if input appears to be truncated
+
 Release 0.11.1
 ==============
 
