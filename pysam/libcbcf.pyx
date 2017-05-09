@@ -101,9 +101,6 @@ from cpython.version cimport PY_MAJOR_VERSION
 from pysam.libchtslib cimport HTSFile, hisremote
 
 
-from warnings         import warn
-
-
 __all__ = ['VariantFile',
            'VariantHeader',
            'VariantHeaderRecord',
@@ -2039,7 +2036,7 @@ cdef class VariantHeader(object):
             for i, sample in enumerate(samples):
                 rec.samples[i].update(sample)
 
-        return r
+        return rec
 
     def add_record(self, VariantHeaderRecord record):
         """Add an existing :class:`VariantHeaderRecord` to this header"""
@@ -3728,7 +3725,7 @@ cdef class TabixIterator(BaseIterator):
 
 cdef class VariantFile(HTSFile):
     """*(filename, mode=None, index_filename=None, header=None, drop_samples=False,
-    duplicate_filehandle=True)*
+    duplicate_filehandle=True, ignore_truncation=False)*
 
     A :term:`VCF`/:term:`BCF` formatted file. The file is automatically
     opened.
@@ -3777,6 +3774,11 @@ cdef class VariantFile(HTSFile):
         will be closed by htslib and through destruction of the
         high-level python object. Set to False to turn off
         duplication.
+
+    ignore_truncation: bool
+        Issue a warning, instead of raising an error if the current file
+        appears to be truncated due to a missing EOF marker.  Only applies
+        to bgzipped formats. (Default=False)
 
     """
     def __cinit__(self, *args, **kwargs):
@@ -3864,7 +3866,7 @@ cdef class VariantFile(HTSFile):
             if ret == -1:
                 raise StopIteration
             elif ret == -2:
-                raise IOError('truncated file')
+                raise OSError('truncated file')
             else:
                 raise ValueError('Variant read failed')
 
@@ -3911,7 +3913,8 @@ cdef class VariantFile(HTSFile):
              index_filename=None,
              VariantHeader header=None,
              drop_samples=False,
-             duplicate_filehandle=True):
+             duplicate_filehandle=True,
+             ignore_truncation=False):
         """open a vcf/bcf file.
 
         If open is called on an existing VariantFile, the current file will be
@@ -4006,10 +4009,7 @@ cdef class VariantFile(HTSFile):
             if self.htsfile.format.format not in (bcf, vcf):
                 raise ValueError("invalid file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
 
-            if self.htsfile.format.compression == bgzf:
-                bgzfp = hts_get_bgzfp(self.htsfile)
-                if bgzfp and bgzf_check_EOF(bgzfp) == 0:
-                    warn('[%s] Warning: no BGZF EOF marker; file may be truncated'.format(filename))
+            self.check_truncation(ignore_truncation)
 
             with nogil:
                 hdr = bcf_hdr_read(self.htsfile)
@@ -4047,7 +4047,6 @@ cdef class VariantFile(HTSFile):
     def reset(self):
         """reset file position to beginning of file just after the header."""
         return self.seek(self.start_offset)
-
 
     def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False):
         """fetch records in a :term:`region` using 0-based indexing. The

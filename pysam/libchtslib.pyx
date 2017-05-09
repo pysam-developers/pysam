@@ -13,6 +13,10 @@ from pysam.libchtslib cimport *
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
+
+from warnings         import warn
+
+
 __all__ = ['get_verbosity', 'set_verbosity', 'HFile', 'HTSFile']
 
 # defines imported from samtools
@@ -303,6 +307,28 @@ cdef class HTSFile(object):
         if self.htsfile:
             hts_close(self.htsfile)
             self.htsfile = NULL
+
+    def check_truncation(self, ignore_truncation=False):
+        """Check if file is truncated."""
+        if not self.htsfile:
+            return
+
+        if self.htsfile.format.compression != bgzf:
+            return
+
+        cdef BGZF *bgzfp = hts_get_bgzfp(self.htsfile)
+        if not bgzfp:
+            return
+
+        cdef int ret = bgzf_check_EOF(bgzfp)
+        if ret < 0:
+            raise OSError(errno, 'error checking for EOF marker')
+        elif ret == 0:
+            msg = 'no BGZF EOF marker; file may be truncated'.format(self.filename)
+            if ignore_truncation:
+                warn(msg)
+            else:
+                raise OSError(msg)
 
     def __enter__(self):
         return self

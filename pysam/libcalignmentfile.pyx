@@ -261,7 +261,8 @@ cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
-    reference_filename=None, filename=None, duplicate_filehandle=True)
+    reference_filename=None, filename=None, duplicate_filehandle=True,
+    ignore_truncation=False)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
@@ -379,6 +380,10 @@ cdef class AlignmentFile(HTSFile):
         high-level python object. Set to False to turn off
         duplication.
 
+    ignore_truncation: bool
+        Issue a warning, instead of raising an error if the current file
+        appears to be truncated due to a missing EOF marker.  Only applies
+        to bgzipped formats. (Default=False)
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -444,11 +449,13 @@ cdef class AlignmentFile(HTSFile):
               filepath_index=None,
               referencenames=None,
               referencelengths=None,
-              duplicate_filehandle=True):
+              duplicate_filehandle=True,
+              ignore_truncation=False):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
         will be closed and a new file will be opened.
+
         '''
         cdef char *cfilename = NULL
         cdef char *creference_filename = NULL
@@ -565,6 +572,8 @@ cdef class AlignmentFile(HTSFile):
 
             if self.htsfile.format.category != sequence_data:
                 raise ValueError("file does not contain alignment data")
+
+            self.check_truncation(ignore_truncation)
 
             # bam files require a valid header
             if self.is_bam or self.is_cram:
