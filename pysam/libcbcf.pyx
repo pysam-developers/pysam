@@ -226,11 +226,13 @@ cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) exce
         raise ValueError('genotype is only valid as a format field')
 
     cdef int32_t *gt_arr = NULL
-    cdef int ngt = bcf_get_genotypes(hdr, rec, &gt_arr, &ngt)
+    cdef int ngt = 0
+    ngt = bcf_get_genotypes(hdr, rec, &gt_arr, &ngt)
 
-    if ngt <= 0:
+    if ngt <= 0 or not gt_arr:
         return 0
 
+    assert ngt % rec.n_sample == 0
     cdef int max_ploidy = ngt // rec.n_sample
     cdef int32_t *gt = gt_arr + sample * max_ploidy
     cdef int ploidy = 0
@@ -1308,12 +1310,10 @@ cdef class VariantHeaderRecord(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            del self[key]
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -1664,7 +1664,7 @@ cdef class VariantContig(object):
         return length if length else None
 
     @property
-    def header(self):
+    def header_record(self):
         """:class:`VariantHeaderRecord` associated with this :class:`VariantContig` object"""
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_CTG][self.id].val.hrec[0]
@@ -2020,7 +2020,7 @@ cdef class VariantHeader(object):
         rec.qual  = qual
 
         if filter is not None:
-            if isinstance(filter, (list, tuple)):
+            if isinstance(filter, (list, tuple, VariantRecordFilter)):
                 for f in filter:
                     rec.filter.add(f)
             else:
@@ -2030,10 +2030,14 @@ cdef class VariantHeader(object):
             rec.info.update(info)
 
         if kwargs:
+            if 'GT' in kwargs:
+                rec.samples[0]['GT'] = kwargs.pop('GT')
             rec.samples[0].update(kwargs)
 
         if samples:
             for i, sample in enumerate(samples):
+                if 'GT' in sample:
+                    rec.samples[i]['GT'] = sample.pop('GT')
                 rec.samples[i].update(sample)
 
         return rec
@@ -2580,12 +2584,10 @@ cdef class VariantRecordInfo(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            del self[key]
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     def __richcmp__(VariantRecordInfo self not None, VariantRecordInfo other not None, int op):
         if op != 2 and op != 3:
@@ -2728,12 +2730,10 @@ cdef class VariantRecordSamples(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            del self[key]
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     def __richcmp__(VariantRecordSamples self not None, VariantRecordSamples other not None, int op):
         if op != 2 and op != 3:
@@ -2791,6 +2791,7 @@ cdef class VariantRecord(object):
                 raise ValueError(msg.format(self.ptr.n_sample, bcf_hdr_nsamples(dst_hdr)))
 
             bcf_translate(dst_hdr, src_hdr, self.ptr)
+            self.header = dst_header
 
     @property
     def rid(self):
@@ -2876,12 +2877,6 @@ cdef class VariantRecord(object):
         if s < self.ptr.pos:
             raise ValueError('Stop coordinate must be greater than or equal to start')
         self.ptr.rlen = s - self.ptr.pos
-        #if self.ptr.rlen == len(self.ref):
-        #    self.info.pop('END', None)
-        #    assert 'END' not in self.info
-        #else:
-        #    self.info['END'] = s
-        #    assert self.info['END'] == s
 
     @property
     def rlen(self):
@@ -2894,12 +2889,6 @@ cdef class VariantRecord(object):
         if r < 0:
             raise ValueError('Reference length must be non-negative')
         self.ptr.rlen = r
-        #if self.ptr.rlen == len(self.ref):
-        #    self.info.pop('END', None)
-        #    assert 'END' not in self.info
-        #else:
-        #    self.info['END'] = self.ptr.pos + r
-        #    assert self.info['END'] == self.ptr.pos + r
 
     @property
     def qual(self):
@@ -2966,8 +2955,6 @@ cdef class VariantRecord(object):
             alleles = [value]
         self.alleles = alleles
         self.ptr.rlen = len(value)
-        #self.info.pop('END', None)
-        #assert 'END' not in self.info
 
     @property
     def alleles(self):
@@ -2987,19 +2974,24 @@ cdef class VariantRecord(object):
     @alleles.setter
     def alleles(self, values):
         cdef bcf1_t *r = self.ptr
+
         if bcf_unpack(r, BCF_UN_STR) < 0:
             raise ValueError('Error unpacking VariantRecord')
+
         values = [force_bytes(v) for v in values]
+
         if len(values) < 2:
             raise ValueError('must set at least 2 alleles')
+
         if b'' in values:
             raise ValueError('cannot set null allele')
+
         value = b','.join(values)
+
         if bcf_update_alleles_str(self.header.ptr, r, value) < 0:
             raise ValueError('Error updating alleles')
+
         self.ptr.rlen = len(values[0])
-        #self.info.pop('END', None)
-        #assert 'END' not in self.info
 
     @property
     def alts(self):
@@ -3316,12 +3308,10 @@ cdef class VariantRecordSample(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            del self[key]
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     def __richcmp__(VariantRecordSample self not None, VariantRecordSample other not None, int op):
         if op != 2 and op != 3:
@@ -3429,12 +3419,10 @@ cdef class BaseIndex(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        if key in self:
-            del self[key]
-        elif default is not _nothing:
-            return default
-        else:
+        value = self.get(key, default)
+        if value is _nothing:
             raise KeyError(key)
+        return value
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -4121,13 +4109,6 @@ cdef class VariantFile(HTSFile):
         if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
             msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
             raise ValueError(msg.format(record.ptr.n_sample, bcf_hdr_nsamples(self.header.ptr)))
-
-        #if self.ptr.rlen != len(self.ref):
-        #    self.info['END'] = self.ptr.pos + self.ptr.rlen
-        #    assert self.info['END'] == self.ptr.pos + self.ptr.rlen
-        #else:
-        #    self.info.pop('END', None)
-        #    assert 'END' not in self.info
 
         cdef int ret
 
