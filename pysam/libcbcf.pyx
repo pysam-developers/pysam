@@ -658,8 +658,6 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
-    cdef vdict_t *d
-    cdef khiter_t k
     cdef int info_id, info_type, scalar, dst_type, realloc, vlen = 0
     cdef ssize_t i, value_count, alloc_len, alloc_size, dst_size
 
@@ -672,13 +670,10 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
     if info:
         info_id = info.key
     else:
-        d = <vdict_t *>hdr.dict[BCF_DT_ID]
-        k = kh_get_vdict(d, bkey)
+        info_id = bcf_header_get_info_id(hdr, bkey)
 
-        if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_INFO] & 0xF == 0xF:
-            raise KeyError('unknown INFO: {}'.format(key))
-
-        info_id = kh_val_vdict(d, k).id
+    if info_id < 0:
+        raise KeyError('unknown INFO: {}'.format(key))
 
     if not check_header_id(hdr, BCF_HL_INFO, info_id):
         raise ValueError('Invalid header')
@@ -698,8 +693,9 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
     vlen = value_count < 0
     value_count = len(values)
 
+    # DISABLED DUE TO ISSUES WITH THE CRAZY POINTERS
     # If we can, write updated values to existing allocated storage
-    if info and not realloc:
+    if 0 and info and not realloc:
         r.d.shared_dirty |= BCF1_DIRTY_INF
 
         if value_count == 0:
