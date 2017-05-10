@@ -9,6 +9,8 @@ This release wraps htslib/samtools/bcfools versions 1.4.1 in response
 to a security fix in these libraries. Additionaly the following
 issues have been fixed:
 
+* [#452] add GFF3 support for tabix parsers
+  
 VariantFile and related object fixes
 
 * Restore VariantFile.dealloc

@@ -870,8 +870,10 @@ cdef class AlignedSegment:
             if qname is None or len(qname) == 0:
                 return
 
-            if len(qname) >= 255:
-                raise ValueError("query length out of range {} > 254".format(
+            # See issue #447
+            # (The threshold is 252 chars, but this includes a \0 byte.
+            if len(qname) > 251:
+                raise ValueError("query length out of range {} > 251".format(
                     len(qname)))
 
             qname = force_bytes(qname)

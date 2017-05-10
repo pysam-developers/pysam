@@ -429,13 +429,13 @@ class TestAlignedSegment(ReadTest):
         
         a = self.buildRead()
         a.query_name = "A" * 1
-        a.query_name = "A" * 254
+        a.query_name = "A" * 251
         self.assertRaises(
             ValueError,
             setattr,
             a,
             "query_name",
-            "A" * 255)
+            "A" * 252)
 
 
 class TestCigarStats(ReadTest):
