@@ -1154,8 +1154,11 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
 
 
 cdef inline bcf_sync_end(VariantRecord record):
+    if 'END' not in record.header.info:
+        record.header.info.add('END', number=1, type='Integer', description='Stop position of the interval')
+
     if not record.ptr.n_allele or record.ptr.rlen == len(record.ref):
-        record.info.pop('END')
+        record.info.pop('END', None)
     else:
         record.info['END'] = record.ptr.pos + record.ptr.rlen
 
