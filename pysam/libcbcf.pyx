@@ -1153,6 +1153,13 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
                 data32[i] = (data32[i] & 0xFFFFFFFE) | phased
 
 
+cdef inline bcf_sync_end(VariantRecord record):
+    if not record.ptr.n_allele or record.ptr.rlen == len(record.ref):
+        record.info.pop('END')
+    else:
+        record.info['END'] = record.ptr.pos + record.ptr.rlen
+
+
 ########################################################################
 ########################################################################
 ## Variant Header objects
@@ -2877,6 +2884,7 @@ cdef class VariantRecord(object):
         if s < self.ptr.pos:
             raise ValueError('Stop coordinate must be greater than or equal to start')
         self.ptr.rlen = s - self.ptr.pos
+        bcf_sync_end(self)
 
     @property
     def rlen(self):
@@ -2889,6 +2897,7 @@ cdef class VariantRecord(object):
         if r < 0:
             raise ValueError('Reference length must be non-negative')
         self.ptr.rlen = r
+        bcf_sync_end(self)
 
     @property
     def qual(self):
@@ -2955,6 +2964,7 @@ cdef class VariantRecord(object):
             alleles = [value]
         self.alleles = alleles
         self.ptr.rlen = len(value)
+        bcf_sync_end(self)
 
     @property
     def alleles(self):
@@ -2992,6 +3002,7 @@ cdef class VariantRecord(object):
             raise ValueError('Error updating alleles')
 
         self.ptr.rlen = len(values[0])
+        bcf_sync_end(self)
 
     @property
     def alts(self):
@@ -4109,6 +4120,9 @@ cdef class VariantFile(HTSFile):
         if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
             msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
             raise ValueError(msg.format(record.ptr.n_sample, bcf_hdr_nsamples(self.header.ptr)))
+
+        # Sync END annotation before writing
+        bcf_sync_end(record)
 
         cdef int ret
 
