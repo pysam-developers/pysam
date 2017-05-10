@@ -25,18 +25,20 @@ cdef class TupleProxy:
     cdef copy(self, char * buffer, size_t nbytes, bint reset=*)
     cdef update(self, char * buffer, size_t nbytes)
 
-cdef class GTFProxy(TupleProxy) :
-
-    cdef:
-        char * _attributes
-        cdef bint hasOwnAttributes
-
-    cpdef int getMaxFields(self)
-    cpdef int getMinFields(self)
-    cdef char * getAttributes(self)
 
 cdef class NamedTupleProxy(TupleProxy):
     pass
+
+
+cdef class GTFProxy(NamedTupleProxy):
+    cdef object attribute_dict
+    cpdef int getMaxFields(self)
+    cpdef int getMinFields(self)
+
+
+cdef class GFF3Proxy(GTFProxy):
+    pass
+
 
 cdef class BedProxy(NamedTupleProxy):
 

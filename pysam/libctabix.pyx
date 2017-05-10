@@ -9,7 +9,8 @@
 # class TabixFile  class wrapping tabix indexed files in bgzf format
 #
 # class asTuple  Parser class for tuples
-# class asGT     Parser class for GTF formatted rows
+# class asGTF    Parser class for GTF formatted rows
+# class asGFF3   Parser class for GFF3 formatted rows
 # class asBed    Parser class for Bed formatted rows
 # class asVCF    Parser class for VCF formatted rows
 #
@@ -110,6 +111,42 @@ cdef class asTuple(Parser):
         return r
 
 
+cdef class asGFF3(Parser):
+    '''converts a :term:`tabix row` into a GFF record with the following
+    fields:
+   
+    +----------+----------+-------------------------------+
+    |*Column*  |*Name*    |*Content*                      |
+    +----------+----------+-------------------------------+
+    |1         |contig    |the chromosome name            |
+    +----------+----------+-------------------------------+
+    |2         |feature   |The feature type               |
+    +----------+----------+-------------------------------+
+    |3         |source    |The feature source             |
+    +----------+----------+-------------------------------+
+    |4         |start     |genomic start coordinate       |
+    |          |          |(0-based)                      |
+    +----------+----------+-------------------------------+
+    |5         |end       |genomic end coordinate         |
+    |          |          |(0-based)                      |
+    +----------+----------+-------------------------------+
+    |6         |score     |feature score                  |
+    +----------+----------+-------------------------------+
+    |7         |strand    |strand                         |
+    +----------+----------+-------------------------------+
+    |8         |frame     |frame                          |
+    +----------+----------+-------------------------------+
+    |9         |attributes|the attribute field            |
+    +----------+----------+-------------------------------+
+
+    ''' 
+    cdef parse(self, char * buffer, int len):
+        cdef ctabixproxies.GFF3Proxy r
+        r = ctabixproxies.GFF3Proxy(self.encoding)
+        r.copy(buffer, len)
+        return r
+
+
 cdef class asGTF(Parser):
     '''converts a :term:`tabix row` into a GTF record with the following
     fields:
@@ -155,7 +192,7 @@ cdef class asGTF(Parser):
         r = ctabixproxies.GTFProxy(self.encoding)
         r.copy(buffer, len)
         return r
-
+    
 
 cdef class asBed(Parser):
     '''converts a :term:`tabix row` into a bed record
@@ -1178,6 +1215,7 @@ __all__ = [
     "Tabixfile",
     "asTuple",
     "asGTF",
+    "asGFF3",
     "asVCF",
     "asBed",
     "GZIterator",
