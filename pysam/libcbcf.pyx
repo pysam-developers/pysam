@@ -704,7 +704,9 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
         if value_count == 0:
             info.len = 0
-            # FIXME: Check if need to free vptr if info.len > 0?
+            if not info.vptr:
+                info.vptr = <uint8_t *>&info.v1.i
+
         elif value_count == 1:
             # FIXME: Check if need to free vptr if info.len > 0?
             if info.type == BCF_BT_INT8 or info.type == BCF_BT_INT16 or info.type == BCF_BT_INT32:
@@ -713,9 +715,13 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
                 bcf_object_to_array(values, &info.v1.f, BCF_BT_FLOAT, 1, vlen)
             else:
                 raise TypeError('unsupported info type code')
+
             info.len = 1
+            if not info.vptr:
+                info.vptr = <uint8_t *>&info.v1.i
         else:
             bcf_object_to_array(values, info.vptr, info.type, info.len, vlen)
+
         return
 
     alloc_len = max(1, value_count)
@@ -1320,10 +1326,14 @@ cdef class VariantHeaderRecord(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -2458,9 +2468,7 @@ cdef class VariantRecordInfo(object):
     def __getitem__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef vdict_t *d
-        cdef khiter_t k
-        cdef info_id
+        cdef int info_id
 
         if bcf_unpack(r, BCF_UN_INFO) < 0:
             raise ValueError('Error unpacking VariantRecord')
@@ -2608,10 +2616,14 @@ cdef class VariantRecordInfo(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     def __richcmp__(VariantRecordInfo self not None, VariantRecordInfo other not None, int op):
         if op != 2 and op != 3:
@@ -2754,10 +2766,14 @@ cdef class VariantRecordSamples(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     def __richcmp__(VariantRecordSamples self not None, VariantRecordSamples other not None, int op):
         if op != 2 and op != 3:
@@ -2877,6 +2893,7 @@ cdef class VariantRecord(object):
         if p < 1:
             raise ValueError('Position must be positive')
         self.ptr.pos = p - 1
+        bcf_sync_end(self)
 
     @property
     def start(self):
@@ -2889,6 +2906,7 @@ cdef class VariantRecord(object):
         if s < 0:
             raise ValueError('Start coordinate must be non-negative')
         self.ptr.pos = s
+        bcf_sync_end(self)
 
     @property
     def stop(self):
@@ -3336,10 +3354,14 @@ cdef class VariantRecordSample(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     def __richcmp__(VariantRecordSample self not None, VariantRecordSample other not None, int op):
         if op != 2 and op != 3:
@@ -3447,10 +3469,14 @@ cdef class BaseIndex(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
