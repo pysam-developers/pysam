@@ -1154,7 +1154,7 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
 
 
 cdef inline bcf_sync_end(VariantRecord record):
-    if 'END' not in record.header.info:
+    if bcf_header_get_info_id(record.header.ptr, b'END') < 0:
         record.header.info.add('END', number=1, type='Integer', description='Stop position of the interval')
 
     if not record.ptr.n_allele or record.ptr.rlen == len(record.ref):
@@ -2123,6 +2123,23 @@ cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
     return header
 
 
+cdef inline int bcf_header_get_info_id(bcf_hdr_t *hdr, key) except? -2:
+    cdef vdict_t *d
+    cdef khiter_t k
+    cdef int info_id
+
+    if isinstance(key, str):
+        key = force_bytes(key)
+
+    d = <vdict_t *>hdr.dict[BCF_DT_ID]
+    k = kh_get_vdict(d, key)
+
+    if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_INFO] & 0xF == 0xF:
+        return -1
+
+    return kh_val_vdict(d, k).id
+
+
 ########################################################################
 ########################################################################
 ## Variant Record objects
@@ -2452,15 +2469,12 @@ cdef class VariantRecordInfo(object):
         cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
         if not info:
-            d = <vdict_t *>hdr.dict[BCF_DT_ID]
-            k = kh_get_vdict(d, bkey)
-
-            if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_INFO] & 0xF == 0xF:
-                raise KeyError('Unknown INFO field: {}'.format(key))
-
-            info_id = kh_val_vdict(d, k).id
+            info_id = bcf_header_get_info_id(hdr, bkey)
         else:
             info_id = info.key
+
+        if info_id < 0:
+            raise KeyError('Unknown INFO field: {}'.format(key))
 
         if not check_header_id(hdr, BCF_HL_INFO, info_id):
             raise ValueError('Invalid header')
