@@ -10,21 +10,26 @@ to a security fix in these libraries. Additionaly the following
 issues have been fixed:
 
 * [#452] add GFF3 support for tabix parsers
-  
+
 VariantFile and related object fixes
 
-* Restore VariantFile.dealloc
+* Restore VariantFile.\_\_dealloc\_\_
 * Correct handling of bcf_str_missing in bcf_array_to_object and
   bcf_object_to_array
-* Added update() and pop() methods to some dict-like proxy
-  objects
-* Fix handling of INFO/END
-* Add argument to issue a warning instead of an
-  exception if input appears to be truncated
+* Added update() and pop() methods to some dict-like proxy objects
+* scalar INFO entries could not be set again after being deleted
+* VariantRecordInfo.__delitem__ now allows unset flags to be deleted without
+  raising a KeyError
+* Multiple other fixes for VariantRecordInfo methods
+* INFO/END is now accessible only via VariantRecord.stop and
+  VariantRecord.rlen.  Even if present behind the scenes, it is no longer
+  accessible via VariantRecordInfo.
+* Add argument to issue a warning instead of an exception if input appears
+  to be truncated
 
 Other features and fixes:
 
-* Make AlignmentFile __dealloc__ and close more
+* Make AlignmentFile \_\_dealloc\_\_ and close more
   stringent
 * Add argument AlignmentFile to issue a warning instead of an
   exception if input appears to be truncated

@@ -218,7 +218,7 @@ cdef inline bint check_header_id(bcf_hdr_t *hdr, int hl_type, int id):
 
 
 cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
-    return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt_id), "GT") == 0
+    return strcmp(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt_id), 'GT') == 0
 
 
 cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) except -1:
@@ -664,7 +664,7 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
     if bcf_unpack(r, BCF_UN_INFO) < 0:
         raise ValueError('Error unpacking VariantRecord')
 
-    bkey = force_bytes(key)
+    cdef bytes bkey = force_bytes(key)
     cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
     if info:
@@ -754,7 +754,7 @@ cdef bcf_info_del_value(VariantRecord record, key):
     if bcf_unpack(r, BCF_UN_INFO) < 0:
         raise ValueError('Error unpacking VariantRecord')
 
-    bkey = force_bytes(key)
+    cdef bytes bkey = force_bytes(key)
     cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
     if not info:
@@ -784,7 +784,7 @@ cdef bcf_format_get_value(VariantRecordSample sample, key):
     if bcf_unpack(r, BCF_UN_ALL) < 0:
         raise ValueError('Error unpacking VariantRecord')
 
-    bkey = force_bytes(key)
+    cdef bytes bkey = force_bytes(key)
     cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
     if not fmt or not fmt.p:
@@ -824,7 +824,7 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     if bcf_unpack(r, BCF_UN_ALL) < 0:
         raise ValueError('Error unpacking VariantRecord')
 
-    bkey = force_bytes(key)
+    cdef bytes bkey = force_bytes(key)
     cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
     if fmt:
@@ -910,7 +910,7 @@ cdef bcf_format_del_value(VariantRecordSample sample, key):
     if bcf_unpack(r, BCF_UN_ALL) < 0:
         raise ValueError('Error unpacking VariantRecord')
 
-    bkey = force_bytes(key)
+    cdef bytes bkey = force_bytes(key)
     cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
     if not fmt or not fmt.p:
@@ -1156,13 +1156,25 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
 
 
 cdef inline bcf_sync_end(VariantRecord record):
-    if bcf_header_get_info_id(record.header.ptr, b'END') < 0:
-        record.header.info.add('END', number=1, type='Integer', description='Stop position of the interval')
+    cdef bcf_hdr_t *hdr = record.header.ptr
+    cdef bcf_info_t *info
+    cdef int end_id = bcf_header_get_info_id(record.header.ptr, b'END')
 
+    # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
     if not record.ptr.n_allele or record.ptr.rlen == len(record.ref):
-        record.info.pop('END', None)
+        # If INFO/END is not defined in the header, it doesn't exist in the record
+        if end_id >= 0:
+            info = bcf_get_info(hdr, record.ptr, b'END')
+            if info and not info.vptr:
+                if bcf_update_info(hdr, record.ptr, b'END', NULL, 0, info.type) < 0:
+                    raise ValueError('Unable to delete INFO')
     else:
-        record.info['END'] = record.ptr.pos + record.ptr.rlen
+        # Create END header, if not present
+        if end_id < 0:
+            record.header.info.add('END', number=1, type='Integer', description='Stop position of the interval')
+
+        # Update to reflect stop position
+        bcf_info_set_value(record, b'END', record.ptr.pos + record.ptr.rlen)
 
 
 ########################################################################
@@ -1483,8 +1495,8 @@ cdef class VariantMetadata(object):
 
     def remove_header(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
-        cdef const char *bkey = hdr.id[BCF_DT_ID][self.id].key
-        bcf_hdr_remove(hdr, self.type, bkey)
+        cdef const char *key = hdr.id[BCF_DT_ID][self.id].key
+        bcf_hdr_remove(hdr, self.type, key)
 
 
 cdef VariantMetadata makeVariantMetadata(VariantHeader header, int type, int id):
@@ -1562,7 +1574,7 @@ cdef class VariantHeaderMetadata(object):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_ID]
 
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
@@ -1574,7 +1586,7 @@ cdef class VariantHeaderMetadata(object):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_ID]
 
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d) or kh_val_vdict(d, k).info[self.type] & 0xF == 0xF:
@@ -1688,8 +1700,8 @@ cdef class VariantContig(object):
 
     def remove_header(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
-        cdef const char *bkey = hdr.id[BCF_DT_CTG][self.id].key
-        bcf_hdr_remove(hdr, BCF_HL_CTG, bkey)
+        cdef const char *key = hdr.id[BCF_DT_CTG][self.id].key
+        bcf_hdr_remove(hdr, BCF_HL_CTG, key)
 
 
 cdef VariantContig makeVariantContig(VariantHeader header, int id):
@@ -1732,7 +1744,7 @@ cdef class VariantHeaderContigs(object):
             return makeVariantContig(self.header, index)
 
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_CTG]
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         if k == kh_end(d):
@@ -1745,7 +1757,7 @@ cdef class VariantHeaderContigs(object):
     def remove_header(self, key):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef int index
-        cdef const char *bkey
+        cdef const char *ckey
         cdef vdict_t *d
         cdef khiter_t k
 
@@ -1753,15 +1765,15 @@ cdef class VariantHeaderContigs(object):
             index = key
             if index < 0 or index >= hdr.n[BCF_DT_CTG]:
                 raise IndexError('invalid contig index')
-            bkey = hdr.id[BCF_DT_CTG][self.id].key
+            ckey = hdr.id[BCF_DT_CTG][self.id].key
         else:
             d = <vdict_t *>hdr.dict[BCF_DT_CTG]
             key = force_bytes(key)
             if kh_get_vdict(d, key) == kh_end(d):
                 raise KeyError('invalid contig: {}'.format(key))
-            bkey = key
+            ckey = key
 
-        bcf_hdr_remove(hdr, BCF_HL_CTG, bkey)
+        bcf_hdr_remove(hdr, BCF_HL_CTG, ckey)
 
     def clear_header(self):
         cdef bcf_hdr_t *hdr = self.header.ptr
@@ -1875,7 +1887,7 @@ cdef class VariantHeaderSamples(object):
     def __contains__(self, key):
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef vdict_t *d = <vdict_t *>hdr.dict[BCF_DT_SAMPLE]
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef khiter_t k = kh_get_vdict(d, bkey)
 
         return k != kh_end(d)
@@ -2197,7 +2209,7 @@ cdef class VariantRecordFilter(object):
         if key == '.':
             key = 'PASS'
 
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         id = bcf_hdr_id2int(hdr, BCF_DT_ID, bkey)
 
         if not check_header_id(hdr, BCF_HL_FLT, id):
@@ -2254,7 +2266,7 @@ cdef class VariantRecordFilter(object):
     def __contains__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         return bcf_has_filter(hdr, r, bkey) == 1
 
     def iterkeys(self):
@@ -2343,7 +2355,7 @@ cdef class VariantRecordFormat(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
 
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
         if not fmt or not fmt.p:
@@ -2355,7 +2367,7 @@ cdef class VariantRecordFormat(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
 
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
 
         if not fmt or not fmt.p:
@@ -2401,7 +2413,7 @@ cdef class VariantRecordFormat(object):
     def __contains__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
         return fmt != NULL and fmt.p != NULL
 
@@ -2456,26 +2468,57 @@ cdef class VariantRecordInfo(object):
         raise TypeError('this class cannot be instantiated from Python')
 
     def __len__(self):
-        return self.record.ptr.n_info
-
-    def __bool__(self):
-        return self.record.ptr.n_info != 0
-
-    def __getitem__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef int info_id
+        cdef bcf_info_t *info
+        cdef const char *key
+        cdef int i, count = 0
 
         if bcf_unpack(r, BCF_UN_INFO) < 0:
             raise ValueError('Error unpacking VariantRecord')
 
-        bkey = force_bytes(key)
+        for i in range(r.n_info):
+            info = &r.d.info[i]
+            key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
+            if info != NULL and info.vptr != NULL and strcmp(key, b'END') != 0:
+                count += 1
+
+        return count
+
+    def __bool__(self):
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+        cdef bcf_info_t *info
+        cdef const char *key
+        cdef int i
+
+        if bcf_unpack(r, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
+
+        for i in range(r.n_info):
+            info = &r.d.info[i]
+            key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
+            if info != NULL and info.vptr != NULL and strcmp(key, b'END') != 0:
+                return True
+
+        return False
+
+    def __getitem__(self, key):
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+
+        if bcf_unpack(r, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
+
+        cdef bytes bkey = force_bytes(key)
+
+        if strcmp(bkey, b'END') == 0:
+            raise KeyError('END is a reserved attribute; access is via record.stop')
+
         cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
-        if not info:
-            info_id = bcf_header_get_info_id(hdr, bkey)
-        else:
-            info_id = info.key
+        # Cannot stop here if info == NULL, since flags must return False
+        cdef int info_id = bcf_header_get_info_id(hdr, bkey) if not info else info.key
 
         if info_id < 0:
             raise KeyError('Unknown INFO field: {}'.format(key))
@@ -2483,6 +2526,7 @@ cdef class VariantRecordInfo(object):
         if not check_header_id(hdr, BCF_HL_INFO, info_id):
             raise ValueError('Invalid header')
 
+        # Handle type=Flag values
         if bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id) == BCF_HT_FLAG:
             return info != NULL and info.vptr != NULL
 
@@ -2492,17 +2536,41 @@ cdef class VariantRecordInfo(object):
         return bcf_info_get_value(self.record, info)
 
     def __setitem__(self, key, value):
+        cdef bytes bkey = force_bytes(key)
+
+        if strcmp(bkey, b'END') == 0:
+            raise KeyError('END is a reserved attribute; access is via record.stop')
+
+        if bcf_unpack(self.record.ptr, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
+
         bcf_info_set_value(self.record, key, value)
 
     def __delitem__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
 
+        cdef bytes bkey = force_bytes(key)
+        if strcmp(bkey, b'END') == 0:
+            raise KeyError('END is a reserved attribute; access is via record.stop')
+
         if bcf_unpack(r, BCF_UN_INFO) < 0:
             raise ValueError('Error unpacking VariantRecord')
 
-        bkey = force_bytes(key)
         cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
+
+        # Cannot stop here if info == NULL, since flags must return False
+        cdef int info_id = bcf_header_get_info_id(hdr, bkey) if not info else info.key
+
+        if info_id < 0:
+            raise KeyError('Unknown INFO field: {}'.format(key))
+
+        if not check_header_id(hdr, BCF_HL_INFO, info_id):
+            raise ValueError('Invalid header')
+
+        # Handle flags
+        if bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id) == BCF_HT_FLAG and (not info or not info.vptr):
+            return
 
         if not info or not info.vptr:
             raise KeyError('Unknown INFO field: {}'.format(key))
@@ -2525,6 +2593,8 @@ cdef class VariantRecordInfo(object):
             info = &r.d.info[i]
             if info and info.vptr:
                 key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
+                if strcmp(key, b'END') == 0:
+                    continue
                 if bcf_update_info(hdr, r, key, NULL, 0, info.type) < 0:
                     raise ValueError('Unable to delete INFO')
 
@@ -2532,19 +2602,48 @@ cdef class VariantRecordInfo(object):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_info_t *info
+        cdef const char *key
         cdef int i
+
+        if bcf_unpack(r, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
 
         for i in range(r.n_info):
             info = &r.d.info[i]
             if info and info.vptr:
-                yield bcf_str_cache_get_charptr(bcf_hdr_int2id(hdr, BCF_DT_ID, info.key))
+                key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
+                if strcmp(key, b'END') != 0:
+                    yield bcf_str_cache_get_charptr(key)
 
     def get(self, key, default=None):
         """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
-        try:
-            return self[key]
-        except KeyError:
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+
+        if bcf_unpack(r, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
+
+        cdef bytes bkey = force_bytes(key)
+
+        if strcmp(bkey, b'END') == 0:
             return default
+
+        cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
+
+        # Cannot stop here if info == NULL, since flags must return False
+        cdef int info_id = bcf_header_get_info_id(hdr, bkey) if not info else info.key
+
+        if not check_header_id(hdr, BCF_HL_INFO, info_id):
+            raise ValueError('Invalid header')
+
+        # Handle flags
+        if bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id) == BCF_HT_FLAG:
+            return info != NULL and info.vptr != NULL
+
+        if not info or not info.vptr:
+            return default
+
+        return bcf_info_get_value(self.record, info)
 
     def __contains__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
@@ -2553,7 +2652,11 @@ cdef class VariantRecordInfo(object):
         if bcf_unpack(r, BCF_UN_INFO) < 0:
             raise ValueError('Error unpacking VariantRecord')
 
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
+
+        if strcmp(bkey, b'END') == 0:
+            return False
+
         cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
         return info != NULL and info.vptr != NULL
@@ -2564,28 +2667,40 @@ cdef class VariantRecordInfo(object):
 
     def itervalues(self):
         """D.itervalues() -> an iterator over the values of D"""
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_info_t *info
+        cdef const char *key
         cdef int i
+
+        if bcf_unpack(r, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
 
         for i in range(r.n_info):
             info = &r.d.info[i]
             if info and info.vptr:
-                yield bcf_info_get_value(self.record, info)
+                key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
+                if strcmp(key, b'END') != 0:
+                    yield bcf_info_get_value(self.record, info)
 
     def iteritems(self):
         """D.iteritems() -> an iterator over the (key, value) items of D"""
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_info_t *info
+        cdef const char *key
         cdef int i
+
+        if bcf_unpack(r, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
 
         for i in range(r.n_info):
             info = &r.d.info[i]
             if info and info.vptr:
                 key = bcf_hdr_int2id(hdr, BCF_DT_ID, info.key)
-                value = bcf_info_get_value(self.record, info)
-                yield bcf_str_cache_get_charptr(key), value
+                if strcmp(key, b'END') != 0:
+                    value = bcf_info_get_value(self.record, info)
+                    yield bcf_str_cache_get_charptr(key), value
 
     def keys(self):
         """D.keys() -> list of D's keys"""
@@ -2605,21 +2720,50 @@ cdef class VariantRecordInfo(object):
         Update D from dict/iterable E and F.
         """
         for k, v in items.items():
-            self[k] = v
+            if k != 'END':
+                self[k] = v
 
         if kwargs:
+            kwargs.pop('END', None)
             for k, v in kwargs.items():
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        try:
-            value = self[key]
-            del self[key]
-            return value
-        except KeyError:
-            if default is not _nothing:
-                return default
-            raise
+        cdef bcf_hdr_t *hdr = self.record.header.ptr
+        cdef bcf1_t *r = self.record.ptr
+
+        if bcf_unpack(r, BCF_UN_INFO) < 0:
+            raise ValueError('Error unpacking VariantRecord')
+
+        cdef bytes bkey = force_bytes(key)
+        cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
+
+        # Cannot stop here if info == NULL, since flags must return False
+        cdef int info_id = bcf_header_get_info_id(hdr, bkey) if not info else info.key
+
+        if info_id < 0:
+            if default is _nothing:
+                raise KeyError('Unknown INFO field: {}'.format(key))
+            return default
+
+        if not check_header_id(hdr, BCF_HL_INFO, info_id):
+            raise ValueError('Invalid header')
+
+        # Handle flags
+        if bcf_hdr_id2type(hdr, BCF_HL_INFO, info_id) == BCF_HT_FLAG and (not info or not info.vptr):
+            return
+
+        if not info or not info.vptr:
+            if default is _nothing:
+                raise KeyError('Unknown INFO field: {}'.format(key))
+            return default
+
+        value = bcf_info_get_value(self.record, info)
+
+        if bcf_update_info(hdr, r, bkey, NULL, 0, info.type) < 0:
+            raise ValueError('Unable to delete INFO')
+
+        return value
 
     def __richcmp__(VariantRecordInfo self not None, VariantRecordInfo other not None, int op):
         if op != 2 and op != 3:
@@ -3307,7 +3451,7 @@ cdef class VariantRecordSample(object):
     def __contains__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        bkey = force_bytes(key)
+        cdef bytes bkey = force_bytes(key)
         cdef bcf_fmt_t *fmt = bcf_get_fmt(hdr, r, bkey)
         return fmt != NULL and fmt.p != NULL
 
