@@ -94,7 +94,7 @@ cdef class HFile(object):
         if isinstance(self.name, int):
             return self.name
         else:
-            raise OSError('fileno not available')
+            raise AttributeError('fileno not available')
 
     def __enter__(self):
         return self
