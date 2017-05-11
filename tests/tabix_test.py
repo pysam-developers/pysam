@@ -47,14 +47,14 @@ def loadAndConvert(filename, encode=True):
                 line = line.decode("ascii")
                 if line.startswith("#"):
                     continue
-                d = line[:-1].split("\t")
+                d = line.strip().split("\t")
                 data.append(d)
     else:
         with open(filename) as f:
             for line in f:
                 if line.startswith("#"):
                     continue
-                d = line[:-1].split("\t")
+                d = line.strip().split("\t")
                 data.append(d)
 
     return data
