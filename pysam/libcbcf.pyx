@@ -658,8 +658,6 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
 
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf1_t *r = record.ptr
-    cdef vdict_t *d
-    cdef khiter_t k
     cdef int info_id, info_type, scalar, dst_type, realloc, vlen = 0
     cdef ssize_t i, value_count, alloc_len, alloc_size, dst_size
 
@@ -672,13 +670,10 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
     if info:
         info_id = info.key
     else:
-        d = <vdict_t *>hdr.dict[BCF_DT_ID]
-        k = kh_get_vdict(d, bkey)
+        info_id = bcf_header_get_info_id(hdr, bkey)
 
-        if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_INFO] & 0xF == 0xF:
-            raise KeyError('unknown INFO: {}'.format(key))
-
-        info_id = kh_val_vdict(d, k).id
+    if info_id < 0:
+        raise KeyError('unknown INFO: {}'.format(key))
 
     if not check_header_id(hdr, BCF_HL_INFO, info_id):
         raise ValueError('Invalid header')
@@ -698,13 +693,16 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
     vlen = value_count < 0
     value_count = len(values)
 
+    # DISABLED DUE TO ISSUES WITH THE CRAZY POINTERS
     # If we can, write updated values to existing allocated storage
-    if info and not realloc:
+    if 0 and info and not realloc:
         r.d.shared_dirty |= BCF1_DIRTY_INF
 
         if value_count == 0:
             info.len = 0
-            # FIXME: Check if need to free vptr if info.len > 0?
+            if not info.vptr:
+                info.vptr = <uint8_t *>&info.v1.i
+
         elif value_count == 1:
             # FIXME: Check if need to free vptr if info.len > 0?
             if info.type == BCF_BT_INT8 or info.type == BCF_BT_INT16 or info.type == BCF_BT_INT32:
@@ -713,9 +711,13 @@ cdef bcf_info_set_value(VariantRecord record, key, value):
                 bcf_object_to_array(values, &info.v1.f, BCF_BT_FLOAT, 1, vlen)
             else:
                 raise TypeError('unsupported info type code')
+
             info.len = 1
+            if not info.vptr:
+                info.vptr = <uint8_t *>&info.v1.i
         else:
             bcf_object_to_array(values, info.vptr, info.type, info.len, vlen)
+
         return
 
     alloc_len = max(1, value_count)
@@ -1153,6 +1155,16 @@ cdef bcf_sample_set_phased(VariantRecordSample sample, bint phased):
                 data32[i] = (data32[i] & 0xFFFFFFFE) | phased
 
 
+cdef inline bcf_sync_end(VariantRecord record):
+    if bcf_header_get_info_id(record.header.ptr, b'END') < 0:
+        record.header.info.add('END', number=1, type='Integer', description='Stop position of the interval')
+
+    if not record.ptr.n_allele or record.ptr.rlen == len(record.ref):
+        record.info.pop('END', None)
+    else:
+        record.info['END'] = record.ptr.pos + record.ptr.rlen
+
+
 ########################################################################
 ########################################################################
 ## Variant Header objects
@@ -1310,10 +1322,14 @@ cdef class VariantHeaderRecord(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -2113,6 +2129,23 @@ cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):
     return header
 
 
+cdef inline int bcf_header_get_info_id(bcf_hdr_t *hdr, key) except? -2:
+    cdef vdict_t *d
+    cdef khiter_t k
+    cdef int info_id
+
+    if isinstance(key, str):
+        key = force_bytes(key)
+
+    d = <vdict_t *>hdr.dict[BCF_DT_ID]
+    k = kh_get_vdict(d, key)
+
+    if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_INFO] & 0xF == 0xF:
+        return -1
+
+    return kh_val_vdict(d, k).id
+
+
 ########################################################################
 ########################################################################
 ## Variant Record objects
@@ -2431,9 +2464,7 @@ cdef class VariantRecordInfo(object):
     def __getitem__(self, key):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
-        cdef vdict_t *d
-        cdef khiter_t k
-        cdef info_id
+        cdef int info_id
 
         if bcf_unpack(r, BCF_UN_INFO) < 0:
             raise ValueError('Error unpacking VariantRecord')
@@ -2442,15 +2473,12 @@ cdef class VariantRecordInfo(object):
         cdef bcf_info_t *info = bcf_get_info(hdr, r, bkey)
 
         if not info:
-            d = <vdict_t *>hdr.dict[BCF_DT_ID]
-            k = kh_get_vdict(d, bkey)
-
-            if k == kh_end(d) or kh_val_vdict(d, k).info[BCF_HL_INFO] & 0xF == 0xF:
-                raise KeyError('Unknown INFO field: {}'.format(key))
-
-            info_id = kh_val_vdict(d, k).id
+            info_id = bcf_header_get_info_id(hdr, bkey)
         else:
             info_id = info.key
+
+        if info_id < 0:
+            raise KeyError('Unknown INFO field: {}'.format(key))
 
         if not check_header_id(hdr, BCF_HL_INFO, info_id):
             raise ValueError('Invalid header')
@@ -2584,10 +2612,14 @@ cdef class VariantRecordInfo(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     def __richcmp__(VariantRecordInfo self not None, VariantRecordInfo other not None, int op):
         if op != 2 and op != 3:
@@ -2730,10 +2762,14 @@ cdef class VariantRecordSamples(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     def __richcmp__(VariantRecordSamples self not None, VariantRecordSamples other not None, int op):
         if op != 2 and op != 3:
@@ -2853,6 +2889,7 @@ cdef class VariantRecord(object):
         if p < 1:
             raise ValueError('Position must be positive')
         self.ptr.pos = p - 1
+        bcf_sync_end(self)
 
     @property
     def start(self):
@@ -2865,6 +2902,7 @@ cdef class VariantRecord(object):
         if s < 0:
             raise ValueError('Start coordinate must be non-negative')
         self.ptr.pos = s
+        bcf_sync_end(self)
 
     @property
     def stop(self):
@@ -2877,6 +2915,7 @@ cdef class VariantRecord(object):
         if s < self.ptr.pos:
             raise ValueError('Stop coordinate must be greater than or equal to start')
         self.ptr.rlen = s - self.ptr.pos
+        bcf_sync_end(self)
 
     @property
     def rlen(self):
@@ -2889,6 +2928,7 @@ cdef class VariantRecord(object):
         if r < 0:
             raise ValueError('Reference length must be non-negative')
         self.ptr.rlen = r
+        bcf_sync_end(self)
 
     @property
     def qual(self):
@@ -2955,6 +2995,7 @@ cdef class VariantRecord(object):
             alleles = [value]
         self.alleles = alleles
         self.ptr.rlen = len(value)
+        bcf_sync_end(self)
 
     @property
     def alleles(self):
@@ -2992,6 +3033,7 @@ cdef class VariantRecord(object):
             raise ValueError('Error updating alleles')
 
         self.ptr.rlen = len(values[0])
+        bcf_sync_end(self)
 
     @property
     def alts(self):
@@ -3308,10 +3350,14 @@ cdef class VariantRecordSample(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     def __richcmp__(VariantRecordSample self not None, VariantRecordSample other not None, int op):
         if op != 2 and op != 3:
@@ -3419,10 +3465,14 @@ cdef class BaseIndex(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
-        value = self.get(key, default)
-        if value is _nothing:
-            raise KeyError(key)
-        return value
+        try:
+            value = self[key]
+            del self[key]
+            return value
+        except KeyError:
+            if default is not _nothing:
+                return default
+            raise
 
     # Mappings are not hashable by default, but subclasses can change this
     __hash__ = None
@@ -4109,6 +4159,9 @@ cdef class VariantFile(HTSFile):
         if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
             msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
             raise ValueError(msg.format(record.ptr.n_sample, bcf_hdr_nsamples(self.header.ptr)))
+
+        # Sync END annotation before writing
+        bcf_sync_end(record)
 
         cdef int ret
 
