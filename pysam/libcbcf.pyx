@@ -1160,6 +1160,10 @@ cdef inline bcf_sync_end(VariantRecord record):
     cdef bcf_info_t *info
     cdef int end_id = bcf_header_get_info_id(record.header.ptr, b'END')
 
+    # Ensure rlen can't ever become negative
+    if record.ptr.rlen < 0:
+        record.ptr.rlen = 0
+
     # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
     if not record.ptr.n_allele or record.ptr.rlen == len(record.ref):
         # If INFO/END is not defined in the header, it doesn't exist in the record
