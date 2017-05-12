@@ -10,6 +10,8 @@ to a security fix in these libraries. Additionaly the following
 issues have been fixed:
 
 * [#452] add GFF3 support for tabix parsers
+* [#461] Multiple fixes related to VariantRecordInfo and handling of INFO/END
+* [#447] limit query name to 251 characters (only partially addresses issue)
 
 VariantFile and related object fixes
 
