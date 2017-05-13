@@ -2,6 +2,13 @@
 Release notes
 =============
 
+Release 0.11.2.1
+================
+
+Release to fix release tar-ball containing 0.11.1 pre-compiled
+C-files.
+
+
 Release 0.11.2
 ==============
 
