@@ -1170,9 +1170,9 @@ cdef inline bcf_sync_end(VariantRecord record):
         # If INFO/END is not defined in the header, it doesn't exist in the record
         if end_id >= 0:
             info = bcf_get_info(hdr, record.ptr, b'END')
-            if info and not info.vptr:
+            if info and info.vptr:
                 if bcf_update_info(hdr, record.ptr, b'END', NULL, 0, info.type) < 0:
-                    raise ValueError('Unable to delete INFO')
+                    raise ValueError('Unable to delete END')
     else:
         # Create END header, if not present
         if end_id < 0:
