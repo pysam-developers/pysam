@@ -78,6 +78,11 @@ def configure_library(library_dir, env_options=None, options=[]):
 
     configure_script = os.path.join(library_dir, "configure")
 
+    on_rtd = os.environ.get("READTHEDOCS") == "True"
+    # RTD has no bzip2 development libraries installed:
+    if on_rtf:
+        env_options = "--disable-bz2"
+
     if not os.path.exists(configure_script):
         raise ValueError(
             "configure script {} does not exist".format(configure_script))
