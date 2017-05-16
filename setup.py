@@ -80,7 +80,7 @@ def configure_library(library_dir, env_options=None, options=[]):
 
     on_rtd = os.environ.get("READTHEDOCS") == "True"
     # RTD has no bzip2 development libraries installed:
-    if on_rtf:
+    if on_rtd:
         env_options = "--disable-bz2"
 
     if not os.path.exists(configure_script):
