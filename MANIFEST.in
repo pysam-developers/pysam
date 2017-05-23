@@ -29,6 +29,7 @@ include htslib/htslib_vars.mk
 include htslib/configure
 include htslib/config.mk.in
 include htslib/config.h.in
+include htslib/htslib.pc.in
 include htslib/htslib/*.h
 include htslib/cram/*.c
 include htslib/cram/*.h
