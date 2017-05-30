@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 
 #if !(_POSIX_C_SOURCE >= 200809L || _XOPEN_SOURCE >= 700)
 /*
