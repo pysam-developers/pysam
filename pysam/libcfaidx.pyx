@@ -443,6 +443,9 @@ cdef class FastxFile:
     ...        print(entry.sequence)
     ...        print(entry.comment)
     ...        print(entry.quality)
+    >>> with pysam.FastxFile(filename) as fin, open(out_filename, mode='w') as fout:
+    ...    for entry in fin:
+    ...        fout.write(str(entry))
 
     """
     def __cinit__(self, *args, **kwargs):
