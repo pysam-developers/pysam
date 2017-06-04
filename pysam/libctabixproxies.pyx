@@ -377,17 +377,27 @@ cdef class NamedTupleProxy(TupleProxy):
 
 
 cdef dot_or_float(v):
-    if v == "" or v[0] == '.':
+    if v == "" or v == b".":
         return None
     else:
-        return float(v)
+        try:
+            return int(v)
+        except ValueError:
+            return float(v)
 
 
 cdef dot_or_int(v):
-    if v == "" or v[0] == '.':
+    if v == "" or v == b".":
         return None
     else:
-        return float(v)
+        return int(v)
+
+
+cdef dot_or_str(v):
+    if v == "" or v == b".":
+        return None
+    else:
+        return force_str(v)
 
 
 cdef int from1based(v):
@@ -413,14 +423,18 @@ cdef class GTFProxy(NamedTupleProxy):
     '''
     separator = "; "
 
+    # first value is field index, the tuple contains conversion
+    # functions for getting (converting internal string representation
+    # to pythonic value) and setting (converting pythonic value to
+    # interval string representation)
     map_key2field = {
         'contig' : (0, (str, str)),
-        'source' : (1, (str, str)),
-        'feature': (2, (str, str)),
+        'source' : (1, (dot_or_str, str)),
+        'feature': (2, (dot_or_str, str)),
         'start' : (3, (from1based, to1based)),
         'end' : (4, (int, int)),
         'score' : (5, (dot_or_float, toDot)),
-        'strand' : (6, (str, str)),
+        'strand' : (6, (dot_or_str, str)),
         'frame' : (7, (dot_or_int, toDot)),
         'attributes': (8, (str, str))}
     
@@ -456,8 +470,8 @@ cdef class GTFProxy(NamedTupleProxy):
         if self.is_modified:
             return "\t".join( 
                 (self.contig, 
-                 self.source, 
-                 self.feature, 
+                 toDot(self.source), 
+                 toDot(self.feature), 
                  str(self.start + 1),
                  str(self.end),
                  toDot(self.score),
@@ -582,13 +596,13 @@ cdef class GTFProxy(NamedTupleProxy):
         """Generic lookup of attribute from GFF/GTF attributes 
         """
 
-        # Only called if there *isn't* an attribute with this name,
-        # so self.start and self.end will not call __getattr__
+        # Only called if there *isn't* an attribute with this name
         cdef int idx
         idx, f = self.map_key2field.get(key, (-1, None))
         if idx >= 0:
-            # flush attributes if requested
+            # deal with known attributes (fields 0-8)
             if idx == 8:
+                # flush attributes if requested
                 if self.is_modified and self.attribute_dict is not None:
                     s = self.dict2attribute_string(self.attribute_dict)
                     TupleProxy._setindex(self, idx, s)
@@ -601,6 +615,7 @@ cdef class GTFProxy(NamedTupleProxy):
             else:
                 return f[0](self.fields[idx])
         else:
+            # deal with generic attributes (gene_id, ...)
             if self.attribute_dict is None:
                 self.attribute_dict = self.attribute_string2dict(
                     self.attributes)
@@ -616,11 +631,13 @@ cdef class GTFProxy(NamedTupleProxy):
         idx, f = self.map_key2field.get(key, (-1, None))
 
         if idx >= 0:
-            if f[1] == str:
+            if value is None:
+                s = "."
+            elif f[1] == str:
                 s = force_bytes(value,
                                 self.encoding)
             else:
-                s = str(value)
+                s = str(f[1](value))
             TupleProxy._setindex(self, idx, s)
         else:
             if self.attribute_dict is None:
