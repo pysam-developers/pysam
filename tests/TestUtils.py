@@ -184,3 +184,28 @@ def get_temp_filename(suffix=""):
         dir=".")
     f.close()
     return f.name
+
+
+def load_and_convert(filename, encode=True):
+    '''load data from filename and convert all fields to string.
+
+    Filename can be either plain or compressed (ending in .gz).
+    '''
+    data = []
+    if filename.endswith(".gz"):
+        with gzip.open(filename) as inf:
+            for line in inf:
+                line = line.decode("ascii")
+                if line.startswith("#"):
+                    continue
+                d = line.strip().split("\t")
+                data.append(d)
+    else:
+        with open(filename) as f:
+            for line in f:
+                if line.startswith("#"):
+                    continue
+                d = line.strip().split("\t")
+                data.append(d)
+
+    return data
