@@ -10,10 +10,9 @@ try:
 except ImportError:
     Path = None
 
-from TestUtils import get_temp_filename, check_lines_equal
+from TestUtils import get_temp_filename, check_lines_equal, load_and_convert
 
 DATADIR="cbcf_data"
-from tabix_test import loadAndConvert
 
 
 def read_header(filename):
@@ -37,7 +36,7 @@ class TestMissingGenotypes(unittest.TestCase):
     filename = "missing_genotypes.vcf"
 
     def setUp(self):
-        self.compare = loadAndConvert(
+        self.compare = load_and_convert(
             os.path.join(DATADIR, self.filename),
             encode=False)
 
