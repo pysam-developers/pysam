@@ -1732,7 +1732,9 @@ cdef class AlignedSegment:
         +-----+--------------+-----+
         |X    |BAM_CDIFF     |8    |
         +-----+--------------+-----+
-        |NM   |NM tag        |9    |
+        |B    |BAM_CBACK     |9    |
+        +-----+--------------+-----+
+        |NM   |NM tag        |10   |
         +-----+--------------+-----+
 
         If no cigar string is present, empty arrays will be returned.
@@ -1810,6 +1812,8 @@ cdef class AlignedSegment:
         |=    |BAM_CEQUAL    |7    |
         +-----+--------------+-----+
         |X    |BAM_CDIFF     |8    |
+        +-----+--------------+-----+
+        |B    |BAM_CBACK     |9    |
         +-----+--------------+-----+
 
         .. note::
