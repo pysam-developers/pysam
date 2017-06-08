@@ -2,6 +2,16 @@
 Release notes
 =============
 
+Release 0.11.2.2
+================
+
+Bugfix release to address two issues:
+
+* Changes in 0.11.2.1 broke the GTF/GFF3 parser. Corrected and
+  more tests have been added.
+* [#479] Correct VariantRecord edge cases described in issue
+
+
 Release 0.11.2.1
 ================
 
