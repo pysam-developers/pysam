@@ -1161,10 +1161,6 @@ cdef inline bcf_sync_end(VariantRecord record):
     cdef int end_id = bcf_header_get_info_id(record.header.ptr, b'END')
     cdef int ref_len = len(record.ref)
 
-    # Ensure rlen can't ever become negative
-    if record.ptr.rlen < 0:
-        record.ptr.rlen = ref_len if record.ptr.n_allele else 0
-
     # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
     if not record.ptr.n_allele or record.ptr.rlen == ref_len:
         # If INFO/END is not defined in the header, it doesn't exist in the record
@@ -2031,14 +2027,12 @@ cdef class VariantHeader(object):
     def new_record(self, contig=None, start=0, stop=0, alleles=None,
                          id=None, qual=None, filter=None, info=None, samples=None,
                          **kwargs):
-        """Create a new empty VariantRecord
+        """Create a new empty VariantRecord.
 
         Arguments are currently experimental.  Use with caution and expect
         changes in upcoming releases.
-        """
-        if not alleles:
-            raise ValueError('At least one non-empty reference allele must be specified')
 
+        """
         rec = makeVariantRecord(self, bcf_init())
         rec.ptr.n_sample = bcf_hdr_nsamples(self.ptr)
 
@@ -3061,21 +3055,19 @@ cdef class VariantRecord(object):
     @stop.setter
     def stop(self, value):
         cdef int s = value
-        if s < self.ptr.pos:
-            raise ValueError('Stop coordinate must be greater than or equal to start')
+        if s < 0:
+            raise ValueError('Stop coordinate must be non-negative')
         self.ptr.rlen = s - self.ptr.pos
         bcf_sync_end(self)
 
     @property
     def rlen(self):
-        """record length on chrom/contig (typically rec.stop - rec.start unless END info is supplied)"""
+        """record length on chrom/contig (aka rec.stop - rec.start)"""
         return self.ptr.rlen
 
     @rlen.setter
     def rlen(self, value):
         cdef int r = value
-        if r < 0:
-            raise ValueError('Reference length must be non-negative')
         self.ptr.rlen = r
         bcf_sync_end(self)
 
