@@ -593,7 +593,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef char * s = <char*>calloc(max_len + 1, sizeof(char))
     if s == NULL:
         raise ValueError(
-            "could not allocated sequence of length %i" % max_len)
+            "could not allocate sequence of length %i" % max_len)
 
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
@@ -703,12 +703,16 @@ cdef class AlignedSegment:
     def __init__(self):
         # see bam_init1
         self._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
+        if self._delegate == NULL:
+            raise MemoryError("could not allocated memory of {} bytes".format(sizeof(bam1_t)))
         # allocate some memory. If size is 0, calloc does not return a
         # pointer that can be passed to free() so allocate 40 bytes
         # for a new read
         self._delegate.m_data = 40
         self._delegate.data = <uint8_t *>calloc(
             self._delegate.m_data, 1)
+        if self._delegate.data == NULL:
+            raise MemoryError("could not allocate memory of {} bytes".format(self._delegate.m_data))
         self._delegate.l_data = 0
         # set some data to make read approximately legit.
         # Note, SAM writing fails with q_name of length 0
@@ -887,10 +891,12 @@ cdef class AlignedSegment:
             if l % 4 != 0:
                 l_extranul = 4 - l % 4
 
-            pysam_bam_update(src,
-                             src.core.l_qname,
-                             l + l_extranul,
-                             <uint8_t*>p)
+            cdef int retval = pysam_bam_update(src,
+                                               src.core.l_qname,
+                                               l + l_extranul,
+                                               <uint8_t*>p)
+            if retval < 0:
+                raise MemoryError("could not allocate memory")
 
             src.core.l_extranul = l_extranul
             src.core.l_qname = l + l_extranul
@@ -1106,10 +1112,13 @@ cdef class AlignedSegment:
             src.core.l_qseq = l
 
             # change length of data field
-            pysam_bam_update(src,
-                             nbytes_old,
-                             nbytes_new,
-                             p)
+            cdef int retval = pysam_bam_update(src,
+                                               nbytes_old,
+                                               nbytes_new,
+                                               p)
+            
+            if retval < 0:
+                raise MemoryError("could not allocate memory")
 
             if l > 0:
                 # re-acquire pointer to location in memory
@@ -1864,10 +1873,13 @@ cdef class AlignedSegment:
 
             ncigar = len(values)
             # create space for cigar data within src.data
-            pysam_bam_update(src,
-                             pysam_get_n_cigar(src) * 4,
-                             ncigar * 4,
-                             <uint8_t*>p)
+            cdef int retval = pysam_bam_update(src,
+                                               pysam_get_n_cigar(src) * 4,
+                                               ncigar * 4,
+                                               <uint8_t*>p)
+
+            if retval < 0:
+                raise MemoryError("could not allocate memory")
 
             # length is number of cigar operations, not bytes
             pysam_set_n_cigar(src, ncigar)
@@ -2180,10 +2192,12 @@ cdef class AlignedSegment:
         # If total_size == 0, the aux field will be
         # empty
         old_size = pysam_bam_get_l_aux(src)
-        pysam_bam_update(src,
-                         old_size,
-                         new_size,
-                         pysam_bam_get_aux(src))
+        cdef int retval = pysam_bam_update(src,
+                                           old_size,
+                                           new_size,
+                                           pysam_bam_get_aux(src))
+        if retval < 0:
+            raise MemoryError("could not allocated memory")
 
         # copy data only if there is any
         if new_size > 0:

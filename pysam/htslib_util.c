@@ -47,15 +47,17 @@ static inline uint8_t *alloc_data(bam1_t *b, size_t size)
 // Adds *nbytes_new* - *nbytes_old* into the variable length data of *src* at *pos*.
 // Data within the bam1_t entry is moved so that it is
 // consistent with the data field lengths.
-bam1_t * pysam_bam_update(bam1_t * b,
-			  const size_t nbytes_old,
-			  const size_t nbytes_new, 
-			  uint8_t * field_start)
+// Return -1 on error (memory)
+int pysam_bam_update(bam1_t * b,
+		     const size_t nbytes_old,
+		     const size_t nbytes_new, 
+		     uint8_t * field_start)
 {
   int d = nbytes_new - nbytes_old;
   int new_size;
   size_t nbytes_before;
-
+  int retval = 0;
+    
   // no change
   if (d == 0)
     return b;
@@ -75,7 +77,9 @@ bam1_t * pysam_bam_update(bam1_t * b,
   // increase memory if required
   if (d > 0)
     {
-      alloc_data(b, new_size);
+      retval = alloc_data(b, new_size);
+      if (retval < 0)
+	return retval;
       field_start = b->data + nbytes_before;
     }
   
@@ -87,7 +91,7 @@ bam1_t * pysam_bam_update(bam1_t * b,
   // adjust l_data
   b->l_data = new_size;
       
-  return b;
+  return retval;
 }
 
 // translate a nucleotide character to binary code

@@ -176,8 +176,11 @@ cdef bam_hdr_t * build_header_from_dict(new_header):
                 lines.append(build_header_line(fields, record))
 
     text = "\n".join(lines) + "\n"
-    if dest.text != NULL: free( dest.text )
+    if dest.text != NULL:
+        free(dest.text)
     dest.text = <char*>calloc(len(text), sizeof(char))
+    if dest.text == NULL:
+        raise MemoryError("could not allocate {} bytes".format(len(text) * sizeof(char)))
     dest.l_text = len(text)
     cdef bytes btext = text.encode('ascii')
     strncpy(dest.text, btext, dest.l_text)
@@ -194,12 +197,18 @@ cdef bam_hdr_t * build_header_from_dict(new_header):
 
         dest.n_targets = len(seqs)
         dest.target_name = <char**>calloc(dest.n_targets, sizeof(char*))
+        if dest.target_name == NULL:
+            raise MemoryError("could not allocate {} bytes".format(dest.n_targets, sizeof(char *)))
         dest.target_len = <uint32_t*>calloc(dest.n_targets, sizeof(uint32_t))
-
+        if dest.target_len == NULL:
+            raise MemoryError("could not allocate {} bytes".format(dest.n_targets * sizeof(uint32_t)))
+        
         for x from 0 <= x < dest.n_targets:
             seqname, seqlen = seqs[x]
             dest.target_name[x] = <char*>calloc(
                 len(seqname) + 1, sizeof(char))
+            if dest.target_name[x] == NULL:
+                raise MemoryError("could not allocate {} bytes".format(len(seqname) + 1, sizeof(char)))
             bseqname = seqname.encode('ascii')
             strncpy(dest.target_name[x], bseqname,
                     len(seqname) + 1)
@@ -225,12 +234,20 @@ cdef bam_hdr_t * build_header_from_list(reference_names,
     for x in reference_names:
         n += len(x) + 1
     dest.target_name = <char**>calloc(n, sizeof(char*))
+    if dest.target_name == NULL:
+        raise MemoryError("could not allocate {} bytes".format(n, sizeof(char *)))
+
     dest.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
+    if dest.target_len == NULL:
+        raise MemoryError("could not allocate {} bytes".format(n, sizeof(uint32_t)))
+
     for x from 0 <= x < dest.n_targets:
         dest.target_len[x] = reference_lengths[x]
         name = reference_names[x]
         dest.target_name[x] = <char*>calloc(
             len(name) + 1, sizeof(char))
+        if dest.target_name[x] == NULL:
+            raise MemoryError("could not allocate {} bytes".format(len(name) + 1, sizeof(char)))
         strncpy(dest.target_name[x], name, len(name))
 
     # Optionally, if there is no text, add a SAM
@@ -252,6 +269,8 @@ cdef bam_hdr_t * build_header_from_list(reference_names,
         dest.l_text = strlen(ctext)
         dest.text = <char*>calloc(
             strlen(ctext), sizeof(char))
+        if dest.text == NULL:
+            raise MemoryError("could not allocate {} bytes".format(strlen(ctext), sizeof(char)))
         memcpy(dest.text, ctext, strlen(ctext))
 
     return dest
@@ -402,6 +421,8 @@ cdef class AlignmentFile(HTSFile):
 
         # allocate memory for iterator
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
+        if self.b is NULL:
+            raise MemoryError("could not allocate memory of size {}".format(sizeof(bam1_t)))
 
     def has_index(self):
         """return true if htsfile has an existing (and opened) index.
@@ -2467,6 +2488,8 @@ cdef class IndexedReads:
         # position if you decide
         cdef int ret = 1
         cdef bam1_t * b = <bam1_t*>calloc(1, sizeof( bam1_t))
+        if b == NULL:
+            raise ValueError("could not allocate {} bytes".format(sizeof(bam1_t)))
 
         cdef uint64_t pos
 

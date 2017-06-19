@@ -3,10 +3,10 @@ from pysam.libchtslib cimport *
 cdef extern from "htslib_util.h":
 
     # add *nbytes* into the variable length data of *src* at *pos*
-    bam1_t * pysam_bam_update(bam1_t * b,
-                              size_t nbytes_old,
-                              size_t nbytes_new,
-                              uint8_t * pos)
+    int pysam_bam_update(bam1_t * b,
+        	         size_t nbytes_old,
+                         size_t nbytes_new,
+                         uint8_t * pos)
 
     # now: static
     int aux_type2size(int)
