@@ -126,6 +126,13 @@ class TestGTF(TestParser):
 
     parser = pysam.asGTF
 
+    def build_attribute_string(self, d):
+        """build attribute string from dictionary d"""
+        s = "; ".join(["{} \"{}\"".format(x, y) for (x, y) in d.items()]) + ";"
+        # remove quotes around numeric values
+        s = re.sub("\"(\d+)\"", r"\1", s)
+        return s
+    
     def testRead(self):
 
         for x, r in enumerate(self.tabix.fetch(parser=self.parser())):
@@ -266,11 +273,29 @@ class TestGTF(TestParser):
         r.score = -12
         self.assertEqual(str(r).split("\t")[5], "-12")
 
+    def test_asdict_contains_attributes(self):
+        r = self.tabix.fetch(parser=self.parser()).next()
+        d = r.as_dict()
+        c = self.compare[0]
+        s = self.build_attribute_string(d)
+        self.assertEqual(s, c[8])
+
+    def test_asdict_can_be_modified(self):
+        r = self.tabix.fetch(parser=self.parser()).next()
+        d = r.as_dict()
+        d["gene_id"] = "new_gene_id"
+        self.assertTrue("gene_id \"new_gene_id\"", str(r))
+
 
 class TestGFF3(TestGTF):
 
     parser = pysam.asGFF3
     filename = os.path.join(DATADIR, "example.gff3.gz")
+
+    def build_attribute_string(self, d):
+        """build attribute string from dictionary d"""
+        s = ";".join(["{}={}".format(x, y) for (x, y) in d.items()]) + ";"
+        return s
 
     def testRead(self):
         for x, r in enumerate(self.tabix.fetch(parser=self.parser())):
@@ -313,6 +338,6 @@ class TestGFF3(TestGTF):
         r.new_text_attribute = "abc"
         self.assertTrue("new_text_attribute=abc" in str(r).split("\t")[8])
 
-
+        
 if __name__ == "__main__":
     unittest.main()
