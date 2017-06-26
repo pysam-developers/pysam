@@ -344,7 +344,7 @@ static void destroy_data(args_t *args)
     free(args->samples);
 }
 
-static int load_genmap(args_t *args, bcf1_t *line)
+static int load_genmap(args_t *args, const char *chr)
 {
     if ( !args->genmap_fname ) { args->ngenmap = 0; return 0; }
 
@@ -353,7 +353,7 @@ static int load_genmap(args_t *args, bcf1_t *line)
     if ( fname )
     {
         kputsn(args->genmap_fname, fname - args->genmap_fname, &str);
-        kputs(bcf_seqname(args->hdr,line), &str);
+        kputs(chr, &str);
         kputs(fname+7,&str);
         fname = str.s;
     }
@@ -490,7 +490,7 @@ static void flush_viterbi(args_t *args, int ismpl)
         hmm_restore(args->hmm, smpl->snapshot); 
         int end = (args->nbuf_max && smpl->nsites >= args->nbuf_max && smpl->nsites > args->nbuf_olap) ? smpl->nsites - args->nbuf_olap : smpl->nsites;
         if ( end < smpl->nsites )
-            smpl->snapshot = hmm_snapshot(args->hmm, smpl->snapshot, smpl->nsites - args->nbuf_olap - 1);
+            smpl->snapshot = hmm_snapshot(args->hmm, smpl->snapshot, smpl->sites[smpl->nsites - args->nbuf_olap - 1]);
 
         args->igenmap = smpl->igenmap;
         hmm_run_viterbi(args->hmm, smpl->nsites, smpl->eprob, smpl->sites);
@@ -632,7 +632,6 @@ static void flush_viterbi(args_t *args, int ismpl)
         }
     }
 }
-
 
 int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq)
 {
@@ -1000,20 +999,25 @@ static void vcfroh(args_t *args, bcf1_t *line)
     {
         args->prev_rid = line->rid;
         args->prev_pos = line->pos;
-        skip_rid = load_genmap(args, line);
+        skip_rid = load_genmap(args, bcf_seqname(args->hdr,line));
     }
 
     // New chromosome?
     if ( args->prev_rid!=line->rid )
     {
-        skip_rid = load_genmap(args, line);
         if ( !args->vi_training )
         {
-            for (i=0; i<args->roh_smpl->n; i++) flush_viterbi(args, i);
+            for (i=0; i<args->roh_smpl->n; i++)
+            {
+                flush_viterbi(args, i);
+                hmm_reset(args->hmm, args->smpl[i].snapshot);
+            }
         }
         args->prev_rid = line->rid;
         args->prev_pos = line->pos;
+        skip_rid = load_genmap(args, bcf_seqname(args->hdr,line));
     }
+    else if ( args->prev_pos == line->pos ) return;     // skip duplicate positions
 
     if ( skip_rid )
     {

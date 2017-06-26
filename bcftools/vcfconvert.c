@@ -862,7 +862,7 @@ static void vcf_to_haplegendsample(args_t *args)
     if ( legend_fname && (strlen(legend_fname)<3 || strcasecmp(".gz",legend_fname+strlen(legend_fname)-3)) ) legend_compressed = 0;
     if ( sample_fname && strlen(sample_fname)>3 && strcasecmp(".gz",sample_fname+strlen(sample_fname)-3)==0 ) sample_compressed = 0;
 
-    if (hap_fname) fprintf(stderr, "Haps file: %s\n", hap_fname);
+    if (hap_fname) fprintf(stderr, "Hap file: %s\n", hap_fname);
     if (legend_fname) fprintf(stderr, "Legend file: %s\n", legend_fname);
     if (sample_fname) fprintf(stderr, "Sample file: %s\n", sample_fname);
 
@@ -1010,7 +1010,7 @@ static void vcf_to_hapsample(args_t *args)
     if ( hap_fname && (strlen(hap_fname)<3 || strcasecmp(".gz",hap_fname+strlen(hap_fname)-3)) ) hap_compressed = 0;
     if ( sample_fname && strlen(sample_fname)>3 && strcasecmp(".gz",sample_fname+strlen(sample_fname)-3)==0 ) sample_compressed = 0;
 
-    if (hap_fname) fprintf(stderr, "Haps file: %s\n", hap_fname);
+    if (hap_fname) fprintf(stderr, "Hap file: %s\n", hap_fname);
     if (sample_fname) fprintf(stderr, "Sample file: %s\n", sample_fname);
 
     // write samples file
@@ -1397,8 +1397,8 @@ static void usage(void)
     fprintf(stderr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "HAP/SAMPLE conversion (output from SHAPEIT):\n");
-    fprintf(stderr, "       --hapsample2vcf <...>   <prefix>|<haps-file>,<sample-file>\n");
-    fprintf(stderr, "       --hapsample <...>       <prefix>|<haps-file>,<sample-file>\n");
+    fprintf(stderr, "       --hapsample2vcf <...>   <prefix>|<hap-file>,<sample-file>\n");
+    fprintf(stderr, "       --hapsample <...>       <prefix>|<hap-file>,<sample-file>\n");
     fprintf(stderr, "       --haploid2diploid       convert haploid genotypes to diploid homozygotes\n");
     fprintf(stderr, "       --sex <file>            output sex column in the sample-file, input format is: Sample\\t[MF]\n");
     fprintf(stderr, "       --vcf-ids               output VCF IDs instead of CHROM:POS_REF_ALT\n");

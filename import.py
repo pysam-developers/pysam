@@ -47,7 +47,7 @@ EXCLUDE = {
         "bamcheck.c",
         "chk_indel.c",
         "vcf-miniview.c",
-        "htslib-1.3",   # do not import twice
+        "htslib-1.5",   # do not import twice
         "hfile_irods.c",  # requires irods library
     ),
     "bcftools": (
