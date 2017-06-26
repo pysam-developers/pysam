@@ -73,7 +73,8 @@ from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
     tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    tbx_destroy, hisremote, region_list
+    tbx_destroy, hisremote, region_list, \
+    TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
@@ -842,41 +843,43 @@ def tabix_compress(filename_in,
             raise OSError("error %i when closing file %s" % (r, filename_in))
 
 
-def tabix_index( filename, 
-                 force = False,
-                 seq_col = None, 
-                 start_col = None, 
-                 end_col = None,
-                 preset = None,
-                 meta_char = "#",
-                 zerobased = False,
-                 int min_shift = -1,
+def tabix_index(filename, 
+                force=False,
+                seq_col=None, 
+                start_col=None, 
+                end_col=None,
+                preset=None,
+                meta_char="#",
+                int line_skip=0,
+                zerobased=False,
+                int min_shift=-1,
                 ):
     '''index tab-separated *filename* using tabix.
 
-    An existing index will not be overwritten unless
-    *force* is set.
+    An existing index will not be overwritten unless *force* is set.
 
-    The index will be built from coordinates
-    in columns *seq_col*, *start_col* and *end_col*.
+    The index will be built from coordinates in columns *seq_col*,
+    *start_col* and *end_col*.
 
-    The contents of *filename* have to be sorted by 
-    contig and position - the method does not check
-    if the file is sorted.
+    The contents of *filename* have to be sorted by contig and
+    position - the method does not check if the file is sorted.
 
-    Column indices are 0-based. Coordinates in the file
-    are assumed to be 1-based.
-
-    If *preset* is provided, the column coordinates
-    are taken from a preset. Valid values for preset
-    are "gff", "bed", "sam", "vcf", psltbl", "pileup".
+    Column indices are 0-based. Note that this is different from the
+    tabix command line utility where column indices start at 1.
     
-    Lines beginning with *meta_char* and the first
-    *line_skip* lines will be skipped.
+    Coordinates in the file are assumed to be 1-based unless
+    *zerobased* is set.
+
+    If *preset* is provided, the column coordinates are taken from a
+    preset. Valid values for preset are "gff", "bed", "sam", "vcf",
+    psltbl", "pileup".
+    
+    Lines beginning with *meta_char* and the first *line_skip* lines
+    will be skipped.
     
     If *filename* does not end in ".gz", it will be automatically
-    compressed. The original file will be removed and only the 
-    compressed file will be retained. 
+    compressed. The original file will be removed and only the
+    compressed file will be retained.
 
     If *filename* ends in *gz*, the file is assumed to be already
     compressed with bgzf.
@@ -911,12 +914,11 @@ def tabix_index( filename,
     #     comments, lines to ignore at beginning
     # 0 is a missing column
     preset2conf = {
-        'gff' : (0, 1, 4, 5, ord('#'), 0),
-        'bed' : (0x10000, 1, 2, 3, ord('#'), 0),
-        'psltbl' : (0x10000, 15, 17, 18, ord('#'), 0),
-        'sam' : (1, 3, 4, 0, ord('@'), 0),
-        'vcf' : (2, 1, 2, 0, ord('#'), 0),
-        'pileup': (3, 1, 2, 0, ord('#'), 0),
+        'gff' : (TBX_GENERIC, 1, 4, 5, ord('#'), 0),
+        'bed' : (TBX_UCSC, 1, 2, 3, ord('#'), 0),
+        'psltbl' : (TBX_UCSC, 15, 17, 18, ord('#'), 0),
+        'sam' : (TBX_SAM, 3, 4, 0, ord('@'), 0),
+        'vcf' : (TBX_VCF, 1, 2, 0, ord('#'), 0),
         }
 
     if preset:
@@ -927,20 +929,20 @@ def tabix_index( filename,
                 "unknown preset '%s', valid presets are '%s'" %
                 (preset, ",".join(preset2conf.keys())))
     else:
-        if end_col == None:
+        if end_col is None:
             end_col = -1
+            
         preset = 0
-
-        # note that tabix internally works with 0-based coordinates
-        # and open/closed intervals.  When using a preset, conversion
-        # is automatically taken care of.  Otherwise, the coordinates
-        # are assumed to be 1-based closed intervals and -1 is
-        # subtracted from the start coordinate. To avoid doing this,
-        # set the TI_FLAG_UCSC=0x10000 flag:
+        # tabix internally works with 0-based coordinates and
+        # open/closed intervals.  When using a preset, conversion is
+        # automatically taken care of.  Otherwise, the coordinates are
+        # assumed to be 1-based closed intervals and -1 is subtracted
+        # from the start coordinate. To avoid doing this, set the
+        # TI_FLAG_UCSC=0x10000 flag:
         if zerobased:
-            preset = preset | 0x10000
+            preset = preset | TBX_UCSC
 
-        conf_data = (preset, seq_col+1, start_col+1, end_col+1, ord(meta_char), 0)
+        conf_data = (preset, seq_col+1, start_col+1, end_col+1, ord(meta_char), line_skip)
                 
     cdef tbx_conf_t conf
     conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data

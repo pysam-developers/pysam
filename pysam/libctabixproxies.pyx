@@ -9,6 +9,7 @@ from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
 import collections
+import copy
 
 
 cdef char *StrOrEmpty(char * buffer):
@@ -450,12 +451,18 @@ cdef class GTFProxy(NamedTupleProxy):
         '''return max number of fields.'''
         return 9
 
-    def asDict(self):
+    def as_dict(self):
         """parse attributes - return as dict
+
+        The dictionary can be modified to update attributes.
         """
-        return collections.OrderedDict(self.attribute_iterator())
+        if not self.attribute_dict:
+            self.attribute_dict = self.attribute_string2dict(
+                self.attributes)
+            self.is_modified = True
+        return self.attribute_dict
     
-    def fromDict(self, d):
+    def from_dict(self, d):
         '''set attributes from a dictionary.'''
         self.attribute_dict = None
         attribute_string = force_bytes(
@@ -645,7 +652,14 @@ cdef class GTFProxy(NamedTupleProxy):
                     self.attributes)
             self.attribute_dict[key] = value
             self.is_modified = True
-            
+
+    # for backwards compatibility
+    def asDict(self, *args, **kwargs):
+        return self.as_dict(*args, **kwargs)
+
+    def fromDict(self, *args, **kwargs):
+        return self.from_dict(*args, **kwargs)
+    
 
 cdef class GFF3Proxy(GTFProxy):
 
