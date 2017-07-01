@@ -60,26 +60,22 @@ class cy_build_ext(build_ext):
             ext.library_dirs.append(os.path.join(self.build_lib, "pysam"))
 
         if sys.platform == 'darwin':
+            # The idea is to give shared libraries an install name of the form
+            # `@rpath/<library-name.so>`, and to set the rpath equal to
+            # @loader_path. This will allow Python packages to find the library
+            # in the expected place, while still giving enough flexibility to
+            # external applications to link against the library.
             relative_module_path = ext.name.replace(".", os.sep) + get_config_vars()["SO"]
-
-            if "develop" in sys.argv or "test" in sys.argv:
-                # develop-mode and tests use local directory
-                pkg_root = os.path.dirname(__file__)
-                linker_path = os.path.join(pkg_root, relative_module_path)
-            elif "bdist_wheel" in sys.argv or is_pip_install():
-                # making a wheel, or pip is secretly involved
-                linker_path = os.path.join("@rpath", relative_module_path)
-            else:
-                # making an egg: `python setup.py install` default behavior
-                egg_name = '%s.egg' % self._get_egg_name()
-                linker_path = os.path.join("@rpath", egg_name, relative_module_path)
+            library_path = os.path.join(
+                "@rpath", os.path.basename(relative_module_path)
+            )
 
             if not ext.extra_link_args:
                 ext.extra_link_args = []
             ext.extra_link_args += ['-dynamiclib',
-                                    '-rpath', get_python_lib(),
+                                    '-rpath', '@loader_path',
                                     '-Wl,-headerpad_max_install_names',
-                                    '-Wl,-install_name,%s' % linker_path,
+                                    '-Wl,-install_name,%s' % library_path,
                                     '-Wl,-x']
         else:
             if not ext.extra_link_args:
