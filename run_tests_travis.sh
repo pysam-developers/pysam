@@ -68,7 +68,7 @@ ulimit -a
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch
 # -v: verbose output
-/usr/bin/time --verbose pytest -s -v tests
+command time --verbose pytest -s -v tests
 
 if [ $? != 0 ]; then
     exit 1
