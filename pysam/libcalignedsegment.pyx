@@ -1481,7 +1481,11 @@ cdef class AlignedSegment:
         """
         if always is True:
             return self.infer_read_length()
-        return calculateQueryLengthWithoutHardClipping(self._delegate)
+        cdef int32_t l = calculateQueryLengthWithoutHardClipping(self._delegate)
+        if l > 0:
+            return l
+        else:
+            return None
 
     def infer_read_length(self):
         """infer read length from CIGAR alignment.
@@ -1491,7 +1495,11 @@ cdef class AlignedSegment:
 
         Returns None if CIGAR alignment is not present.
         """
-        return calculateQueryLengthWithHardClipping(self._delegate)
+        cdef int32_t l = calculateQueryLengthWithHardClipping(self._delegate)
+        if l > 0:
+            return l
+        else:
+            return None
 
     def get_reference_sequence(self):
         """return the reference sequence.
