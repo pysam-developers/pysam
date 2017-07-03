@@ -63,6 +63,12 @@ static inline char gt2iupac(char a, char b)
     return iupac[(int)a][(int)b];
 }
 
+static inline char nt_to_upper(char nt)
+{
+    if ( nt < 97 ) return nt;
+    return nt - 32;
+}
+
 static inline double phred_score(double prob)
 {
     if ( prob==0 ) return 99;

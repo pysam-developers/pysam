@@ -106,7 +106,6 @@ typedef struct
     int rid;        // current rid
     int beg,end;    // valid ranges in reader's buffer [beg,end). Maintained by maux_reset and gvcf_flush.
     int cur;        // current line or -1 if none
-    int npos;       // number of unprocessed lines at this position
     int mrec;       // allocated size of buf
     maux1_t *rec;   // buffer to keep reader's lines
     bcf1_t **lines; // source buffer: either gvcf or readers' buffer
@@ -760,10 +759,12 @@ void maux_reset(maux_t *ma)
         ma->pos = line->pos;
         break;
     }
-    if ( chr )
+    int new_chr = 0;
+    if ( chr && (!ma->chr || strcmp(ma->chr,chr)) )
     {
         free(ma->chr);
         ma->chr = strdup(chr);
+        new_chr = 1;
     }
     for (i=0; i<ma->n; i++)
     {
@@ -783,6 +784,7 @@ void maux_reset(maux_t *ma)
             ma->buf[i].lines = ma->files->readers[i].buffer;
             if ( ma->gvcf ) ma->gvcf[i].active = 0;     // gvcf block cannot overlap with the next record
         }
+        if ( new_chr && ma->gvcf ) ma->gvcf[i].active = 0;  // make sure to close active gvcf block on new chr
     }
 }
 void maux_debug(maux_t *ma, int ir, int ib)
@@ -1987,6 +1989,31 @@ void debug_maux(args_t *args)
     fprintf(pysam_stderr,"\n\n");
 }
 
+void debug_state(args_t *args)
+{
+    maux_t *maux = args->maux;
+    int i,j;
+    for (i=0; i<args->files->nreaders; i++)
+    {
+        fprintf(pysam_stderr,"reader %d:\tcur,beg,end=% d,%d,%d", i,maux->buf[i].cur,maux->buf[i].beg,maux->buf[i].end);
+        if ( maux->buf[i].cur >=0 )
+        {
+            bcf_hdr_t *hdr = bcf_sr_get_header(args->files,i);
+            const char *chr = bcf_hdr_id2name(hdr, maux->buf[i].rid);
+            fprintf(pysam_stderr,"\t");
+            for (j=maux->buf[i].beg; j<maux->buf[i].end; j++) fprintf(pysam_stderr," %s:%d",chr,maux->buf[i].lines[j]->pos+1);
+        }
+        fprintf(pysam_stderr,"\n");
+    }
+    for (i=0; i<args->files->nreaders; i++)
+    {
+        fprintf(pysam_stderr,"reader %d:\tgvcf_active=%d", i,maux->gvcf[i].active);
+        if ( maux->gvcf[i].active ) fprintf(pysam_stderr,"\tpos,end=%d,%d", maux->gvcf[i].line->pos+1,maux->gvcf[i].end+1);
+        fprintf(pysam_stderr,"\n");
+    }
+    fprintf(pysam_stderr,"\n");
+}
+
 
 /*
    Determine which line should be merged from which reader: go through all
@@ -2296,6 +2323,7 @@ void merge_vcf(args_t *args)
             merge_line(args);
         }
         clean_buffer(args);
+        // debug_state(args);
     }
     if ( args->do_gvcf )
         gvcf_flush(args,1);

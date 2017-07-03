@@ -538,13 +538,14 @@ static void consensus(args_t *args)
     {
         if ( str.s[0]=='>' )
         {
-            // new sequence encountered, apply all cached variants
+            // new sequence encountered
+            if (args->chain) {
+                print_chain(args);
+                destroy_chain(args);
+            }
+            // apply all cached variants
             while ( args->vcf_rbuf.n )
             {
-                if (args->chain) {
-                    print_chain(args);
-                    destroy_chain(args);
-                }
                 bcf1_t *rec = args->vcf_buf[args->vcf_rbuf.f];
                 if ( rec->rid!=args->rid || ( args->fa_end_pos && rec->pos > args->fa_end_pos ) ) break;
                 int i = rbuf_shift(&args->vcf_rbuf);

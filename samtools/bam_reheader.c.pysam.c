@@ -436,7 +436,7 @@ int cram_reheader_inplace(cram_fd *fd, const bam_hdr_t *h, const char *arg_list,
     }
 }
 
-static int usage(FILE *fp, int ret) {
+static void usage(FILE *fp, int ret) {
     fprintf(fp,
            "Usage: samtools reheader [-P] in.header.sam in.bam > out.bam\n"
            "   or  samtools reheader [-P] -i in.header.sam file.bam\n"
@@ -445,7 +445,7 @@ static int usage(FILE *fp, int ret) {
            "    -P, --no-PG      Do not generate an @PG header line.\n"
            "    -i, --in-place   Modify the bam/cram file directly.\n"
            "                     (Defaults to outputting to pysam_stdout.)\n");
-    return(ret);
+    exit(ret);
 }
 
 int main_reheader(int argc, char *argv[])
@@ -466,15 +466,15 @@ int main_reheader(int argc, char *argv[])
         switch (c) {
         case 'P': add_PG = 0; break;
         case 'i': inplace = 1; break;
-        case 'h': return(usage(pysam_stdout, 0)); break;
+        case 'h': usage(pysam_stdout, 0); break;
         default:
             fprintf(pysam_stderr, "Invalid option '%c'\n", c);
-            return(usage(pysam_stderr, 1));
+            usage(pysam_stderr, 1);
         }
     }
 
     if (argc - optind != 2)
-      return(usage(pysam_stderr, 1));
+        usage(pysam_stderr, 1);
 
     { // read the header
         samFile *fph = sam_open(argv[optind], "r");

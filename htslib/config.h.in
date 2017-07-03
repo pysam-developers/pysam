@@ -108,3 +108,6 @@
 
 /* Define for large files, on AIX-style hosts. */
 #undef _LARGE_FILES
+
+/* Needed for PTHREAD_MUTEX_RECURSIVE */
+#undef _XOPEN_SOURCE

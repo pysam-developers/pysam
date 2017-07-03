@@ -700,6 +700,40 @@ static void filters_set_alt_string(filter_t *flt, bcf1_t *line, token_t *tok)
     tok->values[0] = str.m;
     tok->str_value = str.s;
 }
+static void filters_set_nmissing(filter_t *flt, bcf1_t *line, token_t *tok)
+{
+    bcf_unpack(line, BCF_UN_FMT);
+    if ( !line->n_sample )
+    {
+        tok->nvalues = 1;
+        tok->values[0] = 0;
+        return;
+    }
+
+    int i,igt = bcf_hdr_id2int(flt->hdr, BCF_DT_ID, "GT");
+    bcf_fmt_t *fmt = NULL;
+    for (i=0; i<line->n_fmt; i++)
+        if ( line->d.fmt[i].id==igt ) { fmt = &line->d.fmt[i]; break; }
+    if ( !fmt )
+    {
+        tok->nvalues = 0;
+        return;
+    }
+    if ( fmt->type!=BCF_BT_INT8 ) error("TODO: the GT fmt_type is not int8\n");
+
+    int j,nmissing = 0;
+    for (i=0; i<line->n_sample; i++)
+    {
+        int8_t *ptr = (int8_t*) (fmt->p + i*fmt->size);
+        for (j=0; j<fmt->n; j++)
+        {
+            if ( ptr[j]==bcf_int8_vector_end ) break;
+            if ( ptr[j]==bcf_gt_missing ) { nmissing++; break; }
+        }
+    }
+    tok->nvalues = 1;
+    tok->values[0] = tok->tag[0]=='N' ? nmissing : (double)nmissing / line->n_sample;
+}
 static void filters_set_nalt(filter_t *flt, bcf1_t *line, token_t *tok)
 {
     tok->nvalues = 1;
@@ -834,6 +868,7 @@ static void set_strlen(filter_t *flt, bcf1_t *line, token_t *tok)
         {
             char *se = ss;
             while ( *se && *se!=',' ) se++;
+            hts_expand(double, i+1, tok->mvalues, tok->values);
             if ( !*se ) tok->values[i] = strlen(ss);
             else
             {
@@ -1303,6 +1338,18 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         {
             tok->tok_type = TOK_VAL;
             tok->threshold = bcf_hdr_nsamples(filter->hdr);
+            return 0;
+        }
+        else if ( !strncasecmp(str,"N_MISSING",len) )
+        {
+            tok->setter = &filters_set_nmissing;
+            tok->tag = strdup("N_MISSING");
+            return 0;
+        }
+        else if ( !strncasecmp(str,"F_MISSING",len) )
+        {
+            tok->setter = &filters_set_nmissing;
+            tok->tag = strdup("F_MISSING");
             return 0;
         }
     }

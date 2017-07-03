@@ -864,7 +864,7 @@ static void vcf_to_haplegendsample(args_t *args)
     if ( legend_fname && (strlen(legend_fname)<3 || strcasecmp(".gz",legend_fname+strlen(legend_fname)-3)) ) legend_compressed = 0;
     if ( sample_fname && strlen(sample_fname)>3 && strcasecmp(".gz",sample_fname+strlen(sample_fname)-3)==0 ) sample_compressed = 0;
 
-    if (hap_fname) fprintf(pysam_stderr, "Haps file: %s\n", hap_fname);
+    if (hap_fname) fprintf(pysam_stderr, "Hap file: %s\n", hap_fname);
     if (legend_fname) fprintf(pysam_stderr, "Legend file: %s\n", legend_fname);
     if (sample_fname) fprintf(pysam_stderr, "Sample file: %s\n", sample_fname);
 
@@ -1012,7 +1012,7 @@ static void vcf_to_hapsample(args_t *args)
     if ( hap_fname && (strlen(hap_fname)<3 || strcasecmp(".gz",hap_fname+strlen(hap_fname)-3)) ) hap_compressed = 0;
     if ( sample_fname && strlen(sample_fname)>3 && strcasecmp(".gz",sample_fname+strlen(sample_fname)-3)==0 ) sample_compressed = 0;
 
-    if (hap_fname) fprintf(pysam_stderr, "Haps file: %s\n", hap_fname);
+    if (hap_fname) fprintf(pysam_stderr, "Hap file: %s\n", hap_fname);
     if (sample_fname) fprintf(pysam_stderr, "Sample file: %s\n", sample_fname);
 
     // write samples file
@@ -1399,8 +1399,8 @@ static void usage(void)
     fprintf(pysam_stderr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
     fprintf(pysam_stderr, "\n");
     fprintf(pysam_stderr, "HAP/SAMPLE conversion (output from SHAPEIT):\n");
-    fprintf(pysam_stderr, "       --hapsample2vcf <...>   <prefix>|<haps-file>,<sample-file>\n");
-    fprintf(pysam_stderr, "       --hapsample <...>       <prefix>|<haps-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "       --hapsample2vcf <...>   <prefix>|<hap-file>,<sample-file>\n");
+    fprintf(pysam_stderr, "       --hapsample <...>       <prefix>|<hap-file>,<sample-file>\n");
     fprintf(pysam_stderr, "       --haploid2diploid       convert haploid genotypes to diploid homozygotes\n");
     fprintf(pysam_stderr, "       --sex <file>            output sex column in the sample-file, input format is: Sample\\t[MF]\n");
     fprintf(pysam_stderr, "       --vcf-ids               output VCF IDs instead of CHROM:POS_REF_ALT\n");
