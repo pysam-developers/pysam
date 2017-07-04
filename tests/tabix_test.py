@@ -668,6 +668,7 @@ class TestVCFFromVCF(TestVCF):
     fail_on_parsing = (
         (5, "Flag fields should not have a value"),
         (9, "aouao"),
+        (12, "Error BAD_NUMBER_OF_PARAMETERS"),
         (13, "aoeu"),
         (18, "Error BAD_NUMBER_OF_PARAMETERS"),
         (24, "Error HEADING_NOT_SEPARATED_BY_TABS"))
