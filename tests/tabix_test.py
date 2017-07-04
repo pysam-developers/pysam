@@ -694,6 +694,7 @@ class TestVCFFromVCF(TestVCF):
         self.compare = load_and_convert(self.filename, encode=False)
 
     def tearDown(self):
+        TestVCF.tearDown(self)
         self.vcf.close()
 
     def open_vcf(self, fn):
