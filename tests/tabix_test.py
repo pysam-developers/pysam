@@ -66,7 +66,7 @@ class TestIndexing(unittest.TestCase):
 
     def setUp(self):
 
-        self.tmpfilename = "tmp_%i.gtf.gz" % id(self)
+        self.tmpfilename = get_temp_filename(suffix="gtf.gz")
         shutil.copyfile(self.filename, self.tmpfilename)
 
     def testIndexPreset(self):
@@ -86,8 +86,7 @@ class TestCompression(unittest.TestCase):
     preset = "gff"
 
     def setUp(self):
-
-        self.tmpfilename = "tmp_TestCompression_%i" % id(self)
+        self.tmpfilename = get_temp_filename(suffix="gtf")
         with gzip.open(self.filename, "rb") as infile, \
              open(self.tmpfilename, "wb") as outfile:
             outfile.write(infile.read())
@@ -369,7 +368,6 @@ class TestIterationWithComments(TestIterationWithoutComments):
     def setUp(self):
         TestIterationWithoutComments.setUp(self)
 
-
             
 class TestIterators(unittest.TestCase):
     filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
@@ -545,9 +543,14 @@ if IS_PYTHON3:
         filename = os.path.join(TABIX_DATADIR, "example_unicode.vcf")
 
         def setUp(self):
-            self.tmpfilename = "tmp_%s.vcf" % id(self)
+            self.tmpfilename = get_temp_filename(suffix="vcf")
             shutil.copyfile(self.filename, self.tmpfilename)
             pysam.tabix_index(self.tmpfilename, preset="vcf")
+
+        def tearDown(self):
+            os.unlink(self.tmpfilename + ".gz")
+            if os.path.exists(self.tmpfilename + ".gz.tbi"):
+                os.unlink(self.tmpfilename + ".gz.tbi")
 
         def testFromTabix(self):
 
@@ -975,6 +978,7 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
         if self.vcf:
             self.vcf.close()
         self.vcf = None
+        TestVCF.tearDown(self)
 
     def get_iterator(self):
         self.vcf = pysam.VariantFile(self.filename)
