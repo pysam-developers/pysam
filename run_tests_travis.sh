@@ -76,7 +76,6 @@ fi
 
 # build source tar-ball. Make sure to run 'build' target so that .pyx
 # files are cythonized.
-cd ..
 python setup.py build sdist
 
 if [ $? != 0 ]; then
