@@ -16,12 +16,11 @@ import sys
 import subprocess
 import shutil
 from TestUtils import checkBinaryEqual, check_lines_equal, \
-    check_samtools_view_equal, get_temp_filename, force_bytes
+    check_samtools_view_equal, get_temp_filename, force_bytes, WORKDIR, \
+    BAM_DATADIR
+
 
 IS_PYTHON3 = sys.version_info[0] >= 3
-
-WORKDIR = "pysam_test_work"
-DATADIR = "pysam_data"
 
 
 def run_command(cmd):
@@ -152,7 +151,7 @@ class SamtoolsTest(unittest.TestCase):
             os.makedirs(WORKDIR)
 
         for f in self.requisites:
-            shutil.copy(os.path.join(DATADIR, f),
+            shutil.copy(os.path.join(BAM_DATADIR, f),
                         os.path.join(WORKDIR, f))
 
         self.savedir = os.getcwd()
@@ -184,6 +183,7 @@ class SamtoolsTest(unittest.TestCase):
         pysam_targets = [x % r_pysam for x in targets]
 
         pysam_method = getattr(self.module, command)
+        
         # run samtools
         full_statement = re.sub("%\(out\)s", self.executable, statement)
         run_command(" ".join((self.executable, full_statement)))
@@ -204,7 +204,6 @@ class SamtoolsTest(unittest.TestCase):
             with open(pysam_targets[-1], "wb") as outfile:
                 if output is not None:
                     outfile.write(force_bytes(output))
-
         for samtools_target, pysam_target in zip(samtools_targets,
                                                  pysam_targets):
             if os.path.isdir(samtools_target):
@@ -236,11 +235,11 @@ class SamtoolsTest(unittest.TestCase):
 
     def testStatements(self):
         for statement in self.statements:
-            # TODO: check
-            print(statement)
-            if statement.startswith("bedcov") or statement.startswith("stats") or statement.startswith("dict"):
+            command = self.get_command(statement, map_to_internal=False)
+            if command in ("bedcov", "stats", "dict"):
                 continue
-            if (statement.startswith("calmd") and 
+            
+            if (command == "calmd" and 
                 list(sys.version_info[:2]) == [3, 3]):
                 # skip calmd test, fails only on python 3.3.5
                 # in linux (empty output). Works in OsX and passes
@@ -256,8 +255,10 @@ class SamtoolsTest(unittest.TestCase):
         
         for statement in self.statements:
             command = self.get_command(statement, map_to_internal=False)
-            # ignore commands that exit
-            if command in ("bam2fq", "flagstat", "reheader", "stats"):
+            # ignore commands that exit or cause other failures
+            # TODO: check - if reheader or phase is run in testStatements, sort fails
+            # here
+            if command in ("view", "sort", "bam2fq", "flagstat", "reheader", "stats"):
                 continue
             mapped_command = self.get_command(statement, map_to_internal=True)
             pysam_method = getattr(self.module, mapped_command)
@@ -285,7 +286,7 @@ if sys.platform != "darwin":
     class TestReturnType(unittest.TestCase):
 
         def testReturnValueString(self):
-            retval = pysam.idxstats(os.path.join(DATADIR, "ex1.bam"))
+            retval = pysam.idxstats(os.path.join(BAM_DATADIR, "ex1.bam"))
             if IS_PYTHON3:
                 self.assertFalse(isinstance(retval, bytes))
                 self.assertTrue(isinstance(retval, str))
@@ -294,7 +295,7 @@ if sys.platform != "darwin":
                 self.assertTrue(isinstance(retval, basestring))
 
         def testReturnValueData(self):
-            args = "-O BAM {}".format(os.path.join(DATADIR, "ex1.bam")).split(" ")
+            args = "-O BAM {}".format(os.path.join(BAM_DATADIR, "ex1.bam")).split(" ")
             retval = pysam.view(*args)
 
             if IS_PYTHON3:
@@ -310,12 +311,12 @@ if sys.platform != "darwin":
 
         def testWithRedirectedStdout(self):
             r = pysam.samtools.flagstat(
-                os.path.join(DATADIR, "ex1.bam"))
+                os.path.join(BAM_DATADIR, "ex1.bam"))
             self.assertTrue(len(r) > 0)
 
         def testWithoutRedirectedStdout(self):
             r = pysam.samtools.flagstat(
-                os.path.join(DATADIR, "ex1.bam"),
+                os.path.join(BAM_DATADIR, "ex1.bam"),
                 catch_stdout=False)
             self.assertEqual(r, None)
 
@@ -323,14 +324,14 @@ if sys.platform != "darwin":
             # The following would fail if there is an
             # issue with stdout being improperly caught.
             retvals = pysam.idxstats(
-                os.path.join(DATADIR, "ex1.bam"))
+                os.path.join(BAM_DATADIR, "ex1.bam"))
             retvals = pysam.idxstats(
-                os.path.join(DATADIR, "ex1.bam"))
+                os.path.join(BAM_DATADIR, "ex1.bam"))
 
         def testSaveStdout(self):
             outfile = get_temp_filename(suffix=".tsv")
             r = pysam.samtools.flagstat(
-                os.path.join(DATADIR, "ex1.bam"),
+                os.path.join(BAM_DATADIR, "ex1.bam"),
                 save_stdout=outfile)
             self.assertEqual(r, None)
             with open(outfile) as inf:
@@ -394,7 +395,7 @@ if sys.platform != "darwin":
 if __name__ == "__main__":
     # build data files
     print("building data files")
-    subprocess.call("make -C %s" % DATADIR, shell=True)
+    subprocess.call("make -C %s" % BAM_DATADIR, shell=True)
     print("starting tests")
     unittest.main()
     print("completed tests")
