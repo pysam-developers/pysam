@@ -248,6 +248,8 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.infer_query_length(), 35)
         a.cigarstring = '35M5S'
         self.assertEqual(a.infer_query_length(), 40)
+        a.cigarstring = None
+        self.assertEqual(a.infer_query_length(), None)
 
     def test_infer_read_length(self):
         '''Test infer_read_length on M|=|X|I|D|H|S cigar ops'''
@@ -270,6 +272,8 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.infer_read_length(), 40)
         a.cigarstring = '35M5S'
         self.assertEqual(a.infer_read_length(), 40)
+        a.cigarstring = None
+        self.assertEqual(a.infer_read_length(), None)
 
     def test_get_aligned_pairs_soft_clipping(self):
         a = self.buildRead()
