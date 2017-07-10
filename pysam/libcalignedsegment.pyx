@@ -1469,7 +1469,7 @@ cdef class AlignedSegment:
         return result
 
     def infer_query_length(self, always=False):
-        """infer query length from sequence or CIGAR alignment.
+        """infer query length from CIGAR alignment.
 
         This method deduces the query length from the CIGAR alignment
         but does not include hard-clipped bases.
