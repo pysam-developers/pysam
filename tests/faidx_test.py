@@ -5,9 +5,7 @@ import gzip
 import copy
 import shutil
 
-from TestUtils import checkURL
-
-DATADIR = "pysam_data"
+from TestUtils import checkURL, BAM_DATADIR
 
 
 class TestFastaFile(unittest.TestCase):
@@ -20,7 +18,7 @@ class TestFastaFile(unittest.TestCase):
     }
 
     def setUp(self):
-        self.file = pysam.FastaFile(os.path.join(DATADIR, "ex1.fa"))
+        self.file = pysam.FastaFile(os.path.join(BAM_DATADIR, "ex1.fa"))
 
     def testFetch(self):
         for id, seq in list(self.sequences.items()):
@@ -60,7 +58,7 @@ class TestFastaFile(unittest.TestCase):
 
 class TestFastaFilePathIndex(unittest.TestCase):
 
-    filename = os.path.join(DATADIR, "ex1.fa")
+    filename = os.path.join(BAM_DATADIR, "ex1.fa")
 
     def testGarbageIndex(self):
         self.assertRaises(NotImplementedError,
@@ -102,7 +100,7 @@ class TestFastaFilePathIndex(unittest.TestCase):
 
 class TestFastaFilePathIndexCompressed(TestFastaFilePathIndex):
     
-    filename = os.path.join(DATADIR, "ex1.fa.gz")
+    filename = os.path.join(BAM_DATADIR, "ex1.fa.gz")
 
 
 class TestFastxFileFastq(unittest.TestCase):
@@ -112,7 +110,7 @@ class TestFastxFileFastq(unittest.TestCase):
     persist = True
 
     def setUp(self):
-        self.file = self.filetype(os.path.join(DATADIR, self.filename),
+        self.file = self.filetype(os.path.join(BAM_DATADIR, self.filename),
                                   persist=self.persist)
         self.has_quality = self.filename.endswith('.fq')
 
@@ -171,7 +169,7 @@ class TestFastxFileFastq(unittest.TestCase):
             self.checkLast(first)
 
     def testManager(self):
-        with self.filetype(os.path.join(DATADIR, self.filename),
+        with self.filetype(os.path.join(BAM_DATADIR, self.filename),
                            persist=self.persist) as inf:
             first = inf.__next__()
             self.checkFirst(first)
@@ -207,7 +205,7 @@ class TestFastxFileWithEmptySequence(unittest.TestCase):
     filename = "faidx_empty_seq.fq.gz"
 
     def testIteration(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(BAM_DATADIR, self.filename)
 
         with gzip.open(fn) as inf:
             ref_num = len(list(inf)) / 4
@@ -251,7 +249,7 @@ class TestFastqRecord(unittest.TestCase):
     
     def setUp(self):
 
-        with self.filetype(os.path.join(DATADIR, self.filename), persist=True) as inf:
+        with self.filetype(os.path.join(BAM_DATADIR, self.filename), persist=True) as inf:
             self.record = next(inf)
         
     def test_fastx_record_sequence_can_be_modified(self):
