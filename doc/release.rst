@@ -7,7 +7,7 @@ Release 0.12.0
 
 * [#473] A new FastxRecord class that can be instantiated from class and
   modified in-place. Replaces PersistentFastqProxy.
-  
+
 
 Release 0.11.2.2
 ================
