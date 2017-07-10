@@ -1,10 +1,11 @@
 '''
-compile_test.py - check pyximport
-=================================
+compile_test.py - check pyximport functionality with pysam
+==========================================================
 
 test script for checking if compilation against
 pysam and tabix works.
 '''
+
 # clean up previous compilation
 import os
 try:
@@ -42,6 +43,7 @@ class GTFTest(unittest.TestCase):
         nread = _compile_test.testCountGTF(
             pysam.Tabixfile(self.input_filename))
         self.assertEqual(nread, 237)
+        
 
 if __name__ == "__main__":
     unittest.main()
