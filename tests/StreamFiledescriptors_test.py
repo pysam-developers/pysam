@@ -9,9 +9,7 @@ from pysam import AlignmentFile
 
 IS_PYTHON2 = sys.version_info[0] == 2
 
-DATADIR = os.path.abspath(os.path.join(
-    os.path.dirname(__file__),
-    "pysam_data"))
+from TestUtils import BAM_DATADIR
 
 
 def alignmentfile_writer_thread(infile, outfile):
@@ -52,7 +50,7 @@ class StreamTest(unittest.TestCase):
                               stdout=subprocess.PIPE,
                               shell=True) as proc:
 
-            in_stream = AlignmentFile('pysam_data/ex1.bam')
+            in_stream = AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'))
             out_stream = AlignmentFile(proc.stdin, 'wh', header=in_stream.header)
             writer = alignmentfile_writer_thread(in_stream,
                                                  out_stream)
@@ -75,7 +73,7 @@ class StreamTest(unittest.TestCase):
                               stdout=subprocess.PIPE,
                               shell=True) as proc:
         
-            in_stream = AlignmentFile('pysam_data/ex1.bam')
+            in_stream = AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'))
             out_stream = AlignmentFile(proc.stdin, 'wb', header=in_stream.header)
             writer = alignmentfile_writer_thread(in_stream,
                                                  out_stream)

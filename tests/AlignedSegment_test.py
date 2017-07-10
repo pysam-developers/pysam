@@ -5,12 +5,8 @@ import collections
 import copy
 import array
 
-from TestUtils import checkFieldEqual
+from TestUtils import checkFieldEqual, BAM_DATADIR, WORKDIR
 
-
-SAMTOOLS = "samtools"
-WORKDIR = "pysam_test_work"
-DATADIR = "pysam_data"
 
 
 class ReadTest(unittest.TestCase):
@@ -490,7 +486,7 @@ class TestCigarStats(ReadTest):
 
 
 class TestAlignedPairs(unittest.TestCase):
-    filename = os.path.join(DATADIR, "example_aligned_pairs.bam")
+    filename = os.path.join(BAM_DATADIR, "example_aligned_pairs.bam")
 
     def testReferenceBases(self):
         """reference bases should always be the same nucleotide
@@ -637,7 +633,7 @@ class TestTags(ReadTest):
         see http://groups.google.com/group/pysam-user-group/browse_thread/thread/67ca204059ea465a
         '''
         samfile = pysam.AlignmentFile(
-            os.path.join(DATADIR, "ex8.bam"),
+            os.path.join(BAM_DATADIR, "ex8.bam"),
             "rb")
 
         for entry in samfile:
@@ -812,11 +808,11 @@ class TestCopy(ReadTest):
 class TestAsString(unittest.TestCase):
 
     def testAsString(self):
-        with open(os.path.join(DATADIR, "ex2.sam")) as samf:
+        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
             reference = [x[:-1] for x in samf if not x.startswith("@")]
 
         with pysam.AlignmentFile(
-            os.path.join(DATADIR, "ex2.bam"), "r") as pysamf:
+            os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
             for s, p in zip(reference, pysamf):
                 self.assertEqual(s, p.tostring(pysamf))
 

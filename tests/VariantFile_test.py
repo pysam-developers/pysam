@@ -10,9 +10,7 @@ try:
 except ImportError:
     Path = None
 
-from TestUtils import get_temp_filename, check_lines_equal, load_and_convert
-
-DATADIR="cbcf_data"
+from TestUtils import get_temp_filename, check_lines_equal, load_and_convert, CBCF_DATADIR
 
 
 def read_header(filename):
@@ -37,12 +35,12 @@ class TestMissingGenotypes(unittest.TestCase):
 
     def setUp(self):
         self.compare = load_and_convert(
-            os.path.join(DATADIR, self.filename),
+            os.path.join(CBCF_DATADIR, self.filename),
             encode=False)
 
     def check(self, filename):
         """see issue 203 - check for segmentation fault"""
-        fn = os.path.join(DATADIR, filename)
+        fn = os.path.join(CBCF_DATADIR, filename)
         self.assertEqual(True, os.path.exists(fn))
         v = pysam.VariantFile(fn)
         for site in v:
@@ -122,18 +120,18 @@ class TestOpening(unittest.TestCase):
 
     def testEmptyFileVCFOnlyHeader(self):
         with pysam.VariantFile(os.path.join(
-                DATADIR,
+                CBCF_DATADIR,
                 "example_vcf42_only_header.vcf")) as inf:
             self.assertEqual(len(list(inf.fetch())), 0)
 
     def testEmptyFileVCFGZOnlyHeader(self):
         with pysam.VariantFile(os.path.join(
-                DATADIR,
+                CBCF_DATADIR,
                 "example_vcf42_only_header.vcf")) as inf:
             self.assertEqual(len(list(inf.fetch())), 0)
 
     def testDetectVCF(self):
-        with pysam.VariantFile(os.path.join(DATADIR,
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR,
             "example_vcf40.vcf")) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'VCF')
@@ -143,7 +141,7 @@ class TestOpening(unittest.TestCase):
             self.assertEqual(len(list(inf.fetch())), 5)
 
     def testDetectVCFGZ(self):
-        with pysam.VariantFile(os.path.join(DATADIR,
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR,
             "example_vcf40.vcf.gz")) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'VCF')
@@ -154,7 +152,7 @@ class TestOpening(unittest.TestCase):
 
     def testDetectBCF(self):
         with pysam.VariantFile(os.path.join(
-                DATADIR,
+                CBCF_DATADIR,
                 "example_vcf40.bcf")) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'BCF')
@@ -170,7 +168,7 @@ class TestHeader(unittest.TestCase):
 
     def testStr(self):
 
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
 
         ref = read_header(fn)
@@ -181,7 +179,7 @@ class TestHeader(unittest.TestCase):
 
     def testIterator(self):
 
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
 
         ref = read_header(fn)
@@ -207,74 +205,74 @@ class TestParsing(unittest.TestCase):
     filename = "example_vcf40.vcf.gz"
 
     def testChrom(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         chrom = [rec.chrom for rec in v]
         self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
 
     if Path and sys.version_info >= (3,6):
         def testChromFromPath(self):
-            fn = os.path.join(DATADIR, self.filename)
+            fn = os.path.join(CBCF_DATADIR, self.filename)
             v = pysam.VariantFile(Path(fn))
             chrom = [rec.chrom for rec in v]
             self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
 
     def testPos(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         pos = [rec.pos for rec in v]
         self.assertEqual(pos, [1230237, 14370, 17330, 1110696, 1234567])
 
     def testStart(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         start = [rec.start for rec in v]
         self.assertEqual(start, [1230236, 14369, 17329, 1110695, 1234566])
 
     def testStop(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         stop = [rec.stop for rec in v]
         self.assertEqual(stop, [1230237, 14370, 17330, 1110696, 1234570])
 
     def testId(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         ids = [rec.id for rec in v]
         self.assertEqual(ids, [None, 'rs6054257', None, 'rs6040355', 'microsat1'])
 
     def testRef(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         ref = [rec.ref for rec in v]
         self.assertEqual(ref, ['T', 'G', 'T', 'A', 'GTCT'])
 
     def testAlt(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         alts = [rec.alts for rec in v]
         self.assertEqual(alts, [None, ('A',), ('A',), ('G', 'T'), ('G', 'GTACT')])
 
     def testAlleles(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         alleles = [rec.alleles for rec in v]
         self.assertEqual(alleles, [('T',), ('G', 'A'), ('T', 'A'), ('A', 'G', 'T'), ('GTCT', 'G', 'GTACT')])
 
     def testQual(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         qual = [rec.qual for rec in v]
         self.assertEqual(qual, [47.0, 29.0, 3.0, 67.0, 50.0])
 
     def testFilter(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         filter = [rec.filter.keys() for rec in v]
         self.assertEqual(filter, [['PASS'], ['PASS'], ['q10'], ['PASS'], ['PASS']])
 
     def testInfo(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         info = [rec.info.items() for rec in v]
         self.assertEqual(info, [[('NS', 3), ('DP', 13), ('AA', 'T')],
@@ -285,7 +283,7 @@ class TestParsing(unittest.TestCase):
                                 [('NS', 3), ('DP', 9), ('AA', 'G')]])
 
     def testFormat(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         format = [rec.format.keys() for rec in v]
         self.assertEqual(format, [['GT', 'GQ', 'DP', 'HQ'],
@@ -295,7 +293,7 @@ class TestParsing(unittest.TestCase):
                                   ['GT', 'GQ', 'DP']])
 
     def testSampleAlleles(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         alleles = [s.alleles for rec in v for s in rec.samples.values()]
         self.assertEqual(alleles, [('T', 'T'), ('T', 'T'), ('T', 'T'),
@@ -306,7 +304,7 @@ class TestParsing(unittest.TestCase):
                                    ('G', 'G')])
 
     def testSampleFormats(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         format = [s.items() for rec in v for s in rec.samples.values()]
         self.assertEqual(format, [[('GT', (0, 0)), ('GQ', 54), ('DP', 7), ('HQ', (56, 60))],
@@ -326,7 +324,7 @@ class TestParsing(unittest.TestCase):
                                   [('GT', (1, 1)), ('GQ', 40), ('DP', 3)]])
 
     def testSampleAlleleIndices(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         indices = [s.allele_indices for rec in v for s in rec.samples.values()]
         self.assertEqual(indices, [(0, 0), (0, 0), (0, 0), (0, 0), (1, 0),
@@ -342,8 +340,8 @@ class TestIndexFilename(unittest.TestCase):
 
     def testOpen(self):
         for fn, idx_fn in self.filenames:
-            fn = os.path.join(DATADIR, fn)
-            idx_fn = os.path.join(DATADIR, idx_fn)
+            fn = os.path.join(CBCF_DATADIR, fn)
+            idx_fn = os.path.join(CBCF_DATADIR, idx_fn)
 
             v = pysam.VariantFile(fn, index_filename=idx_fn)
 
@@ -358,7 +356,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
     description = 'VCF version 4.2 variant calling text'
 
     def testBase(self):
-        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR, self.filename)) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'VCF')
             self.assertEqual(inf.version, (4, 2))
@@ -377,7 +375,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
 
     def testConstructionWithRecords(self):
 
-        fn_in = os.path.join(DATADIR, self.filename)
+        fn_in = os.path.join(CBCF_DATADIR, self.filename)
         fn_out = get_temp_filename(suffix=".vcf")
         vcf_in = pysam.VariantFile(fn_in)
 
@@ -400,7 +398,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
 
     def testConstructionFromCopy(self):
 
-        fn_in = os.path.join(DATADIR, self.filename)
+        fn_in = os.path.join(CBCF_DATADIR, self.filename)
         fn_out = get_temp_filename(suffix=".vcf")
         vcf_in = pysam.VariantFile(fn_in)
 
@@ -415,7 +413,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
 
     def testConstructionWithLines(self):
 
-        fn_in = os.path.join(DATADIR, self.filename)
+        fn_in = os.path.join(CBCF_DATADIR, self.filename)
         fn_out = get_temp_filename(suffix=".vcf")
         vcf_in = pysam.VariantFile(fn_in)
 
@@ -463,7 +461,7 @@ class TestSettingRecordValues(unittest.TestCase):
     filename = "example_vcf40.vcf"
 
     def testBase(self):
-        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR, self.filename)) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'VCF')
             self.assertEqual(inf.version, (4, 0))
@@ -474,7 +472,7 @@ class TestSettingRecordValues(unittest.TestCase):
             self.assertEqual(inf.is_write, False)
 
     def testSetQual(self):
-        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR, self.filename)) as inf:
             record = next(inf)
             self.assertEqual(record.qual, 47)
             record.qual = record.qual
@@ -484,7 +482,7 @@ class TestSettingRecordValues(unittest.TestCase):
             self.assertEqual(str(record).split("\t")[5], "10")
 
     def testGenotype(self):
-        with pysam.VariantFile(os.path.join(DATADIR, self.filename)) as inf:
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR, self.filename)) as inf:
             record = next(inf)
             sample = record.samples["NA00001"]
             print (sample["GT"])
@@ -496,7 +494,7 @@ class TestSubsetting(unittest.TestCase):
     filename = "example_vcf42.vcf.gz"
     
     def testSubsetting(self):
-        with pysam.VariantFile(os.path.join(DATADIR,
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR,
                                             self.filename)) as inf:
             inf.subset_samples(["NA00001"])
 
@@ -504,7 +502,7 @@ class TestSubsetting(unittest.TestCase):
 if __name__ == "__main__":
     # build data files
     print ("building data files")
-    subprocess.call("make -C %s" % DATADIR, shell=True)
+    subprocess.call("make -C %s" % CBCF_DATADIR, shell=True)
     print ("starting tests")
     unittest.main()
     print ("completed tests")
