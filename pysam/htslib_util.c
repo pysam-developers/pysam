@@ -60,7 +60,7 @@ int pysam_bam_update(bam1_t * b,
     
   // no change
   if (d == 0)
-    return b;
+    return retval;
 
   // new size of total data
   new_size = d + b->l_data;
