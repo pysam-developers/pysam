@@ -367,11 +367,15 @@ cdef class FastqProxy:
 
 cdef class FastxRecord:
     """A fasta/fastq record.
+
+    A record must contain a name and a sequence. If either of them are
+    None, a ValueError is raised on writing.
+
     """
     def __init__(self,
-                 name="",
-                 comment="",
-                 sequence="",
+                 name=None,
+                 comment=None,
+                 sequence=None,
                  quality=None,
                  FastqProxy proxy=None):
         if proxy is not None:
@@ -392,6 +396,12 @@ cdef class FastxRecord:
         return FastxRecord(self.name, self.comment, self.sequence, self.quality)
 
     cdef cython.str tostring(self):
+        if self.name is None:
+            raise ValueError("can not write record without name")
+
+        if self.sequence is None:
+            raise ValueError("can not write record without a sequence")
+        
         if self.comment is None:
             comment = ""
         else:

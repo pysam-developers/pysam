@@ -307,7 +307,15 @@ class TestFastqRecord(unittest.TestCase):
 
     def test_fastx_record_can_be_created_from_scratch(self):
         fastx_record = pysam.FastxRecord()
-        import pdb; pdb.set_trace()
+        self.assertRaises(ValueError,
+                          str,
+                          fastx_record)
+        fastx_record.set_name("name")
+        self.assertRaises(ValueError,
+                          str,
+                          fastx_record)
+        fastx_record.set_sequence("sequence")
+        self.assertEqual(str(fastx_record), ">name\nsequence")
         
         
 if __name__ == "__main__":
