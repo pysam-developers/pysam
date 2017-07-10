@@ -22,7 +22,6 @@ TestModule = Extension(
     include_dirs=pysam.get_include(),
     library_dirs=[pysam_libdir],
     libraries=pysam_libs,
-    extra_link_args=['-Wl,-rpath,{}'.format(pysam_libdir)],
     language="C",
 )
 
