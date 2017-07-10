@@ -48,14 +48,13 @@ cdef class FastqProxy:
     cpdef array.array get_quality_array(self, int offset=*)
 
 
-cdef class PersistentFastqProxy:
+cdef class FastxRecord:
     """
     Python container for pysam.libcfaidx.FastqProxy with persistence.
     """
     cdef public str comment, quality, sequence, name
     cdef cython.str tostring(self)
     cpdef array.array get_quality_array(self, int offset=*)
-
 
 cdef class FastxFile:
     cdef object _filename
