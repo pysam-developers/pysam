@@ -295,6 +295,11 @@ class TestGFF3(TestGTF):
         s = ";".join(["{}={}".format(x, y) for (x, y) in d.items()]) + ";"
         return s
 
+    def build_attribute_string(self, d):
+        """build attribute string from dictionary d"""
+        s = ";".join(["{}={}".format(x, y) for (x, y) in d.items()]) + ";"
+        return s
+
     def testRead(self):
         for x, r in enumerate(self.tabix.fetch(parser=self.parser())):
             c = self.compare[x]

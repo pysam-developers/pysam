@@ -46,10 +46,13 @@ def checkBinaryEqual(filename1, filename2):
 
     with open(filename1, "rb") as infile:
         d1 = infile.read()
-       
+
     with open(filename2, "rb") as infile:
         d2 = infile.read()
- 
+
+    if len(d1) != len(d2):
+        return False
+        
     found = False
     for c1, c2 in zip(d1, d2):
         if c1 != c2:
@@ -69,12 +72,33 @@ class TestIndexing(unittest.TestCase):
         self.tmpfilename = get_temp_filename(suffix="gtf.gz")
         shutil.copyfile(self.filename, self.tmpfilename)
 
-    def testIndexPreset(self):
+    def test_indexing_with_preset_works(self):
         '''test indexing via preset.'''
 
         pysam.tabix_index(self.tmpfilename, preset="gff")
-        checkBinaryEqual(self.tmpfilename + ".tbi", self.filename_idx)
+        self.assertTrue(checkBinaryEqual(self.tmpfilename + ".tbi", self.filename_idx))
 
+    def test_indexing_with_explict_columns_works(self):
+        '''test indexing via preset.'''
+
+        pysam.tabix_index(self.tmpfilename,
+                          seq_col=0,
+                          start_col=3,
+                          end_col=4,
+                          line_skip=0,
+                          zerobased=False)
+        self.assertTrue(checkBinaryEqual(self.tmpfilename + ".tbi", self.filename_idx))
+
+    def test_indexing_with_lineskipping_works(self):
+        '''test indexing via preset and lineskip.'''
+        pysam.tabix_index(self.tmpfilename,
+                          seq_col=0,
+                          start_col=3,
+                          end_col=4,
+                          line_skip=1,
+                          zerobased=False)
+        self.assertFalse(checkBinaryEqual(self.tmpfilename + ".tbi", self.filename_idx))
+        
     def tearDown(self):
         os.unlink(self.tmpfilename)
         os.unlink(self.tmpfilename + ".tbi")
