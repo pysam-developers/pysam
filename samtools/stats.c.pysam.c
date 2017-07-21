@@ -220,7 +220,7 @@ typedef struct
 stats_t;
 KHASH_MAP_INIT_STR(c2stats, stats_t*)
 
-static int error(const char *format, ...);
+static void error(const char *format, ...);
 int is_in_regions(bam1_t *bam_line, stats_t *stats);
 void realloc_buffers(stats_t *stats, int seq_len);
 
@@ -1352,7 +1352,7 @@ void init_group_id(stats_t *stats, const char *id)
 }
 
 
-static int error(const char *format, ...)
+static void error(const char *format, ...)
 {
     if ( !format )
     {
@@ -1379,7 +1379,6 @@ static int error(const char *format, ...)
         fprintf(pysam_stdout, "    -x, --sparse                        Suppress outputting IS rows where there are no insertions.\n");
         sam_global_opt_help(pysam_stdout, "-.--.@");
         fprintf(pysam_stdout, "\n");
-	return(0);
     }
     else
     {
@@ -1647,7 +1646,7 @@ int main_stats(int argc, char *argv[])
             case 'S': info->split_tag = optarg; break;
             case 'P': info->split_prefix = optarg; break;
             case '?':
-	    case 'h': return(error(NULL));
+            case 'h': error(NULL);
             default:
                 if (parse_sam_global_opt(opt, optarg, loptions, &ga) != 0)
                     error("Unknown argument: %s\n", optarg);
@@ -1660,7 +1659,7 @@ int main_stats(int argc, char *argv[])
     if ( !bam_fname )
     {
         if ( isatty(STDIN_FILENO) )
-	  return(error(NULL));
+            error(NULL);
         bam_fname = "-";
     }
 

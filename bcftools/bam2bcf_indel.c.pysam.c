@@ -359,14 +359,14 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
                     }
                     free(qq);
                 }
-/*
+#if 0
                 for (l = 0; l < tend - tbeg + abs(types[t]); ++l)
                     fputc("ACGTN"[(int)ref2[tbeg-left+l]], pysam_stderr);
                 fputc('\n', pysam_stderr);
                 for (l = 0; l < qend - qbeg; ++l) fputc("ACGTN"[(int)query[l]], pysam_stderr);
                 fputc('\n', pysam_stderr);
-                fprintf(pysam_stderr, "pos=%d type=%d read=%d:%d name=%s qbeg=%d tbeg=%d score=%d\n", pos, types[t], s, i, bam1_qname(p->b), qbeg, tbeg, sc);
-*/
+                fprintf(pysam_stderr, "pos=%d type=%d read=%d:%d name=%s qbeg=%d tbeg=%d score=%d\n", pos, types[t], s, i, bam_get_qname(p->b), qbeg, tbeg, sc);
+#endif
             }
         }
     }
@@ -456,7 +456,7 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_calla
                     if (x == bca->indel_types[j]) break;
                 p->aux = j<<16 | (j == 4? 0 : (p->aux&0xffff));
                 if ((p->aux>>16&0x3f) > 0) ++n_alt;
-                //fprintf(pysam_stderr, "X pos=%d read=%d:%d name=%s call=%d type=%d seqQ=%d indelQ=%d\n", pos, s, i, bam1_qname(p->b), (p->aux>>16)&0x3f, bca->indel_types[(p->aux>>16)&0x3f], (p->aux>>8)&0xff, p->aux&0xff);
+                //fprintf(pysam_stderr, "X pos=%d read=%d:%d name=%s call=%d type=%d seqQ=%d indelQ=%d\n", pos, s, i, bam_get_qname(p->b), (p->aux>>16)&0x3f, bca->indel_types[(p->aux>>16)&0x3f], (p->aux>>8)&0xff, p->aux&0xff);
             }
         }
 

@@ -13,9 +13,9 @@ import pysam
 import unittest
 import glob
 import re
-from TestUtils import checkURL, load_and_convert
-
-DATADIR = 'tabix_data'
+import copy
+import tempfile
+from TestUtils import checkURL, load_and_convert, TABIX_DATADIR, get_temp_filename
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -64,12 +64,12 @@ def checkBinaryEqual(filename1, filename2):
 
 
 class TestIndexing(unittest.TestCase):
-    filename = os.path.join(DATADIR, "example.gtf.gz")
-    filename_idx = os.path.join(DATADIR, "example.gtf.gz.tbi")
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
+    filename_idx = os.path.join(TABIX_DATADIR, "example.gtf.gz.tbi")
 
     def setUp(self):
 
-        self.tmpfilename = "tmp_%i.gtf.gz" % id(self)
+        self.tmpfilename = get_temp_filename(suffix="gtf.gz")
         shutil.copyfile(self.filename, self.tmpfilename)
 
     def test_indexing_with_preset_works(self):
@@ -105,13 +105,12 @@ class TestIndexing(unittest.TestCase):
 
 
 class TestCompression(unittest.TestCase):
-    filename = os.path.join(DATADIR, "example.gtf.gz")
-    filename_idx = os.path.join(DATADIR, "example.gtf.gz.tbi")
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
+    filename_idx = os.path.join(TABIX_DATADIR, "example.gtf.gz.tbi")
     preset = "gff"
 
     def setUp(self):
-
-        self.tmpfilename = "tmp_TestCompression_%i" % id(self)
+        self.tmpfilename = get_temp_filename(suffix="gtf")
         with gzip.open(self.filename, "rb") as infile, \
              open(self.tmpfilename, "wb") as outfile:
             outfile.write(infile.read())
@@ -149,20 +148,20 @@ class TestCompression(unittest.TestCase):
 
 
 class TestCompressionSam(TestCompression):
-    filename = os.path.join(DATADIR, "example.sam.gz")
-    filename_index = os.path.join(DATADIR, "example.sam.gz.tbi")
+    filename = os.path.join(TABIX_DATADIR, "example.sam.gz")
+    filename_index = os.path.join(TABIX_DATADIR, "example.sam.gz.tbi")
     preset = "sam"
 
 
 class TestCompressionBed(TestCompression):
-    filename = os.path.join(DATADIR, "example.bed.gz")
-    filename_index = os.path.join(DATADIR, "example.bed.gz.tbi")
+    filename = os.path.join(TABIX_DATADIR, "example.bed.gz")
+    filename_index = os.path.join(TABIX_DATADIR, "example.bed.gz.tbi")
     preset = "bed"
 
 
 class TestCompressionVCF(TestCompression):
-    filename = os.path.join(DATADIR, "example.vcf.gz")
-    filename_index = os.path.join(DATADIR, "example.vcf.gz.tbi")
+    filename = os.path.join(TABIX_DATADIR, "example.vcf.gz")
+    filename_index = os.path.join(TABIX_DATADIR, "example.vcf.gz.tbi")
     preset = "vcf"
 
 
@@ -242,7 +241,7 @@ class IterationTest(unittest.TestCase):
 
 class TestGZFile(IterationTest):
 
-    filename = os.path.join(DATADIR, "example.gtf.gz")
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
     with_comments = True
 
     def setUp(self):
@@ -261,7 +260,7 @@ class TestIterationWithoutComments(IterationTest):
     '''test iterating with TabixFile.fetch() when
     there are no comments in the file.'''
 
-    filename = os.path.join(DATADIR,
+    filename = os.path.join(TABIX_DATADIR,
                             "example.gtf.gz")
 
     def setUp(self):
@@ -388,15 +387,14 @@ class TestIterationWithComments(TestIterationWithoutComments):
     Tests will create plenty of warnings on stderr.
     '''
 
-    filename = os.path.join(DATADIR, "example_comments.gtf.gz")
+    filename = os.path.join(TABIX_DATADIR, "example_comments.gtf.gz")
 
     def setUp(self):
         TestIterationWithoutComments.setUp(self)
 
-
             
 class TestIterators(unittest.TestCase):
-    filename = os.path.join(DATADIR, "example.gtf.gz")
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     iterator = pysam.tabix_generic_iterator
     parser = pysam.asTuple
@@ -484,7 +482,7 @@ class TestIterationMalformattedGTFFiles(unittest.TestCase):
     def testGTFTooManyFields(self):
 
         with gzip.open(os.path.join(
-                DATADIR,
+                TABIX_DATADIR,
                 "gtf_toomany_fields.gtf.gz")) as infile:
             iterator = self.iterator(
                 infile,
@@ -494,7 +492,7 @@ class TestIterationMalformattedGTFFiles(unittest.TestCase):
     def testGTFTooFewFields(self):
 
         with gzip.open(os.path.join(
-                DATADIR,
+                TABIX_DATADIR,
                 "gtf_toofew_fields.gtf.gz")) as infile:
             iterator = self.iterator(
                 infile,
@@ -503,7 +501,7 @@ class TestIterationMalformattedGTFFiles(unittest.TestCase):
 
 
 class TestBed(unittest.TestCase):
-    filename = os.path.join(DATADIR, "example.bed.gz")
+    filename = os.path.join(TABIX_DATADIR, "example.bed.gz")
 
     def setUp(self):
 
@@ -548,10 +546,10 @@ class TestBed(unittest.TestCase):
 
 class TestVCF(unittest.TestCase):
 
-    filename = os.path.join(DATADIR, "example.vcf40")
+    filename = os.path.join(TABIX_DATADIR, "example.vcf40")
 
     def setUp(self):
-        self.tmpfilename = "tmp_%s.vcf" % id(self)
+        self.tmpfilename = get_temp_filename(suffix="vcf")
         shutil.copyfile(self.filename, self.tmpfilename)
         pysam.tabix_index(self.tmpfilename, preset="vcf")
 
@@ -566,12 +564,17 @@ if IS_PYTHON3:
 
         '''test reading from a file with non-ascii characters.'''
 
-        filename = os.path.join(DATADIR, "example_unicode.vcf")
+        filename = os.path.join(TABIX_DATADIR, "example_unicode.vcf")
 
         def setUp(self):
-            self.tmpfilename = "tmp_%s.vcf" % id(self)
+            self.tmpfilename = get_temp_filename(suffix="vcf")
             shutil.copyfile(self.filename, self.tmpfilename)
             pysam.tabix_index(self.tmpfilename, preset="vcf")
+
+        def tearDown(self):
+            os.unlink(self.tmpfilename + ".gz")
+            if os.path.exists(self.tmpfilename + ".gz.tbi"):
+                os.unlink(self.tmpfilename + ".gz.tbi")
 
         def testFromTabix(self):
 
@@ -610,7 +613,8 @@ class TestVCFFromTabix(TestVCF):
 
     def tearDown(self):
         self.tabix.close()
-
+        TestVCF.tearDown(self)
+        
     def testRead(self):
 
         ncolumns = len(self.columns)
@@ -691,6 +695,7 @@ class TestVCFFromVCF(TestVCF):
     fail_on_parsing = (
         (5, "Flag fields should not have a value"),
         (9, "aouao"),
+        (12, "Error BAD_NUMBER_OF_PARAMETERS"),
         (13, "aoeu"),
         (18, "Error BAD_NUMBER_OF_PARAMETERS"),
         (24, "Error HEADING_NOT_SEPARATED_BY_TABS"))
@@ -716,6 +721,7 @@ class TestVCFFromVCF(TestVCF):
         self.compare = load_and_convert(self.filename, encode=False)
 
     def tearDown(self):
+        TestVCF.tearDown(self)
         self.vcf.close()
 
     def open_vcf(self, fn):
@@ -914,7 +920,7 @@ class TestVCFFromVCF(TestVCF):
 # Two samples are created -
 # 1. Testing pysam/tabix access
 # 2. Testing the VCF class
-vcf_files = glob.glob(os.path.join(DATADIR, "vcf", "*.vcf"))
+vcf_files = glob.glob(os.path.join(TABIX_DATADIR, "vcf", "*.vcf"))
 
 for vcf_file in vcf_files:
     n = "VCFFromTabixTest_%s" % os.path.basename(vcf_file[:-4])
@@ -996,6 +1002,7 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
         if self.vcf:
             self.vcf.close()
         self.vcf = None
+        TestVCF.tearDown(self)
 
     def get_iterator(self):
         self.vcf = pysam.VariantFile(self.filename)
@@ -1019,7 +1026,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
 
     url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example_htslib.gtf.gz"
     region = "chr1:1-1000"
-    local = os.path.join(DATADIR, "example.gtf.gz")
+    local = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     def setUp(self):
         if not checkURL(self.url):
@@ -1060,9 +1067,9 @@ class TestRemoteFileHTTP(unittest.TestCase):
 
 class TestIndexArgument(unittest.TestCase):
 
-    filename_src = os.path.join(DATADIR, "example.vcf.gz")
+    filename_src = os.path.join(TABIX_DATADIR, "example.vcf.gz")
     filename_dst = "tmp_example.vcf.gz"
-    index_src = os.path.join(DATADIR, "example.vcf.gz.tbi")
+    index_src = os.path.join(TABIX_DATADIR, "example.vcf.gz.tbi")
     index_dst = "tmp_index_example.vcf.gz.tbi"
     preset = "vcf"
 
@@ -1109,34 +1116,34 @@ class TestBackwardsCompatibility(unittest.TestCase):
                 self.assertRaises(raises, tf.fetch)
 
     def testVCF0v23(self):
-        self.check(os.path.join(DATADIR, "example_0v23.vcf.gz"),
+        self.check(os.path.join(TABIX_DATADIR, "example_0v23.vcf.gz"),
                    ValueError)
 
     def testBED0v23(self):
-        self.check(os.path.join(DATADIR, "example_0v23.bed.gz"),
+        self.check(os.path.join(TABIX_DATADIR, "example_0v23.bed.gz"),
                    ValueError)
 
     def testVCF0v26(self):
-        self.check(os.path.join(DATADIR, "example_0v26.vcf.gz"),
+        self.check(os.path.join(TABIX_DATADIR, "example_0v26.vcf.gz"),
                    ValueError)
 
     def testBED0v26(self):
-        self.check(os.path.join(DATADIR, "example_0v26.bed.gz"),
+        self.check(os.path.join(TABIX_DATADIR, "example_0v26.bed.gz"),
                    ValueError)
 
     def testVCF(self):
-        self.check(os.path.join(DATADIR, "example.vcf.gz"))
+        self.check(os.path.join(TABIX_DATADIR, "example.vcf.gz"))
 
     def testBED(self):
-        self.check(os.path.join(DATADIR, "example.bed.gz"))
+        self.check(os.path.join(TABIX_DATADIR, "example.bed.gz"))
 
     def testEmpty(self):
-        self.check(os.path.join(DATADIR, "empty.bed.gz"))
+        self.check(os.path.join(TABIX_DATADIR, "empty.bed.gz"))
 
 
 class TestMultipleIterators(unittest.TestCase):
 
-    filename = os.path.join(DATADIR, "example.gtf.gz")
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     def testJoinedIterators(self):
 
@@ -1178,7 +1185,7 @@ class TestMultipleIterators(unittest.TestCase):
 
 class TestContextManager(unittest.TestCase):
 
-    filename = os.path.join(DATADIR, "example.gtf.gz")
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     def testManager(self):
 

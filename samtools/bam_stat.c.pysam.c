@@ -95,11 +95,11 @@ static const char *percent(char *buffer, long long n, long long total)
     return buffer;
 }
 
-static int usage_exit(FILE *fp, int exit_status)
+static void usage_exit(FILE *fp, int exit_status)
 {
     fprintf(fp, "Usage: samtools flagstat [options] <in.bam>\n");
     sam_global_opt_help(fp, "-.---@");
-    return(exit_status);
+    exit(exit_status);
 }
 
 int bam_flagstat(int argc, char *argv[])
@@ -125,13 +125,13 @@ int bam_flagstat(int argc, char *argv[])
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
             /* else fall-through */
         case '?':
-	  return(usage_exit(pysam_stderr, EXIT_FAILURE));
+            usage_exit(pysam_stderr, EXIT_FAILURE);
         }
     }
 
     if (argc != optind+1) {
-      if (argc == optind) return(usage_exit(pysam_stdout, EXIT_SUCCESS));
-      else return(usage_exit(pysam_stderr, EXIT_FAILURE));
+        if (argc == optind) usage_exit(pysam_stdout, EXIT_SUCCESS);
+        else usage_exit(pysam_stderr, EXIT_FAILURE);
     }
     fp = sam_open_format(argv[optind], "r", &ga.in);
     if (fp == NULL) {

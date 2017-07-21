@@ -365,18 +365,43 @@ cdef class FastqProxy:
         return qualitystring_to_array(force_bytes(self.quality),
                                       offset=offset)
 
-cdef class PersistentFastqProxy:
+cdef class FastxRecord:
+    """A fasta/fastq record.
+
+    A record must contain a name and a sequence. If either of them are
+    None, a ValueError is raised on writing.
+
     """
-    Python container for pysam.libcfaidx.FastqProxy with persistence.
-    Needed to compare multiple fastq records from the same file.
-    """
-    def __init__(self, FastqProxy FastqRead):
-        self.comment = FastqRead.comment
-        self.quality = FastqRead.quality
-        self.sequence = FastqRead.sequence
-        self.name = FastqRead.name
+    def __init__(self,
+                 name=None,
+                 comment=None,
+                 sequence=None,
+                 quality=None,
+                 FastqProxy proxy=None):
+        if proxy is not None:
+            self.comment = proxy.comment
+            self.quality = proxy.quality
+            self.sequence = proxy.sequence
+            self.name = proxy.name
+        else:
+            self.comment = comment
+            self.quality = quality
+            self.sequence = sequence
+            self.name = name
+
+    def __copy__(self):
+        return FastxRecord(self.name, self.comment, self.sequence, self.quality)
+
+    def __deepcopy__(self, memo):
+        return FastxRecord(self.name, self.comment, self.sequence, self.quality)
 
     cdef cython.str tostring(self):
+        if self.name is None:
+            raise ValueError("can not write record without name")
+
+        if self.sequence is None:
+            raise ValueError("can not write record without a sequence")
+        
         if self.comment is None:
             comment = ""
         else:
@@ -387,6 +412,28 @@ cdef class PersistentFastqProxy:
         else:
             return "@%s%s\n%s\n+\n%s" % (self.name, comment,
                                          self.sequence, self.quality)
+
+    def set_name(self, name):
+        if name is None:
+            raise ValueError("FastxRecord must have a name and not None")
+        self.name = name
+
+    def set_comment(self, comment):
+        self.comment = comment    
+        
+    def set_sequence(self, sequence, quality=None):
+        """set sequence of this record.
+
+        """
+        self.sequence = sequence
+        if quality is not None:
+            if len(sequence) != len(quality):
+                raise ValueError("sequence and quality length do not match: {} vs {}".format(
+                    len(sequence), len(quality)))
+
+            self.quality = quality
+        else:
+            self.quality = None
 
     def __str__(self):
         return self.tostring()
@@ -422,11 +469,11 @@ cdef class FastxFile:
         If True (default) make a copy of the entry in the file during
         iteration. If set to False, no copy will be made. This will
         permit faster iteration, but an entry will not persist when
-        the iteration continues.
+        the iteration continues or is not in-place modifyable.
 
     Notes
     -----
-    Prior to version 0.8.2, this was called FastqFile.
+    Prior to version 0.8.2, this class was called FastqFile.
 
     Raises
     ------
@@ -549,7 +596,7 @@ cdef class FastxFile:
             l = kseq_read(self.entry)
         if (l >= 0):
             if self.persist:
-                return PersistentFastqProxy(makeFastqProxy(self.entry))
+                return FastxRecord(proxy=makeFastqProxy(self.entry))
             return makeFastqProxy(self.entry)
         else:
             raise StopIteration
@@ -568,4 +615,5 @@ __all__ = ["FastaFile",
            "FastqFile",
            "FastxFile",
            "Fastafile",
+           "FastxRecord",
            "FastqProxy"]

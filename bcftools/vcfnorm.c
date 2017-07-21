@@ -104,6 +104,15 @@ static inline int has_non_acgtn(char *seq, int nseq)
     return 0;
 }
 
+static void seq_to_upper(char *seq, int len)
+{
+    int i;
+    if ( len )
+        for (i=0; i<len; i++) seq[i] = nt_to_upper(seq[i]);
+    else
+        for (i=0; seq[i]; i++) seq[i] = nt_to_upper(seq[i]);
+}
+
 static void fix_ref(args_t *args, bcf1_t *line)
 {
     int reflen = strlen(line->d.allele[0]);
@@ -274,6 +283,7 @@ static int realign(args_t *args, bcf1_t *line)
     int i, nref, reflen = strlen(line->d.allele[0]);
     char *ref = faidx_fetch_seq(args->fai, (char*)args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos, line->pos+reflen-1, &nref);
     if ( !ref ) error("faidx_fetch_seq failed at %s:%d\n", args->hdr->id[BCF_DT_CTG][line->rid].key, line->pos+1);
+    seq_to_upper(ref,0);
     replace_iupac_codes(ref,nref);  // any non-ACGT character in fasta ref is replaced with N
 
     // does VCF REF contain non-standard bases?
@@ -298,7 +308,16 @@ static int realign(args_t *args, bcf1_t *line)
     free(ref);
     ref = NULL;
 
-    if ( line->n_allele == 1 ) return ERR_OK;    // a REF
+    if ( line->n_allele == 1 ) // a REF
+    {
+        if ( line->rlen > 1 )
+        {
+            line->d.allele[0][1] = 0;
+            bcf_update_alleles(args->hdr,line,(const char**)line->d.allele,line->n_allele);
+        }
+        return ERR_OK;
+    }
+    if ( bcf_get_variant_types(line)==VCF_BND ) return ERR_SYMBOLIC;   // breakend, not an error
 
     // make a copy of each allele for trimming
     hts_expand0(kstring_t,line->n_allele,args->ntmp_als,args->tmp_als);
@@ -307,7 +326,6 @@ static int realign(args_t *args, bcf1_t *line)
     {
         if ( line->d.allele[i][0]=='<' ) return ERR_SYMBOLIC;  // symbolic allele
         if ( line->d.allele[i][0]=='*' ) return ERR_SPANNING_DELETION;  // spanning deletion
-        if ( bcf_get_variant_type(line,i)==VCF_BND ) return ERR_SYMBOLIC;   // breakend, not an error
         if ( has_non_acgtn(line->d.allele[i],0) )
         {
             if ( args->check_ref==CHECK_REF_EXIT )
@@ -319,8 +337,9 @@ static int realign(args_t *args, bcf1_t *line)
 
         als[i].l = 0;
         kputs(line->d.allele[i], &als[i]);
+        seq_to_upper(als[i].s,0);
 
-        if ( i>0 && als[i].l==als[0].l && !strcasecmp(als[0].s,als[i].s) ) return ERR_DUP_ALLELE;
+        if ( i>0 && als[i].l==als[0].l && !strcmp(als[0].s,als[i].s) ) return ERR_DUP_ALLELE;
     }
 
     // trim from right
@@ -388,7 +407,7 @@ static int realign(args_t *args, bcf1_t *line)
 
     // Have the alleles changed?
     als[0].s[ als[0].l ] = 0;  // in order for strcmp to work
-    if ( ori_pos==line->pos && !strcasecmp(line->d.allele[0],als[0].s) ) return ERR_OK;
+    if ( ori_pos==line->pos && !strcmp(line->d.allele[0],als[0].s) ) return ERR_OK;
 
     // Create new block of alleles and update
     args->tmp_als_str.l = 0;

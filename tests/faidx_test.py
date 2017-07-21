@@ -2,11 +2,10 @@ import pysam
 import unittest
 import os
 import gzip
+import copy
 import shutil
 
-from TestUtils import checkURL
-
-DATADIR = "pysam_data"
+from TestUtils import checkURL, BAM_DATADIR
 
 
 class TestFastaFile(unittest.TestCase):
@@ -19,7 +18,7 @@ class TestFastaFile(unittest.TestCase):
     }
 
     def setUp(self):
-        self.file = pysam.FastaFile(os.path.join(DATADIR, "ex1.fa"))
+        self.file = pysam.FastaFile(os.path.join(BAM_DATADIR, "ex1.fa"))
 
     def testFetch(self):
         for id, seq in list(self.sequences.items()):
@@ -59,7 +58,7 @@ class TestFastaFile(unittest.TestCase):
 
 class TestFastaFilePathIndex(unittest.TestCase):
 
-    filename = os.path.join(DATADIR, "ex1.fa")
+    filename = os.path.join(BAM_DATADIR, "ex1.fa")
 
     def testGarbageIndex(self):
         self.assertRaises(NotImplementedError,
@@ -101,7 +100,7 @@ class TestFastaFilePathIndex(unittest.TestCase):
 
 class TestFastaFilePathIndexCompressed(TestFastaFilePathIndex):
     
-    filename = os.path.join(DATADIR, "ex1.fa.gz")
+    filename = os.path.join(BAM_DATADIR, "ex1.fa.gz")
 
 
 class TestFastxFileFastq(unittest.TestCase):
@@ -111,7 +110,7 @@ class TestFastxFileFastq(unittest.TestCase):
     persist = True
 
     def setUp(self):
-        self.file = self.filetype(os.path.join(DATADIR, self.filename),
+        self.file = self.filetype(os.path.join(BAM_DATADIR, self.filename),
                                   persist=self.persist)
         self.has_quality = self.filename.endswith('.fq')
 
@@ -170,7 +169,7 @@ class TestFastxFileFastq(unittest.TestCase):
             self.checkLast(first)
 
     def testManager(self):
-        with self.filetype(os.path.join(DATADIR, self.filename),
+        with self.filetype(os.path.join(BAM_DATADIR, self.filename),
                            persist=self.persist) as inf:
             first = inf.__next__()
             self.checkFirst(first)
@@ -206,7 +205,7 @@ class TestFastxFileWithEmptySequence(unittest.TestCase):
     filename = "faidx_empty_seq.fq.gz"
 
     def testIteration(self):
-        fn = os.path.join(DATADIR, self.filename)
+        fn = os.path.join(BAM_DATADIR, self.filename)
 
         with gzip.open(fn) as inf:
             ref_num = len(list(inf)) / 4
@@ -242,7 +241,80 @@ class TestRemoteFileFTP(unittest.TestCase):
                              248956422)
             self.assertEqual(f.get_reference_length("chr1"),
                              248956422)
-        
 
+class TestFastqRecord(unittest.TestCase):
+
+    filetype = pysam.FastxFile
+    filename = "faidx_ex1.fq"
+    
+    def setUp(self):
+
+        with self.filetype(os.path.join(BAM_DATADIR, self.filename), persist=True) as inf:
+            self.record = next(inf)
+        
+    def test_fastx_record_sequence_can_be_modified(self):
+        old_sequence = self.record.sequence
+        new_record = copy.copy(self.record)
+        new_sequence = "AAAC"
+        new_record.set_sequence(new_sequence)
+        self.assertEqual(str(new_record), ">{}\n{}".format(self.record.name, new_sequence))
+        self.assertEqual(self.record.sequence, old_sequence)
+        self.assertEqual(new_record.sequence, new_sequence)
+
+    def test_fastx_record_name_can_be_modified(self):
+        old_name = self.record.name
+        new_name = "new_name"
+        new_record = copy.copy(self.record)
+        new_record.set_name(new_name)
+        self.assertEqual(new_record.name, new_name)
+        self.assertEqual(self.record.name, old_name)
+
+    def test_fastx_record_fail_if_name_is_None(self):
+        self.assertRaises(ValueError,
+                          self.record.set_name,
+                          None)
+        
+    def test_fastx_record_comment_can_be_modified(self):
+        old_comment = self.record.comment
+        new_comment = "this is  a new comment"
+        new_record = copy.copy(self.record)
+        new_record.set_comment(new_comment)
+        self.assertEqual(new_record.comment, new_comment)
+        self.assertEqual(self.record.comment, old_comment)
+
+    def test_fastx_record_comment_can_be_None(self):
+        old_comment = self.record.comment
+        new_comment = None
+        new_record = copy.copy(self.record)
+        new_record.set_comment(new_comment)
+        self.assertEqual(new_record.comment, new_comment)
+        self.assertEqual(self.record.comment, old_comment)
+        
+    def test_fastx_record_quality_can_be_modified(self):
+        old_quality = self.record.quality
+        new_quality = "A" * len(old_quality)
+        new_record = copy.copy(self.record)
+        new_record.set_sequence(self.record.sequence, new_quality)
+        self.assertEqual(new_record.quality, new_quality)
+        self.assertEqual(self.record.quality, old_quality)
+
+    def test_fastx_record_fail_if_quality_is_wrong_length(self):
+        self.assertRaises(ValueError,
+                          self.record.set_sequence,
+                          self.record.sequence, self.record.quality * 2)
+
+    def test_fastx_record_can_be_created_from_scratch(self):
+        fastx_record = pysam.FastxRecord()
+        self.assertRaises(ValueError,
+                          str,
+                          fastx_record)
+        fastx_record.set_name("name")
+        self.assertRaises(ValueError,
+                          str,
+                          fastx_record)
+        fastx_record.set_sequence("sequence")
+        self.assertEqual(str(fastx_record), ">name\nsequence")
+        
+        
 if __name__ == "__main__":
     unittest.main()

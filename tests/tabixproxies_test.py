@@ -5,14 +5,12 @@ import sys
 import re
 import copy
 import gzip
-from TestUtils import load_and_convert
-
-DATADIR = 'tabix_data'
+from TestUtils import load_and_convert, TABIX_DATADIR
 
 
 class TestParser(unittest.TestCase):
 
-    filename = os.path.join(DATADIR, "example.gtf.gz")
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     def setUp(self):
 
@@ -290,7 +288,12 @@ class TestGTF(TestParser):
 class TestGFF3(TestGTF):
 
     parser = pysam.asGFF3
-    filename = os.path.join(DATADIR, "example.gff3.gz")
+    filename = os.path.join(TABIX_DATADIR, "example.gff3.gz")
+
+    def build_attribute_string(self, d):
+        """build attribute string from dictionary d"""
+        s = ";".join(["{}={}".format(x, y) for (x, y) in d.items()]) + ";"
+        return s
 
     def build_attribute_string(self, d):
         """build attribute string from dictionary d"""

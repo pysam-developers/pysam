@@ -32,7 +32,7 @@ int hts_get_hts_verbose();
 
 
 // taken from samtools/bam_import.c
-static inline uint8_t *alloc_data(bam1_t *b, size_t size)
+static inline uint8_t * alloc_data(bam1_t *b, size_t size)
 {
   if (b->m_data < size)
     {
@@ -47,16 +47,16 @@ static inline uint8_t *alloc_data(bam1_t *b, size_t size)
 // Adds *nbytes_new* - *nbytes_old* into the variable length data of *src* at *pos*.
 // Data within the bam1_t entry is moved so that it is
 // consistent with the data field lengths.
-// Return -1 on error (memory)
-int pysam_bam_update(bam1_t * b,
-		     const size_t nbytes_old,
-		     const size_t nbytes_new, 
-		     uint8_t * field_start)
+// Return NULL on error (memory allocation)
+bam1_t * pysam_bam_update(bam1_t * b,
+			  const size_t nbytes_old,
+			  const size_t nbytes_new, 
+			  uint8_t * field_start)
 {
   int d = nbytes_new - nbytes_old;
   int new_size;
   size_t nbytes_before;
-  int retval = 0;
+  uint8_t * retval = NULL;
     
   // no change
   if (d == 0)
@@ -78,8 +78,8 @@ int pysam_bam_update(bam1_t * b,
   if (d > 0)
     {
       retval = alloc_data(b, new_size);
-      if (retval < 0)
-	return retval;
+      if (retval == NULL)
+	return -1;
       field_start = b->data + nbytes_before;
     }
   
@@ -91,7 +91,7 @@ int pysam_bam_update(bam1_t * b,
   // adjust l_data
   b->l_data = new_size;
       
-  return retval;
+  return b;
 }
 
 // translate a nucleotide character to binary code

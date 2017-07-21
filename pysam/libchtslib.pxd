@@ -757,7 +757,7 @@ cdef extern from "htslib/hts.h" nogil:
 
     ctypedef struct probaln_par_t:
         float d, e
-        int bw;
+        int bw
 
     int probaln_glocal(const uint8_t *ref,
                        int l_ref,
