@@ -44,17 +44,17 @@ typedef khash_t(s2i) s2i_t;
   Old data is deleted and the data within b are re-arranged to 
   make place for new data.
   
-  @discussion Return -1 on error
+  @discussion Return NULL on error, otherwise b is returned.
 
   @param  b           bam1_t data
   @param  nbytes_old  size of old data
   @param  nbytes_new  size of new data
   @param  pos         position of data
 */
-int pysam_bam_update(bam1_t * b,
-		     const size_t nbytes_old,
-		     const size_t nbytes_new,
-		     uint8_t * pos);
+bam1_t * pysam_bam_update(bam1_t * b,
+			  const size_t nbytes_old,
+			  const size_t nbytes_new,
+			  uint8_t * pos);
 
 // translate a nucleotide character to binary code
 unsigned char pysam_translate_sequence(const unsigned char s);

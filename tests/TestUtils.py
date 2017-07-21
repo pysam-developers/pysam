@@ -18,6 +18,9 @@ TABIX_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
 CBCF_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                              "cbcf_data"))
 
+LINKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "linker_tests"))
+
+
 IS_PYTHON3 = sys.version_info[0] >= 3
 
 if IS_PYTHON3:

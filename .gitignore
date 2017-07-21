@@ -22,6 +22,8 @@ htslib/config.log
 htslib/config.mk
 pysam/config.py
 
+# linking tests
+BuildRead.c
 # cython files
 pysam/libc*.c
 

@@ -891,11 +891,11 @@ cdef class AlignedSegment:
             if l % 4 != 0:
                 l_extranul = 4 - l % 4
 
-            cdef int retval = pysam_bam_update(src,
-                                               src.core.l_qname,
-                                               l + l_extranul,
-                                               <uint8_t*>p)
-            if retval < 0:
+            cdef bam1_t * retval = pysam_bam_update(src,
+                                                    src.core.l_qname,
+                                                    l + l_extranul,
+                                                    <uint8_t*>p)
+            if retval == NULL:
                 raise MemoryError("could not allocate memory")
 
             src.core.l_extranul = l_extranul
@@ -1112,12 +1112,12 @@ cdef class AlignedSegment:
             src.core.l_qseq = l
 
             # change length of data field
-            cdef int retval = pysam_bam_update(src,
-                                               nbytes_old,
-                                               nbytes_new,
-                                               p)
+            cdef bam1_t * retval = pysam_bam_update(src,
+                                                    nbytes_old,
+                                                    nbytes_new,
+                                                    p)
             
-            if retval < 0:
+            if retval == NULL:
                 raise MemoryError("could not allocate memory")
 
             if l > 0:
@@ -1469,7 +1469,7 @@ cdef class AlignedSegment:
         return result
 
     def infer_query_length(self, always=False):
-        """infer query length from sequence or CIGAR alignment.
+        """infer query length from CIGAR alignment.
 
         This method deduces the query length from the CIGAR alignment
         but does not include hard-clipped bases.
@@ -1881,12 +1881,12 @@ cdef class AlignedSegment:
 
             ncigar = len(values)
             # create space for cigar data within src.data
-            cdef int retval = pysam_bam_update(src,
-                                               pysam_get_n_cigar(src) * 4,
-                                               ncigar * 4,
-                                               <uint8_t*>p)
+            cdef bam1_t * retval = pysam_bam_update(src,
+                                                    pysam_get_n_cigar(src) * 4,
+                                                    ncigar * 4,
+                                                    <uint8_t*>p)
 
-            if retval < 0:
+            if retval == NULL:
                 raise MemoryError("could not allocate memory")
 
             # length is number of cigar operations, not bytes
@@ -2200,11 +2200,11 @@ cdef class AlignedSegment:
         # If total_size == 0, the aux field will be
         # empty
         old_size = pysam_bam_get_l_aux(src)
-        cdef int retval = pysam_bam_update(src,
-                                           old_size,
-                                           new_size,
-                                           pysam_bam_get_aux(src))
-        if retval < 0:
+        cdef bam1_t * retval = pysam_bam_update(src,
+                                                old_size,
+                                                new_size,
+                                                pysam_bam_get_aux(src))
+        if retval == NULL:
             raise MemoryError("could not allocated memory")
 
         # copy data only if there is any
