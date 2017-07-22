@@ -131,16 +131,16 @@ cdef class IteratorColumn:
     cdef setupIteratorData(self,
                            int tid,
                            int start,
-                           int end,
+                           int stop,
                            int multiple_iterators=?)
 
-    cdef reset(self, tid, start, end)
+    cdef reset(self, tid, start, stop)
     cdef _free_pileup_iter(self)
 
 
 cdef class IteratorColumnRegion(IteratorColumn):
     cdef int start
-    cdef int end
+    cdef int stop
     cdef int truncate
 
 

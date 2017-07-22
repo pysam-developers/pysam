@@ -807,17 +807,17 @@ cdef extern from "htslib/hts.h" nogil:
     # /*! @abstract Deallocates any memory allocated by hts_md5_init. */
     void hts_md5_destroy(hts_md5_context *ctx)
 
-    inline int hts_reg2bin(int64_t beg, int64_t end, int min_shift, int n_lvls)
-    inline int hts_bin_bot(int bin, int n_lvls)
+    int hts_reg2bin(int64_t beg, int64_t end, int min_shift, int n_lvls)
+    int hts_bin_bot(int bin, int n_lvls)
 
     # * Endianness *
-    inline int ed_is_big()
-    inline uint16_t ed_swap_2(uint16_t v)
-    inline void *ed_swap_2p(void *x)
-    inline uint32_t ed_swap_4(uint32_t v)
-    inline void *ed_swap_4p(void *x)
-    inline uint64_t ed_swap_8(uint64_t v)
-    inline void *ed_swap_8p(void *x)
+    int ed_is_big()
+    uint16_t ed_swap_2(uint16_t v)
+    void *ed_swap_2p(void *x)
+    uint32_t ed_swap_4(uint32_t v)
+    void *ed_swap_4p(void *x)
+    uint64_t ed_swap_8(uint64_t v)
+    void *ed_swap_8p(void *x)
 
 
 cdef extern from "htslib/sam.h" nogil:
