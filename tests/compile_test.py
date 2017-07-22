@@ -9,8 +9,8 @@ pysam and tabix works.
 # clean up previous compilation
 import os
 try:
-    os.unlink('_compile_test.c')
-    os.unlink('_compile_test.pyxbldc')
+    os.unlink('tests/_compile_test.c')
+    os.unlink('tests/_compile_test.pyxbldc')
 except OSError:
     pass
 

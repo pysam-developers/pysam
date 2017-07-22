@@ -138,13 +138,12 @@ class TestCompression(unittest.TestCase):
         checkBinaryEqual(self.tmpfilename + ".gz.tbi", self.filename_idx)
 
     def tearDown(self):
-
-        try:
+        if os.path.exists(self.tmpfilename):
             os.unlink(self.tmpfilename)
+        if os.path.exists(self.tmpfilename + ".gz"):
             os.unlink(self.tmpfilename + ".gz")
+        if os.path.exists(self.tmpfilename + ".gz.tbi"):
             os.unlink(self.tmpfilename + ".gz.tbi")
-        except OSError:
-            pass
 
 
 class TestCompressionSam(TestCompression):

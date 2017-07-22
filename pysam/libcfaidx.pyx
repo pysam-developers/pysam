@@ -13,7 +13,7 @@
 # of the internal API. These are:
 #
 # class FastqProxy
-# class PersistentFastqProxy
+# class FastxRecord
 #
 # For backwards compatibility, the following classes are also defined:
 #

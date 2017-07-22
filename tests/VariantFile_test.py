@@ -71,52 +71,52 @@ class TestOpening(unittest.TestCase):
                           "missing_file.vcf.gz")
 
     def testEmptyFileVCF(self):
-        with open("tmp_testEmptyFile.vcf", "w"):
+        with open("tests/tmp_testEmptyFile.vcf", "w"):
             pass
 
         self.assertRaises(ValueError, pysam.VariantFile,
-                          "tmp_testEmptyFile.vcf")
+                          "tests/tmp_testEmptyFile.vcf")
 
-        os.unlink("tmp_testEmptyFile.vcf")
+        os.unlink("tests/tmp_testEmptyFile.vcf")
 
 
     if Path and sys.version_info >= (3,6):
         def testEmptyFileVCFFromPath(self):
-            with open("tmp_testEmptyFile.vcf", "w"):
+            with open("tests/tmp_testEmptyFile.vcf", "w"):
                 pass
 
             self.assertRaises(ValueError, pysam.VariantFile,
-                              Path("tmp_testEmptyFile.vcf"))
+                              Path("tests/tmp_testEmptyFile.vcf"))
 
-            os.unlink("tmp_testEmptyFile.vcf")
+            os.unlink("tests/tmp_testEmptyFile.vcf")
 
     def testEmptyFileVCFGZWithIndex(self):
-        with open("tmp_testEmptyFile.vcf", "w"):
+        with open("tests/tmp_testEmptyFile.vcf", "w"):
             pass
 
-        pysam.tabix_index("tmp_testEmptyFile.vcf",
+        pysam.tabix_index("tests/tmp_testEmptyFile.vcf",
                           preset="vcf",
                           force=True)
 
         self.assertRaises(ValueError, pysam.VariantFile,
-                          "tmp_testEmptyFile.vcf.gz")
+                          "tests/tmp_testEmptyFile.vcf.gz")
 
-        os.unlink("tmp_testEmptyFile.vcf.gz")
-        os.unlink("tmp_testEmptyFile.vcf.gz.tbi")
+        os.unlink("tests/tmp_testEmptyFile.vcf.gz")
+        os.unlink("tests/tmp_testEmptyFile.vcf.gz.tbi")
 
     def testEmptyFileVCFGZWithoutIndex(self):
-        with open("tmp_testEmptyFileWithoutIndex.vcf", "w"):
+        with open("tests/tmp_testEmptyFileWithoutIndex.vcf", "w"):
             pass
 
-        pysam.tabix_compress("tmp_testEmptyFileWithoutIndex.vcf",
-                             "tmp_testEmptyFileWithoutIndex.vcf.gz",
+        pysam.tabix_compress("tests/tmp_testEmptyFileWithoutIndex.vcf",
+                             "tests/tmp_testEmptyFileWithoutIndex.vcf.gz",
                              force=True)
 
         self.assertRaises(ValueError, pysam.VariantFile,
-                          "tmp_testEmptyFileWithoutIndex.vcf.gz")
+                          "tests/tmp_testEmptyFileWithoutIndex.vcf.gz")
 
-        os.unlink("tmp_testEmptyFileWithoutIndex.vcf")
-        os.unlink("tmp_testEmptyFileWithoutIndex.vcf.gz")
+        os.unlink("tests/tmp_testEmptyFileWithoutIndex.vcf")
+        os.unlink("tests/tmp_testEmptyFileWithoutIndex.vcf.gz")
 
     def testEmptyFileVCFOnlyHeader(self):
         with pysam.VariantFile(os.path.join(

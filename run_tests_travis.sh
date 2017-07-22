@@ -65,10 +65,8 @@ make -C tests/cbcf_data
 # echo any limits that are in place
 ulimit -a
 
-# run nosetests
-# -s: do not capture stdout, conflicts with pysam.dispatch
-# -v: verbose output
-pytest -s -v tests
+# run tests
+pytest
 
 if [ $? != 0 ]; then
     exit 1
