@@ -196,7 +196,7 @@ def get_temp_filename(suffix=""):
         prefix="tmp_{}_".format(caller_name),
         suffix=suffix,
         delete=False,
-        dir=".")
+        dir="tests")
     f.close()
     return f.name
 
