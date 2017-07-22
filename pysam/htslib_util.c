@@ -79,7 +79,7 @@ bam1_t * pysam_bam_update(bam1_t * b,
     {
       retval = alloc_data(b, new_size);
       if (retval == NULL)
-	return -1;
+	return NULL;
       field_start = b->data + nbytes_before;
     }
   
