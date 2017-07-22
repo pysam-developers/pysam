@@ -3641,8 +3641,8 @@ cdef class BCFIndex(object):
             hts_idx_destroy(self.ptr)
             self.ptr = NULL
 
-    def fetch(self, bcf, contig, start, stop, region, reopen):
-        return BCFIterator(bcf, contig, start, stop, region, reopen)
+    def fetch(self, bcf, contig, start, stop, reopen):
+        return BCFIterator(bcf, contig, start, stop, reopen)
 
 
 cdef BCFIndex makeBCFIndex(VariantHeader header, hts_idx_t *idx):
@@ -3680,8 +3680,8 @@ cdef class TabixIndex(BaseIndex):
             tbx_destroy(self.ptr)
             self.ptr = NULL
 
-    def fetch(self, bcf, contig, start, stop, region, reopen):
-        return TabixIterator(bcf, contig, start, stop, region, reopen)
+    def fetch(self, bcf, contig, start, stop, reopen):
+        return TabixIterator(bcf, contig, start, stop, reopen)
 
 
 cdef TabixIndex makeTabixIndex(tbx_t *idx):
@@ -3716,7 +3716,7 @@ cdef void _stop_BCFIterator(BCFIterator self, bcf1_t *record):
 
 
 cdef class BCFIterator(BaseIterator):
-    def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+    def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, reopen=True):
         if bcf is None:
             raise ValueError('bcf must not be None')
 
@@ -3725,7 +3725,6 @@ cdef class BCFIterator(BaseIterator):
 
         cdef BCFIndex index = bcf.index
         cdef int rid, cstart, cstop
-        cdef char *cregion
 
         if not index:
             raise ValueError('bcf index required')
@@ -3733,32 +3732,25 @@ cdef class BCFIterator(BaseIterator):
         if reopen:
             bcf = bcf.copy()
 
-        if region is not None:
-            if contig is not None or start is not None or stop is not None:
-                raise ValueError  # FIXME
-
-            bregion = force_bytes(region)
-            cregion = bregion
-            with nogil:
-                self.iter = bcf_itr_querys(index.ptr, bcf.header.ptr, cregion)
+        if contig is None:
+            raise ValueError('contig or tid must be specified')
+        elif isinstance(contig, int):
+            rid = contig
         else:
-            if contig is None:
-                raise ValueError  # FIXME
-
             try:
                 rid = index.refmap[contig]
             except KeyError:
                 raise ValueError('Unknown contig specified: {}'.format(contig))
 
-            if start is None:
-                start = 0
-            if stop is None:
-                stop = MAX_POS
+        if start is None:
+            start = 0
+        if stop is None:
+            stop = MAX_POS
 
-            cstart, cstop = start, stop
+        cstart, cstop = start, stop
 
-            with nogil:
-                self.iter = bcf_itr_queryi(index.ptr, rid, cstart, cstop)
+        with nogil:
+            self.iter = bcf_itr_queryi(index.ptr, rid, cstart, cstop)
 
         # Do not fail on self.iter == NULL, since it signifies a null query.
 
@@ -3810,7 +3802,7 @@ cdef class TabixIterator(BaseIterator):
         self.line_buffer.m = 0
         self.line_buffer.s = NULL
 
-    def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, region=None, reopen=True):
+    def __init__(self, VariantFile bcf, contig=None, start=None, stop=None, reopen=True):
         if bcf is None:
             raise ValueError('bcf must not be None')
 
@@ -3825,23 +3817,24 @@ cdef class TabixIterator(BaseIterator):
         if reopen:
             bcf = bcf.copy()
 
-        if region is not None:
-            if contig is not None or start is not None or stop is not None:
-                raise ValueError  # FIXME
-
-            self.iter = tbx_itr_querys(index.ptr, region)
+        if contig is None:
+            raise ValueError('contig or tid must be specified')
+        elif isinstance(contig, int):
+            rid = contig
         else:
-            if contig is None:
-                raise ValueError  # FIXME
+            try:
+                rid = index.refmap[contig]
+            except KeyError:
+                raise ValueError('Unknown contig specified: {}'.format(contig))
 
-            rid = index.refmap.get(contig, -1)
+        if start is None:
+            start = 0
+        if stop is None:
+            stop = MAX_POS
 
-            if start is None:
-                start = 0
-            if stop is None:
-                stop = MAX_POS
+        cstart, cstop = start, stop
 
-            self.iter = tbx_itr_queryi(index.ptr, rid, start, stop)
+        self.iter = tbx_itr_queryi(index.ptr, rid, start, stop)
 
         # Do not fail on self.iter == NULL, since it signifies a null query.
 
@@ -4227,7 +4220,48 @@ cdef class VariantFile(HTSFile):
         """reset file position to beginning of file just after the header."""
         return self.seek(self.start_offset)
 
-    def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False):
+    def is_valid_tid(self, tid):
+        """
+        return True if the numerical :term:`tid` is valid; False otherwise.
+
+        returns -1 if reference is not known.
+        """
+        if not self.is_open:
+            raise ValueError('I/O operation on closed file')
+
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef int rid = tid
+        return 0 <= rid < hdr.n[BCF_DT_CTG]
+
+    def get_tid(self, reference):
+        """
+        return the numerical :term:`tid` corresponding to
+        :term:`reference`
+
+        returns -1 if reference is not known.
+        """
+        if not self.is_open:
+            raise ValueError('I/O operation on closed file')
+
+        cdef vdict_t *d = <vdict_t*>self.header.ptr.dict[BCF_DT_CTG]
+        reference = force_bytes(reference)
+        cdef khint_t k = kh_get_vdict(d, reference)
+        return kh_val_vdict(d, k).id if k != kh_end(d) else -1
+
+    def get_reference_name(self, tid):
+        """
+        return :term:`reference` name corresponding to numerical :term:`tid`
+        """
+        if not self.is_open:
+            raise ValueError('I/O operation on closed file')
+
+        cdef bcf_hdr_t *hdr = self.header.ptr
+        cdef int rid = tid
+        if rid < 0 or rid >= hdr.n[BCF_DT_CTG]:
+            raise ValueError('Invalid tid')
+        return bcf_str_cache_get_charptr(bcf_hdr_id2name(hdr, rid))
+
+    def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False, end=None, reference=None):
         """fetch records in a :term:`region` using 0-based indexing. The
         region is specified by :term:`contig`, *start* and *end*.
         Alternatively, a samtools :term:`region` string can be supplied.
@@ -4263,8 +4297,11 @@ cdef class VariantFile(HTSFile):
         if not self.index:
             raise ValueError('fetch requires an index')
 
+        _, tid, start, stop = self.parse_region(contig, start, stop, region,
+                                                None, end=end, reference=reference)
+
         self.is_reading = 1
-        return self.index.fetch(self, contig, start, stop, region, reopen)
+        return self.index.fetch(self, tid, start, stop, reopen)
 
     def new_record(self, *args, **kwargs):
         """Create a new empty :class:`VariantRecord`.

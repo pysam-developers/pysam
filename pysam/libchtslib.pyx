@@ -1,8 +1,11 @@
 # cython: embedsignature=True
 # cython: profile=True
 # adds doc-strings for sphinx
-import os
-import io
+
+########################################################################
+########################################################################
+## Cython cimports
+########################################################################
 
 from posix.unistd cimport dup
 from libc.errno  cimport errno
@@ -14,8 +17,21 @@ from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
 
+########################################################################
+########################################################################
+## Python imports
+########################################################################
+
+import os
+import io
+import re
 from warnings         import warn
 
+
+########################################################################
+########################################################################
+## Constants
+########################################################################
 
 __all__ = ['get_verbosity', 'set_verbosity', 'HFile', 'HTSFile']
 
@@ -23,11 +39,6 @@ __all__ = ['get_verbosity', 'set_verbosity', 'HFile', 'HTSFile']
 DEF SEEK_SET = 0
 DEF SEEK_CUR = 1
 DEF SEEK_END = 2
-
-########################################################################
-########################################################################
-## Constants
-########################################################################
 
 # maximum genomic coordinace
 cdef int   MAX_POS = 2 << 29
@@ -38,6 +49,12 @@ cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', '
 cdef tuple COMPRESSION = ('NONE', 'GZIP', 'BGZF', 'CUSTOM')
 
 
+########################################################################
+########################################################################
+## Verbosity functions
+########################################################################
+
+
 cpdef set_verbosity(int verbosity):
     """Set htslib's hts_verbose global variable to the specified value."""
     return hts_set_verbosity(verbosity)
@@ -46,6 +63,11 @@ cpdef get_verbosity():
     """Return the value of htslib's hts_verbose global variable."""
     return hts_get_verbosity()
 
+
+########################################################################
+########################################################################
+## HFile wrapper class
+########################################################################
 
 cdef class HFile(object):
     cdef hFILE *fp
@@ -271,6 +293,12 @@ cdef class HFile(object):
             self.write(line)
 
 
+########################################################################
+########################################################################
+## Helpers for backward compatibility to hide the difference between
+## boolean properties and methods
+########################################################################
+
 class CallableValue(object):
     def __init__(self, value):
         self.value = value
@@ -289,6 +317,11 @@ class CallableValue(object):
 CTrue = CallableValue(True)
 CFalse = CallableValue(False)
 
+
+########################################################################
+########################################################################
+## HTSFile wrapper class (base class for AlignmentFile and VariantFile)
+########################################################################
 
 cdef class HTSFile(object):
     """
@@ -536,3 +569,123 @@ cdef class HTSFile(object):
                 self.filename == b'-' or
                 self.is_remote or
                 os.path.exists(self.filename))
+
+    def parse_region(self, contig=None, start=None, stop=None, region=None,tid=None,
+                           reference=None, end=None):
+        """parse alternative ways to specify a genomic region. A region can
+        either be specified by :term:`contig`, `start` and
+        `stop`. `start` and `stop` denote 0-based, half-open
+        intervals.  :term:`reference` and `end` are also accepted for
+        backward compatiblity as synonyms for :term:`contig` and `stop`,
+        respectively.
+
+        Alternatively, a samtools :term:`region` string can be
+        supplied.
+
+        If any of the coordinates are missing they will be replaced by the
+        minimum (`start`) or maximum (`stop`) coordinate.
+
+        Note that region strings are 1-based inclusive, while `start` and `stop` denote
+        an interval in 0-based, half-open coordinates (like BED files and Python slices).
+
+        Returns
+        -------
+
+        tuple :  a tuple of `flag`, :term:`tid`, `start` and `stop`. The
+        flag indicates whether no coordinates were supplied and the
+        genomic region is the complete genomic space.
+
+        Raises
+        ------
+
+        ValueError
+           for invalid or out of bounds regions.
+
+        """
+        cdef int rtid
+        cdef long long rstart
+        cdef long long rstop
+
+        if reference is not None:
+            if contig is not None:
+                raise ValueError('contig and reference should not both be specified')
+            contig = reference
+
+        if end is not None:
+            if stop is not None:
+                raise ValueError('stop and end should not both be specified')
+            stop = end
+
+        if contig is None and tid is None and region is None:
+            return 0, 0, 0, 0
+
+        rtid = -1
+        rstart = 0
+        rstop = MAX_POS
+        if start is not None:
+            try:
+                rstart = start
+            except OverflowError:
+                raise ValueError('start out of range (%i)' % start)
+
+        if stop is not None:
+            try:
+                rstop = stop
+            except OverflowError:
+                raise ValueError('stop out of range (%i)' % stop)
+
+        if region:
+            region = force_str(region)
+            parts = re.split('[:-]', region)
+            contig = parts[0]
+            if len(parts) >= 2:
+                rstart = int(parts[1]) - 1
+            if len(parts) >= 3:
+                rstop = int(parts[2])
+
+        if tid is not None:
+            if not self.is_valid_tid(tid):
+                raise IndexError('invalid tid')
+            rtid = tid
+        else:
+            rtid = self.get_tid(contig)
+
+        if rtid < 0:
+            raise ValueError('invalid contig `%s`' % contig)
+        if rstart > rstop:
+            raise ValueError('invalid coordinates: start (%i) > stop (%i)' % (rstart, rstop))
+        if not 0 <= rstart < MAX_POS:
+            raise ValueError('start out of range (%i)' % rstart)
+        if not 0 <= rstop <= MAX_POS:
+            raise ValueError('stop out of range (%i)' % rstop)
+
+        return 1, rtid, rstart, rstop
+
+    def is_valid_tid(self, tid):
+        """
+        return True if the numerical :term:`tid` is valid; False otherwise.
+
+        returns -1 if contig is not known.
+        """
+        raise NotImplementedError()
+
+    def is_valid_reference_name(self, contig):
+        """
+        return True if the contig name :term:`contig` is valid; False otherwise.
+        """
+        return self.get_tid(contig) != -1
+
+    def get_tid(self, contig):
+        """
+        return the numerical :term:`tid` corresponding to
+        :term:`contig`
+
+        returns -1 if contig is not known.
+        """
+        raise NotImplementedError()
+
+    def get_reference_name(self, tid):
+        """
+        return :term:`contig` name corresponding to numerical :term:`tid`
+        """
+        raise NotImplementedError()

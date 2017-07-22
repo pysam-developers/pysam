@@ -202,7 +202,7 @@ cdef bam_hdr_t * build_header_from_dict(new_header):
         dest.target_len = <uint32_t*>calloc(dest.n_targets, sizeof(uint32_t))
         if dest.target_len == NULL:
             raise MemoryError("could not allocate {} bytes".format(dest.n_targets * sizeof(uint32_t)))
-        
+
         for x from 0 <= x < dest.n_targets:
             seqname, seqlen = seqs[x]
             dest.target_name[x] = <char*>calloc(
@@ -698,6 +698,12 @@ cdef class AlignmentFile(HTSFile):
             if not self.is_stream:
                 self.start_offset = self.tell()
 
+    def is_valid_tid(self, tid):
+        """
+        return True if the numerical :term:`tid` is valid; False otherwise.
+        """
+        return 0 <= tid < self.header.n_targets
+
     def get_tid(self, reference):
         """
         return the numerical :term:`tid` corresponding to
@@ -721,106 +727,24 @@ cdef class AlignmentFile(HTSFile):
                              (tid, self.header.n_targets))
         return charptr_to_str(self.header.target_name[tid])
 
-    def parse_region(self,
-                     reference=None,
-                     start=None,
-                     end=None,
-                     region=None,
-                     tid=None):
-        """parse alternative ways to specify a genomic region. A region can
-        either be specified by :term:`reference`, `start` and
-        `end`. `start` and `end` denote 0-based, half-open
-        intervals.
-
-        Alternatively, a samtools :term:`region` string can be
-        supplied.
-
-        If any of the coordinates are missing they will be replaced by the
-        minimum (`start`) or maximum (`end`) coordinate.
-
-        Note that region strings are 1-based, while `start` and `end` denote
-        an interval in python coordinates.
-
-        Returns
-        -------
-
-        tuple :  a tuple of `flag`, :term:`tid`, `start` and `end`. The
-        flag indicates whether no coordinates were supplied and the
-        genomic region is the complete genomic space.
-
-        Raises
-        ------
-
-        ValueError
-           for invalid or out of bounds regions.
-
-        """
-        cdef int rtid
-        cdef long long rstart
-        cdef long long rend
-
-        if reference is None and tid is None and region is None:
-            return 0, 0, 0, 0
-
-        rtid = -1
-        rstart = 0
-        rend = MAX_POS
-        if start != None:
-            try:
-                rstart = start
-            except OverflowError:
-                raise ValueError('start out of range (%i)' % start)
-
-        if end != None:
-            try:
-                rend = end
-            except OverflowError:
-                raise ValueError('end out of range (%i)' % end)
-
-        if region:
-            region = force_str(region)
-            parts = re.split("[:-]", region)
-            reference = parts[0]
-            if len(parts) >= 2:
-                rstart = int(parts[1]) - 1
-            if len(parts) >= 3:
-                rend = int(parts[2])
-
-        if tid is not None:
-            rtid = tid
-            if rtid < 0 or rtid >= self.header.n_targets:
-                raise IndexError("invalid reference, {} out of range 0-{}".format(
-                        rtid, self.header.n_targets))
-        else:
-            rtid = self.gettid(reference)
-
-        if rtid < 0:
-            raise ValueError(
-                "invalid reference `%s`" % reference)
-        if rstart > rend:
-            raise ValueError(
-                'invalid coordinates: start (%i) > end (%i)' % (rstart, rend))
-        if not 0 <= rstart < MAX_POS:
-            raise ValueError('start out of range (%i)' % rstart)
-        if not 0 <= rend <= MAX_POS:
-            raise ValueError('end out of range (%i)' % rend)
-
-        return 1, rtid, rstart, rend
-
     def fetch(self,
-              reference=None,
+              contig=None,
               start=None,
-              end=None,
+              stop=None,
               region=None,
               tid=None,
               until_eof=False,
-              multiple_iterators=False):
+              multiple_iterators=False,
+              reference=None,
+              end=None):
         """fetch reads aligned in a :term:`region`.
 
         See :meth:`AlignmentFile.parse_region` for more information
-        on genomic regions.
+        on genomic regions.  :term:`reference` and `end` are also accepted for
+        backward compatiblity as synonyms for :term:`contig` and `stop`,
+        respectively.
 
-        Without a `reference` or `region` all mapped reads in the file
+        Without a `contig` or `region` all mapped reads in the file
         will be fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
         file. This mode of iteration still requires an index. If there is
@@ -830,7 +754,7 @@ cdef class AlignmentFile(HTSFile):
         will be fetched.
 
         A :term:`SAM` file does not allow random access. If `region`
-        or `reference` are given, an exception is raised.
+        or `contig` are given, an exception is raised.
 
         :class:`~pysam.FastaFile`
         :class:`~pysam.IteratorRow`
@@ -868,17 +792,13 @@ cdef class AlignmentFile(HTSFile):
             file does not permit random access to genomic coordinates.
 
         """
-        cdef int rtid, rstart, rend, has_coord
+        cdef int rtid, rstart, rstop, has_coord
 
         if not self.is_open:
             raise ValueError( "I/O operation on closed file" )
 
-        has_coord, rtid, rstart, rend = self.parse_region(
-            reference,
-            start,
-            end,
-            region,
-            tid)
+        has_coord, rtid, rstart, rstop = self.parse_region(contig, start, stop, region, tid,
+                                                          end=end, reference=reference)
 
         # Turn of re-opening if htsfile is a stream
         if self.is_stream:
@@ -892,7 +812,7 @@ cdef class AlignmentFile(HTSFile):
 
             if has_coord:
                 return IteratorRowRegion(
-                    self, rtid, rstart, rend,
+                    self, rtid, rstart, rstop,
                     multiple_iterators=multiple_iterators)
             else:
                 if until_eof:
@@ -999,23 +919,27 @@ cdef class AlignmentFile(HTSFile):
         return mate
 
     def pileup(self,
-               reference=None,
+               contig=None,
                start=None,
-               end=None,
+               stop=None,
                region=None,
+               reference=None,
+               end=None,
                **kwargs):
         """perform a :term:`pileup` within a :term:`region`. The region is
-        specified by :term:`reference`, 'start' and 'end' (using
-        0-based indexing).  Alternatively, a samtools 'region' string
+        specified by :term:`contig`, `start` and `stop` (using
+        0-based indexing).  :term:`reference` and `end` are also accepted for
+        backward compatiblity as synonyms for :term:`contig` and `stop`,
+        respectively.  Alternatively, a samtools 'region' string
         can be supplied.
 
-        Without 'reference' or 'region' all reads will be used for the
+        Without 'contig' or 'region' all reads will be used for the
         pileup. The reads will be returned ordered by
-        :term:`reference` sequence, which will not necessarily be the
+        :term:`contig` sequence, which will not necessarily be the
         order within the file.
 
         Note that :term:`SAM` formatted files do not allow random
-        access.  In these files, if a 'region' or 'reference' are
+        access.  In these files, if a 'region' or 'contig' are
         given an exception is raised.
 
         .. note::
@@ -1064,13 +988,13 @@ cdef class AlignmentFile(HTSFile):
         an iterator over genomic positions.
 
         """
-        cdef int rtid, rstart, rend, has_coord
+        cdef int rtid, rstart, rstop, has_coord
 
         if not self.is_open:
             raise ValueError("I/O operation on closed file")
 
-        has_coord, rtid, rstart, rend = self.parse_region(
-            reference, start, end, region)
+        has_coord, rtid, rstart, rstop = self.parse_region(
+            contig, start, stop, region, reference=reference, end=end)
 
         if self.is_bam or self.is_cram:
             if not self.has_index():
@@ -1080,8 +1004,8 @@ cdef class AlignmentFile(HTSFile):
                 return IteratorColumnRegion(self,
                                             tid=rtid,
                                             start=rstart,
-                                            end=rend,
-                                            **kwargs )
+                                            stop=rstop,
+                                            **kwargs)
             else:
                 return IteratorColumnAllRefs(self, **kwargs )
 
@@ -1090,32 +1014,36 @@ cdef class AlignmentFile(HTSFile):
                 "pileup of samfiles not implemented yet")
 
     def count(self,
-              reference=None,
+              contig=None,
               start=None,
-              end=None,
+              stop=None,
               region=None,
               until_eof=False,
-              read_callback="nofilter"):
+              read_callback="nofilter",
+              reference=None,
+              end=None):
         '''count the number of reads in :term:`region`
 
-        The region is specified by :term:`reference`, `start` and
-        `end`. Alternatively, a :term:`samtools` :term:`region` string
-        can be supplied.
+        The region is specified by :term:`contig`, `start` and `stop`.
+        :term:`reference` and `end` are also accepted for backward
+        compatiblity as synonyms for :term:`contig` and `stop`,
+        respectively.  Alternatively, a :term:`samtools` :term:`region`
+        string can be supplied.
 
         A :term:`SAM` file does not allow random access and if
-        `region` or `reference` are given, an exception is raised.
+        `region` or `contig` are given, an exception is raised.
 
         Parameters
         ----------
 
-        reference : string
+        contig : string
             reference_name of the genomic region (chromosome)
 
         start : int
-            start of the genomic region
+            start of the genomic region (0-based inclusive)
 
-        end : int
-            end of the genomic region
+        stop : int
+            end of the genomic region (0-based exclusive)
 
         region : string
             a region string in samtools format.
@@ -1141,6 +1069,12 @@ cdef class AlignmentFile(HTSFile):
             ``check_read(read)`` that should return True only for
             those reads that shall be included in the counting.
 
+        reference : string
+            backward compatible synonym for `contig`
+
+        end : int
+            backward compatible synonym for `stop`
+
         Raises
         ------
 
@@ -1160,8 +1094,10 @@ cdef class AlignmentFile(HTSFile):
         elif read_callback == "nofilter":
             filter_method = 2
 
-        for read in self.fetch(reference=reference,
+        for read in self.fetch(contig=contig,
                                start=start,
+                               stop=stop,
+                               reference=reference,
                                end=end,
                                region=region,
                                until_eof=until_eof):
@@ -1182,29 +1118,33 @@ cdef class AlignmentFile(HTSFile):
 
     @cython.boundscheck(False)  # we do manual bounds checking
     def count_coverage(self,
-                       reference=None,
+                       contig=None,
                        start=None,
-                       end=None,
+                       stop=None,
                        region=None,
                        quality_threshold=15,
-                       read_callback='all'):
+                       read_callback='all',
+                       reference=None,
+                       end=None):
         """count the coverage of genomic positions by reads in :term:`region`.
 
-        The region is specified by :term:`reference`, `start` and
-        `end`. Alternatively, a :term:`samtools` :term:`region` string
-        can be supplied. The coverage is computed per-base [ACGT].
+        The region is specified by :term:`contig`, `start` and `stop`.
+        :term:`reference` and `end` are also accepted for backward
+        compatiblity as synonyms for :term:`contig` and `stop`,
+        respectively.  Alternatively, a :term:`samtools` :term:`region`
+        string can be supplied.  The coverage is computed per-base [ACGT].
 
         Parameters
         ----------
 
-        reference : string
+        contig : string
             reference_name of the genomic region (chromosome)
 
         start : int
-            start of the genomic region
+            start of the genomic region (0-based inclusive)
 
-        end : int
-            end of the genomic region
+        stop : int
+            end of the genomic region (0-based exclusive)
 
         region : int
             a region string.
@@ -1230,6 +1170,12 @@ cdef class AlignmentFile(HTSFile):
             ``check_read(read)`` that should return True only for
             those reads that shall be included in the counting.
 
+        reference : string
+            backward compatible synonym for `contig`
+
+        end : int
+            backward compatible synonym for `stop`
+
         Raises
         ------
 
@@ -1244,7 +1190,7 @@ cdef class AlignmentFile(HTSFile):
         """
 
         cdef int _start = start
-        cdef int _stop = end
+        cdef int _stop = stop if stop is not None else end
         cdef int length = _stop - _start
         cdef c_array.array int_array_template = array.array('L', [])
         cdef c_array.array count_a
@@ -1269,8 +1215,10 @@ cdef class AlignmentFile(HTSFile):
             filter_method = 2
 
         cdef int _threshold = quality_threshold
-        for read in self.fetch(reference=reference,
+        for read in self.fetch(contig=contig,
+                               reference=reference,
                                start=start,
+                               stop=stop,
                                end=end,
                                region=region):
             # apply filter
@@ -1729,7 +1677,7 @@ cdef class IteratorRow:
 
 
 cdef class IteratorRowRegion(IteratorRow):
-    """*(AlignmentFile samfile, int tid, int beg, int end,
+    """*(AlignmentFile samfile, int tid, int beg, int stop,
     int multiple_iterators=False)*
 
     iterate over mapped reads in a region.
@@ -1743,7 +1691,7 @@ cdef class IteratorRowRegion(IteratorRow):
     """
 
     def __init__(self, AlignmentFile samfile,
-                 int tid, int beg, int end,
+                 int tid, int beg, int stop,
                  int multiple_iterators=False):
 
         IteratorRow.__init__(self, samfile,
@@ -1757,7 +1705,7 @@ cdef class IteratorRowRegion(IteratorRow):
                 self.samfile.index,
                 tid,
                 beg,
-                end)
+                stop)
 
     def __iter__(self):
         return self
@@ -2207,11 +2155,11 @@ cdef class IteratorColumn:
     cdef setupIteratorData( self,
                             int tid,
                             int start,
-                            int end,
+                            int stop,
                             int multiple_iterators=0 ):
         '''setup the iterator structure'''
 
-        self.iter = IteratorRowRegion(self.samfile, tid, start, end, multiple_iterators)
+        self.iter = IteratorRowRegion(self.samfile, tid, start, stop, multiple_iterators)
         self.iterdata.htsfile = self.samfile.htsfile
         self.iterdata.iter = self.iter.iter
         self.iterdata.seq = NULL
@@ -2252,13 +2200,13 @@ cdef class IteratorColumn:
 
         # bam_plp_set_mask( self.pileup_iter, self.mask )
 
-    cdef reset( self, tid, start, end ):
+    cdef reset(self, tid, start, stop):
         '''reset iterator position.
 
         This permits using the iterator multiple times without
         having to incur the full set-up costs.
         '''
-        self.iter = IteratorRowRegion( self.samfile, tid, start, end, multiple_iterators = 0 )
+        self.iter = IteratorRowRegion(self.samfile, tid, start, stop, multiple_iterators=0)
         self.iterdata.iter = self.iter.iter
 
         # invalidate sequence if different tid
@@ -2301,14 +2249,14 @@ cdef class IteratorColumnRegion(IteratorColumn):
     def __cinit__(self, AlignmentFile samfile,
                   int tid = 0,
                   int start = 0,
-                  int end = MAX_POS,
+                  int stop = MAX_POS,
                   int truncate = False,
                   **kwargs ):
 
         # initialize iterator
-        self.setupIteratorData(tid, start, end, 1)
+        self.setupIteratorData(tid, start, stop, 1)
         self.start = start
-        self.end = end
+        self.stop = stop
         self.truncate = truncate
 
     def __next__(self):
@@ -2323,7 +2271,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
 
             if self.truncate:
                 if self.start > self.pos: continue
-                if self.pos >= self.end: raise StopIteration
+                if self.pos >= self.stop: raise StopIteration
 
             return makePileupColumn(&self.plp,
                                    self.tid,
