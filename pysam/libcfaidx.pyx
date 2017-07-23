@@ -48,6 +48,11 @@
 import sys
 import os
 import re
+
+
+from libc.errno  cimport errno
+from libc.string cimport strerror
+
 from cpython cimport array
 
 from cpython cimport PyErr_SetString, \
@@ -283,24 +288,35 @@ cdef class FastaFile:
                                   rend-1,
                                   &length)
 
-        if seq == NULL:
-            raise ValueError(
-                "failure when retrieving sequence on '%s'" % reference)
+        if not seq:
+            if errno:
+                raise OSError(errno, strerror(errno))
+            else:
+                raise ValueError("failure when retrieving sequence on '%s'" % reference)
 
         try:
             return charptr_to_str(seq)
         finally:
             free(seq)
 
-    cdef char * _fetch(self, char * reference, int start, int end, int * length):
+    cdef char *_fetch(self, char *reference, int start, int end, int *length) except? NULL:
         '''fetch sequence for reference, start and end'''
 
+        cdef char *seq
         with nogil:
-            return faidx_fetch_seq(self.fastafile,
-                                   reference,
-                                   start,
-                                   end-1,
-                                   length)
+            seq = faidx_fetch_seq(self.fastafile,
+                                  reference,
+                                  start,
+                                  end-1,
+                                  length)
+
+        if not seq:
+            if errno:
+                raise OSError(errno, strerror(errno))
+            else:
+                raise ValueError("failure when retrieving sequence on '%s'" % reference)
+
+        return seq
 
     def get_reference_length(self, reference):
         '''return the length of reference.'''
