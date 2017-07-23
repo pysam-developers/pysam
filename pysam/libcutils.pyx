@@ -270,7 +270,7 @@ def _pysam_dispatch(collection,
         stdout_h = c_open(force_bytes(stdout_f),
                           O_WRONLY)
         if stdout_h == -1:
-            raise OSError("error while opening {} for writing".format(stdout_f))
+            raise IOError("error while opening {} for writing".format(stdout_f))
 
         pysam_set_stdout_fn(force_bytes(stdout_f))
         pysam_set_stdout(stdout_h)

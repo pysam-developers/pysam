@@ -3755,9 +3755,9 @@ cdef class BCFIterator(BaseIterator):
 
         if not self.iter:
             if errno:
-                raise OSError(errno, strerror(errno))
+                raise IOError(errno, strerror(errno))
             else:
-                raise OSError('unable to fetch {}:{}-{}'.format(contig, start+1, stop))
+                raise IOError('unable to fetch {}:{}-{}'.format(contig, start+1, stop))
 
     def __dealloc__(self):
         if self.iter:
@@ -3790,11 +3790,11 @@ cdef class BCFIterator(BaseIterator):
             if ret == -1:
                 raise StopIteration
             elif ret == -2:
-                raise OSError('truncated file')
+                raise IOError('truncated file')
             elif errno:
-                raise OSError(errno, strerror(errno))
+                raise IOError(errno, strerror(errno))
             else:
-                raise OSError('unable to fetch next record')
+                raise IOError('unable to fetch next record')
 
         ret = bcf_subset_format(self.bcf.header.ptr, record)
 
@@ -3842,9 +3842,9 @@ cdef class TabixIterator(BaseIterator):
 
         if not self.iter:
             if errno:
-                raise OSError(errno, strerror(errno))
+                raise IOError(errno, strerror(errno))
             else:
-                raise OSError('unable to fetch {}:{}-{}'.format(contig, start+1, stop))
+                raise IOError('unable to fetch {}:{}-{}'.format(contig, start+1, stop))
 
     def __dealloc__(self):
         if self.iter:
@@ -3876,11 +3876,11 @@ cdef class TabixIterator(BaseIterator):
             if ret == -1:
                 raise StopIteration
             elif ret == -2:
-                raise OSError('truncated file')
+                raise IOError('truncated file')
             elif errno:
-                raise OSError(errno, strerror(errno))
+                raise IOError(errno, strerror(errno))
             else:
-                raise OSError('unable to fetch next record')
+                raise IOError('unable to fetch next record')
 
         cdef bcf1_t *record = bcf_init1()
 
@@ -4001,7 +4001,7 @@ cdef class VariantFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
@@ -4022,7 +4022,7 @@ cdef class VariantFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     def __iter__(self):
         if not self.is_open:
@@ -4053,11 +4053,11 @@ cdef class VariantFile(HTSFile):
             if ret == -1:
                 raise StopIteration
             elif ret == -2:
-                raise OSError('truncated file')
+                raise IOError('truncated file')
             elif errno:
-                raise OSError(errno, strerror(errno))
+                raise IOError(errno, strerror(errno))
             else:
-                raise OSError('unable to fetch next record')
+                raise IOError('unable to fetch next record')
 
         return makeVariantRecord(self.header, record)
 
@@ -4188,7 +4188,7 @@ cdef class VariantFile(HTSFile):
         elif mode.startswith(b'r'):
             # open file for reading
             if not self._exists():
-                raise OSError('file `{}` not found'.format(filename))
+                raise IOError('file `{}` not found'.format(filename))
 
             self.htsfile = self._open_htsfile()
 
@@ -4367,7 +4367,7 @@ cdef class VariantFile(HTSFile):
             ret = bcf_write1(self.htsfile, self.header.ptr, record.ptr)
 
         if ret < 0:
-            raise OSError(errno, strerror(errno))
+            raise IOError(errno, strerror(errno))
 
         return ret
 

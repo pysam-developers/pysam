@@ -290,7 +290,7 @@ cdef class FastaFile:
 
         if not seq:
             if errno:
-                raise OSError(errno, strerror(errno))
+                raise IOError(errno, strerror(errno))
             else:
                 raise ValueError("failure when retrieving sequence on '%s'" % reference)
 
@@ -312,7 +312,7 @@ cdef class FastaFile:
 
         if not seq:
             if errno:
-                raise OSError(errno, strerror(errno))
+                raise IOError(errno, strerror(errno))
             else:
                 raise ValueError("failure when retrieving sequence on '%s'" % reference)
 

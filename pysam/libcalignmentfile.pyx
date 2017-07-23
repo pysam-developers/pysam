@@ -1298,7 +1298,7 @@ cdef class AlignmentFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     def __dealloc__(self):
         cdef int ret = 0
@@ -1324,7 +1324,7 @@ cdef class AlignmentFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     cpdef int write(self, AlignedSegment read) except -1:
         '''

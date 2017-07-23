@@ -829,18 +829,18 @@ def tabix_compress(filename_in,
             r = bgzf_write(fp, buffer, c)
         if r < 0:
             free(buffer)
-            raise OSError("writing failed")
+            raise IOError("writing failed")
         
     free(buffer)
     r = bgzf_close(fp)
     if r < 0:
-        raise OSError("error %i when writing to file %s" % (r, filename_out))
+        raise IOError("error %i when writing to file %s" % (r, filename_out))
 
     r = close(fd_src)
     # an empty file will return with -1, thus ignore this.
     if r < 0:
         if not (r == -1 and is_empty):
-            raise OSError("error %i when closing file %s" % (r, filename_in))
+            raise IOError("error %i when closing file %s" % (r, filename_in))
 
 
 def tabix_index(filename, 
