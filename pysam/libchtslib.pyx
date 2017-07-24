@@ -98,7 +98,7 @@ cdef class HFile(object):
             self.fp = hopen(name, mode)
 
         if not self.fp:
-            raise OSError(errno, 'failed to open HFile', self.name)
+            raise IOError(errno, 'failed to open HFile', self.name)
 
     def close(self):
         if self.fp == NULL:
@@ -108,11 +108,11 @@ cdef class HFile(object):
         self.fp = NULL
 
         if hclose(fp) != 0:
-            raise OSError(herrno(self.fp), 'failed to close HFile', self.name)
+            raise IOError(herrno(self.fp), 'failed to close HFile', self.name)
 
     def fileno(self):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
         if isinstance(self.name, int):
             return self.name
         else:
@@ -135,13 +135,13 @@ cdef class HFile(object):
 
     def flush(self):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
         if hflush(self.fp) != 0:
-            raise OSError(herrno(self.fp), 'failed to flush HFile', self.name)
+            raise IOError(herrno(self.fp), 'failed to flush HFile', self.name)
 
     def isatty(self):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
         return False
 
     def readable(self):
@@ -149,7 +149,7 @@ cdef class HFile(object):
 
     def read(self, Py_ssize_t size=-1):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
 
         if size == 0:
             return b''
@@ -169,7 +169,7 @@ cdef class HFile(object):
             ret = hread(self.fp, <void *>cpart, chunk_size)
 
             if ret < 0:
-                OSError(herrno(self.fp), 'failed to read HFile', self.name)
+                IOError(herrno(self.fp), 'failed to read HFile', self.name)
             elif not ret:
                 break
 
@@ -187,7 +187,7 @@ cdef class HFile(object):
 
     def readinto(self, buf):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
 
         size = len(buf)
 
@@ -198,13 +198,13 @@ cdef class HFile(object):
         ret = hread(self.fp, <void *>mv, size)
 
         if ret < 0:
-            OSError(herrno(self.fp), 'failed to read HFile', self.name)
+            IOError(herrno(self.fp), 'failed to read HFile', self.name)
 
         return ret
 
     def readline(self, Py_ssize_t size=-1):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
 
         if size == 0:
             return b''
@@ -226,7 +226,7 @@ cdef class HFile(object):
             ret = hgetln(cpart, chunk_size+1, self.fp)
 
             if ret < 0:
-                OSError(herrno(self.fp), 'failed to read HFile', self.name)
+                IOError(herrno(self.fp), 'failed to read HFile', self.name)
             elif not ret:
                 break
 
@@ -248,23 +248,23 @@ cdef class HFile(object):
 
     def seek(self, Py_ssize_t offset, int whence=SEEK_SET):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
 
         cdef Py_ssize_t off = hseek(self.fp, offset, whence)
 
         if off < 0:
-            raise OSError(herrno(self.fp), 'seek failed on HFile', self.name)
+            raise IOError(herrno(self.fp), 'seek failed on HFile', self.name)
 
         return off
 
     def tell(self):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
 
         ret = htell(self.fp)
 
         if ret < 0:
-            raise OSError(herrno(self.fp), 'tell failed on HFile', self.name)
+            raise IOError(herrno(self.fp), 'tell failed on HFile', self.name)
 
         return ret
 
@@ -279,12 +279,12 @@ cdef class HFile(object):
 
     def write(self, bytes b):
         if self.fp == NULL:
-            raise OSError('operation on closed HFile')
+            raise IOError('operation on closed HFile')
 
         got = hwrite(self.fp, <void *>b, len(b))
 
         if got < 0:
-            raise OSError(herrno(self.fp), 'write failed on HFile', self.name)
+            raise IOError(herrno(self.fp), 'write failed on HFile', self.name)
 
         return got
 
@@ -355,13 +355,13 @@ cdef class HTSFile(object):
 
         cdef int ret = bgzf_check_EOF(bgzfp)
         if ret < 0:
-            raise OSError(errno, 'error checking for EOF marker')
+            raise IOError(errno, 'error checking for EOF marker')
         elif ret == 0:
             msg = 'no BGZF EOF marker; file may be truncated'.format(self.filename)
             if ignore_truncation:
                 warn(msg)
             else:
-                raise OSError(msg)
+                raise IOError(msg)
 
     def __enter__(self):
         return self
@@ -482,7 +482,7 @@ cdef class HTSFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
         if self.is_stream:
-            raise OSError('seek not available in streams')
+            raise IOError('seek not available in streams')
 
         cdef int64_t ret
         if self.htsfile.format.compression == bgzf:
@@ -501,7 +501,7 @@ cdef class HTSFile(object):
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
         if self.is_stream:
-            raise OSError('tell not available in streams')
+            raise IOError('tell not available in streams')
 
         cdef int64_t ret
         if self.htsfile.format.compression == bgzf:

@@ -70,7 +70,7 @@ cdef class BGZFile(object):
 
         if not self.bgzf.is_write:
             import errno
-            raise OSError(errno.EBADF, "write() on read-only BGZFile object")
+            raise IOError(errno.EBADF, "write() on read-only BGZFile object")
 
         if isinstance(data, bytes):
             length = len(data)
@@ -92,7 +92,7 @@ cdef class BGZFile(object):
 
         if self.bgzf.is_write:
             import errno
-            raise OSError(errno.EBADF, "read() on write-only BGZFile object")
+            raise IOError(errno.EBADF, "read() on write-only BGZFile object")
 
         if size < 0:
             chunks = []
@@ -167,7 +167,7 @@ cdef class BGZFile(object):
         if not self.bgzf:
             raise ValueError("rewind() on closed BGZFile object")
         if not self.bgzf.is_write:
-            raise OSError("Can't rewind in write mode")
+            raise IOError("Can't rewind in write mode")
         if bgzf_seek(self.bgzf, 0, SEEK_SET) < 0:
             raise IOError('Error seeking BGZFFile object')
 
