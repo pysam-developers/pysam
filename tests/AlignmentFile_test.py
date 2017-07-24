@@ -2551,7 +2551,7 @@ class TestAlignmentFileUtilityFunctions(unittest.TestCase):
 class TestMappedUnmapped(unittest.TestCase):
     filename = "test_mapped_unmapped.bam"
 
-    def testMapped(self):
+    def test_counts_of_mapped_and_unmapped_are_correct(self):
 
         with pysam.AlignmentFile(os.path.join(BAM_DATADIR,
                                               self.filename)) as inf:
@@ -2585,6 +2585,31 @@ class TestMappedUnmapped(unittest.TestCase):
             inf.reset()
             self.assertEqual(inf.count(until_eof=True, read_callback="all"),
                              inf.mapped)
+
+    def test_counts_of_mapped_and_unmapped_are_correct_per_chromosome(self):
+
+        with pysam.AlignmentFile(os.path.join(BAM_DATADIR,
+                                              self.filename)) as inf:
+
+            counts = inf.get_index_statistics()
+
+            counts_contigs = [x.contig for x in counts]
+            self.assertEqual(sorted(counts_contigs),
+                             sorted(inf.references))
+            
+            for contig in inf.references:
+                unmapped_flag = 0
+                unmapped_nopos = 0
+                mapped_flag = 0
+                for x in inf.fetch(contig=contig):
+                    if x.is_unmapped:
+                        unmapped_flag += 1
+                    else:
+                        mapped_flag += 1
+
+                cc = [c for c in counts if c.contig == contig][0]
+                self.assertEqual(cc.mapped, mapped_flag)
+                self.assertEqual(cc.unmapped, unmapped_flag)
 
 
 class TestSamtoolsProxy(unittest.TestCase):
