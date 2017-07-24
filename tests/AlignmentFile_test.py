@@ -26,7 +26,7 @@ import pysam
 import pysam.samtools
 from TestUtils import checkBinaryEqual, checkURL, \
     check_samtools_view_equal, checkFieldEqual, force_str, \
-    get_temp_filename, BAM_DATADIR
+    get_temp_filename, BAM_DATADIR, WORKDIR
 
 
 ##################################################
@@ -718,12 +718,13 @@ class TestIO(unittest.TestCase):
         # python file needs to be closed separately
         self.assertFalse(f.closed)
 
-    def testClosedFile(self):
+    def test_accessing_attributes_in_closed_file_raises_errors(self):
         '''test that access to a closed samfile raises ValueError.'''
 
         samfile = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"),
                                       "rb")
         samfile.close()
+            
         self.assertRaises(ValueError, samfile.fetch, 'chr1', 100, 120)
         self.assertRaises(ValueError, samfile.pileup, 'chr1', 100, 120)
         self.assertRaises(ValueError, samfile.getrname, 0)
@@ -733,13 +734,36 @@ class TestIO(unittest.TestCase):
         self.assertRaises(ValueError, getattr, samfile, "nreferences")
         self.assertRaises(ValueError, getattr, samfile, "references")
         self.assertRaises(ValueError, getattr, samfile, "lengths")
-        self.assertRaises(ValueError, getattr, samfile, "text")
-        self.assertRaises(ValueError, getattr, samfile, "header")
 
+        self.assertEqual(samfile.header, None)
         # write on closed file
         self.assertEqual(0, samfile.write(None))
 
+    def test_header_available_after_closing_file(self):
 
+        def load_bam():
+            with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"), "rb") as inf:
+                header = inf.header
+            return header
+
+        header = load_bam()
+        self.assertTrue(header != None)
+        self.assertEqual(header.nreferences, 2)
+        self.assertEqual(header.references, ("chr1", "chr2"))
+
+    def test_reference_name_available_after_closing_file(self):
+        """read tids can be mapped to references after AlignmentFile has been closed.
+        
+        see issue #517"""
+        
+        def load_bam():
+            with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"), "rb") as inf:
+                read = next(inf)
+            return read
+
+        read = load_bam()
+        self.assertEqual(read.reference_name, "chr1")
+        
     # TOOD
     # def testReadingFromSamFileWithoutHeader(self):
     #     '''read from samfile without header.
@@ -752,15 +776,16 @@ class TestIO(unittest.TestCase):
     def testReadingFromFileWithoutIndex(self):
         '''read from bam file without index.'''
 
+        dest = os.path.join(WORKDIR, "tmp_ex2.bam")
         shutil.copyfile(os.path.join(BAM_DATADIR, "ex2.bam"),
-                        'tests/tmp_ex2.bam')
-        samfile = pysam.AlignmentFile('tests/tmp_ex2.bam',
+                        dest)
+        samfile = pysam.AlignmentFile(dest,
                                       "rb")
         self.assertRaises(ValueError, samfile.fetch)
         self.assertEqual(
             len(list(samfile.fetch(until_eof=True))),
             3270)
-        os.unlink('tests/tmp_ex2.bam')
+        os.unlink(dest)
 
     # def testReadingUniversalFileMode(self):
     #     '''read from samfile without header.
@@ -1203,17 +1228,17 @@ class TestTagParsing(unittest.TestCase):
         r = self.makeRead()
         r.tags = [("XD", x)]
         outfile = pysam.AlignmentFile(
-            "tests/test.bam",
+            os.path.join(WORKDIR, "test.bam"),
             "wb",
             referencenames=("chr1",),
             referencelengths = (1000,))
         outfile.write(r)
         outfile.close()
-        infile = pysam.AlignmentFile("tests/test.bam")
+        infile = pysam.AlignmentFile("test.bam")
         r = next(infile)
         self.assertEqual(r.tags, [("XD", x)])
         infile.close()
-        os.unlink("tests/test.bam")
+        os.unlink(os.path.join(WORKDIR, "test.bam"))
 
     def testCigarString(self):
         r = self.makeRead()
@@ -1359,8 +1384,8 @@ class TestHeaderSAM(unittest.TestCase):
             "r")
 
     def testHeaders(self):
-        self.compareHeaders(self.header, self.samfile.header)
-        self.compareHeaders(self.samfile.header, self.header)
+        self.compareHeaders(self.header, self.samfile.header.as_dict())
+        self.compareHeaders(self.samfile.header.as_dict(), self.header)
 
     def testNameMapping(self):
         for x, y in enumerate(("chr1", "chr2")):
@@ -1398,7 +1423,6 @@ class TestHeaderCRAM(TestHeaderSAM):
                 for y in ("M5", "UR"):
                     if y in x:
                         del x[y]
-
         for ak, av in a.items():
             _strip(av)
             self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
@@ -1457,11 +1481,12 @@ class TestHeaderWriteRead(unittest.TestCase):
               'CO': ['this is a comment', 'this is another comment'],
     }
 
-    def compare_headers(self, a, b):
+    def compare_headers(self, a, header_b):
         '''compare two headers a and b.
 
         Ignore M5 and UR field as they are set application specific.
         '''
+        b = header_b.as_dict()
         for ak, av in a.items():
             self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
             self.assertEqual(
@@ -1828,7 +1853,7 @@ class TestEmptyHeader(unittest.TestCase):
     def testEmptyHeader(self):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR,
                                              'example_empty_header.bam'))
-        self.assertEqual(s.header, {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
+        self.assertEqual(s.header.as_dict(), {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
 
 
 class TestHeaderWithProgramOptions(unittest.TestCase):
@@ -1839,7 +1864,7 @@ class TestHeaderWithProgramOptions(unittest.TestCase):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR,
                                              'rg_with_tab.bam'))
         self.assertEqual(
-            s.header,
+            s.header.as_dict(),
             {'SQ': [{'LN': 1575, 'SN': 'chr1'},
                     {'LN': 1584, 'SN': 'chr2'}],
              'PG': [{'PN': 'bwa',
@@ -2184,7 +2209,8 @@ class TestCountCoverage(unittest.TestCase):
         self.fastafile = pysam.Fastafile(self.fastafilename)
 
         samfile = pysam.AlignmentFile(
-            "tests/test_count_coverage_read_all.bam", 'wb',
+            os.path.join(WORKDIR, "test_count_coverage_read_all.bam"),
+            'wb',
             template=self.samfile)
         for ii, read in enumerate(self.samfile.fetch()):
             # if ii % 2 == 0: # setting BFUNMAP makes no sense...
@@ -2197,13 +2223,13 @@ class TestCountCoverage(unittest.TestCase):
                 read.flag = read.flag | 0x400
             samfile.write(read)
         samfile.close()
-        pysam.samtools.index("tests/test_count_coverage_read_all.bam")
+        pysam.samtools.index(os.path.join(WORKDIR, "test_count_coverage_read_all.bam"))
 
     def tearDown(self):
         self.samfile.close()
         self.fastafile.close()
-        os.unlink("tests/test_count_coverage_read_all.bam")
-        os.unlink("tests/test_count_coverage_read_all.bam.bai")
+        os.unlink(os.path.join(WORKDIR, "test_count_coverage_read_all.bam"))
+        os.unlink(os.path.join(WORKDIR, "test_count_coverage_read_all.bam.bai"))
 
     def count_coverage_python(self, bam, chrom, start, stop,
                               read_callback,
@@ -2304,7 +2330,9 @@ class TestCountCoverage(unittest.TestCase):
         def filter(read):
             return not (read.flag & (0x4 | 0x100 | 0x200 | 0x400))
 
-        with pysam.AlignmentFile("tests/test_count_coverage_read_all.bam") as samfile:
+        with pysam.AlignmentFile(
+                os.path.join(WORKDIR,
+                             "test_count_coverage_read_all.bam")) as samfile:
 
             fast_counts = samfile.count_coverage(
                 chrom, start, stop,
@@ -2324,7 +2352,9 @@ class TestCountCoverage(unittest.TestCase):
 
     def test_count_coverage_nofilter(self):
         samfile = pysam.AlignmentFile(
-            "tests/test_count_coverage_nofilter.bam", 'wb', template=self.samfile)
+            os.path.join(WORKDIR, "test_count_coverage_nofilter.bam"),
+            'wb', template=self.samfile)
+            
         for ii, read in enumerate(self.samfile.fetch()):
             # if ii % 2 == 0: # setting BFUNMAP makes no sense...
                 #read.flag = read.flag | 0x4
@@ -2336,12 +2366,14 @@ class TestCountCoverage(unittest.TestCase):
                 read.flag = read.flag | 0x400
             samfile.write(read)
         samfile.close()
-        pysam.samtools.index("tests/test_count_coverage_nofilter.bam")
+        pysam.samtools.index(os.path.join(WORKDIR, "test_count_coverage_nofilter.bam"))
         chr = 'chr1'
         start = 0
         stop = 2000
 
-        with pysam.AlignmentFile("tests/test_count_coverage_nofilter.bam") as samfile:
+        with pysam.AlignmentFile(
+                os.path.join(WORKDIR,
+                             "test_count_coverage_nofilter.bam")) as samfile:
 
             fast_counts = samfile.count_coverage(chr, start, stop,
                                                  read_callback='nofilter',
@@ -2351,8 +2383,8 @@ class TestCountCoverage(unittest.TestCase):
                                                        read_callback=lambda x: True,
                                                        quality_threshold=0)
 
-        os.unlink("tests/test_count_coverage_nofilter.bam")
-        os.unlink("tests/test_count_coverage_nofilter.bam.bai")
+        os.unlink(os.path.join(WORKDIR, "test_count_coverage_nofilter.bam"))
+        os.unlink(os.path.join(WORKDIR, "test_count_coverage_nofilter.bam.bai"))
         self.assertEqual(fast_counts[0], manual_counts[0])
         self.assertEqual(fast_counts[1], manual_counts[1])
         self.assertEqual(fast_counts[2], manual_counts[2])

@@ -807,7 +807,7 @@ class TestCopy(ReadTest):
 
 class TestAsString(unittest.TestCase):
 
-    def testAsString(self):
+    def test_as_string_with_explicit_alignment_file(self):
         with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
             reference = [x[:-1] for x in samf if not x.startswith("@")]
 
@@ -816,6 +816,15 @@ class TestAsString(unittest.TestCase):
             for s, p in zip(reference, pysamf):
                 self.assertEqual(s, p.tostring(pysamf))
 
+    def test_as_string_without_alignment_file(self):
+        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
+            reference = [x[:-1] for x in samf if not x.startswith("@")]
+
+        with pysam.AlignmentFile(
+            os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
+            for s, p in zip(reference, pysamf):
+                self.assertEqual(s, p.tostring())
+                
 
 class TestEnums(unittest.TestCase):
     

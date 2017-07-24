@@ -36,13 +36,16 @@ ctypedef struct __iterdata:
     int seq_len
 
 
+cdef class AlignmentHeader(object):
+    cdef bam_hdr_t *ptr
+
+
 cdef class AlignmentFile(HTSFile):
     cdef readonly object reference_filename
+    cdef readonly AlignmentHeader header
 
     # pointer to index
     cdef hts_idx_t *index
-    # header structure
-    cdef bam_hdr_t * header
 
     # current read within iteration
     cdef bam1_t * b
@@ -77,7 +80,7 @@ cdef class IteratorRow:
     cdef bam1_t * b
     cdef AlignmentFile samfile
     cdef htsFile * htsfile
-    cdef bam_hdr_t * header
+    cdef readonly AlignmentHeader header
     cdef int owns_samfile
 
 
@@ -86,11 +89,13 @@ cdef class IteratorRowRegion(IteratorRow):
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 
+
 cdef class IteratorRowHead(IteratorRow):
     cdef int max_rows
     cdef int current_row
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
+
 
 cdef class IteratorRowAll(IteratorRow):
     cdef bam1_t * getCurrent(self)
@@ -120,7 +125,7 @@ cdef class IteratorColumn:
     cdef bam_pileup1_t * plp
     cdef bam_plp_t pileup_iter
     cdef __iterdata iterdata
-    cdef AlignmentFile samfile
+    cdef readonly AlignmentFile samfile
     cdef Fastafile fastafile
     cdef stepper
     cdef int max_depth
@@ -151,6 +156,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 cdef class IndexedReads:
     cdef AlignmentFile samfile
     cdef htsFile * htsfile
-    cdef index
+    cdef readonly object index
     cdef int owns_samfile
-    cdef bam_hdr_t * header
+    cdef readonly AlignmentHeader header
