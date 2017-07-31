@@ -586,6 +586,13 @@ cdef class AlignmentFile(HTSFile):
 
             self.htsfile = self._open_htsfile()
 
+            if self.htsfile == NULL:
+                if errno:
+                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
+                                  force_str(strerror(errno))))
+                else:
+                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
+
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
@@ -600,15 +607,14 @@ cdef class AlignmentFile(HTSFile):
 
         elif mode[0] == "r":
             # open file for reading
-            if not self._exists():
-                raise IOError("file `%s` not found" % self.filename)
-
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
-                raise ValueError(
-                    "could not open file (mode='%s') - "
-                    "is it SAM/BAM format?" % mode)
+                if errno:
+                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
+                                  force_str(strerror(errno))))
+                else:
+                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
 
             if self.htsfile.format.category != sequence_data:
                 raise ValueError("file does not contain alignment data")
@@ -619,26 +625,26 @@ cdef class AlignmentFile(HTSFile):
             if self.is_bam or self.is_cram:
                 with nogil:
                     self.header = sam_hdr_read(self.htsfile)
+
+            # in sam files a header is optional, but requires
+            # reference names and lengths
+            elif reference_names and reference_lengths:
+                self.header = build_header_from_list(
+                    reference_names,
+                    reference_lengths,
+                    add_sq_text=add_sq_text,
+                    text=text)
+            else:
+                with nogil:
+                    self.header = sam_hdr_read(self.htsfile)
+
                 if self.header == NULL:
                     raise ValueError(
-                        "file does not have valid header (mode='%s') "
-                        "- is it BAM format?" % mode )
-            else:
-                # in sam files a header is optional, but requires
-                # reference names and lengths
-                if reference_names and reference_lengths:
-                    self.header = build_header_from_list(
-                        reference_names,
-                        reference_lengths,
-                        add_sq_text=add_sq_text,
-                        text=text)
-                else:
-                    with nogil:
-                        self.header = sam_hdr_read(self.htsfile)
-                    if self.header == NULL:
-                        raise ValueError(
-                            "file does not have valid header (mode='%s'), "
-                            "please provide reference_names and reference_lengths")
+                        "file `{}` does not have valid header, "
+                        "please provide reference_names and reference_lengths".format(force_str(filename)))
+
+            if self.header == NULL:
+                raise ValueError("file `{}` does not have valid header".format(force_str(filename)))
 
             # set filename with reference sequences
             if self.is_cram and reference_filename:
@@ -653,32 +659,30 @@ cdef class AlignmentFile(HTSFile):
                      "is it SAM/BAM format? Consider opening with "
                      "check_sq=False") % mode)
 
-        assert self.htsfile != NULL
+            if self.is_bam or self.is_cram:
+                # open index for remote files
+                # returns NULL if there is no index or index could
+                # not be opened
+                index_filename = index_filename or filepath_index
+                if index_filename:
+                    cindexname = bindex_filename = encode_filename(index_filename)
 
-        if mode[0] == "r" and (self.is_bam or self.is_cram):
-            # open index for remote files
-            # returns NULL if there is no index or index could
-            # not be opened
-            index_filename = index_filename or filepath_index
-            if index_filename:
-                cindexname = bindex_filename = encode_filename(index_filename)
+                if cfilename or cindexname:
+                    with nogil:
+                        self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
 
-            if cfilename or cindexname:
-                with nogil:
-                    self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
+                    if not self.index and (cindexname or require_index):
+                        if errno:
+                            raise IOError(errno, force_str(strerror(errno)))
+                        else:
+                            raise IOError('unable to open index file `%s`' % index_filename)
 
-                if not self.index and (cindexname or require_index):
-                    if errno:
-                        raise IOError(errno, force_str(strerror(errno)))
-                    else:
-                        raise IOError('unable to open index file `%s`' % index_filename)
+                elif require_index:
+                    raise IOError('unable to open index file')
 
-            elif require_index:
-                raise IOError('unable to open index file')
-
-            # save start of data section
-            if not self.is_stream:
-                self.start_offset = self.tell()
+                # save start of data section
+                if not self.is_stream:
+                    self.start_offset = self.tell()
 
     def is_valid_tid(self, tid):
         """

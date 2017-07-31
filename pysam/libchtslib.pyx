@@ -562,14 +562,6 @@ cdef class HTSFile(object):
             with nogil:
                 return hts_hopen(hfile, cfilename, cmode)
 
-    def _exists(self):
-        """return False iff file is local, a file and exists.
-        """
-        return (not isinstance(self.filename, (str, bytes)) or
-                self.filename == b'-' or
-                self.is_remote or
-                os.path.exists(self.filename))
-
     def parse_region(self, contig=None, start=None, stop=None, region=None,tid=None,
                            reference=None, end=None):
         """parse alternative ways to specify a genomic region. A region can
