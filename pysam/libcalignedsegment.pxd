@@ -37,7 +37,7 @@ cdef class AlignedSegment:
     cdef bam1_t * _delegate
 
     # the header that a read is associated with
-    cdef AlignmentHeader header
+    cdef readonly AlignmentHeader header
 
     # caching of array properties for quick access
     cdef object cache_query_qualities

@@ -932,6 +932,16 @@ cdef class AlignedSegment:
         """:term:`reference` name"""
         def __get__(self):
             return self.header.get_reference_name(self._delegate.core.tid)
+        def __set__(self, reference):
+            cdef int tid
+            if reference is None:
+                self._delegate.core.tid = -1
+            else:
+                tid = self.header.get_tid(reference)
+                if tid < 0:
+                    raise ValueError("reference {} does not exist in header".format(
+                        reference))
+                self._delegate.core.tid = tid
 
     property reference_id:
         """:term:`reference` ID
@@ -944,8 +954,13 @@ cdef class AlignedSegment:
             :meth:`get_reference_name()`
 
         """
-        def __get__(self): return self._delegate.core.tid
-        def __set__(self, tid): self._delegate.core.tid = tid
+        def __get__(self):
+            return self._delegate.core.tid
+        def __set__(self, tid):
+            if tid != -1 and not self.header.is_valid_tid(tid):
+                raise ValueError("reference id {} does not exist in header".format(
+                    tid))
+            self._delegate.core.tid = tid
 
     property reference_start:
         """0-based leftmost coordinate"""

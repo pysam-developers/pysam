@@ -164,17 +164,13 @@ cdef AlignmentHeader makeAlignmentHeader(bam_hdr_t *hdr):
 
 # the following should be class-method for VariantHeader, but cdef @classmethods
 # are not implemented in cython.
-cdef AlignmentHeader makeAlignmentHeader_from_dict(header_dict):
+cdef int fill_AlignmentHeader_from_dict(bam_hdr_t *dest, header_dict) except? -1:
     '''build a new header built from a dictionary in `header_dict`.
 
     This method inserts the text field, target_name and target_len.
     '''
-
-    # create new header
-    cdef AlignmentHeader new_header = AlignmentHeader.__new__(AlignmentHeader)
-    new_header.ptr = bam_hdr_init()
-    cdef bam_hdr_t * dest = new_header.ptr
-
+    assert dest != NULL
+    
     cdef list lines = []
 
     # first: defined tags
@@ -242,23 +238,19 @@ cdef AlignmentHeader makeAlignmentHeader_from_dict(header_dict):
                     len(seqname) + 1)
             dest.target_len[x] = seqlen
             
-    return new_header
+    return 0
 
 
 # the following should be class-method for VariantHeader, but cdef @classmethods
 # are not implemented in cython.
-cdef AlignmentHeader makeAlignmentHeader_from_list(reference_names,
-                                                   reference_lengths,
-                                                   add_sq_text=True,
-                                                   text=None):
+cdef int fill_AlignmentHeader_from_list(bam_hdr_t *dest,
+                                        reference_names,
+                                        reference_lengths,
+                                        add_sq_text=True,
+                                        text=None) except -1:
     """build header from list of reference names and lengths.
     """
-    # create new header
-    cdef AlignmentHeader new_header = AlignmentHeader.__new__(AlignmentHeader)
-    new_header.ptr = bam_hdr_init()
-    if new_header.ptr is NULL:
-        raise MemoryError("could not create header")
-    cdef bam_hdr_t * dest = new_header.ptr
+    assert dest != NULL
     
     assert len(reference_names) == len(reference_lengths), \
         "unequal names and lengths of reference sequences"
@@ -309,23 +301,69 @@ cdef AlignmentHeader makeAlignmentHeader_from_list(reference_names,
             raise MemoryError("could not allocate {} bytes".format(strlen(ctext), sizeof(char)))
         memcpy(dest.text, ctext, strlen(ctext))
 
-    return new_header
+    return 0
 
 
 cdef class AlignmentHeader(object):
-    """header information for a :class:`AlignmentFile` object"""
+    """header information for a :class:`AlignmentFile` object
+
+    Parameters
+    ----------
+    header_dict : dict
+        build header from a multi-level dictionary. The
+        first level are the four types ('HD', 'SQ', ...). The second
+        level are a list of lines, with each line being a list of
+        tag-value pairs. The header is constructed first from all the
+        defined fields, followed by user tags in alphabetical
+        order. Alternatively, an :class:`~pysam.AlignmentHeader`
+        object can be passed directly.
+
+    text : string
+        use the string provided as the header
+
+    reference_names : list
+        see reference_lengths
+
+    reference_lengths : list
+        build header from list of chromosome names and lengths.  By
+        default, 'SQ' and 'LN' tags will be added to the header
+        text. This option can be changed by unsetting the flag
+        `add_sq_text`.
+
+    add_sq_text : bool
+        do not add 'SQ' and 'LN' tags to header. This option permits
+        construction :term:`SAM` formatted files without a header.
+
+    """
 
     # See makeVariantHeader for C constructor
     def __cinit__(self):
         self.ptr = NULL
 
     # Python constructor
-    def __init__(self):
-        self.ptr = bam_hdr_init()
-        if not self.ptr:
-            # ptr is always defined and not NULL for AlignmentHeader
-            raise ValueError('cannot create AlignmentHeader')
+    def __init__(self,
+                 reference_names=None,
+                 reference_lengths=None,
+                 text=None,
+                 header_dict=None,
+                 add_sq_text=True):
 
+        self.ptr = bam_hdr_init()
+        if self.ptr is NULL:
+            raise MemoryError("could not create header")
+    
+        if header_dict is not None:
+            fill_AlignmentHeader_from_dict(self.ptr,
+                                           header_dict)
+            
+        elif reference_names and reference_lengths:
+            fill_AlignmentHeader_from_list(
+                self.ptr,
+                reference_names,
+                reference_lengths,
+                add_sq_text=add_sq_text,
+                text=text)
+            
     def __dealloc__(self):
         bam_hdr_destroy(self.ptr)
         self.ptr = NULL
@@ -454,6 +492,8 @@ cdef class AlignmentHeader(object):
         return result
 
     def get_reference_name(self, tid):
+        if tid == -1:
+            return None
         if not 0 <= tid < self.ptr.n_targets:
             raise ValueError("reference_id %i out of range 0<=tid<%i" %
                              (tid, self.ptr.n_targets))
@@ -462,6 +502,8 @@ cdef class AlignmentHeader(object):
     def is_valid_tid(self, int tid):
         """
         return True if the numerical :term:`tid` is valid; False otherwise.
+
+        Note that the unmapped tid code (-1) counts as an invalid.
         """
         return 0 <= tid < self.ptr.n_targets
 
@@ -632,7 +674,7 @@ cdef class AlignmentFile(HTSFile):
 
         # allocate memory for iterator
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
-        if self.b is NULL:
+        if self.b == NULL:
             raise MemoryError("could not allocate memory of size {}".format(sizeof(bam1_t)))
 
     def has_index(self):
@@ -760,28 +802,20 @@ cdef class AlignmentFile(HTSFile):
         if mode[0] == 'w':
             # open file for writing
 
-            # header structure (used for writing)
             if template:
                 # header is copied, though at the moment not strictly
                 # necessary as AlignmentHeader is immutable.
                 self.header = template.header.copy()
-            elif header:
-                if isinstance(header, collections.Mapping):
-                    self.header = makeAlignmentHeader_from_dict(header)
-                else:
-                    self.header = header.copy()
+            elif isinstance(header, AlignmentHeader):
+                self.header = header.copy()
             else:
-                assert reference_names and reference_lengths, \
-                    ("either supply options `template`, `header` "
-                     "or  both `reference_names` and `reference_lengths` "
-                     "for writing")
-                # build header from a target names and lengths
-                self.header = makeAlignmentHeader_from_list(
-                    reference_names,
-                    reference_lengths,
+                self.header = AlignmentHeader(
+                    header_dict=header,
+                    reference_names=reference_names,
+                    reference_lengths=reference_lengths,
                     add_sq_text=add_sq_text,
                     text=text)
-
+            
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
@@ -828,13 +862,13 @@ cdef class AlignmentFile(HTSFile):
                 self.header = makeAlignmentHeader(hdr)
             else:
                 # in sam files a header is optional. If not given,
-                # user my provide reference names and lengths to built
+                # user may provide reference names and lengths to built
                 # an on-the-fly header.
                 if reference_names and reference_lengths:
                     # build header from a target names and lengths
-                    self.header = makeAlignmentHeader_from_list(
-                        reference_names,
-                        reference_lengths,
+                    self.header = AlignmentHeader(
+                        reference_names=reference_names,
+                        reference_lengths=reference_lengths,
                         add_sq_text=add_sq_text,
                         text=text)
                 else:
@@ -996,6 +1030,9 @@ cdef class AlignmentFile(HTSFile):
         has_coord, rtid, rstart, rstop = self.parse_region(contig, start, stop, region, tid,
                                                           end=end, reference=reference)
 
+        if rtid < 0:
+            raise IndexError("can not fetch unmapped reads via tid")
+        
         # Turn of re-opening if htsfile is a stream
         if self.is_stream:
             multiple_iterators = False
@@ -1651,6 +1688,8 @@ cdef class AlignmentFile(HTSFile):
     def is_valid_tid(self, int tid):
         """
         return True if the numerical :term:`tid` is valid; False otherwise.
+
+        Note that the unmapped tid code (-1) counts as an invalid.
         """
         if self.header is None:
             raise ValueError("header not available in closed files")

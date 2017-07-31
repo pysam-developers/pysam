@@ -1212,10 +1212,9 @@ class TestTagParsing(unittest.TestCase):
     def makeRead(self):
         a = pysam.AlignedSegment()
         a.query_name = "read_12345"
-        a.reference_id = 0
+        a.reference_id = -1
         a.query_sequence = "ACGT" * 3
         a.flag = 0
-        a.reference_id = 0
         a.reference_start = 1
         a.mapping_quality = 20
         a.cigartuples = ((0, 10), (2, 1), (0, 25))
@@ -1754,7 +1753,9 @@ class TestDeNovoConstruction(unittest.TestCase):
 
     def setUp(self):
 
-        a = pysam.AlignedSegment()
+        header = pysam.AlignmentHeader(header_dict=self.header)
+        
+        a = pysam.AlignedSegment(header)
         a.query_name = "read_28833_29006_6945"
         a.query_sequence = "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
         a.flag = 99
@@ -1770,7 +1771,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         a.tags = (("NM", 1),
                   ("RG", "L1"))
 
-        b = pysam.AlignedSegment()
+        b = pysam.AlignedSegment(header)
         b.query_name = "read_28701_28881_323b"
         b.query_sequence = "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"
         b.flag = 147
