@@ -883,6 +883,16 @@ class TestIO(unittest.TestCase):
             self.assertEqual(len(list(samfile.fetch('chr1',start=1000, end=2000))),
                              len(list(samfile.fetch(tid=0, start=1000, end=2000))))
 
+    def test_write_bam_to_unknown_path_fails(self):
+        '''see issue 116'''
+        input_filename = os.path.join(BAM_DATADIR, "ex1.bam")
+        with pysam.AlignmentFile(input_filename) as inf:
+            self.assertRaises(IOError,
+                              pysam.AlignmentFile,
+                              "missing_directory/new_file.bam",
+                              "wb",
+                              template=inf)
+        
 
 class TestAutoDetect(unittest.TestCase):
 

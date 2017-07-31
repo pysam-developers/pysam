@@ -784,6 +784,9 @@ cdef class AlignmentFile(HTSFile):
 
             self.htsfile = self._open_htsfile()
 
+            if not self.htsfile:
+                raise IOError("could not open htsfile for writing")
+            
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
