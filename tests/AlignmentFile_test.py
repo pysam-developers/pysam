@@ -1216,29 +1216,30 @@ class TestTagParsing(unittest.TestCase):
         # todo: create tags
         return a
 
-    def testNegativeIntegers(self):
+    def test_negative_integers_can_be_recorded(self):
         x = -2
         aligned_read = self.makeRead()
         aligned_read.tags = [("XD", int(x))]
         self.assertEqual(aligned_read.opt('XD'), x)
-        # print (aligned_read.tags)
 
-    def testNegativeIntegers2(self):
+    def test_negative_integers_can_be_written_and_read(self):
         x = -2
         r = self.makeRead()
         r.tags = [("XD", x)]
-        outfile = pysam.AlignmentFile(
-            os.path.join(WORKDIR, "test.bam"),
-            "wb",
-            referencenames=("chr1",),
-            referencelengths = (1000,))
-        outfile.write(r)
-        outfile.close()
-        infile = pysam.AlignmentFile("test.bam")
-        r = next(infile)
+        
+        tmpfilename = get_temp_filename(".bam")
+        with pysam.AlignmentFile(
+                tmpfilename,
+                "wb",
+                referencenames=("chr1",),
+                referencelengths = (1000,)) as outf:
+            outf.write(r)
+
+        with pysam.AlignmentFile(tmpfilename) as inf:
+            r = next(inf)
+            
         self.assertEqual(r.tags, [("XD", x)])
-        infile.close()
-        os.unlink(os.path.join(WORKDIR, "test.bam"))
+        os.unlink(tmpfilename)
 
     def testCigarString(self):
         r = self.makeRead()
