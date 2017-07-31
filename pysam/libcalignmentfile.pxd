@@ -80,7 +80,7 @@ cdef class IteratorRow:
     cdef bam1_t * b
     cdef AlignmentFile samfile
     cdef htsFile * htsfile
-    cdef readonly AlignmentHeader header
+    cdef AlignmentHeader header
     cdef int owns_samfile
 
 
@@ -125,7 +125,7 @@ cdef class IteratorColumn:
     cdef bam_pileup1_t * plp
     cdef bam_plp_t pileup_iter
     cdef __iterdata iterdata
-    cdef readonly AlignmentFile samfile
+    cdef AlignmentFile samfile
     cdef Fastafile fastafile
     cdef stepper
     cdef int max_depth
@@ -156,6 +156,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
 cdef class IndexedReads:
     cdef AlignmentFile samfile
     cdef htsFile * htsfile
-    cdef readonly object index
+    cdef object index
     cdef int owns_samfile
-    cdef readonly AlignmentHeader header
+    cdef AlignmentHeader header

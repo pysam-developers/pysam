@@ -488,8 +488,10 @@ cdef inline object getQualitiesInRange(bam1_t *src,
 #####################################################################
 ## factory methods for instantiating extension classes
 cdef class AlignedSegment
-cdef makeAlignedSegment(bam1_t * src, AlignmentHeader header):
+cdef AlignedSegment makeAlignedSegment(bam1_t *src, AlignmentHeader header):
     '''return an AlignedSegment object constructed from `src`'''
+    if header is None:
+        raise ValueError("creating AlignedSegment without header information")
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
@@ -498,8 +500,8 @@ cdef makeAlignedSegment(bam1_t * src, AlignmentHeader header):
 
 
 cdef class PileupColumn
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
-                      int n_pu, AlignmentHeader header):
+cdef PileupColumn makePileupColumn(bam_pileup1_t **plp, int tid, int pos,
+                                   int n_pu, AlignmentHeader header):
     '''return a PileupColumn object constructed from pileup in `plp` and
     setting additional attributes.
 
@@ -514,7 +516,7 @@ cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
     return dest
 
 cdef class PileupRead
-cdef inline makePileupRead(bam_pileup1_t * src, AlignmentHeader header):
+cdef PileupRead makePileupRead(bam_pileup1_t *src, AlignmentHeader header):
     '''return a PileupRead object construted from a bam_pileup1_t * object.'''
     cdef PileupRead dest = PileupRead.__new__(PileupRead)
     dest._alignment = makeAlignedSegment(src.b, header)
@@ -528,7 +530,7 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentHeader header):
     return dest
 
 
-cdef inline uint32_t get_alignment_length(bam1_t * src):
+cdef inline uint32_t get_alignment_length(bam1_t *src):
     cdef int k = 0
     cdef uint32_t l = 0
     if src == NULL:
@@ -697,10 +699,17 @@ cdef class AlignedSegment:
     One issue to look out for is that the sequence should always
     be set *before* the quality scores. Setting the sequence will
     also erase any quality scores that were set previously.
+
+    Parameters
+    ----------
+
+    header -- :class:`~pysam.AlignmentHeader` object to map numerical
+              identifiers to chromosome names. If not given, an empty
+              header is created.
     '''
 
     # Now only called when instances are created from Python
-    def __init__(self):
+    def __init__(self, AlignmentHeader header=None):
         # see bam_init1
         self._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         if self._delegate == NULL:
@@ -728,6 +737,11 @@ cdef class AlignedSegment:
         self.cache_query_sequence = None
         self.cache_query_alignment_sequence = None
 
+        if header is None:
+            self.header = AlignmentHeader()
+        else:
+            self.header = header
+        
     def __dealloc__(self):
         bam_destroy1(self._delegate)
 
@@ -2443,7 +2457,7 @@ cdef class PileupColumn:
             # out of sync.
             for x from 0 <= x < self.n_pu:
                 pileups.append(
-                    makePileupRead(&(self.plp[0][x]),
+                    makePileupRead(&self.plp[0][x],
                                    self.header))
             return pileups
 

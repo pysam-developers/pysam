@@ -747,7 +747,7 @@ class TestIO(unittest.TestCase):
             return header
 
         header = load_bam()
-        self.assertTrue(header != None)
+        self.assertTrue(header)
         self.assertEqual(header.nreferences, 2)
         self.assertEqual(header.references, ("chr1", "chr2"))
 

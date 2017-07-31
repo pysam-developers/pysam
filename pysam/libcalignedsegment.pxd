@@ -79,7 +79,7 @@ cdef class PileupRead:
     cdef uint32_t _is_refskip
 
 # factory methods
-cdef makeAlignedSegment(bam1_t * src, AlignmentHeader header)
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu, AlignmentHeader header)
-cdef makePileupRead(bam_pileup1_t * src, AlignmentHeader header)
+cdef AlignedSegment makeAlignedSegment(bam1_t * src, AlignmentHeader header)
+cdef PileupColumn makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu, AlignmentHeader header)
+cdef PileupRead makePileupRead(bam_pileup1_t * src, AlignmentHeader header)
 cdef uint32_t get_alignment_length(bam1_t * src)

@@ -153,7 +153,7 @@ def build_header_line(fields, record):
 
 cdef AlignmentHeader makeAlignmentHeader(bam_hdr_t *hdr):
     if not hdr:
-        raise ValueError('cannot create AlignmentHeader')
+        raise ValueError('cannot create AlignmentHeader, received NULL pointer')
 
     # check: is AlignmetHeader.__cinit__ called?
     cdef AlignmentHeader header = AlignmentHeader.__new__(AlignmentHeader)
@@ -256,6 +256,8 @@ cdef AlignmentHeader makeAlignmentHeader_from_list(reference_names,
     # create new header
     cdef AlignmentHeader new_header = AlignmentHeader.__new__(AlignmentHeader)
     new_header.ptr = bam_hdr_init()
+    if new_header.ptr is NULL:
+        raise MemoryError("could not create header")
     cdef bam_hdr_t * dest = new_header.ptr
     
     assert len(reference_names) == len(reference_lengths), \
@@ -321,12 +323,12 @@ cdef class AlignmentHeader(object):
     def __init__(self):
         self.ptr = bam_hdr_init()
         if not self.ptr:
+            # ptr is always defined and not NULL for AlignmentHeader
             raise ValueError('cannot create AlignmentHeader')
 
     def __dealloc__(self):
-        if self.ptr:
-            bam_hdr_destroy(self.ptr)
-            self.ptr = NULL
+        bam_hdr_destroy(self.ptr)
+        self.ptr = NULL
 
     def __bool__(self):
         return self.ptr != NULL
@@ -334,33 +336,21 @@ cdef class AlignmentHeader(object):
     def copy(self):
         return makeAlignmentHeader(bam_hdr_dup(self.ptr))
 
-    def clear(self):
-        """clear header.
-
-        Note that this will invalidate all objectst that reference the header.
-        """
-        if self.ptr:
-            bam_hdr_destroy(self.ptr)
-            self.ptr = NULL
-    
     property nreferences:
         """"int with the number of :term:`reference` sequences in the file.
 
         This is a read-only attribute."""
         def __get__(self):
-            if self.ptr:
-                return self.ptr.n_targets
-            else:
-                return 0
+            return self.ptr.n_targets
 
     property references:
         """tuple with the names of :term:`reference` sequences. This is a
         read-only attribute"""
         def __get__(self):
             t = []
-            if self.ptr:
-                for x from 0 <= x < self.ptr.n_targets:
-                    t.append(charptr_to_str(self.ptr.target_name[x]))
+            cdef int x
+            for x in range(self.ptr.n_targets):
+                t.append(charptr_to_str(self.ptr.target_name[x]))
             return tuple(t)
 
     property lengths:
@@ -370,9 +360,9 @@ cdef class AlignmentHeader(object):
         """
         def __get__(self):
             t = []
-            if self.ptr:
-                for x from 0 <= x < self.ptr.n_targets:
-                    t.append(self.ptr.target_len[x])
+            cdef int x
+            for x in range(self.ptr.n_targets):
+                t.append(self.ptr.target_len[x])
             return tuple(t)
     
     def as_dict(self):
@@ -397,70 +387,69 @@ cdef class AlignmentHeader(object):
         """
         result = collections.OrderedDict()
 
-        if self.ptr != NULL:
-            # convert to python string
-            t = self.__str__()
+        # convert to python string
+        t = self.__str__()
 
-            for line in t.split("\n"):
-                if not line.strip(): continue
-                assert line.startswith("@"), \
-                    "header line without '@': '%s'" % line
-                fields = line[1:].split("\t")
-                record = fields[0]
-                assert record in VALID_HEADER_TYPES, \
-                    "header line with invalid type '%s': '%s'" % (record, line)
+        for line in t.split("\n"):
+            if not line.strip(): continue
+            assert line.startswith("@"), \
+                "header line without '@': '%s'" % line
+            fields = line[1:].split("\t")
+            record = fields[0]
+            assert record in VALID_HEADER_TYPES, \
+                "header line with invalid type '%s': '%s'" % (record, line)
 
-                # treat comments
-                if record == "CO":
-                    if record not in result:
-                        result[record] = []
-                    result[record].append("\t".join( fields[1:]))
-                    continue
-                # the following is clumsy as generators do not work?
-                x = {}
+            # treat comments
+            if record == "CO":
+                if record not in result:
+                    result[record] = []
+                result[record].append("\t".join( fields[1:]))
+                continue
+            # the following is clumsy as generators do not work?
+            x = {}
 
-                for idx, field in enumerate(fields[1:]):
-                    if ":" not in field:
-                        raise ValueError("malformatted header: no ':' in field" )
-                    key, value = field.split(":", 1)
-                    if key in ("CL",):
-                        # special treatment for command line
-                        # statements (CL). These might contain
-                        # characters that are non-conformant with
-                        # the valid field separators in the SAM
-                        # header. Thus, in contravention to the
-                        # SAM API, consume the rest of the line.
-                        key, value = "\t".join(fields[idx+1:]).split(":", 1)
-                        x[key] = KNOWN_HEADER_FIELDS[record][key](value)
-                        break
+            for idx, field in enumerate(fields[1:]):
+                if ":" not in field:
+                    raise ValueError("malformatted header: no ':' in field" )
+                key, value = field.split(":", 1)
+                if key in ("CL",):
+                    # special treatment for command line
+                    # statements (CL). These might contain
+                    # characters that are non-conformant with
+                    # the valid field separators in the SAM
+                    # header. Thus, in contravention to the
+                    # SAM API, consume the rest of the line.
+                    key, value = "\t".join(fields[idx+1:]).split(":", 1)
+                    x[key] = KNOWN_HEADER_FIELDS[record][key](value)
+                    break
 
-                    # interpret type of known header record tags, default to str
-                    x[key] = KNOWN_HEADER_FIELDS[record].get(key, str)(value)
+                # interpret type of known header record tags, default to str
+                x[key] = KNOWN_HEADER_FIELDS[record].get(key, str)(value)
 
-                if VALID_HEADER_TYPES[record] == dict:
-                    if record in result:
-                        raise ValueError(
-                            "multiple '%s' lines are not permitted" % record)
+            if VALID_HEADER_TYPES[record] == dict:
+                if record in result:
+                    raise ValueError(
+                        "multiple '%s' lines are not permitted" % record)
 
-                    result[record] = x
-                elif VALID_HEADER_TYPES[record] == list:
-                    if record not in result: result[record] = []
-                    result[record].append(x)
+                result[record] = x
+            elif VALID_HEADER_TYPES[record] == list:
+                if record not in result: result[record] = []
+                result[record].append(x)
 
-            # if there are no SQ lines in the header, add the
-            # reference names from the information in the bam
-            # file.
-            #
-            # Background: c-samtools keeps the textual part of the
-            # header separate from the list of reference names and
-            # lengths. Thus, if a header contains only SQ lines,
-            # the SQ information is not part of the textual header
-            # and thus are missing from the output. See issue 84.
-            if "SQ" not in result:
-                sq = []
-                for ref, length in zip(self.references, self.lengths):
-                    sq.append({'LN': length, 'SN': ref })
-                result["SQ"] = sq
+        # if there are no SQ lines in the header, add the
+        # reference names from the information in the bam
+        # file.
+        #
+        # Background: c-samtools keeps the textual part of the
+        # header separate from the list of reference names and
+        # lengths. Thus, if a header contains only SQ lines,
+        # the SQ information is not part of the textual header
+        # and thus are missing from the output. See issue 84.
+        if "SQ" not in result:
+            sq = []
+            for ref, length in zip(self.references, self.lengths):
+                sq.append({'LN': length, 'SN': ref })
+            result["SQ"] = sq
 
         return result
 
@@ -562,14 +551,16 @@ cdef class AlignmentFile(HTSFile):
             f2 = pysam.AlignmentFile('ex1.sam')
 
     template : AlignmentFile
-        when writing, copy  header frem `template`.
+        when writing, copy header from file `template`.
 
-    header :  dict
+    header :  dict or AlignmentHeader
         when writing, build header from a multi-level dictionary. The
         first level are the four types ('HD', 'SQ', ...). The second
         level are a list of lines, with each line being a list of
         tag-value pairs. The header is constructed first from all the
-        defined fields, followed by user tags in alphabetical order.
+        defined fields, followed by user tags in alphabetical
+        order. Alternatively, an :class:`~pysam.AlignmentHeader`
+        object can be passed directly.
 
     text : string
         when writing, use the string provided as the header
@@ -771,9 +762,14 @@ cdef class AlignmentFile(HTSFile):
 
             # header structure (used for writing)
             if template:
+                # header is copied, though at the moment not strictly
+                # necessary as AlignmentHeader is immutable.
                 self.header = template.header.copy()
             elif header:
-                self.header = makeAlignmentHeader_from_dict(header)
+                if isinstance(header, collections.Mapping):
+                    self.header = makeAlignmentHeader_from_dict(header)
+                else:
+                    self.header = header.copy()
             else:
                 assert reference_names and reference_lengths, \
                     ("either supply options `template`, `header` "
@@ -1647,9 +1643,8 @@ cdef class AlignmentFile(HTSFile):
         else:
             raise StopIteration
 
-    ###########################################################################
-    # methods/properties referencing the header. These are mostly for backwards
-    # compatibility for pysam < 0.12
+    ###########################################
+    # methods/properties referencing the header
     def is_valid_tid(self, int tid):
         """
         return True if the numerical :term:`tid` is valid; False otherwise.
@@ -1766,7 +1761,8 @@ cdef class IteratorRow:
             # better: use seek/tell?
             with nogil:
                 hdr = sam_hdr_read(self.htsfile)
-            assert hdr != NULL
+            if hdr is NULL:
+                raise IOError("unable to read header information")
             self.header = makeAlignmentHeader(hdr)
 
             self.owns_samfile = True
@@ -2539,15 +2535,16 @@ cdef class IndexedReads:
             cfilename = samfile.filename
             with nogil:
                 self.htsfile = hts_open(cfilename, 'r')
-            assert self.htsfile != NULL
+            if self.htsfile == NULL:
+                raise OSError("unable to reopen htsfile")
 
             # need to advance in newly opened file to position after header
             # better: use seek/tell?
             with nogil:
                 hdr = sam_hdr_read(self.htsfile)
-            assert hdr != NULL
+            if hdr == NULL:
+                raise OSError("unable to read header information")
             self.header = makeAlignmentHeader(hdr)
-
             self.owns_samfile = True
         else:
             self.htsfile = self.samfile.htsfile
