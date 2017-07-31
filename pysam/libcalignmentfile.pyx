@@ -281,7 +281,8 @@ cdef class AlignmentFile(HTSFile):
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
     reference_filename=None, filename=None, index_filename=None,
-    filepath_index=None, duplicate_filehandle=True, ignore_truncation=False)
+    filepath_index=None, require_index=False, duplicate_filehandle=True,
+    ignore_truncation=False)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
@@ -393,10 +394,15 @@ cdef class AlignmentFile(HTSFile):
     index_filename : string
         Explicit path to the index file.  Only needed if the index is not
         named in the standard manner, not located in the same directory as
-        the BAM/CRAM file, or is remote.
+        the BAM/CRAM file, or is remote.  An IOError is raised if the index
+        cannot be found or is invalid.
 
     filepath_index : string
         Alias for `index_filename`.
+
+    require_index : bool
+        When reading, require that an index file is present and is valid or
+        raise an IOError.  (default=False)
 
     filename : string
         Alternative to filepath_or_object. Filename of the file
@@ -480,6 +486,7 @@ cdef class AlignmentFile(HTSFile):
               check_sq=True,
               index_filename=None,
               filepath_index=None,
+              require_index=False,
               referencenames=None,
               referencelengths=None,
               duplicate_filehandle=True,
@@ -660,11 +667,14 @@ cdef class AlignmentFile(HTSFile):
                 with nogil:
                     self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
 
-                if not self.index and cindexname:
+                if not self.index and (cindexname or require_index):
                     if errno:
                         raise IOError(errno, force_str(strerror(errno)))
                     else:
                         raise IOError('unable to open index file `%s`' % index_filename)
+
+            elif require_index:
+                raise IOError('unable to open index file')
 
             # save start of data section
             if not self.is_stream:
