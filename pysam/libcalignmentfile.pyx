@@ -802,6 +802,11 @@ cdef class AlignmentFile(HTSFile):
         if mode[0] == 'w':
             # open file for writing
 
+            if not (template or header or reference_names):
+                raise ValueError(
+                    "either supply options `template`, `header` or  both `reference_names` "
+                    "and `reference_lengths` for writing")
+            
             if template:
                 # header is copied, though at the moment not strictly
                 # necessary as AlignmentHeader is immutable.
