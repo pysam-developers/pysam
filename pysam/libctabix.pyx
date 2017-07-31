@@ -1176,6 +1176,7 @@ class tabix_generic_iterator:
     # python version - required for python 2.7
     def next(self):
         return self.__next__()
+    
 
 def tabix_iterator(infile, parser):
     """return an iterator over all entries in a file.

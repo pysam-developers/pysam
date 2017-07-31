@@ -5,8 +5,7 @@ import collections
 import copy
 import array
 
-from TestUtils import checkFieldEqual, BAM_DATADIR, WORKDIR
-
+from TestUtils import checkFieldEqual, BAM_DATADIR
 
 
 class ReadTest(unittest.TestCase):

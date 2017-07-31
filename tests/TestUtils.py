@@ -192,6 +192,13 @@ def check_lines_equal(cls, a, b, sort=False, filter_f=None, msg=None):
 
 def get_temp_filename(suffix=""):
     caller_name = inspect.getouterframes(inspect.currentframe(), 2)[1][3]
+
+    if not os.path.exists(WORKDIR):
+        try:
+            os.makedirs(WORKDIR)
+        except OSError:
+            pass
+    
     f = tempfile.NamedTemporaryFile(
         prefix="tmp_{}_".format(caller_name),
         suffix=suffix,
