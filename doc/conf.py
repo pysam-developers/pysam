@@ -57,7 +57,7 @@ rst_epilog = '''
 .. _samtools: http://samtools.sourceforge.net/
 .. _bcftools: https://samtools.github.io/bcftools/bcftools.html
 .. _htslib: http://www.htslib.org/
-.. _tabix: http://samtools.sourceforge.net/tabix.shtml/
+.. _tabix: http://samtools.sourceforge.net/tabix.shtml
 .. _Galaxy: https://main.g2.bx.psu.edu/
 .. _cython: http://cython.org/
 .. _python: http://python.org/
