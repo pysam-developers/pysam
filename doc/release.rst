@@ -7,6 +7,17 @@ Release 0.12.0
 
 * [#473] A new FastxRecord class that can be instantiated from class and
   modified in-place. Replaces PersistentFastqProxy.
+* [#521] In AligmentFile, Simplify file detection logic and allow remote index files
+  * Removed attempts to guess data and index file names; this is magic left
+    to htslib.
+  * Removed file existence check prior to opening files with htslib
+  * Better error checking after opening files that raise the appropriate
+    error (IOError for when errno is set, ValueError otherwise for backward
+    compatibility).
+  * Report IO errors when loading an index by name.
+  * Allow remote indices (tested using S3 signed URLs).
+  * Document filepath_index and make it an alias for index_filename.
+  * Added a require_index parameter to AlignmentFile
 
 
 Release 0.11.2.2
