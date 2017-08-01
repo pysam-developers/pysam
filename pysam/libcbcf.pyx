@@ -4187,16 +4187,16 @@ cdef class VariantFile(HTSFile):
 
         elif mode.startswith(b'r'):
             # open file for reading
-            if not self._exists():
-                raise IOError('file `{}` not found'.format(filename))
-
             self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
-                raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+                if errno:
+                    raise IOError(errno, 'could not open variant file `{}`: {}'.format(filename, force_str(strerror(errno))))
+                else:
+                    raise ValueError('could not open variant file `{}`'.format(filename))
 
             if self.htsfile.format.format not in (bcf, vcf):
-                raise ValueError("invalid file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+                raise ValueError('invalid file `{}` (mode=`{}`) - is it VCF/BCF format?'.format(filename, mode))
 
             self.check_truncation(ignore_truncation)
 
@@ -4206,7 +4206,7 @@ cdef class VariantFile(HTSFile):
             try:
                 self.header = makeVariantHeader(hdr)
             except ValueError:
-                raise ValueError("file `{}` does not have valid header (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+                raise ValueError('file `{}` does not have valid header (mode=`{}`) - is it VCF/BCF format?'.format(filename, mode))
 
             if isinstance(self.filename, bytes):
                 cfilename = self.filename
@@ -4231,7 +4231,7 @@ cdef class VariantFile(HTSFile):
             if not self.is_stream:
                 self.start_offset = self.tell()
         else:
-            raise ValueError("unknown mode {}".format(mode))
+            raise ValueError('unknown mode {}'.format(mode))
 
     def reset(self):
         """reset file position to beginning of file just after the header."""

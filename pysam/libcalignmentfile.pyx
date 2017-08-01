@@ -280,7 +280,8 @@ cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
-    reference_filename=None, filename=None, duplicate_filehandle=True,
+    reference_filename=None, filename=None, index_filename=None,
+    filepath_index=None, require_index=False, duplicate_filehandle=True,
     ignore_truncation=False)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
@@ -289,10 +290,13 @@ cdef class AlignmentFile(HTSFile):
     opened. If `filepath_or_object` is a python File object, the
     already opened file will be used.
 
-    If the file is opened for reading an index for a BAM file exists
-    (.bai), it will be opened automatically. Without an index random
-    access via :meth:`~pysam.AlignmentFile.fetch` and
-    :meth:`~pysam.AlignmentFile.pileup` is disabled.
+    If the file is opened for reading and an index exists (if file is BAM, a
+    .bai file or if CRAM a .crai file), it will be opened automatically.
+    `index_filename` may be specified explicitly. If the index is not named
+    in the standard manner, not located in the same directory as the
+    BAM/CRAM file, or is remote.  Without an index, random access via
+    :meth:`~pysam.AlignmentFile.fetch` and :meth:`~pysam.AlignmentFile.pileup`
+    is disabled.
 
     For writing, the header of a :term:`SAM` file/:term:`BAM` file can
     be constituted from several sources (see also the samtools format
@@ -387,6 +391,19 @@ cdef class AlignmentFile(HTSFile):
         specified in the header (``UR`` tag), which are normally used to find
         the reference.
 
+    index_filename : string
+        Explicit path to the index file.  Only needed if the index is not
+        named in the standard manner, not located in the same directory as
+        the BAM/CRAM file, or is remote.  An IOError is raised if the index
+        cannot be found or is invalid.
+
+    filepath_index : string
+        Alias for `index_filename`.
+
+    require_index : bool
+        When reading, require that an index file is present and is valid or
+        raise an IOError.  (default=False)
+
     filename : string
         Alternative to filepath_or_object. Filename of the file
         to be opened.
@@ -467,7 +484,9 @@ cdef class AlignmentFile(HTSFile):
               add_sam_header=True,
               check_header=True,
               check_sq=True,
+              index_filename=None,
               filepath_index=None,
+              require_index=False,
               referencenames=None,
               referencelengths=None,
               duplicate_filehandle=True,
@@ -567,6 +586,13 @@ cdef class AlignmentFile(HTSFile):
 
             self.htsfile = self._open_htsfile()
 
+            if self.htsfile == NULL:
+                if errno:
+                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
+                                  force_str(strerror(errno))))
+                else:
+                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
+
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
@@ -581,15 +607,14 @@ cdef class AlignmentFile(HTSFile):
 
         elif mode[0] == "r":
             # open file for reading
-            if not self._exists():
-                raise IOError("file `%s` not found" % self.filename)
-
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
-                raise ValueError(
-                    "could not open file (mode='%s') - "
-                    "is it SAM/BAM format?" % mode)
+                if errno:
+                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
+                                  force_str(strerror(errno))))
+                else:
+                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
 
             if self.htsfile.format.category != sequence_data:
                 raise ValueError("file does not contain alignment data")
@@ -600,26 +625,26 @@ cdef class AlignmentFile(HTSFile):
             if self.is_bam or self.is_cram:
                 with nogil:
                     self.header = sam_hdr_read(self.htsfile)
+
+            # in sam files a header is optional, but requires
+            # reference names and lengths
+            elif reference_names and reference_lengths:
+                self.header = build_header_from_list(
+                    reference_names,
+                    reference_lengths,
+                    add_sq_text=add_sq_text,
+                    text=text)
+            else:
+                with nogil:
+                    self.header = sam_hdr_read(self.htsfile)
+
                 if self.header == NULL:
                     raise ValueError(
-                        "file does not have valid header (mode='%s') "
-                        "- is it BAM format?" % mode )
-            else:
-                # in sam files a header is optional, but requires
-                # reference names and lengths
-                if reference_names and reference_lengths:
-                    self.header = build_header_from_list(
-                        reference_names,
-                        reference_lengths,
-                        add_sq_text=add_sq_text,
-                        text=text)
-                else:
-                    with nogil:
-                        self.header = sam_hdr_read(self.htsfile)
-                    if self.header == NULL:
-                        raise ValueError(
-                            "file does not have valid header (mode='%s'), "
-                            "please provide reference_names and reference_lengths")
+                        "file `{}` does not have valid header, "
+                        "please provide reference_names and reference_lengths".format(force_str(filename)))
+
+            if self.header == NULL:
+                raise ValueError("file `{}` does not have valid header".format(force_str(filename)))
 
             # set filename with reference sequences
             if self.is_cram and reference_filename:
@@ -634,69 +659,30 @@ cdef class AlignmentFile(HTSFile):
                      "is it SAM/BAM format? Consider opening with "
                      "check_sq=False") % mode)
 
-        assert self.htsfile != NULL
+            if self.is_bam or self.is_cram:
+                # open index for remote files
+                # returns NULL if there is no index or index could
+                # not be opened
+                index_filename = index_filename or filepath_index
+                if index_filename:
+                    cindexname = bindex_filename = encode_filename(index_filename)
 
-        # check for index and open if present
-        cdef int format_index = -1
-        if self.is_bam:
-            format_index = HTS_FMT_BAI
-        elif self.is_cram:
-            format_index = HTS_FMT_CRAI
+                if cfilename or cindexname:
+                    with nogil:
+                        self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
 
-        if mode[0] == "r" and (self.is_bam or self.is_cram):
-            # open index for remote files
-            if self.is_remote and not filepath_index:
-                with nogil:
-                    self.index = hts_idx_load(cfilename, format_index)
-                if self.index == NULL:
-                    warnings.warn(
-                        "unable to open remote index for '%s'" % cfilename)
-            else:
-                has_index = True
-                if filepath_index:
-                    if not os.path.exists(filepath_index):
-                        warnings.warn(
-                            "unable to open index at %s" % cfilename)
-                        self.index = NULL
-                        has_index = False
-                elif filename is not None:
-                    if self.is_bam \
-                            and not os.path.exists(filename + b".bai") \
-                            and not os.path.exists(filename[:-4] + b".bai") \
-                            and not os.path.exists(filename + b".csi") \
-                            and not os.path.exists(filename[:-4] + b".csi"):
-                        self.index = NULL
-                        has_index = False
-                    elif self.is_cram \
-                            and not os.path.exists(filename + b".crai") \
-                            and not os.path.exists(filename[:-5] + b".crai"):
-                        self.index = NULL
-                        has_index = False
-                else:
-                    self.index = NULL
-                    has_index = False
+                    if not self.index and (cindexname or require_index):
+                        if errno:
+                            raise IOError(errno, force_str(strerror(errno)))
+                        else:
+                            raise IOError('unable to open index file `%s`' % index_filename)
 
-                if has_index:
-                    # returns NULL if there is no index or index could
-                    # not be opened
-                    if filepath_index:
-                        cindexname = filepath_index = encode_filename(filepath_index)
-                        with nogil:
-                            self.index = sam_index_load2(self.htsfile,
-                                                         cfilename,
-                                                         cindexname)
-                    else:
-                        with nogil:
-                            self.index = sam_index_load(self.htsfile,
-                                                        cfilename)
-                    if self.index == NULL:
-                        raise IOError(
-                            "error while opening index for '%s'" %
-                            filename)
+                elif require_index:
+                    raise IOError('unable to open index file')
 
-            # save start of data section
-            if not self.is_stream:
-                self.start_offset = self.tell()
+                # save start of data section
+                if not self.is_stream:
+                    self.start_offset = self.tell()
 
     def is_valid_tid(self, tid):
         """
@@ -1940,9 +1926,9 @@ cdef class IteratorRowSelection(IteratorRow):
 
     def __next__(self):
         cdef int ret = self.cnext()
-        if (ret >= 0):
+        if ret >= 0:
             return makeAlignedSegment(self.b, self.samfile)
-        elif (ret == -2):
+        elif ret == -2:
             raise IOError('truncated file')
         else:
             raise StopIteration
