@@ -1159,7 +1159,13 @@ cdef inline bcf_sync_end(VariantRecord record):
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf_info_t *info
     cdef int end_id = bcf_header_get_info_id(record.header.ptr, b'END')
-    cdef int ref_len = len(record.ref)
+    cdef int ref_len 
+
+    # allow missing ref when instantiating a new record
+    if record.ref is not None:
+        ref_len = len(record.ref)
+    else:
+        ref_len = 0
 
     # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
     if not record.ptr.n_allele or record.ptr.rlen == ref_len:
