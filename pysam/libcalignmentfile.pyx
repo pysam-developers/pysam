@@ -79,7 +79,8 @@ cimport cython
 IndexStats = collections.namedtuple("IndexStats",
                                     ("contig",
                                      "mapped",
-                                     "unmapped"))
+                                     "unmapped",
+                                     "total"))
 
 ########################################################
 ## global variables
@@ -1461,8 +1462,7 @@ cdef class AlignmentFile(HTSFile):
         Returns
         -------
         list : a list of records for each chromosome. Each record has the attributes 'contig',
-               'mapped' and 'unmapped'.
-
+               'mapped', 'unmapped' and 'total'.
         """
         
         self.check_index()
@@ -1477,7 +1477,8 @@ cdef class AlignmentFile(HTSFile):
                 IndexStats._make((
                     self.get_reference_name(tid),
                     mapped,
-                    unmapped)))
+                    unmapped,
+                    mapped + unmapped)))
                 
         return results
 

@@ -2610,7 +2610,7 @@ class TestMappedUnmapped(unittest.TestCase):
                 cc = [c for c in counts if c.contig == contig][0]
                 self.assertEqual(cc.mapped, mapped_flag)
                 self.assertEqual(cc.unmapped, unmapped_flag)
-
+                self.assertEqual(cc.total, mapped_flag + unmapped_flag)
 
 class TestSamtoolsProxy(unittest.TestCase):
 
