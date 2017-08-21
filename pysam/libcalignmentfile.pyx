@@ -75,6 +75,13 @@ else:
 
 cimport cython
 
+
+IndexStats = collections.namedtuple("IndexStats",
+                                    ("contig",
+                                     "mapped",
+                                     "unmapped",
+                                     "total"))
+
 ########################################################
 ## global variables
 # maximum genomic coordinace
@@ -1433,6 +1440,33 @@ cdef class AlignmentFile(HTSFile):
             with nogil:
                 n = hts_idx_get_n_no_coor(self.index)
             return n
+
+    def get_index_statistics(self):
+        """return statistics about mapped/unmapped reads per chromosome as
+        they are stored in the index.
+
+        Returns
+        -------
+        list : a list of records for each chromosome. Each record has the attributes 'contig',
+               'mapped', 'unmapped' and 'total'.
+        """
+        
+        self.check_index()
+        cdef int tid
+        cdef uint64_t mapped, unmapped
+        results = []
+        # TODO: use header
+        for tid from 0 <= tid < self.nreferences:
+            with nogil:
+                hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
+            results.append(
+                IndexStats._make((
+                    self.get_reference_name(tid),
+                    mapped,
+                    unmapped,
+                    mapped + unmapped)))
+                
+        return results
 
     property text:
         '''string with the full contents of the :term:`sam file` header as a
