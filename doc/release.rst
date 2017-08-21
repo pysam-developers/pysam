@@ -5,6 +5,9 @@ Release notes
 Release 0.12.0
 ==============
 
+This release wraps htslib/samtools/bcftools versions 1.5.0 and
+contains a series of bugfixes.
+
 * [#473] A new FastxRecord class that can be instantiated from class and
   modified in-place. Replaces PersistentFastqProxy.
 * [#521] In AligmentFile, Simplify file detection logic and allow remote index files
@@ -18,7 +21,37 @@ Release 0.12.0
   * Allow remote indices (tested using S3 signed URLs).
   * Document filepath_index and make it an alias for index_filename.
   * Added a require_index parameter to AlignmentFile
+* [#526] handle unset ref when creating new records
+* [#513] fix bcf_translate to skip deleted FORMAT fields to avoid
+  segfaults
+* [#516] expose IO errors via IOError exceptions
+* [#487] add tabix line_skip, remove 'pileup' preset
+* add FastxRecord, replaces PersistentFastqProxy (still present for
+  backwards compatibility)
+* [#496] upgrade to htslib/samtools/bcftools versions 1.5
+* add start/stop to AlignmentFile.fetch() to be consistent with
+  VariantFile.fetch(). "end" is kept for backwards compatibility.
 
+Upcoming changes:
+
+In the next release we are plannig to separate the header information
+from AlignmentFile into a separate class AlignmentHeader. This layout
+is similar to VariantFile/VariantHeader. With this change we will
+ensure that an AlignedSegment record will be linked to a header so
+that chromosome names can be automatically translated from the numeric
+representation. As a consequence, the way new AlignedSegment records
+are created will need to change as the constructor requires a header::
+
+    header = pysam.AlignmentHeader(
+        reference_names=["chr1", "chr2"],
+        reference_lengths=[1000, 1000])
+        
+    read = pysam.AlignedSegment(header)
+
+This will affect all code that instantiates AlignedSegment objects
+directly. We have not yet merged to allow users to provide feed-back.
+The pull-request is here: https://github.com/pysam-developers/pysam/pull/518
+Please comment on github.
 
 Release 0.11.2.2
 ================
@@ -29,13 +62,11 @@ Bugfix release to address two issues:
   more tests have been added.
 * [#479] Correct VariantRecord edge cases described in issue
 
-
 Release 0.11.2.1
 ================
 
 Release to fix release tar-ball containing 0.11.1 pre-compiled
 C-files.
-
 
 Release 0.11.2
 ==============
@@ -123,6 +154,17 @@ and includes several bugfixes:
 * Added VariantRecordFilter.add() method to allow setting new VariantRecord filters
 * Preliminary (potentially unsafe) support for removing and altering header metadata
 * Many minor fixes and improvements to VariantFile and related objects
+
+Please note that all internal cython extensions now have a lib prefix
+to facilitate linking against pysam extension modules. Any user cython
+extensions using cimport to import pysam definitions will need
+changes, for example::
+
+   cimport pysam.csamtools
+
+will become::
+
+   cimport pysam.libcamtools
 
 Release 0.9.1
 =============
@@ -403,9 +445,6 @@ Backwards incompatible changes
   needs to be substituted with AlignedSegment. 
 * fancy_str() has been removed
 * qual, qqual now return arrays
-
-
-
 
 Release 0.8.0
 =============
