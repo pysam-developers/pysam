@@ -62,7 +62,8 @@ rst_epilog = '''
 .. _cython: http://cython.org/
 .. _python: http://python.org/
 .. _pyximport: http://www.prescod.net/pyximport/
-
+.. _conda: https://conda.io/docs/
+.. _bioconda: https://bioconda.github.io/
 '''
 
 autosummary_generate = True

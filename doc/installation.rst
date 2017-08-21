@@ -4,12 +4,32 @@
 Installing pysam
 ================
 
+Pysam can be installed through conda_, pypi_ and from the repository.
+The recommended way to install pysam is through conda/bioconda.
+
+Conda installation
+==================
+
+To install pysam in your current conda_ environment, type::
+
+   conda config --add channels r
+   conda config --add channels bioconda
+   conda install pysam
+
+This will install pysam from the bioconda_ channel and automatically
+makes sure that dependencies are installed. Also, compilation flags
+will be set automatically, which will potentially save a lot of
+trouble on OS X.
+
+Pypi installation
+=================
+
 Pysam provides a python interface to the functionality contained
 within the htslib_ C library. There are two ways that these two
 can be combined, ``builtin`` and ``external``.
 
 Builtin
-=======
+-------
 
 The typical installation will be through pypi_::
 
@@ -34,7 +54,7 @@ For example::
   pip install pysam
 
 External
-========
+--------
 
 pysam can be combined with an externally installed htslib_
 library. This is a good way to avoid duplication of libraries. To link
@@ -49,12 +69,17 @@ Note that the location of the file :file:`libhts.so` needs to be known
 to the linker once you run pysam, for example by setting the
 environment-varirable `LD_LIBRARY_PATH`.
 
-cython
-======
+Installation from repository
+============================
 
 pysam depends on cython_ to provide the connectivity to the htslib_ C
 library. The installation of the source tarball (:file:`.tar.gz`)
-python 2.7 contains pre-built C-files and cython needs not be present
-during installation. However, when installing the source tarball on
-python 3 or building from the repository, these pre-built C-files are
-not present and cython needs to be installed beforehand.
+contains pre-built C-files and cython needs not be present
+during installation. However, when installing from the repository,
+cython needs to be installed beforehand.
+
+To install from repository, type::
+
+    python setup.py install
+
+For compilation options, see the section on Pypi installation above.
