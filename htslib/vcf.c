@@ -2943,12 +2943,13 @@ int bcf_translate(const bcf_hdr_t *dst_hdr, bcf_hdr_t *src_hdr, bcf1_t *line)
         else    // must realloc
         {
             bcf_info_t *info = &line->d.info[i];
-            assert( !info->vptr_free );
             kstring_t str = {0,0,0};
             bcf_enc_int1(&str, dst_id);
             bcf_enc_size(&str, info->len,info->type);
-            info->vptr_off = str.l;
+            uint32_t vptr_off = str.l;
             kputsn((char*)info->vptr, info->vptr_len, &str);
+            if( info->vptr_free ) free(info->vptr - info->vptr_off);
+            info->vptr_off = vptr_off;
             info->vptr = (uint8_t*)str.s + info->vptr_off;
             info->vptr_free = 1;
             line->d.shared_dirty |= BCF1_DIRTY_INF;
@@ -2962,7 +2963,7 @@ int bcf_translate(const bcf_hdr_t *dst_hdr, bcf_hdr_t *src_hdr, bcf1_t *line)
         int dst_id = src_hdr->transl[BCF_DT_ID][src_id];
         if ( dst_id<0 ) continue;
         line->d.fmt[i].id = dst_id;
-        if ( !line->d.fmt[i].p ) continue;  // skip deleted
+        if( !line->d.fmt[i].p ) continue;  // skip deleted
         int src_size = src_id>>7 ? ( src_id>>15 ? BCF_BT_INT32 : BCF_BT_INT16) : BCF_BT_INT8;
         int dst_size = dst_id>>7 ? ( dst_id>>15 ? BCF_BT_INT32 : BCF_BT_INT16) : BCF_BT_INT8;
         if ( src_size==dst_size )   // can overwrite
@@ -2975,12 +2976,13 @@ int bcf_translate(const bcf_hdr_t *dst_hdr, bcf_hdr_t *src_hdr, bcf1_t *line)
         else    // must realloc
         {
             bcf_fmt_t *fmt = &line->d.fmt[i];
-            assert( !fmt->p_free );
             kstring_t str = {0,0,0};
             bcf_enc_int1(&str, dst_id);
             bcf_enc_size(&str, fmt->n, fmt->type);
-            fmt->p_off = str.l;
+            uint32_t p_off = str.l;
             kputsn((char*)fmt->p, fmt->p_len, &str);
+            if( fmt->p_free ) free(fmt->p - fmt->p_off);
+            fmt->p_off = p_off;
             fmt->p = (uint8_t*)str.s + fmt->p_off;
             fmt->p_free = 1;
             line->d.indiv_dirty = 1;
