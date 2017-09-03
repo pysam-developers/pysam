@@ -10,6 +10,7 @@ include KNOWN_BUGS
 include THANKS
 include cy_build.py
 include requirements.txt
+exclude bcftools/config.h
 include pysam/libc*.pxd
 include pysam/libc*.pyx
 include pysam/libc*.c
