@@ -134,7 +134,12 @@ package_list = ['pysam',
 package_dirs = {'pysam': 'pysam',
                 'pysam.include.samtools': 'samtools',
                 'pysam.include.bcftools': 'bcftools'}
-config_headers = ["samtools/config.h"]
+
+# list of config files that will be automatically generated should
+# they not already exist or be created by configure scripts in the
+# subpackages.
+config_headers = ["samtools/config.h",
+                  "bcftools/config.h"]
 
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 

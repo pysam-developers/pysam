@@ -1,5 +1,5 @@
 # pysam versioning information
-__version__ = "0.12"
+__version__ = "0.12.0.1"
 
 # TODO: upgrade number
 __samtools_version__ = "1.5"

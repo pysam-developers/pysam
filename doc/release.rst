@@ -2,6 +2,12 @@
 Release notes
 =============
 
+Release 0.12.0.1
+================
+
+Bugfix release to solve compilation issue due to missinge
+bcftools/config.h file.
+
 Release 0.12.0
 ==============
 
@@ -31,6 +37,7 @@ contains a series of bugfixes.
 * [#496] upgrade to htslib/samtools/bcftools versions 1.5
 * add start/stop to AlignmentFile.fetch() to be consistent with
   VariantFile.fetch(). "end" is kept for backwards compatibility.
+* [#512] add get_index_statistics() method to AlignmentFile.
 
 Upcoming changes:
 
