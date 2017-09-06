@@ -15,12 +15,20 @@ include pysam/libc*.pyx
 include pysam/libc*.c
 include pysam/*.c
 include pysam/*.h
+
+# samtools
 include samtools/configure
 include samtools/config.mk.in
 include samtools/config.h.in
 include samtools/*.h
 exclude samtools/config.h
 include samtools/*/*.h
+
+# bcftools
+include bcftools/*.h
+exclude bcftools/config.h
+
+# htslib
 include htslib/*.c
 include htslib/*.h
 exclude htslib/config.h

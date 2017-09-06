@@ -85,6 +85,8 @@ echo "checking for presence of config.h files in tar-ball"
 tar -tvzf dist/pysam-*.tar.gz | grep "config.h$"
 
 if [ $? != 1 ]; then
+    echo "ERROR: found config.h in tar-ball"
+    tar -tvzf dist/pysam-*.tar.gz | grep "config.h%"
     exit 1
 fi
 
