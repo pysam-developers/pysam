@@ -364,6 +364,8 @@ else:
 
 define_macros = []
 
+samtools_include_dirs = [os.path.abspath("samtools")]
+
 chtslib = Extension(
     "pysam.libchtslib",
     [source_pattern % "htslib",
@@ -390,7 +392,7 @@ csamfile = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
+    include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -409,7 +411,7 @@ calignmentfile = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "samtools"] + include_os + htslib_include_dirs,
+    include_dirs=["pysam"] + samtools_include_dirs + include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -428,7 +430,7 @@ calignedsegment = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "samtools", "."] + include_os + htslib_include_dirs,
+    include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
     extra_compile_args=extra_compile_args,
@@ -472,7 +474,7 @@ csamtools = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["samtools", "pysam", "."] +
+    include_dirs=["pysam", "."] + samtools_include_dirs +
     include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
@@ -487,7 +489,7 @@ cbcftools = Extension(
     htslib_sources +
     os_c_files,
     library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["bcftools", "pysam", "."] +
+    include_dirs=["bcftools", "pysam", "."] + samtools_include_dirs +
     include_os + htslib_include_dirs,
     libraries=external_htslib_libraries + internal_htslib_libraries,
     language="c",
