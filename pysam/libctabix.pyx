@@ -844,7 +844,6 @@ def tabix_compress(filename_in,
 
 
 def tabix_index(filename, 
-                index=None,
                 force=False,
                 seq_col=None, 
                 start_col=None, 
@@ -854,6 +853,7 @@ def tabix_index(filename,
                 int line_skip=0,
                 zerobased=False,
                 int min_shift=-1,
+                index=None,
                 ):
     '''index tab-separated *filename* using tabix.
 
@@ -888,6 +888,9 @@ def tabix_index(filename,
     *min-shift* sets the minimal interval size to 1<<INT; 0 for the
     old tabix index. The default of -1 is changed inside htslib to 
     the old tabix default of 0.
+
+    *index* controls the filename which should be used for creating the index.
+    If not set, the default is to append ``.tbi`` to *filename*.
 
     returns the filename of the compressed data
 
