@@ -71,7 +71,7 @@ cimport pysam.libctabixproxies as ctabixproxies
 
 from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
-    tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
+    tbx_index_build2, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, hisremote, region_list, \
     TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC
@@ -844,6 +844,7 @@ def tabix_compress(filename_in,
 
 
 def tabix_index(filename, 
+                index=None,
                 force=False,
                 seq_col=None, 
                 start_col=None, 
@@ -905,9 +906,11 @@ def tabix_index(filename,
         os.unlink( filename )
         filename += ".gz"
 
-    if not force and os.path.exists(filename + ".tbi"):
+    index = index or filename + ".tbi"
+
+    if not force and os.path.exists(index):
         raise IOError(
-            "Filename '%s.tbi' already exists, use *force* to overwrite")
+            "Filename '%s' already exists, use *force* to overwrite" % index)
 
     # columns (1-based):
     #   preset-code, contig, start, end, metachar for
@@ -949,9 +952,11 @@ def tabix_index(filename,
 
 
     fn = encode_filename(filename)
+    fn_index = encode_filename(index)
     cdef char *cfn = fn
+    cdef char *fnidx = fn_index
     with nogil:
-        tbx_index_build(cfn, min_shift, &conf)
+        tbx_index_build2(cfn, fnidx, min_shift, &conf)
     
     return filename
 
