@@ -20,7 +20,7 @@ def check_import(statement):
             raise
 
 
-def check_tests_pass(statement):
+def check_pass(statement):
     try:
         output = subprocess.check_output(
             statement, stderr=subprocess.STDOUT, shell=True)
@@ -55,7 +55,7 @@ class TestLinkWithRpath(TestLinking):
     package_name = "link_with_rpath"
     
     def test_package_tests_pass(self):
-        self.assertTrue(check_tests_pass(
+        self.assertTrue(check_pass(
             "cd {} && python test_module.py".format(os.path.join(self.workdir, "tests"))))
 
 
@@ -79,7 +79,7 @@ class TestLinkWithoutRpath(TestLinking):
         pysam_libdirs, pysam_libs = zip(*[os.path.split(x) for x in pysam_libraries])
         pysam_libdir = pysam_libdirs[0]
 
-        self.assertTrue(check_tests_pass(
+        self.assertTrue(check_pass(
             "export LD_LIBRARY_PATH={}:$PATH && cd {} && python test_module.py".format(
                 pysam_libdir,
                 os.path.join(self.workdir, "tests"))))
