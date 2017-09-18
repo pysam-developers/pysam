@@ -23,6 +23,7 @@ LINKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "linker_
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
+
 if IS_PYTHON3:
     from itertools import zip_longest
     from urllib.request import urlopen
