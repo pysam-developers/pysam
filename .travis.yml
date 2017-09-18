@@ -11,6 +11,8 @@ env:
     - CONDA_PY=3.4
     - CONDA_PY=3.5
     - CONDA_PY=3.6
+  global:
+    - PYSAM_LINKING_TEST=1
 
 addons:
   apt:

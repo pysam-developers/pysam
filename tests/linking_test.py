@@ -31,6 +31,9 @@ def check_tests_pass(statement):
     return True
 
 
+@unittest.skipUnless(
+    os.environ.get("PYSAM_LINKING_TESTS", None),
+    "enable linking tests by setting PYSAM_LINKING_TESTS environment variable")
 class TestLinking(unittest.TestCase):
 
     package_name = "link_with_rpath"
@@ -43,6 +46,10 @@ class TestLinking(unittest.TestCase):
             "cd {} && rm -rf build && python setup.py install".format(self.workdir),
                 shell=True)
 
+
+@unittest.skipUnless(
+    os.environ.get("PYSAM_LINKING_TESTS", None),
+    "enable linking tests by setting PYSAM_LINKING_TESTS environment variable")
 class TestLinkWithRpath(TestLinking):
 
     package_name = "link_with_rpath"
@@ -52,6 +59,9 @@ class TestLinkWithRpath(TestLinking):
             "cd {} && python test_module.py".format(os.path.join(self.workdir, "tests"))))
 
 
+@unittest.skipUnless(
+    os.environ.get("PYSAM_LINKING_TESTS", None),
+    "enable linking tests by setting PYSAM_LINKING_TESTS environment variable")
 class TestLinkWithoutRpath(TestLinking):
 
     package_name = "link_without_rpath"
