@@ -53,6 +53,7 @@
 # DEALINGS IN THE SOFTWARE.
 #
 ###############################################################################
+import binascii
 import os
 import sys
 
@@ -71,7 +72,7 @@ cimport pysam.libctabixproxies as ctabixproxies
 
 from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
-    tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
+    tbx_index_build2, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, hisremote, region_list, \
     TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC
@@ -843,16 +844,25 @@ def tabix_compress(filename_in,
             raise IOError("error %i when closing file %s" % (r, filename_in))
 
 
-def tabix_index(filename, 
+def is_gzip_file(filename):
+    gzip_magic_hex = b'1f8b'
+    fd = os.open(filename, os.O_RDONLY)
+    header = os.read(fd, 2)
+    return header == binascii.a2b_hex(gzip_magic_hex)
+
+
+def tabix_index(filename,
                 force=False,
-                seq_col=None, 
-                start_col=None, 
+                seq_col=None,
+                start_col=None,
                 end_col=None,
                 preset=None,
                 meta_char="#",
                 int line_skip=0,
                 zerobased=False,
                 int min_shift=-1,
+                index=None,
+                keep_original=False,
                 ):
     '''index tab-separated *filename* using tabix.
 
@@ -876,20 +886,22 @@ def tabix_index(filename,
     
     Lines beginning with *meta_char* and the first *line_skip* lines
     will be skipped.
-    
-    If *filename* does not end in ".gz", it will be automatically
-    compressed. The original file will be removed and only the
-    compressed file will be retained.
 
-    If *filename* ends in *gz*, the file is assumed to be already
-    compressed with bgzf.
+    If *filename* is not detected as a gzip file it will be automatically
+    compressed. The original file will be removed and only the compressed
+    file will be retained.
 
     *min-shift* sets the minimal interval size to 1<<INT; 0 for the
     old tabix index. The default of -1 is changed inside htslib to 
     the old tabix default of 0.
 
-    returns the filename of the compressed data
+    *index* controls the filename which should be used for creating the index.
+    If not set, the default is to append ``.tbi`` to *filename*.
 
+    When automatically compressing files, if *keep_original* is set the
+    uncompressed file will not be deleted.
+
+    returns the filename of the compressed data
     '''
     
     if not os.path.exists(filename):
@@ -900,14 +912,17 @@ def tabix_index(filename,
         raise ValueError(
             "neither preset nor seq_col,start_col and end_col given")
 
-    if not filename.endswith(".gz"): 
+    if not is_gzip_file(filename):
         tabix_compress(filename, filename + ".gz", force=force)
-        os.unlink( filename )
+        if not keep_original:
+            os.unlink( filename )
         filename += ".gz"
 
-    if not force and os.path.exists(filename + ".tbi"):
+    index = index or filename + ".tbi"
+
+    if not force and os.path.exists(index):
         raise IOError(
-            "Filename '%s.tbi' already exists, use *force* to overwrite")
+            "Filename '%s' already exists, use *force* to overwrite" % index)
 
     # columns (1-based):
     #   preset-code, contig, start, end, metachar for
@@ -949,9 +964,11 @@ def tabix_index(filename,
 
 
     fn = encode_filename(filename)
+    fn_index = encode_filename(index)
     cdef char *cfn = fn
+    cdef char *fnidx = fn_index
     with nogil:
-        tbx_index_build(cfn, min_shift, &conf)
+        tbx_index_build2(cfn, fnidx, min_shift, &conf)
     
     return filename
 
