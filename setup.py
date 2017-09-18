@@ -349,6 +349,7 @@ if platform.system() == 'Windows':
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
     extra_compile_args = []
+    define_macros = []
 else:
     include_os = []
     os_c_files = []
@@ -361,204 +362,142 @@ else:
         "-Wno-strict-prototypes",
         "-Wno-sign-compare",
         "-Wno-error=declaration-after-statement"]
+    define_macros = []
 
-define_macros = []
+common_options = dict(
+    language="c",
+    extra_compile_args=extra_compile_args,
+    define_macros=define_macros)
 
+# for out-of-tree compilation, use absolute paths
 samtools_include_dirs = [os.path.abspath("samtools")]
 
-chtslib = Extension(
-    "pysam.libchtslib",
-    [source_pattern % "htslib",
-     "pysam/htslib_util.c"] +
-    shared_htslib_sources +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
+# Note: samfile/alignmentfile requires functions defined in bam_md.c
+# for __advance_samtools method.  Selected ones have been copied into
+# samfile_utils.c Needs to be devolved somehow.
 
-# samfile requires functions defined in bam_md.c
-# for __advance_samtools method.
-# Selected ones have been copied into samfile_utils.c
-# Needs to be devolved somehow.
-csamfile = Extension(
-    "pysam.libcsamfile",
-    [source_pattern % "samfile",
-     "pysam/htslib_util.c",
-     "pysam/samfile_util.c"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
+modules = [
+    dict(name="pysam.libchtslib",
+         sources=[source_pattern % "htslib",
+                  "pysam/htslib_util.c"] +
+         shared_htslib_sources +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries),
+    dict(name="pysam.libcsamfile",
+         sources=[source_pattern % "samfile",
+                  "pysam/htslib_util.c",
+                  "pysam/samfile_util.c"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcalignmentfile",
+         sources=[source_pattern % "alignmentfile",
+                  "pysam/htslib_util.c",
+                  "pysam/samfile_util.c"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["pysam"] + samtools_include_dirs + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcalignedsegment",
+          sources=[source_pattern % "alignedsegment",
+                   "pysam/htslib_util.c",
+                   "pysam/samfile_util.c"] +
+          htslib_sources +
+          os_c_files,
+          library_dirs=htslib_library_dirs,
+          include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
+          libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libctabix",
+         sources=[source_pattern % "tabix",
+                  "pysam/tabix_util.c"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=["pysam"] + htslib_library_dirs,
+         include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcutils",
+         sources=[source_pattern % "utils", "pysam/pysam_util.c"] +
+             htslib_sources +
+         os_c_files,
+         library_dirs=["pysam"] + htslib_library_dirs,
+         include_dirs=["pysam", "."] +
+         include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries + internal_tools_libraries),
+    dict(name="pysam.libcsamtools",
+         sources=[source_pattern % "samtools"] +
+         glob.glob(os.path.join("samtools", "*.pysam.c")) +
+         htslib_sources +
+         os_c_files,
+         library_dirs=["pysam"] + htslib_library_dirs,
+         include_dirs=["pysam", "."] + samtools_include_dirs +
+         include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcbcftools",
+         sources=[source_pattern % "bcftools"] +
+         glob.glob(os.path.join("bcftools", "*.pysam.c")) +
+         htslib_sources +
+         os_c_files,
+         library_dirs=["pysam"] + htslib_library_dirs,
+         include_dirs=["bcftools", "pysam", "."] + samtools_include_dirs +
+         include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcfaidx",
+         sources=[source_pattern % "faidx"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=["pysam"] + htslib_library_dirs,
+         include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libctabixproxies",
+         sources=[source_pattern % "tabixproxies"] +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=include_os,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcvcf",
+         sources=[source_pattern % "vcf"] +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcbcf",
+         sources=[source_pattern % "bcf"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcbgzf",
+         sources=[source_pattern % "bgzf"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries)
+]
 
-# alignmentfile requires functions defined in bam_md.c
-# for __advance_samtools method.
-# Selected ones have been copied into samfile_utils.c
-# Needs to be devolved somehow.
-calignmentfile = Extension(
-    "pysam.libcalignmentfile",
-    [source_pattern % "alignmentfile",
-     "pysam/htslib_util.c",
-     "pysam/samfile_util.c"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["pysam"] + samtools_include_dirs + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-# alignmentfile requires functions defined in bam_md.c
-# for __advance_samtools method.
-# Selected ones have been copied into samfile_utils.c
-# Needs to be devolved somehow.
-calignedsegment = Extension(
-    "pysam.libcalignedsegment",
-    [source_pattern % "alignedsegment",
-     "pysam/htslib_util.c",
-     "pysam/samfile_util.c"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-ctabix = Extension(
-    "pysam.libctabix",
-    [source_pattern % "tabix",
-     "pysam/tabix_util.c"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
+# add common options (in python >3.5, could use n = {**a, **b}
+for module in modules:
+    module.update(**common_options)
 
 
-
-cutils = Extension(
-    "pysam.libcutils",
-    [source_pattern % "utils", "pysam/pysam_util.c"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["pysam", "."] +
-    include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries + internal_tools_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-csamtools = Extension(
-    "pysam.libcsamtools",
-    [source_pattern % "samtools"] +
-    glob.glob(os.path.join("samtools", "*.pysam.c")) +
-    htslib_sources +
-    os_c_files,
-    library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["pysam", "."] + samtools_include_dirs +
-    include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-cbcftools = Extension(
-    "pysam.libcbcftools",
-    [source_pattern % "bcftools"] +
-    glob.glob(os.path.join("bcftools", "*.pysam.c")) +
-    htslib_sources +
-    os_c_files,
-    library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["bcftools", "pysam", "."] + samtools_include_dirs +
-    include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-cfaidx = Extension(
-    "pysam.libcfaidx",
-    [source_pattern % "faidx"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=["pysam"] + htslib_library_dirs,
-    include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-ctabixproxies = Extension(
-    "pysam.libctabixproxies",
-    [source_pattern % "tabixproxies"] +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=include_os,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-cvcf = Extension(
-    "pysam.libcvcf",
-    [source_pattern % "vcf"] +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-cbcf = Extension(
-    "pysam.libcbcf",
-    [source_pattern % "bcf"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
-
-cbgzf = Extension(
-    "pysam.libcbgzf",
-    [source_pattern % "bgzf"] +
-    htslib_sources +
-    os_c_files,
-    library_dirs=htslib_library_dirs,
-    include_dirs=["htslib", "."] + include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
-    language="c",
-    extra_compile_args=extra_compile_args,
-    define_macros=define_macros
-)
+classifiers = """
+Development Status :: 4 - Beta
+Intended Audience :: Science/Research
+Intended Audience :: Developers
+License :: OSI Approved
+Programming Language :: Python
+Topic :: Software Development
+Topic :: Scientific/Engineering
+Operating System :: POSIX
+Operating System :: Unix
+Operating System :: MacOS
+"""
 
 metadata = {
     'name': "pysam",
@@ -568,27 +507,16 @@ metadata = {
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",
     'license': "MIT",
-    'platforms': "ALL",
+    'platforms': ["POSIX", "UNIX", "MacOS"],
+    'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
     'requires': ['cython (>=0.21)'],
-    'ext_modules': [chtslib,
-                    csamfile,
-                    calignmentfile,
-                    calignedsegment,
-                    ctabix,
-                    ctabixproxies,
-                    cvcf,
-                    cbcf,
-                    cbgzf,
-                    cfaidx,
-                    csamtools,
-                    cbcftools,
-                    cutils],
+    'ext_modules': [Extension(**opts) for opts in modules],
     'cmdclass': cmdclass,
     'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h'], },
-    # do not pack in order to permit linking to csamtools.so
+    # do not pack in order to permit linking to shared libraries
     'zip_safe': False,
     'use_2to3': True,
 }
