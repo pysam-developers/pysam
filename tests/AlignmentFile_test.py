@@ -2132,7 +2132,7 @@ class TestPileup(unittest.TestCase):
     def setUp(self):
 
         self.samfile = pysam.AlignmentFile(self.samfilename)
-        self.fastafile = pysam.Fastafile(self.fastafilename)
+        self.fastafile = pysam.FastaFile(self.fastafilename)
 
     def tearDown(self):
         self.samfile.close()
@@ -2173,7 +2173,8 @@ class TestPileup(unittest.TestCase):
         self.checkEqual(refs, iterator)
 
 
-class TestCountCoverage(unittest.TestCase):
+class TestPileupFastafile(TestPileup):
+    '''test pileup functionality - backwards compatibility'''
 
     samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
     fastafilename = os.path.join(BAM_DATADIR, "ex1.fa")
@@ -2182,6 +2183,17 @@ class TestCountCoverage(unittest.TestCase):
 
         self.samfile = pysam.AlignmentFile(self.samfilename)
         self.fastafile = pysam.Fastafile(self.fastafilename)
+
+
+class TestCountCoverage(unittest.TestCase):
+
+    samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
+    fastafilename = os.path.join(BAM_DATADIR, "ex1.fa")
+
+    def setUp(self):
+
+        self.samfile = pysam.AlignmentFile(self.samfilename)
+        self.fastafile = pysam.FastaFile(self.fastafilename)
 
         samfile = pysam.AlignmentFile(
             "tests/test_count_coverage_read_all.bam", 'wb',

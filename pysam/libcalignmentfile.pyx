@@ -2149,7 +2149,7 @@ cdef class IteratorColumn:
         def __get__(self):
             return self.iterdata.seq_len
 
-    def addReference(self, Fastafile fastafile):
+    def addReference(self, FastaFile fastafile):
        '''
        add reference sequences in `fastafile` to iterator.'''
        self.fastafile = fastafile
