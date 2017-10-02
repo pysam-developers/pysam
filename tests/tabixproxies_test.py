@@ -145,7 +145,7 @@ class TestGTF(TestParser):
             self.assertEqual("\t".join(map(str, c)),
                              str(r))
 
-    def testSetting(self):
+    def test_setting_fields(self):
 
         r = self.tabix.fetch(parser=self.parser()).next()
 
@@ -166,6 +166,14 @@ class TestGTF(TestParser):
         self.assertTrue("gene_id \"0001\"" in sr)
         self.assertTrue("transcript_id \"0002\"" in sr)
 
+    def test_setAttribute_makes_changes(self):
+
+        r = self.tabix.fetch(parser=self.parser()).next()
+        r.setAttribute("transcript_id", "abcd")
+        sr = str(r)
+        self.assertEqual(r.transcript_id, "abcd")
+        self.assertTrue("transcript_id \"abcd\"" in sr)
+        
     def test_added_attribute_is_output(self):
         r = self.tabix.fetch(parser=self.parser()).next()
 
@@ -311,7 +319,7 @@ class TestGFF3(TestGTF):
                              str(r))
             self.assertTrue(r.ID.startswith("MI00"))
 
-    def testSetting(self):
+    def test_setting_fields(self):
 
         for r in self.tabix.fetch(parser=self.parser()):
             r.contig = r.contig + "_test_contig"          
@@ -328,7 +336,15 @@ class TestGFF3(TestGTF):
             self.assertTrue("test_source" in sr)
             self.assertTrue("test_feature" in sr)
             self.assertTrue("ID=test" in sr)
-            
+
+    def test_setAttribute_makes_changes(self):
+
+        r = self.tabix.fetch(parser=self.parser()).next()
+        r.setAttribute("transcript_id", "abcd")
+        sr = str(r)
+        self.assertEqual(r.transcript_id, "abcd")
+        self.assertTrue("transcript_id=abcd" in sr)
+
     def test_added_attribute_is_output(self):
         r = self.tabix.fetch(parser=self.parser()).next()
 
