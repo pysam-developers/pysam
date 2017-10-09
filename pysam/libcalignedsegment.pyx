@@ -143,9 +143,10 @@ cdef convert_binary_tag(uint8_t * tag):
 
 
 cdef inline uint8_t get_value_code(value, value_type=None):
-    '''guess type code for a *value*. If *value_type* is None,
-    the type code will be inferred based on the Python type of
-    *value*'''
+    """guess type code for a *value*. If *value_type* is None, the type
+    code will be inferred based on the Python type of *value*
+
+    """
     cdef uint8_t  typecode
     cdef char * _char_type
 
@@ -153,7 +154,7 @@ cdef inline uint8_t get_value_code(value, value_type=None):
         if isinstance(value, int):
             typecode = 'i'
         elif isinstance(value, float):
-            typecode = 'd'
+            typecode = 'f'
         elif isinstance(value, str):
             typecode = 'Z'
         elif isinstance(value, bytes):
@@ -165,7 +166,7 @@ cdef inline uint8_t get_value_code(value, value_type=None):
         else:
             return 0
     else:
-        if value_type not in 'Zidf':
+        if value_type not in 'aAsSIcCZidfH':
             return 0
         value_type = force_bytes(value_type)
         _char_type = value_type
@@ -177,9 +178,8 @@ cdef inline uint8_t get_value_code(value, value_type=None):
 cdef inline bytes getTypecode(value, maximum_value=None):
     '''returns the value typecode of a value.
 
-    If max is specified, the approprite type is
-    returned for a range where value is the minimum.
-    '''
+    If max is specified, the approprite type is returned for a range
+    where value is the minimum.  '''
 
     if maximum_value is None:
         maximum_value = value
@@ -226,7 +226,7 @@ cdef inline bytes getTypecode(value, maximum_value=None):
     return valuetype
 
 
-cdef inline packTags(tags):
+cdef inline pack_tags(tags):
     """pack a list of tags. Each tag is a tuple of (tag, tuple).
 
     Values are packed into the most space efficient data structure
@@ -247,7 +247,9 @@ cdef inline packTags(tags):
         b'i': ('i', 4),
         b'I': ('I', 4),
         b'f': ('f', 4),
-        b'A': ('c', 1)}
+        b'd': ('d', 8),
+        b'A': ('c', 1),
+        b'a': ('c', 1)}
 
     for tag in tags:
 
@@ -310,15 +312,20 @@ cdef inline packTags(tags):
         else:
             if valuetype is None:
                 valuetype = getTypecode(value)
-
-            if valuetype in b"AZ":
+            
+            if valuetype in b"AZHa":
                 value = force_bytes(value)
 
-            if valuetype == b"Z":
+            if valuetype in b"iIcCsS":
+                valuetype = b'i'
+
+            if valuetype == b"a":
+                valuetype = b'A'
+
+            if valuetype == b"Z" or valuetype == b"H":
                 datafmt = "2sc%is" % (len(value)+1)
             else:
                 datafmt = "2sc%s" % datatype2format[valuetype][0]
-
             args.extend([pytag[:2],
                          valuetype,
                          value])
@@ -1918,15 +1925,40 @@ cdef class AlignedSegment:
         section.
 
         *value_type* describes the type of *value* that is to entered
-        into the alignment record.. It can be set explicitly to one
-        of the valid one-letter type codes. If unset, an appropriate
-        type will be chosen automatically.
+        into the alignment record.. It can be set explicitly to one of
+        the valid one-letter type codes. If unset, an appropriate type
+        will be chosen automatically based on the python type of *value*.
 
         An existing value of the same *tag* will be overwritten unless
         replace is set to False. This is usually not recommened as a
         tag may only appear once in the optional alignment section.
 
         If *value* is None, the tag will be deleted.
+
+        This method outputs valid SAM specification value types, which
+        are::
+        
+           A: printable char
+           i: signed int
+           f: float
+           Z: printable string
+           H: Byte array in hex format
+           B: Integer or numeric array
+
+        For htslib compatibility, the type codes 'CcSsI' will be
+        mapped to 'i' and 'a' is synonymous with 'A'. The method
+        accepts a 'd' type code for a double precision float.
+
+        When deducing the type code by the python type of *value*, the
+        following mapping is applied::
+        
+            i: python int
+            f: python float
+            Z: python str or bytes
+            B: python array.array, list or tuple
+            
+        Note that a single character string will be output as 'Z' and
+        not 'A' as the former is the more general type.
         """
 
         cdef int value_size
@@ -1958,15 +1990,29 @@ cdef class AlignedSegment:
         if typecode == 0:
             raise ValueError("can't guess type or invalid type code specified")
 
-        # Not Endian-safe, but then again neither is samtools!
+        # sam_format1 for typecasting
         if typecode == 'Z':
             value = force_bytes(value)
             value_ptr = <uint8_t*><char*>value
             value_size = len(value)+1
-        elif typecode == 'i':
+        elif typecode == 'H':
+            # Note that hex tags are stored the very same
+            # way as Z string.s
+            value = force_bytes(value)
+            value_ptr = <uint8_t*><char*>value
+            value_size = len(value)+1
+        elif typecode == 'A' or typecode == 'a':
+            value = force_bytes(value)
+            value_ptr = <uint8_t*><char*>value
+            value_size = sizeof(char)
+            typecode = 'A'
+        elif typecode == 'i' or typecode == "I" or \
+             typecode == "c" or typecode == "C" or \
+             typecode == "s" or typecode == "S":
             int_value = value
             value_ptr = <uint8_t*>&int_value
             value_size = sizeof(int32_t)
+            typecode = 'i'
         elif typecode == 'd':
             double_value = value
             value_ptr = <uint8_t*>&double_value
@@ -1979,9 +2025,9 @@ cdef class AlignedSegment:
             # the following goes through python, needs to be cleaned up
             # pack array using struct
             if value_type is None:
-                fmt, args = packTags([(tag, value)])
+                fmt, args = pack_tags([(tag, value)])
             else:
-                fmt, args = packTags([(tag, value, value_type)])
+                fmt, args = pack_tags([(tag, value, value_type)])
 
             # remove tag and type code as set by bam_aux_append
             # first four chars of format (<2sc)
@@ -2000,7 +2046,7 @@ cdef class AlignedSegment:
                            <uint8_t*>buffer.raw)
             return
         else:
-            raise ValueError('unsupported value_type in set_option')
+            raise ValueError('unsupported value_type {} in set_option'.format(typecode))
 
         bam_aux_append(src,
                        tag,
@@ -2026,6 +2072,10 @@ cdef class AlignedSegment:
 
         This method is the fastest way to access the optional
         alignment section if only few tags need to be retrieved.
+
+        Possible value types are "AcCsSiIfZHB" (see BAM format
+        specification) as well as additional value type 'd' as
+        implemented in htslib.
 
         Parameters
         ----------
@@ -2069,11 +2119,14 @@ cdef class AlignedSegment:
             value = <float>bam_aux2f(v)
         elif auxtype == 'd' or auxtype == 'D':
             value = <double>bam_aux2f(v)
-        elif auxtype == 'A':
+        elif auxtype == 'A' or auxtype == 'a':
+            # force A to a
+            v[0] = 'A'
             # there might a more efficient way
             # to convert a char into a string
             value = '%c' % <char>bam_aux2A(v)
-        elif auxtype == 'Z':
+        elif auxtype == 'Z' or auxtype == 'H':
+            # Z and H are treated equally as strings in htslib
             value = charptr_to_str(<char*>bam_aux2Z(v))
         elif auxtype[0] == 'B':
             bytesize, nvalues, values = convert_binary_tag(v + 1)
@@ -2141,7 +2194,7 @@ cdef class AlignedSegment:
             elif auxtype == 'd':
                 value = <double>bam_aux2f(s)
                 s += 8
-            elif auxtype == 'A':
+            elif auxtype in ('A', 'a'):
                 value = "%c" % <char>bam_aux2A(s)
                 s += 1
             elif auxtype in ('Z', 'H'):
@@ -2166,7 +2219,7 @@ cdef class AlignedSegment:
         return result
 
     def set_tags(self, tags):
-        """sets the fields in the optional alignmest section with
+        """sets the fields in the optional alignment section with
         a list of (tag, value) tuples.
 
         The :term:`value type` of the values is determined from the
@@ -2188,7 +2241,7 @@ cdef class AlignedSegment:
 
         # convert and pack the data
         if tags is not None and len(tags) > 0:
-            fmt, args = packTags(tags)
+            fmt, args = pack_tags(tags)
             new_size = struct.calcsize(fmt)
             buffer = ctypes.create_string_buffer(new_size)
             struct.pack_into(fmt,

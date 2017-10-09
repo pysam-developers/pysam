@@ -805,6 +805,65 @@ class TestCopy(ReadTest):
         self.assertEqual(b.query_name, 'ReadB')
 
 
+class TestSetGetTag(ReadTest):
+
+    def check_tag(self, tag, value, value_type, alt_value_type=None):
+        a = self.buildRead()
+        a.set_tag(tag, value, value_type=value_type)
+        v, t = a.get_tag(tag, with_value_type=True)
+        self.assertEqual(v, value)
+        if alt_value_type:
+            self.assertEqual(t, alt_value_type)
+        else:
+            self.assertEqual(t, value_type)
+    
+    def test_set_tag_with_A(self):
+        self.check_tag('TT', "x", value_type="A")
+
+    def test_set_tag_with_a(self):
+        self.check_tag('TT', "x", value_type="a", alt_value_type="A")
+
+    def test_set_tag_with_C(self):
+        self.check_tag('TT', 12, value_type="C", alt_value_type="i")
+
+    def test_set_tag_with_c(self):
+        self.check_tag('TT', 12, value_type="c", alt_value_type="i")
+
+    def test_set_tag_with_S(self):
+        self.check_tag('TT', 12, value_type="S", alt_value_type="i")
+
+    def test_set_tag_with_s(self):
+        self.check_tag('TT', 12, value_type="s", alt_value_type="i")
+
+    def test_set_tag_with_I(self):
+        self.check_tag('TT', 12, value_type="I", alt_value_type="i")
+
+    def test_set_tag_with_i(self):
+        self.check_tag('TT', 12, value_type="i")
+
+    def test_set_tag_with_f(self):
+        self.check_tag('TT', 2.5, value_type="f")
+
+    def test_set_tag_with_d(self):
+        self.check_tag('TT', 2.5, value_type="d")
+
+    def test_set_tag_with_H(self):
+        self.check_tag('TT', "AE12", value_type="H")
+
+
+class TestSetGetTags(TestSetGetTag):
+
+    def check_tag(self, tag, value, value_type, alt_value_type=None):
+        a = self.buildRead()
+        a.set_tags([(tag, value, value_type)])
+        v, t = a.get_tag(tag, with_value_type=True)
+        if alt_value_type:
+            self.assertEqual(t, alt_value_type)
+        else:
+            self.assertEqual(t, value_type)
+        self.assertEqual(v, value)
+        
+
 class TestAsString(unittest.TestCase):
 
     def testAsString(self):
