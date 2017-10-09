@@ -43,7 +43,7 @@ conda install -y "samtools=1.5" "bcftools=1.5" "htslib=1.5" xz curl bzip2
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
 export CFLAGS="-I${PREFIX}/include -L${PREFIX}/lib"
-export HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"
+export HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl --disable-lzma"
 
 samtools --version
 htslib --version
