@@ -26,7 +26,7 @@ bash Miniconda3.sh -b
 
 # Create a new conda environment with the target python version
 ~/miniconda3/bin/conda install conda-build -y
-~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy pytest psutil pip xz curl bzip2
+~/miniconda3/bin/conda create -q -y --name testenv python=$CONDA_PY cython numpy pytest psutil pip
 
 # activate testenv environment
 source ~/miniconda3/bin/activate testenv
@@ -37,7 +37,8 @@ conda config --add channels conda-forge
 conda config --add channels bioconda
 
 # pin versions, so that tests do not fail when pysam/htslib out of step
-conda install -y "samtools=1.5" "bcftools=1.5" "htslib=1.5"
+# add htslib dependencies
+conda install -y "samtools=1.5" "bcftools=1.5" "htslib=1.5" xz curl bzip2
 
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
