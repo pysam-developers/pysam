@@ -74,7 +74,7 @@ from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
     tbx_index_build2, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    tbx_destroy, hisremote, region_list, \
+    tbx_destroy, hisremote, region_list, hts_getline, \
     TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
@@ -473,9 +473,9 @@ cdef class TabixFile:
             # without region or reference - iterate from start
             with nogil:
                 itr = tbx_itr_queryi(fileobj.index,
-                                      HTS_IDX_START,
-                                      0,
-                                      0)
+                                     HTS_IDX_START,
+                                     0,
+                                     0)
         else:
             s = force_bytes(region, encoding=fileobj.encoding)
             cstr = s
@@ -529,18 +529,42 @@ cdef class TabixFile:
         .. note::
             The header is returned as an iterator presenting lines
             without the newline character.
-        
-        .. note::
-            The header is only available for local files. For remote
-            files an Attribute Error is raised.
-
         '''
         
         def __get__(self):
-            if self.is_remote:
-                raise AttributeError(
-                    "the header is not available for remote files")
-            return GZIteratorHead(self.filename)
+
+            cdef char *cfilename = self.filename
+            
+            cdef kstring_t buffer
+            buffer.l = buffer.m = 0
+            buffer.s = NULL
+            
+            cdef htsFile * fp = NULL
+            cdef int KS_SEP_LINE = 2
+            cdef tbx_t * tbx = NULL
+            lines = []
+            with nogil:
+                fp = hts_open(cfilename, 'r')
+                
+            if fp == NULL:
+                raise OSError("could not open {} for reading header".format(self.filename))
+
+            with nogil:
+                tbx = tbx_index_load(cfilename)
+                
+            if tbx == NULL:
+                raise OSError("could not load .tbi/.csi index of {}".format(self.filename))
+
+            while hts_getline(fp, KS_SEP_LINE, &buffer) >= 0:
+                if not buffer.l or buffer.s[0] != tbx.conf.meta_char:
+                    break
+                lines.append(force_str(buffer.s))
+
+            with nogil:
+                hts_close(fp)
+                free(buffer.s)
+
+            return lines
 
     property contigs:
         '''list of chromosome names'''
