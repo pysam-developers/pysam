@@ -57,6 +57,7 @@ import collections
 import re
 import warnings
 import array
+from time import sleep
 
 from libc.errno  cimport errno, EPIPE
 from libc.string cimport strcmp, strpbrk, strerror
@@ -436,6 +437,9 @@ cdef class AlignmentFile(HTSFile):
         self.is_stream = False
         self.is_remote = False
         self.index = NULL
+        self._max_retries = 3
+        self._wait_time_base = 2
+        self._wait_multiplier = 60
 
         if "filename" in kwargs:
             args = [kwargs["filename"]]
@@ -1577,6 +1581,25 @@ cdef class AlignmentFile(HTSFile):
 
             return result
 
+    # Retry logic properties
+    property max_retries:
+        def __get__(self):
+          return self._max_retries
+        def __set__(self, value):
+          self._max_retries = value
+
+    property wait_time_base:
+        def __get__(self):
+          return self._wait_time_base
+        def __set__(self, value):
+          self._wait_time_base = value
+
+    property wait_multiplier:
+        def __get__(self):
+          return self._wait_multiplier
+        def __set__(self, value):
+          self._wait_multiplier = value
+
     ###############################################################
     ## file-object like iterator access
     ## note: concurrent access will cause errors (see IteratorRow
@@ -1741,15 +1764,27 @@ cdef class IteratorRowRegion(IteratorRow):
                                        self.b,
                                        self.htsfile)
 
+    cdef unsigned get_error(self):
+        return hts_get_bgzfp(self.htsfile).errcode
+
     def __next__(self):
-        self.cnext()
+        for attempt in xrange(self.samfile._max_retries + 1):
+          self.cnext()
+          if self.retval == -2:
+            # If we see network read failures, retry with exponential backoff
+            wait_time = self.samfile._wait_time_base**attempt * self.samfile._wait_multiplier
+            sleep(wait_time)
+            continue
+          else:
+            break
+
         if self.retval >= 0:
             return makeAlignedSegment(self.b, self.samfile)
         elif self.retval == -2:
             # Note: it is currently not the case that hts_iter_next
             # returns -2 for a truncated file.
             # See https://github.com/pysam-developers/pysam/pull/50#issuecomment-64928625
-            raise IOError('truncated file')
+            raise IOError((self.get_error(), 'truncated file'))
         else:
             raise StopIteration
 

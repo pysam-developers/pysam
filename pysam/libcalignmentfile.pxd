@@ -53,6 +53,10 @@ cdef class AlignmentFile(HTSFile):
     # write an aligned read
     cpdef int write(self, AlignedSegment read) except -1
 
+    # retry settings on network read failure
+    cdef uint32_t _max_retries
+    cdef uint32_t _wait_time_base
+    cdef uint32_t _wait_multiplier
 
 cdef class PileupColumn:
     cdef bam_pileup1_t ** plp
@@ -85,6 +89,8 @@ cdef class IteratorRowRegion(IteratorRow):
     cdef hts_itr_t * iter
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
+    cdef unsigned get_error(self)
+
 
 cdef class IteratorRowHead(IteratorRow):
     cdef int max_rows
