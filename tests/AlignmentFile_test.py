@@ -1191,13 +1191,6 @@ class TestTagParsing(unittest.TestCase):
         # todo: create tags
         return a
 
-    def testNegativeIntegers(self):
-        x = -2
-        aligned_read = self.makeRead()
-        aligned_read.tags = [("XD", int(x))]
-        self.assertEqual(aligned_read.opt('XD'), x)
-        # print (aligned_read.tags)
-
     def testNegativeIntegers2(self):
         x = -2
         r = self.makeRead()
@@ -1230,55 +1223,7 @@ class TestTagParsing(unittest.TestCase):
         # unsetting cigar string
         r.cigartuples = None
         self.assertEqual(r.cigartuples, None)
-
-    def testLongTags(self):
-        '''see issue 115'''
-
-        r = self.makeRead()
-        rg = 'HS2000-899_199.L3'
-        tags = [('XC', 85), ('XT', 'M'), ('NM', 5),
-                ('SM', 29), ('AM', 29), ('XM', 1),
-                ('XO', 1), ('XG', 4), ('MD', '37^ACCC29T18'),
-                ('XA', '5,+11707,36M1I48M,2;21,-48119779,46M1I38M,2;hs37d5,-10060835,40M1D45M,3;5,+11508,36M1I48M,3;hs37d5,+6743812,36M1I48M,3;19,-59118894,46M1I38M,3;4,-191044002,6M1I78M,3;')]
-
-        r.tags = tags
-        r.tags += [("RG", rg)] * 100
-        tags += [("RG", rg)] * 100
-
-        self.assertEqual(tags, r.tags)
-
-    def testArrayTags(self):
-
-        r = self.makeRead()
-
-        def c(r, l):
-            r.tags = [('ZM', l)]
-            self.assertEqual(list(r.opt("ZM")), list(l))
-
-        # signed integers
-        c(r, (-1, 1))
-        c(r, (-1, 100))
-        c(r, (-1, 200))
-        c(r, (-1, 1000))
-        c(r, (-1, 30000))
-        c(r, (-1, 50000))
-        c(r, (1, -1))
-        c(r, (1, -100))
-        c(r, (1, -200))
-        c(r, (1, -1000))
-        c(r, (1, -30000))
-        c(r, (1, -50000))
-
-        # unsigned integers
-        c(r, (1, 100))
-        c(r, (1, 1000))
-        c(r, (1, 10000))
-        c(r, (1, 100000))
-
-        # floats
-        c(r, (1.0, 100.0))
-
-
+        
 class TestClipping(unittest.TestCase):
 
     def testClipping(self):
@@ -1773,10 +1718,12 @@ class TestDeNovoConstruction(unittest.TestCase):
         '''check if individual reads are binary equal.'''
         infile = pysam.AlignmentFile(self.bamfile, "rb")
 
-        others = list(infile)
-        for denovo, other in zip(others, self.reads):
-            checkFieldEqual(self, other, denovo)
-            self.assertEqual(other.compare(denovo), 0)
+        references = list(infile)
+        for denovo, reference in zip(references, self.reads):
+            checkFieldEqual(self, reference, denovo)
+            print("reference", str(reference), reference.get_tags(with_value_type=True))
+            print("denovo", str(denovo), denovo.get_tags(with_value_type=True))
+            self.assertEqual(reference.compare(denovo), 0)
 
     # TODO
     # def testSAMPerRead(self):
