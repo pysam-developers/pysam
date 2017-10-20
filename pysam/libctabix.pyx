@@ -558,7 +558,7 @@ cdef class TabixFile:
             while hts_getline(fp, KS_SEP_LINE, &buffer) >= 0:
                 if not buffer.l or buffer.s[0] != tbx.conf.meta_char:
                     break
-                lines.append(force_str(buffer.s))
+                lines.append(force_str(buffer.s, self.encoding))
 
             with nogil:
                 hts_close(fp)

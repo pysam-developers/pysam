@@ -602,7 +602,9 @@ if IS_PYTHON3:
             self.vcf = pysam.VCF()
             self.assertRaises(
                 UnicodeDecodeError,
-                self.vcf.connect, self.tmpfilename + ".gz", "ascii")
+                self.vcf.connect,
+                self.tmpfilename + ".gz",
+                "ascii")
             self.vcf.connect(self.tmpfilename + ".gz", encoding="utf-8")
             v = self.vcf.getsamples()[0]
 
