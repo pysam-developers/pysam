@@ -372,7 +372,7 @@ class TestIterationWithoutComments(IterationTest):
                 x = x.decode("ascii")
                 if not x.startswith("#"):
                     break
-                ref.append(x[:-1].encode('ascii'))
+                ref.append(x[:-1])
 
         header = list(self.tabix.header)
         self.assertEqual(ref, header)
@@ -602,7 +602,9 @@ if IS_PYTHON3:
             self.vcf = pysam.VCF()
             self.assertRaises(
                 UnicodeDecodeError,
-                self.vcf.connect, self.tmpfilename + ".gz", "ascii")
+                self.vcf.connect,
+                self.tmpfilename + ".gz",
+                "ascii")
             self.vcf.connect(self.tmpfilename + ".gz", encoding="utf-8")
             v = self.vcf.getsamples()[0]
 
@@ -1033,16 +1035,16 @@ for vcf_file in vcf_files:
 
 class TestRemoteFileHTTP(unittest.TestCase):
 
-    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example_htslib.gtf.gz"
+    url = "http://www.cgat.org/downloads/public/pysam/test/example.gtf.gz"
     region = "chr1:1-1000"
     local = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     def setUp(self):
-        if not checkURL(self.url):
+        if not pysam.config.HAVE_LIBCURL or not checkURL(self.url):
             self.remote_file = None
-            return
-
-        self.remote_file = pysam.TabixFile(self.url, "r")
+        else:
+            self.remote_file = pysam.TabixFile(self.url, "r")
+            
         self.local_file = pysam.TabixFile(self.local, "r")
 
     def tearDown(self):
@@ -1068,11 +1070,28 @@ class TestRemoteFileHTTP(unittest.TestCase):
             return
 
         self.assertEqual(list(self.local_file.header), [])
-        self.assertRaises(AttributeError,
-                          getattr,
-                          self.remote_file,
-                          "header")
 
+
+class TestRemoteFileHTTPWithHeader(TestRemoteFileHTTP):
+
+    url = "http://www.cgat.org/downloads/public/pysam/test/example_comments.gtf.gz"
+    region = "chr1:1-1000"
+    local = os.path.join(TABIX_DATADIR, "example_comments.gtf.gz")
+
+    def setUp(self):
+        if not pysam.config.HAVE_LIBCURL or not checkURL(self.url):
+            self.remote_file = None
+        else:
+            self.remote_file = pysam.TabixFile(self.url, "r")
+        self.local_file = pysam.TabixFile(self.local, "r")
+
+    def testHeader(self):
+        if self.remote_file is None:
+            return
+
+        self.assertEqual(list(self.local_file.header), ["# comment at start"])
+        self.assertEqual(list(self.local_file.header), self.remote_file.header)
+        
 
 class TestIndexArgument(unittest.TestCase):
 
