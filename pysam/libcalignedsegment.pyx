@@ -285,7 +285,7 @@ cdef inline pack_tags(tags):
         if valuetype is None:
             typecode = 0
         else:
-            typecode = force_bytes(valuetype)[0]
+            typecode = ord(force_bytes(valuetype)[0])
 
         pytag = force_bytes(pytag)
         pytype = type(value)
