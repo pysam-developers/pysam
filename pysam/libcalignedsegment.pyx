@@ -69,13 +69,15 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
 
 from pysam.libcutils cimport force_bytes, force_str, \
-    charptr_to_str, charptr_to_bytes, IS_PYTHON3
+    charptr_to_str, charptr_to_bytes
 from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
 
 # Constants for binary tag conversion
 cdef char * htslib_types = 'cCsSiIf'
 cdef char * parray_types = 'bBhHiIf'
+
+cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
 # translation tables
 
