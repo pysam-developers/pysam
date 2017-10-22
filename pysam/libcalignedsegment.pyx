@@ -69,7 +69,7 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
 
 from pysam.libcutils cimport force_bytes, force_str, \
-    charptr_to_str, charptr_to_bytes
+    charptr_to_str, charptr_to_bytes, IS_PYTHON3
 from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
 
@@ -83,7 +83,7 @@ cdef char * parray_types = 'bBhHiIf'
 cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
 
-if PY_MAJOR_VERSION >= 3:
+if IS_PYTHON3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
 else:
     CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
@@ -285,7 +285,11 @@ cdef inline pack_tags(tags):
         if valuetype is None:
             typecode = 0
         else:
-            typecode = ord(force_bytes(valuetype)[0])
+            # only first character in valuecode matters
+            if IS_PYTHON3:
+                typecode = force_bytes(valuetype)[0]
+            else:
+                typecode = ord(valuetype[0])
 
         pytag = force_bytes(pytag)
         pytype = type(value)
