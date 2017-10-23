@@ -12,6 +12,7 @@
 # For samtools, type:
 # rm -rf samtools
 # python import.py samtools download/samtools
+# git checkout -- samtools/version.h
 #
 # Manually, then:
 # modify config.h to set compatibility flags
@@ -19,6 +20,7 @@
 # For bcftools, type:
 # rm -rf bedtools
 # python import.py bedtools download/bedtools
+# git checkout -- bcftools/version.h
 # rm -rf bedtools/test bedtools/plugins
 
 import fnmatch

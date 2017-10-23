@@ -911,7 +911,7 @@ int bam_mpileup(int argc, char *argv[])
         {"ignore-RG", no_argument, NULL, 5},
         {"ignore-rg", no_argument, NULL, 5},
         {"gvcf", required_argument, NULL, 'g'},
-        {"non-reference", no_argument, NULL, 7},
+        {"no-reference", no_argument, NULL, 7},
         {"no-version", no_argument, NULL, 8},
         {"threads",required_argument,NULL,9},
         {"illumina1.3+", no_argument, NULL, '6'},
@@ -1101,11 +1101,8 @@ int bam_mpileup(int argc, char *argv[])
     free(mplp.files);
     free(mplp.reg_fname); free(mplp.pl_list);
     if (mplp.fai) fai_destroy(mplp.fai);
-    if (mplp.bed)
-    {
-        regidx_destroy(mplp.bed);
-        regitr_destroy(mplp.bed_itr);
-    }
+    if (mplp.bed) regidx_destroy(mplp.bed);
+    if (mplp.bed_itr) regitr_destroy(mplp.bed_itr);
     if (mplp.reg) regidx_destroy(mplp.reg);
     bam_smpl_destroy(mplp.bsmpl);
     return ret;

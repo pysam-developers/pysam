@@ -77,6 +77,8 @@ from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array,
 cdef char * htslib_types = 'cCsSiIf'
 cdef char * parray_types = 'bBhHiIf'
 
+cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
+
 # translation tables
 
 # cigar code to character and vice versa
@@ -285,7 +287,10 @@ cdef inline pack_tags(tags):
         if valuetype is None:
             typecode = 0
         else:
-            typecode = ord(force_bytes(valuetype)[0])
+            if IS_PYTHON3:
+                typecode = force_bytes(valuetype)[0]
+            else:
+                typecode = ord(valuetype[0])
 
         pytag = force_bytes(pytag)
         pytype = type(value)
