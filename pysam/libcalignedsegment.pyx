@@ -85,7 +85,7 @@ cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
 
-if PY_MAJOR_VERSION >= 3:
+if IS_PYTHON3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
 else:
     CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
@@ -287,6 +287,7 @@ cdef inline pack_tags(tags):
         if valuetype is None:
             typecode = 0
         else:
+            # only first character in valuecode matters
             if IS_PYTHON3:
                 typecode = force_bytes(valuetype)[0]
             else:
