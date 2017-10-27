@@ -1169,60 +1169,6 @@ class TestLargeFieldBug(unittest.TestCase):
         new_read.tags = read.tags
         self.assertEqual(new_read.tags, read.tags)
 
-
-class TestTagParsing(unittest.TestCase):
-
-    '''tests checking the accuracy of tag setting and retrieval.'''
-
-    def makeRead(self):
-        a = pysam.AlignedSegment()
-        a.query_name = "read_12345"
-        a.reference_id = 0
-        a.query_sequence = "ACGT" * 3
-        a.flag = 0
-        a.reference_id = 0
-        a.reference_start = 1
-        a.mapping_quality = 20
-        a.cigartuples = ((0, 10), (2, 1), (0, 25))
-        a.next_reference_id = 0
-        a.next_reference_start = 200
-        a.template_length = 0
-        a.query_qualities = pysam.qualitystring_to_array("1234") * 3
-        # todo: create tags
-        return a
-
-    def testNegativeIntegers2(self):
-        x = -2
-        r = self.makeRead()
-        r.tags = [("XD", x)]
-        outfile = pysam.AlignmentFile(
-            "tests/test.bam",
-            "wb",
-            referencenames=("chr1",),
-            referencelengths = (1000,))
-        outfile.write(r)
-        outfile.close()
-        infile = pysam.AlignmentFile("tests/test.bam")
-        r = next(infile)
-        self.assertEqual(r.tags, [("XD", x)])
-        infile.close()
-        os.unlink("tests/test.bam")
-
-    def testCigarString(self):
-        r = self.makeRead()
-        self.assertEqual(r.cigarstring, "10M1D25M")
-        r.cigarstring = "20M10D20M"
-        self.assertEqual(r.cigartuples, [(0, 20), (2, 10), (0, 20)])
-        # unsetting cigar string
-        r.cigarstring = None
-        self.assertEqual(r.cigarstring, None)
-
-    def testCigar(self):
-        r = self.makeRead()
-        self.assertEqual(r.cigartuples, [(0, 10), (2, 1), (0, 25)])
-        # unsetting cigar string
-        r.cigartuples = None
-        self.assertEqual(r.cigartuples, None)
         
 class TestClipping(unittest.TestCase):
 

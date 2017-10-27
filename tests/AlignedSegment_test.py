@@ -26,7 +26,6 @@ class ReadTest(unittest.TestCase):
         a.next_reference_start = 200
         a.template_length = 167
         a.query_qualities = pysam.qualitystring_to_array("1234") * 10
-        # todo: create tags
         return a
 
 
@@ -438,6 +437,25 @@ class TestAlignedSegment(ReadTest):
             "A" * 252)
 
 
+class TestCigar(ReadTest):
+    
+    def testCigarString(self):
+        r = self.build_read()
+        self.assertEqual(r.cigarstring, "10M1D9M1I20M")
+        r.cigarstring = "20M10D20M"
+        self.assertEqual(r.cigartuples, [(0, 20), (2, 10), (0, 20)])
+        # unsetting cigar string
+        r.cigarstring = None
+        self.assertEqual(r.cigarstring, None)
+
+    def testCigar(self):
+        r = self.build_read()
+        self.assertEqual(r.cigartuples, [(0, 10), (2, 1), (0, 9), (1, 1), (0, 20)])
+        # unsetting cigar string
+        r.cigartuples = None
+        self.assertEqual(r.cigartuples, None)
+
+
 class TestCigarStats(ReadTest):
     
     def testStats(self):
@@ -830,6 +848,22 @@ class TestTags(ReadTest):
         aligned_read.tags = [("XD", int(x))]
         self.assertEqual(aligned_read.opt('XD'), x)
         # print (aligned_read.tags)
+
+    def testNegativeIntegersWrittenToFile(self):
+        r = self.build_read()
+        x = -2
+        r.tags = [("XD", x)]
+        with pysam.AlignmentFile(
+                "tests/test.bam",
+                "wb",
+                referencenames=("chr1",),
+                referencelengths = (1000,)) as outf:
+            outf.write(r)
+        with pysam.AlignmentFile("tests/test.bam") as inf:
+            r = next(inf)
+
+        self.assertEqual(r.tags, [("XD", x)])
+        os.unlink("tests/test.bam")
 
 
 class TestCopy(ReadTest):
