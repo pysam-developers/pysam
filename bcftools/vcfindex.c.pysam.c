@@ -34,6 +34,7 @@ DEALINGS IN THE SOFTWARE.  */
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <htslib/kstring.h>
+#include <htslib/bgzf.h>
 #include "bcftools.h"
 
 #define BCF_LIDX_SHIFT    14
@@ -210,6 +211,12 @@ int main_vcfindex(int argc, char *argv[])
                 return 1;
             }
         }
+
+        // check for truncated files, allow only with -f
+        BGZF *fp = bgzf_open(fname, "r");
+        if ( !fp ) error("index: failed to open %s\n", fname);
+        if ( bgzf_check_EOF(fp)!=1 ) error("index: the input is probably truncated, use -f to index anyway: %s\n", fname);
+        if ( bgzf_close(fp)!=0 ) error("index: close failed: %s\n", fname);
     }
 
     int ret = bcf_index_build3(fname, idx_fname.s, min_shift, n_threads);

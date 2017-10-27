@@ -85,8 +85,6 @@ int tbx_parse1(const tbx_conf_t *conf, int len, char *line, tbx_intv_t *intv)
     int i, b = 0, id = 1, ncols = 0;
     char *s;
     intv->ss = intv->se = 0; intv->beg = intv->end = -1;
-    // printf("%i\t%i\t%i\n", conf->sc, conf->sc, conf->ec);
-    
     for (i = 0; i <= len; ++i) {
         if (line[i] == '\t' || line[i] == 0) {
             ++ncols;
