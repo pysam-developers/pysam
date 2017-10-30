@@ -578,6 +578,32 @@ cdef inline uint32_t get_alignment_length(bam1_t * src):
         l += cigar_p[k] >> BAM_CIGAR_SHIFT
     return l
 
+cdef inline uint32_t get_md_reference_length(char * md_tag):
+    cdef int l = 0
+    cdef int md_idx = 0
+    cdef int nmatches = 0
+
+    while md_tag[md_idx] != 0:
+        if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
+            nmatches *= 10
+            nmatches += md_tag[md_idx] - 48
+            md_idx += 1
+            continue
+        else:
+            l += nmatches
+            nmatches = 0
+            if md_tag[md_idx] == '^':
+                md_idx += 1
+                while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
+                    md_idx += 1
+                    l += 1
+            else:
+                # save mismatch and change to lower case
+                md_idx += 1
+                l += 1
+
+    l += nmatches
+    return l
 
 # TODO: avoid string copying for getSequenceInRange, reconstituneSequenceFromMD, ...
 cdef inline bytes build_alignment_sequence(bam1_t * src):
@@ -666,6 +692,10 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
     s_idx = 0
+
+    cdef uint32_t md_len = get_md_reference_length(md_tag)
+    if md_len > max_len:
+        raise AssertionError("Invalid MD tag: MD length {} mismatch with CIGAR length {}".format(md_len, max_len))
 
     while md_tag[md_idx] != 0:
         # c is numerical
