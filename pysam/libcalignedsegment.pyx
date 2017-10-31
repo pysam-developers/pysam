@@ -598,7 +598,6 @@ cdef inline uint32_t get_md_reference_length(char * md_tag):
                     md_idx += 1
                     l += 1
             else:
-                # save mismatch and change to lower case
                 md_idx += 1
                 l += 1
 
@@ -693,8 +692,19 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef int md_idx = 0
     s_idx = 0
 
+    # Check if MD tag is valid by matching CIGAR length to MD tag defined length
+    # Insertions would be in addition to what is described by MD, so we calculate
+    # the number of insertions seperately.
+    insertions = 0
+
+    while s[s_idx] != 0:
+        if s[s_idx] >= 'a':
+            insertions += 1
+        s_idx += 1
+    s_idx = 0
+
     cdef uint32_t md_len = get_md_reference_length(md_tag)
-    if md_len > max_len:
+    if md_len + insertions > max_len:
         raise AssertionError("Invalid MD tag: MD length {} mismatch with CIGAR length {}".format(md_len, max_len))
 
     while md_tag[md_idx] != 0:
