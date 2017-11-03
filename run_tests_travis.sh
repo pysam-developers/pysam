@@ -38,7 +38,7 @@ conda config --add channels bioconda
 
 # pin versions, so that tests do not fail when pysam/htslib out of step
 # add htslib dependencies
-conda install -y "samtools=1.5" "bcftools=1.5" "htslib=1.5" xz curl bzip2
+conda install -y "samtools=1.6" "bcftools=1.6" "htslib=1.6" xz curl bzip2
 
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
