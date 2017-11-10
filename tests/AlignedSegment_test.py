@@ -375,6 +375,19 @@ class TestAlignedSegment(ReadTest):
              (7, 27, 'A'), (8, 28, 'A')]
             )
 
+    def test_get_aligned_pairs_with_malformed_MD_tag(self):
+
+        a = self.build_read()
+        a.query_sequence = "A" * 9
+
+        # out of range issue, see issue #560
+        a.cigarstring = "64M2D85M2S"
+        a.set_tag("MD", "64^TG86A0")
+        self.assertRaises(
+            AssertionError,
+            a.get_aligned_pairs,
+            with_seq=True)
+
     def test_get_aligned_pairs_skip_reference(self):
         a = self.build_read()
         a.query_sequence = "A" * 10
