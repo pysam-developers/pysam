@@ -705,7 +705,9 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
 
     cdef uint32_t md_len = get_md_reference_length(md_tag)
     if md_len + insertions > max_len:
-        raise AssertionError("Invalid MD tag: MD length {} mismatch with CIGAR length {}".format(md_len, max_len))
+        raise AssertionError(
+            "Invalid MD tag: MD length {} mismatch with CIGAR length {} and {} insertions".format(
+            md_len, max_len, insertions))
 
     while md_tag[md_idx] != 0:
         # c is numerical
