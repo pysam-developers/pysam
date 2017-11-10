@@ -11,6 +11,7 @@ import shutil
 import gzip
 import pysam
 import unittest
+import subprocess
 import glob
 import re
 import copy
@@ -1223,4 +1224,5 @@ class TestContextManager(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    subprocess.call("make -C %s" % TABIX_DATADIR, shell=True)
     unittest.main()

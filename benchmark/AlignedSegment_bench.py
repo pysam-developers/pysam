@@ -1,43 +1,30 @@
 """Benchmarking module for AlignedSegment functionality"""
-
-import timeit
-
-iterations = 10000
-repeats = 5
-
-setup_binary_tag = """
-import pysam
+import os
 import array
-read = pysam.AlignedSegment()
-read.set_tag('FZ', array.array('H', range(1000)))
-"""
-
-setup_binary_tag_from_file = """
 import pysam
-with pysam.AlignmentFile("../tests/pysam_data/example_btag.bam", "rb") as inf:
-    read = inf.fetch().next()
-"""
 
-def test_read_binary_get_tag(read):
-    tags = read.get_tag('FZ')
 
-def test_read_and_process_binary_get_tag(read):
-    tags = sum(read.get_tag('FZ'))
+from TestUtils import BAM_DATADIR
 
-tests = (
-    ("test_read_binary_get_tag", "setup_binary_tag"),
-    ("test_read_binary_get_tag", "setup_binary_tag_from_file"),
-    ("test_read_and_process_binary_get_tag", "setup_binary_tag"),
-    )
 
-for repeat in range(repeats):
-    print ("# repeat=", repeat)
-    for testf, setup_name in tests:
-        setup = locals()[setup_name]
-        setup += """\nfrom __main__ import %s""" % testf
-        #try:
-        t = timeit.timeit("%s(read)" % testf, number=iterations, setup=setup)
-        #except AttributeError, msg:
-        #    print msg
-        #    continue
-        print ("%5.2f\t%s\t%s" % (t,testf, setup_name))
+def set_binary_tag():
+    read = pysam.AlignedSegment()
+    read.set_tag('FZ', array.array('H', range(1000)))
+    return len(read.get_tag('FZ'))
+
+
+def read_binary_tag(fn):
+    with pysam.AlignmentFile(fn) as inf:
+        read = next(inf.fetch())
+    return len(read.get_tag('FZ'))
+
+
+def test_set_binary_tag(benchmark):
+    result = benchmark(set_binary_tag)
+    assert result == 1000
+
+
+def test_read_binary_tag(benchmark):
+    result = benchmark(read_binary_tag, os.path.join(
+        BAM_DATADIR, "example_btag.bam"))
+    assert result == 260
