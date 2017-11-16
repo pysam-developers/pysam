@@ -3143,7 +3143,7 @@ cdef class VariantRecord(object):
             alleles = [r.d.allele[i] for i in range(r.n_allele)]
             alleles[0] = value
         else:
-            alleles = [value]
+            alleles = [value, '<NON_REF>']
         self.alleles = alleles
         self.ptr.rlen = len(value)
         bcf_sync_end(self)
