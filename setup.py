@@ -32,6 +32,12 @@ import sys
 import sysconfig
 from contextlib import contextmanager
 from setuptools import Extension, setup
+from cy_build import CyExtension as Extension, cy_build_ext as build_ext
+try:
+    import cython
+    HAVE_CYTHON = True
+except ImportError:
+    HAVE_CYTHON = False
 
 IS_PYTHON3 = sys.version_info.major >= 3
 
@@ -109,17 +115,23 @@ def distutils_dir_name(dname):
                     platform=sysconfig.get_platform(),
                     version=sys.version_info)
 
+
+def get_pysam_version():
+    sys.path.insert(0, "pysam")
+    import version
+    return version.__version__
+    
+
 # How to link against HTSLIB
-# separate: use included htslib and include in each extension
-#           module. No dependencies between modules and works
-#           with setup.py install, but wasteful in terms of
-#           memory and compilation time.
-# shared: share chtslib across extension modules. This would be
-#         the ideal method, but currently requires
-#         LD_LIBRARY_PATH to be set correctly when using
-#         pysam.
+# shared:   build shared chtslib from builtin htslib code.
 # external: use shared libhts.so compiled outside of
 #           pysam
+# separate: use included htslib and include in each extension
+#           module. No dependencies between modules and works with
+#           setup.py install, but wasteful in terms of memory and
+#           compilation time. Fallback if shared module compilation
+#           fails.
+
 HTSLIB_MODE = os.environ.get("HTSLIB_MODE", "shared")
 HTSLIB_LIBRARY_DIR = os.environ.get("HTSLIB_LIBRARY_DIR", None)
 HTSLIB_INCLUDE_DIR = os.environ.get("HTSLIB_INCLUDE_DIR", None)
@@ -141,30 +153,18 @@ package_dirs = {'pysam': 'pysam',
 config_headers = ["samtools/config.h",
                   "bcftools/config.h"]
 
-from cy_build import CyExtension as Extension, cy_build_ext as build_ext
-
 cmdclass = {'build_ext': build_ext}
 
-# Check if cython is available
-#
 # If cython is available, the pysam will be built using cython from
 # the .pyx files. If no cython is available, the C-files included in the
 # distribution will be used.
-try:
-    import cython
-    HAVE_CYTHON = True
+if HAVE_CYTHON:
     print ("# pysam: cython is available - using cythonize if necessary")
     source_pattern = "pysam/libc%s.pyx"
-except ImportError:
-    HAVE_CYTHON = False
+else:
     print ("# pysam: no cython available - using pre-compiled C")
-    # no Cython available - use existing C code
     source_pattern = "pysam/libc%s.c"
 
-# collect pysam version
-sys.path.insert(0, "pysam")
-import version
-version = version.__version__
 
 # exclude sources that contain a main function
 EXCLUDE = {
@@ -242,7 +242,6 @@ if HTSLIB_LIBRARY_DIR:
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
     external_htslib_libraries = ['z', 'hts']
-
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
     # htslib
@@ -250,7 +249,6 @@ elif HTSLIB_MODE == 'separate':
     shared_htslib_sources = htslib_sources
     htslib_library_dirs = []
     htslib_include_dirs = ['htslib']
-
 elif HTSLIB_MODE == 'shared':
     # link each pysam component against the same
     # htslib built from sources included in the pysam
@@ -261,15 +259,14 @@ elif HTSLIB_MODE == 'shared':
         os.path.join("build", distutils_dir_name("lib"), "pysam")]
 
     htslib_include_dirs = ['htslib']
-
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')
 if not suffix:
     suffix = sysconfig.get_config_var('SO')
-internal_htslib_libraries = [os.path.splitext("chtslib{}".format(suffix))[0]]
 
+internal_htslib_libraries = [os.path.splitext("chtslib{}".format(suffix))[0]]
 internal_tools_libraries = [
     os.path.splitext("csamtools{}".format(suffix))[0],
     os.path.splitext("cbcftools{}".format(suffix))[0],
@@ -330,20 +327,6 @@ if not os.path.exists(fn):
 
 
 #######################################################
-classifiers = """
-Development Status :: 3 - Beta
-Operating System :: MacOS :: MacOS X
-Operating System :: POSIX
-Operating System :: POSIX :: Linux
-Operating System :: Unix
-Programming Language :: Python
-Topic :: Scientific/Engineering
-Topic :: Scientific/Engineering :: Bioinformatics
-"""
-
-#######################################################
-
-#######################################################
 # Windows compatibility - untested
 if platform.system() == 'Windows':
     include_os = ['win32']
@@ -376,58 +359,16 @@ samtools_include_dirs = [os.path.abspath("samtools")]
 # for __advance_samtools method.  Selected ones have been copied into
 # samfile_utils.c Needs to be devolved somehow.
 
+# Order of modules matters in order to make sure that dependencies are resolved:
+# htslib -> samtools/bcftools -> pysam
 modules = [
     dict(name="pysam.libchtslib",
-         sources=[source_pattern % "htslib",
-                  "pysam/htslib_util.c"] +
+         sources=[source_pattern % "htslib", "pysam/htslib_util.c", "pysam/samfile_util.c", "pysam/tabix_util.c"] +
          shared_htslib_sources +
          os_c_files,
          library_dirs=htslib_library_dirs,
          include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
          libraries=external_htslib_libraries),
-    dict(name="pysam.libcsamfile",
-         sources=[source_pattern % "samfile",
-                  "pysam/htslib_util.c",
-                  "pysam/samfile_util.c"] +
-         htslib_sources +
-         os_c_files,
-         library_dirs=htslib_library_dirs,
-         include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
-         libraries=external_htslib_libraries + internal_htslib_libraries),
-    dict(name="pysam.libcalignmentfile",
-         sources=[source_pattern % "alignmentfile",
-                  "pysam/htslib_util.c",
-                  "pysam/samfile_util.c"] +
-         htslib_sources +
-         os_c_files,
-         library_dirs=htslib_library_dirs,
-         include_dirs=["pysam"] + samtools_include_dirs + include_os + htslib_include_dirs,
-         libraries=external_htslib_libraries + internal_htslib_libraries),
-    dict(name="pysam.libcalignedsegment",
-          sources=[source_pattern % "alignedsegment",
-                   "pysam/htslib_util.c",
-                   "pysam/samfile_util.c"] +
-          htslib_sources +
-          os_c_files,
-          library_dirs=htslib_library_dirs,
-          include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
-          libraries=external_htslib_libraries + internal_htslib_libraries),
-    dict(name="pysam.libctabix",
-         sources=[source_pattern % "tabix",
-                  "pysam/tabix_util.c"] +
-         htslib_sources +
-         os_c_files,
-         library_dirs=["pysam"] + htslib_library_dirs,
-         include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
-         libraries=external_htslib_libraries + internal_htslib_libraries),
-    dict(name="pysam.libcutils",
-         sources=[source_pattern % "utils", "pysam/pysam_util.c"] +
-             htslib_sources +
-         os_c_files,
-         library_dirs=["pysam"] + htslib_library_dirs,
-         include_dirs=["pysam", "."] +
-         include_os + htslib_include_dirs,
-         libraries=external_htslib_libraries + internal_htslib_libraries + internal_tools_libraries),
     dict(name="pysam.libcsamtools",
          sources=[source_pattern % "samtools"] +
          glob.glob(os.path.join("samtools", "*.pysam.c")) +
@@ -445,6 +386,43 @@ modules = [
          library_dirs=["pysam"] + htslib_library_dirs,
          include_dirs=["bcftools", "pysam", "."] + samtools_include_dirs +
          include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcutils",
+         sources=[source_pattern % "utils", "pysam/pysam_util.c"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=["pysam"] + htslib_library_dirs,
+         include_dirs=["pysam", "."] +
+         include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries + internal_tools_libraries),
+    dict(name="pysam.libcalignmentfile",
+         sources=[source_pattern % "alignmentfile"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["pysam"] + samtools_include_dirs + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    # libcsamfile provides backwards compatibility
+    dict(name="pysam.libcsamfile",
+         sources=[source_pattern % "samfile"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=htslib_library_dirs,
+         include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
+         libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libcalignedsegment",
+          sources=[source_pattern % "alignedsegment"] +
+          htslib_sources +
+          os_c_files,
+          library_dirs=htslib_library_dirs,
+          include_dirs=["pysam", "."] + samtools_include_dirs + include_os + htslib_include_dirs,
+          libraries=external_htslib_libraries + internal_htslib_libraries),
+    dict(name="pysam.libctabix",
+         sources=[source_pattern % "tabix"] +
+         htslib_sources +
+         os_c_files,
+         library_dirs=["pysam"] + htslib_library_dirs,
+         include_dirs=["pysam", "."] + include_os + htslib_include_dirs,
          libraries=external_htslib_libraries + internal_htslib_libraries),
     dict(name="pysam.libcfaidx",
          sources=[source_pattern % "faidx"] +
@@ -501,7 +479,7 @@ Operating System :: MacOS
 
 metadata = {
     'name': "pysam",
-    'version': version,
+    'version': get_pysam_version(),
     'description': "pysam",
     'long_description': __doc__,
     'author': "Andreas Heger",
