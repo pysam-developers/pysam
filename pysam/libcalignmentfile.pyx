@@ -737,7 +737,7 @@ cdef class AlignmentFile(HTSFile):
         backward compatiblity as synonyms for :term:`contig` and `stop`,
         respectively.
 
-        Without a `contig` or `region` all mapped reads in the file
+        Without a `contig`, `region`, or `tid` all mapped reads in the file
         will be fetched. The reads will be returned ordered by reference
         sequence, which will not necessarily be the order within the
         file. This mode of iteration still requires an index. If there is
@@ -746,8 +746,11 @@ cdef class AlignmentFile(HTSFile):
         If only `reference` is set, all reads aligned to `reference`
         will be fetched.
 
-        A :term:`SAM` file does not allow random access. If `region`
-        or `contig` are given, an exception is raised.
+        The special :term:`tid` of -2 causes entries with no assigned
+        contig to be fetched.
+
+        A :term:`SAM` file does not allow random access. If `region`,
+        `contig`, or `tid` are given, an exception is raised.
 
         :class:`~pysam.FastaFile`
         :class:`~pysam.IteratorRow`
@@ -790,8 +793,15 @@ cdef class AlignmentFile(HTSFile):
         if not self.is_open:
             raise ValueError( "I/O operation on closed file" )
 
-        has_coord, rtid, rstart, rstop = self.parse_region(contig, start, stop, region, tid,
-                                                          end=end, reference=reference)
+        if tid and tid == -2:
+            has_coord = False
+            rtid = tid
+            rstart = 0
+            rstop = 0
+            until_eof = True
+        else:
+            has_coord, rtid, rstart, rstop = self.parse_region(contig, start, stop, region, tid,
+                                                               end=end, reference=reference)
 
         # Turn of re-opening if htsfile is a stream
         if self.is_stream:
@@ -803,7 +813,7 @@ cdef class AlignmentFile(HTSFile):
                     raise ValueError(
                         "fetch called on bamfile without index")
 
-            if has_coord:
+            if has_coord or rtid == -2:
                 return IteratorRowRegion(
                     self, rtid, rstart, rstop,
                     multiple_iterators=multiple_iterators)
@@ -819,7 +829,7 @@ cdef class AlignmentFile(HTSFile):
                         self,
                         multiple_iterators=multiple_iterators)
         else:
-            if has_coord:
+            if has_coord or rtid == -1:
                 raise ValueError(
                     "fetching by region is not available for SAM files")
 
@@ -1011,6 +1021,7 @@ cdef class AlignmentFile(HTSFile):
               start=None,
               stop=None,
               region=None,
+              tid=None,
               until_eof=False,
               read_callback="nofilter",
               reference=None,
@@ -1040,6 +1051,10 @@ cdef class AlignmentFile(HTSFile):
 
         region : string
             a region string in samtools format.
+
+        tid : int
+            a template ID number. The special value of -2 indicates the unaligned
+            reads at the end of the file.
 
         until_eof : bool
             count until the end of the file, possibly including
@@ -1093,6 +1108,7 @@ cdef class AlignmentFile(HTSFile):
                                reference=reference,
                                end=end,
                                region=region,
+                               tid=tid,
                                until_eof=until_eof):
             # apply filter
             if filter_method == 1:
