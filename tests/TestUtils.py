@@ -204,7 +204,7 @@ def get_temp_filename(suffix=""):
     except OSError:
         pass
     f = tempfile.NamedTemporaryFile(
-        prefix="tmp_{}_".format(caller_name),
+        prefix="pysamtests_tmp_{}_".format(caller_name),
         suffix=suffix,
         delete=False,
         dir=TESTS_TEMPDIR)
