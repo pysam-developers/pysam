@@ -2002,13 +2002,6 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
     '''advance using same filter and read processing as in
     the samtools pileup.
     '''
-
-    # Note that this method requries acces to some
-    # functions in the samtools code base and is thus
-    # not htslib only.
-    # The functions accessed in samtools are:
-    # 1. bam_prob_realn
-    # 2. bam_cap_mapQ
     cdef __iterdata * d
     d = <__iterdata*>data
 
