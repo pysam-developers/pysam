@@ -31,6 +31,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <assert.h>
 #include "bam_plbuf.h"
 #include "bam_lpileup.h"
+#include "samtools.h"
 #include <htslib/ksort.h>
 
 #define TV_GAP 2

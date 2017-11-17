@@ -4,7 +4,7 @@ from libc.stdlib cimport malloc, calloc, realloc, free
 from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 from libc.stdio cimport FILE, printf
 
-from pysam.libcfaidx cimport faidx_t, Fastafile
+from pysam.libcfaidx cimport faidx_t, FastaFile
 from pysam.libcalignedsegment cimport AlignedSegment
 from pysam.libchtslib cimport *
 
@@ -116,7 +116,7 @@ cdef class IteratorColumn:
     cdef bam_plp_t pileup_iter
     cdef __iterdata iterdata
     cdef AlignmentFile samfile
-    cdef Fastafile fastafile
+    cdef FastaFile fastafile
     cdef stepper
     cdef int max_depth
 

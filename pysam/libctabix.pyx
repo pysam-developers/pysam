@@ -53,6 +53,7 @@
 # DEALINGS IN THE SOFTWARE.
 #
 ###############################################################################
+import binascii
 import os
 import sys
 
@@ -71,9 +72,9 @@ cimport pysam.libctabixproxies as ctabixproxies
 
 from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
-    tbx_index_build, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
+    tbx_index_build2, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
-    tbx_destroy, hisremote, region_list, \
+    tbx_destroy, hisremote, region_list, hts_getline, \
     TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
@@ -472,9 +473,9 @@ cdef class TabixFile:
             # without region or reference - iterate from start
             with nogil:
                 itr = tbx_itr_queryi(fileobj.index,
-                                      HTS_IDX_START,
-                                      0,
-                                      0)
+                                     HTS_IDX_START,
+                                     0,
+                                     0)
         else:
             s = force_bytes(region, encoding=fileobj.encoding)
             cstr = s
@@ -528,18 +529,42 @@ cdef class TabixFile:
         .. note::
             The header is returned as an iterator presenting lines
             without the newline character.
-        
-        .. note::
-            The header is only available for local files. For remote
-            files an Attribute Error is raised.
-
         '''
         
         def __get__(self):
-            if self.is_remote:
-                raise AttributeError(
-                    "the header is not available for remote files")
-            return GZIteratorHead(self.filename)
+
+            cdef char *cfilename = self.filename
+            
+            cdef kstring_t buffer
+            buffer.l = buffer.m = 0
+            buffer.s = NULL
+            
+            cdef htsFile * fp = NULL
+            cdef int KS_SEP_LINE = 2
+            cdef tbx_t * tbx = NULL
+            lines = []
+            with nogil:
+                fp = hts_open(cfilename, 'r')
+                
+            if fp == NULL:
+                raise OSError("could not open {} for reading header".format(self.filename))
+
+            with nogil:
+                tbx = tbx_index_load(cfilename)
+                
+            if tbx == NULL:
+                raise OSError("could not load .tbi/.csi index of {}".format(self.filename))
+
+            while hts_getline(fp, KS_SEP_LINE, &buffer) >= 0:
+                if not buffer.l or buffer.s[0] != tbx.conf.meta_char:
+                    break
+                lines.append(force_str(buffer.s, self.encoding))
+
+            with nogil:
+                hts_close(fp)
+                free(buffer.s)
+
+            return lines
 
     property contigs:
         '''list of chromosome names'''
@@ -843,16 +868,25 @@ def tabix_compress(filename_in,
             raise IOError("error %i when closing file %s" % (r, filename_in))
 
 
-def tabix_index(filename, 
+def is_gzip_file(filename):
+    gzip_magic_hex = b'1f8b'
+    fd = os.open(filename, os.O_RDONLY)
+    header = os.read(fd, 2)
+    return header == binascii.a2b_hex(gzip_magic_hex)
+
+
+def tabix_index(filename,
                 force=False,
-                seq_col=None, 
-                start_col=None, 
+                seq_col=None,
+                start_col=None,
                 end_col=None,
                 preset=None,
                 meta_char="#",
                 int line_skip=0,
                 zerobased=False,
                 int min_shift=-1,
+                index=None,
+                keep_original=False,
                 ):
     '''index tab-separated *filename* using tabix.
 
@@ -876,20 +910,22 @@ def tabix_index(filename,
     
     Lines beginning with *meta_char* and the first *line_skip* lines
     will be skipped.
-    
-    If *filename* does not end in ".gz", it will be automatically
-    compressed. The original file will be removed and only the
-    compressed file will be retained.
 
-    If *filename* ends in *gz*, the file is assumed to be already
-    compressed with bgzf.
+    If *filename* is not detected as a gzip file it will be automatically
+    compressed. The original file will be removed and only the compressed
+    file will be retained.
 
     *min-shift* sets the minimal interval size to 1<<INT; 0 for the
     old tabix index. The default of -1 is changed inside htslib to 
     the old tabix default of 0.
 
-    returns the filename of the compressed data
+    *index* controls the filename which should be used for creating the index.
+    If not set, the default is to append ``.tbi`` to *filename*.
 
+    When automatically compressing files, if *keep_original* is set the
+    uncompressed file will not be deleted.
+
+    returns the filename of the compressed data
     '''
     
     if not os.path.exists(filename):
@@ -900,14 +936,17 @@ def tabix_index(filename,
         raise ValueError(
             "neither preset nor seq_col,start_col and end_col given")
 
-    if not filename.endswith(".gz"): 
+    if not is_gzip_file(filename):
         tabix_compress(filename, filename + ".gz", force=force)
-        os.unlink( filename )
+        if not keep_original:
+            os.unlink( filename )
         filename += ".gz"
 
-    if not force and os.path.exists(filename + ".tbi"):
+    index = index or filename + ".tbi"
+
+    if not force and os.path.exists(index):
         raise IOError(
-            "Filename '%s.tbi' already exists, use *force* to overwrite")
+            "Filename '%s' already exists, use *force* to overwrite" % index)
 
     # columns (1-based):
     #   preset-code, contig, start, end, metachar for
@@ -949,9 +988,11 @@ def tabix_index(filename,
 
 
     fn = encode_filename(filename)
+    fn_index = encode_filename(index)
     cdef char *cfn = fn
+    cdef char *fnidx = fn_index
     with nogil:
-        tbx_index_build(cfn, min_shift, &conf)
+        tbx_index_build2(cfn, fnidx, min_shift, &conf)
     
     return filename
 

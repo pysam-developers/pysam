@@ -64,6 +64,9 @@ from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyBytes_FromStringAndSize
 from libc.string cimport strchr
 from cpython cimport array as c_array
+from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
+    INT8_MAX, INT16_MAX, INT32_MAX, \
+    UINT8_MAX, UINT16_MAX, UINT32_MAX
 
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
@@ -74,13 +77,15 @@ from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array,
 cdef char * htslib_types = 'cCsSiIf'
 cdef char * parray_types = 'bBhHiIf'
 
+cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
+
 # translation tables
 
 # cigar code to character and vice versa
 cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
 
-if PY_MAJOR_VERSION >= 3:
+if IS_PYTHON3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
 else:
     CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
@@ -142,18 +147,33 @@ cdef convert_binary_tag(uint8_t * tag):
     return byte_size, nvalues, c_values
 
 
-cdef inline uint8_t get_value_code(value, value_type=None):
-    '''guess type code for a *value*. If *value_type* is None,
-    the type code will be inferred based on the Python type of
-    *value*'''
-    cdef uint8_t  typecode
-    cdef char * _char_type
+cdef inline uint8_t get_tag_typecode(value, value_type=None):
+    """guess type code for a *value*. If *value_type* is None, the type
+    code will be inferred based on the Python type of *value*
 
+    """
+    # 0 is unknown typecode
+    cdef char typecode = 0
+    
     if value_type is None:
         if isinstance(value, int):
-            typecode = 'i'
+            if value < 0:
+                if value >= INT8_MIN:
+                    typecode = 'c'
+                elif value >= INT16_MIN:
+                    typecode = 's'
+                elif value >= INT32_MIN:
+                    typecode = 'i'
+            # unsigned ints
+            else:
+                if value <= UINT8_MAX:
+                    typecode = 'C'
+                elif value <= UINT16_MAX:
+                    typecode = 'S'
+                elif value <= UINT32_MAX:
+                    typecode = 'I'
         elif isinstance(value, float):
-            typecode = 'd'
+            typecode = 'f'
         elif isinstance(value, str):
             typecode = 'Z'
         elif isinstance(value, bytes):
@@ -162,93 +182,98 @@ cdef inline uint8_t get_value_code(value, value_type=None):
                 isinstance(value, list) or \
                 isinstance(value, tuple):
             typecode = 'B'
-        else:
-            return 0
     else:
-        if value_type not in 'Zidf':
-            return 0
-        value_type = force_bytes(value_type)
-        _char_type = value_type
-        typecode = (<uint8_t*>_char_type)[0]
+        if value_type in 'aAsSIcCZidfH':
+            typecode = force_bytes(value_type)[0]
 
     return typecode
 
 
-cdef inline bytes getTypecode(value, maximum_value=None):
+cdef inline uint8_t get_btag_typecode(value, min_value=None, max_value=None):
     '''returns the value typecode of a value.
 
-    If max is specified, the approprite type is
-    returned for a range where value is the minimum.
+    If max is specified, the appropriate type is returned for a range
+    where value is the minimum.
+
+    Note that this method returns types from the extended BAM alphabet
+    of types that includes tags that are not part of the SAM
+    specification.
     '''
 
-    if maximum_value is None:
-        maximum_value = value
 
-    cdef bytes valuetype
+    cdef uint8_t typecode
 
     t = type(value)
 
     if t is float:
-        valuetype = b'f'
+        typecode = 'f'
     elif t is int:
+        if max_value is None:
+            max_value = value
+        if min_value is None:
+            min_value = value
         # signed ints
-        if value < 0:
-            if value >= -128 and maximum_value < 128:
-                valuetype = b'c'
-            elif value >= -32768 and maximum_value < 32768:
-                valuetype = b's'
-            elif value < -2147483648 or maximum_value >= 2147483648:
+        if min_value < 0:
+            if min_value >= INT8_MIN and max_value <= INT8_MAX:
+                typecode = 'c'
+            elif min_value >= INT16_MIN and max_value <= INT16_MAX:
+                typecode = 's'
+            elif min_value >= INT32_MIN or max_value <= INT32_MAX:
+                typecode = 'i'
+            else:
                 raise ValueError(
                     "at least one signed integer out of range of "
                     "BAM/SAM specification")
-            else:
-                valuetype = b'i'
         # unsigned ints
         else:
-            if maximum_value < 256:
-                valuetype = b'C'
-            elif maximum_value < 65536:
-                valuetype = b'S'
-            elif maximum_value >= 4294967296:
+            if max_value <= UINT8_MAX:
+                typecode = 'C'
+            elif max_value <= UINT16_MAX:
+                typecode = 'S'
+            elif max_value <= UINT32_MAX:
+                typecode = 'I'
+            else:
                 raise ValueError(
                     "at least one integer out of range of BAM/SAM specification")
-            else:
-                valuetype = b'I'
     else:
         # Note: hex strings (H) are not supported yet
         if t is not bytes:
             value = value.encode('ascii')
         if len(value) == 1:
-            valuetype = b'A'
+            typecode = 'A'
         else:
-            valuetype = b'Z'
+            typecode = 'Z'
 
-    return valuetype
+    return typecode
 
 
-cdef inline packTags(tags):
+# mapping python array.array and htslib typecodes to struct typecodes
+DATATYPE2FORMAT = {
+    ord('c'): ('b', 1),
+    ord('C'): ('B', 1),
+    ord('s'): ('h', 2),
+    ord('S'): ('H', 2),
+    ord('i'): ('i', 4),
+    ord('I'): ('I', 4),
+    ord('f'): ('f', 4),
+    ord('d'): ('d', 8),
+    ord('A'): ('c', 1),
+    ord('a'): ('c', 1)}
+
+
+cdef inline pack_tags(tags):
     """pack a list of tags. Each tag is a tuple of (tag, tuple).
 
     Values are packed into the most space efficient data structure
     possible unless the tag contains a third field with the typecode.
 
-    Returns a format string and the associated list of arguments
-    to be used in a call to struct.pack_into.
+    Returns a format string and the associated list of arguments to be
+    used in a call to struct.pack_into.
     """
     fmts, args = ["<"], []
 
-    cdef char array_typecode
-
-    datatype2format = {
-        b'c': ('b', 1),
-        b'C': ('B', 1),
-        b's': ('h', 2),
-        b'S': ('H', 2),
-        b'i': ('i', 4),
-        b'I': ('I', 4),
-        b'f': ('f', 4),
-        b'A': ('c', 1)}
-
+    # htslib typecode 
+    cdef uint8_t typecode
     for tag in tags:
 
         if len(tag) == 2:
@@ -259,68 +284,76 @@ cdef inline packTags(tags):
         else:
             raise ValueError("malformatted tag: %s" % str(tag))
 
-        pytag = force_bytes(pytag)
-        valuetype = force_bytes(valuetype)
-        t = type(value)
+        if valuetype is None:
+            typecode = 0
+        else:
+            # only first character in valuecode matters
+            if IS_PYTHON3:
+                typecode = force_bytes(valuetype)[0]
+            else:
+                typecode = ord(valuetype[0])
 
-        if t is tuple or t is list:
+        pytag = force_bytes(pytag)
+        pytype = type(value)
+
+        if pytype is tuple or pytype is list:
             # binary tags from tuples or lists
-            if valuetype is None:
+            if not typecode:
                 # automatically determine value type - first value
                 # determines type. If there is a mix of types, the
                 # result is undefined.
-                valuetype = getTypecode(min(value), max(value))
+                typecode = get_btag_typecode(min(value),
+                                             min_value=min(value),
+                                             max_value=max(value))
 
-            if valuetype not in datatype2format:
-                raise ValueError("invalid value type '%s'" % valuetype)
+            if typecode not in DATATYPE2FORMAT:
+                raise ValueError("invalid value type '{}'".format(chr(typecode)))
 
-            datafmt = "2sccI%i%s" % (len(value), datatype2format[valuetype][0])
+            datafmt = "2sBBI%i%s" % (len(value), DATATYPE2FORMAT[typecode][0])
             args.extend([pytag[:2],
-                         b"B",
-                         valuetype,
+                         ord("B"),
+                         typecode,
                          len(value)] + list(value))
 
         elif isinstance(value, array.array):
-            valuetype = value.typecode
-            if valuetype not in datatype2format:
-                valuetype = None
             # binary tags from arrays
-            if valuetype is None:
-                array_typecode = map_typecode_python_to_htslib(ord(value.typecode))
+            if typecode == 0:
+                typecode = map_typecode_python_to_htslib(ord(value.typecode))
 
-                if array_typecode == 0:
-                    raise ValueError("unsupported type code '{}'"
-                                     .format(value.typecode))
+                if typecode == 0:
+                    raise ValueError("unsupported type code '{}'".format(value.typecode))
 
-                valuetype = force_bytes(chr(array_typecode))
-
-            if valuetype not in datatype2format:
-                raise ValueError("invalid value type '%s' (%s)" %
-                                 (valuetype, type(valuetype)))
-
+            if typecode not in DATATYPE2FORMAT:
+                raise ValueError("invalid value type '{}' ({})".format(chr(typecode), array.typecode))
+            
             # use array.tostring() to retrieve byte representation and
             # save as bytes
-            datafmt = "2sccI%is" % (len(value) * datatype2format[valuetype][1])
+            datafmt = "2sBBI%is" % (len(value) * DATATYPE2FORMAT[typecode][1])
             args.extend([pytag[:2],
-                         b"B",
-                         valuetype,
+                         ord("B"),
+                         typecode,
                          len(value),
                          force_bytes(value.tostring())])
 
         else:
-            if valuetype is None:
-                valuetype = getTypecode(value)
-
-            if valuetype in b"AZ":
+            if typecode == 0:
+                typecode = get_tag_typecode(value)
+                if typecode == 0:
+                    raise ValueError("could not deduce typecode for value {}".format(value))
+                
+            if typecode == 'a' or typecode == 'A' or typecode == 'Z' or typecode == 'H':
                 value = force_bytes(value)
 
-            if valuetype == b"Z":
-                datafmt = "2sc%is" % (len(value)+1)
-            else:
-                datafmt = "2sc%s" % datatype2format[valuetype][0]
+            if typecode == "a":
+                typecode = 'A'
 
+            if typecode == 'Z' or typecode == 'H':
+                datafmt = "2sB%is" % (len(value)+1)
+            else:
+                datafmt = "2sB%s" % DATATYPE2FORMAT[typecode][0]
+                
             args.extend([pytag[:2],
-                         valuetype,
+                         typecode,
                          value])
 
         fmts.append(datafmt)
@@ -545,6 +578,31 @@ cdef inline uint32_t get_alignment_length(bam1_t * src):
         l += cigar_p[k] >> BAM_CIGAR_SHIFT
     return l
 
+cdef inline uint32_t get_md_reference_length(char * md_tag):
+    cdef int l = 0
+    cdef int md_idx = 0
+    cdef int nmatches = 0
+
+    while md_tag[md_idx] != 0:
+        if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
+            nmatches *= 10
+            nmatches += md_tag[md_idx] - 48
+            md_idx += 1
+            continue
+        else:
+            l += nmatches
+            nmatches = 0
+            if md_tag[md_idx] == '^':
+                md_idx += 1
+                while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
+                    md_idx += 1
+                    l += 1
+            else:
+                md_idx += 1
+                l += 1
+
+    l += nmatches
+    return l
 
 # TODO: avoid string copying for getSequenceInRange, reconstituneSequenceFromMD, ...
 cdef inline bytes build_alignment_sequence(bam1_t * src):
@@ -633,6 +691,23 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
     s_idx = 0
+
+    # Check if MD tag is valid by matching CIGAR length to MD tag defined length
+    # Insertions would be in addition to what is described by MD, so we calculate
+    # the number of insertions seperately.
+    insertions = 0
+
+    while s[s_idx] != 0:
+        if s[s_idx] >= 'a':
+            insertions += 1
+        s_idx += 1
+    s_idx = 0
+
+    cdef uint32_t md_len = get_md_reference_length(md_tag)
+    if md_len + insertions > max_len:
+        raise AssertionError(
+            "Invalid MD tag: MD length {} mismatch with CIGAR length {} and {} insertions".format(
+            md_len, max_len, insertions))
 
     while md_tag[md_idx] != 0:
         # c is numerical
@@ -1918,24 +1993,56 @@ cdef class AlignedSegment:
         section.
 
         *value_type* describes the type of *value* that is to entered
-        into the alignment record.. It can be set explicitly to one
-        of the valid one-letter type codes. If unset, an appropriate
-        type will be chosen automatically.
+        into the alignment record. It can be set explicitly to one of
+        the valid one-letter type codes. If unset, an appropriate type
+        will be chosen automatically based on the python type of
+        *value*.
 
         An existing value of the same *tag* will be overwritten unless
-        replace is set to False. This is usually not recommened as a
+        *replace* is set to False. This is usually not recommened as a
         tag may only appear once in the optional alignment section.
 
         If *value* is None, the tag will be deleted.
+
+        This method accepts valid SAM specification value types, which
+        are::
+        
+           A: printable char
+           i: signed int
+           f: float
+           Z: printable string
+           H: Byte array in hex format
+           B: Integer or numeric array
+
+        Additionally, it will accept the integer BAM types ('cCsSI')
+
+        For htslib compatibility, 'a' is synonymous with 'A' and the
+        method accepts a 'd' type code for a double precision float.
+
+        When deducing the type code by the python type of *value*, the
+        following mapping is applied::
+        
+            i: python int
+            f: python float
+            Z: python str or bytes
+            B: python array.array, list or tuple
+            
+        Note that a single character string will be output as 'Z' and
+        not 'A' as the former is the more general type.
         """
 
         cdef int value_size
+        cdef uint8_t tc
         cdef uint8_t * value_ptr
         cdef uint8_t *existing_ptr
-        cdef uint8_t typecode
         cdef float float_value
         cdef double double_value
-        cdef int32_t int_value
+        cdef int32_t int32_t_value
+        cdef uint32_t uint32_t_value
+        cdef int16_t int16_t_value
+        cdef uint16_t uint16_t_value
+        cdef int8_t int8_t_value
+        cdef uint8_t uint8_t_value
         cdef bam1_t * src = self._delegate
         cdef char * _value_type
         cdef c_array.array array_value
@@ -1954,19 +2061,51 @@ cdef class AlignedSegment:
         if value is None:
             return
 
-        typecode = get_value_code(value, value_type)
+        cdef uint8_t typecode = get_tag_typecode(value, value_type)
         if typecode == 0:
-            raise ValueError("can't guess type or invalid type code specified")
+            raise ValueError("can't guess type or invalid type code specified: {} {}".format(
+                value, value_type))
 
-        # Not Endian-safe, but then again neither is samtools!
+        # sam_format1 for typecasting
         if typecode == 'Z':
             value = force_bytes(value)
             value_ptr = <uint8_t*><char*>value
             value_size = len(value)+1
+        elif typecode == 'H':
+            # Note that hex tags are stored the very same
+            # way as Z string.s
+            value = force_bytes(value)
+            value_ptr = <uint8_t*><char*>value
+            value_size = len(value)+1
+        elif typecode == 'A' or typecode == 'a':
+            value = force_bytes(value)
+            value_ptr = <uint8_t*><char*>value
+            value_size = sizeof(char)
+            typecode = 'A'
         elif typecode == 'i':
-            int_value = value
-            value_ptr = <uint8_t*>&int_value
+            int32_t_value = value
+            value_ptr = <uint8_t*>&int32_t_value
             value_size = sizeof(int32_t)
+        elif typecode == 'I':
+            uint32_t_value = value
+            value_ptr = <uint8_t*>&uint32_t_value
+            value_size = sizeof(uint32_t)
+        elif typecode == 's':
+            int16_t_value = value
+            value_ptr = <uint8_t*>&int16_t_value
+            value_size = sizeof(int16_t)
+        elif typecode == 'S':
+            uint16_t_value = value
+            value_ptr = <uint8_t*>&uint16_t_value
+            value_size = sizeof(uint16_t)
+        elif typecode == 'c':
+            int8_t_value = value
+            value_ptr = <uint8_t*>&int8_t_value
+            value_size = sizeof(int8_t)
+        elif typecode == 'C':
+            uint8_t_value = value
+            value_ptr = <uint8_t*>&uint8_t_value
+            value_size = sizeof(uint8_t)
         elif typecode == 'd':
             double_value = value
             value_ptr = <uint8_t*>&double_value
@@ -1978,13 +2117,10 @@ cdef class AlignedSegment:
         elif typecode == 'B':
             # the following goes through python, needs to be cleaned up
             # pack array using struct
-            if value_type is None:
-                fmt, args = packTags([(tag, value)])
-            else:
-                fmt, args = packTags([(tag, value, value_type)])
+            fmt, args = pack_tags([(tag, value, value_type)])
 
             # remove tag and type code as set by bam_aux_append
-            # first four chars of format (<2sc)
+            # first four chars of format (<2sB)
             fmt = '<' + fmt[4:]
             # first two values to pack
             args = args[2:]
@@ -2000,7 +2136,7 @@ cdef class AlignedSegment:
                            <uint8_t*>buffer.raw)
             return
         else:
-            raise ValueError('unsupported value_type in set_option')
+            raise ValueError('unsupported value_type {} in set_option'.format(typecode))
 
         bam_aux_append(src,
                        tag,
@@ -2026,6 +2162,10 @@ cdef class AlignedSegment:
 
         This method is the fastest way to access the optional
         alignment section if only few tags need to be retrieved.
+
+        Possible value types are "AcCsSiIfZHB" (see BAM format
+        specification) as well as additional value type 'd' as
+        implemented in htslib.
 
         Parameters
         ----------
@@ -2061,19 +2201,20 @@ cdef class AlignedSegment:
         else:
             auxtype = chr(v[0])
 
-        if auxtype == 'c' or auxtype == 'C' or auxtype == 's' or auxtype == 'S':
-            value = <int>bam_aux2i(v)
-        elif auxtype == 'i' or auxtype == 'I':
-            value = <int32_t>bam_aux2i(v)
+        if auxtype in "iIcCsS":
+            value = bam_aux2i(v)
         elif auxtype == 'f' or auxtype == 'F':
-            value = <float>bam_aux2f(v)
+            value = bam_aux2f(v)
         elif auxtype == 'd' or auxtype == 'D':
-            value = <double>bam_aux2f(v)
-        elif auxtype == 'A':
+            value = bam_aux2f(v)
+        elif auxtype == 'A' or auxtype == 'a':
+            # force A to a
+            v[0] = 'A'
             # there might a more efficient way
             # to convert a char into a string
             value = '%c' % <char>bam_aux2A(v)
-        elif auxtype == 'Z':
+        elif auxtype == 'Z' or auxtype == 'H':
+            # Z and H are treated equally as strings in htslib
             value = charptr_to_str(<char*>bam_aux2Z(v))
         elif auxtype[0] == 'B':
             bytesize, nvalues, values = convert_binary_tag(v + 1)
@@ -2141,7 +2282,7 @@ cdef class AlignedSegment:
             elif auxtype == 'd':
                 value = <double>bam_aux2f(s)
                 s += 8
-            elif auxtype == 'A':
+            elif auxtype in ('A', 'a'):
                 value = "%c" % <char>bam_aux2A(s)
                 s += 1
             elif auxtype in ('Z', 'H'):
@@ -2166,7 +2307,7 @@ cdef class AlignedSegment:
         return result
 
     def set_tags(self, tags):
-        """sets the fields in the optional alignmest section with
+        """sets the fields in the optional alignment section with
         a list of (tag, value) tuples.
 
         The :term:`value type` of the values is determined from the
@@ -2188,13 +2329,14 @@ cdef class AlignedSegment:
 
         # convert and pack the data
         if tags is not None and len(tags) > 0:
-            fmt, args = packTags(tags)
+            fmt, args = pack_tags(tags)
             new_size = struct.calcsize(fmt)
             buffer = ctypes.create_string_buffer(new_size)
             struct.pack_into(fmt,
                              buffer,
                              0,
                              *args)
+
 
         # delete the old data and allocate new space.
         # If total_size == 0, the aux field will be

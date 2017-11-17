@@ -2,6 +2,22 @@
 Release notes
 =============
 
+Release 0.13.0
+===============
+
+This release wraps htslib/samtools/bcftools versions 1.6.0 and
+contains a series of bugfixes.
+
+* [#544] reading header from remote TabixFiles now works.
+* [#531] add missing tag types H and A. A python float will now be
+  added as 'f' type instead of 'd' type.
+* [#543] use FastaFile instead of Fastafile in pileup.
+* [#546] set is_modified flag in setAttribute so updated attributes
+  are output.
+* [#537] allow tabix index files to be created in a custom location.
+* [#530] add get_index_statistics() method
+
+
 Release 0.12.0.1
 ================
 

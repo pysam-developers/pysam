@@ -167,17 +167,15 @@ cpdef parse_region(reference=None,
                    region=None):
     """parse alternative ways to specify a genomic region. A region can
     either be specified by :term:`reference`, `start` and
-    `end`. `start` and `end` denote 0-based, half-open
-    intervals.
+    `end`. `start` and `end` denote 0-based, half-open intervals.
 
-    Alternatively, a samtools :term:`region` string can be
-    supplied.
+    Alternatively, a samtools :term:`region` string can be supplied.
 
     If any of the coordinates are missing they will be replaced by the
     minimum (`start`) or maximum (`end`) coordinate.
 
-    Note that region strings are 1-based, while `start` and `end` denote
-    an interval in python coordinates.
+    Note that region strings are 1-based, while `start` and `end`
+    denote an interval in python coordinates.
 
     Returns
     -------
@@ -191,11 +189,9 @@ cpdef parse_region(reference=None,
        for invalid or out of bounds regions.
 
     """
-    cdef int rtid
     cdef long long rstart
     cdef long long rend
 
-    rtid = -1
     rstart = 0
     rend = MAX_POS
     if start != None:

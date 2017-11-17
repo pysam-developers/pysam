@@ -20,7 +20,7 @@ def check_import(statement):
             raise
 
 
-def check_tests_pass(statement):
+def check_pass(statement):
     try:
         output = subprocess.check_output(
             statement, stderr=subprocess.STDOUT, shell=True)
@@ -31,6 +31,9 @@ def check_tests_pass(statement):
     return True
 
 
+@unittest.skipUnless(
+    os.environ.get("PYSAM_LINKING_TESTS", None),
+    "enable linking tests by setting PYSAM_LINKING_TESTS environment variable")
 class TestLinking(unittest.TestCase):
 
     package_name = "link_with_rpath"
@@ -43,15 +46,22 @@ class TestLinking(unittest.TestCase):
             "cd {} && rm -rf build && python setup.py install".format(self.workdir),
                 shell=True)
 
+
+@unittest.skipUnless(
+    os.environ.get("PYSAM_LINKING_TESTS", None),
+    "enable linking tests by setting PYSAM_LINKING_TESTS environment variable")
 class TestLinkWithRpath(TestLinking):
 
     package_name = "link_with_rpath"
     
     def test_package_tests_pass(self):
-        self.assertTrue(check_tests_pass(
+        self.assertTrue(check_pass(
             "cd {} && python test_module.py".format(os.path.join(self.workdir, "tests"))))
 
 
+@unittest.skipUnless(
+    os.environ.get("PYSAM_LINKING_TESTS", None),
+    "enable linking tests by setting PYSAM_LINKING_TESTS environment variable")
 class TestLinkWithoutRpath(TestLinking):
 
     package_name = "link_without_rpath"
@@ -69,7 +79,7 @@ class TestLinkWithoutRpath(TestLinking):
         pysam_libdirs, pysam_libs = zip(*[os.path.split(x) for x in pysam_libraries])
         pysam_libdir = pysam_libdirs[0]
 
-        self.assertTrue(check_tests_pass(
+        self.assertTrue(check_pass(
             "export LD_LIBRARY_PATH={}:$PATH && cd {} && python test_module.py".format(
                 pysam_libdir,
                 os.path.join(self.workdir, "tests"))))

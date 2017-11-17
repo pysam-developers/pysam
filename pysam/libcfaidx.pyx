@@ -484,8 +484,8 @@ cdef class FastxFile:
 
         If True (default) make a copy of the entry in the file during
         iteration. If set to False, no copy will be made. This will
-        permit faster iteration, but an entry will not persist when
-        the iteration continues or is not in-place modifyable.
+        permit much faster iteration, but an entry will not persist
+        when the iteration continues and an entry is read-only.
 
     Notes
     -----
