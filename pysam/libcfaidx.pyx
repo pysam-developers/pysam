@@ -63,7 +63,7 @@ from cpython cimport PyErr_SetString, \
 from cpython.version cimport PY_MAJOR_VERSION
 
 from pysam.libchtslib cimport \
-    faidx_nseq, fai_load, fai_destroy, fai_fetch, \
+    faidx_nseq, fai_load, fai_load3, fai_destroy, fai_fetch, \
     faidx_seq_len, faidx_iseq, faidx_seq_len, \
     faidx_fetch_seq, hisremote, \
     bgzf_open, bgzf_close
@@ -140,21 +140,33 @@ cdef class FastaFile:
 
         self._filename = encode_filename(filename)
         cdef char *cfilename = self._filename
+        cdef char *cindexname = NULL
         self.is_remote = hisremote(cfilename)
-
-        if filepath_index is not None:
-            raise NotImplementedError(
-                "setting an explicit path for the index "
-                "is not implemented")
-
+        
         # open file for reading
         if (self._filename != b"-"
             and not self.is_remote
             and not os.path.exists(filename)):
             raise IOError("file `%s` not found" % filename)
 
-        with nogil:
-            self.fastafile = fai_load(cfilename)
+        if filepath_index:
+            if not os.path.exists(filepath_index):
+                raise IOError("filename {} does not exist".format(filepath_index))
+
+            cindexname = bindex_filename = encode_filename(filepath_index)
+            # set flags to 0 - do not automatically build index if it does
+            # not exist.
+            if filepath_index.endswith(".fai"):
+                with nogil:
+                    self.fastafile = fai_load3(cfilename, cindexname, NULL, 0)
+            elif filepath_index.endswith(".gzi"):
+                with nogil:
+                    self.fastafile = fai_load3(cfilename, NULL, cindexname, 0)
+            else:
+                raise ValueError("index filename must end in .fai or .gzi")
+        else:
+            with nogil:
+                self.fastafile = fai_load(cfilename)
 
         if self.fastafile == NULL:
             raise IOError("could not open file `%s`" % filename)

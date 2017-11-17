@@ -60,43 +60,33 @@ class TestFastaFilePathIndex(unittest.TestCase):
 
     filename = os.path.join(BAM_DATADIR, "ex1.fa")
 
-    def testGarbageIndex(self):
-        self.assertRaises(NotImplementedError,
-                          pysam.FastaFile,
-                          self.filename,
-                          filepath_index="garbage.fa.fai")
-        return
-
-        self.assertRaises(ValueError,
+    def test_raise_exception_if_index_is_missing(self):
+        self.assertRaises(IOError,
                           pysam.FastaFile,
                           self.filename,
                           filepath_index="garbage.fa.fai")
 
-    def testOpenWithoutIndex(self):
-        faidx = pysam.FastaFile(self.filename)
-        faidx.close()
+    def test_open_file_without_index_succeeds(self):
+        with pysam.FastaFile(self.filename) as inf:
+            self.assertEqual(len(inf), 2)
 
-    def testOpenWithStandardIndex(self):
-        self.assertRaises(NotImplementedError,
-                          pysam.FastaFile,
-                          self.filename,
-                          filepath_index=self.filename + ".fai")
-        return
+    def test_open_file_with_explicit_index_succeeds(self):
+        with pysam.FastaFile(self.filename,
+                             filepath_index=self.filename + ".fai") as inf:
+            self.assertEqual(len(inf), 2)
 
-        faidx = pysam.FastaFile(self.filename,
-                                filepath_index=self.filename + ".fai")
-        faidx.close()
-
-    def testOpenWithOtherIndex(self):
-        return
+    def test_open_file_with_explicit_abritrarily_named_index_succeeds(self):
         tmpfilename = "tmp_" + os.path.basename(self.filename)
         shutil.copyfile(self.filename, tmpfilename)
-        faidx = pysam.FastaFile(tmpfilename,
-                                filepath_index=self.filename + ".fai")
-        faidx.close()
+        # open with original index
+        with pysam.FastaFile(tmpfilename,
+                             filepath_index=self.filename + ".fai") as inf:
+            self.assertEqual(len(inf), 2)
+
         # index should not be auto-generated
         self.assertFalse(os.path.exists(tmpfilename + ".fai"))
         os.unlink(tmpfilename)
+
 
 class TestFastaFilePathIndexCompressed(TestFastaFilePathIndex):
     
