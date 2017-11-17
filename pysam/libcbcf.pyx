@@ -1167,16 +1167,9 @@ cdef inline bcf_sync_end(VariantRecord record):
     else:
         ref_len = 0
 
-    # Check if alternate allele is symbolic
-    if record.ptr.n_allele >= 2:
-        alt = record.ptr.d.allele[1]
-        is_symbolic = (alt[0] == b'<' and alt[len(alt) - 1] == b'>')
-    else:
-        is_symbolic = False
-
     # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
     # Always keep END for symbolic alleles
-    if not is_symbolic and (not record.ptr.n_allele or record.ptr.rlen == ref_len):
+    if not has_symbolic_allele(record) and (not record.ptr.n_allele or record.ptr.rlen == ref_len):
         # If INFO/END is not defined in the header, it doesn't exist in the record
         if end_id >= 0:
             info = bcf_get_info(hdr, record.ptr, b'END')
@@ -1190,6 +1183,15 @@ cdef inline bcf_sync_end(VariantRecord record):
 
         # Update to reflect stop position
         bcf_info_set_value(record, b'END', record.ptr.pos + record.ptr.rlen)
+
+
+cdef inline bint has_symbolic_allele(VariantRecord record):
+    # Check if alternate allele is symbolic
+    if record.ptr.n_allele >= 2:
+        alt = record.ptr.d.allele[1]
+        return (alt[0] == b'<' and alt[len(alt) - 1] == b'>')
+    else:
+        return False
 
 
 ########################################################################
@@ -3191,7 +3193,7 @@ cdef class VariantRecord(object):
             raise ValueError('Error updating alleles')
 
         # Only reset rlen if alternate allele isn't symbolic
-        if not (values[1][0] == b'<' and values[1][len(values[1]) - 1] == b'>'):
+        if not has_symbolic_allele(self):
             self.ptr.rlen = len(values[0])
         bcf_sync_end(self)
 
