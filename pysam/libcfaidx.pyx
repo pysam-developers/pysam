@@ -99,6 +99,10 @@ cdef class FastaFile:
         Optional, filename of the index. By default this is
         the filename + ".fai".
 
+    filepath_index_compressed : string
+        Optional, filename of the index if fasta file is. By default this is
+        the filename + ".gzi".
+
     Raises
     ------
 
@@ -128,7 +132,7 @@ cdef class FastaFile:
 
         return faidx_nseq(self.fastafile)
 
-    def _open(self, filename, filepath_index=None):
+    def _open(self, filename, filepath_index=None, filepath_index_compressed=None):
         '''open an indexed fasta file.
 
         This method expects an indexed fasta file.
@@ -141,6 +145,7 @@ cdef class FastaFile:
         self._filename = encode_filename(filename)
         cdef char *cfilename = self._filename
         cdef char *cindexname = NULL
+        cdef char *cindexname_compressed = NULL
         self.is_remote = hisremote(cfilename)
         
         # open file for reading
@@ -149,27 +154,33 @@ cdef class FastaFile:
             and not os.path.exists(filename)):
             raise IOError("file `%s` not found" % filename)
 
+        # 3 modes to open:
+        # compressed fa: fai_load3 with filename, index_fai and index_gzi
+        # uncompressed fa: fai_load3 with filename and index_fai
+        # uncompressed fa: fai_load with default index name
         if filepath_index:
+            # when opening, set flags to 0 - do not automatically
+            # build index if it does not exist.
+
             if not os.path.exists(filepath_index):
                 raise IOError("filename {} does not exist".format(filepath_index))
-
             cindexname = bindex_filename = encode_filename(filepath_index)
-            # set flags to 0 - do not automatically build index if it does
-            # not exist.
-            if filepath_index.endswith(".fai"):
+            
+            if filepath_index_compressed:
+                if not os.path.exists(filepath_index_compressed):
+                    raise IOError("filename {} does not exist".format(filepath_index_compressed))
+                cindexname_compressed = bindex_filename_compressed = encode_filename(filepath_index_compressed)
+                with nogil:
+                    self.fastafile = fai_load3(cfilename, cindexname, cindexname_compressed, 0)
+            else:
                 with nogil:
                     self.fastafile = fai_load3(cfilename, cindexname, NULL, 0)
-            elif filepath_index.endswith(".gzi"):
-                with nogil:
-                    self.fastafile = fai_load3(cfilename, NULL, cindexname, 0)
-            else:
-                raise ValueError("index filename must end in .fai or .gzi")
         else:
             with nogil:
                 self.fastafile = fai_load(cfilename)
 
         if self.fastafile == NULL:
-            raise IOError("could not open file `%s`" % filename)
+            raise IOError("error when opening file `%s`" % filename)
 
         cdef int nreferences = faidx_nseq(self.fastafile)
         cdef int x

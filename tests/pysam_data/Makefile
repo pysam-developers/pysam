@@ -18,7 +18,7 @@ all: ex1.pileup.gz \
 	empty.bam empty.bam.bai \
 	explicit_index.bam explicit_index.cram \
 	faidx_empty_seq.fq.gz \
-	ex1.fa.gz ex1.fa.gz.fai \
+	ex1.fa.gz ex1.fa.gz.csi \
 	ex1_csi.bam
 
 # ex2.sam - as ex1.sam, but with header
@@ -93,5 +93,5 @@ clean:
 %.fa.gz: %.fa
 	bgzip < $< > $@
 
-%.fa.gz.fai: %.fa.gz
+%.fa.gz.csi: %.fa.gz
 	samtools faidx $<

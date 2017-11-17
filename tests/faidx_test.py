@@ -5,7 +5,7 @@ import gzip
 import copy
 import shutil
 
-from TestUtils import checkURL, BAM_DATADIR
+from TestUtils import checkURL, BAM_DATADIR, get_temp_filename
 
 
 class TestFastaFile(unittest.TestCase):
@@ -59,12 +59,13 @@ class TestFastaFile(unittest.TestCase):
 class TestFastaFilePathIndex(unittest.TestCase):
 
     filename = os.path.join(BAM_DATADIR, "ex1.fa")
-
+    data_suffix = ".fa"
+    
     def test_raise_exception_if_index_is_missing(self):
         self.assertRaises(IOError,
                           pysam.FastaFile,
                           self.filename,
-                          filepath_index="garbage.fa.fai")
+                          filepath_index="garbage" + self.data_suffix + ".fai")
 
     def test_open_file_without_index_succeeds(self):
         with pysam.FastaFile(self.filename) as inf:
@@ -76,11 +77,16 @@ class TestFastaFilePathIndex(unittest.TestCase):
             self.assertEqual(len(inf), 2)
 
     def test_open_file_with_explicit_abritrarily_named_index_succeeds(self):
-        tmpfilename = "tmp_" + os.path.basename(self.filename)
+        tmpfilename = get_temp_filename(self.data_suffix)
         shutil.copyfile(self.filename, tmpfilename)
-        # open with original index
+
+        filepath_index = self.filename + ".fai"
+        filepath_index_compressed = self.filename + ".gzi"
+        if not os.path.exists(filepath_index_compressed):
+            filepath_index_compressed = None
         with pysam.FastaFile(tmpfilename,
-                             filepath_index=self.filename + ".fai") as inf:
+                             filepath_index=filepath_index,
+                             filepath_index_compressed=filepath_index_compressed) as inf:
             self.assertEqual(len(inf), 2)
 
         # index should not be auto-generated
@@ -91,7 +97,8 @@ class TestFastaFilePathIndex(unittest.TestCase):
 class TestFastaFilePathIndexCompressed(TestFastaFilePathIndex):
     
     filename = os.path.join(BAM_DATADIR, "ex1.fa.gz")
-
+    data_suffix = ".fa.gz"
+    
 
 class TestFastxFileFastq(unittest.TestCase):
 
