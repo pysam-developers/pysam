@@ -3175,6 +3175,9 @@ cdef class VariantRecord(object):
     @alleles.setter
     def alleles(self, values):
         cdef bcf1_t *r = self.ptr
+        
+        # Cache rlen of symbolic alleles before call to bcf_update_alleles_str
+        cdef int rlen = r.rlen
 
         if bcf_unpack(r, BCF_UN_STR) < 0:
             raise ValueError('Error unpacking VariantRecord')
@@ -3192,8 +3195,10 @@ cdef class VariantRecord(object):
         if bcf_update_alleles_str(self.header.ptr, r, value) < 0:
             raise ValueError('Error updating alleles')
 
-        # Only reset rlen if alternate allele isn't symbolic
-        if not has_symbolic_allele(self):
+        # Reset rlen if alternate allele isn't symbolic, otherwise used cached
+        if has_symbolic_allele(self):
+            self.ptr.rlen = rlen
+        else:
             self.ptr.rlen = len(values[0])
         bcf_sync_end(self)
 
