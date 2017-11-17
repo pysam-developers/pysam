@@ -800,8 +800,9 @@ cdef class AlignmentFile(HTSFile):
             rstop = 0
             until_eof = True
         else:
-            has_coord, rtid, rstart, rstop = self.parse_region(contig, start, stop, region, tid,
-                                                               end=end, reference=reference)
+            has_coord, rtid, rstart, rstop = self.parse_region(
+                contig, start, stop, region, tid,
+                end=end, reference=reference)
 
         # Turn of re-opening if htsfile is a stream
         if self.is_stream:
