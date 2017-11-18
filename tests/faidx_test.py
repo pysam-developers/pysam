@@ -5,7 +5,7 @@ import gzip
 import copy
 import shutil
 
-from TestUtils import checkURL, BAM_DATADIR
+from TestUtils import checkURL, BAM_DATADIR, get_temp_filename
 
 
 class TestFastaFile(unittest.TestCase):
@@ -59,49 +59,46 @@ class TestFastaFile(unittest.TestCase):
 class TestFastaFilePathIndex(unittest.TestCase):
 
     filename = os.path.join(BAM_DATADIR, "ex1.fa")
-
-    def testGarbageIndex(self):
-        self.assertRaises(NotImplementedError,
+    data_suffix = ".fa"
+    
+    def test_raise_exception_if_index_is_missing(self):
+        self.assertRaises(IOError,
                           pysam.FastaFile,
                           self.filename,
-                          filepath_index="garbage.fa.fai")
-        return
+                          filepath_index="garbage" + self.data_suffix + ".fai")
 
-        self.assertRaises(ValueError,
-                          pysam.FastaFile,
-                          self.filename,
-                          filepath_index="garbage.fa.fai")
+    def test_open_file_without_index_succeeds(self):
+        with pysam.FastaFile(self.filename) as inf:
+            self.assertEqual(len(inf), 2)
 
-    def testOpenWithoutIndex(self):
-        faidx = pysam.FastaFile(self.filename)
-        faidx.close()
+    def test_open_file_with_explicit_index_succeeds(self):
+        with pysam.FastaFile(self.filename,
+                             filepath_index=self.filename + ".fai") as inf:
+            self.assertEqual(len(inf), 2)
 
-    def testOpenWithStandardIndex(self):
-        self.assertRaises(NotImplementedError,
-                          pysam.FastaFile,
-                          self.filename,
-                          filepath_index=self.filename + ".fai")
-        return
-
-        faidx = pysam.FastaFile(self.filename,
-                                filepath_index=self.filename + ".fai")
-        faidx.close()
-
-    def testOpenWithOtherIndex(self):
-        return
-        tmpfilename = "tmp_" + os.path.basename(self.filename)
+    def test_open_file_with_explicit_abritrarily_named_index_succeeds(self):
+        tmpfilename = get_temp_filename(self.data_suffix)
         shutil.copyfile(self.filename, tmpfilename)
-        faidx = pysam.FastaFile(tmpfilename,
-                                filepath_index=self.filename + ".fai")
-        faidx.close()
+
+        filepath_index = self.filename + ".fai"
+        filepath_index_compressed = self.filename + ".gzi"
+        if not os.path.exists(filepath_index_compressed):
+            filepath_index_compressed = None
+        with pysam.FastaFile(tmpfilename,
+                             filepath_index=filepath_index,
+                             filepath_index_compressed=filepath_index_compressed) as inf:
+            self.assertEqual(len(inf), 2)
+
         # index should not be auto-generated
         self.assertFalse(os.path.exists(tmpfilename + ".fai"))
         os.unlink(tmpfilename)
 
+
 class TestFastaFilePathIndexCompressed(TestFastaFilePathIndex):
     
     filename = os.path.join(BAM_DATADIR, "ex1.fa.gz")
-
+    data_suffix = ".fa.gz"
+    
 
 class TestFastxFileFastq(unittest.TestCase):
 
