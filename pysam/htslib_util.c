@@ -22,13 +22,10 @@ int hts_set_verbosity(int verbosity)
   return old_verbosity;
 }
 
-int hts_get_verbosity()
+int hts_get_verbosity(void)
 {
   return hts_verbose;
 }
-
-
-int hts_get_hts_verbose();
 
 
 // taken from samtools/bam_import.c

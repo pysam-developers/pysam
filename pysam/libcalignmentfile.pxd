@@ -18,11 +18,6 @@ cdef extern from "htslib_util.h":
 
     char * pysam_bam_get_qname(bam1_t * b)
 
-cdef extern from "samfile_util.h":
-
-    int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
-    int bam_prob_realn(bam1_t *b, const char *ref)
-
 ####################################################################
 # Utility types
 
