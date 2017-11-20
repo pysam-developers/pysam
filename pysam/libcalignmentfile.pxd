@@ -124,6 +124,7 @@ cdef class IteratorColumn:
     cdef FastaFile fastafile
     cdef stepper
     cdef int max_depth
+    cdef bint ignore_overlaps
 
     cdef int cnext(self)
     cdef char * getSequence(self)

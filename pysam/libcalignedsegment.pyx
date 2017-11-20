@@ -98,6 +98,20 @@ cdef inline uint32_t c_mul(uint32_t a, uint32_t b):
     return (a * b) & 0xffffffff
 
 
+cdef inline uint8_t tolower(uint8_t ch):
+    if ch >= 'A' and ch <= 'Z':
+        return 'a' + ch - 'A'
+    else:
+        return ch
+
+
+cdef inline uint8_t toupper(uint8_t ch):
+    if ch >= 'a' and ch <= 'A':
+        return 'A' + ch - 'a'
+    else:
+        return ch
+    
+
 #####################################################################
 # typecode guessing
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
@@ -544,6 +558,7 @@ cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
     dest.tid = tid
     dest.pos = pos
     dest.n_pu = n_pu
+    dest.min_base_quality = 13
     return dest
 
 cdef class PileupRead
@@ -2616,6 +2631,166 @@ cdef class PileupColumn:
         def __set__(self, v):
             self.nsegments = v
 
+    def get_num_aligned(self):
+
+        cdef uint32_t x = 0
+        cdef uint32_t c = 0
+        cdef uint32_t cnt = 0
+        cdef bam_pileup1_t * p = NULL
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if p.qpos < p.b.core.l_qseq:
+                c = bam_get_qual(p.b)[p.qpos]
+            else:
+                c = 0
+            if c < self.min_base_quality:
+                continue
+            cnt += 1
+        return cnt
+
+    def get_query_sequences(self):
+        cdef uint32_t x = 0
+        cdef uint32_t j = 0
+        cdef uint32_t c = 0
+        cdef uint32_t n = 0
+        cdef uint8_t cc = 0
+        
+        cdef char * buffer = malloc(MAX_BUFFER_SIZE, sizeof(uint8_t))
+        
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if p.qpos < p.b.core.l_qseq:
+                c = bam_get_qual(p.b)[p.qpos]
+            else:
+                c = 0
+            if c < self.min_base_quality:
+                continue
+            ret = []
+            # see samtools pileup_seq
+            if p.is_head:
+                ret.append("^")
+                if p.b.core.qual > 93:
+                    ret.append(chr(126))
+                else:
+                    ret.append(chr(p.b.core.qual + 33))
+
+            if not p.is_del:
+                if p.qpos < p.b.core.l_qseq:
+                    cc = <uint8_t>seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos)]
+                else:
+                    cc = 'N'
+                result.append(cc)
+                    
+                if (cc == '='):
+                    if bam_is_rev(p.b):
+                        ret.append(',')
+                    else:
+                        ret.append('.')
+                else:
+                    if bam_is_rev(p.b):
+                        ret.append(tolower(cc))
+                    else:
+                        ret.append(toupper(cc))
+            else:
+                if p.is_refskip:
+                    if bam_is_rev(p.b):
+                        ret.append('<')
+                    else:
+                        ret.append('>')
+                else:
+                    ret.append('*')
+                    
+            if p.indel > 0:
+                indel = ["+", str(p.indel)]
+                for j from 1 <= j <= p.indel:
+                    indel.append(chr(seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]))
+                if bam_is_rev(p.b):
+                    ret.append("".join(indel).lower())
+                else:
+                    ret.append("".join(indel).upper())
+            elif p.indel < 0:
+                indel = [str(p.indel)]
+                for j from 1 <= j <= -p.indel:
+                    # int c = (ref && (int)pos+j < ref_len)? ref[pos+j] : 'N';
+                    indel.append("N")
+                if bam_is_rev(p.b):
+                    ret.append("".join(indel).lower())
+                else:
+                    ret.append("".join(indel).upper())
+            if p.is_tail:
+                ret.append("$")
+
+            result.append("".join(ret))
+            # PyBytes_FromStringAndSize(buffer, n))
+            
+        free(buffer)
+        return result
+
+    def get_query_qualities(self):
+        cdef uint32_t x = 0
+        cdef uint32_t c = 0
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if p.qpos < p.b.core.l_qseq:
+                c = bam_get_qual(p.b)[p.qpos]
+            else:
+                c = 0
+            if c < self.min_base_quality:
+                continue
+            result.append(c)
+        return result
+
+    def get_mapping_qualities(self):
+        cdef uint32_t x = 0
+        cdef uint32_t c = 0
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if p.qpos < p.b.core.l_qseq:
+                c = bam_get_qual(p.b)[p.qpos]
+            else:
+                c = 0
+            if c < self.min_base_quality:
+                continue
+            result.append(p.b.core.qual)
+        return result
+
+    def get_query_positions(self):
+        pass
+    # def get_query_positions(self):
+    #             #     if (conf->flag & MPLP_PRINT_POS) {
+    #             #         n = 0;
+    #             #         putc('\t', pileup_fp);
+    #             #         for (j = 0; j < n_plp[i]; ++j) {
+    #             #             const bam_pileup1_t *p = plp[i] + j;
+    #             #             int c = bam_get_qual(p->b)[p->qpos];
+    #             #             if ( c < conf->min_baseQ ) continue;
+
+    #             #             if (n > 0) putc(',', pileup_fp);
+    #             #             fprintf(pileup_fp, "%d", plp[i][j].qpos + 1); // FIXME: printf() is very slow...
+    #             #             n++;
+    #             #         }
+    #             #         if (!n) putc('*', pileup_fp);
+    #             #     }
+        
+    # def get_query_names(self):
+    #             #     if (conf->flag & MPLP_PRINT_QNAME) {
+    #             #         n = 0;
+    #             #         putc('\t', pileup_fp);
+    #             #         for (j = 0; j < n_plp[i]; ++j) {
+    #             #             const bam_pileup1_t *p = &plp[i][j];
+    #             #             int c = bam_get_qual(p->b)[p->qpos];
+    #             #             if ( c < conf->min_baseQ ) continue;
+
+    #             #             if (n > 0) putc(',', pileup_fp);
+    #             #             fputs(bam_get_qname(p->b), pileup_fp);
+    #             #             n++;
+    #             #         }
+    #             #         if (!n) putc('*', pileup_fp);
+    #             #     }
+            
 
 cdef class PileupRead:
     '''Representation of a read aligned to a particular position in the
@@ -2699,6 +2874,7 @@ cdef class PileupRead:
         def __get__(self):
             return self._is_refskip
 
+        
 
 cpdef enum CIGAR_OPS:
     CMATCH = 0

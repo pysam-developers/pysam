@@ -4,20 +4,23 @@ import subprocess
 import pysam
 
 
-from TestUtils import BAM_DATADIR
+from TestUtils import BAM_DATADIR, force_str
 
+
+# Use -x option in samtools mpileup to turn off overlap detection
+# API not available at the moment.
 
 ####################################################
 ####################################################    
 # Simply building a pileup and counting number of piled-up columns
 def build_pileup_with_samtools(fn):
-    os.system("samtools mpileup {} 2> /dev/null | wc -l > /dev/null".format(fn))
+    os.system("samtools mpileup -x {} 2> /dev/null | wc -l > /dev/null".format(fn))
     return 2998
 
 
 def build_pileup_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", fn],
+    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -51,13 +54,13 @@ def test_build_pileup_from_bam_with_pysam(benchmark):
 ####################################################    
 # Build depth profile with pileup
 def build_depth_with_samtools(fn):
-    os.system("samtools mpileup {} 2> /dev/null | awk '{{a += $4}} END {{print a}}' > /dev/null".format(fn))
-    return 107241
+    os.system("samtools mpileup -x {} 2> /dev/null | awk '{{a += $4}} END {{print a}}' > /dev/null".format(fn))
+    return 107248
 
 
 def build_depth_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", fn],
+    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -65,41 +68,54 @@ def build_depth_with_samtoolspipe(fn):
         return sum([int(x[3]) for x in data])
 
 
+def build_depth_with_filter_with_pysam(*args, **kwargs):
+    with pysam.AlignmentFile(*args, **kwargs) as inf:
+        return sum([x.get_num_aligned() for x in inf.pileup(stepper="samtools")])
+
+
 def build_depth_with_pysam(*args, **kwargs):
     with pysam.AlignmentFile(*args, **kwargs) as inf:
         return sum([x.nsegments for x in inf.pileup(stepper="samtools")])
-
+    
 
 def test_build_depth_from_bam_with_samtools(benchmark):
     result = benchmark(build_depth_with_samtools,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
-    assert result == 107241
+    assert result == 107248
 
 
 def test_build_depth_from_bam_with_samtoolspipe(benchmark):
     result = benchmark(build_depth_with_samtoolspipe,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
-    assert result == 107241
+    assert result == 107248
 
 
 def test_build_depth_from_bam_with_pysam(benchmark):
     result = benchmark(build_depth_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
-    # TODO: why is this different?
+    # different value, as samtools filters with a minimum
+    # base quality of 13
     assert result == 110015
 
+
+def test_build_depth_with_filter_from_bam_with_pysam(benchmark):
+    result = benchmark(build_depth_with_filter_with_pysam,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    # why not 107241?
+    assert result == 107248
+    
 
 ####################################################
 ####################################################    
 # Build depth profile with pileup
 def build_base_concatenation_with_samtools(fn):
-    os.system("samtools mpileup {} 2> /dev/null | awk '{{a = a $5}} END {{print a}}' | wc -c > /dev/null".format(fn))
-    return 116308
+    os.system("samtools mpileup -x {} 2> /dev/null | awk '{{a = a $5}} END {{print a}}' | wc -c > /dev/null".format(fn))
+    return 116314
 
 
 def build_base_concatenation_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", fn],
+    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -107,7 +123,7 @@ def build_base_concatenation_with_samtoolspipe(fn):
         return len(b"".join([x[4] for x in data]))
 
 
-def build_base_concatenation_with_pysam(*args, **kwargs):
+def build_base_concatenation_with_pysam_pileups(*args, **kwargs):
     total_pileup = []
     with pysam.AlignmentFile(*args, **kwargs) as inf:
         total_pileup = "".join([
@@ -116,20 +132,67 @@ def build_base_concatenation_with_pysam(*args, **kwargs):
     return len(total_pileup)
 
 
+def build_base_concatenation_with_pysam(*args, **kwargs):
+    total_pileup = []
+    with pysam.AlignmentFile(*args, **kwargs) as inf:
+        total_pileup = [column.get_query_sequences() for column in
+                        inf.pileup(stepper="samtools")]
+        # total_pileup = "".join(
+        #     ["".join(column.get_query_sequences()) for column in
+        #              inf.pileup(stepper="samtools")])
+    return len(total_pileup)
+
+
 def test_build_base_concatenation_from_bam_with_samtools(benchmark):
     result = benchmark(build_base_concatenation_with_samtools,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
-    assert result == 116308
+    assert result == 116314
 
 
 def test_build_base_concatenation_from_bam_with_samtoolspipe(benchmark):
     result = benchmark(build_base_concatenation_with_samtoolspipe,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
-    assert result == 116308
+    assert result == 116314
+
+
+def test_build_base_concatenation_from_bam_with_pysam_pileups(benchmark):
+    result = benchmark(build_base_concatenation_with_pysam_pileups,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    assert result == 106889
 
 
 def test_build_base_concatenation_from_bam_with_pysam(benchmark):
     result = benchmark(build_base_concatenation_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
-    assert result == 106889
+    # assert result == 116314
     
+
+
+def build_qualities_concatenation_with_samtoolspipe(fn):
+    FNULL = open(os.devnull, 'w')
+    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
+                          stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE,
+                          stderr=FNULL) as proc:
+        data = [force_str(x).split()[5] for x in proc.stdout.readlines()]
+    return data
+    
+
+def build_qualities_concatenation_with_pysam(*args, **kwargs):
+    total_pileup = []
+    with pysam.AlignmentFile(*args, **kwargs) as inf:
+        total_pileup = [column.get_query_qualities() for column in
+                        inf.pileup(stepper="samtools")]
+    return total_pileup
+
+    
+def test_build_quality_concatenation_from_bam_with_samtoolspipe(benchmark):
+    result = benchmark(build_qualities_concatenation_with_samtoolspipe,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    assert len("".join(result)) == 107248
+
+
+def test_build_quality_concatenation_from_bam_with_pysam(benchmark):
+    result = benchmark(build_qualities_concatenation_with_pysam,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    assert sum([len(x) for x in result]) == 107248

@@ -969,6 +969,11 @@ cdef class AlignmentFile(HTSFile):
         max_depth : int
            Maximum read depth permitted. The default limit is '8000'.
 
+        ignore_overlaps: bool
+
+          If set to True, detect if read pairs overlap and only take
+          the higher quality base. This is the default.
+   
         truncate : bool
 
            By default, the samtools pileup engine outputs all reads
@@ -1001,7 +1006,7 @@ cdef class AlignmentFile(HTSFile):
                                             stop=rstop,
                                             **kwargs)
             else:
-                return IteratorColumnAllRefs(self, **kwargs )
+                return IteratorColumnAllRefs(self, **kwargs)
 
         else:
             raise NotImplementedError(
@@ -2070,6 +2075,7 @@ cdef int __advance_snpcalls(void * data, bam1_t * b):
 
     return ret
 
+
 cdef class IteratorColumn:
     '''abstract base class for iterators over columns.
 
@@ -2114,6 +2120,9 @@ cdef class IteratorColumn:
     max_depth
        maximum read depth. The default is 8000.
 
+    ignore_overlaps
+       if set to True, ignore overlaps. This is the default.
+
     '''
 
     def __cinit__( self, AlignmentFile samfile, **kwargs ):
@@ -2121,6 +2130,7 @@ cdef class IteratorColumn:
         self.fastafile = kwargs.get("fastafile", None)
         self.stepper = kwargs.get("stepper", None)
         self.max_depth = kwargs.get("max_depth", 8000)
+        self.ignore_overlaps = kwargs.get("ignore_overlaps", False)
         self.iterdata.seq = NULL
         self.tid = 0
         self.pos = 0
@@ -2219,6 +2229,11 @@ cdef class IteratorColumn:
             with nogil:
                 bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
 
+        if self.ignore_overlaps:
+            raise NotImplementedError("bam_plp_init_overlaps not part of API, see #743")
+            with no_gil:
+                bam_plp_init_overlaps(self.pileup_iter)
+                
         # bam_plp_set_mask( self.pileup_iter, self.mask )
 
     cdef reset(self, tid, start, stop):
