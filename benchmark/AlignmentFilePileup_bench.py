@@ -135,11 +135,9 @@ def build_base_concatenation_with_pysam_pileups(*args, **kwargs):
 def build_base_concatenation_with_pysam(*args, **kwargs):
     total_pileup = []
     with pysam.AlignmentFile(*args, **kwargs) as inf:
-        total_pileup = [column.get_query_sequences() for column in
-                        inf.pileup(stepper="samtools")]
-        # total_pileup = "".join(
-        #     ["".join(column.get_query_sequences()) for column in
-        #              inf.pileup(stepper="samtools")])
+        total_pileup = "".join(
+            ["".join(column.get_query_sequences()) for column in
+             inf.pileup(stepper="samtools")])
     return len(total_pileup)
 
 
@@ -164,8 +162,7 @@ def test_build_base_concatenation_from_bam_with_pysam_pileups(benchmark):
 def test_build_base_concatenation_from_bam_with_pysam(benchmark):
     result = benchmark(build_base_concatenation_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
-    # assert result == 116314
-    
+    assert result == 116314
 
 
 def build_qualities_concatenation_with_samtoolspipe(fn):
@@ -196,3 +193,79 @@ def test_build_quality_concatenation_from_bam_with_pysam(benchmark):
     result = benchmark(build_qualities_concatenation_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert sum([len(x) for x in result]) == 107248
+
+
+def build_querynames_concatenation_with_pysam(*args, **kwargs):
+    total_pileup = []
+    with pysam.AlignmentFile(*args, **kwargs) as inf:
+        total_pileup = [column.get_query_names() for column in
+                        inf.pileup(stepper="samtools")]
+    return total_pileup
+
+    
+def test_build_querynames_concatenation_from_bam_with_pysam(benchmark):
+    result = benchmark(build_querynames_concatenation_with_pysam,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    assert len("".join([x for column in result for x in column])) == 2307497
+
+
+def build_mappingqualities_concatenation_with_samtoolspipe(fn):
+    FNULL = open(os.devnull, 'w')
+    with subprocess.Popen(["samtools", "mpileup", "-xs", fn],
+                          stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE,
+                          stderr=FNULL) as proc:
+        data = [force_str(x).split()[6] for x in proc.stdout.readlines()]
+    return data
+    
+
+def build_mappingqualities_concatenation_with_pysam(*args, **kwargs):
+    total_pileup = []
+    with pysam.AlignmentFile(*args, **kwargs) as inf:
+        total_pileup = [column.get_mapping_qualities() for column in
+                        inf.pileup(stepper="samtools")]
+    return total_pileup
+
+    
+def test_build_mappingquality_concatenation_from_bam_with_samtoolspipe(benchmark):
+    result = benchmark(build_mappingqualities_concatenation_with_samtoolspipe,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    assert len("".join(result)) == 107248
+
+
+def test_build_mappingquality_concatenation_from_bam_with_pysam(benchmark):
+    result = benchmark(build_mappingqualities_concatenation_with_pysam,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    assert sum([len(x) for x in result]) == 107248
+
+
+def build_query_positions_concatenation_with_samtoolspipe(fn):
+    FNULL = open(os.devnull, 'w')
+    with subprocess.Popen(["samtools", "mpileup", "-xO", fn],
+                          stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE,
+                          stderr=FNULL) as proc:
+        data = [list(map(int, force_str(x).split()[6].split(","))) for x in proc.stdout.readlines()]
+    return data
+    
+
+def build_query_positions_concatenation_with_pysam(*args, **kwargs):
+    total_pileup = []
+    with pysam.AlignmentFile(*args, **kwargs) as inf:
+        total_pileup = [column.get_query_positions() for column in
+                        inf.pileup(stepper="samtools")]
+    return total_pileup
+
+    
+def test_build_query_positions_concatenation_from_bam_with_samtoolspipe(benchmark):
+    result = benchmark(build_query_positions_concatenation_with_samtoolspipe,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    # positions output by samtools are 1-based
+    assert sum([sum(x) - len(x) for x in result]) == 1841736
+
+
+def test_build_querypositions_concatenation_from_bam_with_pysam(benchmark):
+    result = benchmark(build_query_positions_concatenation_with_pysam,
+                       os.path.join(BAM_DATADIR, "ex2.bam"))
+    assert sum([sum(x) for x in result]) == 1841736
+    

@@ -67,7 +67,7 @@ cdef class PileupColumn:
     cdef int n_pu
     cdef AlignmentFile _alignment_file
     cdef uint32_t min_base_quality
-    
+    cdef uint8_t * buf
 
 cdef class PileupRead:
     cdef AlignedSegment _alignment

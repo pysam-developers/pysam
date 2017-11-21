@@ -67,6 +67,7 @@ from cpython cimport array as c_array
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
+from libc.stdio cimport sprintf
 
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
@@ -99,17 +100,28 @@ cdef inline uint32_t c_mul(uint32_t a, uint32_t b):
 
 
 cdef inline uint8_t tolower(uint8_t ch):
-    if ch >= 'A' and ch <= 'Z':
-        return 'a' + ch - 'A'
+    if ch >= 65 and ch <= 90:
+        return ch + 32
     else:
         return ch
 
 
 cdef inline uint8_t toupper(uint8_t ch):
-    if ch >= 'a' and ch <= 'A':
-        return 'A' + ch - 'a'
+    if ch >= 97 and ch <= 122:
+        return ch - 32
     else:
         return ch
+
+cdef inline bint pileup_base_qual_skip(bam_pileup1_t * p, uint32_t threshold):
+    cdef uint32_t c
+    if p.qpos < p.b.core.l_qseq:
+        c = bam_get_qual(p.b)[p.qpos]
+    else:
+        c = 0
+    if c < threshold:
+        return True
+    return False
+
     
 
 #####################################################################
@@ -559,6 +571,11 @@ cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
     dest.pos = pos
     dest.n_pu = n_pu
     dest.min_base_quality = 13
+    MAX_BUFFER_SIZE = 1000
+    dest.buf = <uint8_t *>calloc(MAX_BUFFER_SIZE, sizeof(uint8_t))
+    if dest.buf == NULL:
+        raise MemoryError("could not allocate pileup buffer")
+
     return dest
 
 cdef class PileupRead
@@ -2569,6 +2586,10 @@ cdef class PileupColumn:
             "\n" +\
             "\n".join(map(str, self.pileups))
 
+    def __dealloc__(self):
+        if self.buf is not NULL:
+            free(self.buf)
+
     property reference_id:
         '''the reference sequence number as defined in the header'''
         def __get__(self):
@@ -2639,11 +2660,7 @@ cdef class PileupColumn:
         cdef bam_pileup1_t * p = NULL
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
-            if p.qpos < p.b.core.l_qseq:
-                c = bam_get_qual(p.b)[p.qpos]
-            else:
-                c = 0
-            if c < self.min_base_quality:
+            if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             cnt += 1
         return cnt
@@ -2654,81 +2671,89 @@ cdef class PileupColumn:
         cdef uint32_t c = 0
         cdef uint32_t n = 0
         cdef uint8_t cc = 0
-        
-        cdef char * buffer = malloc(MAX_BUFFER_SIZE, sizeof(uint8_t))
-        
-        result = []
+        cdef uint8_t * buf = self.buf
+        cdef bam_pileup1_t * p = NULL
+        n = 0
+                    
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
-            if p.qpos < p.b.core.l_qseq:
-                c = bam_get_qual(p.b)[p.qpos]
-            else:
-                c = 0
-            if c < self.min_base_quality:
+            if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
-            ret = []
             # see samtools pileup_seq
             if p.is_head:
-                ret.append("^")
+                buf[n] = '^'
+                n += 1
                 if p.b.core.qual > 93:
-                    ret.append(chr(126))
+                    buf[n] = 126
                 else:
-                    ret.append(chr(p.b.core.qual + 33))
+                    buf[n] = p.b.core.qual + 33
+                n += 1
 
             if not p.is_del:
                 if p.qpos < p.b.core.l_qseq:
                     cc = <uint8_t>seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos)]
                 else:
                     cc = 'N'
-                result.append(cc)
                     
                 if (cc == '='):
                     if bam_is_rev(p.b):
-                        ret.append(',')
+                        cc = ','
                     else:
-                        ret.append('.')
+                        cc = '.'
                 else:
                     if bam_is_rev(p.b):
-                        ret.append(tolower(cc))
+                        cc = tolower(cc)
                     else:
-                        ret.append(toupper(cc))
+                        cc = toupper(cc)
+                buf[n] = cc
+                n += 1
             else:
                 if p.is_refskip:
                     if bam_is_rev(p.b):
-                        ret.append('<')
+                        buf[n] = '<'
                     else:
-                        ret.append('>')
+                        buf[n] = '>'
                 else:
-                    ret.append('*')
+                    buf[n] = '*'
+                n += 1
                     
             if p.indel > 0:
-                indel = ["+", str(p.indel)]
+                buf[n] = '+'
+                n += 1
+                n += sprintf(<char *>&(buf[n]), "%i", p.indel)
                 for j from 1 <= j <= p.indel:
-                    indel.append(chr(seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]))
-                if bam_is_rev(p.b):
-                    ret.append("".join(indel).lower())
-                else:
-                    ret.append("".join(indel).upper())
+                    cc = seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]
+                    if bam_is_rev(p.b):
+                        cc = tolower(cc)
+                    else:
+                        cc = toupper(cc)
+                    buf[n] = cc
+                    n += 1
             elif p.indel < 0:
-                indel = [str(p.indel)]
+                buf[n] = '-'
+                n += 1
+                n += sprintf(<char *>&(buf[n]), "%i", -p.indel)
                 for j from 1 <= j <= -p.indel:
                     # int c = (ref && (int)pos+j < ref_len)? ref[pos+j] : 'N';
-                    indel.append("N")
-                if bam_is_rev(p.b):
-                    ret.append("".join(indel).lower())
-                else:
-                    ret.append("".join(indel).upper())
+                    cc = 'N'
+                    if bam_is_rev(p.b):
+                        cc = tolower(cc)
+                    else:
+                        cc = toupper(cc)
+                    buf[n] = cc
+                    n += 1
             if p.is_tail:
-                ret.append("$")
+                buf[n] = '$'
+                n += 1
 
-            result.append("".join(ret))
-            # PyBytes_FromStringAndSize(buffer, n))
-            
-        free(buffer)
-        return result
+            buf[n] = ':'
+            n += 1
+        # quicker to ensemble all and split than to encode all separately.
+        return force_str(PyBytes_FromStringAndSize(<char*>buf, n)).split(":")
 
     def get_query_qualities(self):
         cdef uint32_t x = 0
+        cdef bam_pileup1_t * p = NULL
         cdef uint32_t c = 0
         result = []
         for x from 0 <= x < self.n_pu:
@@ -2744,52 +2769,36 @@ cdef class PileupColumn:
 
     def get_mapping_qualities(self):
         cdef uint32_t x = 0
-        cdef uint32_t c = 0
+        cdef bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
-            if p.qpos < p.b.core.l_qseq:
-                c = bam_get_qual(p.b)[p.qpos]
-            else:
-                c = 0
-            if c < self.min_base_quality:
+            if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             result.append(p.b.core.qual)
         return result
 
     def get_query_positions(self):
-        pass
-    # def get_query_positions(self):
-    #             #     if (conf->flag & MPLP_PRINT_POS) {
-    #             #         n = 0;
-    #             #         putc('\t', pileup_fp);
-    #             #         for (j = 0; j < n_plp[i]; ++j) {
-    #             #             const bam_pileup1_t *p = plp[i] + j;
-    #             #             int c = bam_get_qual(p->b)[p->qpos];
-    #             #             if ( c < conf->min_baseQ ) continue;
+        cdef uint32_t x = 0
+        cdef bam_pileup1_t * p = NULL
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if pileup_base_qual_skip(p, self.min_base_quality):
+                continue
+            result.append(p.qpos)
+        return result
 
-    #             #             if (n > 0) putc(',', pileup_fp);
-    #             #             fprintf(pileup_fp, "%d", plp[i][j].qpos + 1); // FIXME: printf() is very slow...
-    #             #             n++;
-    #             #         }
-    #             #         if (!n) putc('*', pileup_fp);
-    #             #     }
-        
-    # def get_query_names(self):
-    #             #     if (conf->flag & MPLP_PRINT_QNAME) {
-    #             #         n = 0;
-    #             #         putc('\t', pileup_fp);
-    #             #         for (j = 0; j < n_plp[i]; ++j) {
-    #             #             const bam_pileup1_t *p = &plp[i][j];
-    #             #             int c = bam_get_qual(p->b)[p->qpos];
-    #             #             if ( c < conf->min_baseQ ) continue;
-
-    #             #             if (n > 0) putc(',', pileup_fp);
-    #             #             fputs(bam_get_qname(p->b), pileup_fp);
-    #             #             n++;
-    #             #         }
-    #             #         if (!n) putc('*', pileup_fp);
-    #             #     }
+    def get_query_names(self):
+        cdef uint32_t x = 0
+        cdef bam_pileup1_t * p = NULL
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if pileup_base_qual_skip(p, self.min_base_quality):
+                continue
+            result.append(charptr_to_str(pysam_bam_get_qname(p.b)))
+        return result
             
 
 cdef class PileupRead:
