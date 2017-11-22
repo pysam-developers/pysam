@@ -974,6 +974,11 @@ cdef class AlignmentFile(HTSFile):
           If set to True, detect if read pairs overlap and only take
           the higher quality base. This is the default.
    
+        min_base_quality: int
+
+           Minimum base quality. Bases below the minimum quality will
+           not be output.
+
         truncate : bool
 
            By default, the samtools pileup engine outputs all reads
@@ -2131,6 +2136,7 @@ cdef class IteratorColumn:
         self.stepper = kwargs.get("stepper", None)
         self.max_depth = kwargs.get("max_depth", 8000)
         self.ignore_overlaps = kwargs.get("ignore_overlaps", False)
+        self.min_base_quality = kwargs.get("min_base_quality", 13)
         self.iterdata.seq = NULL
         self.tid = 0
         self.pos = 0
@@ -2310,10 +2316,11 @@ cdef class IteratorColumnRegion(IteratorColumn):
                 if self.pos >= self.stop: raise StopIteration
 
             return makePileupColumn(&self.plp,
-                                   self.tid,
-                                   self.pos,
-                                   self.n_plp,
-                                   self.samfile)
+                                    self.tid,
+                                    self.pos,
+                                    self.n_plp,
+                                    self.min_base_quality,
+                                    self.samfile)
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
@@ -2345,6 +2352,7 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                         self.tid,
                                         self.pos,
                                         self.n_plp,
+                                        self.min_base_quality,
                                         self.samfile)
 
             # otherwise, proceed to next reference or stop

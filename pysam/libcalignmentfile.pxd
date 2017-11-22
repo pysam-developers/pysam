@@ -117,6 +117,7 @@ cdef class IteratorColumn:
     cdef int pos
     cdef int n_plp
     cdef int mask
+    cdef uint32_t min_base_quality
     cdef bam_pileup1_t * plp
     cdef bam_plp_t pileup_iter
     cdef __iterdata iterdata

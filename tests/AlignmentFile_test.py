@@ -1012,7 +1012,7 @@ class TestIteratorColumnBAM(unittest.TestCase):
         '''compare results from iterator with those from samtools.'''
         # check if the same reads are returned and in the same order
         for column in self.samfile.pileup(
-                contig, start, end, truncate=truncate):
+                contig, start, end, truncate=truncate, min_base_quality=0):
             if truncate:
                 self.assertGreaterEqual(column.reference_pos, start)
                 self.assertLess(column.reference_pos, end)

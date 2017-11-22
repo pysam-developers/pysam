@@ -67,7 +67,7 @@ from cpython cimport array as c_array
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
-from libc.stdio cimport sprintf
+from libc.stdio cimport snprintf
 
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
@@ -85,6 +85,9 @@ cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 # cigar code to character and vice versa
 cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
+
+# dimensioned for 8000 pileup limit (+ insertions/deletions)
+cdef uint32_t MAX_PILEUP_BUFFER_SIZE = 10000
 
 if IS_PYTHON3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
@@ -557,8 +560,12 @@ cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file):
 
 
 cdef class PileupColumn
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
-                      int n_pu, AlignmentFile alignment_file):
+cdef makePileupColumn(bam_pileup1_t ** plp,
+                      int tid,
+                      int pos,
+                      int n_pu,
+                      uint32_t min_base_quality,
+                      AlignmentFile alignment_file):
     '''return a PileupColumn object constructed from pileup in `plp` and
     setting additional attributes.
 
@@ -570,9 +577,8 @@ cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
     dest.tid = tid
     dest.pos = pos
     dest.n_pu = n_pu
-    dest.min_base_quality = 13
-    MAX_BUFFER_SIZE = 1000
-    dest.buf = <uint8_t *>calloc(MAX_BUFFER_SIZE, sizeof(uint8_t))
+    dest.min_base_quality = min_base_quality
+    dest.buf = <uint8_t *>calloc(MAX_PILEUP_BUFFER_SIZE, sizeof(uint8_t))
     if dest.buf == NULL:
         raise MemoryError("could not allocate pileup buffer")
 
@@ -2590,6 +2596,12 @@ cdef class PileupColumn:
         if self.buf is not NULL:
             free(self.buf)
 
+    def set_min_base_quality(self, min_base_quality):
+        """set the minimum base quality for this pileup column.
+        """
+        self.min_base_quality = min_base_quality
+    
+            
     property reference_id:
         '''the reference sequence number as defined in the header'''
         def __get__(self):
@@ -2677,7 +2689,9 @@ cdef class PileupColumn:
         cdef uint8_t * buf = self.buf
         cdef bam_pileup1_t * p = NULL
         n = 0
-                    
+
+        # todo: reference sequence to count matches/mismatches
+        # todo: convert assertions to exceptions
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
             if pileup_base_qual_skip(p, self.min_base_quality):
@@ -2686,12 +2700,15 @@ cdef class PileupColumn:
             if p.is_head:
                 buf[n] = '^'
                 n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
+                
                 if p.b.core.qual > 93:
                     buf[n] = 126
                 else:
                     buf[n] = p.b.core.qual + 33
                 n += 1
-
+                assert n < MAX_PILEUP_BUFFER_SIZE
+                
             if not p.is_del:
                 if p.qpos < p.b.core.l_qseq:
                     cc = <uint8_t>seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos)]
@@ -2710,6 +2727,7 @@ cdef class PileupColumn:
                         cc = toupper(cc)
                 buf[n] = cc
                 n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
             else:
                 if p.is_refskip:
                     if bam_is_rev(p.b):
@@ -2719,11 +2737,17 @@ cdef class PileupColumn:
                 else:
                     buf[n] = '*'
                 n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
                     
             if p.indel > 0:
                 buf[n] = '+'
                 n += 1
-                n += sprintf(<char *>&(buf[n]), "%i", p.indel)
+                assert n < MAX_PILEUP_BUFFER_SIZE
+                n += snprintf(<char *>&(buf[n]),
+                              MAX_PILEUP_BUFFER_SIZE - n,
+                              "%i",
+                              p.indel)
+                assert n < MAX_PILEUP_BUFFER_SIZE
                 for j from 1 <= j <= p.indel:
                     cc = seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]
                     if bam_is_rev(p.b):
@@ -2732,10 +2756,16 @@ cdef class PileupColumn:
                         cc = toupper(cc)
                     buf[n] = cc
                     n += 1
+                    assert n < MAX_PILEUP_BUFFER_SIZE
             elif p.indel < 0:
                 buf[n] = '-'
                 n += 1
-                n += sprintf(<char *>&(buf[n]), "%i", -p.indel)
+                assert n < MAX_PILEUP_BUFFER_SIZE
+                n += snprintf(<char *>&(buf[n]),
+                              MAX_PILEUP_BUFFER_SIZE - n,
+                              "%i",
+                              -p.indel)
+                assert n < MAX_PILEUP_BUFFER_SIZE
                 for j from 1 <= j <= -p.indel:
                     # int c = (ref && (int)pos+j < ref_len)? ref[pos+j] : 'N';
                     cc = 'N'
@@ -2745,12 +2775,16 @@ cdef class PileupColumn:
                         cc = toupper(cc)
                     buf[n] = cc
                     n += 1
+                    assert n < MAX_PILEUP_BUFFER_SIZE
             if p.is_tail:
                 buf[n] = '$'
                 n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
 
             buf[n] = ':'
             n += 1
+            assert n < MAX_PILEUP_BUFFER_SIZE
+            
         # quicker to ensemble all and split than to encode all separately.
         return force_str(PyBytes_FromStringAndSize(<char*>buf, n)).split(":")
 

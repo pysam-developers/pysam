@@ -81,6 +81,8 @@ cdef class PileupRead:
 
 # factor methods
 cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file)
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu, AlignmentFile alignment_file)
+cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu,
+     uint32_t min_base_quality,
+     AlignmentFile alignment_file)
 cdef makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file)
 cdef uint32_t get_alignment_length(bam1_t * src)
