@@ -30,3 +30,6 @@ else:
         return s
     def force_bytes(s):
         return s
+
+def flatten_nested_list(l):
+    return [i for ll in l for i in ll]
