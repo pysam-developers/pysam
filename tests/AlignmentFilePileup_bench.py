@@ -49,56 +49,56 @@ def test_build_depth_with_filter_from_bam_with_pysam(benchmark):
     assert sum(result) == 107248
     
 
-def test_build_bases_from_bam_with_samtools(benchmark):
-    result = benchmark(build_bases_with_samtools,
+def test_build_query_bases_from_bam_with_samtools(benchmark):
+    result = benchmark(build_query_bases_with_samtools,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert result == 116314
 
 
-def test_build_bases_from_bam_with_samtoolspipe(benchmark):
-    result = benchmark(build_bases_with_samtoolspipe,
+def test_build_query_bases_from_bam_with_samtoolspipe(benchmark):
+    result = benchmark(build_query_bases_with_samtoolspipe,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert len("".join(flatten_nested_list(result))) == 116314
 
 
-def test_build_bases_from_bam_with_pysam_pileups(benchmark):
-    result = benchmark(build_bases_with_pysam_pileups,
+def test_build_query_bases_from_bam_with_pysam_pileups(benchmark):
+    result = benchmark(build_query_bases_with_pysam_pileups,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert len("".join(flatten_nested_list(result))) == 116314
 
 
-def test_build_bases_from_bam_with_pysam(benchmark):
-    result = benchmark(build_bases_with_pysam,
+def test_build_query_bases_from_bam_with_pysam(benchmark):
+    result = benchmark(build_query_bases_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert len("".join(flatten_nested_list(result))) == 116314
 
 
-def test_build_quality_from_bam_with_samtoolspipe(benchmark):
-    result = benchmark(build_qualities_with_samtoolspipe,
+def test_build_query_qualities_from_bam_with_samtoolspipe(benchmark):
+    result = benchmark(build_query_qualities_with_samtoolspipe,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert len("".join(result)) == 107248
 
 
-def test_build_quality_from_bam_with_pysam(benchmark):
-    result = benchmark(build_qualities_with_pysam,
+def test_build_query_qualities_from_bam_with_pysam(benchmark):
+    result = benchmark(build_query_qualities_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert sum([len(x) for x in result]) == 107248
 
 
-def test_build_querynames_from_bam_with_Pysam(benchmark):
-    result = benchmark(build_querynames_with_pysam,
+def test_build_query_names_from_bam_with_Pysam(benchmark):
+    result = benchmark(build_query_names_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert len("".join([x for column in result for x in column])) == 2307497
 
 
-def test_build_mappingquality_from_bam_with_samtoolspipe(benchmark):
-    result = benchmark(build_mappingqualities_with_samtoolspipe,
+def test_build_mapping_qualities_from_bam_with_samtoolspipe(benchmark):
+    result = benchmark(build_mapping_qualities_with_samtoolspipe,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert len("".join(result)) == 107248
 
 
-def test_build_mappingquality_from_bam_with_pysam(benchmark):
-    result = benchmark(build_mappingqualities_with_pysam,
+def test_build_mapping_qualities_from_bam_with_pysam(benchmark):
+    result = benchmark(build_mapping_qualities_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert sum([len(x) for x in result]) == 107248
 
@@ -110,7 +110,7 @@ def test_build_query_positions_from_bam_with_samtoolspipe(benchmark):
     assert sum([sum(x) - len(x) for x in result]) == 1841736
 
 
-def test_build_querypositions_from_bam_with_pysam(benchmark):
+def test_build_query_positions_from_bam_with_pysam(benchmark):
     result = benchmark(build_query_positions_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert sum([sum(x) for x in result]) == 1841736

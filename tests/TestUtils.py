@@ -232,3 +232,7 @@ def load_and_convert(filename, encode=True):
                 data.append(d)
 
     return data
+
+
+def flatten_nested_list(l):
+    return [i for ll in l for i in ll]
