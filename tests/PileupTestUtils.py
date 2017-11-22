@@ -72,7 +72,16 @@ def build_query_bases_with_pysam_pileups(*args, **kwargs):
     total_pileup = []
     with pysam.AlignmentFile(*args, **kwargs) as inf:
         total_pileup = [
-            [r.alignment.query_sequence[r.query_position] for r in column.pileups if r.query_position]
+            [r.alignment.query_sequence[r.query_position] for r in column.pileups if r.query_position is not None]
+            for column in inf.pileup(stepper="samtools")]
+    return total_pileup
+
+
+def build_query_qualities_with_pysam_pileups(*args, **kwargs):
+    total_pileup = []
+    with pysam.AlignmentFile(*args, **kwargs) as inf:
+        total_pileup = [
+            [r.alignment.query_qualities[r.query_position_or_next] for r in column.pileups if r.query_position_or_next is not None]
             for column in inf.pileup(stepper="samtools")]
     return total_pileup
 

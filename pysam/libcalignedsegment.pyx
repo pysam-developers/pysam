@@ -2617,17 +2617,20 @@ cdef class PileupColumn:
     property pileups:
         '''list of reads (:class:`pysam.PileupRead`) aligned to this column'''
         def __get__(self):
-            cdef int x
-            pileups = []
-
             if self.plp == NULL or self.plp[0] == NULL:
                 raise ValueError("PileupColumn accessed after iterator finished")
+
+            cdef int x
+            cdef bam_pileup1_t * p = NULL
+            pileups = []
 
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append(makePileupRead(&(self.plp[0][x]),
-                                              self._alignment_file))
+                p = &(self.plp[0][x])
+                if pileup_base_qual_skip(p, self.min_base_quality):
+                    continue
+                pileups.append(makePileupRead(p, self._alignment_file))
             return pileups
 
     ########################################################

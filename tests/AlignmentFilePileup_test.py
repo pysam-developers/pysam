@@ -1,5 +1,6 @@
 """Benchmarking module for AlignmentFile functionality"""
 import os
+import re
 import unittest
 from TestUtils import BAM_DATADIR, force_str, flatten_nested_list
 from PileupTestUtils import *
@@ -37,8 +38,13 @@ class PileUpColumnTests(unittest.TestCase):
         self.assertEqual("".join(flatten_nested_list(pysam_result)),
                          "".join(flatten_nested_list(samtools_result)))
         
+    def test_pileup_query_qualities_from_pileups_are_equal(self):
+        samtools_result = build_query_qualities_with_samtoolspipe(self.fn)
+        pysam_result = build_query_qualities_with_pysam_pileups(self.fn)
+        pysam_result = [
+            "".join([chr(min(126, x + 33)) for x in l]) for l in pysam_result]
         
-        
+        self.assertEqual(pysam_result, samtools_result)
 
 if __name__ == "__main__":
     unittest.main()
