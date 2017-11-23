@@ -945,88 +945,6 @@ class TestIteratorRowAllBAM(unittest.TestCase):
         self.samfile.close()
 
 
-class TestIteratorColumnBAM(unittest.TestCase):
-
-    '''test iterator column against contents of ex4.bam.'''
-
-    # note that samfile contains 1-based coordinates
-    # 1D means deletion with respect to reference sequence
-    #
-    mCoverages = {'chr1': [0] * 20 + [1] * 36 + [0] * (100 - 20 - 35),
-                  'chr2': [0] * 20 + [1] * 35 + [0] * (100 - 20 - 35),
-                  }
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex4.bam"),
-                                           "rb")
-
-    def checkRange(self, contig, start=None, end=None, truncate=False):
-        '''compare results from iterator with those from samtools.'''
-        # check if the same reads are returned and in the same order
-        for column in self.samfile.pileup(
-                contig, start, end, truncate=truncate, min_base_quality=0):
-            if truncate:
-                self.assertGreaterEqual(column.reference_pos, start)
-                self.assertLess(column.reference_pos, end)
-            thiscov = len(column.pileups)
-            refcov = self.mCoverages[
-                self.samfile.getrname(column.reference_id)][column.reference_pos]
-            self.assertEqual(thiscov, refcov,
-                             "wrong coverage at pos %s:%i %i should be %i" % (
-                                 self.samfile.getrname(column.reference_id),
-                                 column.reference_pos, thiscov, refcov))
-
-    def testIterateAll(self):
-        '''check random access per contig'''
-        self.checkRange(None)
-
-    def testIteratePerContig(self):
-        '''check random access per contig'''
-        for contig in self.samfile.references:
-            self.checkRange(contig)
-
-    def testIterateRanges(self):
-        '''check random access per range'''
-        for contig, length in zip(
-                self.samfile.references, self.samfile.lengths):
-            for start in range(1, length, 90):
-                # this includes empty ranges
-                self.checkRange(contig, start, start + 90)
-
-    def testInverse(self):
-        '''test the inverse, is point-wise pileup accurate.'''
-        for contig, refseq in list(self.mCoverages.items()):
-            refcolumns = sum(refseq)
-            for pos, refcov in enumerate(refseq):
-                columns = list(self.samfile.pileup(contig, pos, pos + 1))
-                if refcov == 0:
-                    # if no read, no coverage
-                    self.assertEqual(
-                        len(columns),
-                        refcov,
-                        "wrong number of pileup columns returned for position %s:%i, %i should be %i" % (
-                            contig, pos,
-                            len(columns), refcov))
-                elif refcov == 1:
-                    # one read, all columns of the read are returned
-                    self.assertEqual(
-                        len(columns),
-                        refcolumns,
-                        "pileup incomplete at position %i: got %i, expected %i " %
-                        (pos, len(columns), refcolumns))
-
-    def testIterateTruncate(self):
-        '''check random access per range'''
-        for contig, length in zip(self.samfile.references,
-                                  self.samfile.lengths):
-            for start in range(1, length, 90):
-                # this includes empty ranges
-                self.checkRange(contig, start, start + 90, truncate=True)
-
-    def tearDown(self):
-        self.samfile.close()
-
-
 class TestIteratorRowCRAM(TestIteratorRowBAM):
     filename = os.path.join(BAM_DATADIR, "ex2.cram")
     mode = "rc"
@@ -1036,59 +954,12 @@ class TestIteratorRowCRAMWithReferenceFilename(TestIteratorRowCRAM):
     reference_filename = os.path.join(BAM_DATADIR, "ex1.fa")
 
 
-##########################################################
-##########################################################
-##########################################################
 # needs to be implemented
 # class TestAlignedSegmentFromSamWithoutHeader(TestAlignedSegmentFromBam):
 #
 #     def setUp(self):
 #         self.samfile=pysam.AlignmentFile( "ex7.sam","r" )
 #         self.reads=list(self.samfile.fetch())
-
-
-class TestIteratorColumn2(unittest.TestCase):
-
-    '''test iterator column against contents of ex1.bam.'''
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            os.path.join(BAM_DATADIR, "ex1.bam"),
-            "rb")
-
-    def testStart(self):
-        # print self.samfile.fetch().next().reference_start
-        # print self.samfile.pileup().next().reference_start
-        pass
-
-    def testTruncate(self):
-        '''see issue 107.'''
-        # note that ranges in regions start from 1
-        p = self.samfile.pileup(region='chr1:170:172', truncate=True)
-        columns = [x.reference_pos for x in p]
-        self.assertEqual(len(columns), 3)
-        self.assertEqual(columns, [169, 170, 171])
-
-        p = self.samfile.pileup('chr1', 169, 172, truncate=True)
-        columns = [x.reference_pos for x in p]
-
-        self.assertEqual(len(columns), 3)
-        self.assertEqual(columns, [169, 170, 171])
-
-    def testAccessOnClosedIterator(self):
-        '''see issue 131
-
-        Accessing pileup data after iterator has closed.
-        '''
-        pcolumn = self.samfile.pileup('chr1', 170, 180).__next__()
-        self.assertRaises(ValueError, getattr, pcolumn, "pileups")
-
-    def testStr(self):
-        '''test if PileupRead can be printed.'''
-        iter = self.samfile.pileup('chr1', 170, 180)
-        pcolumn = iter.__next__()
-        s = str(pcolumn)
-        self.assertEqual(len(s.split("\n")), 2)
 
 
 class TestFloatTagBug(unittest.TestCase):
@@ -1377,67 +1248,6 @@ class TestUnmappedReadsRetrieval(unittest.TestCase):
         with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "test_mapped_unmapped.bam"),
                                  "rb") as samfile:
             self.assertEqual(len(list(samfile.fetch(contig="*"))), 4)
-
-
-class TestPileupObjects(unittest.TestCase):
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"),
-                                           "rb")
-
-    def testPileupColumn(self):
-        for pcolumn1 in self.samfile.pileup(region="chr1:105"):
-            if pcolumn1.reference_pos == 104:
-                self.assertEqual(
-                    pcolumn1.reference_id, 0,
-                    "chromosome/target id mismatch in position 1: %s != %s" %
-                    (pcolumn1.reference_id, 0))
-                self.assertEqual(
-                    pcolumn1.reference_pos, 105 - 1,
-                    "position mismatch in position 1: %s != %s" %
-                    (pcolumn1.reference_pos, 105 - 1))
-                self.assertEqual(
-                    pcolumn1.nsegments, 2,
-                    "# reads mismatch in position 1: %s != %s" %
-                    (pcolumn1.nsegments, 2))
-        for pcolumn2 in self.samfile.pileup(region="chr2:1480"):
-            if pcolumn2.reference_pos == 1479:
-                self.assertEqual(
-                    pcolumn2.reference_id, 1,
-                    "chromosome/target id mismatch in position 1: %s != %s" %
-                    (pcolumn2.reference_id, 1))
-                self.assertEqual(
-                    pcolumn2.reference_pos, 1480 - 1,
-                    "position mismatch in position 1: %s != %s" %
-                    (pcolumn2.reference_pos, 1480 - 1))
-                self.assertEqual(
-                    pcolumn2.nsegments, 12,
-                    "# reads mismatch in position 1: %s != %s" %
-                    (pcolumn2.nsegments, 12))
-
-    def testPileupRead(self):
-        for pcolumn1 in self.samfile.pileup(region="chr1:105"):
-            if pcolumn1.reference_pos == 104:
-                self.assertEqual(
-                    len(pcolumn1.pileups), 2,
-                    "# reads aligned to column mismatch in position 1"
-                    ": %s != %s" %
-                    (len(pcolumn1.pileups), 2))
-
-        # self.assertEqual( pcolumn1.pileups[0]  # need to test additional
-        # properties here
-
-    def tearDown(self):
-        self.samfile.close()
-
-    def testIteratorOutOfScope(self):
-        '''test if exception is raised if pileup col is accessed after
-        iterator is exhausted.'''
-
-        for pileupcol in self.samfile.pileup():
-            pass
-
-        self.assertRaises(ValueError, getattr, pileupcol, "pileups")
 
 
 class TestContextManager(unittest.TestCase):
@@ -1982,69 +1792,6 @@ class TestLargeOptValues(unittest.TestCase):
         self.check(samfile)
 
 
-class TestPileup(unittest.TestCase):
-
-    '''test pileup functionality.'''
-
-    samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
-    fastafilename = os.path.join(BAM_DATADIR, "ex1.fa")
-
-    def setUp(self):
-
-        self.samfile = pysam.AlignmentFile(self.samfilename)
-        self.fastafile = pysam.FastaFile(self.fastafilename)
-
-    def tearDown(self):
-        self.samfile.close()
-        self.fastafile.close()
-
-    def checkEqual(self, references, iterator):
-
-        for x, column in enumerate(iterator):
-            v = references[x][:-1].split("\t")
-            self.assertEqual(
-                len(v), 6,
-                "expected 6 values, got {}".format(v))
-            (contig, pos, reference_base,
-             read_bases, read_qualities, alignment_mapping_qualities) \
-                = v
-            self.assertEqual(int(pos) - 1, column.reference_pos)
-
-    def testSamtoolsStepper(self):
-        refs = force_str(
-            pysam.samtools.mpileup(
-                "-f", self.fastafilename,
-                self.samfilename)).splitlines(True)
-        iterator = self.samfile.pileup(
-            stepper="samtools",
-            fastafile=self.fastafile)
-        self.checkEqual(refs, iterator)
-
-    def testAllStepper(self):
-        refs = force_str(
-            pysam.samtools.mpileup(
-                "-f", self.fastafilename,
-                "-A", "-B",
-                self.samfilename)).splitlines(True)
-
-        iterator = self.samfile.pileup(
-            stepper="all",
-            fastafile=self.fastafile)
-        self.checkEqual(refs, iterator)
-
-
-class TestPileupFastafile(TestPileup):
-    '''test pileup functionality - backwards compatibility'''
-
-    samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
-    fastafilename = os.path.join(BAM_DATADIR, "ex1.fa")
-
-    def setUp(self):
-
-        self.samfile = pysam.AlignmentFile(self.samfilename)
-        self.fastafile = pysam.Fastafile(self.fastafilename)
-
-
 class TestCountCoverage(unittest.TestCase):
 
     samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
@@ -2232,26 +1979,6 @@ class TestCountCoverage(unittest.TestCase):
         self.assertEqual(fast_counts[1], manual_counts[1])
         self.assertEqual(fast_counts[2], manual_counts[2])
         self.assertEqual(fast_counts[3], manual_counts[3])
-
-
-class TestPileupQueryPosition(unittest.TestCase):
-
-    filename = "test_query_position.bam"
-
-    def testPileup(self):
-        last = {}
-        with pysam.AlignmentFile(os.path.join(BAM_DATADIR, self.filename)) as inf:
-            for col in inf.pileup():
-                for r in col.pileups:
-                    # print r.alignment.query_name
-                    # print r.query_position, r.query_position_or_next, r.is_del
-                    if r.is_del:
-                        self.assertEqual(r.query_position, None)
-                        self.assertEqual(r.query_position_or_next,
-                                         last[r.alignment.query_name] + 1)
-                    else:
-                        self.assertNotEqual(r.query_position, None)
-                        last[r.alignment.query_name] = r.query_position
 
 
 class TestFindIntrons(unittest.TestCase):

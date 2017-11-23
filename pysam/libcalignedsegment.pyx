@@ -2680,7 +2680,26 @@ cdef class PileupColumn:
             cnt += 1
         return cnt
 
-    def get_query_sequences(self):
+    def get_query_sequences(self, bint add_markers=False, bint add_indels=True):
+        """query bases/sequences in pileup column.
+
+        Optionally, the bases/sequences can be annotated according to the samtools
+        mpileup format.
+
+        Parameters
+        ----------
+
+        add_markers : bool
+          If True, add markers for read start and end
+        add_indels : bool
+          It True, add bases for bases inserted into the reference and 'N's for base
+          skipped from the reference.
+
+        Returns
+        -------
+
+        list: a list of bases/sequences per read at pileup position.
+        """
         cdef uint32_t x = 0
         cdef uint32_t j = 0
         cdef uint32_t c = 0
@@ -2697,7 +2716,7 @@ cdef class PileupColumn:
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             # see samtools pileup_seq
-            if p.is_head:
+            if add_markers and p.is_head:
                 buf[n] = '^'
                 n += 1
                 assert n < MAX_PILEUP_BUFFER_SIZE
@@ -2728,7 +2747,7 @@ cdef class PileupColumn:
                 buf[n] = cc
                 n += 1
                 assert n < MAX_PILEUP_BUFFER_SIZE
-            else:
+            elif add_indels:
                 if p.is_refskip:
                     if bam_is_rev(p.b):
                         buf[n] = '<'
@@ -2738,45 +2757,45 @@ cdef class PileupColumn:
                     buf[n] = '*'
                 n += 1
                 assert n < MAX_PILEUP_BUFFER_SIZE
-                    
-            if p.indel > 0:
-                buf[n] = '+'
-                n += 1
-                assert n < MAX_PILEUP_BUFFER_SIZE
-                n += snprintf(<char *>&(buf[n]),
-                              MAX_PILEUP_BUFFER_SIZE - n,
-                              "%i",
-                              p.indel)
-                assert n < MAX_PILEUP_BUFFER_SIZE
-                for j from 1 <= j <= p.indel:
-                    cc = seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]
-                    if bam_is_rev(p.b):
-                        cc = tolower(cc)
-                    else:
-                        cc = toupper(cc)
-                    buf[n] = cc
+            if add_indels:
+                if p.indel > 0:
+                    buf[n] = '+'
                     n += 1
                     assert n < MAX_PILEUP_BUFFER_SIZE
-            elif p.indel < 0:
-                buf[n] = '-'
-                n += 1
-                assert n < MAX_PILEUP_BUFFER_SIZE
-                n += snprintf(<char *>&(buf[n]),
-                              MAX_PILEUP_BUFFER_SIZE - n,
-                              "%i",
-                              -p.indel)
-                assert n < MAX_PILEUP_BUFFER_SIZE
-                for j from 1 <= j <= -p.indel:
-                    # int c = (ref && (int)pos+j < ref_len)? ref[pos+j] : 'N';
-                    cc = 'N'
-                    if bam_is_rev(p.b):
-                        cc = tolower(cc)
-                    else:
-                        cc = toupper(cc)
-                    buf[n] = cc
+                    n += snprintf(<char *>&(buf[n]),
+                                  MAX_PILEUP_BUFFER_SIZE - n,
+                                  "%i",
+                                  p.indel)
+                    assert n < MAX_PILEUP_BUFFER_SIZE
+                    for j from 1 <= j <= p.indel:
+                        cc = seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]
+                        if bam_is_rev(p.b):
+                            cc = tolower(cc)
+                        else:
+                            cc = toupper(cc)
+                        buf[n] = cc
+                        n += 1
+                        assert n < MAX_PILEUP_BUFFER_SIZE
+                elif p.indel < 0:
+                    buf[n] = '-'
                     n += 1
                     assert n < MAX_PILEUP_BUFFER_SIZE
-            if p.is_tail:
+                    n += snprintf(<char *>&(buf[n]),
+                                  MAX_PILEUP_BUFFER_SIZE - n,
+                                  "%i",
+                                  -p.indel)
+                    assert n < MAX_PILEUP_BUFFER_SIZE
+                    for j from 1 <= j <= -p.indel:
+                        # int c = (ref && (int)pos+j < ref_len)? ref[pos+j] : 'N';
+                        cc = 'N'
+                        if bam_is_rev(p.b):
+                            cc = tolower(cc)
+                        else:
+                            cc = toupper(cc)
+                        buf[n] = cc
+                        n += 1
+                        assert n < MAX_PILEUP_BUFFER_SIZE
+            if add_markers and p.is_tail:
                 buf[n] = '$'
                 n += 1
                 assert n < MAX_PILEUP_BUFFER_SIZE

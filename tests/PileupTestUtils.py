@@ -94,7 +94,7 @@ def build_query_qualities_with_pysam_pileups(*args, **kwargs):
 def build_query_bases_with_pysam(*args, **kwargs):
     total_pileup = []
     with pysam.AlignmentFile(*args, **kwargs) as inf:
-        total_pileup = [column.get_query_sequences() for column in
+        total_pileup = [column.get_query_sequences(add_markers=True, add_indels=True) for column in
                         inf.pileup(stepper="samtools")]
     return total_pileup
 
