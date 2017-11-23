@@ -47,7 +47,7 @@ def test_build_depth_with_filter_from_bam_with_pysam(benchmark):
     result = benchmark(build_depth_with_filter_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert sum(result) == 107248
-    
+
 
 def test_build_query_bases_from_bam_with_samtools(benchmark):
     result = benchmark(build_query_bases_with_samtools,
@@ -114,4 +114,3 @@ def test_build_query_positions_from_bam_with_pysam(benchmark):
     result = benchmark(build_query_positions_with_pysam,
                        os.path.join(BAM_DATADIR, "ex2.bam"))
     assert sum([sum(x) for x in result]) == 1841736
-    

@@ -74,8 +74,9 @@ def get_include():
 
 def get_defines():
     '''return a list of defined compilation parameters.'''
-    return [] #('_FILE_OFFSET_BITS', '64'),
+    # ('_FILE_OFFSET_BITS', '64'),
     # ('_USE_KNETFILE', '')]
+    return []
 
 
 def get_libraries():

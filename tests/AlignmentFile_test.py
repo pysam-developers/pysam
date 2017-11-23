@@ -53,99 +53,46 @@ class BasicTestBAMFromFetch(unittest.TestCase):
         self.samfile.close()
 
     def testARqname(self):
-        self.assertEqual(
-            self.reads[0].query_name,
-            "read_28833_29006_6945",
-            "read name mismatch in read 1: %s != %s" % (
-                self.reads[0].query_name, "read_28833_29006_6945"))
-        self.assertEqual(
-            self.reads[1].query_name,
-            "read_28701_28881_323b",
-            "read name mismatch in read 2: %s != %s" % (
-                self.reads[1].query_name, "read_28701_28881_323b"))
+        self.assertEqual(self.reads[0].query_name,
+                         "read_28833_29006_6945")
+        self.assertEqual(self.reads[1].query_name,
+                         "read_28701_28881_323b")
 
     def testARflag(self):
-        self.assertEqual(
-            self.reads[0].flag, 99,
-            "flag mismatch in read 1: %s != %s" % (
-                self.reads[0].flag, 99))
-        self.assertEqual(
-            self.reads[1].flag, 147,
-            "flag mismatch in read 2: %s != %s" % (
-                self.reads[1].flag, 147))
+        self.assertEqual(self.reads[0].flag, 99)
+        self.assertEqual(self.reads[1].flag, 147)
 
     def testARrname(self):
-        self.assertEqual(
-            self.reads[0].reference_id, 0,
-            "chromosome/target id mismatch in read 1: %s != %s" %
-            (self.reads[0].reference_id, 0))
-        self.assertEqual(
-            self.reads[1].reference_id, 1,
-            "chromosome/target id mismatch in read 2: %s != %s" %
-            (self.reads[1].reference_id, 1))
+        self.assertEqual(self.reads[0].reference_id, 0)
+        self.assertEqual(self.reads[1].reference_id, 1)
 
     def testARpos(self):
-        self.assertEqual(
-            self.reads[0].reference_start, 33 - 1,
-            "mapping position mismatch in read 1: %s != %s" %
-            (self.reads[0].reference_start, 33 - 1))
-        self.assertEqual(
-            self.reads[1].reference_start, 88 - 1,
-            "mapping position mismatch in read 2: %s != %s" %
-            (self.reads[1].reference_start, 88 - 1))
+        self.assertEqual(self.reads[0].reference_start, 33 - 1)
+        self.assertEqual(self.reads[1].reference_start, 88 - 1)
 
     def testARmapq(self):
-        self.assertEqual(
-            self.reads[0].mapping_quality, 20,
-            "mapping quality mismatch in read 1: %s != %s" %
-            (self.reads[0].mapping_quality, 20))
-        self.assertEqual(
-            self.reads[1].mapping_quality, 30,
-            "mapping quality mismatch in read 2: %s != %s" % (
-                self.reads[1].mapping_quality, 30))
+        self.assertEqual(self.reads[0].mapping_quality, 20)
+        self.assertEqual(self.reads[1].mapping_quality, 30)
 
     def testARcigar(self):
-        self.assertEqual(
-            self.reads[0].cigartuples,
-            [(0, 10), (2, 1), (0, 25)],
-            "read name length mismatch in read 1: %s != %s" %
-            (self.reads[0].cigartuples, [(0, 10), (2, 1), (0, 25)]))
-        self.assertEqual(
-            self.reads[1].cigartuples, [(0, 35)],
-            "read name length mismatch in read 2: %s != %s" %
-            (self.reads[1].cigartuples, [(0, 35)]))
+        self.assertEqual(self.reads[0].cigartuples, [(0, 10), (2, 1), (0, 25)])
+        self.assertEqual(self.reads[1].cigartuples, [(0, 35)])
 
     def testARcigarstring(self):
         self.assertEqual(self.reads[0].cigarstring, '10M1D25M')
         self.assertEqual(self.reads[1].cigarstring, '35M')
 
     def testARmrnm(self):
-        self.assertEqual(
-            self.reads[0].next_reference_id, 0,
-            "mate reference sequence name mismatch in read 1: %s != %s" %
-            (self.reads[0].next_reference_id, 0))
-        self.assertEqual(
-            self.reads[1].next_reference_id, 1,
-            "mate reference sequence name mismatch in read 2: %s != %s" %
-            (self.reads[1].next_reference_id, 1))
-        self.assertEqual(
-            self.reads[0].next_reference_id, 0,
-            "mate reference sequence name mismatch in read 1: %s != %s" %
-            (self.reads[0].next_reference_id, 0))
-        self.assertEqual(
-            self.reads[1].next_reference_id, 1,
-            "mate reference sequence name mismatch in read 2: %s != %s" %
-            (self.reads[1].next_reference_id, 1))
+        self.assertEqual(self.reads[0].next_reference_id, 0)
+        self.assertEqual(self.reads[1].next_reference_id, 1)
+        self.assertEqual(self.reads[0].next_reference_id, 0)
+        self.assertEqual(self.reads[1].next_reference_id, 1)
 
     def testARmpos(self):
-        self.assertEqual(self.reads[
-                         0].next_reference_start, 200 - 1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].next_reference_start, 200 - 1))
-        self.assertEqual(self.reads[
-                         1].next_reference_start, 500 - 1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].next_reference_start, 500 - 1))
-        self.assertEqual(self.reads[
-                         0].next_reference_start, 200 - 1, "mate mapping position mismatch in read 1: %s != %s" % (self.reads[0].next_reference_start, 200 - 1))
-        self.assertEqual(self.reads[
-                         1].next_reference_start, 500 - 1, "mate mapping position mismatch in read 2: %s != %s" % (self.reads[1].next_reference_start, 500 - 1))
+        self.assertEqual(self.reads[0].next_reference_start, 200 - 1)
+        self.assertEqual(self.reads[1].next_reference_start, 500 - 1)
+        self.assertEqual(self.reads[0].next_reference_start, 200 - 1)
+        self.assertEqual(self.reads[1].next_reference_start, 500 - 1)
 
     def testARQueryLength(self):
         self.assertEqual(
@@ -166,12 +113,15 @@ class BasicTestBAMFromFetch(unittest.TestCase):
             (self.reads[1].query_length, 35))
 
     def testARseq(self):
-        self.assertEqual(self.reads[0].query_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 1: %s != %s" % (
-            self.reads[0].query_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
-        self.assertEqual(self.reads[1].query_sequence, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA", "sequence size mismatch in read 2: %s != %s" % (
-            self.reads[1].query_sequence, "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA"))
-        self.assertEqual(self.reads[3].query_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG", "sequence mismatch in read 4: %s != %s" % (
-            self.reads[3].query_sequence, "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"))
+        self.assertEqual(
+            self.reads[0].query_sequence,
+            "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG")
+        self.assertEqual(
+            self.reads[1].query_sequence,
+            "ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA")
+        self.assertEqual(
+            self.reads[3].query_sequence,
+            "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG")
 
     def testARqual(self):
         self.assertEqual(
@@ -206,19 +156,22 @@ class BasicTestBAMFromFetch(unittest.TestCase):
 
     def testARqqual(self):
         self.assertEqual(
-            pysam.qualities_to_qualitystring(self.reads[0].query_alignment_qualities),
+            pysam.qualities_to_qualitystring(
+                self.reads[0].query_alignment_qualities),
             "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<",
             "qquality string mismatch in read 1: %s != %s" %
             (pysam.qualities_to_qualitystring(self.reads[0].query_alignment_qualities),
              "<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<"))
         self.assertEqual(
-            pysam.qualities_to_qualitystring(self.reads[1].query_alignment_qualities),
+            pysam.qualities_to_qualitystring(
+                self.reads[1].query_alignment_qualities),
             "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<",
             "qquality string mismatch in read 2: %s != %s" %
             (pysam.qualities_to_qualitystring(self.reads[1].query_alignment_qualities),
              "<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<"))
         self.assertEqual(
-            pysam.qualities_to_qualitystring(self.reads[3].query_alignment_qualities),
+            pysam.qualities_to_qualitystring(
+                self.reads[3].query_alignment_qualities),
             "<<<<<<<<<<<<<<<<<:<9/,&,22",
             "qquality string mismatch in read 3: %s != %s" %
             (pysam.qualities_to_qualitystring(self.reads[3].query_alignment_qualities),
@@ -404,7 +357,7 @@ class BasicTestSAMFromStringIO(BasicTestBAMFromFetch):
 
     def testRaises(self):
         statement = "samtools view -h {}".format(
-                os.path.join(BAM_DATADIR, "ex3.bam"))
+            os.path.join(BAM_DATADIR, "ex3.bam"))
         stdout = subprocess.check_output(statement.split(" "))
         bam = StringIO()
         if sys.version_info.major >= 3:
@@ -613,9 +566,9 @@ class TestIO(unittest.TestCase):
                           check_header=True)
 
         with pysam.AlignmentFile(
-            input_filename,
-            check_header=False,
-            check_sq=False) as infile:
+                input_filename,
+                check_header=False,
+                check_sq=False) as infile:
             result = list(infile.fetch(until_eof=True))
             self.assertEqual(2, len(result))
 
@@ -638,7 +591,7 @@ class TestIO(unittest.TestCase):
                           check_header=True)
 
         with pysam.AlignmentFile(
-            input_filename, check_sq=False) as infile:
+                input_filename, check_sq=False) as infile:
             result = list(infile.fetch(until_eof=True))
 
     def test_fail_read_sam_without_header(self):
@@ -738,7 +691,6 @@ class TestIO(unittest.TestCase):
 
         # write on closed file
         self.assertEqual(0, samfile.write(None))
-
 
     # TOOD
     # def testReadingFromSamFileWithoutHeader(self):
@@ -855,7 +807,7 @@ class TestIO(unittest.TestCase):
                 IndexError,
                 samfile.fetch,
                 tid=-1)
-            self.assertEqual(len(list(samfile.fetch('chr1',start=1000, end=2000))),
+            self.assertEqual(len(list(samfile.fetch('chr1', start=1000, end=2000))),
                              len(list(samfile.fetch(tid=0, start=1000, end=2000))))
 
 
@@ -1163,13 +1115,14 @@ class TestLargeFieldBug(unittest.TestCase):
         causes an error:
             NotImplementedError: tags field too large
         '''
-        samfile = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "issue100.bam"))
+        samfile = pysam.AlignmentFile(
+            os.path.join(BAM_DATADIR, "issue100.bam"))
         read = next(samfile.fetch(until_eof=True))
         new_read = pysam.AlignedSegment()
         new_read.tags = read.tags
         self.assertEqual(new_read.tags, read.tags)
 
-        
+
 class TestClipping(unittest.TestCase):
 
     def testClipping(self):
@@ -1186,7 +1139,8 @@ class TestClipping(unittest.TestCase):
                 self.assertEqual(pysam.qualities_to_qualitystring(read.query_qualities),
                                  None)
                 self.assertEqual(
-                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(
+                        read.query_alignment_qualities),
                     None)
 
             elif read.query_name == "r002":
@@ -1197,7 +1151,8 @@ class TestClipping(unittest.TestCase):
                     pysam.qualities_to_qualitystring(read.query_qualities),
                     '01234567890')
                 self.assertEqual(
-                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(
+                        read.query_alignment_qualities),
                     '567890')
 
             elif read.query_name == "r003":
@@ -1208,7 +1163,8 @@ class TestClipping(unittest.TestCase):
                     pysam.qualities_to_qualitystring(read.query_qualities),
                     '01234567890')
                 self.assertEqual(
-                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(
+                        read.query_alignment_qualities),
                     '012345')
 
             elif read.query_name == "r004":
@@ -1219,7 +1175,8 @@ class TestClipping(unittest.TestCase):
                     pysam.qualities_to_qualitystring(read.query_qualities),
                     '01234')
                 self.assertEqual(
-                    pysam.qualities_to_qualitystring(read.query_alignment_qualities),
+                    pysam.qualities_to_qualitystring(
+                        read.query_alignment_qualities),
                     '01234')
 
 
@@ -1321,8 +1278,7 @@ class TestHeaderFromRefs(unittest.TestCase):
 class TestHeader1000Genomes(unittest.TestCase):
 
     '''see issue 110'''
-    # bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase2b_alignment/data/NA07048/exome_alignment/NA07048.unmapped.ILLUMINA.bwa.CEU.exome.20120522_p2b.bam"
-    bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase3_EX_or_LC_only_alignment/data/HG00104/alignment/HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"
+    bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase3_EX_or_LC_only_alignment/data/HG00104/alignment/HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"  # noqa
 
     def testRead(self):
 
@@ -1346,7 +1302,7 @@ class TestHeaderWriteRead(unittest.TestCase):
                       'PP': 'P1'}],
               'HD': {'VN': '1.0'},
               'CO': ['this is a comment', 'this is another comment'],
-    }
+              }
 
     def compare_headers(self, a, b):
         '''compare two headers a and b.
@@ -1421,7 +1377,7 @@ class TestUnmappedReadsRetrieval(unittest.TestCase):
         with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "test_mapped_unmapped.bam"),
                                  "rb") as samfile:
             self.assertEqual(len(list(samfile.fetch(contig="*"))), 4)
-            
+
 
 class TestPileupObjects(unittest.TestCase):
 
@@ -1579,7 +1535,7 @@ class TestWrongFormat(unittest.TestCase):
     def testOpenBamAsSam(self):
         # test fails, needs to be implemented.
         # sam.fetch() fails on reading, not on opening
-        #self.assertRaises(ValueError, pysam.AlignmentFile,
+        # self.assertRaises(ValueError, pysam.AlignmentFile,
         #                  os.path.join(BAM_DATADIR, 'ex1.bam'),
         #                  'r')
         pass
@@ -1605,7 +1561,7 @@ class TestDeNovoConstruction(unittest.TestCase):
 
     read_28833_29006_6945	99	chr1	33	20	10M1D25M	=	200	167	AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG	<<<<<<<<<<<<<<<<<<<<<:<9/,&,22;;<<<	NM:i:1	RG:Z:L1
     read_28701_28881_323b	147	chr2	88	30	35M	=	500	412	ACCTATATCTTGGCCTTGGCCGATGCGGCCTTGCA	<<<<<;<<<<7;:<<<6;<<<<<<<<<<<<7<<<<	MF:i:18	RG:Z:L2
-    '''
+    '''  # noqa
 
     header = {'HD': {'VN': '1.0'},
               'SQ': [{'LN': 1575, 'SN': 'chr1'},
@@ -1674,7 +1630,8 @@ class TestDeNovoConstruction(unittest.TestCase):
         references = list(infile)
         for denovo, reference in zip(references, self.reads):
             checkFieldEqual(self, reference, denovo)
-            print("reference", str(reference), reference.get_tags(with_value_type=True))
+            print("reference", str(reference),
+                  reference.get_tags(with_value_type=True))
             print("denovo", str(denovo), denovo.get_tags(with_value_type=True))
             self.assertEqual(reference.compare(denovo), 0)
 
@@ -1762,7 +1719,9 @@ class TestTruncatedBAM(unittest.TestCase):
     def testTruncatedBam2(self):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex2_truncated.bam'),
                                 ignore_truncation=True)
-        iterall = lambda x: len([a for a in x])
+
+        def iterall(x):
+            return len([a for a in x])
         self.assertRaises(IOError, iterall, s)
 
 
@@ -1789,6 +1748,7 @@ COMPARE_BTAG = [100, 1, 91, 0, 7, 101, 0, 201, 96, 204,
                 12, 163, 17, 83, 22, 0, 0, 1, 8, 109, 103, 0, 0,
                 295, 0, 200, 16, 172, 3, 16, 182, 3, 11, 0, 0,
                 223, 111, 103, 0, 5, 225, 0, 95]
+
 
 class TestBTagSam(unittest.TestCase):
 
@@ -2100,7 +2060,7 @@ class TestCountCoverage(unittest.TestCase):
             template=self.samfile)
         for ii, read in enumerate(self.samfile.fetch()):
             # if ii % 2 == 0: # setting BFUNMAP makes no sense...
-                #read.flag = read.flag | 0x4
+            # read.flag = read.flag | 0x4
             if ii % 3 == 0:
                 read.flag = read.flag | 0x100
             if ii % 5 == 0:
@@ -2221,7 +2181,7 @@ class TestCountCoverage(unittest.TestCase):
             fast_counts = samfile.count_coverage(
                 chrom, start, stop,
                 read_callback='all',
-                #read_callback = lambda read: ~(read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
+                # read_callback = lambda read: ~(read.flag & (0x4 | 0x100 | 0x200 | 0x400)),
                 quality_threshold=0)
             manual_counts = samfile.count_coverage(
                 chrom, start, stop,
@@ -2239,7 +2199,7 @@ class TestCountCoverage(unittest.TestCase):
             "test_count_coverage_nofilter.bam", 'wb', template=self.samfile)
         for ii, read in enumerate(self.samfile.fetch()):
             # if ii % 2 == 0: # setting BFUNMAP makes no sense...
-                #read.flag = read.flag | 0x4
+            # read.flag = read.flag | 0x4
             if ii % 3 == 0:
                 read.flag = read.flag | 0x100
             if ii % 5 == 0:
@@ -2303,16 +2263,18 @@ class TestFindIntrons(unittest.TestCase):
     def test_total(self):
         all_read_counts = self.samfile.count()
         splice_sites = self.samfile.find_introns(self.samfile.fetch())
-        self.assertEqual(sum(splice_sites.values()), all_read_counts -1)  # there is a single unspliced read in there
+        # there is a single unspliced read in there
+        self.assertEqual(sum(splice_sites.values()), all_read_counts - 1)
 
     def test_first(self):
         reads = list(self.samfile.fetch())[:10]
         splice_sites = self.samfile.find_introns(reads)
-        starts = [14792+38 - 1]
-        stops = [14792+38 + 140 - 1]
+        starts = [14792 + 38 - 1]
+        stops = [14792 + 38 + 140 - 1]
         self.assertEqual(len(splice_sites), 1)
         self.assertTrue((starts[0], stops[0]) in splice_sites)
-        self.assertEqual(splice_sites[(starts[0], stops[0])], 9) # first one is the unspliced read
+        # first one is the unspliced read
+        self.assertEqual(splice_sites[(starts[0], stops[0])], 9)
 
     def test_all(self):
         reads = list(self.samfile.fetch())
@@ -2327,8 +2289,8 @@ class TestFindIntrons(unittest.TestCase):
             (17055, 17605): 3,
             (17055, 17914): 1,
             (17368, 17605): 7,
-            })
-        self.assertEqual(should,  splice_sites)
+        })
+        self.assertEqual(should, splice_sites)
 
 
 class TestLogging(unittest.TestCase):
@@ -2508,7 +2470,7 @@ class TestMappedUnmapped(unittest.TestCase):
             counts_contigs = [x.contig for x in counts]
             self.assertEqual(sorted(counts_contigs),
                              sorted(inf.references))
-            
+
             for contig in inf.references:
                 unmapped_flag = 0
                 unmapped_nopos = 0
@@ -2523,6 +2485,7 @@ class TestMappedUnmapped(unittest.TestCase):
                 self.assertEqual(cc.mapped, mapped_flag)
                 self.assertEqual(cc.unmapped, unmapped_flag)
                 self.assertEqual(cc.total, mapped_flag + unmapped_flag)
+
 
 class TestSamtoolsProxy(unittest.TestCase):
 
@@ -2634,8 +2597,8 @@ class TestSanityCheckingBAM(unittest.TestCase):
 
 if __name__ == "__main__":
     # build data files
-    print ("building data files")
+    print("building data files")
     subprocess.call("make -C %s" % BAM_DATADIR, shell=True)
-    print ("starting tests")
+    print("starting tests")
     unittest.main()
-    print ("completed tests")
+    print("completed tests")

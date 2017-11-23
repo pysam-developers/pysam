@@ -8,20 +8,19 @@ pysam and tabix works.
 
 # clean up previous compilation
 import os
+import unittest
+import pysam
+from TestUtils import BAM_DATADIR, TABIX_DATADIR
+
 try:
     os.unlink('tests/_compile_test.c')
     os.unlink('tests/_compile_test.pyxbldc')
 except OSError:
     pass
 
-
 import pyximport
 pyximport.install(build_in_temp=False)
 import _compile_test
-
-import unittest
-import pysam
-from TestUtils import BAM_DATADIR, TABIX_DATADIR
 
 
 class BAMTest(unittest.TestCase):
@@ -43,7 +42,7 @@ class GTFTest(unittest.TestCase):
         nread = _compile_test.testCountGTF(
             pysam.Tabixfile(self.input_filename))
         self.assertEqual(nread, 237)
-        
+
 
 if __name__ == "__main__":
     unittest.main()

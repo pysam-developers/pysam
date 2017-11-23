@@ -10,15 +10,16 @@ WORKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                        "pysam_test_work"))
 
 BAM_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                             "pysam_data"))
+                                           "pysam_data"))
 
 TABIX_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                              "tabix_data"))
 
 CBCF_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                             "cbcf_data"))
+                                            "cbcf_data"))
 
-LINKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "linker_tests"))
+LINKDIR = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "linker_tests"))
 
 
 TESTS_TEMPDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "tmp"))
@@ -41,6 +42,7 @@ if IS_PYTHON3:
             return s.decode('ascii')
         except AttributeError:
             return s
+
     def force_bytes(s):
         try:
             return s.encode('ascii')
@@ -49,6 +51,7 @@ if IS_PYTHON3:
 else:
     def force_str(s):
         return s
+
     def force_bytes(s):
         return s
 
@@ -117,9 +120,9 @@ def check_samtools_view_equal(
             l1 = sorted(l1[:-1].split("\t"))
             l2 = sorted(l2[:-1].split("\t"))
             if l1 != l2:
-                print ("mismatch in line %i" % n)
-                print (l1)
-                print (l2)
+                print("mismatch in line %i" % n)
+                print(l1)
+                print(l2)
                 return False
         else:
             return False

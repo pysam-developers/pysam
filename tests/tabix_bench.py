@@ -62,12 +62,14 @@ def iterate_file_uncompressed(fn):
 
 
 def test_read_python_compressed(benchmark):
-    result = benchmark(read_python_compressed, os.path.join(TABIX_DATADIR, FN_COMPRESSED))
+    result = benchmark(read_python_compressed,
+                       os.path.join(TABIX_DATADIR, FN_COMPRESSED))
     assert result == 164
 
 
 def test_read_python_uncompressed(benchmark):
-    result = benchmark(read_python_uncompressed, os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
+    result = benchmark(read_python_uncompressed,
+                       os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
     assert result == 164
 
 
@@ -77,85 +79,102 @@ def test_fetch_plain(benchmark):
 
 
 def test_fetch_parsed(benchmark):
-    result = benchmark(fetch_parsed, os.path.join(TABIX_DATADIR, FN_COMPRESSED))
+    result = benchmark(fetch_parsed, os.path.join(
+        TABIX_DATADIR, FN_COMPRESSED))
     assert result == 164
 
 
 def test_iterate_generic_compressed(benchmark):
-    result = benchmark(iterate_generic_compressed, os.path.join(TABIX_DATADIR, FN_COMPRESSED))
+    result = benchmark(iterate_generic_compressed,
+                       os.path.join(TABIX_DATADIR, FN_COMPRESSED))
     assert result == 164
 
 
 def test_iterate_generic_uncompressed(benchmark):
-    result = benchmark(iterate_generic_uncompressed, os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
+    result = benchmark(iterate_generic_uncompressed,
+                       os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
     assert result == 164
 
 
 def test_iterate_parsed_compressed(benchmark):
-    result = benchmark(iterate_parsed_compressed, os.path.join(TABIX_DATADIR, FN_COMPRESSED))
+    result = benchmark(iterate_parsed_compressed,
+                       os.path.join(TABIX_DATADIR, FN_COMPRESSED))
     assert result == 164
 
 
 def test_iterate_parsed_uncompressed(benchmark):
-    result = benchmark(iterate_parsed_uncompressed, os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
+    result = benchmark(iterate_parsed_uncompressed,
+                       os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
     assert result == 164
 
 
 def test_iterate_file_compressed(benchmark):
-    result = benchmark(iterate_file_compressed, os.path.join(TABIX_DATADIR, FN_COMPRESSED))
+    result = benchmark(iterate_file_compressed,
+                       os.path.join(TABIX_DATADIR, FN_COMPRESSED))
     assert result == 164
 
 
 def test_iterate_file_uncompressed(benchmark):
-    result = benchmark(iterate_file_uncompressed, os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
+    result = benchmark(iterate_file_uncompressed,
+                       os.path.join(TABIX_DATADIR, FN_UNCOMPRESSED))
     assert result == 164
 
 
 def test_read_python_large_compressed(benchmark):
-    result = benchmark(read_python_compressed, os.path.join(TABIX_DATADIR, FN_LARGE_COMPRESSED))
+    result = benchmark(read_python_compressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_COMPRESSED))
     assert result == 100000
 
 
 def test_read_python_large_uncompressed(benchmark):
-    result = benchmark(read_python_uncompressed, os.path.join(TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
+    result = benchmark(read_python_uncompressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
     assert result == 100000
 
 
 def test_fetch_plain(benchmark):
-    result = benchmark(fetch_plain, os.path.join(TABIX_DATADIR, FN_LARGE_COMPRESSED))
+    result = benchmark(fetch_plain, os.path.join(
+        TABIX_DATADIR, FN_LARGE_COMPRESSED))
     assert result == 100000
 
 
 def test_fetch_parsed(benchmark):
-    result = benchmark(fetch_parsed, os.path.join(TABIX_DATADIR, FN_LARGE_COMPRESSED))
+    result = benchmark(fetch_parsed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_COMPRESSED))
     assert result == 100000
 
 
 def test_iterate_generic_large_compressed(benchmark):
-    result = benchmark(iterate_generic_compressed, os.path.join(TABIX_DATADIR, FN_LARGE_COMPRESSED))
+    result = benchmark(iterate_generic_compressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_COMPRESSED))
     assert result == 100000
 
 
 def test_iterate_generic_large_uncompressed(benchmark):
-    result = benchmark(iterate_generic_uncompressed, os.path.join(TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
+    result = benchmark(iterate_generic_uncompressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
     assert result == 100000
 
 
 def test_iterate_parsed_large_compressed(benchmark):
-    result = benchmark(iterate_parsed_compressed, os.path.join(TABIX_DATADIR, FN_LARGE_COMPRESSED))
+    result = benchmark(iterate_parsed_compressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_COMPRESSED))
     assert result == 100000
 
 
 def test_iterate_parsed_large_uncompressed(benchmark):
-    result = benchmark(iterate_parsed_uncompressed, os.path.join(TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
+    result = benchmark(iterate_parsed_uncompressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
     assert result == 100000
 
 
 def test_iterate_file_large_compressed(benchmark):
-    result = benchmark(iterate_file_compressed, os.path.join(TABIX_DATADIR, FN_LARGE_COMPRESSED))
+    result = benchmark(iterate_file_compressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_COMPRESSED))
     assert result == 100000
 
 
 def test_iterate_file_large_uncompressed(benchmark):
-    result = benchmark(iterate_file_uncompressed, os.path.join(TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
+    result = benchmark(iterate_file_uncompressed, os.path.join(
+        TABIX_DATADIR, FN_LARGE_UNCOMPRESSED))
     assert result == 100000
