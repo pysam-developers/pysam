@@ -2085,8 +2085,11 @@ class TestCountCoverage(unittest.TestCase):
         count_c = array.array('L', [0] * l)
         count_g = array.array('L', [0] * l)
         count_t = array.array('L', [0] * l)
-        for p in bam.pileup(chrom, start, stop, truncate=True,
-                            stepper='nofilter'):
+        for p in bam.pileup(chrom, start, stop,
+                            truncate=True,
+                            stepper='nofilter',
+                            min_base_quality=quality_threshold,
+                            ignore_overlaps=False):
             rpos = p.reference_pos - start
             for read in p.pileups:
                 if not read.is_del and not read.is_refskip and \
