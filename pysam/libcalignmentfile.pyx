@@ -2142,7 +2142,7 @@ cdef class IteratorColumn:
         self.pos = 0
         self.n_plp = 0
         self.plp = NULL
-        self.pileup_iter = <bam_plp_t>NULL
+        self.pileup_iter = <bam_mplp_t>NULL
 
     def __iter__(self):
         return self
@@ -2151,10 +2151,12 @@ cdef class IteratorColumn:
         '''perform next iteration.
         '''
         # do not release gil here because of call-backs
-        self.plp = bam_plp_auto(self.pileup_iter,
-                                &self.tid,
-                                &self.pos,
-                                &self.n_plp)
+        cdef int ret = bam_mplp_auto(self.pileup_iter,
+                                     &self.tid,
+                                     &self.pos,
+                                     &self.n_plp,
+                                     &self.plp)
+        return ret
 
     cdef char * getSequence(self):
         '''return current reference sequence underlying the iterator.
@@ -2187,13 +2189,13 @@ cdef class IteratorColumn:
         '''
         raise NotImplementedError()
         # self.mask = mask
-        # bam_plp_set_mask( self.pileup_iter, self.mask )
+        # bam_plp_set_mask(self.pileup_iter, self.mask)
 
-    cdef setupIteratorData( self,
-                            int tid,
-                            int start,
-                            int stop,
-                            int multiple_iterators=0 ):
+    cdef _setup_iterator(self,
+                         int tid,
+                         int start,
+                         int stop,
+                         int multiple_iterators=0):
         '''setup the iterator structure'''
 
         self.iter = IteratorRowRegion(self.samfile, tid, start, stop, multiple_iterators)
@@ -2212,33 +2214,35 @@ cdef class IteratorColumn:
         # pileup_iter
         self._free_pileup_iter()
 
+        cdef void * data[1]
+        data[0] = <void*>&self.iterdata
+        
         if self.stepper is None or self.stepper == "all":
             with nogil:
-                self.pileup_iter = bam_plp_init(
-                    <bam_plp_auto_f>&__advance_all,
-                    &self.iterdata)
+                self.pileup_iter = bam_mplp_init(1,
+                                                 <bam_plp_auto_f>&__advance_all,
+                                                 data)
         elif self.stepper == "nofilter":
             with nogil:
-                self.pileup_iter = bam_plp_init(
-                    <bam_plp_auto_f>&__advance_nofilter,
-                    &self.iterdata)
+                self.pileup_iter = bam_mplp_init(1,
+                                                 <bam_plp_auto_f>&__advance_nofilter,
+                                                 data)
         elif self.stepper == "samtools":
             with nogil:
-                self.pileup_iter = bam_plp_init(
-                    <bam_plp_auto_f>&__advance_snpcalls,
-                    &self.iterdata)
+                self.pileup_iter = bam_mplp_init(1,
+                                                 <bam_plp_auto_f>&__advance_snpcalls,
+                                                 data)
         else:
             raise ValueError(
                 "unknown stepper option `%s` in IteratorColumn" % self.stepper)
 
         if self.max_depth:
             with nogil:
-                bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
+                bam_mplp_set_maxcnt(self.pileup_iter, self.max_depth)
 
         if self.ignore_overlaps:
-            raise NotImplementedError("bam_plp_init_overlaps not part of API, see #743")
-            with no_gil:
-                bam_plp_init_overlaps(self.pileup_iter)
+            with nogil:
+                bam_mplp_init_overlaps(self.pileup_iter)
                 
         # bam_plp_set_mask( self.pileup_iter, self.mask )
 
@@ -2260,19 +2264,19 @@ cdef class IteratorColumn:
 
         # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
         with nogil:
-            bam_plp_reset(self.pileup_iter)
-
+            # bam_mplp_reset(self.pileup_iter)
+            pass
+        
     cdef _free_pileup_iter(self):
         '''free the memory alloc'd by bam_plp_init.
 
-        This is needed before setupIteratorData allocates
-        another pileup_iter, or else memory will be lost.
-        '''
-        if self.pileup_iter != <bam_plp_t>NULL:
+        This is needed before setup_iterator allocates another
+        pileup_iter, or else memory will be lost.  '''
+        if self.pileup_iter != <bam_mplp_t>NULL:
             with nogil:
-                bam_plp_reset(self.pileup_iter)
-                bam_plp_destroy(self.pileup_iter)
-                self.pileup_iter = <bam_plp_t>NULL
+                # bam_mplp_reset(self.pileup_iter)
+                bam_mplp_destroy(self.pileup_iter)
+                self.pileup_iter = <bam_mplp_t>NULL
 
     def __dealloc__(self):
         # reset in order to avoid memory leak messages for iterators
@@ -2296,19 +2300,21 @@ cdef class IteratorColumnRegion(IteratorColumn):
                   **kwargs ):
 
         # initialize iterator
-        self.setupIteratorData(tid, start, stop, 1)
+        self._setup_iterator(tid, start, stop, 1)
         self.start = start
         self.stop = stop
         self.truncate = truncate
 
     def __next__(self):
 
+        cdef int n
+        
         while 1:
-            self.cnext()
-            if self.n_plp < 0:
+            n = self.cnext()
+            if n < 0:
                 raise ValueError("error during iteration" )
 
-            if self.plp == NULL:
+            if n == 0:
                 raise StopIteration
 
             if self.truncate:
@@ -2336,31 +2342,33 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
             raise StopIteration
 
         # initialize iterator
-        self.setupIteratorData(self.tid, 0, MAX_POS, 1)
+        self._setup_iterator(self.tid, 0, MAX_POS, 1)
 
     def __next__(self):
 
+        cdef int n
         while 1:
-            self.cnext()
+            n = self.cnext()
 
-            if self.n_plp < 0:
-                raise ValueError("error during iteration" )
+            if n < 0:
+                raise ValueError("error during iteration")
+
+            # proceed to next reference or stop
+            if n == 0:
+                self.tid += 1
+                if self.tid < self.samfile.nreferences:
+                    self._setup_iterator(self.tid, 0, MAX_POS, 0)
+                else:
+                    raise StopIteration
+                continue
 
             # return result, if within same reference
-            if self.plp != NULL:
-                return makePileupColumn(&self.plp,
-                                        self.tid,
-                                        self.pos,
-                                        self.n_plp,
-                                        self.min_base_quality,
-                                        self.samfile)
-
-            # otherwise, proceed to next reference or stop
-            self.tid += 1
-            if self.tid < self.samfile.nreferences:
-                self.setupIteratorData(self.tid, 0, MAX_POS, 0)
-            else:
-                raise StopIteration
+            return makePileupColumn(&self.plp,
+                                    self.tid,
+                                    self.pos,
+                                    self.n_plp,
+                                    self.min_base_quality,
+                                    self.samfile)
 
 
 cdef class SNPCall:

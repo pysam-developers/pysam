@@ -119,7 +119,7 @@ cdef class IteratorColumn:
     cdef int mask
     cdef uint32_t min_base_quality
     cdef bam_pileup1_t * plp
-    cdef bam_plp_t pileup_iter
+    cdef bam_mplp_t pileup_iter
     cdef __iterdata iterdata
     cdef AlignmentFile samfile
     cdef FastaFile fastafile
@@ -130,11 +130,11 @@ cdef class IteratorColumn:
     cdef int cnext(self)
     cdef char * getSequence(self)
     cdef setMask(self, mask)
-    cdef setupIteratorData(self,
-                           int tid,
-                           int start,
-                           int stop,
-                           int multiple_iterators=?)
+    cdef _setup_iterator(self,
+                         int tid,
+                         int start,
+			 int stop,
+ 			 int multiple_iterators=?)
 
     cdef reset(self, tid, start, stop)
     cdef _free_pileup_iter(self)

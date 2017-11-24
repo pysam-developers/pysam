@@ -6,8 +6,7 @@ from TestUtils import BAM_DATADIR, force_str, flatten_nested_list
 from PileupTestUtils import *
 
 
-class TestPileup(unittest.TestCase):
-
+class TestPileupReadSelection(unittest.TestCase):
     '''test pileup functionality.'''
 
     samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
@@ -56,8 +55,20 @@ class TestPileup(unittest.TestCase):
             fastafile=self.fastafile)
         self.checkEqual(refs, iterator)
 
+    # def testIgnoreOverlaps(self):
+    #     refs = force_str(
+    #         pysam.samtools.mpileup(
+    #             "-f", self.fastafilename,
+    #             "-A", "-B",
+    #             self.samfilename)).splitlines(True)
 
-class TestPileupFastafile(TestPileup):
+    #     iterator = self.samfile.pileup(
+    #         stepper="all",
+    #         fastafile=self.fastafile)
+    #     self.checkEqual(refs, iterator)
+
+
+class TestPileupReadSelectionFastafile(TestPileupReadSelection):
     '''test pileup functionality - backwards compatibility'''
 
     samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
