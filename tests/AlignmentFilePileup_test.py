@@ -68,6 +68,54 @@ class TestPileupReadSelection(unittest.TestCase):
             ignore_overlaps=False)
         self.check_equal(refs, iterator)
 
+    def test_samtools_stepper_mapping_quality_threshold(self):
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "--min-MQ", "15",
+                self.samfilename)).splitlines(True)
+        iterator = self.samfile.pileup(
+            stepper="samtools",
+            fastafile=self.fastafile,
+            min_mapping_quality=15)
+        self.check_equal(refs, iterator)
+
+    def test_samtools_stepper_base_quality_threshold(self):
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "--min-BQ", "20",
+                self.samfilename)).splitlines(True)
+        iterator = self.samfile.pileup(
+            stepper="samtools",
+            fastafile=self.fastafile,
+            min_base_quality=20)
+        self.check_equal(refs, iterator)
+
+    def test_samtools_stepper_ignore_orphans(self):
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "--count-orphans",
+                self.samfilename)).splitlines(True)
+        iterator = self.samfile.pileup(
+            stepper="samtools",
+            fastafile=self.fastafile,
+            ignore_orphans=False)
+        self.check_equal(refs, iterator)
+
+    def test_samtools_stepper_redo_baq(self):
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "--redo-BAQ",
+                self.samfilename)).splitlines(True)
+        iterator = self.samfile.pileup(
+            stepper="samtools",
+            fastafile=self.fastafile,
+            redo_baq=True)
+        self.check_equal(refs, iterator)
+        
 
 class TestPileupReadSelectionFastafile(TestPileupReadSelection):
     '''test pileup functionality - backwards compatibility'''
@@ -108,7 +156,7 @@ class TestPileupObjects(unittest.TestCase):
                                            "rb")
 
     def testPileupColumn(self):
-        for pcolumn1 in self.samfile.pileup(region="chr1:105"):
+        for pcolumn1 in self.samfile.pileup(region="chr1:105-106"):
             if pcolumn1.reference_pos == 104:
                 self.assertEqual(
                     pcolumn1.reference_id, 0,
@@ -119,10 +167,16 @@ class TestPileupObjects(unittest.TestCase):
                     "position mismatch in position 1: %s != %s" %
                     (pcolumn1.reference_pos, 105 - 1))
                 self.assertEqual(
-                    pcolumn1.nsegments, 2,
+                    pcolumn1.nsegments, 1,
                     "# reads mismatch in position 1: %s != %s" %
-                    (pcolumn1.nsegments, 2))
-        for pcolumn2 in self.samfile.pileup(region="chr2:1480"):
+                    (pcolumn1.nsegments, 1))
+                self.assertEqual(
+                    len(pcolumn1.pileups), 1,
+                    "# reads aligned to column mismatch in position 1"
+                    ": %s != %s" %
+                    (len(pcolumn1.pileups), 1))
+
+        for pcolumn2 in self.samfile.pileup(region="chr2:1480-1481"):
             if pcolumn2.reference_pos == 1479:
                 self.assertEqual(
                     pcolumn2.reference_id, 1,
@@ -136,18 +190,6 @@ class TestPileupObjects(unittest.TestCase):
                     pcolumn2.nsegments, 12,
                     "# reads mismatch in position 1: %s != %s" %
                     (pcolumn2.nsegments, 12))
-
-    def testPileupRead(self):
-        for pcolumn1 in self.samfile.pileup(region="chr1:105"):
-            if pcolumn1.reference_pos == 104:
-                self.assertEqual(
-                    len(pcolumn1.pileups), 2,
-                    "# reads aligned to column mismatch in position 1"
-                    ": %s != %s" %
-                    (len(pcolumn1.pileups), 2))
-
-        # self.assertEqual( pcolumn1.pileups[0]  # need to test additional
-        # properties here
 
     def tearDown(self):
         self.samfile.close()
@@ -288,6 +330,8 @@ class TestIteratorColumn2(unittest.TestCase):
         self.assertEqual(len(s.split("\n")), 2)
 
 
+@unittest.skipif(not IS_PYTHON3,
+                 "tests requires at least python3 for subprocess context manager")
 class PileUpColumnTests(unittest.TestCase):
 
     fn = os.path.join(BAM_DATADIR, "ex2.bam")

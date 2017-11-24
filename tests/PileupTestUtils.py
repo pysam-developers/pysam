@@ -17,7 +17,7 @@ def build_pileup_with_samtoolspipe(fn):
                           stderr=FNULL) as proc:
         return len(proc.stdout.readlines())
 
-
+    
 def build_pileup_with_pysam(*args, **kwargs):
     with pysam.AlignmentFile(*args, **kwargs) as inf:
         return len(list(inf.pileup(stepper="samtools")))
