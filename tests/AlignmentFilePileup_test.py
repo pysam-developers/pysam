@@ -2,7 +2,7 @@
 import os
 import re
 import unittest
-from TestUtils import BAM_DATADIR, force_str, flatten_nested_list
+from TestUtils import BAM_DATADIR, IS_PYTHON3, force_str, flatten_nested_list
 from PileupTestUtils import *
 
 
@@ -330,22 +330,29 @@ class TestIteratorColumn2(unittest.TestCase):
         self.assertEqual(len(s.split("\n")), 2)
 
 
-@unittest.skipif(not IS_PYTHON3,
+@unittest.skipIf(not IS_PYTHON3,
                  "tests requires at least python3 for subprocess context manager")
 class PileUpColumnTests(unittest.TestCase):
 
     fn = os.path.join(BAM_DATADIR, "ex2.bam")
-
+    fn_fasta = os.path.join(BAM_DATADIR, "ex1.fa")
+    
     def test_pileup_depths_are_equal(self):
         samtools_result = build_depth_with_samtoolspipe(self.fn)
         pysam_result = build_depth_with_filter_with_pysam(self.fn)
         self.assertEqual(pysam_result, samtools_result)
 
-    def test_pileup_query_bases_are_equal(self):
+    def test_pileup_query_bases_without_reference_are_equal(self):
         samtools_result = build_query_bases_with_samtoolspipe(self.fn)
         pysam_result = build_query_bases_with_pysam(self.fn)
         self.assertEqual(["".join(x) for x in pysam_result], samtools_result)
 
+    def test_pileup_query_bases_with_reference_are_equal(self):
+        samtools_result = build_query_bases_with_samtoolspipe(self.fn, "-f", self.fn_fasta)
+        with pysam.FastaFile(self.fn_fasta) as fasta:
+            pysam_result = build_query_bases_with_pysam(self.fn, fastafile=fasta, stepper="samtools")
+        self.assertEqual(["".join(x) for x in pysam_result], samtools_result)
+        
     def test_pileup_query_qualities_are_equal(self):
         samtools_result = build_query_qualities_with_samtoolspipe(self.fn)
         pysam_result = build_query_qualities_with_pysam(self.fn)

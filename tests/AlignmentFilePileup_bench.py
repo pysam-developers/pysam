@@ -80,6 +80,30 @@ def test_build_query_bases_from_bam_with_pysam(benchmark):
     assert len("".join(flatten_nested_list(result))) == 116308
 
 
+# note that pileups with/without reference sequence will differ due to
+# realignment.
+def test_build_query_bases_with_reference_from_bam_with_samtoolspipe(benchmark):
+    result = benchmark(build_query_bases_with_samtoolspipe,
+                       os.path.join(BAM_DATADIR, "ex2.bam"),
+                       "-f", os.path.join(BAM_DATADIR, "ex1.fa"))
+    assert len("".join(flatten_nested_list(result))) == 115924
+    
+
+def test_build_query_bases_with_reference_from_bam_with_pysam(benchmark):
+    with pysam.FastaFile(os.path.join(BAM_DATADIR, "ex1.fa")) as fasta:
+        result = benchmark(build_query_bases_with_pysam,
+                           os.path.join(BAM_DATADIR, "ex2.bam"),
+                           fastafile=fasta)
+    assert len("".join(flatten_nested_list(result))) == 115924
+    
+
+def test_build_query_bases_with_reference_from_bam_with_samtoolspysam(benchmark):
+    result = benchmark(build_query_bases_with_samtoolspysam,
+                       os.path.join(BAM_DATADIR, "ex2.bam"),
+                       "-f", os.path.join(BAM_DATADIR, "ex1.fa"))
+    assert len("".join(flatten_nested_list(result))) == 115924
+
+
 def test_build_query_qualities_from_bam_with_samtoolspipe(benchmark):
     result = benchmark(build_query_qualities_with_samtoolspipe,
                        os.path.join(BAM_DATADIR, "ex2.bam"))

@@ -54,9 +54,9 @@ def build_query_bases_with_samtoolsshell(fn):
     return 116308
 
 
-def build_query_bases_with_samtoolspipe(fn):
+def build_query_bases_with_samtoolspipe(fn, *args, **kwargs):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", fn],
+    with subprocess.Popen(["samtools", "mpileup", fn] + list(args),
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -64,8 +64,8 @@ def build_query_bases_with_samtoolspipe(fn):
         return [x.split()[4] for x in stdout.splitlines()]
 
 
-def build_query_bases_with_samtoolspysam(fn):
-    return [x.split()[4] for x in pysam.samtools.mpileup(fn).splitlines()]
+def build_query_bases_with_samtoolspysam(fn, *args):
+    return [x.split()[4] for x in pysam.samtools.mpileup(fn, *args).splitlines()]
     
 
 def build_query_bases_with_pysam_pileups(*args, **kwargs):
@@ -88,11 +88,12 @@ def build_query_qualities_with_pysam_pileups(*args, **kwargs):
     return total_pileup
 
 
-def build_query_bases_with_pysam(*args, **kwargs):
+def build_query_bases_with_pysam(fn, *args, **kwargs):
     total_pileup = []
-    with pysam.AlignmentFile(*args, **kwargs) as inf:
-        total_pileup = [column.get_query_sequences(add_markers=True, add_indels=True) for column in
-                        inf.pileup(stepper="samtools")]
+    with pysam.AlignmentFile(fn) as inf:
+        total_pileup = [column.get_query_sequences(
+            mark_ends=True, add_indels=True, mark_matches=True) for column in
+                        inf.pileup(*args, **kwargs)]
     return total_pileup
 
 

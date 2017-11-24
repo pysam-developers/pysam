@@ -68,6 +68,7 @@ cdef class PileupColumn:
     cdef AlignmentFile _alignment_file
     cdef uint32_t min_base_quality
     cdef uint8_t * buf
+    cdef char * reference_sequence
 
 cdef class PileupRead:
     cdef AlignedSegment _alignment
@@ -79,10 +80,20 @@ cdef class PileupRead:
     cdef uint32_t _is_tail
     cdef uint32_t _is_refskip
 
-# factor methods
-cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file)
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos, int n_pu,
-     uint32_t min_base_quality,
-     AlignmentFile alignment_file)
-cdef makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file)
+    
+# factory methods
+cdef makeAlignedSegment(bam1_t * src,
+                        AlignmentFile alignment_file)
+
+cdef makePileupColumn(bam_pileup1_t ** plp,
+                      int tid,
+                      int pos,
+                      int n_pu,
+                      uint32_t min_base_quality,
+                      AlignmentFile alignment_file,
+                      char * reference_seqeunce)
+
+cdef makePileupRead(bam_pileup1_t * src,
+                    AlignmentFile alignment_file)
+
 cdef uint32_t get_alignment_length(bam1_t * src)

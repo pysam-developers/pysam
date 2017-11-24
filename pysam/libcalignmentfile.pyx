@@ -979,8 +979,8 @@ cdef class AlignmentFile(HTSFile):
 
         ignore_overlaps: bool
 
-          If set to True, detect if read pairs overlap and only take
-          the higher quality base. This is the default.
+           If set to True, detect if read pairs overlap and only take
+           the higher quality base. This is the default.
 
         flag_filter : int
 
@@ -992,6 +992,7 @@ cdef class AlignmentFile(HTSFile):
            only use reads where certain flags are set. The default is 0.
 
         ignore_orphans: bool
+
             ignore orphans (paired reads that are not in a proper pair).
             The default is to ignore orphans.
    
@@ -2150,7 +2151,7 @@ cdef class IteratorColumn:
     See :class:`~AlignmentFile.pileup` for kwargs to the iterator.
     '''
 
-    def __cinit__( self, AlignmentFile samfile, **kwargs ):
+    def __cinit__( self, AlignmentFile samfile, **kwargs):
         self.samfile = samfile
         self.fastafile = kwargs.get("fastafile", None)
         self.stepper = kwargs.get("stepper", "samtools")
@@ -2158,7 +2159,6 @@ cdef class IteratorColumn:
         self.ignore_overlaps = kwargs.get("ignore_overlaps", True)
         self.min_base_quality = kwargs.get("min_base_quality", 13)
         self.iterdata.seq = NULL
-        
         self.iterdata.min_mapping_quality = kwargs.get("min_mapping_quality", 0)
         self.iterdata.flag_require = kwargs.get("flag_require", 0)
         self.iterdata.flag_filter = kwargs.get("flag_filter", BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP)
@@ -2210,8 +2210,7 @@ cdef class IteratorColumn:
         '''
         return true if iterator is associated with a reference'''
         return self.fastafile
-        
-    
+            
     cdef _setup_iterator(self,
                          int tid,
                          int start,
@@ -2281,10 +2280,11 @@ cdef class IteratorColumn:
             self.iterdata.seq = NULL
             self.iterdata.tid = -1
 
-        # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
+        # self.pileup_iter = bam_mplp_init(1
+        #                                  &__advancepileup,
+        #                                  &self.iterdata)
         with nogil:
-            # bam_mplp_reset(self.pileup_iter)
-            pass
+            bam_mplp_reset(self.pileup_iter)
         
     cdef _free_pileup_iter(self):
         '''free the memory alloc'd by bam_plp_init.
@@ -2293,7 +2293,7 @@ cdef class IteratorColumn:
         pileup_iter, or else memory will be lost.  '''
         if self.pileup_iter != <bam_mplp_t>NULL:
             with nogil:
-                # bam_mplp_reset(self.pileup_iter)
+                bam_mplp_reset(self.pileup_iter)
                 bam_mplp_destroy(self.pileup_iter)
                 self.pileup_iter = <bam_mplp_t>NULL
 
@@ -2306,7 +2306,7 @@ cdef class IteratorColumn:
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
             self.iterdata.seq = NULL
-
+        
     # backwards compatibility
     def hasReference(self):
         return self.has_reference()
@@ -2319,7 +2319,8 @@ cdef class IteratorColumn:
 cdef class IteratorColumnRegion(IteratorColumn):
     '''iterates over a region only.
     '''
-    def __cinit__(self, AlignmentFile samfile,
+    def __cinit__(self,
+                  AlignmentFile samfile,
                   int tid = 0,
                   int start = 0,
                   int stop = MAX_POS,
@@ -2345,15 +2346,18 @@ cdef class IteratorColumnRegion(IteratorColumn):
                 raise StopIteration
 
             if self.truncate:
-                if self.start > self.pos: continue
-                if self.pos >= self.stop: raise StopIteration
+                if self.start > self.pos:
+                    continue
+                if self.pos >= self.stop:
+                    raise StopIteration
 
             return makePileupColumn(&self.plp,
                                     self.tid,
                                     self.pos,
                                     self.n_plp,
                                     self.min_base_quality,
-                                    self.samfile)
+                                    self.samfile,
+                                    self.iterdata.seq)
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
@@ -2376,7 +2380,6 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
         cdef int n
         while 1:
             n = self.cnext()
-
             if n < 0:
                 raise ValueError("error during iteration")
 
@@ -2395,7 +2398,8 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                     self.pos,
                                     self.n_plp,
                                     self.min_base_quality,
-                                    self.samfile)
+                                    self.samfile,
+                                    self.iterdata.seq)
 
 
 cdef class SNPCall:
