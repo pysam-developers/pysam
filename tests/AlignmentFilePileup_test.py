@@ -21,7 +21,7 @@ class TestPileupReadSelection(unittest.TestCase):
         self.samfile.close()
         self.fastafile.close()
 
-    def checkEqual(self, references, iterator):
+    def check_equal(self, references, iterator):
 
         for x, column in enumerate(iterator):
             v = references[x][:-1].split("\t")
@@ -33,7 +33,7 @@ class TestPileupReadSelection(unittest.TestCase):
                 = v
             self.assertEqual(int(pos) - 1, column.reference_pos)
 
-    def testSamtoolsStepper(self):
+    def test_samtools_stepper(self):
         refs = force_str(
             pysam.samtools.mpileup(
                 "-f", self.fastafilename,
@@ -41,9 +41,9 @@ class TestPileupReadSelection(unittest.TestCase):
         iterator = self.samfile.pileup(
             stepper="samtools",
             fastafile=self.fastafile)
-        self.checkEqual(refs, iterator)
+        self.check_equal(refs, iterator)
 
-    def testAllStepper(self):
+    def test_all_stepper(self):
         refs = force_str(
             pysam.samtools.mpileup(
                 "-f", self.fastafilename,
@@ -53,9 +53,9 @@ class TestPileupReadSelection(unittest.TestCase):
         iterator = self.samfile.pileup(
             stepper="all",
             fastafile=self.fastafile)
-        self.checkEqual(refs, iterator)
+        self.check_equal(refs, iterator)
 
-    def testIgnoreOverlaps(self):
+    def test_ignore_overlaps(self):
         refs = force_str(
             pysam.samtools.mpileup(
                 "-f", self.fastafilename,
@@ -66,7 +66,7 @@ class TestPileupReadSelection(unittest.TestCase):
             stepper="all",
             fastafile=self.fastafile,
             ignore_overlaps=False)
-        self.checkEqual(refs, iterator)
+        self.check_equal(refs, iterator)
 
 
 class TestPileupReadSelectionFastafile(TestPileupReadSelection):

@@ -1982,8 +1982,7 @@ cdef class IteratorRowSelection(IteratorRow):
 cdef int __advance_nofilter(void *data, bam1_t *b):
     '''advance without any read filtering.
     '''
-    cdef __iterdata * d
-    d = <__iterdata*>data
+    cdef __iterdata * d = <__iterdata*>data
     cdef int ret
     with nogil:
         ret = sam_itr_next(d.htsfile, d.iter, b)
@@ -1991,15 +1990,13 @@ cdef int __advance_nofilter(void *data, bam1_t *b):
 
 
 cdef int __advance_all(void *data, bam1_t *b):
-    '''only use reads for pileup passing basic
-    filters:
+    '''only use reads for pileup passing basic filters:
 
     BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
     '''
 
-    cdef __iterdata * d
+    cdef __iterdata * d = <__iterdata*>data
     cdef mask = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP
-    d = <__iterdata*>data
     cdef int ret
     with nogil:
         ret = sam_itr_next(d.htsfile, d.iter, b)

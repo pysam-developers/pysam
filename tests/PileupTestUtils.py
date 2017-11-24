@@ -4,7 +4,7 @@ import pysam
 
 from TestUtils import BAM_DATADIR, force_str
 
-def build_pileup_with_samtools(fn):
+def build_pileup_with_samtoolsshell(fn):
     os.system("samtools mpileup {} 2> /dev/null | wc -l > /dev/null".format(fn))
     return 2998
 
@@ -23,10 +23,10 @@ def build_pileup_with_pysam(*args, **kwargs):
         return len(list(inf.pileup(stepper="samtools")))
 
 
-def build_depth_with_samtools(fn):
+def build_depth_with_samtoolsshell(fn):
     os.system(
         "samtools mpileup {} 2> /dev/null | awk '{{a += $4}} END {{print a}}' > /dev/null".format(fn))
-    return 107248
+    return 107241
 
 
 def build_depth_with_samtoolspipe(fn):
@@ -49,9 +49,9 @@ def build_depth_with_pysam(*args, **kwargs):
         return [x.nsegments for x in inf.pileup(stepper="samtools")]
 
 
-def build_query_bases_with_samtools(fn):
+def build_query_bases_with_samtoolsshell(fn):
     os.system("samtools mpileup {} 2> /dev/null | awk '{{a = a $5}} END {{print a}}' | wc -c > /dev/null".format(fn))
-    return 116314
+    return 116308
 
 
 def build_query_bases_with_samtoolspipe(fn):
@@ -64,12 +64,16 @@ def build_query_bases_with_samtoolspipe(fn):
         return [x.split()[4] for x in stdout.splitlines()]
 
 
+def build_query_bases_with_samtoolspysam(fn):
+    return [x.split()[4] for x in pysam.samtools.mpileup(fn).splitlines()]
+    
+
 def build_query_bases_with_pysam_pileups(*args, **kwargs):
     total_pileup = []
     with pysam.AlignmentFile(*args, **kwargs) as inf:
         total_pileup = [
-            [r.alignment.query_sequence[r.query_position]
-                for r in column.pileups if r.query_position is not None]
+            [r.alignment.query_sequence[r.query_position_or_next]
+                for r in column.pileups if r.query_position_or_next is not None]
             for column in inf.pileup(stepper="samtools")]
     return total_pileup
 
