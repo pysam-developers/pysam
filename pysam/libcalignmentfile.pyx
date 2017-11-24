@@ -2135,7 +2135,7 @@ cdef class IteratorColumn:
         self.fastafile = kwargs.get("fastafile", None)
         self.stepper = kwargs.get("stepper", None)
         self.max_depth = kwargs.get("max_depth", 8000)
-        self.ignore_overlaps = kwargs.get("ignore_overlaps", False)
+        self.ignore_overlaps = kwargs.get("ignore_overlaps", True)
         self.min_base_quality = kwargs.get("min_base_quality", 13)
         self.iterdata.seq = NULL
         self.tid = 0

@@ -55,17 +55,18 @@ class TestPileupReadSelection(unittest.TestCase):
             fastafile=self.fastafile)
         self.checkEqual(refs, iterator)
 
-    # def testIgnoreOverlaps(self):
-    #     refs = force_str(
-    #         pysam.samtools.mpileup(
-    #             "-f", self.fastafilename,
-    #             "-A", "-B",
-    #             self.samfilename)).splitlines(True)
+    def testIgnoreOverlaps(self):
+        refs = force_str(
+            pysam.samtools.mpileup(
+                "-f", self.fastafilename,
+                "-A", "-B", "-x",
+                self.samfilename)).splitlines(True)
 
-    #     iterator = self.samfile.pileup(
-    #         stepper="all",
-    #         fastafile=self.fastafile)
-    #     self.checkEqual(refs, iterator)
+        iterator = self.samfile.pileup(
+            stepper="all",
+            fastafile=self.fastafile,
+            ignore_overlaps=False)
+        self.checkEqual(refs, iterator)
 
 
 class TestPileupReadSelectionFastafile(TestPileupReadSelection):

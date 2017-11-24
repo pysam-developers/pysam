@@ -2,23 +2,16 @@ import os
 import subprocess
 import pysam
 
-# Use -x option in samtools mpileup to turn off overlap detection
-# API not available at the moment.
 from TestUtils import BAM_DATADIR, force_str
 
-####################################################
-####################################################
-# Simply building a pileup and counting number of piled-up columns
-
-
 def build_pileup_with_samtools(fn):
-    os.system("samtools mpileup -x {} 2> /dev/null | wc -l > /dev/null".format(fn))
+    os.system("samtools mpileup {} 2> /dev/null | wc -l > /dev/null".format(fn))
     return 2998
 
 
 def build_pileup_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
+    with subprocess.Popen(["samtools", "mpileup", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -32,13 +25,13 @@ def build_pileup_with_pysam(*args, **kwargs):
 
 def build_depth_with_samtools(fn):
     os.system(
-        "samtools mpileup -x {} 2> /dev/null | awk '{{a += $4}} END {{print a}}' > /dev/null".format(fn))
+        "samtools mpileup {} 2> /dev/null | awk '{{a += $4}} END {{print a}}' > /dev/null".format(fn))
     return 107248
 
 
 def build_depth_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
+    with subprocess.Popen(["samtools", "mpileup", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -57,13 +50,13 @@ def build_depth_with_pysam(*args, **kwargs):
 
 
 def build_query_bases_with_samtools(fn):
-    os.system("samtools mpileup -x {} 2> /dev/null | awk '{{a = a $5}} END {{print a}}' | wc -c > /dev/null".format(fn))
+    os.system("samtools mpileup {} 2> /dev/null | awk '{{a = a $5}} END {{print a}}' | wc -c > /dev/null".format(fn))
     return 116314
 
 
 def build_query_bases_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
+    with subprocess.Popen(["samtools", "mpileup", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -109,7 +102,7 @@ def build_query_names_with_pysam(*args, **kwargs):
 
 def build_query_qualities_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", "-x", fn],
+    with subprocess.Popen(["samtools", "mpileup", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -127,7 +120,7 @@ def build_query_qualities_with_pysam(*args, **kwargs):
 
 def build_mapping_qualities_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", "-xs", fn],
+    with subprocess.Popen(["samtools", "mpileup", "-s", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
@@ -145,7 +138,7 @@ def build_mapping_qualities_with_pysam(*args, **kwargs):
 
 def build_query_positions_with_samtoolspipe(fn):
     FNULL = open(os.devnull, 'w')
-    with subprocess.Popen(["samtools", "mpileup", "-xO", fn],
+    with subprocess.Popen(["samtools", "mpileup", "-O", fn],
                           stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE,
                           stderr=FNULL) as proc:
