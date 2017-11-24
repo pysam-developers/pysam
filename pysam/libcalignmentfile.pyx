@@ -2092,7 +2092,7 @@ cdef class IteratorColumn:
     consider the conversion to a list::
 
        f = AlignmentFile("file.bam", "rb")
-       result = list( f.pileup() )
+       result = list(f.pileup())
 
     Here, ``result`` will contain ``n`` objects of type
     :class:`~pysam.PileupColumn` for ``n`` columns, but each object in
@@ -2100,7 +2100,7 @@ cdef class IteratorColumn:
 
     The desired behaviour can be achieved by list comprehension::
 
-       result = [ x.pileups() for x in f.pileup() ]
+       result = [x.pileups() for x in f.pileup()]
 
     ``result`` will be a list of ``n`` lists of objects of type
     :class:`~pysam.PileupRead`.

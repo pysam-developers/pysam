@@ -2681,7 +2681,7 @@ cdef class PileupColumn:
         return cnt
 
     def get_query_sequences(self, bint add_markers=False, bint add_indels=True):
-        """query bases/sequences in pileup column.
+        """query bases/sequences at pileup column position.
 
         Optionally, the bases/sequences can be annotated according to the samtools
         mpileup format.
@@ -2698,7 +2698,7 @@ cdef class PileupColumn:
         Returns
         -------
 
-        list: a list of bases/sequences per read at pileup position.
+        list: a list of bases/sequences per read at pileup column position.
         """
         cdef uint32_t x = 0
         cdef uint32_t j = 0
@@ -2808,6 +2808,13 @@ cdef class PileupColumn:
         return force_str(PyBytes_FromStringAndSize(<char*>buf, n)).split(":")
 
     def get_query_qualities(self):
+        """query base quality scores at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of quality scores
+        """
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         cdef uint32_t c = 0
@@ -2824,6 +2831,13 @@ cdef class PileupColumn:
         return result
 
     def get_mapping_qualities(self):
+        """query mapping quality scores at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of quality scores
+        """
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
@@ -2835,6 +2849,14 @@ cdef class PileupColumn:
         return result
 
     def get_query_positions(self):
+        """positions in read at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of read positions
+        """
+
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
@@ -2846,6 +2868,13 @@ cdef class PileupColumn:
         return result
 
     def get_query_names(self):
+        """query/read names aligned at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of query names at pileup column position.
+        """
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
