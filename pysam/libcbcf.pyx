@@ -1185,13 +1185,15 @@ cdef inline bcf_sync_end(VariantRecord record):
         bcf_info_set_value(record, b'END', record.ptr.pos + record.ptr.rlen)
 
 
-cdef inline bint has_symbolic_allele(VariantRecord record):
-    # Check if alternate allele is symbolic
-    if record.ptr.n_allele >= 2:
-        alt = record.ptr.d.allele[1]
-        return (alt[0] == b'<' and alt[len(alt) - 1] == b'>')
-    else:
-        return False
+cdef inline int has_symbolic_allele(VariantRecord record):
+    """Return index of first symbolic allele. 0 if no symbolic alleles."""
+
+    for i in range(1, record.ptr.n_allele):
+        alt = record.ptr.d.allele[i]
+        if alt[0] == b'<' and alt[len(alt) - 1] == b'>':
+            return i
+
+    return 0
 
 
 ########################################################################
