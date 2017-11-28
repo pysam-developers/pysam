@@ -67,6 +67,7 @@ from cpython cimport array as c_array
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
+from libc.stdio cimport snprintf
 
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
@@ -85,6 +86,9 @@ cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
 
+# dimensioned for 8000 pileup limit (+ insertions/deletions)
+cdef uint32_t MAX_PILEUP_BUFFER_SIZE = 10000
+
 if IS_PYTHON3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
 else:
@@ -98,7 +102,44 @@ cdef inline uint32_t c_mul(uint32_t a, uint32_t b):
     return (a * b) & 0xffffffff
 
 
-#####################################################################
+cdef inline uint8_t tolower(uint8_t ch):
+    if ch >= 65 and ch <= 90:
+        return ch + 32
+    else:
+        return ch
+
+
+cdef inline uint8_t toupper(uint8_t ch):
+    if ch >= 97 and ch <= 122:
+        return ch - 32
+    else:
+        return ch
+
+
+cdef inline uint8_t strand_mark_char(uint8_t ch, bam1_t *b):
+    if ch == '=':
+        if bam_is_rev(b):
+            return ','
+        else:
+            return '.'
+    else:
+        if bam_is_rev(b):
+            return tolower(ch)
+        else:
+            return toupper(ch)
+
+    
+cdef inline bint pileup_base_qual_skip(bam_pileup1_t * p, uint32_t threshold):
+    cdef uint32_t c
+    if p.qpos < p.b.core.l_qseq:
+        c = bam_get_qual(p.b)[p.qpos]
+    else:
+        c = 0
+    if c < threshold:
+        return True
+    return False
+    
+
 # typecode guessing
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
     """map an htslib typecode to the corresponding python typecode
@@ -531,8 +572,13 @@ cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file):
 
 
 cdef class PileupColumn
-cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
-                      int n_pu, AlignmentFile alignment_file):
+cdef makePileupColumn(bam_pileup1_t ** plp,
+                      int tid,
+                      int pos,
+                      int n_pu,
+                      uint32_t min_base_quality,
+                      AlignmentFile alignment_file,
+                      char * reference_sequence):
     '''return a PileupColumn object constructed from pileup in `plp` and
     setting additional attributes.
 
@@ -544,6 +590,12 @@ cdef makePileupColumn(bam_pileup1_t ** plp, int tid, int pos,
     dest.tid = tid
     dest.pos = pos
     dest.n_pu = n_pu
+    dest.min_base_quality = min_base_quality
+    dest.reference_sequence = reference_sequence
+    dest.buf = <uint8_t *>calloc(MAX_PILEUP_BUFFER_SIZE, sizeof(uint8_t))
+    if dest.buf == NULL:
+        raise MemoryError("could not allocate pileup buffer")
+
     return dest
 
 cdef class PileupRead
@@ -2541,7 +2593,6 @@ cdef class PileupColumn:
     This class is a proxy for results returned by the samtools pileup
     engine.  If the underlying engine iterator advances, the results
     of this column will change.
-
     '''
     def __init__(self):
         raise TypeError("this class cannot be instantiated from Python")
@@ -2554,6 +2605,16 @@ cdef class PileupColumn:
             "\n" +\
             "\n".join(map(str, self.pileups))
 
+    def __dealloc__(self):
+        if self.buf is not NULL:
+            free(self.buf)
+
+    def set_min_base_quality(self, min_base_quality):
+        """set the minimum base quality for this pileup column.
+        """
+        self.min_base_quality = min_base_quality
+    
+            
     property reference_id:
         '''the reference sequence number as defined in the header'''
         def __get__(self):
@@ -2581,17 +2642,20 @@ cdef class PileupColumn:
     property pileups:
         '''list of reads (:class:`pysam.PileupRead`) aligned to this column'''
         def __get__(self):
-            cdef int x
-            pileups = []
-
             if self.plp == NULL or self.plp[0] == NULL:
                 raise ValueError("PileupColumn accessed after iterator finished")
+
+            cdef int x
+            cdef bam_pileup1_t * p = NULL
+            pileups = []
 
             # warning: there could be problems if self.n and self.buf are
             # out of sync.
             for x from 0 <= x < self.n_pu:
-                pileups.append(makePileupRead(&(self.plp[0][x]),
-                                              self._alignment_file))
+                p = &(self.plp[0][x])
+                if pileup_base_qual_skip(p, self.min_base_quality):
+                    continue
+                pileups.append(makePileupRead(p, self._alignment_file))
             return pileups
 
     ########################################################
@@ -2616,6 +2680,248 @@ cdef class PileupColumn:
         def __set__(self, v):
             self.nsegments = v
 
+    def get_num_aligned(self):
+
+        cdef uint32_t x = 0
+        cdef uint32_t c = 0
+        cdef uint32_t cnt = 0
+        cdef bam_pileup1_t * p = NULL
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if pileup_base_qual_skip(p, self.min_base_quality):
+                continue
+            cnt += 1
+        return cnt
+
+    def get_query_sequences(self, bint mark_matches=False, bint mark_ends=False, bint add_indels=False):
+        """query bases/sequences at pileup column position.
+
+        Optionally, the bases/sequences can be annotated according to the samtools
+        mpileup format. This is the format description from the samtools mpileup tool::
+        
+           Information on match, mismatch, indel, strand, mapping
+           quality and start and end of a read are all encoded at the
+           read base column. At this column, a dot stands for a match
+           to the reference base on the forward strand, a comma for a
+           match on the reverse strand, a '>' or '<' for a reference
+           skip, `ACGTN' for a mismatch on the forward strand and
+           `acgtn' for a mismatch on the reverse strand. A pattern
+           `\\+[0-9]+[ACGTNacgtn]+' indicates there is an insertion
+           between this reference position and the next reference
+           position. The length of the insertion is given by the
+           integer in the pattern, followed by the inserted
+           sequence. Similarly, a pattern `-[0-9]+[ACGTNacgtn]+'
+           represents a deletion from the reference. The deleted bases
+           will be presented as `*' in the following lines. Also at
+           the read base column, a symbol `^' marks the start of a
+           read. The ASCII of the character following `^' minus 33
+           gives the mapping quality. A symbol `$' marks the end of a
+           read segment
+
+        To reproduce samtools mpileup format, set all of mark_matches,
+        mark_ends and add_indels to True.
+        
+        Parameters
+        ----------
+
+        mark_matches: bool
+
+          If True, output bases matching the reference as "," or "."
+          for forward and reverse strand, respectively. This mark
+          requires the reference sequence. If no reference is
+          present, this option is ignored.
+
+        mark_ends : bool
+
+          If True, add markers "^" and "$" for read start and end, respectively.
+
+        add_indels : bool
+
+          If True, add bases for bases inserted into the reference and
+          'N's for base skipped from the reference. If a reference sequence
+          is given, add the actual bases.
+ 
+        Returns
+        -------
+
+        list: a list of bases/sequences per read at pileup column position.
+
+        """
+        cdef uint32_t x = 0
+        cdef uint32_t j = 0
+        cdef uint32_t c = 0
+        cdef uint32_t n = 0
+        cdef uint8_t cc = 0
+        cdef uint8_t rb = 0
+        cdef uint8_t * buf = self.buf
+        cdef bam_pileup1_t * p = NULL
+
+        # todo: reference sequence to count matches/mismatches
+        # todo: convert assertions to exceptions
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if pileup_base_qual_skip(p, self.min_base_quality):
+                continue
+            # see samtools pileup_seq
+            if mark_ends and p.is_head:
+                buf[n] = '^'
+                n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
+                
+                if p.b.core.qual > 93:
+                    buf[n] = 126
+                else:
+                    buf[n] = p.b.core.qual + 33
+                n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
+                
+            if not p.is_del:
+                if p.qpos < p.b.core.l_qseq:
+                    cc = <uint8_t>seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos)]
+                else:
+                    cc = 'N'
+
+                if mark_matches and self.reference_sequence != NULL:
+                    rb = self.reference_sequence[self.reference_pos]
+                    if seq_nt16_table[cc] == seq_nt16_table[rb]:
+                        cc = "="
+                buf[n] = strand_mark_char(cc, p.b)
+                n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
+            elif add_indels:
+                if p.is_refskip:
+                    if bam_is_rev(p.b):
+                        buf[n] = '<'
+                    else:
+                        buf[n] = '>'
+                else:
+                    buf[n] = '*'
+                n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
+            if add_indels:
+                if p.indel > 0:
+                    buf[n] = '+'
+                    n += 1
+                    assert n < MAX_PILEUP_BUFFER_SIZE
+                    n += snprintf(<char *>&(buf[n]),
+                                  MAX_PILEUP_BUFFER_SIZE - n,
+                                  "%i",
+                                  p.indel)
+                    assert n < MAX_PILEUP_BUFFER_SIZE
+                    for j from 1 <= j <= p.indel:
+                        cc = seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]
+                        buf[n] = strand_mark_char(cc, p.b)
+                        n += 1
+                        assert n < MAX_PILEUP_BUFFER_SIZE
+                elif p.indel < 0:
+                    buf[n] = '-'
+                    n += 1
+                    assert n < MAX_PILEUP_BUFFER_SIZE
+                    n += snprintf(<char *>&(buf[n]),
+                                  MAX_PILEUP_BUFFER_SIZE - n,
+                                  "%i",
+                                  -p.indel)
+                    assert n < MAX_PILEUP_BUFFER_SIZE
+                    for j from 1 <= j <= -p.indel:
+                        # TODO: out-of-range check here?
+                        if self.reference_sequence == NULL:
+                            cc = 'N'
+                        else:
+                            cc = self.reference_sequence[self.reference_pos + j]
+                        buf[n] = strand_mark_char(cc, p.b)
+                        n += 1
+                        assert n < MAX_PILEUP_BUFFER_SIZE
+            if mark_ends and p.is_tail:
+                buf[n] = '$'
+                n += 1
+                assert n < MAX_PILEUP_BUFFER_SIZE
+
+            buf[n] = ':'
+            n += 1
+            assert n < MAX_PILEUP_BUFFER_SIZE
+
+        # quicker to ensemble all and split than to encode all separately.
+        # ignore last ":"
+        return force_str(PyBytes_FromStringAndSize(<char*>buf, n-1)).split(":")
+
+    def get_query_qualities(self):
+        """query base quality scores at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of quality scores
+        """
+        cdef uint32_t x = 0
+        cdef bam_pileup1_t * p = NULL
+        cdef uint32_t c = 0
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if p.qpos < p.b.core.l_qseq:
+                c = bam_get_qual(p.b)[p.qpos]
+            else:
+                c = 0
+            if c < self.min_base_quality:
+                continue
+            result.append(c)
+        return result
+
+    def get_mapping_qualities(self):
+        """query mapping quality scores at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of quality scores
+        """
+        cdef uint32_t x = 0
+        cdef bam_pileup1_t * p = NULL
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if pileup_base_qual_skip(p, self.min_base_quality):
+                continue
+            result.append(p.b.core.qual)
+        return result
+
+    def get_query_positions(self):
+        """positions in read at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of read positions
+        """
+
+        cdef uint32_t x = 0
+        cdef bam_pileup1_t * p = NULL
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if pileup_base_qual_skip(p, self.min_base_quality):
+                continue
+            result.append(p.qpos)
+        return result
+
+    def get_query_names(self):
+        """query/read names aligned at pileup column position.
+
+        Returns
+        -------
+
+        list: a list of query names at pileup column position.
+        """
+        cdef uint32_t x = 0
+        cdef bam_pileup1_t * p = NULL
+        result = []
+        for x from 0 <= x < self.n_pu:
+            p = &(self.plp[0][x])
+            if pileup_base_qual_skip(p, self.min_base_quality):
+                continue
+            result.append(charptr_to_str(pysam_bam_get_qname(p.b)))
+        return result
+            
 
 cdef class PileupRead:
     '''Representation of a read aligned to a particular position in the
@@ -2699,6 +3005,7 @@ cdef class PileupRead:
         def __get__(self):
             return self._is_refskip
 
+        
 
 cpdef enum CIGAR_OPS:
     CMATCH = 0

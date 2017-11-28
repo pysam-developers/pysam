@@ -1203,7 +1203,12 @@ cdef extern from "htslib/sam.h" nogil:
     void bam_mplp_destroy(bam_mplp_t iter)
     void bam_mplp_set_maxcnt(bam_mplp_t iter, int maxcnt)
     int bam_mplp_auto(bam_mplp_t iter, int *_tid, int *_pos, int *n_plp, const bam_pileup1_t **plp)
-
+    void bam_mplp_reset(bam_mplp_t iter)
+    void bam_mplp_constructor(bam_mplp_t iter,
+          		      int (*func)(void *data, const bam1_t *b, bam_pileup_cd *cd))
+    void bam_mplp_destructor(bam_mplp_t iter,
+			     int (*func)(void *data, const bam1_t *b, bam_pileup_cd *cd))
+    
     # Added by AH
     # ctypedef bam_pileup1_t * const_bam_pileup1_t_ptr "const bam_pileup1_t *"
 

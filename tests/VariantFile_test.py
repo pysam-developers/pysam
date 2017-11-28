@@ -44,12 +44,12 @@ class TestMissingGenotypes(unittest.TestCase):
         self.assertEqual(True, os.path.exists(fn))
         v = pysam.VariantFile(fn)
         for site in v:
-            for ss,rec in site.samples.items():
+            for ss, rec in site.samples.items():
                 a, b = ss, rec
 
         v = pysam.VariantFile(fn)
         for x, site in enumerate(v):
-            for ss,rec in site.samples.items():
+            for ss, rec in site.samples.items():
                 a, b = ss, rec.alleles
                 a, b = ss, rec.allele_indices
 
@@ -79,8 +79,7 @@ class TestOpening(unittest.TestCase):
 
         os.unlink("tests/tmp_testEmptyFile.vcf")
 
-
-    if Path and sys.version_info >= (3,6):
+    if Path and sys.version_info >= (3, 6):
         def testEmptyFileVCFFromPath(self):
             with open("tests/tmp_testEmptyFile.vcf", "w"):
                 pass
@@ -132,7 +131,7 @@ class TestOpening(unittest.TestCase):
 
     def testDetectVCF(self):
         with pysam.VariantFile(os.path.join(CBCF_DATADIR,
-            "example_vcf40.vcf")) as inf:
+                                            "example_vcf40.vcf")) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'VCF')
             self.assertEqual(inf.compression, 'NONE')
@@ -142,7 +141,7 @@ class TestOpening(unittest.TestCase):
 
     def testDetectVCFGZ(self):
         with pysam.VariantFile(os.path.join(CBCF_DATADIR,
-            "example_vcf40.vcf.gz")) as inf:
+                                            "example_vcf40.vcf.gz")) as inf:
             self.assertEqual(inf.category, 'VARIANTS')
             self.assertEqual(inf.format, 'VCF')
             self.assertEqual(inf.compression, 'BGZF')
@@ -210,7 +209,7 @@ class TestParsing(unittest.TestCase):
         chrom = [rec.chrom for rec in v]
         self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
 
-    if Path and sys.version_info >= (3,6):
+    if Path and sys.version_info >= (3, 6):
         def testChromFromPath(self):
             fn = os.path.join(CBCF_DATADIR, self.filename)
             v = pysam.VariantFile(Path(fn))
@@ -239,7 +238,8 @@ class TestParsing(unittest.TestCase):
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         ids = [rec.id for rec in v]
-        self.assertEqual(ids, [None, 'rs6054257', None, 'rs6040355', 'microsat1'])
+        self.assertEqual(
+            ids, [None, 'rs6054257', None, 'rs6040355', 'microsat1'])
 
     def testRef(self):
         fn = os.path.join(CBCF_DATADIR, self.filename)
@@ -251,13 +251,15 @@ class TestParsing(unittest.TestCase):
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         alts = [rec.alts for rec in v]
-        self.assertEqual(alts, [None, ('A',), ('A',), ('G', 'T'), ('G', 'GTACT')])
+        self.assertEqual(alts, [None, ('A',), ('A',),
+                                ('G', 'T'), ('G', 'GTACT')])
 
     def testAlleles(self):
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         alleles = [rec.alleles for rec in v]
-        self.assertEqual(alleles, [('T',), ('G', 'A'), ('T', 'A'), ('A', 'G', 'T'), ('GTCT', 'G', 'GTACT')])
+        self.assertEqual(alleles, [
+                         ('T',), ('G', 'A'), ('T', 'A'), ('A', 'G', 'T'), ('GTCT', 'G', 'GTACT')])
 
     def testQual(self):
         fn = os.path.join(CBCF_DATADIR, self.filename)
@@ -269,17 +271,20 @@ class TestParsing(unittest.TestCase):
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         filter = [rec.filter.keys() for rec in v]
-        self.assertEqual(filter, [['PASS'], ['PASS'], ['q10'], ['PASS'], ['PASS']])
+        self.assertEqual(filter, [['PASS'], ['PASS'],
+                                  ['q10'], ['PASS'], ['PASS']])
 
     def testInfo(self):
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
         info = [rec.info.items() for rec in v]
         self.assertEqual(info, [[('NS', 3), ('DP', 13), ('AA', 'T')],
-                                [('NS', 3), ('DP', 14), ('AF', (0.5,)), ('DB', True), ('H2', True)],
-                                [('NS', 3), ('DP', 11), ('AF', (0.017000000923871994,))],
+                                [('NS', 3), ('DP', 14), ('AF', (0.5,)),
+                                 ('DB', True), ('H2', True)],
+                                [('NS', 3), ('DP', 11),
+                                 ('AF', (0.017000000923871994,))],
                                 [('NS', 2), ('DP', 10), ('AF', (0.3330000042915344, 0.6669999957084656)),
-                                            ('AA', 'T'), ('DB', True)],
+                                 ('AA', 'T'), ('DB', True)],
                                 [('NS', 3), ('DP', 9), ('AA', 'G')]])
 
     def testFormat(self):
@@ -308,17 +313,28 @@ class TestParsing(unittest.TestCase):
         v = pysam.VariantFile(fn)
         format = [s.items() for rec in v for s in rec.samples.values()]
         self.assertEqual(format, [[('GT', (0, 0)), ('GQ', 54), ('DP', 7), ('HQ', (56, 60))],
-                                  [('GT', (0, 0)), ('GQ', 48), ('DP', 4), ('HQ', (51, 51))],
-                                  [('GT', (0, 0)), ('GQ', 61), ('DP', 2), ('HQ', (None,))],
-                                  [('GT', (0, 0)), ('GQ', 48), ('DP', 1), ('HQ', (51, 51))],
-                                  [('GT', (1, 0)), ('GQ', 48), ('DP', 8), ('HQ', (51, 51))],
-                                  [('GT', (1, 1)), ('GQ', 43), ('DP', 5), ('HQ', (None, None))],
-                                  [('GT', (0, 0)), ('GQ', 49), ('DP', 3), ('HQ', (58, 50))],
-                                  [('GT', (0, 1)), ('GQ', 3), ('DP', 5), ('HQ', (65, 3))],
-                                  [('GT', (0, 0)), ('GQ', 41), ('DP', 3), ('HQ', (None,))],
-                                  [('GT', (1, 2)), ('GQ', 21), ('DP', 6), ('HQ', (23, 27))],
-                                  [('GT', (2, 1)), ('GQ', 2), ('DP', 0), ('HQ', (18, 2))],
-                                  [('GT', (2, 2)), ('GQ', 35), ('DP', 4), ('HQ', (None,))],
+                                  [('GT', (0, 0)), ('GQ', 48),
+                                   ('DP', 4), ('HQ', (51, 51))],
+                                  [('GT', (0, 0)), ('GQ', 61),
+                                   ('DP', 2), ('HQ', (None,))],
+                                  [('GT', (0, 0)), ('GQ', 48),
+                                   ('DP', 1), ('HQ', (51, 51))],
+                                  [('GT', (1, 0)), ('GQ', 48),
+                                   ('DP', 8), ('HQ', (51, 51))],
+                                  [('GT', (1, 1)), ('GQ', 43),
+                                   ('DP', 5), ('HQ', (None, None))],
+                                  [('GT', (0, 0)), ('GQ', 49),
+                                   ('DP', 3), ('HQ', (58, 50))],
+                                  [('GT', (0, 1)), ('GQ', 3),
+                                   ('DP', 5), ('HQ', (65, 3))],
+                                  [('GT', (0, 0)), ('GQ', 41),
+                                   ('DP', 3), ('HQ', (None,))],
+                                  [('GT', (1, 2)), ('GQ', 21),
+                                   ('DP', 6), ('HQ', (23, 27))],
+                                  [('GT', (2, 1)), ('GQ', 2),
+                                   ('DP', 0), ('HQ', (18, 2))],
+                                  [('GT', (2, 2)), ('GQ', 35),
+                                   ('DP', 4), ('HQ', (None,))],
                                   [('GT', (0, 1)), ('GQ', 35), ('DP', 4)],
                                   [('GT', (0, 2)), ('GQ', 17), ('DP', 2)],
                                   [('GT', (1, 1)), ('GQ', 40), ('DP', 3)]])
@@ -336,7 +352,7 @@ class TestIndexFilename(unittest.TestCase):
 
     filenames = [('example_vcf40.vcf.gz', 'example_vcf40.vcf.gz.tbi'),
                  ('example_vcf40.vcf.gz', 'example_vcf40.vcf.gz.csi'),
-                 ('example_vcf40.bcf',    'example_vcf40.bcf.csi')]
+                 ('example_vcf40.bcf', 'example_vcf40.bcf.csi')]
 
     def testOpen(self):
         for fn, idx_fn in self.filenames:
@@ -435,7 +451,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
         self.complete_check(fn_in, fn_out)
 
 
-#class TestConstructionVCFWithoutContigs(TestConstructionVCFWithContigs):
+# class TestConstructionVCFWithoutContigs(TestConstructionVCFWithContigs):
 #     """construct VariantFile from scratch."""
 #     filename = "example_vcf40.vcf"
 
@@ -466,7 +482,8 @@ class TestSettingRecordValues(unittest.TestCase):
             self.assertEqual(inf.format, 'VCF')
             self.assertEqual(inf.version, (4, 0))
             self.assertEqual(inf.compression, 'NONE')
-            self.assertEqual(inf.description, 'VCF version 4.0 variant calling text')
+            self.assertEqual(
+                inf.description, 'VCF version 4.0 variant calling text')
             self.assertTrue(inf.is_open)
             self.assertEqual(inf.is_read, True)
             self.assertEqual(inf.is_write, False)
@@ -485,14 +502,15 @@ class TestSettingRecordValues(unittest.TestCase):
         with pysam.VariantFile(os.path.join(CBCF_DATADIR, self.filename)) as inf:
             record = next(inf)
             sample = record.samples["NA00001"]
-            print (sample["GT"])
+            print(sample["GT"])
             self.assertEqual(sample["GT"], (0, 0))
             sample["GT"] = sample["GT"]
 
+
 class TestSubsetting(unittest.TestCase):
-    
+
     filename = "example_vcf42.vcf.gz"
-    
+
     def testSubsetting(self):
         with pysam.VariantFile(os.path.join(CBCF_DATADIR,
                                             self.filename)) as inf:
@@ -501,8 +519,8 @@ class TestSubsetting(unittest.TestCase):
 
 if __name__ == "__main__":
     # build data files
-    print ("building data files")
+    print("building data files")
     subprocess.call("make -C %s" % CBCF_DATADIR, shell=True)
-    print ("starting tests")
+    print("starting tests")
     unittest.main()
-    print ("completed tests")
+    print("completed tests")

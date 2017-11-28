@@ -53,7 +53,7 @@ def checkBinaryEqual(filename1, filename2):
 
     if len(d1) != len(d2):
         return False
-        
+
     found = False
     for c1, c2 in zip(d1, d2):
         if c1 != c2:
@@ -77,16 +77,17 @@ class TestIndexing(unittest.TestCase):
         '''test indexing via preset.'''
 
         pysam.tabix_index(self.tmpfilename, preset="gff")
-        self.assertTrue(checkBinaryEqual(self.tmpfilename + ".tbi", self.filename_idx))
+        self.assertTrue(checkBinaryEqual(
+            self.tmpfilename + ".tbi", self.filename_idx))
 
     def test_indexing_to_custom_location_works(self):
         '''test indexing a file with a non-default location.'''
 
         index_path = get_temp_filename(suffix='custom.tbi')
-        pysam.tabix_index(self.tmpfilename, preset="gff", index=index_path, force=True)
+        pysam.tabix_index(self.tmpfilename, preset="gff",
+                          index=index_path, force=True)
         self.assertTrue(checkBinaryEqual(index_path, self.filename_idx))
         os.unlink(index_path)
-
 
     def test_indexing_with_explict_columns_works(self):
         '''test indexing via preset.'''
@@ -97,7 +98,8 @@ class TestIndexing(unittest.TestCase):
                           end_col=4,
                           line_skip=0,
                           zerobased=False)
-        self.assertTrue(checkBinaryEqual(self.tmpfilename + ".tbi", self.filename_idx))
+        self.assertTrue(checkBinaryEqual(
+            self.tmpfilename + ".tbi", self.filename_idx))
 
     def test_indexing_with_lineskipping_works(self):
         '''test indexing via preset and lineskip.'''
@@ -107,8 +109,9 @@ class TestIndexing(unittest.TestCase):
                           end_col=4,
                           line_skip=1,
                           zerobased=False)
-        self.assertFalse(checkBinaryEqual(self.tmpfilename + ".tbi", self.filename_idx))
-        
+        self.assertFalse(checkBinaryEqual(
+            self.tmpfilename + ".tbi", self.filename_idx))
+
     def tearDown(self):
         os.unlink(self.tmpfilename)
         if os.path.exists(self.tmpfilename + ".tbi"):
@@ -123,7 +126,7 @@ class TestCompression(unittest.TestCase):
     def setUp(self):
         self.tmpfilename = get_temp_filename(suffix="gtf")
         with gzip.open(self.filename, "rb") as infile, \
-             open(self.tmpfilename, "wb") as outfile:
+                open(self.tmpfilename, "wb") as outfile:
             outfile.write(infile.read())
 
     def testCompression(self):
@@ -207,19 +210,19 @@ class IterationTest(unittest.TestCase):
             if start is not None and end is None:
                 # until end of contig
                 subset = [x[3]
-                          for x in self.compare if x[0] == contig
-                          and x[2] > start]
+                          for x in self.compare if x[0] == contig and
+                          x[2] > start]
             elif start is None and end is not None:
                 # from start of contig
                 subset = [x[3]
-                          for x in self.compare if x[0] == contig
-                          and x[1] <= end]
+                          for x in self.compare if x[0] == contig and
+                          x[1] <= end]
             elif start is None and end is None:
                 subset = [x[3] for x in self.compare if x[0] == contig]
             else:
                 # all within interval
-                subset = [x[3] for x in self.compare if x[0] == contig
-                          and min(x[2], end) - max(x[1], start) > 0]
+                subset = [x[3] for x in self.compare if x[0] == contig and
+                          min(x[2], end) - max(x[1], start) > 0]
 
         if self.with_comments:
             subset.extend(self.comments)
@@ -402,7 +405,7 @@ class TestIterationWithComments(TestIterationWithoutComments):
     def setUp(self):
         TestIterationWithoutComments.setUp(self)
 
-            
+
 class TestIterators(unittest.TestCase):
     filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
@@ -416,7 +419,7 @@ class TestIterators(unittest.TestCase):
         self.compare = load_and_convert(self.filename)
         self.tmpfilename_uncompressed = 'tmp_TestIterators'
         with gzip.open(self.filename, "rb") as infile, \
-             open(self.tmpfilename_uncompressed, "wb") as outfile:
+                open(self.tmpfilename_uncompressed, "wb") as outfile:
             outfile.write(infile.read())
 
     def tearDown(self):
@@ -592,7 +595,8 @@ if IS_PYTHON3:
             with pysam.TabixFile(
                     self.tmpfilename + ".gz", encoding="ascii") as t:
                 results = list(t.fetch(parser=pysam.asVCF()))
-                self.assertRaises(UnicodeDecodeError, getattr, results[1], "id")
+                self.assertRaises(UnicodeDecodeError,
+                                  getattr, results[1], "id")
 
             with pysam.TabixFile(
                     self.tmpfilename + ".gz", encoding="utf-8") as t:
@@ -626,7 +630,7 @@ class TestVCFFromTabix(TestVCF):
     def tearDown(self):
         self.tabix.close()
         TestVCF.tearDown(self)
-        
+
     def testRead(self):
 
         ncolumns = len(self.columns)
@@ -749,7 +753,7 @@ class TestVCFFromVCF(TestVCF):
         for x, msg in self.fail_on_parsing:
             if "{}.vcf".format(x) == fn:
                 return "parsing"
-        
+
         for x, msg in self.fail_on_samples:
             if "{}.vcf".format(x) == fn:
                 return "samples"
@@ -996,7 +1000,8 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
         v = smp.values()
 
         if 'GT' in smp:
-            alleles = [str(a) if a is not None else '.' for a in smp.allele_indices]
+            alleles = [
+                str(a) if a is not None else '.' for a in smp.allele_indices]
             v[0] = '/|'[smp.phased].join(alleles)
 
         comp = ":".join(map(convert_field, v))
@@ -1045,7 +1050,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
             self.remote_file = None
         else:
             self.remote_file = pysam.TabixFile(self.url, "r")
-            
+
         self.local_file = pysam.TabixFile(self.local, "r")
 
     def tearDown(self):
@@ -1092,7 +1097,7 @@ class TestRemoteFileHTTPWithHeader(TestRemoteFileHTTP):
 
         self.assertEqual(list(self.local_file.header), ["# comment at start"])
         self.assertEqual(list(self.local_file.header), self.remote_file.header)
-        
+
 
 class TestIndexArgument(unittest.TestCase):
 
@@ -1189,8 +1194,10 @@ class TestMultipleIterators(unittest.TestCase):
     def testDisjointIterators(self):
         # two iterators working on the same file
         with pysam.TabixFile(self.filename) as tabix:
-            a = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
-            b = tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True).next()
+            a = tabix.fetch(parser=pysam.asGTF(),
+                            multiple_iterators=True).next()
+            b = tabix.fetch(parser=pysam.asGTF(),
+                            multiple_iterators=True).next()
             # both iterators are at top of file
             self.assertEqual(str(a), str(b))
 
