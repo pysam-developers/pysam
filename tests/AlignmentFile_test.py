@@ -2722,7 +2722,6 @@ class TestSanityCheckingBAM(unittest.TestCase):
 # class TestSanityCheckingSAM(TestSanityCheckingSAM):
 #     mode = "w"
 
-
 if __name__ == "__main__":
     # build data files
     print ("building data files")

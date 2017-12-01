@@ -490,8 +490,6 @@ cdef inline object getQualitiesInRange(bam1_t *src,
 cdef class AlignedSegment
 cdef AlignedSegment makeAlignedSegment(bam1_t *src, AlignmentHeader header):
     '''return an AlignedSegment object constructed from `src`'''
-    if header is None:
-        raise ValueError("creating AlignedSegment without header information")
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
@@ -515,9 +513,11 @@ cdef PileupColumn makePileupColumn(bam_pileup1_t **plp, int tid, int pos,
     dest.n_pu = n_pu
     return dest
 
+
 cdef class PileupRead
 cdef PileupRead makePileupRead(bam_pileup1_t *src, AlignmentHeader header):
     '''return a PileupRead object construted from a bam_pileup1_t * object.'''
+    # note that the following does not call __init__
     cdef PileupRead dest = PileupRead.__new__(PileupRead)
     dest._alignment = makeAlignedSegment(src.b, header)
     dest._qpos = src.qpos
@@ -736,11 +736,8 @@ cdef class AlignedSegment:
         self.cache_query_alignment_qualities = None
         self.cache_query_sequence = None
         self.cache_query_alignment_sequence = None
-
-        if header is None:
-            self.header = AlignmentHeader()
-        else:
-            self.header = header
+        
+        self.header = header
         
     def __dealloc__(self):
         bam_destroy1(self._delegate)
@@ -779,7 +776,6 @@ cdef class AlignedSegment:
     def compare(self, AlignedSegment other):
         '''return -1,0,1, if contents in this are binary
         <,=,> to *other*
-
         '''
 
         cdef int retval, x
@@ -841,7 +837,8 @@ cdef class AlignedSegment:
     cpdef tostring(self, htsfile=None):
         """returns a string representation of the aligned segment.
 
-        The output format is valid SAM format.
+        The output format is valid SAM format if a header is associated
+        with the AlignedSegment.
 
         Parameters
         ----------
@@ -854,11 +851,14 @@ cdef class AlignedSegment:
         line.l = line.m = 0
         line.s = NULL
 
-        if sam_format1(self.header.ptr, self._delegate, &line) < 0:
-            if line.m:
-                free(line.s)
-            raise ValueError('sam_format failed')
-
+        if self.header:
+            if sam_format1(self.header.ptr, self._delegate, &line) < 0:
+                if line.m:
+                    free(line.s)
+                raise ValueError('sam_format failed')
+        else:
+            raise NotImplementedError("todo")
+        
         ret = force_str(line.s[:line.l])
 
         if line.m:
@@ -931,9 +931,15 @@ cdef class AlignedSegment:
     property reference_name:
         """:term:`reference` name"""
         def __get__(self):
-            return self.header.get_reference_name(self._delegate.core.tid)
+            if self.header:
+                return self.header.get_reference_name(self._delegate.core.tid)
+            else:
+                raise ValueError("reference_name unknown if no header associated with record")
         def __set__(self, reference):
             cdef int tid
+            if not self.header:
+                raise ValueError("reference_name can not be set if no header associated with record")
+            
             if reference is None:
                 self._delegate.core.tid = -1
             else:
@@ -950,14 +956,13 @@ cdef class AlignedSegment:
 
             This field contains the index of the reference sequence in
             the sequence dictionary. To obtain the name of the
-            reference sequence, use
-            :meth:`get_reference_name()`
+            reference sequence, use :meth:`get_reference_name()`
 
         """
         def __get__(self):
             return self._delegate.core.tid
         def __set__(self, tid):
-            if tid != -1 and not self.header.is_valid_tid(tid):
+            if tid != -1 and self.header and not self.header.is_valid_tid(tid):
                 raise ValueError("reference id {} does not exist in header".format(
                     tid))
             self._delegate.core.tid = tid

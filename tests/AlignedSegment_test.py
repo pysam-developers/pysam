@@ -5,7 +5,7 @@ import collections
 import copy
 import array
 
-from TestUtils import checkFieldEqual, BAM_DATADIR
+from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename
 
 
 class ReadTest(unittest.TestCase):
@@ -904,6 +904,64 @@ class TestEnums(unittest.TestCase):
         self.assertEqual(pysam.FQCFAIL, 512)
         self.assertEqual(pysam.FDUP, 1024)
         self.assertEqual(pysam.FSUPPLEMENTARY, 2048)
+
+
+class TestBuildingReadsWithoutHeader(unittest.TestCase):
+    
+    def build_read(self):
+        '''build an example read, but without header information.'''
+
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = -1
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
+        a.next_reference_id = 0
+        a.next_reference_start = 200
+        a.template_length = 167
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
+        # todo: create tags
+        return a
+
+    def test_read_can_be_constructed_without_header(self):
+        read = self.build_read()
+        self.assertEqual(read.query_name, "read_12345")
+            
+    def test_reference_id_can_be_set(self):
+        read = self.build_read()
+        read.reference_id = 2
+        self.assertEqual(read.reference_id, 2)
+
+    def test_reference_name_is_not_available(self):
+        read = self.build_read()
+        self.assertRaises(
+            ValueError,
+            getattr,
+            read,
+            "reference_name")
+        self.assertRaises(
+            ValueError,
+            setattr,
+            read,
+            "reference_name",
+            2)
+        
+    def test_read_can_be_written_to_file(self):
+        tmpfilename = get_temp_filename(".bam")
+        with pysam.AlignmentFile(tmpfilename, "wb",
+                                 reference_names=["chr1", "chr2", "chr3"],
+                                 reference_lengths=[1000, 2000, 3000]) as outf:
+            read = self.build_read()
+            read.reference_id = 2
+            outf.write(read)
+
+        stdout = pysam.samtools.view(tmpfilename)
+        chromosome = stdout.split("\t")[2]
+        self.assertEqual(chromosome, "chr3")
+        os.unlink(tmpfilename)
 
 
 if __name__ == "__main__":
