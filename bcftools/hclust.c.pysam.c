@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /* The MIT License
 
@@ -89,7 +89,7 @@ void remove_node(hclust_t *clust, node_t *node)
 void hclust_debug(hclust_t *clust)
 {
     int i;
-    fprintf(pysam_stderr,"nrmme=%d  nclust=%d\n", clust->nrmme,clust->nclust);
+    fprintf(bcftools_stderr,"nrmme=%d  nclust=%d\n", clust->nrmme,clust->nclust);
     for (i=0; i<clust->nrmme; i++)
     {
         node_t *node = clust->rmme[i];
@@ -97,7 +97,7 @@ void hclust_debug(hclust_t *clust)
         int bkid  = node->bkid ? node->bkid->id : -1;
         int akidx = node->akid ? node->akid->idx : -1;
         int bkidx = node->bkid ? node->bkid->idx : -1;
-        fprintf(pysam_stderr,"\t%d\t%d\t%f\t%d %d\t%d %d\n",node->id,node->idx,node->value,akid,bkid,akidx,bkidx);
+        fprintf(bcftools_stderr,"\t%d\t%d\t%f\t%d %d\t%d %d\n",node->id,node->idx,node->value,akid,bkid,akidx,bkidx);
     }
 
     int j;
@@ -110,17 +110,17 @@ void hclust_debug(hclust_t *clust)
             if ( node->idx==i ) { active=1; break; }
             node = node->next;
         }
-        fprintf(pysam_stderr,"%2d%c ",i,active?'*':' ');
+        fprintf(bcftools_stderr,"%2d%c ",i,active?'*':' ');
         for (j=0; j<i; j++)
         {
             if ( PDIST(clust->pdist,i,j)==9 )
-                fprintf(pysam_stderr,"  -----  ");
+                fprintf(bcftools_stderr,"  -----  ");
             else
-                fprintf(pysam_stderr," %f", PDIST(clust->pdist,i,j));
+                fprintf(bcftools_stderr," %f", PDIST(clust->pdist,i,j));
         }
-        fprintf(pysam_stderr,"\n");
+        fprintf(bcftools_stderr,"\n");
     }
-    for (j=0; j<clust->ndat-1; j++) fprintf(pysam_stderr,"  %6d ",j); fprintf(pysam_stderr,"\n");
+    for (j=0; j<clust->ndat-1; j++) fprintf(bcftools_stderr,"  %6d ",j); fprintf(bcftools_stderr,"\n");
 }
 #endif
 

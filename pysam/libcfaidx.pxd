@@ -39,7 +39,7 @@ cdef class FastaFile:
     cdef object _filename, _references, _lengths, reference2length
     cdef faidx_t* fastafile
     cdef char* _fetch(self, char* reference,
-                      int start, int end, int* length)
+                      int start, int end, int* length) except? NULL
 
 
 cdef class FastqProxy:

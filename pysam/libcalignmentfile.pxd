@@ -4,7 +4,7 @@ from libc.stdlib cimport malloc, calloc, realloc, free
 from libc.string cimport memcpy, memcmp, strncpy, strlen, strdup
 from libc.stdio cimport FILE, printf
 
-from pysam.libcfaidx cimport faidx_t, Fastafile
+from pysam.libcfaidx cimport faidx_t, FastaFile
 from pysam.libcalignedsegment cimport AlignedSegment
 from pysam.libchtslib cimport *
 
@@ -18,11 +18,6 @@ cdef extern from "htslib_util.h":
 
     char * pysam_bam_get_qname(bam1_t * b)
 
-cdef extern from "samfile_util.h":
-
-    int bam_cap_mapQ(bam1_t *b, char *ref, int thres)
-    int bam_prob_realn(bam1_t *b, const char *ref)
-
 ####################################################################
 # Utility types
 
@@ -34,6 +29,13 @@ ctypedef struct __iterdata:
     int tid
     char * seq
     int seq_len
+    int min_mapping_quality
+    int flag_require
+    int flag_filter
+    bint compute_baq
+    bint redo_baq
+    bint ignore_orphans
+    int adjust_capq_threshold
 
 
 cdef class AlignmentHeader(object):
@@ -121,27 +123,29 @@ cdef class IteratorColumn:
     cdef int tid
     cdef int pos
     cdef int n_plp
-    cdef int mask
+    cdef uint32_t min_base_quality
     cdef bam_pileup1_t * plp
-    cdef bam_plp_t pileup_iter
+    cdef bam_mplp_t pileup_iter
     cdef __iterdata iterdata
     cdef AlignmentFile samfile
-    cdef Fastafile fastafile
+    cdef FastaFile fastafile
     cdef stepper
     cdef int max_depth
+    cdef bint ignore_overlaps
 
     cdef int cnext(self)
-    cdef char * getSequence(self)
-    cdef setMask(self, mask)
-    cdef setupIteratorData(self,
-                           int tid,
-                           int start,
-                           int stop,
-                           int multiple_iterators=?)
+    cdef char * get_sequence(self)
+    cdef _setup_iterator(self,
+                         int tid,
+                         int start,
+			 int stop,
+ 			 int multiple_iterators=?)
 
     cdef reset(self, tid, start, stop)
     cdef _free_pileup_iter(self)
-
+    # backwards compatibility
+    cdef char * getSequence(self)
+    
 
 cdef class IteratorColumnRegion(IteratorColumn):
     cdef int start

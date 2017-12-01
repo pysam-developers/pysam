@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  em.c -- mathematical functions.
 
@@ -74,7 +74,7 @@ static double prob1(double f, void *data)
     minaux1_t *a = (minaux1_t*)data;
     double p = 1., l = 0., f3[3];
     int i;
-//  fprintf(pysam_stdout, "brent %lg\n", f);
+//  fprintf(bcftools_stdout, "brent %lg\n", f);
     if (f < 0 || f > 1) return 1e300;
     f3[0] = (1.-f)*(1.-f); f3[1] = 2.*f*(1.-f); f3[2] = f*f;
     for (i = a->beg; i < a->end; ++i) {
@@ -90,7 +90,7 @@ static double freq_iter(double *f, const double *_pdg, int beg, int end)
 {
     double f0 = *f, f3[3], err;
     int i;
-//  fprintf(pysam_stdout, "em %lg\n", *f);
+//  fprintf(bcftools_stdout, "em %lg\n", *f);
     f3[0] = (1.-f0)*(1.-f0); f3[1] = 2.*f0*(1.-f0); f3[2] = f0*f0;
     for (i = beg, f0 = 0.; i < end; ++i) {
         const double *pdg = _pdg + i * 3;
@@ -128,7 +128,7 @@ static double g3_iter(double g[3], const double *_pdg, int beg, int end)
     double err, gg[3];
     int i;
     gg[0] = gg[1] = gg[2] = 0.;
-//  fprintf(pysam_stdout, "%lg,%lg,%lg\n", g[0], g[1], g[2]);
+//  fprintf(bcftools_stdout, "%lg,%lg,%lg\n", g[0], g[1], g[2]);
     for (i = beg; i < end; ++i) {
         double sum, tmp[3];
         const double *pdg = _pdg + i * 3;
@@ -237,7 +237,7 @@ static int pair_freq_iter(int n, double *pdg[2], double f[4])
 {
     double ff[4];
     int i, k, h;
-//  fprintf(pysam_stdout, "%lf,%lf,%lf,%lf\n", f[0], f[1], f[2], f[3]);
+//  fprintf(bcftools_stdout, "%lf,%lf,%lf,%lf\n", f[0], f[1], f[2], f[3]);
     memset(ff, 0, 4 * sizeof(double));
     for (i = 0; i < n; ++i) {
         double *p[2], sum, tmp;

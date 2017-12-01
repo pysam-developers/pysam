@@ -89,7 +89,7 @@ class TestParser(unittest.TestCase):
         '''test iteration from uncompressed file.'''
         tmpfilename = 'tmp_testIteratorUncompressed'
         with gzip.open(self.filename, "rb") as infile, \
-             open(tmpfilename, "wb") as outfile:
+                open(tmpfilename, "wb") as outfile:
             outfile.write(infile.read())
 
         with open(tmpfilename) as infile:
@@ -130,7 +130,7 @@ class TestGTF(TestParser):
         # remove quotes around numeric values
         s = re.sub("\"(\d+)\"", r"\1", s)
         return s
-    
+
     def testRead(self):
 
         for x, r in enumerate(self.tabix.fetch(parser=self.parser())):
@@ -145,11 +145,11 @@ class TestGTF(TestParser):
             self.assertEqual("\t".join(map(str, c)),
                              str(r))
 
-    def testSetting(self):
+    def test_setting_fields(self):
 
         r = self.tabix.fetch(parser=self.parser()).next()
 
-        r.contig = r.contig + "_test_contig"          
+        r.contig = r.contig + "_test_contig"
         r.source = r.source + "_test_source"
         r.feature = r.feature + "_test_feature"
         r.start += 10
@@ -166,6 +166,14 @@ class TestGTF(TestParser):
         self.assertTrue("gene_id \"0001\"" in sr)
         self.assertTrue("transcript_id \"0002\"" in sr)
 
+    def test_setAttribute_makes_changes(self):
+
+        r = self.tabix.fetch(parser=self.parser()).next()
+        r.setAttribute("transcript_id", "abcd")
+        sr = str(r)
+        self.assertEqual(r.transcript_id, "abcd")
+        self.assertTrue("transcript_id \"abcd\"" in sr)
+
     def test_added_attribute_is_output(self):
         r = self.tabix.fetch(parser=self.parser()).next()
 
@@ -179,14 +187,14 @@ class TestGTF(TestParser):
         self.assertTrue("new_text_attribute \"abc\"" in str(r).split("\t")[8])
 
     def test_setting_start_is_one_based(self):
-        
+
         r = self.tabix.fetch(parser=self.parser()).next()
         r.start = 1800
         self.assertEqual(r.start, 1800)
         self.assertEqual(str(r).split("\t")[3], "1801")
 
     def test_setting_end_is_one_based(self):
-        
+
         r = self.tabix.fetch(parser=self.parser()).next()
         r.end = 2100
         self.assertEqual(r.end, 2100)
@@ -311,10 +319,10 @@ class TestGFF3(TestGTF):
                              str(r))
             self.assertTrue(r.ID.startswith("MI00"))
 
-    def testSetting(self):
+    def test_setting_fields(self):
 
         for r in self.tabix.fetch(parser=self.parser()):
-            r.contig = r.contig + "_test_contig"          
+            r.contig = r.contig + "_test_contig"
             r.source = "test_source"
             r.feature = "test_feature"
             r.start += 10
@@ -322,13 +330,21 @@ class TestGFF3(TestGTF):
             r.score = 20
             r.strand = "+"
             r.frame = 0
-            r.ID="test"
+            r.ID = "test"
             sr = str(r)
             self.assertTrue("test_contig" in sr)
             self.assertTrue("test_source" in sr)
             self.assertTrue("test_feature" in sr)
             self.assertTrue("ID=test" in sr)
-            
+
+    def test_setAttribute_makes_changes(self):
+
+        r = self.tabix.fetch(parser=self.parser()).next()
+        r.setAttribute("transcript_id", "abcd")
+        sr = str(r)
+        self.assertEqual(r.transcript_id, "abcd")
+        self.assertTrue("transcript_id=abcd" in sr)
+
     def test_added_attribute_is_output(self):
         r = self.tabix.fetch(parser=self.parser()).next()
 
@@ -341,6 +357,6 @@ class TestGFF3(TestGTF):
         r.new_text_attribute = "abc"
         self.assertTrue("new_text_attribute=abc" in str(r).split("\t")[8])
 
-        
+
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@
 #
 include MANIFEST.in
 include COPYING
+include NEWS
 include INSTALL
 include KNOWN_BUGS
 include THANKS
@@ -15,14 +16,24 @@ include pysam/libc*.pyx
 include pysam/libc*.c
 include pysam/*.c
 include pysam/*.h
+
+# samtools
 include samtools/configure
 include samtools/config.mk.in
 include samtools/config.h.in
 include samtools/*.h
 exclude samtools/config.h
 include samtools/*/*.h
+
+# bcftools
+include bcftools/*.h
+exclude bcftools/config.h
+
+# htslib
 include htslib/*.c
 include htslib/*.h
+include htslib/INSTALL
+include htslib/NEWS
 exclude htslib/config.h
 include htslib/Makefile
 include htslib/htslib_vars.mk
@@ -33,6 +44,8 @@ include htslib/htslib.pc.in
 include htslib/htslib/*.h
 include htslib/cram/*.c
 include htslib/cram/*.h
+include htslib/win/*.c
+include htslib/win/*.h
 include cy_build.py
 include pysam.py
 include requirements.txt

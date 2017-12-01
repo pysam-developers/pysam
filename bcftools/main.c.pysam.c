@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  main.c -- main bcftools command front-end.
 
@@ -59,6 +59,7 @@ int main_plugin(int argc, char *argv[]);
 int main_consensus(int argc, char *argv[]);
 int main_csq(int argc, char *argv[]);
 int bam_mpileup(int argc, char *argv[]);
+int main_sort(int argc, char *argv[]);
 
 typedef struct
 {
@@ -127,6 +128,10 @@ static cmd_t cmds[] =
     { .func  = main_reheader,
       .alias = "reheader",
       .help  = "modify VCF/BCF header, change sample names"
+    },
+    { .func  = main_sort,
+      .alias = "sort",
+      .help  = "sort VCF/BCF file"
     },
     { .func  = main_vcfview,
       .alias = "view",
@@ -234,24 +239,24 @@ static void usage(FILE *fp)
 
 int bcftools_main(int argc, char *argv[])
 {
-    if (argc < 2) { usage(pysam_stderr); return 1; }
+    if (argc < 2) { usage(bcftools_stderr); return 1; }
 
     if (strcmp(argv[1], "version") == 0 || strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
-        fprintf(pysam_stdout, "bcftools %s\nUsing htslib %s\nCopyright (C) 2016 Genome Research Ltd.\n", bcftools_version(), hts_version());
+        fprintf(bcftools_stdout, "bcftools %s\nUsing htslib %s\nCopyright (C) 2016 Genome Research Ltd.\n", bcftools_version(), hts_version());
 #if USE_GPL
-        fprintf(pysam_stdout, "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n");
+        fprintf(bcftools_stdout, "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n");
 #else
-        fprintf(pysam_stdout, "License Expat: The MIT/Expat license\n");
+        fprintf(bcftools_stdout, "License Expat: The MIT/Expat license\n");
 #endif
-        fprintf(pysam_stdout, "This is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n");
+        fprintf(bcftools_stdout, "This is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n");
         return 0;
     }
     else if (strcmp(argv[1], "--version-only") == 0) {
-        fprintf(pysam_stdout, "%s+htslib-%s\n", bcftools_version(), hts_version());
+        fprintf(bcftools_stdout, "%s+htslib-%s\n", bcftools_version(), hts_version());
         return 0;
     }
     else if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
-        if (argc == 2) { usage(pysam_stdout); return 0; }
+        if (argc == 2) { usage(bcftools_stdout); return 0; }
         // Otherwise change "bcftools help COMMAND [...]" to "bcftools COMMAND";
         // main_xyz() functions by convention display the subcommand's usage
         // when invoked without any arguments.
@@ -276,7 +281,7 @@ int bcftools_main(int argc, char *argv[])
         }
         i++;
     }
-    fprintf(pysam_stderr, "[E::%s] unrecognized command '%s'\n", __func__, argv[1]);
+    fprintf(bcftools_stderr, "[E::%s] unrecognized command '%s'\n", __func__, argv[1]);
     return 1;
 }
 

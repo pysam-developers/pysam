@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  dict.c -- create a sequence dictionary file.
 
@@ -54,14 +54,14 @@ static void write_dict(const char *fn, args_t *args)
 
     fp = strcmp(fn, "-") ? gzopen(fn, "r") : gzdopen(fileno(stdin), "r");
     if (fp == 0) {
-        fprintf(pysam_stderr, "dict: %s: No such file or directory\n", fn);
+        fprintf(samtools_stderr, "dict: %s: No such file or directory\n", fn);
         exit(1);
     }
-    FILE *out = pysam_stdout;
+    FILE *out = samtools_stdout;
     if (args->output_fname) {
         out = fopen(args->output_fname, "w");
         if (out == NULL) {
-          fprintf(pysam_stderr, "dict: %s: Cannot open file for writing\n", args->output_fname);
+          fprintf(samtools_stderr, "dict: %s: Cannot open file for writing\n", args->output_fname);
           exit(1);
         }
     }
@@ -84,7 +84,11 @@ static void write_dict(const char *fn, args_t *args)
         if (args->uri)
             fprintf(out, "\tUR:%s", args->uri);
         else if (strcmp(fn, "-") != 0) {
+#ifdef _WIN32
+            char *real_path = _fullpath(NULL, fn, PATH_MAX);
+#else
             char *real_path = realpath(fn, NULL);
+#endif
             fprintf(out, "\tUR:file://%s", real_path);
             free(real_path);
         }
@@ -100,15 +104,15 @@ static void write_dict(const char *fn, args_t *args)
 
 static int dict_usage(void)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Create a sequence dictionary file from a fasta file\n");
-    fprintf(pysam_stderr, "Usage:   samtools dict [options] <file.fa|file.fa.gz>\n\n");
-    fprintf(pysam_stderr, "Options: -a, --assembly STR    assembly\n");
-    fprintf(pysam_stderr, "         -H, --no-header       do not print @HD line\n");
-    fprintf(pysam_stderr, "         -o, --output STR      file to write out dict file [pysam_stdout]\n");
-    fprintf(pysam_stderr, "         -s, --species STR     species\n");
-    fprintf(pysam_stderr, "         -u, --uri STR         URI [file:///abs/path/to/file.fa]\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(samtools_stderr, "\n");
+    fprintf(samtools_stderr, "About:   Create a sequence dictionary file from a fasta file\n");
+    fprintf(samtools_stderr, "Usage:   samtools dict [options] <file.fa|file.fa.gz>\n\n");
+    fprintf(samtools_stderr, "Options: -a, --assembly STR    assembly\n");
+    fprintf(samtools_stderr, "         -H, --no-header       do not print @HD line\n");
+    fprintf(samtools_stderr, "         -o, --output STR      file to write out dict file [samtools_stdout]\n");
+    fprintf(samtools_stderr, "         -s, --species STR     species\n");
+    fprintf(samtools_stderr, "         -u, --uri STR         URI [file:///abs/path/to/file.fa]\n");
+    fprintf(samtools_stderr, "\n");
     return 1;
 }
 

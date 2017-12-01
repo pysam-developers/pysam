@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcfroh.c -- HMM model for detecting runs of autozygosity.
 
@@ -243,11 +243,11 @@ static void init_data(args_t *args)
         if ( args->nbuf_olap<0 )
             args->nbuf_olap = args->nbuf_max*0.01;
     }
-    fprintf(pysam_stderr,"Number of target samples: %d\n", args->roh_smpl->n);
-    fprintf(pysam_stderr,"Number of --estimate-AF samples: %d\n", args->af_smpl ? args->af_smpl->n : (args->estimate_AF ? bcf_hdr_nsamples(args->hdr) : 0));
-    fprintf(pysam_stderr,"Number of sites in the buffer/overlap: ");
-    if ( args->nbuf_max ) fprintf(pysam_stderr,"%d/%d\n", args->nbuf_max,args->nbuf_olap);
-    else fprintf(pysam_stderr,"unlimited\n");
+    fprintf(bcftools_stderr,"Number of target samples: %d\n", args->roh_smpl->n);
+    fprintf(bcftools_stderr,"Number of --estimate-AF samples: %d\n", args->af_smpl ? args->af_smpl->n : (args->estimate_AF ? bcf_hdr_nsamples(args->hdr) : 0));
+    fprintf(bcftools_stderr,"Number of sites in the buffer/overlap: ");
+    if ( args->nbuf_max ) fprintf(bcftools_stderr,"%d/%d\n", args->nbuf_max,args->nbuf_olap);
+    else fprintf(bcftools_stderr,"unlimited\n");
 
     args->smpl = (smpl_t*) calloc(args->roh_smpl->n,sizeof(smpl_t));
 
@@ -266,7 +266,7 @@ static void init_data(args_t *args)
     else if ( args->rec_rate > 0 )
         hmm_set_tprob_func(args->hmm, set_tprob_rrate, args);
 
-    args->out = bgzf_open(strcmp("pysam_stdout",args->output_fname)?args->output_fname:"-", args->output_type&OUTPUT_GZ ? "wg" : "wu"); 
+    args->out = bgzf_open(strcmp("bcftools_stdout",args->output_fname)?args->output_fname:"-", args->output_type&OUTPUT_GZ ? "wg" : "wu"); 
     if ( !args->out ) error("Failed to open %s: %s\n", args->output_fname, strerror(errno));
 
     // print header
@@ -744,7 +744,7 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
             case BCF_BT_INT8:  BRANCH(int8_t); break;
             case BCF_BT_INT16: BRANCH(int16_t); break;
             case BCF_BT_INT32: BRANCH(int32_t); break;
-            default: fprintf(pysam_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+            default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
         }
         #undef BRANCH
     }
@@ -774,7 +774,7 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
             case BCF_BT_INT8:  BRANCH(int8_t); break;
             case BCF_BT_INT16: BRANCH(int16_t); break;
             case BCF_BT_INT32: BRANCH(int32_t); break;
-            default: fprintf(pysam_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+            default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
         }
         #undef BRANCH
     }
@@ -915,7 +915,7 @@ int process_line(args_t *args, bcf1_t *line, int ial)
                 case BCF_BT_INT8:  BRANCH(int8_t); break;
                 case BCF_BT_INT16: BRANCH(int16_t); break;
                 case BCF_BT_INT32: BRANCH(int32_t); break;
-                default: fprintf(pysam_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+                default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
             }
             #undef BRANCH
         }
@@ -1021,7 +1021,7 @@ static void vcfroh(args_t *args, bcf1_t *line)
 
     if ( skip_rid )
     {
-        fprintf(pysam_stderr,"Skipping the sequence, no genmap for %s\n", bcf_seqname(args->hdr,line));
+        fprintf(bcftools_stderr,"Skipping the sequence, no genmap for %s\n", bcf_seqname(args->hdr,line));
         args->skip_rid = line->rid;
         return;
     }
@@ -1037,41 +1037,41 @@ static void vcfroh(args_t *args, bcf1_t *line)
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   HMM model for detecting runs of autozygosity.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools roh [options] <in.vcf.gz>\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "General Options:\n");
-    fprintf(pysam_stderr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
-    fprintf(pysam_stderr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
-    fprintf(pysam_stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
-    fprintf(pysam_stderr, "    -b  --buffer-size <int[,int]>      buffer size and the number of overlapping sites, 0 for unlimited [0]\n");
-    fprintf(pysam_stderr, "                                           If the first number is negative, it is interpreted as the maximum memory to\n");
-    fprintf(pysam_stderr, "                                           use, in MB. The default overlap is set to roughly 1%% of the buffer size.\n");
-    fprintf(pysam_stderr, "    -e, --estimate-AF [TAG],<file>     estimate AF from FORMAT/TAG (GT or PL) of all samples (\"-\") or samples listed\n");
-    fprintf(pysam_stderr, "                                            in <file>. If TAG is not given, the frequency is estimated from GT by default\n");
-    fprintf(pysam_stderr, "    -G, --GTs-only <float>             use GTs and ignore PLs, instead using <float> for PL of the two least likely genotypes.\n");
-    fprintf(pysam_stderr, "                                           Safe value to use is 30 to account for GT errors.\n");
-    fprintf(pysam_stderr, "    -i, --ignore-homref                skip hom-ref genotypes (0/0)\n");
-    fprintf(pysam_stderr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
-    fprintf(pysam_stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\"\n");
-    fprintf(pysam_stderr, "                                           is replaced with chromosome name\n");
-    fprintf(pysam_stderr, "    -M, --rec-rate <float>             constant recombination rate per bp\n");
-    fprintf(pysam_stderr, "    -o, --output <file>                write output to a file [standard output]\n");
-    fprintf(pysam_stderr, "    -O, --output-type [srz]            output s:per-site, r:regions, z:compressed [sr]\n");
-    fprintf(pysam_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "    -s, --samples <list>               list of samples to analyze [all samples]\n");
-    fprintf(pysam_stderr, "    -S, --samples-file <file>          file of samples to analyze [all samples]\n");
-    fprintf(pysam_stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "        --threads <int>                number of extra decompression threads [0]\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "HMM Options:\n");
-    fprintf(pysam_stderr, "    -a, --hw-to-az <float>             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
-    fprintf(pysam_stderr, "    -H, --az-to-hw <float>             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
-    fprintf(pysam_stderr, "    -V, --viterbi-training <float>     estimate HMM parameters, <float> is the convergence threshold, e.g. 1e-10 (experimental)\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   HMM model for detecting runs of autozygosity.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools roh [options] <in.vcf.gz>\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "General Options:\n");
+    fprintf(bcftools_stderr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
+    fprintf(bcftools_stderr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
+    fprintf(bcftools_stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
+    fprintf(bcftools_stderr, "    -b  --buffer-size <int[,int]>      buffer size and the number of overlapping sites, 0 for unlimited [0]\n");
+    fprintf(bcftools_stderr, "                                           If the first number is negative, it is interpreted as the maximum memory to\n");
+    fprintf(bcftools_stderr, "                                           use, in MB. The default overlap is set to roughly 1%% of the buffer size.\n");
+    fprintf(bcftools_stderr, "    -e, --estimate-AF [TAG],<file>     estimate AF from FORMAT/TAG (GT or PL) of all samples (\"-\") or samples listed\n");
+    fprintf(bcftools_stderr, "                                            in <file>. If TAG is not given, the frequency is estimated from GT by default\n");
+    fprintf(bcftools_stderr, "    -G, --GTs-only <float>             use GTs and ignore PLs, instead using <float> for PL of the two least likely genotypes.\n");
+    fprintf(bcftools_stderr, "                                           Safe value to use is 30 to account for GT errors.\n");
+    fprintf(bcftools_stderr, "    -i, --ignore-homref                skip hom-ref genotypes (0/0)\n");
+    fprintf(bcftools_stderr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
+    fprintf(bcftools_stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\"\n");
+    fprintf(bcftools_stderr, "                                           is replaced with chromosome name\n");
+    fprintf(bcftools_stderr, "    -M, --rec-rate <float>             constant recombination rate per bp\n");
+    fprintf(bcftools_stderr, "    -o, --output <file>                write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "    -O, --output-type [srz]            output s:per-site, r:regions, z:compressed [sr]\n");
+    fprintf(bcftools_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "    -s, --samples <list>               list of samples to analyze [all samples]\n");
+    fprintf(bcftools_stderr, "    -S, --samples-file <file>          file of samples to analyze [all samples]\n");
+    fprintf(bcftools_stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "        --threads <int>                number of extra decompression threads [0]\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "HMM Options:\n");
+    fprintf(bcftools_stderr, "    -a, --hw-to-az <float>             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
+    fprintf(bcftools_stderr, "    -H, --az-to-hw <float>             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
+    fprintf(bcftools_stderr, "    -V, --viterbi-training <float>     estimate HMM parameters, <float> is the convergence threshold, e.g. 1e-10 (experimental)\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 
@@ -1169,7 +1169,7 @@ int main_vcfroh(int argc, char *argv[])
             default: error("Unknown argument: %s\n", optarg);
         }
     }
-    if ( !args->output_fname ) args->output_fname = "pysam_stdout";
+    if ( !args->output_fname ) args->output_fname = "bcftools_stdout";
     if ( !args->output_type ) args->output_type = OUTPUT_ST|OUTPUT_RG;
     char *fname = NULL;
     if ( optind==argc )
@@ -1212,11 +1212,11 @@ int main_vcfroh(int argc, char *argv[])
     int i, nmin = 0;
     for (i=0; i<args->roh_smpl->n; i++)
         if ( !i || args->smpl[i].nused < nmin ) nmin = args->smpl[i].nused;
-    fprintf(pysam_stderr,"Number of lines total/processed: %d/%d\n", args->ntot,nmin);
+    fprintf(bcftools_stderr,"Number of lines total/processed: %d/%d\n", args->ntot,nmin);
     if ( nmin==0 )
     {
-        fprintf(pysam_stderr,"No usable sites were found.");
-        if ( !naf_opts && !args->dflt_AF ) fprintf(pysam_stderr, " Consider using one of the AF options.\n");
+        fprintf(bcftools_stderr,"No usable sites were found.");
+        if ( !naf_opts && !args->dflt_AF ) fprintf(bcftools_stderr, " Consider using one of the AF options.\n");
     }
     destroy_data(args);
     free(args);

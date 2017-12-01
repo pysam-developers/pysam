@@ -261,4 +261,18 @@ cython_ when building pysam. There are some known incompatibilities:
 
 .. _global interpreter lock: https://en.wikipedia.org/wiki/Global_interpreter_lock
 
+ImportError: cannot import name csamtools
+=========================================
+
+In version 0.10.0 and onwards, all pysam extension modules contain a
+``lib``-prefix. This facilates linking against pysam extension modules
+with compilers that require to start with ``lib``. As a consequence,
+all code using pysam extension modules directly will need to be
+adapted. For example, for example::
+
+   cimport pysam.csamtools
+
+will become::
+
+   cimport pysam.libcamtools
 

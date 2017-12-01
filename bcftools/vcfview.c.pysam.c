@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcfview.c -- VCF/BCF conversion, view, subset and filter VCF/BCF files.
 
@@ -115,7 +115,7 @@ static void init_data(args_t *args)
             for (i=0; i<nsmpl; i++) {
                 if (!khash_str2int_has_key(hdr_samples,smpl[i])) {
                     if (args->force_samples) {
-                        fprintf(pysam_stderr, "Warn: exclude called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
+                        fprintf(bcftools_stderr, "Warn: exclude called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
                     } else {
                         error("Error: exclude called for sample that does not exist in header: \"%s\". Use \"--force-samples\" to ignore this error.\n", smpl[i]);
                     }
@@ -136,7 +136,7 @@ static void init_data(args_t *args)
             for (i=0; i<nsmpl; i++) {
                 if (!khash_str2int_has_key(hdr_samples,smpl[i])) {
                     if (args->force_samples) {
-                        fprintf(pysam_stderr, "Warn: subset called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
+                        fprintf(bcftools_stderr, "Warn: subset called for sample that does not exist in header: \"%s\"... skipping\n", smpl[i]);
                         continue;
                     } else {
                         error("Error: subset called for sample that does not exist in header: \"%s\". Use \"--force-samples\" to ignore this error.\n", smpl[i]);
@@ -150,7 +150,7 @@ static void init_data(args_t *args)
         free(smpl);
         khash_str2int_destroy(hdr_samples);
         if (args->n_samples == 0) {
-            fprintf(pysam_stderr, "Warn: subsetting has removed all samples\n");
+            fprintf(bcftools_stderr, "Warn: subsetting has removed all samples\n");
             args->sites_only = 1;
         }
     }
@@ -161,7 +161,7 @@ static void init_data(args_t *args)
     // determine variant types to include/exclude
     if (args->include_types || args->exclude_types) {
         if (args->include_types && args->exclude_types) {
-            fprintf(pysam_stderr, "Error: only supply one of --include-types, --exclude-types options\n");
+            fprintf(bcftools_stderr, "Error: only supply one of --include-types, --exclude-types options\n");
             exit(1);
         }
         char **type_list = 0;
@@ -191,8 +191,8 @@ static void init_data(args_t *args)
                 else if (strcmp(type_list[i], "ref") == 0) args->include |= VCF_OTHER<<1;
                 else if (strcmp(type_list[i], "bnd") == 0) args->include |= VCF_BND<<1;
                 else {
-                    fprintf(pysam_stderr, "[E::%s] unknown type\n", type_list[i]);
-                    fprintf(pysam_stderr, "Accepted types are snps, indels, mnps, other\n");
+                    fprintf(bcftools_stderr, "[E::%s] unknown type\n", type_list[i]);
+                    fprintf(bcftools_stderr, "Accepted types are snps, indels, mnps, other\n");
                     exit(1);
                 }
             }
@@ -207,8 +207,8 @@ static void init_data(args_t *args)
                 else if (strcmp(type_list[i], "ref") == 0) args->exclude |= VCF_OTHER<<1;
                 else if (strcmp(type_list[i], "bnd") == 0) args->exclude |= VCF_BND<<1;
                 else {
-                    fprintf(pysam_stderr, "[E::%s] unknown type\n", type_list[i]);
-                    fprintf(pysam_stderr, "Accepted types are snps, indels, mnps, other\n");
+                    fprintf(bcftools_stderr, "[E::%s] unknown type\n", type_list[i]);
+                    fprintf(bcftools_stderr, "Accepted types are snps, indels, mnps, other\n");
                     exit(1);
                 }
             }
@@ -298,7 +298,7 @@ int bcf_all_phased(const bcf_hdr_t *header, bcf1_t *line)
                 case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_vector_end); break;
                 case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_vector_end); break;
                 case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_vector_end); break;
-                default: fprintf(pysam_stderr, "[E::%s] todo: fmt_type %d\n", __func__, fmt_ptr->type); exit(1); break;
+                default: fprintf(bcftools_stderr, "[E::%s] todo: fmt_type %d\n", __func__, fmt_ptr->type); exit(1); break;
             }
             #undef BRANCH_INT
             if (!sample_phased) {
@@ -487,45 +487,45 @@ void set_allele_type (int *atype, char *atype_string)
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   VCF/BCF conversion, view, subset and filter VCF/BCF files.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools view [options] <in.vcf.gz> [region1 [...]]\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Output options:\n");
-    fprintf(pysam_stderr, "    -G,   --drop-genotypes              drop individual genotype information (after subsetting if -s option set)\n");
-    fprintf(pysam_stderr, "    -h/H, --header-only/--no-header     print the header only/suppress the header in VCF output\n");
-    fprintf(pysam_stderr, "    -l,   --compression-level [0-9]     compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
-    fprintf(pysam_stderr, "          --no-version                  do not append version and command line to the header\n");
-    fprintf(pysam_stderr, "    -o,   --output-file <file>          output file name [pysam_stdout]\n");
-    fprintf(pysam_stderr, "    -O,   --output-type <b|u|z|v>       b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysam_stderr, "    -r, --regions <region>              restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "    -R, --regions-file <file>           restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "    -t, --targets [^]<region>           similar to -r but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
-    fprintf(pysam_stderr, "    -T, --targets-file [^]<file>        similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
-    fprintf(pysam_stderr, "        --threads <int>                 number of extra (de)compression threads [0]\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Subset options:\n");
-    fprintf(pysam_stderr, "    -a, --trim-alt-alleles        trim alternate alleles not seen in the subset\n");
-    fprintf(pysam_stderr, "    -I, --no-update               do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
-    fprintf(pysam_stderr, "    -s, --samples [^]<list>       comma separated list of samples to include (or exclude with \"^\" prefix)\n");
-    fprintf(pysam_stderr, "    -S, --samples-file [^]<file>  file of samples to include (or exclude with \"^\" prefix)\n");
-    fprintf(pysam_stderr, "        --force-samples           only warn about unknown subset samples\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Filter options:\n");
-    fprintf(pysam_stderr, "    -c/C, --min-ac/--max-ac <int>[:<type>]      minimum/maximum count for non-reference (nref), 1st alternate (alt1), least frequent\n");
-    fprintf(pysam_stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
-    fprintf(pysam_stderr, "    -f,   --apply-filters <list>                require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
-    fprintf(pysam_stderr, "    -g,   --genotype [^]<hom|het|miss>          require one or more hom/het/missing genotype or, if prefixed with \"^\", exclude sites with hom/het/missing genotypes\n");
-    fprintf(pysam_stderr, "    -i/e, --include/--exclude <expr>            select/exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "    -k/n, --known/--novel                       select known/novel sites only (ID is not/is '.')\n");
-    fprintf(pysam_stderr, "    -m/M, --min-alleles/--max-alleles <int>     minimum/maximum number of alleles listed in REF and ALT (e.g. -m2 -M2 for biallelic sites)\n");
-    fprintf(pysam_stderr, "    -p/P, --phased/--exclude-phased             select/exclude sites where all samples are phased\n");
-    fprintf(pysam_stderr, "    -q/Q, --min-af/--max-af <float>[:<type>]    minimum/maximum frequency for non-reference (nref), 1st alternate (alt1), least frequent\n");
-    fprintf(pysam_stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
-    fprintf(pysam_stderr, "    -u/U, --uncalled/--exclude-uncalled         select/exclude sites without a called genotype\n");
-    fprintf(pysam_stderr, "    -v/V, --types/--exclude-types <list>        select/exclude comma-separated list of variant types: snps,indels,mnps,ref,bnd,other [null]\n");
-    fprintf(pysam_stderr, "    -x/X, --private/--exclude-private           select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   VCF/BCF conversion, view, subset and filter VCF/BCF files.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools view [options] <in.vcf.gz> [region1 [...]]\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Output options:\n");
+    fprintf(bcftools_stderr, "    -G,   --drop-genotypes              drop individual genotype information (after subsetting if -s option set)\n");
+    fprintf(bcftools_stderr, "    -h/H, --header-only/--no-header     print the header only/suppress the header in VCF output\n");
+    fprintf(bcftools_stderr, "    -l,   --compression-level [0-9]     compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
+    fprintf(bcftools_stderr, "          --no-version                  do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "    -o,   --output-file <file>          output file name [bcftools_stdout]\n");
+    fprintf(bcftools_stderr, "    -O,   --output-type <b|u|z|v>       b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(bcftools_stderr, "    -r, --regions <region>              restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file <file>           restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "    -t, --targets [^]<region>           similar to -r but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
+    fprintf(bcftools_stderr, "    -T, --targets-file [^]<file>        similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
+    fprintf(bcftools_stderr, "        --threads <int>                 number of extra (de)compression threads [0]\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Subset options:\n");
+    fprintf(bcftools_stderr, "    -a, --trim-alt-alleles        trim alternate alleles not seen in the subset\n");
+    fprintf(bcftools_stderr, "    -I, --no-update               do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
+    fprintf(bcftools_stderr, "    -s, --samples [^]<list>       comma separated list of samples to include (or exclude with \"^\" prefix)\n");
+    fprintf(bcftools_stderr, "    -S, --samples-file [^]<file>  file of samples to include (or exclude with \"^\" prefix)\n");
+    fprintf(bcftools_stderr, "        --force-samples           only warn about unknown subset samples\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Filter options:\n");
+    fprintf(bcftools_stderr, "    -c/C, --min-ac/--max-ac <int>[:<type>]      minimum/maximum count for non-reference (nref), 1st alternate (alt1), least frequent\n");
+    fprintf(bcftools_stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
+    fprintf(bcftools_stderr, "    -f,   --apply-filters <list>                require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
+    fprintf(bcftools_stderr, "    -g,   --genotype [^]<hom|het|miss>          require one or more hom/het/missing genotype or, if prefixed with \"^\", exclude sites with hom/het/missing genotypes\n");
+    fprintf(bcftools_stderr, "    -i/e, --include/--exclude <expr>            select/exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -k/n, --known/--novel                       select known/novel sites only (ID is not/is '.')\n");
+    fprintf(bcftools_stderr, "    -m/M, --min-alleles/--max-alleles <int>     minimum/maximum number of alleles listed in REF and ALT (e.g. -m2 -M2 for biallelic sites)\n");
+    fprintf(bcftools_stderr, "    -p/P, --phased/--exclude-phased             select/exclude sites where all samples are phased\n");
+    fprintf(bcftools_stderr, "    -q/Q, --min-af/--max-af <float>[:<type>]    minimum/maximum frequency for non-reference (nref), 1st alternate (alt1), least frequent\n");
+    fprintf(bcftools_stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
+    fprintf(bcftools_stderr, "    -u/U, --uncalled/--exclude-uncalled         select/exclude sites without a called genotype\n");
+    fprintf(bcftools_stderr, "    -v/V, --types/--exclude-types <list>        select/exclude comma-separated list of variant types: snps,indels,mnps,ref,bnd,other [null]\n");
+    fprintf(bcftools_stderr, "    -x/X, --private/--exclude-private           select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 
@@ -756,7 +756,7 @@ int main_vcfview(int argc, char *argv[])
                 bcf_write1(args->out, out_hdr, line);
         }
         ret = args->files->errnum;
-        if ( ret ) fprintf(pysam_stderr,"Error: %s\n", bcf_sr_strerror(args->files->errnum));
+        if ( ret ) fprintf(bcftools_stderr,"Error: %s\n", bcf_sr_strerror(args->files->errnum));
     }
     hts_close(args->out);
     destroy_data(args);

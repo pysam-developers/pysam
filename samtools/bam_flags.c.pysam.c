@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_flags.c -- flags subcommand.
 
@@ -37,24 +37,24 @@ DEALINGS IN THE SOFTWARE.  */
 
 static void usage(void)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About: Convert between textual and numeric flag representation\n");
-    fprintf(pysam_stderr, "Usage: samtools flags INT|STR[,...]\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Flags:\n");
-    fprintf(pysam_stderr, "\t0x%x\tPAIRED        .. paired-end (or multiple-segment) sequencing technology\n", BAM_FPAIRED);
-    fprintf(pysam_stderr, "\t0x%x\tPROPER_PAIR   .. each segment properly aligned according to the aligner\n", BAM_FPROPER_PAIR);
-    fprintf(pysam_stderr, "\t0x%x\tUNMAP         .. segment unmapped\n", BAM_FUNMAP);
-    fprintf(pysam_stderr, "\t0x%x\tMUNMAP        .. next segment in the template unmapped\n", BAM_FMUNMAP);
-    fprintf(pysam_stderr, "\t0x%x\tREVERSE       .. SEQ is reverse complemented\n", BAM_FREVERSE);
-    fprintf(pysam_stderr, "\t0x%x\tMREVERSE      .. SEQ of the next segment in the template is reversed\n", BAM_FMREVERSE);
-    fprintf(pysam_stderr, "\t0x%x\tREAD1         .. the first segment in the template\n", BAM_FREAD1);
-    fprintf(pysam_stderr, "\t0x%x\tREAD2         .. the last segment in the template\n", BAM_FREAD2);
-    fprintf(pysam_stderr, "\t0x%x\tSECONDARY     .. secondary alignment\n", BAM_FSECONDARY);
-    fprintf(pysam_stderr, "\t0x%x\tQCFAIL        .. not passing quality controls\n", BAM_FQCFAIL);
-    fprintf(pysam_stderr, "\t0x%x\tDUP           .. PCR or optical duplicate\n", BAM_FDUP);
-    fprintf(pysam_stderr, "\t0x%x\tSUPPLEMENTARY .. supplementary alignment\n", BAM_FSUPPLEMENTARY);
-    fprintf(pysam_stderr, "\n");
+    fprintf(samtools_stderr, "\n");
+    fprintf(samtools_stderr, "About: Convert between textual and numeric flag representation\n");
+    fprintf(samtools_stderr, "Usage: samtools flags INT|STR[,...]\n");
+    fprintf(samtools_stderr, "\n");
+    fprintf(samtools_stderr, "Flags:\n");
+    fprintf(samtools_stderr, "\t0x%x\tPAIRED        .. paired-end (or multiple-segment) sequencing technology\n", BAM_FPAIRED);
+    fprintf(samtools_stderr, "\t0x%x\tPROPER_PAIR   .. each segment properly aligned according to the aligner\n", BAM_FPROPER_PAIR);
+    fprintf(samtools_stderr, "\t0x%x\tUNMAP         .. segment unmapped\n", BAM_FUNMAP);
+    fprintf(samtools_stderr, "\t0x%x\tMUNMAP        .. next segment in the template unmapped\n", BAM_FMUNMAP);
+    fprintf(samtools_stderr, "\t0x%x\tREVERSE       .. SEQ is reverse complemented\n", BAM_FREVERSE);
+    fprintf(samtools_stderr, "\t0x%x\tMREVERSE      .. SEQ of the next segment in the template is reversed\n", BAM_FMREVERSE);
+    fprintf(samtools_stderr, "\t0x%x\tREAD1         .. the first segment in the template\n", BAM_FREAD1);
+    fprintf(samtools_stderr, "\t0x%x\tREAD2         .. the last segment in the template\n", BAM_FREAD2);
+    fprintf(samtools_stderr, "\t0x%x\tSECONDARY     .. secondary alignment\n", BAM_FSECONDARY);
+    fprintf(samtools_stderr, "\t0x%x\tQCFAIL        .. not passing quality controls\n", BAM_FQCFAIL);
+    fprintf(samtools_stderr, "\t0x%x\tDUP           .. PCR or optical duplicate\n", BAM_FDUP);
+    fprintf(samtools_stderr, "\t0x%x\tSUPPLEMENTARY .. supplementary alignment\n", BAM_FSUPPLEMENTARY);
+    fprintf(samtools_stderr, "\n");
 }
 
 
@@ -64,8 +64,8 @@ int main_flags(int argc, char *argv[])
     else
     {
         int mask = bam_str2flag(argv[1]);
-        if ( mask<0 ) { fprintf(pysam_stderr,"Error: Could not parse \"%s\"\n", argv[1]); usage(); return 1; }
-        fprintf(pysam_stdout, "0x%x\t%d\t%s\n", mask, mask, bam_flag2str(mask));
+        if ( mask<0 ) { fprintf(samtools_stderr,"Error: Could not parse \"%s\"\n", argv[1]); usage(); return 1; }
+        fprintf(samtools_stdout, "0x%x\t%d\t%s\n", mask, mask, bam_flag2str(mask));
     }
     return 0;
 }

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam2bcf.c -- variant calling.
 
@@ -110,7 +110,7 @@ static int get_position(const bam_pileup1_t *p, int *len)
         if ( cig==BAM_CHARD_CLIP ) continue;
         if ( cig==BAM_CPAD ) continue;
         if ( cig==BAM_CREF_SKIP ) continue;
-        fprintf(pysam_stderr,"todo: cigar %d\n", cig);
+        fprintf(samtools_stderr,"todo: cigar %d\n", cig);
         assert(0);
     }
     *len = n_tot_bases;
@@ -481,7 +481,7 @@ void calc_SegBias(const bcf_callret1_t *bcr, bcf_call_t *call)
     double sum = 0;
     const double log2 = log(2.0);
 
-    // fprintf(pysam_stderr,"M=%.1f  p=%e q=%e f=%f  dp=%d\n",M,p,q,f,avg_dp);
+    // fprintf(samtools_stderr,"M=%.1f  p=%e q=%e f=%f  dp=%d\n",M,p,q,f,avg_dp);
     int i;
     for (i=0; i<call->n; i++)
     {
@@ -496,7 +496,7 @@ void calc_SegBias(const bcf_callret1_t *bcr, bcf_call_t *call)
         else
             tmp = log(2*f*(1-f)*exp(-q) + f*f*exp(-2*q) + (1-f)*(1-f)) + p;
         sum += tmp;
-        // fprintf(pysam_stderr,"oi=%d %e\n", oi,tmp);
+        // fprintf(samtools_stderr,"oi=%d %e\n", oi,tmp);
     }
     call->seg_bias = sum;
 }
@@ -660,7 +660,7 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
             }
         }
 
-//      if (ref_base < 0) fprintf(pysam_stderr, "%d,%d,%f,%d\n", call->n_alleles, x, sum_min, call->unseen);
+//      if (ref_base < 0) fprintf(samtools_stderr, "%d,%d,%f,%d\n", call->n_alleles, x, sum_min, call->unseen);
         call->shift = (int)(sum_min + .499);
     }
     // combine annotations

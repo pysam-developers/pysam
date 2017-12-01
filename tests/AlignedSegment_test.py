@@ -7,7 +7,6 @@ import array
 
 from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename
 
-
 class ReadTest(unittest.TestCase):
 
     def build_read(self):
@@ -29,7 +28,6 @@ class ReadTest(unittest.TestCase):
         a.next_reference_start = 200
         a.template_length = 167
         a.query_qualities = pysam.qualitystring_to_array("1234") * 10
-        # todo: create tags
         return a
 
 
@@ -44,7 +42,8 @@ class TestAlignedSegment(ReadTest):
         a = pysam.AlignedSegment()
         self.assertEqual(a.query_name, None)
         self.assertEqual(a.query_sequence, None)
-        self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), None)
+        self.assertEqual(pysam.qualities_to_qualitystring(
+            a.query_qualities), None)
         self.assertEqual(a.flag, 0)
         self.assertEqual(a.reference_id, -1)
         self.assertEqual(a.mapping_quality, 0)
@@ -153,14 +152,16 @@ class TestAlignedSegment(ReadTest):
         '''
         a = self.build_read()
         a.query_sequence = a.query_sequence[5:10]
-        self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), None)
+        self.assertEqual(pysam.qualities_to_qualitystring(
+            a.query_qualities), None)
 
         a = self.build_read()
         s = pysam.qualities_to_qualitystring(a.query_qualities)
         a.query_sequence = a.query_sequence[5:10]
         a.query_qualities = pysam.qualitystring_to_array(s[5:10])
 
-        self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), s[5:10])
+        self.assertEqual(pysam.qualities_to_qualitystring(
+            a.query_qualities), s[5:10])
 
     def testLargeRead(self):
         '''build an example read.'''
@@ -367,7 +368,7 @@ class TestAlignedSegment(ReadTest):
              (3, 23, 'A'), (4, 24, 'c'),
              (None, 25, 'T'), (None, 26, 'T'),
              (5, 27, 'A'), (6, 28, 'A'), (7, 29, 'A'), (8, 30, 'A')]
-            )
+        )
 
         a.cigarstring = "5M2D2I2M"
         a.set_tag("MD", "4C^TT2")
@@ -378,7 +379,20 @@ class TestAlignedSegment(ReadTest):
              (None, 25, 'T'), (None, 26, 'T'),
              (5, None, None), (6, None, None),
              (7, 27, 'A'), (8, 28, 'A')]
-            )
+        )
+
+    def test_get_aligned_pairs_with_malformed_MD_tag(self):
+
+        a = self.build_read()
+        a.query_sequence = "A" * 9
+
+        # out of range issue, see issue #560
+        a.cigarstring = "64M2D85M2S"
+        a.set_tag("MD", "64^TG86A0")
+        self.assertRaises(
+            AssertionError,
+            a.get_aligned_pairs,
+            with_seq=True)
 
     def test_get_aligned_pairs_skip_reference(self):
         a = self.build_read()
@@ -430,7 +444,6 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.query_alignment_length, 20)
 
     def test_query_length_is_limited(self):
-        
         a = self.build_read()
         a.query_name = "A" * 1
         a.query_name = "A" * 251
@@ -489,10 +502,29 @@ class TestTidMapping(ReadTest):
                           2)
 
 
+class TestCigar(ReadTest):
+
+    def testCigarString(self):
+        r = self.build_read()
+        self.assertEqual(r.cigarstring, "10M1D9M1I20M")
+        r.cigarstring = "20M10D20M"
+        self.assertEqual(r.cigartuples, [(0, 20), (2, 10), (0, 20)])
+        # unsetting cigar string
+        r.cigarstring = None
+        self.assertEqual(r.cigarstring, None)
+
+    def testCigar(self):
+        r = self.build_read()
+        self.assertEqual(
+            r.cigartuples, [(0, 10), (2, 1), (0, 9), (1, 1), (0, 20)])
+        # unsetting cigar string
+        r.cigartuples = None
+        self.assertEqual(r.cigartuples, None)
+
+
 class TestCigarStats(ReadTest):
-    
+
     def testStats(self):
-        
         a = self.build_read()
 
         a.cigarstring = None
@@ -596,7 +628,7 @@ class TestTags(ReadTest):
                               read.set_tag,
                               key,
                               array.array(dtype, range(10)))
-        
+
     def testAddTagsType(self):
         a = self.build_read()
         a.tags = None
@@ -630,7 +662,7 @@ class TestTags(ReadTest):
                                  ('X5', 5)]))
 
         # test setting invalid type code
-        self.assertRaises(ValueError, a.setTag, 'X6', 5.2, 'g')
+        self.assertRaises(ValueError, a.set_tag, 'X6', 5.2, 'g')
 
     def testTagsUpdatingFloat(self):
         a = self.build_read()
@@ -828,6 +860,76 @@ class TestTags(ReadTest):
             "AAAAcTTAA",
             a.get_reference_sequence())
 
+    def testArrayTags(self):
+
+        r = self.build_read()
+
+        def c(r, l):
+            r.tags = [('ZM', l)]
+            self.assertEqual(list(r.opt("ZM")), list(l))
+
+        # signed integers
+        c(r, (-1, 1))
+        c(r, (-1, 100))
+        c(r, (-1, 200))
+        c(r, (-1, 1000))
+        c(r, (-1, 30000))
+        c(r, (-1, 50000))
+        c(r, (1, -1))
+        c(r, (1, -100))
+        c(r, (1, -200))
+        c(r, (1, -1000))
+        c(r, (1, -30000))
+        c(r, (1, -50000))
+
+        # unsigned integers
+        c(r, (1, 100))
+        c(r, (1, 1000))
+        c(r, (1, 10000))
+        c(r, (1, 100000))
+
+        # floats
+        c(r, (1.0, 100.0))
+
+    def testLongTags(self):
+        '''see issue 115'''
+
+        r = self.build_read()
+        rg = 'HS2000-899_199.L3'
+        tags = [('XC', 85), ('XT', 'M'), ('NM', 5),
+                ('SM', 29), ('AM', 29), ('XM', 1),
+                ('XO', 1), ('XG', 4), ('MD', '37^ACCC29T18'),
+                ('XA', '5,+11707,36M1I48M,2;21,-48119779,46M1I38M,2;hs37d5,-10060835,40M1D45M,3;5,+11508,36M1I48M,3;hs37d5,+6743812,36M1I48M,3;19,-59118894,46M1I38M,3;4,-191044002,6M1I78M,3;')]  # noqa
+
+        r.tags = tags
+        r.tags += [("RG", rg)] * 100
+        tags += [("RG", rg)] * 100
+
+        self.assertEqual(tags, r.tags)
+
+    def testNegativeIntegers(self):
+        x = -2
+        aligned_read = self.build_read()
+        aligned_read.tags = [("XD", int(x))]
+        self.assertEqual(aligned_read.opt('XD'), x)
+        # print (aligned_read.tags)
+
+    def testNegativeIntegersWrittenToFile(self):
+        r = self.build_read()
+        x = -2
+        r.tags = [("XD", x)]
+        with pysam.AlignmentFile(
+                "tests/test.bam",
+                "wb",
+                referencenames=("chr1",),
+                referencelengths=(1000,)) as outf:
+            outf.write(r)
+        with pysam.AlignmentFile("tests/test.bam") as inf:
+            r = next(inf)
+
+        self.assertEqual(r.tags, [("XD", x)])
+        os.unlink("tests/test.bam")
+
 
 class TestCopy(ReadTest):
 
@@ -856,6 +958,97 @@ class TestCopy(ReadTest):
         self.assertEqual(b.query_name, 'ReadB')
 
 
+class TestSetTagGetTag(ReadTest):
+
+    def check_tag(self, tag, value, value_type, alt_value_type=None):
+        a = self.build_read()
+        a.set_tag(tag, value, value_type=value_type)
+        v, t = a.get_tag(tag, with_value_type=True)
+        self.assertEqual(v, value)
+
+        if alt_value_type:
+            self.assertEqual(t, alt_value_type)
+        else:
+            self.assertEqual(t, value_type)
+
+    def test_set_tag_with_A(self):
+        self.check_tag('TT', "x", value_type="A")
+
+    def test_set_tag_with_a(self):
+        self.check_tag('TT', "x", value_type="a", alt_value_type="A")
+
+    def test_set_tag_with_C(self):
+        self.check_tag('TT', 12, value_type="C")
+
+    def test_set_tag_with_c(self):
+        self.check_tag('TT', 12, value_type="c")
+
+    def test_set_tag_with_S(self):
+        self.check_tag('TT', 12, value_type="S")
+
+    def test_set_tag_with_s(self):
+        self.check_tag('TT', 12, value_type="s")
+
+    def test_set_tag_with_I(self):
+        self.check_tag('TT', 12, value_type="I")
+
+    def test_set_tag_with_i(self):
+        self.check_tag('TT', 12, value_type="i")
+
+    def test_set_tag_with_f(self):
+        self.check_tag('TT', 2.5, value_type="f")
+
+    def test_set_tag_with_d(self):
+        self.check_tag('TT', 2.5, value_type="d")
+
+    def test_set_tag_with_H(self):
+        self.check_tag('TT', "AE12", value_type="H")
+
+    def test_set_tag_with_automated_type_detection(self):
+        self.check_tag('TT', -(1 << 7), value_type=None, alt_value_type="c")
+        self.check_tag('TT', -(1 << 7) - 1,
+                       value_type=None, alt_value_type="s")
+        self.check_tag('TT', -(1 << 15), value_type=None, alt_value_type="s")
+        self.check_tag('TT', -(1 << 15) - 1,
+                       value_type=None, alt_value_type="i")
+        self.check_tag('TT', -(1 << 31), value_type=None, alt_value_type="i")
+        self.assertRaises(
+            ValueError,
+            self.check_tag,
+            'TT',
+            -(1 << 31) - 1,
+            value_type=None,
+            alt_value_type="i")
+
+        self.check_tag('TT', (1 << 8) - 1, value_type=None, alt_value_type="C")
+        self.check_tag('TT', (1 << 8), value_type=None, alt_value_type="S")
+        self.check_tag('TT', (1 << 16) - 1,
+                       value_type=None, alt_value_type="S")
+        self.check_tag('TT', (1 << 16), value_type=None, alt_value_type="I")
+        self.check_tag('TT', (1 << 32) - 1,
+                       value_type=None, alt_value_type="I")
+        self.assertRaises(
+            ValueError,
+            self.check_tag,
+            'TT',
+            (1 << 32),
+            value_type=None,
+            alt_value_type="I")
+
+
+class TestSetTagsGetTag(TestSetTagGetTag):
+
+    def check_tag(self, tag, value, value_type, alt_value_type=None):
+        a = self.build_read()
+        a.set_tags([(tag, value, value_type)])
+        v, t = a.get_tag(tag, with_value_type=True)
+        if alt_value_type:
+            self.assertEqual(t, alt_value_type)
+        else:
+            self.assertEqual(t, value_type)
+        self.assertEqual(v, value)
+
+
 class TestAsString(unittest.TestCase):
 
     def test_as_string_with_explicit_alignment_file(self):
@@ -863,7 +1056,7 @@ class TestAsString(unittest.TestCase):
             reference = [x[:-1] for x in samf if not x.startswith("@")]
 
         with pysam.AlignmentFile(
-            os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
+                os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
             for s, p in zip(reference, pysamf):
                 self.assertEqual(s, p.tostring(pysamf))
 
@@ -878,7 +1071,7 @@ class TestAsString(unittest.TestCase):
                 
 
 class TestEnums(unittest.TestCase):
-    
+
     def test_cigar_enums_are_defined(self):
         self.assertEqual(pysam.CMATCH, 0)
         self.assertEqual(pysam.CINS, 1)

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_reheader.c -- reheader subcommand.
 
@@ -54,11 +54,11 @@ int bam_reheader(BGZF *in, bam_hdr_t *h, int fd,
     if (in->is_write) return -1;
     buf = malloc(BUF_SIZE);
     if (!buf) {
-        fprintf(pysam_stderr, "Out of memory\n");
+        fprintf(samtools_stderr, "Out of memory\n");
         return -1;
     }
     if (bam_hdr_read(in) == NULL) {
-        fprintf(pysam_stderr, "Couldn't read header\n");
+        fprintf(samtools_stderr, "Couldn't read header\n");
         goto fail;
     }
     fp = bgzf_fdopen(fd, "w");
@@ -100,13 +100,13 @@ int bam_reheader(BGZF *in, bam_hdr_t *h, int fd,
         if (bgzf_raw_write(fp, buf, len) < 0) goto write_fail;
     }
     if (len < 0) {
-        fprintf(pysam_stderr, "[%s] Error reading input file\n", __func__);
+        fprintf(samtools_stderr, "[%s] Error reading input file\n", __func__);
         goto fail;
     }
     free(buf);
     fp->block_offset = in->block_offset = 0;
     if (bgzf_close(fp) < 0) {
-        fprintf(pysam_stderr, "[%s] Error closing output file\n", __func__);
+        fprintf(samtools_stderr, "[%s] Error closing output file\n", __func__);
         return -1;
     }
     return 0;
@@ -121,7 +121,7 @@ int bam_reheader(BGZF *in, bam_hdr_t *h, int fd,
 }
 
 /*
- * Reads a file and outputs a new CRAM file to pysam_stdout with 'h'
+ * Reads a file and outputs a new CRAM file to samtools_stdout with 'h'
  * replaced as the header.  No checks are made to the validity.
  *
  * FIXME: error checking
@@ -205,7 +205,7 @@ int cram_reheader_inplace2(cram_fd *fd, const bam_hdr_t *h, const char *arg_list
 
     if (cram_major_vers(fd) < 2 ||
         cram_major_vers(fd) > 3) {
-        fprintf(pysam_stderr, "[%s] unsupported CRAM version %d\n", __func__,
+        fprintf(samtools_stderr, "[%s] unsupported CRAM version %d\n", __func__,
                 cram_major_vers(fd));
         goto err;
     }
@@ -238,7 +238,7 @@ int cram_reheader_inplace2(cram_fd *fd, const bam_hdr_t *h, const char *arg_list
         goto err;
 
     if (cram_block_get_uncomp_size(b) < header_len+4) {
-        fprintf(pysam_stderr, "New header will not fit. Use non-inplace version (%d > %d)\n",
+        fprintf(samtools_stderr, "New header will not fit. Use non-inplace version (%d > %d)\n",
                 header_len+4, cram_block_get_uncomp_size(b));
         ret = -2;
         goto err;
@@ -301,7 +301,7 @@ int cram_reheader_inplace3(cram_fd *fd, const bam_hdr_t *h, const char *arg_list
 
     if (cram_major_vers(fd) < 2 ||
         cram_major_vers(fd) > 3) {
-        fprintf(pysam_stderr, "[%s] unsupported CRAM version %d\n", __func__,
+        fprintf(samtools_stderr, "[%s] unsupported CRAM version %d\n", __func__,
                 cram_major_vers(fd));
         goto err;
     }
@@ -373,7 +373,7 @@ int cram_reheader_inplace3(cram_fd *fd, const bam_hdr_t *h, const char *arg_list
         goto err;
 
     if (old_container_sz != container_sz) {
-        fprintf(pysam_stderr, "Quirk of fate makes this troublesome! "
+        fprintf(samtools_stderr, "Quirk of fate makes this troublesome! "
                 "Please use non-inplace version.\n");
         goto err;
     }
@@ -392,7 +392,7 @@ int cram_reheader_inplace3(cram_fd *fd, const bam_hdr_t *h, const char *arg_list
         goto err;
 
     if (cram_block_size(b) > cram_container_get_length(c)) {
-        fprintf(pysam_stderr, "New header will not fit. Use non-inplace version"
+        fprintf(samtools_stderr, "New header will not fit. Use non-inplace version"
                 " (%d > %d)\n",
                 (int)cram_block_size(b), cram_container_get_length(c));
         ret = -2;
@@ -430,7 +430,7 @@ int cram_reheader_inplace(cram_fd *fd, const bam_hdr_t *h, const char *arg_list,
     case 2: return cram_reheader_inplace2(fd, h, arg_list, add_PG);
     case 3: return cram_reheader_inplace3(fd, h, arg_list, add_PG);
     default:
-        fprintf(pysam_stderr, "[%s] unsupported CRAM version %d\n", __func__,
+        fprintf(samtools_stderr, "[%s] unsupported CRAM version %d\n", __func__,
                 cram_major_vers(fd));
         return -1;
     }
@@ -444,7 +444,7 @@ static void usage(FILE *fp, int ret) {
            "Options:\n"
            "    -P, --no-PG      Do not generate an @PG header line.\n"
            "    -i, --in-place   Modify the bam/cram file directly.\n"
-           "                     (Defaults to outputting to pysam_stdout.)\n");
+           "                     (Defaults to outputting to samtools_stdout.)\n");
     exit(ret);
 }
 
@@ -466,16 +466,15 @@ int main_reheader(int argc, char *argv[])
         switch (c) {
         case 'P': add_PG = 0; break;
         case 'i': inplace = 1; break;
-        case 'h': usage(pysam_stdout, 0); break;
+        case 'h': usage(samtools_stdout, 0); break;
         default:
-            fprintf(pysam_stderr, "Invalid option '%c'\n", c);
-            usage(pysam_stderr, 1);
+            fprintf(samtools_stderr, "Invalid option '%c'\n", c);
+            usage(samtools_stderr, 1);
         }
     }
 
     if (argc - optind != 2)
-        usage(pysam_stderr, 1);
-    
+        usage(samtools_stderr, 1);
     { // read the header
         samFile *fph = sam_open(argv[optind], "r");
         if (fph == 0) {
@@ -485,7 +484,7 @@ int main_reheader(int argc, char *argv[])
         h = sam_hdr_read(fph);
         sam_close(fph);
         if (h == NULL) {
-            fprintf(pysam_stderr, "[%s] failed to read the header for '%s'.\n",
+            fprintf(samtools_stderr, "[%s] failed to read the header for '%s'.\n",
                     __func__, argv[1]);
             return 1;
         }
@@ -496,7 +495,7 @@ int main_reheader(int argc, char *argv[])
         return 1;
     }
     if (hts_get_format(in)->format == bam) {
-        r = bam_reheader(in->fp.bgzf, h, fileno(pysam_stdout), arg_list, add_PG);
+        r = bam_reheader(in->fp.bgzf, h, fileno(samtools_stdout), arg_list, add_PG);
     } else {
         if (inplace)
             r = cram_reheader_inplace(in->fp.cram, h, arg_list, add_PG);

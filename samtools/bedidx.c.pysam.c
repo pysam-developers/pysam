@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bedidx.c -- BED file indexing.
 
@@ -33,10 +33,6 @@ DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 #include <errno.h>
 #include <zlib.h>
-
-#ifdef _WIN32
-#define drand48() ((double)rand() / RAND_MAX)
-#endif
 
 #include "htslib/ksort.h"
 KSORT_INIT_GENERIC(uint64_t)
@@ -201,7 +197,7 @@ void *bed_read(const char *fn)
             // has called their reference "browser" or "track".
             if (0 == strcmp(ref, "browser")) continue;
             if (0 == strcmp(ref, "track")) continue;
-            fprintf(pysam_stderr, "[bed_read] Parse error reading %s at line %u\n",
+            fprintf(samtools_stderr, "[bed_read] Parse error reading %s at line %u\n",
                     fn, line);
             goto fail_no_msg;
         }
@@ -238,7 +234,7 @@ void *bed_read(const char *fn)
     bed_index(h);
     return h;
  fail:
-    fprintf(pysam_stderr, "[bed_read] Error reading %s : %s\n", fn, strerror(errno));
+    fprintf(samtools_stderr, "[bed_read] Error reading %s : %s\n", fn, strerror(errno));
  fail_no_msg:
     if (ks) ks_destroy(ks);
     if (fp) gzclose(fp);

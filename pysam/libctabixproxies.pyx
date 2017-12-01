@@ -516,6 +516,7 @@ cdef class GTFProxy(NamedTupleProxy):
             self.attribute_dict = self.attribute_string2dict(
                 self.attributes)
         self.attribute_dict[name] = value
+        self.is_modified = True
 
     def attribute_string2dict(self, s):
         return collections.OrderedDict(

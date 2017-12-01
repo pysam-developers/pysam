@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /* bam_addrprg.c -- samtools command to add or replace readgroups.
 
@@ -100,7 +100,7 @@ static char* basic_unescape(const char* in)
         if (*in == '\\') {
             ++in;
             if (*in == '\0') {
-                fprintf(pysam_stderr, "[%s] Unterminated escape sequence.\n", __func__);
+                fprintf(samtools_stderr, "[%s] Unterminated escape sequence.\n", __func__);
                 free(out);
                 return NULL;
             }
@@ -112,11 +112,11 @@ static char* basic_unescape(const char* in)
                 *ptr = '\t';
                 break;
             case 'n':
-                fprintf(pysam_stderr, "[%s] \\n in escape sequence is not supported.\n", __func__);
+                fprintf(samtools_stderr, "[%s] \\n in escape sequence is not supported.\n", __func__);
                 free(out);
                 return NULL;
             default:
-                fprintf(pysam_stderr, "[%s] Unsupported escape sequence.\n", __func__);
+                fprintf(samtools_stderr, "[%s] Unsupported escape sequence.\n", __func__);
                 free(out);
                 return NULL;
             }
@@ -220,7 +220,7 @@ static void usage(FILE *fp)
             "\n"
             "Options:\n"
             "  -m MODE   Set the mode of operation from one of overwrite_all, orphan_only [overwrite_all]\n"
-            "  -o FILE   Where to write output to [pysam_stdout]\n"
+            "  -o FILE   Where to write output to [samtools_stdout]\n"
             "  -r STRING @RG line text\n"
             "  -R STRING ID of @RG line in existing header to use\n"
             );
@@ -232,11 +232,11 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
     *opts = NULL;
     int n;
 
-    if (argc == 1) { usage(pysam_stdout); return true; }
+    if (argc == 1) { usage(samtools_stdout); return true; }
 
     parsed_opts_t* retval = calloc(1, sizeof(parsed_opts_t));
     if (! retval ) {
-        fprintf(pysam_stderr, "[%s] Out of memory allocating parsed_opts_t\n", __func__);
+        fprintf(samtools_stderr, "[%s] Out of memory allocating parsed_opts_t\n", __func__);
         return false;
     }
     // Set defaults
@@ -270,7 +270,7 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
                 } else if (strcmp(optarg, "orphan_only") == 0) {
                     retval->mode = orphan_only;
                 } else {
-                    usage(pysam_stderr);
+                    usage(samtools_stderr);
                     return false;
                 }
                 break;
@@ -279,17 +279,17 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
                 retval->output_name = strdup(optarg);
                 break;
             case 'h':
-                usage(pysam_stdout);
+                usage(samtools_stdout);
                 free(retval);
                 return true;
             case '?':
-                usage(pysam_stderr);
+                usage(samtools_stderr);
                 free(retval);
                 return false;
             case 'O':
             default:
                 if (parse_sam_global_opt(n, optarg, lopts, &retval->ga) == 0) break;
-                usage(pysam_stderr);
+                usage(samtools_stderr);
                 free(retval);
                 return false;
         }
@@ -297,13 +297,13 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
     retval->rg_line = ks_release(&rg_line);
 
     if (argc-optind < 1) {
-        fprintf(pysam_stderr, "You must specify an input file.\n");
-        usage(pysam_stderr);
+        fprintf(samtools_stderr, "You must specify an input file.\n");
+        usage(samtools_stderr);
         cleanup_opts(retval);
         return false;
     }
     if (retval->rg_id && retval->rg_line) {
-        fprintf(pysam_stderr, "The options -r and -R are mutually exclusive.\n");
+        fprintf(samtools_stderr, "The options -r and -R are mutually exclusive.\n");
         cleanup_opts(retval);
         return false;
     }
@@ -313,7 +313,7 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
         char* tmp = basic_unescape(retval->rg_line);
 
         if ((retval->rg_id = get_rg_id(tmp)) == NULL) {
-            fprintf(pysam_stderr, "[%s] The supplied RG line lacks an ID tag.\n", __func__);
+            fprintf(samtools_stderr, "[%s] The supplied RG line lacks an ID tag.\n", __func__);
             free(tmp);
             cleanup_opts(retval);
             return false;
@@ -324,7 +324,7 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
 
     if (retval->ga.nthreads > 0) {
         if (!(retval->p.pool = hts_tpool_init(retval->ga.nthreads))) {
-            fprintf(pysam_stderr, "Error creating thread pool\n");
+            fprintf(samtools_stderr, "Error creating thread pool\n");
             return false;
         }
     }
@@ -362,7 +362,7 @@ static void orphan_only_func(const state_t* state, bam1_t* file_read)
 static bool init(const parsed_opts_t* opts, state_t** state_out) {
     state_t* retval = (state_t*) calloc(1, sizeof(state_t));
     if (retval == NULL) {
-        fprintf(pysam_stderr, "[init] Out of memory allocating state struct.\n");
+        fprintf(samtools_stderr, "[init] Out of memory allocating state struct.\n");
         return false;
     }
     *state_out = retval;
@@ -392,14 +392,14 @@ static bool init(const parsed_opts_t* opts, state_t** state_out) {
         // Append new RG line to header.
         // Check does not already exist
         if ( confirm_rg(retval->output_header, opts->rg_id) ) {
-            fprintf(pysam_stderr, "[init] ID of new RG line specified conflicts with that of an existing header RG line. Overwrite not yet implemented.\n");
+            fprintf(samtools_stderr, "[init] ID of new RG line specified conflicts with that of an existing header RG line. Overwrite not yet implemented.\n");
             return false;
         }
         retval->rg_id = strdup(opts->rg_id);
         size_t new_len = strlen( retval->output_header->text ) + strlen( opts->rg_line ) + 2;
         char* new_header = malloc(new_len);
         if (!new_header) {
-            fprintf(pysam_stderr, "[init] Out of memory whilst writing new header.\n");
+            fprintf(samtools_stderr, "[init] Out of memory whilst writing new header.\n");
             return false;
         }
         sprintf(new_header,"%s%s\n", retval->output_header->text, opts->rg_line);
@@ -410,13 +410,13 @@ static bool init(const parsed_opts_t* opts, state_t** state_out) {
         if (opts->rg_id) {
             // Confirm what has been supplied exists
             if ( !confirm_rg(retval->output_header, opts->rg_id) ) {
-                fprintf(pysam_stderr, "RG ID supplied does not exist in header. Supply full @RG line with -r instead?\n");
+                fprintf(samtools_stderr, "RG ID supplied does not exist in header. Supply full @RG line with -r instead?\n");
                 return false;
             }
             retval->rg_id = strdup(opts->rg_id);
         } else {
             if ((retval->rg_id = get_first_rgid(retval->output_header)) == NULL ) {
-                fprintf(pysam_stderr, "No RG specified on command line or in existing header.\n");
+                fprintf(samtools_stderr, "No RG specified on command line or in existing header.\n");
                 return false;
             }
         }

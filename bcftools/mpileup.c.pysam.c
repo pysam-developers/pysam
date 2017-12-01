@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  mpileup.c -- mpileup subcommand. Previously bam_plcmd.c from samtools
 
@@ -224,7 +224,7 @@ static int mplp_func(void *data, bam1_t *b)
         if (ma->conf->fai && b->core.tid >= 0) {
             has_ref = mplp_get_ref(ma, b->core.tid, &ref, &ref_len);
             if (has_ref && ref_len <= b->core.pos) { // exclude reads outside of the reference sequence
-                fprintf(pysam_stderr,"[%s] Skipping because %d is outside of %d [ref:%d]\n",
+                fprintf(bcftools_stderr,"[%s] Skipping because %d is outside of %d [ref:%d]\n",
                         __func__, b->core.pos, ref_len, b->core.tid);
                 continue;
             }
@@ -357,7 +357,7 @@ static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
 static int mpileup(mplp_conf_t *conf)
 {
     if (conf->nfiles == 0) {
-        fprintf(pysam_stderr,"[%s] no input file/data given\n", __func__);
+        fprintf(bcftools_stderr,"[%s] no input file/data given\n", __func__);
         exit(EXIT_FAILURE);
     }
 
@@ -378,7 +378,7 @@ static int mpileup(mplp_conf_t *conf)
         {
             conf->reg = regidx_init(conf->reg_fname,NULL,NULL,0,NULL);
             if ( !conf->reg ) {
-                fprintf(pysam_stderr,"Could not parse the regions: %s\n", conf->reg_fname);
+                fprintf(bcftools_stderr,"Could not parse the regions: %s\n", conf->reg_fname);
                 exit(EXIT_FAILURE);
             }
         }
@@ -386,7 +386,7 @@ static int mpileup(mplp_conf_t *conf)
         {
             conf->reg = regidx_init(NULL,regidx_parse_reg,NULL,sizeof(char*),NULL);
             if ( regidx_insert_list(conf->reg,conf->reg_fname,',') !=0 ) {
-                fprintf(pysam_stderr,"Could not parse the regions: %s\n", conf->reg_fname);
+                fprintf(bcftools_stderr,"Could not parse the regions: %s\n", conf->reg_fname);
                 exit(EXIT_FAILURE);
             }
         }
@@ -405,15 +405,15 @@ static int mpileup(mplp_conf_t *conf)
         conf->mplp_data[i]->fp = sam_open(conf->files[i], "rb");
         if ( !conf->mplp_data[i]->fp )
         {
-            fprintf(pysam_stderr, "[%s] failed to open %s: %s\n", __func__, conf->files[i], strerror(errno));
+            fprintf(bcftools_stderr, "[%s] failed to open %s: %s\n", __func__, conf->files[i], strerror(errno));
             exit(EXIT_FAILURE);
         }
         if (hts_set_opt(conf->mplp_data[i]->fp, CRAM_OPT_DECODE_MD, 0)) {
-            fprintf(pysam_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
+            fprintf(bcftools_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
             exit(EXIT_FAILURE);
         }
         if (conf->fai_fname && hts_set_fai_filename(conf->mplp_data[i]->fp, conf->fai_fname) != 0) {
-            fprintf(pysam_stderr, "[%s] failed to process %s: %s\n",
+            fprintf(bcftools_stderr, "[%s] failed to process %s: %s\n",
                     __func__, conf->fai_fname, strerror(errno));
             exit(EXIT_FAILURE);
         }
@@ -421,7 +421,7 @@ static int mpileup(mplp_conf_t *conf)
         conf->mplp_data[i]->ref = &mp_ref;
         h_tmp = sam_hdr_read(conf->mplp_data[i]->fp);
         if ( !h_tmp ) {
-            fprintf(pysam_stderr,"[%s] fail to read the header of %s\n", __func__, conf->files[i]);
+            fprintf(bcftools_stderr,"[%s] fail to read the header of %s\n", __func__, conf->files[i]);
             exit(EXIT_FAILURE);
         }
         conf->mplp_data[i]->h = i ? hdr : h_tmp; // for j==0, "h" has not been set yet
@@ -441,7 +441,7 @@ static int mpileup(mplp_conf_t *conf)
         if (conf->reg) {
             hts_idx_t *idx = sam_index_load(conf->mplp_data[i]->fp, conf->files[i]);
             if (idx == NULL) {
-                fprintf(pysam_stderr, "[%s] fail to load index for %s\n", __func__, conf->files[i]);
+                fprintf(bcftools_stderr, "[%s] fail to load index for %s\n", __func__, conf->files[i]);
                 exit(EXIT_FAILURE);
             }
             conf->buf.l = 0;
@@ -451,10 +451,10 @@ static int mpileup(mplp_conf_t *conf)
             {
                 conf->mplp_data[i]->iter = sam_itr_querys(idx, conf->mplp_data[i]->h, conf->reg_itr->seq);
                 if ( conf->mplp_data[i]->iter ) {
-                    fprintf(pysam_stderr,"[E::%s] fail to parse region '%s'\n", __func__, conf->buf.s);
+                    fprintf(bcftools_stderr,"[E::%s] fail to parse region '%s'\n", __func__, conf->buf.s);
                     exit(EXIT_FAILURE);
                 }
-                fprintf(pysam_stderr,"[E::%s] the sequence \"%s\" not found: %s\n",__func__,conf->reg_itr->seq,conf->files[i]);
+                fprintf(bcftools_stderr,"[E::%s] the sequence \"%s\" not found: %s\n",__func__,conf->reg_itr->seq,conf->files[i]);
                 exit(EXIT_FAILURE);
             }
             if ( nregs==1 ) // no need to keep the index in memory
@@ -479,11 +479,11 @@ static int mpileup(mplp_conf_t *conf)
     conf->gplp->m_plp = (int*) calloc(conf->gplp->n, sizeof(int));
     conf->gplp->plp = (bam_pileup1_t**) calloc(conf->gplp->n, sizeof(bam_pileup1_t*));  
 
-    fprintf(pysam_stderr, "[%s] %d samples in %d input files\n", __func__, conf->gplp->n, conf->nfiles);
+    fprintf(bcftools_stderr, "[%s] %d samples in %d input files\n", __func__, conf->gplp->n, conf->nfiles);
     // write the VCF header
     conf->bcf_fp = hts_open(conf->output_fname?conf->output_fname:"-", hts_bcf_wmode(conf->output_type));
     if (conf->bcf_fp == NULL) {
-        fprintf(pysam_stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname? conf->output_fname : "standard output", strerror(errno));
+        fprintf(bcftools_stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname? conf->output_fname : "standard output", strerror(errno));
         exit(EXIT_FAILURE);
     }
     if ( conf->n_threads ) hts_set_threads(conf->bcf_fp, conf->n_threads);
@@ -607,9 +607,9 @@ static int mpileup(mplp_conf_t *conf)
     conf->iter = bam_mplp_init(conf->nfiles, mplp_func, (void**)conf->mplp_data);
     if ( conf->flag & MPLP_SMART_OVERLAPS ) bam_mplp_init_overlaps(conf->iter);
     if ( (double)conf->max_depth * conf->nfiles > 1<<20)
-        fprintf(pysam_stderr, "Warning: Potential memory hog, up to %.0fM reads in the pileup!\n", (double)conf->max_depth*conf->nfiles);
+        fprintf(bcftools_stderr, "Warning: Potential memory hog, up to %.0fM reads in the pileup!\n", (double)conf->max_depth*conf->nfiles);
     if ( (double)conf->max_depth * conf->nfiles / nsmpl < 250 )
-        fprintf(pysam_stderr, "Note: The maximum per-sample depth with -d %d is %.1fx\n", conf->max_depth,(double)conf->max_depth * conf->nfiles / nsmpl);
+        fprintf(bcftools_stderr, "Note: The maximum per-sample depth with -d %d is %.1fx\n", conf->max_depth,(double)conf->max_depth * conf->nfiles / nsmpl);
     bam_mplp_set_maxcnt(conf->iter, conf->max_depth);
     conf->max_indel_depth = conf->max_indel_depth * nsmpl;
     conf->bcf_rec = bcf_init1();
@@ -635,10 +635,10 @@ static int mpileup(mplp_conf_t *conf)
                     {
                         conf->mplp_data[i]->iter = sam_itr_querys(conf->mplp_data[i]->idx, conf->mplp_data[i]->h, conf->reg_itr->seq);
                         if ( conf->mplp_data[i]->iter ) {
-                            fprintf(pysam_stderr,"[E::%s] fail to parse region '%s'\n", __func__, conf->buf.s);
+                            fprintf(bcftools_stderr,"[E::%s] fail to parse region '%s'\n", __func__, conf->buf.s);
                             exit(EXIT_FAILURE);
                         }
-                        fprintf(pysam_stderr,"[E::%s] the sequence \"%s\" not found: %s\n",__func__,conf->reg_itr->seq,conf->files[i]);
+                        fprintf(bcftools_stderr,"[E::%s] the sequence \"%s\" not found: %s\n",__func__,conf->reg_itr->seq,conf->files[i]);
                         exit(EXIT_FAILURE);
                     }
                     bam_mplp_reset(conf->iter);
@@ -708,7 +708,7 @@ int read_file_list(const char *file_list,int *n,char **argv[])
     FILE *fh = fopen(file_list,"r");
     if ( !fh )
     {
-        fprintf(pysam_stderr,"%s: %s\n", file_list,strerror(errno));
+        fprintf(bcftools_stderr,"%s: %s\n", file_list,strerror(errno));
         return 1;
     }
 
@@ -730,9 +730,9 @@ int read_file_list(const char *file_list,int *n,char **argv[])
             for (i=0; i<len; i++)
                 if (!isprint(buf[i])) { safe_to_print = 0; break; }
             if ( safe_to_print )
-                fprintf(pysam_stderr,"The file list \"%s\" appears broken, could not locate: %s\n", file_list,buf);
+                fprintf(bcftools_stderr,"The file list \"%s\" appears broken, could not locate: %s\n", file_list,buf);
             else
-                fprintf(pysam_stderr,"Does the file \"%s\" really contain a list of files and do all exist?\n", file_list);
+                fprintf(bcftools_stderr,"Does the file \"%s\" really contain a list of files and do all exist?\n", file_list);
             return 1;
         }
 
@@ -743,7 +743,7 @@ int read_file_list(const char *file_list,int *n,char **argv[])
     fclose(fh);
     if ( !nfiles )
     {
-        fprintf(pysam_stderr,"No files read from %s\n", file_list);
+        fprintf(bcftools_stderr,"No files read from %s\n", file_list);
         return 1;
     }
     *argv = files;
@@ -759,11 +759,11 @@ int parse_format_flag(const char *str)
     for(i=0; i<n_tags; i++)
     {
         if ( !strcasecmp(tags[i],"DP") || !strcasecmp(tags[i],"FORMAT/DP") || !strcasecmp(tags[i],"FMT/DP") ) flag |= B2B_FMT_DP;
-        else if ( !strcasecmp(tags[i],"DV") || !strcasecmp(tags[i],"FORMAT/DV") || !strcasecmp(tags[i],"FMT/DV") ) { flag |= B2B_FMT_DV; fprintf(pysam_stderr, "[warning] tag DV functional, but deprecated. Please switch to `AD` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"DV") || !strcasecmp(tags[i],"FORMAT/DV") || !strcasecmp(tags[i],"FMT/DV") ) { flag |= B2B_FMT_DV; fprintf(bcftools_stderr, "[warning] tag DV functional, but deprecated. Please switch to `AD` in future.\n"); }
         else if ( !strcasecmp(tags[i],"SP") || !strcasecmp(tags[i],"FORMAT/SP") || !strcasecmp(tags[i],"FMT/SP") ) flag |= B2B_FMT_SP;
-        else if ( !strcasecmp(tags[i],"DP4") || !strcasecmp(tags[i],"FORMAT/DP4") || !strcasecmp(tags[i],"FMT/DP4") ) { flag |= B2B_FMT_DP4; fprintf(pysam_stderr, "[warning] tag DP4 functional, but deprecated. Please switch to `ADF` and `ADR` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"DPR") || !strcasecmp(tags[i],"FORMAT/DPR") || !strcasecmp(tags[i],"FMT/DPR") ) { flag |= B2B_FMT_DPR; fprintf(pysam_stderr, "[warning] tag DPR functional, but deprecated. Please switch to `AD` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"INFO/DPR") ) { flag |= B2B_INFO_DPR; fprintf(pysam_stderr, "[warning] tag INFO/DPR functional, but deprecated. Please switch to `INFO/AD` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"DP4") || !strcasecmp(tags[i],"FORMAT/DP4") || !strcasecmp(tags[i],"FMT/DP4") ) { flag |= B2B_FMT_DP4; fprintf(bcftools_stderr, "[warning] tag DP4 functional, but deprecated. Please switch to `ADF` and `ADR` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"DPR") || !strcasecmp(tags[i],"FORMAT/DPR") || !strcasecmp(tags[i],"FMT/DPR") ) { flag |= B2B_FMT_DPR; fprintf(bcftools_stderr, "[warning] tag DPR functional, but deprecated. Please switch to `AD` in future.\n"); }
+        else if ( !strcasecmp(tags[i],"INFO/DPR") ) { flag |= B2B_INFO_DPR; fprintf(bcftools_stderr, "[warning] tag INFO/DPR functional, but deprecated. Please switch to `INFO/AD` in future.\n"); }
         else if ( !strcasecmp(tags[i],"AD") || !strcasecmp(tags[i],"FORMAT/AD") || !strcasecmp(tags[i],"FMT/AD") ) flag |= B2B_FMT_AD;
         else if ( !strcasecmp(tags[i],"ADF") || !strcasecmp(tags[i],"FORMAT/ADF") || !strcasecmp(tags[i],"FMT/ADF") ) flag |= B2B_FMT_ADF;
         else if ( !strcasecmp(tags[i],"ADR") || !strcasecmp(tags[i],"FORMAT/ADR") || !strcasecmp(tags[i],"FMT/ADR") ) flag |= B2B_FMT_ADR;
@@ -772,7 +772,7 @@ int parse_format_flag(const char *str)
         else if ( !strcasecmp(tags[i],"INFO/ADR") ) flag |= B2B_INFO_ADR;
         else
         {
-            fprintf(pysam_stderr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
+            fprintf(bcftools_stderr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
             exit(EXIT_FAILURE);
         }
         free(tags[i]);
@@ -911,7 +911,7 @@ int bam_mpileup(int argc, char *argv[])
         {"ignore-RG", no_argument, NULL, 5},
         {"ignore-rg", no_argument, NULL, 5},
         {"gvcf", required_argument, NULL, 'g'},
-        {"non-reference", no_argument, NULL, 7},
+        {"no-reference", no_argument, NULL, 7},
         {"no-version", no_argument, NULL, 8},
         {"threads",required_argument,NULL,9},
         {"illumina1.3+", no_argument, NULL, '6'},
@@ -956,11 +956,11 @@ int bam_mpileup(int argc, char *argv[])
         case 'x': mplp.flag &= ~MPLP_SMART_OVERLAPS; break;
         case  1 :
             mplp.rflag_require = bam_str2flag(optarg);
-            if ( mplp.rflag_require<0 ) { fprintf(pysam_stderr,"Could not parse --rf %s\n", optarg); return 1; }
+            if ( mplp.rflag_require<0 ) { fprintf(bcftools_stderr,"Could not parse --rf %s\n", optarg); return 1; }
             break;
         case  2 :
             mplp.rflag_filter = bam_str2flag(optarg);
-            if ( mplp.rflag_filter<0 ) { fprintf(pysam_stderr,"Could not parse --ff %s\n", optarg); return 1; }
+            if ( mplp.rflag_filter<0 ) { fprintf(bcftools_stderr,"Could not parse --ff %s\n", optarg); return 1; }
             break;
         case  3 : mplp.output_fname = optarg; break;
         case  4 : mplp.openQ = atoi(optarg); break;
@@ -990,7 +990,7 @@ int bam_mpileup(int argc, char *argv[])
                   mplp.bed_itr = regitr_init(mplp.bed);
                   if ( regidx_insert_list(mplp.bed,optarg,',') !=0 )
                   {
-                      fprintf(pysam_stderr,"Could not parse the targets: %s\n", optarg);
+                      fprintf(bcftools_stderr,"Could not parse the targets: %s\n", optarg);
                       exit(EXIT_FAILURE);
                   }
                   break;
@@ -998,7 +998,7 @@ int bam_mpileup(int argc, char *argv[])
                   if ( optarg[0]=='^' ) optarg++;
                   else mplp.bed_logic = 1;
                   mplp.bed = regidx_init(optarg,NULL,NULL,0,NULL);
-                  if (!mplp.bed) { fprintf(pysam_stderr, "bcftools mpileup: Could not read file \"%s\"", optarg); return 1; }
+                  if (!mplp.bed) { fprintf(bcftools_stderr, "bcftools mpileup: Could not read file \"%s\"", optarg); return 1; }
                   break;
         case 'P': mplp.pl_list = strdup(optarg); break;
         case 'p': mplp.flag |= MPLP_PER_SAMPLE; break;
@@ -1038,20 +1038,20 @@ int bam_mpileup(int argc, char *argv[])
         case 'G': bam_smpl_add_readgroups(mplp.bsmpl, optarg, 1); break;
         case 'a':
             if (optarg[0]=='?') {
-                list_annotations(pysam_stderr);
+                list_annotations(bcftools_stderr);
                 return 1;
             }
             mplp.fmt_flag |= parse_format_flag(optarg);
         break;
         default:
-            fprintf(pysam_stderr,"Invalid option: '%c'\n", c);
+            fprintf(bcftools_stderr,"Invalid option: '%c'\n", c);
             return 1;
         }
     }
 
     if ( mplp.gvcf && !(mplp.fmt_flag&B2B_FMT_DP) )
     {
-        fprintf(pysam_stderr,"[warning] The -t DP option is required with --gvcf, switching on.\n");
+        fprintf(bcftools_stderr,"[warning] The -t DP option is required with --gvcf, switching on.\n");
         mplp.fmt_flag |= B2B_FMT_DP;
     }
     if ( mplp.flag&(MPLP_BCF|MPLP_VCF|MPLP_NO_COMP) )
@@ -1069,17 +1069,17 @@ int bam_mpileup(int argc, char *argv[])
     }
     if ( !(mplp.flag&MPLP_REALN) && mplp.flag&MPLP_REDO_BAQ )
     {
-        fprintf(pysam_stderr,"Error: The -B option cannot be combined with -E\n");
+        fprintf(bcftools_stderr,"Error: The -B option cannot be combined with -E\n");
         return 1;
     }
     if (use_orphan) mplp.flag &= ~MPLP_NO_ORPHAN;
     if (argc == 1)
     {
-        print_usage(pysam_stderr, &mplp);
+        print_usage(bcftools_stderr, &mplp);
         return 1;
     }
     if (!mplp.fai && !noref) {
-        fprintf(pysam_stderr,"Error: mpileup requires the --fasta-ref option by default; use --no-reference to run without a fasta reference\n");
+        fprintf(bcftools_stderr,"Error: mpileup requires the --fasta-ref option by default; use --no-reference to run without a fasta reference\n");
         return 1;
     }
     int ret,i;
@@ -1101,11 +1101,8 @@ int bam_mpileup(int argc, char *argv[])
     free(mplp.files);
     free(mplp.reg_fname); free(mplp.pl_list);
     if (mplp.fai) fai_destroy(mplp.fai);
-    if (mplp.bed)
-    {
-        regidx_destroy(mplp.bed);
-        regitr_destroy(mplp.bed_itr);
-    }
+    if (mplp.bed) regidx_destroy(mplp.bed);
+    if (mplp.bed_itr) regitr_destroy(mplp.bed_itr);
     if (mplp.reg) regidx_destroy(mplp.reg);
     bam_smpl_destroy(mplp.bsmpl);
     return ret;

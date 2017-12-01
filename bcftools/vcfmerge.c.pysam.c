@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcfmerge.c -- Merge multiple VCF/BCF files to create one multi-sample file.
 
@@ -522,8 +522,8 @@ void merge_headers(bcf_hdr_t *hw, const bcf_hdr_t *hr, const char *clash_prefix,
 
 void debug_als(char **als, int nals)
 {
-    int k; for (k=0; k<nals; k++) fprintf(pysam_stderr,"%s ", als[k]);
-    fprintf(pysam_stderr,"\n");
+    int k; for (k=0; k<nals; k++) fprintf(bcftools_stderr,"%s ", als[k]);
+    fprintf(bcftools_stderr,"\n");
 }
 
 /**
@@ -605,7 +605,7 @@ char **merge_alleles(char **a, int na, int *map, char **b, int *nb, int *mb)
     {
         if ( strncasecmp(a[0],b[0],rla<rlb?rla:rlb) )
         {
-            fprintf(pysam_stderr, "The REF prefixes differ: %s vs %s (%d,%d)\n", a[0],b[0],rla,rlb);
+            fprintf(bcftools_stderr, "The REF prefixes differ: %s vs %s (%d,%d)\n", a[0],b[0],rla,rlb);
             return NULL;
         }
         // Different case, change to uppercase
@@ -664,7 +664,6 @@ char **merge_alleles(char **a, int na, int *map, char **b, int *nb, int *mb)
         }
         // new allele
         map[i] = *nb;
-        if ( b[*nb] ) free(b[*nb]);
         b[*nb] = const_ai ? strdup(ai) : ai;
         (*nb)++;
     }
@@ -789,13 +788,13 @@ void maux_reset(maux_t *ma)
 }
 void maux_debug(maux_t *ma, int ir, int ib)
 {
-    fprintf(pysam_stdout, "[%d,%d]\t", ir,ib);
+    fprintf(bcftools_stdout, "[%d,%d]\t", ir,ib);
     int i;
     for (i=0; i<ma->nals; i++)
     {
-        fprintf(pysam_stdout, " %s [%d]", ma->als[i], ma->cnt[i]);
+        fprintf(bcftools_stdout, " %s [%d]", ma->als[i], ma->cnt[i]);
     }
-    fprintf(pysam_stdout, "\n");
+    fprintf(bcftools_stdout, "\n");
 }
 
 void merge_chrom2qual(args_t *args, bcf1_t *out)
@@ -1095,7 +1094,7 @@ static void merge_AGR_info_tag(bcf_hdr_t *hdr, bcf1_t *line, bcf_info_t *info, i
                 case BCF_BT_INT16: BRANCH(int16_t, *src==bcf_int16_missing, *src==bcf_int16_vector_end, int); break;
                 case BCF_BT_INT32: BRANCH(int32_t, *src==bcf_int32_missing, *src==bcf_int32_vector_end, int); break;
                 case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(*src), bcf_float_is_vector_end(*src), float); break;
-                default: fprintf(pysam_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); exit(1);
+                default: fprintf(bcftools_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); exit(1);
             }
             #undef BRANCH
         }
@@ -1125,7 +1124,7 @@ static void merge_AGR_info_tag(bcf_hdr_t *hdr, bcf1_t *line, bcf_info_t *info, i
                 case BCF_BT_INT16: BRANCH(int16_t, src[kori]==bcf_int16_missing, src[kori]==bcf_int16_vector_end, int); break;
                 case BCF_BT_INT32: BRANCH(int32_t, src[kori]==bcf_int32_missing, src[kori]==bcf_int32_vector_end, int); break;
                 case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(src[kori]), bcf_float_is_vector_end(src[kori]), float); break;
-                default: fprintf(pysam_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); exit(1);
+                default: fprintf(bcftools_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); exit(1);
             }
             #undef BRANCH
         }
@@ -1670,6 +1669,11 @@ void gvcf_set_alleles(args_t *args)
     bcf_srs_t *files = args->files;
     maux_t *maux = args->maux;
     gvcf_aux_t *gaux = maux->gvcf;
+    for (i=0; i<maux->nals; i++) 
+    {
+        free(maux->als[i]);
+        maux->als[i] = NULL;
+    }
     maux->nals = 0;
 
     for (i=0; i<files->nreaders; i++)
@@ -1966,27 +1970,27 @@ void debug_maux(args_t *args)
     maux_t *maux = args->maux;
     int j,k,l;
 
-    fprintf(pysam_stderr,"Alleles to merge at %d, nals=%d\n", maux->pos+1,maux->nals);
+    fprintf(bcftools_stderr,"Alleles to merge at %d, nals=%d\n", maux->pos+1,maux->nals);
     for (j=0; j<files->nreaders; j++)
     {
         bcf_sr_t *reader = &files->readers[j];
         buffer_t *buf = &maux->buf[j];
-        fprintf(pysam_stderr," reader %d: ", j);
+        fprintf(bcftools_stderr," reader %d: ", j);
         for (k=buf->beg; k<buf->end; k++)
         {
             if ( buf->rec[k].skip & SKIP_DONE ) continue;
             bcf1_t *line = reader->buffer[k];
-            fprintf(pysam_stderr,"\t");
-            if ( buf->rec[k].skip ) fprintf(pysam_stderr,"[");  // this record will not be merged in this round
+            fprintf(bcftools_stderr,"\t");
+            if ( buf->rec[k].skip ) fprintf(bcftools_stderr,"[");  // this record will not be merged in this round
             for (l=0; l<line->n_allele; l++)
-                fprintf(pysam_stderr,"%s%s", l==0?"":",", line->d.allele[l]);
-            if ( buf->rec[k].skip ) fprintf(pysam_stderr,"]");
+                fprintf(bcftools_stderr,"%s%s", l==0?"":",", line->d.allele[l]);
+            if ( buf->rec[k].skip ) fprintf(bcftools_stderr,"]");
         }
-        fprintf(pysam_stderr,"\n");
+        fprintf(bcftools_stderr,"\n");
     }
-    fprintf(pysam_stderr," counts: ");
-    for (j=0; j<maux->nals; j++) fprintf(pysam_stderr,"%s   %dx %s", j==0?"":",",maux->cnt[j], maux->als[j]);
-    fprintf(pysam_stderr,"\n\n");
+    fprintf(bcftools_stderr," counts: ");
+    for (j=0; j<maux->nals; j++) fprintf(bcftools_stderr,"%s   %dx %s", j==0?"":",",maux->cnt[j], maux->als[j]);
+    fprintf(bcftools_stderr,"\n\n");
 }
 
 void debug_state(args_t *args)
@@ -1995,23 +1999,23 @@ void debug_state(args_t *args)
     int i,j;
     for (i=0; i<args->files->nreaders; i++)
     {
-        fprintf(pysam_stderr,"reader %d:\tcur,beg,end=% d,%d,%d", i,maux->buf[i].cur,maux->buf[i].beg,maux->buf[i].end);
+        fprintf(bcftools_stderr,"reader %d:\tcur,beg,end=% d,%d,%d", i,maux->buf[i].cur,maux->buf[i].beg,maux->buf[i].end);
         if ( maux->buf[i].cur >=0 )
         {
             bcf_hdr_t *hdr = bcf_sr_get_header(args->files,i);
             const char *chr = bcf_hdr_id2name(hdr, maux->buf[i].rid);
-            fprintf(pysam_stderr,"\t");
-            for (j=maux->buf[i].beg; j<maux->buf[i].end; j++) fprintf(pysam_stderr," %s:%d",chr,maux->buf[i].lines[j]->pos+1);
+            fprintf(bcftools_stderr,"\t");
+            for (j=maux->buf[i].beg; j<maux->buf[i].end; j++) fprintf(bcftools_stderr," %s:%d",chr,maux->buf[i].lines[j]->pos+1);
         }
-        fprintf(pysam_stderr,"\n");
+        fprintf(bcftools_stderr,"\n");
     }
     for (i=0; i<args->files->nreaders; i++)
     {
-        fprintf(pysam_stderr,"reader %d:\tgvcf_active=%d", i,maux->gvcf[i].active);
-        if ( maux->gvcf[i].active ) fprintf(pysam_stderr,"\tpos,end=%d,%d", maux->gvcf[i].line->pos+1,maux->gvcf[i].end+1);
-        fprintf(pysam_stderr,"\n");
+        fprintf(bcftools_stderr,"reader %d:\tgvcf_active=%d", i,maux->gvcf[i].active);
+        if ( maux->gvcf[i].active ) fprintf(bcftools_stderr,"\tpos,end=%d,%d", maux->gvcf[i].line->pos+1,maux->gvcf[i].end+1);
+        fprintf(bcftools_stderr,"\n");
     }
-    fprintf(pysam_stderr,"\n");
+    fprintf(bcftools_stderr,"\n");
 }
 
 
@@ -2027,9 +2031,15 @@ int can_merge(args_t *args)
     maux_t *maux = args->maux;
     gvcf_aux_t *gaux = maux->gvcf;
     char *id = NULL, ref = 'N';
+    int i,j,k, ntodo = 0;
+
+    for (i=0; i<maux->nals; i++) 
+    {
+        free(maux->als[i]);
+        maux->als[i] = NULL;
+    }
     maux->var_types = maux->nals = 0;
 
-    int i,j,k, ntodo = 0;
     for (i=0; i<files->nreaders; i++)
     {
         buffer_t *buf = &maux->buf[i];
@@ -2340,30 +2350,30 @@ void merge_vcf(args_t *args)
 
 static void usage(void)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Merge multiple VCF/BCF files from non-overlapping sample sets to create one multi-sample file.\n");
-    fprintf(pysam_stderr, "         Note that only records from different files can be merged, never from the same file. For\n");
-    fprintf(pysam_stderr, "         \"vertical\" merge take a look at \"bcftools norm\" instead.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools merge [options] <A.vcf.gz> <B.vcf.gz> [...]\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "        --force-samples                resolve duplicate sample names\n");
-    fprintf(pysam_stderr, "        --print-header                 print only the merged header and exit\n");
-    fprintf(pysam_stderr, "        --use-header <file>            use the provided header\n");
-    fprintf(pysam_stderr, "    -0  --missing-to-ref               assume genotypes at missing sites are 0/0\n");
-    fprintf(pysam_stderr, "    -f, --apply-filters <list>         require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
-    fprintf(pysam_stderr, "    -F, --filter-logic <x|+>           remove filters if some input is PASS (\"x\"), or apply all filters (\"+\") [+]\n");
-    fprintf(pysam_stderr, "    -g, --gvcf <-|ref.fa>              merge gVCF blocks, INFO/END tag is expected. Implies -i QS:sum,MinDP:min,I16:sum,IDV:max,IMF:max\n");
-    fprintf(pysam_stderr, "    -i, --info-rules <tag:method,..>   rules for merging INFO fields (method is one of sum,avg,min,max,join) or \"-\" to turn off the default [DP:sum,DP4:sum]\n");
-    fprintf(pysam_stderr, "    -l, --file-list <file>             read file names from the file\n");
-    fprintf(pysam_stderr, "    -m, --merge <string>               allow multiallelic records for <snps|indels|both|all|none|id>, see man page for details [both]\n");
-    fprintf(pysam_stderr, "        --no-version                   do not append version and command line to the header\n");
-    fprintf(pysam_stderr, "    -o, --output <file>                write output to a file [standard output]\n");
-    fprintf(pysam_stderr, "    -O, --output-type <b|u|z|v>        'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
-    fprintf(pysam_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "        --threads <int>                number of extra output compression threads [0]\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   Merge multiple VCF/BCF files from non-overlapping sample sets to create one multi-sample file.\n");
+    fprintf(bcftools_stderr, "         Note that only records from different files can be merged, never from the same file. For\n");
+    fprintf(bcftools_stderr, "         \"vertical\" merge take a look at \"bcftools norm\" instead.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools merge [options] <A.vcf.gz> <B.vcf.gz> [...]\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Options:\n");
+    fprintf(bcftools_stderr, "        --force-samples                resolve duplicate sample names\n");
+    fprintf(bcftools_stderr, "        --print-header                 print only the merged header and exit\n");
+    fprintf(bcftools_stderr, "        --use-header <file>            use the provided header\n");
+    fprintf(bcftools_stderr, "    -0  --missing-to-ref               assume genotypes at missing sites are 0/0\n");
+    fprintf(bcftools_stderr, "    -f, --apply-filters <list>         require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
+    fprintf(bcftools_stderr, "    -F, --filter-logic <x|+>           remove filters if some input is PASS (\"x\"), or apply all filters (\"+\") [+]\n");
+    fprintf(bcftools_stderr, "    -g, --gvcf <-|ref.fa>              merge gVCF blocks, INFO/END tag is expected. Implies -i QS:sum,MinDP:min,I16:sum,IDV:max,IMF:max\n");
+    fprintf(bcftools_stderr, "    -i, --info-rules <tag:method,..>   rules for merging INFO fields (method is one of sum,avg,min,max,join) or \"-\" to turn off the default [DP:sum,DP4:sum]\n");
+    fprintf(bcftools_stderr, "    -l, --file-list <file>             read file names from the file\n");
+    fprintf(bcftools_stderr, "    -m, --merge <string>               allow multiallelic records for <snps|indels|both|all|none|id>, see man page for details [both]\n");
+    fprintf(bcftools_stderr, "        --no-version                   do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "    -o, --output <file>                write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "    -O, --output-type <b|u|z|v>        'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
+    fprintf(bcftools_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "        --threads <int>                number of extra output compression threads [0]\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 

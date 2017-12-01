@@ -5,9 +5,7 @@ Execute in the :file:`tests` directory as it requires the Makefile
 and data files located there.
 '''
 
-import pysam
-import pysam.samtools
-import pysam.bcftools
+import warnings
 import unittest
 import os
 import re
@@ -15,6 +13,9 @@ import glob
 import sys
 import subprocess
 import shutil
+import pysam
+import pysam.samtools
+import pysam.bcftools
 from TestUtils import checkBinaryEqual, check_lines_equal, \
     check_samtools_view_equal, get_temp_filename, force_bytes, WORKDIR, \
     BAM_DATADIR
@@ -122,6 +123,7 @@ class SamtoolsTest(unittest.TestCase):
     def check_version(self):
 
         samtools_version = get_version(self.executable)
+
         def _r(s):
             # patch - remove any of the alpha/beta suffixes, i.e., 0.1.12a ->
             # 0.1.12
@@ -130,7 +132,7 @@ class SamtoolsTest(unittest.TestCase):
             return re.sub("[^0-9.]", "", s)
 
         if _r(samtools_version) != _r(pysam.__samtools_version__):
-            raise ValueError(
+            warnings.warn(
                 "versions of pysam.%s and %s differ: %s != %s" %
                 (self.executable,
                  self.executable,
@@ -185,7 +187,7 @@ class SamtoolsTest(unittest.TestCase):
         pysam_targets = [x % r_pysam for x in targets]
 
         pysam_method = getattr(self.module, command)
-        
+
         # run samtools
         full_statement = re.sub("%\(out\)s", self.executable, statement)
         run_command(" ".join((self.executable, full_statement)))
@@ -221,10 +223,11 @@ class SamtoolsTest(unittest.TestCase):
 
             for s, p in zip(samtools_files, pysam_files):
                 binary_equal = checkBinaryEqual(s, p)
-                error_msg = "%s failed: files %s and %s are not the same" % (command, s, p)
+                error_msg = "%s failed: files %s and %s are not the same" % (
+                    command, s, p)
                 if binary_equal:
                     continue
-                if s.endswith(".bam"):
+                elif s.endswith(".bam"):
                     self.assertTrue(
                         check_samtools_view_equal(
                             s, p, without_header=True),
@@ -233,16 +236,18 @@ class SamtoolsTest(unittest.TestCase):
                     check_lines_equal(
                         self, s, p,
                         filter_f=lambda x: x.startswith("#"),
-                    msg=error_msg)
+                        msg=error_msg)
 
     def testStatements(self):
         for statement in self.statements:
             command = self.get_command(statement, map_to_internal=False)
-            if command in ("bedcov", "stats", "dict"):
+            # bam2fq differs between version 1.5 and 1.6 - reenable if
+            # bioconda samtools will be available.
+            if command in ("bedcov", "stats", "dict", "bam2fq"):
                 continue
-            
-            if (command == "calmd" and 
-                list(sys.version_info[:2]) == [3, 3]):
+
+            if (command == "calmd" and
+                    list(sys.version_info[:2]) == [3, 3]):
                 # skip calmd test, fails only on python 3.3.5
                 # in linux (empty output). Works in OsX and passes
                 # for 3.4 and 3.5, see issue #293
@@ -250,11 +255,12 @@ class SamtoolsTest(unittest.TestCase):
             self.check_statement(statement)
 
     @unittest.skipIf(sys.platform == "darwin", "not supported, pattern does not match")
+    @unittest.skipIf(not sys.stdin.isatty(), "skipping usage tests, stdin is not a tty")
     def testUsage(self):
         if self.executable == "bcftools":
             # bcftools usage messages end with exit(1)
             return
-        
+
         for statement in self.statements:
             command = self.get_command(statement, map_to_internal=False)
             # ignore commands that exit or cause other failures
@@ -297,7 +303,8 @@ if sys.platform != "darwin":
                 self.assertTrue(isinstance(retval, basestring))
 
         def testReturnValueData(self):
-            args = "-O BAM {}".format(os.path.join(BAM_DATADIR, "ex1.bam")).split(" ")
+            args = "-O BAM {}".format(os.path.join(BAM_DATADIR,
+                                                   "ex1.bam")).split(" ")
             retval = pysam.view(*args)
 
             if IS_PYTHON3:
@@ -306,7 +313,6 @@ if sys.platform != "darwin":
             else:
                 self.assertTrue(isinstance(retval, bytes))
                 self.assertTrue(isinstance(retval, basestring))
-
 
     class StdoutTest(unittest.TestCase):
         '''test if stdout can be redirected.'''
@@ -341,9 +347,9 @@ if sys.platform != "darwin":
             self.assertTrue(len(r) > 0)
 
     class PysamTest(SamtoolsTest):
-        """check access to samtools command in the pysam 
+        """check access to samtools command in the pysam
         main package.
-        
+
         This is for backwards capability.
         """
 

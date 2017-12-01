@@ -87,6 +87,7 @@ typedef struct
     int in_frame, out_frame, na_frame, in_frame_alt1, out_frame_alt1, na_frame_alt1;
     int subst[15];
     int *smpl_hets, *smpl_homRR, *smpl_homAA, *smpl_ts, *smpl_tv, *smpl_indels, *smpl_ndp, *smpl_sngl;
+    int *smpl_hapRef, *smpl_hapAlt;
     int *smpl_indel_hets, *smpl_indel_homs;
     int *smpl_frm_shifts; // not-applicable, in-frame, out-frame
     unsigned long int *smpl_dp;
@@ -472,6 +473,8 @@ static void init_stats(args_t *args)
             stats->smpl_hets   = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_homAA  = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_homRR  = (int *) calloc(args->files->n_smpl,sizeof(int));
+            stats->smpl_hapRef = (int *) calloc(args->files->n_smpl,sizeof(int));
+            stats->smpl_hapAlt = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_indel_hets = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_indel_homs = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_ts     = (int *) calloc(args->files->n_smpl,sizeof(int));
@@ -548,17 +551,19 @@ static void destroy_stats(args_t *args)
         #endif
         free(stats->insertions);
         free(stats->deletions);
-        if (stats->smpl_hets) free(stats->smpl_hets);
-        if (stats->smpl_homAA) free(stats->smpl_homAA);
-        if (stats->smpl_homRR) free(stats->smpl_homRR);
-        if (stats->smpl_indel_homs) free(stats->smpl_indel_homs);
-        if (stats->smpl_indel_hets) free(stats->smpl_indel_hets);
-        if (stats->smpl_ts) free(stats->smpl_ts);
-        if (stats->smpl_tv) free(stats->smpl_tv);
-        if (stats->smpl_indels) free(stats->smpl_indels);
-        if (stats->smpl_dp) free(stats->smpl_dp);
-        if (stats->smpl_ndp) free(stats->smpl_ndp);
-        if (stats->smpl_sngl) free(stats->smpl_sngl);
+        free(stats->smpl_hets);
+        free(stats->smpl_homAA);
+        free(stats->smpl_homRR);
+        free(stats->smpl_hapRef);
+        free(stats->smpl_hapAlt);
+        free(stats->smpl_indel_homs);
+        free(stats->smpl_indel_hets);
+        free(stats->smpl_ts);
+        free(stats->smpl_tv);
+        free(stats->smpl_indels);
+        free(stats->smpl_dp);
+        free(stats->smpl_ndp);
+        free(stats->smpl_sngl);
         idist_destroy(&stats->dp);
         idist_destroy(&stats->dp_sites);
         for (j=0; j<stats->nusr; j++)
@@ -861,6 +866,8 @@ static void do_sample_stats(args_t *args, stats_t *stats, bcf_sr_t *reader, int 
                     assert( ial<line->n_allele );
                     stats->smpl_frm_shifts[is*3 + args->tmp_frm[ial]]++;
                 }
+                if ( gt == GT_HAPL_R ) stats->smpl_hapRef[is]++;
+                if ( gt == GT_HAPL_A ) stats->smpl_hapAlt[is]++;
                 continue;
             }
             if ( gt != GT_HOM_RR ) { n_nref++; i_nref = is; }
@@ -873,7 +880,10 @@ static void do_sample_stats(args_t *args, stats_t *stats, bcf_sr_t *reader, int 
                     case GT_HOM_AA: nalt_tot++; break;
                 }
             #endif
-            if ( line_type&VCF_SNP || line_type==VCF_REF )  // count ALT=. as SNP
+            int var_type = 0;
+            if ( ial>0 ) var_type |= bcf_get_variant_type(line,ial);
+            if ( jal>0 ) var_type |= bcf_get_variant_type(line,jal);
+            if ( var_type&VCF_SNP || var_type==VCF_REF )  // count ALT=. as SNP
             {
                 if ( gt == GT_HET_RA ) stats->smpl_hets[is]++;
                 else if ( gt == GT_HET_AA ) stats->smpl_hets[is]++;
@@ -889,7 +899,7 @@ static void do_sample_stats(args_t *args, stats_t *stats, bcf_sr_t *reader, int 
                         stats->smpl_tv[is]++;
                 }
             }
-            if ( line_type&VCF_INDEL )
+            if ( var_type&VCF_INDEL )
             {
                 if ( gt != GT_HOM_RR )
                 {
@@ -1068,7 +1078,7 @@ static void do_vcf_stats(args_t *args)
         if ( line->n_allele>2 )
         {
             stats->n_mals++;
-            if ( line_type == VCF_SNP ) stats->n_snp_mals++;
+            if ( line_type == VCF_SNP ) stats->n_snp_mals++;    // note: this will be fooled by C>C,T
         }
 
         if ( files->n_smpl )
@@ -1125,7 +1135,22 @@ static void print_header(args_t *args)
 static void print_stats(args_t *args)
 {
     int i, j,k, id;
-    printf("# SN, Summary numbers:\n# SN\t[2]id\t[3]key\t[4]value\n");
+    printf("# SN, Summary numbers:\n");
+    printf("#   number of records   .. number of data rows in the VCF\n");
+    printf("#   number of no-ALTs   .. reference-only sites, ALT is either \".\" or identical to REF\n");
+    printf("#   number of SNPs      .. number of rows with a SNP\n");
+    printf("#   number of MNPs      .. number of rows with a MNP, such as CC>TT\n");
+    printf("#   number of indels    .. number of rows with an indel\n");
+    printf("#   number of others    .. number of rows with other type, for example a symbolic allele or\n");
+    printf("#                          a complex substitution, such as ACT>TCGA\n");
+    printf("#   number of multiallelic sites     .. number of rows with multiple alternate alleles\n");
+    printf("#   number of multiallelic SNP sites .. number of rows with multiple alternate alleles, all SNPs\n");
+    printf("# \n");
+    printf("#   Note that rows containing multiple types will be counted multiple times, in each\n");
+    printf("#   counter. For example, a row with a SNP and an indel increments both the SNP and\n");
+    printf("#   the indel counter.\n");
+    printf("# \n");
+    printf("# SN\t[2]id\t[3]key\t[4]value\n");
     for (id=0; id<args->files->nreaders; id++)
         printf("SN\t%d\tnumber of samples:\t%d\n", id, bcf_hdr_nsamples(args->files->readers[id].header));
     for (id=0; id<args->nstats; id++)
@@ -1470,16 +1495,18 @@ static void print_stats(args_t *args)
 
     if ( args->files->n_smpl )
     {
-        printf("# PSC, Per-sample counts\n# PSC\t[2]id\t[3]sample\t[4]nRefHom\t[5]nNonRefHom\t[6]nHets\t[7]nTransitions\t[8]nTransversions\t[9]nIndels\t[10]average depth\t[11]nSingletons\n");
+        printf("# PSC, Per-sample counts. Note that the ref/het/hom counts include only SNPs, for indels see PSI. Haploid counts include both SNPs and indels.\n");
+        printf("# PSC\t[2]id\t[3]sample\t[4]nRefHom\t[5]nNonRefHom\t[6]nHets\t[7]nTransitions\t[8]nTransversions\t[9]nIndels\t[10]average depth\t[11]nSingletons"
+            "\t[12]nHapRef\t[13]nHapAlt\n");
         for (id=0; id<args->nstats; id++)
         {
             stats_t *stats = &args->stats[id];
             for (i=0; i<args->files->n_smpl; i++)
             {
                 float dp = stats->smpl_ndp[i] ? stats->smpl_dp[i]/(float)stats->smpl_ndp[i] : 0;
-                printf("PSC\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%.1f\t%d\n", id,args->files->samples[i],
+                printf("PSC\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%.1f\t%d\t%d\t%d\n", id,args->files->samples[i],
                     stats->smpl_homRR[i], stats->smpl_homAA[i], stats->smpl_hets[i], stats->smpl_ts[i],
-                    stats->smpl_tv[i], stats->smpl_indels[i],dp, stats->smpl_sngl[i]);
+                    stats->smpl_tv[i], stats->smpl_indels[i],dp, stats->smpl_sngl[i], stats->smpl_hapRef[i], stats->smpl_hapAlt[i]);
             }
         }
 

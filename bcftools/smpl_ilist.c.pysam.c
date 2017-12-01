@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /* 
     Copyright (C) 2016 Genome Research Ltd.

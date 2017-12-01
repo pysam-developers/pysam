@@ -77,12 +77,19 @@ else:
 
 cimport cython
 
+
 __all__ = [
     "AlignmentFile",
     "AlignmentHeader",
     "IteratorRow",
     "IteratorColumn",
     "IndexedReads"]
+
+IndexStats = collections.namedtuple("IndexStats",
+                                    ("contig",
+                                     "mapped",
+                                     "unmapped",
+                                     "total"))
 
 ########################################################
 ## global variables
@@ -531,7 +538,8 @@ cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
     reference_names=None, reference_lengths=None, text=NULL,
     header=None, add_sq_text=False, check_header=True, check_sq=True,
-    reference_filename=None, filename=None, duplicate_filehandle=True,
+    reference_filename=None, filename=None, index_filename=None,
+    filepath_index=None, require_index=False, duplicate_filehandle=True,
     ignore_truncation=False)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
@@ -540,10 +548,13 @@ cdef class AlignmentFile(HTSFile):
     opened. If `filepath_or_object` is a python File object, the
     already opened file will be used.
 
-    If the file is opened for reading an index for a BAM file exists
-    (.bai), it will be opened automatically. Without an index random
-    access via :meth:`~pysam.AlignmentFile.fetch` and
-    :meth:`~pysam.AlignmentFile.pileup` is disabled.
+    If the file is opened for reading and an index exists (if file is BAM, a
+    .bai file or if CRAM a .crai file), it will be opened automatically.
+    `index_filename` may be specified explicitly. If the index is not named
+    in the standard manner, not located in the same directory as the
+    BAM/CRAM file, or is remote.  Without an index, random access via
+    :meth:`~pysam.AlignmentFile.fetch` and :meth:`~pysam.AlignmentFile.pileup`
+    is disabled.
 
     For writing, the header of a :term:`SAM` file/:term:`BAM` file can
     be constituted from several sources (see also the samtools format
@@ -640,6 +651,19 @@ cdef class AlignmentFile(HTSFile):
         specified in the header (``UR`` tag), which are normally used to find
         the reference.
 
+    index_filename : string
+        Explicit path to the index file.  Only needed if the index is not
+        named in the standard manner, not located in the same directory as
+        the BAM/CRAM file, or is remote.  An IOError is raised if the index
+        cannot be found or is invalid.
+
+    filepath_index : string
+        Alias for `index_filename`.
+
+    require_index : bool
+        When reading, require that an index file is present and is valid or
+        raise an IOError.  (default=False)
+
     filename : string
         Alternative to filepath_or_object. Filename of the file
         to be opened.
@@ -720,7 +744,9 @@ cdef class AlignmentFile(HTSFile):
               add_sam_header=True,
               check_header=True,
               check_sq=True,
+              index_filename=None,
               filepath_index=None,
+              require_index=False,
               referencenames=None,
               referencelengths=None,
               duplicate_filehandle=True,
@@ -824,8 +850,11 @@ cdef class AlignmentFile(HTSFile):
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
-                raise OSError("could not open file `{}` (mode='{}')".format(filename, mode))
-            
+                if errno:
+                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
+                                  force_str(strerror(errno))))
+                else:
+                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
@@ -841,15 +870,14 @@ cdef class AlignmentFile(HTSFile):
 
         elif mode[0] == "r":
             # open file for reading
-            if not self._exists():
-                raise IOError("file `%s` not found" % self.filename)
-
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
-                raise ValueError(
-                    "could not open file (mode='%s') - "
-                    "is it SAM/BAM/CRAM format?" % mode)
+                if errno:
+                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
+                                  force_str(strerror(errno))))
+                else:
+                    raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
 
             if self.htsfile.format.category != sequence_data:
                 raise ValueError("file does not contain alignment data")
@@ -898,69 +926,30 @@ cdef class AlignmentFile(HTSFile):
                      "is it SAM/BAM format? Consider opening with "
                      "check_sq=False") % mode)
 
-        assert self.htsfile != NULL
+            if self.is_bam or self.is_cram:
+                # open index for remote files
+                # returns NULL if there is no index or index could
+                # not be opened
+                index_filename = index_filename or filepath_index
+                if index_filename:
+                    cindexname = bindex_filename = encode_filename(index_filename)
 
-        # check for index and open if present
-        cdef int format_index = -1
-        if self.is_bam:
-            format_index = HTS_FMT_BAI
-        elif self.is_cram:
-            format_index = HTS_FMT_CRAI
+                if cfilename or cindexname:
+                    with nogil:
+                        self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
 
-        if mode[0] == "r" and (self.is_bam or self.is_cram):
-            # open index for remote files
-            if self.is_remote and not filepath_index:
-                with nogil:
-                    self.index = hts_idx_load(cfilename, format_index)
-                if self.index == NULL:
-                    warnings.warn(
-                        "unable to open remote index for '%s'" % cfilename)
-            else:
-                has_index = True
-                if filepath_index:
-                    if not os.path.exists(filepath_index):
-                        warnings.warn(
-                            "unable to open index at %s" % cfilename)
-                        self.index = NULL
-                        has_index = False
-                elif filename is not None:
-                    if self.is_bam \
-                            and not os.path.exists(filename + b".bai") \
-                            and not os.path.exists(filename[:-4] + b".bai") \
-                            and not os.path.exists(filename + b".csi") \
-                            and not os.path.exists(filename[:-4] + b".csi"):
-                        self.index = NULL
-                        has_index = False
-                    elif self.is_cram \
-                            and not os.path.exists(filename + b".crai") \
-                            and not os.path.exists(filename[:-5] + b".crai"):
-                        self.index = NULL
-                        has_index = False
-                else:
-                    self.index = NULL
-                    has_index = False
+                    if not self.index and (cindexname or require_index):
+                        if errno:
+                            raise IOError(errno, force_str(strerror(errno)))
+                        else:
+                            raise IOError('unable to open index file `%s`' % index_filename)
 
-                if has_index:
-                    # returns NULL if there is no index or index could
-                    # not be opened
-                    if filepath_index:
-                        cindexname = filepath_index = encode_filename(filepath_index)
-                        with nogil:
-                            self.index = sam_index_load2(self.htsfile,
-                                                         cfilename,
-                                                         cindexname)
-                    else:
-                        with nogil:
-                            self.index = sam_index_load(self.htsfile,
-                                                        cfilename)
-                    if self.index == NULL:
-                        raise IOError(
-                            "error while opening index for '%s'" %
-                            filename)
+                elif require_index:
+                    raise IOError('unable to open index file')
 
-            # save start of data section
-            if not self.is_stream:
-                self.start_offset = self.tell()
+                # save start of data section
+                if not self.is_stream:
+                    self.start_offset = self.tell()
 
     def fetch(self,
               contig=None,
@@ -1032,13 +1021,11 @@ cdef class AlignmentFile(HTSFile):
         if not self.is_open:
             raise ValueError( "I/O operation on closed file" )
 
-        has_coord, rtid, rstart, rstop = self.parse_region(contig, start, stop, region, tid,
-                                                          end=end, reference=reference)
+        has_coord, rtid, rstart, rstop = self.parse_region(
+            contig, start, stop, region, tid,
+            end=end, reference=reference)
 
-        if rtid < 0:
-            raise IndexError("can not fetch unmapped reads via tid")
-        
-        # Turn of re-opening if htsfile is a stream
+       # Turn of re-opening if htsfile is a stream
         if self.is_stream:
             multiple_iterators = False
 
@@ -1190,6 +1177,16 @@ cdef class AlignmentFile(HTSFile):
         Parameters
         ----------
 
+        truncate : bool
+
+           By default, the samtools pileup engine outputs all reads
+           overlapping a region. If truncate is True and a region is
+           given, only columns in the exact region specificied are
+           returned.
+
+        max_depth : int
+           Maximum read depth permitted. The default limit is '8000'.
+
         stepper : string
            The stepper controls how the iterator advances.
            Possible options for the stepper are
@@ -1199,26 +1196,67 @@ cdef class AlignmentFile(HTSFile):
               BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
 
            ``nofilter``
-              uses every single read
+              uses every single read turning off any filtering.
 
            ``samtools``
               same filter and read processing as in :term:`csamtools`
-              pileup. This requires a 'fastafile' to be given.
-
+              pileup. For full compatibility, this requires a
+              'fastafile' to be given. The following options all pertain
+              to filtering of the ``samtools`` stepper.
 
         fastafile : :class:`~pysam.FastaFile` object.
 
            This is required for some of the steppers.
 
-        max_depth : int
-           Maximum read depth permitted. The default limit is '8000'.
+        ignore_overlaps: bool
 
-        truncate : bool
+           If set to True, detect if read pairs overlap and only take
+           the higher quality base. This is the default.
 
-           By default, the samtools pileup engine outputs all reads
-           overlapping a region. If truncate is True and a region is
-           given, only columns in the exact region specificied are
-           returned.
+        flag_filter : int
+
+           ignore reads where any of the bits in the flag are set. The default is
+           BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP.
+
+        flag_require : int
+
+           only use reads where certain flags are set. The default is 0.
+
+        ignore_orphans: bool
+
+            ignore orphans (paired reads that are not in a proper pair).
+            The default is to ignore orphans.
+   
+        min_base_quality: int
+
+           Minimum base quality. Bases below the minimum quality will
+           not be output.
+
+        adjust_capq_threshold: int
+
+           adjust mapping quality. The default is 0 for no
+           adjustment. The recommended value for adjustment is 50.
+
+        min_mapping_quality : int
+
+           only use reads above a minimum mapping quality. The default is 0.
+
+        compute_baq: bool
+
+           re-alignment computing per-Base Alignment Qualities (BAQ). The
+           default is to do re-alignment. Realignment requires a reference
+           sequence. If none is present, no realignment will be performed.
+
+        redo_baq: bool
+
+           recompute per-Base Alignment Quality on the fly ignoring
+           existing base qualities. The default is False (use existing
+           base qualities).
+
+        adjust_capq_threshold: int
+
+            adjust mapping quality. The default is 0 for no
+            adjustment. The recommended value for adjustment is 50.
 
         Returns
         -------
@@ -1245,7 +1283,7 @@ cdef class AlignmentFile(HTSFile):
                                             stop=rstop,
                                             **kwargs)
             else:
-                return IteratorColumnAllRefs(self, **kwargs )
+                return IteratorColumnAllRefs(self, **kwargs)
 
         else:
             raise NotImplementedError(
@@ -1534,7 +1572,7 @@ cdef class AlignmentFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     def __dealloc__(self):
         cdef int ret = 0
@@ -1558,7 +1596,7 @@ cdef class AlignmentFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     cpdef int write(self, AlignedSegment read) except -1:
         '''
@@ -1649,6 +1687,33 @@ cdef class AlignmentFile(HTSFile):
             with nogil:
                 n = hts_idx_get_n_no_coor(self.index)
             return n
+
+    def get_index_statistics(self):
+        """return statistics about mapped/unmapped reads per chromosome as
+        they are stored in the index.
+
+        Returns
+        -------
+        list : a list of records for each chromosome. Each record has the attributes 'contig',
+               'mapped', 'unmapped' and 'total'.
+        """
+        
+        self.check_index()
+        cdef int tid
+        cdef uint64_t mapped, unmapped
+        results = []
+        # TODO: use header
+        for tid from 0 <= tid < self.nreferences:
+            with nogil:
+                hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
+            results.append(
+                IndexStats._make((
+                    self.get_reference_name(tid),
+                    mapped,
+                    unmapped,
+                    mapped + unmapped)))
+                
+        return results
 
     ###############################################################
     ## file-object like iterator access
@@ -2105,9 +2170,9 @@ cdef class IteratorRowSelection(IteratorRow):
 
     def __next__(self):
         cdef int ret = self.cnext()
-        if (ret >= 0):
+        if ret >= 0:
             return makeAlignedSegment(self.b, self.header)
-        elif (ret == -2):
+        elif ret == -2:
             raise IOError('truncated file')
         else:
             raise StopIteration
@@ -2116,8 +2181,7 @@ cdef class IteratorRowSelection(IteratorRow):
 cdef int __advance_nofilter(void *data, bam1_t *b):
     '''advance without any read filtering.
     '''
-    cdef __iterdata * d
-    d = <__iterdata*>data
+    cdef __iterdata * d = <__iterdata*>data
     cdef int ret
     with nogil:
         ret = sam_itr_next(d.htsfile, d.iter, b)
@@ -2125,94 +2189,85 @@ cdef int __advance_nofilter(void *data, bam1_t *b):
 
 
 cdef int __advance_all(void *data, bam1_t *b):
-    '''only use reads for pileup passing basic
-    filters:
+    '''only use reads for pileup passing basic filters such as 
 
     BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
     '''
 
-    cdef __iterdata * d
+    cdef __iterdata * d = <__iterdata*>data
     cdef mask = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP
-    d = <__iterdata*>data
     cdef int ret
-    with nogil:
-        ret = sam_itr_next(d.htsfile, d.iter, b)
-    while ret >= 0 and b.core.flag & mask:
+    while 1:
         with nogil:
             ret = sam_itr_next(d.htsfile, d.iter, b)
+        if ret < 0:
+            break
+        if b.core.flag & d.flag_filter:
+            continue
+        break
     return ret
 
 
-cdef int __advance_snpcalls(void * data, bam1_t * b):
+cdef int __advance_samtools(void * data, bam1_t * b):
     '''advance using same filter and read processing as in
     the samtools pileup.
     '''
-
-    # Note that this method requries acces to some
-    # functions in the samtools code base and is thus
-    # not htslib only.
-    # The functions accessed in samtools are:
-    # 1. bam_prob_realn
-    # 2. bam_cap_mapQ
-    cdef __iterdata * d
-    d = <__iterdata*>data
-
+    cdef __iterdata * d = <__iterdata*>data
     cdef int ret
-    cdef int skip = 0
     cdef int q
-    cdef int is_cns = 1
-    cdef int is_nobaq = 0
-    cdef int capQ_thres = 0
 
-    with nogil:
-        ret = sam_itr_next(d.htsfile, d.iter, b)
-
-    # reload sequence
-    if d.fastafile != NULL and b.core.tid != d.tid:
-        if d.seq != NULL:
-            free(d.seq)
-        d.tid = b.core.tid
-        with nogil:
-            d.seq = faidx_fetch_seq(
-                d.fastafile,
-                d.header.target_name[d.tid],
-                0, MAX_POS,
-                &d.seq_len)
-
-        if d.seq == NULL:
-            raise ValueError(
-                "reference sequence for '%s' (tid=%i) not found" % \
-                (d.header.target_name[d.tid],
-                 d.tid))
-
-    while ret >= 0:
-        skip = 0
-
-        # realign read - changes base qualities
-        if d.seq != NULL and is_cns and not is_nobaq:
-            # flag:
-            # apply_baq = flag&1, extend_baq = flag>>1&1, redo_baq = flag&4;
-            sam_prob_realn(b, d.seq, d.seq_len, 0)
-
-        if d.seq != NULL and capQ_thres > 10:
-            q = sam_cap_mapq(b, d.seq, d.seq_len, capQ_thres)
-            if q < 0:
-                skip = 1
-            elif b.core.qual > q:
-                b.core.qual = q
-        if b.core.flag & BAM_FUNMAP:
-            skip = 1
-        elif b.core.flag & 1 and not b.core.flag & 2:
-            skip = 1
-
-        if not skip:
-            break
-        # additional filters
-
+    while 1:
         with nogil:
             ret = sam_itr_next(d.htsfile, d.iter, b)
+        if ret < 0:
+            break
+        if b.core.flag & d.flag_filter:
+            continue
+        if d.flag_require and not (b.core.flag & d.flag_require):
+            continue
+        
+        # reload sequence
+        if d.fastafile != NULL and b.core.tid != d.tid:
+            if d.seq != NULL:
+                free(d.seq)
+            d.tid = b.core.tid
+            with nogil:
+                d.seq = faidx_fetch_seq(
+                    d.fastafile,
+                    d.header.target_name[d.tid],
+                    0, MAX_POS,
+                    &d.seq_len)
 
+            if d.seq == NULL:
+                raise ValueError(
+                    "reference sequence for '{}' (tid={}) not found".format(
+                        d.header.target_name[d.tid], d.tid))
+
+        # realign read - changes base qualities
+        if d.seq != NULL and d.compute_baq:
+            # 4th option to realign is flag:
+            # apply_baq = flag&1, extend_baq = flag&2, redo_baq = flag&4
+            if d.redo_baq:
+                sam_prob_realn(b, d.seq, d.seq_len, 7)
+            else:
+                sam_prob_realn(b, d.seq, d.seq_len, 3)
+                
+        if d.seq != NULL and d.adjust_capq_threshold > 10:
+            q = sam_cap_mapq(b, d.seq, d.seq_len, d.adjust_capq_threshold)
+            if q < 0:
+                continue
+            elif b.core.qual > q:
+                b.core.qual = q
+                
+        if b.core.qual < d.min_mapping_quality:
+            continue
+        if d.ignore_orphans and b.core.flag & BAM_FPAIRED and not (b.core.flag & BAM_FPROPER_PAIR):
+            continue
+        
+        break
+        
     return ret
+
 
 cdef class IteratorColumn:
     '''abstract base class for iterators over columns.
@@ -2225,7 +2280,7 @@ cdef class IteratorColumn:
     consider the conversion to a list::
 
        f = AlignmentFile("file.bam", "rb")
-       result = list( f.pileup() )
+       result = list(f.pileup())
 
     Here, ``result`` will contain ``n`` objects of type
     :class:`~pysam.PileupColumn` for ``n`` columns, but each object in
@@ -2233,44 +2288,40 @@ cdef class IteratorColumn:
 
     The desired behaviour can be achieved by list comprehension::
 
-       result = [ x.pileups() for x in f.pileup() ]
+       result = [x.pileups() for x in f.pileup()]
 
     ``result`` will be a list of ``n`` lists of objects of type
     :class:`~pysam.PileupRead`.
 
-    If the iterator is associated with a :class:`~pysam.Fastafile` using the
-    :meth:`addReference` method, then the iterator will export the
-    current sequence via the methods :meth:`getSequence` and
-    :meth:`seq_len`.
+    If the iterator is associated with a :class:`~pysam.Fastafile`
+    using the :meth:`add_reference` method, then the iterator will
+    export the current sequence via the methods :meth:`get_sequence`
+    and :meth:`seq_len`.
 
-    Optional kwargs to the iterator:
-
-    stepper
-       The stepper controls how the iterator advances.
-
-       Valid values are None, "all" (default), "nofilter" or "samtools".
-
-       See AlignmentFile.pileup for description.
-
-    fastafile
-       A :class:`~pysam.FastaFile` object
-
-    max_depth
-       maximum read depth. The default is 8000.
-
+    See :class:`~AlignmentFile.pileup` for kwargs to the iterator.
     '''
 
-    def __cinit__( self, AlignmentFile samfile, **kwargs ):
+    def __cinit__( self, AlignmentFile samfile, **kwargs):
         self.samfile = samfile
         self.fastafile = kwargs.get("fastafile", None)
-        self.stepper = kwargs.get("stepper", None)
+        self.stepper = kwargs.get("stepper", "samtools")
         self.max_depth = kwargs.get("max_depth", 8000)
+        self.ignore_overlaps = kwargs.get("ignore_overlaps", True)
+        self.min_base_quality = kwargs.get("min_base_quality", 13)
         self.iterdata.seq = NULL
+        self.iterdata.min_mapping_quality = kwargs.get("min_mapping_quality", 0)
+        self.iterdata.flag_require = kwargs.get("flag_require", 0)
+        self.iterdata.flag_filter = kwargs.get("flag_filter", BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP)
+        self.iterdata.adjust_capq_threshold = kwargs.get("adjust_capq_threshold", 0)
+        self.iterdata.compute_baq = kwargs.get("compute_baq", True)
+        self.iterdata.redo_baq = kwargs.get("redo_baq", False)
+        self.iterdata.ignore_orphans = kwargs.get("ignore_orphans", True)
+        
         self.tid = 0
         self.pos = 0
         self.n_plp = 0
         self.plp = NULL
-        self.pileup_iter = <bam_plp_t>NULL
+        self.pileup_iter = <bam_mplp_t>NULL
 
     def __iter__(self):
         return self
@@ -2279,12 +2330,14 @@ cdef class IteratorColumn:
         '''perform next iteration.
         '''
         # do not release gil here because of call-backs
-        self.plp = bam_plp_auto(self.pileup_iter,
-                                &self.tid,
-                                &self.pos,
-                                &self.n_plp)
+        cdef int ret = bam_mplp_auto(self.pileup_iter,
+                                     &self.tid,
+                                     &self.pos,
+                                     &self.n_plp,
+                                     &self.plp)
+        return ret
 
-    cdef char * getSequence(self):
+    cdef char * get_sequence(self):
         '''return current reference sequence underlying the iterator.
         '''
         return self.iterdata.seq
@@ -2294,7 +2347,7 @@ cdef class IteratorColumn:
         def __get__(self):
             return self.iterdata.seq_len
 
-    def addReference(self, Fastafile fastafile):
+    def add_reference(self, FastaFile fastafile):
        '''
        add reference sequences in `fastafile` to iterator.'''
        self.fastafile = fastafile
@@ -2303,25 +2356,16 @@ cdef class IteratorColumn:
        self.iterdata.tid = -1
        self.iterdata.fastafile = self.fastafile.fastafile
 
-    def hasReference(self):
+    def has_reference(self):
         '''
         return true if iterator is associated with a reference'''
         return self.fastafile
-
-    cdef setMask(self, mask):
-        '''set masking flag in iterator.
-
-        reads with bits set in `mask` will be skipped.
-        '''
-        raise NotImplementedError()
-        # self.mask = mask
-        # bam_plp_set_mask( self.pileup_iter, self.mask )
-
-    cdef setupIteratorData( self,
-                            int tid,
-                            int start,
-                            int stop,
-                            int multiple_iterators=0 ):
+            
+    cdef _setup_iterator(self,
+                         int tid,
+                         int start,
+                         int stop,
+                         int multiple_iterators=0):
         '''setup the iterator structure'''
 
         self.iter = IteratorRowRegion(self.samfile, tid, start, stop, multiple_iterators)
@@ -2340,31 +2384,36 @@ cdef class IteratorColumn:
         # pileup_iter
         self._free_pileup_iter()
 
+        cdef void * data[1]
+        data[0] = <void*>&self.iterdata
+        
         if self.stepper is None or self.stepper == "all":
             with nogil:
-                self.pileup_iter = bam_plp_init(
-                    <bam_plp_auto_f>&__advance_all,
-                    &self.iterdata)
+                self.pileup_iter = bam_mplp_init(1,
+                                                 <bam_plp_auto_f>&__advance_all,
+                                                 data)
         elif self.stepper == "nofilter":
             with nogil:
-                self.pileup_iter = bam_plp_init(
-                    <bam_plp_auto_f>&__advance_nofilter,
-                    &self.iterdata)
+                self.pileup_iter = bam_mplp_init(1,
+                                                 <bam_plp_auto_f>&__advance_nofilter,
+                                                 data)
         elif self.stepper == "samtools":
             with nogil:
-                self.pileup_iter = bam_plp_init(
-                    <bam_plp_auto_f>&__advance_snpcalls,
-                    &self.iterdata)
+                self.pileup_iter = bam_mplp_init(1,
+                                                 <bam_plp_auto_f>&__advance_samtools,
+                                                 data)
         else:
             raise ValueError(
                 "unknown stepper option `%s` in IteratorColumn" % self.stepper)
 
         if self.max_depth:
             with nogil:
-                bam_plp_set_maxcnt(self.pileup_iter, self.max_depth)
+                bam_mplp_set_maxcnt(self.pileup_iter, self.max_depth)
 
-        # bam_plp_set_mask( self.pileup_iter, self.mask )
-
+        if self.ignore_overlaps:
+            with nogil:
+                bam_mplp_init_overlaps(self.pileup_iter)
+                
     cdef reset(self, tid, start, stop):
         '''reset iterator position.
 
@@ -2381,21 +2430,22 @@ cdef class IteratorColumn:
             self.iterdata.seq = NULL
             self.iterdata.tid = -1
 
-        # self.pileup_iter = bam_plp_init( &__advancepileup, &self.iterdata )
+        # self.pileup_iter = bam_mplp_init(1
+        #                                  &__advancepileup,
+        #                                  &self.iterdata)
         with nogil:
-            bam_plp_reset(self.pileup_iter)
-
+            bam_mplp_reset(self.pileup_iter)
+        
     cdef _free_pileup_iter(self):
         '''free the memory alloc'd by bam_plp_init.
 
-        This is needed before setupIteratorData allocates
-        another pileup_iter, or else memory will be lost.
-        '''
-        if self.pileup_iter != <bam_plp_t>NULL:
+        This is needed before setup_iterator allocates another
+        pileup_iter, or else memory will be lost.  '''
+        if self.pileup_iter != <bam_mplp_t>NULL:
             with nogil:
-                bam_plp_reset(self.pileup_iter)
-                bam_plp_destroy(self.pileup_iter)
-                self.pileup_iter = <bam_plp_t>NULL
+                bam_mplp_reset(self.pileup_iter)
+                bam_mplp_destroy(self.pileup_iter)
+                self.pileup_iter = <bam_mplp_t>NULL
 
     def __dealloc__(self):
         # reset in order to avoid memory leak messages for iterators
@@ -2406,12 +2456,21 @@ cdef class IteratorColumn:
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
             self.iterdata.seq = NULL
+        
+    # backwards compatibility
+    def hasReference(self):
+        return self.has_reference()
+    cdef char * getSequence(self):
+        return self.get_sequence()
+    def addReference(self, FastaFile fastafile):
+        return self.add_reference(fastafile)
 
-
+            
 cdef class IteratorColumnRegion(IteratorColumn):
     '''iterates over a region only.
     '''
-    def __cinit__(self, AlignmentFile samfile,
+    def __cinit__(self,
+                  AlignmentFile samfile,
                   int tid = 0,
                   int start = 0,
                   int stop = MAX_POS,
@@ -2419,29 +2478,35 @@ cdef class IteratorColumnRegion(IteratorColumn):
                   **kwargs ):
 
         # initialize iterator
-        self.setupIteratorData(tid, start, stop, 1)
+        self._setup_iterator(tid, start, stop, 1)
         self.start = start
         self.stop = stop
         self.truncate = truncate
 
     def __next__(self):
 
+        cdef int n
+        
         while 1:
-            self.cnext()
-            if self.n_plp < 0:
+            n = self.cnext()
+            if n < 0:
                 raise ValueError("error during iteration" )
 
-            if self.plp == NULL:
+            if n == 0:
                 raise StopIteration
 
             if self.truncate:
-                if self.start > self.pos: continue
-                if self.pos >= self.stop: raise StopIteration
+                if self.start > self.pos:
+                    continue
+                if self.pos >= self.stop:
+                    raise StopIteration
 
             return makePileupColumn(&self.plp,
                                     self.tid,
                                     self.pos,
                                     self.n_plp,
+                                    self.min_base_quality,
+                                    self.iterdata.seq,
                                     self.samfile.header)
 
 
@@ -2458,30 +2523,33 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
             raise StopIteration
 
         # initialize iterator
-        self.setupIteratorData(self.tid, 0, MAX_POS, 1)
+        self._setup_iterator(self.tid, 0, MAX_POS, 1)
 
     def __next__(self):
 
+        cdef int n
         while 1:
-            self.cnext()
+            n = self.cnext()
+            if n < 0:
+                raise ValueError("error during iteration")
 
-            if self.n_plp < 0:
-                raise ValueError("error during iteration" )
+            # proceed to next reference or stop
+            if n == 0:
+                self.tid += 1
+                if self.tid < self.samfile.nreferences:
+                    self._setup_iterator(self.tid, 0, MAX_POS, 0)
+                else:
+                    raise StopIteration
+                continue
 
             # return result, if within same reference
-            if self.plp != NULL:
-                return makePileupColumn(&self.plp,
-                                        self.tid,
-                                        self.pos,
-                                        self.n_plp,
-                                        self.samfile.header)
-
-            # otherwise, proceed to next reference or stop
-            self.tid += 1
-            if self.tid < self.samfile.nreferences:
-                self.setupIteratorData(self.tid, 0, MAX_POS, 0)
-            else:
-                raise StopIteration
+            return makePileupColumn(&self.plp,
+                                    self.tid,
+                                    self.pos,
+                                    self.n_plp,
+                                    self.min_base_quality,
+                                    self.iterdata.seq,
+                                    self.samfile.header)
 
 
 cdef class SNPCall:
@@ -2618,6 +2686,7 @@ cdef class IndexedReads:
                 ret = sam_read1(self.htsfile,
                                 hdr,
                                 b)
+
             if ret > 0:
                 qname = charptr_to_str(pysam_bam_get_qname(b))
                 self.index[qname].append(pos)

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bamtk.c -- main samtools command front-end.
 
@@ -40,12 +40,14 @@ int bam_mpileup(int argc, char *argv[]);
 int bam_merge(int argc, char *argv[]);
 int bam_index(int argc, char *argv[]);
 int bam_sort(int argc, char *argv[]);
-/* AH: int bam_tview_main(int argc, char *argv[]); */
+/* AH: removed */
+/* int bam_tview_main(int argc, char *argv[]); */
 int bam_mating(int argc, char *argv[]);
 int bam_rmdup(int argc, char *argv[]);
 int bam_flagstat(int argc, char *argv[]);
 int bam_fillmd(int argc, char *argv[]);
 int bam_idxstats(int argc, char *argv[]);
+int bam_markdup(int argc, char *argv[]);
 int main_samview(int argc, char *argv[]);
 int main_import(int argc, char *argv[]);
 int main_reheader(int argc, char *argv[]);
@@ -94,6 +96,7 @@ static void usage(FILE *fp)
 "     rmdup          remove PCR duplicates\n"
 "     targetcut      cut fosmid regions (for fosmid pool only)\n"
 "     addreplacerg   adds or replaces RG tags\n"
+"     markdup        mark duplicates\n"
 "\n"
 "  -- File operations\n"
 "     collate        shuffle and group alignments by name\n"
@@ -128,16 +131,28 @@ static void usage(FILE *fp)
 #endif
 }
 
+// This is a tricky one, but on Windows the filename wildcard expansion is done by
+// the application and not by the shell, as traditionally it never had a "shell".
+// Even now, DOS and Powershell do not do this expansion (but bash does).
+//
+// This means that Mingw/Msys implements code before main() that takes e.g. "*" and
+// expands it up to a list of matching filenames.  This in turn breaks things like
+// specifying "*" as a region (all the unmapped reads).  We take a hard line here -
+// filename expansion is the task of the shell, not our application!
+#ifdef _WIN32
+int _CRT_glob = 0;
+#endif
+
 int samtools_main(int argc, char *argv[])
 {
 #ifdef _WIN32
-    setmode(fileno(pysam_stdout), O_BINARY);
+    setmode(fileno(samtools_stdout), O_BINARY);
     setmode(fileno(stdin),  O_BINARY);
 #endif
-    if (argc < 2) { usage(pysam_stderr); return 1; }
+    if (argc < 2) { usage(samtools_stderr); return 1; }
 
     if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0) {
-        if (argc == 2) { usage(pysam_stdout); return 0; }
+        if (argc == 2) { usage(samtools_stdout); return 0; }
 
         // Otherwise change "samtools help COMMAND [...]" to "samtools COMMAND";
         // main_xyz() functions by convention display the subcommand's usage
@@ -158,6 +173,7 @@ int samtools_main(int argc, char *argv[])
     else if (strcmp(argv[1], "dict") == 0)      ret = dict_main(argc-1, argv+1);
     else if (strcmp(argv[1], "fixmate") == 0)   ret = bam_mating(argc-1, argv+1);
     else if (strcmp(argv[1], "rmdup") == 0)     ret = bam_rmdup(argc-1, argv+1);
+    else if (strcmp(argv[1], "markdup") == 0)   ret = bam_markdup(argc-1, argv+1);
     else if (strcmp(argv[1], "flagstat") == 0)  ret = bam_flagstat(argc-1, argv+1);
     else if (strcmp(argv[1], "calmd") == 0)     ret = bam_fillmd(argc-1, argv+1);
     else if (strcmp(argv[1], "fillmd") == 0)    ret = bam_fillmd(argc-1, argv+1);
@@ -180,22 +196,24 @@ int samtools_main(int argc, char *argv[])
     else if (strcmp(argv[1], "quickcheck") == 0)  ret = main_quickcheck(argc-1, argv+1);
     else if (strcmp(argv[1], "addreplacerg") == 0) ret = main_addreplacerg(argc-1, argv+1);
     else if (strcmp(argv[1], "pileup") == 0) {
-        fprintf(pysam_stderr, "[main] The `pileup' command has been removed. Please use `mpileup' instead.\n");
+        fprintf(samtools_stderr, "[main] The `pileup' command has been removed. Please use `mpileup' instead.\n");
         return 1;
     }
-    /* else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1); */
+/* AH:
+    else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
+*/
     else if (strcmp(argv[1], "--version") == 0) {
-        fprintf(pysam_stdout, 
+        fprintf(samtools_stdout, 
 "samtools %s\n"
 "Using htslib %s\n"
 "Copyright (C) 2017 Genome Research Ltd.\n",
                samtools_version(), hts_version());
     }
     else if (strcmp(argv[1], "--version-only") == 0) {
-        fprintf(pysam_stdout, "%s+htslib-%s\n", samtools_version(), hts_version());
+        fprintf(samtools_stdout, "%s+htslib-%s\n", samtools_version(), hts_version());
     }
     else {
-        fprintf(pysam_stderr, "[main] unrecognized command '%s'\n", argv[1]);
+        fprintf(samtools_stderr, "[main] unrecognized command '%s'\n", argv[1]);
         return 1;
     }
     return ret;

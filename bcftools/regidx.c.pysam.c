@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /* 
     Copyright (C) 2014-2016 Genome Research Ltd.
@@ -419,11 +419,11 @@ int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, uint32_t 
 
     ss = se+1;
     *beg = strtod(ss, &se);
-    if ( ss==se ) { fprintf(pysam_stderr,"Could not parse bed line: %s\n", line); return -2; }
+    if ( ss==se ) { fprintf(bcftools_stderr,"Could not parse bed line: %s\n", line); return -2; }
 
     ss = se+1;
     *end = strtod(ss, &se) - 1;
-    if ( ss==se ) { fprintf(pysam_stderr,"Could not parse bed line: %s\n", line); return -2; }
+    if ( ss==se ) { fprintf(bcftools_stderr,"Could not parse bed line: %s\n", line); return -2; }
     
     return 0;
 }
@@ -451,8 +451,8 @@ int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, uint32_t 
 
     ss = se+1;
     *beg = strtod(ss, &se);
-    if ( ss==se ) { fprintf(pysam_stderr,"Could not parse tab line: %s\n", line); return -2; }
-    if ( *beg==0 ) { fprintf(pysam_stderr,"Could not parse tab line, expected 1-based coordinate: %s\n", line); return -2; }
+    if ( ss==se ) { fprintf(bcftools_stderr,"Could not parse tab line: %s\n", line); return -2; }
+    if ( *beg==0 ) { fprintf(bcftools_stderr,"Could not parse tab line, expected 1-based coordinate: %s\n", line); return -2; }
     (*beg)--;
 
     if ( !se[0] || !se[1] )
@@ -462,7 +462,7 @@ int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, uint32_t 
         ss = se+1;
         *end = strtod(ss, &se);
         if ( ss==se ) *end = *beg;
-        else if ( *end==0 ) { fprintf(pysam_stderr,"Could not parse tab line, expected 1-based coordinate: %s\n", line); return -2; }
+        else if ( *end==0 ) { fprintf(bcftools_stderr,"Could not parse tab line, expected 1-based coordinate: %s\n", line); return -2; }
         else (*end)--;
     }
     return 0;
@@ -490,8 +490,8 @@ int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, uint32_t 
 
     ss = se+1;
     *beg = strtod(ss, &se);
-    if ( ss==se ) { fprintf(pysam_stderr,"Could not parse reg line: %s\n", line); return -2; }
-    if ( *beg==0 ) { fprintf(pysam_stderr,"Could not parse reg line, expected 1-based coordinate: %s\n", line); return -2; }
+    if ( ss==se ) { fprintf(bcftools_stderr,"Could not parse reg line: %s\n", line); return -2; }
+    if ( *beg==0 ) { fprintf(bcftools_stderr,"Could not parse reg line, expected 1-based coordinate: %s\n", line); return -2; }
     (*beg)--;
 
     if ( !se[0] || !se[1] )
@@ -501,7 +501,7 @@ int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, uint32_t 
         ss = se+1;
         *end = strtod(ss, &se);
         if ( ss==se ) *end = *beg;
-        else if ( *end==0 ) { fprintf(pysam_stderr,"Could not parse reg line, expected 1-based coordinate: %s\n", line); return -2; }
+        else if ( *end==0 ) { fprintf(bcftools_stderr,"Could not parse reg line, expected 1-based coordinate: %s\n", line); return -2; }
         else (*end)--;
     }
     return 0;

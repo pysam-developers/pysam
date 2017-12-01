@@ -1159,7 +1159,13 @@ cdef inline bcf_sync_end(VariantRecord record):
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf_info_t *info
     cdef int end_id = bcf_header_get_info_id(record.header.ptr, b'END')
-    cdef int ref_len = len(record.ref)
+    cdef int ref_len 
+
+    # allow missing ref when instantiating a new record
+    if record.ref is not None:
+        ref_len = len(record.ref)
+    else:
+        ref_len = 0
 
     # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
     if not record.ptr.n_allele or record.ptr.rlen == ref_len:
@@ -2034,6 +2040,10 @@ cdef class VariantHeader(object):
 
         """
         rec = makeVariantRecord(self, bcf_init())
+
+        if not rec:
+            raise MemoryError('unable to allocate BCF record')
+
         rec.ptr.n_sample = bcf_hdr_nsamples(self.ptr)
 
         if contig is not None:
@@ -3720,42 +3730,40 @@ cdef class BCFIterator(BaseIterator):
         if bcf is None:
             raise ValueError('bcf must not be None')
 
+        if contig is None:
+            raise ValueError('contig must be specified')
+
         if not isinstance(bcf.index, BCFIndex):
             raise ValueError('bcf index required')
 
         cdef BCFIndex index = bcf.index
+
+        self.bcf = bcf
+        self.index = index
+
         cdef int rid, cstart, cstop
 
-        if not index:
-            raise ValueError('bcf index required')
+        try:
+            rid = index.refmap[contig]
+        except KeyError:
+            # A query for a non-existant contig yields an empty iterator, does not raise an error
+            self.iter = NULL
+            return
 
         if reopen:
-            bcf = bcf.copy()
+            self.bcf = self.bcf.copy()
 
-        if contig is None:
-            raise ValueError('contig or tid must be specified')
-        elif isinstance(contig, int):
-            rid = contig
-        else:
-            try:
-                rid = index.refmap[contig]
-            except KeyError:
-                raise ValueError('Unknown contig specified: {}'.format(contig))
-
-        if start is None:
-            start = 0
-        if stop is None:
-            stop = MAX_POS
-
-        cstart, cstop = start, stop
+        cstart = start if start is not None else 0
+        cstop  = stop  if stop  is not None else MAX_POS
 
         with nogil:
             self.iter = bcf_itr_queryi(index.ptr, rid, cstart, cstop)
 
-        # Do not fail on self.iter == NULL, since it signifies a null query.
-
-        self.bcf = bcf
-        self.index = index
+        if not self.iter:
+            if errno:
+                raise IOError(errno, strerror(errno))
+            else:
+                raise IOError('unable to fetch {}:{}-{}'.format(contig, start+1, stop))
 
     def __dealloc__(self):
         if self.iter:
@@ -3771,6 +3779,9 @@ cdef class BCFIterator(BaseIterator):
 
         cdef bcf1_t *record = bcf_init1()
 
+        if not record:
+            raise MemoryError('unable to allocate BCF record')
+
         record.pos = -1
         if self.bcf.drop_samples:
             record.max_unpack = BCF_UN_SHR
@@ -3784,8 +3795,12 @@ cdef class BCFIterator(BaseIterator):
             _stop_BCFIterator(self, record)
             if ret == -1:
                 raise StopIteration
+            elif ret == -2:
+                raise IOError('truncated file')
+            elif errno:
+                raise IOError(errno, strerror(errno))
             else:
-                raise ValueError('error reading BCF file')
+                raise IOError('unable to fetch next record')
 
         ret = bcf_subset_format(self.bcf.header.ptr, record)
 
@@ -3811,35 +3826,31 @@ cdef class TabixIterator(BaseIterator):
 
         cdef TabixIndex index = bcf.index
 
-        if not index:
-            raise ValueError('bcf index required')
+        self.bcf = bcf
+        self.index = index
+
+        cdef int rid, cstart, cstop
+
+        try:
+            rid = index.refmap[contig]
+        except KeyError:
+            # A query for a non-existant contig yields an empty iterator, does not raise an error
+            self.iter = NULL
+            return
 
         if reopen:
-            bcf = bcf.copy()
+            self.bcf = self.bcf.copy()
 
-        if contig is None:
-            raise ValueError('contig or tid must be specified')
-        elif isinstance(contig, int):
-            rid = contig
-        else:
-            try:
-                rid = index.refmap[contig]
-            except KeyError:
-                raise ValueError('Unknown contig specified: {}'.format(contig))
-
-        if start is None:
-            start = 0
-        if stop is None:
-            stop = MAX_POS
-
-        cstart, cstop = start, stop
+        cstart = start if start is not None else 0
+        cstop  = stop  if stop  is not None else MAX_POS
 
         self.iter = tbx_itr_queryi(index.ptr, rid, start, stop)
 
-        # Do not fail on self.iter == NULL, since it signifies a null query.
-
-        self.bcf = bcf
-        self.index = index
+        if not self.iter:
+            if errno:
+                raise IOError(errno, strerror(errno))
+            else:
+                raise IOError('unable to fetch {}:{}-{}'.format(contig, start+1, stop))
 
     def __dealloc__(self):
         if self.iter:
@@ -3870,10 +3881,17 @@ cdef class TabixIterator(BaseIterator):
             self.iter = NULL
             if ret == -1:
                 raise StopIteration
+            elif ret == -2:
+                raise IOError('truncated file')
+            elif errno:
+                raise IOError(errno, strerror(errno))
             else:
-                raise ValueError('error reading indexed VCF file')
+                raise IOError('unable to fetch next record')
 
         cdef bcf1_t *record = bcf_init1()
+
+        if not record:
+            raise MemoryError('unable to allocate BCF record')
 
         record.pos = -1
         if self.bcf.drop_samples:
@@ -3989,7 +4007,7 @@ cdef class VariantFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
@@ -4010,7 +4028,7 @@ cdef class VariantFile(HTSFile):
             if errno == EPIPE:
                 errno = 0
             else:
-                raise OSError(errno, force_str(strerror(errno)))
+                raise IOError(errno, force_str(strerror(errno)))
 
     def __iter__(self):
         if not self.is_open:
@@ -4026,6 +4044,9 @@ cdef class VariantFile(HTSFile):
         cdef int ret
         cdef bcf1_t *record = bcf_init1()
 
+        if not record:
+            raise MemoryError('unable to allocate BCF record')
+
         record.pos = -1
         if self.drop_samples:
             record.max_unpack = BCF_UN_SHR
@@ -4038,9 +4059,11 @@ cdef class VariantFile(HTSFile):
             if ret == -1:
                 raise StopIteration
             elif ret == -2:
-                raise OSError('truncated file')
+                raise IOError('truncated file')
+            elif errno:
+                raise IOError(errno, strerror(errno))
             else:
-                raise ValueError('Variant read failed')
+                raise IOError('unable to fetch next record')
 
         return makeVariantRecord(self.header, record)
 
@@ -4170,16 +4193,16 @@ cdef class VariantFile(HTSFile):
 
         elif mode.startswith(b'r'):
             # open file for reading
-            if not self._exists():
-                raise IOError('file `{}` not found'.format(filename))
-
             self.htsfile = self._open_htsfile()
 
             if not self.htsfile:
-                raise ValueError("could not open file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+                if errno:
+                    raise IOError(errno, 'could not open variant file `{}`: {}'.format(filename, force_str(strerror(errno))))
+                else:
+                    raise ValueError('could not open variant file `{}`'.format(filename))
 
             if self.htsfile.format.format not in (bcf, vcf):
-                raise ValueError("invalid file `{}` (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+                raise ValueError('invalid file `{}` (mode=`{}`) - is it VCF/BCF format?'.format(filename, mode))
 
             self.check_truncation(ignore_truncation)
 
@@ -4189,7 +4212,7 @@ cdef class VariantFile(HTSFile):
             try:
                 self.header = makeVariantHeader(hdr)
             except ValueError:
-                raise ValueError("file `{}` does not have valid header (mode='{}') - is it VCF/BCF format?".format(filename, mode))
+                raise ValueError('file `{}` does not have valid header (mode=`{}`) - is it VCF/BCF format?'.format(filename, mode))
 
             if isinstance(self.filename, bytes):
                 cfilename = self.filename
@@ -4214,7 +4237,7 @@ cdef class VariantFile(HTSFile):
             if not self.is_stream:
                 self.start_offset = self.tell()
         else:
-            raise ValueError("unknown mode {}".format(mode))
+            raise ValueError('unknown mode {}'.format(mode))
 
     def reset(self):
         """reset file position to beginning of file just after the header."""
@@ -4300,8 +4323,11 @@ cdef class VariantFile(HTSFile):
         _, tid, start, stop = self.parse_region(contig, start, stop, region,
                                                 None, end=end, reference=reference)
 
+        if contig is None:
+            contig = self.get_reference_name(tid)
+
         self.is_reading = 1
-        return self.index.fetch(self, tid, start, stop, reopen)
+        return self.index.fetch(self, contig, start, stop, reopen)
 
     def new_record(self, *args, **kwargs):
         """Create a new empty :class:`VariantRecord`.

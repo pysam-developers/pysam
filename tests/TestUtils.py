@@ -10,18 +10,23 @@ WORKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                        "pysam_test_work"))
 
 BAM_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                             "pysam_data"))
+                                           "pysam_data"))
 
 TABIX_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                              "tabix_data"))
 
 CBCF_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                             "cbcf_data"))
+                                            "cbcf_data"))
 
-LINKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "linker_tests"))
+LINKDIR = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "linker_tests"))
+
+
+TESTS_TEMPDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "tmp"))
 
 
 IS_PYTHON3 = sys.version_info[0] >= 3
+
 
 if IS_PYTHON3:
     from itertools import zip_longest
@@ -37,6 +42,7 @@ if IS_PYTHON3:
             return s.decode('ascii')
         except AttributeError:
             return s
+
     def force_bytes(s):
         try:
             return s.encode('ascii')
@@ -45,6 +51,7 @@ if IS_PYTHON3:
 else:
     def force_str(s):
         return s
+
     def force_bytes(s):
         return s
 
@@ -113,9 +120,9 @@ def check_samtools_view_equal(
             l1 = sorted(l1[:-1].split("\t"))
             l2 = sorted(l2[:-1].split("\t"))
             if l1 != l2:
-                print ("mismatch in line %i" % n)
-                print (l1)
-                print (l2)
+                print("mismatch in line %i" % n)
+                print(l1)
+                print(l2)
                 return False
         else:
             return False
@@ -192,18 +199,17 @@ def check_lines_equal(cls, a, b, sort=False, filter_f=None, msg=None):
 
 def get_temp_filename(suffix=""):
     caller_name = inspect.getouterframes(inspect.currentframe(), 2)[1][3]
+    try:
+        os.makedirs(TESTS_TEMPDIR)
+    except OSError:
+        pass
 
-    if not os.path.exists(WORKDIR):
-        try:
-            os.makedirs(WORKDIR)
-        except OSError:
-            pass
-    
     f = tempfile.NamedTemporaryFile(
-        prefix="tmp_{}_".format(caller_name),
+        prefix="pysamtests_tmp_{}_".format(caller_name),
         suffix=suffix,
         delete=False,
-        dir=WORKDIR)
+        dir=TESTS_TEMPDIR)
+
     f.close()
     return f.name
 
@@ -231,3 +237,7 @@ def load_and_convert(filename, encode=True):
                 data.append(d)
 
     return data
+
+
+def flatten_nested_list(l):
+    return [i for ll in l for i in ll]
