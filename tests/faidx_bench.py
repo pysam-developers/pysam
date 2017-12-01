@@ -2,7 +2,7 @@
 
 pytest benchmark/faidx_bench.py
 """
-
+import os
 import pysam
 
 
