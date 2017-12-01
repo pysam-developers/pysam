@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcfsort.c -- sort subcommand
 
@@ -163,7 +163,7 @@ void blk_read(khp_blk_t *bhp, bcf_hdr_t *hdr, blk_t *blk)
 
 void merge_blocks(args_t *args) 
 {
-    fprintf(pysam_stderr,"Merging %d temporary files\n", (int)args->nblk);
+    fprintf(bcftools_stderr,"Merging %d temporary files\n", (int)args->nblk);
 
     khp_blk_t *bhp = khp_init(blk);
 
@@ -190,7 +190,7 @@ void merge_blocks(args_t *args)
     }
     if ( hts_close(out)!=0 ) error("Close failed: %s\n", args->output_fname);
 
-    fprintf(pysam_stderr,"Cleaning\n");
+    fprintf(bcftools_stderr,"Cleaning\n");
     for (i=0; i<args->nblk; i++)
     {
         blk_t *blk = args->blk + i;
@@ -201,21 +201,21 @@ void merge_blocks(args_t *args)
     rmdir(args->tmp_dir);
     free(args->blk);
     khp_destroy(blk, bhp);
-    fprintf(pysam_stderr,"Done\n");
+    fprintf(bcftools_stderr,"Done\n");
 }
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Sort VCF/BCF file.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools sort [OPTIONS] <FILE.vcf>\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "    -m, --max-mem <float>[kMG]    maximum memory to use [768M]\n");    // using metric units, 1M=1e6
-    fprintf(pysam_stderr, "    -o, --output-file <file>      output file name [pysam_stdout]\n");
-    fprintf(pysam_stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysam_stderr, "    -T, --temp-dir <dir>          temporary files [/tmp/bcftools-sort.XXXXXX/]\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   Sort VCF/BCF file.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools sort [OPTIONS] <FILE.vcf>\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Options:\n");
+    fprintf(bcftools_stderr, "    -m, --max-mem <float>[kMG]    maximum memory to use [768M]\n");    // using metric units, 1M=1e6
+    fprintf(bcftools_stderr, "    -o, --output-file <file>      output file name [bcftools_stdout]\n");
+    fprintf(bcftools_stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(bcftools_stderr, "    -T, --temp-dir <dir>          temporary files [/tmp/bcftools-sort.XXXXXX/]\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 
@@ -244,7 +244,7 @@ void init(args_t *args)
         args->tmp_dir = strdup(args->tmp_dir);
         mkdir_p(args->tmp_dir);
     }
-    fprintf(pysam_stderr,"Writing to %s\n", args->tmp_dir);
+    fprintf(bcftools_stderr,"Writing to %s\n", args->tmp_dir);
 }
 void destroy(args_t *args)
 {

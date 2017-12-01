@@ -1211,8 +1211,8 @@ static bool parse_opts(int argc, char *argv[], bam2fq_opts_t** opts_out)
     }
 
     if (nIndex==0 && opts->index_file[0]) {
-        fprintf(pysam_stderr, "index_format not specified, but index file given\n");
-        bam2fq_usage(pysam_stderr, argv[0]);
+        fprintf(samtools_stderr, "index_format not specified, but index file given\n");
+        bam2fq_usage(samtools_stderr, argv[0]);
         free_opts(opts);
         return false;
     }

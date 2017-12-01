@@ -445,7 +445,7 @@ bam_hdr_t * fix_header(bam_hdr_t *old, faidx_t *fai)
                                 strcat(newtext, len_buf);
                             }
                             else {
-                                fprintf(pysam_stderr, "LN value of the reference is larger than the original!\n");
+                                fprintf(samtools_stderr, "LN value of the reference is larger than the original!\n");
                                 exit(1);
                             }
                             break;

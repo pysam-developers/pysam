@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_markdup.c -- Mark duplicates from a coord sorted file that has gone
                      through fixmates with the mate scoring option on.
@@ -274,7 +274,7 @@ static int64_t get_mate_score(bam1_t *b) {
     if ((data = bam_aux_get(b, "ms"))) {
         score = bam_aux2i(data);
     } else {
-        fprintf(pysam_stderr, "[markdup] error: no ms score tag.\n");
+        fprintf(samtools_stderr, "[markdup] error: no ms score tag.\n");
         return -1;
     }
 
@@ -321,7 +321,7 @@ static int make_pair_key(key_data_t *key, bam1_t *bam) {
         other_end   = unclipped_other_end(bam->core.mpos, cig);
         other_coord = unclipped_other_start(bam->core.mpos, cig);
     } else {
-        fprintf(pysam_stderr, "[markdup] error: no MC tag.\n");
+        fprintf(samtools_stderr, "[markdup] error: no MC tag.\n");
         return 1;
     }
 
@@ -460,7 +460,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
     int reading, writing, excluded, duplicate, single, pair, single_dup, examined;
 
     if ((header = sam_hdr_read(in)) == NULL) {
-        fprintf(pysam_stderr, "[markdup] error reading header\n");
+        fprintf(samtools_stderr, "[markdup] error reading header\n");
         return 1;
     }
 
@@ -475,13 +475,13 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
        // looking for SO:queryname within @HD only
        // (e.g. must ignore in a @CO comment line later in header)
        if ((p != 0) && (p < q)) {
-           fprintf(pysam_stderr, "[markdup] error: queryname sorted, must be sorted by coordinate.\n");
+           fprintf(samtools_stderr, "[markdup] error: queryname sorted, must be sorted by coordinate.\n");
            return 1;
        }
     }
 
     if (sam_hdr_write(out, header) < 0) {
-        fprintf(pysam_stderr, "[markdup] error writing header.\n");
+        fprintf(samtools_stderr, "[markdup] error writing header.\n");
         return 1;
     }
 
@@ -493,7 +493,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
 
 
     if ((in_read->b = bam_init1()) == NULL) {
-        fprintf(pysam_stderr, "[markdup] error: unable to allocate memory for alignment.\n");
+        fprintf(samtools_stderr, "[markdup] error: unable to allocate memory for alignment.\n");
         return 1;
     }
 
@@ -505,7 +505,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
         if (in_read->b->core.tid >= 0) { // -1 for unmapped reads
             if (in_read->b->core.tid < prev_tid ||
                ((in_read->b->core.tid == prev_tid) && (in_read->b->core.pos < prev_coord))) {
-                fprintf(pysam_stderr, "[markdup] error: bad coordinate order.\n");
+                fprintf(samtools_stderr, "[markdup] error: bad coordinate order.\n");
                 return 1;
             }
         }
@@ -529,7 +529,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
                 in_hash_t *bp;
 
                 if (make_pair_key(&pair_key, in_read->b)) {
-                    fprintf(pysam_stderr, "[markdup] error: unable to assign pair hash key.\n");
+                    fprintf(samtools_stderr, "[markdup] error: unable to assign pair hash key.\n");
                     return 1;
                 }
 
@@ -561,7 +561,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
                         single_dup++;
                     }
                 } else {
-                    fprintf(pysam_stderr, "[markdup] error: single hashing failure.\n");
+                    fprintf(samtools_stderr, "[markdup] error: single hashing failure.\n");
                     return 1;
                 }
 
@@ -580,14 +580,14 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
                     bp = &kh_val(pair_hash, k);
 
                     if ((mate_tmp = get_mate_score(bp->p)) == -1) {
-                        fprintf(pysam_stderr, "[markdup] error: no ms score tag.\n");
+                        fprintf(samtools_stderr, "[markdup] error: no ms score tag.\n");
                         return 1;
                     } else {
                         old_score = calc_score(bp->p) + mate_tmp;
                     }
 
                     if ((mate_tmp = get_mate_score(in_read->b)) == -1) {
-                        fprintf(pysam_stderr, "[markdup] error: no ms score tag.\n");
+                        fprintf(samtools_stderr, "[markdup] error: no ms score tag.\n");
                         return 1;
                     } else {
                         new_score = calc_score(in_read->b) + mate_tmp;
@@ -615,7 +615,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
 
                     duplicate++;
                 } else {
-                    fprintf(pysam_stderr, "[markdup] error: pair hashing failure.\n");
+                    fprintf(samtools_stderr, "[markdup] error: pair hashing failure.\n");
                     return 1;
                 }
             } else { // do the single (or effectively single) reads
@@ -661,7 +661,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
 
                     single_dup++;
                 } else {
-                    fprintf(pysam_stderr, "[markdup] error: single hashing failure.\n");
+                    fprintf(samtools_stderr, "[markdup] error: single hashing failure.\n");
                     return 1;
                 }
             }
@@ -683,7 +683,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
 
             if (!remove_dups || !(in_read->b->core.flag & BAM_FDUP)) {
                 if (sam_write1(out, header, in_read->b) < 0) {
-                    fprintf(pysam_stderr, "[markdup] error: writing output failed.\n");
+                    fprintf(samtools_stderr, "[markdup] error: writing output failed.\n");
                     return 1;
                 }
 
@@ -710,13 +710,13 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
         in_read = kl_pushp(read_queue, read_buffer);
 
         if ((in_read->b = bam_init1()) == NULL) {
-            fprintf(pysam_stderr, "[markdup] error: unable to allocate memory for alignment.\n");
+            fprintf(samtools_stderr, "[markdup] error: unable to allocate memory for alignment.\n");
             return 1;
         }
     }
 
     if (ret < -1) {
-        fprintf(pysam_stderr, "[markdup] error: truncated input file.\n");
+        fprintf(samtools_stderr, "[markdup] error: truncated input file.\n");
         return 1;
     }
 
@@ -728,7 +728,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
         if (bam_get_qname(in_read->b)) { // last entry will be blank
             if (!remove_dups || !(in_read->b->core.flag & BAM_FDUP)) {
                 if (sam_write1(out, header, in_read->b) < 0) {
-                    fprintf(pysam_stderr, "[markdup] error: writing final output failed.\n");
+                    fprintf(samtools_stderr, "[markdup] error: writing final output failed.\n");
                     return 1;
                 }
 
@@ -742,7 +742,7 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
     }
 
     if (do_stats) {
-        fprintf(pysam_stderr, "READ %d WRITTEN %d \n"
+        fprintf(samtools_stderr, "READ %d WRITTEN %d \n"
             "EXCLUDED %d EXAMINED %d\n"
             "PAIRED %d SINGLE %d\n"
             "DULPICATE PAIR %d DUPLICATE SINGLE %d\n"
@@ -760,16 +760,16 @@ static int bam_mark_duplicates(samFile *in, samFile *out, int remove_dups, int32
 
 
 static int markdup_usage(void) {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Usage:  samtools markdup <input.bam> <output.bam>\n\n");
-    fprintf(pysam_stderr, "Option: \n");
-    fprintf(pysam_stderr, "  -r           Remove duplicate reads\n");
-    fprintf(pysam_stderr, "  -l           Max read length (default 300 bases)\n");
-    fprintf(pysam_stderr, "  -s           Report stats.\n");
+    fprintf(samtools_stderr, "\n");
+    fprintf(samtools_stderr, "Usage:  samtools markdup <input.bam> <output.bam>\n\n");
+    fprintf(samtools_stderr, "Option: \n");
+    fprintf(samtools_stderr, "  -r           Remove duplicate reads\n");
+    fprintf(samtools_stderr, "  -l           Max read length (default 300 bases)\n");
+    fprintf(samtools_stderr, "  -s           Report stats.\n");
 
-    sam_global_opt_help(pysam_stderr, "-.O..@");
+    sam_global_opt_help(samtools_stderr, "-.O..@");
 
-    fprintf(pysam_stderr, "\nThe input file must be coordinate sorted and must have gone"
+    fprintf(samtools_stderr, "\nThe input file must be coordinate sorted and must have gone"
                      " through fixmates with the mate scoring option on.\n");
 
     return 1;
@@ -820,7 +820,7 @@ int bam_markdup(int argc, char **argv) {
 
     if (ga.nthreads > 0)  {
         if (!(p.pool = hts_tpool_init(ga.nthreads))) {
-            fprintf(pysam_stderr, "[markdup] error creating thread pool\n");
+            fprintf(samtools_stderr, "[markdup] error creating thread pool\n");
             return 1;
         }
 
@@ -834,7 +834,7 @@ int bam_markdup(int argc, char **argv) {
     sam_close(in);
 
     if (sam_close(out) < 0) {
-        fprintf(pysam_stderr, "[markdup] error closing output file\n");
+        fprintf(samtools_stderr, "[markdup] error closing output file\n");
         ret = 1;
     }
 

@@ -403,6 +403,19 @@ common_options = dict(
 for module in modules:
     module.update(**common_options)
 
+classifiers = """
+Development Status :: 4 - Beta
+Intended Audience :: Science/Research
+Intended Audience :: Developers
+License :: OSI Approved
+Programming Language :: Python
+Topic :: Software Development
+Topic :: Scientific/Engineering
+Operating System :: POSIX
+Operating System :: Unix
+Operating System :: MacOS
+"""
+    
 metadata = {
     'name': "pysam",
     'version': get_pysam_version(),
@@ -411,11 +424,12 @@ metadata = {
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",
     'license': "MIT",
-    'platforms': "ALL",
+    'platforms': ["POSIX", "UNIX", "MacOS"],
+    'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
     'requires': ['cython (>=0.21)'],
-    'ext_modules': modules,
+    'ext_modules': [Extension(**opts) for opts in modules],
     'cmdclass': cmdclass,
     'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h'], },

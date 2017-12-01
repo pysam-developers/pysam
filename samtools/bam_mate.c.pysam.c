@@ -330,7 +330,7 @@ static int bam_mating_core(samFile *in, samFile *out, int remove_reads, int prop
 
                 if (do_mate_scoring) {
                     if ((add_mate_score(pre, cur) == -1) || (add_mate_score(cur, pre) == -1)) {
-                        fprintf(pysam_stderr, "[bam_mating_core] ERROR: unable to add mate score.\n");
+                        fprintf(samtools_stderr, "[bam_mating_core] ERROR: unable to add mate score.\n");
                         goto fail;
                     }
                 }

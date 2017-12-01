@@ -2212,13 +2212,9 @@ int bam_sort_core_ext(int is_by_qname, char* sort_by_tag, const char *fn, const 
             goto err;
         }
     } else { // then merge
-        char **fns;
-        n_files = sort_blocks(n_files, k, buf, prefix, header, n_threads);
-        if (n_files == -1) {
-            ret = -1;
-            goto err;
-        }
-        fprintf(samtools_stderr, "[bam_sort_core] merging from %d files...\n", n_files);
+        fprintf(samtools_stderr,
+	      "[bam_sort_core] merging from %d files and %d in-memory blocks...\n",
+	      n_files, num_in_mem);
         fns = (char**)calloc(n_files, sizeof(char*));
         if (!fns) goto err;
         for (i = 0; i < n_files; ++i) {
