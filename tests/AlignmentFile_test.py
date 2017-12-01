@@ -753,14 +753,14 @@ class TestIO(unittest.TestCase):
         '''read from bam file without index.'''
 
         shutil.copyfile(os.path.join(BAM_DATADIR, "ex2.bam"),
-                        'tmp_ex2.bam')
-        samfile = pysam.AlignmentFile('tmp_ex2.bam',
+                        'tests/tmp_ex2.bam')
+        samfile = pysam.AlignmentFile('tests/tmp_ex2.bam',
                                       "rb")
         self.assertRaises(ValueError, samfile.fetch)
         self.assertEqual(
             len(list(samfile.fetch(until_eof=True))),
             3270)
-        os.unlink('tmp_ex2.bam')
+        os.unlink('tests/tmp_ex2.bam')
 
     # def testReadingUniversalFileMode(self):
     #     '''read from samfile without header.
@@ -1169,7 +1169,116 @@ class TestLargeFieldBug(unittest.TestCase):
         new_read.tags = read.tags
         self.assertEqual(new_read.tags, read.tags)
 
-        
+
+class TestTagParsing(unittest.TestCase):
+
+    '''tests checking the accuracy of tag setting and retrieval.'''
+
+    def makeRead(self):
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.reference_id = 0
+        a.query_sequence = "ACGT" * 3
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 1
+        a.mapping_quality = 20
+        a.cigartuples = ((0, 10), (2, 1), (0, 25))
+        a.next_reference_id = 0
+        a.next_reference_start = 200
+        a.template_length = 0
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 3
+        # todo: create tags
+        return a
+
+    def testNegativeIntegers(self):
+        x = -2
+        aligned_read = self.makeRead()
+        aligned_read.tags = [("XD", int(x))]
+        self.assertEqual(aligned_read.opt('XD'), x)
+        # print (aligned_read.tags)
+
+    def testNegativeIntegers2(self):
+        x = -2
+        r = self.makeRead()
+        r.tags = [("XD", x)]
+        outfile = pysam.AlignmentFile(
+            "tests/test.bam",
+            "wb",
+            referencenames=("chr1",),
+            referencelengths = (1000,))
+        outfile.write(r)
+        outfile.close()
+        infile = pysam.AlignmentFile("tests/test.bam")
+        r = next(infile)
+        self.assertEqual(r.tags, [("XD", x)])
+        infile.close()
+        os.unlink("tests/test.bam")
+
+    def testCigarString(self):
+        r = self.makeRead()
+        self.assertEqual(r.cigarstring, "10M1D25M")
+        r.cigarstring = "20M10D20M"
+        self.assertEqual(r.cigartuples, [(0, 20), (2, 10), (0, 20)])
+        # unsetting cigar string
+        r.cigarstring = None
+        self.assertEqual(r.cigarstring, None)
+
+    def testCigar(self):
+        r = self.makeRead()
+        self.assertEqual(r.cigartuples, [(0, 10), (2, 1), (0, 25)])
+        # unsetting cigar string
+        r.cigartuples = None
+        self.assertEqual(r.cigartuples, None)
+
+    def testLongTags(self):
+        '''see issue 115'''
+
+        r = self.makeRead()
+        rg = 'HS2000-899_199.L3'
+        tags = [('XC', 85), ('XT', 'M'), ('NM', 5),
+                ('SM', 29), ('AM', 29), ('XM', 1),
+                ('XO', 1), ('XG', 4), ('MD', '37^ACCC29T18'),
+                ('XA', '5,+11707,36M1I48M,2;21,-48119779,46M1I38M,2;hs37d5,-10060835,40M1D45M,3;5,+11508,36M1I48M,3;hs37d5,+6743812,36M1I48M,3;19,-59118894,46M1I38M,3;4,-191044002,6M1I78M,3;')]
+
+        r.tags = tags
+        r.tags += [("RG", rg)] * 100
+        tags += [("RG", rg)] * 100
+
+        self.assertEqual(tags, r.tags)
+
+    def testArrayTags(self):
+
+        r = self.makeRead()
+
+        def c(r, l):
+            r.tags = [('ZM', l)]
+            self.assertEqual(list(r.opt("ZM")), list(l))
+
+        # signed integers
+        c(r, (-1, 1))
+        c(r, (-1, 100))
+        c(r, (-1, 200))
+        c(r, (-1, 1000))
+        c(r, (-1, 30000))
+        c(r, (-1, 50000))
+        c(r, (1, -1))
+        c(r, (1, -100))
+        c(r, (1, -200))
+        c(r, (1, -1000))
+        c(r, (1, -30000))
+        c(r, (1, -50000))
+
+        # unsigned integers
+        c(r, (1, 100))
+        c(r, (1, 1000))
+        c(r, (1, 10000))
+        c(r, (1, 100000))
+
+        # floats
+        c(r, (1.0, 100.0))
+
+
 class TestClipping(unittest.TestCase):
 
     def testClipping(self):
@@ -1400,28 +1509,21 @@ class TestHeaderWriteRead(unittest.TestCase):
         self.check_read_write("wc", header)
 
 
-class TestUnmappedReadsRetrieval(unittest.TestCase):
+class TestUnmappedReads(unittest.TestCase):
 
-    def test_fetch_from_sam_with_until_eof_reads_unmapped_reads(self):
-        with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex5.sam"),
-                                 "rb") as samfile:
-            self.assertEqual(len(list(samfile.fetch(until_eof=True))), 2)
+    # TODO
+    # def testSAM(self):
+    #     samfile = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex5.sam"),
+    #                             "r")
+    #     self.assertEqual(len(list(samfile.fetch(until_eof=True))), 2)
+    #     samfile.close()
 
-    def test_fetch_from_bam_with_until_eof_reads_unmapped_reads(self):
-        with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex5.bam"),
-                                 "rb") as samfile:
-            self.assertEqual(len(list(samfile.fetch(until_eof=True))), 2)
+    def testBAM(self):
+        samfile = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex5.bam"),
+                                      "rb")
+        self.assertEqual(len(list(samfile.fetch(until_eof=True))), 2)
+        samfile.close()
 
-    def test_fetch_with_asterisk_only_returns_unmapped_reads(self):
-        with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "test_mapped_unmapped.bam"),
-                                 "rb") as samfile:
-            self.assertEqual(len(list(samfile.fetch(region="*"))), 4)
-
-    def test_fetch_with_asterisk_only_returns_unmapped_reads_by_contig(self):
-        with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "test_mapped_unmapped.bam"),
-                                 "rb") as samfile:
-            self.assertEqual(len(list(samfile.fetch(contig="*"))), 4)
-            
 
 class TestPileupObjects(unittest.TestCase):
 
@@ -1671,12 +1773,10 @@ class TestDeNovoConstruction(unittest.TestCase):
         '''check if individual reads are binary equal.'''
         infile = pysam.AlignmentFile(self.bamfile, "rb")
 
-        references = list(infile)
-        for denovo, reference in zip(references, self.reads):
-            checkFieldEqual(self, reference, denovo)
-            print("reference", str(reference), reference.get_tags(with_value_type=True))
-            print("denovo", str(denovo), denovo.get_tags(with_value_type=True))
-            self.assertEqual(reference.compare(denovo), 0)
+        others = list(infile)
+        for denovo, other in zip(others, self.reads):
+            checkFieldEqual(self, other, denovo)
+            self.assertEqual(other.compare(denovo), 0)
 
     # TODO
     # def testSAMPerRead(self):
@@ -2032,7 +2132,7 @@ class TestPileup(unittest.TestCase):
     def setUp(self):
 
         self.samfile = pysam.AlignmentFile(self.samfilename)
-        self.fastafile = pysam.FastaFile(self.fastafilename)
+        self.fastafile = pysam.Fastafile(self.fastafilename)
 
     def tearDown(self):
         self.samfile.close()
@@ -2073,8 +2173,7 @@ class TestPileup(unittest.TestCase):
         self.checkEqual(refs, iterator)
 
 
-class TestPileupFastafile(TestPileup):
-    '''test pileup functionality - backwards compatibility'''
+class TestCountCoverage(unittest.TestCase):
 
     samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
     fastafilename = os.path.join(BAM_DATADIR, "ex1.fa")
@@ -2084,19 +2183,8 @@ class TestPileupFastafile(TestPileup):
         self.samfile = pysam.AlignmentFile(self.samfilename)
         self.fastafile = pysam.Fastafile(self.fastafilename)
 
-
-class TestCountCoverage(unittest.TestCase):
-
-    samfilename = os.path.join(BAM_DATADIR, "ex1.bam")
-    fastafilename = os.path.join(BAM_DATADIR, "ex1.fa")
-
-    def setUp(self):
-
-        self.samfile = pysam.AlignmentFile(self.samfilename)
-        self.fastafile = pysam.FastaFile(self.fastafilename)
-
         samfile = pysam.AlignmentFile(
-            "test_count_coverage_read_all.bam", 'wb',
+            "tests/test_count_coverage_read_all.bam", 'wb',
             template=self.samfile)
         for ii, read in enumerate(self.samfile.fetch()):
             # if ii % 2 == 0: # setting BFUNMAP makes no sense...
@@ -2109,13 +2197,13 @@ class TestCountCoverage(unittest.TestCase):
                 read.flag = read.flag | 0x400
             samfile.write(read)
         samfile.close()
-        pysam.samtools.index("test_count_coverage_read_all.bam")
+        pysam.samtools.index("tests/test_count_coverage_read_all.bam")
 
     def tearDown(self):
         self.samfile.close()
         self.fastafile.close()
-        os.unlink("test_count_coverage_read_all.bam")
-        os.unlink("test_count_coverage_read_all.bam.bai")
+        os.unlink("tests/test_count_coverage_read_all.bam")
+        os.unlink("tests/test_count_coverage_read_all.bam.bai")
 
     def count_coverage_python(self, bam, chrom, start, stop,
                               read_callback,
@@ -2216,7 +2304,7 @@ class TestCountCoverage(unittest.TestCase):
         def filter(read):
             return not (read.flag & (0x4 | 0x100 | 0x200 | 0x400))
 
-        with pysam.AlignmentFile("test_count_coverage_read_all.bam") as samfile:
+        with pysam.AlignmentFile("tests/test_count_coverage_read_all.bam") as samfile:
 
             fast_counts = samfile.count_coverage(
                 chrom, start, stop,
@@ -2236,7 +2324,7 @@ class TestCountCoverage(unittest.TestCase):
 
     def test_count_coverage_nofilter(self):
         samfile = pysam.AlignmentFile(
-            "test_count_coverage_nofilter.bam", 'wb', template=self.samfile)
+            "tests/test_count_coverage_nofilter.bam", 'wb', template=self.samfile)
         for ii, read in enumerate(self.samfile.fetch()):
             # if ii % 2 == 0: # setting BFUNMAP makes no sense...
                 #read.flag = read.flag | 0x4
@@ -2248,12 +2336,12 @@ class TestCountCoverage(unittest.TestCase):
                 read.flag = read.flag | 0x400
             samfile.write(read)
         samfile.close()
-        pysam.samtools.index("test_count_coverage_nofilter.bam")
+        pysam.samtools.index("tests/test_count_coverage_nofilter.bam")
         chr = 'chr1'
         start = 0
         stop = 2000
 
-        with pysam.AlignmentFile("test_count_coverage_nofilter.bam") as samfile:
+        with pysam.AlignmentFile("tests/test_count_coverage_nofilter.bam") as samfile:
 
             fast_counts = samfile.count_coverage(chr, start, stop,
                                                  read_callback='nofilter',
@@ -2263,8 +2351,8 @@ class TestCountCoverage(unittest.TestCase):
                                                        read_callback=lambda x: True,
                                                        quality_threshold=0)
 
-        os.unlink("test_count_coverage_nofilter.bam")
-        os.unlink("test_count_coverage_nofilter.bam.bai")
+        os.unlink("tests/test_count_coverage_nofilter.bam")
+        os.unlink("tests/test_count_coverage_nofilter.bam.bai")
         self.assertEqual(fast_counts[0], manual_counts[0])
         self.assertEqual(fast_counts[1], manual_counts[1])
         self.assertEqual(fast_counts[2], manual_counts[2])

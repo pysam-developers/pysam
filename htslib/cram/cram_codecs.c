@@ -239,7 +239,7 @@ static inline unsigned int get_bits_MSB(cram_block *block, int nbits) {
  * for it elsewhere.)
  */
 static int store_bits_MSB(cram_block *block, unsigned int val, int nbits) {
-    //fprintf(stderr, " store_bits: %02x %d\n", val, nbits);
+    /* fprintf(stderr, " store_bits: %02x %d\n", val, nbits); */
 
     /*
      * Use slow mode until we tweak the huffman generator to never generate
@@ -558,7 +558,7 @@ cram_codec *cram_beta_decode_init(char *data, int size,
     else if (option == E_BYTE_ARRAY || option == E_BYTE)
 	c->decode = cram_beta_decode_char;
     else {
-	hts_log_error("BYTE_ARRAYs not supported by this codec");
+	fprintf(stderr, "BYTE_ARRAYs not supported by this codec\n");
 	return NULL;
     }
     c->free   = cram_beta_decode_free;
@@ -748,7 +748,7 @@ cram_codec *cram_subexp_decode_init(char *data, int size,
     char *cp = data;
 
     if (option != E_INT) {
-	hts_log_error("This codec only supports INT encodings");
+	fprintf(stderr, "This codec only supports INT encodings\n");
 	return NULL;
     }
 
@@ -764,7 +764,7 @@ cram_codec *cram_subexp_decode_init(char *data, int size,
     cp += safe_itf8_get(cp, data + size, &c->subexp.k);
 
     if (cp - data != size || c->subexp.k < 0) {
-	hts_log_error("Malformed subexp header stream");
+	fprintf(stderr, "Malformed subexp header stream\n");
 	free(c);
 	return NULL;
     }
@@ -814,7 +814,7 @@ cram_codec *cram_gamma_decode_init(char *data, int size,
     char *cp = data;
 
     if (option != E_INT) {
-	hts_log_error("This codec only supports INT encodings");
+	fprintf(stderr, "This codec only supports INT encodings\n");
 	return NULL;
     }
 
@@ -855,7 +855,7 @@ static int code_sort(const void *vp1, const void *vp2) {
     if (c1->len != c2->len)
 	return c1->len - c2->len;
     else
-	return c1->symbol < c2->symbol ? -1 : (c1->symbol > c2->symbol ? 1 : 0);
+	return c1->symbol - c2->symbol;
 }
 
 void cram_huffman_decode_free(cram_codec *c) {
@@ -980,20 +980,18 @@ cram_codec *cram_huffman_decode_init(char *data, int size,
     int32_t ncodes = 0, i, j;
     char *cp = data, *data_end = &data[size];
     cram_codec *h;
-    cram_huffman_code *codes = NULL;
+    cram_huffman_code *codes;
     int32_t val, last_len, max_len = 0;
-    uint32_t max_val; // needs one more bit than val
-    const int max_code_bits = sizeof(val) * 8 - 1;
     int l;
 
     if (option == E_BYTE_ARRAY_BLOCK) {
-	hts_log_error("BYTE_ARRAYs not supported by this codec");
+	fprintf(stderr, "BYTE_ARRAYs not supported by this codec\n");
 	return NULL;
     }
 
     cp += safe_itf8_get(cp, data_end, &ncodes);
     if (ncodes < 0) {
-	hts_log_error("Invalid number of symbols in huffman stream");
+        fprintf(stderr, "Invalid number of symbols in huffman stream\n");
         return NULL;
     }
     if (ncodes >= SIZE_MAX / sizeof(*codes)) {
@@ -1024,12 +1022,17 @@ cram_codec *cram_huffman_decode_init(char *data, int size,
 	l = safe_itf8_get(cp, data_end, &codes[i].symbol);
     }
 
-    if (l < 1)
-        goto malformed;
-
+    if (l < 1) {
+	fprintf(stderr, "Malformed huffman header stream\n");
+	free(h);
+	return NULL;
+    }
     cp += safe_itf8_get(cp, data_end, &i);
-    if (i != ncodes)
-        goto malformed;
+    if (i != ncodes) {
+	fprintf(stderr, "Malformed huffman header stream\n");
+	free(h);
+	return NULL;
+    }
 
     h->reset = cram_nop_decode_reset;
 
@@ -1047,32 +1050,24 @@ cram_codec *cram_huffman_decode_init(char *data, int size,
 	if (max_len < codes[i].len)
 	    max_len = codes[i].len;
     }
-    if (l < 1 || cp - data != size || max_len >= ncodes)
-        goto malformed;
-
-    /* 31 is max. bits available in val */
-    if (max_len > max_code_bits) {
-        hts_log_error("Huffman code length (%d) is greater "
-                      "than maximum supported (%d)", max_len, max_code_bits);
-        free(h);
-        free(codes);
-        return NULL;
+    if (l < 1 || cp - data != size || max_len >= ncodes) {
+	fprintf(stderr, "Malformed huffman header stream\n");
+	free(h);
+	return NULL;
     }
 
     /* Sort by bit length and then by symbol value */
     qsort(codes, ncodes, sizeof(*codes), code_sort);
 
     /* Assign canonical codes */
-    val = -1, last_len = 0, max_val = 0;
+    val = -1, last_len = 0;
     for (i = 0; i < ncodes; i++) {
 	val++;
-        if (val > max_val)
-            goto malformed;
-
 	if (codes[i].len > last_len) {
-            val <<= (codes[i].len - last_len);
-            last_len = codes[i].len;
-            max_val = (1U << codes[i].len) - 1;
+	    while (codes[i].len > last_len) {
+		val <<= 1;
+		last_len++;
+	    }
 	}
 	codes[i].code = val;
     }
@@ -1121,12 +1116,6 @@ cram_codec *cram_huffman_decode_init(char *data, int size,
     }
 
     return (cram_codec *)h;
-
- malformed:
-    hts_log_error("Malformed huffman header stream");
-    free(codes);
-    free(h);
-    return NULL;
 }
 
 int cram_huffman_encode_char0(cram_slice *slice, cram_codec *c,
@@ -1522,7 +1511,7 @@ cram_codec *cram_byte_array_len_decode_init(char *data, int size,
     return c;
 
  malformed:
-    hts_log_error("Malformed byte_array_len header stream");
+    fprintf(stderr, "Malformed byte_array_len header stream\n");
  no_codec:
     free(c);
     return NULL;
@@ -1866,7 +1855,7 @@ cram_codec *cram_decoder_init(enum cram_encoding codec,
     if (codec >= E_NULL && codec < E_NUM_CODECS && decode_init[codec]) {
 	return decode_init[codec](data, size, option, version);
     } else {
-	hts_log_error("Unimplemented codec of type %s", cram_encoding2str(codec));
+	fprintf(stderr, "Unimplemented codec of type %s\n", cram_encoding2str(codec));
 	return NULL;
     }
 }
@@ -1901,7 +1890,7 @@ cram_codec *cram_encoder_init(enum cram_encoding codec,
 	    r->out = NULL;
 	return r;
     } else {
-	hts_log_error("Unimplemented codec of type %s", cram_encoding2str(codec));
+	fprintf(stderr, "Unimplemented codec of type %s\n", cram_encoding2str(codec));
 	abort();
     }
 }
@@ -1939,7 +1928,7 @@ int cram_codec_to_id(cram_codec *c, int *id2) {
 	bnum1 = -2;
 	break;
     default:
-	hts_log_error("Unknown codec type %d", c->codec);
+	fprintf(stderr, "Unknown codec type %d\n", c->codec);
 	bnum1 = -1;
     }
 

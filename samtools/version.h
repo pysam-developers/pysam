@@ -1,1 +1,1 @@
-#define SAMTOOLS_VERSION "1.6"
+#define SAMTOOLS_VERSION "1.5"

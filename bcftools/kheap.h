@@ -57,8 +57,6 @@
         // "data_t".
         heap_t *heap = khp_init(mh);
 
-        // When inserting a new element, the heap stores a copy of the memory
-        // area pointed to by the third argument.
         for (int i=0; i<3; i++)
             khp_insert(mh, heap, &data[i]);
 
@@ -132,8 +130,7 @@
         {                                                               \
             heap->mdat = heap->ndat;                                    \
             kroundup32(heap->mdat);                                     \
-            heap->dat = (kheap_t*)realloc(heap->dat, heap->mdat*sizeof(kheap_t));         \
-            memset(heap->dat + heap->ndat, 0, (heap->mdat - heap->ndat)*sizeof(kheap_t)); \
+            heap->dat = (kheap_t*)realloc(heap->dat, heap->mdat*sizeof(kheap_t));  \
         }                                                               \
         int i = heap->ndat - 1;                                         \
         while ( i && __cmp(dat,&heap->dat[khp_parent(i)]) )             \

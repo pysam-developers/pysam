@@ -69,9 +69,6 @@ Note that the location of the file :file:`libhts.so` needs to be known
 to the linker once you run pysam, for example by setting the
 environment-varirable `LD_LIBRARY_PATH`.
 
-Note that generally the pysam and htslib version need to be
-compatible. See the release notes for more information.
-
 Installation from repository
 ============================
 
@@ -86,23 +83,3 @@ To install from repository, type::
     python setup.py install
 
 For compilation options, see the section on Pypi installation above.
-
-Requirements
-============
-
-Depending on the installation method, requirements for building pysam differ.
-
-When installing through conda_, dependencies will be resolved by the
-package manager. The pip_ installation and installation from source
-require a C compiler and its standard libraries as well as all
-requirements for building htslib. Htslib requirements are listed in
-the htslib/INSTALL file.
-
-Installing from the repository will require cython_ to be installed.
-
-
-
-
-
-
-

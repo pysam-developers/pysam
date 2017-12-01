@@ -1514,7 +1514,6 @@ static void flush_buffer(args_t *args, htsFile *file, int n)
 {
     bcf1_t *line;
     int i, k;
-    int prev_rid = -1, prev_pos = -1, prev_type = 0;
     for (i=0; i<n; i++)
     {
         k = rbuf_shift(&args->rbuf);
@@ -1534,23 +1533,6 @@ static void flush_buffer(args_t *args, htsFile *file, int n)
                 mrows_schedule(args, &args->lines[k]);
                 continue;
             }
-        }
-        else if ( args->rmdup )
-        {
-            int line_type = bcf_get_variant_types(args->lines[k]);
-            if ( prev_rid>=0 && prev_rid==args->lines[k]->rid && prev_pos==args->lines[k]->pos )
-            {
-                if ( (args->rmdup>>1)&COLLAPSE_ANY ) continue;
-                if ( (args->rmdup>>1)&COLLAPSE_SNPS && line_type&(VCF_SNP|VCF_MNP) && prev_type&(VCF_SNP|VCF_MNP) ) continue;
-                if ( (args->rmdup>>1)&COLLAPSE_INDELS && line_type&(VCF_INDEL) && prev_type&(VCF_INDEL) ) continue;
-            }
-            else
-            {
-                prev_rid  = args->lines[k]->rid;
-                prev_pos  = args->lines[k]->pos;
-                prev_type = 0;
-            }
-            prev_type |= line_type;
         }
         bcf_write1(file, args->hdr, args->lines[k]);
     }

@@ -662,6 +662,7 @@ char **merge_alleles(char **a, int na, int *map, char **b, int *nb, int *mb)
         }
         // new allele
         map[i] = *nb;
+        if ( b[*nb] ) free(b[*nb]);
         b[*nb] = const_ai ? strdup(ai) : ai;
         (*nb)++;
     }
@@ -1667,11 +1668,6 @@ void gvcf_set_alleles(args_t *args)
     bcf_srs_t *files = args->files;
     maux_t *maux = args->maux;
     gvcf_aux_t *gaux = maux->gvcf;
-    for (i=0; i<maux->nals; i++) 
-    {
-        free(maux->als[i]);
-        maux->als[i] = NULL;
-    }
     maux->nals = 0;
 
     for (i=0; i<files->nreaders; i++)
@@ -2029,15 +2025,9 @@ int can_merge(args_t *args)
     maux_t *maux = args->maux;
     gvcf_aux_t *gaux = maux->gvcf;
     char *id = NULL, ref = 'N';
-    int i,j,k, ntodo = 0;
-
-    for (i=0; i<maux->nals; i++) 
-    {
-        free(maux->als[i]);
-        maux->als[i] = NULL;
-    }
     maux->var_types = maux->nals = 0;
 
+    int i,j,k, ntodo = 0;
     for (i=0; i<files->nreaders; i++)
     {
         buffer_t *buf = &maux->buf[i];

@@ -57,7 +57,6 @@ int main_plugin(int argc, char *argv[]);
 int main_consensus(int argc, char *argv[]);
 int main_csq(int argc, char *argv[]);
 int bam_mpileup(int argc, char *argv[]);
-int main_sort(int argc, char *argv[]);
 
 typedef struct
 {
@@ -126,10 +125,6 @@ static cmd_t cmds[] =
     { .func  = main_reheader,
       .alias = "reheader",
       .help  = "modify VCF/BCF header, change sample names"
-    },
-    { .func  = main_sort,
-      .alias = "sort",
-      .help  = "sort VCF/BCF file"
     },
     { .func  = main_vcfview,
       .alias = "view",

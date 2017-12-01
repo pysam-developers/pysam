@@ -21,11 +21,7 @@ CBCF_DATADIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
 LINKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "linker_tests"))
 
 
-TESTS_TEMPDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "tmp"))
-
-
 IS_PYTHON3 = sys.version_info[0] >= 3
-
 
 if IS_PYTHON3:
     from itertools import zip_longest
@@ -196,15 +192,10 @@ def check_lines_equal(cls, a, b, sort=False, filter_f=None, msg=None):
 
 def get_temp_filename(suffix=""):
     caller_name = inspect.getouterframes(inspect.currentframe(), 2)[1][3]
-    try:
-        os.makedirs(TESTS_TEMPDIR)
-    except OSError:
-        pass
     f = tempfile.NamedTemporaryFile(
         prefix="pysamtests_tmp_{}_".format(caller_name),
         suffix=suffix,
-        delete=False,
-        dir=TESTS_TEMPDIR)
+        delete=False)
     f.close()
     return f.name
 

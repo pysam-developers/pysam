@@ -164,6 +164,17 @@
 #define N_SPLICE_REGION_EXON   3 
 #define N_SPLICE_REGION_INTRON 8 
 
+// Ensembl ID format, e.g. 
+//     ENST00000423372 for human .. ENST%011d
+//  ENSMUST00000120394 for mouse .. ENSMUST%011d
+char  ENSID_BUF[32], *ENSID_FMT = NULL;
+static inline char *ENSID(uint32_t id)
+{
+    sprintf(ENSID_BUF,ENSID_FMT,id);
+    return ENSID_BUF;
+}
+
+
 #define N_REF_PAD 10    // number of bases to avoid boundary effects
 
 #define STRAND_REV 0
@@ -498,6 +509,7 @@ hap_t;
         temporary list of all exons, CDS, UTRs 
 */
 KHASH_MAP_INIT_INT(int2tscript, tscript_t*)
+KHASH_MAP_INIT_INT(int2int, int)
 KHASH_MAP_INIT_INT(int2gene, gf_gene_t*)
 typedef struct
 {
@@ -510,41 +522,25 @@ typedef struct
     uint32_t iseq:29;
 }
 ftr_t;
-/*
-    Mapping from GFF ID string (such as ENST00000450305 or Zm00001d027230_P001)
-    to integer id.  To keep the memory requirements low, the original version
-    relied on IDs in the form of a string prefix and a numerical id.  However,
-    it turns out that this assumption is not valid for some ensembl GFFs, see
-    for example Zea_mays.AGPv4.36.gff3.gz
- */
-typedef struct
-{
-    void *str2id;       // khash_str2int
-    int nstr, mstr;
-    char **str;         // numeric id to string
-}
-id_tbl_t;
 typedef struct
 {
     // all exons, CDS, UTRs
     ftr_t *ftr;
     int nftr, mftr;
 
-    // mapping from gene id to gf_gene_t
+    // mapping from transcript ensembl id to gene id
     kh_int2gene_t *gid2gene;
 
     // mapping from transcript id to tscript, for quick CDS anchoring
     kh_int2tscript_t *id2tr;
 
     // sequences
-    void *seq2int;  // str2int hash
+    void *seq2int;
     char **seq;
     int nseq, mseq;
 
     // ignored biotypes
     void *ignored_biotypes;
-
-    id_tbl_t gene_ids;   // temporary table for mapping between gene id (eg. Zm00001d027245) and a numeric idx
 }
 aux_t;
 
@@ -594,7 +590,6 @@ typedef struct _args_t
     int nrm_tr, mrm_tr;
     csq_t *csq_buf;             // pool of csq not managed by hap_node_t, i.e. non-CDS csqs
     int ncsq_buf, mcsq_buf;
-    id_tbl_t tscript_ids;       // mapping between transcript id (eg. Zm00001d027245_T001) and a numeric idx
 
     faidx_t *fai;
     kstring_t str, str2;
@@ -699,38 +694,33 @@ static inline char *gff_parse_beg_end(const char *line, char *ss, uint32_t *beg,
     if ( ss==se ) error("[%s:%d %s] Could not parse the line: %s\n",__FILE__,__LINE__,__FUNCTION__,line);
     return se+1;
 }
-static void gff_id_init(id_tbl_t *tbl)
+static inline uint32_t gff_parse_id(const char *line, const char *needle, char *ss)
 {
-    memset(tbl, 0, sizeof(*tbl));
-    tbl->str2id = khash_str2int_init();
-}
-static void gff_id_destroy(id_tbl_t *tbl)
-{
-    khash_str2int_destroy_free(tbl->str2id);
-    free(tbl->str);
-}
-static inline uint32_t gff_id_parse(id_tbl_t *tbl, const char *line, const char *needle, char *ss)
-{
-    ss = strstr(ss,needle);     // e.g. "ID=transcript:"
+    ss = strstr(ss,needle);
     if ( !ss ) error("[%s:%d %s] Could not parse the line, \"%s\" not present: %s\n",__FILE__,__LINE__,__FUNCTION__,needle,line);
     ss += strlen(needle);
-
-    char *se = ss;
-    while ( *se && *se!=';' && !isspace(*se) ) se++;
-    char tmp = *se;
-    *se = 0;
-
-    int id;
-    if ( khash_str2int_get(tbl->str2id, ss, &id) < 0 )
-    {
-        id = tbl->nstr++;
-        hts_expand(char*, tbl->nstr, tbl->mstr, tbl->str);
-        tbl->str[id] = strdup(ss);
-        int ret = khash_str2int_set(tbl->str2id, tbl->str[id], id);
-    }
-    *se = tmp;
-
+    while ( *ss && !isdigit(*ss) ) ss++;
+    if ( !ss ) error("[%s:%d %s] Could not parse the line: %s\n",__FILE__,__LINE__,__FUNCTION__, line);
+    char *se;
+    uint32_t id = strtol(ss, &se, 10);
+    if ( ss==se ) error("[%s:%d %s] Could not parse the line: %s\n",__FILE__,__LINE__,__FUNCTION__, line);
+    if ( *se && *se!=';' && *se!='\t' ) error("[%s:%d %s] Could not parse the line: %s\n",__FILE__,__LINE__,__FUNCTION__,line);
+    assert( id <= 0xffffff );   // see gf_gene_t.id. Ensembl IDs are never that big in practice
     return id;
+}
+static void gff_parse_ensid_fmt(const char *line, const char *needle, char *ss)
+{
+    ss = strstr(ss,needle);
+    if ( !ss ) error("[%s:%d %s] Could not parse the line, \"%s\" not present: %s\n",__FILE__,__LINE__,__FUNCTION__,needle,line);
+    ss += strlen(needle);
+    char *se = ss;
+    while ( *se && !isdigit(*se) ) se++;
+    kstring_t str = {0,0,0};
+    kputsn(ss,se-ss,&str);
+    ss = se;
+    while ( *se && isdigit(*se) ) se++;
+    ksprintf(&str,"%%0%dd",(int)(se-ss));
+    ENSID_FMT = str.s;
 }
 static inline int gff_parse_type(char *line)
 {
@@ -890,8 +880,10 @@ void gff_parse_transcript(args_t *args, const char *line, char *ss, ftr_t *ftr)
     }
 
     // create a mapping from transcript_id to gene_id
-    uint32_t trid = gff_id_parse(&args->tscript_ids, line, "ID=transcript:", ss);
-    uint32_t gene_id = gff_id_parse(&args->init.gene_ids, line, "Parent=gene:", ss);
+    uint32_t trid = gff_parse_id(line, "ID=transcript:", ss);
+    uint32_t gene_id = gff_parse_id(line, "Parent=gene:", ss);
+
+    if ( !ENSID_FMT ) gff_parse_ensid_fmt(line, "ID=transcript:", ss);      // id prefix different across species
 
     tscript_t *tr = (tscript_t*) calloc(1,sizeof(tscript_t));
     tr->id     = trid;
@@ -918,7 +910,7 @@ void gff_parse_gene(args_t *args, const char *line, char *ss, char *chr_beg, cha
     aux_t *aux = &args->init;
 
     // substring search for "ID=gene:ENSG00000437963"
-    uint32_t gene_id = gff_id_parse(&aux->gene_ids, line, "ID=gene:", ss);
+    uint32_t gene_id = gff_parse_id(line, "ID=gene:", ss);
     gf_gene_t *gene = gene_init(aux, gene_id);
     assert( !gene->name );      // the gene_id should be unique
 
@@ -926,17 +918,13 @@ void gff_parse_gene(args_t *args, const char *line, char *ss, char *chr_beg, cha
 
     // substring search for "Name=OR4F5"
     ss = strstr(chr_end+2,"Name=");
-    if ( ss )
-    {
-        ss += 5;
-        char *se = ss;
-        while ( *se && *se!=';' && !isspace(*se) ) se++;
-        gene->name = (char*) malloc(se-ss+1);
-        memcpy(gene->name,ss,se-ss);
-        gene->name[se-ss] = 0;
-    }
-    else
-        gene->name = strdup(aux->gene_ids.str[gene_id]); // Name=<GeneName> field is not present, use the gene ID instead
+    if ( !ss ) error("Could not parse the line, \"Name=\" not present: %s\n", line);
+    ss += 5;
+    char *se = ss;
+    while ( *se && *se!=';' && !isspace(*se) ) se++;
+    gene->name = (char*) malloc(se-ss+1);
+    memcpy(gene->name,ss,se-ss);
+    gene->name[se-ss] = 0;
 }
 int gff_parse(args_t *args, char *line, ftr_t *ftr)
 {
@@ -1011,7 +999,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     ss += 2;
 
     // substring search for "Parent=transcript:ENST00000437963"
-    ftr->trid = gff_id_parse(&args->tscript_ids, line, "Parent=transcript:", ss);
+    ftr->trid = gff_parse_id(line, "Parent=transcript:", ss);
     ftr->iseq = feature_set_seq(args, chr_beg,chr_end);
     return 0;
 }
@@ -1116,7 +1104,7 @@ void tscript_init_cds(args_t *args)
             {
                 int phase = tr->cds[i]->phase ? 3 - tr->cds[i]->phase : 0;
                 if ( phase!=len%3)
-                    error("GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                    error("GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",ENSID(tr->id),tr->cds[i]->beg+1,phase,len);
                 assert( phase == len%3 );
                 len += tr->cds[i]->len; 
             }
@@ -1144,7 +1132,7 @@ void tscript_init_cds(args_t *args)
             {
                 int phase = tr->cds[i]->phase ? 3 - tr->cds[i]->phase : 0;
                 if ( phase!=len%3)
-                    error("GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                    error("GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",ENSID(tr->id),tr->cds[i]->beg+1,phase,len);
                 len += tr->cds[i]->len;
             }
         }
@@ -1217,8 +1205,6 @@ void init_gff(args_t *args)
     aux->id2tr     = kh_init(int2tscript);   // transcript id to tscript_t
     args->idx_tscript = regidx_init(NULL, NULL, regidx_free_tscript, sizeof(tscript_t*), NULL);
     aux->ignored_biotypes = khash_str2int_init();
-    gff_id_init(&aux->gene_ids);
-    gff_id_init(&args->tscript_ids);
 
     // parse gff
     kstring_t str = {0,0,0};
@@ -1266,7 +1252,7 @@ void init_gff(args_t *args)
         else if ( ftr->type==GF_UTR5 ) register_utr(args, ftr);
         else if ( ftr->type==GF_UTR3 ) register_utr(args, ftr);
         else
-            error("something: %s\t%d\t%d\t%s\t%s\n", aux->seq[ftr->iseq],ftr->beg+1,ftr->end+1,args->tscript_ids.str[ftr->trid],gf_type2gff_string(ftr->type));
+            error("something: %s\t%d\t%d\t%s\t%s\n", aux->seq[ftr->iseq],ftr->beg+1,ftr->end+1,ENSID(ftr->trid),gf_type2gff_string(ftr->type));
     }
     tscript_init_cds(args);
 
@@ -1284,7 +1270,6 @@ void init_gff(args_t *args)
     // keeping only to destroy the genes at the end: kh_destroy(int2gene,aux->gid2gene);
     kh_destroy(int2tscript,aux->id2tr);
     free(aux->seq);
-    gff_id_destroy(&aux->gene_ids);
 
     if ( args->quiet<2 && khash_str2int_size(aux->ignored_biotypes) )
     {
@@ -1424,7 +1409,7 @@ void destroy_data(args_t *args)
     free(args->gt_arr);
     free(args->str.s);
     free(args->str2.s);
-    gff_id_destroy(&args->tscript_ids);
+    free(ENSID_FMT);
 }
 
 /*
@@ -2506,7 +2491,7 @@ exit_duplicate:
 #define node2rend(i) (hap->stack[i].node->sbeg + hap->stack[i].node->rlen)
 #define node2rpos(i) (hap->stack[i].node->rec->pos)
 
-void kput_vcsq(args_t *args, vcsq_t *csq, kstring_t *str)
+void kput_vcsq(vcsq_t *csq, kstring_t *str)
 {
     // Remove start/stop from incomplete CDS, but only if there is another
     // consequence as something must be reported
@@ -2535,7 +2520,7 @@ void kput_vcsq(args_t *args, vcsq_t *csq, kstring_t *str)
     if ( csq->gene ) kputs(csq->gene , str);
 
     kputc_('|', str);
-    if ( csq->type & CSQ_PRN_TSCRIPT ) kputs(args->tscript_ids.str[csq->trid], str);
+    if ( csq->type & CSQ_PRN_TSCRIPT ) ksprintf(str, "%s",ENSID(csq->trid));
 
     kputc_('|', str);
     kputs(gf_type2gff_string(csq->biotype), str);
@@ -2904,7 +2889,7 @@ static inline void csq_print_text(args_t *args, csq_t *csq, int ismpl, int ihap)
         fprintf(args->out,"-");
 
     args->str.l = 0;
-    kput_vcsq(args, &csq->type, &args->str);
+    kput_vcsq(&csq->type, &args->str);
     fprintf(args->out,"\t%s\t%d\t%s\n",chr,csq->pos+1,args->str.s);
 }
 static inline void hap_print_text(args_t *args, tscript_t *tr, int ismpl, int ihap, hap_node_t *node)
@@ -2928,7 +2913,7 @@ static inline void hap_print_text(args_t *args, tscript_t *tr, int ismpl, int ih
             fprintf(args->out,"-");
 
         args->str.l = 0;
-        kput_vcsq(args, &csq->type, &args->str);
+        kput_vcsq(&csq->type, &args->str);
         fprintf(args->out,"\t%s\t%d\t%s\n",chr,csq->pos+1,args->str.s);
     }
 }
@@ -3072,11 +3057,11 @@ void vbuf_flush(args_t *args)
             }
             
             args->str.l = 0;
-            kput_vcsq(args, &vrec->vcsq[0], &args->str);
+            kput_vcsq(&vrec->vcsq[0], &args->str);
             for (j=1; j<vrec->nvcsq; j++)
             {
                 kputc_(',', &args->str);
-                kput_vcsq(args, &vrec->vcsq[j], &args->str);
+                kput_vcsq(&vrec->vcsq[j], &args->str);
             }
             bcf_update_info_string(args->hdr, vrec->line, args->bcsq_tag, args->str.s);
             if ( args->hdr_nsmpl )
@@ -3680,7 +3665,7 @@ void process(args_t *args, bcf1_t **rec_ptr)
     return;
 }
 
-static const char *usage(void)
+const char *usage(void)
 {
     return 
         "\n"

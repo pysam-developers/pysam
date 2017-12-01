@@ -14,7 +14,6 @@ tests/*.sam
 tests/*.fai
 tests/pysam_data
 tests/cbcf_data
-tests/tabix_data
 
 samtools/config.h
 htslib/config.status
@@ -53,7 +52,6 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
-doc/_build
 
 # Installer logs
 pip-log.txt

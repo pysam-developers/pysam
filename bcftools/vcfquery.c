@@ -32,7 +32,6 @@ THE SOFTWARE.  */
 #include <sys/types.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
-#include <htslib/khash_str2int.h>
 #include <htslib/vcfutils.h>
 #include "bcftools.h"
 #include "filter.h"
@@ -152,26 +151,10 @@ static void query_vcf(args_t *args)
 
 static void list_columns(args_t *args)
 {
-    void *has_sample = NULL;
-    if ( args->sample_list )
-    {
-        has_sample = khash_str2int_init();
-        int i, nsmpl;
-        char **smpl = hts_readlist(args->sample_list, args->sample_is_file, &nsmpl);
-        for (i=0; i<nsmpl; i++) khash_str2int_inc(has_sample, smpl[i]);
-        free(smpl);
-    }
-
     int i;
     bcf_sr_t *reader = &args->files->readers[0];
     for (i=0; i<bcf_hdr_nsamples(reader->header); i++)
-    {
-        if ( has_sample && !khash_str2int_has_key(has_sample, reader->header->samples[i]) ) continue;
         printf("%s\n", reader->header->samples[i]);
-    }
-
-    if ( has_sample )
-        khash_str2int_destroy_free(has_sample);
 }
 
 static char **copy_header(bcf_hdr_t *hdr, char **src, int nsrc)

@@ -82,13 +82,13 @@ void mkdir_p(const char *fmt, ...)
     while (*p)
     {
         while (*p && *p!='/') p++;
-        if ( !*p ) break;
-        char ctmp = *p;
-        *p = 0;
-        int ret = mkdir(tmp,S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-        if ( ret!=0 && errno!=EEXIST ) error("Error creating directory %s: %s\n", path,strerror(errno));
-        *p = ctmp;
-        while ( *p && *p=='/' ) p++;
+        if ( *p )
+        {
+            *p = 0;
+            mkdir(tmp,S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+            *p = '/';
+            p++;
+        }
     }
     free(tmp);
     free(path);

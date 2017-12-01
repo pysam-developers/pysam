@@ -563,34 +563,29 @@ cdef class HTSFile(object):
                 return hts_hopen(hfile, cfilename, cmode)
 
     def parse_region(self, contig=None, start=None, stop=None, region=None,tid=None,
-                     reference=None, end=None):
+                           reference=None, end=None):
         """parse alternative ways to specify a genomic region. A region can
         either be specified by :term:`contig`, `start` and
         `stop`. `start` and `stop` denote 0-based, half-open
         intervals.  :term:`reference` and `end` are also accepted for
-        backward compatiblity as synonyms for :term:`contig` and
-        `stop`, respectively.
+        backward compatiblity as synonyms for :term:`contig` and `stop`,
+        respectively.
 
         Alternatively, a samtools :term:`region` string can be
         supplied.
 
-        If any of the coordinates are missing they will be replaced by
-        the minimum (`start`) or maximum (`stop`) coordinate.
+        If any of the coordinates are missing they will be replaced by the
+        minimum (`start`) or maximum (`stop`) coordinate.
 
-        Note that region strings are 1-based inclusive, while `start`
-        and `stop` denote an interval in 0-based, half-open
-        coordinates (like BED files and Python slices).
-
-        If `contig` or `region` or are ``*``, unmapped reads at the end
-        of a BAM file will be returned. Setting either to ``.`` will
-        iterate from the beginning of the file.
+        Note that region strings are 1-based inclusive, while `start` and `stop` denote
+        an interval in 0-based, half-open coordinates (like BED files and Python slices).
 
         Returns
         -------
 
-        tuple : a tuple of `flag`, :term:`tid`, `start` and
-        `stop`. The flag indicates whether no coordinates were
-        supplied and the genomic region is the complete genomic space.
+        tuple :  a tuple of `flag`, :term:`tid`, `start` and `stop`. The
+        flag indicates whether no coordinates were supplied and the
+        genomic region is the complete genomic space.
 
         Raises
         ------
@@ -645,15 +640,10 @@ cdef class HTSFile(object):
                 raise IndexError('invalid tid')
             rtid = tid
         else:
-            if contig == "*":
-                rtid = HTS_IDX_NOCOOR
-            elif contig == ".":
-                rtid = HTS_IDX_START
-            else:
-                rtid = self.get_tid(contig)
-                if rtid < 0:
-                    raise ValueError('invalid contig `%s`' % contig)
+            rtid = self.get_tid(contig)
 
+        if rtid < 0:
+            raise ValueError('invalid contig `%s`' % contig)
         if rstart > rstop:
             raise ValueError('invalid coordinates: start (%i) > stop (%i)' % (rstart, rstop))
         if not 0 <= rstart < MAX_POS:

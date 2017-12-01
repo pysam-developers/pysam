@@ -1318,13 +1318,12 @@ static void gvcf_to_vcf(args_t *args)
         }
 
         // check if alleles compatible with being a gVCF record
-        // ALT must be one of ., <*>, <X>, <NON_REF>
-        // check for INFO/END is below
         int i, gallele = -1;
         if (line->n_allele==1)
             gallele = 0; // illumina/bcftools-call gvcf (if INFO/END present)
-        else if ( line->d.allele[1][0]=='<' )
+        else
         {
+            if ( line->d.allele[1][0]!='<' ) continue;
             for (i=1; i<line->n_allele; i++)
             {
                 if ( line->d.allele[i][1]=='*' && line->d.allele[i][2]=='>' && line->d.allele[i][3]=='\0' ) { gallele = i; break; } // mpileup/spec compliant gVCF

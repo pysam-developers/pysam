@@ -790,9 +790,8 @@ cdef class AlignmentFile(HTSFile):
         if not self.is_open:
             raise ValueError( "I/O operation on closed file" )
 
-        has_coord, rtid, rstart, rstop = self.parse_region(
-            contig, start, stop, region, tid,
-            end=end, reference=reference)
+        has_coord, rtid, rstart, rstop = self.parse_region(contig, start, stop, region, tid,
+                                                          end=end, reference=reference)
 
         # Turn of re-opening if htsfile is a stream
         if self.is_stream:
@@ -2143,7 +2142,7 @@ cdef class IteratorColumn:
         def __get__(self):
             return self.iterdata.seq_len
 
-    def addReference(self, FastaFile fastafile):
+    def addReference(self, Fastafile fastafile):
        '''
        add reference sequences in `fastafile` to iterator.'''
        self.fastafile = fastafile

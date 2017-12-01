@@ -1,102 +1,57 @@
-An online version of the installation instructions can be found here:
-http://pysam.readthedocs.io/en/latest/installation.html
+System Requirements
+===================
 
-================
-Installing pysam
-================
+SAMtools depends on the zlib library <http://www.zlib.net>. The latest
+version 1.2.3 is preferred and with the latest version you can compile
+razip and use it to compress a FASTA file. SAMtools' faidx is able to
+index a razip-compressed FASTA file to save diskspace. Older zlib also
+works with SAMtools, but razip cannot be compiled.
 
-Pysam can be installed through conda_, pypi_ and from the repository.
-The recommended way to install pysam is through conda/bioconda.
+The text-based viewer (tview) requires the GNU ncurses library
+<http://www.gnu.org/software/ncurses/>, which comes with Mac OS X and
+most of the modern Linux/Unix distributions. If you do not have this
+library installed, you can still compile the rest of SAMtools by
+manually modifying one line in Makefile.
 
-Conda installation
-==================
+curl
 
-To install pysam in your current conda_ environment, type::
+Pysam requires Python (2.7 or greater) and Cython (0.22 or greater).
+It has not been tested on many other platforms.
 
-   conda config --add channels r
-   conda config --add channels bioconda
-   conda install pysam
+Windows support does not work yet.
 
-This will install pysam from the bioconda_ channel and automatically
-makes sure that dependencies are installed. Also, compilation flags
-will be set automatically, which will potentially save a lot of
-trouble on OS X.
+Compilation
+===========
 
-Pypi installation
-=================
+Unpack the distribution and enter the pysam directory. Type 
 
-Pysam provides a python interface to the functionality contained
-within the htslib_ C library. There are two ways that these two
-can be combined, ``builtin`` and ``external``.
+python setup.py build
 
-Builtin
--------
+to compile.
 
-The typical installation will be through pypi_::
-
-   pip install pysam
-
-This will compile the ``builtin`` htslib source code within pysam.
-
-htslib_ can be configured at compilation to turn on additional
-features such support using encrypted configurations, enable plugins,
-and more. See the htslib_ project for more information on these.
-
-Pysam will attempt to configure htslib_ to turn on some advanced
-features. If these fail, for example due to missing library
-dependencies (`libcurl`, `libcrypto`), it will fall back to
-conservative defaults.
-
-Options can be passed to the configure script explicitely by
-setting the environment variable `HTSLIB_CONFIGURE_OPTIONS`.
-For example::
-
-  export HTSLIB_CONFIGURE_OPTIONS=--enable-plugins
-  pip install pysam
-
-External
---------
-
-pysam can be combined with an externally installed htslib_
-library. This is a good way to avoid duplication of libraries. To link
-against an externally installed library, set the environment variables
-`HTSLIB_LIBRARY_DIR` and `HTSLIB_INCLUDE_DIR` before installing::
-
-   export HTSLIB_LIBRARY_DIR=/usr/local/lib
-   export HTSLIB_INCLUDE_DIR=/usr/local/include
-   pip install pysam
-
-Note that the location of the file :file:`libhts.so` needs to be known
-to the linker once you run pysam, for example by setting the
-environment-varirable `LD_LIBRARY_PATH`.
-
-Note that generally the pysam and htslib version need to be compatible. See
-the release notes for more information.
-
-Installation from repository
-============================
-
-pysam depends on cython_ to provide the connectivity to the htslib_ C
-library. The installation of the source tarball (:file:`.tar.gz`)
-contains pre-built C-files and cython needs not be present
-during installation. However, when installing from the repository,
-cython needs to be installed beforehand.
-
-To install from repository, type::
-
-    python setup.py install
-
-For compilation options, see the section on Pypi installation above.
-
-Requirements
+Installation
 ============
 
-Depending on the installation method, requirements for building pysam differ.
+Type 
 
-When installing through conda_, dependencies will be resolved by the
-package manager. The pip_ installation and installation from source
-require a C compiler and its standard libraries as well as all
-requirements for building htslib. Htslib requirements are listed in
-the htslib/INSTALL file.
+   python setup.py install
 
-Installing from the repository will require cython_ to be installed.
+to install it within the site-packages directory of your python
+distribution. Type
+
+   python setup.py install --help 
+
+for more options.
+
+Build the documentation
+=======================
+
+Install a version of Sphinx that matches your Python version (2 or 3) and run
+
+    python setup.py build_sphinx
+
+or
+
+    python3 setup.py build_sphinx
+
+The documentation will be put into build/sphinx.

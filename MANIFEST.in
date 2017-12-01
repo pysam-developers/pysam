@@ -5,7 +5,6 @@
 #
 include MANIFEST.in
 include COPYING
-include NEWS
 include INSTALL
 include KNOWN_BUGS
 include THANKS
@@ -32,8 +31,6 @@ exclude bcftools/config.h
 # htslib
 include htslib/*.c
 include htslib/*.h
-include htslib/INSTALL
-include htslib/NEWS
 exclude htslib/config.h
 include htslib/Makefile
 include htslib/htslib_vars.mk
@@ -44,8 +41,6 @@ include htslib/htslib.pc.in
 include htslib/htslib/*.h
 include htslib/cram/*.c
 include htslib/cram/*.h
-include htslib/win/*.c
-include htslib/win/*.h
 include cy_build.py
 include pysam.py
 include requirements.txt
