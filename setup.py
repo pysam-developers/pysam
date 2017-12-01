@@ -470,6 +470,7 @@ cutils = Extension(
 csamtools = Extension(
     "pysam.libcsamtools",
     [source_pattern % "samtools"] +
+    ["pysam/pysam_util.c"] +
     glob.glob(os.path.join("samtools", "*.pysam.c")) +
     htslib_sources +
     os_c_files,
@@ -491,7 +492,8 @@ cbcftools = Extension(
     library_dirs=["pysam"] + htslib_library_dirs,
     include_dirs=["bcftools", "pysam", "."] + samtools_include_dirs +
     include_os + htslib_include_dirs,
-    libraries=external_htslib_libraries + internal_htslib_libraries,
+    libraries=external_htslib_libraries + internal_htslib_libraries + \
+    [os.path.splitext("csamtools{}".format(suffix))[0]],
     language="c",
     extra_compile_args=extra_compile_args,
     define_macros=define_macros
