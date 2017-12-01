@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcffilter.c -- Apply fixed-threshold filters.
 
@@ -132,7 +132,7 @@ static void init_data(args_t *args)
                 kputs("\"IndelGap\"", &tmp);
             }
             if ( strncmp(tmp.s+1,args->soft_filter,tmp.l-2) )
-                fprintf(pysam_stderr,"Warning: using %s filter name instead of \"%s\"\n", tmp.s,args->soft_filter);
+                fprintf(bcftools_stderr,"Warning: using %s filter name instead of \"%s\"\n", tmp.s,args->soft_filter);
             free(tmp.s);
         }
 
@@ -401,27 +401,27 @@ static void set_genotypes(args_t *args, bcf1_t *line, int pass_site)
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Apply fixed-threshold filters.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools filter [options] <in.vcf.gz>\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "    -e, --exclude <expr>          exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "    -g, --SnpGap <int>            filter SNPs within <int> base pairs of an indel\n");
-    fprintf(pysam_stderr, "    -G, --IndelGap <int>          filter clusters of indels separated by <int> or fewer base pairs allowing only one to pass\n");
-    fprintf(pysam_stderr, "    -i, --include <expr>          include only sites for which the expression is true (see man page for details\n");
-    fprintf(pysam_stderr, "    -m, --mode [+x]               \"+\": do not replace but add to existing FILTER; \"x\": reset filters at sites which pass\n");
-    fprintf(pysam_stderr, "        --no-version              do not append version and command line to the header\n");
-    fprintf(pysam_stderr, "    -o, --output <file>           write output to a file [standard output]\n");
-    fprintf(pysam_stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysam_stderr, "    -r, --regions <region>        restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "    -R, --regions-file <file>     restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "    -s, --soft-filter <string>    annotate FILTER column with <string> or unique filter name (\"Filter%%d\") made up by the program (\"+\")\n");
-    fprintf(pysam_stderr, "    -S, --set-GTs <.|0>           set genotypes of failed samples to missing (.) or ref (0)\n");
-    fprintf(pysam_stderr, "    -t, --targets <region>        similar to -r but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "        --threads <int>           number of extra output compression threads [0]\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   Apply fixed-threshold filters.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools filter [options] <in.vcf.gz>\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Options:\n");
+    fprintf(bcftools_stderr, "    -e, --exclude <expr>          exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -g, --SnpGap <int>            filter SNPs within <int> base pairs of an indel\n");
+    fprintf(bcftools_stderr, "    -G, --IndelGap <int>          filter clusters of indels separated by <int> or fewer base pairs allowing only one to pass\n");
+    fprintf(bcftools_stderr, "    -i, --include <expr>          include only sites for which the expression is true (see man page for details\n");
+    fprintf(bcftools_stderr, "    -m, --mode [+x]               \"+\": do not replace but add to existing FILTER; \"x\": reset filters at sites which pass\n");
+    fprintf(bcftools_stderr, "        --no-version              do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "    -o, --output <file>           write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(bcftools_stderr, "    -r, --regions <region>        restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file <file>     restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "    -s, --soft-filter <string>    annotate FILTER column with <string> or unique filter name (\"Filter%%d\") made up by the program (\"+\")\n");
+    fprintf(bcftools_stderr, "    -S, --set-GTs <.|0>           set genotypes of failed samples to missing (.) or ref (0)\n");
+    fprintf(bcftools_stderr, "    -t, --targets <region>        similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "        --threads <int>           number of extra output compression threads [0]\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 

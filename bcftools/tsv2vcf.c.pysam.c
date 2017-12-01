@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  tsv2vcf.c -- convert from whitespace-separated fields to VCF
 

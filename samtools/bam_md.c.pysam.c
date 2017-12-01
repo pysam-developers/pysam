@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_md.c -- calmd subcommand.
 
@@ -118,7 +118,7 @@ void bam_fillmd1_core(bam1_t *b, char *ref, int ref_len, int flag, int max_nm)
         if (old_nm) old_nm_i = bam_aux2i(old_nm);
         if (!old_nm) bam_aux_append(b, "NM", 'i', 4, (uint8_t*)&nm);
         else if (nm != old_nm_i) {
-            fprintf(pysam_stderr, "[bam_fillmd1] different NM for read '%s': %d -> %d\n", bam_get_qname(b), old_nm_i, nm);
+            fprintf(samtools_stderr, "[bam_fillmd1] different NM for read '%s': %d -> %d\n", bam_get_qname(b), old_nm_i, nm);
             bam_aux_del(b, old_nm);
             bam_aux_append(b, "NM", 'i', 4, (uint8_t*)&nm);
         }
@@ -136,7 +136,7 @@ void bam_fillmd1_core(bam1_t *b, char *ref, int ref_len, int flag, int max_nm)
                 if (i < str->l) is_diff = 1;
             } else is_diff = 1;
             if (is_diff) {
-                fprintf(pysam_stderr, "[bam_fillmd1] different MD for read '%s': '%s' -> '%s'\n", bam_get_qname(b), old_md+1, str->s);
+                fprintf(samtools_stderr, "[bam_fillmd1] different MD for read '%s': '%s' -> '%s'\n", bam_get_qname(b), old_md+1, str->s);
                 bam_aux_del(b, old_md);
                 bam_aux_append(b, "MD", 'Z', str->l + 1, (uint8_t*)str->s);
             }
@@ -164,7 +164,7 @@ void bam_fillmd1(bam1_t *b, char *ref, int flag)
 }
 
 int calmd_usage() {
-    fprintf(pysam_stderr,
+    fprintf(samtools_stderr,
 "Usage: samtools calmd [-eubrAES] <aln.bam> <ref.fasta>\n"
 "Options:\n"
 "  -e       change identical bases to '='\n"
@@ -175,7 +175,7 @@ int calmd_usage() {
 "  -r       compute the BQ tag (without -A) or cap baseQ by BAQ (with -A)\n"
 "  -E       extended BAQ for better sensitivity but lower specificity\n");
 
-    sam_global_opt_help(pysam_stderr, "-....@");
+    sam_global_opt_help(samtools_stderr, "-....@");
     return 1;
 }
 
@@ -214,7 +214,7 @@ int bam_fillmd(int argc, char *argv[])
         case 'A': baq_flag |= 1; break;
         case 'E': baq_flag |= 2; break;
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
-            fprintf(pysam_stderr, "[bam_fillmd] unrecognized option '-%c'\n\n", c);
+            fprintf(samtools_stderr, "[bam_fillmd] unrecognized option '-%c'\n\n", c);
             /* else fall-through */
         case '?': return calmd_usage();
         }
@@ -232,11 +232,11 @@ int bam_fillmd(int argc, char *argv[])
 
     header = sam_hdr_read(fp);
     if (header == NULL || header->n_targets == 0) {
-        fprintf(pysam_stderr, "[bam_fillmd] input SAM does not have header. Abort!\n");
+        fprintf(samtools_stderr, "[bam_fillmd] input SAM does not have header. Abort!\n");
         goto fail;
     }
 
-    fpout = sam_open_format(pysam_stdout_fn, mode_w, &ga.out);
+    fpout = sam_open_format(samtools_stdout_fn, mode_w, &ga.out);
     if (fpout == NULL) {
         print_error_errno("calmd", "Failed to open output");
         goto fail;
@@ -248,7 +248,7 @@ int bam_fillmd(int argc, char *argv[])
 
     if (ga.nthreads > 0) {
         if (!(p.pool = hts_tpool_init(ga.nthreads))) {
-            fprintf(pysam_stderr, "Error creating thread pool\n");
+            fprintf(samtools_stderr, "Error creating thread pool\n");
             goto fail;
         }
         hts_set_opt(fp,    HTS_OPT_THREAD_POOL, &p);
@@ -265,7 +265,7 @@ int bam_fillmd(int argc, char *argv[])
 
     b = bam_init1();
     if (!b) {
-        fprintf(pysam_stderr, "[bam_fillmd] Failed to allocate bam struct\n");
+        fprintf(samtools_stderr, "[bam_fillmd] Failed to allocate bam struct\n");
         goto fail;
     }
     while ((ret = sam_read1(fp, header, b)) >= 0) {
@@ -275,7 +275,7 @@ int bam_fillmd(int argc, char *argv[])
                 ref = fai_fetch(fai, header->target_name[b->core.tid], &len);
                 tid = b->core.tid;
                 if (ref == 0) { // FIXME: Should this always be fatal?
-                    fprintf(pysam_stderr, "[bam_fillmd] fail to find sequence '%s' in the reference.\n",
+                    fprintf(samtools_stderr, "[bam_fillmd] fail to find sequence '%s' in the reference.\n",
                             header->target_name[tid]);
                     if (is_realn || capQ > 10) goto fail; // Would otherwise crash
                 }
@@ -293,7 +293,7 @@ int bam_fillmd(int argc, char *argv[])
         }
     }
     if (ret < -1) {
-        fprintf(pysam_stderr, "[bam_fillmd] Error reading input.\n");
+        fprintf(samtools_stderr, "[bam_fillmd] Error reading input.\n");
         goto fail;
     }
     bam_destroy1(b);
@@ -303,7 +303,7 @@ int bam_fillmd(int argc, char *argv[])
     fai_destroy(fai);
     sam_close(fp);
     if (sam_close(fpout) < 0) {
-        fprintf(pysam_stderr, "[bam_fillmd] error when closing output file\n");
+        fprintf(samtools_stderr, "[bam_fillmd] error when closing output file\n");
         return 1;
     }
     if (p.pool) hts_tpool_destroy(p.pool);

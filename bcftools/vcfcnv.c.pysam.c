@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /* The MIT License
 
@@ -273,7 +273,7 @@ static void init_data(args_t *args)
     args->hmm = hmm_init(args->nstates, args->tprob, 10000);
     hmm_init_states(args->hmm, args->iprobs);
 
-    args->summary_fh = pysam_stdout;
+    args->summary_fh = bcftools_stdout;
     init_sample_files(&args->query_sample, args->output_dir);
     if ( args->control_sample.name )
     {
@@ -323,7 +323,7 @@ static void py_plot_cnv(char *script, float th)
 
     char *cmd = msprintf("python %s -p %f", script, th);
     int ret = system(cmd);
-    if ( ret) fprintf(pysam_stderr, "The command returned non-zero status %d: %s\n", ret, cmd);
+    if ( ret) fprintf(bcftools_stderr, "The command returned non-zero status %d: %s\n", ret, cmd);
     free(cmd);
 }
 
@@ -659,7 +659,7 @@ static int set_observed_prob(args_t *args, sample_t *smpl, int isite)
     cn3_baf /= norm;
 
     #if DBG0
-    if ( args->verbose ) fprintf(pysam_stderr,"%f\t%f %f %f\n", baf,cn1_baf,cn2_baf,cn3_baf);
+    if ( args->verbose ) fprintf(bcftools_stderr,"%f\t%f %f %f\n", baf,cn1_baf,cn2_baf,cn3_baf);
     #endif
 
     double cn1_lrr = exp(-(lrr + 0.45)*(lrr + 0.45)/smpl->lrr_dev2);
@@ -884,7 +884,7 @@ static int update_sample_args(args_t *args, sample_t *smpl, int ismpl)
     baf_AA_dev2 /= norm_baf_AA_dev2;
     if ( baf_dev2 < baf_AA_dev2 )  baf_dev2 = baf_AA_dev2;
     double max_mean_cn3 = 0.5 - sqrt(baf_dev2)*1.644854;    // R: qnorm(0.95)=1.644854
-    //fprintf(pysam_stderr,"dev=%f  AA_dev=%f  max_mean_cn3=%f  mean_cn3=%f\n", baf_dev2,baf_AA_dev2,max_mean_cn3,mean_cn3);
+    //fprintf(bcftools_stderr,"dev=%f  AA_dev=%f  max_mean_cn3=%f  mean_cn3=%f\n", baf_dev2,baf_AA_dev2,max_mean_cn3,mean_cn3);
     assert( max_mean_cn3>0 );
 
     double new_frac = 1./mean_cn3 - 2;
@@ -954,13 +954,13 @@ static void cnv_flush_viterbi(args_t *args)
     if ( args->optimize_frac )
     {
         int niter = 0;
-        fprintf(pysam_stderr,"Attempting to estimate the fraction of aberrant cells (chr %s):\n", bcf_hdr_id2name(args->hdr,args->prev_rid));
+        fprintf(bcftools_stderr,"Attempting to estimate the fraction of aberrant cells (chr %s):\n", bcf_hdr_id2name(args->hdr,args->prev_rid));
         do
         {
-            fprintf(pysam_stderr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
+            fprintf(bcftools_stderr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
             if ( args->control_sample.name )
-                fprintf(pysam_stderr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
-            fprintf(pysam_stderr,"\n");
+                fprintf(bcftools_stderr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
+            fprintf(bcftools_stderr,"\n");
             set_emission_probs(args);
             hmm_run_fwd_bwd(hmm, args->nsites, args->eprob, args->sites);
         }
@@ -976,10 +976,10 @@ static void cnv_flush_viterbi(args_t *args)
             if ( args->control_sample.name ) set_gauss_params(args, &args->control_sample);
         }
 
-        fprintf(pysam_stderr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
+        fprintf(bcftools_stderr,"\t.. %f %f", args->query_sample.cell_frac,args->query_sample.baf_dev2);
         if ( args->control_sample.name )
-            fprintf(pysam_stderr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
-        fprintf(pysam_stderr,"\n");
+            fprintf(bcftools_stderr,"\t.. %f %f", args->control_sample.cell_frac,args->control_sample.baf_dev2);
+        fprintf(bcftools_stderr,"\n");
 
         fprintf(args->query_sample.summary_fh,"CF\t%s\t%d\t%d\t%.2f\t%f\n",
             bcf_hdr_id2name(args->hdr,args->prev_rid),args->sites[0]+1,args->sites[args->nsites-1]+1,
@@ -1003,7 +1003,7 @@ static void cnv_flush_viterbi(args_t *args)
         double ori_ii = avg_ii_prob(nstates,hmm_get_tprob(hmm));
         hmm_run_baum_welch(hmm, args->nsites, args->eprob, args->sites);
         double new_ii = avg_ii_prob(nstates,hmm_get_tprob(hmm));
-        fprintf(pysam_stderr,"%e\t%e\t%e\n", ori_ii,new_ii,new_ii-ori_ii);
+        fprintf(bcftools_stderr,"%e\t%e\t%e\n", ori_ii,new_ii,new_ii-ori_ii);
         double *tprob = init_tprob_matrix(nstates, 1-new_ii, args->same_prob);
         hmm_set_tprob(args->hmm, tprob, 10000);
         double *tprob_arr = hmm_get_tprob(hmm);
@@ -1015,9 +1015,9 @@ static void cnv_flush_viterbi(args_t *args)
             {
                 for (j=0; j<nstates; j++)
                 {
-                    fprintf(pysam_stdout, " %.15f", MAT(tprob_arr,nstates,j,i));
+                    fprintf(bcftools_stdout, " %.15f", MAT(tprob_arr,nstates,j,i));
                 }
-                fprintf(pysam_stdout, "\n");
+                fprintf(bcftools_stdout, "\n");
             }
             break;
         }
@@ -1208,33 +1208,33 @@ static void cnv_next_line(args_t *args, bcf1_t *line)
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Copy number variation caller, requires Illumina's B-allele frequency (BAF) and Log R\n");
-    fprintf(pysam_stderr, "         Ratio intensity (LRR). The HMM considers the following copy number states: CN 2\n");
-    fprintf(pysam_stderr, "         (normal), 1 (single-copy loss), 0 (complete loss), 3 (single-copy gain)\n");
-    fprintf(pysam_stderr, "Usage:   bcftools cnv [OPTIONS] <file.vcf>\n");
-    fprintf(pysam_stderr, "General Options:\n");
-    fprintf(pysam_stderr, "    -c, --control-sample <string>      optional control sample name to highlight differences\n");
-    fprintf(pysam_stderr, "    -f, --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
-    fprintf(pysam_stderr, "    -o, --output-dir <path>            \n");
-    fprintf(pysam_stderr, "    -p, --plot-threshold <float>       plot aberrant chromosomes with quality at least 'float'\n");
-    fprintf(pysam_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "    -s, --query-sample <string>        query samply name\n");
-    fprintf(pysam_stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "HMM Options:\n");
-    fprintf(pysam_stderr, "    -a, --aberrant <float[,float]>     fraction of aberrant cells in query and control [1.0,1.0]\n");
-    fprintf(pysam_stderr, "    -b, --BAF-weight <float>           relative contribution from BAF [1]\n");
-    fprintf(pysam_stderr, "    -d, --BAF-dev <float[,float]>      expected BAF deviation in query and control [0.04,0.04]\n"); // experimental
-    fprintf(pysam_stderr, "    -e, --err-prob <float>             uniform error probability [1e-4]\n");
-    fprintf(pysam_stderr, "    -k, --LRR-dev <float[,float]>      expected LRR deviation [0.2,0.2]\n"); // experimental
-    fprintf(pysam_stderr, "    -l, --LRR-weight <float>           relative contribution from LRR [0.2]\n");
-    fprintf(pysam_stderr, "    -L, --LRR-smooth-win <int>         window of LRR moving average smoothing [10]\n");
-    fprintf(pysam_stderr, "    -O, --optimize <float>             estimate fraction of aberrant cells down to <float> [1.0]\n");
-    fprintf(pysam_stderr, "    -P, --same-prob <float>            prior probability of -s/-c being the same [0.5]\n");
-    fprintf(pysam_stderr, "    -x, --xy-prob <float>              P(x|y) transition probability [1e-9]\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   Copy number variation caller, requires Illumina's B-allele frequency (BAF) and Log R\n");
+    fprintf(bcftools_stderr, "         Ratio intensity (LRR). The HMM considers the following copy number states: CN 2\n");
+    fprintf(bcftools_stderr, "         (normal), 1 (single-copy loss), 0 (complete loss), 3 (single-copy gain)\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools cnv [OPTIONS] <file.vcf>\n");
+    fprintf(bcftools_stderr, "General Options:\n");
+    fprintf(bcftools_stderr, "    -c, --control-sample <string>      optional control sample name to highlight differences\n");
+    fprintf(bcftools_stderr, "    -f, --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
+    fprintf(bcftools_stderr, "    -o, --output-dir <path>            \n");
+    fprintf(bcftools_stderr, "    -p, --plot-threshold <float>       plot aberrant chromosomes with quality at least 'float'\n");
+    fprintf(bcftools_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "    -s, --query-sample <string>        query samply name\n");
+    fprintf(bcftools_stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "HMM Options:\n");
+    fprintf(bcftools_stderr, "    -a, --aberrant <float[,float]>     fraction of aberrant cells in query and control [1.0,1.0]\n");
+    fprintf(bcftools_stderr, "    -b, --BAF-weight <float>           relative contribution from BAF [1]\n");
+    fprintf(bcftools_stderr, "    -d, --BAF-dev <float[,float]>      expected BAF deviation in query and control [0.04,0.04]\n"); // experimental
+    fprintf(bcftools_stderr, "    -e, --err-prob <float>             uniform error probability [1e-4]\n");
+    fprintf(bcftools_stderr, "    -k, --LRR-dev <float[,float]>      expected LRR deviation [0.2,0.2]\n"); // experimental
+    fprintf(bcftools_stderr, "    -l, --LRR-weight <float>           relative contribution from LRR [0.2]\n");
+    fprintf(bcftools_stderr, "    -L, --LRR-smooth-win <int>         window of LRR moving average smoothing [10]\n");
+    fprintf(bcftools_stderr, "    -O, --optimize <float>             estimate fraction of aberrant cells down to <float> [1.0]\n");
+    fprintf(bcftools_stderr, "    -P, --same-prob <float>            prior probability of -s/-c being the same [0.5]\n");
+    fprintf(bcftools_stderr, "    -x, --xy-prob <float>              P(x|y) transition probability [1e-9]\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 
@@ -1411,7 +1411,7 @@ int main_vcfcnv(int argc, char *argv[])
     }
     cnv_next_line(args, NULL);
     create_plots(args);
-    fprintf(pysam_stderr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);
+    fprintf(bcftools_stderr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);
     destroy_data(args);
     free(args);
     return 0;

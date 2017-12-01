@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bamshuf.c -- collate subcommand.
 
@@ -80,7 +80,7 @@ static inline int elem_lt(elem_t x, elem_t y)
 KSORT_INIT(bamshuf, elem_t, elem_lt)
 
 static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
-                   int is_pysam_stdout, sam_global_args *ga)
+                   int is_samtools_stdout, sam_global_args *ga)
 {
     samFile *fp, *fpw = NULL, **fpt = NULL;
     char **fnt = NULL, modew[8];
@@ -109,7 +109,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
 
     h = sam_hdr_read(fp);
     if (h == NULL) {
-        fprintf(pysam_stderr, "Couldn't read header for '%s'\n", fn);
+        fprintf(samtools_stderr, "Couldn't read header for '%s'\n", fn);
         goto fail;
     }
     fnt = (char**)calloc(n_files, sizeof(char*));
@@ -149,7 +149,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
     bam_destroy1(b);
     b = NULL;
     if (r < -1) {
-        fprintf(pysam_stderr, "Error reading input file\n");
+        fprintf(samtools_stderr, "Error reading input file\n");
         goto fail;
     }
     for (i = 0; i < n_files; ++i) {
@@ -157,7 +157,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
         r = sam_close(fpt[i]);
         fpt[i] = NULL;
         if (r < 0) {
-            fprintf(pysam_stderr, "Error on closing '%s'\n", fnt[i]);
+            fprintf(samtools_stderr, "Error on closing '%s'\n", fnt[i]);
             return 1;
         }
 
@@ -170,7 +170,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
     fp = NULL;
     // merge
     sprintf(modew, "wb%d", (clevel >= 0 && clevel <= 9)? clevel : DEF_CLEVEL);
-    if (!is_pysam_stdout) { // output to a file
+    if (!is_samtools_stdout) { // output to a file
         char *fnw = (char*)calloc(l + 5, 1);
         if (!fnw) goto mem_fail;
         if (ga->out.format == unknown_format)
@@ -179,9 +179,9 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
             sprintf(fnw, "%s.%s", pre,  hts_format_file_extension(&ga->out));
         fpw = sam_open_format(fnw, modew, &ga->out);
         free(fnw);
-    } else fpw = sam_open_format("-", modew, &ga->out); // output to pysam_stdout
+    } else fpw = sam_open_format("-", modew, &ga->out); // output to samtools_stdout
     if (fpw == NULL) {
-        if (is_pysam_stdout) print_error_errno("collate", "Cannot open standard output");
+        if (is_samtools_stdout) print_error_errno("collate", "Cannot open standard output");
         else print_error_errno("collate", "Cannot open output file \"%s.bam\"", pre);
         goto fail;
     }
@@ -212,7 +212,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
         // Slurp in one of the split files
         for (j = 0; j < c; ++j) {
             if (sam_read1(fp, h, a[j].b) < 0) {
-                fprintf(pysam_stderr, "Error reading '%s'\n", fnt[i]);
+                fprintf(samtools_stderr, "Error reading '%s'\n", fnt[i]);
                 goto fail;
             }
             a[j].key = hash_X31_Wang(bam_get_qname(a[j].b));
@@ -238,7 +238,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
     free(a); free(fnt); free(cnt);
     sam_global_args_free(ga);
     if (sam_close(fpw) < 0) {
-        fprintf(pysam_stderr, "Error on closing output\n");
+        fprintf(samtools_stderr, "Error on closing output\n");
         return 1;
     }
 
@@ -246,7 +246,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
     return 0;
 
  mem_fail:
-    fprintf(pysam_stderr, "Out of memory\n");
+    fprintf(samtools_stderr, "Out of memory\n");
 
  fail:
     if (fp) sam_close(fp);
@@ -273,7 +273,7 @@ static int usage(FILE *fp, int n_files) {
     fprintf(fp,
             "Usage:   samtools collate [-Ou] [-n nFiles] [-l cLevel] <in.bam> <out.prefix>\n\n"
             "Options:\n"
-            "      -O       output to pysam_stdout\n"
+            "      -O       output to samtools_stdout\n"
             "      -u       uncompressed BAM output\n"
             "      -l INT   compression level [%d]\n" // DEF_CLEVEL
             "      -n INT   number of temporary files [%d]\n", // n_files
@@ -286,7 +286,7 @@ static int usage(FILE *fp, int n_files) {
 
 int main_bamshuf(int argc, char *argv[])
 {
-    int c, n_files = 64, clevel = DEF_CLEVEL, is_pysam_stdout = 0, is_un = 0;
+    int c, n_files = 64, clevel = DEF_CLEVEL, is_samtools_stdout = 0, is_un = 0;
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
     static const struct option lopts[] = {
         SAM_OPT_GLOBAL_OPTIONS('-', 0, 0, 0, 0, '@'),
@@ -298,15 +298,15 @@ int main_bamshuf(int argc, char *argv[])
         case 'n': n_files = atoi(optarg); break;
         case 'l': clevel = atoi(optarg); break;
         case 'u': is_un = 1; break;
-        case 'O': is_pysam_stdout = 1; break;
+        case 'O': is_samtools_stdout = 1; break;
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
                   /* else fall-through */
-        case '?': return usage(pysam_stderr, n_files);
+        case '?': return usage(samtools_stderr, n_files);
         }
     }
     if (is_un) clevel = 0;
     if (optind + 2 > argc)
-        return usage(pysam_stderr, n_files);
+        return usage(samtools_stderr, n_files);
 
-    return bamshuf(argv[optind], n_files, argv[optind+1], clevel, is_pysam_stdout, &ga);
+    return bamshuf(argv[optind], n_files, argv[optind+1], clevel, is_samtools_stdout, &ga);
 }

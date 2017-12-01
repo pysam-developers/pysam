@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  version.c -- report version numbers for plugins.
 
@@ -41,7 +41,7 @@ void error(const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
-    vfprintf(pysam_stderr, format, ap);
+    vfprintf(bcftools_stderr, format, ap);
     va_end(ap);
     exit(-1);
 }

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_quickcheck.c -- quickcheck subcommand.
 
@@ -70,7 +70,7 @@ int main_quickcheck(int argc, char** argv)
             verbose++;
             break;
         default:
-            usage_quickcheck(pysam_stderr);
+            usage_quickcheck(samtools_stderr);
             return 1;
         }
     }
@@ -79,12 +79,12 @@ int main_quickcheck(int argc, char** argv)
     argv += optind;
 
     if (argc < 1) {
-        usage_quickcheck(pysam_stdout);
+        usage_quickcheck(samtools_stdout);
         return 1;
     }
 
     if (verbose >= 2) {
-        fprintf(pysam_stderr, "verbosity set to %d\n", verbose);
+        fprintf(samtools_stderr, "verbosity set to %d\n", verbose);
     }
 
     if (verbose >= 4) {
@@ -98,36 +98,36 @@ int main_quickcheck(int argc, char** argv)
         char* fn = argv[i];
         int file_state = 0;
 
-        if (verbose >= 3) fprintf(pysam_stderr, "checking %s\n", fn);
+        if (verbose >= 3) fprintf(samtools_stderr, "checking %s\n", fn);
 
         // attempt to open
         htsFile *hts_fp = hts_open(fn, "r");
         if (hts_fp == NULL) {
-            if (verbose >= 2) fprintf(pysam_stderr, "%s could not be opened for reading.\n", fn);
+            if (verbose >= 2) fprintf(samtools_stderr, "%s could not be opened for reading.\n", fn);
             file_state |= 2;
         }
         else {
-            if (verbose >= 3) fprintf(pysam_stderr, "opened %s\n", fn);
+            if (verbose >= 3) fprintf(samtools_stderr, "opened %s\n", fn);
             // make sure we have sequence data
             const htsFormat *fmt = hts_get_format(hts_fp);
             if (fmt->category != sequence_data ) {
-                if (verbose >= 2) fprintf(pysam_stderr, "%s was not identified as sequence data.\n", fn);
+                if (verbose >= 2) fprintf(samtools_stderr, "%s was not identified as sequence data.\n", fn);
                 file_state |= 4;
             }
             else {
-                if (verbose >= 3) fprintf(pysam_stderr, "%s is sequence data\n", fn);
+                if (verbose >= 3) fprintf(samtools_stderr, "%s is sequence data\n", fn);
                 // check header
                 bam_hdr_t *header = sam_hdr_read(hts_fp);
                 if (header == NULL) {
-                    if (verbose >= 2) fprintf(pysam_stderr, "%s caused an error whilst reading its header.\n", fn);
+                    if (verbose >= 2) fprintf(samtools_stderr, "%s caused an error whilst reading its header.\n", fn);
                     file_state |= 8;
                 } else {
                     if (header->n_targets <= 0) {
-                        if (verbose >= 2) fprintf(pysam_stderr, "%s had no targets in header.\n", fn);
+                        if (verbose >= 2) fprintf(samtools_stderr, "%s had no targets in header.\n", fn);
                         file_state |= 8;
                     }
                     else {
-                        if (verbose >= 3) fprintf(pysam_stderr, "%s has %d targets in header.\n", fn, header->n_targets);
+                        if (verbose >= 3) fprintf(samtools_stderr, "%s has %d targets in header.\n", fn, header->n_targets);
                     }
                     bam_hdr_destroy(header);
                 }
@@ -135,35 +135,35 @@ int main_quickcheck(int argc, char** argv)
             // check EOF on formats that support this
             int ret;
             if ((ret = hts_check_EOF(hts_fp)) < 0) {
-                if (verbose >= 2) fprintf(pysam_stderr, "%s caused an error whilst checking for EOF block.\n", fn);
+                if (verbose >= 2) fprintf(samtools_stderr, "%s caused an error whilst checking for EOF block.\n", fn);
                 file_state |= 16;
             }
             else {
                 switch (ret) {
                     case 0:
-                        if (verbose >= 2) fprintf(pysam_stderr, "%s was missing EOF block when one should be present.\n", fn);
+                        if (verbose >= 2) fprintf(samtools_stderr, "%s was missing EOF block when one should be present.\n", fn);
                         file_state |= 16;
                         break;
                     case 1:
-                        if (verbose >= 3) fprintf(pysam_stderr, "%s has good EOF block.\n", fn);
+                        if (verbose >= 3) fprintf(samtools_stderr, "%s has good EOF block.\n", fn);
                         break;
                     case 2:
-                        if (verbose >= 3) fprintf(pysam_stderr, "%s cannot be checked for EOF block as it is not seekable.\n", fn);
+                        if (verbose >= 3) fprintf(samtools_stderr, "%s cannot be checked for EOF block as it is not seekable.\n", fn);
                         break;
                     case 3:
-                        if (verbose >= 3) fprintf(pysam_stderr, "%s cannot be checked for EOF block because its filetype does not contain one.\n", fn);
+                        if (verbose >= 3) fprintf(samtools_stderr, "%s cannot be checked for EOF block because its filetype does not contain one.\n", fn);
                         break;
                 }
             }
 
             if (hts_close(hts_fp) < 0) {
                 file_state |= 32;
-                if (verbose >= 2) fprintf(pysam_stderr, "%s did not close cleanly.\n", fn);
+                if (verbose >= 2) fprintf(samtools_stderr, "%s did not close cleanly.\n", fn);
             }
         }
 
         if (file_state > 0 && verbose >= 1) {
-            fprintf(pysam_stdout, "%s\n", fn);
+            fprintf(samtools_stdout, "%s\n", fn);
         }
         ret |= file_state;
     }

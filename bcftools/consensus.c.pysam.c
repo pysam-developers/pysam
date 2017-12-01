@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /* The MIT License
 
@@ -103,7 +103,7 @@ args_t;
 
 static chain_t* init_chain(chain_t *chain, int ref_ori_pos)
 {
-//     fprintf(pysam_stderr, "init_chain(*chain, ref_ori_pos=%d)\n", ref_ori_pos);
+//     fprintf(bcftools_stderr, "init_chain(*chain, ref_ori_pos=%d)\n", ref_ori_pos);
     chain = (chain_t*) calloc(1,sizeof(chain_t));
     chain->num = 0;
     chain->block_lengths = NULL;
@@ -173,7 +173,7 @@ static void print_chain(args_t *args)
 
 static void push_chain_gap(chain_t *chain, int ref_start, int ref_len, int alt_start, int alt_len)
 {
-//     fprintf(pysam_stderr, "push_chain_gap(*chain, ref_start=%d, ref_len=%d, alt_start=%d, alt_len=%d)\n", ref_start, ref_len, alt_start, alt_len);
+//     fprintf(bcftools_stderr, "push_chain_gap(*chain, ref_start=%d, ref_len=%d, alt_start=%d, alt_len=%d)\n", ref_start, ref_len, alt_start, alt_len);
     int num = chain->num;
 
     if (ref_start <= chain->ref_last_block_ori) {
@@ -235,8 +235,8 @@ static void init_data(args_t *args)
         args->fp_out = fopen(args->output_fname,"w");
         if ( ! args->fp_out ) error("Failed to create %s: %s\n", args->output_fname, strerror(errno));
     }
-    else args->fp_out = pysam_stdout;
-    if ( args->isample<0 ) fprintf(pysam_stderr,"Note: the --sample option not given, applying all records\n");
+    else args->fp_out = bcftools_stdout;
+    if ( args->isample<0 ) fprintf(bcftools_stderr,"Note: the --sample option not given, applying all records\n");
     if ( args->filter_str )
         args->filter = filter_init(args->hdr, args->filter_str);
 }
@@ -279,7 +279,7 @@ static void init_region(args_t *args, char *line)
         }
     }
     args->rid = bcf_hdr_name2id(args->hdr,line);
-    if ( args->rid<0 ) fprintf(pysam_stderr,"Warning: Sequence \"%s\" not in %s\n", line,args->fname);
+    if ( args->rid<0 ) fprintf(bcftools_stderr,"Warning: Sequence \"%s\" not in %s\n", line,args->fname);
     args->fa_buf.l = 0;
     args->fa_length = 0;
     args->fa_end_pos = to;
@@ -371,7 +371,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
 
     if ( rec->pos <= args->fa_frz_pos )
     {
-        fprintf(pysam_stderr,"The site %s:%d overlaps with another variant, skipping...\n", bcf_seqname(args->hdr,rec),rec->pos+1);
+        fprintf(bcftools_stderr,"The site %s:%d overlaps with another variant, skipping...\n", bcf_seqname(args->hdr,rec),rec->pos+1);
         return;
     }
     if ( args->mask )
@@ -474,7 +474,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     int idx = rec->pos - args->fa_ori_pos + args->fa_mod_off;
     if ( idx<0 )
     {
-        fprintf(pysam_stderr,"Warning: ignoring overlapping variant starting at %s:%d\n", bcf_seqname(args->hdr,rec),rec->pos+1);
+        fprintf(bcftools_stderr,"Warning: ignoring overlapping variant starting at %s:%d\n", bcf_seqname(args->hdr,rec),rec->pos+1);
         return;
     }
     if ( rec->rlen > args->fa_buf.l - idx )
@@ -484,7 +484,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         if ( alen > rec->rlen )
         {
             rec->d.allele[ialt][rec->rlen] = 0;
-            fprintf(pysam_stderr,"Warning: trimming variant starting at %s:%d\n", bcf_seqname(args->hdr,rec),rec->pos+1);
+            fprintf(bcftools_stderr,"Warning: trimming variant starting at %s:%d\n", bcf_seqname(args->hdr,rec),rec->pos+1);
         }
     }
     if ( idx>=args->fa_buf.l ) 
@@ -502,7 +502,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     }
     else if ( strncasecmp(rec->d.allele[0],args->fa_buf.s+idx,rec->rlen) )
     {
-        // fprintf(pysam_stderr,"%d .. [%s], idx=%d ori=%d off=%d\n",args->fa_ori_pos,args->fa_buf.s,idx,args->fa_ori_pos,args->fa_mod_off);
+        // fprintf(bcftools_stderr,"%d .. [%s], idx=%d ori=%d off=%d\n",args->fa_ori_pos,args->fa_buf.s,idx,args->fa_ori_pos,args->fa_mod_off);
         char tmp = 0;
         if ( args->fa_buf.l - idx > rec->rlen ) 
         { 
@@ -672,35 +672,35 @@ static void consensus(args_t *args)
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About: Create consensus sequence by applying VCF variants to a reference fasta\n");
-    fprintf(pysam_stderr, "       file. By default, the program will apply all ALT variants. Using the\n");
-    fprintf(pysam_stderr, "       --sample (and, optionally, --haplotype) option will apply genotype\n");
-    fprintf(pysam_stderr, "       (or haplotype) calls from FORMAT/GT. The program ignores allelic depth\n");
-    fprintf(pysam_stderr, "       information, such as INFO/AD or FORMAT/AD.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools consensus [OPTIONS] <file.vcf>\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "    -c, --chain <file>         write a chain file for liftover\n");
-    fprintf(pysam_stderr, "    -e, --exclude <expr>       exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "    -f, --fasta-ref <file>     reference sequence in fasta format\n");
-    fprintf(pysam_stderr, "    -H, --haplotype <which>    choose which allele to use from the FORMAT/GT field, note\n");
-    fprintf(pysam_stderr, "                               the codes are case-insensitive:\n");
-    fprintf(pysam_stderr, "                                   1: first allele from GT\n");
-    fprintf(pysam_stderr, "                                   2: second allele\n");
-    fprintf(pysam_stderr, "                                   R: REF allele in het genotypes\n");
-    fprintf(pysam_stderr, "                                   A: ALT allele\n");
-    fprintf(pysam_stderr, "                                   LR,LA: longer allele and REF/ALT if equal length\n");
-    fprintf(pysam_stderr, "                                   SR,SA: shorter allele and REF/ALT if equal length\n");
-    fprintf(pysam_stderr, "    -i, --include <expr>       select sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "    -I, --iupac-codes          output variants in the form of IUPAC ambiguity codes\n");
-    fprintf(pysam_stderr, "    -m, --mask <file>          replace regions with N\n");
-    fprintf(pysam_stderr, "    -o, --output <file>        write output to a file [standard output]\n");
-    fprintf(pysam_stderr, "    -s, --sample <name>        apply variants of the given sample\n");
-    fprintf(pysam_stderr, "Examples:\n");
-    fprintf(pysam_stderr, "   # Get the consensus for one region. The fasta header lines are then expected\n");
-    fprintf(pysam_stderr, "   # in the form \">chr:from-to\".\n");
-    fprintf(pysam_stderr, "   samtools faidx ref.fa 8:11870-11890 | bcftools consensus in.vcf.gz > out.fa\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About: Create consensus sequence by applying VCF variants to a reference fasta\n");
+    fprintf(bcftools_stderr, "       file. By default, the program will apply all ALT variants. Using the\n");
+    fprintf(bcftools_stderr, "       --sample (and, optionally, --haplotype) option will apply genotype\n");
+    fprintf(bcftools_stderr, "       (or haplotype) calls from FORMAT/GT. The program ignores allelic depth\n");
+    fprintf(bcftools_stderr, "       information, such as INFO/AD or FORMAT/AD.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools consensus [OPTIONS] <file.vcf>\n");
+    fprintf(bcftools_stderr, "Options:\n");
+    fprintf(bcftools_stderr, "    -c, --chain <file>         write a chain file for liftover\n");
+    fprintf(bcftools_stderr, "    -e, --exclude <expr>       exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -f, --fasta-ref <file>     reference sequence in fasta format\n");
+    fprintf(bcftools_stderr, "    -H, --haplotype <which>    choose which allele to use from the FORMAT/GT field, note\n");
+    fprintf(bcftools_stderr, "                               the codes are case-insensitive:\n");
+    fprintf(bcftools_stderr, "                                   1: first allele from GT\n");
+    fprintf(bcftools_stderr, "                                   2: second allele\n");
+    fprintf(bcftools_stderr, "                                   R: REF allele in het genotypes\n");
+    fprintf(bcftools_stderr, "                                   A: ALT allele\n");
+    fprintf(bcftools_stderr, "                                   LR,LA: longer allele and REF/ALT if equal length\n");
+    fprintf(bcftools_stderr, "                                   SR,SA: shorter allele and REF/ALT if equal length\n");
+    fprintf(bcftools_stderr, "    -i, --include <expr>       select sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -I, --iupac-codes          output variants in the form of IUPAC ambiguity codes\n");
+    fprintf(bcftools_stderr, "    -m, --mask <file>          replace regions with N\n");
+    fprintf(bcftools_stderr, "    -o, --output <file>        write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "    -s, --sample <name>        apply variants of the given sample\n");
+    fprintf(bcftools_stderr, "Examples:\n");
+    fprintf(bcftools_stderr, "   # Get the consensus for one region. The fasta header lines are then expected\n");
+    fprintf(bcftools_stderr, "   # in the form \">chr:from-to\".\n");
+    fprintf(bcftools_stderr, "   samtools faidx ref.fa 8:11870-11890 | bcftools consensus in.vcf.gz > out.fa\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  padding.c -- depad subcommand.
 
@@ -99,10 +99,10 @@ static int unpad_seq(bam1_t *b, kstring_t *s)
             for (i = 0; i < ol; ++i) s->s[s->l++] = 0;
             if (0 == cigar_n_warning) {
                 cigar_n_warning = -1;
-                fprintf(pysam_stderr, "[depad] WARNING: CIGAR op N treated as op D in read %s\n", bam_get_qname(b));
+                fprintf(samtools_stderr, "[depad] WARNING: CIGAR op N treated as op D in read %s\n", bam_get_qname(b));
             }
         } else {
-            fprintf(pysam_stderr, "[depad] ERROR: Didn't expect CIGAR op %c in read %s\n", BAM_CIGAR_STR[op], bam_get_qname(b));
+            fprintf(samtools_stderr, "[depad] ERROR: Didn't expect CIGAR op %c in read %s\n", BAM_CIGAR_STR[op], bam_get_qname(b));
             return -1;
         }
     }
@@ -117,7 +117,7 @@ int load_unpadded_ref(faidx_t *fai, char *ref_name, int ref_len, kstring_t *seq)
 
     fai_ref = fai_fetch(fai, ref_name, &fai_ref_len);
     if (fai_ref_len != ref_len) {
-        fprintf(pysam_stderr, "[depad] ERROR: FASTA sequence %s length %i, expected %i\n", ref_name, fai_ref_len, ref_len);
+        fprintf(samtools_stderr, "[depad] ERROR: FASTA sequence %s length %i, expected %i\n", ref_name, fai_ref_len, ref_len);
         free(fai_ref);
         return -1;
     }
@@ -131,7 +131,7 @@ int load_unpadded_ref(faidx_t *fai, char *ref_name, int ref_len, kstring_t *seq)
         } else {
             int i = seq_nt16_table[(int)base];
             if (i == 0 || i==16) { // Equals maps to 0, anything unexpected to 16
-                fprintf(pysam_stderr, "[depad] ERROR: Invalid character %c (ASCII %i) in FASTA sequence %s\n", base, (int)base, ref_name);
+                fprintf(samtools_stderr, "[depad] ERROR: Invalid character %c (ASCII %i) in FASTA sequence %s\n", base, (int)base, ref_name);
                 free(fai_ref);
                 return -1;
             }
@@ -152,19 +152,19 @@ int get_unpadded_len(faidx_t *fai, char *ref_name, int padded_len)
 
     fai_ref = fai_fetch(fai, ref_name, &fai_ref_len);
     if (fai_ref_len != padded_len) {
-        fprintf(pysam_stderr, "[depad] ERROR: FASTA sequence '%s' length %i, expected %i\n", ref_name, fai_ref_len, padded_len);
+        fprintf(samtools_stderr, "[depad] ERROR: FASTA sequence '%s' length %i, expected %i\n", ref_name, fai_ref_len, padded_len);
         free(fai_ref);
         return -1;
     }
     for (k = 0; k < padded_len; ++k) {
-        //fprintf(pysam_stderr, "[depad] checking base %i of %i or %i\n", k+1, ref_len, strlen(fai_ref));
+        //fprintf(samtools_stderr, "[depad] checking base %i of %i or %i\n", k+1, ref_len, strlen(fai_ref));
         base = fai_ref[k];
         if (base == '-' || base == '*') {
             gaps += 1;
         } else {
             int i = seq_nt16_table[(int)base];
             if (i == 0 || i==16) { // Equals maps to 0, anything unexpected to 16
-                fprintf(pysam_stderr, "[depad] ERROR: Invalid character %c (ASCII %i) in FASTA sequence '%s'\n", base, (int)base, ref_name);
+                fprintf(samtools_stderr, "[depad] ERROR: Invalid character %c (ASCII %i) in FASTA sequence '%s'\n", base, (int)base, ref_name);
                 free(fai_ref);
                 return -1;
             }
@@ -197,7 +197,7 @@ int bam_pad2unpad(samFile *in, samFile *out,  bam_hdr_t *h, faidx_t *fai)
 
     b = bam_init1();
     if (!b) {
-        fprintf(pysam_stderr, "[depad] Couldn't allocate bam struct\n");
+        fprintf(samtools_stderr, "[depad] Couldn't allocate bam struct\n");
         return -1;
     }
     r.l = r.m = q.l = q.m = 0; r.s = q.s = 0;
@@ -210,20 +210,20 @@ int bam_pad2unpad(samFile *in, samFile *out,  bam_hdr_t *h, faidx_t *fai)
         uint32_t *cigar = bam_get_cigar(b);
         n2 = 0;
         if (b->core.pos == 0 && b->core.tid >= 0 && strcmp(bam_get_qname(b), h->target_name[b->core.tid]) == 0) {
-            // fprintf(pysam_stderr, "[depad] Found embedded reference '%s'\n", bam_get_qname(b));
+            // fprintf(samtools_stderr, "[depad] Found embedded reference '%s'\n", bam_get_qname(b));
             r_tid = b->core.tid;
             if (0!=unpad_seq(b, &r)) {
-                fprintf(pysam_stderr, "[depad] ERROR: Problem parsing SEQ and/or CIGAR in reference %s\n", bam_get_qname(b));
+                fprintf(samtools_stderr, "[depad] ERROR: Problem parsing SEQ and/or CIGAR in reference %s\n", bam_get_qname(b));
                 return -1;
             };
             if (h->target_len[r_tid] != r.l) {
-                fprintf(pysam_stderr, "[depad] ERROR: (Padded) length of '%s' is %u in BAM header, but %llu in embedded reference\n", bam_get_qname(b), h->target_len[r_tid], (unsigned long long)(r.l));
+                fprintf(samtools_stderr, "[depad] ERROR: (Padded) length of '%s' is %u in BAM header, but %llu in embedded reference\n", bam_get_qname(b), h->target_len[r_tid], (unsigned long long)(r.l));
                 return -1;
             }
             if (fai) {
                 // Check the embedded reference matches the FASTA file
                 if (load_unpadded_ref(fai, h->target_name[b->core.tid], h->target_len[b->core.tid], &q)) {
-                    fprintf(pysam_stderr, "[depad] ERROR: Failed to load embedded reference '%s' from FASTA\n", h->target_name[b->core.tid]);
+                    fprintf(samtools_stderr, "[depad] ERROR: Failed to load embedded reference '%s' from FASTA\n", h->target_name[b->core.tid]);
                     return -1;
                 }
                 assert(r.l == q.l);
@@ -231,7 +231,7 @@ int bam_pad2unpad(samFile *in, samFile *out,  bam_hdr_t *h, faidx_t *fai)
                 for (i = 0; i < r.l; ++i) {
                     if (r.s[i] != q.s[i]) {
                         // Show gaps as ASCII 45
-                        fprintf(pysam_stderr, "[depad] ERROR: Embedded sequence and reference FASTA don't match for %s base %i, '%c' vs '%c'\n",
+                        fprintf(samtools_stderr, "[depad] ERROR: Embedded sequence and reference FASTA don't match for %s base %i, '%c' vs '%c'\n",
                             h->target_name[b->core.tid], i+1,
                             r.s[i] ? seq_nt16_str[(int)r.s[i]] : 45,
                             q.s[i] ? seq_nt16_str[(int)q.s[i]] : 45);
@@ -245,25 +245,25 @@ int bam_pad2unpad(samFile *in, samFile *out,  bam_hdr_t *h, faidx_t *fai)
         } else if (b->core.n_cigar > 0) {
             int i, k, op;
             if (b->core.tid < 0) {
-                fprintf(pysam_stderr, "[depad] ERROR: Read '%s' has CIGAR but no RNAME\n", bam_get_qname(b));
+                fprintf(samtools_stderr, "[depad] ERROR: Read '%s' has CIGAR but no RNAME\n", bam_get_qname(b));
                 return -1;
             } else if (b->core.tid == r_tid) {
                 ; // good case, reference available
-                //fprintf(pysam_stderr, "[depad] Have ref '%s' for read '%s'\n", h->target_name[b->core.tid], bam_get_qname(b));
+                //fprintf(samtools_stderr, "[depad] Have ref '%s' for read '%s'\n", h->target_name[b->core.tid], bam_get_qname(b));
             } else if (fai) {
                 if (load_unpadded_ref(fai, h->target_name[b->core.tid], h->target_len[b->core.tid], &r)) {
-                    fprintf(pysam_stderr, "[depad] ERROR: Failed to load '%s' from reference FASTA\n", h->target_name[b->core.tid]);
+                    fprintf(samtools_stderr, "[depad] ERROR: Failed to load '%s' from reference FASTA\n", h->target_name[b->core.tid]);
                     return -1;
                 }
                 posmap = update_posmap(posmap, r);
                 r_tid = b->core.tid;
-                // fprintf(pysam_stderr, "[depad] Loaded %s from FASTA file\n", h->target_name[b->core.tid]);
+                // fprintf(samtools_stderr, "[depad] Loaded %s from FASTA file\n", h->target_name[b->core.tid]);
             } else {
-                fprintf(pysam_stderr, "[depad] ERROR: Missing %s embedded reference sequence (and no FASTA file)\n", h->target_name[b->core.tid]);
+                fprintf(samtools_stderr, "[depad] ERROR: Missing %s embedded reference sequence (and no FASTA file)\n", h->target_name[b->core.tid]);
                 return -1;
             }
             if (0!=unpad_seq(b, &q)) {
-                fprintf(pysam_stderr, "[depad] ERROR: Problem parsing SEQ and/or CIGAR in read %s\n", bam_get_qname(b));
+                fprintf(samtools_stderr, "[depad] ERROR: Problem parsing SEQ and/or CIGAR in read %s\n", bam_get_qname(b));
                 return -1;
             };
             if (bam_cigar_op(cigar[0]) == BAM_CSOFT_CLIP) {
@@ -332,32 +332,32 @@ int bam_pad2unpad(samFile *in, samFile *out,  bam_hdr_t *h, faidx_t *fai)
         if (b->core.pos != -1) b->core.pos = posmap[b->core.pos];
         if (b->core.mtid < 0 || b->core.mpos < 0) {
             /* Nice case, no mate to worry about*/
-            // fprintf(pysam_stderr, "[depad] Read '%s' mate not mapped\n", bam_get_qname(b));
+            // fprintf(samtools_stderr, "[depad] Read '%s' mate not mapped\n", bam_get_qname(b));
             /* TODO - Warning if FLAG says mate should be mapped? */
             /* Clean up funny input where mate position is given but mate reference is missing: */
             b->core.mtid = -1;
             b->core.mpos = -1;
         } else if (b->core.mtid == b->core.tid) {
             /* Nice case, same reference */
-            // fprintf(pysam_stderr, "[depad] Read '%s' mate mapped to same ref\n", bam_get_qname(b));
+            // fprintf(samtools_stderr, "[depad] Read '%s' mate mapped to same ref\n", bam_get_qname(b));
             b->core.mpos = posmap[b->core.mpos];
         } else {
             /* Nasty case, Must load alternative posmap */
-            // fprintf(pysam_stderr, "[depad] Loading reference '%s' temporarily\n", h->target_name[b->core.mtid]);
+            // fprintf(samtools_stderr, "[depad] Loading reference '%s' temporarily\n", h->target_name[b->core.mtid]);
             if (!fai) {
-                fprintf(pysam_stderr, "[depad] ERROR: Needed reference %s sequence for mate (and no FASTA file)\n", h->target_name[b->core.mtid]);
+                fprintf(samtools_stderr, "[depad] ERROR: Needed reference %s sequence for mate (and no FASTA file)\n", h->target_name[b->core.mtid]);
                 return -1;
             }
             /* Temporarily load the other reference sequence */
             if (load_unpadded_ref(fai, h->target_name[b->core.mtid], h->target_len[b->core.mtid], &r)) {
-                fprintf(pysam_stderr, "[depad] ERROR: Failed to load '%s' from reference FASTA\n", h->target_name[b->core.mtid]);
+                fprintf(samtools_stderr, "[depad] ERROR: Failed to load '%s' from reference FASTA\n", h->target_name[b->core.mtid]);
                 return -1;
             }
             posmap = update_posmap(posmap, r);
             b->core.mpos = posmap[b->core.mpos];
             /* Restore the reference and posmap*/
             if (load_unpadded_ref(fai, h->target_name[b->core.tid], h->target_len[b->core.tid], &r)) {
-                fprintf(pysam_stderr, "[depad] ERROR: Failed to load '%s' from reference FASTA\n", h->target_name[b->core.tid]);
+                fprintf(samtools_stderr, "[depad] ERROR: Failed to load '%s' from reference FASTA\n", h->target_name[b->core.tid]);
                 return -1;
             }
             posmap = update_posmap(posmap, r);
@@ -372,7 +372,7 @@ int bam_pad2unpad(samFile *in, samFile *out,  bam_hdr_t *h, faidx_t *fai)
         }
     }
     if (read_ret < -1) {
-        fprintf(pysam_stderr, "[depad] truncated file.\n");
+        fprintf(samtools_stderr, "[depad] truncated file.\n");
         ret = 1;
     }
     free(r.s); free(q.s); free(posmap);
@@ -390,10 +390,10 @@ bam_hdr_t * fix_header(bam_hdr_t *old, faidx_t *fai)
     for (i = 0; i < old->n_targets; ++i) {
         unpadded_len = get_unpadded_len(fai, old->target_name[i], old->target_len[i]);
         if (unpadded_len < 0) {
-            fprintf(pysam_stderr, "[depad] ERROR getting unpadded length of '%s', padded length %i\n", old->target_name[i], old->target_len[i]);
+            fprintf(samtools_stderr, "[depad] ERROR getting unpadded length of '%s', padded length %i\n", old->target_name[i], old->target_len[i]);
         } else {
             header->target_len[i] = unpadded_len;
-            //fprintf(pysam_stderr, "[depad] Recalculating '%s' length %i -> %i\n", old->target_name[i], old->target_len[i], header->target_len[i]);
+            //fprintf(samtools_stderr, "[depad] Recalculating '%s' length %i -> %i\n", old->target_name[i], old->target_len[i], header->target_len[i]);
         }
     }
     /* Duplicating the header allocated new buffer for header string */
@@ -415,7 +415,7 @@ bam_hdr_t * fix_header(bam_hdr_t *old, faidx_t *fai)
             char *name = strstr(text, "\tSN:");
             char *name_end;
             if (!name) {
-                fprintf(pysam_stderr, "Unable to find SN: header field\n");
+                fprintf(samtools_stderr, "Unable to find SN: header field\n");
                 return NULL;
             }
             name += 4;
@@ -487,7 +487,7 @@ bam_hdr_t * fix_header(bam_hdr_t *old, faidx_t *fai)
     /* Check we didn't overflow the buffer */
     assert (strlen(header->text) <= strlen(old->text));
     if (strlen(header->text) < header->l_text) {
-        //fprintf(pysam_stderr, "[depad] Reallocating header buffer\n");
+        //fprintf(samtools_stderr, "[depad] Reallocating header buffer\n");
         assert (newtext == header->text);
         newtext = malloc(strlen(header->text) + 1);
         strcpy(newtext, header->text);
@@ -495,7 +495,7 @@ bam_hdr_t * fix_header(bam_hdr_t *old, faidx_t *fai)
         header->text = newtext;
         header->l_text = strlen(newtext);
     }
-    //fprintf(pysam_stderr, "[depad] Here is the new header (pending @SQ lines),\n\n%s\n(end)\n", header->text);
+    //fprintf(samtools_stderr, "[depad] Here is the new header (pending @SQ lines),\n\n%s\n(end)\n", header->text);
     return header;
 }
 
@@ -536,7 +536,7 @@ int main_pad2unpad(int argc, char *argv[])
             break;
         case '?': is_long_help = 1; break;
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
-            fprintf(pysam_stderr, "[bam_fillmd] unrecognized option '-%c'\n\n", c);
+            fprintf(samtools_stderr, "[bam_fillmd] unrecognized option '-%c'\n\n", c);
             return usage(is_long_help);
         }
     }
@@ -561,19 +561,19 @@ int main_pad2unpad(int argc, char *argv[])
         goto depad_end;
     }
     if (fn_list && hts_set_fai_filename(in, fn_list) != 0) {
-        fprintf(pysam_stderr, "[depad] failed to load reference file \"%s\".\n", fn_list);
+        fprintf(samtools_stderr, "[depad] failed to load reference file \"%s\".\n", fn_list);
         ret = 1;
         goto depad_end;
     }
     if ((h = sam_hdr_read(in)) == 0) {
-        fprintf(pysam_stderr, "[depad] failed to read the header from \"%s\".\n", argv[optind]);
+        fprintf(samtools_stderr, "[depad] failed to read the header from \"%s\".\n", argv[optind]);
         ret = 1;
         goto depad_end;
     }
     if (fai) {
         h_fix = fix_header(h, fai);
     } else {
-        fprintf(pysam_stderr, "[depad] Warning - reference lengths will not be corrected without FASTA reference\n");
+        fprintf(samtools_stderr, "[depad] Warning - reference lengths will not be corrected without FASTA reference\n");
         h_fix = h;
     }
     char wmode[2];
@@ -590,7 +590,7 @@ int main_pad2unpad(int argc, char *argv[])
         hts_set_opt(out, CRAM_OPT_NO_REF, 1);
 
     if (sam_hdr_write(out, h_fix) != 0) {
-        fprintf(pysam_stderr, "[depad] failed to write header.\n");
+        fprintf(samtools_stderr, "[depad] failed to write header.\n");
         ret = 1;
         goto depad_end;
     }
@@ -604,7 +604,7 @@ depad_end:
     if (h) bam_hdr_destroy(h);
     if (in) sam_close(in);
     if (out && sam_close(out) < 0) {
-        fprintf(pysam_stderr, "[depad] error on closing output file.\n");
+        fprintf(samtools_stderr, "[depad] error on closing output file.\n");
         ret = 1;
     }
     free(fn_list); free(fn_out);
@@ -613,21 +613,21 @@ depad_end:
 
 static int usage(int is_long_help)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Usage:   samtools depad <in.bam>\n\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "  -s           Output is SAM (default is BAM)\n");
-    fprintf(pysam_stderr, "  -S           Input is SAM (default is BAM)\n");
-    fprintf(pysam_stderr, "  -u           Uncompressed BAM output (can't use with -s)\n");
-    fprintf(pysam_stderr, "  -1           Fast compression BAM output (can't use with -s)\n");
-    fprintf(pysam_stderr, "  -T, --reference FILE\n");
-    fprintf(pysam_stderr, "               Padded reference sequence file [null]\n");
-    fprintf(pysam_stderr, "  -o FILE      Output file name [pysam_stdout]\n");
-    fprintf(pysam_stderr, "  -?           Longer help\n");
-    sam_global_opt_help(pysam_stderr, "-...--");
+    fprintf(samtools_stderr, "\n");
+    fprintf(samtools_stderr, "Usage:   samtools depad <in.bam>\n\n");
+    fprintf(samtools_stderr, "Options:\n");
+    fprintf(samtools_stderr, "  -s           Output is SAM (default is BAM)\n");
+    fprintf(samtools_stderr, "  -S           Input is SAM (default is BAM)\n");
+    fprintf(samtools_stderr, "  -u           Uncompressed BAM output (can't use with -s)\n");
+    fprintf(samtools_stderr, "  -1           Fast compression BAM output (can't use with -s)\n");
+    fprintf(samtools_stderr, "  -T, --reference FILE\n");
+    fprintf(samtools_stderr, "               Padded reference sequence file [null]\n");
+    fprintf(samtools_stderr, "  -o FILE      Output file name [samtools_stdout]\n");
+    fprintf(samtools_stderr, "  -?           Longer help\n");
+    sam_global_opt_help(samtools_stderr, "-...--");
 
     if (is_long_help)
-        fprintf(pysam_stderr,
+        fprintf(samtools_stderr,
 "Notes:\n"
 "\n"
 "1. Requires embedded reference sequences (before the reads for that reference),\n"
