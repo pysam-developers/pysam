@@ -5,19 +5,22 @@ import collections
 import copy
 import array
 
-from TestUtils import checkFieldEqual, BAM_DATADIR, WORKDIR
-
+from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename
 
 class ReadTest(unittest.TestCase):
 
     def build_read(self):
         '''build an example read.'''
 
-        a = pysam.AlignedSegment()
+        header = pysam.AlignmentHeader(
+            reference_names=["chr1", "chr2"],
+            reference_lengths=[1000, 1000])
+        
+        a = pysam.AlignedSegment(header)
         a.query_name = "read_12345"
         a.query_sequence = "ACGT" * 10
         a.flag = 0
-        a.reference_id = 0
+        a.reference_id = -1
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
@@ -35,6 +38,7 @@ class TestAlignedSegment(ReadTest):
     '''
 
     def testEmpty(self):
+
         a = pysam.AlignedSegment()
         self.assertEqual(a.query_name, None)
         self.assertEqual(a.query_sequence, None)
@@ -48,7 +52,7 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.next_reference_id, -1)
         self.assertEqual(a.next_reference_start, -1)
         self.assertEqual(a.template_length, 0)
-
+        
     def testStrOfEmptyRead(self):
         a = pysam.AlignedSegment()
         s = str(a)
@@ -75,7 +79,7 @@ class TestAlignedSegment(ReadTest):
         self.assertFalse(a != b)
         self.assertFalse(b != a)
 
-        b.tid = 2
+        b.tid = 1
         self.assertFalse(a == b)
         self.assertFalse(b == a)
         self.assertTrue(a != b)
@@ -85,7 +89,7 @@ class TestAlignedSegment(ReadTest):
         a = self.build_read()
         b = self.build_read()
         self.assertEqual(hash(a), hash(b))
-        b.tid = 2
+        b.tid = 1
         self.assertNotEqual(hash(a), hash(b))
 
     def testUpdate(self):
@@ -166,7 +170,7 @@ class TestAlignedSegment(ReadTest):
         a.query_name = "read_12345"
         a.query_sequence = "ACGT" * 200
         a.flag = 0
-        a.reference_id = 0
+        a.reference_id = -1
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((0, 4 * 200), )
@@ -440,7 +444,6 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.query_alignment_length, 20)
 
     def test_query_length_is_limited(self):
-
         a = self.build_read()
         a.query_name = "A" * 1
         a.query_name = "A" * 251
@@ -450,6 +453,53 @@ class TestAlignedSegment(ReadTest):
             a,
             "query_name",
             "A" * 252)
+
+    def test_header_accessible(self):
+        a = self.build_read()
+        self.assertTrue(isinstance(a.header, pysam.AlignmentHeader))
+
+
+class TestTidMapping(ReadTest):
+
+    def test_reference_name_can_be_set_to_none(self):
+        a = self.build_read()
+        a.reference_name = None
+        self.assertEqual(a.reference_name, None)
+        self.assertEqual(a.reference_id, -1)
+
+    def test_reference_name_can_be_set_to_chromosome(self):
+        a = self.build_read()
+        a.reference_name = "chr1"
+        self.assertEqual(a.reference_name, "chr1")
+        self.assertEqual(a.reference_id, 0)
+
+    def test_reference_name_can_not_be_set_to_unknown_chromosome(self):
+        a = self.build_read()
+        self.assertRaises(ValueError,
+                          setattr,
+                          a,
+                          "reference_name",
+                          "chrX")
+        
+    def test_tid_can_be_set_to_missing(self):
+        a = self.build_read()
+        a.reference_id = -1
+        self.assertEqual(a.reference_id, -1)
+        self.assertEqual(a.reference_name, None)
+
+    def test_tid_can_be_set_to_chromosome(self):
+        a = self.build_read()
+        a.reference_id = 0
+        self.assertEqual(a.reference_id, 0)
+        self.assertEqual(a.reference_name, "chr1")
+
+    def test_tid_can_not_be_set_to_unknown_chromosome(self):
+        a = self.build_read()
+        self.assertRaises(ValueError,
+                          setattr,
+                          a,
+                          "reference_id",
+                          2)
 
 
 class TestCigar(ReadTest):
@@ -475,7 +525,6 @@ class TestCigar(ReadTest):
 class TestCigarStats(ReadTest):
 
     def testStats(self):
-
         a = self.build_read()
 
         a.cigarstring = None
@@ -1002,7 +1051,7 @@ class TestSetTagsGetTag(TestSetTagGetTag):
 
 class TestAsString(unittest.TestCase):
 
-    def testAsString(self):
+    def test_as_string_with_explicit_alignment_file(self):
         with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
             reference = [x[:-1] for x in samf if not x.startswith("@")]
 
@@ -1011,6 +1060,15 @@ class TestAsString(unittest.TestCase):
             for s, p in zip(reference, pysamf):
                 self.assertEqual(s, p.tostring(pysamf))
 
+    def test_as_string_without_alignment_file(self):
+        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
+            reference = [x[:-1] for x in samf if not x.startswith("@")]
+
+        with pysam.AlignmentFile(
+            os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
+            for s, p in zip(reference, pysamf):
+                self.assertEqual(s, p.tostring())
+                
 
 class TestEnums(unittest.TestCase):
 
@@ -1039,6 +1097,64 @@ class TestEnums(unittest.TestCase):
         self.assertEqual(pysam.FQCFAIL, 512)
         self.assertEqual(pysam.FDUP, 1024)
         self.assertEqual(pysam.FSUPPLEMENTARY, 2048)
+
+
+class TestBuildingReadsWithoutHeader(unittest.TestCase):
+    
+    def build_read(self):
+        '''build an example read, but without header information.'''
+
+        a = pysam.AlignedSegment()
+        a.query_name = "read_12345"
+        a.query_sequence = "ACGT" * 10
+        a.flag = 0
+        a.reference_id = -1
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
+        a.next_reference_id = 0
+        a.next_reference_start = 200
+        a.template_length = 167
+        a.query_qualities = pysam.qualitystring_to_array("1234") * 10
+        # todo: create tags
+        return a
+
+    def test_read_can_be_constructed_without_header(self):
+        read = self.build_read()
+        self.assertEqual(read.query_name, "read_12345")
+            
+    def test_reference_id_can_be_set(self):
+        read = self.build_read()
+        read.reference_id = 2
+        self.assertEqual(read.reference_id, 2)
+
+    def test_reference_name_is_not_available(self):
+        read = self.build_read()
+        self.assertRaises(
+            ValueError,
+            getattr,
+            read,
+            "reference_name")
+        self.assertRaises(
+            ValueError,
+            setattr,
+            read,
+            "reference_name",
+            2)
+        
+    def test_read_can_be_written_to_file(self):
+        tmpfilename = get_temp_filename(".bam")
+        with pysam.AlignmentFile(tmpfilename, "wb",
+                                 reference_names=["chr1", "chr2", "chr3"],
+                                 reference_lengths=[1000, 2000, 3000]) as outf:
+            read = self.build_read()
+            read.reference_id = 2
+            outf.write(read)
+
+        stdout = pysam.samtools.view(tmpfilename)
+        chromosome = stdout.split("\t")[2]
+        self.assertEqual(chromosome, "chr3")
+        os.unlink(tmpfilename)
 
 
 if __name__ == "__main__":

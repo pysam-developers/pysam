@@ -203,11 +203,13 @@ def get_temp_filename(suffix=""):
         os.makedirs(TESTS_TEMPDIR)
     except OSError:
         pass
+
     f = tempfile.NamedTemporaryFile(
         prefix="pysamtests_tmp_{}_".format(caller_name),
         suffix=suffix,
         delete=False,
         dir=TESTS_TEMPDIR)
+
     f.close()
     return f.name
 

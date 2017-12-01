@@ -2,6 +2,22 @@
 Release notes
 =============
 
+Release 0.14.0
+==============
+
+* SAM/BAM/CRAM headers are now managed by a separate AlignmentHeader
+  class.
+* AlignmentFile.header.as_dict() returns an ordered dictionary.
+* Use "stop" instead of "end" to ensure consistency to
+  VariantFile. The end designations have been kept for backwards
+  compatibility.
+
+Backwards incompatible changes:
+* AlignmentFile.header now returns an AlignmentHeader object. Use
+  AlignmentFile.header.as_dict() to get the dictionary as previously.
+* AlignmentFile.text is now AlignmentFile.header.__str__()
+* AlignmentFile, FastaFile now raise IOError.
+
 Release 0.13.0
 ===============
 

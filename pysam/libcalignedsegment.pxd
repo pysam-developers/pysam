@@ -26,7 +26,7 @@ cdef extern from "htslib_util.h":
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
 
-from pysam.libcalignmentfile cimport AlignmentFile
+from pysam.libcalignmentfile cimport AlignmentFile, AlignmentHeader
 ctypedef AlignmentFile AlignmentFile_t
 
 
@@ -36,8 +36,8 @@ cdef class AlignedSegment:
     # object that this AlignedSegment represents
     cdef bam1_t * _delegate
 
-    # the file from which this AlignedSegment originates (can be None)
-    cdef AlignmentFile _alignment_file
+    # the header that a read is associated with
+    cdef readonly AlignmentHeader header
 
     # caching of array properties for quick access
     cdef object cache_query_qualities
@@ -57,7 +57,7 @@ cdef class AlignedSegment:
     cpdef has_tag(self, tag)
 
     # returns a valid sam alignment string
-    cpdef tostring(self, AlignmentFile_t handle)
+    cpdef tostring(self, htsfile=*)
 
 
 cdef class PileupColumn:
@@ -65,14 +65,14 @@ cdef class PileupColumn:
     cdef int tid
     cdef int pos
     cdef int n_pu
-    cdef AlignmentFile _alignment_file
+    cdef AlignmentHeader header
     cdef uint32_t min_base_quality
     cdef uint8_t * buf
     cdef char * reference_sequence
 
 cdef class PileupRead:
-    cdef AlignedSegment _alignment
     cdef int32_t  _qpos
+    cdef AlignedSegment _alignment
     cdef int _indel
     cdef int _level
     cdef uint32_t _is_del
@@ -80,20 +80,21 @@ cdef class PileupRead:
     cdef uint32_t _is_tail
     cdef uint32_t _is_refskip
 
-    
 # factory methods
-cdef makeAlignedSegment(bam1_t * src,
-                        AlignmentFile alignment_file)
+cdef AlignedSegment makeAlignedSegment(
+    bam1_t * src,
+    AlignmentHeader header)
 
-cdef makePileupColumn(bam_pileup1_t ** plp,
-                      int tid,
-                      int pos,
-                      int n_pu,
-                      uint32_t min_base_quality,
-                      AlignmentFile alignment_file,
-                      char * reference_seqeunce)
+cdef PileupColumn makePileupColumn(
+     bam_pileup1_t ** plp,
+    int tid,
+    int pos,
+    int n_pu,
+    uint32_t min_base_quality,
+    char * reference_sequence,
+    AlignmentHeader header)
 
-cdef makePileupRead(bam_pileup1_t * src,
-                    AlignmentFile alignment_file)
+cdef PileupRead makePileupRead(bam_pileup1_t * src,
+		               AlignmentHeader header)
 
 cdef uint32_t get_alignment_length(bam1_t * src)

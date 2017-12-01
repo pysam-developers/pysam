@@ -8,6 +8,8 @@
 #
 # class AlignmentFile   read/write access to SAM/BAM/CRAM formatted files
 #
+# class AlignmentHeader manage SAM/BAM/CRAM header data
+#
 # class IndexedReads    index a SAM/BAM/CRAM file by query name while keeping
 #                       the original sort order intact
 #
@@ -75,6 +77,13 @@ else:
 
 cimport cython
 
+
+__all__ = [
+    "AlignmentFile",
+    "AlignmentHeader",
+    "IteratorRow",
+    "IteratorColumn",
+    "IndexedReads"]
 
 IndexStats = collections.namedtuple("IndexStats",
                                     ("contig",
@@ -148,21 +157,34 @@ def build_header_line(fields, record):
 
     return "\t".join(line)
 
-cdef bam_hdr_t * build_header_from_dict(new_header):
-    '''return a new header built from a dictionary in `new_header`.
+
+cdef AlignmentHeader makeAlignmentHeader(bam_hdr_t *hdr):
+    if not hdr:
+        raise ValueError('cannot create AlignmentHeader, received NULL pointer')
+
+    # check: is AlignmetHeader.__cinit__ called?
+    cdef AlignmentHeader header = AlignmentHeader.__new__(AlignmentHeader)
+    header.ptr = hdr
+
+    return header
+
+
+# the following should be class-method for VariantHeader, but cdef @classmethods
+# are not implemented in cython.
+cdef int fill_AlignmentHeader_from_dict(bam_hdr_t *dest, header_dict) except? -1:
+    '''build a new header built from a dictionary in `header_dict`.
 
     This method inserts the text field, target_name and target_len.
     '''
+    assert dest != NULL
+    
     cdef list lines = []
-
-    # create new header and copy old data
-    cdef bam_hdr_t * dest = bam_hdr_init()
 
     # first: defined tags
     for record in VALID_HEADERS:
-        if record in new_header:
+        if record in header_dict:
             ttype = VALID_HEADER_TYPES[record]
-            data = new_header[record]
+            data = header_dict[record]
             if type(data) != type(ttype()):
                 raise ValueError(
                     "invalid type for record %s: %s, expected %s" %
@@ -170,16 +192,17 @@ cdef bam_hdr_t * build_header_from_dict(new_header):
             if type(data) is dict:
                 lines.append(build_header_line(data, record))
             else:
-                for fields in new_header[record]:
+                for fields in header_dict[record]:
                     lines.append(build_header_line(fields, record))
 
     # then: user tags (lower case), sorted alphabetically
-    for record, data in sorted(new_header.items()):
-        if record in VALID_HEADERS: continue
+    for record, data in sorted(header_dict.items()):
+        if record in VALID_HEADERS:
+            continue
         if type(data) is dict:
             lines.append(build_header_line(data, record))
         else:
-            for fields in new_header[record]:
+            for fields in header_dict[record]:
                 lines.append(build_header_line(fields, record))
 
     text = "\n".join(lines) + "\n"
@@ -193,10 +216,11 @@ cdef bam_hdr_t * build_header_from_dict(new_header):
     strncpy(dest.text, btext, dest.l_text)
 
     cdef bytes bseqname
-    # collect targets
-    if "SQ" in new_header:
+    
+    # collect sequences
+    if "SQ" in header_dict:
         seqs = []
-        for fields in new_header["SQ"]:
+        for fields in header_dict["SQ"]:
             try:
                 seqs.append( (fields["SN"], fields["LN"] ) )
             except KeyError:
@@ -220,19 +244,23 @@ cdef bam_hdr_t * build_header_from_dict(new_header):
             strncpy(dest.target_name[x], bseqname,
                     len(seqname) + 1)
             dest.target_len[x] = seqlen
+            
+    return 0
 
-    return dest
 
-
-cdef bam_hdr_t * build_header_from_list(reference_names,
+# the following should be class-method for VariantHeader, but cdef @classmethods
+# are not implemented in cython.
+cdef int fill_AlignmentHeader_from_list(bam_hdr_t *dest,
+                                        reference_names,
                                         reference_lengths,
                                         add_sq_text=True,
-                                        text=None):
-
+                                        text=None) except -1:
+    """build header from list of reference names and lengths.
+    """
+    assert dest != NULL
+    
     assert len(reference_names) == len(reference_lengths), \
         "unequal names and lengths of reference sequences"
-
-    cdef bam_hdr_t * dest = bam_hdr_init()
 
     # allocate and fill header
     reference_names = [force_bytes(ref) for ref in reference_names]
@@ -280,7 +308,230 @@ cdef bam_hdr_t * build_header_from_list(reference_names,
             raise MemoryError("could not allocate {} bytes".format(strlen(ctext), sizeof(char)))
         memcpy(dest.text, ctext, strlen(ctext))
 
-    return dest
+    return 0
+
+
+cdef class AlignmentHeader(object):
+    """header information for a :class:`AlignmentFile` object
+
+    Parameters
+    ----------
+    header_dict : dict
+        build header from a multi-level dictionary. The
+        first level are the four types ('HD', 'SQ', ...). The second
+        level are a list of lines, with each line being a list of
+        tag-value pairs. The header is constructed first from all the
+        defined fields, followed by user tags in alphabetical
+        order. Alternatively, an :class:`~pysam.AlignmentHeader`
+        object can be passed directly.
+
+    text : string
+        use the string provided as the header
+
+    reference_names : list
+        see reference_lengths
+
+    reference_lengths : list
+        build header from list of chromosome names and lengths.  By
+        default, 'SQ' and 'LN' tags will be added to the header
+        text. This option can be changed by unsetting the flag
+        `add_sq_text`.
+
+    add_sq_text : bool
+        do not add 'SQ' and 'LN' tags to header. This option permits
+        construction :term:`SAM` formatted files without a header.
+
+    """
+
+    # See makeVariantHeader for C constructor
+    def __cinit__(self):
+        self.ptr = NULL
+
+    # Python constructor
+    def __init__(self,
+                 reference_names=None,
+                 reference_lengths=None,
+                 text=None,
+                 header_dict=None,
+                 add_sq_text=True):
+
+        self.ptr = bam_hdr_init()
+        if self.ptr is NULL:
+            raise MemoryError("could not create header")
+    
+        if header_dict is not None:
+            fill_AlignmentHeader_from_dict(self.ptr,
+                                           header_dict)
+            
+        elif reference_names and reference_lengths:
+            fill_AlignmentHeader_from_list(
+                self.ptr,
+                reference_names,
+                reference_lengths,
+                add_sq_text=add_sq_text,
+                text=text)
+            
+    def __dealloc__(self):
+        bam_hdr_destroy(self.ptr)
+        self.ptr = NULL
+
+    def __bool__(self):
+        return self.ptr != NULL
+
+    def copy(self):
+        return makeAlignmentHeader(bam_hdr_dup(self.ptr))
+
+    property nreferences:
+        """"int with the number of :term:`reference` sequences in the file.
+
+        This is a read-only attribute."""
+        def __get__(self):
+            return self.ptr.n_targets
+
+    property references:
+        """tuple with the names of :term:`reference` sequences. This is a
+        read-only attribute"""
+        def __get__(self):
+            t = []
+            cdef int x
+            for x in range(self.ptr.n_targets):
+                t.append(charptr_to_str(self.ptr.target_name[x]))
+            return tuple(t)
+
+    property lengths:
+        """tuple of the lengths of the :term:`reference` sequences. This is a
+        read-only attribute. The lengths are in the same order as
+        :attr:`pysam.AlignmentFile.references`
+        """
+        def __get__(self):
+            t = []
+            cdef int x
+            for x in range(self.ptr.n_targets):
+                t.append(self.ptr.target_len[x])
+            return tuple(t)
+    
+    def as_dict(self):
+        """return two-level dictionary with header information from the file.
+
+        The first level contains the record (``HD``, ``SQ``, etc) and
+        the second level contains the fields (``VN``, ``LN``, etc).
+
+        The parser is validating and will raise an AssertionError if
+        if encounters any record or field tags that are not part of
+        the SAM specification. Use the
+        :attr:`pysam.AlignmentFile.text` attribute to get the unparsed
+        header.
+
+        The parsing follows the SAM format specification with the
+        exception of the ``CL`` field. This option will consume the
+        rest of a header line irrespective of any additional fields.
+        This behaviour has been added to accommodate command line
+        options that contain characters that are not valid field
+        separators.
+
+        """
+        result = collections.OrderedDict()
+
+        # convert to python string
+        t = self.__str__()
+
+        for line in t.split("\n"):
+            if not line.strip(): continue
+            assert line.startswith("@"), \
+                "header line without '@': '%s'" % line
+            fields = line[1:].split("\t")
+            record = fields[0]
+            assert record in VALID_HEADER_TYPES, \
+                "header line with invalid type '%s': '%s'" % (record, line)
+
+            # treat comments
+            if record == "CO":
+                if record not in result:
+                    result[record] = []
+                result[record].append("\t".join( fields[1:]))
+                continue
+            # the following is clumsy as generators do not work?
+            x = {}
+
+            for idx, field in enumerate(fields[1:]):
+                if ":" not in field:
+                    raise ValueError("malformatted header: no ':' in field" )
+                key, value = field.split(":", 1)
+                if key in ("CL",):
+                    # special treatment for command line
+                    # statements (CL). These might contain
+                    # characters that are non-conformant with
+                    # the valid field separators in the SAM
+                    # header. Thus, in contravention to the
+                    # SAM API, consume the rest of the line.
+                    key, value = "\t".join(fields[idx+1:]).split(":", 1)
+                    x[key] = KNOWN_HEADER_FIELDS[record][key](value)
+                    break
+
+                # interpret type of known header record tags, default to str
+                x[key] = KNOWN_HEADER_FIELDS[record].get(key, str)(value)
+
+            if VALID_HEADER_TYPES[record] == dict:
+                if record in result:
+                    raise ValueError(
+                        "multiple '%s' lines are not permitted" % record)
+
+                result[record] = x
+            elif VALID_HEADER_TYPES[record] == list:
+                if record not in result: result[record] = []
+                result[record].append(x)
+
+        # if there are no SQ lines in the header, add the
+        # reference names from the information in the bam
+        # file.
+        #
+        # Background: c-samtools keeps the textual part of the
+        # header separate from the list of reference names and
+        # lengths. Thus, if a header contains only SQ lines,
+        # the SQ information is not part of the textual header
+        # and thus are missing from the output. See issue 84.
+        if "SQ" not in result:
+            sq = []
+            for ref, length in zip(self.references, self.lengths):
+                sq.append({'LN': length, 'SN': ref })
+            result["SQ"] = sq
+
+        return result
+
+    def get_reference_name(self, tid):
+        if tid == -1:
+            return None
+        if not 0 <= tid < self.ptr.n_targets:
+            raise ValueError("reference_id %i out of range 0<=tid<%i" %
+                             (tid, self.ptr.n_targets))
+        return charptr_to_str(self.ptr.target_name[tid])
+
+    def is_valid_tid(self, int tid):
+        """
+        return True if the numerical :term:`tid` is valid; False otherwise.
+
+        Note that the unmapped tid code (-1) counts as an invalid.
+        """
+        return 0 <= tid < self.ptr.n_targets
+
+    def get_tid(self, reference):
+        """
+        return the numerical :term:`tid` corresponding to
+        :term:`reference`
+
+        returns -1 if reference is not known.
+        """
+        reference = force_bytes(reference)
+        return bam_name2id(self.ptr, reference)
+        
+    def __str__(self):
+        '''string with the full contents of the :term:`sam file` header as a
+        string.
+
+        See :attr:`pysam.AlignmentFile.header` to get a parsed
+        representation of the header.
+        '''
+        return from_string_and_size(self.ptr.text, self.ptr.l_text)
 
 
 cdef class AlignmentFile(HTSFile):
@@ -353,14 +604,16 @@ cdef class AlignmentFile(HTSFile):
             f2 = pysam.AlignmentFile('ex1.sam')
 
     template : AlignmentFile
-        when writing, copy  header frem `template`.
+        when writing, copy header from file `template`.
 
-    header :  dict
+    header :  dict or AlignmentHeader
         when writing, build header from a multi-level dictionary. The
         first level are the four types ('HD', 'SQ', ...). The second
         level are a list of lines, with each line being a list of
         tag-value pairs. The header is constructed first from all the
-        defined fields, followed by user tags in alphabetical order.
+        defined fields, followed by user tags in alphabetical
+        order. Alternatively, an :class:`~pysam.AlignmentHeader`
+        object can be passed directly.
 
     text : string
         when writing, use the string provided as the header
@@ -445,7 +698,7 @@ cdef class AlignmentFile(HTSFile):
 
         # allocate memory for iterator
         self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
-        if self.b is NULL:
+        if self.b == NULL:
             raise MemoryError("could not allocate memory of size {}".format(sizeof(bam1_t)))
 
     def has_index(self):
@@ -508,7 +761,8 @@ cdef class AlignmentFile(HTSFile):
         cdef char *creference_filename = NULL
         cdef char *cindexname = NULL
         cdef char *cmode = NULL
-
+        cdef bam_hdr_t * hdr = NULL
+        
         # for backwards compatibility:
         if referencenames is not None:
             reference_names = referencenames
@@ -574,23 +828,25 @@ cdef class AlignmentFile(HTSFile):
         if mode[0] == 'w':
             # open file for writing
 
-            # header structure (used for writing)
+            if not (template or header or reference_names):
+                raise ValueError(
+                    "either supply options `template`, `header` or  both `reference_names` "
+                    "and `reference_lengths` for writing")
+            
             if template:
-                self.header = bam_hdr_dup(template.header)
-            elif header:
-                self.header = build_header_from_dict(header)
+                # header is copied, though at the moment not strictly
+                # necessary as AlignmentHeader is immutable.
+                self.header = template.header.copy()
+            elif isinstance(header, AlignmentHeader):
+                self.header = header.copy()
             else:
-                assert reference_names and reference_lengths, \
-                    ("either supply options `template`, `header` "
-                     "or  both `reference_names` and `reference_lengths` "
-                     "for writing")
-                # build header from a target names and lengths
-                self.header = build_header_from_list(
-                    reference_names,
-                    reference_lengths,
+                self.header = AlignmentHeader(
+                    header_dict=header,
+                    reference_names=reference_names,
+                    reference_lengths=reference_lengths,
                     add_sq_text=add_sq_text,
                     text=text)
-
+            
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
@@ -599,7 +855,6 @@ cdef class AlignmentFile(HTSFile):
                                   force_str(strerror(errno))))
                 else:
                     raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
-
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
@@ -609,8 +864,9 @@ cdef class AlignmentFile(HTSFile):
 
             # write header to htsfile
             if "b" in mode or "c" in mode or "h" in mode:
+                hdr = self.header.ptr
                 with nogil:
-                    sam_hdr_write(self.htsfile, self.header)
+                    sam_hdr_write(self.htsfile, hdr)
 
         elif mode[0] == "r":
             # open file for reading
@@ -628,31 +884,35 @@ cdef class AlignmentFile(HTSFile):
 
             self.check_truncation(ignore_truncation)
 
-            # bam files require a valid header
+            # bam/cram files require a valid header
             if self.is_bam or self.is_cram:
                 with nogil:
-                    self.header = sam_hdr_read(self.htsfile)
-
-            # in sam files a header is optional, but requires
-            # reference names and lengths
-            elif reference_names and reference_lengths:
-                self.header = build_header_from_list(
-                    reference_names,
-                    reference_lengths,
-                    add_sq_text=add_sq_text,
-                    text=text)
-            else:
-                with nogil:
-                    self.header = sam_hdr_read(self.htsfile)
-
-                if self.header == NULL:
+                    hdr = sam_hdr_read(self.htsfile)
+                if hdr == NULL:
                     raise ValueError(
-                        "file `{}` does not have valid header, "
-                        "please provide reference_names and reference_lengths".format(force_str(filename)))
-
-            if self.header == NULL:
-                raise ValueError("file `{}` does not have valid header".format(force_str(filename)))
-
+                        "file does not have a valid header (mode='%s') "
+                        "- is it BAM/CRAM format?" % mode)
+                self.header = makeAlignmentHeader(hdr)
+            else:
+                # in sam files a header is optional. If not given,
+                # user may provide reference names and lengths to built
+                # an on-the-fly header.
+                if reference_names and reference_lengths:
+                    # build header from a target names and lengths
+                    self.header = AlignmentHeader(
+                        reference_names=reference_names,
+                        reference_lengths=reference_lengths,
+                        add_sq_text=add_sq_text,
+                        text=text)
+                else:
+                    with nogil:
+                        hdr = sam_hdr_read(self.htsfile)
+                    if hdr == NULL:
+                        raise ValueError(
+                            "SAM? file does not have a valid header (mode='%s'), "
+                            "please provide reference_names and reference_lengths")
+                    self.header = makeAlignmentHeader(hdr)
+                
             # set filename with reference sequences
             if self.is_cram and reference_filename:
                 creference_filename = self.reference_filename
@@ -660,7 +920,7 @@ cdef class AlignmentFile(HTSFile):
                             CRAM_OPT_REFERENCE,
                             creference_filename)
 
-            if check_sq and self.header.n_targets == 0:
+            if check_sq and self.header.nreferences == 0:
                 raise ValueError(
                     ("file has no sequences defined (mode='%s') - "
                      "is it SAM/BAM format? Consider opening with "
@@ -690,35 +950,6 @@ cdef class AlignmentFile(HTSFile):
                 # save start of data section
                 if not self.is_stream:
                     self.start_offset = self.tell()
-
-    def is_valid_tid(self, tid):
-        """
-        return True if the numerical :term:`tid` is valid; False otherwise.
-        """
-        return 0 <= tid < self.header.n_targets
-
-    def get_tid(self, reference):
-        """
-        return the numerical :term:`tid` corresponding to
-        :term:`reference`
-
-        returns -1 if reference is not known.
-        """
-        if not self.is_open:
-            raise ValueError("I/O operation on closed file")
-        reference = force_bytes(reference)
-        return bam_name2id(self.header, reference)
-
-    def get_reference_name(self, tid):
-        """
-        return :term:`reference` name corresponding to numerical :term:`tid`
-        """
-        if not self.is_open:
-            raise ValueError("I/O operation on closed file")
-        if not 0 <= tid < self.header.n_targets:
-            raise ValueError("reference_id %i out of range 0<=tid<%i" %
-                             (tid, self.header.n_targets))
-        return charptr_to_str(self.header.target_name[tid])
 
     def fetch(self,
               contig=None,
@@ -794,7 +1025,7 @@ cdef class AlignmentFile(HTSFile):
             contig, start, stop, region, tid,
             end=end, reference=reference)
 
-        # Turn of re-opening if htsfile is a stream
+       # Turn of re-opening if htsfile is a stream
         if self.is_stream:
             multiple_iterators = False
 
@@ -1334,9 +1565,7 @@ cdef class AlignmentFile(HTSFile):
             hts_idx_destroy(self.index)
             self.index = NULL
 
-        if self.header != NULL:
-            bam_hdr_destroy(self.header)
-            self.header = NULL
+        self.header = None
 
         if ret < 0:
             global errno
@@ -1356,9 +1585,7 @@ cdef class AlignmentFile(HTSFile):
             hts_idx_destroy(self.index)
             self.index = NULL
 
-        if self.header != NULL:
-            bam_hdr_destroy(self.header)
-            self.header = NULL
+        self.header = None
 
         if self.b:
             bam_destroy1(self.b)
@@ -1393,7 +1620,7 @@ cdef class AlignmentFile(HTSFile):
 
         with nogil:
             ret = sam_write1(self.htsfile,
-                             self.header,
+                             self.header.ptr,
                              read._delegate)
 
         # kbj: Still need to raise an exception with except -1. Otherwise
@@ -1418,38 +1645,6 @@ cdef class AlignmentFile(HTSFile):
     ###############################################################
     ## properties
     ###############################################################
-    property nreferences:
-        """"int with the number of :term:`reference` sequences in the file.
-        This is a read-only attribute."""
-        def __get__(self):
-            if not self.is_open:
-                raise ValueError("I/O operation on closed file")
-            return self.header.n_targets
-
-    property references:
-        """tuple with the names of :term:`reference` sequences. This is a
-        read-only attribute"""
-        def __get__(self):
-            if not self.is_open: raise ValueError( "I/O operation on closed file" )
-            t = []
-            for x from 0 <= x < self.header.n_targets:
-                t.append(charptr_to_str(self.header.target_name[x]))
-            return tuple(t)
-
-    property lengths:
-        """tuple of the lengths of the :term:`reference` sequences. This is a
-        read-only attribute. The lengths are in the same order as
-        :attr:`pysam.AlignmentFile.references`
-
-        """
-        def __get__(self):
-            if not self.is_open:
-                raise ValueError("I/O operation on closed file")
-            t = []
-            for x from 0 <= x < self.header.n_targets:
-                t.append(self.header.target_len[x])
-            return tuple(t)
-
     property mapped:
         """int with total number of mapped alignments according to the
         statistics recorded in the index. This is a read-only
@@ -1460,7 +1655,7 @@ cdef class AlignmentFile(HTSFile):
             cdef int tid
             cdef uint64_t total = 0
             cdef uint64_t mapped, unmapped
-            for tid from 0 <= tid < self.header.n_targets:
+            for tid from 0 <= tid < self.header.nreferences:
                 with nogil:
                     hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
                 total += mapped
@@ -1476,7 +1671,7 @@ cdef class AlignmentFile(HTSFile):
             cdef int tid
             cdef uint64_t total = hts_idx_get_n_no_coor(self.index)
             cdef uint64_t mapped, unmapped
-            for tid from 0 <= tid < self.header.n_targets:
+            for tid from 0 <= tid < self.header.nreferences:
                 with nogil:
                     hts_idx_get_stat(self.index, tid, &mapped, &unmapped)
                 total += unmapped
@@ -1520,115 +1715,6 @@ cdef class AlignmentFile(HTSFile):
                 
         return results
 
-    property text:
-        '''string with the full contents of the :term:`sam file` header as a
-        string.
-
-        This is a read-only attribute.
-
-        See :attr:`pysam.AlignmentFile.header` to get a parsed
-        representation of the header.
-        '''
-        def __get__(self):
-            if not self.is_open:
-                raise ValueError( "I/O operation on closed file" )
-            return from_string_and_size(self.header.text, self.header.l_text)
-
-    property header:
-        """two-level dictionay with header information from the file.
-
-        This is a read-only attribute.
-
-        The first level contains the record (``HD``, ``SQ``, etc) and
-        the second level contains the fields (``VN``, ``LN``, etc).
-
-        The parser is validating and will raise an AssertionError if
-        if encounters any record or field tags that are not part of
-        the SAM specification. Use the
-        :attr:`pysam.AlignmentFile.text` attribute to get the unparsed
-        header.
-
-        The parsing follows the SAM format specification with the
-        exception of the ``CL`` field. This option will consume the
-        rest of a header line irrespective of any additional fields.
-        This behaviour has been added to accommodate command line
-        options that contain characters that are not valid field
-        separators.
-
-        """
-        def __get__(self):
-            if not self.is_open:
-                raise ValueError( "I/O operation on closed file" )
-
-            result = {}
-
-            if self.header.text != NULL:
-                # convert to python string (note: call self.text to
-                # create 0-terminated string)
-                t = self.text
-                for line in t.split("\n"):
-                    if not line.strip(): continue
-                    assert line.startswith("@"), \
-                        "header line without '@': '%s'" % line
-                    fields = line[1:].split("\t")
-                    record = fields[0]
-                    assert record in VALID_HEADER_TYPES, \
-                        "header line with invalid type '%s': '%s'" % (record, line)
-
-                    # treat comments
-                    if record == "CO":
-                        if record not in result:
-                            result[record] = []
-                        result[record].append("\t".join( fields[1:]))
-                        continue
-                    # the following is clumsy as generators do not work?
-                    x = {}
-
-                    for idx, field in enumerate(fields[1:]):
-                        if ":" not in field:
-                            raise ValueError("malformatted header: no ':' in field" )
-                        key, value = field.split(":", 1)
-                        if key in ("CL",):
-                            # special treatment for command line
-                            # statements (CL). These might contain
-                            # characters that are non-conformant with
-                            # the valid field separators in the SAM
-                            # header. Thus, in contravention to the
-                            # SAM API, consume the rest of the line.
-                            key, value = "\t".join(fields[idx+1:]).split(":", 1)
-                            x[key] = KNOWN_HEADER_FIELDS[record][key](value)
-                            break
-
-                        # interpret type of known header record tags, default to str
-                        x[key] = KNOWN_HEADER_FIELDS[record].get(key, str)(value)
-
-                    if VALID_HEADER_TYPES[record] == dict:
-                        if record in result:
-                            raise ValueError(
-                                "multiple '%s' lines are not permitted" % record)
-
-                        result[record] = x
-                    elif VALID_HEADER_TYPES[record] == list:
-                        if record not in result: result[record] = []
-                        result[record].append(x)
-
-                # if there are no SQ lines in the header, add the
-                # reference names from the information in the bam
-                # file.
-                #
-                # Background: c-samtools keeps the textual part of the
-                # header separate from the list of reference names and
-                # lengths. Thus, if a header contains only SQ lines,
-                # the SQ information is not part of the textual header
-                # and thus are missing from the output. See issue 84.
-                if "SQ" not in result:
-                    sq = []
-                    for ref, length in zip(self.references, self.lengths):
-                        sq.append({'LN': length, 'SN': ref })
-                    result["SQ"] = sq
-
-            return result
-
     ###############################################################
     ## file-object like iterator access
     ## note: concurrent access will cause errors (see IteratorRow
@@ -1638,7 +1724,7 @@ cdef class AlignmentFile(HTSFile):
         if not self.is_open:
             raise ValueError("I/O operation on closed file")
 
-        if not self.is_bam and self.header.n_targets == 0:
+        if not self.is_bam and self.header.nreferences == 0:
             raise NotImplementedError(
                 "can not iterate over samfile without header")
         return self
@@ -1651,20 +1737,82 @@ cdef class AlignmentFile(HTSFile):
         cversion of iterator. Used by :class:`pysam.AlignmentFile.IteratorColumn`.
         '''
         cdef int ret
+        cdef bam_hdr_t * hdr = self.header.ptr
         with nogil:
             ret = sam_read1(self.htsfile,
-                            self.header,
+                            hdr,
                             self.b)
         return ret
 
     def __next__(self):
         cdef int ret = self.cnext()
         if (ret >= 0):
-            return makeAlignedSegment(self.b, self)
+            return makeAlignedSegment(self.b, self.header)
         elif ret == -2:
             raise IOError('truncated file')
         else:
             raise StopIteration
+
+    ###########################################
+    # methods/properties referencing the header
+    def is_valid_tid(self, int tid):
+        """
+        return True if the numerical :term:`tid` is valid; False otherwise.
+
+        Note that the unmapped tid code (-1) counts as an invalid.
+        """
+        if self.header is None:
+            raise ValueError("header not available in closed files")
+        return self.header.is_valid_tid(tid)
+
+    def get_tid(self, reference):
+        """
+        return the numerical :term:`tid` corresponding to
+        :term:`reference`
+
+        returns -1 if reference is not known.
+        """
+        if self.header is None:
+            raise ValueError("header not available in closed files")
+        return self.header.get_tid(reference)
+
+    def get_reference_name(self, tid):
+        """
+        return :term:`reference` name corresponding to numerical :term:`tid`
+        """
+        if self.header is None:
+            raise ValueError("header not available in closed files")
+        return self.header.get_reference_name(tid)
+    
+    property nreferences:
+        """"int with the number of :term:`reference` sequences in the file.
+        This is a read-only attribute."""
+        def __get__(self):
+            if self.header:
+                return self.header.nreferences
+            else:
+                raise ValueError("header not available in closed files")
+
+    property references:
+        """tuple with the names of :term:`reference` sequences. This is a
+        read-only attribute"""
+        def __get__(self):
+            if self.header:
+                return self.header.references
+            else:
+                raise ValueError("header not available in closed files")
+
+    property lengths:
+        """tuple of the lengths of the :term:`reference` sequences. This is a
+        read-only attribute. The lengths are in the same order as
+        :attr:`pysam.AlignmentFile.references`
+
+        """
+        def __get__(self):
+            if self.header:
+                return self.header.lengths
+            else:
+                raise ValueError("header not available in closed files")
 
     # Compatibility functions for pysam < 0.8.3
     def gettid(self, reference):
@@ -1715,16 +1863,22 @@ cdef class IteratorRow:
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if multiple_iterators:
+            
             cfilename = samfile.filename
             with nogil:
                 self.htsfile = hts_open(cfilename, 'r')
             assert self.htsfile != NULL
-            # read header - required for accurate positioning
-            # could a tell/seek work?
+
+            # need to advance in newly opened file to position after header
+            # better: use seek/tell?
             with nogil:
-                self.header = sam_hdr_read(self.htsfile)
-            assert self.header != NULL
+                hdr = sam_hdr_read(self.htsfile)
+            if hdr is NULL:
+                raise IOError("unable to read header information")
+            self.header = makeAlignmentHeader(hdr)
+
             self.owns_samfile = True
+            
             # options specific to CRAM files
             if samfile.is_cram and samfile.reference_filename:
                 creference_filename = samfile.reference_filename
@@ -1733,9 +1887,9 @@ cdef class IteratorRow:
                             creference_filename)
 
         else:
-            self.htsfile = self.samfile.htsfile
+            self.htsfile = samfile.htsfile
             self.owns_samfile = False
-            self.header = self.samfile.header
+            self.header = samfile.header
 
         self.retval = 0
 
@@ -1745,7 +1899,6 @@ cdef class IteratorRow:
         bam_destroy1(self.b)
         if self.owns_samfile:
             hts_close(self.htsfile)
-            bam_hdr_destroy(self.header)
 
 
 cdef class IteratorRowRegion(IteratorRow):
@@ -1796,7 +1949,7 @@ cdef class IteratorRowRegion(IteratorRow):
     def __next__(self):
         self.cnext()
         if self.retval >= 0:
-            return makeAlignedSegment(self.b, self.samfile)
+            return makeAlignedSegment(self.b, self.header)
         elif self.retval == -2:
             # Note: it is currently not the case that hts_iter_next
             # returns -2 for a truncated file.
@@ -1821,7 +1974,9 @@ cdef class IteratorRowHead(IteratorRow):
 
     """
 
-    def __init__(self, AlignmentFile samfile, int n,
+    def __init__(self,
+                 AlignmentFile samfile,
+                 int n,
                  int multiple_iterators=False):
 
         IteratorRow.__init__(self, samfile,
@@ -1839,9 +1994,10 @@ cdef class IteratorRowHead(IteratorRow):
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
         cdef int ret
+        cdef bam_hdr_t * hdr = self.header.ptr
         with nogil:
             ret = sam_read1(self.htsfile,
-                            self.samfile.header,
+                            hdr,
                             self.b)
         return ret
 
@@ -1852,7 +2008,7 @@ cdef class IteratorRowHead(IteratorRow):
         cdef int ret = self.cnext()
         if ret >= 0:
             self.current_row += 1
-            return makeAlignedSegment(self.b, self.samfile)
+            return makeAlignedSegment(self.b, self.header)
         elif ret == -2:
             raise IOError('truncated file')
         else:
@@ -1887,16 +2043,17 @@ cdef class IteratorRowAll(IteratorRow):
     cdef int cnext(self):
         '''cversion of iterator. Used by IteratorColumn'''
         cdef int ret
+        cdef bam_hdr_t * hdr = self.header.ptr
         with nogil:
             ret = sam_read1(self.htsfile,
-                            self.samfile.header,
+                            hdr,
                             self.b)
         return ret
 
     def __next__(self):
         cdef int ret = self.cnext()
         if ret >= 0:
-            return makeAlignedSegment(self.b, self.samfile)
+            return makeAlignedSegment(self.b, self.header)
         elif ret == -2:
             raise IOError('truncated file')
         else:
@@ -1957,7 +2114,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
 
             # If current iterator is not exhausted, return aligned read
             if self.rowiter.retval > 0:
-                return makeAlignedSegment(self.rowiter.b, self.samfile)
+                return makeAlignedSegment(self.rowiter.b, self.header)
 
             self.tid += 1
 
@@ -2004,16 +2161,17 @@ cdef class IteratorRowSelection(IteratorRow):
         self.current_pos += 1
 
         cdef int ret
+        cdef bam_hdr_t * hdr = self.header.ptr
         with nogil:
             ret = sam_read1(self.htsfile,
-                            self.samfile.header,
+                            hdr,
                             self.b)
         return ret
 
     def __next__(self):
         cdef int ret = self.cnext()
         if ret >= 0:
-            return makeAlignedSegment(self.b, self.samfile)
+            return makeAlignedSegment(self.b, self.header)
         elif ret == -2:
             raise IOError('truncated file')
         else:
@@ -2215,8 +2373,8 @@ cdef class IteratorColumn:
         self.iterdata.iter = self.iter.iter
         self.iterdata.seq = NULL
         self.iterdata.tid = -1
-        self.iterdata.header = self.samfile.header
-        
+        self.iterdata.header = self.samfile.header.ptr
+
         if self.fastafile is not None:
             self.iterdata.fastafile = self.fastafile.fastafile
         else:
@@ -2348,8 +2506,8 @@ cdef class IteratorColumnRegion(IteratorColumn):
                                     self.pos,
                                     self.n_plp,
                                     self.min_base_quality,
-                                    self.samfile,
-                                    self.iterdata.seq)
+                                    self.iterdata.seq,
+                                    self.samfile.header)
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
@@ -2390,8 +2548,8 @@ cdef class IteratorColumnAllRefs(IteratorColumn):
                                     self.pos,
                                     self.n_plp,
                                     self.min_base_quality,
-                                    self.samfile,
-                                    self.iterdata.seq)
+                                    self.iterdata.seq,
+                                    self.samfile.header)
 
 
 cdef class SNPCall:
@@ -2483,8 +2641,8 @@ cdef class IndexedReads:
         # makes sure that samfile stays alive as long as this
         # object is alive.
         self.samfile = samfile
-
-        assert samfile.is_bam, "can only IndexReads on bam files"
+        cdef bam_hdr_t * hdr = NULL
+        assert samfile.is_bam, "can only apply IndexReads on bam files"
 
         # multiple_iterators the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
@@ -2492,14 +2650,20 @@ cdef class IndexedReads:
             cfilename = samfile.filename
             with nogil:
                 self.htsfile = hts_open(cfilename, 'r')
-            assert self.htsfile != NULL
-            # read header - required for accurate positioning
+            if self.htsfile == NULL:
+                raise OSError("unable to reopen htsfile")
+
+            # need to advance in newly opened file to position after header
+            # better: use seek/tell?
             with nogil:
-                self.header = sam_hdr_read(self.htsfile)
+                hdr = sam_hdr_read(self.htsfile)
+            if hdr == NULL:
+                raise OSError("unable to read header information")
+            self.header = makeAlignmentHeader(hdr)
             self.owns_samfile = True
         else:
             self.htsfile = self.samfile.htsfile
-            self.header = self.samfile.header
+            self.header = samfile.header
             self.owns_samfile = False
 
     def build(self):
@@ -2507,21 +2671,22 @@ cdef class IndexedReads:
 
         self.index = collections.defaultdict(list)
 
-        # this method will start indexing from the current file
-        # position if you decide
+        # this method will start indexing from the current file position
         cdef int ret = 1
         cdef bam1_t * b = <bam1_t*>calloc(1, sizeof( bam1_t))
         if b == NULL:
-            raise ValueError("could not allocate {} bytes".format(sizeof(bam1_t)))
+            raise MemoryError("could not allocate {} bytes".format(sizeof(bam1_t)))
 
         cdef uint64_t pos
-
+        cdef bam_hdr_t * hdr = self.header.ptr
+        
         while ret > 0:
             with nogil:
                 pos = bgzf_tell(hts_get_bgzfp(self.htsfile))
                 ret = sam_read1(self.htsfile,
-                                self.samfile.header,
+                                hdr,
                                 b)
+
             if ret > 0:
                 qname = charptr_to_str(pysam_bam_get_qname(b))
                 self.index[qname].append(pos)
@@ -2555,10 +2720,3 @@ cdef class IndexedReads:
     def __dealloc__(self):
         if self.owns_samfile:
             hts_close(self.htsfile)
-            bam_hdr_destroy(self.header)
-
-__all__ = [
-    "AlignmentFile",
-    "IteratorRow",
-    "IteratorColumn",
-    "IndexedReads"]

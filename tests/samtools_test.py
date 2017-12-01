@@ -149,15 +149,17 @@ class SamtoolsTest(unittest.TestCase):
         '''
         self.check_version()
 
-        if not os.path.exists(WORKDIR):
-            os.makedirs(WORKDIR)
+        self.workdir = os.path.join(WORKDIR, "samtools_test")
+        
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
 
         for f in self.requisites:
             shutil.copy(os.path.join(BAM_DATADIR, f),
-                        os.path.join(WORKDIR, f))
+                        os.path.join(self.workdir, f))
 
         self.savedir = os.getcwd()
-        os.chdir(WORKDIR)
+        os.chdir(self.workdir)
 
         return
 
@@ -273,9 +275,8 @@ class SamtoolsTest(unittest.TestCase):
             self.assertTrue(re.search(expected, usage_msg) is not None)
 
     def tearDown(self):
-        return
-        if os.path.exists(WORKDIR):
-            shutil.rmtree(WORKDIR)
+        if os.path.exists(self.workdir):
+            shutil.rmtree(self.workdir)
         os.chdir(self.savedir)
 
 

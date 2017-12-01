@@ -560,32 +560,33 @@ cdef inline object getQualitiesInRange(bam1_t *src,
 
 
 #####################################################################
-## private factory methods
+## factory methods for instantiating extension classes
 cdef class AlignedSegment
-cdef makeAlignedSegment(bam1_t * src, AlignmentFile alignment_file):
+cdef AlignedSegment makeAlignedSegment(bam1_t *src,
+                                       AlignmentHeader header):
     '''return an AlignedSegment object constructed from `src`'''
     # note that the following does not call __init__
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
-    dest._alignment_file = alignment_file
+    dest.header = header
     return dest
 
 
 cdef class PileupColumn
-cdef makePileupColumn(bam_pileup1_t ** plp,
+cdef PileupColumn makePileupColumn(bam_pileup1_t ** plp,
                       int tid,
                       int pos,
                       int n_pu,
                       uint32_t min_base_quality,
-                      AlignmentFile alignment_file,
-                      char * reference_sequence):
+                      char * reference_sequence,
+                      AlignmentHeader header):
     '''return a PileupColumn object constructed from pileup in `plp` and
     setting additional attributes.
 
     '''
     # note that the following does not call __init__
     cdef PileupColumn dest = PileupColumn.__new__(PileupColumn)
-    dest._alignment_file = alignment_file
+    dest.header = header
     dest.plp = plp
     dest.tid = tid
     dest.pos = pos
@@ -598,11 +599,14 @@ cdef makePileupColumn(bam_pileup1_t ** plp,
 
     return dest
 
+
 cdef class PileupRead
-cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
+cdef PileupRead makePileupRead(bam_pileup1_t *src,
+                               AlignmentHeader header):
     '''return a PileupRead object construted from a bam_pileup1_t * object.'''
+    # note that the following does not call __init__
     cdef PileupRead dest = PileupRead.__new__(PileupRead)
-    dest._alignment = makeAlignedSegment(src.b, alignment_file)
+    dest._alignment = makeAlignedSegment(src.b, header)
     dest._qpos = src.qpos
     dest._indel = src.indel
     dest._level = src.level
@@ -613,7 +617,7 @@ cdef inline makePileupRead(bam_pileup1_t * src, AlignmentFile alignment_file):
     return dest
 
 
-cdef inline uint32_t get_alignment_length(bam1_t * src):
+cdef inline uint32_t get_alignment_length(bam1_t *src):
     cdef int k = 0
     cdef uint32_t l = 0
     if src == NULL:
@@ -824,10 +828,17 @@ cdef class AlignedSegment:
     One issue to look out for is that the sequence should always
     be set *before* the quality scores. Setting the sequence will
     also erase any quality scores that were set previously.
+
+    Parameters
+    ----------
+
+    header -- :class:`~pysam.AlignmentHeader` object to map numerical
+              identifiers to chromosome names. If not given, an empty
+              header is created.
     '''
 
     # Now only called when instances are created from Python
-    def __init__(self):
+    def __init__(self, AlignmentHeader header=None):
         # see bam_init1
         self._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         if self._delegate == NULL:
@@ -854,7 +865,9 @@ cdef class AlignedSegment:
         self.cache_query_alignment_qualities = None
         self.cache_query_sequence = None
         self.cache_query_alignment_sequence = None
-
+        
+        self.header = header
+        
     def __dealloc__(self):
         bam_destroy1(self._delegate)
 
@@ -884,15 +897,14 @@ cdef class AlignedSegment:
                                    self.tags)))
 
     def __copy__(self):
-        return makeAlignedSegment(self._delegate, self._alignment_file)
+        return makeAlignedSegment(self._delegate, self.header)
 
     def __deepcopy__(self, memo):
-        return makeAlignedSegment(self._delegate, self._alignment_file)
+        return makeAlignedSegment(self._delegate, self.header)
 
     def compare(self, AlignedSegment other):
         '''return -1,0,1, if contents in this are binary
         <,=,> to *other*
-
         '''
 
         cdef int retval, x
@@ -951,32 +963,31 @@ cdef class AlignedSegment:
 
         return hash_value
 
-    cpdef tostring(self, AlignmentFile_t htsfile):
+    cpdef tostring(self, htsfile=None):
         """returns a string representation of the aligned segment.
 
-        The output format is valid SAM format.
+        The output format is valid SAM format if a header is associated
+        with the AlignedSegment.
 
         Parameters
         ----------
 
-        htsfile -- AlignmentFile object to map numerical
-                   identifiers to chromosome names.
+        htsfile -- (deprecated) AlignmentFile object to map numerical
+                   identifiers to chromosome names. This parameter is present
+                   for backwards compatibility and ignored.
         """
-        cdef int n_targets = htsfile.header.n_targets
-
-        if self._delegate.core.tid >= n_targets \
-            or self._delegate.core.mtid >= n_targets:
-            raise ValueError('htsfile does not match aligned segment')
-
         cdef kstring_t line
         line.l = line.m = 0
         line.s = NULL
 
-        if sam_format1(htsfile.header, self._delegate, &line) < 0:
-            if line.m:
-                free(line.s)
-            raise ValueError('sam_format failed')
-
+        if self.header:
+            if sam_format1(self.header.ptr, self._delegate, &line) < 0:
+                if line.m:
+                    free(line.s)
+                raise ValueError('sam_format failed')
+        else:
+            raise NotImplementedError("todo")
+        
         ret = force_str(line.s[:line.l])
 
         if line.m:
@@ -1047,11 +1058,25 @@ cdef class AlignedSegment:
             self._delegate.core.flag = flag
 
     property reference_name:
-        """:term:`reference` name (None if no AlignmentFile is associated)"""
+        """:term:`reference` name"""
         def __get__(self):
-            if self._alignment_file is not None:
-                return self._alignment_file.getrname(self._delegate.core.tid)
-            return None
+            if self.header:
+                return self.header.get_reference_name(self._delegate.core.tid)
+            else:
+                raise ValueError("reference_name unknown if no header associated with record")
+        def __set__(self, reference):
+            cdef int tid
+            if not self.header:
+                raise ValueError("reference_name can not be set if no header associated with record")
+            
+            if reference is None:
+                self._delegate.core.tid = -1
+            else:
+                tid = self.header.get_tid(reference)
+                if tid < 0:
+                    raise ValueError("reference {} does not exist in header".format(
+                        reference))
+                self._delegate.core.tid = tid
 
     property reference_id:
         """:term:`reference` ID
@@ -1060,16 +1085,21 @@ cdef class AlignedSegment:
 
             This field contains the index of the reference sequence in
             the sequence dictionary. To obtain the name of the
-            reference sequence, use
-            :meth:`pysam.AlignmentFile.getrname()`
+            reference sequence, use :meth:`get_reference_name()`
 
         """
-        def __get__(self): return self._delegate.core.tid
-        def __set__(self, tid): self._delegate.core.tid = tid
+        def __get__(self):
+            return self._delegate.core.tid
+        def __set__(self, tid):
+            if tid != -1 and self.header and not self.header.is_valid_tid(tid):
+                raise ValueError("reference id {} does not exist in header".format(
+                    tid))
+            self._delegate.core.tid = tid
 
     property reference_start:
         """0-based leftmost coordinate"""
-        def __get__(self): return self._delegate.core.pos
+        def __get__(self):
+            return self._delegate.core.pos
         def __set__(self, pos):
             ## setting the position requires updating the "bin" attribute
             cdef bam1_t * src
@@ -2655,7 +2685,7 @@ cdef class PileupColumn:
                 p = &(self.plp[0][x])
                 if pileup_base_qual_skip(p, self.min_base_quality):
                     continue
-                pileups.append(makePileupRead(p, self._alignment_file))
+                pileups.append(makePileupRead(p, self.header))
             return pileups
 
     ########################################################
