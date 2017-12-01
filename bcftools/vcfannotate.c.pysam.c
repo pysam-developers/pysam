@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcfannotate.c -- Annotate and edit VCF/BCF files.
 
@@ -280,7 +280,7 @@ static void init_remove_annots(args_t *args)
             int id = bcf_hdr_id2int(args->hdr,BCF_DT_ID,str.s);
             if ( !bcf_hdr_idinfo_exists(args->hdr,type,id) )
             {
-                fprintf(pysam_stderr,"Warning: The tag \"%s\" not defined in the header\n", str.s);
+                fprintf(bcftools_stderr,"Warning: The tag \"%s\" not defined in the header\n", str.s);
                 args->nrm--;
             }
             else if ( (type==BCF_HL_FMT && keep_fmt) || (type==BCF_HL_INFO && keep_info) )
@@ -1860,30 +1860,30 @@ static void annotate(args_t *args, bcf1_t *line)
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Annotate and edit VCF/BCF files.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools annotate [options] <in.vcf.gz>\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "   -a, --annotations <file>       VCF file or tabix-indexed file with annotations: CHR\\tPOS[\\tVALUE]+\n");
-    fprintf(pysam_stderr, "       --collapse <string>        matching records by <snps|indels|both|all|some|none>, see man page for details [some]\n");
-    fprintf(pysam_stderr, "   -c, --columns <list>           list of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
-    fprintf(pysam_stderr, "   -e, --exclude <expr>           exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "   -h, --header-lines <file>      lines which should be appended to the VCF header\n");
-    fprintf(pysam_stderr, "   -I, --set-id [+]<format>       set ID column, see man page for details\n");
-    fprintf(pysam_stderr, "   -i, --include <expr>           select sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "   -m, --mark-sites [+-]<tag>     add INFO/tag flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
-    fprintf(pysam_stderr, "       --no-version               do not append version and command line to the header\n");
-    fprintf(pysam_stderr, "   -o, --output <file>            write output to a file [standard output]\n");
-    fprintf(pysam_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(pysam_stderr, "   -r, --regions <region>         restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "   -R, --regions-file <file>      restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "       --rename-chrs <file>       rename sequences according to map file: from\\tto\n");
-    fprintf(pysam_stderr, "   -s, --samples [^]<list>        comma separated list of samples to annotate (or exclude with \"^\" prefix)\n");
-    fprintf(pysam_stderr, "   -S, --samples-file [^]<file>   file of samples to annotate (or exclude with \"^\" prefix)\n");
-    fprintf(pysam_stderr, "   -x, --remove <list>            list of annotations to remove (e.g. ID,INFO/DP,FORMAT/DP,FILTER). See man page for details\n");
-    fprintf(pysam_stderr, "       --threads <int>            number of extra output compression threads [0]\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   Annotate and edit VCF/BCF files.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools annotate [options] <in.vcf.gz>\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Options:\n");
+    fprintf(bcftools_stderr, "   -a, --annotations <file>       VCF file or tabix-indexed file with annotations: CHR\\tPOS[\\tVALUE]+\n");
+    fprintf(bcftools_stderr, "       --collapse <string>        matching records by <snps|indels|both|all|some|none>, see man page for details [some]\n");
+    fprintf(bcftools_stderr, "   -c, --columns <list>           list of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
+    fprintf(bcftools_stderr, "   -e, --exclude <expr>           exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "   -h, --header-lines <file>      lines which should be appended to the VCF header\n");
+    fprintf(bcftools_stderr, "   -I, --set-id [+]<format>       set ID column, see man page for details\n");
+    fprintf(bcftools_stderr, "   -i, --include <expr>           select sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "   -m, --mark-sites [+-]<tag>     add INFO/tag flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
+    fprintf(bcftools_stderr, "       --no-version               do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "   -o, --output <file>            write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(bcftools_stderr, "   -r, --regions <region>         restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "   -R, --regions-file <file>      restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "       --rename-chrs <file>       rename sequences according to map file: from\\tto\n");
+    fprintf(bcftools_stderr, "   -s, --samples [^]<list>        comma separated list of samples to annotate (or exclude with \"^\" prefix)\n");
+    fprintf(bcftools_stderr, "   -S, --samples-file [^]<file>   file of samples to annotate (or exclude with \"^\" prefix)\n");
+    fprintf(bcftools_stderr, "   -x, --remove <list>            list of annotations to remove (e.g. ID,INFO/DP,FORMAT/DP,FILTER). See man page for details\n");
+    fprintf(bcftools_stderr, "       --threads <int>            number of extra output compression threads [0]\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 

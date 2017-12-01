@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /* The MIT License
 
@@ -877,7 +877,7 @@ void gff_parse_transcript(args_t *args, const char *line, char *ss, ftr_t *ftr)
     int biotype = gff_parse_biotype(ss);
     if ( biotype <= 0 )
     {
-        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(pysam_stderr,"ignored transcript: %s\n",line);
+        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(bcftools_stderr,"ignored transcript: %s\n",line);
         return;
     }
 
@@ -905,7 +905,7 @@ void gff_parse_gene(args_t *args, const char *line, char *ss, char *chr_beg, cha
     int biotype = gff_parse_biotype(ss);
     if ( biotype <= 0 )
     {
-        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(pysam_stderr,"ignored gene: %s\n",line);
+        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(bcftools_stderr,"ignored gene: %s\n",line);
         return;
     }
 
@@ -967,7 +967,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
             if ( !ss ) return -1;   // no ID, ignore the line
             if ( !strncmp("chromosome",ss+3,10) ) return -1;
             if ( !strncmp("supercontig",ss+3,11) ) return -1;
-            if ( args->quiet<2 ) fprintf(pysam_stderr,"ignored: %s\n", line);
+            if ( args->quiet<2 ) fprintf(bcftools_stderr,"ignored: %s\n", line);
             return -1;
         }
 
@@ -989,7 +989,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     // 7. column: strand
     if ( *ss == '+' ) ftr->strand = STRAND_FWD;
     else if ( *ss == '-' ) ftr->strand = STRAND_REV;
-    else { if ( args->quiet<2 ) fprintf(pysam_stderr,"Skipping unknown strand: %c\n", *ss); return -1; }
+    else { if ( args->quiet<2 ) fprintf(bcftools_stderr,"Skipping unknown strand: %c\n", *ss); return -1; }
     ss += 2;
 
     // 8. column: phase (codon offset)
@@ -997,7 +997,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     else if ( *ss == '1' ) ftr->phase = 1;
     else if ( *ss == '2' ) ftr->phase = 2;
     else if ( *ss == '.' ) ftr->phase = 0;      // exons do not have phase
-    else { if ( args->quiet<2 ) fprintf(pysam_stderr,"Skipping unknown phase: %c, %s\n", *ss, line); return -1; }
+    else { if ( args->quiet<2 ) fprintf(bcftools_stderr,"Skipping unknown phase: %c, %s\n", *ss, line); return -1; }
     ss += 2;
 
     // substring search for "Parent=transcript:ENST00000437963"
@@ -1260,7 +1260,7 @@ void init_gff(args_t *args)
 
     if ( !args->quiet )
     {
-        fprintf(pysam_stderr,"Indexed %d transcripts, %d exons, %d CDSs, %d UTRs\n", 
+        fprintf(bcftools_stderr,"Indexed %d transcripts, %d exons, %d CDSs, %d UTRs\n", 
                 regidx_nregs(args->idx_tscript),
                 regidx_nregs(args->idx_exon),
                 regidx_nregs(args->idx_cds),
@@ -1276,11 +1276,11 @@ void init_gff(args_t *args)
     if ( args->quiet<2 && khash_str2int_size(aux->ignored_biotypes) )
     {
         khash_t(str2int) *ign = (khash_t(str2int)*)aux->ignored_biotypes;
-        fprintf(pysam_stderr,"Ignored the following biotypes:\n");
+        fprintf(bcftools_stderr,"Ignored the following biotypes:\n");
         for (i = kh_begin(ign); i < kh_end(ign); i++)
         {
             if ( !kh_exist(ign,i)) continue;
-            fprintf(pysam_stderr,"\t%dx\t.. %s\n", kh_value(ign,i), kh_key(ign,i));
+            fprintf(bcftools_stderr,"\t%dx\t.. %s\n", kh_value(ign,i), kh_key(ign,i));
         }
     }
     khash_str2int_destroy_free(aux->ignored_biotypes);
@@ -1290,7 +1290,7 @@ void init_data(args_t *args)
 {
     args->nfmt_bcsq = 1 + (args->ncsq_max - 1) / 32; 
 
-    if ( !args->quiet ) fprintf(pysam_stderr,"Parsing %s ...\n", args->gff_fname);
+    if ( !args->quiet ) fprintf(bcftools_stderr,"Parsing %s ...\n", args->gff_fname);
     init_gff(args);
 
     args->rid = -1;
@@ -1323,7 +1323,7 @@ void init_data(args_t *args)
 
     if ( args->output_type==FT_TAB_TEXT )
     {
-        args->out = args->output_fname ? fopen(args->output_fname,"w") : pysam_stdout;
+        args->out = args->output_fname ? fopen(args->output_fname,"w") : bcftools_stdout;
         if ( !args->out ) error("Failed to open %s: %s\n", args->output_fname,strerror(errno));
 
         fprintf(args->out,"# This file was produced by: bcftools +csq(%s+htslib-%s)\n", bcftools_version(),hts_version());
@@ -1351,7 +1351,7 @@ void init_data(args_t *args)
             bcf_hdr_printf(args->hdr,"##FORMAT=<ID=%s,Number=.,Type=Integer,Description=\"Bitmask of indexes to INFO/BCSQ, with interleaved first/second haplotype. Use \\\"bcftools query -f'[%%CHROM\\t%%POS\\t%%SAMPLE\\t%%TBCSQ\\n]'\\\" to translate.\">",args->bcsq_tag);
         bcf_hdr_write(args->out_fh, args->hdr);
     }
-    if ( !args->quiet ) fprintf(pysam_stderr,"Calling...\n");
+    if ( !args->quiet ) fprintf(bcftools_stderr,"Calling...\n");
 }
 
 void destroy_data(args_t *args)
@@ -1383,7 +1383,7 @@ void destroy_data(args_t *args)
         ret = hts_close(args->out_fh);
     else
         ret = fclose(args->out);
-    if ( ret ) error("Error: close failed .. %s\n", args->output_fname?args->output_fname:"pysam_stdout");
+    if ( ret ) error("Error: close failed .. %s\n", args->output_fname?args->output_fname:"bcftools_stdout");
     for (i=0; i<args->vcf_rbuf.m; i++)
     {
         vbuf_t *vbuf = args->vcf_buf[i];
@@ -1476,7 +1476,7 @@ static inline void splice_build_hap(splice_t *splice, uint32_t beg, int len)
 
 #define XDBG 0
 #if XDBG
-fprintf(pysam_stderr,"build_hap:  rbeg=%d + %d    abeg=%d \n",rbeg,rlen,abeg);
+fprintf(bcftools_stderr,"build_hap:  rbeg=%d + %d    abeg=%d \n",rbeg,rlen,abeg);
 #endif 
     splice->kref.l = 0;
     splice->kalt.l = 0;
@@ -1492,7 +1492,7 @@ fprintf(pysam_stderr,"build_hap:  rbeg=%d + %d    abeg=%d \n",rbeg,rlen,abeg);
     else
         roff = rbeg - splice->vcf.pos;
 #if XDBG
-fprintf(pysam_stderr,"r1: %s  roff=%d\n",splice->kref.s,roff);
+fprintf(bcftools_stderr,"r1: %s  roff=%d\n",splice->kref.s,roff);
 #endif
 
     if ( roff < splice->vcf.rlen && splice->kref.l < rlen )
@@ -1502,7 +1502,7 @@ fprintf(pysam_stderr,"r1: %s  roff=%d\n",splice->kref.s,roff);
         kputsn(splice->vcf.ref + roff, len, &splice->kref);
     }
 #if XDBG
-fprintf(pysam_stderr,"r2: %s\n",splice->kref.s);
+fprintf(bcftools_stderr,"r2: %s\n",splice->kref.s);
 #endif
 
     uint32_t end = splice->vcf.pos + splice->vcf.rlen;    // position just after the ref allele
@@ -1514,7 +1514,7 @@ fprintf(pysam_stderr,"r2: %s\n",splice->kref.s);
             kputsn(splice->tr->ref + N_REF_PAD + end - splice->tr->beg, rlen - splice->kref.l, &splice->kref);
     }
 #if XDBG
-fprintf(pysam_stderr,"r3: %s\n",splice->kref.s);
+fprintf(bcftools_stderr,"r3: %s\n",splice->kref.s);
 #endif
 
 
@@ -1528,7 +1528,7 @@ fprintf(pysam_stderr,"r3: %s\n",splice->kref.s);
     else
         aoff = abeg - splice->vcf.pos;
 #if XDBG
-fprintf(pysam_stderr,"a1: %s  aoff=%d\n",splice->kalt.s,aoff);
+fprintf(bcftools_stderr,"a1: %s  aoff=%d\n",splice->kalt.s,aoff);
 #endif
 
     if ( aoff < splice->vcf.alen && splice->kalt.l < alen )
@@ -1541,7 +1541,7 @@ fprintf(pysam_stderr,"a1: %s  aoff=%d\n",splice->kalt.s,aoff);
     if ( aoff < 0 ) aoff = 0;
     else aoff--;
 #if XDBG
-fprintf(pysam_stderr,"a2: %s  aoff=%d\n",splice->kalt.s,aoff);
+fprintf(bcftools_stderr,"a2: %s  aoff=%d\n",splice->kalt.s,aoff);
 #endif
 
     end = splice->vcf.pos + splice->vcf.rlen;    // position just after the ref allele
@@ -1553,8 +1553,8 @@ fprintf(pysam_stderr,"a2: %s  aoff=%d\n",splice->kalt.s,aoff);
             kputsn(splice->tr->ref + aoff + N_REF_PAD + end - splice->tr->beg, alen - splice->kalt.l, &splice->kalt);
     }
 #if XDBG
-fprintf(pysam_stderr,"a3: %s\n",splice->kalt.s);
-fprintf(pysam_stderr," [%s]\n [%s]\n\n",splice->kref.s,splice->kalt.s);
+fprintf(bcftools_stderr,"a3: %s\n",splice->kalt.s);
+fprintf(bcftools_stderr," [%s]\n [%s]\n\n",splice->kref.s,splice->kalt.s);
 #endif
 }
 void csq_stage(args_t *args, csq_t *csq, bcf1_t *rec);
@@ -1581,7 +1581,7 @@ static inline int csq_stage_utr(args_t *args, regitr_t *itr, bcf1_t *rec, uint32
 static inline void csq_stage_splice(args_t *args, bcf1_t *rec, tscript_t *tr, uint32_t type)
 {
 #if XDBG
-fprintf(pysam_stderr,"csq_stage_splice %d: type=%d\n",rec->pos+1,type);
+fprintf(bcftools_stderr,"csq_stage_splice %d: type=%d\n",rec->pos+1,type);
 #endif
     if ( !type ) return;
     csq_t csq; 
@@ -1610,7 +1610,7 @@ static inline int splice_csq_ins(args_t *args, splice_t *splice, uint32_t ex_beg
         splice->ref_end = splice->vcf.pos + splice->vcf.rlen - splice->tend;
     }
 #if XDBG
-fprintf(pysam_stderr,"ins: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
+fprintf(bcftools_stderr,"ins: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
 #endif
 
     int ret;
@@ -1734,7 +1734,7 @@ static inline int splice_csq_del(args_t *args, splice_t *splice, uint32_t ex_beg
     splice->ref_end = splice->vcf.pos + splice->vcf.rlen - splice->tend - 1;    // the last deleted base
 
 #if XDBG
-fprintf(pysam_stderr,"del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
+fprintf(bcftools_stderr,"del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
 #endif
 
     if ( splice->ref_beg + 1 < ex_beg )     // the part before the exon; ref_beg is off by -1
@@ -1880,7 +1880,7 @@ static inline int splice_csq_mnp(args_t *args, splice_t *splice, uint32_t ex_beg
     splice->ref_end = splice->vcf.pos + splice->vcf.rlen - splice->tend - 1;
 
 #if XDBG
-fprintf(pysam_stderr,"mnp: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
+fprintf(bcftools_stderr,"mnp: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
 #endif
 
     if ( splice->ref_beg < ex_beg )     // the part before the exon
@@ -2034,11 +2034,11 @@ int hap_init(args_t *args, hap_node_t *parent, hap_node_t *child, gf_cds_t *cds,
     if ( child->icds!=tr->ncds-1 ) splice.check_region_end = 1;
 
 #if XDBG
-fprintf(pysam_stderr,"\n%d [%s][%s]   check start:%d,stop:%d\n",splice.vcf.pos+1,splice.vcf.ref,splice.vcf.alt,splice.check_start,splice.check_stop);
+fprintf(bcftools_stderr,"\n%d [%s][%s]   check start:%d,stop:%d\n",splice.vcf.pos+1,splice.vcf.ref,splice.vcf.alt,splice.check_start,splice.check_stop);
 #endif
     int ret = splice_csq(args, &splice, cds->beg, cds->beg + cds->len - 1);
 #if XDBG
-fprintf(pysam_stderr,"cds splice_csq: %d [%s][%s] .. beg,end=%d %d, ret=%d, csq=%d\n\n",splice.vcf.pos+1,splice.kref.s,splice.kalt.s,splice.ref_beg+1,splice.ref_end+1,ret,splice.csq);
+fprintf(bcftools_stderr,"cds splice_csq: %d [%s][%s] .. beg,end=%d %d, ret=%d, csq=%d\n\n",splice.vcf.pos+1,splice.kref.s,splice.kalt.s,splice.ref_beg+1,splice.ref_end+1,ret,splice.csq);
 #endif
 
     if ( ret==SPLICE_VAR_REF ) return 2;  // not a variant, eg REF=CA ALT=CA
@@ -2171,7 +2171,7 @@ void hap_destroy(hap_node_t *hap)
 void cds_translate(kstring_t *_ref, kstring_t *_seq, uint32_t sbeg, uint32_t rbeg, uint32_t rend, int strand, kstring_t *tseq, int fill)
 {
 #if XDBG
-fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,fill,(int)_seq->l);
+fprintf(bcftools_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,fill,(int)_seq->l);
 #endif
     char tmp[3], *codon, *end;
     int i, len, npad;
@@ -2188,12 +2188,12 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
 
 #define DBG 0
 #if DBG
- fprintf(pysam_stderr,"translate: sbeg,rbeg,rend=%d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,fill,(int)_seq->l);
- fprintf(pysam_stderr,"    ref: l=%d %s\n", (int)ref.l,ref.s);
- fprintf(pysam_stderr,"    seq: l=%d m=%d ", (int)seq.l,(int)seq.m);
- for (i=0; i<seq.l; i++) fprintf(pysam_stderr,"%c",seq.s[i]); fprintf(pysam_stderr,"\n");
- fprintf(pysam_stderr,"    sbeg,rbeg,rend: %d,%d,%d\n", sbeg,rbeg,rend);
- fprintf(pysam_stderr,"    strand,fill: %d,%d\n", strand,fill);
+ fprintf(bcftools_stderr,"translate: sbeg,rbeg,rend=%d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,fill,(int)_seq->l);
+ fprintf(bcftools_stderr,"    ref: l=%d %s\n", (int)ref.l,ref.s);
+ fprintf(bcftools_stderr,"    seq: l=%d m=%d ", (int)seq.l,(int)seq.m);
+ for (i=0; i<seq.l; i++) fprintf(bcftools_stderr,"%c",seq.s[i]); fprintf(bcftools_stderr,"\n");
+ fprintf(bcftools_stderr,"    sbeg,rbeg,rend: %d,%d,%d\n", sbeg,rbeg,rend);
+ fprintf(bcftools_stderr,"    strand,fill: %d,%d\n", strand,fill);
 #endif
 
     if ( strand==STRAND_FWD )
@@ -2201,7 +2201,7 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
         // left padding
         npad = sbeg % 3;
 #if DBG>1
-        fprintf(pysam_stderr,"    npad: %d\n",npad);
+        fprintf(bcftools_stderr,"    npad: %d\n",npad);
 #endif
         assert( npad<=rbeg );
 
@@ -2211,13 +2211,13 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
             tmp[i] = seq.s[i-npad];
         len = seq.l - i + npad;    // the remaining length of padded sseq
 #if DBG>1
-        fprintf(pysam_stderr,"\t i=%d\n", i);
+        fprintf(bcftools_stderr,"\t i=%d\n", i);
 #endif
         if ( i==3 )
         {
             kputc_(dna2aa(tmp), tseq);
 #if DBG>1
-            fprintf(pysam_stderr,"[1]%c%c%c\n",tmp[0],tmp[1],tmp[2]);
+            fprintf(bcftools_stderr,"[1]%c%c%c\n",tmp[0],tmp[1],tmp[2]);
 #endif
             codon = seq.s + 3 - npad;        // next codon
             end   = codon + len - 1 - (len % 3);    // last position of a valid codon
@@ -2225,7 +2225,7 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
             {
                 kputc_(dna2aa(codon), tseq);
 #if DBG>1
-                fprintf(pysam_stderr,"[2]%c%c%c\n",codon[0],codon[1],codon[2]);
+                fprintf(bcftools_stderr,"[2]%c%c%c\n",codon[0],codon[1],codon[2]);
 #endif
                 codon += 3;
             }
@@ -2238,8 +2238,8 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
         if ( i>0 )
         {
 #if DBG>1
-            if(i==1)fprintf(pysam_stderr,"[3]%c\n",tmp[0]);
-            if(i==2)fprintf(pysam_stderr,"[3]%c%c\n",tmp[0],tmp[1]);
+            if(i==1)fprintf(bcftools_stderr,"[3]%c\n",tmp[0]);
+            if(i==2)fprintf(bcftools_stderr,"[3]%c%c\n",tmp[0],tmp[1]);
 #endif
             for (; i<3; i++)
             {
@@ -2248,7 +2248,7 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
             }
             kputc_(dna2aa(tmp), tseq);
 #if DBG>1
-            fprintf(pysam_stderr,"[4]%c%c%c\n",tmp[0],tmp[1],tmp[2]);
+            fprintf(bcftools_stderr,"[4]%c%c%c\n",tmp[0],tmp[1],tmp[2]);
 #endif
         }
         if ( fill!=0 )
@@ -2258,7 +2258,7 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
             {
                 kputc_(dna2aa(codon), tseq);
 #if DBG>1
-                fprintf(pysam_stderr,"[5]%c%c%c\t%c\n",codon[0],codon[1],codon[2],dna2aa(codon));
+                fprintf(bcftools_stderr,"[5]%c%c%c\t%c\n",codon[0],codon[1],codon[2],dna2aa(codon));
 #endif
                 codon += 3;
             }
@@ -2269,9 +2269,9 @@ fprintf(pysam_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,f
         // right padding - number of bases to take from ref
         npad = (seq.m - (sbeg + seq.l)) % 3; 
 #if DBG>1
-        fprintf(pysam_stderr,"    npad: %d\n",npad);
+        fprintf(bcftools_stderr,"    npad: %d\n",npad);
 #endif
-if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(pysam_stderr,"sbeg=%d  seq.l=%d seq.m=%d\n",sbeg,(int)seq.l,(int)seq.m);
+if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(bcftools_stderr,"sbeg=%d  seq.l=%d seq.m=%d\n",sbeg,(int)seq.l,(int)seq.m);
         assert( npad>=0 && sbeg+seq.l+npad<=seq.m );  // todo: first codon on the rev strand
 
         if ( npad==2 )
@@ -2291,14 +2291,14 @@ if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(pysam_stderr,"sbeg=%d  seq.l
         end = seq.s + seq.l;
         for (; i>=0 && end>seq.s; i--) tmp[i] = *(--end);
 #if DBG>1
-        fprintf(pysam_stderr,"\t i=%d\n", i);
-        if(i==1)fprintf(pysam_stderr,"[0]    %c\n",tmp[2]);
-        if(i==0)fprintf(pysam_stderr,"[0]  %c%c\n",tmp[1],tmp[2]);
+        fprintf(bcftools_stderr,"\t i=%d\n", i);
+        if(i==1)fprintf(bcftools_stderr,"[0]    %c\n",tmp[2]);
+        if(i==0)fprintf(bcftools_stderr,"[0]  %c%c\n",tmp[1],tmp[2]);
 #endif
         if ( i==-1 )
         {
 #if DBG>1
-            fprintf(pysam_stderr,"[1]%c%c%c\t%c\n",tmp[0],tmp[1],tmp[2], cdna2aa(tmp));
+            fprintf(bcftools_stderr,"[1]%c%c%c\t%c\n",tmp[0],tmp[1],tmp[2], cdna2aa(tmp));
 #endif
             kputc_(cdna2aa(tmp), tseq);
             codon = end - 3;
@@ -2306,7 +2306,7 @@ if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(pysam_stderr,"sbeg=%d  seq.l
             {
                 kputc_(cdna2aa(codon), tseq);
 #if DBG>1
-                fprintf(pysam_stderr,"[2]%c%c%c\t%c\n",codon[0],codon[1],codon[2], cdna2aa(codon));
+                fprintf(bcftools_stderr,"[2]%c%c%c\t%c\n",codon[0],codon[1],codon[2], cdna2aa(codon));
 #endif
                 codon -= 3;
             }
@@ -2324,8 +2324,8 @@ if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(pysam_stderr,"sbeg=%d  seq.l
             else
                 i = -1;
 #if DBG>1
-            if(i==1)fprintf(pysam_stderr,"[3]   %c\n",tmp[2]);
-            if(i==0)fprintf(pysam_stderr,"[3] %c%c\n",tmp[1],tmp[2]);
+            if(i==1)fprintf(bcftools_stderr,"[3]   %c\n",tmp[2]);
+            if(i==0)fprintf(bcftools_stderr,"[3] %c%c\n",tmp[1],tmp[2]);
 #endif
         }
         // left padding
@@ -2335,7 +2335,7 @@ if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(pysam_stderr,"sbeg=%d  seq.l
             for (; i>=0 && end>=ref.s; i--) tmp[i] = *(--end);
             kputc_(cdna2aa(tmp), tseq);
 #if DBG>1
-            fprintf(pysam_stderr,"[4]%c%c%c\t%c\n",tmp[0],tmp[1],tmp[2],cdna2aa(tmp));
+            fprintf(bcftools_stderr,"[4]%c%c%c\t%c\n",tmp[0],tmp[1],tmp[2],cdna2aa(tmp));
 #endif
         }
         if ( fill!=0 )
@@ -2345,7 +2345,7 @@ if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(pysam_stderr,"sbeg=%d  seq.l
             {
                 kputc_(cdna2aa(codon), tseq);
 #if DBG>1
-                fprintf(pysam_stderr,"[5]%c%c%c\t%c\n",codon[0],codon[1],codon[2],cdna2aa(codon));
+                fprintf(bcftools_stderr,"[5]%c%c%c\t%c\n",codon[0],codon[1],codon[2],cdna2aa(codon));
 #endif
                 codon -= 3;
             }
@@ -2353,7 +2353,7 @@ if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(pysam_stderr,"sbeg=%d  seq.l
     }
     kputc_(0,tseq); tseq->l--;
 #if DBG
- fprintf(pysam_stderr,"    tseq: %s\n", tseq->s);
+ fprintf(bcftools_stderr,"    tseq: %s\n", tseq->s);
 #endif
 }
 
@@ -2385,7 +2385,7 @@ void tscript_splice_ref(tscript_t *tr)
 int csq_push(args_t *args, csq_t *csq, bcf1_t *rec)
 {
 #if XDBG
-fprintf(pysam_stderr,"csq_push: %d .. %d\n",rec->pos+1,csq->type.type);
+fprintf(bcftools_stderr,"csq_push: %d .. %d\n",rec->pos+1,csq->type.type);
 #endif
     khint_t k = kh_get(pos2vbuf, args->pos2vbuf, (int)csq->pos);
     vbuf_t *vbuf = (k == kh_end(args->pos2vbuf)) ? NULL : kh_val(args->pos2vbuf, k);
@@ -2940,9 +2940,9 @@ static inline void hap_stage_vcf(args_t *args, tscript_t *tr, int ismpl, int iha
             }
             if ( print_warning )
             {
-                fprintf(pysam_stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
+                fprintf(bcftools_stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
                         args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
-                if ( args->quiet ) fprintf(pysam_stderr,"(This warning is printed only once)\n");
+                if ( args->quiet ) fprintf(bcftools_stderr,"(This warning is printed only once)\n");
             }
             break;
         }
@@ -3341,7 +3341,7 @@ int test_cds(args_t *args, bcf1_t *rec)
                 if ( hap_ret==1 )
                 {
                     if ( !args->quiet )
-                        fprintf(pysam_stderr,"Warning: Skipping overlapping variants at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+                        fprintf(bcftools_stderr,"Warning: Skipping overlapping variants at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
                     if ( args->out ) 
                         fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
                 }
@@ -3365,7 +3365,7 @@ int test_cds(args_t *args, bcf1_t *rec)
         if ( ngts!=1 && ngts!=2 ) 
         {
             if ( !args->quiet )
-                fprintf(pysam_stderr,"Warning: Skipping site with non-diploid/non-haploid genotypes at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+                fprintf(bcftools_stderr,"Warning: Skipping site with non-diploid/non-haploid genotypes at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
             if ( args->out ) 
                 fprintf(args->out,"LOG\tWarning: Skipping site with non-diploid/non-haploid genotypes at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
             continue;
@@ -3423,7 +3423,7 @@ int test_cds(args_t *args, bcf1_t *rec)
                     if ( hap_ret==1 )
                     {
                         if ( !args->quiet )
-                            fprintf(pysam_stderr,"Warning: Skipping overlapping variants at %s:%d, sample %s\t%s>%s\n",
+                            fprintf(bcftools_stderr,"Warning: Skipping overlapping variants at %s:%d, sample %s\t%s>%s\n",
                                     chr,rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]],rec->d.allele[0],rec->d.allele[ial]);
                         if ( args->out  )
                             fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%d, sample %s\t%s>%s\n",
@@ -3508,9 +3508,9 @@ void csq_stage(args_t *args, csq_t *csq, bcf1_t *rec)
                 }
                 if ( print_warning )
                 {
-                    fprintf(pysam_stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
+                    fprintf(bcftools_stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
                             args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
-                    if ( args->quiet ) fprintf(pysam_stderr,"(This warning is printed only once)\n");
+                    if ( args->quiet ) fprintf(bcftools_stderr,"(This warning is printed only once)\n");
                 }
                 break;
             }

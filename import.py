@@ -89,7 +89,7 @@ def _update_pysam_files(cf, destdir):
             lines = "".join(infile.readlines())
 
             with open(dest, "w", encoding="utf-8") as outfile:
-                outfile.write('#include "pysam.h"\n\n')
+                outfile.write('#include "{}.pysam.h"\n\n'.format(basename))
                 subname, _ = os.path.splitext(os.path.basename(filename))
                 if subname in MAIN.get(basename, []):
                     lines = re.sub("int main\(", "int {}_main(".format(
@@ -97,27 +97,27 @@ def _update_pysam_files(cf, destdir):
                 else:
                     lines = re.sub("int main\(", "int {}_{}_main(".format(
                         basename, subname), lines)
-                lines = re.sub("stderr", "pysam_stderr", lines)
-                lines = re.sub("stdout", "pysam_stdout", lines)
+                lines = re.sub("stderr", "{}_stderr".format(basename), lines)
+                lines = re.sub("stdout", "{}_stdout".format(basename), lines)
                 lines = re.sub(" printf\(", " fprintf(pysam_stdout, ", lines)
                 lines = re.sub("([^kf])puts\(([^)]+)\)",
-                               r"\1fputs(\2, pysam_stdout) & fputc('\\n', pysam_stdout)",
+                               r"\1fputs(\2, {}_stdout) & fputc('\\n', {}_stdout)".format(basename, basename),
                                lines)
                 lines = re.sub("putchar\(([^)]+)\)",
-                               r"fputc(\1, pysam_stdout)", lines)
+                               r"fputc(\1, {}_stdout)".format(basename), lines)
 
                 fn = os.path.basename(filename)
                 # some specific fixes:
                 SPECIFIC_SUBSTITUTIONS = {
                     "bam_md.c": (
                         'sam_open_format("-", mode_w',
-                        'sam_open_format(pysam_stdout_fn, mode_w'),
+                        'sam_open_format({}_stdout_fn, mode_w'.format(basename)),
                     "phase.c": (
-                        'putc("ACGT"[f->seq[j] == 1? (c&3, pysam_stdout) : (c>>16&3)]);',
-                        'putc("ACGT"[f->seq[j] == 1? (c&3) : (c>>16&3)], pysam_stdout);'),
+                        'putc("ACGT"[f->seq[j] == 1? (c&3, {}_stdout) : (c>>16&3)]);'.format(basename),
+                        'putc("ACGT"[f->seq[j] == 1? (c&3) : (c>>16&3)], {}_stdout);'.format(basename)),
                     "cut_target.c": (
-                        'putc(33 + (cns[j]>>8>>2, pysam_stdout));',
-                        'putc(33 + (cns[j]>>8>>2), pysam_stdout);')
+                        'putc(33 + (cns[j]>>8>>2, {}_stdout));'.format(basename),
+                        'putc(33 + (cns[j]>>8>>2), {}_stdout);'.format(basename))
                     }
                 if fn in SPECIFIC_SUBSTITUTIONS:
                     lines = lines.replace(
@@ -125,15 +125,13 @@ def _update_pysam_files(cf, destdir):
                         SPECIFIC_SUBSTITUTIONS[fn][1])
                 outfile.write(lines)
 
-            with open(os.path.join(destdir, "pysam.h"), "w")as outfile:
-                outfile.write("""#ifndef PYSAM_H
-#define PYSAM_H
-#include "stdio.h"
-extern FILE * pysam_stderr;
-extern FILE * pysam_stdout;
-extern const char * pysam_stdout_fn;
-#endif
-""")
+    with IOTools.open_file(os.path.join("import", "pysam.h")) as inf, \
+         IOTools.open_file(os.path.join(destdir, "{}.pysam.h".format(basename))) as outf:
+        outf.write(re.sub("@pysam@", basename, inf.read()))
+
+    with IOTools.open_file(os.path.join("import", "pysam.pysam.c")) as inf, \
+         IOTools.open_file(os.path.join(destdir, "{}.pysam.c".format(basename))) as outf:
+        outf.write(re.sub("@pysam@", basename, inf.read()))
 
 
 if len(sys.argv) >= 1:

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_plbuf.c -- plbuf routines (previously in bam_pileup.c).
 

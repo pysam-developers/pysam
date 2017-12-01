@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_split.c -- split subcommand.
 
@@ -99,7 +99,7 @@ static void usage(FILE *write_to)
 // Takes the command line options and turns them into something we can understand
 static parsed_opts_t* parse_args(int argc, char** argv)
 {
-    if (argc == 1) { usage(pysam_stdout); return NULL; }
+    if (argc == 1) { usage(samtools_stdout); return NULL; }
 
     const char* optstring = "vf:u:@:";
     char* delim;
@@ -137,7 +137,7 @@ static parsed_opts_t* parse_args(int argc, char** argv)
             if (parse_sam_global_opt(opt, optarg, lopts, &retval->ga) == 0) break;
             /* else fall-through */
         case '?':
-            usage(pysam_stdout);
+            usage(samtools_stdout);
             free(retval);
             return NULL;
         }
@@ -150,7 +150,7 @@ static parsed_opts_t* parse_args(int argc, char** argv)
 
     if (argc != 1) {
         print_error("split", "Invalid number of arguments: %d", argc);
-        usage(pysam_stderr);
+        usage(samtools_stderr);
         free(retval);
         return NULL;
     }
@@ -191,11 +191,11 @@ static char* expand_format_string(const char* format_string, const char* basenam
                     kputs("bam", &str);
                 break;
             case '\0':
-                // Error is: fprintf(pysam_stderr, "bad format string, trailing %%\n");
+                // Error is: fprintf(samtools_stderr, "bad format string, trailing %%\n");
                 free(str.s);
                 return NULL;
             default:
-                // Error is: fprintf(pysam_stderr, "bad format string, unknown format specifier\n");
+                // Error is: fprintf(samtools_stderr, "bad format string, unknown format specifier\n");
                 free(str.s);
                 return NULL;
         }
@@ -351,7 +351,7 @@ static state_t* init(parsed_opts_t* opts, const char *arg_list)
 
     if (opts->ga.nthreads > 0) {
         if (!(retval->p.pool = hts_tpool_init(opts->ga.nthreads))) {
-            fprintf(pysam_stderr, "Error creating thread pool\n");
+            fprintf(samtools_stderr, "Error creating thread pool\n");
             return NULL;
         }
     }
@@ -402,7 +402,7 @@ static state_t* init(parsed_opts_t* opts, const char *arg_list)
 
     // Open output files for RGs
     if (!count_RG(retval->merged_input_header, &retval->output_count, &retval->rg_id)) return NULL;
-    if (opts->verbose) fprintf(pysam_stderr, "@RG's found %zu\n",retval->output_count);
+    if (opts->verbose) fprintf(samtools_stderr, "@RG's found %zu\n",retval->output_count);
 
     retval->rg_output_file_name = (char **)calloc(retval->output_count, sizeof(char *));
     retval->rg_output_file = (samFile**)calloc(retval->output_count, sizeof(samFile*));
@@ -522,9 +522,9 @@ static bool split(state_t* state)
             // otherwise write to the unaccounted bam if there is one or fail
             if (state->unaccounted_file == NULL) {
                 if (tag) {
-                    fprintf(pysam_stderr, "Read \"%s\" with unaccounted for tag \"%s\".\n", bam_get_qname(file_read), bam_aux2Z(tag));
+                    fprintf(samtools_stderr, "Read \"%s\" with unaccounted for tag \"%s\".\n", bam_get_qname(file_read), bam_aux2Z(tag));
                 } else {
-                    fprintf(pysam_stderr, "Read \"%s\" has no RG tag.\n", bam_get_qname(file_read));
+                    fprintf(samtools_stderr, "Read \"%s\" has no RG tag.\n", bam_get_qname(file_read));
                 }
                 bam_destroy1(file_read);
                 return false;

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_rmdupse.c -- duplicate read detection for unpaired reads.
 
@@ -188,7 +188,7 @@ int bam_rmdupse_core(samFile *in, bam_hdr_t *hdr, samFile *out, int force_se)
         }
     }
     if (r < -1) {
-        fprintf(pysam_stderr, "[%s] error reading input file\n", __func__);
+        fprintf(samtools_stderr, "[%s] error reading input file\n", __func__);
         goto fail;
     }
 
@@ -197,7 +197,7 @@ int bam_rmdupse_core(samFile *in, bam_hdr_t *hdr, samFile *out, int force_se)
     for (k = kh_begin(aux); k != kh_end(aux); ++k) {
         if (kh_exist(aux, k)) {
             lib_aux_t *q = &kh_val(aux, k);
-            fprintf(pysam_stderr, "[bam_rmdupse_core] %lld / %lld = %.4lf in library '%s'\n", (long long)q->n_removed,
+            fprintf(samtools_stderr, "[bam_rmdupse_core] %lld / %lld = %.4lf in library '%s'\n", (long long)q->n_removed,
                     (long long)q->n_checked, (double)q->n_removed/q->n_checked, kh_key(aux, k));
             kh_destroy(best, q->left); kh_destroy(best, q->rght);
             free((char*)kh_key(aux, k));

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam2depth.c -- depth subcommand.
 
@@ -75,26 +75,26 @@ static int read_bam(void *data, bam1_t *b) // read level filters better go here 
 int read_file_list(const char *file_list,int *n,char **argv[]);
 
 static int usage() {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Usage: samtools depth [options] in1.bam [in2.bam [...]]\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "   -a                  output all positions (including zero depth)\n");
-    fprintf(pysam_stderr, "   -a -a (or -aa)      output absolutely all positions, including unused ref. sequences\n");
-    fprintf(pysam_stderr, "   -b <bed>            list of positions or regions\n");
-    fprintf(pysam_stderr, "   -f <list>           list of input BAM filenames, one per line [null]\n");
-    fprintf(pysam_stderr, "   -l <int>            read length threshold (ignore reads shorter than <int>) [0]\n");
-    fprintf(pysam_stderr, "   -d/-m <int>         maximum coverage depth [8000]\n");  // the htslib's default
-    fprintf(pysam_stderr, "   -q <int>            base quality threshold [0]\n");
-    fprintf(pysam_stderr, "   -Q <int>            mapping quality threshold [0]\n");
-    fprintf(pysam_stderr, "   -r <chr:from-to>    region\n");
+    fprintf(samtools_stderr, "\n");
+    fprintf(samtools_stderr, "Usage: samtools depth [options] in1.bam [in2.bam [...]]\n");
+    fprintf(samtools_stderr, "Options:\n");
+    fprintf(samtools_stderr, "   -a                  output all positions (including zero depth)\n");
+    fprintf(samtools_stderr, "   -a -a (or -aa)      output absolutely all positions, including unused ref. sequences\n");
+    fprintf(samtools_stderr, "   -b <bed>            list of positions or regions\n");
+    fprintf(samtools_stderr, "   -f <list>           list of input BAM filenames, one per line [null]\n");
+    fprintf(samtools_stderr, "   -l <int>            read length threshold (ignore reads shorter than <int>) [0]\n");
+    fprintf(samtools_stderr, "   -d/-m <int>         maximum coverage depth [8000]\n");  // the htslib's default
+    fprintf(samtools_stderr, "   -q <int>            base quality threshold [0]\n");
+    fprintf(samtools_stderr, "   -Q <int>            mapping quality threshold [0]\n");
+    fprintf(samtools_stderr, "   -r <chr:from-to>    region\n");
 
-    sam_global_opt_help(pysam_stderr, "-.--.-");
+    sam_global_opt_help(samtools_stderr, "-.--.-");
 
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "The output is a simple tab-separated table with three columns: reference name,\n");
-    fprintf(pysam_stderr, "position, and coverage depth.  Note that positions with zero coverage may be\n");
-    fprintf(pysam_stderr, "omitted by default; see the -a option.\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(samtools_stderr, "\n");
+    fprintf(samtools_stderr, "The output is a simple tab-separated table with three columns: reference name,\n");
+    fprintf(samtools_stderr, "position, and coverage depth.  Note that positions with zero coverage may be\n");
+    fprintf(samtools_stderr, "omitted by default; see the -a option.\n");
+    fprintf(samtools_stderr, "\n");
 
     return 1;
 }
@@ -164,18 +164,18 @@ int main_depth(int argc, char *argv[])
         rf = SAM_FLAG | SAM_RNAME | SAM_POS | SAM_MAPQ | SAM_CIGAR | SAM_SEQ;
         if (baseQ) rf |= SAM_QUAL;
         if (hts_set_opt(data[i]->fp, CRAM_OPT_REQUIRED_FIELDS, rf)) {
-            fprintf(pysam_stderr, "Failed to set CRAM_OPT_REQUIRED_FIELDS value\n");
+            fprintf(samtools_stderr, "Failed to set CRAM_OPT_REQUIRED_FIELDS value\n");
             return 1;
         }
         if (hts_set_opt(data[i]->fp, CRAM_OPT_DECODE_MD, 0)) {
-            fprintf(pysam_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
+            fprintf(samtools_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
             return 1;
         }
         data[i]->min_mapQ = mapQ;                    // set the mapQ filter
         data[i]->min_len  = min_len;                 // set the qlen filter
         data[i]->hdr = sam_hdr_read(data[i]->fp);    // read the BAM header
         if (data[i]->hdr == NULL) {
-            fprintf(pysam_stderr, "Couldn't read header for \"%s\"\n",
+            fprintf(samtools_stderr, "Couldn't read header for \"%s\"\n",
                     argv[optind+i]);
             status = EXIT_FAILURE;
             goto depth_end;
@@ -221,10 +221,10 @@ int main_depth(int argc, char *argv[])
                         // Horribly inefficient, but the bed API is an obfuscated black box.
                         if (bed && bed_overlap(bed, h->target_name[last_tid], last_pos, last_pos + 1) == 0)
                             continue;
-                        fputs(h->target_name[last_tid], pysam_stdout); fprintf(pysam_stdout, "\t%d", last_pos+1);
+                        fputs(h->target_name[last_tid], samtools_stdout); fprintf(samtools_stdout, "\t%d", last_pos+1);
                         for (i = 0; i < n; i++)
-                            fputc('\t', pysam_stdout), fputc('0', pysam_stdout);
-                        fputc('\n', pysam_stdout);
+                            fputc('\t', samtools_stdout), fputc('0', samtools_stdout);
+                        fputc('\n', samtools_stdout);
                     }
                 }
                 last_tid++;
@@ -238,17 +238,17 @@ int main_depth(int argc, char *argv[])
                 if (last_pos < beg) continue; // out of range; skip
                 if (bed && bed_overlap(bed, h->target_name[tid], last_pos, last_pos + 1) == 0)
                     continue;
-                fputs(h->target_name[tid], pysam_stdout); fprintf(pysam_stdout, "\t%d", last_pos+1);
+                fputs(h->target_name[tid], samtools_stdout); fprintf(samtools_stdout, "\t%d", last_pos+1);
                 for (i = 0; i < n; i++)
-                    fputc('\t', pysam_stdout), fputc('0', pysam_stdout);
-                fputc('\n', pysam_stdout);
+                    fputc('\t', samtools_stdout), fputc('0', samtools_stdout);
+                fputc('\n', samtools_stdout);
             }
 
             last_tid = tid;
             last_pos = pos;
         }
         if (bed && bed_overlap(bed, h->target_name[tid], pos, pos + 1) == 0) continue;
-        fputs(h->target_name[tid], pysam_stdout); fprintf(pysam_stdout, "\t%d", pos+1); // a customized fprintf(pysam_stdout, ) would be faster
+        fputs(h->target_name[tid], samtools_stdout); fprintf(samtools_stdout, "\t%d", pos+1); // a customized fprintf(samtools_stdout, ) would be faster
         for (i = 0; i < n; ++i) { // base level filters have to go here
             int j, m = 0;
             for (j = 0; j < n_plp[i]; ++j) {
@@ -256,9 +256,9 @@ int main_depth(int argc, char *argv[])
                 if (p->is_del || p->is_refskip) ++m; // having dels or refskips at tid:pos
                 else if (bam_get_qual(p->b)[p->qpos] < baseQ) ++m; // low base quality
             }
-            fprintf(pysam_stdout, "\t%d", n_plp[i] - m); // this the depth to output
+            fprintf(samtools_stdout, "\t%d", n_plp[i] - m); // this the depth to output
         }
-        fputc('\n', pysam_stdout);
+        fputc('\n', samtools_stdout);
     }
     if (ret < 0) status = EXIT_FAILURE;
     free(n_plp); free(plp);
@@ -275,10 +275,10 @@ int main_depth(int argc, char *argv[])
                 if (last_pos >= end) break;
                 if (bed && bed_overlap(bed, h->target_name[last_tid], last_pos, last_pos + 1) == 0)
                     continue;
-                fputs(h->target_name[last_tid], pysam_stdout); fprintf(pysam_stdout, "\t%d", last_pos+1);
+                fputs(h->target_name[last_tid], samtools_stdout); fprintf(samtools_stdout, "\t%d", last_pos+1);
                 for (i = 0; i < n; i++)
-                    fputc('\t', pysam_stdout), fputc('0', pysam_stdout);
-                fputc('\n', pysam_stdout);
+                    fputc('\t', samtools_stdout), fputc('0', samtools_stdout);
+                fputc('\n', samtools_stdout);
             }
             last_tid++;
             last_pos = -1;

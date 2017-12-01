@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  sam.c -- format-neutral SAM/BAM API.
 
@@ -68,7 +68,7 @@ samfile_t *samopen(const char *fn, const char *mode, const void *aux)
         }
         fp->is_write = 0;
         if (fp->header->n_targets == 0 && bam_verbose >= 1)
-            fprintf(pysam_stderr, "[samopen] no @SQ lines in the header.\n");
+            fprintf(samtools_stderr, "[samopen] no @SQ lines in the header.\n");
     }
     else {
         enum htsExactFormat fmt = hts_get_format(fp->file)->format;
@@ -77,7 +77,7 @@ samfile_t *samopen(const char *fn, const char *mode, const void *aux)
         if (!(fmt == text_format || fmt == sam) || strchr(mode, 'h')) {
             if (sam_hdr_write(fp->file, fp->header) < 0) {
                 if (bam_verbose >= 1)
-                    fprintf(pysam_stderr, "[samopen] Couldn't write header\n");
+                    fprintf(samtools_stderr, "[samopen] Couldn't write header\n");
                 sam_close(hts_fp);
                 free(fp);
                 return NULL;
@@ -136,11 +136,11 @@ char *samfaipath(const char *fn_ref)
     strcat(strcpy(fn_list, fn_ref), ".fai");
     if (access(fn_list, R_OK) == -1) { // fn_list is unreadable
         if (access(fn_ref, R_OK) == -1) {
-            fprintf(pysam_stderr, "[samfaipath] fail to read file %s.\n", fn_ref);
+            fprintf(samtools_stderr, "[samfaipath] fail to read file %s.\n", fn_ref);
         } else {
-            if (bam_verbose >= 3) fprintf(pysam_stderr, "[samfaipath] build FASTA index...\n");
+            if (bam_verbose >= 3) fprintf(samtools_stderr, "[samfaipath] build FASTA index...\n");
             if (fai_build(fn_ref) == -1) {
-                fprintf(pysam_stderr, "[samfaipath] fail to build FASTA index.\n");
+                fprintf(samtools_stderr, "[samfaipath] fail to build FASTA index.\n");
                 free(fn_list); fn_list = 0;
             }
         }

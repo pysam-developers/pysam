@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcfquery.c -- Extracts fields from VCF/BCF file.
 
@@ -156,7 +156,7 @@ static void list_columns(args_t *args)
     int i;
     bcf_sr_t *reader = &args->files->readers[0];
     for (i=0; i<bcf_hdr_nsamples(reader->header); i++)
-        fprintf(pysam_stdout, "%s\n", reader->header->samples[i]);
+        fprintf(bcftools_stdout, "%s\n", reader->header->samples[i]);
 }
 
 static char **copy_header(bcf_hdr_t *hdr, char **src, int nsrc)
@@ -178,30 +178,30 @@ static int compare_header(bcf_hdr_t *hdr, char **a, int na, char **b, int nb)
 
 static void usage(void)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   Extracts fields from VCF/BCF file and prints them in user-defined format\n");
-    fprintf(pysam_stderr, "Usage:   bcftools query [options] <A.vcf.gz> [<B.vcf.gz> [...]]\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Options:\n");
-    fprintf(pysam_stderr, "    -c, --collapse <string>           collapse lines with duplicate positions for <snps|indels|both|all|some|none>, see man page [none]\n");
-    fprintf(pysam_stderr, "    -e, --exclude <expr>              exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "    -f, --format <string>             see man page for details\n");
-    fprintf(pysam_stderr, "    -H, --print-header                print header\n");
-    fprintf(pysam_stderr, "    -i, --include <expr>              select sites for which the expression is true (see man page for details)\n");
-    fprintf(pysam_stderr, "    -l, --list-samples                print the list of samples and exit\n");
-    fprintf(pysam_stderr, "    -o, --output-file <file>          output file name [pysam_stdout]\n");
-    fprintf(pysam_stderr, "    -r, --regions <region>            restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "    -R, --regions-file <file>         restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "    -s, --samples <list>              list of samples to include\n");
-    fprintf(pysam_stderr, "    -S, --samples-file <file>         file of samples to include\n");
-    fprintf(pysam_stderr, "    -t, --targets <region>            similar to -r but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "    -T, --targets-file <file>         similar to -R but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "    -u, --allow-undef-tags            print \".\" for undefined tags\n");
-    fprintf(pysam_stderr, "    -v, --vcf-list <file>             process multiple VCFs listed in the file\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Examples:\n");
-    fprintf(pysam_stderr, "\tbcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%SAMPLE=%%GT]\\n' file.vcf.gz\n");
-    fprintf(pysam_stderr, "\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   Extracts fields from VCF/BCF file and prints them in user-defined format\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools query [options] <A.vcf.gz> [<B.vcf.gz> [...]]\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Options:\n");
+    fprintf(bcftools_stderr, "    -c, --collapse <string>           collapse lines with duplicate positions for <snps|indels|both|all|some|none>, see man page [none]\n");
+    fprintf(bcftools_stderr, "    -e, --exclude <expr>              exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -f, --format <string>             see man page for details\n");
+    fprintf(bcftools_stderr, "    -H, --print-header                print header\n");
+    fprintf(bcftools_stderr, "    -i, --include <expr>              select sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -l, --list-samples                print the list of samples and exit\n");
+    fprintf(bcftools_stderr, "    -o, --output-file <file>          output file name [bcftools_stdout]\n");
+    fprintf(bcftools_stderr, "    -r, --regions <region>            restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file <file>         restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "    -s, --samples <list>              list of samples to include\n");
+    fprintf(bcftools_stderr, "    -S, --samples-file <file>         file of samples to include\n");
+    fprintf(bcftools_stderr, "    -t, --targets <region>            similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "    -T, --targets-file <file>         similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "    -u, --allow-undef-tags            print \".\" for undefined tags\n");
+    fprintf(bcftools_stderr, "    -v, --vcf-list <file>             process multiple VCFs listed in the file\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Examples:\n");
+    fprintf(bcftools_stderr, "\tbcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%SAMPLE=%%GT]\\n' file.vcf.gz\n");
+    fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 
@@ -300,7 +300,7 @@ int main_vcfquery(int argc, char *argv[])
     }
 
     if ( !args->format_str ) usage();
-    args->out = args->fn_out ? fopen(args->fn_out, "w") : pysam_stdout;
+    args->out = args->fn_out ? fopen(args->fn_out, "w") : bcftools_stdout;
     if ( !args->out ) error("%s: %s\n", args->fn_out,strerror(errno));
 
     if ( !args->vcf_list )

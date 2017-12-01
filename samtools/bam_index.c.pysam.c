@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_index.c -- index and idxstats subcommands.
 
@@ -66,12 +66,12 @@ int bam_index(int argc, char *argv[])
         case 'm': csi = 1; min_shift = atoi(optarg); break;
         case '@': n_threads = atoi(optarg); break;
         default:
-            index_usage(pysam_stderr);
+            index_usage(samtools_stderr);
             return 1;
         }
 
     if (optind == argc) {
-        index_usage(pysam_stdout);
+        index_usage(samtools_stdout);
         return 1;
     }
 
@@ -110,7 +110,7 @@ int bam_idxstats(int argc, char *argv[])
     samFile* fp;
 
     if (argc < 2) {
-        fprintf(pysam_stderr, "Usage: samtools idxstats <in.bam>\n");
+        fprintf(samtools_stderr, "Usage: samtools idxstats <in.bam>\n");
         return 1;
     }
     fp = sam_open(argv[1], "r");
@@ -132,14 +132,14 @@ int bam_idxstats(int argc, char *argv[])
     int i;
     for (i = 0; i < header->n_targets; ++i) {
         // Print out contig name and length
-        fprintf(pysam_stdout, "%s\t%d", header->target_name[i], header->target_len[i]);
+        fprintf(samtools_stdout, "%s\t%d", header->target_name[i], header->target_len[i]);
         // Now fetch info about it from the meta bin
         uint64_t u, v;
         hts_idx_get_stat(idx, i, &u, &v);
-        fprintf(pysam_stdout, "\t%" PRIu64 "\t%" PRIu64 "\n", u, v);
+        fprintf(samtools_stdout, "\t%" PRIu64 "\t%" PRIu64 "\n", u, v);
     }
     // Dump information about unmapped reads
-    fprintf(pysam_stdout, "*\t0\t0\t%" PRIu64 "\n", hts_idx_get_n_no_coor(idx));
+    fprintf(samtools_stdout, "*\t0\t0\t%" PRIu64 "\n", hts_idx_get_n_no_coor(idx));
     bam_hdr_destroy(header);
     hts_idx_destroy(idx);
     sam_close(fp);

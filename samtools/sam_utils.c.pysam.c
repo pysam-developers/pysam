@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  sam_utils.c -- various utilities internal to samtools.
 
@@ -35,13 +35,13 @@ DEALINGS IN THE SOFTWARE.  */
 
 static void vprint_error_core(const char *subcommand, const char *format, va_list args, const char *extra)
 {
-    fflush(pysam_stdout);
-    if (subcommand && *subcommand) fprintf(pysam_stderr, "samtools %s: ", subcommand);
-    else fprintf(pysam_stderr, "samtools: ");
-    vfprintf(pysam_stderr, format, args);
-    if (extra) fprintf(pysam_stderr, ": %s\n", extra);
-    else fprintf(pysam_stderr, "\n");
-    fflush(pysam_stderr);
+    fflush(samtools_stdout);
+    if (subcommand && *subcommand) fprintf(samtools_stderr, "samtools %s: ", subcommand);
+    else fprintf(samtools_stderr, "samtools: ");
+    vfprintf(samtools_stderr, format, args);
+    if (extra) fprintf(samtools_stderr, ": %s\n", extra);
+    else fprintf(samtools_stderr, "\n");
+    fflush(samtools_stderr);
 }
 
 void print_error(const char *subcommand, const char *format, ...)

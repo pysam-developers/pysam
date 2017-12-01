@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "bcftools.pysam.h"
 
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
@@ -296,8 +296,8 @@ static void set_samples(args_t *args, const char *fn, int is_file)
         char x = *se, *xptr = se; *se = 0;
 
         int ismpl = bcf_hdr_id2int(args->aux.hdr, BCF_DT_SAMPLE, ss);
-        if ( ismpl < 0 ) { fprintf(pysam_stderr,"Warning: No such sample in the VCF: %s\n",ss); continue; }
-        if ( old2new[ismpl] != -1 ) { fprintf(pysam_stderr,"Warning: The sample is listed multiple times: %s\n",ss); continue; }
+        if ( ismpl < 0 ) { fprintf(bcftools_stderr,"Warning: No such sample in the VCF: %s\n",ss); continue; }
+        if ( old2new[ismpl] != -1 ) { fprintf(bcftools_stderr,"Warning: The sample is listed multiple times: %s\n",ss); continue; }
 
         ss = se+1;
         while ( *ss && isspace(*ss) ) ss++;
@@ -403,7 +403,7 @@ static void init_data(args_t *args)
         if ( args->aux.flag&CALL_CONSTR_TRIO )
         {
             if ( 3*args->aux.nfams!=args->nsamples ) error("Expected only trios in %s, sorry!\n", args->samples_fname);
-            fprintf(pysam_stderr,"Detected %d samples in %d trio families\n", args->nsamples,args->aux.nfams);
+            fprintf(bcftools_stderr,"Detected %d samples in %d trio families\n", args->nsamples,args->aux.nfams);
         }
     }
     if ( args->ploidy  )
@@ -538,7 +538,7 @@ static int parse_format_flag(const char *str)
         else if ( !strncasecmp(ss,"GP",se-ss) ) flag |= CALL_FMT_GP;
         else
         {
-            fprintf(pysam_stderr,"Could not parse \"%s\"\n", str);
+            fprintf(bcftools_stderr,"Could not parse \"%s\"\n", str);
             exit(1);
         }
         if ( !*se ) break;
@@ -578,26 +578,26 @@ ploidy_t *init_ploidy(char *alias)
 
     if ( !pld->alias )
     {
-        fprintf(pysam_stderr,"\nPRE-DEFINED PLOIDY FILES\n\n");
-        fprintf(pysam_stderr," * Columns are: CHROM,FROM,TO,SEX,PLOIDY\n");
-        fprintf(pysam_stderr," * Coordinates are 1-based inclusive.\n");
-        fprintf(pysam_stderr," * A '*' means any value not otherwise defined.\n\n");
+        fprintf(bcftools_stderr,"\nPRE-DEFINED PLOIDY FILES\n\n");
+        fprintf(bcftools_stderr," * Columns are: CHROM,FROM,TO,SEX,PLOIDY\n");
+        fprintf(bcftools_stderr," * Coordinates are 1-based inclusive.\n");
+        fprintf(bcftools_stderr," * A '*' means any value not otherwise defined.\n\n");
         pld = ploidy_predefs;
         while ( pld->alias )
         {
-            fprintf(pysam_stderr,"%s\n   .. %s\n\n", pld->alias,pld->about);
+            fprintf(bcftools_stderr,"%s\n   .. %s\n\n", pld->alias,pld->about);
             if ( detailed )
-                fprintf(pysam_stderr,"%s\n", pld->ploidy);
+                fprintf(bcftools_stderr,"%s\n", pld->ploidy);
             pld++;
         }
-        fprintf(pysam_stderr,"Run as --ploidy <alias> (e.g. --ploidy GRCh37).\n");
-        fprintf(pysam_stderr,"To see the detailed ploidy definition, append a question mark (e.g. --ploidy GRCh37?).\n");
-        fprintf(pysam_stderr,"\n");
+        fprintf(bcftools_stderr,"Run as --ploidy <alias> (e.g. --ploidy GRCh37).\n");
+        fprintf(bcftools_stderr,"To see the detailed ploidy definition, append a question mark (e.g. --ploidy GRCh37?).\n");
+        fprintf(bcftools_stderr,"\n");
         exit(-1);
     }
     else if ( detailed )
     {
-        fprintf(pysam_stderr,"%s", pld->ploidy);
+        fprintf(bcftools_stderr,"%s", pld->ploidy);
         exit(-1);
     }
     return ploidy_init_string(pld->ploidy,2);
@@ -605,53 +605,53 @@ ploidy_t *init_ploidy(char *alias)
 
 static void usage(args_t *args)
 {
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "About:   SNP/indel variant calling from VCF/BCF. To be used in conjunction with samtools mpileup.\n");
-    fprintf(pysam_stderr, "         This command replaces the former \"bcftools view\" caller. Some of the original\n");
-    fprintf(pysam_stderr, "         functionality has been temporarily lost in the process of transition to htslib,\n");
-    fprintf(pysam_stderr, "         but will be added back on popular demand. The original calling model can be\n");
-    fprintf(pysam_stderr, "         invoked with the -c option.\n");
-    fprintf(pysam_stderr, "Usage:   bcftools call [options] <in.vcf.gz>\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "File format options:\n");
-    fprintf(pysam_stderr, "       --no-version                do not append version and command line to the header\n");
-    fprintf(pysam_stderr, "   -o, --output <file>             write output to a file [standard output]\n");
-    fprintf(pysam_stderr, "   -O, --output-type <b|u|z|v>     output type: 'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
-    fprintf(pysam_stderr, "       --ploidy <assembly>[?]      predefined ploidy, 'list' to print available settings, append '?' for details\n");
-    fprintf(pysam_stderr, "       --ploidy-file <file>        space/tab-delimited list of CHROM,FROM,TO,SEX,PLOIDY\n");
-    fprintf(pysam_stderr, "   -r, --regions <region>          restrict to comma-separated list of regions\n");
-    fprintf(pysam_stderr, "   -R, --regions-file <file>       restrict to regions listed in a file\n");
-    fprintf(pysam_stderr, "   -s, --samples <list>            list of samples to include [all samples]\n");
-    fprintf(pysam_stderr, "   -S, --samples-file <file>       PED file or a file with an optional column with sex (see man page for details) [all samples]\n");
-    fprintf(pysam_stderr, "   -t, --targets <region>          similar to -r but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "   -T, --targets-file <file>       similar to -R but streams rather than index-jumps\n");
-    fprintf(pysam_stderr, "       --threads <int>             number of extra output compression threads [0]\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Input/output options:\n");
-    fprintf(pysam_stderr, "   -A, --keep-alts                 keep all possible alternate alleles at variant sites\n");
-    fprintf(pysam_stderr, "   -f, --format-fields <list>      output format fields: GQ,GP (lowercase allowed) []\n");
-    fprintf(pysam_stderr, "   -F, --prior-freqs <AN,AC>       use prior allele frequencies\n");
-    fprintf(pysam_stderr, "   -g, --gvcf <int>,[...]          group non-variant sites into gVCF blocks by minimum per-sample DP\n");
-    fprintf(pysam_stderr, "   -i, --insert-missed             output also sites missed by mpileup but present in -T\n");
-    fprintf(pysam_stderr, "   -M, --keep-masked-ref           keep sites with masked reference allele (REF=N)\n");
-    fprintf(pysam_stderr, "   -V, --skip-variants <type>      skip indels/snps\n");
-    fprintf(pysam_stderr, "   -v, --variants-only             output variant sites only\n");
-    fprintf(pysam_stderr, "\n");
-    fprintf(pysam_stderr, "Consensus/variant calling options:\n");
-    fprintf(pysam_stderr, "   -c, --consensus-caller          the original calling method (conflicts with -m)\n");
-    fprintf(pysam_stderr, "   -C, --constrain <str>           one of: alleles, trio (see manual)\n");
-    fprintf(pysam_stderr, "   -m, --multiallelic-caller       alternative model for multiallelic and rare-variant calling (conflicts with -c)\n");
-    fprintf(pysam_stderr, "   -n, --novel-rate <float>,[...]  likelihood of novel mutation for constrained trio calling, see man page for details [1e-8,1e-9,1e-9]\n");
-    fprintf(pysam_stderr, "   -p, --pval-threshold <float>    variant if P(ref|D)<FLOAT with -c [0.5]\n");
-    fprintf(pysam_stderr, "   -P, --prior <float>             mutation rate (use bigger for greater sensitivity), use with -m [1.1e-3]\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "About:   SNP/indel variant calling from VCF/BCF. To be used in conjunction with samtools mpileup.\n");
+    fprintf(bcftools_stderr, "         This command replaces the former \"bcftools view\" caller. Some of the original\n");
+    fprintf(bcftools_stderr, "         functionality has been temporarily lost in the process of transition to htslib,\n");
+    fprintf(bcftools_stderr, "         but will be added back on popular demand. The original calling model can be\n");
+    fprintf(bcftools_stderr, "         invoked with the -c option.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools call [options] <in.vcf.gz>\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "File format options:\n");
+    fprintf(bcftools_stderr, "       --no-version                do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "   -o, --output <file>             write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "   -O, --output-type <b|u|z|v>     output type: 'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
+    fprintf(bcftools_stderr, "       --ploidy <assembly>[?]      predefined ploidy, 'list' to print available settings, append '?' for details\n");
+    fprintf(bcftools_stderr, "       --ploidy-file <file>        space/tab-delimited list of CHROM,FROM,TO,SEX,PLOIDY\n");
+    fprintf(bcftools_stderr, "   -r, --regions <region>          restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "   -R, --regions-file <file>       restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "   -s, --samples <list>            list of samples to include [all samples]\n");
+    fprintf(bcftools_stderr, "   -S, --samples-file <file>       PED file or a file with an optional column with sex (see man page for details) [all samples]\n");
+    fprintf(bcftools_stderr, "   -t, --targets <region>          similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "   -T, --targets-file <file>       similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "       --threads <int>             number of extra output compression threads [0]\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Input/output options:\n");
+    fprintf(bcftools_stderr, "   -A, --keep-alts                 keep all possible alternate alleles at variant sites\n");
+    fprintf(bcftools_stderr, "   -f, --format-fields <list>      output format fields: GQ,GP (lowercase allowed) []\n");
+    fprintf(bcftools_stderr, "   -F, --prior-freqs <AN,AC>       use prior allele frequencies\n");
+    fprintf(bcftools_stderr, "   -g, --gvcf <int>,[...]          group non-variant sites into gVCF blocks by minimum per-sample DP\n");
+    fprintf(bcftools_stderr, "   -i, --insert-missed             output also sites missed by mpileup but present in -T\n");
+    fprintf(bcftools_stderr, "   -M, --keep-masked-ref           keep sites with masked reference allele (REF=N)\n");
+    fprintf(bcftools_stderr, "   -V, --skip-variants <type>      skip indels/snps\n");
+    fprintf(bcftools_stderr, "   -v, --variants-only             output variant sites only\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Consensus/variant calling options:\n");
+    fprintf(bcftools_stderr, "   -c, --consensus-caller          the original calling method (conflicts with -m)\n");
+    fprintf(bcftools_stderr, "   -C, --constrain <str>           one of: alleles, trio (see manual)\n");
+    fprintf(bcftools_stderr, "   -m, --multiallelic-caller       alternative model for multiallelic and rare-variant calling (conflicts with -c)\n");
+    fprintf(bcftools_stderr, "   -n, --novel-rate <float>,[...]  likelihood of novel mutation for constrained trio calling, see man page for details [1e-8,1e-9,1e-9]\n");
+    fprintf(bcftools_stderr, "   -p, --pval-threshold <float>    variant if P(ref|D)<FLOAT with -c [0.5]\n");
+    fprintf(bcftools_stderr, "   -P, --prior <float>             mutation rate (use bigger for greater sensitivity), use with -m [1.1e-3]\n");
 
     // todo (and more)
-    // fprintf(pysam_stderr, "\nContrast calling and association test options:\n");
-    // fprintf(pysam_stderr, "       -1 INT    number of group-1 samples [0]\n");
-    // fprintf(pysam_stderr, "       -C FLOAT  posterior constrast for LRT<FLOAT and P(ref|D)<0.5 [%g]\n", args->aux.min_lrt);
-    // fprintf(pysam_stderr, "       -U INT    number of permutations for association testing (effective with -1) [0]\n");
-    // fprintf(pysam_stderr, "       -X FLOAT  only perform permutations for P(chi^2)<FLOAT [%g]\n", args->aux.min_perm_p);
-    fprintf(pysam_stderr, "\n");
+    // fprintf(bcftools_stderr, "\nContrast calling and association test options:\n");
+    // fprintf(bcftools_stderr, "       -1 INT    number of group-1 samples [0]\n");
+    // fprintf(bcftools_stderr, "       -C FLOAT  posterior constrast for LRT<FLOAT and P(ref|D)<0.5 [%g]\n", args->aux.min_lrt);
+    // fprintf(bcftools_stderr, "       -U INT    number of permutations for association testing (effective with -1) [0]\n");
+    // fprintf(bcftools_stderr, "       -X FLOAT  only perform permutations for P(chi^2)<FLOAT [%g]\n", args->aux.min_perm_p);
+    fprintf(bcftools_stderr, "\n");
     exit(-1);
 }
 
@@ -718,8 +718,8 @@ int main_vcfcall(int argc, char *argv[])
         {
             case  2 : ploidy_fname = optarg; break;
             case  1 : ploidy = optarg; break;
-            case 'X': ploidy = "X"; fprintf(pysam_stderr,"Warning: -X will be deprecated, please use --ploidy instead.\n"); break;
-            case 'Y': ploidy = "Y"; fprintf(pysam_stderr,"Warning: -Y will be deprecated, please use --ploidy instead.\n"); break;
+            case 'X': ploidy = "X"; fprintf(bcftools_stderr,"Warning: -X will be deprecated, please use --ploidy instead.\n"); break;
+            case 'Y': ploidy = "Y"; fprintf(bcftools_stderr,"Warning: -Y will be deprecated, please use --ploidy instead.\n"); break;
             case 'f': args.aux.output_tags |= parse_format_flag(optarg); break;
             case 'M': args.flag &= ~CF_ACGT_ONLY; break;     // keep sites where REF is N
             case 'N': args.flag |= CF_ACGT_ONLY; break;      // omit sites where first base in REF is N (the new default)
@@ -791,7 +791,7 @@ int main_vcfcall(int argc, char *argv[])
 
     if ( !ploidy_fname && !ploidy )
     {
-        if ( !args.samples_is_file ) fprintf(pysam_stderr,"Note: none of --samples-file, --ploidy or --ploidy-file given, assuming all sites are diploid\n");
+        if ( !args.samples_is_file ) fprintf(bcftools_stderr,"Note: none of --samples-file, --ploidy or --ploidy-file given, assuming all sites are diploid\n");
         args.ploidy = ploidy_init_string("* * * 0 0\n* * * 1 1\n* * * 2 2\n",2);
     }
 

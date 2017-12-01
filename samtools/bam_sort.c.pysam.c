@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  bam_sort.c -- sorting and merging.
 
@@ -517,7 +517,7 @@ static int trans_tbl_add_sq(merged_header_t* merged_hdr, bam_hdr_t *translate,
 
         if (iter == kh_end(sq_tids)) {
             // Warn about this, but it's not really fatal.
-            fprintf(pysam_stderr, "[W::%s] @SQ SN (%.*s) found in text header but not binary header.\n",
+            fprintf(samtools_stderr, "[W::%s] @SQ SN (%.*s) found in text header but not binary header.\n",
                     __func__,
                     (int) (matches[1].rm_eo - matches[1].rm_so),
                     text + matches[1].rm_so);
@@ -754,7 +754,7 @@ static int finish_rg_pg(bool is_rg, klist_t(hdrln) *hdr_lines,
             idx = kh_get(c2c, pg_map, id);
             if (idx == kh_end(pg_map)) {
                 // Not found, warn.
-                fprintf(pysam_stderr, "[W::%s] Tag %s%s not found in @PG records\n",
+                fprintf(samtools_stderr, "[W::%s] Tag %s%s not found in @PG records\n",
                         __func__, search + 1, id);
             } else {
                 // Remember new id and splice points on original string
@@ -905,7 +905,7 @@ static bam_hdr_t * finish_merged_header(merged_header_t *merged_hdr) {
               + ks_len(&merged_hdr->out_pg)
               + ks_len(&merged_hdr->out_co));
     if (txt_sz >= INT32_MAX) {
-        fprintf(pysam_stderr, "[%s] Output header text too long\n", __func__);
+        fprintf(samtools_stderr, "[%s] Output header text too long\n", __func__);
         return NULL;
     }
 
@@ -1022,7 +1022,7 @@ static void bam_translate(bam1_t* b, trans_tbl_t* tbl)
             }
         } else {
             char *tmp = strdup(decoded_rg);
-            fprintf(pysam_stderr,
+            fprintf(samtools_stderr,
                     "[bam_translate] RG tag \"%s\" on read \"%s\" encountered "
                     "with no corresponding entry in header, tag lost. "
                     "Unknown tags are only reported once per input file for "
@@ -1052,7 +1052,7 @@ static void bam_translate(bam1_t* b, trans_tbl_t* tbl)
             }
         } else {
             char *tmp = strdup(decoded_pg);
-            fprintf(pysam_stderr,
+            fprintf(samtools_stderr,
                     "[bam_translate] PG tag \"%s\" on read \"%s\" encountered "
                     "with no corresponding entry in header, tag lost. "
                     "Unknown tags are only reported once per input file for "
@@ -1246,7 +1246,7 @@ int bam_merge_core2(int by_qname, char* sort_tag, const char *out, const char *m
         else { bam_hdr_destroy(hin); hdr[i] = NULL; }
 
         if ((translation_tbl+i)->lost_coord_sort && !by_qname) {
-            fprintf(pysam_stderr, "[bam_merge_core] Order of targets in file %s caused coordinate sort to be lost\n", fn[i]);
+            fprintf(samtools_stderr, "[bam_merge_core] Order of targets in file %s caused coordinate sort to be lost\n", fn[i]);
         }
 
         // Potential future improvement is to share headers between CRAM files for
@@ -1262,7 +1262,7 @@ int bam_merge_core2(int by_qname, char* sort_tag, const char *out, const char *m
 
     // Did we get an @HD line?
     if (!merged_hdr->have_hd) {
-        fprintf(pysam_stderr, "[W::%s] No @HD tag found.\n", __func__);
+        fprintf(samtools_stderr, "[W::%s] No @HD tag found.\n", __func__);
         /* FIXME:  Should we add an @HD line here, and if so what should
            we put in it? Ideally we want a way of getting htslib to tell
            us the SAM version number to assume given no @HD line.  Is
@@ -1299,8 +1299,8 @@ int bam_merge_core2(int by_qname, char* sort_tag, const char *out, const char *m
             end = INT_MAX;
         }
         if (tid < 0) {
-            if (name_lim) fprintf(pysam_stderr, "[%s] Region \"%s\" specifies an unknown reference name\n", __func__, reg);
-            else fprintf(pysam_stderr, "[%s] Badly formatted region: \"%s\"\n", __func__, reg);
+            if (name_lim) fprintf(samtools_stderr, "[%s] Region \"%s\" specifies an unknown reference name\n", __func__, reg);
+            else fprintf(samtools_stderr, "[%s] Badly formatted region: \"%s\"\n", __func__, reg);
             goto fail;
         }
         for (i = 0; i < n; ++i) {
@@ -1308,7 +1308,7 @@ int bam_merge_core2(int by_qname, char* sort_tag, const char *out, const char *m
             // (rtrans[i*n+tid]) Look up what hout tid translates to in input tid space
             int mapped_tid = rtrans[i*hout->n_targets+tid];
             if (idx == NULL) {
-                fprintf(pysam_stderr, "[%s] failed to load index for %s.  Random alignment retrieval only works for indexed BAM or CRAM files.\n",
+                fprintf(samtools_stderr, "[%s] failed to load index for %s.  Random alignment retrieval only works for indexed BAM or CRAM files.\n",
                         __func__, fn[i]);
                 goto fail;
             }
@@ -1320,12 +1320,12 @@ int bam_merge_core2(int by_qname, char* sort_tag, const char *out, const char *m
             hts_idx_destroy(idx);
             if (iter[i] == NULL) {
                 if (mapped_tid != INT32_MIN) {
-                    fprintf(pysam_stderr,
+                    fprintf(samtools_stderr,
                             "[%s] failed to get iterator over "
                             "{%s, %d, %d, %d}\n",
                             __func__, fn[i], mapped_tid, beg, end);
                 } else {
-                    fprintf(pysam_stderr,
+                    fprintf(samtools_stderr,
                             "[%s] failed to get iterator over "
                             "{%s, HTS_IDX_NONE, 0, 0}\n",
                             __func__, fn[i]);
@@ -1340,7 +1340,7 @@ int bam_merge_core2(int by_qname, char* sort_tag, const char *out, const char *m
             if (hdr[i] == NULL) {
                 iter[i] = sam_itr_queryi(NULL, HTS_IDX_REST, 0, 0);
                 if (iter[i] == NULL) {
-                    fprintf(pysam_stderr, "[%s] failed to get iterator\n", __func__);
+                    fprintf(samtools_stderr, "[%s] failed to get iterator\n", __func__);
                     goto fail;
                 }
             }
@@ -1523,7 +1523,7 @@ int bam_merge(int argc, char *argv[])
     };
 
     if (argc == 1) {
-        merge_usage(pysam_stdout);
+        merge_usage(samtools_stdout);
         return 0;
     }
 
@@ -1562,12 +1562,12 @@ int bam_merge(int argc, char *argv[])
 
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
                   /* else fall-through */
-        case '?': merge_usage(pysam_stderr); return 1;
+        case '?': merge_usage(samtools_stderr); return 1;
         }
     }
     if ( argc - optind < 1 ) {
         print_error("merge", "You must at least specify the output file");
-        merge_usage(pysam_stderr);
+        merge_usage(samtools_stderr);
         return 1;
     }
 
@@ -1576,7 +1576,7 @@ int bam_merge(int argc, char *argv[])
         FILE *fp = fopen(argv[optind], "rb");
         if (fp != NULL) {
             fclose(fp);
-            fprintf(pysam_stderr, "[%s] File '%s' exists. Please apply '-f' to overwrite. Abort.\n", __func__, argv[optind]);
+            fprintf(samtools_stderr, "[%s] File '%s' exists. Please apply '-f' to overwrite. Abort.\n", __func__, argv[optind]);
             return 1;
         }
     }
@@ -1590,7 +1590,7 @@ int bam_merge(int argc, char *argv[])
     }
     if (fn_size+nargcfiles < 1) {
         print_error("merge", "You must specify at least one (and usually two or more) input files");
-        merge_usage(pysam_stderr);
+        merge_usage(samtools_stderr);
         return 1;
     }
     strcpy(mode, "wb");
@@ -1972,7 +1972,7 @@ int bam_sort_core_ext(int is_by_qname, char* sort_by_tag, const char *fn, const 
             ret = -1;
             goto err;
         }
-        fprintf(pysam_stderr, "[bam_sort_core] merging from %d files...\n", n_files);
+        fprintf(samtools_stderr, "[bam_sort_core] merging from %d files...\n", n_files);
         fns = (char**)calloc(n_files, sizeof(char*));
         for (i = 0; i < n_files; ++i) {
             fns[i] = (char*)calloc(strlen(prefix) + 20, 1);
@@ -2034,7 +2034,7 @@ static void complain_about_memory_setting(size_t max_mem) {
     if (max_mem > nine_k) { max_mem >>= 10; suffix = "K"; }
     if (max_mem > nine_k) { max_mem >>= 10; suffix = "M"; }
 
-    fprintf(pysam_stderr,
+    fprintf(samtools_stderr,
 "[bam_sort] -m setting (%zu%s bytes) is less than the minimum required (%zuM).\n\n"
 "Trying to run with -m too small can lead to the creation of a very large number\n"
 "of temporary files.  This may make sort fail due to it exceeding limits on the\n"
@@ -2079,22 +2079,22 @@ int bam_sort(int argc, char *argv[])
 
         default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
                   /* else fall-through */
-        case '?': sort_usage(pysam_stderr); ret = EXIT_FAILURE; goto sort_end;
+        case '?': sort_usage(samtools_stderr); ret = EXIT_FAILURE; goto sort_end;
         }
     }
 
     nargs = argc - optind;
     if (nargs == 0 && isatty(STDIN_FILENO)) {
-        sort_usage(pysam_stdout);
+        sort_usage(samtools_stdout);
         ret = EXIT_SUCCESS;
         goto sort_end;
     }
     else if (nargs >= 2) {
         // If exactly two, user probably tried to specify legacy <out.prefix>
         if (nargs == 2)
-            fprintf(pysam_stderr, "[bam_sort] Use -T PREFIX / -o FILE to specify temporary and final output files\n");
+            fprintf(samtools_stderr, "[bam_sort] Use -T PREFIX / -o FILE to specify temporary and final output files\n");
 
-        sort_usage(pysam_stderr);
+        sort_usage(samtools_stderr);
         ret = EXIT_FAILURE;
         goto sort_end;
     }
@@ -2129,7 +2129,7 @@ int bam_sort(int argc, char *argv[])
         // If we failed on opening the input file & it has no .bam/.cram/etc
         // extension, the user probably tried legacy -o <infile> <out.prefix>
         if (ret == -2 && o_seen && nargs > 0 && sam_open_mode(dummy, argv[optind], NULL) < 0)
-            fprintf(pysam_stderr, "[bam_sort] Note the <out.prefix> argument has been replaced by -T/-o options\n");
+            fprintf(samtools_stderr, "[bam_sort] Note the <out.prefix> argument has been replaced by -T/-o options\n");
 
         ret = EXIT_FAILURE;
     }

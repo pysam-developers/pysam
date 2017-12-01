@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  faidx.c -- faidx subcommand.
 
@@ -48,18 +48,18 @@ int faidx_main(int argc, char *argv[])
         switch(c)
         {
             case 'h':
-                return usage(pysam_stdout, EXIT_SUCCESS);
+                return usage(samtools_stdout, EXIT_SUCCESS);
 
             default:
-                return usage(pysam_stderr, EXIT_FAILURE);
+                return usage(samtools_stderr, EXIT_FAILURE);
         }
     }
     if ( argc==optind )
-        return usage(pysam_stdout, EXIT_SUCCESS);
+        return usage(samtools_stdout, EXIT_SUCCESS);
     if ( argc==2 )
     {
         if (fai_build(argv[optind]) != 0) {
-            fprintf(pysam_stderr, "Could not build fai index %s.fai\n", argv[optind]);
+            fprintf(samtools_stderr, "Could not build fai index %s.fai\n", argv[optind]);
             return EXIT_FAILURE;
         }
         return 0;
@@ -67,7 +67,7 @@ int faidx_main(int argc, char *argv[])
 
     faidx_t *fai = fai_load(argv[optind]);
     if ( !fai ) {
-        fprintf(pysam_stderr, "Could not load fai index of %s\n", argv[optind]);
+        fprintf(samtools_stderr, "Could not load fai index of %s\n", argv[optind]);
         return EXIT_FAILURE;
     }
 
@@ -75,11 +75,11 @@ int faidx_main(int argc, char *argv[])
 
     while ( ++optind<argc && exit_status == EXIT_SUCCESS)
     {
-        fprintf(pysam_stdout, ">%s\n", argv[optind]);
+        fprintf(samtools_stdout, ">%s\n", argv[optind]);
         int seq_len;
         char *seq = fai_fetch(fai, argv[optind], &seq_len);
         if ( seq_len < 0 ) {
-            fprintf(pysam_stderr, "Failed to fetch sequence in %s\n", argv[optind]);
+            fprintf(samtools_stderr, "Failed to fetch sequence in %s\n", argv[optind]);
             exit_status = EXIT_FAILURE;
             break;
         }
@@ -87,8 +87,8 @@ int faidx_main(int argc, char *argv[])
         for (i=0; i<seq_sz; i+=60)
         {
             size_t len = i + 60 < seq_sz ? 60 : seq_sz - i;
-            if (fwrite(seq + i, 1, len, pysam_stdout) < len ||
-                fputc('\n', pysam_stdout) == EOF) {
+            if (fwrite(seq + i, 1, len, samtools_stdout) < len ||
+                fputc('\n', samtools_stdout) == EOF) {
                 print_error_errno("faidx", "failed to write output");
                 exit_status = EXIT_FAILURE;
                 break;
@@ -98,7 +98,7 @@ int faidx_main(int argc, char *argv[])
     }
     fai_destroy(fai);
 
-    if (fflush(pysam_stdout) == EOF) {
+    if (fflush(samtools_stdout) == EOF) {
         print_error_errno("faidx", "failed to flush output");
         exit_status = EXIT_FAILURE;
     }
