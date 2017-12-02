@@ -840,7 +840,7 @@ class TestIO(unittest.TestCase):
         '''see issue 116'''
         input_filename = os.path.join(BAM_DATADIR, "ex1.bam")
         with pysam.AlignmentFile(input_filename) as inf:
-            self.assertRaises(OSError,
+            self.assertRaises(IOError,
                               pysam.AlignmentFile,
                               "missing_directory/new_file.bam",
                               "wb",
