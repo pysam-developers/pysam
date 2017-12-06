@@ -374,6 +374,7 @@ cdef class TabixFile:
 
         # open file
         cdef char *cfilename = self.filename
+        cdef char *cfilename_index = self.filename_index
         with nogil:
             self.htsfile = hts_open(cfilename, 'r')
 
@@ -383,9 +384,8 @@ cdef class TabixFile:
         #if self.htsfile.format.category != region_list:
         #    raise ValueError("file does not contain region data")
 
-        cfilename = self.filename_index
         with nogil:
-            self.index = tbx_index_load(cfilename)
+            self.index = tbx_index_load(cfilename_index)
 
         if self.index == NULL:
             raise IOError("could not open index for `%s`" % filename)
