@@ -72,7 +72,7 @@ cimport pysam.libctabixproxies as ctabixproxies
 
 from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
-    tbx_index_build2, tbx_index_load, tbx_itr_queryi, tbx_itr_querys, \
+    tbx_index_build2, tbx_index_load2, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, hisremote, region_list, hts_getline, \
     TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC
@@ -385,7 +385,7 @@ cdef class TabixFile:
         #    raise ValueError("file does not contain region data")
 
         with nogil:
-            self.index = tbx_index_load(cfilename_index)
+            self.index = tbx_index_load2(cfilename, cfilename_index)
 
         if self.index == NULL:
             raise IOError("could not open index for `%s`" % filename)
@@ -534,6 +534,7 @@ cdef class TabixFile:
         def __get__(self):
 
             cdef char *cfilename = self.filename
+            cdef char *cfilename_index = self.filename_index
             
             cdef kstring_t buffer
             buffer.l = buffer.m = 0
@@ -550,7 +551,7 @@ cdef class TabixFile:
                 raise OSError("could not open {} for reading header".format(self.filename))
 
             with nogil:
-                tbx = tbx_index_load(cfilename)
+                tbx = tbx_index_load2(cfilename, cfilename_index)
                 
             if tbx == NULL:
                 raise OSError("could not load .tbi/.csi index of {}".format(self.filename))
