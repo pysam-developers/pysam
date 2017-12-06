@@ -811,6 +811,61 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     return seq
 
 
+cdef inline bytes build_reference_sequence(bam1_t * src):
+    """return the reference sequence in the region that is covered by the
+    alignment of the read to the reference.
+
+    This method requires the MD tag to be set.
+
+    """
+    cdef uint32_t k, i, l
+    cdef int op
+    cdef int s_idx = 0
+    ref_seq = build_alignment_sequence(src)
+    if ref_seq is None:
+        raise ValueError("MD tag not present")
+
+    cdef char * s = <char*>calloc(len(ref_seq) + 1, sizeof(char))
+    if s == NULL:
+        raise ValueError(
+            "could not allocate sequence of length %i" % len(ref_seq))
+
+    cdef char * cref_seq = ref_seq
+    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
+    cdef uint32_t r_idx = 0
+    result = []
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
+        l = cigar_p[k] >> BAM_CIGAR_SHIFT
+        if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
+            for i from 0 <= i < l:
+                s[s_idx] = cref_seq[r_idx]
+                r_idx += 1
+                s_idx += 1
+        elif op == BAM_CDEL:
+            for i from 0 <= i < l:
+                s[s_idx] = cref_seq[r_idx]
+                r_idx += 1
+                s_idx += 1
+        elif op == BAM_CREF_SKIP:
+            pass
+        elif op == BAM_CINS:
+            r_idx += l
+        elif op == BAM_CSOFT_CLIP:
+            pass
+        elif op == BAM_CHARD_CLIP:
+            pass # advances neither
+        elif op == BAM_CPAD:
+            raise NotImplementedError(
+                "Padding (BAM_CPAD, 6) is currently not supported. "
+                "Please implement. Sorry about that.")
+
+    seq = PyBytes_FromStringAndSize(s, s_idx)
+    free(s)
+
+    return seq
+
+
 cdef class AlignedSegment:
     '''Class representing an aligned segment.
 
@@ -1594,7 +1649,7 @@ cdef class AlignedSegment:
         thus be of the same length as the read.
 
         """
-        cdef uint32_t k, i, pos
+        cdef uint32_t k, i, l, pos
         cdef int op
         cdef uint32_t * cigar_p
         cdef bam1_t * src
@@ -1659,45 +1714,13 @@ cdef class AlignedSegment:
             return None
 
     def get_reference_sequence(self):
-        """return the reference sequence.
+        """return the reference sequence in the region that is covered by the
+        alignment of the read to the reference.
 
         This method requires the MD tag to be set.
+
         """
-        cdef uint32_t k, i
-        cdef int op
-        cdef bam1_t * src = self._delegate
-        ref_seq = force_str(build_alignment_sequence(src))
-        if ref_seq is None:
-            raise ValueError("MD tag not present")
-
-        cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
-        cdef uint32_t r_idx = 0
-        result = []
-        for k from 0 <= k < pysam_get_n_cigar(src):
-            op = cigar_p[k] & BAM_CIGAR_MASK
-            l = cigar_p[k] >> BAM_CIGAR_SHIFT
-            if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
-                for i from 0 <= i < l:
-                    result.append(ref_seq[r_idx])
-                    r_idx += 1
-            elif op == BAM_CDEL:
-                for i from 0 <= i < l:
-                    result.append(ref_seq[r_idx])
-                    r_idx += 1
-            elif op == BAM_CREF_SKIP:
-                pass
-            elif op == BAM_CINS:
-                r_idx += l
-            elif op == BAM_CSOFT_CLIP:
-                pass
-            elif op == BAM_CHARD_CLIP:
-                pass # advances neither
-            elif op == BAM_CPAD:
-                raise NotImplementedError(
-                    "Padding (BAM_CPAD, 6) is currently not supported. "
-                    "Please implement. Sorry about that.")
-
-        return "".join(result)
+        return force_str(build_reference_sequence(self._delegate))
 
     def get_aligned_pairs(self, matches_only=False, with_seq=False):
         """a list of aligned read (query) and reference positions.
@@ -1735,7 +1758,7 @@ cdef class AlignedSegment:
         # read sequence, cigar and MD tag are consistent.
 
         if _with_seq:
-            ref_seq = force_str(self.get_reference_sequence())
+            ref_seq = build_reference_sequence(src)
             if ref_seq is None:
                 raise ValueError("MD tag not present")
 
