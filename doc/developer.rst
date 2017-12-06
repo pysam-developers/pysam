@@ -17,22 +17,26 @@ directories:
        make -C doc html
 
 :file:`tests`
-   Code and data for testing
+   Code and data for testing and benchmarking
 
 :file:`htslib`
    Source code from htslib_ shipped with pysam. See
-   :file:`setup.py` about importing.
+   :file:`import.py` about importing.
 
 :file:`samtools`
    Source code from :term:`csamtools` shipped with pysam. See
-   :file:`setup.py` about importing.
+   :file:`import.py` about importing.
+
+:file:`bcftools`
+   Source code from :term:`cbcftools` shipped with pysam. See
+   :file:`import.py` about importing.
 
 
 Importing new versions of htslib and samtools
 =============================================
 
-See instructions in :file:`setup.py` to import the latest
-version of htslib_ and samtools_.
+See instructions in :file:`import.py` to import the latest
+version of htslib_, samtools_ and bcftools_.
 
 Unit testing
 ============
@@ -40,10 +44,18 @@ Unit testing
 Unit tests are in the :file:`tests` directory. To run all unit tests,
 run::
 
-   nosetests -s -v tests
+   pytest tests
 
-Note to use the ``-s/--nocapture`` option to prevent nosetests from
-captpuring standard output.
+Benchmarking
+============
+
+To run the benchmarking suite, make sure that `pytest-benchmark
+<https://github.com/ionelmc/pytest-benchmark>`_ is installed. To run
+all benchmarks, type::
+
+   pytest tests/*_bench.py
+
+See :ref:`Benchmarking` for more on this topic.
 
 Contributors
 ============

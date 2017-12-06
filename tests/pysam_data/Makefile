@@ -9,6 +9,7 @@ CRAI=$(CRAM:%.cram=%.cram.crai)
 all: ex1.pileup.gz \
 	ex1.sam ex1.bam \
 	ex2.sam.gz ex2.sam ex2.bam ex2.bam.bai \
+	with_md.sam.gz with_md.bam with_md.bam.bai \
         uncompressed.bam \
 	$(BAM) $(BAI) \
 	$(CRAM) $(CRAI) \
@@ -24,6 +25,9 @@ all: ex1.pileup.gz \
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
 	samtools view -h ex1.bam | gzip > ex2.sam.gz
+
+with_md.sam.gz: ex2.bam ex1.fa
+	samtools calmd --output-fmt BAM $^ > $@
 
 #%.bam: %.sam ex1.fa.fai
 #	samtools import ex1.fa.fai $< $@
