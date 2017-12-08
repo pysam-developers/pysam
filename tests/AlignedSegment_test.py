@@ -2,10 +2,17 @@ import os
 import pysam
 import unittest
 import collections
+import string
 import copy
 import array
 
-from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename, get_temp_context
+from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename, get_temp_context, IS_PYTHON3
+
+
+if IS_PYTHON3:
+    maketrans = str.maketrans
+else:
+    maketrans = string.maketrans
 
 class ReadTest(unittest.TestCase):
 
@@ -1251,7 +1258,8 @@ class TestForwardStrandValues(ReadTest):
         a = self.build_read()
         a.is_reverse = False
         fwd_seq = a.query_sequence
-        rev_seq = fwd_seq.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
+        
+        rev_seq = fwd_seq.translate(maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
         self.assertEqual(fwd_seq, a.get_forward_sequence())
         a.is_reverse = True        
         self.assertEqual(fwd_seq, a.query_sequence)

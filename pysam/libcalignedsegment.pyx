@@ -55,6 +55,7 @@
 ###############################################################################
 import re
 import array
+import string
 import ctypes
 import struct
 
@@ -92,8 +93,10 @@ cdef uint32_t MAX_PILEUP_BUFFER_SIZE = 10000
 
 if IS_PYTHON3:
     CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
+    maketrans = str.maketrans
 else:
     CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
+    maketrans = string.maketrans
 
 CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
 
@@ -1753,7 +1756,7 @@ cdef class AlignedSegment:
         """
         s = force_str(self.query_sequence)
         if self.is_reverse:
-            s = s.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
+            s = s.translate(maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
         return s
 
     def get_forward_qualities(self):
