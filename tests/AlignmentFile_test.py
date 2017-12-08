@@ -475,12 +475,17 @@ class TestIO(unittest.TestCase):
                        "rb", "wb")
 
     def testCRAM2CRAM(self):
+        # in some systems different reference sequence paths might be
+        # embedded in the CRAM files which will result in different headers
+        # see #542
         self.checkEcho("ex2.cram",
                        "ex2.cram",
                        "tmp_ex2.cram",
                        "rc", "wc",
                        sequence_filename=os.path.join(BAM_DATADIR, "ex1.fa"),
-                       checkf=check_samtools_view_equal)
+                       checkf=partial(
+                           check_samtools_view_equal,
+                           without_header=True))
 
     def testSAM2BAM(self):
         self.checkEcho("ex2.sam",
