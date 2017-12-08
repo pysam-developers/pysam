@@ -2002,14 +2002,16 @@ cdef class IteratorRowRegion(IteratorRow):
         self.cnext()
         if self.retval >= 0:
             return makeAlignedSegment(self.b, self.header)
+        elif self.retval == -1:
+            raise StopIteration
         elif self.retval == -2:
             # Note: it is currently not the case that hts_iter_next
             # returns -2 for a truncated file.
             # See https://github.com/pysam-developers/pysam/pull/50#issuecomment-64928625
             raise IOError('truncated file')
         else:
-            raise StopIteration
-
+            raise IOError("error while reading file {}: {}".format(self.samfile.filename, self.retval))
+        
     def __dealloc__(self):
         hts_itr_destroy(self.iter)
 
