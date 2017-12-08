@@ -1745,6 +1745,29 @@ cdef class AlignedSegment:
         """
         return force_str(build_reference_sequence(self._delegate))
 
+    def get_forward_sequence(self):
+        """return the original read sequence.
+        
+        Reads mapping to the reverse strand will be reverse
+        complemented.
+        """
+        s = force_str(self.query_sequence)
+        if self.is_reverse:
+            s = s.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
+        return s
+
+    def get_forward_qualities(self):
+        """return the original read sequence.
+        
+        Reads mapping to the reverse strand will be reverse
+        complemented.
+        """
+        if self.is_reverse:
+            return self.query_qualities[::-1]
+        else:
+            return self.query_qualities
+
+    
     def get_aligned_pairs(self, matches_only=False, with_seq=False):
         """a list of aligned read (query) and reference positions.
 

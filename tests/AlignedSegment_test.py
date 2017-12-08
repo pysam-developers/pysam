@@ -18,7 +18,7 @@ class ReadTest(unittest.TestCase):
         
         a = pysam.AlignedSegment(header)
         a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
+        a.query_sequence = "ATGC" * 10
         a.flag = 0
         a.reference_id = -1
         a.reference_start = 20
@@ -115,15 +115,15 @@ class TestAlignedSegment(ReadTest):
         checkFieldEqual(self, a, b)
 
         # check seq
-        b.query_sequence = "ACGT"
+        b.query_sequence = "ATGC"
         checkFieldEqual(self,
                         a, b,
                         ("query_sequence", "query_qualities", "query_length"))
-        b.query_sequence = "ACGT" * 3
+        b.query_sequence = "ATGC" * 3
         checkFieldEqual(self,
                         a, b,
                         ("query_sequence", "query_qualities", "query_length"))
-        b.query_sequence = "ACGT" * 10
+        b.query_sequence = "ATGC" * 10
         checkFieldEqual(self, a, b, ("query_qualities",))
 
         # reset qual
@@ -168,7 +168,7 @@ class TestAlignedSegment(ReadTest):
 
         a = pysam.AlignedSegment()
         a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 200
+        a.query_sequence = "ATGC" * 200
         a.flag = 0
         a.reference_id = -1
         a.reference_start = 20
@@ -1199,7 +1199,7 @@ class TestBuildingReadsWithoutHeader(unittest.TestCase):
 
         a = pysam.AlignedSegment()
         a.query_name = "read_12345"
-        a.query_sequence = "ACGT" * 10
+        a.query_sequence = "ATGC" * 10
         a.flag = 0
         a.reference_id = -1
         a.reference_start = 20
@@ -1245,5 +1245,27 @@ class TestBuildingReadsWithoutHeader(unittest.TestCase):
         os.unlink(tmpfilename)
 
 
+class TestForwardStrandValues(ReadTest):
+
+    def test_sequence_is_complemented(self):
+        a = self.build_read()
+        a.is_reverse = False
+        fwd_seq = a.query_sequence
+        rev_seq = fwd_seq.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
+        self.assertEqual(fwd_seq, a.get_forward_sequence())
+        a.is_reverse = True        
+        self.assertEqual(fwd_seq, a.query_sequence)
+        self.assertEqual(rev_seq, a.get_forward_sequence())
+
+    def test_qualities_are_complemented(self):
+        a = self.build_read()
+        a.is_reverse = False
+        fwd_qual = a.query_qualities
+        rev_qual = fwd_qual[::-1]
+        self.assertEqual(fwd_qual, a.get_forward_qualities())
+        a.is_reverse = True        
+        self.assertEqual(fwd_qual, a.query_qualities)
+        self.assertEqual(rev_qual, a.get_forward_qualities())
+        
 if __name__ == "__main__":
     unittest.main()

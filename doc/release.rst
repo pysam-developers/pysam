@@ -24,6 +24,7 @@ Backwards incompatible changes:
   start/end of contig.
 * [#325] @SQ records will be automatically added to header if they are
   absent from text section of header.
+* [#529] add get_forward_sequence() and get_forward_qualities() methods
 
 Release 0.13.0
 ===============

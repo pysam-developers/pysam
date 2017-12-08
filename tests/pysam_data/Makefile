@@ -20,7 +20,8 @@ all: ex1.pileup.gz \
 	explicit_index.bam explicit_index.cram \
 	faidx_empty_seq.fq.gz \
 	ex1.fa.gz ex1.fa.gz.csi \
-	ex1_csi.bam
+	ex1_csi.bam \
+	example_reverse_complement.bam
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai

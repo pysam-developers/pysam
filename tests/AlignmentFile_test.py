@@ -1925,7 +1925,7 @@ class TestCountCoverage(unittest.TestCase):
     def test_counting_the_same_region_works(self):
 
         with pysam.AlignmentFile(self.samfilename) as inf:
-            c = inf.count_coverage("chr1")
+            c1 = inf.count_coverage("chr1")
             c2 = inf.count_coverage("chr1")
             self.assertEqual(c1, c2)
             
