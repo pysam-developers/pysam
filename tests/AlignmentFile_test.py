@@ -1527,7 +1527,6 @@ class TestDeNovoConstructionUserTags(TestDeNovoConstruction):
 
 
 class TestEmptyHeader(unittest.TestCase):
-
     '''see issue 84.'''
 
     def testEmptyHeader(self):
@@ -1535,7 +1534,12 @@ class TestEmptyHeader(unittest.TestCase):
                                              'example_empty_header.bam'))
         self.assertEqual(s.header.as_dict(), {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
 
+    def test_bam_without_seq_in_header(self):
+        s = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "example_no_seq_in_header.bam"))
+        self.assertTrue("SQ" in s.header.as_dict())
+        self.assertTrue("@SQ" in str(s.header))
 
+        
 class TestHeaderWithProgramOptions(unittest.TestCase):
 
     '''see issue 39.'''

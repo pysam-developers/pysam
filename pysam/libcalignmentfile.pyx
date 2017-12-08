@@ -410,6 +410,22 @@ cdef class AlignmentHeader(object):
                 t.append(self.ptr.target_len[x])
             return tuple(t)
 
+    def _build_sequence_section(self):
+        """return sequence section of header.
+    
+        The sequence section is built from the list of reference names and
+        lengths stored in the BAM-file and not from any @SQ entries that
+        are part of the header's text section.
+        """
+        
+        cdef int x
+        text = []
+        for x in range(self.ptr.n_targets):
+            text.append("@SQ\tSN:{}\tLN:{}\n".format(
+                force_str(self.ptr.target_name[x]),
+                self.ptr.target_len[x]))
+        return "".join(text)
+        
     def as_dict(self):
         """return two-level dictionary with header information from the file.
 
@@ -429,6 +445,9 @@ cdef class AlignmentHeader(object):
         options that contain characters that are not valid field
         separators.
 
+        If no @SQ entries are within the text section of the header,
+        this will be automatically added from the reference names and
+        lengths stored in the binary part of the header.
         """
         result = collections.OrderedDict()
 
@@ -535,10 +554,17 @@ cdef class AlignmentHeader(object):
         '''string with the full contents of the :term:`sam file` header as a
         string.
 
-        See :attr:`pysam.AlignmentFile.header` to get a parsed
+        If no @SQ entries are within the text section of the header,
+        this will be automatically added from the reference names and
+        lengths stored in the binary part of the header.
+
+        See :attr:`pysam.AlignmentFile.header.as_dict()` to get a parsed
         representation of the header.
         '''
-        return from_string_and_size(self.ptr.text, self.ptr.l_text)
+        text = from_string_and_size(self.ptr.text, self.ptr.l_text)
+        if "@SQ" not in text:
+            text += "\n" + self._build_sequence_section()
+        return text
 
 
 cdef class AlignmentFile(HTSFile):

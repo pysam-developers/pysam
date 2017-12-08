@@ -19,7 +19,11 @@ Backwards incompatible changes:
 * AlignmentFile, FastaFile now raise IOError.
 
 * [#580] reference_name and next_reference_name can now be set to "*"
-         (will be converted to None to indicate an unmapped location)
+  (will be converted to None to indicate an unmapped location)
+* [#302] providing no coordinate to count_coverage will not count from
+  start/end of contig.
+* [#325] @SQ records will be automatically added to header if they are
+  absent from text section of header.
 
 Release 0.13.0
 ===============
