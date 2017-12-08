@@ -1870,6 +1870,7 @@ class TestCountCoverage(unittest.TestCase):
                               bam, chrom, start, stop,
                               read_callback,
                               quality_threshold=15):
+        stop = min(stop, bam.get_reference_length(chrom))
         l = stop - start
         count_a = array.array('L', [0] * l)
         count_c = array.array('L', [0] * l)
@@ -1932,7 +1933,7 @@ class TestCountCoverage(unittest.TestCase):
     def test_count_coverage_counts_as_expected(self):
         chrom = 'chr1'
         start = 0
-        stop = 2000
+        stop = 1000
 
         with pysam.AlignmentFile(self.samfilename) as inf:
             manual_counts = self.count_coverage_python(
@@ -1953,7 +1954,7 @@ class TestCountCoverage(unittest.TestCase):
     def test_count_coverage_quality_filter(self):
         chrom = 'chr1'
         start = 0
-        stop = 2000
+        stop = 1000
         with pysam.AlignmentFile(self.samfilename) as inf:
             manual_counts = self.count_coverage_python(
                 inf, chrom, start, stop,
@@ -1972,7 +1973,7 @@ class TestCountCoverage(unittest.TestCase):
     def test_count_coverage_read_callback(self):
         chrom = 'chr1'
         start = 0
-        stop = 2000
+        stop = 1000
         with pysam.AlignmentFile(self.samfilename) as inf:
             manual_counts = self.count_coverage_python(
                 inf, chrom, start, stop,
@@ -2001,7 +2002,7 @@ class TestCountCoverage(unittest.TestCase):
 
         chrom = 'chr1'
         start = 0
-        stop = 2000
+        stop = 1000
 
         def filter(read):
             return not (read.flag & (0x4 | 0x100 | 0x200 | 0x400))
@@ -2043,7 +2044,7 @@ class TestCountCoverage(unittest.TestCase):
         pysam.samtools.index(self.tmpfilename)
         chr = 'chr1'
         start = 0
-        stop = 2000
+        stop = 1000
 
         with pysam.AlignmentFile(self.tmpfilename) as inf:
             fast_counts = inf.count_coverage(chr, start, stop,
