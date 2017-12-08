@@ -18,6 +18,9 @@ Backwards incompatible changes:
 * AlignmentFile.text is now AlignmentFile.header.__str__()
 * AlignmentFile, FastaFile now raise IOError.
 
+* [#580] reference_name and next_reference_name can now be set to "*"
+         (will be converted to None to indicate an unmapped location)
+
 Release 0.13.0
 ===============
 

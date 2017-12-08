@@ -5,7 +5,7 @@ import collections
 import copy
 import array
 
-from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename
+from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename, get_temp_context
 
 class ReadTest(unittest.TestCase):
 
@@ -467,6 +467,12 @@ class TestTidMapping(ReadTest):
         self.assertEqual(a.reference_name, None)
         self.assertEqual(a.reference_id, -1)
 
+    def test_reference_name_can_be_set_to_asterisk(self):
+        a = self.build_read()
+        a.reference_name = "*"
+        self.assertEqual(a.reference_name, None)
+        self.assertEqual(a.reference_id, -1)
+
     def test_reference_name_can_be_set_to_chromosome(self):
         a = self.build_read()
         a.reference_name = "chr1"
@@ -487,6 +493,17 @@ class TestTidMapping(ReadTest):
         self.assertEqual(a.reference_id, -1)
         self.assertEqual(a.reference_name, None)
 
+    def test_tid_can_be_set_to_missing_without_header(self):
+        a = pysam.AlignedSegment()
+        a.reference_id = -1
+        self.assertEqual(a.reference_id, -1)
+        self.assertEqual(a.reference_name, None)
+
+    def test_tid_can_be_set_without_header(self):
+        a = pysam.AlignedSegment()
+        a.reference_id = 1
+        self.assertRaises(ValueError, getattr, a, "reference_name")
+        
     def test_tid_can_be_set_to_chromosome(self):
         a = self.build_read()
         a.reference_id = 0
@@ -500,8 +517,86 @@ class TestTidMapping(ReadTest):
                           a,
                           "reference_id",
                           2)
+        
+    def test_unmapped_tid_is_asterisk_in_output(self):
+        a = self.build_read()
+        a.reference_id = -1
+        self.assertEqual(a.tostring().split("\t")[2], "*")
 
 
+class TestNextTidMapping(ReadTest):
+
+    def test_next_reference_name_can_be_set_to_none(self):
+        a = self.build_read()
+        a.next_reference_name = None
+        self.assertEqual(a.next_reference_name, None)
+        self.assertEqual(a.next_reference_id, -1)
+
+    def test_next_reference_name_can_be_set_to_asterisk(self):
+        a = self.build_read()
+        a.next_reference_name = "*"
+        self.assertEqual(a.next_reference_name, None)
+        self.assertEqual(a.next_reference_id, -1)
+
+    def test_next_reference_name_can_be_set_to_chromosome(self):
+        a = self.build_read()
+        a.next_reference_name = "chr1"
+        self.assertEqual(a.next_reference_name, "chr1")
+        self.assertEqual(a.next_reference_id, 0)
+
+    def test_next_reference_name_can_not_be_set_to_unknown_chromosome(self):
+        a = self.build_read()
+        self.assertRaises(ValueError,
+                          setattr,
+                          a,
+                          "next_reference_name",
+                          "chrX")
+        
+    def test_next_tid_can_be_set_to_missing(self):
+        a = self.build_read()
+        a.next_reference_id = -1
+        self.assertEqual(a.next_reference_id, -1)
+        self.assertEqual(a.next_reference_name, None)
+
+    def test_next_tid_can_be_set_to_equal(self):
+        a = self.build_read()
+        a.reference_name = "chr1"
+        a.next_reference_name = "="
+        self.assertEqual(a.next_reference_id, a.reference_id)
+        self.assertEqual(a.next_reference_name, a.reference_name)
+        self.assertEqual(a.tostring().split("\t")[6], "=")
+        
+    def test_next_tid_can_be_set_to_missing_without_header(self):
+        a = pysam.AlignedSegment()
+        a.next_reference_id = -1
+        self.assertEqual(a.next_reference_id, -1)
+        self.assertEqual(a.next_reference_name, None)
+
+    def test_next_tid_can_be_set_without_header(self):
+        a = pysam.AlignedSegment()
+        a.next_reference_id = 1
+        self.assertRaises(ValueError, getattr, a, "next_reference_name")
+        
+    def test_next_tid_can_be_set_to_chromosome(self):
+        a = self.build_read()
+        a.next_reference_id = 0
+        self.assertEqual(a.next_reference_id, 0)
+        self.assertEqual(a.next_reference_name, "chr1")
+
+    def test_next_tid_can_not_be_set_to_unknown_chromosome(self):
+        a = self.build_read()
+        self.assertRaises(ValueError,
+                          setattr,
+                          a,
+                          "next_reference_id",
+                          2)
+        
+    def test_next_unmapped_tid_is_asterisk_in_output(self):
+        a = self.build_read()
+        a.next_reference_id = -1
+        self.assertEqual(a.tostring().split("\t")[2], "*")
+        
+        
 class TestCigar(ReadTest):
 
     def testCigarString(self):
@@ -918,17 +1013,15 @@ class TestTags(ReadTest):
         r = self.build_read()
         x = -2
         r.tags = [("XD", x)]
-        with pysam.AlignmentFile(
-                "tests/test.bam",
-                "wb",
-                referencenames=("chr1",),
-                referencelengths=(1000,)) as outf:
-            outf.write(r)
-        with pysam.AlignmentFile("tests/test.bam") as inf:
-            r = next(inf)
-
-        self.assertEqual(r.tags, [("XD", x)])
-        os.unlink("tests/test.bam")
+        with get_temp_context("negative_integers.bam") as fn:
+            with pysam.AlignmentFile(fn,
+                                     "wb",
+                                     referencenames=("chr1",),
+                                     referencelengths=(1000,)) as outf:
+                outf.write(r)
+            with pysam.AlignmentFile(fn) as inf:
+                r = next(inf)
+            self.assertEqual(r.tags, [("XD", x)])
 
 
 class TestCopy(ReadTest):
@@ -1132,15 +1225,10 @@ class TestBuildingReadsWithoutHeader(unittest.TestCase):
         read = self.build_read()
         self.assertRaises(
             ValueError,
-            getattr,
-            read,
-            "reference_name")
-        self.assertRaises(
-            ValueError,
             setattr,
             read,
             "reference_name",
-            2)
+            "chr2")
         
     def test_read_can_be_written_to_file(self):
         tmpfilename = get_temp_filename(".bam")

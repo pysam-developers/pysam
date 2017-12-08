@@ -1,10 +1,12 @@
 import sys
 import os
-import pysam
+import glob
 import difflib
 import gzip
+import contextlib
 import inspect
 import tempfile
+import pysam
 
 WORKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                        "pysam_test_work"))
@@ -212,6 +214,28 @@ def get_temp_filename(suffix=""):
 
     f.close()
     return f.name
+
+@contextlib.contextmanager
+def get_temp_context(suffix="", keep=False):
+    caller_name = inspect.getouterframes(inspect.currentframe(), 3)[1][3]
+    try:
+        os.makedirs(TESTS_TEMPDIR)
+    except OSError:
+        pass
+
+    f = tempfile.NamedTemporaryFile(
+        prefix="pysamtests_tmp_{}_".format(caller_name),
+        suffix=suffix,
+        delete=False,
+        dir=TESTS_TEMPDIR)
+
+    f.close()
+    yield f.name
+    
+    if not keep:
+        # clear up any indices as well
+        for f in glob.glob(f.name + "*"):
+            os.unlink(f)
 
 
 def load_and_convert(filename, encode=True):

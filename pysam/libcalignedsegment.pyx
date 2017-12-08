@@ -69,6 +69,7 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
 from libc.stdio cimport snprintf
 
+from pysam.libchtslib cimport HTS_IDX_NOCOOR
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array, \
@@ -1114,23 +1115,24 @@ cdef class AlignedSegment:
     property reference_name:
         """:term:`reference` name"""
         def __get__(self):
+            if self._delegate.core.tid == -1:
+                return None
             if self.header:
                 return self.header.get_reference_name(self._delegate.core.tid)
             else:
                 raise ValueError("reference_name unknown if no header associated with record")
         def __set__(self, reference):
             cdef int tid
-            if not self.header:
-                raise ValueError("reference_name can not be set if no header associated with record")
-            
-            if reference is None:
+            if reference is None or reference == "*":
                 self._delegate.core.tid = -1
-            else:
+            elif self.header:
                 tid = self.header.get_tid(reference)
                 if tid < 0:
                     raise ValueError("reference {} does not exist in header".format(
                         reference))
                 self._delegate.core.tid = tid
+            else:
+                raise ValueError("reference_name can not be set if no header associated with record")
 
     property reference_id:
         """:term:`reference` ID
@@ -1218,17 +1220,39 @@ cdef class AlignedSegment:
 
     property next_reference_id:
         """the :term:`reference` id of the mate/next read."""
-        def __get__(self): return self._delegate.core.mtid
+        def __get__(self):
+            return self._delegate.core.mtid
         def __set__(self, mtid):
+            if mtid != -1 and self.header and not self.header.is_valid_tid(mtid):
+                raise ValueError("reference id {} does not exist in header".format(
+                    mtid))
             self._delegate.core.mtid = mtid
 
     property next_reference_name:
         """:term:`reference` name of the mate/next read (None if no
         AlignmentFile is associated)"""
         def __get__(self):
-            if self._alignment_file is not None:
-                return self._alignment_file.getrname(self._delegate.core.mtid)
-            return None
+            if self._delegate.core.mtid == -1:
+                return None
+            if self.header:
+                return self.header.get_reference_name(self._delegate.core.mtid)
+            else:
+                raise ValueError("next_reference_name unknown if no header associated with record")
+            
+        def __set__(self, reference):
+            cdef int mtid
+            if reference is None or reference == "*":
+                self._delegate.core.mtid = -1
+            elif reference == "=":
+                self._delegate.core.mtid = self._delegate.core.tid
+            elif self.header:
+                mtid = self.header.get_tid(reference)
+                if mtid < 0:
+                    raise ValueError("reference {} does not exist in header".format(
+                        reference))
+                self._delegate.core.mtid = mtid
+            else:
+                raise ValueError("next_reference_name can not be set if no header associated with record")
 
     property next_reference_start:
         """the position of the mate/next read."""
@@ -1777,7 +1801,7 @@ cdef class AlignedSegment:
             if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
                 if _with_seq:
                     for i from pos <= i < pos + l:
-                        result.append((qpos, i, ref_seq[r_idx]))
+                        result.append((qpos, i, chr(ref_seq[r_idx])))
                         r_idx += 1
                         qpos += 1
                 else:
@@ -1803,7 +1827,7 @@ cdef class AlignedSegment:
                 if not _matches_only:
                     if _with_seq:
                         for i from pos <= i < pos + l:
-                            result.append((None, i, ref_seq[r_idx]))
+                            result.append((None, i, chr(ref_seq[r_idx])))
                             r_idx += 1
                     else:
                         for i from pos <= i < pos + l:
