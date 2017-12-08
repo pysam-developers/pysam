@@ -1896,7 +1896,36 @@ class TestCountCoverage(unittest.TestCase):
                         pass
         return count_a, count_c, count_g, count_t
 
-    def test_count_coverage(self):
+    def test_count_coverage_with_coordinates_works(self):
+
+        with pysam.AlignmentFile(self.samfilename) as inf:
+            c = inf.count_coverage("chr1")
+            self.assertEqual(len(c[0]), inf.get_reference_length("chr1"))
+            self.assertEqual(len(c[0]), 1575)
+
+            c = inf.count_coverage("chr1", 100)
+            self.assertEqual(len(c[0]), inf.get_reference_length("chr1") - 100)
+
+            c = inf.count_coverage("chr1", 100, 200)
+            self.assertEqual(len(c[0]), 200 - 100)
+            
+            c = inf.count_coverage("chr1", None, 200)
+            self.assertEqual(len(c[0]), 200)
+
+            c = inf.count_coverage("chr1", None, inf.get_reference_length("chr1") + 10000)
+            self.assertEqual(len(c[0]), inf.get_reference_length("chr1"))
+
+            self.assertRaises(ValueError, inf.count_coverage, "chr1", 200, 100)
+            self.assertRaises(KeyError, inf.count_coverage, "chrUnknown", 100, 200)
+            
+    def test_counting_the_same_region_works(self):
+
+        with pysam.AlignmentFile(self.samfilename) as inf:
+            c = inf.count_coverage("chr1")
+            c2 = inf.count_coverage("chr1")
+            self.assertEqual(c1, c2)
+            
+    def test_count_coverage_counts_as_expected(self):
         chrom = 'chr1'
         start = 0
         stop = 2000

@@ -409,7 +409,7 @@ cdef class AlignmentHeader(object):
             for x in range(self.ptr.n_targets):
                 t.append(self.ptr.target_len[x])
             return tuple(t)
-    
+
     def as_dict(self):
         """return two-level dictionary with header information from the file.
 
@@ -506,6 +506,13 @@ cdef class AlignmentHeader(object):
                              (tid, self.ptr.n_targets))
         return charptr_to_str(self.ptr.target_name[tid])
 
+    def get_reference_length(self, reference):
+        cdef int tid = self.get_tid(reference)
+        if tid < 0:
+            raise KeyError("unknown reference {}".format(reference))
+        else:
+            return self.ptr.target_len[tid]
+    
     def is_valid_tid(self, int tid):
         """
         return True if the numerical :term:`tid` is valid; False otherwise.
@@ -1394,7 +1401,7 @@ cdef class AlignmentFile(HTSFile):
 
     @cython.boundscheck(False)  # we do manual bounds checking
     def count_coverage(self,
-                       contig=None,
+                       contig,
                        start=None,
                        stop=None,
                        region=None,
@@ -1417,10 +1424,12 @@ cdef class AlignmentFile(HTSFile):
             reference_name of the genomic region (chromosome)
 
         start : int
-            start of the genomic region (0-based inclusive)
+            start of the genomic region (0-based inclusive). If not
+            given, count from the start of the chromosome.
 
         stop : int
-            end of the genomic region (0-based exclusive)
+            end of the genomic region (0-based exclusive). If not given,
+            count to the end of the chromosome.
 
         region : int
             a region string.
@@ -1465,8 +1474,17 @@ cdef class AlignmentFile(HTSFile):
 
         """
 
-        cdef int _start = start
-        cdef int _stop = stop if stop is not None else end
+        
+        cdef uint32_t contig_length = self.get_reference_length(contig)
+        cdef int _start = start if start is not None else 0
+        cdef int _stop = stop if stop is not None else contig_length
+        _stop = _stop if _stop < contig_length else contig_length
+
+        if _stop == _start:
+            raise ValueError("interval of size 0")
+        if _stop < _start:
+            raise ValueError("interval of size less than 0")
+        
         cdef int length = _stop - _start
         cdef c_array.array int_array_template = array.array('L', [])
         cdef c_array.array count_a
@@ -1783,6 +1801,14 @@ cdef class AlignmentFile(HTSFile):
         if self.header is None:
             raise ValueError("header not available in closed files")
         return self.header.get_reference_name(tid)
+
+    def get_reference_length(self, reference):
+        """
+        return :term:`reference` name corresponding to numerical :term:`tid`
+        """
+        if self.header is None:
+            raise ValueError("header not available in closed files")
+        return self.header.get_reference_length(reference)
     
     property nreferences:
         """"int with the number of :term:`reference` sequences in the file.
