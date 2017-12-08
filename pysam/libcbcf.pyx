@@ -1168,7 +1168,8 @@ cdef inline bcf_sync_end(VariantRecord record):
         ref_len = 0
 
     # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
-    if not record.ptr.n_allele or record.ptr.rlen == ref_len:
+    # Always keep END for symbolic alleles
+    if not has_symbolic_allele(record) and (not record.ptr.n_allele or record.ptr.rlen == ref_len):
         # If INFO/END is not defined in the header, it doesn't exist in the record
         if end_id >= 0:
             info = bcf_get_info(hdr, record.ptr, b'END')
@@ -1182,6 +1183,17 @@ cdef inline bcf_sync_end(VariantRecord record):
 
         # Update to reflect stop position
         bcf_info_set_value(record, b'END', record.ptr.pos + record.ptr.rlen)
+
+
+cdef inline int has_symbolic_allele(VariantRecord record):
+    """Return index of first symbolic allele. 0 if no symbolic alleles."""
+
+    for i in range(1, record.ptr.n_allele):
+        alt = record.ptr.d.allele[i]
+        if alt[0] == b'<' and alt[len(alt) - 1] == b'>':
+            return i
+
+    return 0
 
 
 ########################################################################
@@ -3143,9 +3155,8 @@ cdef class VariantRecord(object):
             alleles = [r.d.allele[i] for i in range(r.n_allele)]
             alleles[0] = value
         else:
-            alleles = [value]
+            alleles = [value, '<NON_REF>']
         self.alleles = alleles
-        self.ptr.rlen = len(value)
         bcf_sync_end(self)
 
     @property
@@ -3166,6 +3177,9 @@ cdef class VariantRecord(object):
     @alleles.setter
     def alleles(self, values):
         cdef bcf1_t *r = self.ptr
+        
+        # Cache rlen of symbolic alleles before call to bcf_update_alleles_str
+        cdef int rlen = r.rlen
 
         if bcf_unpack(r, BCF_UN_STR) < 0:
             raise ValueError('Error unpacking VariantRecord')
@@ -3183,7 +3197,11 @@ cdef class VariantRecord(object):
         if bcf_update_alleles_str(self.header.ptr, r, value) < 0:
             raise ValueError('Error updating alleles')
 
-        self.ptr.rlen = len(values[0])
+        # Reset rlen if alternate allele isn't symbolic, otherwise used cached
+        if has_symbolic_allele(self):
+            self.ptr.rlen = rlen
+        else:
+            self.ptr.rlen = len(values[0])
         bcf_sync_end(self)
 
     @property
