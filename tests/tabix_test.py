@@ -1105,6 +1105,7 @@ class TestIndexArgument(unittest.TestCase):
     filename_dst = "tmp_example.vcf.gz"
     index_src = os.path.join(TABIX_DATADIR, "example.vcf.gz.tbi")
     index_dst = "tmp_index_example.vcf.gz.tbi"
+    index_dst_dat = "tmp_index_example.vcf.gz.tbi.dat"
     preset = "vcf"
 
     def testFetchAll(self):
@@ -1125,6 +1126,25 @@ class TestIndexArgument(unittest.TestCase):
 
         os.unlink(self.filename_dst)
         os.unlink(self.index_dst)
+
+    def testLoadIndexWithoutTbiExtension(self):
+        shutil.copyfile(self.filename_src, self.filename_dst)
+        shutil.copyfile(self.index_src, self.index_dst_dat)
+
+        with pysam.TabixFile(
+                self.filename_src, "r", index=self.index_src) as same_basename_file:
+            same_basename_results = list(same_basename_file.fetch())
+
+        with pysam.TabixFile(
+            self.filename_dst, "r", index=self.index_dst_dat) as diff_index_file:
+            diff_index_result = list(diff_index_file.fetch())
+
+        self.assertEqual(len(same_basename_results), len(diff_index_result))
+        for x, y in zip(same_basename_results, diff_index_result):
+            self.assertEqual(x, y)
+
+        os.unlink(self.filename_dst)
+        os.unlink(self.index_dst_dat)
 
 
 def _TestMultipleIteratorsHelper(filename, multiple_iterators):
