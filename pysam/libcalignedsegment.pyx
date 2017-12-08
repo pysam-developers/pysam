@@ -1804,7 +1804,8 @@ cdef class AlignedSegment:
         # read sequence, cigar and MD tag are consistent.
 
         if _with_seq:
-            ref_seq = build_reference_sequence(src)
+            # force_str required for py2/py3 compatibility
+            ref_seq = force_str(build_reference_sequence(src))
             if ref_seq is None:
                 raise ValueError("MD tag not present")
 
@@ -1824,7 +1825,7 @@ cdef class AlignedSegment:
             if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
                 if _with_seq:
                     for i from pos <= i < pos + l:
-                        result.append((qpos, i, chr(ref_seq[r_idx])))
+                        result.append((qpos, i, ref_seq[r_idx]))
                         r_idx += 1
                         qpos += 1
                 else:
@@ -1850,7 +1851,7 @@ cdef class AlignedSegment:
                 if not _matches_only:
                     if _with_seq:
                         for i from pos <= i < pos + l:
-                            result.append((None, i, chr(ref_seq[r_idx])))
+                            result.append((None, i, ref_seq[r_idx]))
                             r_idx += 1
                     else:
                         for i from pos <= i < pos + l:
