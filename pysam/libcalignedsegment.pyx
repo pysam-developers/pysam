@@ -751,7 +751,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     # Check if MD tag is valid by matching CIGAR length to MD tag defined length
     # Insertions would be in addition to what is described by MD, so we calculate
     # the number of insertions seperately.
-    insertions = 0
+    cdef int insertions = 0
 
     while s[s_idx] != 0:
         if s[s_idx] >= 'a':
@@ -786,7 +786,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             if md_tag[md_idx] == '^':
                 md_idx += 1
                 while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
-                    assert s[s_idx] == '-'
+                    # assert s[s_idx] == '-'
                     s[s_idx] = md_tag[md_idx]
                     s_idx += 1
                     md_idx += 1
@@ -833,7 +833,6 @@ cdef inline bytes build_reference_sequence(bam1_t * src):
     cdef char * cref_seq = ref_seq
     cdef uint32_t * cigar_p = pysam_bam_get_cigar(src)
     cdef uint32_t r_idx = 0
-    result = []
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
         l = cigar_p[k] >> BAM_CIGAR_SHIFT
