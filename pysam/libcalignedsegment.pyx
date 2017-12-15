@@ -712,6 +712,10 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     if src == NULL:
         return None
 
+    cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
+    if md_tag_ptr == NULL:
+        return None
+
     cdef uint32_t start = getQueryStart(src)
     cdef uint32_t end = getQueryEnd(src)
     # get read sequence, taking into account soft-clipping
@@ -764,12 +768,6 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             raise NotImplementedError(
                 "Padding (BAM_CPAD, 6) is currently not supported. "
                 "Please implement. Sorry about that.")
-
-    cdef uint8_t * md_tag_ptr = bam_aux_get(src, "MD")
-    if md_tag_ptr == NULL:
-        seq = PyBytes_FromStringAndSize(s, s_idx)
-        free(s)
-        return seq
 
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
