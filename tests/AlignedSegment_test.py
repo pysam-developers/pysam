@@ -27,7 +27,7 @@ class ReadTest(unittest.TestCase):
         a.query_name = "read_12345"
         a.query_sequence = "ATGC" * 10
         a.flag = 0
-        a.reference_id = -1
+        a.reference_id = 0
         a.reference_start = 20
         a.mapping_quality = 20
         a.cigartuples = ((0, 10), (2, 1), (0, 9), (1, 1), (0, 20))
@@ -468,7 +468,6 @@ class TestAlignedSegment(ReadTest):
     def test_bin_values_for_unmapped_reads_ignore_length(self):
         a = self.build_read()
         # use a long read
-        a.reference_name = "chr1"
         a.cigarstring="2000000M"
         self.assertEqual(a.bin, 9)
         # changing unmapped flag changes bin because length is 0
@@ -483,7 +482,6 @@ class TestAlignedSegment(ReadTest):
 
     def test_bin_values_for_mapped_reads_are_updated(self):
         a = self.build_read()
-        a.reference_name = "chr1"
         a.pos = 20000
         self.assertFalse(a.is_unmapped)
         self.assertEqual(a.bin, 4682)
@@ -636,7 +634,7 @@ class TestNextTidMapping(ReadTest):
     def test_next_unmapped_tid_is_asterisk_in_output(self):
         a = self.build_read()
         a.next_reference_id = -1
-        self.assertEqual(a.tostring().split("\t")[2], "*")
+        self.assertEqual(a.tostring().split("\t")[6], "*")
         
         
 class TestCigar(ReadTest):
@@ -1184,27 +1182,6 @@ class TestSetTagsGetTag(TestSetTagGetTag):
         self.assertEqual(v, value)
 
 
-class TestAsString(unittest.TestCase):
-
-    def test_as_string_with_explicit_alignment_file(self):
-        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
-            reference = [x[:-1] for x in samf if not x.startswith("@")]
-
-        with pysam.AlignmentFile(
-                os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
-            for s, p in zip(reference, pysamf):
-                self.assertEqual(s, p.tostring(pysamf))
-
-    def test_as_string_without_alignment_file(self):
-        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
-            reference = [x[:-1] for x in samf if not x.startswith("@")]
-
-        with pysam.AlignmentFile(
-            os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
-            for s, p in zip(reference, pysamf):
-                self.assertEqual(s, p.tostring())
-                
-
 class TestEnums(unittest.TestCase):
 
     def test_cigar_enums_are_defined(self):
@@ -1309,6 +1286,41 @@ class TestForwardStrandValues(ReadTest):
         a.is_reverse = True        
         self.assertEqual(fwd_qual, a.query_qualities)
         self.assertEqual(rev_qual, a.get_forward_qualities())
+
+
+class TestExportImport(ReadTest):
+
+    def test_string_export(self):
+        a = self.build_read()
+        self.assertEqual(a.tostring(),
+                         "read_12345\t0\tchr1\t21\t20\t10M1D9M1I20M\t=\t201\t167\t"
+                         "ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC\t1234123412341234123412341234123412341234")
+
+    def test_string_export_import(self):
+        a = self.build_read()
+        b = pysam.AlignedSegment.fromstring(a.tostring(), a.header)
+        self.assertEqual(a, b)
+
+    def test_as_string_with_explicit_alignment_file(self):
+        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
+            reference = [x[:-1] for x in samf if not x.startswith("@")]
+
+        with pysam.AlignmentFile(
+                os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
+            for s, p in zip(reference, pysamf):
+                self.assertEqual(s, p.tostring(pysamf))
+
+    def test_as_string_without_alignment_file(self):
+        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
+            reference = [x[:-1] for x in samf if not x.startswith("@")]
+
+        with pysam.AlignmentFile(
+            os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
+            for s, p in zip(reference, pysamf):
+                self.assertEqual(s, p.tostring())
+                
+    
+        
         
 if __name__ == "__main__":
     unittest.main()

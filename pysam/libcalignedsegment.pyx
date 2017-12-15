@@ -1074,6 +1074,31 @@ cdef class AlignedSegment:
 
         return ret
 
+    @classmethod
+    def fromstring(cls, sam, AlignmentHeader header):
+        """parses a string representation of the aligned segment.
+
+        The input format should be valid SAM format.
+
+        Parameters
+        ----------
+        sam -- :term:`SAM` formatted string
+
+        """
+        cdef AlignedSegment dest = cls.__new__(cls)
+        dest._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
+        dest.header = header
+
+        cdef kstring_t line
+        line.l = line.m = len(sam)
+        _sam = force_bytes(sam)
+        line.s = _sam
+
+        sam_parse1(&line, dest.header.ptr, dest._delegate)
+        
+        return dest
+
+    
     ########################################################
     ## Basic attributes in order of appearance in SAM format
     property query_name:
