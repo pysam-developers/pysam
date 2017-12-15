@@ -2726,7 +2726,13 @@ cdef class PileupColumn:
         """
         self.min_base_quality = min_base_quality
     
-            
+    def __len__(self):
+        """return number of reads aligned to this column.
+
+        see :meth:`get_num_aligned`
+        """
+        return self.get_num_aligned()
+    
     property reference_id:
         '''the reference sequence number as defined in the header'''
         def __get__(self):
@@ -2740,7 +2746,9 @@ cdef class PileupColumn:
             return None
 
     property nsegments:
-        '''number of reads mapping to this column.'''
+        '''number of reads mapping to this column.
+
+        Note that this number ignores the base quality filter.'''
         def __get__(self):
             return self.n_pu
         def __set__(self, n):
@@ -2775,25 +2783,34 @@ cdef class PileupColumn:
     # Functions, properties for compatibility with pysam < 0.8
     ########################################################
     property pos:
+        """deprecated: use reference_pos"""
         def __get__(self):
             return self.reference_pos
         def __set__(self, v):
             self.reference_pos = v
 
     property tid:
+        """deprecated: use reference_id"""
         def __get__(self):
             return self.reference_id
         def __set__(self, v):
             self.reference_id = v
 
     property n:
+        """deprecated: use nsegments"""
         def __get__(self):
             return self.nsegments
         def __set__(self, v):
             self.nsegments = v
 
     def get_num_aligned(self):
+        """return number of aligned bases at pileup column position.
+        
+        This method applies a base quality filter and the number is
+        equal to the size of :meth:`get_query_sequences`,
+        :meth:`get_mapping_qualities`, etc.
 
+        """
         cdef uint32_t x = 0
         cdef uint32_t c = 0
         cdef uint32_t cnt = 0
