@@ -21,7 +21,7 @@ class ReadTest(unittest.TestCase):
 
         header = pysam.AlignmentHeader(
             reference_names=["chr1", "chr2"],
-            reference_lengths=[1000, 1000])
+            reference_lengths=[10000000, 10000000])
         
         a = pysam.AlignedSegment(header)
         a.query_name = "read_12345"
@@ -465,6 +465,41 @@ class TestAlignedSegment(ReadTest):
         a = self.build_read()
         self.assertTrue(isinstance(a.header, pysam.AlignmentHeader))
 
+    def test_bin_values_for_unmapped_reads_ignore_length(self):
+        a = self.build_read()
+        # use a long read
+        a.reference_name = "chr1"
+        a.cigarstring="2000000M"
+        self.assertEqual(a.bin, 9)
+        # changing unmapped flag changes bin because length is 0
+        a.is_unmapped = True
+        self.assertTrue(a.is_unmapped)
+        self.assertEqual(a.bin, 4681)
+        
+        # unmapped read without chromosomal location
+        a.reference_start = -1
+        self.assertEqual(a.reference_start, -1)
+        self.assertEqual(a.bin, 4680)
+
+    def test_bin_values_for_mapped_reads_are_updated(self):
+        a = self.build_read()
+        a.reference_name = "chr1"
+        a.pos = 20000
+        self.assertFalse(a.is_unmapped)
+        self.assertEqual(a.bin, 4682)
+
+        # updating length updates bin
+        a.cigarstring="2000000M"
+        self.assertEqual(a.bin, 9)
+
+        # updating length updates bin
+        a.cigarstring="20M"
+        self.assertEqual(a.bin, 4682)
+
+        # updating length updates bin
+        a.reference_start = 2000000
+        self.assertEqual(a.bin, 4803)
+        
 
 class TestTidMapping(ReadTest):
 

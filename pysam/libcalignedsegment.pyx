@@ -144,7 +144,6 @@ cdef inline bint pileup_base_qual_skip(bam_pileup1_t * p, uint32_t threshold):
     return False
     
 
-# typecode guessing
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
     """map an htslib typecode to the corresponding python typecode
     to be used in the struct or array modules."""
@@ -156,12 +155,36 @@ cdef inline char map_typecode_htslib_to_python(uint8_t s):
         return 0
     return parray_types[f - htslib_types]
 
+
 cdef inline uint8_t map_typecode_python_to_htslib(char s):
     """determine value type from type code of array"""
     cdef char * f = strchr(parray_types, s)
     if f == NULL:
         return 0
     return htslib_types[f - parray_types]
+
+
+cdef inline void update_bin(bam1_t * src):
+    if src.core.flag & BAM_FUNMAP:
+        # treat alignment as length of 1 for unmapped reads
+        src.core.bin = hts_reg2bin(
+            src.core.pos,
+            src.core.pos + 1,
+            14,
+            5)
+    elif pysam_get_n_cigar(src):
+        src.core.bin = hts_reg2bin(
+            src.core.pos,
+            bam_endpos(src),
+            14,
+            5)
+    else:
+        src.core.bin = hts_reg2bin(
+            src.core.pos,
+            src.core.pos + 1,
+            14,
+            5)
+
 
 # optional tag data manipulation
 cdef convert_binary_tag(uint8_t * tag):
@@ -1164,18 +1187,7 @@ cdef class AlignedSegment:
             cdef bam1_t * src
             src = self._delegate
             src.core.pos = pos
-            if pysam_get_n_cigar(src):
-                src.core.bin = hts_reg2bin(
-                    src.core.pos,
-                    bam_endpos(src),
-                    14,
-                    5)
-            else:
-                src.core.bin = hts_reg2bin(
-                    src.core.pos,
-                    src.core.pos + 1,
-                    14,
-                    5)
+            update_bin(src)
 
     property mapping_quality:
         """mapping quality"""
@@ -1481,6 +1493,10 @@ cdef class AlignedSegment:
             return (self.flag & BAM_FUNMAP) != 0
         def __set__(self, val):
             pysam_update_flag(self._delegate, val, BAM_FUNMAP)
+            # setting the unmapped flag requires recalculation of
+            # bin as alignment length is now implicitely 1
+            update_bin(self._delegate)
+                
     property mate_is_unmapped:
         """true if the mate is unmapped"""
         def __get__(self):
@@ -2132,12 +2148,7 @@ cdef class AlignedSegment:
                 k += 1
 
             ## setting the cigar string requires updating the bin
-            src.core.bin = hts_reg2bin(
-                src.core.pos,
-                bam_endpos(src),
-                14,
-                5)
-
+            update_bin(src)
 
     cpdef set_tag(self,
                   tag,
