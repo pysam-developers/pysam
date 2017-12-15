@@ -1,6 +1,7 @@
 import os
 import pysam
 import unittest
+import json
 import collections
 import string
 import copy
@@ -1296,11 +1297,18 @@ class TestExportImport(ReadTest):
                          "read_12345\t0\tchr1\t21\t20\t10M1D9M1I20M\t=\t201\t167\t"
                          "ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC\t1234123412341234123412341234123412341234")
 
-    def test_string_export_import(self):
+    def test_string_export_import_without_tags(self):
         a = self.build_read()
+        a.tags = []
         b = pysam.AlignedSegment.fromstring(a.tostring(), a.header)
         self.assertEqual(a, b)
 
+    def test_string_export_import_with_tags(self):
+        a = self.build_read()
+        a.tags = [("XD", 12), ("RF", "abc")]
+        b = pysam.AlignedSegment.fromstring(a.tostring(), a.header)
+        self.assertEqual(a, b)
+        
     def test_as_string_with_explicit_alignment_file(self):
         with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
             reference = [x[:-1] for x in samf if not x.startswith("@")]
@@ -1319,8 +1327,31 @@ class TestExportImport(ReadTest):
             for s, p in zip(reference, pysamf):
                 self.assertEqual(s, p.tostring())
                 
-    
+    def test_dict_export(self):
+        a = self.build_read()
+        a.tags = [("XD", 12), ("RF", "abc")]
         
+        self.assertEqual(
+            a.todict(),
+            json.loads(
+                '{"name": "read_12345", "flag": "0", "ref_name": "chr1", "ref_pos": "21", '
+                '"map_quality": "20", "cigar": "10M1D9M1I20M", "next_ref_name": "=", '
+                '"next_ref_pos": "201", "length": "167", '
+                '"seq": "ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC", '
+                '"qual": "1234123412341234123412341234123412341234", "tags": ["XD:i:12", "RF:Z:abc"]}'))
+
+    def test_string_export_import_without_tags(self):
+        a = self.build_read()
+        a.tags = []
+        b = pysam.AlignedSegment.fromdict(a.todict(), a.header)
+        self.assertEqual(a, b)
+
+    def test_string_export_import_with_tags(self):
+        a = self.build_read()
+        a.tags = [("XD", 12), ("RF", "abc")]
+        b = pysam.AlignedSegment.fromdict(a.todict(), a.header)
+        self.assertEqual(a, b)
+                
         
 if __name__ == "__main__":
     unittest.main()

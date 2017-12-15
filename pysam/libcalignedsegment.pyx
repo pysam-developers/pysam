@@ -55,6 +55,7 @@
 ###############################################################################
 import re
 import array
+import json
 import string
 import ctypes
 import struct
@@ -99,6 +100,10 @@ else:
     maketrans = string.maketrans
 
 CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
+
+# names for keys in dictionary representation of an AlignedSegment
+KEY_NAMES = ["name", "flag", "ref_name", "ref_pos", "map_quality", "cigar",
+             "next_ref_name", "next_ref_pos", "length", "seq", "qual", "tags"]
 
 #####################################################################
 # C multiplication with wrapping around
@@ -1098,6 +1103,32 @@ cdef class AlignedSegment:
         
         return dest
 
+    def todict(self):
+        """returns a json representation of the aligned segment.
+
+        Field names are abbreviated versions of the class attributes.
+        """
+        # let htslib do the string conversions, but treat optional field properly as list
+        vals = self.tostring().split("\t")
+        n = len(KEY_NAMES) - 1
+        return dict(list(zip(KEY_NAMES[:-1], vals[:n])) + [(KEY_NAMES[-1], vals[n:])])
+
+    @classmethod
+    def fromdict(cls, sam_dict, AlignmentHeader header):
+        """parses a dictionary representation of the aligned segment.
+
+        Parameters
+        ----------
+        sam_dict -- dictionary of alignment values, keys corresponding to output from
+                    :meth:`todict()`.
+
+        """
+        # let htslib do the parsing
+        # the tags field can be missing
+        return cls.fromstring(
+            "\t".join((sam_dict[x] for x in KEY_NAMES[:-1])) +
+            "\t" +
+            "\t".join(sam_dict.get(KEY_NAMES[-1], [])), header)
     
     ########################################################
     ## Basic attributes in order of appearance in SAM format
@@ -3226,5 +3257,5 @@ __all__ = [
     "FSECONDARY",
     "FQCFAIL",
     "FDUP",
-    "FSUPPLEMENTARY"]
-
+    "FSUPPLEMENTARY",
+    "KEY_NAMES"]
