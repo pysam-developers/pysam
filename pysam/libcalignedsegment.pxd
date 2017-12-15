@@ -57,6 +57,9 @@ cdef class AlignedSegment:
     cpdef has_tag(self, tag)
 
     # returns a valid sam alignment string
+    cpdef to_string(self)
+
+    # returns a valid sam alignment string (deprecated)
     cpdef tostring(self, htsfile=*)
 
 

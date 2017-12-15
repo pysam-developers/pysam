@@ -12,19 +12,26 @@ Release 0.14.0
   VariantFile. The end designations have been kept for backwards
   compatibility.
 
-Backwards incompatible changes:
-* AlignmentFile.header now returns an AlignmentHeader object. Use
-  AlignmentFile.header.as_dict() to get the dictionary as previously.
-* AlignmentFile.text is now AlignmentFile.header.__str__()
-* AlignmentFile, FastaFile now raise IOError.
-
 * [#580] reference_name and next_reference_name can now be set to "*"
   (will be converted to None to indicate an unmapped location)
 * [#302] providing no coordinate to count_coverage will not count from
   start/end of contig.
 * [#325] @SQ records will be automatically added to header if they are
   absent from text section of header.
-* [#529] add get_forward_sequence() and get_forward_qualities() methods
+* [#529] add get_forward_sequence() and get_forward_qualities()
+  methods
+* [#577] add from_string() and to_dict()/from_dict() methods to
+  AlignedSegment. Rename tostring() to to_string() throughout for
+  consistency
+* [#589] return None from build_alignment_sequence if no MD tag is set
+* [#528] add PileupColumn.__len__ method
+
+Backwards incompatible changes (should only affect a small number of users):
+
+* AlignmentFile.header now returns an AlignmentHeader object. Use
+  AlignmentFile.header.to_dict() to get the dictionary as previously.
+* AlignmentFile.text is now AlignmentFile.header.__str__()
+* AlignmentFile, FastaFile now raise IOError.
 
 Release 0.13.0
 ===============

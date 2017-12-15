@@ -451,7 +451,7 @@ cdef class GTFProxy(NamedTupleProxy):
         '''return max number of fields.'''
         return 9
 
-    def as_dict(self):
+    def to_dict(self):
         """parse attributes - return as dict
 
         The dictionary can be modified to update attributes.
@@ -461,7 +461,12 @@ cdef class GTFProxy(NamedTupleProxy):
                 self.attributes)
             self.is_modified = True
         return self.attribute_dict
-    
+
+    def as_dict(self):
+        """deprecated: use :meth:`to_dict`
+        """
+        return self.to_dict()
+
     def from_dict(self, d):
         '''set attributes from a dictionary.'''
         self.attribute_dict = None
@@ -656,7 +661,7 @@ cdef class GTFProxy(NamedTupleProxy):
 
     # for backwards compatibility
     def asDict(self, *args, **kwargs):
-        return self.as_dict(*args, **kwargs)
+        return self.to_dict(*args, **kwargs)
 
     def fromDict(self, *args, **kwargs):
         return self.from_dict(*args, **kwargs)

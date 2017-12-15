@@ -426,7 +426,7 @@ cdef class AlignmentHeader(object):
                 self.ptr.target_len[x]))
         return "".join(text)
         
-    def as_dict(self):
+    def to_dict(self):
         """return two-level dictionary with header information from the file.
 
         The first level contains the record (``HD``, ``SQ``, etc) and
@@ -517,6 +517,10 @@ cdef class AlignmentHeader(object):
 
         return result
 
+    def as_dict(self):
+        """deprecated: use :meth:`to_dict()`"""
+        return self.to_dict()
+
     def get_reference_name(self, tid):
         if tid == -1:
             return None
@@ -558,7 +562,7 @@ cdef class AlignmentHeader(object):
         this will be automatically added from the reference names and
         lengths stored in the binary part of the header.
 
-        See :attr:`pysam.AlignmentFile.header.as_dict()` to get a parsed
+        See :attr:`pysam.AlignmentFile.header.to_dict()` to get a parsed
         representation of the header.
         '''
         text = from_string_and_size(self.ptr.text, self.ptr.l_text)

@@ -562,7 +562,7 @@ class TestTidMapping(ReadTest):
     def test_unmapped_tid_is_asterisk_in_output(self):
         a = self.build_read()
         a.reference_id = -1
-        self.assertEqual(a.tostring().split("\t")[2], "*")
+        self.assertEqual(a.to_string().split("\t")[2], "*")
 
 
 class TestNextTidMapping(ReadTest):
@@ -605,7 +605,7 @@ class TestNextTidMapping(ReadTest):
         a.next_reference_name = "="
         self.assertEqual(a.next_reference_id, a.reference_id)
         self.assertEqual(a.next_reference_name, a.reference_name)
-        self.assertEqual(a.tostring().split("\t")[6], "=")
+        self.assertEqual(a.to_string().split("\t")[6], "=")
         
     def test_next_tid_can_be_set_to_missing_without_header(self):
         a = pysam.AlignedSegment()
@@ -635,7 +635,7 @@ class TestNextTidMapping(ReadTest):
     def test_next_unmapped_tid_is_asterisk_in_output(self):
         a = self.build_read()
         a.next_reference_id = -1
-        self.assertEqual(a.tostring().split("\t")[6], "*")
+        self.assertEqual(a.to_string().split("\t")[6], "*")
         
         
 class TestCigar(ReadTest):
@@ -1293,46 +1293,37 @@ class TestExportImport(ReadTest):
 
     def test_string_export(self):
         a = self.build_read()
-        self.assertEqual(a.tostring(),
+        self.assertEqual(a.to_string(),
                          "read_12345\t0\tchr1\t21\t20\t10M1D9M1I20M\t=\t201\t167\t"
                          "ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC\t1234123412341234123412341234123412341234")
 
     def test_string_export_import_without_tags(self):
         a = self.build_read()
         a.tags = []
-        b = pysam.AlignedSegment.fromstring(a.tostring(), a.header)
+        b = pysam.AlignedSegment.fromstring(a.to_string(), a.header)
         self.assertEqual(a, b)
 
     def test_string_export_import_with_tags(self):
         a = self.build_read()
         a.tags = [("XD", 12), ("RF", "abc")]
-        b = pysam.AlignedSegment.fromstring(a.tostring(), a.header)
+        b = pysam.AlignedSegment.fromstring(a.to_string(), a.header)
         self.assertEqual(a, b)
         
-    def test_as_string_with_explicit_alignment_file(self):
-        with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
-            reference = [x[:-1] for x in samf if not x.startswith("@")]
-
-        with pysam.AlignmentFile(
-                os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
-            for s, p in zip(reference, pysamf):
-                self.assertEqual(s, p.tostring(pysamf))
-
-    def test_as_string_without_alignment_file(self):
+    def test_to_string_without_alignment_file(self):
         with open(os.path.join(BAM_DATADIR, "ex2.sam")) as samf:
             reference = [x[:-1] for x in samf if not x.startswith("@")]
 
         with pysam.AlignmentFile(
             os.path.join(BAM_DATADIR, "ex2.bam"), "r") as pysamf:
             for s, p in zip(reference, pysamf):
-                self.assertEqual(s, p.tostring())
+                self.assertEqual(s, p.to_string())
                 
     def test_dict_export(self):
         a = self.build_read()
         a.tags = [("XD", 12), ("RF", "abc")]
         
         self.assertEqual(
-            a.todict(),
+            a.to_dict(),
             json.loads(
                 '{"name": "read_12345", "flag": "0", "ref_name": "chr1", "ref_pos": "21", '
                 '"map_quality": "20", "cigar": "10M1D9M1I20M", "next_ref_name": "=", '
@@ -1343,13 +1334,13 @@ class TestExportImport(ReadTest):
     def test_string_export_import_without_tags(self):
         a = self.build_read()
         a.tags = []
-        b = pysam.AlignedSegment.fromdict(a.todict(), a.header)
+        b = pysam.AlignedSegment.from_dict(a.to_dict(), a.header)
         self.assertEqual(a, b)
 
     def test_string_export_import_with_tags(self):
         a = self.build_read()
         a.tags = [("XD", 12), ("RF", "abc")]
-        b = pysam.AlignedSegment.fromdict(a.todict(), a.header)
+        b = pysam.AlignedSegment.from_dict(a.to_dict(), a.header)
         self.assertEqual(a, b)
                 
         

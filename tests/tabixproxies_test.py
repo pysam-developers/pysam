@@ -281,14 +281,14 @@ class TestGTF(TestParser):
 
     def test_asdict_contains_attributes(self):
         r = self.tabix.fetch(parser=self.parser()).next()
-        d = r.as_dict()
+        d = r.to_dict()
         c = self.compare[0]
         s = self.build_attribute_string(d)
         self.assertEqual(s, c[8])
 
     def test_asdict_can_be_modified(self):
         r = self.tabix.fetch(parser=self.parser()).next()
-        d = r.as_dict()
+        d = r.to_dict()
         d["gene_id"] = "new_gene_id"
         self.assertTrue("gene_id \"new_gene_id\"", str(r))
 

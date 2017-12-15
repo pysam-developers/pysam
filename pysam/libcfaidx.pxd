@@ -44,6 +44,7 @@ cdef class FastaFile:
 
 cdef class FastqProxy:
     cdef kseq_t * _delegate
+    cdef cython.str to_string(self)
     cdef cython.str tostring(self)
     cpdef array.array get_quality_array(self, int offset=*)
 
@@ -53,6 +54,7 @@ cdef class FastxRecord:
     Python container for pysam.libcfaidx.FastqProxy with persistence.
     """
     cdef public str comment, quality, sequence, name
+    cdef cython.str to_string(self)
     cdef cython.str tostring(self)
     cpdef array.array get_quality_array(self, int offset=*)
 

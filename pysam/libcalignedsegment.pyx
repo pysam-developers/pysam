@@ -963,7 +963,7 @@ cdef class AlignedSegment:
         As a result :term:`tid` is shown instead of the reference name.
         Similarly, the tags field is returned in its parsed state.
 
-        To get a valid SAM record, use :meth:`tostring`.
+        To get a valid SAM record, use :meth:`to_string`.
         """
         # sam-parsing is done in sam.c/bam_format1_core which
         # requires a valid header.
@@ -1047,18 +1047,11 @@ cdef class AlignedSegment:
 
         return hash_value
 
-    cpdef tostring(self, htsfile=None):
+    cpdef to_string(self):
         """returns a string representation of the aligned segment.
 
         The output format is valid SAM format if a header is associated
         with the AlignedSegment.
-
-        Parameters
-        ----------
-
-        htsfile -- (deprecated) AlignmentFile object to map numerical
-                   identifiers to chromosome names. This parameter is present
-                   for backwards compatibility and ignored.
         """
         cdef kstring_t line
         line.l = line.m = 0
@@ -1103,18 +1096,31 @@ cdef class AlignedSegment:
         
         return dest
 
-    def todict(self):
+    cpdef tostring(self, htsfile=None):
+        """deprecated, use :meth:`to_string()` instead.
+
+        Parameters
+        ----------
+
+        htsfile -- (deprecated) AlignmentFile object to map numerical
+                   identifiers to chromosome names. This parameter is present
+                   for backwards compatibility and ignored.
+        """
+
+        return self.to_string()
+    
+    def to_dict(self):
         """returns a json representation of the aligned segment.
 
         Field names are abbreviated versions of the class attributes.
         """
         # let htslib do the string conversions, but treat optional field properly as list
-        vals = self.tostring().split("\t")
+        vals = self.to_string().split("\t")
         n = len(KEY_NAMES) - 1
         return dict(list(zip(KEY_NAMES[:-1], vals[:n])) + [(KEY_NAMES[-1], vals[n:])])
 
     @classmethod
-    def fromdict(cls, sam_dict, AlignmentHeader header):
+    def from_dict(cls, sam_dict, AlignmentHeader header):
         """parses a dictionary representation of the aligned segment.
 
         Parameters

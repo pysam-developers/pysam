@@ -382,7 +382,7 @@ cdef class FastqProxy:
             else:
                 return None
 
-    cdef cython.str tostring(self):
+    cdef cython.str to_string(self):
         if self.comment is None:
             comment = ""
         else:
@@ -393,9 +393,13 @@ cdef class FastqProxy:
         else:
             return "@%s%s\n%s\n+\n%s" % (self.name, comment,
                                          self.sequence, self.quality)
-
+    
+    cdef cython.str tostring(self):
+        """deprecated : use :meth:`to_string`"""
+        return self.to_string()
+    
     def __str__(self):
-        return self.tostring()
+        return self.to_string()
 
     cpdef array.array get_quality_array(self, int offset=33):
         '''return quality values as integer array after subtracting offset.'''
@@ -434,7 +438,7 @@ cdef class FastxRecord:
     def __deepcopy__(self, memo):
         return FastxRecord(self.name, self.comment, self.sequence, self.quality)
 
-    cdef cython.str tostring(self):
+    cdef cython.str to_string(self):
         if self.name is None:
             raise ValueError("can not write record without name")
 
@@ -451,6 +455,10 @@ cdef class FastxRecord:
         else:
             return "@%s%s\n%s\n+\n%s" % (self.name, comment,
                                          self.sequence, self.quality)
+        
+    cdef cython.str tostring(self):
+        """deprecated : use :meth:`to_string`"""
+        return self.to_string()
 
     def set_name(self, name):
         if name is None:
@@ -475,7 +483,7 @@ cdef class FastxRecord:
             self.quality = None
 
     def __str__(self):
-        return self.tostring()
+        return self.to_string()
 
     cpdef array.array get_quality_array(self, int offset=33):
         '''return quality values as array after subtracting offset.'''

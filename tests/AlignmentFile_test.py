@@ -1119,8 +1119,8 @@ class TestHeaderSAM(unittest.TestCase):
             "r")
 
     def testHeaders(self):
-        self.compareHeaders(self.header, self.samfile.header.as_dict())
-        self.compareHeaders(self.samfile.header.as_dict(), self.header)
+        self.compareHeaders(self.header, self.samfile.header.to_dict())
+        self.compareHeaders(self.samfile.header.to_dict(), self.header)
 
     def testNameMapping(self):
         for x, y in enumerate(("chr1", "chr2")):
@@ -1220,7 +1220,7 @@ class TestHeaderWriteRead(unittest.TestCase):
 
         Ignore M5 and UR field as they are set application specific.
         '''
-        b = header_b.as_dict()
+        b = header_b.to_dict()
         for ak, av in a.items():
             self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
             self.assertEqual(
@@ -1483,9 +1483,6 @@ class TestDeNovoConstruction(unittest.TestCase):
         references = list(infile)
         for denovo, reference in zip(references, self.reads):
             checkFieldEqual(self, reference, denovo)
-            print("reference", str(reference),
-                  reference.get_tags(with_value_type=True))
-            print("denovo", str(denovo), denovo.get_tags(with_value_type=True))
             self.assertEqual(reference.compare(denovo), 0)
 
     # TODO
@@ -1537,11 +1534,11 @@ class TestEmptyHeader(unittest.TestCase):
     def testEmptyHeader(self):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR,
                                              'example_empty_header.bam'))
-        self.assertEqual(s.header.as_dict(), {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
+        self.assertEqual(s.header.to_dict(), {'SQ': [{'LN': 1000, 'SN': 'chr1'}]})
 
     def test_bam_without_seq_in_header(self):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "example_no_seq_in_header.bam"))
-        self.assertTrue("SQ" in s.header.as_dict())
+        self.assertTrue("SQ" in s.header.to_dict())
         self.assertTrue("@SQ" in str(s.header))
 
         
@@ -1553,7 +1550,7 @@ class TestHeaderWithProgramOptions(unittest.TestCase):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR,
                                              'rg_with_tab.bam'))
         self.assertEqual(
-            s.header.as_dict(),
+            s.header.to_dict(),
             {'SQ': [{'LN': 1575, 'SN': 'chr1'},
                     {'LN': 1584, 'SN': 'chr2'}],
              'PG': [{'PN': 'bwa',
