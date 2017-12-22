@@ -60,6 +60,32 @@ class TestMissingGenotypes(unittest.TestCase):
         self.check(self.filename + ".gz")
 
 
+class TestMissingSamples(unittest.TestCase):
+
+    filename = "gnomad.vcf"
+
+    def setUp(self):
+        self.compare = load_and_convert(
+            os.path.join(CBCF_DATADIR, self.filename),
+            encode=False)
+
+    def check(self, filename):
+        """see issue XYZ"""
+        fn = os.path.join(CBCF_DATADIR, filename)
+        self.assertEqual(True, os.path.exists(fn))
+        with pysam.VariantFile(fn) as inf:
+            rec = next(inf.fetch())
+            print(rec.info.keys())
+            print(rec.info["AC"])
+            print(rec.info["GC"])
+
+    def testVCF(self):
+        self.check(self.filename)
+
+    def testVCFGZ(self):
+        self.check(self.filename + ".gz")
+        
+
 class TestOpening(unittest.TestCase):
 
     def testMissingFile(self):
