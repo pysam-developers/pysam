@@ -177,6 +177,17 @@ class TestIndexFormatsVCF(unittest.TestCase):
             with pysam.VariantFile(fn + ".gz") as inf:
                 self.assertEqual(len(list(inf.fetch("20"))), 3)
 
+    def test_bcf_with_prebuilt_csi(self):
+        with get_temp_context("tmp_fn.bcf") as fn:
+            shutil.copyfile(self.bcf_filename, fn)
+            shutil.copyfile(self.bcf_filename + ".csi", fn + ".csi")
+
+            self.assertTrue(os.path.exists(fn + ".csi"))
+            self.assertFalse(os.path.exists(fn + ".tbi"))
+            
+            with pysam.VariantFile(fn) as inf:
+                self.assertEqual(len(list(inf.fetch("20"))), 3)
+
     def test_bcf_with_tbi_index_will_produce_csi(self):
         with get_temp_context("tmp_fn.bcf") as fn:
             shutil.copyfile(self.bcf_filename, fn)
