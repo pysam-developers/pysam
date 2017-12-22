@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 import pysam
+import shutil
 import gzip
 import subprocess
 
@@ -148,6 +149,56 @@ class TestOpening(unittest.TestCase):
             self.assertFalse(inf.is_remote)
             self.assertFalse(inf.is_stream)
             self.assertEqual(len(list(inf.fetch())), 5)
+
+
+class TestIndexFormatsVCF(unittest.TestCase):
+
+    vcf_filename = os.path.join(CBCF_DATADIR, "example_vcf40.vcf")
+    bcf_filename = os.path.join(CBCF_DATADIR, "example_vcf40.bcf")
+    
+    def test_vcf_with_tbi_index(self):
+        with get_temp_context("tmp_fn.vcf") as fn:
+            shutil.copyfile(self.vcf_filename, fn)
+            pysam.tabix_index(fn, preset="vcf", force=True)
+            self.assertTrue(os.path.exists(fn + ".gz" + ".tbi"))
+            self.assertFalse(os.path.exists(fn + ".gz" + ".csi"))
+            
+            with pysam.VariantFile(fn + ".gz") as inf:
+                self.assertEqual(len(list(inf.fetch("20"))), 3)
+
+    def test_vcf_with_csi_index(self):
+        with get_temp_context("tmp_fn.vcf") as fn:
+            shutil.copyfile(self.vcf_filename, fn)
+
+            pysam.tabix_index(fn, preset="vcf", force=True, csi=True)
+            self.assertTrue(os.path.exists(fn + ".gz" + ".csi"))
+            self.assertFalse(os.path.exists(fn + ".gz" + ".tbi"))
+            
+            with pysam.VariantFile(fn + ".gz") as inf:
+                self.assertEqual(len(list(inf.fetch("20"))), 3)
+
+    def test_bcf_with_tbi_index_will_produce_csi(self):
+        with get_temp_context("tmp_fn.bcf") as fn:
+            shutil.copyfile(self.bcf_filename, fn)
+
+            pysam.tabix_index(fn, preset="bcf", force=True, csi=False)
+            self.assertTrue(os.path.exists(fn + ".csi"))
+            self.assertFalse(os.path.exists(fn + ".tbi"))
+            
+            with pysam.VariantFile(fn) as inf:
+                self.assertEqual(len(list(inf.fetch("20"))), 3)
+
+    def test_bcf_with_csi_index(self):
+        with get_temp_context("tmp_fn.bcf") as fn:
+            shutil.copyfile(self.bcf_filename, fn)
+
+            pysam.tabix_index(fn, preset="vcf", force=True, csi=True)
+            
+            self.assertTrue(os.path.exists(fn + ".csi"))
+            self.assertFalse(os.path.exists(fn + ".tbi"))
+            
+            with pysam.VariantFile(fn) as inf:
+                self.assertEqual(len(list(inf.fetch("20"))), 3)
 
 
 class TestHeader(unittest.TestCase):
@@ -348,9 +399,8 @@ class TestIndexFilename(unittest.TestCase):
             fn = os.path.join(CBCF_DATADIR, fn)
             idx_fn = os.path.join(CBCF_DATADIR, idx_fn)
 
-            v = pysam.VariantFile(fn, index_filename=idx_fn)
-
-            self.assertEqual(len(list(v.fetch('20'))), 3)
+            with pysam.VariantFile(fn, index_filename=idx_fn) as inf:
+                self.assertEqual(len(list(inf.fetch('20'))), 3)
 
 
 class TestConstructionVCFWithContigs(unittest.TestCase):

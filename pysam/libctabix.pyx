@@ -75,7 +75,8 @@ from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     tbx_index_build2, tbx_index_load2, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, hisremote, region_list, hts_getline, \
-    TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC
+    TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC, htsExactFormat, bcf, \
+    bcf_index_build2
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
@@ -888,6 +889,7 @@ def tabix_index(filename,
                 int min_shift=-1,
                 index=None,
                 keep_original=False,
+                csi=False,
                 ):
     '''index tab-separated *filename* using tabix.
 
@@ -923,10 +925,14 @@ def tabix_index(filename,
     *index* controls the filename which should be used for creating the index.
     If not set, the default is to append ``.tbi`` to *filename*.
 
+    If *csi* is set, create a CSI index, the default is to create a
+    TBI index.
+
     When automatically compressing files, if *keep_original* is set the
     uncompressed file will not be deleted.
 
     returns the filename of the compressed data
+
     '''
     
     if not os.path.exists(filename):
@@ -940,15 +946,16 @@ def tabix_index(filename,
     if not is_gzip_file(filename):
         tabix_compress(filename, filename + ".gz", force=force)
         if not keep_original:
-            os.unlink( filename )
+            os.unlink(filename)
         filename += ".gz"
 
-    index = index or filename + ".tbi"
+    fn = encode_filename(filename)
+    cdef char *cfn = fn
 
-    if not force and os.path.exists(index):
-        raise IOError(
-            "Filename '%s' already exists, use *force* to overwrite" % index)
-
+    cdef htsFile *fp = hts_open(cfn, "r")
+    cdef htsExactFormat fmt = fp.format.format
+    hts_close(fp)
+    
     # columns (1-based):
     #   preset-code, contig, start, end, metachar for
     #     comments, lines to ignore at beginning
@@ -960,8 +967,13 @@ def tabix_index(filename,
         'sam' : (TBX_SAM, 3, 4, 0, ord('@'), 0),
         'vcf' : (TBX_VCF, 1, 2, 0, ord('#'), 0),
         }
-
-    if preset:
+    
+    conf_data = None
+    if preset == "bcf" or fmt == bcf:
+        csi = True
+        if min_shift == -1:
+            min_shift = 14
+    elif preset:
         try:
             conf_data = preset2conf[preset]
         except KeyError:
@@ -982,18 +994,35 @@ def tabix_index(filename,
         if zerobased:
             preset = preset | TBX_UCSC
 
-        conf_data = (preset, seq_col+1, start_col+1, end_col+1, ord(meta_char), line_skip)
-                
+        conf_data = (preset, seq_col + 1, start_col + 1, end_col + 1, ord(meta_char), line_skip)
+
     cdef tbx_conf_t conf
-    conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
+    if conf_data:
+        conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
 
-
-    fn = encode_filename(filename)
+    if csi:
+        suffix = ".csi"
+    else:
+        suffix = ".tbi"
+    index = index or filename + suffix    
     fn_index = encode_filename(index)
-    cdef char *cfn = fn
+
+    if not force and os.path.exists(index):
+        raise IOError(
+            "filename '%s' already exists, use *force* to overwrite" % index)
+    
     cdef char *fnidx = fn_index
-    with nogil:
-        tbx_index_build2(cfn, fnidx, min_shift, &conf)
+    cdef int retval = 0
+
+    if csi and fmt == bcf:
+        with nogil:
+            retval = bcf_index_build2(cfn, fnidx, min_shift)
+    else:
+        with nogil:
+            retval = tbx_index_build2(cfn, fnidx, min_shift, &conf)
+            
+    if retval != 0:
+        raise OSError("building of index for {} failed".format(filename))
     
     return filename
 
