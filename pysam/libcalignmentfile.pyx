@@ -792,7 +792,7 @@ cdef class AlignmentFile(HTSFile):
               referencelengths=None,
               duplicate_filehandle=True,
               ignore_truncation=False,
-              format_options=None):
+              format_options=[]):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
