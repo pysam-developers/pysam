@@ -424,7 +424,7 @@ cdef extern from "htslib/hts.h" nogil:
         no_compression, gzip, bgzf, custom
         compression_maximum
 
-    enum hts_fmt_option:
+    cdef enum hts_fmt_option:
         CRAM_OPT_DECODE_MD,
         CRAM_OPT_PREFIX,
         CRAM_OPT_VERBOSITY,
@@ -471,6 +471,27 @@ cdef extern from "htslib/hts.h" nogil:
         htsFormat format
 
     int hts_verbose
+
+    cdef union hts_opt_val_union:
+        int i
+        char *s
+
+    ctypedef struct hts_opt:
+        char *arg
+        hts_fmt_option opt
+        hts_opt_val_union val
+        void *next
+
+    # @abstract Parses arg and appends it to the option list.
+    # @return   0 on success and -1 on failure
+    int hts_opt_add(hts_opt **opts, const char *c_arg)
+
+    # @abstract Applies an hts_opt option list to a given htsFile.
+    # @return   0 on success and -1 on failure
+    int hts_opt_apply(htsFile *fp, hts_opt *opts)
+
+    # @abstract Frees an hts_opt list.
+    void hts_opt_free(hts_opt *opts)
 
     # @abstract Table for converting a nucleotide character to 4-bit encoding.
     # The input character may be either an IUPAC ambiguity code, '=' for 0, or
