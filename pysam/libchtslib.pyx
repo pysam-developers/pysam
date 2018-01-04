@@ -571,10 +571,13 @@ cdef class HTSFile(object):
         for format_option in format_options:
             rval = hts_opt_add(&opts, format_option)
             if rval != 0:
+                if opt != NULL:
+                    hts_opt_free(opts)
                 raise AttributeError('Invalid format option ({}) specified'.format(format_option))
         if opts != NULL:
             rval = hts_opt_apply(self.htsfile, opts)
             if rval != 0:
+                hts_opt_free(opts)
                 raise AttributeError('An error occured while applying the requested format options')
             hts_opt_free(opts)
 
