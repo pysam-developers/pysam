@@ -792,7 +792,7 @@ cdef class AlignmentFile(HTSFile):
               referencelengths=None,
               duplicate_filehandle=True,
               ignore_truncation=False,
-              format_options=[]):
+              format_options=None):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
@@ -897,7 +897,7 @@ cdef class AlignmentFile(HTSFile):
                                   force_str(strerror(errno))))
                 else:
                     raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
-            if len(format_options):
+            if format_options and len(format_options):
                 self.add_hts_options(format_options)
             # set filename with reference sequences. If no filename
             # is given, the CRAM reference arrays will be built from
