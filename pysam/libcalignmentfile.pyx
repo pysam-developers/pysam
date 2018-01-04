@@ -926,7 +926,7 @@ cdef class AlignmentFile(HTSFile):
             if self.htsfile.format.category != sequence_data:
                 raise ValueError("file does not contain alignment data")
 
-            if len(format_options):
+            if format_options and len(format_options):
                 self.add_hts_options(format_options)
 
             self.check_truncation(ignore_truncation)
