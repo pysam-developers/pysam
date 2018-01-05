@@ -1745,7 +1745,7 @@ class TestRemoteFileFTP(unittest.TestCase):
 
 class TestRemoteFileHTTP(unittest.TestCase):
 
-    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/ex1.bam"
+    url = "https://www.cgat.org/downloads/public/pysam/test/ex1.bam"
     region = "chr1:1-1000"
     local = os.path.join(BAM_DATADIR, "ex1.bam")
 
@@ -2356,11 +2356,11 @@ class TestExplicitIndex(unittest.TestCase):
 
     def testRemoteExplicitIndexBAM(self):
         if not checkURL(
-                "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam"):
+                "https://www.cgat.org/downloads/public/pysam/test/noindex.bam"):
             return
 
         with pysam.AlignmentFile(
-                "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam",
+                "https://www.cgat.org/downloads/public/pysam/test/noindex.bam",
                 "rb",
                 filepath_index=os.path.join(BAM_DATADIR, 'ex1.bam.bai')) as samfile:
             samfile.fetch("chr1")
