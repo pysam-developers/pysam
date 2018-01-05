@@ -18,8 +18,8 @@
 # modify config.h to set compatibility flags
 #
 # For bcftools, type:
-# rm -rf bedtools
-# python import.py bedtools download/bedtools
+# rm -rf bcftools
+# python import.py bcftools download/bedtools
 # git checkout -- bcftools/version.h
 # rm -rf bedtools/test bedtools/plugins
 
@@ -56,7 +56,7 @@ EXCLUDE = {
         "test", "plugins", "peakfit.c",
         "peakfit.h",
         # needs to renamed, name conflict with samtools reheader
-        "reheader.c",
+        # "reheader.c",
         "polysomy.c"),
     "htslib": (
         'htslib/tabix.c', 'htslib/bgzip.c',
@@ -101,7 +101,7 @@ def _update_pysam_files(cf, destdir):
                         basename, subname), lines)
                 lines = re.sub("stderr", "{}_stderr".format(basename), lines)
                 lines = re.sub("stdout", "{}_stdout".format(basename), lines)
-                lines = re.sub(" printf\(", " fprintf(pysam_stdout, ", lines)
+                lines = re.sub(" printf\(", " fprintf({}_stdout, ".format(basename), lines)
                 lines = re.sub("([^kf])puts\(([^)]+)\)",
                                r"\1fputs(\2, {}_stdout) & fputc('\\n', {}_stdout)".format(basename, basename),
                                lines)
@@ -127,12 +127,12 @@ def _update_pysam_files(cf, destdir):
                         SPECIFIC_SUBSTITUTIONS[fn][1])
                 outfile.write(lines)
 
-    with IOTools.open_file(os.path.join("import", "pysam.h")) as inf, \
-         IOTools.open_file(os.path.join(destdir, "{}.pysam.h".format(basename))) as outf:
+    with open(os.path.join("import", "pysam.h")) as inf, \
+         open(os.path.join(destdir, "{}.pysam.h".format(basename)), "w") as outf:
         outf.write(re.sub("@pysam@", basename, inf.read()))
 
-    with IOTools.open_file(os.path.join("import", "pysam.pysam.c")) as inf, \
-         IOTools.open_file(os.path.join(destdir, "{}.pysam.c".format(basename))) as outf:
+    with open(os.path.join("import", "pysam.c")) as inf, \
+         open(os.path.join(destdir, "{}.pysam.c".format(basename)), "w") as outf:
         outf.write(re.sub("@pysam@", basename, inf.read()))
 
 

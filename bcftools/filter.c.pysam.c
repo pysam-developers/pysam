@@ -1795,8 +1795,8 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
         ret = filters_next_token(&tmp, &len);
         if ( ret==-1 ) error("Missing quotes in: %s\n", str);
 
-        //fprintf(bcftools_stderr,"token=[%c] .. [%s] %d\n", TOKEN_STRING[ret], tmp, len);
-        //int i; for (i=0; i<nops; i++) fprintf(bcftools_stderr," .%c.", TOKEN_STRING[ops[i]]); fprintf(bcftools_stderr,"\n");
+        // fprintf(bcftools_stderr,"token=[%c] .. [%s] %d\n", TOKEN_STRING[ret], tmp, len);
+        // int i; for (i=0; i<nops; i++) fprintf(bcftools_stderr," .%c.", TOKEN_STRING[ops[i]]); fprintf(bcftools_stderr,"\n");
 
         if ( ret==TOK_LFT )         // left bracket
         {
