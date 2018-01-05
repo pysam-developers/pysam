@@ -1041,7 +1041,7 @@ for vcf_file in vcf_files:
 
 class TestRemoteFileHTTP(unittest.TestCase):
 
-    url = "https://www.cgat.org/downloads/public/pysam/test/example.gtf.gz"
+    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example.gtf.gz"
     region = "chr1:1-1000"
     local = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
@@ -1080,7 +1080,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
 
 class TestRemoteFileHTTPWithHeader(TestRemoteFileHTTP):
 
-    url = "https://www.cgat.org/downloads/public/pysam/test/example_comments.gtf.gz"
+    url = "http://genserv.anat.ox.ac.uk/downloads/pysam/test/example_comments.gtf.gz"
     region = "chr1:1-1000"
     local = os.path.join(TABIX_DATADIR, "example_comments.gtf.gz")
 
