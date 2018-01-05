@@ -467,7 +467,7 @@ static void usage(args_t *args)
     exit(1);
 }
 
-int main_reheader(int argc, char *argv[])
+int main_bcftools_reheader(int argc, char *argv[])
 {
     int c;
     args_t *args  = (args_t*) calloc(1,sizeof(args_t));
