@@ -823,3 +823,11 @@ cdef class VCFProxy(NamedTupleProxy):
         idx, f = self.map_key2field[key]
         TupleProxy._setindex(self, idx, str(value))
 
+
+__all__ = [
+    "TupleProxy",
+    "NamedTupleProxy",
+    "GTFProxy",
+    "GFF3Proxy",
+    "BedProxy",
+    "VCFProxy"]
