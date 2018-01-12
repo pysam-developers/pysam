@@ -20,9 +20,9 @@ class ReadTest(unittest.TestCase):
     def build_read(self):
         '''build an example read.'''
 
-        header = pysam.AlignmentHeader(
-            reference_names=["chr1", "chr2"],
-            reference_lengths=[10000000, 10000000])
+        header = pysam.AlignmentHeader.from_references(
+            ["chr1", "chr2"],
+            [10000000, 10000000])
         
         a = pysam.AlignedSegment(header)
         a.query_name = "read_12345"

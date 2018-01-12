@@ -59,7 +59,6 @@ import collections
 import re
 import warnings
 import array
-
 from libc.errno  cimport errno, EPIPE
 from libc.string cimport strcmp, strpbrk, strerror
 from cpython cimport array as c_array
@@ -97,11 +96,11 @@ IndexStats = collections.namedtuple("IndexStats",
 cdef int  MAX_POS = 2 << 29
 
 # valid types for SAM headers
-VALID_HEADER_TYPES = {"HD" : dict,
-                      "SQ" : list,
-                      "RG" : list,
-                      "PG" : list,
-                      "CO" : list}
+VALID_HEADER_TYPES = {"HD" : collections.Mapping,
+                      "SQ" : collections.Sequence,
+                      "RG" : collections.Sequence,
+                      "PG" : collections.Sequence,
+                      "CO" : collections.Sequence}
 
 # order of records within SAM headers
 VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
@@ -171,85 +170,6 @@ cdef AlignmentHeader makeAlignmentHeader(bam_hdr_t *hdr):
 
 # the following should be class-method for VariantHeader, but cdef @classmethods
 # are not implemented in cython.
-cdef int fill_AlignmentHeader_from_dict(bam_hdr_t *dest, header_dict) except? -1:
-    '''build a new header built from a dictionary in `header_dict`.
-
-    This method inserts the text field, target_name and target_len.
-    '''
-    assert dest != NULL
-    
-    cdef list lines = []
-
-    # first: defined tags
-    for record in VALID_HEADERS:
-        if record in header_dict:
-            ttype = VALID_HEADER_TYPES[record]
-            data = header_dict[record]
-            if type(data) != type(ttype()):
-                raise ValueError(
-                    "invalid type for record %s: %s, expected %s" %
-                    (record, type(data), type(ttype())))
-            if type(data) is dict:
-                lines.append(build_header_line(data, record))
-            else:
-                for fields in header_dict[record]:
-                    lines.append(build_header_line(fields, record))
-
-    # then: user tags (lower case), sorted alphabetically
-    for record, data in sorted(header_dict.items()):
-        if record in VALID_HEADERS:
-            continue
-        if type(data) is dict:
-            lines.append(build_header_line(data, record))
-        else:
-            for fields in header_dict[record]:
-                lines.append(build_header_line(fields, record))
-
-    text = "\n".join(lines) + "\n"
-    if dest.text != NULL:
-        free(dest.text)
-    dest.text = <char*>calloc(len(text), sizeof(char))
-    if dest.text == NULL:
-        raise MemoryError("could not allocate {} bytes".format(len(text) * sizeof(char)))
-    dest.l_text = len(text)
-    cdef bytes btext = text.encode('ascii')
-    strncpy(dest.text, btext, dest.l_text)
-
-    cdef bytes bseqname
-    
-    # collect sequences
-    if "SQ" in header_dict:
-        seqs = []
-        for fields in header_dict["SQ"]:
-            try:
-                seqs.append( (fields["SN"], fields["LN"] ) )
-            except KeyError:
-                raise KeyError( "incomplete sequence information in '%s'" % str(fields))
-
-        dest.n_targets = len(seqs)
-        dest.target_name = <char**>calloc(dest.n_targets, sizeof(char*))
-        if dest.target_name == NULL:
-            raise MemoryError("could not allocate {} bytes".format(dest.n_targets, sizeof(char *)))
-        dest.target_len = <uint32_t*>calloc(dest.n_targets, sizeof(uint32_t))
-        if dest.target_len == NULL:
-            raise MemoryError("could not allocate {} bytes".format(dest.n_targets * sizeof(uint32_t)))
-
-        for x from 0 <= x < dest.n_targets:
-            seqname, seqlen = seqs[x]
-            dest.target_name[x] = <char*>calloc(
-                len(seqname) + 1, sizeof(char))
-            if dest.target_name[x] == NULL:
-                raise MemoryError("could not allocate {} bytes".format(len(seqname) + 1, sizeof(char)))
-            bseqname = seqname.encode('ascii')
-            strncpy(dest.target_name[x], bseqname,
-                    len(seqname) + 1)
-            dest.target_len[x] = seqlen
-            
-    return 0
-
-
-# the following should be class-method for VariantHeader, but cdef @classmethods
-# are not implemented in cython.
 cdef int fill_AlignmentHeader_from_list(bam_hdr_t *dest,
                                         reference_names,
                                         reference_lengths,
@@ -257,59 +177,6 @@ cdef int fill_AlignmentHeader_from_list(bam_hdr_t *dest,
                                         text=None) except -1:
     """build header from list of reference names and lengths.
     """
-    assert dest != NULL
-    
-    assert len(reference_names) == len(reference_lengths), \
-        "unequal names and lengths of reference sequences"
-
-    # allocate and fill header
-    reference_names = [force_bytes(ref) for ref in reference_names]
-    dest.n_targets = len(reference_names)
-    n = 0
-    for x in reference_names:
-        n += len(x) + 1
-    dest.target_name = <char**>calloc(n, sizeof(char*))
-    if dest.target_name == NULL:
-        raise MemoryError("could not allocate {} bytes".format(n, sizeof(char *)))
-
-    dest.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
-    if dest.target_len == NULL:
-        raise MemoryError("could not allocate {} bytes".format(n, sizeof(uint32_t)))
-
-    for x from 0 <= x < dest.n_targets:
-        dest.target_len[x] = reference_lengths[x]
-        name = reference_names[x]
-        dest.target_name[x] = <char*>calloc(
-            len(name) + 1, sizeof(char))
-        if dest.target_name[x] == NULL:
-            raise MemoryError("could not allocate {} bytes".format(len(name) + 1, sizeof(char)))
-        strncpy(dest.target_name[x], name, len(name))
-
-    # Optionally, if there is no text, add a SAM
-    # compatible header to output file.
-    if text is None and add_sq_text:
-        text = []
-        for x from 0 <= x < dest.n_targets:
-            text.append("@SQ\tSN:%s\tLN:%s\n" % \
-                        (force_str(reference_names[x]),
-                         reference_lengths[x]))
-        text = ''.join(text)
-
-    cdef char * ctext = NULL
-
-    if text is not None:
-        # copy without \0
-        text = force_bytes(text)
-        ctext = text
-        dest.l_text = strlen(ctext)
-        dest.text = <char*>calloc(
-            strlen(ctext), sizeof(char))
-        if dest.text == NULL:
-            raise MemoryError("could not allocate {} bytes".format(strlen(ctext), sizeof(char)))
-        memcpy(dest.text, ctext, strlen(ctext))
-
-    return 0
-
 
 cdef class AlignmentHeader(object):
     """header information for a :class:`AlignmentFile` object
@@ -348,29 +215,123 @@ cdef class AlignmentHeader(object):
         self.ptr = NULL
 
     # Python constructor
-    def __init__(self,
-                 reference_names=None,
-                 reference_lengths=None,
-                 text=None,
-                 header_dict=None,
-                 add_sq_text=True):
-
+    def __init__(self):
         self.ptr = bam_hdr_init()
         if self.ptr is NULL:
             raise MemoryError("could not create header")
-    
-        if header_dict is not None:
-            fill_AlignmentHeader_from_dict(self.ptr,
-                                           header_dict)
-            
-        elif reference_names and reference_lengths:
-            fill_AlignmentHeader_from_list(
-                self.ptr,
-                reference_names,
-                reference_lengths,
-                add_sq_text=add_sq_text,
-                text=text)
-            
+
+    @classmethod
+    def _from_text_and_lengths(cls, text, reference_names, reference_lengths):
+
+        cdef AlignmentHeader self = AlignmentHeader()
+        cdef char *ctext
+        cdef int l_text
+        cdef int n, x
+        if text is not None:
+            btext = force_bytes(text)
+            ctext = btext
+            l_text = len(btext)
+            self.ptr.text = <char*>calloc(l_text + 1, sizeof(char))
+            if self.ptr.text == NULL:
+                raise MemoryError("could not allocate {} bytes".format(l_text + 1), sizeof(char))
+            self.ptr.l_text = l_text
+            memcpy(self.ptr.text, ctext, l_text + 1)
+
+        if reference_names and reference_lengths:
+            reference_names = [force_bytes(ref) for ref in reference_names]
+
+            self.ptr.n_targets = len(reference_names)
+
+            n = sum([len(reference_names) + 1])
+            self.ptr.target_name = <char**>calloc(n, sizeof(char*))
+            if self.ptr.target_name == NULL:
+                raise MemoryError("could not allocate {} bytes".format(n, sizeof(char *)))
+
+            self.ptr.target_len = <uint32_t*>calloc(n, sizeof(uint32_t))
+            if self.ptr.target_len == NULL:
+                raise MemoryError("could not allocate {} bytes".format(n, sizeof(uint32_t)))
+
+            for x from 0 <= x < self.ptr.n_targets:
+                self.ptr.target_len[x] = reference_lengths[x]
+                name = reference_names[x]
+                self.ptr.target_name[x] = <char*>calloc(len(name) + 1, sizeof(char))
+                if self.ptr.target_name[x] == NULL:
+                    raise MemoryError("could not allocate {} bytes".format(len(name) + 1, sizeof(char)))
+                strncpy(self.ptr.target_name[x], name, len(name))
+        
+        return self
+
+    @classmethod
+    def from_text(cls, text):
+
+        reference_names, reference_lengths = [], []
+        for line in text.splitlines():
+            if line.startswith("@SQ"):
+                fields = dict([x.split(":", 1) for x in line.split("\t")[1:]])
+                try:
+                    reference_names.append(fields["SN"])
+                    reference_lengths.append(int(fields["LN"]))
+                except KeyError:
+                    raise KeyError("incomplete sequence information in '%s'" % str(fields))
+                except ValueError:
+                    raise ValueError("wrong sequence information in '%s'" % str(fields))
+                
+        return cls._from_text_and_lengths(text, reference_names, reference_lengths)
+        
+    @classmethod
+    def from_dict(cls, header_dict):
+
+        cdef list lines = []
+        # first: defined tags
+        for record in VALID_HEADERS:
+            if record in header_dict:
+                data = header_dict[record]
+                if not isinstance(data, VALID_HEADER_TYPES[record]):
+                    raise ValueError(
+                        "invalid type for record %s: %s, expected %s".format(
+                            record, type(data), VALID_HEADER_TYPES[record]))
+                if isinstance(data, collections.Mapping):
+                    lines.append(build_header_line(data, record))
+                else:
+                    for fields in header_dict[record]:
+                        lines.append(build_header_line(fields, record))
+
+        # then: user tags (lower case), sorted alphabetically
+        for record, data in sorted(header_dict.items()):
+            if record in VALID_HEADERS:
+                continue
+            if isinstance(data, collections.Mapping):
+                lines.append(build_header_line(data, record))
+            else:
+                for fields in header_dict[record]:
+                    lines.append(build_header_line(fields, record))
+
+        text = "\n".join(lines) + "\n"
+
+        reference_names, reference_lengths = [], []
+        if "SQ" in header_dict:
+            for fields in header_dict["SQ"]:
+                try:
+                    reference_names.append(fields["SN"])
+                    reference_lengths.append(fields["LN"])
+                except KeyError:
+                    raise KeyError("incomplete sequence information in '%s'" % str(fields))
+
+        return cls._from_text_and_lengths(text, reference_names, reference_lengths)
+
+    @classmethod
+    def from_references(cls, reference_names, reference_lengths, text=None, add_sq_text=True):
+
+        if len(reference_names) != len(reference_lengths):
+            raise ValueError("number of reference names and lengths do not match")
+
+        # optionally, if there is no text, add a SAM compatible header to output file.
+        if text is None and add_sq_text:
+            text = "".join(["@SQ\tSN:{}\tLN:{}\n".format(x, y) for x, y in zip(
+                reference_names, reference_lengths)])
+
+        return cls._from_text_and_lengths(text, reference_names, reference_lengths)
+
     def __dealloc__(self):
         bam_hdr_destroy(self.ptr)
         self.ptr = NULL
@@ -453,9 +414,9 @@ cdef class AlignmentHeader(object):
 
         # convert to python string
         t = self.__str__()
-
         for line in t.split("\n"):
-            if not line.strip(): continue
+            if not line.strip():
+                continue
             assert line.startswith("@"), \
                 "header line without '@': '%s'" % line
             fields = line[1:].split("\t")
@@ -490,13 +451,13 @@ cdef class AlignmentHeader(object):
                 # interpret type of known header record tags, default to str
                 x[key] = KNOWN_HEADER_FIELDS[record].get(key, str)(value)
 
-            if VALID_HEADER_TYPES[record] == dict:
+            if VALID_HEADER_TYPES[record] == collections.Mapping:
                 if record in result:
                     raise ValueError(
                         "multiple '%s' lines are not permitted" % record)
 
                 result[record] = x
-            elif VALID_HEADER_TYPES[record] == list:
+            elif VALID_HEADER_TYPES[record] == collections.Sequence:
                 if record not in result: result[record] = []
                 result[record].append(x)
 
@@ -881,20 +842,27 @@ cdef class AlignmentFile(HTSFile):
                 self.header = template.header.copy()
             elif isinstance(header, AlignmentHeader):
                 self.header = header.copy()
-            else:
-                self.header = AlignmentHeader(
-                    header_dict=header,
-                    reference_names=reference_names,
-                    reference_lengths=reference_lengths,
+            elif isinstance(header, collections.Mapping):
+                self.header = AlignmentHeader.from_dict(header)
+            elif reference_names and reference_lengths:
+                self.header = AlignmentHeader.from_references(
+                    reference_names,
+                    reference_lengths,
                     add_sq_text=add_sq_text,
                     text=text)
+            elif text:
+                self.header = AlignmentHeader.from_text(text)
+            else:
+                raise ValueError("not enough information to construct header. Please provide template, "
+                                 "header, text or reference_names/reference_lengths")
             
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
                 if errno:
-                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
-                                  force_str(strerror(errno))))
+                    raise IOError(errno, "could not open alignment file `{}`: {}".format(
+                        force_str(filename),
+                        force_str(strerror(errno))))
                 else:
                     raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
             if format_options and len(format_options):
@@ -946,7 +914,7 @@ cdef class AlignmentFile(HTSFile):
                 # an on-the-fly header.
                 if reference_names and reference_lengths:
                     # build header from a target names and lengths
-                    self.header = AlignmentHeader(
+                    self.header = AlignmentHeader.from_references(
                         reference_names=reference_names,
                         reference_lengths=reference_lengths,
                         add_sq_text=add_sq_text,
