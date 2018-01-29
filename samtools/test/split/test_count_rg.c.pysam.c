@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  test/split/test_count_rg.c -- split test cases.
 
@@ -57,7 +57,7 @@ int samtools_test_count_rg_main(int argc, char**argv)
                 ++verbose;
                 break;
             default:
-                fprintf(pysam_stdout, 
+                fprintf(samtools_stdout, 
                        "usage: test_count_rg [-v]\n\n"
                        " -v verbose output\n"
                        );
@@ -66,32 +66,32 @@ int samtools_test_count_rg_main(int argc, char**argv)
     }
 
 
-    // Setup pysam_stderr redirect
+    // Setup samtools_stderr redirect
     kstring_t res = { 0, 0, NULL };
-    FILE* orig_pysam_stderr = fdopen(dup(STDERR_FILENO), "a"); // Save pysam_stderr
+    FILE* orig_samtools_stderr = fdopen(dup(STDERR_FILENO), "a"); // Save samtools_stderr
     char* tempfname = (optind < argc)? argv[optind] : "test_count_rg.tmp";
     FILE* check = NULL;
 
     // setup
-    if (verbose) fprintf(pysam_stdout, "BEGIN test 1\n");  // TID test
+    if (verbose) fprintf(samtools_stdout, "BEGIN test 1\n");  // TID test
     bam_hdr_t* hdr1;
     size_t count;
     char** output;
     setup_test_1(&hdr1);
     if (verbose > 1) {
-        fprintf(pysam_stdout, "hdr1\n");
+        fprintf(samtools_stdout, "hdr1\n");
         dump_hdr(hdr1);
     }
-    if (verbose) fprintf(pysam_stdout, "RUN test 1\n");
+    if (verbose) fprintf(samtools_stdout, "RUN test 1\n");
 
     // test
-    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
+    xfreopen(tempfname, "w", samtools_stderr); // Redirect samtools_stderr to pipe
     bool result_1 = count_RG(hdr1, &count, &output);
-    fclose(pysam_stderr);
+    fclose(samtools_stderr);
 
-    if (verbose) fprintf(pysam_stdout, "END RUN test 1\n");
+    if (verbose) fprintf(samtools_stdout, "END RUN test 1\n");
     if (verbose > 1) {
-        fprintf(pysam_stdout, "b\n");
+        fprintf(samtools_stdout, "b\n");
         dump_hdr(hdr1);
     }
 
@@ -103,7 +103,7 @@ int samtools_test_count_rg_main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) fprintf(pysam_stdout, "FAIL test 1\n");
+        if (verbose) fprintf(samtools_stdout, "FAIL test 1\n");
     }
     fclose(check);
 
@@ -114,14 +114,14 @@ int samtools_test_count_rg_main(int argc, char**argv)
     }
     free(output);
     bam_hdr_destroy(hdr1);
-    if (verbose) fprintf(pysam_stdout, "END test 1\n");
+    if (verbose) fprintf(samtools_stdout, "END test 1\n");
 
     // Cleanup
     free(res.s);
     remove(tempfname);
     if (failure > 0)
-        fprintf(orig_pysam_stderr, "%d failures %d successes\n", failure, success);
-    fclose(orig_pysam_stderr);
+        fprintf(orig_samtools_stderr, "%d failures %d successes\n", failure, success);
+    fclose(orig_samtools_stderr);
 
     return (success == NUM_TESTS)? EXIT_SUCCESS : EXIT_FAILURE;
 }

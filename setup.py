@@ -177,12 +177,6 @@ if not os.path.exists(fn):
 # exclude sources that contain a main function
 EXCLUDE = {
     "samtools": (
-        "razip.c", "bgzip.c", "main.c",
-        "calDepth.c", "bam2bed.c", "wgsim.c",
-        "md5fa.c", "md5sum-lite.c", "maq2sam.c",
-        "bamcheck.c", "chk_indel.c", "vcf-miniview.c",
-        "htslib-1.3",   # do not import twice
-        "hfile_irods.c",  # requires irods library
     ),
     "bcftools": (
         "test", "plugins", "peakfit.c",
@@ -191,8 +185,9 @@ EXCLUDE = {
         "reheader.c",
         "polysomy.c"),
     "htslib": (
-        'htslib/tabix.c', 'htslib/bgzip.c',
-        'htslib/htsfile.c', 'htslib/hfile_irods.c'),
+        'htslib/tabix.c',
+        'htslib/bgzip.c',
+        'htslib/htsfile.c'),
 }
 
 print ("# pysam: htslib mode is {}".format(HTSLIB_MODE))
@@ -354,7 +349,8 @@ modules = [
          sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + shared_htslib_sources + os_c_files,
          libraries=external_htslib_libraries),
     dict(name="pysam.libcsamtools",
-         sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) + htslib_sources + os_c_files,
+         sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
+         [os.path.join("samtools", "lz4", "lz4.c")] + htslib_sources + os_c_files,
          libraries=external_htslib_libraries + internal_htslib_libraries),
     dict(name="pysam.libcbcftools",
          sources=[source_pattern % "bcftools"] + glob.glob(os.path.join("bcftools", "*.pysam.c")) + htslib_sources + os_c_files,
@@ -397,7 +393,8 @@ common_options = dict(
     define_macros=define_macros,
     # for out-of-tree compilation, use absolute paths
     library_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_library_dirs],
-    include_dirs=[os.path.abspath(x) for x in htslib_include_dirs + ["samtools", "bcftools", "pysam", "."] + include_os])
+    include_dirs=[os.path.abspath(x) for x in htslib_include_dirs + \
+                  ["samtools", "samtools/lz4", "bcftools", "pysam", "."] + include_os])
 
 # add common options (in python >3.5, could use n = {**a, **b}
 for module in modules:
