@@ -12,6 +12,7 @@ Release 0.14.0
   VariantFile. The end designations have been kept for backwards
   compatibility.
 
+* [#608] pysam now wraps htslib 1.7 and samtools 1.7.
 * [#580] reference_name and next_reference_name can now be set to "*"
   (will be converted to None to indicate an unmapped location)
 * [#302] providing no coordinate to count_coverage will not count from
