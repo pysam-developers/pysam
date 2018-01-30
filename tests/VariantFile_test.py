@@ -70,21 +70,30 @@ class TestMissingSamples(unittest.TestCase):
             encode=False)
 
     def check(self, filename):
-        """see issue XYZ"""
+        """see issue #593"""
         fn = os.path.join(CBCF_DATADIR, filename)
         self.assertEqual(True, os.path.exists(fn))
+        expect_fail = not "fixed" in self.filename
         with pysam.VariantFile(fn) as inf:
             rec = next(inf.fetch())
-            print(rec.info.keys())
-            print(rec.info["AC"])
-            print(rec.info["GC"])
+            if expect_fail:
+                self.assertRaises(ValueError, rec.info.__getitem__, "GC")
+            else:
+                self.assertEqual(rec.info["GC"], (27, 35, 16))
 
     def testVCF(self):
         self.check(self.filename)
 
     def testVCFGZ(self):
         self.check(self.filename + ".gz")
-        
+
+
+class TestMissingSamplesFixed(TestMissingSamples):
+    # workaround for NUMBER=G in INFO records:
+    # perl 's/Number=G/Number=./ if (/INFO/)'
+    
+    filename = "gnomad_fixed.vcf"
+
 
 class TestOpening(unittest.TestCase):
 
