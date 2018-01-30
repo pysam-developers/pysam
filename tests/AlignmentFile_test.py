@@ -1092,182 +1092,6 @@ class TestClipping(unittest.TestCase):
                     '01234')
 
 
-class TestHeaderSAM(unittest.TestCase):
-
-    """testing header manipulation"""
-
-    header = {'SQ': [{'LN': 1575, 'SN': 'chr1', 'AH': 'chr1:5000000-5010000'},
-                     {'LN': 1584, 'SN': 'chr2', 'AH': '*'}],
-              'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891',
-                      'PU': 'SC_1_10', "CN": "name:with:colon"},
-                     {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891',
-                      'PU': 'SC_2_12', "CN": "name:with:colon"}],
-              'PG': [{'ID': 'P1', 'VN': '1.0'}, {'ID': 'P2', 'VN': '1.1'}],
-              'HD': {'VN': '1.0'},
-              'CO': ['this is a comment', 'this is another comment'],
-              }
-
-    def compareHeaders(self, a, b):
-        '''compare two headers a and b.'''
-        for ak, av in a.items():
-            self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
-            self.assertEqual(av, b[ak])
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            os.path.join(BAM_DATADIR, "ex3.sam"),
-            "r")
-
-    def testHeaders(self):
-        self.compareHeaders(self.header, self.samfile.header.to_dict())
-        self.compareHeaders(self.samfile.header.to_dict(), self.header)
-
-    def testNameMapping(self):
-        for x, y in enumerate(("chr1", "chr2")):
-            tid = self.samfile.gettid(y)
-            ref = self.samfile.getrname(x)
-            self.assertEqual(tid, x)
-            self.assertEqual(ref, y)
-
-        self.assertEqual(self.samfile.gettid("chr?"), -1)
-        self.assertRaises(ValueError, self.samfile.getrname, 2)
-
-    def tearDown(self):
-        self.samfile.close()
-
-
-class TestHeaderBAM(TestHeaderSAM):
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            os.path.join(BAM_DATADIR, "ex3.bam"),
-            "rb")
-
-
-class TestHeaderCRAM(TestHeaderSAM):
-
-    def setUp(self):
-        self.samfile = pysam.AlignmentFile(
-            os.path.join(BAM_DATADIR, "ex3.cram"),
-            "rc")
-
-    def compareHeaders(self, a, b):
-        '''compare two headers a and b.'''
-        def _strip(dd):
-            for x in dd:
-                for y in ("M5", "UR"):
-                    if y in x:
-                        del x[y]
-        for ak, av in a.items():
-            _strip(av)
-            self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
-            _strip(b[ak])
-
-            self.assertEqual(av, b[ak])
-
-
-class TestHeaderFromRefs(unittest.TestCase):
-
-    '''see issue 144
-
-    reference names need to be converted to string for python 3
-    '''
-
-    # def testHeader( self ):
-    #     refs = ['chr1', 'chr2']
-    #     tmpfile = "tmp_%i" % id(self)
-    #     s = pysam.AlignmentFile(tmpfile, 'wb',
-    #                       referencenames=refs,
-    #                       referencelengths=[100]*len(refs))
-    #     s.close()
-
-    #     self.assertTrue( checkBinaryEqual( 'issue144.bam', tmpfile ),
-    #                      'bam files differ')
-    #     os.unlink( tmpfile )
-
-
-class TestHeader1000Genomes(unittest.TestCase):
-
-    '''see issue 110'''
-    bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase3_EX_or_LC_only_alignment/data/HG00104/alignment/HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"  # noqa
-
-    def testRead(self):
-
-        if not checkURL(self.bamfile):
-            return
-
-        f = pysam.AlignmentFile(self.bamfile, "rb")
-        data = f.header.copy()
-        self.assertTrue(data)
-
-
-class TestHeaderWriteRead(unittest.TestCase):
-    header = {'SQ': [{'LN': 1575, 'SN': 'chr1'},
-                     {'LN': 1584, 'SN': 'chr2'}],
-              'RG': [{'LB': 'SC_1', 'ID': 'L1', 'SM': 'NA12891',
-                      'PU': 'SC_1_10', "CN": "name:with:colon"},
-                     {'LB': 'SC_2', 'ID': 'L2', 'SM': 'NA12891',
-                      'PU': 'SC_2_12', "CN": "name:with:colon"}],
-              'PG': [{'ID': 'P1', 'VN': '1.0', 'CL': 'tool'},
-                     {'ID': 'P2', 'VN': '1.1', 'CL': 'tool with in option -R a\tb',
-                      'PP': 'P1'}],
-              'HD': {'VN': '1.0'},
-              'CO': ['this is a comment', 'this is another comment'],
-              }
-
-    def compare_headers(self, a, header_b):
-        '''compare two headers a and b.
-
-        Ignore M5 and UR field as they are set application specific.
-        '''
-        b = header_b.to_dict()
-        for ak, av in a.items():
-            self.assertTrue(ak in b, "key '%s' not in '%s' " % (ak, b))
-            self.assertEqual(
-                len(av), len(b[ak]),
-                "unequal number of entries for key {}: {} vs {}"
-                .format(ak, av, b[ak]))
-
-            for row_a, row_b in zip(av, b[ak]):
-                if isinstance(row_b, dict):
-                    for x in ["M5", "UR"]:
-                        try:
-                            del row_b[x]
-                        except KeyError:
-                            pass
-                self.assertEqual(row_a, row_b)
-
-    def check_read_write(self, flag_write, header):
-
-        fn = get_temp_filename()
-        with pysam.AlignmentFile(
-                fn,
-                flag_write,
-                header=header,
-                reference_filename=os.path.join(BAM_DATADIR, "ex1.fa")) as outf:
-            a = pysam.AlignedSegment()
-            a.query_name = "abc"
-            outf.write(a)
-
-        with pysam.AlignmentFile(fn) as inf:
-            read_header = inf.header
-
-        os.unlink(fn)
-        self.compare_headers(header, read_header)
-
-    def test_SAM(self):
-        self.check_read_write("wh", self.header)
-
-    def test_BAM(self):
-        self.check_read_write("wb", self.header)
-
-    def test_CRAM(self):
-        header = copy.copy(self.header)
-        # for CRAM, \t needs to be quoted:
-        header['PG'][1]['CL'] = re.sub(r"\t", r"\\\\t", header['PG'][1]['CL'])
-        self.check_read_write("wc", header)
-
-
 class TestUnmappedReadsRetrieval(unittest.TestCase):
 
     def test_fetch_from_sam_with_until_eof_reads_unmapped_reads(self):
@@ -1423,7 +1247,7 @@ class TestDeNovoConstruction(unittest.TestCase):
 
     def setUp(self):
 
-        header = pysam.AlignmentHeader(header_dict=self.header)
+        header = pysam.AlignmentHeader.from_dict(self.header)
         
         a = pysam.AlignedSegment(header)
         a.query_name = "read_28833_29006_6945"
@@ -2402,6 +2226,21 @@ class TestSanityCheckingBAM(unittest.TestCase):
         read = pysam.AlignedSegment()
         self.check_write(read)
 
+
+class TestHeader1000Genomes(unittest.TestCase):
+
+    '''see issue 110'''
+    bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase3_EX_or_LC_only_alignment/data/HG00104/alignment/HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"  # noqa
+
+    def testRead(self):
+
+        if not checkURL(self.bamfile):
+            return
+
+        f = pysam.AlignmentFile(self.bamfile, "rb")
+        data = f.header.copy()
+        self.assertTrue(data)
+        
 # SAM writing fails, as query length is 0
 # class TestSanityCheckingSAM(TestSanityCheckingSAM):
 #     mode = "w"

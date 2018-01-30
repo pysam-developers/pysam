@@ -41,7 +41,6 @@ ctypedef struct __iterdata:
 cdef class AlignmentHeader(object):
     cdef bam_hdr_t *ptr
 
-
 cdef class AlignmentFile(HTSFile):
     cdef readonly object reference_filename
     cdef readonly AlignmentHeader header
