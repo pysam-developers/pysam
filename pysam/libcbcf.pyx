@@ -222,6 +222,7 @@ cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
 
 
 cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) except -1:
+
     if sample < 0:
         raise ValueError('genotype is only valid as a format field')
 
