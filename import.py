@@ -26,6 +26,7 @@
 import fnmatch
 import os
 import re
+import itertools
 import shutil
 import sys
 import hashlib
@@ -49,7 +50,6 @@ EXCLUDE = {
         "bamcheck.c",
         "chk_indel.c",
         "vcf-miniview.c",
-        "htslib-1.5",   # do not import twice
         "hfile_irods.c",  # requires irods library
     ),
     "bcftools": (
@@ -153,7 +153,8 @@ if len(sys.argv) >= 1:
 
     cfiles = locate("*.c", srcdir)
     hfiles = locate("*.h", srcdir)
-
+    mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir))
+    
     # remove unwanted files and htslib subdirectory.
     cfiles = [x for x in cfiles if os.path.basename(x) not in exclude
               and not re.search("htslib-", x)]
@@ -186,6 +187,10 @@ if len(sys.argv) >= 1:
         return old_file
 
     for src_file in hfiles:
+        _compareAndCopy(src_file, srcdir, destdir, exclude)
+        ncopied += 1
+
+    for src_file in mfiles:
         _compareAndCopy(src_file, srcdir, destdir, exclude)
         ncopied += 1
 

@@ -1,0 +1,54 @@
+Samtools implements various utilities for post-processing alignments in the
+SAM, BAM, and CRAM formats, including indexing, variant calling (in conjunction
+with bcftools), and a simple alignment viewer.
+
+
+Building samtools
+=================
+
+The typical simple case of building Samtools using the HTSlib bundled within
+this Samtools release tarball is done as follows:
+
+    cd .../samtools-1.7 # Within the unpacked release directory
+    ./configure
+    make
+
+You may wish to copy the resulting samtools executable into somewhere on your
+$PATH, or run it where it is.
+
+Rather than running-in-place like that, the next simplest typical case is to
+install samtools etc properly into a directory of your choosing.  Building for
+installation using the HTSlib bundled within this Samtools release tarball,
+and building the various HTSlib utilities such as bgzip is done as follows:
+
+    cd .../samtools-1.7 # Within the unpacked release directory
+    ./configure --prefix=/path/to/location
+    make all all-htslib
+    make install install-htslib
+
+You will likely wish to add /path/to/location/bin to your $PATH.
+
+See INSTALL for full building and installation instructions and details.
+
+
+Using an optimised zlib library
+===============================
+
+Samtools has been minimally tested against both the Intel-optimised and
+CloudFlare-optimised zlibs and shown to work.
+
+They can be downloaded from:
+
+    https://github.com/jtkukunas/zlib     # Intel
+    https://github.com/cloudflare/zlib    # CloudFlare
+
+Neither Samtools nor HTSlib needs recompiling to use these optimised libraries,
+but the LD_LIBRARY_PATH environment variable should be set to a directory
+containing the libz.so.1 file.
+
+Benchmarks comparing the various zlibs are available at:
+
+    http://www.htslib.org/benchmarks/zlib.html
+
+It is recommended that you perform your own rigorous tests for an entire
+pipeline if you wish to switch to one of the optimised zlib implementations.

@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  test/tview/test_get_rg_sample.c -- tview test cases.
 
@@ -79,7 +79,7 @@ int samtools_test_get_rg_sample_main(int argc, char** argv)
     if (success == NUM_TESTS) {
         return 0;
     } else {
-        fprintf(pysam_stderr, "%d failures %d successes\n", failure, success);
+        fprintf(samtools_stderr, "%d failures %d successes\n", failure, success);
         return 1;
     }
 }

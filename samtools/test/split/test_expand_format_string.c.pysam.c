@@ -1,4 +1,4 @@
-#include "pysam.h"
+#include "samtools.pysam.h"
 
 /*  test/split/test_expand_format_string.c -- split format string test cases.
 
@@ -57,7 +57,7 @@ int samtools_test_expand_format_string_main(int argc, char**argv)
                 ++verbose;
                 break;
             default:
-                fprintf(pysam_stdout, 
+                fprintf(samtools_stdout, 
                        "usage: test_expand_format_string [-v]\n\n"
                        " -v verbose output\n"
                        );
@@ -66,34 +66,34 @@ int samtools_test_expand_format_string_main(int argc, char**argv)
     }
 
 
-    // Setup pysam_stderr redirect
+    // Setup samtools_stderr redirect
     kstring_t res = { 0, 0, NULL };
-    FILE* orig_pysam_stderr = fdopen(dup(STDERR_FILENO), "a"); // Save pysam_stderr
+    FILE* orig_samtools_stderr = fdopen(dup(STDERR_FILENO), "a"); // Save samtools_stderr
     char* tempfname = (optind < argc)? argv[optind] : "test_expand_format_string.tmp";
     FILE* check = NULL;
 
     // setup
-    if (verbose) fprintf(pysam_stdout, "BEGIN test 1\n");  // default format string test
+    if (verbose) fprintf(samtools_stdout, "BEGIN test 1\n");  // default format string test
     const char* format_string_1 = "%*_%#.bam";
     const char* basename_1 = "basename";
     const char* rg_id_1 = "1#2.3";
     const int rg_idx_1 = 4;
     if (verbose > 1) {
-        fprintf(pysam_stdout, "format_string:%s\n"
+        fprintf(samtools_stdout, "format_string:%s\n"
                "basename:%s\n"
                "rg_id:%s\n"
                "rg_idx:%d\n", format_string_1, basename_1, rg_id_1, rg_idx_1);
     }
-    if (verbose) fprintf(pysam_stdout, "RUN test 1\n");
+    if (verbose) fprintf(samtools_stdout, "RUN test 1\n");
 
     // test
-    xfreopen(tempfname, "w", pysam_stderr); // Redirect pysam_stderr to pipe
+    xfreopen(tempfname, "w", samtools_stderr); // Redirect samtools_stderr to pipe
     char* output_1 = expand_format_string(format_string_1, basename_1, rg_id_1, rg_idx_1, NULL);
-    fclose(pysam_stderr);
+    fclose(samtools_stderr);
 
-    if (verbose) fprintf(pysam_stdout, "END RUN test 1\n");
+    if (verbose) fprintf(samtools_stdout, "END RUN test 1\n");
     if (verbose > 1) {
-        fprintf(pysam_stdout, "format_string:%s\n"
+        fprintf(samtools_stdout, "format_string:%s\n"
                "basename:%s\n"
                "rg_id:%s\n"
                "rg_idx:%d\n", format_string_1, basename_1, rg_id_1, rg_idx_1);
@@ -108,20 +108,20 @@ int samtools_test_expand_format_string_main(int argc, char**argv)
         ++success;
     } else {
         ++failure;
-        if (verbose) fprintf(pysam_stdout, "FAIL test 1\n");
+        if (verbose) fprintf(samtools_stdout, "FAIL test 1\n");
     }
     fclose(check);
 
     // teardown
     free(output_1);
-    if (verbose) fprintf(pysam_stdout, "END test 1\n");
+    if (verbose) fprintf(samtools_stdout, "END test 1\n");
 
     // Cleanup test harness
     free(res.s);
     remove(tempfname);
     if (failure > 0)
-        fprintf(orig_pysam_stderr, "%d failures %d successes\n", failure, success);
-    fclose(orig_pysam_stderr);
+        fprintf(orig_samtools_stderr, "%d failures %d successes\n", failure, success);
+    fclose(orig_samtools_stderr);
 
     return (success == NUM_TESTS)? EXIT_SUCCESS : EXIT_FAILURE;
 }

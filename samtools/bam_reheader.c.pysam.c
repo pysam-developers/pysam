@@ -475,6 +475,7 @@ int main_reheader(int argc, char *argv[])
 
     if (argc - optind != 2)
         usage(samtools_stderr, 1);
+
     { // read the header
         samFile *fph = sam_open(argv[optind], "r");
         if (fph == 0) {
