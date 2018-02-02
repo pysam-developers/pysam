@@ -157,6 +157,3 @@ int aux_type2size(uint8_t type)
 		return 0;
 	}
 }
-
-
-

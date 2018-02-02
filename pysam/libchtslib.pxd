@@ -960,7 +960,8 @@ cdef extern from "htslib/sam.h" nogil:
     # 4. seq is nybble-encoded according to seq_nt16_table.
     ctypedef struct bam1_t:
         bam1_core_t core
-        int l_data, m_data
+        int l_data
+        uint32_t m_data
         uint8_t *data
         uint64_t id
 

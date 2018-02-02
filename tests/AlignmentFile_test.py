@@ -2240,6 +2240,80 @@ class TestHeader1000Genomes(unittest.TestCase):
         f = pysam.AlignmentFile(self.bamfile, "rb")
         data = f.header.copy()
         self.assertTrue(data)
+
+
+class TestLargeCigar(unittest.TestCase):
+
+    def setUp(self):
+        self.read_length = 70000
+        self.header = pysam.AlignmentHeader.from_references(
+            ["chr1", "chr2"],
+            [self.read_length * 2, self.read_length * 2])
+
+    def build_read(self):
+        '''build an example read.'''
+
+        a = pysam.AlignedSegment(self.header)
+        l = self.read_length
+        a.query_name = "read_12345"
+        a.query_sequence = "A" * l
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = 20
+        a.mapping_quality = 20
+        a.cigarstring = "M1D1" * l + "M1"
+        a.next_reference_id = 0
+        a.next_reference_start = 0
+        a.template_length = l
+        a.query_qualities = pysam.qualitystring_to_array("1") * l
+        return a
+
+    def check_read(self, read, mode="bam"):
+        fn = get_temp_filename("tmp_largecigar.{}".format(mode))
+        fn_reference = get_temp_filename("tmp_largecigar.fa")
+
+        nrows = int(self.read_length * 2 / 80)
+
+        s = "\n".join(["A" * 80 for x in range(nrows)])
+        with open(fn_reference, "w") as outf:
+            outf.write(">chr1\n{seq}\n>chr2\n{seq}\n".format(
+                seq=s))
+                
+        if mode == "bam":
+            write_mode = "wb"
+        elif mode == "sam":
+            write_mode = "w"
+        elif mode == "cram":
+            write_mode = "wc"
+        
+        with pysam.AlignmentFile(fn, write_mode,
+                                 header=self.header,
+                                 reference_filename=fn_reference) as outf:
+            outf.write(read)
+
+        with pysam.AlignmentFile(fn) as inf:
+            ref_read = next(inf)
+
+        if mode == "cram":
+            # in CRAM, the tag field is kept, while it is emptied by the BAM/SAM reader
+            self.assertEqual(read.cigarstring, ref_read.cigarstring)
+        else:
+            self.assertEqual(read, ref_read)
+
+        os.unlink(fn)
+        os.unlink(fn_reference)
+            
+    def test_reading_writing_sam(self):
+        read = self.build_read()
+        self.check_read(read, mode="sam")
+
+    def test_reading_writing_bam(self):
+        read = self.build_read()
+        self.check_read(read, mode="bam")
+
+    def test_reading_writing_cram(self):
+        read = self.build_read()
+        self.check_read(read, mode="cram")
         
 # SAM writing fails, as query length is 0
 # class TestSanityCheckingSAM(TestSanityCheckingSAM):

@@ -2172,7 +2172,7 @@ cdef class AlignedSegment:
             cdef uint32_t * p
             cdef bam1_t * src
             cdef op, l
-            cdef int k, ncigar
+            cdef int k
 
             k = 0
 
@@ -2185,8 +2185,8 @@ cdef class AlignedSegment:
             if values is None:
                 values = []
 
-            ncigar = len(values)
-            # create space for cigar data within src.data
+            cdef uint32_t ncigar = len(values)
+
             cdef bam1_t * retval = pysam_bam_update(src,
                                                     pysam_get_n_cigar(src) * 4,
                                                     ncigar * 4,
