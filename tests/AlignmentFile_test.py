@@ -1746,6 +1746,12 @@ class TestCountCoverage(unittest.TestCase):
             c = inf.count_coverage("chr1", None, inf.get_reference_length("chr1") + 10000)
             self.assertEqual(len(c[0]), inf.get_reference_length("chr1"))
 
+    def test_count_coverage_without_coordinates_fails(self):
+        with pysam.AlignmentFile(self.samfilename) as inf:
+            self.assertRaises(TypeError, inf.count_coverage)
+
+    def test_count_coverage_wrong_coordinates_fails(self):
+        with pysam.AlignmentFile(self.samfilename) as inf:
             self.assertRaises(ValueError, inf.count_coverage, "chr1", 200, 100)
             self.assertRaises(KeyError, inf.count_coverage, "chrUnknown", 100, 200)
             
