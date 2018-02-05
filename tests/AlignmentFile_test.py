@@ -2245,7 +2245,7 @@ class TestHeader1000Genomes(unittest.TestCase):
 class TestLargeCigar(unittest.TestCase):
 
     def setUp(self):
-        self.read_length = 70
+        self.read_length = 70000
         self.header = pysam.AlignmentHeader.from_references(
             ["chr1", "chr2"],
             [self.read_length * 2, self.read_length * 2])
