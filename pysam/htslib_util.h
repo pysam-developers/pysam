@@ -95,7 +95,7 @@ static inline char pysam_bam_seqi(uint8_t * s, int i) {
 static inline uint8_t pysam_get_qual(bam1_t * b) {
   return b->core.qual;}
 
-static inline uint16_t pysam_get_n_cigar(bam1_t * b) {
+static inline uint32_t pysam_get_n_cigar(bam1_t * b) {
   return b->core.n_cigar;}
 
 static inline void pysam_set_qual(bam1_t * b, uint8_t v) {

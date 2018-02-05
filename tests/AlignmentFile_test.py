@@ -2245,7 +2245,7 @@ class TestHeader1000Genomes(unittest.TestCase):
 class TestLargeCigar(unittest.TestCase):
 
     def setUp(self):
-        self.read_length = 70000
+        self.read_length = 70
         self.header = pysam.AlignmentHeader.from_references(
             ["chr1", "chr2"],
             [self.read_length * 2, self.read_length * 2])
@@ -2256,16 +2256,17 @@ class TestLargeCigar(unittest.TestCase):
         a = pysam.AlignedSegment(self.header)
         l = self.read_length
         a.query_name = "read_12345"
-        a.query_sequence = "A" * l
+        a.query_sequence = "A" * (l + 1)
         a.flag = 0
         a.reference_id = 0
         a.reference_start = 20
         a.mapping_quality = 20
-        a.cigarstring = "M1D1" * l + "M1"
+        a.cigarstring = "1M1D" * l + "1M"
+        self.assertEqual(len(a.cigartuples), 2 * l + 1)
         a.next_reference_id = 0
         a.next_reference_start = 0
         a.template_length = l
-        a.query_qualities = pysam.qualitystring_to_array("1") * l
+        a.query_qualities = pysam.qualitystring_to_array("1") * (l + 1)
         return a
 
     def check_read(self, read, mode="bam"):
