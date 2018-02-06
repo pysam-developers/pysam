@@ -943,8 +943,8 @@ cdef class AlignmentFile(HTSFile):
 
             if self.is_bam or self.is_cram:
                 self.index_filename = index_filename or filepath_index
-                if index_filename:
-                    cindexname = bindex_filename = encode_filename(index_filename)
+                if self.index_filename:
+                    cindexname = bfile_name = encode_filename(self.index_filename)
 
                 if cfilename or cindexname:
                     with nogil:
