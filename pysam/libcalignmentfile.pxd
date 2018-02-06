@@ -81,6 +81,7 @@ cdef class IteratorRow:
     cdef bam1_t * b
     cdef AlignmentFile samfile
     cdef htsFile * htsfile
+    cdef hts_idx_t * index
     cdef AlignmentHeader header
     cdef int owns_samfile
 
