@@ -650,7 +650,7 @@ cdef PileupRead makePileupRead(bam_pileup1_t *src,
 
 
 cdef inline uint32_t get_alignment_length(bam1_t *src):
-    cdef int k = 0
+    cdef uint32_t k = 0
     cdef uint32_t l = 0
     if src == NULL:
         return 0
@@ -658,13 +658,14 @@ cdef inline uint32_t get_alignment_length(bam1_t *src):
     if cigar_p == NULL:
         return 0
     cdef int op
-    cdef int n = pysam_get_n_cigar(src)
+    cdef uint32_t n = pysam_get_n_cigar(src)
     for k from 0 <= k < n:
         op = cigar_p[k] & BAM_CIGAR_MASK
         if op == BAM_CSOFT_CLIP or op == BAM_CHARD_CLIP:
             continue
         l += cigar_p[k] >> BAM_CIGAR_SHIFT
     return l
+
 
 cdef inline uint32_t get_md_reference_length(char * md_tag):
     cdef int l = 0
@@ -2153,7 +2154,7 @@ cdef class AlignedSegment:
             cdef uint32_t * cigar_p
             cdef bam1_t * src
             cdef uint32_t op, l
-            cdef int k
+            cdef uint32_t k
 
             src = self._delegate
             if pysam_get_n_cigar(src) == 0:
@@ -2172,7 +2173,7 @@ cdef class AlignedSegment:
             cdef uint32_t * p
             cdef bam1_t * src
             cdef op, l
-            cdef int k, ncigar
+            cdef int k
 
             k = 0
 
@@ -2185,8 +2186,8 @@ cdef class AlignedSegment:
             if values is None:
                 values = []
 
-            ncigar = len(values)
-            # create space for cigar data within src.data
+            cdef uint32_t ncigar = len(values)
+            
             cdef bam1_t * retval = pysam_bam_update(src,
                                                     pysam_get_n_cigar(src) * 4,
                                                     ncigar * 4,

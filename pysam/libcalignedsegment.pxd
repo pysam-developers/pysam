@@ -20,9 +20,9 @@ cdef extern from "htslib_util.h":
     char pysam_bam_seqi(uint8_t * s, int i)
 
     uint8_t pysam_get_qual(bam1_t * b)
-    uint16_t pysam_get_n_cigar(bam1_t * b)
+    uint32_t pysam_get_n_cigar(bam1_t * b)
     void pysam_set_qual(bam1_t * b, uint8_t v)
-    void pysam_set_n_cigar(bam1_t * b, uint16_t v)
+    void pysam_set_n_cigar(bam1_t * b, uint32_t v)
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
 
