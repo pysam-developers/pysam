@@ -942,12 +942,9 @@ cdef class AlignmentFile(HTSFile):
                      "check_sq=False") % mode)
 
             if self.is_bam or self.is_cram:
-                # open index for remote files
-                # returns NULL if there is no index or index could
-                # not be opened
-                index_filename = index_filename or filepath_index
-                if index_filename:
-                    cindexname = bindex_filename = encode_filename(index_filename)
+                self.index_filename = index_filename or filepath_index
+                if self.index_filename:
+                    cindexname = bfile_name = encode_filename(self.index_filename)
 
                 if cfilename or cindexname:
                     with nogil:
@@ -957,7 +954,7 @@ cdef class AlignmentFile(HTSFile):
                         if errno:
                             raise IOError(errno, force_str(strerror(errno)))
                         else:
-                            raise IOError('unable to open index file `%s`' % index_filename)
+                            raise IOError('unable to open index file `%s`' % self.index_filename)
 
                 elif require_index:
                     raise IOError('unable to open index file')
@@ -1886,7 +1883,8 @@ cdef class IteratorRow:
     def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
         cdef char *cfilename
         cdef char *creference_filename
-
+        cdef char *cindexname = NULL
+        
         if not samfile.is_open:
             raise ValueError("I/O operation on closed file")
 
@@ -1903,6 +1901,14 @@ cdef class IteratorRow:
                 self.htsfile = hts_open(cfilename, 'r')
             assert self.htsfile != NULL
 
+            if samfile.has_index():
+                if samfile.index_filename:
+                    cindexname = samfile.index_filename
+                with nogil:
+                    self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
+            else:
+                self.index = NULL
+                
             # need to advance in newly opened file to position after header
             # better: use seek/tell?
             with nogil:
@@ -1922,6 +1928,7 @@ cdef class IteratorRow:
 
         else:
             self.htsfile = samfile.htsfile
+            self.index = samfile.index
             self.owns_samfile = False
             self.header = samfile.header
 
@@ -1933,6 +1940,7 @@ cdef class IteratorRow:
         bam_destroy1(self.b)
         if self.owns_samfile:
             hts_close(self.htsfile)
+            hts_idx_destroy(self.index)
 
 
 cdef class IteratorRowRegion(IteratorRow):
@@ -1953,15 +1961,15 @@ cdef class IteratorRowRegion(IteratorRow):
                  int tid, int beg, int stop,
                  int multiple_iterators=False):
 
-        IteratorRow.__init__(self, samfile,
-                             multiple_iterators=multiple_iterators)
-
         if not samfile.has_index():
             raise ValueError("no index available for iteration")
 
+        IteratorRow.__init__(self, samfile,
+                             multiple_iterators=multiple_iterators)
+
         with nogil:
             self.iter = sam_itr_queryi(
-                self.samfile.index,
+                self.index,
                 tid,
                 beg,
                 stop)

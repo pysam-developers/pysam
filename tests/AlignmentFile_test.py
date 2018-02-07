@@ -1500,22 +1500,43 @@ class TestDoubleFetchBAM(unittest.TestCase):
                             samfile1.fetch(multiple_iterators=True)):
                 self.assertEqual(a.compare(b), 0)
 
-    def testDoubleFetchWithRegion(self):
+    def testDoubleFetchWithRegionTrueTrue(self):
 
         with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
-            contig, start, stop = 'chr1', 200, 3000000
+            contig, start, stop = 'chr2', 200, 3000000
             # just making sure the test has something to catch
             self.assertTrue(len(list(samfile1.fetch(contig, start, stop))) > 0)
 
-            # see Issue #293
-            # The following fails for CRAM files, but works for BAM
-            # files when the first is multiple_iterators=False:
             for a, b in zip(samfile1.fetch(contig, start, stop,
                                            multiple_iterators=True),
                             samfile1.fetch(contig, start, stop,
                                            multiple_iterators=True)):
                 self.assertEqual(a.compare(b), 0)
 
+    def testDoubleFetchWithRegionFalseTrue(self):
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            contig, start, stop = 'chr2', 200, 3000000
+            # just making sure the test has something to catch
+            self.assertTrue(len(list(samfile1.fetch(contig, start, stop))) > 0)
+        
+            for a, b in zip(samfile1.fetch(contig, start, stop,
+                                           multiple_iterators=False),
+                            samfile1.fetch(contig, start, stop,
+                                           multiple_iterators=True)):
+                self.assertEqual(a.compare(b), 0)
+
+    def testDoubleFetchWithRegionTrueFalse(self):
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            contig, start, stop = 'chr2', 200, 3000000
+            # just making sure the test has something to catch
+            self.assertTrue(len(list(samfile1.fetch(contig, start, stop))) > 0)
+        
+            for a, b in zip(samfile1.fetch(contig, start, stop,
+                                           multiple_iterators=True),
+                            samfile1.fetch(contig, start, stop,
+                                           multiple_iterators=False)):
+                self.assertEqual(a.compare(b), 0)
+                
     def testDoubleFetchUntilEOF(self):
 
         with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
