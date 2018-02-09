@@ -1846,7 +1846,7 @@ cdef class AlignmentFile(HTSFile):
                 raise ValueError("header not available in closed files")
 
     # Compatibility functions for pysam < 0.14
-    property:
+    property text:
         """deprecated, use .header directly"""
         def __get__(self):
             if self.header:

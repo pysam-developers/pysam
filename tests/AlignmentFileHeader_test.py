@@ -160,6 +160,9 @@ class TestHeaderSAM(unittest.TestCase):
         self.compare_headers(self.header, self.samfile.header.to_dict())
         self.compare_headers(self.samfile.header.to_dict(), self.header)
 
+    def test_text_access_works(self):
+        self.assertEqual(self.samfile.text, self.samfile.header.__str__())
+        
     def test_name_mapping(self):
         for x, y in enumerate(("chr1", "chr2")):
             tid = self.samfile.gettid(y)
