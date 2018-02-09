@@ -1845,6 +1845,15 @@ cdef class AlignmentFile(HTSFile):
             else:
                 raise ValueError("header not available in closed files")
 
+    # Compatibility functions for pysam < 0.14
+    property:
+        """deprecated, use .header directly"""
+        def __get__(self):
+            if self.header:
+                return self.header.__str__()
+            else:
+                raise ValueError("header not available in closed files")
+
     # Compatibility functions for pysam < 0.8.3
     def gettid(self, reference):
         """deprecated, use get_tid() instead"""
@@ -2502,6 +2511,7 @@ cdef class IteratorColumn:
             self.iterdata.seq = NULL
         
     # backwards compatibility
+    
     def hasReference(self):
         return self.has_reference()
     cdef char * getSequence(self):
