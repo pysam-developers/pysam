@@ -185,7 +185,9 @@ class TestHeaderSAM(unittest.TestCase):
         self.assertEqual(len(self.header), len(self.samfile.header))
 
     def test_dictionary_keys_works(self):
-        self.assertEqual(self.header.keys(), self.samfile.header.keys())
+        # sort for py2.7
+        self.assertEqual(sorted(self.header.keys()),
+                         sorted(self.samfile.header.keys()))
 
     def test_dictionary_values_works(self):
         self.assertEqual(len(self.header.values()), len(self.samfile.header.values()))
