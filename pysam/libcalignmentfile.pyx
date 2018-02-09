@@ -531,6 +531,35 @@ cdef class AlignmentHeader(object):
             text += "\n" + self._build_sequence_section()
         return text
 
+    # dictionary access methods, for backwards compatibility.
+    def __setitem__(self, key, value):
+        raise TypeError("AlignmentHeader does not support item assignment (use header.to_dict()")
+
+    def __getitem__(self, key):
+        return self.to_dict().__getitem__(key)
+
+    def items(self):
+        return self.to_dict().items()
+
+    # PY2 compatibility
+    def iteritems(self):
+        return self.to_dict().items()
+
+    def keys(self):
+        return self.to_dict().keys()
+
+    def values(self):
+        return self.to_dict().values()
+
+    def get(self, *args):
+        return self.to_dict().get(*args)
+    
+    def __len__(self):
+        return self.to_dict().__len__()
+
+    def __contains__(self, key):
+        return self.to_dict().__contains__(key)
+
 
 cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,

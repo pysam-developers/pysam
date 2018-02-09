@@ -173,6 +173,37 @@ class TestHeaderSAM(unittest.TestCase):
         self.assertEqual(self.samfile.gettid("chr?"), -1)
         self.assertRaises(ValueError, self.samfile.getrname, 2)
 
+    def test_dictionary_access_works(self):
+        for key in self.header.keys():
+            self.compare_headers({key: self.header[key]},
+                                 {key: self.samfile.header[key]})
+
+    def test_dictionary_setting_raises_error(self):
+        self.assertRaises(TypeError,
+                          self.samfile.header.__setitem__,
+                          "CO",
+                          ["This is a final comment"])
+
+    def test_dictionary_len_works(self):
+        self.assertEqual(len(self.header), len(self.samfile.header))
+
+    def test_dictionary_keys_works(self):
+        # sort for py2.7
+        self.assertEqual(sorted(self.header.keys()),
+                         sorted(self.samfile.header.keys()))
+
+    def test_dictionary_values_works(self):
+        self.assertEqual(len(self.header.values()), len(self.samfile.header.values()))
+        
+    def test_dictionary_get_works(self):
+        self.assertEqual(self.header.get("HD"), {'VN': '1.0'})
+        self.assertEqual(self.header.get("UK", "xyz"), "xyz")
+        self.assertEqual(self.header.get("UK"), None)
+
+    def test_dictionary_contains_works(self):
+        self.assertTrue("HD" in self.header)
+        self.assertFalse("UK" in self.header)
+
     def tearDown(self):
         self.samfile.close()
 
