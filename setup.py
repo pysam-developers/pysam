@@ -13,7 +13,7 @@ This module provides a low-level wrapper around the htslib C-API as
 using cython and a high-level API for convenient access to the data
 within standard genomic file formats.
 
-The current version wraps htslib-1.4.1, samtools-1.4.1 and bcftools-1.4.1.
+The current version wraps htslib-1.7, samtools-1.7 and bcftools-1.6.
 
 See:
 http://www.htslib.org

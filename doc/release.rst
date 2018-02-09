@@ -5,6 +5,8 @@ Release notes
 Release 0.14.0
 ==============
 
+This release wraps htslib/samtools versions 1.7.0.
+
 * SAM/BAM/CRAM headers are now managed by a separate AlignmentHeader
   class.
 * AlignmentFile.header.as_dict() returns an ordered dictionary.
@@ -29,12 +31,25 @@ Release 0.14.0
 * [#589] return None from build_alignment_sequence if no MD tag is set
 * [#528] add PileupColumn.__len__ method
 
-Backwards incompatible changes (should only affect a small number of users):
+Backwards incompatible changes:
 
 * AlignmentFile.header now returns an AlignmentHeader object. Use
-  AlignmentFile.header.to_dict() to get the dictionary as previously.
-* AlignmentFile.text is now AlignmentFile.header.__str__()
-* AlignmentFile, FastaFile now raise IOError.
+  AlignmentFile.header.to_dict() to get the dictionary as
+  previously. Most dictionary accessor methods (keys(), values(),
+  __getitem__, ...) have been implemented to ensure some level of
+  backwards compatibility when only reading.
+
+  The rationale for this change is to have consistency between
+  AlignmentFile and VariantFile.
+  	      
+* AlignmentFile and FastaFile now raise IOError instead of OSError
+
+Medium term we plan to have a 1.0 release. The pysam
+interface has grown over the years and the API is cluttered with
+deprecated names (Samfile, getrname(), gettid(), ...). To work towards
+this, the next release (0.15.0) will yield DeprecationWarnings 
+for any parts of the API that are considered obsolete and will not be
+in 1.0. Once 1.0 has been reached, we will use semantic versioning.
 
 Release 0.13.0
 ===============
