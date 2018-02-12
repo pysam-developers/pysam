@@ -1567,6 +1567,8 @@ cdef class AlignmentFile(HTSFile):
             # count
             seq = read.seq
             quality = read.query_qualities
+            
+            not_check_qual = 0
             if not quality:
                 warnings.warn('%s contains QUAL field' %read.query_name)
                 not_check_qual = 1
