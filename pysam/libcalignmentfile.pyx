@@ -1537,6 +1537,9 @@ cdef class AlignmentFile(HTSFile):
         cdef int refpos
         cdef int c = 0
         cdef int filter_method = 0
+
+        cdef int not_check_qual = 0
+
         if read_callback == "all":
             filter_method = 1
         elif read_callback == "nofilter":
@@ -1564,10 +1567,14 @@ cdef class AlignmentFile(HTSFile):
             # count
             seq = read.seq
             quality = read.query_qualities
+            if not quality:
+                warnings.warn('%s contains QUAL field' %read.query_name)
+                not_check_qual = 1
+
             for qpos, refpos in read.get_aligned_pairs(True):
                 if qpos is not None and refpos is not None and \
                    _start <= refpos < _stop:
-                    if quality[qpos] >= quality_threshold:
+                    if quality[qpos] >= quality_threshold or not_check_qual == 1:
                         if seq[qpos] == 'A':
                             count_a.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'C':
