@@ -314,7 +314,7 @@ else:
         "-Wno-unused",
         "-Wno-strict-prototypes",
         "-Wno-sign-compare",
-        ]
+        "-Wno-error=declaration-after-statement"]
 
 define_macros = []
 
