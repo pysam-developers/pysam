@@ -1538,14 +1538,15 @@ cdef class AlignmentFile(HTSFile):
         cdef int c = 0
         cdef int filter_method = 0
 
-        cdef int not_check_qual = 0
+        # check base quality if quality == None or 0
+        cdef int check_qual = 1 if quality_threshold else 0 
 
         if read_callback == "all":
             filter_method = 1
         elif read_callback == "nofilter":
             filter_method = 2
 
-        cdef int _threshold = quality_threshold
+        cdef int _threshold = quality_threshold if quality_threshold else 0
         for read in self.fetch(contig=contig,
                                reference=reference,
                                start=start,
@@ -1568,15 +1569,15 @@ cdef class AlignmentFile(HTSFile):
             seq = read.seq
             quality = read.query_qualities
             
-            not_check_qual = 0
-            if not quality:
-                warnings.warn('%s contains QUAL field' %read.query_name)
-                not_check_qual = 1
+            if not quality and check_qual == 1:
+                raise ValueError('%s contains no QUAL field, use quality_threshold = None to ignore base quality' %read.query_name)
 
             for qpos, refpos in read.get_aligned_pairs(True):
                 if qpos is not None and refpos is not None and \
                    _start <= refpos < _stop:
-                    if not_check_qual == 1 or quality[qpos] >= quality_threshold:
+
+                   # only check base quality if check_qual == 1
+                   if check_qual == 0 or quality[qpos] >= quality_threshold:
                         if seq[qpos] == 'A':
                             count_a.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'C':
@@ -1585,8 +1586,6 @@ cdef class AlignmentFile(HTSFile):
                             count_g.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'T':
                             count_t.data.as_ulongs[refpos - _start] += 1
-        if not_check_qual:
-            warnings.warn('All bases were counted')
 
         return count_a, count_c, count_g, count_t
 
