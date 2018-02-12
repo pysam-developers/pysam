@@ -1570,7 +1570,7 @@ cdef class AlignmentFile(HTSFile):
             
             not_check_qual = 0
             if not quality:
-                warnings.warn('%s contains QUAL field' %read.query_name)
+                warnings.warn('%s contains QUAL field, all bases were counted' %read.query_name)
                 not_check_qual = 1
 
             for qpos, refpos in read.get_aligned_pairs(True):
@@ -1585,8 +1585,6 @@ cdef class AlignmentFile(HTSFile):
                             count_g.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'T':
                             count_t.data.as_ulongs[refpos - _start] += 1
-        if not_check_qual:
-            warnings.warn('All bases were counted')
 
         return count_a, count_c, count_g, count_t
 
