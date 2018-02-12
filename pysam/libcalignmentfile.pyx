@@ -1572,7 +1572,7 @@ cdef class AlignmentFile(HTSFile):
                    _start <= refpos < _stop:
 
                     # only check base quality if _threshold > 0
-                    if (_threshold and quality and quality[qpos] > _threshold) or not _threshold:
+                    if (_threshold and quality and quality[qpos] >= _threshold) or not _threshold:
                         if seq[qpos] == 'A':
                             count_a.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'C':
