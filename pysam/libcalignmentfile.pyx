@@ -1,3 +1,4 @@
+
 # cython: embedsignature=True
 # cython: profile=True
 ########################################################
@@ -1508,7 +1509,6 @@ cdef class AlignmentFile(HTSFile):
 
         """
 
-        
         cdef uint32_t contig_length = self.get_reference_length(contig)
         cdef int _start = start if start is not None else 0
         cdef int _stop = stop if stop is not None else contig_length
@@ -1574,7 +1574,7 @@ cdef class AlignmentFile(HTSFile):
             for qpos, refpos in read.get_aligned_pairs(True):
                 if qpos is not None and refpos is not None and \
                    _start <= refpos < _stop:
-                    if quality[qpos] >= quality_threshold or not_check_qual == 1:
+                    if not_check_qual == 1 or quality[qpos] >= quality_threshold:
                         if seq[qpos] == 'A':
                             count_a.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'C':
@@ -1583,6 +1583,8 @@ cdef class AlignmentFile(HTSFile):
                             count_g.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'T':
                             count_t.data.as_ulongs[refpos - _start] += 1
+        if not_check_qual:
+            warnings.warn('All bases were counted')
 
         return count_a, count_c, count_g, count_t
 
