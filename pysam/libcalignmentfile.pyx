@@ -1579,7 +1579,7 @@ cdef class AlignmentFile(HTSFile):
 
         return count_a, count_c, count_g, count_t
 
-    def find_introns(self, read_iterator):
+    def find_introns_slow(self, read_iterator):
         """Return a dictionary {(start, stop): count}
         Listing the intronic sites in the reads (identified by 'N' in the cigar strings),
         and their support ( = number of reads ).
@@ -1614,7 +1614,7 @@ cdef class AlignmentFile(HTSFile):
         samfile.find_introns((read for read in samfile.fetch(...) if read.is_reverse)
         """
         cdef:
-            long base_position = aln.pos
+            long base_position
             str op, nt
             long junc_start, junc_end
 
@@ -1624,6 +1624,7 @@ cdef class AlignmentFile(HTSFile):
         cigar_op = re.compile('[MIDNSH]')
         cigar_nums = re.compile('[0-9]+')
         for r in read_iterator:
+            base_position = r.pos
             cigar_ops = cigar_op.findall(r.cigarstring)
             cigar_bases = cigar_nums.findall(r.cigarstring)
             for op, nt in zip(cigar_ops, cigar_bases):
