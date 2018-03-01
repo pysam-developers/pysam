@@ -1604,6 +1604,39 @@ cdef class AlignmentFile(HTSFile):
                     last_read_pos = read_loc
         return res
 
+    def find_introns(self, read_iterator):
+        """Return a dictionary {(start, stop): count}
+        Listing the intronic sites in the reads (identified by 'N' in the cigar strings),
+        and their support ( = number of reads ).
+
+        read_iterator can be the result of a .fetch(...) call.
+        Or it can be a generator filtering such reads. Example
+        samfile.find_introns((read for read in samfile.fetch(...) if read.is_reverse)
+        """
+        cdef:
+            long base_position = aln.pos
+            str op, nt
+            long junc_start, junc_end
+
+        import collections
+        res = collections.Counter()
+
+        cigar_op = re.compile('[MIDNSH]')
+        cigar_nums = re.compile('[0-9]+')
+        for r in read_iterator:
+            cigar_ops = cigar_op.findall(r.cigarstring)
+            cigar_bases = cigar_nums.findall(r.cigarstring)
+            for op, nt in zip(cigar_ops, cigar_bases):
+                if op in ['M','D']: # only M and D is related to genome position
+                    parsed += int(nt)
+                elif op == 'N':
+                    junc_start = parsed
+                    base_position += int(nt)
+                    junc_end = base_position # 1-pos adjustment to match get_align_pairs
+                    res[(junc_start, junc_end)] += 1
+        return res
+ 
+
     def close(self):
         '''closes the :class:`pysam.AlignmentFile`.'''
 
