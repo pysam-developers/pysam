@@ -1616,6 +1616,7 @@ cdef class AlignmentFile(HTSFile):
         cdef:
             uint32_t base_position, junc_start, nt
             int op
+            AlignedSegment r
 
         import collections
         res = collections.Counter()
