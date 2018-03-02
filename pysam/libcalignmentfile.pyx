@@ -1625,12 +1625,12 @@ cdef class AlignmentFile(HTSFile):
             base_position = r.pos
 
             for op, nt in r.cigartuples:
-                if op in [0, 2, 7, 8]: # only M and D is related to genome position
+                if op in [0, 2, 7, 8]: # only M/=/X (0/7/8) and D (2) is related to genome position
                     base_position += nt
                 elif op == 3: #BAM_CREF_SKIP
                     junc_start = base_position
                     base_position += nt
-                    junc_end = base_position # 1-pos adjustment to match get_align_pairs
+                    junc_end = base_position # match get_align_pairs
                     res[(junc_start, junc_end)] += 1
         return res
  
