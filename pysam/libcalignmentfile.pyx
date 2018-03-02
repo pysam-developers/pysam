@@ -1629,9 +1629,9 @@ cdef class AlignmentFile(HTSFile):
             cigar_bases = cigar_nums.findall(r.cigarstring)
             for op, nt in zip(cigar_ops, cigar_bases):
                 if op in ['M','D']: # only M and D is related to genome position
-                    parsed += int(nt)
+                    base_position += int(nt)
                 elif op == 'N':
-                    junc_start = parsed
+                    junc_start = base_position
                     base_position += int(nt)
                     junc_end = base_position # 1-pos adjustment to match get_align_pairs
                     res[(junc_start, junc_end)] += 1
