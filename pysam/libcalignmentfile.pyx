@@ -1622,7 +1622,7 @@ cdef class AlignmentFile(HTSFile):
         import collections
         res = collections.Counter()
 
-        match_or_deletion = {0, 2, 7, 8} # only M/=/X (0/7/8) and D (2) is related to genome position
+        match_or_deletion = {0, 2, 7, 8} # only M/=/X (0/7/8) and D (2) are related to genome position
         for r in read_iterator:
             base_position = r.pos
 
