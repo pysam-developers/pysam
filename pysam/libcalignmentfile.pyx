@@ -1614,7 +1614,7 @@ cdef class AlignmentFile(HTSFile):
         samfile.find_introns((read for read in samfile.fetch(...) if read.is_reverse)
         """
         cdef:
-            uint32_t base_position, junc_start, junc_end, nt
+            uint32_t base_position, junc_start, nt
             int op
 
         import collections
@@ -1629,8 +1629,7 @@ cdef class AlignmentFile(HTSFile):
                 elif op == 3: #BAM_CREF_SKIP
                     junc_start = base_position
                     base_position += nt
-                    junc_end = base_position # match get_align_pairs
-                    res[(junc_start, junc_end)] += 1
+                    res[(junc_start, base_position)] += 1
         return res
  
 
