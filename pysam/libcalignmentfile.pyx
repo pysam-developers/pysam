@@ -1615,24 +1615,21 @@ cdef class AlignmentFile(HTSFile):
         """
         cdef:
             long base_position
-            str op, nt
+            int op, nt
             long junc_start, junc_end
 
         import collections
         res = collections.Counter()
 
-        cigar_op = re.compile('[MIDNSH]')
-        cigar_nums = re.compile('[0-9]+')
         for r in read_iterator:
             base_position = r.pos
-            cigar_ops = cigar_op.findall(r.cigarstring)
-            cigar_bases = cigar_nums.findall(r.cigarstring)
-            for op, nt in zip(cigar_ops, cigar_bases):
-                if op in ['M','D']: # only M and D is related to genome position
-                    base_position += int(nt)
-                elif op == 'N':
+
+            for op, nt in r.cigartuples:
+                if op in [0, 2, 7, 8]: # only M and D is related to genome position
+                    base_position += nt
+                elif op == 3: #BAM_CREF_SKIP
                     junc_start = base_position
-                    base_position += int(nt)
+                    base_position += nt
                     junc_end = base_position # 1-pos adjustment to match get_align_pairs
                     res[(junc_start, junc_end)] += 1
         return res
