@@ -1617,17 +1617,19 @@ cdef class AlignmentFile(HTSFile):
             uint32_t base_position, junc_start, nt
             int op
             AlignedSegment r
+            int BAM_CREF_SKIP = 3 #BAM_CREF_SKIP
 
         import collections
         res = collections.Counter()
 
+        match_or_deletion = {0, 2, 7, 8} # only M/=/X (0/7/8) and D (2) is related to genome position
         for r in read_iterator:
             base_position = r.pos
 
             for op, nt in r.cigartuples:
-                if op in [0, 2, 7, 8]: # only M/=/X (0/7/8) and D (2) is related to genome position
+                if op in match_or_deletion: 
                     base_position += nt
-                elif op == 3: #BAM_CREF_SKIP
+                elif op == BAM_CREF_SKIP: 
                     junc_start = base_position
                     base_position += nt
                     res[(junc_start, base_position)] += 1
