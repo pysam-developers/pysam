@@ -567,7 +567,7 @@ cdef class AlignmentFile(HTSFile):
     header=None, add_sq_text=False, check_header=True, check_sq=True,
     reference_filename=None, filename=None, index_filename=None,
     filepath_index=None, require_index=False, duplicate_filehandle=True,
-    ignore_truncation=False, n_threads=1)
+    ignore_truncation=False, threads=1)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
@@ -711,7 +711,7 @@ cdef class AlignmentFile(HTSFile):
     format_options: list
         A list of key=value strings, as accepted by --input-fmt-option and
         --output-fmt-option in samtools.
-    n_threads: integer
+    threads: integer
         Number of threads to use for compressing/decompressing BAM/CRAM files.
         Setting threads to > 1 cannot be combined with `ignore_truncation`.
         (Default=1)
@@ -787,7 +787,7 @@ cdef class AlignmentFile(HTSFile):
               duplicate_filehandle=True,
               ignore_truncation=False,
               format_options=None,
-              n_threads=1):
+              threads=1):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
@@ -998,14 +998,14 @@ cdef class AlignmentFile(HTSFile):
                     self.start_offset = self.tell()
 
         # Set any eventual extra threads
-        if n_threads > 1 and ignore_truncation:
+        if threads > 1 and ignore_truncation:
             # This won't raise errors if reaching a truncated alignment,
             # because bgzf_mt_reader in htslib does not deal with
             # bgzf_mt_read_block returning non-zero values, contrary
             # to bgzf_read (https://github.com/samtools/htslib/blob/1.7/bgzf.c#L888)
             # Better to avoid this (for now) than to produce seemingly correct results.
             raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
-        hts_set_threads(self.htsfile, n_threads - 1)
+        hts_set_threads(self.htsfile, threads - 1)
 
     def fetch(self,
               contig=None,

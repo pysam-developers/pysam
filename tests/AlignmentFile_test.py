@@ -1136,12 +1136,12 @@ class TestMultiThread(unittest.TestCase):
             with pysam.AlignmentFile(single_thread_out,
                                      mode='wb',
                                      template=samfile,
-                                     n_threads=1) as single_out:
+                                     threads=1) as single_out:
                 [single_out.write(r) for r in reads]
             with pysam.AlignmentFile(multi_thread_out,
                                      mode='wb',
                                      template=samfile,
-                                     n_threads=2) as multi_out:
+                                     threads=2) as multi_out:
                 [single_out.write(r) for r in reads]
         with pysam.AlignmentFile(input_bam) as inp, \
             pysam.AlignmentFile(single_thread_out) as single, \
@@ -1152,7 +1152,7 @@ class TestMultiThread(unittest.TestCase):
     def TestNoMultiThreadingWithIgnoreTruncation(self):
         self.assertRaises(
             ValueError, pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'),
-                                            n_threads=2,
+                                            threads=2,
                                             ignore_truncation=True)
         )
 
