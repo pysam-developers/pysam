@@ -1149,6 +1149,13 @@ class TestMultiThread(unittest.TestCase):
             for r1, r2, r3 in zip(inp, single, multi):
                 assert r1.to_string == r2.to_string == r3.to_string
 
+    def TestNoMultiThreadingWithIgnoreTruncation(self):
+        self.assertRaises(
+            ValueError, pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'),
+                                            n_threads=2,
+                                            ignore_truncation=True)
+        )
+
 
 class TestExceptions(unittest.TestCase):
 

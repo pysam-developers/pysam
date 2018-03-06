@@ -712,7 +712,9 @@ cdef class AlignmentFile(HTSFile):
         A list of key=value strings, as accepted by --input-fmt-option and
         --output-fmt-option in samtools.
     n_threads: integer
-        Number of threads to use for compressing/decompressing BAM/CRAM files. (Default=1)
+        Number of threads to use for compressing/decompressing BAM/CRAM files.
+        Setting threads to > 1 cannot be combined with `ignore_truncation`.
+        (Default=1)
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -889,7 +891,6 @@ cdef class AlignmentFile(HTSFile):
                                  "header, text or reference_names/reference_lengths")
             
             self.htsfile = self._open_htsfile()
-            hts_set_threads(self.htsfile, n_threads)
 
             if self.htsfile == NULL:
                 if errno:
@@ -995,6 +996,16 @@ cdef class AlignmentFile(HTSFile):
                 # save start of data section
                 if not self.is_stream:
                     self.start_offset = self.tell()
+
+        # Set any eventual extra threads
+        if n_threads > 1 and ignore_truncation:
+            # This won't raise errors if reaching a truncated alignment,
+            # because bgzf_mt_reader in htslib does not deal with
+            # bgzf_mt_read_block returning non-zero values, contrary
+            # to bgzf_read (https://github.com/samtools/htslib/blob/1.7/bgzf.c#L888)
+            # Better to avoid this (for now) than to produce seemingly correct results.
+            raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
+        hts_set_threads(self.htsfile, n_threads - 1)
 
     def fetch(self,
               contig=None,
