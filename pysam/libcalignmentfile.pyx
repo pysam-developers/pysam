@@ -567,7 +567,7 @@ cdef class AlignmentFile(HTSFile):
     header=None, add_sq_text=False, check_header=True, check_sq=True,
     reference_filename=None, filename=None, index_filename=None,
     filepath_index=None, require_index=False, duplicate_filehandle=True,
-    ignore_truncation=False)
+    ignore_truncation=False, n_threads=1)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
@@ -711,6 +711,8 @@ cdef class AlignmentFile(HTSFile):
     format_options: list
         A list of key=value strings, as accepted by --input-fmt-option and
         --output-fmt-option in samtools.
+    n_threads: integer
+        Number of threads to use for compressing/decompressing BAM/CRAM files. (Default=1)
     """
 
     def __cinit__(self, *args, **kwargs):
@@ -782,7 +784,8 @@ cdef class AlignmentFile(HTSFile):
               referencelengths=None,
               duplicate_filehandle=True,
               ignore_truncation=False,
-              format_options=None):
+              format_options=None,
+              n_threads=1):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
@@ -886,6 +889,7 @@ cdef class AlignmentFile(HTSFile):
                                  "header, text or reference_names/reference_lengths")
             
             self.htsfile = self._open_htsfile()
+            hts_set_threads(self.htsfile, n_threads)
 
             if self.htsfile == NULL:
                 if errno:
