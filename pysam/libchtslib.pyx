@@ -329,6 +329,7 @@ cdef class HTSFile(object):
     """
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
+        self.threads = 1
         self.duplicate_filehandle = True
 
     def close(self):
@@ -522,12 +523,16 @@ cdef class HTSFile(object):
     cdef htsFile *_open_htsfile(self) except? NULL:
         cdef char *cfilename
         cdef char *cmode = self.mode
-        cdef int fd, dup_fd
+        cdef int fd, dup_fd, threads
 
+        threads = self.threads - 1
         if isinstance(self.filename, bytes):
             cfilename = self.filename
             with nogil:
-                return hts_open(cfilename, cmode)
+                htsfile = hts_open(cfilename, cmode)
+                if htsfile != NULL:
+                    hts_set_threads(htsfile, threads)
+                return htsfile
         else:
             if isinstance(self.filename, int):
                 fd = self.filename
@@ -560,7 +565,10 @@ cdef class HTSFile(object):
             filename = encode_filename(filename)
             cfilename = filename
             with nogil:
-                return hts_hopen(hfile, cfilename, cmode)
+                htsfile = hts_hopen(hfile, cfilename, cmode)
+                if htsfile != NULL:
+                    hts_set_threads(htsfile, threads)
+                return htsfile
 
     def add_hts_options(self, format_options=None):
         """Given a list of key=value format option strings, add them to an open htsFile

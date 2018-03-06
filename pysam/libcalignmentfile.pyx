@@ -721,6 +721,7 @@ cdef class AlignmentFile(HTSFile):
         self.htsfile = NULL
         self.filename = None
         self.mode = None
+        self.threads = 1
         self.is_stream = False
         self.is_remote = False
         self.index = NULL
@@ -799,7 +800,9 @@ cdef class AlignmentFile(HTSFile):
         cdef char *cindexname = NULL
         cdef char *cmode = NULL
         cdef bam_hdr_t * hdr = NULL
-        
+
+        self.threads = threads
+
         # for backwards compatibility:
         if referencenames is not None:
             reference_names = referencenames
@@ -889,7 +892,6 @@ cdef class AlignmentFile(HTSFile):
             else:
                 raise ValueError("not enough information to construct header. Please provide template, "
                                  "header, text or reference_names/reference_lengths")
-            
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:
@@ -997,7 +999,6 @@ cdef class AlignmentFile(HTSFile):
                 if not self.is_stream:
                     self.start_offset = self.tell()
 
-        # Set any eventual extra threads
         if threads > 1 and ignore_truncation:
             # This won't raise errors if reaching a truncated alignment,
             # because bgzf_mt_reader in htslib does not deal with
@@ -1005,7 +1006,6 @@ cdef class AlignmentFile(HTSFile):
             # to bgzf_read (https://github.com/samtools/htslib/blob/1.7/bgzf.c#L888)
             # Better to avoid this (for now) than to produce seemingly correct results.
             raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
-        hts_set_threads(self.htsfile, threads - 1)
 
     def fetch(self,
               contig=None,
