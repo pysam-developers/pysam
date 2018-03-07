@@ -801,6 +801,13 @@ cdef class AlignmentFile(HTSFile):
         cdef char *cmode = NULL
         cdef bam_hdr_t * hdr = NULL
 
+        if threads > 1 and ignore_truncation:
+           # This won't raise errors if reaching a truncated alignment,
+           # because bgzf_mt_reader in htslib does not deal with
+           # bgzf_mt_read_block returning non-zero values, contrary
+           # to bgzf_read (https://github.com/samtools/htslib/blob/1.7/bgzf.c#L888)
+           # Better to avoid this (for now) than to produce seemingly correct results.
+           raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
         self.threads = threads
 
         # for backwards compatibility:
@@ -998,14 +1005,6 @@ cdef class AlignmentFile(HTSFile):
                 # save start of data section
                 if not self.is_stream:
                     self.start_offset = self.tell()
-
-        if threads > 1 and ignore_truncation:
-            # This won't raise errors if reaching a truncated alignment,
-            # because bgzf_mt_reader in htslib does not deal with
-            # bgzf_mt_read_block returning non-zero values, contrary
-            # to bgzf_read (https://github.com/samtools/htslib/blob/1.7/bgzf.c#L888)
-            # Better to avoid this (for now) than to produce seemingly correct results.
-            raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
 
     def fetch(self,
               contig=None,
