@@ -1250,6 +1250,19 @@ class TestContextManager(unittest.TestCase):
         self.assertEqual(tabixfile.closed, True)
 
 
+class TestMultithreadTabixFile(unittest.TestCase):
+
+    filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
+
+    def testMultithreadEqualsSinglethread(self):
+        with pysam.TabixFile(self.filename) as tabixfile:
+            single = [r for r in tabixfile.fetch()]
+        with pysam.TabixFile(self.filename, threads=2) as tabixfile:
+            multi = [r for r in tabixfile.fetch()]
+        for r1, r2 in zip(single, multi):
+            assert str(r1) == str(r2)
+
+
 if __name__ == "__main__":
     subprocess.call("make -C %s" % TABIX_DATADIR, shell=True)
     unittest.main()
