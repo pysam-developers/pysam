@@ -2966,7 +2966,6 @@ cdef class PileupColumn:
                     buf[n] = p.b.core.qual + 33
                 n += 1
                 assert n < MAX_PILEUP_BUFFER_SIZE
-                
             if not p.is_del:
                 if p.qpos < p.b.core.l_qseq:
                     cc = <uint8_t>seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos)]
@@ -3032,9 +3031,13 @@ cdef class PileupColumn:
             n += 1
             assert n < MAX_PILEUP_BUFFER_SIZE
 
-        # quicker to ensemble all and split than to encode all separately.
-        # ignore last ":"
-        return force_str(PyBytes_FromStringAndSize(<char*>buf, n-1)).split(":")
+        if n == 0:
+            # could be zero if all qualities are too low
+            return ""
+        else:
+            # quicker to ensemble all and split than to encode all separately.
+            # ignore last ":"
+            return force_str(PyBytes_FromStringAndSize(<char*>buf, n-1)).split(":")
 
     def get_query_qualities(self):
         """query base quality scores at pileup column position.
