@@ -1,9 +1,9 @@
 """Benchmarking module for AlignmentFile functionality"""
 import os
-import re
+import pysam
 import unittest
 from TestUtils import BAM_DATADIR, IS_PYTHON3, force_str, flatten_nested_list
-from PileupTestUtils import *
+import PileupTestUtils
 
 
 class TestPileupReadSelection(unittest.TestCase):
@@ -338,32 +338,32 @@ class PileUpColumnTests(unittest.TestCase):
     fn_fasta = os.path.join(BAM_DATADIR, "ex1.fa")
     
     def test_pileup_depths_are_equal(self):
-        samtools_result = build_depth_with_samtoolspipe(self.fn)
-        pysam_result = build_depth_with_filter_with_pysam(self.fn)
+        samtools_result = PileupTestUtils.build_depth_with_samtoolspipe(self.fn)
+        pysam_result = PileupTestUtils.build_depth_with_filter_with_pysam(self.fn)
         self.assertEqual(pysam_result, samtools_result)
 
     def test_pileup_query_bases_without_reference_are_equal(self):
-        samtools_result = build_query_bases_with_samtoolspipe(self.fn)
-        pysam_result = build_query_bases_with_pysam(self.fn)
+        samtools_result = PileupTestUtils.build_query_bases_with_samtoolspipe(self.fn)
+        pysam_result = PileupTestUtils.build_query_bases_with_pysam(self.fn)
         self.assertEqual(["".join(x) for x in pysam_result], samtools_result)
 
     def test_pileup_query_bases_with_reference_are_equal(self):
-        samtools_result = build_query_bases_with_samtoolspipe(self.fn, "-f", self.fn_fasta)
+        samtools_result = PileupTestUtils.build_query_bases_with_samtoolspipe(self.fn, "-f", self.fn_fasta)
         with pysam.FastaFile(self.fn_fasta) as fasta:
-            pysam_result = build_query_bases_with_pysam(self.fn, fastafile=fasta, stepper="samtools")
+            pysam_result = PileupTestUtils.build_query_bases_with_pysam(self.fn, fastafile=fasta, stepper="samtools")
         self.assertEqual(["".join(x) for x in pysam_result], samtools_result)
         
     def test_pileup_query_qualities_are_equal(self):
-        samtools_result = build_query_qualities_with_samtoolspipe(self.fn)
-        pysam_result = build_query_qualities_with_pysam(self.fn)
+        samtools_result = PileupTestUtils.build_query_qualities_with_samtoolspipe(self.fn)
+        pysam_result = PileupTestUtils.build_query_qualities_with_pysam(self.fn)
         pysam_result = [
             [chr(min(126, x + 33)) for x in l] for l in pysam_result]
         self.assertEqual("".join(flatten_nested_list(pysam_result)),
                          "".join(flatten_nested_list(samtools_result)))
 
     def test_pileup_mapping_qualities_are_equal(self):
-        samtools_result = build_mapping_qualities_with_samtoolspipe(self.fn)
-        pysam_result = build_mapping_qualities_with_pysam(self.fn)
+        samtools_result = PileupTestUtils.build_mapping_qualities_with_samtoolspipe(self.fn)
+        pysam_result = PileupTestUtils.build_mapping_qualities_with_pysam(self.fn)
         # convert to chars
         pysam_result = [
             [chr(min(126, x + 33)) for x in l] for l in pysam_result]
@@ -372,8 +372,8 @@ class PileUpColumnTests(unittest.TestCase):
                          "".join(flatten_nested_list(samtools_result)))
 
     def test_pileup_query_qualities_from_pileups_are_equal(self):
-        samtools_result = build_query_qualities_with_samtoolspipe(self.fn)
-        pysam_result = build_query_qualities_with_pysam_pileups(self.fn)
+        samtools_result = PileupTestUtils.build_query_qualities_with_samtoolspipe(self.fn)
+        pysam_result = PileupTestUtils.build_query_qualities_with_pysam_pileups(self.fn)
         pysam_result = [
             "".join([chr(min(126, x + 33)) for x in l]) for l in pysam_result]
 

@@ -2804,8 +2804,8 @@ cdef class PileupColumn:
     property reference_name:
         """:term:`reference` name (None if no AlignmentFile is associated)"""
         def __get__(self):
-            if self._alignment_file is not None:
-                return self._alignment_file.getrname(self.tid)
+            if self.header is not None:
+                return self.header.get_reference_name(self.tid)
             return None
 
     property nsegments:
