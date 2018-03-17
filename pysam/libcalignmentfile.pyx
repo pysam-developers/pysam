@@ -1579,7 +1579,7 @@ cdef class AlignmentFile(HTSFile):
 
         return count_a, count_c, count_g, count_t
 
-    def find_introns(self, read_iterator):
+    def find_introns_slow(self, read_iterator):
         """Return a dictionary {(start, stop): count}
         Listing the intronic sites in the reads (identified by 'N' in the cigar strings),
         and their support ( = number of reads ).
@@ -1603,6 +1603,38 @@ cdef class AlignmentFile(HTSFile):
                         del stop
                     last_read_pos = read_loc
         return res
+
+    def find_introns(self, read_iterator):
+        """Return a dictionary {(start, stop): count}
+        Listing the intronic sites in the reads (identified by 'N' in the cigar strings),
+        and their support ( = number of reads ).
+
+        read_iterator can be the result of a .fetch(...) call.
+        Or it can be a generator filtering such reads. Example
+        samfile.find_introns((read for read in samfile.fetch(...) if read.is_reverse)
+        """
+        cdef:
+            uint32_t base_position, junc_start, nt
+            int op
+            AlignedSegment r
+            int BAM_CREF_SKIP = 3 #BAM_CREF_SKIP
+
+        import collections
+        res = collections.Counter()
+
+        match_or_deletion = {0, 2, 7, 8} # only M/=/X (0/7/8) and D (2) are related to genome position
+        for r in read_iterator:
+            base_position = r.pos
+
+            for op, nt in r.cigartuples:
+                if op in match_or_deletion: 
+                    base_position += nt
+                elif op == BAM_CREF_SKIP: 
+                    junc_start = base_position
+                    base_position += nt
+                    res[(junc_start, base_position)] += 1
+        return res
+ 
 
     def close(self):
         '''closes the :class:`pysam.AlignmentFile`.'''
