@@ -9,8 +9,6 @@ import unittest
 import os
 import shutil
 import sys
-import re
-import copy
 import collections
 import subprocess
 import logging
