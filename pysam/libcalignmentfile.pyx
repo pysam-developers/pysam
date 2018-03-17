@@ -1,3 +1,4 @@
+
 # cython: embedsignature=True
 # cython: profile=True
 ########################################################
@@ -1508,7 +1509,6 @@ cdef class AlignmentFile(HTSFile):
 
         """
 
-        
         cdef uint32_t contig_length = self.get_reference_length(contig)
         cdef int _start = start if start is not None else 0
         cdef int _stop = stop if stop is not None else contig_length
@@ -1537,12 +1537,14 @@ cdef class AlignmentFile(HTSFile):
         cdef int refpos
         cdef int c = 0
         cdef int filter_method = 0
+
+
         if read_callback == "all":
             filter_method = 1
         elif read_callback == "nofilter":
             filter_method = 2
 
-        cdef int _threshold = quality_threshold
+        cdef int _threshold = quality_threshold or 0
         for read in self.fetch(contig=contig,
                                reference=reference,
                                start=start,
@@ -1564,10 +1566,13 @@ cdef class AlignmentFile(HTSFile):
             # count
             seq = read.seq
             quality = read.query_qualities
+            
             for qpos, refpos in read.get_aligned_pairs(True):
                 if qpos is not None and refpos is not None and \
                    _start <= refpos < _stop:
-                    if quality[qpos] >= quality_threshold:
+
+                    # only check base quality if _threshold > 0
+                    if (_threshold and quality and quality[qpos] >= _threshold) or not _threshold:
                         if seq[qpos] == 'A':
                             count_a.data.as_ulongs[refpos - _start] += 1
                         if seq[qpos] == 'C':
