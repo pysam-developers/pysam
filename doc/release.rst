@@ -2,6 +2,17 @@
 Release notes
 =============
 
+Release 0.14.1
+==============
+
+This is a bugfix release.
+
+* [#621] Add a warning to count_coverage when an alignment has an
+  empty QUAL field
+* [#635] Speed-up of AlignedSegment.find_intro()
+* treat border case of all bases in pileup column below quality score
+* [#634] Fix access to pileup reference_sequence
+
 Release 0.14.0
 ==============
 

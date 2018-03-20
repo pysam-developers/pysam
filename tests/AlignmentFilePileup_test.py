@@ -163,6 +163,10 @@ class TestPileupObjects(unittest.TestCase):
                     "chromosome/target id mismatch in position 1: %s != %s" %
                     (pcolumn1.reference_id, 0))
                 self.assertEqual(
+                    pcolumn1.reference_name, "chr1",
+                    "chromosome mismatch in position 1: %s != %s" %
+                    (pcolumn1.reference_name, "chr1"))
+                self.assertEqual(
                     pcolumn1.reference_pos, 105 - 1,
                     "position mismatch in position 1: %s != %s" %
                     (pcolumn1.reference_pos, 105 - 1))
@@ -182,6 +186,10 @@ class TestPileupObjects(unittest.TestCase):
                     pcolumn2.reference_id, 1,
                     "chromosome/target id mismatch in position 1: %s != %s" %
                     (pcolumn2.reference_id, 1))
+                self.assertEqual(
+                    pcolumn2.reference_name, "chr2",
+                    "chromosome mismatch in position 1: %s != %s" %
+                    (pcolumn2.reference_name, "chr2"))
                 self.assertEqual(
                     pcolumn2.reference_pos, 1480 - 1,
                     "position mismatch in position 1: %s != %s" %
