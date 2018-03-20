@@ -63,6 +63,23 @@ static inline char gt2iupac(char a, char b)
     return iupac[(int)a][(int)b];
 }
 
+static inline int iupac_consistent(char iupac, char nt)
+{
+    static const char iupac_mask[90] = {
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,14,2,
+        13,0,0,4,11,0,0,12,0,3,15,0,0,0,5,6,8,0,7,9,0,10
+    };
+    if ( iupac > 89 ) return 0;
+    if ( nt > 90 ) nt -=  32;  // lowercase 
+    if ( nt=='A' ) nt = 1;
+    else if ( nt=='C' ) nt = 2;
+    else if ( nt=='G' ) nt = 4;
+    else if ( nt=='T' ) nt = 8;
+    return iupac_mask[(int)iupac] & nt ? 1 : 0;
+}
+
 static inline char nt_to_upper(char nt)
 {
     if ( nt < 97 ) return nt;

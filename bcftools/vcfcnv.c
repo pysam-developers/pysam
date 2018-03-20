@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2014-2015 Genome Research Ltd.
+   Copyright (c) 2014-2018 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -338,7 +338,7 @@ static void plot_sample(args_t *args, sample_t *smpl)
             "csv.register_dialect('tab', delimiter='\\t', quoting=csv.QUOTE_NONE)\n"
             "\n"
             "dat = {}\n"
-            "with open('%s', 'rb') as f:\n"
+            "with open('%s', 'r') as f:\n"
             "    reader = csv.reader(f, 'tab')\n"
             "    for row in reader:\n"
             "        chr = row[0]\n"
@@ -347,7 +347,7 @@ static void plot_sample(args_t *args, sample_t *smpl)
             "        dat[chr].append([row[1], float(row[2]), float(row[3])])\n"
             "\n"
             "cnv = {}\n"
-            "with open('%s', 'rb') as f:\n"
+            "with open('%s', 'r') as f:\n"
             "    reader = csv.reader(f, 'tab')\n"
             "    for row in reader:\n"
             "        chr = row[0]\n"
@@ -429,7 +429,7 @@ static void create_plots(args_t *args)
             "\n"
             "def chroms_to_plot(th):\n"
             "   dat = {}\n"
-            "   with open('%s/summary.tab', 'rb') as f:\n"
+            "   with open('%s/summary.tab', 'r') as f:\n"
             "       reader = csv.reader(f, 'tab')\n"
             "       for row in reader:\n"
             "           if row[0]!='RG': continue\n"
@@ -451,14 +451,14 @@ static void create_plots(args_t *args)
             "   plot_chroms = chroms_to_plot(args.plot_threshold)\n"
             "\n"
             "def read_dat(file,dat,plot_chr):\n"
-            "   with open(file, 'rb') as f:\n"
+            "   with open(file, 'r') as f:\n"
             "       reader = csv.reader(f, 'tab')\n"
             "       for row in reader:\n"
             "           chr = row[0]\n"
             "           if chr != plot_chr: continue\n"
             "           dat.append([row[1], float(row[2]), float(row[3])])\n"
             "def read_cnv(file,cnv,plot_chr):\n"
-            "   with open(file, 'rb') as f:\n"
+            "   with open(file, 'r') as f:\n"
             "       reader = csv.reader(f, 'tab')\n"
             "       for row in reader:\n"
             "           chr = row[0]\n"

@@ -2,7 +2,7 @@
 
 /*  vcfplugin.c -- plugin modules for operating on VCF/BCF files.
 
-    Copyright (C) 2013-2016 Genome Research Ltd.
+    Copyright (C) 2013-2017 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -639,7 +639,11 @@ int main_plugin(int argc, char *argv[])
             if ( !pass ) continue;
         }
         line = args->plugin.process(line);
-        if ( line ) bcf_write1(args->out_fh, args->hdr_out, line);
+        if ( line )
+        {
+            if ( line->errcode ) error("[E::main_plugin] Unchecked error (%d), exiting\n",line->errcode);
+            bcf_write1(args->out_fh, args->hdr_out, line);
+        }
     }
     destroy_data(args);
     bcf_sr_destroy(args->files);

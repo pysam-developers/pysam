@@ -109,6 +109,8 @@ int regidx_parse_reg(const char*,char**,char**,uint32_t*,uint32_t*,void*,void*);
 
 /*
  *  regidx_init() - creates new index
+ *  regidx_init_string() - creates new index, from a string rather than from a file
+ *
  *  @param fname:  input file name or NULL if regions will be added one-by-one via regidx_insert()
  *  @param parsef: regidx_parse_bed, regidx_parse_tab or see description of regidx_parse_f. If NULL,
  *                 the format will be autodected, currently either regidx_parse_tab (the default) or
@@ -121,6 +123,7 @@ int regidx_parse_reg(const char*,char**,char**,uint32_t*,uint32_t*,void*,void*);
  *  Returns index on success or NULL on error.
  */
 regidx_t *regidx_init(const char *fname, regidx_parse_f parsef, regidx_free_f freef, size_t payload_size, void *usr);
+regidx_t *regidx_init_string(const char *string, regidx_parse_f parsef, regidx_free_f freef, size_t payload_size, void *usr);
 
 /*
  *  regidx_destroy() - free memory allocated by regidx_init
@@ -183,6 +186,11 @@ int regitr_overlap(regitr_t *itr);
  *  Returns 0 when done or 1 when itr is set to next region
  */
 int regitr_loop(regitr_t *itr);
+
+/*
+ *  regitr_copy() - create a copy of an iterator for a repeated iteration with regitr_loop
+ */
+void regitr_copy(regitr_t *dst, regitr_t *src);
 
 #ifdef __cplusplus
 }

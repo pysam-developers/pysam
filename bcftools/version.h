@@ -1,1 +1,1 @@
-#define BCFTOOLS_VERSION "1.6"
+#define BCFTOOLS_VERSION "1.7"

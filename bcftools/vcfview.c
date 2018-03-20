@@ -1,6 +1,6 @@
 /*  vcfview.c -- VCF/BCF conversion, view, subset and filter VCF/BCF files.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2018 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -342,11 +342,14 @@ int subset_vcf(args_t *args, bcf1_t *line)
             an += args->ac[i];
     }
 
+    int update_ac = args->calc_ac;
     if (args->n_samples)
     {
         int non_ref_ac_sub = 0, *ac_sub = (int*) calloc(line->n_allele,sizeof(int));
         bcf_subset(args->hdr, line, args->n_samples, args->imap);
-        if (args->calc_ac) {
+        if ( args->calc_ac && !bcf_get_fmt(args->hdr,line,"GT") ) update_ac = 0;
+        if ( update_ac )
+        {
             bcf_calc_ac(args->hsub, line, ac_sub, BCF_UN_FMT); // recalculate AC and AN
             an = 0;
             for (i=0; i<line->n_allele; i++) {
@@ -442,7 +445,7 @@ int subset_vcf(args_t *args, bcf1_t *line)
         if (args->uncalled == FLT_INCLUDE && an > 0) return 0; // select uncalled
         if (args->uncalled == FLT_EXCLUDE && an == 0) return 0; // skip if uncalled
     }
-    if (args->calc_ac && args->update_info) {
+    if (update_ac && args->update_info) {
         bcf_update_info_int32(args->hdr, line, "AC", &args->ac[1], line->n_allele-1);
         bcf_update_info_int32(args->hdr, line, "AN", &an, 1);
     }

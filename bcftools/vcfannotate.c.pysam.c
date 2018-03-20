@@ -2,7 +2,7 @@
 
 /*  vcfannotate.c -- Annotate and edit VCF/BCF files.
 
-    Copyright (C) 2013-2016 Genome Research Ltd.
+    Copyright (C) 2013-2018 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -97,6 +97,7 @@ typedef struct _args_t
     filter_t *filter;
     char *filter_str;
     int filter_logic;   // include or exclude sites which match the filters? One of FLT_INCLUDE/FLT_EXCLUDE
+    int keep_sites;
 
     rm_tag_t *rm;           // tags scheduled for removal
     int nrm;
@@ -265,7 +266,7 @@ static void init_remove_annots(args_t *args)
                 tag->key = strdup(str.s);
                 tag->hdr_id = bcf_hdr_id2int(args->hdr, BCF_DT_ID, tag->key);
                 if ( !bcf_hdr_idinfo_exists(args->hdr,BCF_HL_FLT,tag->hdr_id) ) error("Cannot remove %s, not defined in the header.\n", str.s);
-                bcf_hdr_remove(args->hdr_out,BCF_HL_FLT,tag->key);
+                if ( !args->keep_sites ) bcf_hdr_remove(args->hdr_out,BCF_HL_FLT,tag->key);
             }
             else
             {
@@ -295,32 +296,35 @@ static void init_remove_annots(args_t *args)
                 tag->key = strdup(str.s);
                 if ( type==BCF_HL_INFO ) tag->handler = remove_info_tag;
                 else if ( type==BCF_HL_FMT ) tag->handler = remove_format_tag;
-                bcf_hdr_remove(args->hdr_out,type,tag->key);
+                if ( !args->keep_sites ) bcf_hdr_remove(args->hdr_out,type,tag->key);
             }
         }
         else if ( !strcasecmp("ID",str.s) ) tag->handler = remove_id;
         else if ( !strcasecmp("FILTER",str.s) )
         {
             tag->handler = remove_filter;
-            remove_hdr_lines(args->hdr_out,BCF_HL_FLT);
+            if ( !args->keep_sites ) remove_hdr_lines(args->hdr_out,BCF_HL_FLT);
         }
         else if ( !strcasecmp("QUAL",str.s) ) tag->handler = remove_qual;
         else if ( !strcasecmp("INFO",str.s) ) 
         {
             tag->handler = remove_info;
-            remove_hdr_lines(args->hdr_out,BCF_HL_INFO);
+            if ( !args->keep_sites ) remove_hdr_lines(args->hdr_out,BCF_HL_INFO);
         }
         else if ( !strcasecmp("FMT",str.s) || !strcasecmp("FORMAT",str.s) )
         {
             tag->handler = remove_format;
-            remove_hdr_lines(args->hdr_out,BCF_HL_FMT);
+            if ( !args->keep_sites ) remove_hdr_lines(args->hdr_out,BCF_HL_FMT);
         }
         else if ( str.l )
         {
-            if ( str.s[0]=='#' && str.s[1]=='#' )
-                bcf_hdr_remove(args->hdr_out,BCF_HL_GEN,str.s+2);
-            else
-                bcf_hdr_remove(args->hdr_out,BCF_HL_STR,str.s);
+            if ( !args->keep_sites )
+            {
+                if ( str.s[0]=='#' && str.s[1]=='#' )
+                    bcf_hdr_remove(args->hdr_out,BCF_HL_GEN,str.s+2);
+                else
+                    bcf_hdr_remove(args->hdr_out,BCF_HL_STR,str.s);
+            }
             args->nrm--;
         }
 
@@ -356,7 +360,7 @@ static void init_remove_annots(args_t *args)
                 tag->hdr_id = bcf_hdr_id2int(args->hdr, BCF_DT_ID, hrec->vals[k]);
             }
             tag->key = strdup(hrec->vals[k]);
-            bcf_hdr_remove(args->hdr_out,hrec->type,tag->key);
+            if ( !args->keep_sites ) bcf_hdr_remove(args->hdr_out,hrec->type,tag->key);
         }
     }
     khash_str2int_destroy_free(keep);
@@ -1872,6 +1876,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -h, --header-lines <file>      lines which should be appended to the VCF header\n");
     fprintf(bcftools_stderr, "   -I, --set-id [+]<format>       set ID column, see man page for details\n");
     fprintf(bcftools_stderr, "   -i, --include <expr>           select sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "   -k, --keep-sites               leave -i/-e sites unchanged instead of discarding them\n");
     fprintf(bcftools_stderr, "   -m, --mark-sites [+-]<tag>     add INFO/tag flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
     fprintf(bcftools_stderr, "       --no-version               do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "   -o, --output <file>            write output to a file [standard output]\n");
@@ -1881,7 +1886,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "       --rename-chrs <file>       rename sequences according to map file: from\\tto\n");
     fprintf(bcftools_stderr, "   -s, --samples [^]<list>        comma separated list of samples to annotate (or exclude with \"^\" prefix)\n");
     fprintf(bcftools_stderr, "   -S, --samples-file [^]<file>   file of samples to annotate (or exclude with \"^\" prefix)\n");
-    fprintf(bcftools_stderr, "   -x, --remove <list>            list of annotations to remove (e.g. ID,INFO/DP,FORMAT/DP,FILTER). See man page for details\n");
+    fprintf(bcftools_stderr, "   -x, --remove <list>            list of annotations (e.g. ID,INFO/DP,FORMAT/DP,FILTER) to remove (or keep with \"^\" prefix). See man page for details\n");
     fprintf(bcftools_stderr, "       --threads <int>            number of extra output compression threads [0]\n");
     fprintf(bcftools_stderr, "\n");
     exit(1);
@@ -1903,6 +1908,7 @@ int main_vcfannotate(int argc, char *argv[])
 
     static struct option loptions[] =
     {
+        {"keep-sites",required_argument,NULL,'k'},
         {"mark-sites",required_argument,NULL,'m'},
         {"set-id",required_argument,NULL,'I'},
         {"output",required_argument,NULL,'o'},
@@ -1923,9 +1929,10 @@ int main_vcfannotate(int argc, char *argv[])
         {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
-    while ((c = getopt_long(argc, argv, "h:?o:O:r:R:a:x:c:i:e:S:s:I:m:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:?o:O:r:R:a:x:c:i:e:S:s:I:m:k",loptions,NULL)) >= 0)
     {
         switch (c) {
+            case 'k': args->keep_sites = 1; break;
             case 'm': 
                 args->mark_sites_logic = MARK_LISTED;
                 if ( optarg[0]=='+' ) args->mark_sites = optarg+1;
@@ -2010,7 +2017,11 @@ int main_vcfannotate(int argc, char *argv[])
         {
             int pass = filter_test(args->filter, line, NULL);
             if ( args->filter_logic & FLT_EXCLUDE ) pass = pass ? 0 : 1;
-            if ( !pass ) continue;
+            if ( !pass ) 
+            {
+                if ( args->keep_sites ) bcf_write1(args->out_fh, args->hdr_out, line);
+                continue;
+            }
         }
         annotate(args, line);
         bcf_write1(args->out_fh, args->hdr_out, line);

@@ -1,7 +1,7 @@
 #include "bcftools.pysam.h"
 
 /* 
-    Copyright (C) 2014-2016 Genome Research Ltd.
+    Copyright (C) 2014-2017 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -189,6 +189,35 @@ int regidx_insert(regidx_t *idx, char *line)
     if ( ret==-1 ) return 0;    // skip the line
     regidx_push(idx, chr_from,chr_to,beg,end,idx->payload);
     return 0;
+}
+
+regidx_t *regidx_init_string(const char *str, regidx_parse_f parser, regidx_free_f free_f, size_t payload_size, void *usr_dat)
+{
+    regidx_t *idx = (regidx_t*) calloc(1,sizeof(regidx_t));
+    if ( !idx ) return NULL;
+
+    idx->free  = free_f;
+    idx->parse = parser ? parser : regidx_parse_tab;
+    idx->usr   = usr_dat;
+    idx->seq2regs = khash_str2int_init();
+    idx->payload_size = payload_size;
+    if ( payload_size ) idx->payload = malloc(payload_size);
+
+    kstring_t tmp = {0,0,0};
+    const char *ss = str;
+    while ( *ss )
+    {
+        while ( *ss && isspace(*ss) ) ss++;
+        const char *se = ss;
+        while ( *se && *se!='\r' && *se!='\n' ) se++;
+        tmp.l = 0;
+        kputsn(ss, se-ss, &tmp);
+        regidx_insert(idx,tmp.s);
+        while ( *se && isspace(*se) ) se++;
+        ss = se;
+    }
+    free(tmp.s);
+    return idx;
 }
 
 regidx_t *regidx_init(const char *fname, regidx_parse_f parser, regidx_free_f free_f, size_t payload_size, void *usr_dat)
@@ -596,5 +625,14 @@ int regitr_loop(regitr_t *regitr)
     return 1;
 }
 
+
+void regitr_copy(regitr_t *dst, regitr_t *src)
+{
+    _itr_t *dst_itr = (_itr_t*) dst->itr;
+    _itr_t *src_itr = (_itr_t*) src->itr;
+    *dst_itr = *src_itr;
+    *dst = *src;
+    dst->itr = dst_itr;
+}
 
 

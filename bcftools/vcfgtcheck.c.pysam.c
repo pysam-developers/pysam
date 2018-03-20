@@ -2,7 +2,7 @@
 
 /*  vcfgtcheck.c -- Check sample identity.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2018 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -83,7 +83,7 @@ static void plot_check(args_t *args, char *target_sample, char *query_sample)
             "sample_ids = False\n"
             "\n"
             "dat = []\n"
-            "with open('%s.tab', 'rb') as f:\n"
+            "with open('%s.tab', 'r') as f:\n"
             "    reader = csv.reader(f, 'tab')\n"
             "    for row in reader:\n"
             "        if row[0][0]=='#': continue\n"
@@ -155,7 +155,7 @@ static void plot_cross_check(args_t *args)
             "dat   = None\n"
             "min   = None\n"
             "max   = None\n"
-            "with open('%s.tab', 'rb') as f:\n"
+            "with open('%s.tab', 'r') as f:\n"
             "   reader = csv.reader(f, 'tab')\n"
             "   i = 0\n"
             "   for row in reader:\n"

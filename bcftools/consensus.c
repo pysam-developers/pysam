@@ -77,6 +77,7 @@ typedef struct
     rbuf_t vcf_rbuf;
     bcf1_t **vcf_buf;
     int nvcf_buf, rid;
+    char *chr;
 
     regidx_t *mask;
     regitr_t *itr;
@@ -121,6 +122,8 @@ static void destroy_chain(args_t *args)
     free(chain->block_lengths);
     free(chain);
     chain = NULL;
+    free(args->chr);
+    args->chr = NULL;
 }
 
 static void print_chain(args_t *args)
@@ -162,7 +165,7 @@ static void print_chain(args_t *args)
         score += chain->block_lengths[n];
     }
     score += last_block_size;
-    fprintf(args->fp_chain, "chain %d %s %d + %d %d %s %d + %d %d %d\n", score, bcf_hdr_id2name(args->hdr,args->rid), ref_end_pos, chain->ori_pos, ref_end_pos, bcf_hdr_id2name(args->hdr,args->rid), alt_end_pos, chain->ori_pos, alt_end_pos, ++args->chain_id);
+    fprintf(args->fp_chain, "chain %d %s %d + %d %d %s %d + %d %d %d\n", score, args->chr, ref_end_pos, chain->ori_pos, ref_end_pos, args->chr, alt_end_pos, chain->ori_pos, alt_end_pos, ++args->chain_id);
     for (n=0; n<chain->num; n++) {
         fprintf(args->fp_chain, "%d %d %d\n", chain->block_lengths[n], chain->ref_gaps[n], chain->alt_gaps[n]);
     }
@@ -248,6 +251,7 @@ static void destroy_data(args_t *args)
         if ( args->vcf_buf[i] ) bcf_destroy1(args->vcf_buf[i]);
     free(args->vcf_buf);
     free(args->fa_buf.s);
+    free(args->chr);
     if ( args->mask ) regidx_destroy(args->mask);
     if ( args->itr ) regitr_destroy(args->itr);
     if ( args->chain_fname )
@@ -276,6 +280,7 @@ static void init_region(args_t *args, char *line)
             else to--;
         }
     }
+    args->chr = strdup(line);
     args->rid = bcf_hdr_name2id(args->hdr,line);
     if ( args->rid<0 ) fprintf(stderr,"Warning: Sequence \"%s\" not in %s\n", line,args->fname);
     args->fa_buf.l = 0;
@@ -380,7 +385,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         if ( regidx_overlap(args->mask, chr,start,end,NULL) ) return;
     }
 
-    int i, ialt = 1;
+    int i, ialt = 1;    // the alternate allele
     if ( args->isample >= 0 )
     {
         bcf_unpack(rec, BCF_UN_FMT);
@@ -417,6 +422,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
             {
                 char ial = rec->d.allele[ialt][0];
                 char jal = rec->d.allele[jalt][0];
+                if ( !ialt ) ialt = jalt;   // only ialt is used, make sure 0/1 is not ignored
                 rec->d.allele[ialt][0] = gt2iupac(ial,jal);
             }
         }
@@ -565,11 +571,10 @@ static void apply_variant(args_t *args, bcf1_t *rec)
 
 static void mask_region(args_t *args, char *seq, int len)
 {
-    char *chr = (char*)bcf_hdr_id2name(args->hdr,args->rid);
     int start = args->fa_src_pos - len;
     int end   = args->fa_src_pos;
 
-    if ( !regidx_overlap(args->mask, chr,start,end, args->itr) ) return;
+    if ( !regidx_overlap(args->mask, args->chr,start,end, args->itr) ) return;
 
     int idx_start, idx_end, i;
     while ( regitr_overlap(args->itr) )

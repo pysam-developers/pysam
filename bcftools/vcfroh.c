@@ -1,6 +1,6 @@
 /*  vcfroh.c -- HMM model for detecting runs of autozygosity.
 
-    Copyright (C) 2013-2015 Genome Research Ltd.
+    Copyright (C) 2013-2017 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -526,6 +526,8 @@ static void flush_viterbi(args_t *args, int ismpl)
                         smpl->rg.state = 1;
                         smpl->rg.beg = smpl->sites[i];
                         smpl->rg.rid = args->prev_rid;
+                        smpl->rg.qual  = qual;
+                        smpl->rg.nqual = 1;
                     }
                 }
                 else if ( state )

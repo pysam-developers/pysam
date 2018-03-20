@@ -453,7 +453,7 @@ static void create_eval_plot(args_t *args)
             "import csv\n"
             "csv.register_dialect('tab', delimiter='\\t', quoting=csv.QUOTE_NONE)\n"
             "dat = []\n"
-            "with open('%s.eval', 'rb') as f:\n"
+            "with open('%s.eval', 'r') as f:\n"
             "\treader = csv.reader(f, 'tab')\n"
             "\tfor row in reader:\n"
             "\t\tif row[0][0]!='#': dat.append(row)\n"

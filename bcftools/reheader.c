@@ -1,6 +1,6 @@
 /*  reheader.c -- reheader subcommand.
 
-    Copyright (C) 2014,2016 Genome Research Ltd.
+    Copyright (C) 2014-2017 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -467,7 +467,7 @@ static void usage(args_t *args)
     exit(1);
 }
 
-int main_bcftools_reheader(int argc, char *argv[])
+int main_reheader(int argc, char *argv[])
 {
     int c;
     args_t *args  = (args_t*) calloc(1,sizeof(args_t));

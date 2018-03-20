@@ -49,7 +49,7 @@ int main_vcfcall(int argc, char *argv[]);
 int main_vcfannotate(int argc, char *argv[]);
 int main_vcfroh(int argc, char *argv[]);
 int main_vcfconcat(int argc, char *argv[]);
-int main_bcftools_reheader(int argc, char *argv[]);
+int main_reheader(int argc, char *argv[]);
 int main_vcfconvert(int argc, char *argv[]);
 int main_vcfcnv(int argc, char *argv[]);
 #if USE_GPL
@@ -125,7 +125,7 @@ static cmd_t cmds[] =
       .alias = "query",
       .help  = "transform VCF/BCF into user-defined formats"
     },
-    { .func  = main_bcftools_reheader,
+    { .func  = main_reheader,
       .alias = "reheader",
       .help  = "modify VCF/BCF header, change sample names"
     },

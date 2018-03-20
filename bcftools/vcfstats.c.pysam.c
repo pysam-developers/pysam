@@ -2,7 +2,7 @@
 
 /*  vcfstats.c -- Produces stats which can be plotted using plot-vcfstats.
 
-    Copyright (C) 2012-2016 Genome Research Ltd.
+    Copyright (C) 2012-2017 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -89,7 +89,7 @@ typedef struct
     int in_frame, out_frame, na_frame, in_frame_alt1, out_frame_alt1, na_frame_alt1;
     int subst[15];
     int *smpl_hets, *smpl_homRR, *smpl_homAA, *smpl_ts, *smpl_tv, *smpl_indels, *smpl_ndp, *smpl_sngl;
-    int *smpl_hapRef, *smpl_hapAlt;
+    int *smpl_hapRef, *smpl_hapAlt, *smpl_missing;
     int *smpl_indel_hets, *smpl_indel_homs;
     int *smpl_frm_shifts; // not-applicable, in-frame, out-frame
     unsigned long int *smpl_dp;
@@ -307,7 +307,7 @@ int indel_ctx_type(indel_ctx_t *ctx, char *chr, int pos, char *ref, char *alt, i
 
     // Sanity check: the reference sequence must match the REF allele
     for (i=0; i<fai_ref_len && i<ref_len; i++)
-        if ( ref[i] != fai_ref[i] && ref[i] - 32 != fai_ref[i] )
+        if ( ref[i] != fai_ref[i] && ref[i] - 32 != fai_ref[i] && !iupac_consistent(fai_ref[i], ref[i]) )
             error("\nSanity check failed, the reference sequence differs: %s:%d+%d .. %c vs %c\n", chr, pos, i, ref[i],fai_ref[i]);
 
     // Count occurrences of all possible kmers
@@ -472,6 +472,7 @@ static void init_stats(args_t *args)
         #endif
         if ( args->files->n_smpl )
         {
+            stats->smpl_missing = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_hets   = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_homAA  = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_homRR  = (int *) calloc(args->files->n_smpl,sizeof(int));
@@ -553,6 +554,7 @@ static void destroy_stats(args_t *args)
         #endif
         free(stats->insertions);
         free(stats->deletions);
+        free(stats->smpl_missing);
         free(stats->smpl_hets);
         free(stats->smpl_homAA);
         free(stats->smpl_homRR);
@@ -860,7 +862,11 @@ static void do_sample_stats(args_t *args, stats_t *stats, bcf_sr_t *reader, int 
         {
             int ial, jal;
             int gt = bcf_gt_type(fmt_ptr, reader->samples[is], &ial, &jal);
-            if ( gt==GT_UNKN ) continue;
+            if ( gt==GT_UNKN )
+            {
+                stats->smpl_missing[is]++;
+                continue;
+            }
             if ( gt==GT_HAPL_R || gt==GT_HAPL_A )
             {
                 if ( line_type&VCF_INDEL && stats->smpl_frm_shifts )
@@ -1497,18 +1503,19 @@ static void print_stats(args_t *args)
 
     if ( args->files->n_smpl )
     {
-        fprintf(bcftools_stdout, "# PSC, Per-sample counts. Note that the ref/het/hom counts include only SNPs, for indels see PSI. Haploid counts include both SNPs and indels.\n");
+        fprintf(bcftools_stdout, "# PSC, Per-sample counts. Note that the ref/het/hom counts include only SNPs, for indels see PSI. The rest include both SNPs and indels.\n");
         fprintf(bcftools_stdout, "# PSC\t[2]id\t[3]sample\t[4]nRefHom\t[5]nNonRefHom\t[6]nHets\t[7]nTransitions\t[8]nTransversions\t[9]nIndels\t[10]average depth\t[11]nSingletons"
-            "\t[12]nHapRef\t[13]nHapAlt\n");
+            "\t[12]nHapRef\t[13]nHapAlt\t[14]nMissing\n");
         for (id=0; id<args->nstats; id++)
         {
             stats_t *stats = &args->stats[id];
             for (i=0; i<args->files->n_smpl; i++)
             {
                 float dp = stats->smpl_ndp[i] ? stats->smpl_dp[i]/(float)stats->smpl_ndp[i] : 0;
-                fprintf(bcftools_stdout, "PSC\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%.1f\t%d\t%d\t%d\n", id,args->files->samples[i],
+                fprintf(bcftools_stdout, "PSC\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%.1f\t%d\t%d\t%d\t%d\n", id,args->files->samples[i],
                     stats->smpl_homRR[i], stats->smpl_homAA[i], stats->smpl_hets[i], stats->smpl_ts[i],
-                    stats->smpl_tv[i], stats->smpl_indels[i],dp, stats->smpl_sngl[i], stats->smpl_hapRef[i], stats->smpl_hapAlt[i]);
+                    stats->smpl_tv[i], stats->smpl_indels[i],dp, stats->smpl_sngl[i], stats->smpl_hapRef[i],
+                    stats->smpl_hapAlt[i], stats->smpl_missing[i]);
             }
         }
 

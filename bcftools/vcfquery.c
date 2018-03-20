@@ -1,6 +1,6 @@
 /*  vcfquery.c -- Extracts fields from VCF/BCF file.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2017 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -48,6 +48,7 @@ typedef struct
     filter_t *filter;
     char *filter_str;
     int filter_logic;   // include or exclude sites which match the filters? One of FLT_INCLUDE/FLT_EXCLUDE
+    uint8_t *smpl_pass;
     convert_t *convert;
     bcf_srs_t *files;
     bcf_hdr_t *header;
@@ -99,6 +100,7 @@ static void init_data(args_t *args)
         }
     }
     args->convert = convert_init(args->header, samples, nsamples, args->format_str);
+    convert_set_option(args->convert, subset_samples, &args->smpl_pass);
     if ( args->allow_undef_tags ) convert_set_option(args->convert, allow_undef_tags, 1);
     free(samples);
 
@@ -129,6 +131,7 @@ static void query_vcf(args_t *args)
         fwrite(str.s, str.l, 1, args->out);
     }
 
+    int i,max_convert_unpack = convert_max_unpack(args->convert);
     while ( bcf_sr_next_line(args->files) )
     {
         if ( !bcf_sr_has_line(args->files,0) ) continue;
@@ -137,9 +140,30 @@ static void query_vcf(args_t *args)
 
         if ( args->filter )
         {
-            int pass = filter_test(args->filter, line, NULL);
-            if ( args->filter_logic & FLT_EXCLUDE ) pass = pass ? 0 : 1;
-            if ( !pass ) continue;
+            int pass = filter_test(args->filter, line, (const uint8_t**) &args->smpl_pass);
+            if ( args->filter_logic & FLT_EXCLUDE )
+            {
+                // This code addresses this problem:
+                //  -i can include a site but exclude a sample
+                //  -e exclude a site but include a sample
+
+                if ( pass )
+                {
+                    if ( !args->smpl_pass ) continue;
+                    if ( !(max_convert_unpack & BCF_UN_FMT) ) continue;
+
+                    pass = 0;
+                    for (i=0; i<line->n_sample; i++)
+                    {
+                        if ( args->smpl_pass[i] ) args->smpl_pass[i] = 0;
+                        else { args->smpl_pass[i] = 1; pass = 1; }
+                    }
+                    if ( !pass ) continue;
+                }
+                else if ( args->smpl_pass )
+                    for (i=0; i<line->n_sample; i++) args->smpl_pass[i] = 1;
+            }
+            else if ( !pass ) continue;
         }
 
         str.l = 0;
@@ -198,7 +222,6 @@ static void usage(void)
     fprintf(stderr, "Usage:   bcftools query [options] <A.vcf.gz> [<B.vcf.gz> [...]]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -c, --collapse <string>           collapse lines with duplicate positions for <snps|indels|both|all|some|none>, see man page [none]\n");
     fprintf(stderr, "    -e, --exclude <expr>              exclude sites for which the expression is true (see man page for details)\n");
     fprintf(stderr, "    -f, --format <string>             see man page for details\n");
     fprintf(stderr, "    -H, --print-header                print header\n");
@@ -254,14 +277,8 @@ int main_vcfquery(int argc, char *argv[])
             case 'f': args->format_str = strdup(optarg); break;
             case 'H': args->print_header = 1; break;
             case 'v': args->vcf_list = optarg; break;
-            case 'c':
-                if ( !strcmp(optarg,"snps") ) collapse |= COLLAPSE_SNPS;
-                else if ( !strcmp(optarg,"indels") ) collapse |= COLLAPSE_INDELS;
-                else if ( !strcmp(optarg,"both") ) collapse |= COLLAPSE_SNPS | COLLAPSE_INDELS;
-                else if ( !strcmp(optarg,"any") ) collapse |= COLLAPSE_ANY;
-                else if ( !strcmp(optarg,"all") ) collapse |= COLLAPSE_ANY;
-                else if ( !strcmp(optarg,"some") ) collapse |= COLLAPSE_SOME;
-                else error("The --collapse string \"%s\" not recognised.\n", optarg);
+            case 'c': 
+                error("The --collapse option is obsolete, pipe through `bcftools norm -c` instead.\n", optarg);
                 break;
             case 'a':
                 {
@@ -322,7 +339,6 @@ int main_vcfquery(int argc, char *argv[])
     {
         if ( !fname ) usage();
         args->files = bcf_sr_init();
-        args->files->collapse = collapse;
         if ( optind+1 < argc ) args->files->require_index = 1;
         if ( args->regions_list && bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
             error("Failed to read the regions: %s\n", args->regions_list);

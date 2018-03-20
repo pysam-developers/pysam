@@ -30,7 +30,8 @@ THE SOFTWARE.  */
 typedef struct _convert_t convert_t;
 enum convert_option
 {
-    allow_undef_tags
+    allow_undef_tags,
+    subset_samples,
 };
 
 convert_t *convert_init(bcf_hdr_t *hdr, int *samples, int nsamples, const char *str);
