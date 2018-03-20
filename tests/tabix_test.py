@@ -16,7 +16,7 @@ import glob
 import re
 import copy
 import tempfile
-from TestUtils import checkURL, load_and_convert, TABIX_DATADIR, get_temp_filename
+from TestUtils import check_url, load_and_convert, TABIX_DATADIR, get_temp_filename
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -1046,7 +1046,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
     local = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     def setUp(self):
-        if not pysam.config.HAVE_LIBCURL or not checkURL(self.url):
+        if not pysam.config.HAVE_LIBCURL or not check_url(self.url):
             self.remote_file = None
         else:
             self.remote_file = pysam.TabixFile(self.url, "r")
@@ -1085,7 +1085,7 @@ class TestRemoteFileHTTPWithHeader(TestRemoteFileHTTP):
     local = os.path.join(TABIX_DATADIR, "example_comments.gtf.gz")
 
     def setUp(self):
-        if not pysam.config.HAVE_LIBCURL or not checkURL(self.url):
+        if not pysam.config.HAVE_LIBCURL or not check_url(self.url):
             self.remote_file = None
         else:
             self.remote_file = pysam.TabixFile(self.url, "r")

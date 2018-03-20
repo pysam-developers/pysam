@@ -5,7 +5,7 @@ import gzip
 import copy
 import shutil
 
-from TestUtils import checkURL, BAM_DATADIR, get_temp_filename
+from TestUtils import check_url, BAM_DATADIR, get_temp_filename
 
 
 class TestFastaFile(unittest.TestCase):
@@ -220,7 +220,7 @@ class TestRemoteFileFTP(unittest.TestCase):
            "GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa")
 
     def testFTPView(self):
-        if not checkURL(self.url):
+        if not check_url(self.url):
             return
 
         with pysam.Fastafile(self.url) as f:
@@ -229,7 +229,7 @@ class TestRemoteFileFTP(unittest.TestCase):
                 1000)
 
     def test_sequence_lengths_are_available(self):
-        if not checkURL(self.url):
+        if not check_url(self.url):
             return
 
         with pysam.Fastafile(self.url) as f:

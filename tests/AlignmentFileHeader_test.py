@@ -7,27 +7,18 @@ and data files located there.
 
 import unittest
 import os
-import shutil
 import sys
 import re
 import copy
-import collections
 from collections import OrderedDict as odict
-import subprocess
-import logging
-import array
+import pysam
+import pysam.samtools
+from TestUtils import get_temp_filename, BAM_DATADIR
+
 if sys.version_info.major >= 3:
     from io import StringIO
 else:
     from StringIO import StringIO
-
-from functools import partial
-
-import pysam
-import pysam.samtools
-from TestUtils import checkBinaryEqual, checkURL, \
-    check_samtools_view_equal, checkFieldEqual, force_str, \
-    get_temp_filename, BAM_DATADIR
 
 
 class TestHeaderConstruction(unittest.TestCase):

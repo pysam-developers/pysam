@@ -22,7 +22,7 @@ from functools import partial
 
 import pysam
 import pysam.samtools
-from TestUtils import checkBinaryEqual, checkURL, \
+from TestUtils import checkBinaryEqual, check_url, \
     check_samtools_view_equal, checkFieldEqual, force_str, \
     get_temp_filename, BAM_DATADIR
 
@@ -1570,7 +1570,7 @@ class TestRemoteFileFTP(unittest.TestCase):
 
     def testFTPView(self):
         return
-        if not checkURL(self.url):
+        if not check_url(self.url):
             return
 
         result = pysam.samtools.view(self.url, self.region)
@@ -1578,7 +1578,7 @@ class TestRemoteFileFTP(unittest.TestCase):
 
     def testFTPFetch(self):
         return
-        if not checkURL(self.url):
+        if not check_url(self.url):
             return
 
         samfile = pysam.AlignmentFile(self.url, "rb")
@@ -1593,7 +1593,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
     local = os.path.join(BAM_DATADIR, "ex1.bam")
 
     def testView(self):
-        if not checkURL(self.url):
+        if not check_url(self.url):
             return
 
         samfile_local = pysam.AlignmentFile(self.local, "rb")
@@ -1603,7 +1603,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
         self.assertEqual(len(result.splitlines()), len(ref))
 
     def testFetch(self):
-        if not checkURL(self.url):
+        if not check_url(self.url):
             return
 
         with pysam.AlignmentFile(self.url, "rb") as samfile:
@@ -1617,7 +1617,7 @@ class TestRemoteFileHTTP(unittest.TestCase):
             self.assertEqual(x.compare(y), 0)
 
     def testFetchAll(self):
-        if not checkURL(self.url):
+        if not check_url(self.url):
             return
 
         with pysam.AlignmentFile(self.url, "rb") as samfile:
@@ -2204,7 +2204,7 @@ class TestExplicitIndex(unittest.TestCase):
             samfile.fetch("chr1")
 
     def testRemoteExplicitIndexBAM(self):
-        if not checkURL(
+        if not check_url(
                 "http://genserv.anat.ox.ac.uk/downloads/pysam/test/noindex.bam"):
             return
 
@@ -2259,7 +2259,7 @@ class TestHeader1000Genomes(unittest.TestCase):
 
     def testRead(self):
 
-        if not checkURL(self.bamfile):
+        if not check_url(self.bamfile):
             return
 
         f = pysam.AlignmentFile(self.bamfile, "rb")

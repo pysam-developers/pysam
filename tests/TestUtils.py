@@ -132,7 +132,7 @@ def check_samtools_view_equal(
     return True
 
 
-def checkURL(url):
+def check_url(url):
     '''return True if URL is available.
 
     A URL might not be available if it is the wrong URL
