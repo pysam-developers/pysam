@@ -1,5 +1,5 @@
-pysam: htslib interface for python
-==================================
+pysam: htslib interface for python yunyun fork
+==============================================
 
 :Author: Andreas Heger, Kevin Jacobs and contributors
 :Date: |today|
