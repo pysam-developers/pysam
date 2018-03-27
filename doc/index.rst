@@ -1,5 +1,5 @@
-pysam: htslib interface for python yunyun fork
-==============================================
+pysam: htslib interface for python yunyun fork for storytime demo
+=================================================================
 
 :Author: Andreas Heger, Kevin Jacobs and contributors
 :Date: |today|
