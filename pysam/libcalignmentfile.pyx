@@ -861,9 +861,9 @@ cdef class AlignmentFile(HTSFile):
         if mode[0] == 'w':
             # open file for writing
 
-            if not (template or header or reference_names):
+            if not (template or header or text or (reference_names and reference_lengths)):
                 raise ValueError(
-                    "either supply options `template`, `header` or  both `reference_names` "
+                    "either supply options `template`, `header`, `text` or  both `reference_names` "
                     "and `reference_lengths` for writing")
             
             if template:
