@@ -1,0 +1,5 @@
+BCFtools implements utilities for variant calling (in conjunction with
+SAMtools) and manipulating VCF and BCF files.  The program is intended
+to replace the Perl-based tools from vcftools.
+
+See INSTALL for building and installation instructions.

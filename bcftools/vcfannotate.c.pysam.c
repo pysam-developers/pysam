@@ -116,6 +116,7 @@ typedef struct _args_t
 
     int nsmpl_annot;
     int *sample_map, nsample_map, sample_is_file;   // map[idst] -> isrc
+    uint8_t *src_smpl_pld, *dst_smpl_pld;   // for Number=G format fields
     int mtmpi, mtmpf, mtmps;
     int mtmpi2, mtmpf2, mtmps2;
     int mtmpi3, mtmpf3, mtmps3;
@@ -1115,21 +1116,261 @@ static int setter_format_str(args_t *args, bcf1_t *line, annot_col_t *col, void 
 
     return core_setter_format_str(args,line,col,args->tmpp);
 }
+static int determine_ploidy(int nals, int *vals, int nvals1, uint8_t *smpl, int nsmpl)
+{
+    int i, j, ndip = nals*(nals+1)/2, max_ploidy = 0;
+    for (i=0; i<nsmpl; i++)
+    {
+        int *ptr = vals + i*nvals1;
+        int has_value = 0;
+        for (j=0; j<nvals1; j++)
+        {
+            if ( ptr[j]==bcf_int32_vector_end ) break;
+            if ( ptr[j]!=bcf_int32_missing ) has_value = 1;
+        }
+        if ( has_value )
+        {
+            if ( j==ndip )
+            { 
+                smpl[i] = 2;
+                max_ploidy = 2; 
+            }
+            else if ( j==nals )
+            { 
+                smpl[i] = 1;
+                if ( !max_ploidy ) max_ploidy = 1;
+            }
+            else return -j;
+        }
+        else smpl[i] = 0;
+    }
+    return max_ploidy;
+}
 static int vcf_setter_format_int(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
     bcf1_t *rec = (bcf1_t*) data;
     int nsrc = bcf_get_format_int32(args->files->readers[1].header,rec,col->hdr_key_src,&args->tmpi,&args->mtmpi);
     if ( nsrc==-3 ) return 0;    // the tag is not present
     if ( nsrc<=0 ) return 1;     // error
-    return core_setter_format_int(args,line,col,args->tmpi,nsrc/bcf_hdr_nsamples(args->files->readers[1].header));
+    int nsmpl_src = bcf_hdr_nsamples(args->files->readers[1].header);
+    int nsrc1 = nsrc / nsmpl_src;
+    if ( col->number!=BCF_VL_G && col->number!=BCF_VL_R && col->number!=BCF_VL_A )
+        return core_setter_format_int(args,line,col,args->tmpi,nsrc1);
+
+    // create mapping from src to dst genotypes, haploid and diploid version
+    int nmap_hap = col->number==BCF_VL_G || col->number==BCF_VL_R ? rec->n_allele : rec->n_allele - 1;
+    int *map_hap = vcmp_map_ARvalues(args->vcmp,nmap_hap,line->n_allele,line->d.allele,rec->n_allele,rec->d.allele);
+    if ( !map_hap ) error("REF alleles not compatible at %s:%d\n");
+
+    int i, j;
+    if ( rec->n_allele==line->n_allele )
+    {
+        // alleles unchanged?
+        for (i=0; i<rec->n_allele; i++) if ( map_hap[i]!=i ) break;
+        if ( i==rec->n_allele )
+            return core_setter_format_int(args,line,col,args->tmpi,nsrc1);
+    }
+
+    int nsmpl_dst = rec->n_sample;
+    int ndst  = bcf_get_format_int32(args->hdr,line,col->hdr_key_dst,&args->tmpi2,&args->mtmpi2);
+    int ndst1 = ndst / nsmpl_dst;
+    if ( ndst <= 0 )
+    {
+        if ( col->replace==REPLACE_NON_MISSING ) return 0;  // overwrite only if present
+        if ( col->number==BCF_VL_G )
+            ndst1 = line->n_allele*(line->n_allele+1)/2;
+        else
+            ndst1 = col->number==BCF_VL_A ? line->n_allele - 1 : line->n_allele;
+        hts_expand(int, ndst1*nsmpl_dst, args->mtmpi2, args->tmpi2);
+        for (i=0; i<nsmpl_dst; i++)
+        {
+            int32_t *dst = args->tmpi2 + i*ndst1;
+            for (j=0; j<ndst1; j++) dst[j] = bcf_int32_missing;
+        }
+    }
+
+    int nmap_dip = 0, *map_dip = NULL;
+    if ( col->number==BCF_VL_G )
+    {
+        map_dip = vcmp_map_dipGvalues(args->vcmp, &nmap_dip);
+        if ( !args->src_smpl_pld )
+        {
+            args->src_smpl_pld = (uint8_t*) malloc(nsmpl_src);
+            args->dst_smpl_pld = (uint8_t*) malloc(nsmpl_dst);
+        }
+        int pld_src = determine_ploidy(rec->n_allele, args->tmpi, nsrc1, args->src_smpl_pld, nsmpl_src);
+        if ( pld_src<0 )
+            error("Unexpected number of %s values (%d) for %d alleles at %s:%d\n", col->hdr_key_src,-pld_src, rec->n_allele, bcf_seqname(bcf_sr_get_header(args->files,1),rec),rec->pos+1);
+        int pld_dst = determine_ploidy(line->n_allele, args->tmpi2, ndst1, args->dst_smpl_pld, nsmpl_dst);
+        if ( pld_dst<0 )
+            error("Unexpected number of %s values (%d) for %d alleles at %s:%d\n", col->hdr_key_src,-pld_dst, line->n_allele, bcf_seqname(args->hdr,line),line->pos+1);
+
+        int ndst1_new = pld_dst==1 ? line->n_allele : line->n_allele*(line->n_allele+1)/2;
+        if ( ndst1_new != ndst1 )
+        {
+            if ( ndst1 ) error("todo: %s ndst1!=ndst .. %d %d  at %s:%d\n",col->hdr_key_src,ndst1_new,ndst1,bcf_seqname(args->hdr,line),line->pos+1);
+            ndst1 = ndst1_new;
+            hts_expand(int32_t, ndst1*nsmpl_dst, args->mtmpi2, args->tmpi2);
+        }
+    }
+    else if ( !ndst1 )
+    {
+        ndst1 = col->number==BCF_VL_A ? line->n_allele - 1 : line->n_allele;
+        hts_expand(int32_t, ndst1*nsmpl_dst, args->mtmpi2, args->tmpi2);
+    }
+
+    for (i=0; i<nsmpl_dst; i++)
+    {
+        int ii = args->sample_map ? args->sample_map[i] : i;
+        int32_t *ptr_src = args->tmpi + i*nsrc1;
+        int32_t *ptr_dst = args->tmpi2 + ii*ndst1;
+
+        if ( col->number==BCF_VL_G )
+        {
+            if ( args->src_smpl_pld[ii] > 0 && args->dst_smpl_pld[i] > 0 && args->src_smpl_pld[ii]!=args->dst_smpl_pld[i] )
+                error("Sample ploidy differs at %s:%d\n", bcf_seqname(args->hdr,line),line->pos+1);
+            if ( !args->dst_smpl_pld[i] )
+                for (j=0; j<ndst1; j++) ptr_dst[j] = bcf_int32_missing;
+        }
+        if ( col->number!=BCF_VL_G || args->src_smpl_pld[i]==1 )
+        {
+            for (j=0; j<nmap_hap; j++)
+            {
+                int k = map_hap[j];
+                if ( k>=0 ) ptr_dst[k] = ptr_src[j];
+            }
+            if ( col->number==BCF_VL_G )
+                for (j=line->n_allele; j<ndst1; j++) ptr_dst[j++] = bcf_int32_vector_end;
+        }
+        else
+        {
+            for (j=0; j<nmap_dip; j++)
+            {
+                int k = map_dip[j];
+                if ( k>=0 ) ptr_dst[k] = ptr_src[j];
+            }
+        }
+    }
+    return bcf_update_format_int32(args->hdr_out,line,col->hdr_key_dst,args->tmpi2,nsmpl_dst*ndst1);
 }
 static int vcf_setter_format_real(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
+
     bcf1_t *rec = (bcf1_t*) data;
     int nsrc = bcf_get_format_float(args->files->readers[1].header,rec,col->hdr_key_src,&args->tmpf,&args->mtmpf);
     if ( nsrc==-3 ) return 0;    // the tag is not present
     if ( nsrc<=0 ) return 1;     // error
-    return core_setter_format_real(args,line,col,args->tmpf,nsrc/bcf_hdr_nsamples(args->files->readers[1].header));
+    int nsmpl_src = bcf_hdr_nsamples(args->files->readers[1].header);
+    int nsrc1 = nsrc / nsmpl_src;
+    if ( col->number!=BCF_VL_G && col->number!=BCF_VL_R && col->number!=BCF_VL_A )
+        return core_setter_format_real(args,line,col,args->tmpf,nsrc1);
+
+    // create mapping from src to dst genotypes, haploid and diploid version
+    int nmap_hap = col->number==BCF_VL_G || col->number==BCF_VL_R ? rec->n_allele : rec->n_allele - 1;
+    int *map_hap = vcmp_map_ARvalues(args->vcmp,nmap_hap,line->n_allele,line->d.allele,rec->n_allele,rec->d.allele);
+    if ( !map_hap ) error("REF alleles not compatible at %s:%d\n");
+
+    int i, j;
+    if ( rec->n_allele==line->n_allele )
+    {
+        // alleles unchanged?
+        for (i=0; i<rec->n_allele; i++) if ( map_hap[i]!=i ) break;
+        if ( i==rec->n_allele )
+            return core_setter_format_real(args,line,col,args->tmpf,nsrc1);
+    }
+
+    int nsmpl_dst = rec->n_sample;
+    int ndst  = bcf_get_format_float(args->hdr,line,col->hdr_key_dst,&args->tmpf2,&args->mtmpf2);
+    int ndst1 = ndst / nsmpl_dst;
+    if ( ndst <= 0 )
+    {
+        if ( col->replace==REPLACE_NON_MISSING ) return 0;  // overwrite only if present
+        if ( col->number==BCF_VL_G )
+            ndst1 = line->n_allele*(line->n_allele+1)/2;
+        else
+            ndst1 = col->number==BCF_VL_A ? line->n_allele - 1 : line->n_allele;
+        hts_expand(float, ndst1*nsmpl_dst, args->mtmpf2, args->tmpf2);
+        for (i=0; i<nsmpl_dst; i++)
+        {
+            float *dst = args->tmpf2 + i*ndst1;
+            for (j=0; j<ndst1; j++) bcf_float_set_missing(dst[j]);
+        }
+    }
+
+    int nmap_dip = 0, *map_dip = NULL;
+    if ( col->number==BCF_VL_G )
+    {
+        map_dip = vcmp_map_dipGvalues(args->vcmp, &nmap_dip);
+        if ( !args->src_smpl_pld )
+        {
+            args->src_smpl_pld = (uint8_t*) malloc(nsmpl_src);
+            args->dst_smpl_pld = (uint8_t*) malloc(nsmpl_dst);
+        }
+        int pld_src = determine_ploidy(rec->n_allele, args->tmpi, nsrc1, args->src_smpl_pld, nsmpl_src);
+        if ( pld_src<0 )
+            error("Unexpected number of %s values (%d) for %d alleles at %s:%d\n", col->hdr_key_src,-pld_src, rec->n_allele, bcf_seqname(bcf_sr_get_header(args->files,1),rec),rec->pos+1);
+        int pld_dst = determine_ploidy(line->n_allele, args->tmpi2, ndst1, args->dst_smpl_pld, nsmpl_dst);
+        if ( pld_dst<0 )
+            error("Unexpected number of %s values (%d) for %d alleles at %s:%d\n", col->hdr_key_src,-pld_dst, line->n_allele, bcf_seqname(args->hdr,line),line->pos+1);
+
+        int ndst1_new = pld_dst==1 ? line->n_allele : line->n_allele*(line->n_allele+1)/2;
+        if ( ndst1_new != ndst1 )
+        {
+            if ( ndst1 ) error("todo: %s ndst1!=ndst .. %d %d  at %s:%d\n",col->hdr_key_src,ndst1_new,ndst1,bcf_seqname(args->hdr,line),line->pos+1);
+            ndst1 = ndst1_new;
+            hts_expand(float, ndst1*nsmpl_dst, args->mtmpf2, args->tmpf2);
+        }
+    }
+    else if ( !ndst1 )
+    {
+        ndst1 = col->number==BCF_VL_A ? line->n_allele - 1 : line->n_allele;
+        hts_expand(float, ndst1*nsmpl_dst, args->mtmpf2, args->tmpf2);
+    }
+
+    for (i=0; i<nsmpl_dst; i++)
+    {
+        int ii = args->sample_map ? args->sample_map[i] : i;
+        float *ptr_src = args->tmpf + i*nsrc1;
+        float *ptr_dst = args->tmpf2 + ii*ndst1;
+
+        if ( col->number==BCF_VL_G )
+        {
+            if ( args->src_smpl_pld[ii] > 0 && args->dst_smpl_pld[i] > 0 && args->src_smpl_pld[ii]!=args->dst_smpl_pld[i] )
+                error("Sample ploidy differs at %s:%d\n", bcf_seqname(args->hdr,line),line->pos+1);
+            if ( !args->dst_smpl_pld[i] )
+                for (j=0; j<ndst1; j++) bcf_float_set_missing(ptr_dst[j]);
+        }
+        if ( col->number!=BCF_VL_G || args->src_smpl_pld[i]==1 )
+        {
+            for (j=0; j<nmap_hap; j++)
+            {
+                int k = map_hap[j];
+                if ( k>=0 )
+                {
+                    if ( bcf_float_is_missing(ptr_src[j]) ) bcf_float_set_missing(ptr_dst[k]);
+                    else if ( bcf_float_is_vector_end(ptr_src[j]) ) bcf_float_set_vector_end(ptr_dst[k]); 
+                    else ptr_dst[k] = ptr_src[j];
+                }
+            }
+            if ( col->number==BCF_VL_G )
+                for (j=line->n_allele; j<ndst1; j++) { bcf_float_set_vector_end(ptr_dst[j]); j++; }
+        }
+        else
+        {
+            for (j=0; j<nmap_dip; j++)
+            {
+                int k = map_dip[j];
+                if ( k>=0 )
+                {
+                    if ( bcf_float_is_missing(ptr_src[j]) ) bcf_float_set_missing(ptr_dst[k]);
+                    else if ( bcf_float_is_vector_end(ptr_src[j]) ) bcf_float_set_vector_end(ptr_dst[k]);
+                    else ptr_dst[k] = ptr_src[j];
+                }
+            }
+        }
+    }
+    return bcf_update_format_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf2,nsmpl_dst*ndst1);
+
 }
 
 static int vcf_setter_format_str(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
@@ -1460,6 +1701,8 @@ static void init_columns(args_t *args)
                         case BCF_HT_STR:    col->setter = vcf_setter_format_str; has_fmt_str = 1; break;
                         default: error("The type of %s not recognised (%d)\n", str.s,bcf_hdr_id2type(args->hdr_out,BCF_HL_FMT,hdr_id));
                     }
+                hdr_id = bcf_hdr_id2int(tgts_hdr, BCF_DT_ID, hrec->vals[k]);
+                col->number = bcf_hdr_id2length(tgts_hdr,BCF_HL_FMT,hdr_id);
             }
         }
         else if ( !strncasecmp("FORMAT/",str.s, 7) || !strncasecmp("FMT/",str.s,4) )
@@ -1479,6 +1722,7 @@ static void init_columns(args_t *args)
             if ( args->tgts_is_vcf )
             {
                 bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->files->readers[1].header, BCF_HL_FMT, "ID", key_src, NULL);
+                if ( !hrec ) error("No such annotation \"%s\" in %s\n", key_src,args->targets_fname);
                 tmp.l = 0;
                 bcf_hrec_format_rename(hrec, key_dst, &tmp);
                 bcf_hdr_append(args->hdr_out, tmp.s);
@@ -1508,6 +1752,12 @@ static void init_columns(args_t *args)
                     case BCF_HT_STR:    col->setter = args->tgts_is_vcf ? vcf_setter_format_str  : setter_format_str; has_fmt_str = 1; break;
                     default: error("The type of %s not recognised (%d)\n", str.s,bcf_hdr_id2type(args->hdr_out,BCF_HL_FMT,hdr_id));
                 }
+            if ( args->tgts_is_vcf )
+            {
+                bcf_hdr_t *tgts_hdr = args->files->readers[1].header;
+                hdr_id = bcf_hdr_id2int(tgts_hdr, BCF_DT_ID, col->hdr_key_src);
+                col->number = bcf_hdr_id2length(tgts_hdr,BCF_HL_FMT,hdr_id);
+            }
         }
         else
         {
@@ -1699,6 +1949,8 @@ static void destroy_data(args_t *args)
     free(args->tmpp2);
     free(args->tmpi3);
     free(args->tmpf3);
+    free(args->src_smpl_pld);
+    free(args->dst_smpl_pld);
     if ( args->set_ids )
         convert_destroy(args->set_ids);
     if ( args->filter )

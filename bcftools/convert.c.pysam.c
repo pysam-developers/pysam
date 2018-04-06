@@ -762,12 +762,33 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
 
     if ( fmt_gt->type!=BCF_BT_INT8 )    // todo: use BRANCH_INT if the VCF is valid
         error("Uh, too many alleles (%d) or redundant BCF representation at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+    if ( fmt_gt->n!=1 && fmt_gt->n!=2 )
+        error("Uh, ploidy of %d not supported, see %s:%d\n", fmt_gt->n, bcf_seqname(convert->header, line), line->pos+1);
 
     int8_t *ptr = ((int8_t*) fmt_gt->p) - fmt_gt->n;
     for (i=0; i<convert->nsamples; i++)
     {
         ptr += fmt_gt->n;
-        if ( ptr[0]==2 )
+        if ( fmt_gt->n==1 ) // haploid genotypes
+        {
+            if ( ptr[0]==2 ) /* 0 */
+            {
+                str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[0]==bcf_int32_missing )   /* . */
+            {
+                str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
+            }
+            else if ( ptr[0]==4 ) /* 1 */
+            {
+                str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
+            }
+            else
+            {
+                kputw(bcf_gt_allele(ptr[0]),str); str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
+            }
+        }
+        else if ( ptr[0]==2 )
         {
             if ( ptr[1]==3 ) /* 0|0 */
             {

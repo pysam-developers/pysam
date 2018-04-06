@@ -282,6 +282,7 @@ static void init_region(args_t *args, char *line)
             else to--;
         }
     }
+    free(args->chr);
     args->chr = strdup(line);
     args->rid = bcf_hdr_name2id(args->hdr,line);
     if ( args->rid<0 ) fprintf(bcftools_stderr,"Warning: Sequence \"%s\" not in %s\n", line,args->fname);

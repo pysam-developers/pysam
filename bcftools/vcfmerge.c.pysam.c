@@ -1283,6 +1283,37 @@ void update_AN_AC(bcf_hdr_t *hdr, bcf1_t *line)
     free(tmp);
 }
 
+static inline int max_used_gt_ploidy(bcf_fmt_t *fmt, int nsmpl)
+{
+    int i,j, max_ploidy = 0;
+
+    #define BRANCH(type_t, vector_end) { \
+        type_t *ptr  = (type_t*) fmt->p; \
+        for (i=0; i<nsmpl; i++) \
+        { \
+            for (j=0; j<fmt->n; j++) \
+                if ( ptr[j]==vector_end ) break; \
+            if ( j==fmt->n ) \
+            { \
+                /* all fields were used */ \
+                if ( max_ploidy < j ) max_ploidy = j; \
+                break; \
+            } \
+            if ( max_ploidy < j ) max_ploidy = j; \
+            ptr += fmt->n; \
+        } \
+    }
+    switch (fmt->type)
+    {
+        case BCF_BT_INT8:  BRANCH(int8_t,   bcf_int8_vector_end); break;
+        case BCF_BT_INT16: BRANCH(int16_t, bcf_int16_vector_end); break;
+        case BCF_BT_INT32: BRANCH(int32_t, bcf_int32_vector_end); break;
+        default: error("Unexpected case: %d\n", fmt->type);
+    }
+    #undef BRANCH
+    return max_ploidy;
+}
+
 void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
 {
     bcf_srs_t *files = args->files;
@@ -1293,9 +1324,12 @@ void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
     int nsize = 0, msize = sizeof(int32_t);
     for (i=0; i<files->nreaders; i++)
     {
-        if ( !fmt_map[i] ) continue;
-        if ( fmt_map[i]->n > nsize ) nsize = fmt_map[i]->n;
+        bcf_fmt_t *fmt = fmt_map[i];
+        if ( !fmt ) continue;
+        int pld = max_used_gt_ploidy(fmt_map[i], bcf_hdr_nsamples(bcf_sr_get_header(args->files,i)));
+        if ( nsize < pld ) nsize = pld;
     }
+    if ( nsize==0 ) nsize = 1;
 
     if ( ma->ntmp_arr < nsamples*nsize*msize )
     {
@@ -1313,7 +1347,7 @@ void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
         int32_t *tmp  = (int32_t *) ma->tmp_arr + ismpl*nsize;
         int irec = ma->buf[i].cur;
 
-        int j, k;
+        int j,k;
         if ( !fmt_ori )
         {
             // missing values: assume maximum ploidy

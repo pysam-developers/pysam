@@ -1,5 +1,5 @@
-#ifndef BCFTOOLS_PYSAM_H
-#define BCFTOOLS_PYSAM_H
+#ifndef PYSAM_H
+#define PYSAM_H
 
 #include "stdio.h"
 
