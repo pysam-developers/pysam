@@ -21,7 +21,7 @@ addons:
     - g++
 
 script:
-  - ./run_tests_travis.sh
+  - ./devtools/run_tests_travis.sh
 
 notifications:
   email:
