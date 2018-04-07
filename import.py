@@ -13,6 +13,7 @@
 # rm -rf samtools
 # python import.py samtools download/samtools
 # git checkout -- samtools/version.h
+# Manually comment out bam_tview_main from both locations in bamtk.c.pysam.c
 #
 # Manually, then:
 # modify config.h to set compatibility flags
@@ -154,7 +155,7 @@ if len(sys.argv) >= 1:
     cfiles = locate("*.c", srcdir)
     hfiles = locate("*.h", srcdir)
     mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir))
-    
+
     # remove unwanted files and htslib subdirectory.
     cfiles = [x for x in cfiles if os.path.basename(x) not in exclude
               and not re.search("htslib-", x)]
@@ -225,4 +226,3 @@ if len(sys.argv) >= 1:
 #         _update_pysam_files(cfiles, destdir)
 
 #     sys.exit(0)
-
