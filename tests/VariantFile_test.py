@@ -31,7 +31,6 @@ def read_header(filename):
 
 
 class TestMissingGenotypes(unittest.TestCase):
-
     filename = "missing_genotypes.vcf"
 
     def setUp(self):
@@ -62,7 +61,6 @@ class TestMissingGenotypes(unittest.TestCase):
 
 
 class TestMissingSamples(unittest.TestCase):
-
     filename = "gnomad.vcf"
 
     def setUp(self):
@@ -92,7 +90,7 @@ class TestMissingSamples(unittest.TestCase):
 class TestMissingSamplesFixed(TestMissingSamples):
     # workaround for NUMBER=G in INFO records:
     # perl 's/Number=G/Number=./ if (/INFO/)'
-    
+
     filename = "gnomad_fixed.vcf"
 
 
@@ -187,17 +185,16 @@ class TestOpening(unittest.TestCase):
 
 
 class TestIndexFormatsVCF(unittest.TestCase):
-
     vcf_filename = os.path.join(CBCF_DATADIR, "example_vcf40.vcf")
     bcf_filename = os.path.join(CBCF_DATADIR, "example_vcf40.bcf")
-    
+
     def test_vcf_with_tbi_index(self):
         with get_temp_context("tmp_fn.vcf") as fn:
             shutil.copyfile(self.vcf_filename, fn)
             pysam.tabix_index(fn, preset="vcf", force=True)
             self.assertTrue(os.path.exists(fn + ".gz" + ".tbi"))
             self.assertFalse(os.path.exists(fn + ".gz" + ".csi"))
-            
+
             with pysam.VariantFile(fn + ".gz") as inf:
                 self.assertEqual(len(list(inf.fetch("20"))), 3)
 
@@ -208,7 +205,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
             pysam.tabix_index(fn, preset="vcf", force=True, csi=True)
             self.assertTrue(os.path.exists(fn + ".gz" + ".csi"))
             self.assertFalse(os.path.exists(fn + ".gz" + ".tbi"))
-            
+
             with pysam.VariantFile(fn + ".gz") as inf:
                 self.assertEqual(len(list(inf.fetch("20"))), 3)
 
@@ -219,7 +216,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
 
             self.assertTrue(os.path.exists(fn + ".csi"))
             self.assertFalse(os.path.exists(fn + ".tbi"))
-            
+
             with pysam.VariantFile(fn) as inf:
                 self.assertEqual(len(list(inf.fetch("20"))), 3)
 
@@ -230,7 +227,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
             pysam.tabix_index(fn, preset="bcf", force=True, csi=False)
             self.assertTrue(os.path.exists(fn + ".csi"))
             self.assertFalse(os.path.exists(fn + ".tbi"))
-            
+
             with pysam.VariantFile(fn) as inf:
                 self.assertEqual(len(list(inf.fetch("20"))), 3)
 
@@ -239,20 +236,18 @@ class TestIndexFormatsVCF(unittest.TestCase):
             shutil.copyfile(self.bcf_filename, fn)
 
             pysam.tabix_index(fn, preset="vcf", force=True, csi=True)
-            
+
             self.assertTrue(os.path.exists(fn + ".csi"))
             self.assertFalse(os.path.exists(fn + ".tbi"))
-            
+
             with pysam.VariantFile(fn) as inf:
                 self.assertEqual(len(list(inf.fetch("20"))), 3)
 
 
 class TestHeader(unittest.TestCase):
-
     filename = "example_vcf40.vcf"
 
     def testStr(self):
-
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
 
@@ -263,7 +258,6 @@ class TestHeader(unittest.TestCase):
                          sorted(comp))
 
     def testIterator(self):
-
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
 
@@ -286,7 +280,6 @@ class TestHeader(unittest.TestCase):
 # is testing both the triggering of the lazy parser and the results of the
 # parser.
 class TestParsing(unittest.TestCase):
-
     filename = "example_vcf40.vcf.gz"
 
     def testChrom(self):
@@ -345,7 +338,7 @@ class TestParsing(unittest.TestCase):
         v = pysam.VariantFile(fn)
         alleles = [rec.alleles for rec in v]
         self.assertEqual(alleles, [
-                         ('T',), ('G', 'A'), ('T', 'A'), ('A', 'G', 'T'), ('GTCT', 'G', 'GTACT')])
+            ('T',), ('G', 'A'), ('T', 'A'), ('A', 'G', 'T'), ('GTCT', 'G', 'GTACT')])
 
     def testQual(self):
         fn = os.path.join(CBCF_DATADIR, self.filename)
@@ -435,7 +428,6 @@ class TestParsing(unittest.TestCase):
 
 
 class TestIndexFilename(unittest.TestCase):
-
     filenames = [('example_vcf40.vcf.gz', 'example_vcf40.vcf.gz.tbi'),
                  ('example_vcf40.vcf.gz', 'example_vcf40.vcf.gz.csi'),
                  ('example_vcf40.bcf', 'example_vcf40.bcf.csi')]
@@ -558,7 +550,6 @@ class TestConstructionVCFGZWithoutContigs(TestConstructionVCFWithContigs):
 
 
 class TestSettingRecordValues(unittest.TestCase):
-
     filename = "example_vcf40.vcf"
 
     def testBase(self):
@@ -591,9 +582,15 @@ class TestSettingRecordValues(unittest.TestCase):
             self.assertEqual(sample["GT"], (0, 0))
             sample["GT"] = sample["GT"]
 
+    def testCalcNumber(self):
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR, self.filename)) as inf:
+            record = next(inf)
+            self.assertEqual(record.calc_number('INFO', 'AA'), 1)
+            self.assertEqual(record.calc_number('FMT', 'DP', 'NA00001'), 1)
+            self.assertEqual(record.calc_number('FMT', 'HQ', 'NA00001'), 2)
+
 
 class TestSubsetting(unittest.TestCase):
-
     filename = "example_vcf42.vcf.gz"
 
     def testSubsetting(self):
