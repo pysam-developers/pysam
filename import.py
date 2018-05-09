@@ -136,6 +136,11 @@ def _update_pysam_files(cf, destdir):
          open(os.path.join(destdir, "{}.pysam.c".format(basename)), "w") as outf:
         outf.write(re.sub("@pysam@", basename, inf.read()))
 
+   # add our hack to expose bam_fillmd1_core
+    with open(os.path.join("import", "bam_md.h")) as inf, \
+         open(os.path.join(destdir, "bam_md.h"), "w") as outf:
+        outf.write(inf.read())
+
 
 if len(sys.argv) >= 1:
     if len(sys.argv) != 3:
