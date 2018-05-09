@@ -59,6 +59,7 @@ import json
 import string
 import ctypes
 import struct
+import os
 
 cimport cython
 from cpython cimport array as c_array
@@ -72,10 +73,12 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
 from libc.stdio cimport snprintf
 
 from pysam.libchtslib cimport HTS_IDX_NOCOOR
+from pysam.libcmd cimport bam_fillmd1_core
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
+from pysam.libcsamtools cimport samtools_unset_stderr
 
 # Constants for binary tag conversion
 cdef char * htslib_types = 'cCsSiIf'
@@ -1047,6 +1050,27 @@ cdef class AlignedSegment:
             hash_value = c_mul(hash_value, 1000003) ^ c[x]
 
         return hash_value
+
+    def fill_md(self, reference, flag=16, max_nm=0):
+        """
+        Call samtools bam_fillmd1_core and add md tags to the given alignment.
+        Flag of 16 is UPDATE_MD - see bam_md.c for flag values.
+
+        Unmapped reads will not get an MD tag.
+
+        Warning: this data gets passed straight to the underlying C method -
+                 no validation is performed on the data at all. If you pass
+                 the wrong chromosome you _will_ get wrong MD tags, so be careful.
+        """
+
+        # we will need to deal with reference better here
+        cdef bam1_t * src = self._delegate
+
+        # the fillmd command writes to samtools_stderr when the MD tags mismatch.
+        # there's not a great deal you can do with the information so i'm just
+        # sending it straight to /dev/null (samtools_unset_stderr does this)
+        samtools_unset_stderr()
+        bam_fillmd1_core(src, reference, len(reference), flag, max_nm)
 
     cpdef to_string(self):
         """returns a string representation of the aligned segment.
