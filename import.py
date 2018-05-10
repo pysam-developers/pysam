@@ -13,6 +13,7 @@
 # rm -rf samtools
 # python import.py samtools download/samtools
 # git checkout -- samtools/version.h
+# git checkout -- samtools/bamtk.c.pysam.c
 #
 # Manually, then:
 # modify config.h to set compatibility flags
