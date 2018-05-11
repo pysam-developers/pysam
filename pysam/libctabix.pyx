@@ -319,6 +319,11 @@ cdef class TabixFile:
 
         The encoding passed to the parser
 
+    threads: integer
+        Number of threads to use for decompressing Tabix files.
+        (Default=1)
+
+
     Raises
     ------
     
@@ -334,6 +339,7 @@ cdef class TabixFile:
                   parser=None,
                   index=None,
                   encoding="ascii",
+                  threads=1,
                   *args,
                   **kwargs ):
 
@@ -341,13 +347,15 @@ cdef class TabixFile:
         self.is_remote = False
         self.is_stream = False
         self.parser = parser
+        self.threads = threads
         self._open(filename, mode, index, *args, **kwargs)
         self.encoding = encoding
 
-    def _open( self, 
+    def _open( self,
                filename,
                mode='r',
                index=None,
+               threads=1,
               ):
         '''open a :term:`tabix file` for reading.'''
 
@@ -357,6 +365,7 @@ cdef class TabixFile:
         if self.htsfile != NULL:
             self.close()
         self.htsfile = NULL
+        self.threads=threads
 
         filename_index = index or (filename + ".tbi")
         # encode all the strings to pass to tabix
@@ -400,7 +409,8 @@ cdef class TabixFile:
         The file is being re-opened.
         '''
         return TabixFile(self.filename,
-                         mode="r", 
+                         mode="r",
+                         threads=self.threads,
                          parser=self.parser,
                          index=self.filename_index,
                          encoding=self.encoding)

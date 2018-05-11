@@ -3934,7 +3934,7 @@ cdef class TabixIterator(BaseIterator):
 
 cdef class VariantFile(HTSFile):
     """*(filename, mode=None, index_filename=None, header=None, drop_samples=False,
-    duplicate_filehandle=True, ignore_truncation=False)*
+    duplicate_filehandle=True, ignore_truncation=False, threads=1)*
 
     A :term:`VCF`/:term:`BCF` formatted file. The file is automatically
     opened.
@@ -3989,6 +3989,11 @@ cdef class VariantFile(HTSFile):
         appears to be truncated due to a missing EOF marker.  Only applies
         to bgzipped formats. (Default=False)
 
+    threads: integer
+        Number of threads to use for compressing/decompressing VCF/BCF files.
+        Setting threads to > 1 cannot be combined with `ignore_truncation`.
+        (Default=1)
+
     """
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
@@ -3998,6 +4003,7 @@ cdef class VariantFile(HTSFile):
         self.index          = None
         self.filename       = None
         self.mode           = None
+        self.threads        = 1
         self.index_filename = None
         self.is_stream      = False
         self.is_remote      = False
@@ -4106,6 +4112,7 @@ cdef class VariantFile(HTSFile):
 
         vars.filename       = self.filename
         vars.mode           = self.mode
+        vars.threads        = self.threads
         vars.index_filename = self.index_filename
         vars.drop_samples   = self.drop_samples
         vars.is_stream      = self.is_stream
@@ -4128,7 +4135,8 @@ cdef class VariantFile(HTSFile):
              VariantHeader header=None,
              drop_samples=False,
              duplicate_filehandle=True,
-             ignore_truncation=False):
+             ignore_truncation=False,
+             threads=1):
         """open a vcf/bcf file.
 
         If open is called on an existing VariantFile, the current file will be
@@ -4141,6 +4149,15 @@ cdef class VariantFile(HTSFile):
         cdef char *cfilename
         cdef char *cindex_filename = NULL
         cdef char *cmode
+
+        if threads > 1 and ignore_truncation:
+            # This won't raise errors if reaching a truncated alignment,
+            # because bgzf_mt_reader in htslib does not deal with
+            # bgzf_mt_read_block returning non-zero values, contrary
+            # to bgzf_read (https://github.com/samtools/htslib/blob/1.7/bgzf.c#L888)
+            # Better to avoid this (for now) than to produce seemingly correct results.
+            raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
+        self.threads = threads
 
         # close a previously opened file
         if self.is_open:

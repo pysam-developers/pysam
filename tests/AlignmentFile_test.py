@@ -1122,6 +1122,39 @@ class TestContextManager(unittest.TestCase):
         self.assertEqual(samfile.closed, True)
 
 
+class TestMultiThread(unittest.TestCase):
+
+    def testSingleThreadEqualsMultithread(self):
+        input_bam = os.path.join(BAM_DATADIR, 'ex1.bam')
+        single_thread_out = get_temp_filename("tmp_single.bam")
+        multi_thread_out = get_temp_filename("tmp_multi.bam")
+        with pysam.AlignmentFile(input_bam,
+                                 'rb') as samfile:
+            reads = [r for r in samfile]
+            with pysam.AlignmentFile(single_thread_out,
+                                     mode='wb',
+                                     template=samfile,
+                                     threads=1) as single_out:
+                [single_out.write(r) for r in reads]
+            with pysam.AlignmentFile(multi_thread_out,
+                                     mode='wb',
+                                     template=samfile,
+                                     threads=2) as multi_out:
+                [single_out.write(r) for r in reads]
+        with pysam.AlignmentFile(input_bam) as inp, \
+            pysam.AlignmentFile(single_thread_out) as single, \
+            pysam.AlignmentFile(multi_thread_out) as multi:
+            for r1, r2, r3 in zip(inp, single, multi):
+                assert r1.to_string == r2.to_string == r3.to_string
+
+    def TestNoMultiThreadingWithIgnoreTruncation(self):
+        self.assertRaises(
+            ValueError, pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex1.bam'),
+                                            threads=2,
+                                            ignore_truncation=True)
+        )
+
+
 class TestExceptions(unittest.TestCase):
 
     def setUp(self):

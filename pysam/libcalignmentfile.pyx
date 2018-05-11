@@ -568,7 +568,7 @@ cdef class AlignmentFile(HTSFile):
     header=None, add_sq_text=False, check_header=True, check_sq=True,
     reference_filename=None, filename=None, index_filename=None,
     filepath_index=None, require_index=False, duplicate_filehandle=True,
-    ignore_truncation=False)
+    ignore_truncation=False, threads=1)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
@@ -712,12 +712,17 @@ cdef class AlignmentFile(HTSFile):
     format_options: list
         A list of key=value strings, as accepted by --input-fmt-option and
         --output-fmt-option in samtools.
+    threads: integer
+        Number of threads to use for compressing/decompressing BAM/CRAM files.
+        Setting threads to > 1 cannot be combined with `ignore_truncation`.
+        (Default=1)
     """
 
     def __cinit__(self, *args, **kwargs):
         self.htsfile = NULL
         self.filename = None
         self.mode = None
+        self.threads = 1
         self.is_stream = False
         self.is_remote = False
         self.index = NULL
@@ -783,7 +788,8 @@ cdef class AlignmentFile(HTSFile):
               referencelengths=None,
               duplicate_filehandle=True,
               ignore_truncation=False,
-              format_options=None):
+              format_options=None,
+              threads=1):
         '''open a sam, bam or cram formatted file.
 
         If _open is called on an existing file, the current file
@@ -795,7 +801,16 @@ cdef class AlignmentFile(HTSFile):
         cdef char *cindexname = NULL
         cdef char *cmode = NULL
         cdef bam_hdr_t * hdr = NULL
-        
+
+        if threads > 1 and ignore_truncation:
+           # This won't raise errors if reaching a truncated alignment,
+           # because bgzf_mt_reader in htslib does not deal with
+           # bgzf_mt_read_block returning non-zero values, contrary
+           # to bgzf_read (https://github.com/samtools/htslib/blob/1.7/bgzf.c#L888)
+           # Better to avoid this (for now) than to produce seemingly correct results.
+           raise ValueError('Cannot add extra threads when "ignore_truncation" is True')
+        self.threads = threads
+
         # for backwards compatibility:
         if referencenames is not None:
             reference_names = referencenames
@@ -885,7 +900,6 @@ cdef class AlignmentFile(HTSFile):
             else:
                 raise ValueError("not enough information to construct header. Please provide template, "
                                  "header, text or reference_names/reference_lengths")
-            
             self.htsfile = self._open_htsfile()
 
             if self.htsfile == NULL:

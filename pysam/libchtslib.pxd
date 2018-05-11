@@ -2593,6 +2593,7 @@ cdef class HTSFile(object):
 
     cdef readonly object  filename       # filename as supplied by user
     cdef readonly object  mode           # file opening mode
+    cdef readonly object  threads        # number of threads to use
     cdef readonly object  index_filename # filename of index, if supplied by user
 
     cdef readonly bint    is_stream      # Is htsfile a non-seekable stream

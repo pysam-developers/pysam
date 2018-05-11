@@ -592,6 +592,37 @@ class TestSettingRecordValues(unittest.TestCase):
             sample["GT"] = sample["GT"]
 
 
+class TestMultiThreading(unittest.TestCase):
+
+    filename = os.path.join(CBCF_DATADIR, "example_vcf42.vcf.gz")
+
+    def testSingleThreadEqualsMultithreadResult(self):
+        with pysam.VariantFile(self.filename) as inf:
+             header = inf.header
+             single = [r for r in inf]
+        with pysam.VariantFile(self.filename, threads=2) as inf:
+             multi = [r for r in inf]
+        for r1, r2 in zip(single, multi):
+            assert str(r1) == str(r2)
+
+        bcf_out = get_temp_filename(suffix=".bcf")
+        with pysam.VariantFile(bcf_out, mode='wb',
+                               header=header,
+                               threads=2) as out:
+            for r in single:
+                out.write(r)
+        with pysam.VariantFile(bcf_out) as inf:
+            multi_out = [r for r in inf]
+        for r1, r2 in zip(single, multi_out):
+            assert str(r1) == str(r2)
+
+    def testNoMultiThreadingWithIgnoreTruncation(self):
+        with self.assertRaises(ValueError):
+            pysam.VariantFile(self.filename,
+                              threads=2,
+                              ignore_truncation=True)
+
+
 class TestSubsetting(unittest.TestCase):
 
     filename = "example_vcf42.vcf.gz"
