@@ -215,6 +215,7 @@ int main_vcfindex(int argc, char *argv[])
         // check for truncated files, allow only with -f
         BGZF *fp = bgzf_open(fname, "r");
         if ( !fp ) error("index: failed to open %s\n", fname);
+        if ( bgzf_compression(fp)!=2 ) error("index: the file is not BGZF compressed, cannot index: %s\n", fname);
         if ( bgzf_check_EOF(fp)!=1 ) error("index: the input is probably truncated, use -f to index anyway: %s\n", fname);
         if ( bgzf_close(fp)!=0 ) error("index: close failed: %s\n", fname);
     }

@@ -27,17 +27,30 @@ THE SOFTWARE.  */
 #include <strings.h>
 #include <errno.h>
 #include <math.h>
-#include <wordexp.h>
+#include <sys/types.h>
+#include <pwd.h>
 #include <regex.h>
 #include <htslib/khash_str2int.h>
-#include "filter.h"
-#include "bcftools.h"
 #include <htslib/hts_defs.h>
 #include <htslib/vcfutils.h>
+#include "config.h"
+#include "filter.h"
+#include "bcftools.h"
+
+#if ENABLE_PERL_FILTERS
+#  define filter_t perl_filter_t
+#  include <EXTERN.h>
+#  include <perl.h>
+#  undef filter_t
+#  define my_perl perl
+#endif
+
 
 #ifndef __FUNCTION__
 #  define __FUNCTION__ __func__
 #endif
+
+static filter_ninit = 0;
 
 uint64_t bcf_double_missing    = 0x7ff0000000000001;
 uint64_t bcf_double_vector_end = 0x7ff0000000000002;
@@ -63,6 +76,7 @@ typedef struct _token_t
 {
     // read-only values, same for all VCF lines
     int tok_type;       // one of the TOK_* keys below
+    int nargs;          // used only TOK_PERLSUB, the first argument is the name of the subroutine
     char *key;          // set only for string constants, otherwise NULL
     char *tag;          // for debugging and printout only, VCF tag name
     double threshold;   // filtering threshold
@@ -100,6 +114,9 @@ struct _filter_t
     float   *tmpf;
     kstring_t tmps;
     int max_unpack, mtmpi, mtmpf, nsamples;
+#if ENABLE_PERL_FILTERS
+    PerlInterpreter *perl;
+#endif
 };
 
 
@@ -130,11 +147,12 @@ struct _filter_t
 #define TOK_LEN     24
 #define TOK_FUNC    25
 #define TOK_CNT     26
+#define TOK_PERLSUB 27
 
-//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26
-//                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  
-static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8};
-#define TOKEN_STRING "x()[<=>]!|&+-*/MmaAO~^f"
+//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
+//                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p
+static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8};
+#define TOKEN_STRING "x()[<=>]!|&+-*/MmaAO~^S.lfcp"
 
 static int filters_next_token(char **str, int *len)
 {
@@ -169,6 +187,7 @@ static int filters_next_token(char **str, int *len)
     if ( !strncasecmp(tmp,"INFO/",5) ) tmp += 5;
     if ( !strncasecmp(tmp,"FORMAT/",7) ) tmp += 7;
     if ( !strncasecmp(tmp,"FMT/",4) ) tmp += 4;
+    if ( !strncasecmp(tmp,"PERL.",5) ) { (*str) += 5; return TOK_PERLSUB; }
 
     if ( tmp[0]=='@' )  // file name
     {
@@ -248,6 +267,53 @@ static int filters_next_token(char **str, int *len)
 
     *len = tmp - (*str);
     return TOK_VAL;
+}
+
+
+/* 
+    Simple path expansion, expands ~/, ~user, $var. The result must be freed by the caller.
+    
+    Based on jkb's staden code with some adjustements.
+    https://sourceforge.net/p/staden/code/HEAD/tree/staden/trunk/src/Misc/getfile.c#l123
+*/
+char *expand_path(char *path)
+{
+#ifdef _WIN32
+    return strdup(path);    // windows expansion: todo
+#endif
+
+    kstring_t str = {0,0,0};
+    int i;
+
+    if ( path[0] == '~' )
+    {
+        if ( !path[1] || path[1] == '/' )
+        {
+            // ~ or ~/path
+            kputs(getenv("HOME"), &str);
+            if ( path[1] ) kputs(path+1, &str);
+        }
+        else
+        {
+            // user name: ~pd3/path
+            char *end = path;
+            while ( *end && *end!='/' ) end++;
+            kputsn(path+1, end-path-1, &str);
+            struct passwd *pwentry = getpwnam(str.s);
+            str.l = 0;
+
+            if ( !pwentry ) kputsn(path, end-path, &str);
+            else kputs(pwentry->pw_dir, &str);
+            kputs(end, &str);
+        }
+        return str.s;
+    }
+    if ( path[0] == '$' )
+    {
+        char *var = getenv(path+1);
+        if ( var ) path = var;
+    }
+    return strdup(path);
 }
 
 static void filters_set_qual(filter_t *flt, bcf1_t *line, token_t *tok)
@@ -856,7 +922,6 @@ static void filters_set_alt_string(filter_t *flt, bcf1_t *line, token_t *tok)
             kputs(line->d.allele[tok->idx + 1], &tok->str_value);
         else
             kputc('.', &tok->str_value);
-        tok->idx = 0;
     }
     else if ( tok->idx==-2 )
     {
@@ -1118,7 +1183,10 @@ static int func_strlen(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **sta
     }
     else
     {
-        rtok->values[0] = strlen(tok->str_value.s);
+        if ( !tok->str_value.s[1] && tok->str_value.s[0]=='.' )
+            rtok->values[0] = 0;
+        else
+            rtok->values[0] = strlen(tok->str_value.s);
         rtok->nvalues = 1;
     }
     return 1;
@@ -1682,6 +1750,18 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
         for (i=0; i<tok->nidxs; i++) if ( tok->idxs[i] ) tok->nuidxs++;
     }
 }
+static int max_ac_an_unpack(bcf_hdr_t *hdr)
+{
+    int hdr_id = bcf_hdr_id2int(hdr,BCF_DT_ID,"AC");
+    if ( hdr_id<0 ) return BCF_UN_FMT;
+    if ( !bcf_hdr_idinfo_exists(hdr,BCF_HL_INFO,hdr_id) ) return BCF_UN_FMT;
+
+    hdr_id = bcf_hdr_id2int(hdr,BCF_DT_ID,"AN");
+    if ( hdr_id<0 ) return BCF_UN_FMT;
+    if ( !bcf_hdr_idinfo_exists(hdr,BCF_HL_INFO,hdr_id) ) return BCF_UN_FMT;
+
+    return BCF_UN_INFO;
+}
 static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
 {
     tok->tok_type  = TOK_VAL;
@@ -1711,13 +1791,11 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         tok->tag = (char*) calloc(len+1,sizeof(char));
         memcpy(tok->tag,str,len);
         tok->tag[len] = 0;
-        wordexp_t wexp;
-        wordexp(tok->tag+1, &wexp, 0);
-        if ( !wexp.we_wordc ) error("No such file: %s\n", tok->tag+1);
+        char *fname = expand_path(tok->tag);
         int i, n;
-        char **list = hts_readlist(wexp.we_wordv[0], 1, &n);
-        if ( !list ) error("Could not read: %s\n", wexp.we_wordv[0]);
-        wordfree(&wexp);
+        char **list = hts_readlist(fname, 1, &n);
+        if ( !list ) error("Could not read: %s\n", fname);
+        free(fname);
         tok->hash = khash_str2int_init();
         for (i=0; i<n; i++)
         {
@@ -1916,6 +1994,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
     }
     else if ( !strcasecmp(tmp.s,"AN") )
     {
+        filter->max_unpack |= BCF_UN_FMT;
         tok->setter = &filters_set_an;
         tok->tag = strdup("AN");
         free(tmp.s);
@@ -1923,6 +2002,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
     }
     else if ( !strcasecmp(tmp.s,"AC") )
     {
+        filter->max_unpack |= BCF_UN_FMT;
         tok->setter = &filters_set_ac;
         tok->tag = strdup("AC");
         free(tmp.s);
@@ -1930,6 +2010,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
     }
     else if ( !strcasecmp(tmp.s,"MAC") )
     {
+        filter->max_unpack |= max_ac_an_unpack(filter->hdr);
         tok->setter = &filters_set_mac;
         tok->tag = strdup("MAC");
         free(tmp.s);
@@ -1937,6 +2018,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
     }
     else if ( !strcasecmp(tmp.s,"AF") )
     {
+        filter->max_unpack |= max_ac_an_unpack(filter->hdr);
         tok->setter = &filters_set_af;
         tok->tag = strdup("AF");
         free(tmp.s);
@@ -1944,6 +2026,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
     }
     else if ( !strcasecmp(tmp.s,"MAF") )
     {
+        filter->max_unpack |= max_ac_an_unpack(filter->hdr);
         tok->setter = &filters_set_maf;
         tok->tag = strdup("MAF");
         free(tmp.s);
@@ -1994,6 +2077,123 @@ static void str_to_lower(char *str)
 {
     while ( *str ) { *str = tolower(*str); str++; }
 }
+static int perl_exec(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
+{
+#if ENABLE_PERL_FILTERS
+
+    assert( rtok->nargs == nstack );
+    PerlInterpreter *perl = flt->perl;
+
+    dSP;
+    ENTER;
+    SAVETMPS;
+
+    PUSHMARK(SP);
+    int i,j;
+    for (i=1; i<nstack; i++)
+    {
+        token_t *tok = stack[i];
+        if ( tok->is_str )
+            XPUSHs(sv_2mortal(newSVpvn(tok->str_value.s,tok->str_value.l)));
+        else if ( tok->nvalues==1 )
+            XPUSHs(sv_2mortal(newSVnv(tok->values[0])));
+        else if ( tok->nvalues>1 )
+        {
+            AV *av = newAV();
+            for (j=0; j<tok->nvalues; j++) av_push(av, newSVnv(tok->values[j]));
+            SV *rv = newRV_inc((SV*)av);
+            XPUSHs(rv);
+        }
+        else
+        {
+            bcf_double_set_missing(tok->values[0]);
+            XPUSHs(sv_2mortal(newSVnv(tok->values[0])));
+        }
+    }
+    PUTBACK;
+
+    // A possible future todo: provide a means to select samples and indexes,
+    // expressions like this don't work yet
+    //          perl.filter(FMT/AD)[1:0]
+
+    int nret = call_pv(stack[0]->str_value.s, G_ARRAY);
+
+    SPAGAIN;
+
+    rtok->nvalues = nret;
+    hts_expand(double, rtok->nvalues, rtok->mvalues, rtok->values);
+    for (i=nret; i>0; i--)
+    {
+        rtok->values[i-1] = (double) POPn;
+        if ( isnan(rtok->values[i-1]) ) bcf_double_set_missing(rtok->values[i-1]);
+    }
+
+    PUTBACK;
+    FREETMPS;
+    LEAVE;
+
+#else
+    error("\nPerl filtering requires running `configure --enable-perl-filters` at compile time.\n\n");
+#endif
+    return nstack;
+}
+static void perl_init(filter_t *filter, char **str)
+{
+    char *beg = *str;
+    while ( *beg && isspace(*beg) ) beg++;
+    if ( !*beg ) return;
+    if ( strncasecmp("perl:", beg, 5) ) return;
+#if ENABLE_PERL_FILTERS
+    beg += 5;
+    char *end = beg;
+    while ( *end && *end!=';' ) end++;  // for now not escaping semicolons
+    *str = end+1;
+
+    if ( ++filter_ninit == 1 )
+    {
+        // must be executed only once, even for multiple filters; first time here
+        PERL_SYS_INIT3(0, NULL, NULL);
+    }
+    
+    filter->perl = perl_alloc();
+    PerlInterpreter *perl = filter->perl;
+
+    if ( !perl ) error("perl_alloc failed\n");
+    perl_construct(perl);
+
+    // name of the perl script to run
+    char *rmme = (char*) calloc(end - beg + 1,1);
+    memcpy(rmme, beg, end - beg);
+    char *argv[] = { "", "" };
+    argv[1] = expand_path(rmme);
+    free(rmme);
+
+    PL_origalen = 1;    // don't allow $0 change
+    int ret = perl_parse(filter->perl, NULL, 2, argv, NULL);
+    PL_exit_flags |= PERL_EXIT_DESTRUCT_END;
+    if ( ret ) error("Failed to parse: %s\n", argv[1]);
+    free(argv[1]);
+
+    perl_run(perl);
+#else
+    error("\nPerl filtering requires running `configure --enable-perl-filters` at compile time.\n\n");
+#endif
+}
+static void perl_destroy(filter_t *filter)
+{
+#if ENABLE_PERL_FILTERS
+    if ( !filter->perl ) return;
+
+    PerlInterpreter *perl = filter->perl;
+    perl_destruct(perl);
+    perl_free(perl);
+    if ( --filter_ninit <= 0  )
+    {
+        // similarly to PERL_SYS_INIT3, can must be executed only once? todo: test
+        PERL_SYS_TERM();
+    }
+#endif
+}
 
 
 // Parse filter expression and convert to reverse polish notation. Dijkstra's shunting-yard algorithm
@@ -2008,6 +2208,8 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
     int nout = 0, mout = 0;                 // filter tokens, RPN
     token_t *out = NULL;
     char *tmp = filter->str;
+    perl_init(filter, &tmp);
+
     int last_op = -1;
     while ( *tmp )
     {
@@ -2016,7 +2218,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
         if ( ret==-1 ) error("Missing quotes in: %s\n", str);
 
         // fprintf(stderr,"token=[%c] .. [%s] %d\n", TOKEN_STRING[ret], tmp, len);
-        // int i; for (i=0; i<nops; i++) fprintf(stderr," .%c.", TOKEN_STRING[ops[i]]); fprintf(stderr,"\n");
+        // int i; for (i=0; i<nops; i++) fprintf(stderr," .%c", TOKEN_STRING[ops[i]]); fprintf(stderr,"\n");
 
         if ( ret==TOK_LFT )         // left bracket
         {
@@ -2050,6 +2252,52 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
                 tok->threshold = -1.0;
                 ret = TOK_MULT;
             }
+            else if ( ret==TOK_PERLSUB )
+            {
+                tmp += len;
+                char *beg = tmp;
+                while ( *beg && ((isalnum(*beg) && !ispunct(*beg)) || *beg=='_') ) beg++;
+                if ( *beg!='(' ) error("Could not parse the expression: %s\n", str);
+                char *end = beg;
+                while ( *end && *end!=')' ) end++;
+                if ( !*end ) error("Could not parse the expression: %s\n", str);
+                kstring_t rmme = {0,0,0};
+
+                // the subroutine name
+                kputc('"', &rmme);
+                kputsn(tmp, beg-tmp, &rmme);
+                kputc('"', &rmme);
+                nout++;
+                hts_expand0(token_t, nout, mout, out);
+                filters_init1(filter, rmme.s, rmme.l, &out[nout-1]);
+
+                // subroutine arguments
+                rmme.l = 0;
+                kputsn(beg+1, end-beg-1, &rmme);
+                int i, nargs;
+                char **rmme_list = hts_readlist(rmme.s, 0, &nargs);
+                for (i=0; i<nargs; i++)
+                {
+                    nout++;
+                    hts_expand0(token_t, nout, mout, out);
+                    filters_init1(filter, rmme_list[i], strlen(rmme_list[i]), &out[nout-1]);
+                    free(rmme_list[i]);
+                }
+                free(rmme_list);
+                free(rmme.s);
+
+                nout++;
+                hts_expand0(token_t, nout, mout, out);
+                token_t *tok = &out[nout-1];
+                tok->tok_type  = TOK_PERLSUB;
+                tok->nargs     = nargs + 1;
+                tok->hdr_id    = -1;
+                tok->pass_site = -1;
+                tok->threshold = -1.0;
+
+                tmp = end + 1;
+                continue;
+            }
             else
             {
                 while ( nops>0 && op_prec[ret] < op_prec[ops[nops-1]] )
@@ -2073,7 +2321,10 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
         {
             nout++;
             hts_expand0(token_t, nout, mout, out);
-            filters_init1(filter, tmp, len, &out[nout-1]);
+            if ( tmp[len-1]==',' )
+                filters_init1(filter, tmp, len-1, &out[nout-1]);
+            else
+                filters_init1(filter, tmp, len, &out[nout-1]);
             tmp += len;
         }
         last_op = ret;
@@ -2240,6 +2491,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
 
 void filter_destroy(filter_t *filter)
 {
+    perl_destroy(filter);
     int i;
     for (i=0; i<filter->nfilters; i++)
     {
@@ -2298,6 +2550,14 @@ int filter_test(filter_t *filter, bcf1_t *line, const uint8_t **samples)
             int nargs = filter->filters[i].func(filter, line, &filter->filters[i], filter->flt_stack, nstack);
             filter->flt_stack[nstack-nargs] = &filter->filters[i];
             if ( --nargs > 0 ) nstack -= nargs;
+            continue;
+        }
+        else if ( filter->filters[i].tok_type == TOK_PERLSUB )
+        {
+            int nargs = filter->filters[i].nargs;
+            perl_exec(filter, line, &filter->filters[i], filter->flt_stack, nstack);
+            filter->flt_stack[nstack-nargs] = &filter->filters[i];
+            nstack -= nargs - 1;
             continue;
         }
         if ( nstack<2 )

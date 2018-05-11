@@ -73,7 +73,7 @@
             A .. gene line with a supported biotype
                     A.ID=~/^gene:/
 
-            B .. transcript line referencing A
+            B .. transcript line referencing A with supported biotype
                     B.ID=~/^transcript:/ && B.Parent=~/^gene:A.ID/
 
             C .. corresponding CDS, exon, and UTR lines:

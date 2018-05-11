@@ -2,7 +2,7 @@
 
 /*  reheader.c -- reheader subcommand.
 
-    Copyright (C) 2014-2017 Genome Research Ltd.
+    Copyright (C) 2014-2018 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -38,6 +38,7 @@ THE SOFTWARE.  */
 #include <htslib/bgzf.h>
 #include <htslib/tbx.h> // for hts_get_bgzfp()
 #include <htslib/kseq.h>
+#include <htslib/thread_pool.h>
 #include "bcftools.h"
 #include "khash_str2str.h"
 
@@ -46,7 +47,8 @@ typedef struct _args_t
     char **argv, *fname, *samples_fname, *header_fname, *output_fname;
     htsFile *fp;
     htsFormat type;
-    int argc;
+    htsThreadPool *threads;
+    int argc, n_threads;
 }
 args_t;
 
@@ -371,6 +373,16 @@ static bcf_hdr_t *strip_header(bcf_hdr_t *src, bcf_hdr_t *dst)
 static void reheader_bcf(args_t *args, int is_compressed)
 {
     htsFile *fp = args->fp;
+
+    if ( args->n_threads > 0 )
+    {
+        args->threads = calloc(1, sizeof(*args->threads));
+        if ( !args->threads ) error("Could not allocate memory\n");
+        if ( !(args->threads->pool = hts_tpool_init(args->n_threads)) ) error("Could not initialize threading\n");
+        BGZF *bgzf = hts_get_bgzfp(fp);
+        if ( bgzf ) bgzf_thread_pool(bgzf, args->threads->pool, args->threads->qsize);
+    }
+
     bcf_hdr_t *hdr = bcf_hdr_read(fp); if ( !hdr ) error("Failed to read the header: %s\n", args->fname);
     kstring_t htxt = {0,0,0};
     bcf_hdr_format(hdr, 1, &htxt);
@@ -398,6 +410,11 @@ static void reheader_bcf(args_t *args, int is_compressed)
     // write the header and the body
     htsFile *fp_out = hts_open(args->output_fname ? args->output_fname : "-",is_compressed ? "wb" : "wbu");
     if ( !fp_out ) error("%s: %s\n", args->output_fname ? args->output_fname : "-", strerror(errno));
+    if ( args->threads )
+    {
+        BGZF *bgzf = hts_get_bgzfp(fp_out);
+        if ( bgzf ) bgzf_thread_pool(bgzf, args->threads->pool, args->threads->qsize);
+    }
     bcf_hdr_write(fp_out, hdr_out);
 
     bcf1_t *rec = bcf_init();
@@ -452,6 +469,11 @@ static void reheader_bcf(args_t *args, int is_compressed)
     hts_close(fp);
     bcf_hdr_destroy(hdr_out);
     bcf_hdr_destroy(hdr);
+    if ( args->threads )
+    {
+        hts_tpool_destroy(args->threads->pool);
+        free(args->threads);
+    }
 }
 
 
@@ -465,6 +487,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -h, --header <file>     new header\n");
     fprintf(bcftools_stderr, "    -o, --output <file>     write output to a file [standard output]\n");
     fprintf(bcftools_stderr, "    -s, --samples <file>    new sample names\n");
+    fprintf(bcftools_stderr, "        --threads <int>     number of extra compression threads (BCF only) [0]\n");
     fprintf(bcftools_stderr, "\n");
     exit(1);
 }
@@ -474,18 +497,20 @@ int main_reheader(int argc, char *argv[])
     int c;
     args_t *args  = (args_t*) calloc(1,sizeof(args_t));
     args->argc    = argc; args->argv = argv;
-
+    
     static struct option loptions[] =
     {
         {"output",1,0,'o'},
         {"header",1,0,'h'},
         {"samples",1,0,'s'},
+        {"threads",1,NULL,1},
         {0,0,0,0}
     };
     while ((c = getopt_long(argc, argv, "s:h:o:",loptions,NULL)) >= 0)
     {
         switch (c)
         {
+            case  1 : args->n_threads = strtol(optarg, 0, 0); break;
             case 'o': args->output_fname = optarg; break;
             case 's': args->samples_fname = optarg; break;
             case 'h': args->header_fname = optarg; break;
