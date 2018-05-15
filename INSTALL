@@ -54,6 +54,10 @@ For example::
   export HTSLIB_CONFIGURE_OPTIONS=--enable-plugins
   pip install pysam
 
+To enable s3 support (doesnt use wheels):
+  export HTSLIB_CONFIGURE_OPTIONS="--enable-libcurl"
+  pip install --no-binary :all: pysam
+
 External
 --------
 
@@ -84,7 +88,7 @@ cython needs to be installed beforehand.
 
 To install from repository, type::
 
-    python setup.py install
+    pip install .
 
 For compilation options, see the section on Pypi installation above.
 
@@ -100,3 +104,15 @@ requirements for building htslib. Htslib requirements are listed in
 the htslib/INSTALL file.
 
 Installing from the repository will require cython_ to be installed.
+
+Tests
+=====
+
+To run tests:
+```
+virtualenv venv
+pip install -r requirements.txt
+pip install .
+pip install pytest
+pytest
+```
