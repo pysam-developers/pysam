@@ -1,6 +1,7 @@
 # editor files
 *~
 *#
+*.swp
 
 # test directory
 tests/pysam/
@@ -83,3 +84,5 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+download/
+venv/
