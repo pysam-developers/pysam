@@ -1342,7 +1342,43 @@ class TestExportImport(ReadTest):
         a.tags = [("XD", 12), ("RF", "abc")]
         b = pysam.AlignedSegment.from_dict(a.to_dict(), a.header)
         self.assertEqual(a, b)
-                
+
+
+class TestFillMD(unittest.TestCase):
+    def test_fillmd(self):
+        """
+        Ensure MD tags come out identical to those generated with calmd
+        """
+
+        bam_no_md_path = os.path.join(BAM_DATADIR, "ex2.bam")
+        bam_with_md_path = os.path.join(BAM_DATADIR, "with_md.bam")
+        fasta_path = os.path.join(BAM_DATADIR, "ex1.fa")
+
+        with pysam.AlignmentFile(bam_no_md_path, "rb") as pysamf_no_md, \
+            pysam.AlignmentFile(bam_with_md_path, "rb") as pysamf_with_md, \
+            pysam.FastaFile(fasta_path) as fa:
+
+            # bam file has multiple chromosomes, so load them all upfront for easy
+            # look up
+            reference_fa = {
+                'chr1': fa.fetch('chr1', return_bytes=True),
+                'chr2': fa.fetch('chr2', return_bytes=True),
+            }
+ 
+            for read in pysamf_no_md:
+                expected_read = next(pysamf_with_md)
+
+
+                self.assertFalse(read.has_tag('MD'))
+                read.fill_md(reference_fa[read.reference_name])
+
+                # unmapped reads don't get an MD tag
+                if read.is_unmapped:
+                    self.assertFalse(read.has_tag('MD'))
+                else:
+                    self.assertTrue(read.has_tag('MD'))
+                    self.assertEqual(read.get_tag('MD'), expected_read.get_tag('MD'))
+
         
 if __name__ == "__main__":
     unittest.main()

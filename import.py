@@ -13,6 +13,7 @@
 # rm -rf samtools
 # python import.py samtools download/samtools
 # git checkout -- samtools/version.h
+# git checkout -- samtools/bamtk.c.pysam.c
 #
 # Manually, then:
 # modify config.h to set compatibility flags
@@ -134,6 +135,11 @@ def _update_pysam_files(cf, destdir):
     with open(os.path.join("import", "pysam.c")) as inf, \
          open(os.path.join(destdir, "{}.pysam.c".format(basename)), "w") as outf:
         outf.write(re.sub("@pysam@", basename, inf.read()))
+
+   # add our hack to expose bam_fillmd1_core
+    with open(os.path.join("import", "bam_md.h")) as inf, \
+         open(os.path.join(destdir, "bam_md.h"), "w") as outf:
+        outf.write(inf.read())
 
 
 if len(sys.argv) >= 1:

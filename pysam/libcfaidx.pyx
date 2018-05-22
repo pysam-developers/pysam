@@ -68,7 +68,7 @@ from pysam.libchtslib cimport \
     faidx_fetch_seq, hisremote, \
     bgzf_open, bgzf_close
 
-from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
+from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_bytes
 from pysam.libcutils cimport encode_filename, from_string_and_size
 from pysam.libcutils cimport qualitystring_to_array, parse_region
 
@@ -245,7 +245,8 @@ cdef class FastaFile:
               reference=None,
               start=None,
               end=None,
-              region=None):
+              region=None,
+              return_bytes=False):
         """fetch sequences in a :term:`region`.
 
         A region can
@@ -263,10 +264,15 @@ cdef class FastaFile:
         an interval in python coordinates.
         The region is specified by :term:`reference`, `start` and `end`.
 
+        return_bytes will return bytestring rather than a regular string;
+        this is useful if you want to pass it straight back to C.
+
         Returns
         -------
 
         string : a string with the sequence specified by the region.
+
+        if return_bytes is set a bytestring will be returned instead.
 
         Raises
         ------
@@ -318,7 +324,10 @@ cdef class FastaFile:
                 raise ValueError("failure when retrieving sequence on '%s'" % reference)
 
         try:
-            return charptr_to_str(seq)
+            if return_bytes:
+                return charptr_to_bytes(seq)
+            else:
+                return charptr_to_str(seq)
         finally:
             free(seq)
 
