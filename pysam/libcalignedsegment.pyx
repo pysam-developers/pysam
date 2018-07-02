@@ -1774,7 +1774,7 @@ cdef class AlignedSegment:
                 if _full:
                     for i from 0 <= i < l:
                         result.append(None)
-            elif op == BAM_CMATCH:
+            elif op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
                 for i from pos <= i < pos + l:
                     result.append(i)
                 pos += l
@@ -1989,7 +1989,7 @@ cdef class AlignedSegment:
         for k from 0 <= k < pysam_get_n_cigar(src):
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
-            if op == BAM_CMATCH:
+            if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
                 result.append((pos, pos + l))
                 pos += l
             elif op == BAM_CDEL or op == BAM_CREF_SKIP:
@@ -2021,11 +2021,11 @@ cdef class AlignedSegment:
             op = cigar_p[k] & BAM_CIGAR_MASK
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
-            if op == BAM_CMATCH:
+            if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
                 o = min( pos + l, end) - max( pos, start )
                 if o > 0: overlap += o
 
-            if op == BAM_CMATCH or op == BAM_CDEL or op == BAM_CREF_SKIP:
+            if op == BAM_CMATCH or op == BAM_CDEL or op == BAM_CREF_SKIP or op == BAM_CEQUAL or op == BAM_CDIFF:
                 pos += l
 
         return overlap
