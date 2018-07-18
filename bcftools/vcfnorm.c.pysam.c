@@ -75,7 +75,8 @@ typedef struct
     char **als;
     int mmaps, nals, mals;
     uint8_t *tmp_arr1, *tmp_arr2, *diploid;
-    int ntmp_arr1, ntmp_arr2;
+    int32_t *int32_arr;
+    int ntmp_arr1, ntmp_arr2, nint32_arr;
     kstring_t *tmp_str;
     kstring_t *tmp_als, tmp_als_str;
     int ntmp_als;
@@ -433,6 +434,15 @@ static int realign(args_t *args, bcf1_t *line)
     args->tmp_als_str.s[ args->tmp_als_str.l ] = 0;
     bcf_update_alleles_str(args->hdr,line,args->tmp_als_str.s);
     args->nchanged++;
+
+    // Update INFO/END if necessary
+    int new_reflen = strlen(line->d.allele[0]);
+    if ( (ori_pos!=line->pos || reflen!=new_reflen) && bcf_get_info_int32(args->hdr, line, "END", &args->int32_arr, &args->nint32_arr)==1 )
+    {
+        // bcf_update_alleles_str() messed up rlen because line->pos changed. This will be fixed by bcf_update_info_int32()
+        args->int32_arr[0] = line->pos + new_reflen;
+        bcf_update_info_int32(args->hdr, line, "END", args->int32_arr, 1);
+    }
 
     return ERR_OK;
 }
@@ -1038,6 +1048,7 @@ static void merge_info_string(args_t *args, bcf1_t **lines, int nlines, bcf_info
 }
 static void merge_format_genotype(args_t *args, bcf1_t **lines, int nlines, bcf_fmt_t *fmt, bcf1_t *dst)
 {
+    // reusing int8_t arrays as int32_t arrays
     int ntmp = args->ntmp_arr1 / 4;
     int ngts = bcf_get_genotypes(args->hdr,lines[0],&args->tmp_arr1,&ntmp);
     args->ntmp_arr1 = ntmp * 4;
@@ -1687,6 +1698,7 @@ static void destroy_data(args_t *args)
     }
     free(args->maps);
     free(args->als);
+    free(args->int32_arr);
     free(args->tmp_arr1);
     free(args->tmp_arr2);
     free(args->diploid);
@@ -1926,7 +1938,7 @@ int main_vcfnorm(int argc, char *argv[])
                 break;
             case 'o': args->output_fname = optarg; break;
             case 'D':
-                fprintf(bcftools_stderr,"Warning: `-D` is functional but deprecated, replaced by `-d both`.\n"); 
+                fprintf(bcftools_stderr,"Warning: `-D` is functional but deprecated, replaced by and alias of `-d none`.\n"); 
                 args->rmdup = BCF_SR_PAIR_EXACT;
                 break;
             case 's': args->strict_filter = 1; break;
@@ -1946,9 +1958,7 @@ int main_vcfnorm(int argc, char *argv[])
             default: error("Unknown argument: %s\n", optarg);
         }
     }
-    if ( argc>optind+1 ) usage();
-    if ( !args->ref_fname && !args->mrows_op && !args->rmdup ) usage();
-    if ( !args->ref_fname && args->check_ref&CHECK_REF_FIX ) error("Expected --fasta-ref with --check-ref s\n");
+
     char *fname = NULL;
     if ( optind>=argc )
     {
@@ -1956,6 +1966,9 @@ int main_vcfnorm(int argc, char *argv[])
         else usage();
     }
     else fname = argv[optind];
+
+    if ( !args->ref_fname && !args->mrows_op && !args->rmdup ) error("Expected -f, -m, -D or -d option\n");
+    if ( !args->ref_fname && args->check_ref&CHECK_REF_FIX ) error("Expected --fasta-ref with --check-ref s\n");
 
     if ( args->region )
     {

@@ -353,9 +353,9 @@ static som_t *som_init(args_t *args)
     som->bmu_th = args->bmu_th;
     som->size   = pow(som->nbin,som->ndim);
     som->w = (double*) malloc(sizeof(double)*som->size*som->kdim);
-    if ( !som->w ) error("Could not alloc %d bytes [nbin=%d ndim=%d kdim=%d]\n", sizeof(double)*som->size*som->kdim,som->nbin,som->ndim,som->kdim);
+    if ( !som->w ) error("Could not alloc %"PRIu64" bytes [nbin=%d ndim=%d kdim=%d]\n", (uint64_t)(sizeof(double)*som->size*som->kdim),som->nbin,som->ndim,som->kdim);
     som->c = (double*) calloc(som->size,sizeof(double));
-    if ( !som->w ) error("Could not alloc %d bytes [nbin=%d ndim=%d]\n", sizeof(double)*som->size,som->nbin,som->ndim);
+    if ( !som->w ) error("Could not alloc %"PRIu64" bytes [nbin=%d ndim=%d]\n", (uint64_t)(sizeof(double)*som->size),som->nbin,som->ndim);
     int i;
     for (i=0; i<som->size*som->kdim; i++)
         som->w[i] = (double)random()/RAND_MAX;

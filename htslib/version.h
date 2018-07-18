@@ -1,1 +1,1 @@
-#define HTS_VERSION "1.7"
+#define HTS_VERSION "1.9"

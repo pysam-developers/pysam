@@ -73,7 +73,7 @@
             A .. gene line with a supported biotype
                     A.ID=~/^gene:/
 
-            B .. transcript line referencing A
+            B .. transcript line referencing A with supported biotype
                     B.ID=~/^transcript:/ && B.Parent=~/^gene:A.ID/
 
             C .. corresponding CDS, exon, and UTR lines:
@@ -597,6 +597,7 @@ typedef struct _args_t
     csq_t *csq_buf;             // pool of csq not managed by hap_node_t, i.e. non-CDS csqs
     int ncsq_buf, mcsq_buf;
     id_tbl_t tscript_ids;       // mapping between transcript id (eg. Zm00001d027245_T001) and a numeric idx
+    int force;                  // force run under various conditions. Currently only to skip out-of-phase transcripts
 
     faidx_t *fai;
     kstring_t str, str2;
@@ -1113,15 +1114,26 @@ void tscript_init_cds(args_t *args)
             tr->cds[0]->len -= tr->cds[0]->phase;
             tr->cds[0]->phase = 0;
 
-            // sanity check phase
+            // sanity check phase; the phase number in gff tells us how many bases to skip in this
+            // feature to reach the first base of the next codon
+            int tscript_ok = 1;
             for (i=0; i<tr->ncds; i++)
             {
                 int phase = tr->cds[i]->phase ? 3 - tr->cds[i]->phase : 0;
                 if ( phase!=len%3)
-                    error("GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
-                assert( phase == len%3 );
+                {
+                    if ( args->force )
+                    {
+                        if ( args->quiet < 2 )
+                            fprintf(bcftools_stderr,"Warning: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                        tscript_ok = 0;
+                        break;
+                    }
+                    error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                }
                 len += tr->cds[i]->len; 
             }
+            if ( !tscript_ok ) continue;    // skip this transcript
         }
         else
         {
@@ -1142,13 +1154,24 @@ void tscript_init_cds(args_t *args)
             tr->cds[i]->phase = 0;
 
             // sanity check phase
+            int tscript_ok = 1;
             for (i=tr->ncds-1; i>=0; i--)
             {
                 int phase = tr->cds[i]->phase ? 3 - tr->cds[i]->phase : 0;
                 if ( phase!=len%3)
-                    error("GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                {
+                    if ( args->force )
+                    {
+                        if ( args->quiet < 2 )
+                            fprintf(bcftools_stderr,"Warning: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                        tscript_ok = 0;
+                        break;
+                    }
+                    error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                }
                 len += tr->cds[i]->len;
             }
+            if ( !tscript_ok ) continue;    // skip this transcript
         }
 
         // set len. At the same check that CDS within a transcript do not overlap
@@ -1878,7 +1901,7 @@ fprintf(bcftools_stderr,"del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
         splice->kalt.l = 0; kputsn(splice->vcf.alt + splice->tbeg, splice->vcf.alen, &splice->kalt); 
         if ( (splice->ref_beg+1 < ex_beg && splice->ref_end >= ex_beg) || (splice->ref_beg+1 < ex_end && splice->ref_end >= ex_end) ) // ouch, ugly ENST00000409523/long-overlapping-del.vcf
         {
-            splice->csq |= (splice->ref_end - splice->ref_beg + 1)%3 ? CSQ_FRAMESHIFT_VARIANT : CSQ_INFRAME_DELETION;
+            splice->csq |= (splice->ref_end - splice->ref_beg)%3 ? CSQ_FRAMESHIFT_VARIANT : CSQ_INFRAME_DELETION;
             return SPLICE_OVERLAP;
         }
     }
@@ -2076,7 +2099,6 @@ fprintf(bcftools_stderr,"cds splice_csq: %d [%s][%s] .. beg,end=%d %d, ret=%d, c
         child->var  = str.s;
         child->type = HAP_SSS;
         child->csq  = splice.csq;
-        child->prev = parent->type==HAP_SSS ? parent->prev : parent;
         child->rec  = rec;
         return 0;
     }
@@ -2094,7 +2116,7 @@ fprintf(bcftools_stderr,"cds splice_csq: %d [%s][%s] .. beg,end=%d %d, ret=%d, c
         assert( dbeg <= splice.kalt.l );
     }
 
-    if ( parent->type==HAP_SSS ) parent = parent->prev;
+    assert( parent->type!=HAP_SSS );
     if ( parent->type==HAP_CDS )    
     {
         i = parent->icds;
@@ -2404,12 +2426,12 @@ fprintf(bcftools_stderr,"csq_push: %d .. %d\n",rec->pos+1,csq->type.type);
 #endif
     khint_t k = kh_get(pos2vbuf, args->pos2vbuf, (int)csq->pos);
     vbuf_t *vbuf = (k == kh_end(args->pos2vbuf)) ? NULL : kh_val(args->pos2vbuf, k);
-    if ( !vbuf ) error("This should not happen. %s:%d  %s\n",bcf_seqname(args->hdr,rec),csq->pos+1,csq->type.vstr);
+    if ( !vbuf ) error("This should not happen. %s:%d  %s\n",bcf_seqname(args->hdr,rec),csq->pos+1,csq->type.vstr.s);
 
     int i;
     for (i=0; i<vbuf->n; i++)
         if ( vbuf->vrec[i]->line==rec ) break;
-    if ( i==vbuf->n ) error("This should not happen.. %s:%d  %s\n", bcf_seqname(args->hdr,rec),csq->pos+1,csq->type.vstr);
+    if ( i==vbuf->n ) error("This should not happen.. %s:%d  %s\n", bcf_seqname(args->hdr,rec),csq->pos+1,csq->type.vstr.s);
     vrec_t *vrec = vbuf->vrec[i];
 
     // if the variant overlaps donor/acceptor and also splice region, report only donor/acceptor
@@ -2771,26 +2793,20 @@ void hap_finalize(args_t *args, hap_t *hap)
         hap->upstream_stop = 0;
 
         int i = 1, dlen = 0, ibeg, indel = 0;
-        while ( i<istack && hap->stack[i].node->type == HAP_SSS ) i++;
         hap->sbeg = hap->stack[i].node->sbeg;
-
+        assert( hap->stack[istack].node->type != HAP_SSS );
         if ( tr->strand==STRAND_FWD )
         {
             i = 0, ibeg = -1;
             while ( ++i <= istack )
             {
-                if ( hap->stack[i].node->type == HAP_SSS )
-                {
-                    // start/stop/splice site overlap: don't know how to build the haplotypes correctly, skipping
-                    hap_add_csq(args,hap,node,0,i,i,0,0);
-                    continue;
-                }
+                assert( hap->stack[i].node->type != HAP_SSS );
+
                 dlen += hap->stack[i].node->dlen;
                 if ( hap->stack[i].node->dlen ) indel = 1;
 
-                // This condition extends compound variants. Note that s/s/s sites are forced out to always break
-                // a compound block. See ENST00000271583/splice-acceptor.vcf for motivation.
-                if ( i<istack && hap->stack[i+1].node->type != HAP_SSS )
+                // This condition extends compound variants.
+                if ( i<istack )
                 {
                     if ( dlen%3 )   // frameshift
                     {
@@ -2841,14 +2857,10 @@ void hap_finalize(args_t *args, hap_t *hap)
             i = istack + 1, ibeg = -1;
             while ( --i > 0 )
             {
-                if ( hap->stack[i].node->type == HAP_SSS )
-                {
-                    hap_add_csq(args,hap,node,0,i,i,0,0);
-                    continue;
-                }
+                assert ( hap->stack[i].node->type != HAP_SSS );
                 dlen += hap->stack[i].node->dlen;
                 if ( hap->stack[i].node->dlen ) indel = 1;
-                if ( i>1 && hap->stack[i-1].node->type != HAP_SSS )
+                if ( i>1 )
                 {
                     if ( dlen%3 )
                     {
@@ -3354,7 +3366,8 @@ int test_cds(args_t *args, bcf1_t *rec)
             if ( rec->d.allele[1][0]=='<' || rec->d.allele[1][0]=='*' ) { continue; }
             hap_node_t *parent = tr->hap[0] ? tr->hap[0] : tr->root;
             hap_node_t *child  = (hap_node_t*)calloc(1,sizeof(hap_node_t));
-            if ( (hap_ret=hap_init(args, parent, child, cds, rec, 1))!=0 )
+            hap_ret = hap_init(args, parent, child, cds, rec, 1);
+            if ( hap_ret!=0 )
             {
                 // overlapping or intron variant, cannot apply
                 if ( hap_ret==1 )
@@ -3365,7 +3378,22 @@ int test_cds(args_t *args, bcf1_t *rec)
                         fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
                 }
                 else ret = 1;   // prevent reporting as intron in test_tscript
-                free(child);
+                hap_destroy(child);
+                continue;
+            }
+            if ( child->type==HAP_SSS )
+            {
+                csq_t csq; 
+                memset(&csq, 0, sizeof(csq_t));
+                csq.pos          = rec->pos;
+                csq.type.biotype = tr->type;
+                csq.type.strand  = tr->strand;
+                csq.type.trid    = tr->id;
+                csq.type.gene    = tr->gene->name;
+                csq.type.type = child->csq;
+                csq_stage(args, &csq, rec);
+                hap_destroy(child);
+                ret = 1;
                 continue;
             }
             parent->nend--;
@@ -3436,7 +3464,8 @@ int test_cds(args_t *args, bcf1_t *rec)
                 }
 
                 hap_node_t *child = (hap_node_t*)calloc(1,sizeof(hap_node_t));
-                if ( (hap_ret=hap_init(args, parent, child, cds, rec, ial))!=0 )
+                hap_ret = hap_init(args, parent, child, cds, rec, ial);
+                if ( hap_ret!=0 )
                 {
                     // overlapping or intron variant, cannot apply
                     if ( hap_ret==1 )
@@ -3448,10 +3477,23 @@ int test_cds(args_t *args, bcf1_t *rec)
                             fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%d, sample %s\t%s>%s\n",
                                     chr,rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]],rec->d.allele[0],rec->d.allele[ial]);
                     }
-                    free(child);
+                    hap_destroy(child);
                     continue;
                 }
-
+                if ( child->type==HAP_SSS )
+                {
+                    csq_t csq; 
+                    memset(&csq, 0, sizeof(csq_t));
+                    csq.pos          = rec->pos;
+                    csq.type.biotype = tr->type;
+                    csq.type.strand  = tr->strand;
+                    csq.type.trid    = tr->id;
+                    csq.type.gene    = tr->gene->name;
+                    csq.type.type = child->csq;
+                    csq_stage(args, &csq, rec);
+                    hap_destroy(child);
+                    continue;
+                }
                 if ( parent->cur_rec!=rec )
                 {
                     hts_expand(int,rec->n_allele,parent->mcur_child,parent->cur_child);
@@ -3710,6 +3752,7 @@ static const char *usage(void)
         "                                     s: skip unphased hets\n"
         "Options:\n"
         "   -e, --exclude <expr>            exclude sites for which the expression is true\n"
+        "       --force                     run even if some sanity checks fail\n"
         "   -i, --include <expr>            select sites for which the expression is true\n"
         "   -o, --output <file>             write output to a file [standard output]\n"
         "   -O, --output-type <b|u|z|v|t>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF\n"
@@ -3741,6 +3784,7 @@ int main_csq(int argc, char *argv[])
 
     static struct option loptions[] =
     {
+        {"force",0,0,1},
         {"help",0,0,'h'},
         {"ncsq",1,0,'n'},
         {"custom-tag",1,0,'c'},
@@ -3767,6 +3811,7 @@ int main_csq(int argc, char *argv[])
     {
         switch (c) 
         {
+            case  1 : args->force = 1; break;
             case 'l': args->local_csq = 1; break;
             case 'c': args->bcsq_tag = optarg; break;
             case 'q': args->quiet++; break;

@@ -39,7 +39,7 @@ THE SOFTWARE.  */
 #define FT_STDIN (1<<3)
 
 char *bcftools_version(void);
-void error(const char *format, ...) HTS_NORETURN;
+void error(const char *format, ...) HTS_NORETURN HTS_FORMAT(HTS_PRINTF_FMT, 1, 2);
 void bcf_hdr_append_version(bcf_hdr_t *hdr, int argc, char **argv, const char *cmd);
 const char *hts_bcf_wmode(int file_type);
 

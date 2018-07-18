@@ -584,7 +584,7 @@ int main_vcfisec(int argc, char *argv[])
     if ( !args->targets_list )
     {
         if ( argc-optind<2  ) error("Expected multiple files or the --targets option\n");
-        if ( !args->isec_op ) error("Expected two file names or one of the options --complement, --nfiles or --targets\n");
+        if ( !args->isec_op ) error("One of the options --complement, --nfiles or --targets must be given with more than two files\n");
     }
     args->files->require_index = 1;
     while (optind<argc)

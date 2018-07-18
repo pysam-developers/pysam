@@ -83,7 +83,8 @@ static int usage() {
     fprintf(samtools_stderr, "   -b <bed>            list of positions or regions\n");
     fprintf(samtools_stderr, "   -f <list>           list of input BAM filenames, one per line [null]\n");
     fprintf(samtools_stderr, "   -l <int>            read length threshold (ignore reads shorter than <int>) [0]\n");
-    fprintf(samtools_stderr, "   -d/-m <int>         maximum coverage depth [8000]\n");  // the htslib's default
+    fprintf(samtools_stderr, "   -d/-m <int>         maximum coverage depth [8000]. If 0, depth is set to the maximum\n"
+                    "                       integer value, effectively removing any depth limit.\n");  // the htslib's default
     fprintf(samtools_stderr, "   -q <int>            base quality threshold [0]\n");
     fprintf(samtools_stderr, "   -Q <int>            mapping quality threshold [0]\n");
     fprintf(samtools_stderr, "   -r <chr:from-to>    region\n");
@@ -208,6 +209,8 @@ int main_depth(int argc, char *argv[])
     mplp = bam_mplp_init(n, read_bam, (void**)data); // initialization
     if (0 < max_depth)
         bam_mplp_set_maxcnt(mplp,max_depth);  // set maximum coverage depth
+    else if (!max_depth)
+        bam_mplp_set_maxcnt(mplp,INT_MAX);
     n_plp = calloc(n, sizeof(int)); // n_plp[i] is the number of covering reads from the i-th BAM
     plp = calloc(n, sizeof(bam_pileup1_t*)); // plp[i] points to the array of covering reads (internal in mplp)
     while ((ret=bam_mplp_auto(mplp, &tid, &pos, n_plp, plp)) > 0) { // come to the next covered position
@@ -254,7 +257,8 @@ int main_depth(int argc, char *argv[])
             for (j = 0; j < n_plp[i]; ++j) {
                 const bam_pileup1_t *p = plp[i] + j; // DON'T modfity plp[][] unless you really know
                 if (p->is_del || p->is_refskip) ++m; // having dels or refskips at tid:pos
-                else if (bam_get_qual(p->b)[p->qpos] < baseQ) ++m; // low base quality
+                else if (p->qpos < p->b->core.l_qseq &&
+                         bam_get_qual(p->b)[p->qpos] < baseQ) ++m; // low base quality
             }
             fprintf(samtools_stdout, "\t%d", n_plp[i] - m); // this the depth to output
         }

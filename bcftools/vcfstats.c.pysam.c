@@ -394,7 +394,7 @@ static void init_user_stats(args_t *args, bcf_hdr_t *hdr, stats_t *stats)
         int id = bcf_hdr_id2int(hdr,BCF_DT_ID,usr->tag);
         if ( !bcf_hdr_idinfo_exists(hdr,BCF_HL_INFO,id) ) error("The INFO tag \"%s\" is not defined in the header\n", usr->tag);
         usr->type = bcf_hdr_id2type(hdr,BCF_HL_INFO,id);
-        if ( usr->type!=BCF_HT_REAL && usr->type!=BCF_HT_INT ) error("The INFO tag \"%s\" is not of Float or Integer type (%d)\n", usr->type);
+        if ( usr->type!=BCF_HT_REAL && usr->type!=BCF_HT_INT ) error("The INFO tag \"%s\" is not of Float or Integer type (%d)\n", usr->tag, usr->type);
     }
 }
 static void init_stats(args_t *args)
