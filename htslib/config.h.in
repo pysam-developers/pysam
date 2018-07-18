@@ -52,6 +52,9 @@
 /* Define if libcurl file access is enabled. */
 #undef HAVE_LIBCURL
 
+/* Define if libdeflate is available. */
+#undef HAVE_LIBDEFLATE
+
 /* Define to 1 if you have the `lzma' library (-llzma). */
 #undef HAVE_LIBLZMA
 

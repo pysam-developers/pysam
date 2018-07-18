@@ -26,6 +26,7 @@ THE SOFTWARE.  */
 #include <string.h>
 #include <stdlib.h>
 #include <htslib/hts.h>
+#include <htslib/vcf.h>
 #include <ctype.h>
 #include "vcmp.h"
 
@@ -34,7 +35,8 @@ struct _vcmp_t
     char *dref;
     int ndref, mdref;   // ndref: positive when ref1 longer, negative when ref2 is longer
     int nmatch;
-    int *map, mmap;
+    int *map, mmap, nmap;
+    int *map_dip, mmap_dip, nmap_dip;
 };
 
 vcmp_t *vcmp_init()
@@ -44,6 +46,7 @@ vcmp_t *vcmp_init()
 
 void vcmp_destroy(vcmp_t *vcmp)
 {
+    free(vcmp->map_dip);
     free(vcmp->map);
     free(vcmp->dref);
     free(vcmp);
@@ -120,7 +123,8 @@ int *vcmp_map_ARvalues(vcmp_t *vcmp, int n, int nals1, char **als1, int nals2, c
 {
     if ( vcmp_set_ref(vcmp,als1[0],als2[0]) < 0 ) return NULL;
 
-    vcmp->map = (int*) realloc(vcmp->map,sizeof(int)*n);
+    vcmp->nmap = n;
+    hts_expand(int, vcmp->nmap, vcmp->mmap, vcmp->map);
 
     int i, ifrom = n==nals2 ? 0 : 1;
     for (i=ifrom; i<nals2; i++)
@@ -129,4 +133,23 @@ int *vcmp_map_ARvalues(vcmp_t *vcmp, int n, int nals1, char **als1, int nals2, c
     }
     return vcmp->map;
 }
+
+int *vcmp_map_dipGvalues(vcmp_t *vcmp, int *nmap)
+{
+    vcmp->nmap_dip = vcmp->nmap*(vcmp->nmap+1)/2;
+    hts_expand(int, vcmp->nmap_dip, vcmp->mmap_dip, vcmp->map_dip);
+
+    int i, j, k = 0;
+    for (i=0; i<vcmp->nmap; i++)
+    {
+        for (j=0; j<=i; j++)
+        {
+            vcmp->map_dip[k] = vcmp->map[i]>=0 && vcmp->map[j]>=0 ? bcf_alleles2gt(vcmp->map[i],vcmp->map[j]) : -1;
+            k++;
+        }
+    }
+    *nmap = k;
+    return vcmp->map_dip;
+}
+
 

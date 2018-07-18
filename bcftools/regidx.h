@@ -106,6 +106,7 @@ typedef void (*regidx_free_f)(void *payload);
 int regidx_parse_bed(const char*,char**,char**,uint32_t*,uint32_t*,void*,void*);   // CHROM or whitespace-sepatated CHROM,FROM,TO (0-based,right-open)
 int regidx_parse_tab(const char*,char**,char**,uint32_t*,uint32_t*,void*,void*);   // CHROM or whitespace-separated CHROM,POS (1-based, inclusive)
 int regidx_parse_reg(const char*,char**,char**,uint32_t*,uint32_t*,void*,void*);   // CHROM, CHROM:POS, CHROM:FROM-TO, CHROM:FROM- (1-based, inclusive)
+int regidx_parse_vcf(const char*,char**,char**,uint32_t*,uint32_t*,void*,void*);
 
 /*
  *  regidx_init() - creates new index

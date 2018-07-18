@@ -58,5 +58,6 @@ int vcmp_find_allele(vcmp_t *vcmp, char **als1, int nals1, char *al2);
  */
 int *vcmp_map_ARvalues(vcmp_t *vcmp, int number, int nals1, char **als1, int nals2, char **als2);
 
+int *vcmp_map_dipGvalues(vcmp_t *vcmp, int *nmap);
 
 #endif

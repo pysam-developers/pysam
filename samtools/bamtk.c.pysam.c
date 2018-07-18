@@ -33,13 +33,14 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include "htslib/hts.h"
 #include "samtools.h"
+#include "version.h"
 
 int bam_taf2baf(int argc, char *argv[]);
 int bam_mpileup(int argc, char *argv[]);
 int bam_merge(int argc, char *argv[]);
 int bam_index(int argc, char *argv[]);
 int bam_sort(int argc, char *argv[]);
-// int bam_tview_main(int argc, char *argv[]);
+//int bam_tview_main(int argc, char *argv[]);
 int bam_mating(int argc, char *argv[]);
 int bam_rmdup(int argc, char *argv[]);
 int bam_flagstat(int argc, char *argv[]);
@@ -64,7 +65,12 @@ int main_quickcheck(int argc, char *argv[]);
 int main_addreplacerg(int argc, char *argv[]);
 int faidx_main(int argc, char *argv[]);
 int dict_main(int argc, char *argv[]);
+int fqidx_main(int argc, char *argv[]);
 
+const char *samtools_version()
+{
+    return SAMTOOLS_VERSION;
+}
 
 static void usage(FILE *fp)
 {
@@ -81,6 +87,7 @@ static void usage(FILE *fp)
 "  -- Indexing\n"
 "     dict           create a sequence dictionary file\n"
 "     faidx          index/extract FASTA\n"
+"     fqidx          index/extract FASTQ\n"
 "     index          index alignment\n"
 "\n"
 "  -- Editing\n"
@@ -163,6 +170,7 @@ int samtools_main(int argc, char *argv[])
     else if (strcmp(argv[1], "index") == 0)     ret = bam_index(argc-1, argv+1);
     else if (strcmp(argv[1], "idxstats") == 0)  ret = bam_idxstats(argc-1, argv+1);
     else if (strcmp(argv[1], "faidx") == 0)     ret = faidx_main(argc-1, argv+1);
+    else if (strcmp(argv[1], "fqidx") == 0)     ret = fqidx_main(argc-1, argv+1);
     else if (strcmp(argv[1], "dict") == 0)      ret = dict_main(argc-1, argv+1);
     else if (strcmp(argv[1], "fixmate") == 0)   ret = bam_mating(argc-1, argv+1);
     else if (strcmp(argv[1], "rmdup") == 0)     ret = bam_rmdup(argc-1, argv+1);
@@ -192,9 +200,9 @@ int samtools_main(int argc, char *argv[])
         fprintf(samtools_stderr, "[main] The `pileup' command has been removed. Please use `mpileup' instead.\n");
         return 1;
     }
-    //    else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
+    //else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
     else if (strcmp(argv[1], "--version") == 0) {
-        fprintf(samtools_stdout, 
+        fprintf(samtools_stdout,
 "samtools %s\n"
 "Using htslib %s\n"
 "Copyright (C) 2018 Genome Research Ltd.\n",

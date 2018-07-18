@@ -234,6 +234,10 @@ regidx_t *regidx_init(const char *fname, regidx_parse_f parser, regidx_free_f fr
                 parser = regidx_parse_bed;
             else if ( len>=4 && !strcasecmp(".bed",fname+len-4) )
                 parser = regidx_parse_bed;
+            else if ( len>=4 && !strcasecmp(".vcf",fname+len-4) )
+                parser = regidx_parse_vcf;
+            else if ( len>=7 && !strcasecmp(".vcf.gz",fname+len-7) )
+                parser = regidx_parse_vcf;
             else
                 parser = regidx_parse_tab;
         }
@@ -490,11 +494,18 @@ int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, uint32_t 
     {
         ss = se+1;
         *end = strtod(ss, &se);
-        if ( ss==se ) *end = *beg;
+        if ( ss==se || (*se && !isspace(*se)) ) *end = *beg;
         else if ( *end==0 ) { fprintf(bcftools_stderr,"Could not parse tab line, expected 1-based coordinate: %s\n", line); return -2; }
         else (*end)--;
     }
     return 0;
+}
+
+int regidx_parse_vcf(const char *line, char **chr_beg, char **chr_end, uint32_t *beg, uint32_t *end, void *payload, void *usr)
+{
+    int ret = regidx_parse_tab(line, chr_beg, chr_end, beg, end, payload, usr);
+    if ( !ret ) *end = *beg;
+    return ret;
 }
 
 int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, uint32_t *beg, uint32_t *end, void *payload, void *usr)

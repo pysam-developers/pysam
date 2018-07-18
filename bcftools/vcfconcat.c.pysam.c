@@ -30,6 +30,7 @@ THE SOFTWARE.  */
 #include <string.h>
 #include <errno.h>
 #include <math.h>
+#include <inttypes.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/kseq.h>
@@ -524,7 +525,7 @@ static void concat(args_t *args)
                     args->seen_seq[chr_id] = 1;
                     prev_chr_id = chr_id;
 
-                    if ( vcf_write_line(args->out_fh, &fp->line)!=0 ) error("Failed to write %d bytes\n", fp->line.l);
+                    if ( vcf_write_line(args->out_fh, &fp->line)!=0 ) error("Failed to write %"PRIu64" bytes\n", (uint64_t)fp->line.l);
                 }
             }
             else
@@ -595,7 +596,7 @@ int print_vcf_gz_header(BGZF *fp, BGZF *bgzf_out, int print_header, kstring_t *t
     }
     if ( print_header )
     {
-        if ( bgzf_write(bgzf_out,tmp->s,tmp->l) != tmp->l ) error("Failed to write %d bytes\n", tmp->l);
+        if ( bgzf_write(bgzf_out,tmp->s,tmp->l) != tmp->l ) error("Failed to write %"PRIu64" bytes\n", (uint64_t)tmp->l);
         tmp->l = 0;
     }
     return nskip;
@@ -654,7 +655,7 @@ static void naive_concat(args_t *args)
             {
                 if ( bgzf_write(bgzf_out, "BCF\2\2", 5) !=5 ) error("Failed to write %d bytes to %s\n", 5,args->output_fname);
                 if ( bgzf_write(bgzf_out, &tmp.l, 4) !=4 ) error("Failed to write %d bytes to %s\n", 4,args->output_fname);
-                if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("Failed to write %d bytes to %s\n", tmp.l,args->output_fname);
+                if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("Failed to write %"PRId64" bytes to %s\n", (uint64_t)tmp.l,args->output_fname);
             }
             nskip = fp->block_offset;
         }
@@ -685,10 +686,10 @@ static void naive_concat(args_t *args)
             nblock = unpackInt16(buf+16) + 1;
             assert( nblock <= page_size && nblock >= nheader );
             nread += bgzf_raw_read(fp, buf+nheader, nblock - nheader);
-            if ( nread!=nblock ) error("Could not read %d bytes: %s\n",nblock,args->fnames[i]);
+            if ( nread!=nblock ) error("Could not read %"PRId64" bytes: %s\n",(uint64_t)nblock,args->fnames[i]);
             if ( nread==neof && !memcmp(buf,eof,neof) ) continue;
             nwr = bgzf_raw_write(bgzf_out, buf, nread);
-            if ( nwr != nread ) error("Write failed, wrote %d instead of %d bytes.\n", nwr,(int)nread);
+            if ( nwr != nread ) error("Write failed, wrote %"PRId64" instead of %d bytes.\n", (uint64_t)nwr,(int)nread);
         }
         if (hts_close(hts_fp)) error("Close failed: %s\n",args->fnames[i]);
     }

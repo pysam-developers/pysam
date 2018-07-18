@@ -42,11 +42,10 @@ void setup_test_1(bam_hdr_t** hdr_in)
 }
 
 bool check_test_1(const bam_hdr_t* hdr) {
-    char test1_res[200];
-    snprintf(test1_res, 199,
+    const char *test1_res =
     "@HD\tVN:1.4\n"
     "@SQ\tSN:blah\n"
-    "@PG\tID:samtools\tPN:samtools\tVN:%s\tCL:test_filter_header_rg foo bar baz\n", samtools_version());
+    "@PG\tID:samtools\tPN:samtools\tVN:x.y.test\tCL:test_filter_header_rg foo bar baz\n";
 
     if (strcmp(hdr->text, test1_res)) {
         return false;
@@ -66,12 +65,11 @@ void setup_test_2(bam_hdr_t** hdr_in)
 }
 
 bool check_test_2(const bam_hdr_t* hdr) {
-    char test2_res[200];
-    snprintf(test2_res, 199,
+    const char *test2_res =
     "@HD\tVN:1.4\n"
     "@SQ\tSN:blah\n"
     "@RG\tID:fish\n"
-    "@PG\tID:samtools\tPN:samtools\tVN:%s\tCL:test_filter_header_rg foo bar baz\n", samtools_version());
+    "@PG\tID:samtools\tPN:samtools\tVN:x.y.test\tCL:test_filter_header_rg foo bar baz\n";
 
     if (strcmp(hdr->text, test2_res)) {
         return false;
@@ -116,7 +114,7 @@ int samtools_test_filter_header_rg_main(int argc, char *argv[])
     bam_hdr_t* hdr1;
     const char* id_to_keep_1 = "1#2.3";
     setup_test_1(&hdr1);
-    if (verbose > 0) {
+    if (verbose > 1) {
         fprintf(samtools_stdout, "hdr1\n");
         dump_hdr(hdr1);
     }
@@ -128,7 +126,7 @@ int samtools_test_filter_header_rg_main(int argc, char *argv[])
     fclose(samtools_stderr);
 
     if (verbose) fprintf(samtools_stdout, "END RUN test 1\n");
-    if (verbose > 0) {
+    if (verbose > 1) {
         fprintf(samtools_stdout, "hdr1\n");
         dump_hdr(hdr1);
     }
@@ -155,7 +153,7 @@ int samtools_test_filter_header_rg_main(int argc, char *argv[])
     bam_hdr_t* hdr2;
     const char* id_to_keep_2 = "fish";
     setup_test_2(&hdr2);
-    if (verbose > 0) {
+    if (verbose > 1) {
         fprintf(samtools_stdout, "hdr2\n");
         dump_hdr(hdr2);
     }
@@ -167,7 +165,7 @@ int samtools_test_filter_header_rg_main(int argc, char *argv[])
     fclose(samtools_stderr);
 
     if (verbose) fprintf(samtools_stdout, "END RUN test 2\n");
-    if (verbose > 0) {
+    if (verbose > 1) {
         fprintf(samtools_stdout, "hdr2\n");
         dump_hdr(hdr2);
     }

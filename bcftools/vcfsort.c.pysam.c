@@ -69,6 +69,21 @@ int cmp_bcf_pos(const void *aptr, const void *bptr)
     if ( a->rid > b->rid ) return 1;
     if ( a->pos < b->pos ) return -1;
     if ( a->pos > b->pos ) return 1;
+
+    // Sort the same chr:pos records lexicographically by ref,alt.
+    // This will be called rarely so should not slow the sorting down
+    // noticeably.
+
+    if ( !a->unpacked ) bcf_unpack(a, BCF_UN_STR);
+    if ( !b->unpacked ) bcf_unpack(b, BCF_UN_STR);
+    int i;
+    for (i=0; i<a->n_allele; i++)
+    { 
+        if ( i >= b->n_allele ) return 1;
+        int ret = strcasecmp(a->d.allele[i],b->d.allele[i]);
+        if ( ret ) return ret;
+    }
+    if ( a->n_allele < b->n_allele ) return -1;
     return 0;
 }
 
@@ -140,9 +155,8 @@ static inline int blk_is_smaller(blk_t **aptr, blk_t **bptr)
 {
     blk_t *a = *aptr;
     blk_t *b = *bptr;
-    if ( a->rec->rid < b->rec->rid ) return 1;
-    if ( a->rec->rid > b->rec->rid ) return 0;
-    if ( a->rec->pos < b->rec->pos ) return 1;
+    int ret = cmp_bcf_pos(&a->rec, &b->rec);
+    if ( ret < 0 ) return 1;
     return 0;
 }
 KHEAP_INIT(blk, blk_t*, blk_is_smaller)

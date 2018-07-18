@@ -1,6 +1,6 @@
 /*  vcfroh.c -- HMM model for detecting runs of autozygosity.
 
-    Copyright (C) 2013-2017 Genome Research Ltd.
+    Copyright (C) 2013-2018 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -26,6 +26,7 @@ THE SOFTWARE.  */
 #include <unistd.h>
 #include <getopt.h>
 #include <math.h>
+#include <inttypes.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/kstring.h>
@@ -35,6 +36,7 @@ THE SOFTWARE.  */
 #include "bcftools.h"
 #include "HMM.h"
 #include "smpl_ilist.h"
+#include "filter.h"
 
 #define STATE_HW 0        // normal state, follows Hardy-Weinberg allele frequencies
 #define STATE_AZ 1        // autozygous state
@@ -42,6 +44,11 @@ THE SOFTWARE.  */
 #define OUTPUT_ST (1<<1)
 #define OUTPUT_RG (1<<2)
 #define OUTPUT_GZ (1<<3)
+
+// Logic of the filters: include or exclude sites which match the filters?
+#define FLT_INCLUDE 1
+#define FLT_EXCLUDE 2
+
 
 /** Genetic map */
 typedef struct
@@ -94,6 +101,9 @@ typedef struct _args_t
     int32_t skip_rid, prev_rid, prev_pos;
 
     int ntot;                   // some stats to detect if things didn't go wrong
+    int nno_af;                 // number of sites rejected because AF could not be determined
+    int nfiltered;              // .. because of filters
+    int nnot_biallelic, ndup;
     smpl_t *smpl;               // HMM data for each sample
     smpl_ilist_t *af_smpl;      // list of samples to estimate AF from (--estimate-AF)
     smpl_ilist_t *roh_smpl;     // list of samples to analyze (--samples, --samples-file)
@@ -103,6 +113,10 @@ typedef struct _args_t
     int argc, fake_PLs, snps_only, vi_training, samples_is_file, output_type, skip_homref, n_threads;
     BGZF *out;
     kstring_t str;
+
+    int filter_logic;
+    filter_t *filter;
+    char *filter_str;
 }
 args_t;
 
@@ -124,6 +138,9 @@ static void init_data(args_t *args)
     args->hdr = args->files->readers[0].header;
 
     if ( !bcf_hdr_nsamples(args->hdr) ) error("No samples in the VCF?\n");
+
+    if ( args->filter_str )
+        args->filter = filter_init(args->hdr, args->filter_str);
 
     if ( !args->fake_PLs )
     {
@@ -318,6 +335,7 @@ static void init_data(args_t *args)
 
 static void destroy_data(args_t *args)
 {
+    if ( args->filter ) filter_destroy(args->filter);
     if ( bgzf_close(args->out)!=0 ) error("Error: close failed .. %s\n", args->output_fname);
     int i;
     for (i=0; i<args->roh_smpl->n; i++)
@@ -367,7 +385,7 @@ static int load_genmap(args_t *args, const char *chr)
 
     hts_getline(fp, KS_SEP_LINE, &str);
     if ( strcmp(str.s,"position COMBINED_rate(cM/Mb) Genetic_Map(cM)") )
-        error("Unexpected header, found:\n\t[%s], but expected:\n\t[position COMBINED_rate(cM/Mb) Genetic_Map(cM)]\n", fname, str.s);
+        error("Unexpected header in %s, found:\n\t[%s], but expected:\n\t[position COMBINED_rate(cM/Mb) Genetic_Map(cM)]\n", fname, str.s);
 
     args->ngenmap = args->igenmap = 0;
     while ( hts_getline(fp, KS_SEP_LINE, &str) > 0 )
@@ -731,9 +749,9 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
                 if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
                 if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
                 double prob[3], norm = 0; \
-                prob[0] = p[irr] < (type_t)256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
-                prob[1] = p[ira] < (type_t)256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
-                prob[2] = p[iaa] < (type_t)256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                prob[0] = p[irr] < 256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
+                prob[1] = p[ira] < 256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
+                prob[2] = p[iaa] < 256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
                 for (j=0; j<3; j++) norm += prob[j]; \
                 for (j=0; j<3; j++) prob[j] /= norm; \
                 af += 0.5*prob[1] + prob[2]; \
@@ -761,9 +779,9 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
                 if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
                 if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
                 double prob[3], norm = 0; \
-                prob[0] = p[irr] < (type_t)256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
-                prob[1] = p[ira] < (type_t)256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
-                prob[2] = p[iaa] < (type_t)256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                prob[0] = p[irr] < 256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
+                prob[1] = p[ira] < 256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
+                prob[2] = p[iaa] < 256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
                 for (j=0; j<3; j++) norm += prob[j]; \
                 for (j=0; j<3; j++) prob[j] /= norm; \
                 af += 0.5*prob[1] + prob[2]; \
@@ -854,8 +872,9 @@ int process_line(args_t *args, bcf1_t *line, int ial)
             alt_freq = (double) AC/AN;
     }
 
-    if ( ret<0 ) return ret;
-    if ( alt_freq==0.0 ) return -1;
+    if ( args->dflt_AF>0 && (ret<0 || alt_freq==0.0) ) alt_freq = args->dflt_AF;
+    else if ( ret<0 ) { args->nno_af++; return ret; }
+    else if ( alt_freq==0.0 ) { args->nno_af++; return -1; }
 
     int irr = bcf_alleles2gt(0,0), ira = bcf_alleles2gt(0,ial), iaa = bcf_alleles2gt(ial,ial);
     if ( args->fake_PLs )
@@ -907,9 +926,9 @@ int process_line(args_t *args, bcf1_t *line, int ial)
                 type_t *p = (type_t*)fmt_pl->p + fmt_pl->n*ismpl; \
                 if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
                 if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
-                pdg[0] = p[irr] < (type_t)256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
-                pdg[1] = p[ira] < (type_t)256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
-                pdg[2] = p[iaa] < (type_t)256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                pdg[0] = p[irr] < 256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
+                pdg[1] = p[ira] < 256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
+                pdg[2] = p[iaa] < 256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
             }
             switch (fmt_pl->type) {
                 case BCF_BT_INT8:  BRANCH(int8_t); break;
@@ -932,7 +951,7 @@ int process_line(args_t *args, bcf1_t *line, int ial)
         {
             hts_expand(uint32_t,smpl->nsites+1,smpl->msites,smpl->sites);
             smpl->eprob = (double*) realloc(smpl->eprob,sizeof(*smpl->eprob)*smpl->msites*2);
-            if ( !smpl->eprob ) error("Error: failed to alloc %d bytes\n", sizeof(*smpl->eprob)*smpl->msites*2);
+            if ( !smpl->eprob ) error("Error: failed to alloc %"PRIu64" bytes\n", (uint64_t)(sizeof(*smpl->eprob)*smpl->msites*2));
         }
         
         // Calculate emission probabilities P(D|AZ) and P(D|HW)
@@ -970,12 +989,11 @@ static void vcfroh(args_t *args, bcf1_t *line)
         for (i=0; i<args->roh_smpl->n; i++) flush_viterbi(args, i);
         return; 
     }
-    args->ntot++;
 
     // Skip unwanted lines, for simplicity we consider only biallelic sites 
     if ( line->rid == args->skip_rid ) return;
-    if ( line->n_allele==1 ) return;    // no ALT allele
-    if ( line->n_allele > 3 ) return;   // cannot be bi-allelic, even with <*>
+    if ( line->n_allele==1 ) { args->nnot_biallelic++; return; }   // no ALT allele
+    if ( line->n_allele > 3 ) { args->nnot_biallelic++; return; }   // cannot be bi-allelic, even with <*>
 
     // This can be raw callable VCF with the symbolic unseen allele <*>
     int ial = 0;
@@ -983,7 +1001,7 @@ static void vcfroh(args_t *args, bcf1_t *line)
         if ( !strcmp("<*>",line->d.allele[i]) ) { ial = i; break; }
     if ( ial==0 )    // normal VCF, the symbolic allele is not present
     {
-        if ( line->n_allele!=2 ) return;    // not biallelic
+        if ( line->n_allele!=2 ) { args->nnot_biallelic++; return; }   // not biallelic
         ial = 1;
     }
     else
@@ -1017,7 +1035,11 @@ static void vcfroh(args_t *args, bcf1_t *line)
         args->prev_pos = line->pos;
         skip_rid = load_genmap(args, bcf_seqname(args->hdr,line));
     }
-    else if ( args->prev_pos == line->pos ) return;     // skip duplicate positions
+    else if ( args->prev_pos == line->pos ) 
+    {
+        args->ndup++;
+        return;     // skip duplicate positions
+    }
 
     if ( skip_rid )
     {
@@ -1044,14 +1066,16 @@ static void usage(args_t *args)
     fprintf(stderr, "General Options:\n");
     fprintf(stderr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
     fprintf(stderr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
-    fprintf(stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
+    fprintf(stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF\\tALT\\tAF)\n");
     fprintf(stderr, "    -b  --buffer-size <int[,int]>      buffer size and the number of overlapping sites, 0 for unlimited [0]\n");
     fprintf(stderr, "                                           If the first number is negative, it is interpreted as the maximum memory to\n");
     fprintf(stderr, "                                           use, in MB. The default overlap is set to roughly 1%% of the buffer size.\n");
     fprintf(stderr, "    -e, --estimate-AF [TAG],<file>     estimate AF from FORMAT/TAG (GT or PL) of all samples (\"-\") or samples listed\n");
     fprintf(stderr, "                                            in <file>. If TAG is not given, the frequency is estimated from GT by default\n");
+    fprintf(stderr, "        --exclude <expr>               exclude sites for which the expression is true\n");
     fprintf(stderr, "    -G, --GTs-only <float>             use GTs and ignore PLs, instead using <float> for PL of the two least likely genotypes.\n");
     fprintf(stderr, "                                           Safe value to use is 30 to account for GT errors.\n");
+    fprintf(stderr, "        --include <expr>               select sites for which the expression is true\n");
     fprintf(stderr, "    -i, --ignore-homref                skip hom-ref genotypes (0/0)\n");
     fprintf(stderr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
     fprintf(stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\"\n");
@@ -1091,6 +1115,8 @@ int main_vcfroh(int argc, char *argv[])
         {"AF-tag",1,0,0},
         {"AF-file",1,0,1},
         {"AF-dflt",1,0,2},
+        {"include",1,0,3},
+        {"exclude",1,0,4},
         {"buffer-size",1,0,'b'},
         {"ignore-homref",0,0,'i'},
         {"estimate-AF",1,0,'e'},
@@ -1123,6 +1149,8 @@ int main_vcfroh(int argc, char *argv[])
                 args->dflt_AF = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: --AF-dflt %s\n", optarg);
                 break;
+            case 3: args->filter_str = optarg; args->filter_logic = FLT_INCLUDE; break;
+            case 4: args->filter_str = optarg; args->filter_logic = FLT_EXCLUDE; break;
             case 'o': args->output_fname = optarg; break;
             case 'O': 
                 if ( strchr(optarg,'s') || strchr(optarg,'S') ) args->output_type |= OUTPUT_ST;
@@ -1180,8 +1208,8 @@ int main_vcfroh(int argc, char *argv[])
     else fname = argv[optind];
 
     if ( args->vi_training && args->buffer_size ) error("Error: cannot use -b with -V\n");
-    if ( args->t2AZ<0 || args->t2AZ>1 ) error("Error: The parameter --hw-to-az is not in [0,1]\n", args->t2AZ);
-    if ( args->t2HW<0 || args->t2HW>1 ) error("Error: The parameter --az-to-hw is not in [0,1]\n", args->t2HW);
+    if ( args->t2AZ<0 || args->t2AZ>1 ) error("Error: The parameter --hw-to-az is not in [0,1] .. %e\n", args->t2AZ);
+    if ( args->t2HW<0 || args->t2HW>1 ) error("Error: The parameter --az-to-hw is not in [0,1] .. %e\n", args->t2HW);
     if ( naf_opts>1 ) error("Error: The options --AF-tag, --AF-file and -e are mutually exclusive\n");
     if ( args->af_fname && args->targets_list ) error("Error: The options --AF-file and -t are mutually exclusive\n");
     if ( args->regions_list )
@@ -1206,16 +1234,28 @@ int main_vcfroh(int argc, char *argv[])
     init_data(args);
     while ( bcf_sr_next_line(args->files) )
     {
-        vcfroh(args, args->files->readers[0].buffer[0]);
+        args->ntot++;
+        bcf1_t *line = bcf_sr_get_line(args->files,0);
+        if ( args->filter )
+        {
+            int pass = filter_test(args->filter, line, NULL);
+            if ( args->filter_logic & FLT_EXCLUDE ) pass = pass ? 0 : 1;
+            if ( !pass ) { args->nfiltered++; continue; }
+        }
+        vcfroh(args, line);
     }
     vcfroh(args, NULL);
     int i, nmin = 0;
     for (i=0; i<args->roh_smpl->n; i++)
         if ( !i || args->smpl[i].nused < nmin ) nmin = args->smpl[i].nused;
-    fprintf(stderr,"Number of lines total/processed: %d/%d\n", args->ntot,nmin);
+    if ( args->af_fname )
+        fprintf(stderr,"Number of lines overlapping with --AF-file/processed: %d/%d\n", args->ntot,nmin);
+    else
+        fprintf(stderr,"Number of lines total/processed: %d/%d\n", args->ntot,nmin);
+    fprintf(stderr,"Number of lines filtered/no AF/not biallelic/dup: %d/%d/%d/%d\n", args->nfiltered,args->nno_af,args->nnot_biallelic,args->ndup);
     if ( nmin==0 )
     {
-        fprintf(stderr,"No usable sites were found.");
+        fprintf(stderr,"No usable sites were found.\n");
         if ( !naf_opts && !args->dflt_AF ) fprintf(stderr, " Consider using one of the AF options.\n");
     }
     destroy_data(args);

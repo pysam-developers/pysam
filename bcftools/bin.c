@@ -48,9 +48,9 @@ bin_t *bin_init(const char *list_def, float min, float max)
     {
         char *tmp;
         bin->bins[i] = strtod(list[i],&tmp);
-        if ( !tmp ) error("Could not parse %s: %s\n", list_def, list[i]);
+        if ( *tmp ) error("Could not parse %s: %s\n", list_def, list[i]);
         if ( min!=max && (bin->bins[i]<min || bin->bins[i]>max) )
-            error("Expected values from the interval [%f,%f], found %s\n", list[i]);
+            error("Expected values from the interval [%f,%f], found %s\n", min, max, list[i]);
         free(list[i]); 
     }
     free(list);

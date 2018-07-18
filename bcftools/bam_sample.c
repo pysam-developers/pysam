@@ -1,7 +1,7 @@
 /*  bam_sample.c -- group data by sample.
 
     Copyright (C) 2010, 2011 Broad Institute.
-    Copyright (C) 2013, 2016 Genome Research Ltd.
+    Copyright (C) 2013, 2016-2018 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>, Petr Danecek <pd3@sanger.ac.uk>
 
@@ -167,10 +167,14 @@ int bam_smpl_add_bam(bam_smpl_t *bsmpl, char *bam_hdr, const char *fname)
     void *bam_smpls = khash_str2int_init();
     int first_smpl = -1, nskipped = 0;
     const char *p = bam_hdr, *q, *r;
-    while ((q = strstr(p, "@RG")) != 0) 
+    while (p != NULL && (q = strstr(p, "@RG")) != 0)
     {
+        char *eol = strchr(q + 3, '\n');
+        if (q > bam_hdr && *(q - 1) != '\n') { // @RG must be at start of line
+            p = eol;
+            continue;
+        }
         p = q + 3;
-        r = q = 0;
         if ((q = strstr(p, "\tID:")) != 0) q += 4;
         if ((r = strstr(p, "\tSM:")) != 0) r += 4;
         if (r && q)
@@ -220,7 +224,7 @@ int bam_smpl_add_bam(bam_smpl_t *bsmpl, char *bam_hdr, const char *fname)
         }
         else
             break;
-        p = q > r ? q : r;
+        p = eol;
     }
     int nsmpls = khash_str2int_size(bam_smpls);
     khash_str2int_destroy_free(bam_smpls);
@@ -234,6 +238,7 @@ int bam_smpl_add_bam(bam_smpl_t *bsmpl, char *bam_hdr, const char *fname)
     {
         // no suitable read group is available in this bam: ignore the whole file.
         free(file->fname);
+        if ( file->rg2idx ) khash_str2int_destroy_free(file->rg2idx);
         bsmpl->nfiles--;
         return -1;
     }

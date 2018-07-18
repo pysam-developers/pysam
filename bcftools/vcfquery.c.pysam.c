@@ -280,7 +280,7 @@ int main_vcfquery(int argc, char *argv[])
             case 'H': args->print_header = 1; break;
             case 'v': args->vcf_list = optarg; break;
             case 'c': 
-                error("The --collapse option is obsolete, pipe through `bcftools norm -c` instead.\n", optarg);
+                error("The --collapse option is obsolete, pipe through `bcftools norm -c` instead.\n");
                 break;
             case 'a':
                 {

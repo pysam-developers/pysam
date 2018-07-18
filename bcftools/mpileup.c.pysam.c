@@ -1014,7 +1014,7 @@ int bam_mpileup(int argc, char *argv[])
                 case 'u': mplp.output_type = FT_BCF; break;
                 case 'z': mplp.output_type = FT_VCF_GZ; break;
                 case 'v': mplp.output_type = FT_VCF; break;
-                default: error("[error] The option \"-O\" changed meaning when mpileup moved to bcftools. Did you mean: \"bcftools mpileup --output-type\" or \"samtools mpileup --output-BP\"?\n", optarg); 
+                default: error("[error] The option \"-O\" changed meaning when mpileup moved to bcftools. Did you mean: \"bcftools mpileup --output-type\" or \"samtools mpileup --output-BP\"?\n"); 
             }
             break;
         case 'C': mplp.capQ_thres = atoi(optarg); break;

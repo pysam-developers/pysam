@@ -35,6 +35,10 @@
 #include <sys/types.h>
 #include <inttypes.h>
 
+#ifdef HAVE_LIBDEFLATE
+#include <libdeflate.h>
+#endif
+
 #include "htslib/hts.h"
 #include "htslib/bgzf.h"
 #include "htslib/hfile.h"
@@ -359,33 +363,102 @@ BGZF *bgzf_hopen(hFILE *hfp, const char *mode)
     return fp;
 }
 
+#ifdef HAVE_LIBDEFLATE
+int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int level)
+{
+    if (slen == 0) {
+        // EOF block
+        if (*dlen < 28) return -1;
+        memcpy(_dst, "\037\213\010\4\0\0\0\0\0\377\6\0\102\103\2\0\033\0\3\0\0\0\0\0\0\0\0\0", 28);
+        *dlen = 28;
+        return 0;
+    }
+
+    uint8_t *dst = (uint8_t*)_dst;
+
+    if (level == 0) {
+        // Uncompressed data
+        if (*dlen < slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH) return -1;
+        dst[BLOCK_HEADER_LENGTH] = 1; // BFINAL=1, BTYPE=00; see RFC1951
+        u16_to_le(slen,  &dst[BLOCK_HEADER_LENGTH+1]); // length
+        u16_to_le(~slen, &dst[BLOCK_HEADER_LENGTH+3]); // ones-complement length
+        memcpy(dst + BLOCK_HEADER_LENGTH+5, src, slen);
+        *dlen = slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH;
+
+    } else {
+        level = level > 0 ? level : 6; // libdeflate doesn't honour -1 as default
+        // NB levels go up to 12 here.
+        struct libdeflate_compressor *z = libdeflate_alloc_compressor(level);
+        if (!z) return -1;
+
+        // Raw deflate
+        size_t clen =
+            libdeflate_deflate_compress(z, src, slen,
+                                        dst + BLOCK_HEADER_LENGTH,
+                                        *dlen - BLOCK_HEADER_LENGTH - BLOCK_FOOTER_LENGTH);
+
+        if (clen <= 0) {
+            hts_log_error("Call to libdeflate_deflate_compress failed");
+            libdeflate_free_compressor(z);
+            return -1;
+        }
+
+        *dlen = clen + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH;
+
+        libdeflate_free_compressor(z);
+    }
+
+    // write the header
+    memcpy(dst, g_magic, BLOCK_HEADER_LENGTH); // the last two bytes are a place holder for the length of the block
+    packInt16(&dst[16], *dlen - 1); // write the compressed length; -1 to fit 2 bytes
+
+    // write the footer
+    uint32_t crc = libdeflate_crc32(0, src, slen);
+    packInt32((uint8_t*)&dst[*dlen - 8], crc);
+    packInt32((uint8_t*)&dst[*dlen - 4], slen);
+    return 0;
+}
+
+#else
+
 int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int level)
 {
     uint32_t crc;
     z_stream zs;
     uint8_t *dst = (uint8_t*)_dst;
 
-    // compress the body
-    zs.zalloc = NULL; zs.zfree = NULL;
-    zs.msg = NULL;
-    zs.next_in  = (Bytef*)src;
-    zs.avail_in = slen;
-    zs.next_out = dst + BLOCK_HEADER_LENGTH;
-    zs.avail_out = *dlen - BLOCK_HEADER_LENGTH - BLOCK_FOOTER_LENGTH;
-    int ret = deflateInit2(&zs, level, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY); // -15 to disable zlib header/footer
-    if (ret!=Z_OK) {
-        hts_log_error("Call to deflateInit2 failed: %s", bgzf_zerr(ret, &zs));
-        return -1;
+    if (level == 0) {
+        // Uncompressed data
+        if (*dlen < slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH) return -1;
+        dst[BLOCK_HEADER_LENGTH] = 1; // BFINAL=1, BTYPE=00; see RFC1951
+        u16_to_le(slen,  &dst[BLOCK_HEADER_LENGTH+1]); // length
+        u16_to_le(~slen, &dst[BLOCK_HEADER_LENGTH+3]); // ones-complement length
+        memcpy(dst + BLOCK_HEADER_LENGTH+5, src, slen);
+        *dlen = slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH;
+    } else {
+        // compress the body
+        zs.zalloc = NULL; zs.zfree = NULL;
+        zs.msg = NULL;
+        zs.next_in  = (Bytef*)src;
+        zs.avail_in = slen;
+        zs.next_out = dst + BLOCK_HEADER_LENGTH;
+        zs.avail_out = *dlen - BLOCK_HEADER_LENGTH - BLOCK_FOOTER_LENGTH;
+        int ret = deflateInit2(&zs, level, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY); // -15 to disable zlib header/footer
+        if (ret!=Z_OK) {
+            hts_log_error("Call to deflateInit2 failed: %s", bgzf_zerr(ret, &zs));
+            return -1;
+        }
+        if ((ret = deflate(&zs, Z_FINISH)) != Z_STREAM_END) {
+            hts_log_error("Deflate operation failed: %s", bgzf_zerr(ret, ret == Z_DATA_ERROR ? &zs : NULL));
+            return -1;
+        }
+        if ((ret = deflateEnd(&zs)) != Z_OK) {
+            hts_log_error("Call to deflateEnd failed: %s", bgzf_zerr(ret, NULL));
+            return -1;
+        }
+        *dlen = zs.total_out + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH;
     }
-    if ((ret = deflate(&zs, Z_FINISH)) != Z_STREAM_END) {
-        hts_log_error("Deflate operation failed: %s", bgzf_zerr(ret, ret == Z_DATA_ERROR ? &zs : NULL));
-        return -1;
-    }
-    if ((ret = deflateEnd(&zs)) != Z_OK) {
-        hts_log_error("Call to deflateEnd failed: %s", bgzf_zerr(ret, NULL));
-        return -1;
-    }
-    *dlen = zs.total_out + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH;
+
     // write the header
     memcpy(dst, g_magic, BLOCK_HEADER_LENGTH); // the last two bytes are a place holder for the length of the block
     packInt16(&dst[16], *dlen - 1); // write the compressed length; -1 to fit 2 bytes
@@ -395,6 +468,7 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
     packInt32((uint8_t*)&dst[*dlen - 4], slen);
     return 0;
 }
+#endif // HAVE_LIBDEFLATE
 
 static int bgzf_gzip_compress(BGZF *fp, void *_dst, size_t *dlen, const void *src, size_t slen, int level)
 {
@@ -438,6 +512,28 @@ static int deflate_block(BGZF *fp, int block_length)
     return comp_size;
 }
 
+#ifdef HAVE_LIBDEFLATE
+
+static int bgzf_uncompress(uint8_t *dst, size_t *dlen, const uint8_t *src, size_t slen) {
+    struct libdeflate_decompressor *z = libdeflate_alloc_decompressor();
+    if (!z) {
+        hts_log_error("Call to libdeflate_alloc_decompressor failed");
+        return -1;
+    }
+
+    int ret = libdeflate_deflate_decompress(z, src, slen, dst, *dlen, dlen);
+    libdeflate_free_decompressor(z);
+
+    if (ret != LIBDEFLATE_SUCCESS) {
+        hts_log_error("Inflate operation failed: %d", ret);
+        return -1;
+    }
+
+    return 0;
+}
+
+#else
+
 static int bgzf_uncompress(uint8_t *dst, size_t *dlen, const uint8_t *src, size_t slen) {
     z_stream zs;
     zs.zalloc = NULL;
@@ -467,6 +563,7 @@ static int bgzf_uncompress(uint8_t *dst, size_t *dlen, const uint8_t *src, size_
     *dlen = *dlen - zs.avail_out;
     return 0;
 }
+#endif // HAVE_LIBDEFLATE
 
 // Inflate the block in fp->compressed_block into fp->uncompressed_block
 static int inflate_block(BGZF* fp, int block_length)
@@ -482,7 +579,11 @@ static int inflate_block(BGZF* fp, int block_length)
     // Check CRC of uncompressed block matches the gzip header.
     // NB: we may wish to switch out the zlib crc32 for something more performant.
     // See PR#361 and issue#467
+#ifdef HAVE_LIBDEFLATE
+    uint32_t c1 = libdeflate_crc32(0L, (unsigned char *)fp->uncompressed_block, dlen);
+#else
     uint32_t c1 = crc32(0L, (unsigned char *)fp->uncompressed_block, dlen);
+#endif
     uint32_t c2 = le_to_u32((uint8_t *)fp->compressed_block + block_length-8);
     if (c1 != c2) {
         fp->errcode |= BGZF_ERR_CRC;
@@ -885,7 +986,7 @@ ssize_t bgzf_read(BGZF *fp, void *data, size_t length)
         if (available <= 0) {
             int ret = bgzf_read_block(fp);
             if (ret != 0) {
-                hts_log_error("Read block operation failed with error %d after %zd of %zu bytes", ret, bytes_read, length);
+                hts_log_error("Read block operation failed with error %d after %zd of %zu bytes", fp->errcode, bytes_read, length);
                 fp->errcode |= BGZF_ERR_ZLIB;
                 return -1;
             }
@@ -929,6 +1030,39 @@ void *bgzf_encode_func(void *arg) {
                             j->fp->compress_level);
     if (ret != 0)
         j->errcode |= BGZF_ERR_ZLIB;
+
+    return arg;
+}
+
+// Optimisation for compression level 0 (uncompressed deflate blocks)
+// Avoids memcpy of the data from uncompressed to compressed buffer.
+void *bgzf_encode_level0_func(void *arg) {
+    bgzf_job *j = (bgzf_job *)arg;
+    uint32_t crc;
+    j->comp_len = j->uncomp_len + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH + 5;
+
+    // Data will have already been copied in to
+    // j->comp_data + BLOCK_HEADER_LENGTH + 5
+
+    // Add preamble
+    memcpy(j->comp_data, g_magic, BLOCK_HEADER_LENGTH);
+    u16_to_le(j->comp_len-1, j->comp_data + 16);
+
+    // Deflate uncompressed data header
+    j->comp_data[BLOCK_HEADER_LENGTH] = 1; // BFINAL=1, BTYPE=00; see RFC1951
+    u16_to_le(j->uncomp_len, j->comp_data + BLOCK_HEADER_LENGTH + 1);
+    u16_to_le(~j->uncomp_len, j->comp_data + BLOCK_HEADER_LENGTH + 3);
+
+    // Trailer (CRC, uncompressed length)
+#ifdef HAVE_LIBDEFLATE
+    crc = libdeflate_crc32(0, j->comp_data + BLOCK_HEADER_LENGTH + 5,
+                           j->uncomp_len);
+#else
+    crc = crc32(crc32(0L, NULL, 0L),
+                (Bytef*)j->comp_data + BLOCK_HEADER_LENGTH + 5, j->uncomp_len);
+#endif
+    u32_to_le(crc, j->comp_data +  j->comp_len - 8);
+    u32_to_le(j->uncomp_len, j->comp_data + j->comp_len - 4);
 
     return arg;
 }
@@ -1160,7 +1294,7 @@ restart:
             pthread_cond_signal(&mt->command_c);
             pthread_mutex_unlock(&mt->command_m);
             hts_tpool_process_destroy(mt->out_queue);
-            pthread_exit(NULL);
+            return NULL;
 
         default:
             break;
@@ -1182,7 +1316,7 @@ restart:
         // We tear down the multi-threaded decoder and revert to the old code.
         hts_tpool_dispatch(mt->pool, mt->out_queue, bgzf_nul_func, j);
         hts_tpool_process_ref_decr(mt->out_queue);
-        pthread_exit(&j->errcode);
+        return &j->errcode;
     }
 
     // Dispatch an empty block so EOF is spotted.
@@ -1193,7 +1327,7 @@ restart:
     hts_tpool_dispatch(mt->pool, mt->out_queue, bgzf_nul_func, j);
     if (j->errcode != 0) {
         hts_tpool_process_destroy(mt->out_queue);
-        pthread_exit(&j->errcode);
+        return &j->errcode;
     }
 
     // We hit EOF so can stop reading, but we may get a subsequent
@@ -1224,10 +1358,9 @@ restart:
             pthread_cond_signal(&mt->command_c);
             pthread_mutex_unlock(&mt->command_m);
             hts_tpool_process_destroy(mt->out_queue);
-            pthread_exit(NULL);
+            return NULL;
         }
     }
-    return NULL;
 }
 
 int bgzf_thread_pool(BGZF *fp, hts_tpool *pool, int qsize) {
@@ -1325,10 +1458,16 @@ static int mt_queue(BGZF *fp)
     j->fp = fp;
     j->errcode = 0;
     j->uncomp_len  = fp->block_offset;
-    memcpy(j->uncomp_data, fp->uncompressed_block, j->uncomp_len);
+    if (fp->compress_level == 0) {
+        memcpy(j->comp_data + BLOCK_HEADER_LENGTH + 5, fp->uncompressed_block,
+               j->uncomp_len);
+        hts_tpool_dispatch(mt->pool, mt->out_queue, bgzf_encode_level0_func, j);
+    } else {
+        memcpy(j->uncomp_data, fp->uncompressed_block, j->uncomp_len);
 
-    // Need non-block vers & job_pending?
-    hts_tpool_dispatch(mt->pool, mt->out_queue, bgzf_encode_func, j);
+        // Need non-block vers & job_pending?
+        hts_tpool_dispatch(mt->pool, mt->out_queue, bgzf_encode_func, j);
+    }
 
     fp->block_offset = 0;
     return 0;
@@ -1452,7 +1591,7 @@ ssize_t bgzf_block_write(BGZF *fp, const void *data, size_t length)
     uint64_t ublock_size; // amount of uncompressed data to be fed into next block
     while (remaining > 0) {
         current_block = fp->idx->moffs - fp->idx->noffs;
-        ublock_size = fp->idx->offs[current_block+1].uaddr-fp->idx->offs[current_block].uaddr;
+        ublock_size = current_block + 1 < fp->idx->moffs ? fp->idx->offs[current_block+1].uaddr-fp->idx->offs[current_block].uaddr : BGZF_MAX_BLOCK_SIZE;
         uint8_t* buffer = (uint8_t*)fp->uncompressed_block;
         int copy_length = ublock_size - fp->block_offset;
         if (copy_length > remaining) copy_length = remaining;
@@ -1462,7 +1601,8 @@ ssize_t bgzf_block_write(BGZF *fp, const void *data, size_t length)
         remaining -= copy_length;
         if (fp->block_offset == ublock_size) {
             if (lazy_flush(fp) != 0) return -1;
-            fp->idx->noffs--;  // decrement noffs to track the blocks
+            if (fp->idx->noffs > 0)
+                fp->idx->noffs--;  // decrement noffs to track the blocks
         }
     }
     return length - remaining;

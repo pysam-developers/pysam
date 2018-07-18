@@ -1114,7 +1114,7 @@ static inline int tsv_setter_aa1(args_t *args, char *ss, char *se, int alleles[]
     {
         // missing GT
         gts[0] = bcf_gt_missing;
-        gts[1] = bcf_int32_vector_end;
+        gts[1] = bcf_gt_missing;
         args->n.missing++;
         return 0;
     }
@@ -1308,13 +1308,11 @@ static void gvcf_to_vcf(args_t *args)
         {
             int pass = filter_test(args->filter, line, NULL);
             if ( args->filter_logic & FLT_EXCLUDE ) pass = pass ? 0 : 1;
-            if ( !pass ) continue;
-        }
-
-        if (!bcf_has_filter(hdr,line,"PASS"))
-        {
-            bcf_write(out_fh,hdr,line);
-            continue;
+            if ( !pass ) 
+            {
+                bcf_write(out_fh,hdr,line);
+                continue;
+            }
         }
 
         // check if alleles compatible with being a gVCF record

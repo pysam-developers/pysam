@@ -544,14 +544,14 @@ int main_cat(int argc, char *argv[])
             case 'h': {
                 samFile *fph = sam_open(optarg, "r");
                 if (fph == 0) {
-                    fprintf(samtools_stderr, "[%s] ERROR: fail to read the header from '%s'.\n", __func__, argv[1]);
+                    fprintf(samtools_stderr, "[%s] ERROR: fail to read the header from '%s'.\n", __func__, optarg);
                     return 1;
                 }
                 h = sam_hdr_read(fph);
                 if (h == NULL) {
                     fprintf(samtools_stderr,
-                            "[%s] ERROR: failed to read the header for '%s'.\n",
-                            __func__, argv[1]);
+                            "[%s] ERROR: failed to read the header from '%s'.\n",
+                            __func__, optarg);
                     return 1;
                 }
                 sam_close(fph);
