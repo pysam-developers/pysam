@@ -915,8 +915,8 @@ cdef class AlignmentFile(HTSFile):
             # is given, the CRAM reference arrays will be built from
             # the @SQ header in the header
             if "c" in mode and reference_filename:
-                # note that fn_aux takes ownership, so create a copy
-                self.htsfile.fn_aux = strdup(self.reference_filename)
+                if (hts_set_fai_filename(self.htsfile, self.reference_filename) != 0):
+                    raise ValueError("failure when setting reference filename")
 
             # write header to htsfile
             if "b" in mode or "c" in mode or "h" in mode:
