@@ -50,7 +50,7 @@ htslib --version
 bcftools --version
 
 # Try building conda recipe first
-~/miniconda3/bin/conda-build ci/conda-recipe/ --python=$CONDA_PY
+~/miniconda3/bin/conda-build devtools/conda-recipe/ --python=$CONDA_PY
 
 # install code from the repository via setup.py
 echo "installing via setup.py from repository"
