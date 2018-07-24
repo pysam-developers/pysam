@@ -78,7 +78,7 @@ int main_tabix(int argc, char *argv[])
         BGZF *fp;
         s.l = s.m = 0; s.s = 0;
         fp = bgzf_open(argv[optind], "r");
-        while (bgzf_getline(fp, '\n', &s) >= 0) fputs(s.s, bcftools_stdout) & fputc('\n', bcftools_stdout);
+        while (bgzf_getline(fp, '\n', &s) >= 0) fputs(s.s, bcftools_stdout) != EOF && fputc('\n', bcftools_stdout);
         bgzf_close(fp);
         free(s.s);
     } else if (optind + 2 > argc) { // create index
@@ -122,7 +122,7 @@ int main_tabix(int argc, char *argv[])
         for (i = optind + 1; i < argc; ++i) {
             hts_itr_t *itr;
             if ((itr = tbx_itr_querys(tbx, argv[i])) == 0) continue;
-            while (tbx_bgzf_itr_next(fp, tbx, itr, &s) >= 0) fputs(s.s, bcftools_stdout) & fputc('\n', bcftools_stdout);
+            while (tbx_bgzf_itr_next(fp, tbx, itr, &s) >= 0) fputs(s.s, bcftools_stdout) != EOF && fputc('\n', bcftools_stdout);
             tbx_itr_destroy(itr);
         }
         free(s.s);

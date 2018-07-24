@@ -103,7 +103,7 @@ def _update_pysam_files(cf, destdir):
                 lines = re.sub("stdout", "{}_stdout".format(basename), lines)
                 lines = re.sub(" printf\(", " fprintf({}_stdout, ".format(basename), lines)
                 lines = re.sub("([^kf])puts\(([^)]+)\)",
-                               r"\1fputs(\2, {}_stdout) & fputc('\\n', {}_stdout)".format(basename, basename),
+                               r"\1fputs(\2, {}_stdout) != EOF && fputc('\\n', {}_stdout)".format(basename, basename),
                                lines)
                 lines = re.sub("putchar\(([^)]+)\)",
                                r"fputc(\1, {}_stdout)".format(basename), lines)
@@ -154,7 +154,7 @@ if len(sys.argv) >= 1:
     cfiles = locate("*.c", srcdir)
     hfiles = locate("*.h", srcdir)
     mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir))
-    
+
     # remove unwanted files and htslib subdirectory.
     cfiles = [x for x in cfiles if os.path.basename(x) not in exclude
               and not re.search("htslib-", x)]
@@ -225,4 +225,3 @@ if len(sys.argv) >= 1:
 #         _update_pysam_files(cfiles, destdir)
 
 #     sys.exit(0)
-
