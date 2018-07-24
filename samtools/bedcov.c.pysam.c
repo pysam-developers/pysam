@@ -173,7 +173,7 @@ int main_bedcov(int argc, char *argv[])
             kputc('\t', &str);
             kputl(cnt[i], &str);
         }
-        fputs(str.s, samtools_stdout) & fputc('\n', samtools_stdout);
+        fputs(str.s, samtools_stdout) != EOF && fputc('\n', samtools_stdout);
         bam_mplp_destroy(mplp);
         continue;
 
