@@ -38,6 +38,8 @@ void bcftools_unset_stderr(void);
  */
 void bcftools_unset_stdout(void);
 
+int bcftools_puts(const char *s);
+
 int bcftools_dispatch(int argc, char *argv[]);
 
 void bcftools_set_optind(int);

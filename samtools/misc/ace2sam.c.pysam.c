@@ -164,14 +164,14 @@ int samtools_ace2sam_main(int argc, char *argv[])
             if (dret != '\n') ks_getuntil(ks, '\n', &s, &dret);
             ks_getuntil(ks, '\n', &s, &dret); // skip the empty line
             if (write_cns) {
-                if (t[4].l) fputs(t[4].s, samtools_stdout) & fputc('\n', samtools_stdout);
+                if (t[4].l) samtools_puts(t[4].s);
                 t[4].l = 0;
             }
         } else if (strcmp(s.s, "AF") == 0) { // padded read position
             int reversed, neg, pos;
             if (t[0].l == 0) fatal("come to 'AF' before reading 'CO'");
             if (write_cns) {
-                if (t[4].l) fputs(t[4].s, samtools_stdout) & fputc('\n', samtools_stdout);
+                if (t[4].l) samtools_puts(t[4].s);
                 t[4].l = 0;
             }
             ks_getuntil(ks, 0, &s, &dret); // read name
@@ -244,7 +244,7 @@ int samtools_ace2sam_main(int argc, char *argv[])
             kputs("\t*\t0\t0\t", &t[4]); // empty MRNM, MPOS and TLEN
             kputsn(t[3].s, t[3].l, &t[4]); // unpadded SEQ
             kputs("\t*", &t[4]); // QUAL
-            fputs(t[4].s, samtools_stdout) & fputc('\n', samtools_stdout); // print to samtools_stdout
+            samtools_puts(t[4].s); // print to samtools_stdout
             ++af_i;
         } else if (dret != '\n') ks_getuntil(ks, '\n', &s, &dret);
     }

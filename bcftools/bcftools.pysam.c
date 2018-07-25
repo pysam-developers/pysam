@@ -54,6 +54,12 @@ void bcftools_unset_stdout(void)
   bcftools_stdout_fileno = STDOUT_FILENO;
 }
 
+int bcftools_puts(const char *s)
+{
+  if (fputs(s, bcftools_stdout) == EOF) return EOF;
+  return putc('\n', bcftools_stdout);
+}
+
 void bcftools_set_optind(int val)
 {
   // setting this in cython via 
