@@ -15,7 +15,8 @@ includes an interface for tabix_.
 If you are using the conda packaging manager (e.g. miniconda or anaconda),
 you can install pysam from the `bioconda channel <https://bioconda.github.io/>`_::
 
-   conda config --add channels r
+   conda config --add channels defaults
+   conda config --add channels conda-forge
    conda config --add channels bioconda
    conda install pysam
 
@@ -29,7 +30,7 @@ Pysam is available through `pypi
 
    pip install pysam
 
-Pysam documentation is available through https://readthedocs.org/ from
+Pysam documentation is available
 `here <http://pysam.readthedocs.org/en/latest/>`_
 
 Questions and comments are very welcome and should be sent to the
