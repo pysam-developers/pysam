@@ -1019,10 +1019,10 @@ cdef class AlignmentFile(HTSFile):
               end=None):
         """fetch reads aligned in a :term:`region`.
 
-        See :meth:`AlignmentFile.parse_region` for more information
-        on genomic regions.  :term:`reference` and `end` are also accepted for
-        backward compatiblity as synonyms for :term:`contig` and `stop`,
-        respectively.
+        See :meth:`~pysam.HTSFile.parse_region` for more information
+        on how genomic regions can be specified. :term:`reference` and
+        `end` are also accepted for backward compatiblity as synonyms
+        for :term:`contig` and `stop`, respectively.
 
         Without a `contig` or `region` all mapped reads in the file
         will be fetched. The reads will be returned ordered by reference
@@ -1030,17 +1030,11 @@ cdef class AlignmentFile(HTSFile):
         file. This mode of iteration still requires an index. If there is
         no index, use `until_eof=True`.
 
-        If only `reference` is set, all reads aligned to `reference`
+        If only `contig` is set, all reads aligned to `contig`
         will be fetched.
 
         A :term:`SAM` file does not allow random access. If `region`
         or `contig` are given, an exception is raised.
-
-        :class:`~pysam.FastaFile`
-        :class:`~pysam.IteratorRow`
-        :class:`~pysam.IteratorRow`
-        :class:`~IteratorRow`
-        :class:`IteratorRow`
 
         Parameters
         ----------

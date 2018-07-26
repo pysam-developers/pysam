@@ -4,7 +4,7 @@ libdir=@-libdir@
 # Flags and libraries needed when linking against a static libhts.a
 # (used by manual and semi-manual pkg-config(1)-style enquiries).
 static_ldflags=
-static_libs=-lpthread -lz -lm -lbz2 -llzma -lcurl 
+static_libs=-lpthread -lz -lm -lbz2 -llzma -lcurl -lcrypto
 
 Name: htslib
 Description: C library for high-throughput sequencing data formats

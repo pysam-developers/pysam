@@ -133,8 +133,8 @@ More detailed usage instructions is at :ref:`usage`.
 API
 ===
 
-SAM/BAM files
--------------
+SAM/BAM/CRAM files
+-------------------
 
 Objects of type :class:`~pysam.AlignmentFile` allow working with
 BAM/SAM formatted files.
@@ -218,4 +218,13 @@ VCF files
    :members:
 
 .. autoclass:: pysam.VariantHeaderRecord
+   :members:
+
+HTSFile
+-------
+
+HTSFile is the base class for :class:`pysam.AlignmentFile` and
+:class:`pysam.VariantFile`.
+
+.. autoclass:: pysam.HTSFile
    :members:

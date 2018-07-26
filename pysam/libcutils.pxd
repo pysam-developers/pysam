@@ -4,7 +4,7 @@
 cimport cython
 from cpython cimport array as c_array
 
-cpdef parse_region(reference=*, start=*, end=*, region=*)
+cpdef parse_region(contig=*, start=*, stop=*, region=*, reference=*, end=*)
 
 #########################################################################
 # Utility functions for quality string conversions

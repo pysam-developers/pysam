@@ -164,13 +164,19 @@ cdef force_str(object s, encoding="ascii"):
         return s
 
 
-cpdef parse_region(reference=None,
+cpdef parse_region(contig=None,
                    start=None,
-                   end=None,
-                   region=None):
+                   stop=None,
+                   region=None,
+                   reference=None,
+                   end=None):
     """parse alternative ways to specify a genomic region. A region can
     either be specified by :term:`reference`, `start` and
     `end`. `start` and `end` denote 0-based, half-open intervals.
+    
+    :term:`reference` and `end` are also accepted for backward
+    compatiblity as synonyms for :term:`contig` and `stop`,
+    respectively.
 
     Alternatively, a samtools :term:`region` string can be supplied.
 
@@ -194,6 +200,11 @@ cpdef parse_region(reference=None,
     """
     cdef long long rstart
     cdef long long rend
+
+    if contig is not None:
+        reference = contig
+    if stop is not None:
+        end = stop
 
     rstart = 0
     rend = MAX_POS
