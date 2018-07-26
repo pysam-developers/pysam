@@ -29,7 +29,7 @@ Pysam is available through `pypi
 
    pip install pysam
 
-Pysam documentation is available through https://readthedocs.org/ from
+Pysam documentation is available 
 `here <http://pysam.readthedocs.org/en/latest/>`_
 
 Questions and comments are very welcome and should be sent to the
