@@ -430,6 +430,42 @@ class TestAlignedSegment(ReadTest):
              (6, 27), (7, 28),
              (8, 29), (9, 30)])
 
+    def test_get_aligned_pairs_lowercase_md(self):
+        a = self.build_read()
+        a.query_sequence = "A" * 10
+        a.cigarstring = "10M"
+        a.set_tag("MD", "5g4")
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [(0, 20, 'A'),
+             (1, 21, 'A'),
+             (2, 22, 'A'),
+             (3, 23, 'A'),
+             (4, 24, 'A'),
+             (5, 25, 'g'),
+             (6, 26, 'A'),
+             (7, 27, 'A'),
+             (8, 28, 'A'),
+             (9, 29, 'A')])
+
+    def test_get_aligned_pairs_uppercase_md(self):
+        a = self.build_read()
+        a.query_sequence = "A" * 10
+        a.cigarstring = "10M"
+        a.set_tag("MD", "5G4")
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [(0, 20, 'A'),
+             (1, 21, 'A'),
+             (2, 22, 'A'),
+             (3, 23, 'A'),
+             (4, 24, 'A'),
+             (5, 25, 'g'),
+             (6, 26, 'A'),
+             (7, 27, 'A'),
+             (8, 28, 'A'),
+             (9, 29, 'A')])
+        
     def testNoSequence(self):
         '''issue 176: retrieving length without query sequence
         with soft-clipping.

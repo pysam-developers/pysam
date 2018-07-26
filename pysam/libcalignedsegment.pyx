@@ -777,6 +777,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
 
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
+    cdef char c
     s_idx = 0
 
     # Check if MD tag is valid by matching CIGAR length to MD tag defined length
@@ -822,8 +823,12 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                     s_idx += 1
                     md_idx += 1
             else:
-                # save mismatch and change to lower case
-                s[s_idx] = md_tag[md_idx] + 32
+                # save mismatch
+                # enforce lower case
+                c = md_tag[md_idx]
+                if c <= 90:
+                    c += 32
+                s[s_idx] = c
                 s_idx += 1
                 r_idx += 1
                 md_idx += 1
