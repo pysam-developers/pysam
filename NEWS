@@ -5,6 +5,12 @@ http://pysam.readthedocs.io/en/latest/release.html
 Release notes
 =============
 
+Release 0.15.0
+==============
+
+This release wraps htslib (and friends) version 1.9.
+
+
 Release 0.14.1
 ==============
 
@@ -56,13 +62,13 @@ Backwards incompatible changes:
 
   The rationale for this change is to have consistency between
   AlignmentFile and VariantFile.
-  	      
+
 * AlignmentFile and FastaFile now raise IOError instead of OSError
 
 Medium term we plan to have a 1.0 release. The pysam
 interface has grown over the years and the API is cluttered with
 deprecated names (Samfile, getrname(), gettid(), ...). To work towards
-this, the next release (0.15.0) will yield DeprecationWarnings 
+this, the next release (0.15.0) will yield DeprecationWarnings
 for any parts of the API that are considered obsolete and will not be
 in 1.0. Once 1.0 has been reached, we will use semantic versioning.
 
@@ -131,7 +137,7 @@ are created will need to change as the constructor requires a header::
     header = pysam.AlignmentHeader(
         reference_names=["chr1", "chr2"],
         reference_lengths=[1000, 1000])
-        
+
     read = pysam.AlignedSegment(header)
 
 This will affect all code that instantiates AlignedSegment objects
@@ -201,7 +207,7 @@ Release 0.11.0
 This release wraps the latest versions of htslib/samtools/bcftools and
 implements a few bugfixes.
 
-* [#413] Wrap HTSlib/Samtools/BCFtools 1.4 
+* [#413] Wrap HTSlib/Samtools/BCFtools 1.4
 * [#422] Fix missing pysam.sort.usage() message
 * [#411] Fix BGZfile initialization bug
 * [#412] Add seek support for BGZFile
@@ -344,7 +350,7 @@ Potential isses when upgrading from v0.8.3:
 
 * binary tags are now returned as python arrays
 
-* renamed several methods for pep8 compatibility, old names still retained for	
+* renamed several methods for pep8 compatibility, old names still retained for
   backwards compatibility, but should be considered deprecated.
    * gettid() is now get_tid()
    * getrname() is now get_reference_name()
@@ -354,7 +360,7 @@ Potential isses when upgrading from v0.8.3:
   names being present:
    * fromQualityString() is now qualitystring_to_array()
    * toQualityString() is now qualities_to_qualitystring()
-   
+
 * faidx now returns strings and not binary strings in py3.
 
 * The cython components have been broken up into smaller files with
@@ -463,7 +469,7 @@ Release 0.8.2
   with reading and writing capability. However, the interface is still
   incomplete and preliminary and lacks capability to mutate the
   resulting data.
-  
+
 Release 0.8.1
 =============
 
@@ -474,8 +480,8 @@ Release 0.8.1
   * issue #42: skip tests requiring network if none available
   * issue #19: multiple iterators can now be made to work on the same tabix file
   * issue #24: All strings returned from/passed to the pysam API are now unicode in python 3
-  * issue #5:  type guessing for lists of integers fixed    
-    
+  * issue #5:  type guessing for lists of integers fixed
+
 * API changes for consistency. The old API is still present,
   but deprecated.
   In particular:
@@ -505,7 +511,7 @@ Release 0.8.1
      * qstart -> query_alignment_start
      * qend -> query_alignment_end
      * qlen -> query_alignment_length
-     * mrnm -> next_reference_id   
+     * mrnm -> next_reference_id
      * mpos -> next_reference_start
      * rname -> reference_id
      * isize -> template_length
@@ -528,7 +534,7 @@ Backwards incompatible changes
 * Empty cigarstring now returns None (intstead of '')
 * Empty cigar now returns None (instead of [])
 * When using the extension classes in cython modules, AlignedRead
-  needs to be substituted with AlignedSegment. 
+  needs to be substituted with AlignedSegment.
 * fancy_str() has been removed
 * qual, qqual now return arrays
 
@@ -592,18 +598,18 @@ Release 0.7.5
 
 Release 0.7.4
 =============
-	
+
 * further bugfixes to setup.py and package layout
 
 Release 0.7.3
 =============
-	
+
 * further bugfixes to setup.py
 * upgraded distribute_setup.py to 0.6.34
 
 Release 0.7.2
 =============
-  
+
 * bugfix in installer - failed when cython not present
 * changed installation locations of shared libraries
 
