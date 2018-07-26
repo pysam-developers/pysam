@@ -102,9 +102,7 @@ def _update_pysam_files(cf, destdir):
                 lines = re.sub("stderr", "{}_stderr".format(basename), lines)
                 lines = re.sub("stdout", "{}_stdout".format(basename), lines)
                 lines = re.sub(" printf\(", " fprintf({}_stdout, ".format(basename), lines)
-                lines = re.sub("([^kf])puts\(([^)]+)\)",
-                               r"\1fputs(\2, {}_stdout) & fputc('\\n', {}_stdout)".format(basename, basename),
-                               lines)
+                lines = re.sub("([^kf])puts\(", r"\1{}_puts(".format(basename), lines)
                 lines = re.sub("putchar\(([^)]+)\)",
                                r"fputc(\1, {}_stdout)".format(basename), lines)
 

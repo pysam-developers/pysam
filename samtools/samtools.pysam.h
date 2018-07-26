@@ -38,6 +38,8 @@ void samtools_unset_stderr(void);
  */
 void samtools_unset_stdout(void);
 
+int samtools_puts(const char *s);
+
 int samtools_dispatch(int argc, char *argv[]);
 
 void samtools_set_optind(int);

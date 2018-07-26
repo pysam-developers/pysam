@@ -54,6 +54,12 @@ void samtools_unset_stdout(void)
   samtools_stdout_fileno = STDOUT_FILENO;
 }
 
+int samtools_puts(const char *s)
+{
+  if (fputs(s, samtools_stdout) == EOF) return EOF;
+  return putc('\n', samtools_stdout);
+}
+
 void samtools_set_optind(int val)
 {
   // setting this in cython via 

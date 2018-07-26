@@ -54,6 +54,12 @@ void @pysam@_unset_stdout(void)
   @pysam@_stdout_fileno = STDOUT_FILENO;
 }
 
+int @pysam@_puts(const char *s)
+{
+  if (fputs(s, @pysam@_stdout) == EOF) return EOF;
+  return putc('\n', @pysam@_stdout);
+}
+
 void @pysam@_set_optind(int val)
 {
   // setting this in cython via 

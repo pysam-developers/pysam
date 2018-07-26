@@ -38,6 +38,8 @@ void @pysam@_unset_stderr(void);
  */
 void @pysam@_unset_stdout(void);
 
+int @pysam@_puts(const char *s);
+
 int @pysam@_dispatch(int argc, char *argv[]);
 
 void @pysam@_set_optind(int);
