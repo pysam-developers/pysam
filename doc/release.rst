@@ -2,6 +2,11 @@
 Release notes
 =============
 
+Release 0.15.0
+==============
+
+* [#673] permit dash in chromosome name of region string
+
 Release 0.14.1
 ==============
 

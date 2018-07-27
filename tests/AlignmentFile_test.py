@@ -1259,6 +1259,17 @@ class TestWrongFormat(unittest.TestCase):
                           'rb')
 
 
+class TestRegionParsiong(unittest.TestCase):
+
+    def test_dash_in_chr(self):
+        with pysam.AlignmentFile(
+                os.path.join(BAM_DATADIR, "example_dash_in_chr.bam")) as inf:
+            self.assertEqual(len(list(inf.fetch(contig="chr-1"))), 1)
+            self.assertEqual(len(list(inf.fetch(contig="chr2"))), 1)
+            self.assertEqual(len(list(inf.fetch(region="chr-1"))), 1)
+            self.assertEqual(len(list(inf.fetch(region="chr2"))), 1)
+
+
 class TestDeNovoConstruction(unittest.TestCase):
 
     '''check BAM/SAM file construction using ex6.sam

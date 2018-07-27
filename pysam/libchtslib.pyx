@@ -663,12 +663,14 @@ cdef class HTSFile(object):
 
         if region:
             region = force_str(region)
-            parts = re.split('[:-]', region)
-            contig = parts[0]
-            if len(parts) >= 2:
-                rstart = int(parts[1]) - 1
-            if len(parts) >= 3:
-                rstop = int(parts[2])
+            if ":" in region:
+                contig, coord = region.split(":")
+                parts = coord.split("-")
+                rstart = int(parts[0]) - 1
+                if len(parts) >= 1:
+                    rstop = int(parts[1])
+            else:
+                contig = region
 
         if tid is not None:
             if not self.is_valid_tid(tid):
