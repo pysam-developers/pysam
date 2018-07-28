@@ -311,7 +311,7 @@ class TestIteratorColumn2(unittest.TestCase):
     def testTruncate(self):
         '''see issue 107.'''
         # note that ranges in regions start from 1
-        p = self.samfile.pileup(region='chr1:170:172', truncate=True)
+        p = self.samfile.pileup(region='chr1:170-172', truncate=True)
         columns = [x.reference_pos for x in p]
         self.assertEqual(len(columns), 3)
         self.assertEqual(columns, [169, 170, 171])
