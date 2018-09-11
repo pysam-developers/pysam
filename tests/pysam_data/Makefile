@@ -21,7 +21,8 @@ all: ex1.pileup.gz \
 	faidx_empty_seq.fq.gz \
 	ex1.fa.gz ex1.fa.gz.csi \
 	ex1_csi.bam \
-	example_reverse_complement.bam
+	example_reverse_complement.bam \
+	example_dash_in_chr.bam
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
