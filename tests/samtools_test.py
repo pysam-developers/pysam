@@ -266,7 +266,8 @@ class SamtoolsTest(unittest.TestCase):
             # ignore commands that exit or cause other failures
             # TODO: check - if reheader or phase is run in testStatements, sort fails
             # here
-            if command in ("view", "sort", "bam2fq", "flagstat", "reheader", "stats"):
+            if command in ("view", "sort", "bam2fq", "flagstat", "reheader",
+                           "stats", "idxstats"):
                 continue
             mapped_command = self.get_command(statement, map_to_internal=True)
             pysam_method = getattr(self.module, mapped_command)
