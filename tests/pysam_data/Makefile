@@ -91,6 +91,7 @@ clean:
 	rm -fr *.bam *.bai *.fai *.pileup* *.cram \
 	*~ calDepth *.dSYM pysam_*.sam \
 	ex2.sam ex2.sam.gz ex1.sam \
+	with_md.sam.gz \
 	*.fq.gz
 
 %.fq.gz: %.fq
