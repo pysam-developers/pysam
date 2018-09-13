@@ -17,6 +17,7 @@ tests/cbcf_data
 tests/tabix_data
 
 samtools/config.h
+bcftools/config.g
 htslib/config.status
 htslib/config.h
 htslib/config.log
