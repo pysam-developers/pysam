@@ -2,6 +2,15 @@
 Release notes
 =============
 
+Release 0.15.1
+==============
+
+Bugfix release.
+
+* [#716] raise ValueError if tid is out of range when writing
+* [#697] release version using cython 0.28.5 for python 3.7
+  compatibility
+
 Release 0.15.0
 ==============
 
