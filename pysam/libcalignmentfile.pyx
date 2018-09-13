@@ -1713,8 +1713,13 @@ cdef class AlignmentFile(HTSFile):
         if not self.is_open:
             return 0
 
+        if self.header.ptr.n_targets <= read._delegate.core.tid:
+            raise ValueError(
+                "AlignedSegment refers to reference number {} that "
+                "is larger than the number of references ({}) in the header".format(
+                    read._delegate.core.tid, self.header.ptr.n_targets))
+        
         cdef int ret
-
         with nogil:
             ret = sam_write1(self.htsfile,
                              self.header.ptr,

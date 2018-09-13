@@ -1259,7 +1259,7 @@ class TestWrongFormat(unittest.TestCase):
                           'rb')
 
 
-class TestRegionParsiong(unittest.TestCase):
+class TestRegionParsing(unittest.TestCase):
 
     def test_dash_in_chr(self):
         with pysam.AlignmentFile(
@@ -1290,7 +1290,7 @@ class TestDeNovoConstruction(unittest.TestCase):
     def setUp(self):
 
         header = pysam.AlignmentHeader.from_dict(self.header)
-        
+
         a = pysam.AlignedSegment(header)
         a.query_name = "read_28833_29006_6945"
         a.query_sequence = "AGCTTAGCTAGCTACCTATATCTTGGTCTTGGCCG"
@@ -1407,7 +1407,30 @@ class TestEmptyHeader(unittest.TestCase):
         self.assertTrue("SQ" in s.header.to_dict())
         self.assertTrue("@SQ" in str(s.header))
 
-        
+
+class TestMismatchingHeader(unittest.TestCase):
+    '''see issue 716.'''
+
+    def testMismatchingHeader(self):
+        # Note: no chr2
+        header = {
+            'SQ': [{'SN': 'chr1', 'LN': 1575}],
+            'PG': [{'ID': 'bwa', 'PN': 'bwa', 'VN': '0.7.15', 'CL': 'bwa mem xx -'}],
+        }
+
+        dest = get_temp_filename("tmp_ex3.bam")
+        with pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex3.bam')) as inf:
+            with pysam.AlignmentFile(dest, mode="wb", header=header) as outf:
+                for read in inf:
+                    if read.reference_name == "chr1":
+                        outf.write(read)
+                    else:
+                        self.assertRaises(ValueError,
+                                          outf.write,
+                                          read)
+        os.unlink(dest)
+
+
 class TestHeaderWithProgramOptions(unittest.TestCase):
 
     '''see issue 39.'''
@@ -1436,7 +1459,7 @@ class TestTruncatedBAM(unittest.TestCase):
                           pysam.AlignmentFile,
                           os.path.join(BAM_DATADIR, 'ex2_truncated.bam'))
 
-    def testTruncatedBam2(self):
+    def testTruncatedBamIterator(self):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex2_truncated.bam'),
                                 ignore_truncation=True)
 

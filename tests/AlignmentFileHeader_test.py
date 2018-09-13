@@ -120,8 +120,7 @@ class TestHeaderConstruction(unittest.TestCase):
             reference_lengths=[1575, 1584])
         self.compare_headers(header, self.header_without_text)
         self.check_name_mapping(header)
-        
-        
+
 class TestHeaderSAM(unittest.TestCase):
     """testing header manipulation"""
 
