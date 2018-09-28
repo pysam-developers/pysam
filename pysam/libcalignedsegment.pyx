@@ -402,11 +402,18 @@ cdef inline pack_tags(tags):
             # use array.tostring() to retrieve byte representation and
             # save as bytes
             datafmt = "2sBBI%is" % (len(value) * DATATYPE2FORMAT[typecode][1])
-            args.extend([pytag[:2],
-                         ord("B"),
-                         typecode,
-                         len(value),
-                         force_bytes(value.tostring())])
+            if IS_PYTHON3:
+                args.extend([pytag[:2],
+                             ord("B"),
+                             typecode,
+                             len(value),
+                             value.tobytes()])
+            else:
+                args.extend([pytag[:2],
+                             ord("B"),
+                             typecode,
+                             len(value),
+                             force_bytes(value.tostring())])
 
         else:
             if typecode == 0:
