@@ -22,6 +22,8 @@ from libcsamtools cimport samtools_main, samtools_set_stdout, samtools_set_stder
 from libcbcftools cimport bcftools_main, bcftools_set_stdout, bcftools_set_stderr, \
     bcftools_unset_stderr, bcftools_unset_stdout, bcftools_set_stdout_fn, bcftools_set_optind
 
+cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
+
 #####################################################################
 # hard-coded constants
 cdef int MAX_POS = 2 << 29
@@ -48,7 +50,10 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
 
     for x from 0 <= x < len(qualities):
         result[x] = qualities[x] + offset
-    return force_str(result.tostring())
+    if IS_PYTHON3:
+        return force_str(result.tobytes())
+    else:
+        return result.tostring()
 
 
 cpdef qualities_to_qualitystring(qualities, int offset=33):
