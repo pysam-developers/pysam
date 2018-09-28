@@ -22,8 +22,6 @@ from libcsamtools cimport samtools_main, samtools_set_stdout, samtools_set_stder
 from libcbcftools cimport bcftools_main, bcftools_set_stdout, bcftools_set_stderr, \
     bcftools_unset_stderr, bcftools_unset_stdout, bcftools_set_stdout_fn, bcftools_set_optind
 
-cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-
 #####################################################################
 # hard-coded constants
 cdef int MAX_POS = 2 << 29
