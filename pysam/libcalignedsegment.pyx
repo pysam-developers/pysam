@@ -1952,6 +1952,8 @@ cdef class AlignedSegment:
                     else:
                         for i from pos <= i < pos + l:
                             result.append((None, i))
+                else:
+                    r_idx += l
                 pos += l
 
             elif op == BAM_CHARD_CLIP:
