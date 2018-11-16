@@ -57,7 +57,10 @@ reads are represented as :class:`~pysam.PileupRead` objects in the
 
     import pysam
     samfile = pysam.AlignmentFile("ex1.bam", "rb" )
-    for pileupcolumn in samfile.pileup("chr1", 100, 120):
+    
+    pileup = bamfile.pileup("chr1", 100, 120)
+
+    for pileupcolumn in pileup:
         print ("\ncoverage at base %s = %s" %
                (pileupcolumn.pos, pileupcolumn.n))
         for pileupread in pileupcolumn.pileups:
