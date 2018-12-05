@@ -50,8 +50,8 @@ include htslib/htslib.pc.in
 include htslib/htslib/*.h
 include htslib/cram/*.c
 include htslib/cram/*.h
-include htslib/win/*.c
-include htslib/win/*.h
+include htslib/os/*.c
+include htslib/os/*.h
 include cy_build.py
 include pysam.py
 include requirements.txt
