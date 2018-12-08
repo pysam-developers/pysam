@@ -94,7 +94,7 @@ IndexStats = collections.namedtuple("IndexStats",
 ########################################################
 ## global variables
 # maximum genomic coordinace
-cdef int  MAX_POS = 2 << 29
+cdef int  MAX_POS = 2 << 31
 
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : collections.Mapping,
