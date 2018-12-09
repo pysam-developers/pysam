@@ -41,7 +41,7 @@ DEF SEEK_CUR = 1
 DEF SEEK_END = 2
 
 # maximum genomic coordinace
-cdef int   MAX_POS = 2 << 29
+cdef uint32_t MAX_POS = 2 << 31
 
 cdef tuple FORMAT_CATEGORIES = ('UNKNOWN', 'ALIGNMENTS', 'VARIANTS', 'INDEX', 'REGIONS')
 cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', 'BAI', 'CRAM', 'CRAI',
