@@ -24,7 +24,7 @@ from libcbcftools cimport bcftools_main, bcftools_set_stdout, bcftools_set_stder
 
 #####################################################################
 # hard-coded constants
-cdef int MAX_POS = 2 << 31
+cdef int MAX_POS = 2 << 29
 
 #################################################################
 # Utility functions for quality string conversions
