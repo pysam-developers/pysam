@@ -1,4 +1,3 @@
-
 # cython: embedsignature=True
 # cython: profile=True
 ########################################################
@@ -62,6 +61,8 @@ import warnings
 import array
 from libc.errno  cimport errno, EPIPE
 from libc.string cimport strcmp, strpbrk, strerror
+from libc.stdint cimport INT32_MAX
+
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
 
@@ -94,7 +95,8 @@ IndexStats = collections.namedtuple("IndexStats",
 ########################################################
 ## global variables
 # maximum genomic coordinace
-cdef uint32_t MAX_POS = 2 << 31
+# for some reason, using 'int' causes overlflow
+cdef int MAX_POS = (1 << 31) - 1
 
 # valid types for SAM headers
 VALID_HEADER_TYPES = {"HD" : collections.Mapping,
@@ -1314,8 +1316,9 @@ cdef class AlignmentFile(HTSFile):
         an iterator over genomic positions.
 
         """
-        cdef int rtid, rstart, rstop, has_coord
-
+        cdef int rtid, has_coord
+        cdef int32_t rstart, rstop
+        
         if not self.is_open:
             raise ValueError("I/O operation on closed file")
 
@@ -2054,7 +2057,6 @@ cdef class IteratorRowRegion(IteratorRow):
 
         IteratorRow.__init__(self, samfile,
                              multiple_iterators=multiple_iterators)
-
         with nogil:
             self.iter = sam_itr_queryi(
                 self.index,

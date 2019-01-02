@@ -9,10 +9,9 @@
 
 from posix.unistd cimport dup
 from libc.errno  cimport errno
+from libc.stdint cimport INT32_MAX
 from cpython cimport PyBytes_FromStringAndSize
-
 from pysam.libchtslib cimport *
-
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
@@ -25,7 +24,7 @@ from pysam.libcutils cimport encode_filename, from_string_and_size
 import os
 import io
 import re
-from warnings         import warn
+from warnings import warn
 
 
 ########################################################################
@@ -41,7 +40,7 @@ DEF SEEK_CUR = 1
 DEF SEEK_END = 2
 
 # maximum genomic coordinace
-cdef uint32_t MAX_POS = 2 << 31
+cdef int MAX_POS = (1 << 31) - 1
 
 cdef tuple FORMAT_CATEGORIES = ('UNKNOWN', 'ALIGNMENTS', 'VARIANTS', 'INDEX', 'REGIONS')
 cdef tuple FORMATS = ('UNKNOWN', 'BINARY_FORMAT', 'TEXT_FORMAT', 'SAM', 'BAM', 'BAI', 'CRAM', 'CRAI',
@@ -630,8 +629,8 @@ cdef class HTSFile(object):
 
         """
         cdef int rtid
-        cdef long long rstart
-        cdef long long rstop
+        cdef int32_t rstart
+        cdef int32_t rstop
 
         if reference is not None:
             if contig is not None:
@@ -644,7 +643,7 @@ cdef class HTSFile(object):
             stop = end
 
         if contig is None and tid is None and region is None:
-            return 0, 0, 0, 0
+            return 0, 0, 0, MAX_POS
 
         rtid = -1
         rstart = 0

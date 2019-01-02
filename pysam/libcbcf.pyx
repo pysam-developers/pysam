@@ -111,7 +111,7 @@ __all__ = ['VariantFile',
 ## Constants
 ########################################################################
 
-cdef uint32_t MAX_POS = 2 << 31
+cdef int MAX_POS = (1 << 31) - 1
 cdef tuple VALUE_TYPES = ('Flag', 'Integer', 'Float', 'String')
 cdef tuple METADATA_TYPES = ('FILTER', 'INFO', 'FORMAT', 'CONTIG', 'STRUCTURED', 'GENERIC')
 cdef tuple METADATA_LENGTHS = ('FIXED', 'VARIABLE', 'A', 'G', 'R')

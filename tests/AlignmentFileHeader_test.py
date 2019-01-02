@@ -121,6 +121,7 @@ class TestHeaderConstruction(unittest.TestCase):
         self.compare_headers(header, self.header_without_text)
         self.check_name_mapping(header)
 
+
 class TestHeaderSAM(unittest.TestCase):
     """testing header manipulation"""
 
@@ -287,6 +288,7 @@ class TestHeaderWriteRead(unittest.TestCase):
     def check_read_write(self, flag_write, header):
 
         fn = get_temp_filename()
+        print(fn)
         with pysam.AlignmentFile(
                 fn,
                 flag_write,
@@ -299,17 +301,30 @@ class TestHeaderWriteRead(unittest.TestCase):
         with pysam.AlignmentFile(fn) as inf:
             read_header = inf.header
 
-        os.unlink(fn)
+        # os.unlink(fn)
         self.compare_headers(header, read_header)
+        expected_lengths = dict([(x["SN"], x["LN"]) for x in header["SQ"]])
+        self.assertEqual(expected_lengths,
+                         dict(zip(read_header.references,
+                                  read_header.lengths)))
 
     def test_SAM(self):
         self.check_read_write("wh", self.header)
 
     def test_BAM(self):
         self.check_read_write("wb", self.header)
-
+        
     def test_CRAM(self):
         header = copy.copy(self.header)
-        # for CRAM, \t needs to be quoted:
-        header['PG'][1]['CL'] = re.sub(r"\t", r"\\\\t", header['PG'][1]['CL'])
+        if "PG" in header:
+            # for CRAM, \t needs to be quoted:
+            header['PG'][1]['CL'] = re.sub(r"\t", r"\\\\t", header['PG'][1]['CL'])
         self.check_read_write("wc", header)
+
+
+class TestHeaderLargeContigs(TestHeaderWriteRead):
+    """see issue 741"""
+
+    header = {'SQ': [{'LN': 2147483647, 'SN': 'chr1'},
+                     {'LN': 1584, 'SN': 'chr2'}],
+              'HD': {'VN': '1.0'}}
