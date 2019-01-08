@@ -12,6 +12,7 @@ from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython cimport array as c_array
 from libc.stdlib cimport calloc, free
 from libc.string cimport strncpy
+from libc.stdint cimport INT32_MAX, int32_t
 from libc.stdio cimport fprintf, stderr, fflush
 from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY
@@ -24,7 +25,7 @@ from libcbcftools cimport bcftools_main, bcftools_set_stdout, bcftools_set_stder
 
 #####################################################################
 # hard-coded constants
-cdef int MAX_POS = 2 << 29
+cdef int MAX_POS = (1 << 31) - 1
 
 #################################################################
 # Utility functions for quality string conversions
