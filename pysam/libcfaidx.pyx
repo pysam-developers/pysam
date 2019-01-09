@@ -287,19 +287,20 @@ cdef class FastaFile:
         cdef char *ref
         cdef int rstart, rend
 
-        reference, rstart, rend = parse_region(reference, start, end, region)
+        contig, rstart, rend = parse_region(reference, start, end, region)
 
-        if reference is None:
+        if contig is None:
             raise ValueError("no sequence/region supplied.")
 
         if rstart == rend:
             return ""
 
-        ref = reference
+        contig_b = force_bytes(contig)
+        ref = contig_b
         with nogil:
             length = faidx_seq_len(self.fastafile, ref)
         if length == -1:
-            raise KeyError("sequence '%s' not present" % reference)
+            raise KeyError("sequence '%s' not present" % contig)
         if rstart >= length:
             return ""
 
@@ -315,7 +316,7 @@ cdef class FastaFile:
             if errno:
                 raise IOError(errno, strerror(errno))
             else:
-                raise ValueError("failure when retrieving sequence on '%s'" % reference)
+                raise ValueError("failure when retrieving sequence on '%s'" % contig)
 
         try:
             return charptr_to_str(seq)

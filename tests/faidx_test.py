@@ -45,6 +45,13 @@ class TestFastaFile(unittest.TestCase):
         self.assertRaises(ValueError, self.file.fetch, "chr1", 20, 10)
         self.assertRaises(KeyError, self.file.fetch, "chr3", 0, 100)
 
+    def test_fetch_with_region_and_contig_raises_exception(self):
+        self.assertRaises(ValueError, self.file.fetch, "chr1", 10, 20, "chr1:11-20")
+        
+    def test_fetch_with_region_is_equivalent(self):
+        self.assertEqual(self.file.fetch("chr1", 10, 20),
+                         self.file.fetch(region="chr1:11-20"))
+
     def testLength(self):
         self.assertEqual(len(self.file), 2)
 
@@ -60,7 +67,7 @@ class TestFastaFilePathIndex(unittest.TestCase):
 
     filename = os.path.join(BAM_DATADIR, "ex1.fa")
     data_suffix = ".fa"
-    
+
     def test_raise_exception_if_index_is_missing(self):
         self.assertRaises(IOError,
                           pysam.FastaFile,
