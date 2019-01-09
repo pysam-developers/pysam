@@ -202,51 +202,58 @@ cpdef parse_region(contig=None,
        for invalid or out of bounds regions.
 
     """
-    cdef long long rstart
-    cdef long long rend
+    cdef int32_t rstart
+    cdef int32_t rstop
 
-    if contig is not None:
-        reference = contig
-    if stop is not None:
-        end = stop
+    
+    if reference is not None:
+        if contig is not None:
+           raise ValueError('contig and reference should not both be specified')
+        contig = reference
+
+    if contig is not None and region is not None:
+        raise ValueError('contig/reference and region should not both be specified')
+        
+    if end is not None:
+        if stop is not None:
+            raise ValueError('stop and end should not both be specified')
+        stop = end
+
+    if contig is None and region is None:
+        raise ValueError("neither contig nor region are given")
 
     rstart = 0
-    rend = MAX_POS
-    if start != None:
+    rstop = MAX_POS
+    if start is not None:
         try:
             rstart = start
         except OverflowError:
             raise ValueError('start out of range (%i)' % start)
 
-    if end != None:
+    if stop is not None:
         try:
-            rend = end
+            rstop = stop
         except OverflowError:
-            raise ValueError('end out of range (%i)' % end)
+            raise ValueError('stop out of range (%i)' % stop)
 
     if region:
-        region = force_str(region)
         if ":" in region:
             contig, coord = region.split(":")
             parts = coord.split("-")
             rstart = int(parts[0]) - 1
             if len(parts) >= 1:
-                rend = int(parts[1])
+                rstop = int(parts[1])
         else:
             contig = region
 
-    if not reference:
-        return None, 0, 0
-
+    if rstart > rstop:
+        raise ValueError('invalid coordinates: start (%i) > stop (%i)' % (rstart, rstop))
     if not 0 <= rstart < MAX_POS:
         raise ValueError('start out of range (%i)' % rstart)
-    if not 0 <= rend <= MAX_POS:
-        raise ValueError('end out of range (%i)' % rend)
-    if rstart > rend:
-        raise ValueError(
-            'invalid region: start (%i) > end (%i)' % (rstart, rend))
+    if not 0 <= rstop <= MAX_POS:
+        raise ValueError('stop out of range (%i)' % rstop)
 
-    return force_bytes(reference), rstart, rend
+    return contig, rstart, rstop
 
 
 def _pysam_dispatch(collection,
