@@ -445,6 +445,20 @@ class TestAlignedSegment(ReadTest):
             a.get_aligned_pairs(matches_only=True, with_seq=True),
             [x for x in full if x[0] is not None and x[1] is not None])
 
+        a = self.build_read()
+        a.query_sequence = "ACGT" * 2
+        a.cigarstring = "4M1N4M"
+        a.set_tag("MD", "8")
+        full = (list(zip(range(0, 4), range(20, 24), "ACGT")) +
+                [(None, 24, None)] +
+                list(zip(range(4, 8), range(25, 29), "ACGT")))
+        self.assertEqual(
+            a.get_aligned_pairs(matches_only=False, with_seq=True), full)
+
+        self.assertEqual(
+            a.get_aligned_pairs(matches_only=True, with_seq=True),
+            [x for x in full if x[0] is not None and x[1] is not None])
+
     def test_get_aligned_pairs_lowercase_md(self):
         a = self.build_read()
         a.query_sequence = "A" * 10
