@@ -5,6 +5,10 @@
 #
 # It is best to run this in a fresh clone of the repository!
 #
+# Before running, make sure to update image:
+#
+#   docker pull quay.io/pypa/manylinux1_x86_64
+#
 # Run this within the repository root:
 #   docker run --rm -v $(pwd):/io quay.io/pypa/manylinux1_x86_64 /io/buildwheels.sh
 #
@@ -23,13 +27,6 @@ if ! grep -q docker /proc/1/cgroup; then
 fi
 
 yum install -y zlib-devel bzip2-devel xz-devel
-
-# Python 2.6 is not supported
-rm -r /opt/python/cp26*
-
-# Python 3.3 builds fail with:
-#  /opt/rh/devtoolset-2/root/usr/libexec/gcc/x86_64-CentOS-linux/4.8.2/ld: cannot find -lchtslib
-rm -r /opt/python/cp33*
 
 # Without libcurl support, htslib can open files from HTTP and FTP URLs.
 # With libcurl support, it also supports HTTPS and S3 URLs, but libcurl needs a
