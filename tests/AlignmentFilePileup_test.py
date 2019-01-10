@@ -115,7 +115,7 @@ class TestPileupReadSelection(unittest.TestCase):
             fastafile=self.fastafile,
             redo_baq=True)
         self.check_equal(refs, iterator)
-        
+
 
 class TestPileupReadSelectionFastafile(TestPileupReadSelection):
     '''test pileup functionality - backwards compatibility'''
@@ -206,10 +206,19 @@ class TestPileupObjects(unittest.TestCase):
         '''test if exception is raised if pileup col is accessed after
         iterator is exhausted.'''
 
+        max_n = 0
         for pileupcol in self.samfile.pileup():
-            pass
+            if max_n < pileupcol.n:
+                max_col = pileupcol
+                max_n = pileupcol.n
 
-        self.assertRaises(ValueError, getattr, pileupcol, "pileups")
+        self.assertRaises(ValueError, getattr, max_col, "pileups")
+        self.assertRaises(ValueError, max_col.get_query_sequences)
+        self.assertRaises(ValueError, max_col.get_num_aligned)
+        self.assertRaises(ValueError, max_col.get_query_qualities)
+        self.assertRaises(ValueError, max_col.get_mapping_qualities)
+        self.assertRaises(ValueError, max_col.get_query_positions)
+        self.assertRaises(ValueError, max_col.get_query_names)
 
 
 class TestIteratorColumnBAM(unittest.TestCase):

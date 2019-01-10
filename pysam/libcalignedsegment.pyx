@@ -2854,6 +2854,10 @@ cdef class PileupColumn:
             # out of sync.
             for x from 0 <= x < self.n_pu:
                 p = &(self.plp[0][x])
+                if p == NULL:
+                    raise ValueError(
+                        "pileup buffer out of sync - most likely use of iterator "
+                        "outside loop")
                 if pileup_base_qual_skip(p, self.min_base_quality):
                     continue
                 pileups.append(makePileupRead(p, self.header))
@@ -2896,8 +2900,15 @@ cdef class PileupColumn:
         cdef uint32_t c = 0
         cdef uint32_t cnt = 0
         cdef bam_pileup1_t * p = NULL
+        if self.plp == NULL or self.plp[0] == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
+        
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
+            if p == NULL:
+                raise ValueError(
+                    "pileup buffer out of sync - most likely use of iterator "
+                    "outside loop")
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             cnt += 1
@@ -2965,11 +2976,18 @@ cdef class PileupColumn:
         cdef uint8_t rb = 0
         cdef uint8_t * buf = self.buf
         cdef bam_pileup1_t * p = NULL
+        
+        if self.plp == NULL or self.plp[0] == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
 
         # todo: reference sequence to count matches/mismatches
         # todo: convert assertions to exceptions
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
+            if p == NULL:
+                raise ValueError(
+                    "pileup buffer out of sync - most likely use of iterator "
+                    "outside loop")
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             # see samtools pileup_seq
@@ -3071,6 +3089,11 @@ cdef class PileupColumn:
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
+            if p == NULL:
+                raise ValueError(
+                    "pileup buffer out of sync - most likely use of iterator "
+                    "outside loop")
+            
             if p.qpos < p.b.core.l_qseq:
                 c = bam_get_qual(p.b)[p.qpos]
             else:
@@ -3088,11 +3111,19 @@ cdef class PileupColumn:
 
         list: a list of quality scores
         """
+        if self.plp == NULL or self.plp[0] == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
+        
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
+            if p == NULL:
+                raise ValueError(
+                    "pileup buffer out of sync - most likely use of iterator "
+                    "outside loop")
+            
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             result.append(p.b.core.qual)
@@ -3106,12 +3137,19 @@ cdef class PileupColumn:
 
         list: a list of read positions
         """
+        if self.plp == NULL or self.plp[0] == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
 
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
+            if p == NULL:
+                raise ValueError(
+                    "pileup buffer out of sync - most likely use of iterator "
+                    "outside loop")
+            
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             result.append(p.qpos)
@@ -3125,11 +3163,19 @@ cdef class PileupColumn:
 
         list: a list of query names at pileup column position.
         """
+        if self.plp == NULL or self.plp[0] == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
+        
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
+            if p == NULL:
+                raise ValueError(
+                    "pileup buffer out of sync - most likely use of iterator "
+                    "outside loop")
+            
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             result.append(charptr_to_str(pysam_bam_get_qname(p.b)))
