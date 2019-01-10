@@ -7,6 +7,17 @@ Release 0.15.1
 
 Bugfix release.
 
+* [#746] catch pileup itorator out-of-scope segfaults
+* [#747] fix faixd fetch with region
+* [#748] increase max_pos to (1<<31)-1
+* [#645] Add missing macOS stub files in `MANIFEST.in`, @SoapZA
+* [#737] Fix bug in get_aligned_pairs, @bkohrn
+
+Release 0.15.1
+==============
+
+Bugfix release.
+
 * [#716] raise ValueError if tid is out of range when writing
 * [#697] release version using cython 0.28.5 for python 3.7
   compatibility
