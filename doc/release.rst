@@ -2,7 +2,7 @@
 Release notes
 =============
 
-Release 0.15.1
+Release 0.15.2
 ==============
 
 Bugfix release.
