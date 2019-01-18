@@ -274,9 +274,25 @@ def _pysam_dispatch(collection,
     False.
     '''
 
-    if method == "index":
-        if args and not os.path.exists(args[0]):
-            raise IOError("No such file or directory: '%s'" % args[0])
+    if method == "index" and args:
+        # We make sure that at least 1 input file exists,
+        # and if it doesn't we raise an IOError.
+        SIMPLE_FLAGS = ['-c', '--csi', '-f', '--force', '-t', '--tbi', '-n', '--nstats', '-s', '--stats']
+        ARGUMENTS = ['-m', '--min-shift', '-o', '--output-file', '--threads', '-@']
+        skip_next = False
+        for arg in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if arg in SIMPLE_FLAGS or (len(arg) > 2 and arg.startswith('-@')):
+                continue
+            if arg in ARGUMENTS:
+                skip_next = True
+                continue
+            if not os.path.exists(arg):
+                raise IOError("No such file or directory: '%s'" % arg)
+            else:
+                break
             
     if args is None:
         args = []
