@@ -70,6 +70,38 @@ MAIN = {
 }
 
 
+# The follwing fragment adds an additional function that needs to go with
+# the samtools sources, as bam1_cmp_by_tag and bam1_cmp_by_tag are static inline
+# Better solutions obviously welcome.
+PYSAM_CMP_HEADER = "int pysam_cmp_record(bam1_t *a, bam1_t *b, int is_by_qname, const char *sort_by_tag);\n"
+PYSAM_CMP_RECORD = """
+// pysam specifc function that compares reads (without forcing an order)
+int pysam_cmp_record(bam1_t *a, bam1_t *b, int is_by_qname, const char *sort_by_tag)
+{
+    struct bam1_tag a_tag;
+    struct bam1_tag b_tag;
+    a_tag.bam_record = a;
+    b_tag.bam_record = b;
+    a_tag.u.tag = NULL;
+    b_tag.u.tag = NULL;
+
+    g_is_by_qname = is_by_qname;
+    if (sort_by_tag) {
+        g_is_by_tag = 1;
+        strncpy(g_sort_tag, sort_by_tag, 2);
+    }
+
+    if (g_is_by_tag) {
+        a_tag.u.tag = bam_aux_get(a, sort_by_tag);
+        b_tag.u.tag = bam_aux_get(b, sort_by_tag);
+        return bam1_cmp_by_tag(a_tag, b_tag);
+
+    } else {
+        return bam1_cmp_core(a_tag, b_tag);
+    }
+}
+"""
+
 
 def locate(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
@@ -123,6 +155,10 @@ def _update_pysam_files(cf, destdir):
                     lines = lines.replace(
                         SPECIFIC_SUBSTITUTIONS[fn][0],
                         SPECIFIC_SUBSTITUTIONS[fn][1])
+                if fn == 'bam_sort.c':
+                    lines += PYSAM_CMP_RECORD
+                    with open(os.path.join(destdir, 'bam_sort.c.pysam.h'), 'w', encoding='utf-8') as h_file:
+                        h_file.write(PYSAM_CMP_HEADER)
                 outfile.write(lines)
 
     with open(os.path.join("import", "pysam.h")) as inf, \

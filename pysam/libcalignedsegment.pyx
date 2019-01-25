@@ -1,4 +1,5 @@
 # cython: embedsignature=True
+
 # cython: profile=True
 ###############################################################################
 ###############################################################################
@@ -1036,6 +1037,45 @@ cdef class AlignedSegment:
         if retval:
             return retval
         return memcmp(t.data, o.data, t.l_data)
+
+    def compare_sort(self, AlignedSegment other, sort_order='coordinate', tag=None):
+        """
+        Takes another :class:`pysam.AlignedSegment` instance and returns an integer indicating
+        how the ``other`` instance sorts when compared to this instance.
+
+        Sorting is controlled using the ``sort_order`` variable and can be one of:
+        'coordinate': uses the alignment coordinate.
+        'queryname': uses the queryname.
+
+        If ``tag`` is given it must be a 2 character string, and
+        will be used for primary sorting. Ties will be broken
+        using the methdo specified by ``sort_order``.
+
+        The return value indicates the following:
+        -1: This :class:`pysam.AlignedSegment` instance would sort before `other`.
+         0: both instances would sort at the same position.
+         1: This :class:`pysam.AlignedSegment` instance would sort after `other`.
+        """
+        cdef bam1_t *t
+        cdef bam1_t *o
+        cdef int is_by_qname = 0
+
+        valid_sort_orders = ('coordinate', 'queryname')
+        if sort_order not in valid_sort_orders:
+            err = "Parameter how must be '%s' or '%s'." % valid_sort_orders
+            raise ValueError(err)
+        if sort_order == 'queryname':
+            is_by_qname = 1
+        if tag is not None:
+            if not isinstance(tag, str) or not len(tag) == 2:
+                raise ValueError('Invalid tag: %s' % tag)
+        else:
+            tag = ""
+        sort_tag = force_bytes(tag)
+
+        t = self._delegate
+        o = other._delegate
+        return pysam_cmp_record(t, o, is_by_qname, sort_tag)
 
     def __richcmp__(self, AlignedSegment other, int op):
         if op == 2:  # == operator

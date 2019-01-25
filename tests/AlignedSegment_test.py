@@ -93,6 +93,47 @@ class TestAlignedSegment(ReadTest):
         self.assertTrue(a != b)
         self.assertTrue(b != a)
 
+    def testCompareSort(self):
+        a = self.build_read()
+        b = self.build_read()
+        self.assertEqual(0, a.compare_sort(b))
+        self.assertEqual(0, b.compare_sort(a))
+        # Make a sort lower if sorting by coordinate
+        a.reference_start -= 1
+        self.assertEqual(-1, a.compare_sort(b))
+        self.assertEqual(1, b.compare_sort(a))
+
+        self.assertEqual(0, a.compare_sort(b, sort_order='queryname'))
+        self.assertEqual(0, b.compare_sort(a, sort_order='queryname'))
+        a.query_name = 'read_02345'
+        self.assertEqual(-1, a.compare_sort(b, sort_order='queryname'))
+        self.assertEqual(1, b.compare_sort(a, sort_order='queryname'))
+
+        a = self.build_read()
+        self.assertEqual(0, a.compare_sort(b, sort_order='coordinate', tag='AA'))
+        self.assertEqual(0, a.compare_sort(b, sort_order='queryname', tag='AA'))
+
+        # Reads not carrying a tag sort first (see bam_sort.c)
+        a.set_tag('AA', 1)
+        assert a.get_tag('AA') == 1
+        self.assertEqual(1, a.compare_sort(b, sort_order='coordinate', tag='AA'))
+        self.assertEqual(1, a.compare_sort(b, sort_order='queryname', tag='AA'))
+        b.set_tag('AA', 1)
+        self.assertEqual(0, a.compare_sort(b, sort_order='coordinate', tag='AA'))
+        self.assertEqual(0, a.compare_sort(b, sort_order='queryname', tag='AA'))
+        b.set_tag('AA', 2)
+        self.assertEqual(-1, a.compare_sort(b, sort_order='coordinate', tag='AA'))
+        self.assertEqual(-1, a.compare_sort(b, sort_order='queryname', tag='AA'))
+        a.set_tag('AA', 2)
+        a.reference_start -= 1
+        self.assertEqual(-1, a.compare_sort(b, sort_order='coordinate', tag='AA'))
+        self.assertEqual(0, a.compare_sort(b, sort_order='queryname', tag='AA'))
+        a.query_name = 'read_02345'
+        self.assertEqual(-1, a.compare_sort(b, sort_order='coordinate', tag='AA'))
+        self.assertEqual(-1, a.compare_sort(b, sort_order='queryname', tag='AA'))
+        with self.assertRaises(ValueError):
+            a.compare_sort(b, tag='XXX')
+
     def testHashing(self):
         a = self.build_read()
         b = self.build_read()

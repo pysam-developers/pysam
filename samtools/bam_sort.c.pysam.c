@@ -2438,3 +2438,29 @@ sort_end:
 
     return ret;
 }
+
+// pysam specifc function that compares reads (without forcing an order)
+int pysam_cmp_record(bam1_t *a, bam1_t *b, int is_by_qname, const char *sort_by_tag)
+{
+    struct bam1_tag a_tag;
+    struct bam1_tag b_tag;
+    a_tag.bam_record = a;
+    b_tag.bam_record = b;
+    a_tag.u.tag = NULL;
+    b_tag.u.tag = NULL;
+
+    g_is_by_qname = is_by_qname;
+    if (sort_by_tag) {
+        g_is_by_tag = 1;
+        strncpy(g_sort_tag, sort_by_tag, 2);
+    }
+
+    if (g_is_by_tag) {
+        a_tag.u.tag = bam_aux_get(a, sort_by_tag);
+        b_tag.u.tag = bam_aux_get(b, sort_by_tag);
+        return bam1_cmp_by_tag(a_tag, b_tag);
+
+    } else {
+        return bam1_cmp_core(a_tag, b_tag);
+    }
+}
