@@ -25,7 +25,7 @@ cdef extern from "htslib_util.h":
     void pysam_set_n_cigar(bam1_t * b, uint32_t v)
     void pysam_update_flag(bam1_t * b, uint16_t v, uint16_t flag)
 
-cdef extern from "samtools/bam_sort.c.pysam.h":
+cdef extern from "bam_sort.c.pysam.h":
     int pysam_cmp_record(bam1_t *a, bam1_t *b, int is_by_qname, const char *sort_by_tag)
 
 

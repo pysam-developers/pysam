@@ -1049,7 +1049,7 @@ cdef class AlignedSegment:
 
         If ``tag`` is given it must be a 2 character string, and
         will be used for primary sorting. Ties will be broken
-        using the methdo specified by ``sort_order``.
+        using the method specified by ``sort_order``.
 
         The return value indicates the following:
         -1: This :class:`pysam.AlignedSegment` instance would sort before `other`.
