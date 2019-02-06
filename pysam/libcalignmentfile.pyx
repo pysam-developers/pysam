@@ -418,7 +418,8 @@ cdef class AlignmentHeader(object):
         # convert to python string
         t = self.__str__()
         for line in t.split("\n"):
-            if not line.strip():
+            line = line.strip(' \0')
+            if not line:
                 continue
             assert line.startswith("@"), \
                 "header line without '@': '%s'" % line
