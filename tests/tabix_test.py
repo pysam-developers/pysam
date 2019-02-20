@@ -14,8 +14,6 @@ import unittest
 import subprocess
 import glob
 import re
-import copy
-import tempfile
 from TestUtils import check_url, load_and_convert, TABIX_DATADIR, get_temp_filename
 
 IS_PYTHON3 = sys.version_info[0] >= 3
@@ -64,6 +62,17 @@ def checkBinaryEqual(filename1, filename2):
     return found
 
 
+def checkGZBinaryEqual(filename1, filename2):
+    '''return true if the two files are binary equal.'''
+    with gzip.open(filename1, "rb") as infile1:
+        d1 = infile1.read()
+        with gzip.open(filename2, "rb") as infile2:
+            d2 = infile2.read()
+        if d1 == d2:
+            return True
+    return False
+
+
 class TestIndexing(unittest.TestCase):
     filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
     filename_idx = os.path.join(TABIX_DATADIR, "example.gtf.gz.tbi")
@@ -77,7 +86,7 @@ class TestIndexing(unittest.TestCase):
         '''test indexing via preset.'''
 
         pysam.tabix_index(self.tmpfilename, preset="gff")
-        self.assertTrue(checkBinaryEqual(
+        self.assertTrue(checkGZBinaryEqual(
             self.tmpfilename + ".tbi", self.filename_idx))
 
     def test_indexing_to_custom_location_works(self):
@@ -86,7 +95,7 @@ class TestIndexing(unittest.TestCase):
         index_path = get_temp_filename(suffix='custom.tbi')
         pysam.tabix_index(self.tmpfilename, preset="gff",
                           index=index_path, force=True)
-        self.assertTrue(checkBinaryEqual(index_path, self.filename_idx))
+        self.assertTrue(checkGZBinaryEqual(index_path, self.filename_idx))
         os.unlink(index_path)
 
     def test_indexing_with_explict_columns_works(self):
@@ -98,7 +107,7 @@ class TestIndexing(unittest.TestCase):
                           end_col=4,
                           line_skip=0,
                           zerobased=False)
-        self.assertTrue(checkBinaryEqual(
+        self.assertTrue(checkGZBinaryEqual(
             self.tmpfilename + ".tbi", self.filename_idx))
 
     def test_indexing_with_lineskipping_works(self):
@@ -109,7 +118,7 @@ class TestIndexing(unittest.TestCase):
                           end_col=4,
                           line_skip=1,
                           zerobased=False)
-        self.assertFalse(checkBinaryEqual(
+        self.assertFalse(checkGZBinaryEqual(
             self.tmpfilename + ".tbi", self.filename_idx))
 
     def tearDown(self):
