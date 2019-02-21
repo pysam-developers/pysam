@@ -13,8 +13,6 @@ This module provides a low-level wrapper around the htslib C-API as
 using cython and a high-level API for convenient access to the data
 within standard genomic file formats.
 
-The current version wraps htslib-1.7, samtools-1.7 and bcftools-1.6.
-
 See:
 http://www.htslib.org
 https://github.com/pysam-developers/pysam
@@ -120,7 +118,7 @@ def get_pysam_version():
     sys.path.insert(0, "pysam")
     import version
     return version.__version__
-    
+
 
 # How to link against HTSLIB
 # shared:   build shared chtslib from builtin htslib code.
@@ -412,7 +410,7 @@ Operating System :: POSIX
 Operating System :: Unix
 Operating System :: MacOS
 """
-    
+
 metadata = {
     'name': "pysam",
     'version': get_pysam_version(),
