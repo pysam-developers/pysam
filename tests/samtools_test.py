@@ -82,6 +82,7 @@ class SamtoolsTest(unittest.TestCase):
         # TODO: issues with file naming
         # "faidx ex1.fa; %(out)s_ex1.fa.fai",
         "index ex1.bam %(out)s_ex1.bam.fai",
+        "index -@2 ex1.bam %(out)s_ex1.bam.fai",
         "idxstats ex1.bam > %(out)s_ex1.idxstats",
         "fixmate ex1.bam %(out)s_ex1.fixmate.bam",
         "flagstat ex1.bam > %(out)s_ex1.flagstat",
@@ -285,6 +286,18 @@ class EmptyIndexTest(unittest.TestCase):
 
     def testEmptyIndex(self):
         self.assertRaises(IOError, pysam.samtools.index,
+                          "exdoesntexist.bam")
+
+    def testEmptyIndexWithExtraFlag(self):
+        self.assertRaises(IOError, pysam.samtools.index,
+                          "-c",
+                          "exdoesntexist.bam")
+
+    def testEmptyIndexWithExtraArg(self):
+        self.assertRaises(IOError, pysam.samtools.index,
+                          "-c",
+                          "-m",
+                          "14",
                           "exdoesntexist.bam")
 
 
