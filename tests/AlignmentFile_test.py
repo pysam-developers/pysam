@@ -1407,6 +1407,11 @@ class TestEmptyHeader(unittest.TestCase):
         self.assertTrue("SQ" in s.header.to_dict())
         self.assertTrue("@SQ" in str(s.header))
 
+    def test_bam_without_seq_with_null_bytes_in_header(self):
+        s = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "example_no_seq_in_header_null_bytes.bam"))
+        self.assertTrue("SQ" in s.header.to_dict())
+        self.assertTrue("@SQ" in str(s.header))
+
 
 class TestMismatchingHeader(unittest.TestCase):
     '''see issue 716.'''
