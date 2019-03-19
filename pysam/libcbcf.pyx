@@ -574,7 +574,7 @@ cdef object bcf_check_values(VariantRecord record, value, int sample,
     cdef int given = len(values)
     if value_count[0] != -1 and value_count[0] != given:
         if scalar[0]:
-            raise TypeError('value expected to be scalar, given len={}'.format(value_count[0], given))
+            raise TypeError('value expected to be scalar, given len={}'.format(given))
         else:
             raise TypeError('values expected to be {}-tuple, given len={}'.format(value_count[0], given))
 
