@@ -18,10 +18,10 @@ from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY
 
 from libcsamtools cimport samtools_main, samtools_set_stdout, samtools_set_stderr, \
-    samtools_unset_stderr, samtools_unset_stdout, samtools_set_stdout_fn, samtools_set_optind
+    samtools_close_stdout, samtools_close_stderr, samtools_set_stdout_fn, samtools_set_optind
 
 from libcbcftools cimport bcftools_main, bcftools_set_stdout, bcftools_set_stderr, \
-    bcftools_unset_stderr, bcftools_unset_stdout, bcftools_set_stdout_fn, bcftools_set_optind
+    bcftools_close_stdout, bcftools_close_stderr, bcftools_set_stdout_fn, bcftools_set_optind
 
 #####################################################################
 # hard-coded constants
@@ -345,12 +345,18 @@ def _pysam_dispatch(collection,
             samtools_set_stdout_fn(force_bytes(stdout_f))
             bcftools_set_stdout_fn(force_bytes(stdout_f))
             args.extend(stdout_option.format(stdout_f).split(" "))
+            stdout_h = c_open(b"/dev/null", O_WRONLY)
+            samtools_set_stdout(stdout_h)
+            bcftools_set_stdout(stdout_h)
         else:
             samtools_set_stdout(stdout_h)
             bcftools_set_stdout(stdout_h)
     else:
         samtools_set_stdout_fn("-")
         bcftools_set_stdout_fn("-")
+        stdout_h = c_open(b"/dev/null", O_WRONLY)
+        samtools_set_stdout(stdout_h)
+        bcftools_set_stdout(stdout_h)
 
     # setup the function call to samtools/bcftools main
     cdef char ** cargs
@@ -411,12 +417,10 @@ def _pysam_dispatch(collection,
             os.remove(fn)
         return out
 
-    samtools_unset_stderr()
-    bcftools_unset_stderr()
-
-    if save_stdout or catch_stdout:
-        samtools_unset_stdout()
-        bcftools_unset_stdout()
+    samtools_close_stderr()
+    bcftools_close_stderr()
+    samtools_close_stdout()
+    bcftools_close_stdout()
 
     out_stderr = _collect(stderr_f)
     if save_stdout:

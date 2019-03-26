@@ -10,7 +10,6 @@
 FILE * @pysam@_stderr = NULL;
 FILE * @pysam@_stdout = NULL;
 const char * @pysam@_stdout_fn = NULL;
-int @pysam@_stdout_fileno = STDOUT_FILENO;
 
 
 FILE * @pysam@_set_stderr(int fd)
@@ -21,11 +20,10 @@ FILE * @pysam@_set_stderr(int fd)
   return @pysam@_stderr;
 }
 
-void @pysam@_unset_stderr(void)
+void @pysam@_close_stderr(void)
 {
-  if (@pysam@_stderr != NULL)
-    fclose(@pysam@_stderr);
-  @pysam@_stderr = fopen("/dev/null", "w");
+  fclose(@pysam@_stderr);
+  @pysam@_stderr = NULL;
 }
 
 FILE * @pysam@_set_stdout(int fd)
@@ -37,7 +35,6 @@ FILE * @pysam@_set_stdout(int fd)
     {
       fprintf(@pysam@_stderr, "could not set stdout to fd %i", fd);
     }
-  @pysam@_stdout_fileno = fd;
   return @pysam@_stdout;
 }
 
@@ -46,12 +43,10 @@ void @pysam@_set_stdout_fn(const char *fn)
   @pysam@_stdout_fn = fn;
 }
 
-void @pysam@_unset_stdout(void)
+void @pysam@_close_stdout(void)
 {
-  if (@pysam@_stdout != NULL)
-    fclose(@pysam@_stdout);
-  @pysam@_stdout = fopen("/dev/null", "w");
-  @pysam@_stdout_fileno = STDOUT_FILENO;
+  fclose(@pysam@_stdout);
+  @pysam@_stdout = NULL;
 }
 
 int @pysam@_puts(const char *s)
