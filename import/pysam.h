@@ -1,7 +1,7 @@
-#ifndef PYSAM_H
-#define PYSAM_H
+#ifndef @pysam@_PYSAM_H
+#define @pysam@_PYSAM_H
 
-#include "stdio.h"
+#include <stdio.h>
 
 extern FILE * @pysam@_stderr;
 
