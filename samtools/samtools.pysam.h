@@ -1,7 +1,7 @@
-#ifndef PYSAM_H
-#define PYSAM_H
+#ifndef samtools_PYSAM_H
+#define samtools_PYSAM_H
 
-#include "stdio.h"
+#include <stdio.h>
 
 extern FILE * samtools_stderr;
 
@@ -17,7 +17,7 @@ FILE * samtools_set_stderr(int fd);
 
 /*! set pysam standard output to point to file descriptor
 
-  Setting the stderr will close the previous stdout.
+  Setting the stdout will close the previous stdout.
  */
 FILE * samtools_set_stdout(int fd);
 
@@ -26,17 +26,15 @@ FILE * samtools_set_stdout(int fd);
  */
 void samtools_set_stdout_fn(const char * fn);
 
-/*! set pysam standard error to /dev/null.
+/*! close pysam standard error and set to NULL
   
-  Unsetting the stderr will close the previous stderr.
  */
-void samtools_unset_stderr(void);
+void samtools_close_stderr(void);
 
-/*! set pysam standard error to /dev/null.
+/*! close pysam standard output and set to NULL
   
-  Unsetting the stderr will close the previous stderr.
  */
-void samtools_unset_stdout(void);
+void samtools_close_stdout(void);
 
 int samtools_puts(const char *s);
 

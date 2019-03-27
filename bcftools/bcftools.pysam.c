@@ -10,7 +10,6 @@
 FILE * bcftools_stderr = NULL;
 FILE * bcftools_stdout = NULL;
 const char * bcftools_stdout_fn = NULL;
-int bcftools_stdout_fileno = STDOUT_FILENO;
 
 
 FILE * bcftools_set_stderr(int fd)
@@ -21,11 +20,10 @@ FILE * bcftools_set_stderr(int fd)
   return bcftools_stderr;
 }
 
-void bcftools_unset_stderr(void)
+void bcftools_close_stderr(void)
 {
-  if (bcftools_stderr != NULL)
-    fclose(bcftools_stderr);
-  bcftools_stderr = fopen("/dev/null", "w");
+  fclose(bcftools_stderr);
+  bcftools_stderr = NULL;
 }
 
 FILE * bcftools_set_stdout(int fd)
@@ -37,7 +35,6 @@ FILE * bcftools_set_stdout(int fd)
     {
       fprintf(bcftools_stderr, "could not set stdout to fd %i", fd);
     }
-  bcftools_stdout_fileno = fd;
   return bcftools_stdout;
 }
 
@@ -46,12 +43,10 @@ void bcftools_set_stdout_fn(const char *fn)
   bcftools_stdout_fn = fn;
 }
 
-void bcftools_unset_stdout(void)
+void bcftools_close_stdout(void)
 {
-  if (bcftools_stdout != NULL)
-    fclose(bcftools_stdout);
-  bcftools_stdout = fopen("/dev/null", "w");
-  bcftools_stdout_fileno = STDOUT_FILENO;
+  fclose(bcftools_stdout);
+  bcftools_stdout = NULL;
 }
 
 int bcftools_puts(const char *s)

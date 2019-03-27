@@ -10,7 +10,6 @@
 FILE * samtools_stderr = NULL;
 FILE * samtools_stdout = NULL;
 const char * samtools_stdout_fn = NULL;
-int samtools_stdout_fileno = STDOUT_FILENO;
 
 
 FILE * samtools_set_stderr(int fd)
@@ -21,11 +20,10 @@ FILE * samtools_set_stderr(int fd)
   return samtools_stderr;
 }
 
-void samtools_unset_stderr(void)
+void samtools_close_stderr(void)
 {
-  if (samtools_stderr != NULL)
-    fclose(samtools_stderr);
-  samtools_stderr = fopen("/dev/null", "w");
+  fclose(samtools_stderr);
+  samtools_stderr = NULL;
 }
 
 FILE * samtools_set_stdout(int fd)
@@ -37,7 +35,6 @@ FILE * samtools_set_stdout(int fd)
     {
       fprintf(samtools_stderr, "could not set stdout to fd %i", fd);
     }
-  samtools_stdout_fileno = fd;
   return samtools_stdout;
 }
 
@@ -46,12 +43,10 @@ void samtools_set_stdout_fn(const char *fn)
   samtools_stdout_fn = fn;
 }
 
-void samtools_unset_stdout(void)
+void samtools_close_stdout(void)
 {
-  if (samtools_stdout != NULL)
-    fclose(samtools_stdout);
-  samtools_stdout = fopen("/dev/null", "w");
-  samtools_stdout_fileno = STDOUT_FILENO;
+  fclose(samtools_stdout);
+  samtools_stdout = NULL;
 }
 
 int samtools_puts(const char *s)
