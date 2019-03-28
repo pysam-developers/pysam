@@ -2611,10 +2611,11 @@ cdef class IteratorColumnRegion(IteratorColumn):
                   int start = 0,
                   int stop = MAX_POS,
                   int truncate = False,
+                  int multiple_iterators = False,
                   **kwargs ):
 
         # initialize iterator
-        self._setup_iterator(tid, start, stop, 1)
+        self._setup_iterator(tid, start, stop, multiple_iterators)
         self.start = start
         self.stop = stop
         self.truncate = truncate
