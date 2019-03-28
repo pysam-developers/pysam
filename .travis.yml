@@ -1,5 +1,5 @@
 os:
-  - linx
+  - linux
   - osx
 
 language: c
