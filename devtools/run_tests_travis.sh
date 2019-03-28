@@ -31,10 +31,9 @@ bash Miniconda3.sh -b
 # activate testenv environment
 source ~/miniconda3/bin/activate testenv
 
-conda config --add channels r
 conda config --add channels defaults
-conda config --add channels conda-forge
 conda config --add channels bioconda
+conda config --add channels conda-forge
 
 # pin versions, so that tests do not fail when pysam/htslib out of step
 # add htslib dependencies
