@@ -37,15 +37,16 @@ conda config --add channels conda-forge
 
 # pin versions, so that tests do not fail when pysam/htslib out of step
 # add htslib dependencies
-conda install -y "samtools=1.7" "bcftools=1.6" "htslib=1.7" xz curl bzip2
+conda install -y "samtools=1.9" "bcftools=1.9" "htslib=1.9" xz curl bzip2
 
 # Need to make C compiler and linker use the anaconda includes and libraries:
 export PREFIX=~/miniconda3/
 export CFLAGS="-I${PREFIX}/include -L${PREFIX}/lib"
 export HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl --disable-lzma"
 
+echo "show samtools, htslib, and bcftools versions"
 samtools --version
-htslib --version
+htsfile --version
 bcftools --version
 
 # Try building conda recipe first
