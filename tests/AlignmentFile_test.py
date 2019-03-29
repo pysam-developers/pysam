@@ -467,7 +467,8 @@ class TestIO(unittest.TestCase):
                        add_sam_header=False)
 
     def testBAM2BAM(self):
-        print(pysam.view("ex2.bam"))
+        fn = os.path.join(BAM_DATADIR, "ex2.bam")
+        print(pysam.view(fn))
         print(pysam.view("tmp_ex2.bam"))
         self.checkEcho("ex2.bam",
                        "ex2.bam",
