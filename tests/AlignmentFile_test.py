@@ -22,7 +22,7 @@ from functools import partial
 
 import pysam
 import pysam.samtools
-from TestUtils import checkBinaryEqual, check_url, \
+from TestUtils import checkBinaryEqual, checkGZBinaryEqual, check_url, \
     check_samtools_view_equal, checkFieldEqual, force_str, \
     get_temp_filename, BAM_DATADIR
 
@@ -470,7 +470,8 @@ class TestIO(unittest.TestCase):
         self.checkEcho("ex2.bam",
                        "ex2.bam",
                        "tmp_ex2.bam",
-                       "rb", "wb")
+                       "rb", "wb",
+                       checkf=checkGZBinaryEqual)
 
     def testCRAM2CRAM(self):
         # in some systems different reference sequence paths might be
@@ -489,7 +490,8 @@ class TestIO(unittest.TestCase):
         self.checkEcho("ex2.sam",
                        "ex2.bam",
                        "tmp_ex2.bam",
-                       "r", "wb")
+                       "r", "wb",
+                       checkf=checkGZBinaryEqual)
 
     def testBAM2SAM(self):
         self.checkEcho("ex2.bam",
@@ -665,7 +667,8 @@ class TestIO(unittest.TestCase):
         self.checkEcho("ex1.bam",
                        "ex1.bam",
                        "tmp_ex1.bam",
-                       "rb", "wb")
+                       "rb", "wb",
+                       checkf=checkGZBinaryEqual)
 
         f = open(os.path.join(BAM_DATADIR, "ex1.bam"))
         samfile = pysam.AlignmentFile(f, "rb")
@@ -1372,7 +1375,7 @@ class TestDeNovoConstruction(unittest.TestCase):
         outfile.close()
 
         self.assertTrue(
-            checkBinaryEqual(tmpfilename, self.bamfile),
+            checkGZBinaryEqual(tmpfilename, self.bamfile),
             "mismatch when construction BAM file, see %s %s" %
             (tmpfilename, self.bamfile))
 

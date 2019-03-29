@@ -96,6 +96,19 @@ def checkBinaryEqual(filename1, filename2):
     return found
 
 
+def checkGZBinaryEqual(filename1, filename2):
+    '''return true if the decompressed contents of the two files
+    are binary equal.
+    '''
+    with gzip.open(filename1, "rb") as infile1:
+        d1 = infile1.read()
+        with gzip.open(filename2, "rb") as infile2:
+            d2 = infile2.read()
+        if d1 == d2:
+            return True
+    return False
+
+
 def check_samtools_view_equal(
         filename1, filename2,
         without_header=False):
