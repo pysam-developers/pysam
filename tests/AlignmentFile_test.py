@@ -443,7 +443,7 @@ class TestIO(unittest.TestCase):
                 outfile.write(x)
 
             outfile.close()
-        print(pysam.view(output_filename))
+
         self.assertTrue(checkf(
             os.path.join(BAM_DATADIR, reference_filename),
             output_filename),
@@ -467,8 +467,6 @@ class TestIO(unittest.TestCase):
                        add_sam_header=False)
 
     def testBAM2BAM(self):
-        f0 = os.path.join(BAM_DATADIR, "ex2.bam")
-        print(pysam.view(f0))
         self.checkEcho("ex2.bam",
                        "ex2.bam",
                        "tmp_ex2.bam",

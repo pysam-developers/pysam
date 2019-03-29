@@ -57,9 +57,6 @@ bcftools --version
 echo "installing via setup.py from repository"
 python setup.py install
 
-# Display version and provenance of all current packages.
-conda list
-
 # create auxilliary data
 echo
 echo 'building test data'
