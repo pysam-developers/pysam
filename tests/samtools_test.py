@@ -45,7 +45,7 @@ def get_version(executable):
     if IS_PYTHON3:
         lines = lines.decode('ascii')
     try:
-        x = re.search("Version:\s+(\S+)", lines).groups()[0]
+        x = re.search(r"Version:\s+(\S+)", lines).groups()[0]
     except AttributeError:
         raise ValueError("could not get version from %s" % lines)
     return x
@@ -190,7 +190,7 @@ class SamtoolsTest(unittest.TestCase):
         pysam_method = getattr(self.module, command)
 
         # run samtools
-        full_statement = re.sub("%\(out\)s", self.executable, statement)
+        full_statement = re.sub(r"%\(out\)s", self.executable, statement)
         run_command(" ".join((self.executable, full_statement)))
         # sys.stdout.write("%s %s ok" % (command, self.executable))
 
@@ -200,7 +200,7 @@ class SamtoolsTest(unittest.TestCase):
             parts = parts[:-2]
 
         # avoid interpolation to preserve string quoting, tab chars, etc.
-        pysam_parts = [re.sub("%\(out\)s", "pysam", x) for x in parts[1:]]
+        pysam_parts = [re.sub(r"%\(out\)s", "pysam", x) for x in parts[1:]]
         output = pysam_method(*pysam_parts,
                               raw=True,
                               catch_stdout=True)
@@ -273,7 +273,7 @@ class SamtoolsTest(unittest.TestCase):
             mapped_command = self.get_command(statement, map_to_internal=True)
             pysam_method = getattr(self.module, mapped_command)
             usage_msg = pysam_method.usage()
-            expected = "Usage:\s+{} {}".format(self.executable, command)
+            expected = r"Usage:\s+{} {}".format(self.executable, command)
             self.assertTrue(re.search(expected, usage_msg) is not None)
 
     def tearDown(self):

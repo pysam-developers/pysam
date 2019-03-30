@@ -128,7 +128,7 @@ class TestGTF(TestParser):
         """build attribute string from dictionary d"""
         s = "; ".join(["{} \"{}\"".format(x, y) for (x, y) in d.items()]) + ";"
         # remove quotes around numeric values
-        s = re.sub("\"(\d+)\"", r"\1", s)
+        s = re.sub(r'"(\d+)"', r'\1', s)
         return s
 
     def testRead(self):
