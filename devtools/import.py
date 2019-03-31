@@ -94,16 +94,16 @@ def _update_pysam_files(cf, destdir):
                 outfile.write('#include "{}.pysam.h"\n\n'.format(basename))
                 subname, _ = os.path.splitext(os.path.basename(filename))
                 if subname in MAIN.get(basename, []):
-                    lines = re.sub("int main\(", "int {}_main(".format(
+                    lines = re.sub(r"int main\(", "int {}_main(".format(
                         basename), lines)
                 else:
-                    lines = re.sub("int main\(", "int {}_{}_main(".format(
+                    lines = re.sub(r"int main\(", "int {}_{}_main(".format(
                         basename, subname), lines)
                 lines = re.sub("stderr", "{}_stderr".format(basename), lines)
                 lines = re.sub("stdout", "{}_stdout".format(basename), lines)
-                lines = re.sub(" printf\(", " fprintf({}_stdout, ".format(basename), lines)
-                lines = re.sub("([^kf])puts\(", r"\1{}_puts(".format(basename), lines)
-                lines = re.sub("putchar\(([^)]+)\)",
+                lines = re.sub(r" printf\(", " fprintf({}_stdout, ".format(basename), lines)
+                lines = re.sub(r"([^kf])puts\(", r"\1{}_puts(".format(basename), lines)
+                lines = re.sub(r"putchar\(([^)]+)\)",
                                r"fputc(\1, {}_stdout)".format(basename), lines)
 
                 fn = os.path.basename(filename)

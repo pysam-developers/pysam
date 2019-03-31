@@ -14,7 +14,8 @@ import unittest
 import subprocess
 import glob
 import re
-from TestUtils import check_url, load_and_convert, TABIX_DATADIR, get_temp_filename
+from TestUtils import checkBinaryEqual, checkGZBinaryEqual, check_url, \
+    load_and_convert, TABIX_DATADIR, get_temp_filename
 
 IS_PYTHON3 = sys.version_info[0] >= 3
 
@@ -36,41 +37,6 @@ def myzip_open(infile, mode="r"):
 def splitToBytes(s):
     '''split string and return list of bytes.'''
     return [x.encode("ascii") for x in s.split("\t")]
-
-
-def checkBinaryEqual(filename1, filename2):
-    '''return true if the two files are binary equal.'''
-    if os.path.getsize(filename1) != os.path.getsize(filename2):
-        return False
-
-    with open(filename1, "rb") as infile:
-        d1 = infile.read()
-
-    with open(filename2, "rb") as infile:
-        d2 = infile.read()
-
-    if len(d1) != len(d2):
-        return False
-
-    found = False
-    for c1, c2 in zip(d1, d2):
-        if c1 != c2:
-            break
-    else:
-        found = True
-
-    return found
-
-
-def checkGZBinaryEqual(filename1, filename2):
-    '''return true if the two files are binary equal.'''
-    with gzip.open(filename1, "rb") as infile1:
-        d1 = infile1.read()
-        with gzip.open(filename2, "rb") as infile2:
-            d2 = infile2.read()
-        if d1 == d2:
-            return True
-    return False
 
 
 class TestIndexing(unittest.TestCase):
