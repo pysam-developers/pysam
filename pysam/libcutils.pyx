@@ -301,8 +301,6 @@ def _pysam_dispatch(collection,
 
     # redirect stderr to file
     stderr_h, stderr_f = tempfile.mkstemp()
-    samtools_set_stderr(stderr_h)
-    bcftools_set_stderr(stderr_h)
         
     # redirect stdout to file
     if save_stdout:
@@ -313,9 +311,7 @@ def _pysam_dispatch(collection,
             raise IOError("error while opening {} for writing".format(stdout_f))
 
         samtools_set_stdout_fn(force_bytes(stdout_f))
-        samtools_set_stdout(stdout_h)
         bcftools_set_stdout_fn(force_bytes(stdout_f))
-        bcftools_set_stdout(stdout_h)
             
     elif catch_stdout:
         stdout_h, stdout_f = tempfile.mkstemp()
@@ -346,17 +342,10 @@ def _pysam_dispatch(collection,
             bcftools_set_stdout_fn(force_bytes(stdout_f))
             args.extend(stdout_option.format(stdout_f).split(" "))
             stdout_h = c_open(b"/dev/null", O_WRONLY)
-            samtools_set_stdout(stdout_h)
-            bcftools_set_stdout(stdout_h)
-        else:
-            samtools_set_stdout(stdout_h)
-            bcftools_set_stdout(stdout_h)
     else:
         samtools_set_stdout_fn("-")
         bcftools_set_stdout_fn("-")
         stdout_h = c_open(b"/dev/null", O_WRONLY)
-        samtools_set_stdout(stdout_h)
-        bcftools_set_stdout(stdout_h)
 
     # setup the function call to samtools/bcftools main
     cdef char ** cargs
@@ -395,9 +384,17 @@ def _pysam_dispatch(collection,
 
     # call samtools/bcftools
     if collection == b"samtools":
+        samtools_set_stdout(stdout_h)
+        samtools_set_stderr(stderr_h)
         retval = samtools_main(n + 2, cargs)
+        samtools_close_stdout()
+        samtools_close_stderr()
     elif collection == b"bcftools":
+        bcftools_set_stdout(stdout_h)
+        bcftools_set_stderr(stderr_h)
         retval = bcftools_main(n + 2, cargs)
+        bcftools_close_stdout()
+        bcftools_close_stderr()
 
     for i from 0 <= i < n:
         free(cargs[i + 2])
@@ -416,11 +413,6 @@ def _pysam_dispatch(collection,
         finally:
             os.remove(fn)
         return out
-
-    samtools_close_stderr()
-    bcftools_close_stderr()
-    samtools_close_stdout()
-    bcftools_close_stdout()
 
     out_stderr = _collect(stderr_f)
     if save_stdout:
