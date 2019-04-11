@@ -24,7 +24,7 @@ Glossary
       are 0-based, half-open intervals, i.e., the position 10,000 is
       part of the interval, but 20,000 is not. An exception are
       :term:`samtools` compatible region strings such as
-      'chr1:10000:20000', which are closed, i.e., both positions 10,000
+      'chr1:10000-20000', which are closed, i.e., both positions 10,000
       and 20,000 are part of the interval.
 
    column
