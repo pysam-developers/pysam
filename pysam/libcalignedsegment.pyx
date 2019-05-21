@@ -1853,7 +1853,7 @@ cdef class AlignedSegment:
         return s
 
     def get_forward_qualities(self):
-        """return the original read sequence.
+        """return base qualities of the read sequence.
         
         Reads mapping to the reverse strand will be reverse
         complemented.
