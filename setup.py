@@ -51,6 +51,7 @@ def changedir(path):
 
 
 def run_configure(option):
+    sys.stdout.flush()
     try:
         retcode = subprocess.call(
             " ".join(("./configure", option)),
@@ -78,6 +79,25 @@ def run_make_print_config():
     return make_print_config
 
 
+@contextmanager
+def set_compiler_envvars():
+    tmp_vars = []
+    for var in ['CC', 'CFLAGS', 'LDFLAGS']:
+        if var in os.environ:
+            print ("# pysam: (env) {}={}".format(var, os.environ[var]))
+        elif var in sysconfig.get_config_vars():
+            value = sysconfig.get_config_var(var)
+            print ("# pysam: (sysconfig) {}={}".format(var, value))
+            os.environ[var] = value
+            tmp_vars += [var]
+
+    try:
+        yield
+    finally:
+        for var in tmp_vars:
+            del os.environ[var]
+
+
 def configure_library(library_dir, env_options=None, options=[]):
 
     configure_script = os.path.join(library_dir, "configure")
@@ -91,7 +111,7 @@ def configure_library(library_dir, env_options=None, options=[]):
         raise ValueError(
             "configure script {} does not exist".format(configure_script))
 
-    with changedir(library_dir):
+    with changedir(library_dir), set_compiler_envvars():
         if env_options is not None:
             if run_configure(env_options):
                 return env_options
