@@ -214,7 +214,7 @@ cdef class FastaFile:
         return False
 
     property closed:
-        """"bool indicating the current state of the file object.
+        """bool indicating the current state of the file object.
         This is a read-only attribute; the close() method changes the value.
         """
         def __get__(self):
@@ -231,7 +231,7 @@ cdef class FastaFile:
             return self._references
 
     property nreferences:
-        """"int with the number of :term:`reference` sequences in the file.
+        """int with the number of :term:`reference` sequences in the file.
         This is a read-only attribute."""
         def __get__(self):
             return len(self._references) if self.references else None
@@ -610,7 +610,7 @@ cdef class FastxFile:
         return False
 
     property closed:
-        """"bool indicating the current state of the file object.
+        """bool indicating the current state of the file object.
         This is a read-only attribute; the close() method changes the value.
         """
         def __get__(self):

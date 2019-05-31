@@ -346,7 +346,7 @@ cdef class AlignmentHeader(object):
         return makeAlignmentHeader(bam_hdr_dup(self.ptr))
 
     property nreferences:
-        """"int with the number of :term:`reference` sequences in the file.
+        """int with the number of :term:`reference` sequences in the file.
 
         This is a read-only attribute."""
         def __get__(self):
@@ -1899,7 +1899,7 @@ cdef class AlignmentFile(HTSFile):
         return self.header.get_reference_length(reference)
     
     property nreferences:
-        """"int with the number of :term:`reference` sequences in the file.
+        """int with the number of :term:`reference` sequences in the file.
         This is a read-only attribute."""
         def __get__(self):
             if self.header:
