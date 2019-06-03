@@ -3121,7 +3121,9 @@ cdef class VariantRecord(object):
         cdef bcf1_t *r = self.ptr
         if bcf_unpack(r, BCF_UN_STR) < 0:
             raise ValueError('Error unpacking VariantRecord')
-        return bcf_str_cache_get_charptr(r.d.id) if r.d.id != b'.' else None
+        # causes a memory leak https://github.com/pysam-developers/pysam/issues/773
+        # return bcf_str_cache_get_charptr(r.d.id) if r.d.id != b'.' else None
+        return charptr_to_str(r.d.id) if r.d.id != b'.' else None
 
     @id.setter
     def id(self, value):
