@@ -20,6 +20,11 @@ cdef extern from "htslib/kstring.h" nogil:
         size_t l, m
         char *s
 
+    int kputc(int c, kstring_t *s)
+    int kputw(int c, kstring_t *s)
+    int kputl(long c, kstring_t *s)
+    int ksprintf(kstring_t *s, const char *fmt, ...)
+
 
 cdef extern from "htslib_util.h" nogil:
     int hts_set_verbosity(int verbosity)

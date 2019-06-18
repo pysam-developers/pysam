@@ -70,7 +70,7 @@ cdef class PileupColumn:
     cdef int n_pu
     cdef AlignmentHeader header
     cdef uint32_t min_base_quality
-    cdef uint8_t * buf
+    cdef kstring_t buf
     cdef char * reference_sequence
 
 cdef class PileupRead:
