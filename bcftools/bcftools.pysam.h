@@ -1,7 +1,7 @@
-#ifndef PYSAM_H
-#define PYSAM_H
+#ifndef bcftools_PYSAM_H
+#define bcftools_PYSAM_H
 
-#include "stdio.h"
+#include <stdio.h>
 
 extern FILE * bcftools_stderr;
 
@@ -17,7 +17,7 @@ FILE * bcftools_set_stderr(int fd);
 
 /*! set pysam standard output to point to file descriptor
 
-  Setting the stderr will close the previous stdout.
+  Setting the stdout will close the previous stdout.
  */
 FILE * bcftools_set_stdout(int fd);
 
@@ -26,17 +26,15 @@ FILE * bcftools_set_stdout(int fd);
  */
 void bcftools_set_stdout_fn(const char * fn);
 
-/*! set pysam standard error to /dev/null.
+/*! close pysam standard error and set to NULL
   
-  Unsetting the stderr will close the previous stderr.
  */
-void bcftools_unset_stderr(void);
+void bcftools_close_stderr(void);
 
-/*! set pysam standard error to /dev/null.
+/*! close pysam standard output and set to NULL
   
-  Unsetting the stderr will close the previous stderr.
  */
-void bcftools_unset_stdout(void);
+void bcftools_close_stdout(void);
 
 int bcftools_puts(const char *s);
 
