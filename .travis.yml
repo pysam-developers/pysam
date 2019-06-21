@@ -11,6 +11,54 @@ env:
     - CONDA_PY=3.7
   global:
     - PYSAM_LINKING_TEST=1
+    - TWINE_USERNAME=
+    - secure: ''
+
+_deploy_common: &deploy_common
+  if: tag IS present
+  install:
+    - python3 -m pip install cibuildwheel twine
+
+matrix:
+  include:
+    - stage: deploy
+      os: linux
+      language: python
+      python: '3.5'
+      services:
+        - docker
+      env:
+        - CIBW_BEFORE_BUILD="yum install -y zlib-devel bzip2-devel xz-devel && pip install -r requirements.txt"
+        - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
+      addons:
+        apt:
+          packages:
+            - gcc
+            - g++
+            - libcurl4-openssl-dev  # for libcurl support in sdist
+            - libssl-dev  # for s3 support in sdist
+      <<: *deploy_common
+      script:
+        - set -e
+        - cibuildwheel --output-dir dist
+        - python3 -m pip install Cython
+        - python3 setup.py build_ext --inplace
+        - python3 setup.py sdist
+        - twine check dist/*
+        - twine upload --skip-existing dist/*
+    - stage: deploy
+      os: osx
+      language: generic
+      env:
+        - CIBW_BEFORE_BUILD="pip install -r requirements.txt"
+        - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
+      addons: {}
+      <<: *deploy_common
+      script:
+        - set -e
+        - cibuildwheel --output-dir dist
+        - twine check dist/*
+        - twine upload --skip-existing dist/*
 
 addons:
   apt:
