@@ -1,4 +1,5 @@
 import os
+import glob
 import sys
 import unittest
 import pysam
@@ -632,6 +633,37 @@ class TestSubsetting(unittest.TestCase):
                                             self.filename)) as inf:
             inf.subset_samples(["NA00001"])
 
+
+class TestVCFVersions(unittest.TestCase):
+
+    def setUp(self):
+        self.files_to_test = (glob.glob(os.path.join(CBCF_DATADIR, "example_v*.vcf.gz")) +
+                              glob.glob(os.path.join(CBCF_DATADIR, "example_v*.vcf")) +
+                              glob.glob(os.path.join(CBCF_DATADIR, "example_v*.bcf")))
+    
+    def test_all_records_can_be_fetched(self):
+
+        for fn in self.files_to_test:
+            with pysam.VariantFile(fn) as inf:
+                records = list(inf.fetch())
+
+
+class TestUnicode(unittest.TestCase):
+    filename = "example_vcf43_with_utf8.vcf.gz"
+
+    def test_record_with_unicode(self):
+        with pysam.VariantFile(os.path.join(CBCF_DATADIR,
+                                            self.filename)) as inf:
+            records = list(inf.fetch("20", 2345677, 2345678))
+        self.assertEqual(len(records), 1)
+        record = records.pop()
+        self.assertEqual(
+            record.info["CLNVI"],
+            ('Institute_of_Human_Genetics', 'Friedrich-Alexander-Universität_Erlangen-Nürnberg'))
+        self.assertEqual(record.samples[0]["AN"], "alpha")
+        self.assertEqual(record.samples[1]["AN"], "ä")
+        self.assertEqual(record.samples[2]["AN"], "ü")
+                
 
 if __name__ == "__main__":
     # build data files
