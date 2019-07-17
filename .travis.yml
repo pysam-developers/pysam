@@ -11,8 +11,8 @@ env:
     - CONDA_PY=3.7
   global:
     - PYSAM_LINKING_TEST=1
-    - TWINE_USERNAME=
-    - secure: ''
+    - TWINE_USERNAME=grepall
+    - secure: 'OcwwP8/o21+SGW0UVAnnCQwllhGSCq2HJzpI9EhX3kh6J9RTkyx/+drkg45bx1Z5u8zymuAFappEYzlpzqZE886XezkjOYGVa/u+Coqr1oT/BEJHFCkCA4o26yESp7Zy8aNj/juhB7Rfa77pIDXBayqTzbALz/AURMtZapasB18='
 
 _deploy_common: &deploy_common
   if: tag IS present
