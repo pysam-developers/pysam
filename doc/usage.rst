@@ -189,7 +189,7 @@ region can be retrieved by calling :meth:`~pysam.TabixFile.fetch()`::
          print (str(row))
 
 This will return a tuple-like data structure in which columns can
-be retrieved by numeric index:
+be retrieved by numeric index::
 
     for row in tbx.fetch("chr1", 1000, 2000):
          print ("chromosome is", row[0])
