@@ -95,7 +95,7 @@ from cpython.ref     cimport Py_INCREF
 from cpython.dict    cimport PyDict_GetItemString, PyDict_SetItemString
 from cpython.tuple   cimport PyTuple_New, PyTuple_SET_ITEM
 from cpython.bytes   cimport PyBytes_FromStringAndSize
-from cpython.unicode cimport PyUnicode_DecodeASCII
+from cpython.unicode cimport PyUnicode_DecodeUTF8
 from cpython.version cimport PY_MAJOR_VERSION
 
 from pysam.libchtslib cimport HTSFile, hisremote
@@ -151,7 +151,7 @@ cdef inline bcf_str_cache_get_charptr(const char* s):
     if PY_MAJOR_VERSION < 3:
         val = s
     else:
-        val = PyUnicode_DecodeASCII(s, strlen(s), NULL)
+        val = PyUnicode_DecodeUTF8(s, strlen(s), NULL)
 
     PyDict_SetItemString(bcf_str_cache, s, val)
 
@@ -282,7 +282,7 @@ cdef bcf_array_to_object(void *data, int type, ssize_t n, ssize_t count, int sca
             else:
                 # Otherwise, copy the entire block
                 b = datac[:n]
-            value = tuple(v.decode('ascii') if v and v != bcf_str_missing else None for v in b.split(b','))
+            value = tuple(v.decode('utf-8') if v and v != bcf_str_missing else None for v in b.split(b','))
     else:
         value = []
         if type == BCF_BT_INT8:
@@ -1160,7 +1160,7 @@ cdef inline bcf_sync_end(VariantRecord record):
     cdef bcf_hdr_t *hdr = record.header.ptr
     cdef bcf_info_t *info
     cdef int end_id = bcf_header_get_info_id(record.header.ptr, b'END')
-    cdef int ref_len 
+    cdef int ref_len
 
     # allow missing ref when instantiating a new record
     if record.ref is not None:
@@ -3180,7 +3180,7 @@ cdef class VariantRecord(object):
     @alleles.setter
     def alleles(self, values):
         cdef bcf1_t *r = self.ptr
-        
+
         # Cache rlen of symbolic alleles before call to bcf_update_alleles_str
         cdef int rlen = r.rlen
 
