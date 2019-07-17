@@ -56,6 +56,10 @@
 ########################################################
 import os
 import collections
+try:
+    from collections.abc import Sequence, Mapping  # noqa
+except ImportError:
+    from collections import Sequence, Mapping  # noqa
 import re
 import warnings
 import array
@@ -99,11 +103,11 @@ IndexStats = collections.namedtuple("IndexStats",
 cdef int MAX_POS = (1 << 31) - 1
 
 # valid types for SAM headers
-VALID_HEADER_TYPES = {"HD" : collections.Mapping,
-                      "SQ" : collections.Sequence,
-                      "RG" : collections.Sequence,
-                      "PG" : collections.Sequence,
-                      "CO" : collections.Sequence}
+VALID_HEADER_TYPES = {"HD" : Mapping,
+                      "SQ" : Sequence,
+                      "RG" : Sequence,
+                      "PG" : Sequence,
+                      "CO" : Sequence}
 
 # order of records within SAM headers
 VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
@@ -293,7 +297,7 @@ cdef class AlignmentHeader(object):
                     raise ValueError(
                         "invalid type for record %s: %s, expected %s".format(
                             record, type(data), VALID_HEADER_TYPES[record]))
-                if isinstance(data, collections.Mapping):
+                if isinstance(data, Mapping):
                     lines.append(build_header_line(data, record))
                 else:
                     for fields in header_dict[record]:
@@ -303,7 +307,7 @@ cdef class AlignmentHeader(object):
         for record, data in sorted(header_dict.items()):
             if record in VALID_HEADERS:
                 continue
-            if isinstance(data, collections.Mapping):
+            if isinstance(data, Mapping):
                 lines.append(build_header_line(data, record))
             else:
                 for fields in header_dict[record]:
@@ -455,13 +459,13 @@ cdef class AlignmentHeader(object):
                 # interpret type of known header record tags, default to str
                 x[key] = KNOWN_HEADER_FIELDS[record].get(key, str)(value)
 
-            if VALID_HEADER_TYPES[record] == collections.Mapping:
+            if VALID_HEADER_TYPES[record] == Mapping:
                 if record in result:
                     raise ValueError(
                         "multiple '%s' lines are not permitted" % record)
 
                 result[record] = x
-            elif VALID_HEADER_TYPES[record] == collections.Sequence:
+            elif VALID_HEADER_TYPES[record] == Sequence:
                 if record not in result: result[record] = []
                 result[record].append(x)
 
@@ -890,7 +894,7 @@ cdef class AlignmentFile(HTSFile):
                 self.header = template.header.copy()
             elif isinstance(header, AlignmentHeader):
                 self.header = header.copy()
-            elif isinstance(header, collections.Mapping):
+            elif isinstance(header, Mapping):
                 self.header = AlignmentHeader.from_dict(header)
             elif reference_names and reference_lengths:
                 self.header = AlignmentHeader.from_references(
@@ -1605,7 +1609,6 @@ cdef class AlignmentFile(HTSFile):
         Or it can be a generator filtering such reads. Example
         samfile.find_introns((read for read in samfile.fetch(...) if read.is_reverse)
         """
-        import collections
         res = collections.Counter()
         for r in read_iterator:
             if 'N' in r.cigarstring:
@@ -1636,7 +1639,6 @@ cdef class AlignmentFile(HTSFile):
             AlignedSegment r
             int BAM_CREF_SKIP = 3 #BAM_CREF_SKIP
 
-        import collections
         res = collections.Counter()
 
         match_or_deletion = {0, 2, 7, 8} # only M/=/X (0/7/8) and D (2) are related to genome position
