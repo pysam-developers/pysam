@@ -142,6 +142,9 @@ BAM/SAM formatted files.
 .. autoclass:: pysam.AlignmentFile
    :members:
 
+.. autoclass:: pysam.AlignmentHeader
+   :members:
+
 An :class:`~pysam.AlignedSegment` represents an aligned segment within
 a SAM/BAM file.
 
