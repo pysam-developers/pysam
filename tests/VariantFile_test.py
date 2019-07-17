@@ -661,10 +661,10 @@ class TestUnicode(unittest.TestCase):
         record = records.pop()
         self.assertEqual(
             record.info["CLNVI"],
-            ('Institute_of_Human_Genetics', 'Friedrich-Alexander-Universität_Erlangen-Nürnberg'))
+            ('Institute_of_Human_Genetics', u'Friedrich-Alexander-Universität_Erlangen-Nürnberg'))
         self.assertEqual(record.samples[0]["AN"], "alpha")
-        self.assertEqual(record.samples[1]["AN"], "ä")
-        self.assertEqual(record.samples[2]["AN"], "ü")
+        self.assertEqual(record.samples[1]["AN"], u"ä")
+        self.assertEqual(record.samples[2]["AN"], u"ü")
                 
 
 if __name__ == "__main__":
