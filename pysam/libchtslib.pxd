@@ -1708,6 +1708,12 @@ cdef extern from "htslib/vcf.h" nogil:
     # Read VCF header from a file and update the header
     int bcf_hdr_set(bcf_hdr_t *hdr, const char *fname)
 
+    # Appends formatted header text to _str_.
+    # If _is_bcf_ is zero, `IDX` fields are discarded.
+    #  @return 0 if successful, or negative if an error occurred
+    #  @since 1.4
+    int bcf_hdr_format(const bcf_hdr_t *hdr, int is_bcf, kstring_t *str);
+    
     # Returns formatted header (newly allocated string) and its length,
     # excluding the terminating \0. If is_bcf parameter is unset, IDX
     # fields are discarded.

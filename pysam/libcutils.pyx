@@ -91,14 +91,14 @@ cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
 cdef from_string_and_size(const char* s, size_t length):
     if IS_PYTHON3:
-        return s[:length].decode("ascii")
+        return s[:length].decode("utf8")
     else:
         return s[:length]
 
 
 # filename encoding (adapted from lxml.etree.pyx)
 cdef str FILENAME_ENCODING = sys.getfilesystemencoding() or sys.getdefaultencoding() or 'ascii'
-
+cdef str TEXT_ENCODING = 'utf-8'
 
 cdef bytes encode_filename(object filename):
     """Make sure a filename is 8-bit encoded (or None)."""
@@ -115,9 +115,9 @@ cdef bytes encode_filename(object filename):
         raise TypeError("Argument must be string or unicode.")
 
 
-cdef bytes force_bytes(object s, encoding="ascii"):
+cdef bytes force_bytes(object s, encoding=TEXT_ENCODING):
     """convert string or unicode object to bytes, assuming
-    ascii encoding.
+    utf8 encoding.
     """
     if s is None:
         return None
@@ -129,7 +129,7 @@ cdef bytes force_bytes(object s, encoding="ascii"):
         raise TypeError("Argument must be string, bytes or unicode.")
 
 
-cdef charptr_to_str(const char* s, encoding="ascii"):
+cdef charptr_to_str(const char* s, encoding=TEXT_ENCODING):
     if s == NULL:
         return None
     if PY_MAJOR_VERSION < 3:
@@ -138,7 +138,7 @@ cdef charptr_to_str(const char* s, encoding="ascii"):
         return s.decode(encoding)
 
 
-cdef charptr_to_str_w_len(const char* s, size_t n, encoding="ascii"):
+cdef charptr_to_str_w_len(const char* s, size_t n, encoding=TEXT_ENCODING):
     if s == NULL:
         return None
     if PY_MAJOR_VERSION < 3:
@@ -147,14 +147,14 @@ cdef charptr_to_str_w_len(const char* s, size_t n, encoding="ascii"):
         return s[:n].decode(encoding)
 
 
-cdef bytes charptr_to_bytes(const char* s, encoding="ascii"):
+cdef bytes charptr_to_bytes(const char* s, encoding=TEXT_ENCODING):
     if s == NULL:
         return None
     else:
         return s
 
 
-cdef force_str(object s, encoding="ascii"):
+cdef force_str(object s, encoding=TEXT_ENCODING):
     """Return s converted to str type of current Python
     (bytes in Py2, unicode in Py3)"""
     if s is None:
