@@ -5,6 +5,26 @@ http://pysam.readthedocs.io/en/latest/release.html
 Release notes
 =============
 
+Release 0.15.3
+==============
+
+Bugfix release.
+
+* [#824] allow reading of UTF-8 encoded text in VCF/BCF files.
+* [#780] close all filehandles before opening new ones in pysam_dispatch
+* [#773] do not cache VariantRecord.id to avoid memory leak
+* [#781] default of multiple_iterators=True is changed to False for
+  CRAM files.
+* [#825] fix collections.abc import
+* [#825] use bcf_hdr_format instead of bcf_hdr_fmt_text, fix memcpy
+  bug when setting FORMAT fields.
+* [#804] Use HTSlib's kstring_t, which reallocates and enlarges its
+  memory as needed, rather than a fixed-size char buffer.
+* [#814] Build wheels and upload them to PyPI
+* [#755] Allow passing flags and arguments to index methods
+* [#763] Strip \0 in header check
+* [#761] Test Tabix index contents, not the compression
+
 Release 0.15.2
 ==============
 
