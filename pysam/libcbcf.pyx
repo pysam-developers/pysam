@@ -412,9 +412,13 @@ cdef bcf_empty_array(int type, ssize_t n, int vlen):
     return value
 
 
-cdef bcf_copy_expand_array(void *src_data, int src_type, ssize_t src_values,
-                           void *dst_data, int dst_type, ssize_t dst_values,
+cdef bcf_copy_expand_array(void *src_data, int src_type, size_t src_values,
+                           void *dst_data, int dst_type, size_t dst_values,
                            int vlen):
+    """copy data from src to dest where the size of the elements (src_type/dst_type) differ
+    as well as the number of elements (src_values/dst_values).
+    """
+    
     cdef char    *src_datac
     cdef char    *dst_datac
     cdef int8_t  *src_datai8
@@ -432,7 +436,7 @@ cdef bcf_copy_expand_array(void *src_data, int src_type, ssize_t src_values,
     if src_type == dst_type == BCF_BT_CHAR:
         src_datac = <char *>src_data
         dst_datac = <char *>dst_data
-        memcpy(src_datac, dst_datac, src_values)
+        memcpy(dst_datac, src_datac, src_values)
         for i in range(src_values, dst_values):
             dst_datac[i] = 0
     elif src_type == BCF_BT_INT8 and dst_type == BCF_BT_INT32:
@@ -813,14 +817,14 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     if key == 'phased':
         sample.phased = bool(value)
         return
-
+    
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int fmt_id
     cdef vdict_t *d
     cdef khiter_t k
     cdef int fmt_type, scalar, realloc, dst_type, vlen = 0
-    cdef ssize_t i, n, value_count, alloc_size, alloc_len, dst_size
+    cdef ssize_t i, nsamples, value_count, alloc_size, alloc_len, dst_size
 
     if bcf_unpack(r, BCF_UN_ALL) < 0:
         raise ValueError('Error unpacking VariantRecord')
@@ -857,11 +861,10 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
                               fmt.type if fmt else -1,
                               fmt.n    if fmt else -1,
                               &value_count, &scalar, &realloc)
-
     vlen = value_count < 0
     value_count = len(values)
-
-    # If we can, write updated values to existing allocated storage
+    
+    # If we can, write updated values to existing allocated storage.
     if fmt and not realloc:
         r.d.indiv_dirty = 1
         bcf_object_to_array(values, fmt.p + sample.index * fmt.size, fmt.type, fmt.n, vlen)
@@ -871,9 +874,9 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     if fmt and fmt.n > alloc_len:
         alloc_len = fmt.n
 
-    n = r.n_sample
-    new_values = bcf_empty_array(fmt_type, n*alloc_len, vlen)
-    cdef char *valp = <char *>new_values
+    nsamples = r.n_sample
+    new_values = bcf_empty_array(fmt_type, nsamples * alloc_len, vlen)
+    cdef char *new_values_p = <char *>new_values
 
     if fmt_type == BCF_HT_INT:
         dst_type = BCF_BT_INT32
@@ -887,15 +890,15 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     else:
         raise ValueError('Unsupported FORMAT type')
 
-    if fmt and n > 1:
-        for i in range(n):
-            bcf_copy_expand_array(fmt.p + i*fmt.size, fmt.type, fmt.n,
-                                  valp  + i*dst_size, dst_type, alloc_len,
+    if fmt and nsamples > 1:
+        for i in range(nsamples):
+            bcf_copy_expand_array(fmt.p + i * fmt.size, fmt.type, fmt.n,
+                                  new_values_p  + i * dst_size, dst_type, alloc_len,
                                   vlen)
 
-    bcf_object_to_array(values, valp + sample.index*dst_size, dst_type, alloc_len, vlen)
+    bcf_object_to_array(values, new_values_p + sample.index * dst_size, dst_type, alloc_len, vlen)
 
-    if bcf_update_format(hdr, r, bkey, valp, <int>(n*alloc_len), fmt_type) < 0:
+    if bcf_update_format(hdr, r, bkey, new_values_p, <int>(nsamples * alloc_len), fmt_type) < 0:
         raise ValueError('Unable to update format values')
 
 
@@ -2036,12 +2039,20 @@ cdef class VariantHeader(object):
 
     def __str__(self):
         cdef int hlen
-        cdef char *hstr = bcf_hdr_fmt_text(self.ptr, 0, &hlen)
+        cdef kstring_t line
+        line.l = line.m = 0
+        line.s = NULL
 
-        try:
-            return charptr_to_str_w_len(hstr, hlen)
-        finally:
-            free(hstr)
+        if bcf_hdr_format(self.ptr, 0, &line) < 0:
+            if line.m:
+                free(line.s)
+            raise ValueError('bcf_hdr_format failed')
+
+        ret = charptr_to_str_w_len(line.s, line.l)
+
+        if line.m:
+            free(line.s)
+        return ret
 
     def new_record(self, contig=None, start=0, stop=0, alleles=None,
                          id=None, qual=None, filter=None, info=None, samples=None,
