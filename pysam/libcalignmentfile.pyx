@@ -2613,10 +2613,15 @@ cdef class IteratorColumnRegion(IteratorColumn):
                   int start = 0,
                   int stop = MAX_POS,
                   int truncate = False,
-                  int multiple_iterators = False,
+                  int multiple_iterators = True,
                   **kwargs ):
 
-        # initialize iterator
+        # initialize iterator. Multiple iterators not available
+        # for CRAM.
+        if multiple_iterators and samfile.is_cram:
+            warnings.warn("multiple_iterators not implemented for CRAM")
+            multiple_iterators = False
+
         self._setup_iterator(tid, start, stop, multiple_iterators)
         self.start = start
         self.stop = stop
