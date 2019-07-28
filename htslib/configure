@@ -4751,12 +4751,7 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_deflate_libdeflate_deflate_compress" >&5
 $as_echo "$ac_cv_lib_deflate_libdeflate_deflate_compress" >&6; }
 if test "x$ac_cv_lib_deflate_libdeflate_deflate_compress" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBDEFLATE 1
-_ACEOF
-
-  LIBS="-ldeflate $LIBS"
-
+  :
 else
   libdeflate='missing library'
 fi
@@ -4765,6 +4760,7 @@ fi
 
 $as_echo "#define HAVE_LIBDEFLATE 1" >>confdefs.h
 
+     LIBS="-ldeflate $LIBS"
      private_LIBS="$private_LIBS -ldeflate"
      static_LIBS="$static_LIBS -ldeflate"
 else
