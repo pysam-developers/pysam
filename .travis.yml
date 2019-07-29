@@ -12,7 +12,7 @@ env:
   global:
     - PYSAM_LINKING_TEST=1
     - TWINE_USERNAME=grepall
-    - secure: 'OcwwP8/o21+SGW0UVAnnCQwllhGSCq2HJzpI9EhX3kh6J9RTkyx/+drkg45bx1Z5u8zymuAFappEYzlpzqZE886XezkjOYGVa/u+Coqr1oT/BEJHFCkCA4o26yESp7Zy8aNj/juhB7Rfa77pIDXBayqTzbALz/AURMtZapasB18='
+    - secure: bTbky3Un19NAl62lix8bMLmBv9IGNhFkRXlZH+B253nYub7jwQwPQKum3ct9ea+XHJT5//uM0B8WAF6eyugpNkPQ7+S7SEH5BJuCt30nv6qvGhSO2AffZKeHEDnfW2kqGrivn87TqeomlSBlO742CD/V0wOIUwkTT9tutd+E7FU=
 
 _deploy_common: &deploy_common
   if: tag IS present
