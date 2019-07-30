@@ -15,7 +15,7 @@ env:
     - secure: bTbky3Un19NAl62lix8bMLmBv9IGNhFkRXlZH+B253nYub7jwQwPQKum3ct9ea+XHJT5//uM0B8WAF6eyugpNkPQ7+S7SEH5BJuCt30nv6qvGhSO2AffZKeHEDnfW2kqGrivn87TqeomlSBlO742CD/V0wOIUwkTT9tutd+E7FU=
 
 _deploy_common: &deploy_common
-  if: tag IS present
+  if: branch = master AND type = push AND fork = false
   install:
     - python3 -m pip install cibuildwheel twine
 
