@@ -30,7 +30,7 @@ matrix:
       env:
         - CIBW_BEFORE_BUILD="yum install -y zlib-devel bzip2-devel xz-devel && pip install -r requirements.txt"
         - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
-	- CIBW_TEST_COMMAND='python -c "import pysam"'
+        - CIBW_TEST_COMMAND='python -c "import pysam"'
       addons:
         apt:
           packages:
@@ -53,7 +53,7 @@ matrix:
       env:
         - CIBW_BEFORE_BUILD="pip install -r requirements.txt"
         - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
-	- CIBW_TEST_COMMAND='python -c "import pysam"'
+        - CIBW_TEST_COMMAND='python -c "import pysam"'
       addons: {}
       <<: *deploy_common
       script:
