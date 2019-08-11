@@ -265,7 +265,7 @@ cdef class AlignmentHeader(object):
                 if self.ptr.target_name[x] == NULL:
                     raise MemoryError("could not allocate {} bytes".format(len(name) + 1, sizeof(char)))
                 strncpy(self.ptr.target_name[x], name, len(name))
-        
+
         return self
 
     @classmethod
@@ -282,9 +282,9 @@ cdef class AlignmentHeader(object):
                     raise KeyError("incomplete sequence information in '%s'" % str(fields))
                 except ValueError:
                     raise ValueError("wrong sequence information in '%s'" % str(fields))
-                
+
         return cls._from_text_and_lengths(text, reference_names, reference_lengths)
-        
+
     @classmethod
     def from_dict(cls, header_dict):
 
@@ -380,12 +380,12 @@ cdef class AlignmentHeader(object):
 
     def _build_sequence_section(self):
         """return sequence section of header.
-    
+
         The sequence section is built from the list of reference names and
         lengths stored in the BAM-file and not from any @SQ entries that
         are part of the header's text section.
         """
-        
+
         cdef int x
         text = []
         for x in range(self.ptr.n_targets):
@@ -393,7 +393,7 @@ cdef class AlignmentHeader(object):
                 force_str(self.ptr.target_name[x]),
                 self.ptr.target_len[x]))
         return "".join(text)
-        
+
     def to_dict(self):
         """return two-level dictionary with header information from the file.
 
@@ -504,7 +504,7 @@ cdef class AlignmentHeader(object):
             raise KeyError("unknown reference {}".format(reference))
         else:
             return self.ptr.target_len[tid]
-    
+
     def is_valid_tid(self, int tid):
         """
         return True if the numerical :term:`tid` is valid; False otherwise.
@@ -522,7 +522,7 @@ cdef class AlignmentHeader(object):
         """
         reference = force_bytes(reference)
         return bam_name2id(self.ptr, reference)
-        
+
     def __str__(self):
         '''string with the full contents of the :term:`sam file` header as a
         string.
@@ -561,7 +561,7 @@ cdef class AlignmentHeader(object):
 
     def get(self, *args):
         return self.to_dict().get(*args)
-    
+
     def __len__(self):
         return self.to_dict().__len__()
 
@@ -887,7 +887,7 @@ cdef class AlignmentFile(HTSFile):
                 raise ValueError(
                     "either supply options `template`, `header`, `text` or  both `reference_names` "
                     "and `reference_lengths` for writing")
-            
+
             if template:
                 # header is copied, though at the moment not strictly
                 # necessary as AlignmentHeader is immutable.
@@ -978,7 +978,7 @@ cdef class AlignmentFile(HTSFile):
                             "SAM? file does not have a valid header (mode='%s'), "
                             "please provide reference_names and reference_lengths")
                     self.header = makeAlignmentHeader(hdr)
-                
+
             # set filename with reference sequences
             if self.is_cram and reference_filename:
                 creference_filename = self.reference_filename
@@ -1283,7 +1283,7 @@ cdef class AlignmentFile(HTSFile):
 
             ignore orphans (paired reads that are not in a proper pair).
             The default is to ignore orphans.
-   
+
         min_base_quality: int
 
            Minimum base quality. Bases below the minimum quality will
@@ -1323,7 +1323,7 @@ cdef class AlignmentFile(HTSFile):
         """
         cdef int rtid, has_coord
         cdef int32_t rstart, rstop
-        
+
         if not self.is_open:
             raise ValueError("I/O operation on closed file")
 
@@ -1534,7 +1534,7 @@ cdef class AlignmentFile(HTSFile):
             raise ValueError("interval of size 0")
         if _stop < _start:
             raise ValueError("interval of size less than 0")
-        
+
         cdef int length = _stop - _start
         cdef c_array.array int_array_template = array.array('L', [])
         cdef c_array.array count_a
@@ -1582,7 +1582,7 @@ cdef class AlignmentFile(HTSFile):
             # count
             seq = read.seq
             quality = read.query_qualities
-            
+
             for qpos, refpos in read.get_aligned_pairs(True):
                 if qpos is not None and refpos is not None and \
                    _start <= refpos < _stop:
@@ -1646,14 +1646,14 @@ cdef class AlignmentFile(HTSFile):
             base_position = r.pos
 
             for op, nt in r.cigartuples:
-                if op in match_or_deletion: 
+                if op in match_or_deletion:
                     base_position += nt
-                elif op == BAM_CREF_SKIP: 
+                elif op == BAM_CREF_SKIP:
                     junc_start = base_position
                     base_position += nt
                     res[(junc_start, base_position)] += 1
         return res
- 
+
 
     def close(self):
         '''closes the :class:`pysam.AlignmentFile`.'''
@@ -1705,16 +1705,14 @@ cdef class AlignmentFile(HTSFile):
         '''
         write a single :class:`pysam.AlignedSegment` to disk.
 
-        Raises
-        ------
-        ValueError
-            if the writing failed
+        Raises:
+            ValueError
+                if the writing failed
 
-        Returns
-        -------
-
-        int : the number of bytes written. If the file is closed,
-              this will be 0.
+        Returns:
+            int :
+                the number of bytes written. If the file is closed,
+                this will be 0.
         '''
         if not self.is_open:
             return 0
@@ -1724,7 +1722,7 @@ cdef class AlignmentFile(HTSFile):
                 "AlignedSegment refers to reference number {} that "
                 "is larger than the number of references ({}) in the header".format(
                     read._delegate.core.tid, self.header.ptr.n_targets))
-        
+
         cdef int ret
         with nogil:
             ret = sam_write1(self.htsfile,
@@ -1800,12 +1798,12 @@ cdef class AlignmentFile(HTSFile):
         """return statistics about mapped/unmapped reads per chromosome as
         they are stored in the index.
 
-        Returns
-        -------
-        list : a list of records for each chromosome. Each record has the attributes 'contig',
-               'mapped', 'unmapped' and 'total'.
+        Returns:
+            list :
+                a list of records for each chromosome. Each record has the
+                attributes 'contig', 'mapped', 'unmapped' and 'total'.
         """
-        
+
         self.check_index()
         cdef int tid
         cdef uint64_t mapped, unmapped
@@ -1820,7 +1818,7 @@ cdef class AlignmentFile(HTSFile):
                     mapped,
                     unmapped,
                     mapped + unmapped)))
-                
+
         return results
 
     ###############################################################
@@ -1899,7 +1897,7 @@ cdef class AlignmentFile(HTSFile):
         if self.header is None:
             raise ValueError("header not available in closed files")
         return self.header.get_reference_length(reference)
-    
+
     property nreferences:
         """int with the number of :term:`reference` sequences in the file.
         This is a read-only attribute."""
@@ -1978,7 +1976,7 @@ cdef class IteratorRow:
         cdef char *cfilename
         cdef char *creference_filename
         cdef char *cindexname = NULL
-        
+
         if not samfile.is_open:
             raise ValueError("I/O operation on closed file")
 
@@ -1989,7 +1987,7 @@ cdef class IteratorRow:
         # reopen the file - note that this makes the iterator
         # slow and causes pileup to slow down significantly.
         if multiple_iterators:
-            
+
             cfilename = samfile.filename
             with nogil:
                 self.htsfile = hts_open(cfilename, 'r')
@@ -2002,7 +2000,7 @@ cdef class IteratorRow:
                     self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
             else:
                 self.index = NULL
-                
+
             # need to advance in newly opened file to position after header
             # better: use seek/tell?
             with nogil:
@@ -2012,7 +2010,7 @@ cdef class IteratorRow:
             self.header = makeAlignmentHeader(hdr)
 
             self.owns_samfile = True
-            
+
             # options specific to CRAM files
             if samfile.is_cram and samfile.reference_filename:
                 creference_filename = samfile.reference_filename
@@ -2094,7 +2092,7 @@ cdef class IteratorRowRegion(IteratorRow):
             raise IOError('truncated file')
         else:
             raise IOError("error while reading file {}: {}".format(self.samfile.filename, self.retval))
-        
+
     def __dealloc__(self):
         hts_itr_destroy(self.iter)
 
@@ -2326,7 +2324,7 @@ cdef int __advance_nofilter(void *data, bam1_t *b):
 
 
 cdef int __advance_all(void *data, bam1_t *b):
-    '''only use reads for pileup passing basic filters such as 
+    '''only use reads for pileup passing basic filters such as
 
     BAM_FUNMAP, BAM_FSECONDARY, BAM_FQCFAIL, BAM_FDUP
     '''
@@ -2362,7 +2360,7 @@ cdef int __advance_samtools(void * data, bam1_t * b):
             continue
         if d.flag_require and not (b.core.flag & d.flag_require):
             continue
-        
+
         # reload sequence
         if d.fastafile != NULL and b.core.tid != d.tid:
             if d.seq != NULL:
@@ -2388,21 +2386,21 @@ cdef int __advance_samtools(void * data, bam1_t * b):
                 sam_prob_realn(b, d.seq, d.seq_len, 7)
             else:
                 sam_prob_realn(b, d.seq, d.seq_len, 3)
-                
+
         if d.seq != NULL and d.adjust_capq_threshold > 10:
             q = sam_cap_mapq(b, d.seq, d.seq_len, d.adjust_capq_threshold)
             if q < 0:
                 continue
             elif b.core.qual > q:
                 b.core.qual = q
-                
+
         if b.core.qual < d.min_mapping_quality:
             continue
         if d.ignore_orphans and b.core.flag & BAM_FPAIRED and not (b.core.flag & BAM_FPROPER_PAIR):
             continue
-        
+
         break
-        
+
     return ret
 
 
@@ -2453,7 +2451,7 @@ cdef class IteratorColumn:
         self.iterdata.compute_baq = kwargs.get("compute_baq", True)
         self.iterdata.redo_baq = kwargs.get("redo_baq", False)
         self.iterdata.ignore_orphans = kwargs.get("ignore_orphans", True)
-        
+
         self.tid = 0
         self.pos = 0
         self.n_plp = 0
@@ -2497,7 +2495,7 @@ cdef class IteratorColumn:
         '''
         return true if iterator is associated with a reference'''
         return self.fastafile
-            
+
     cdef _setup_iterator(self,
                          int tid,
                          int start,
@@ -2523,7 +2521,7 @@ cdef class IteratorColumn:
 
         cdef void * data[1]
         data[0] = <void*>&self.iterdata
-        
+
         if self.stepper is None or self.stepper == "all":
             with nogil:
                 self.pileup_iter = bam_mplp_init(1,
@@ -2550,7 +2548,7 @@ cdef class IteratorColumn:
         if self.ignore_overlaps:
             with nogil:
                 bam_mplp_init_overlaps(self.pileup_iter)
-                
+
     cdef reset(self, tid, start, stop):
         '''reset iterator position.
 
@@ -2572,7 +2570,7 @@ cdef class IteratorColumn:
         #                                  &self.iterdata)
         with nogil:
             bam_mplp_reset(self.pileup_iter)
-        
+
     cdef _free_pileup_iter(self):
         '''free the memory alloc'd by bam_plp_init.
 
@@ -2593,9 +2591,9 @@ cdef class IteratorColumn:
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)
             self.iterdata.seq = NULL
-        
+
     # backwards compatibility
-    
+
     def hasReference(self):
         return self.has_reference()
     cdef char * getSequence(self):
@@ -2603,7 +2601,7 @@ cdef class IteratorColumn:
     def addReference(self, FastaFile fastafile):
         return self.add_reference(fastafile)
 
-            
+
 cdef class IteratorColumnRegion(IteratorColumn):
     '''iterates over a region only.
     '''
@@ -2630,7 +2628,7 @@ cdef class IteratorColumnRegion(IteratorColumn):
     def __next__(self):
 
         cdef int n
-        
+
         while 1:
             n = self.cnext()
             if n < 0:
@@ -2823,7 +2821,7 @@ cdef class IndexedReads:
 
         cdef uint64_t pos
         cdef bam_hdr_t * hdr = self.header.ptr
-        
+
         while ret > 0:
             with nogil:
                 pos = bgzf_tell(hts_get_bgzfp(self.htsfile))

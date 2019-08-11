@@ -924,9 +924,10 @@ cdef class AlignedSegment:
     Parameters
     ----------
 
-    header -- :class:`~pysam.AlignmentHeader` object to map numerical
-              identifiers to chromosome names. If not given, an empty
-              header is created.
+    header:
+         :class:`~pysam.AlignmentHeader` object to map numerical
+         identifiers to chromosome names. If not given, an empty
+         header is created.
     '''
 
     # Now only called when instances are created from Python
@@ -1088,7 +1089,8 @@ cdef class AlignedSegment:
 
         Parameters
         ----------
-        sam -- :term:`SAM` formatted string
+        sam:
+            :term:`SAM` formatted string
 
         """
         cdef AlignedSegment dest = cls.__new__(cls)
@@ -1110,9 +1112,10 @@ cdef class AlignedSegment:
         Parameters
         ----------
 
-        htsfile -- (deprecated) AlignmentFile object to map numerical
-                   identifiers to chromosome names. This parameter is present
-                   for backwards compatibility and ignored.
+        htsfile:
+            (deprecated) AlignmentFile object to map numerical
+            identifiers to chromosome names. This parameter is present
+            for backwards compatibility and ignored.
         """
 
         return self.to_string()
@@ -1133,8 +1136,9 @@ cdef class AlignedSegment:
 
         Parameters
         ----------
-        sam_dict -- dictionary of alignment values, keys corresponding to output from
-                    :meth:`todict()`.
+        sam_dict:
+            dictionary of alignment values, keys corresponding to output from
+            :meth:`todict()`.
 
         """
         # let htslib do the parsing
@@ -2075,15 +2079,11 @@ cdef class AlignedSegment:
 
         If no cigar string is present, empty arrays will be returned.
 
-        Parameters
-        ----------
-
-        Returns
-        -------
-
-        arrays : two arrays. The first contains the nucleotide counts within
-           each cigar operation, the second contains the number of blocks for
-           each cigar operation.
+        Returns:
+            arrays :
+                two arrays. The first contains the nucleotide counts within
+                each cigar operation, the second contains the number of blocks
+                for each cigar operation.
 
         """
 
@@ -2406,27 +2406,24 @@ cdef class AlignedSegment:
         specification) as well as additional value type 'd' as
         implemented in htslib.
 
-        Parameters
-        ----------
+        Parameters:
 
-        tag :
-            data tag.
+            tag :
+                data tag.
 
-        with_value_type : Optional[bool]
-            if set to True, the return value is a tuple of (tag value, type code).
-            (default False)
+            with_value_type : Optional[bool]
+                if set to True, the return value is a tuple of (tag value, type
+                code). (default False)
 
-        Returns
-        -------
+        Returns:
 
-        A python object with the value of the `tag`. The type of the
-        object depends on the data type in the data record.
+            A python object with the value of the `tag`. The type of the
+            object depends on the data type in the data record.
 
-        Raises
-        ------
+        Raises:
 
-        KeyError
-            If `tag` is not present, a KeyError is raised.
+            KeyError
+                If `tag` is not present, a KeyError is raised.
 
         """
         cdef uint8_t * v

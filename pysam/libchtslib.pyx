@@ -617,9 +617,10 @@ cdef class HTSFile(object):
         Returns
         -------
 
-        tuple : a tuple of `flag`, :term:`tid`, `start` and
-        `stop`. The flag indicates whether no coordinates were
-        supplied and the genomic region is the complete genomic space.
+        tuple :
+            a tuple of `flag`, :term:`tid`, `start` and
+            `stop`. The flag indicates whether no coordinates were
+            supplied and the genomic region is the complete genomic space.
 
         Raises
         ------
