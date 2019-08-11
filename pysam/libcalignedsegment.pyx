@@ -133,7 +133,7 @@ cdef inline uint8_t strand_mark_char(uint8_t ch, bam1_t *b):
         else:
             return toupper(ch)
 
-    
+
 cdef inline bint pileup_base_qual_skip(bam_pileup1_t * p, uint32_t threshold):
     cdef uint32_t c
     if p.qpos < p.b.core.l_qseq:
@@ -143,7 +143,7 @@ cdef inline bint pileup_base_qual_skip(bam_pileup1_t * p, uint32_t threshold):
     if c < threshold:
         return True
     return False
-    
+
 
 cdef inline char map_typecode_htslib_to_python(uint8_t s):
     """map an htslib typecode to the corresponding python typecode
@@ -223,7 +223,7 @@ cdef inline uint8_t get_tag_typecode(value, value_type=None):
     """
     # 0 is unknown typecode
     cdef char typecode = 0
-    
+
     if value_type is None:
         if isinstance(value, int):
             if value < 0:
@@ -341,7 +341,7 @@ cdef inline pack_tags(tags):
     """
     fmts, args = ["<"], []
 
-    # htslib typecode 
+    # htslib typecode
     cdef uint8_t typecode
     for tag in tags:
 
@@ -394,7 +394,7 @@ cdef inline pack_tags(tags):
 
             if typecode not in DATATYPE2FORMAT:
                 raise ValueError("invalid value type '{}' ({})".format(chr(typecode), array.typecode))
-            
+
             # use array.tostring() to retrieve byte representation and
             # save as bytes
             datafmt = "2sBBI%is" % (len(value) * DATATYPE2FORMAT[typecode][1])
@@ -416,7 +416,7 @@ cdef inline pack_tags(tags):
                 typecode = get_tag_typecode(value)
                 if typecode == 0:
                     raise ValueError("could not deduce typecode for value {}".format(value))
-                
+
             if typecode == 'a' or typecode == 'A' or typecode == 'Z' or typecode == 'H':
                 value = force_bytes(value)
 
@@ -427,7 +427,7 @@ cdef inline pack_tags(tags):
                 datafmt = "2sB%is" % (len(value)+1)
             else:
                 datafmt = "2sB%s" % DATATYPE2FORMAT[typecode][0]
-                
+
             args.extend([pytag[:2],
                          typecode,
                          value])
@@ -957,9 +957,9 @@ cdef class AlignedSegment:
         self.cache_query_alignment_qualities = None
         self.cache_query_sequence = None
         self.cache_query_alignment_sequence = None
-        
+
         self.header = header
-        
+
     def __dealloc__(self):
         bam_destroy1(self._delegate)
 
@@ -1021,7 +1021,7 @@ cdef class AlignedSegment:
 
         cdef uint8_t *a = <uint8_t*>&t.core
         cdef uint8_t *b = <uint8_t*>&o.core
-        
+
         retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
         if retval:
             return retval
@@ -1072,7 +1072,7 @@ cdef class AlignedSegment:
                 raise ValueError('sam_format failed')
         else:
             raise NotImplementedError("todo")
-        
+
         ret = force_str(line.s[:line.l])
 
         if line.m:
@@ -1101,7 +1101,7 @@ cdef class AlignedSegment:
         line.s = _sam
 
         sam_parse1(&line, dest.header.ptr, dest._delegate)
-        
+
         return dest
 
     cpdef tostring(self, htsfile=None):
@@ -1116,7 +1116,7 @@ cdef class AlignedSegment:
         """
 
         return self.to_string()
-    
+
     def to_dict(self):
         """returns a json representation of the aligned segment.
 
@@ -1143,7 +1143,7 @@ cdef class AlignedSegment:
             "\t".join((sam_dict[x] for x in KEY_NAMES[:-1])) +
             "\t" +
             "\t".join(sam_dict.get(KEY_NAMES[-1], [])), header)
-    
+
     ########################################################
     ## Basic attributes in order of appearance in SAM format
     property query_name:
@@ -1187,7 +1187,7 @@ cdef class AlignedSegment:
 
             src.core.l_extranul = l_extranul
             src.core.l_qname = l + l_extranul
-            
+
             # re-acquire pointer to location in memory
             # as it might have moved
             p = pysam_bam_get_qname(src)
@@ -1321,7 +1321,7 @@ cdef class AlignedSegment:
                 return self.header.get_reference_name(self._delegate.core.mtid)
             else:
                 raise ValueError("next_reference_name unknown if no header associated with record")
-            
+
         def __set__(self, reference):
             cdef int mtid
             if reference is None or reference == "*":
@@ -1434,7 +1434,7 @@ cdef class AlignedSegment:
                                                     nbytes_old,
                                                     nbytes_new,
                                                     p)
-            
+
             if retval == NULL:
                 raise MemoryError("could not allocate memory")
 
@@ -1564,7 +1564,7 @@ cdef class AlignedSegment:
             # setting the unmapped flag requires recalculation of
             # bin as alignment length is now implicitely 1
             update_bin(self._delegate)
-                
+
     property mate_is_unmapped:
         """true if the mate is unmapped"""
         def __get__(self):
@@ -1834,7 +1834,7 @@ cdef class AlignedSegment:
 
     def get_forward_sequence(self):
         """return the original read sequence.
-        
+
         Reads mapping to the reverse strand will be reverse
         complemented.
 
@@ -1849,7 +1849,7 @@ cdef class AlignedSegment:
 
     def get_forward_qualities(self):
         """return base qualities of the read sequence.
-        
+
         Reads mapping to the reverse strand will be reversed.
         """
         if self.is_reverse:
@@ -1857,7 +1857,7 @@ cdef class AlignedSegment:
         else:
             return self.query_qualities
 
-    
+
     def get_aligned_pairs(self, matches_only=False, with_seq=False):
         """a list of aligned read (query) and reference positions.
 
@@ -2199,7 +2199,7 @@ cdef class AlignedSegment:
                 values = []
 
             cdef uint32_t ncigar = len(values)
-            
+
             cdef bam1_t * retval = pysam_bam_update(src,
                                                     pysam_get_n_cigar(src) * 4,
                                                     ncigar * 4,
@@ -2245,7 +2245,7 @@ cdef class AlignedSegment:
 
         This method accepts valid SAM specification value types, which
         are::
-        
+
            A: printable char
            i: signed int
            f: float
@@ -2260,12 +2260,12 @@ cdef class AlignedSegment:
 
         When deducing the type code by the python type of *value*, the
         following mapping is applied::
-        
+
             i: python int
             f: python float
             Z: python str or bytes
             B: python array.array, list or tuple
-            
+
         Note that a single character string will be output as 'Z' and
         not 'A' as the former is the more general type.
         """
@@ -2799,14 +2799,14 @@ cdef class PileupColumn:
         """set the minimum base quality for this pileup column.
         """
         self.min_base_quality = min_base_quality
-    
+
     def __len__(self):
         """return number of reads aligned to this column.
 
         see :meth:`get_num_aligned`
         """
         return self.get_num_aligned()
-    
+
     property reference_id:
         '''the reference sequence number as defined in the header'''
         def __get__(self):
@@ -2883,7 +2883,7 @@ cdef class PileupColumn:
 
     def get_num_aligned(self):
         """return number of aligned bases at pileup column position.
-        
+
         This method applies a base quality filter and the number is
         equal to the size of :meth:`get_query_sequences`,
         :meth:`get_mapping_qualities`, etc.
@@ -2895,7 +2895,7 @@ cdef class PileupColumn:
         cdef bam_pileup1_t * p = NULL
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
-        
+
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
             if p == NULL:
@@ -2912,7 +2912,7 @@ cdef class PileupColumn:
 
         Optionally, the bases/sequences can be annotated according to the samtools
         mpileup format. This is the format description from the samtools mpileup tool::
-        
+
            Information on match, mismatch, indel, strand, mapping
            quality and start and end of a read are all encoded at the
            read base column. At this column, a dot stands for a match
@@ -2934,7 +2934,7 @@ cdef class PileupColumn:
 
         To reproduce samtools mpileup format, set all of mark_matches,
         mark_ends and add_indels to True.
-        
+
         Parameters
         ----------
 
@@ -2954,7 +2954,7 @@ cdef class PileupColumn:
           If True, add bases for bases inserted into the reference and
           'N's for base skipped from the reference. If a reference sequence
           is given, add the actual bases.
- 
+
         Returns
         -------
 
@@ -2968,7 +2968,7 @@ cdef class PileupColumn:
         cdef uint8_t rb = 0
         cdef kstring_t * buf = &self.buf
         cdef bam_pileup1_t * p = NULL
-        
+
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
@@ -2987,7 +2987,7 @@ cdef class PileupColumn:
             # see samtools pileup_seq
             if mark_ends and p.is_head:
                 kputc('^', buf)
-                
+
                 if p.b.core.qual > 93:
                     kputc(126, buf)
                 else:
@@ -3059,7 +3059,7 @@ cdef class PileupColumn:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
                     "outside loop")
-            
+
             if p.qpos < p.b.core.l_qseq:
                 c = bam_get_qual(p.b)[p.qpos]
             else:
@@ -3079,7 +3079,7 @@ cdef class PileupColumn:
         """
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
-        
+
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
@@ -3089,7 +3089,7 @@ cdef class PileupColumn:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
                     "outside loop")
-            
+
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             result.append(p.b.core.qual)
@@ -3115,7 +3115,7 @@ cdef class PileupColumn:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
                     "outside loop")
-            
+
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             result.append(p.qpos)
@@ -3131,7 +3131,7 @@ cdef class PileupColumn:
         """
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
-        
+
         cdef uint32_t x = 0
         cdef bam_pileup1_t * p = NULL
         result = []
@@ -3141,12 +3141,12 @@ cdef class PileupColumn:
                 raise ValueError(
                     "pileup buffer out of sync - most likely use of iterator "
                     "outside loop")
-            
+
             if pileup_base_qual_skip(p, self.min_base_quality):
                 continue
             result.append(charptr_to_str(pysam_bam_get_qname(p.b)))
         return result
-            
+
 
 cdef class PileupRead:
     '''Representation of a read aligned to a particular position in the
@@ -3230,7 +3230,7 @@ cdef class PileupRead:
         def __get__(self):
             return self._is_refskip
 
-        
+
 
 cpdef enum CIGAR_OPS:
     CMATCH = 0
@@ -3246,30 +3246,30 @@ cpdef enum CIGAR_OPS:
 
 
 cpdef enum SAM_FLAGS:
-    # the read is paired in sequencing, no matter whether it is mapped in a pair 
+    # the read is paired in sequencing, no matter whether it is mapped in a pair
     FPAIRED = 1
-    # the read is mapped in a proper pair 
+    # the read is mapped in a proper pair
     FPROPER_PAIR = 2
-    # the read itself is unmapped; conflictive with FPROPER_PAIR 
+    # the read itself is unmapped; conflictive with FPROPER_PAIR
     FUNMAP = 4
-    # the mate is unmapped 
+    # the mate is unmapped
     FMUNMAP = 8
-    # the read is mapped to the reverse strand 
+    # the read is mapped to the reverse strand
     FREVERSE = 16
-    # the mate is mapped to the reverse strand 
+    # the mate is mapped to the reverse strand
     FMREVERSE = 32
-    # this is read1 
+    # this is read1
     FREAD1 = 64
-    # this is read2 
+    # this is read2
     FREAD2 = 128
-    # not primary alignment 
+    # not primary alignment
     FSECONDARY = 256
-    # QC failure 
+    # QC failure
     FQCFAIL = 512
-    # optical or PCR duplicate 
+    # optical or PCR duplicate
     FDUP = 1024
-    # supplementary alignment 
-    FSUPPLEMENTARY = 2048      
+    # supplementary alignment
+    FSUPPLEMENTARY = 2048
 
 
 __all__ = [
