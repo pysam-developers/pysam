@@ -1858,7 +1858,7 @@ cdef class AlignedSegment:
             return self.query_qualities
 
     
-    def get_aligned_pairs(self, matches_only=False, with_seq=False):
+    def get_aligned_pairs(self, matches_only=False, with_seq=False, with_query=False, with_ref=False):
         """a list of aligned read (query) and reference positions.
 
         For inserts, deletions, skipping either query or reference
@@ -1872,10 +1872,14 @@ cdef class AlignedSegment:
         matches_only : bool
           If True, only matched bases are returned - no None on either
           side.
-        with_seq : bool
+        with_query : bool
           If True, return a third element in the tuple containing the
-          reference sequence. Substitutions are lower-case. This option
-          requires an MD tag to be present.
+          query sequence. This option requires an MD tag to be present.
+        with_ref : bool
+          If True, return a fourth element in the tuple containing the
+          reference sequence. This option requires an MD tag to be present.
+        with_seq : bool
+          Equal to `with_ref`, for backward compatibility.
 
         Returns
         -------
@@ -1889,15 +1893,24 @@ cdef class AlignedSegment:
         cdef bam1_t * src = self._delegate
         cdef bint _matches_only = bool(matches_only)
         cdef bint _with_seq = bool(with_seq)
+        cdef bint _with_query = bool(with_query)
+        cdef bint _with_ref = bool(with_ref)
 
         # TODO: this method performs no checking and assumes that
         # read sequence, cigar and MD tag are consistent.
 
         if _with_seq:
+            _with_ref = _with_seq
+
+        if _with_ref:
             # force_str required for py2/py3 compatibility
             ref_seq = force_str(build_reference_sequence(src))
             if ref_seq is None:
                 raise ValueError("MD tag not present")
+
+        if _with_query:
+            # force_str required for py2/py3 compatibility
+            query_seq = force_str(self.query_sequence)
 
         r_idx = 0
 
@@ -1913,7 +1926,17 @@ cdef class AlignedSegment:
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
             if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
-                if _with_seq:
+                if _with_query and _with_ref:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, i, query_seq[qpos], ref_seq[r_idx]))
+                        r_idx += 1
+                        qpos += 1
+                elif _with_query:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, i, query_seq[qpos]))
+                        r_idx += 1
+                        qpos += 1
+                elif _with_ref:
                     for i from pos <= i < pos + l:
                         result.append((qpos, i, ref_seq[r_idx]))
                         r_idx += 1
@@ -1926,7 +1949,15 @@ cdef class AlignedSegment:
 
             elif op == BAM_CINS or op == BAM_CSOFT_CLIP:
                 if not _matches_only:
-                    if _with_seq:
+                    if _with_query and _with_ref:
+                        for i from pos <= i < pos + l:
+                            result.append((qpos, None, query_seq[qpos], None))
+                            qpos += 1
+                    elif _with_query:
+                        for i from pos <= i < pos + l:
+                            result.append((qpos, None, query_seq[qpos]))
+                            qpos += 1
+                    elif _with_ref:
                         for i from pos <= i < pos + l:
                             result.append((qpos, None, None))
                             qpos += 1
@@ -1939,7 +1970,15 @@ cdef class AlignedSegment:
 
             elif op == BAM_CDEL:
                 if not _matches_only:
-                    if _with_seq:
+                    if _with_query and _with_ref:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, None, ref_seq[r_idx]))
+                            r_idx += 1
+                    elif _with_query:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, None))
+                            r_idx += 1
+                    elif _with_ref:
                         for i from pos <= i < pos + l:
                             result.append((None, i, ref_seq[r_idx]))
                             r_idx += 1
@@ -1955,7 +1994,13 @@ cdef class AlignedSegment:
 
             elif op == BAM_CREF_SKIP:
                 if not _matches_only:
-                    if _with_seq:
+                    if _with_query and _with_ref:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, None, None))
+                    if _with_query:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, None))
+                    if _with_ref:
                         for i from pos <= i < pos + l:
                             result.append((None, i, None))
                     else:
