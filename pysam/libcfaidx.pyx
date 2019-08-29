@@ -646,8 +646,14 @@ cdef class FastxFile:
             if self.persist:
                 return FastxRecord(proxy=makeFastqProxy(self.entry))
             return makeFastqProxy(self.entry)
-        else:
+        elif (l == -1):
             raise StopIteration
+        elif (l == -2):
+            raise ValueError('truncated quality string in {0}'
+                             .format(self._filename))
+        else:
+            raise ValueError('unknown problem parsing {0}'
+                             .format(self._filename))
 
 # Compatibility Layer for pysam 0.8.1
 cdef class FastqFile(FastxFile):
