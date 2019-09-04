@@ -418,7 +418,7 @@ cdef bcf_copy_expand_array(void *src_data, int src_type, size_t src_values,
     """copy data from src to dest where the size of the elements (src_type/dst_type) differ
     as well as the number of elements (src_values/dst_values).
     """
-    
+
     cdef char    *src_datac
     cdef char    *dst_datac
     cdef int8_t  *src_datai8
@@ -817,7 +817,7 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
     if key == 'phased':
         sample.phased = bool(value)
         return
-    
+
     cdef bcf_hdr_t *hdr = sample.record.header.ptr
     cdef bcf1_t *r = sample.record.ptr
     cdef int fmt_id
@@ -863,7 +863,7 @@ cdef bcf_format_set_value(VariantRecordSample sample, key, value):
                               &value_count, &scalar, &realloc)
     vlen = value_count < 0
     value_count = len(values)
-    
+
     # If we can, write updated values to existing allocated storage.
     if fmt and not realloc:
         r.d.indiv_dirty = 1
@@ -3134,6 +3134,8 @@ cdef class VariantRecord(object):
             raise ValueError('Error unpacking VariantRecord')
         # causes a memory leak https://github.com/pysam-developers/pysam/issues/773
         # return bcf_str_cache_get_charptr(r.d.id) if r.d.id != b'.' else None
+        if (r.d.m_id == 0):
+            raise ValueError('Error extracing ID')
         return charptr_to_str(r.d.id) if r.d.id != b'.' else None
 
     @id.setter
