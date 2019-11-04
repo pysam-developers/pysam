@@ -4080,6 +4080,7 @@ cdef class VariantFile(HTSFile):
 
     def __next__(self):
         cdef int ret
+        cdef int errcode
         cdef bcf1_t *record = bcf_init1()
 
         if not record:
@@ -4093,7 +4094,10 @@ cdef class VariantFile(HTSFile):
             ret = bcf_read1(self.htsfile, self.header.ptr, record)
 
         if ret < 0:
+            errcode = record.errcode
             bcf_destroy1(record)
+            if errcode:
+                raise IOError('unable to parse next record')
             if ret == -1:
                 raise StopIteration
             elif ret == -2:
