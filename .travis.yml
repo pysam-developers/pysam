@@ -15,9 +15,9 @@ env:
     - secure: bTbky3Un19NAl62lix8bMLmBv9IGNhFkRXlZH+B253nYub7jwQwPQKum3ct9ea+XHJT5//uM0B8WAF6eyugpNkPQ7+S7SEH5BJuCt30nv6qvGhSO2AffZKeHEDnfW2kqGrivn87TqeomlSBlO742CD/V0wOIUwkTT9tutd+E7FU=
 
 _deploy_common: &deploy_common
-  if: branch = master AND type = push AND fork = false
+  # re-add `if: tag IS present` when wheels work properly
   install:
-    - python3 -m pip install cibuildwheel twine
+    - python3 -m pip install cibuildwheel>=1.1.0 twine
 
 matrix:
   include:
@@ -28,8 +28,9 @@ matrix:
       services:
         - docker
       env:
-        - CIBW_BEFORE_BUILD="yum install -y zlib-devel bzip2-devel xz-devel && pip install -r requirements.txt"
+        - CIBW_BEFORE_BUILD="yum install -y zlib-devel bzip2-devel xz-devel && python -m pip install -r requirements.txt"
         - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
+        - CIBW_REPAIR_WHEEL_COMMAND_LINUX='auditwheel repair -L . -w {dest_dir} {wheel}'
         - CIBW_TEST_COMMAND='python -c "import pysam"'
       addons:
         apt:
@@ -51,7 +52,7 @@ matrix:
       os: osx
       language: generic
       env:
-        - CIBW_BEFORE_BUILD="pip install -r requirements.txt"
+        - CIBW_BEFORE_BUILD="python -m pip install -r requirements.txt"
         - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
         - CIBW_TEST_COMMAND='python -c "import pysam"'
       addons: {}
