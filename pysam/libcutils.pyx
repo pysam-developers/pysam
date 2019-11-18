@@ -284,7 +284,7 @@ def _pysam_dispatch(collection,
             if skip_next:
                 skip_next = False
                 continue
-            if arg in SIMPLE_FLAGS or (len(arg) > 2 and arg.startswith('-@')):
+            if arg in SIMPLE_FLAGS or (len(arg) > 2 and force_bytes(arg).startswith(b'-@')):
                 continue
             if arg in ARGUMENTS:
                 skip_next = True
