@@ -999,6 +999,10 @@ cdef class AlignedSegment:
         <,=,> to *other*
         '''
 
+        # avoid segfault when other equals None
+        if other is None:
+            return -1
+
         cdef int retval, x
         cdef bam1_t *t
         cdef bam1_t *o
