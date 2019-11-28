@@ -82,7 +82,7 @@ class TestAlignedSegment(ReadTest):
 
         self.assertFalse(a is b)
         self.assertFalse(a == b)
-        self.assertFalse(a.compare(b))
+        self.assertEqual(-1, a.compare(b))
 
         b = self.build_read()
 
