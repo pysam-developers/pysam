@@ -32,7 +32,7 @@ with_md.sam.gz: ex2.bam ex1.fa
 	samtools calmd --output-fmt BAM $^ > $@
 
 #%.bam: %.sam ex1.fa.fai
-#	samtools import ex1.fa.fai $< $@
+#	samtools view -bt ex1.fa.fai -i $@ $<
 
 uncompressed.bam: ex2.sam
 	samtools view -buS $< > $@
@@ -53,7 +53,7 @@ ex1.fa.fai:ex1.fa
 		samtools faidx ex1.fa
 
 ex1.bam:ex1.sam.gz ex1.fa.fai
-		samtools import ex1.fa.fai ex1.sam.gz ex1.bam
+		samtools view -bt ex1.fa.fai -o ex1.bam ex1.sam.gz
 
 %.bam.bai:%.bam
 		samtools index $<
@@ -73,7 +73,7 @@ empty.bam: ex2.sam
 
 example_unmapped_reads_no_sq.bam: example_unmapped_reads_no_sq.sam
 	touch tmp.list
-	samtools import tmp.list $< $@
+	samtools view -bt tmp.list -o $@ $<
 	rm -f tmp.list
 
 example_bai.bam: ex1.bam

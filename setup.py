@@ -159,8 +159,7 @@ HTSLIB_SOURCE = None
 package_list = ['pysam',
                 'pysam.include',
                 'pysam.include.samtools',
-                'pysam.include.bcftools',
-                'pysam.include.samtools.win32']
+                'pysam.include.bcftools']
 package_dirs = {'pysam': 'pysam',
                 'pysam.include.samtools': 'samtools',
                 'pysam.include.bcftools': 'bcftools'}

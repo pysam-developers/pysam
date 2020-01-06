@@ -15,7 +15,7 @@ standalone alignment.
 To try samtools, you may run the following commands:
 
   samtools faidx ex1.fa                 # index the reference FASTA
-  samtools import ex1.fa.fai ex1.sam.gz ex1.bam   # SAM->BAM
+  samtools view -bt ex1.fa.fai -o ex1.bam ex1.sam.gz   # SAM->BAM
   samtools index ex1.bam                # index BAM
   samtools tview ex1.bam ex1.fa         # view alignment
   samtools pileup -cf ex1.fa ex1.bam    # pileup and consensus
