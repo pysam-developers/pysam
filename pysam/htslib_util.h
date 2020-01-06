@@ -5,9 +5,6 @@
 #include "htslib/vcf.h"
 #include "htslib/khash.h"
 
-int hts_useek(htsFile *fp, long uoffset, int where);
-long hts_utell(htsFile *fp);
-
 int hts_set_verbosity(int verbosity);
 int hts_get_verbosity(void);
 
