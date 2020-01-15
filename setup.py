@@ -29,7 +29,7 @@ import subprocess
 import sys
 import sysconfig
 from contextlib import contextmanager
-from setuptools import Extension, setup
+from setuptools import setup
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
     import cython
