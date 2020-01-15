@@ -14,6 +14,7 @@ env:
     - CONDA_PY=2.7
     - CONDA_PY=3.6
     - CONDA_PY=3.7
+    - CONDA_PY=3.8
   global:
     - PYSAM_LINKING_TEST=1
     - TWINE_USERNAME=grepall

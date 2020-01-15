@@ -295,12 +295,15 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                     key, value = re.match(
                         "#define (\S+)\s+(\S+)", line).groups()
                     config_values[key] = value
-            for key in ["ENABLE_PLUGINS",
+            for key in ["ENABLE_GCS",
+                        "ENABLE_PLUGINS",
+                        "ENABLE_S3",
                         "HAVE_COMMONCRYPTO",
-                        "HAVE_GMTIME_R",
                         "HAVE_HMAC",
-                        "HAVE_IRODS",
+                        "HAVE_LIBBZ2",
                         "HAVE_LIBCURL",
+                        "HAVE_LIBDEFLATE",
+                        "HAVE_LIBLZMA",
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
                 print ("# pysam: config_option: {}={}".format(key, config_values[key]))
