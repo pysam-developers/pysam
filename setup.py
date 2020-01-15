@@ -443,7 +443,7 @@ metadata = {
     'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
-    'requires': ['cython (>=0.21)'],
+    'requires': ['cython (>=0.29.12)'],
     'ext_modules': [Extension(**opts) for opts in modules],
     'cmdclass': cmdclass,
     'package_dir': package_dirs,
