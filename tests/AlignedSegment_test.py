@@ -78,6 +78,12 @@ class TestAlignedSegment(ReadTest):
     def testCompare(self):
         '''check comparison functions.'''
         a = self.build_read()
+        b = None
+
+        self.assertFalse(a is b)
+        self.assertFalse(a == b)
+        self.assertEqual(-1, a.compare(b))
+
         b = self.build_read()
 
         self.assertEqual(0, a.compare(b))
