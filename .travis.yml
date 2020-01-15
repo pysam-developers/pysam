@@ -7,7 +7,7 @@ language: c
 stages:
   - test
   - name: deploy
-    # if: tag IS present
+    if: tag IS present
 
 env:
   matrix:
@@ -27,7 +27,7 @@ _cibw_common: &cibw_common
     - set -e
     - cibuildwheel --output-dir dist
     - twine check dist/*
-    # - twine upload --skip-existing dist/*
+    - twine upload --skip-existing dist/*
 
 _cibw_linux: &cibw_linux
   stage: deploy
@@ -58,7 +58,7 @@ matrix:
         - python3 setup.py build_ext --inplace
         - python3 setup.py sdist
         - twine check dist/*
-        # - twine upload --skip-existing dist/*
+        - twine upload --skip-existing dist/*
     - <<: *cibw_linux
       env:
         - CIBW_BUILD="*_x86_64"
