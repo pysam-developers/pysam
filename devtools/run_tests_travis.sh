@@ -17,9 +17,9 @@ WORKDIR=`pwd`
 
 #Install miniconda python
 if [ $TRAVIS_OS_NAME == "osx" ]; then
-	wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O Miniconda3.sh
+	wget -q https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O Miniconda3.sh
 else
-	wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O Miniconda3.sh --no-check-certificate  # Default OS versions are old and have SSL / CERT issues
+	wget -q https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O Miniconda3.sh --no-check-certificate  # Default OS versions are old and have SSL / CERT issues
 fi
 
 bash Miniconda3.sh -b
@@ -40,9 +40,10 @@ conda config --add channels conda-forge
 # NB: we force conda-forge:ncurses due to bioconda/bioconda-recipes#13488
 conda install -y "samtools=1.9" "bcftools=1.9" "htslib=1.9" xz curl bzip2 conda-forge:ncurses
 
-# Need to make C compiler and linker use the anaconda includes and libraries:
-export PREFIX=~/miniconda3/
-export CFLAGS="-I${PREFIX}/include -L${PREFIX}/lib"
+# As HTSLIB_MODE is (defaulted to) 'shared', ensure we don't pick up
+# the external headers from the Conda-installed htslib package.
+mv $CONDA_PREFIX/include/htslib $CONDA_PREFIX/include/htslib-disable
+
 export HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"
 
 echo "show samtools, htslib, and bcftools versions"
