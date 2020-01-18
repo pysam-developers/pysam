@@ -1,4 +1,4 @@
-from utils import PysamDispatcher
+from pysam.utils import PysamDispatcher
 
 BCFTOOLS_DISPATCH = [
     "index",
