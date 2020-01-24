@@ -1482,7 +1482,7 @@ cdef class AlignmentFile(HTSFile):
             end of the genomic region (0-based exclusive). If not given,
             count to the end of the chromosome.
 
-        region : int
+        region : string
             a region string.
 
         quality_threshold : int
