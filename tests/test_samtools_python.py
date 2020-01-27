@@ -44,3 +44,6 @@ def test_bedcov():
         assert len(fields) in [4, 5], \
             ("bedcov should give tab delimited output with 4 or 5 fields. "
              "Split line (%s) gives %d fields." % (fields, len(fields)))
+ 
+def test_print_fastq_str()
+    assert str(pysam.FastqProxy())
