@@ -100,7 +100,7 @@ class SamtoolsTest(unittest.TestCase):
         "cat -o %(out)s_ex1.cat.bam ex1.bam ex1.bam",
         "targetcut ex1.bam > %(out)s_ex1.targetcut",
         "phase ex1.bam > %(out)s_ex1.phase",
-        "import ex1.fa.fai ex1.sam.gz %(out)s_ex1.bam",
+        "view -bt ex1.fa.fai ex1.sam.gz > %(out)s_ex1.bam",
         "bam2fq ex1.bam > %(out)s_ex1.bam2fq",
         # TODO: not the same
         # "pad2unpad -T ex1.fa ex2.bam > %(out)s_ex2.unpad",
