@@ -1,6 +1,6 @@
 @SQ	SN:chr1	LN:1575
 @SQ	SN:chr2	LN:1584
-@PG	ID:bwa	PN:bwa	VN:0.7.9a-r786	CL:bwa mem -p -t 8 -M -R @RG	ID:None	SM:None	/mnt/data/hg19.fa	/mnt/analysis/default-0.fastq
+@PG	ID:bwa	PN:bwa	VN:0.7.9a-r786	CL:bwa mem -p -t 8 -M -R @RG ID:None SM:None /mnt/data/hg19.fa /mnt/analysis/default-0.fastq
 EAS56_57:6:190:289:82	69	chr1	100	0	*	=	100	0	CTCAAGGTTGTTGCAAGGGGGTCTATGTGAACAAA	<<<7<<<;<<<<<<<<8;;<7;4<;<;;;;;94<;	MF:i:192
 EAS56_57:6:190:289:82	137	chr1	100	73	35M	=	100	0	AGGGGTGCAGAGCCGAGTCACGGGGTTGCCAGCAC	<<<<<<;<<<<<<<<<<;<<;<<<<;8<6;9;;2;	MF:i:64	Aq:i:0	NM:i:0	UQ:i:0	H0:i:1	H1:i:0
 EAS51_64:3:190:727:308	99	chr1	103	99	35M	=	263	195	GGTGCAGAGCCGAGTCACGGGGTTGCCAGCACAGG	<<<<<<<<<<<<<<<<<<<<<<<<<<<::<<<844	MF:i:18	Aq:i:73	NM:i:0	UQ:i:0	H0:i:1	H1:i:0
