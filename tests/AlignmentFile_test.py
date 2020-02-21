@@ -177,9 +177,9 @@ class BasicTestBAMFromFetch(unittest.TestCase):
 
     def testPresentOptionalFields(self):
         self.assertEqual(
-            self.reads[0].opt('NM'), 1,
+            self.reads[0].opt('NM'), 22,
             "optional field mismatch in read 1, NM: %s != %s" %
-            (self.reads[0].opt('NM'), 1))
+            (self.reads[0].opt('NM'), 22))
         self.assertEqual(
             self.reads[0].opt('RG'), 'L1',
             "optional field mismatch in read 1, RG: %s != %s" %
@@ -205,7 +205,7 @@ class BasicTestBAMFromFetch(unittest.TestCase):
 
     def testTags(self):
         self.assertEqual(self.reads[0].tags,
-                         [('NM', 1), ('RG', 'L1'),
+                         [('NM', 22), ('RG', 'L1'),
                           ('PG', 'P1'), ('XT', 'U')])
         self.assertEqual(self.reads[1].tags,
                          [('MF', 18), ('RG', 'L2'),
