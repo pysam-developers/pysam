@@ -747,6 +747,14 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     if s == NULL:
         raise ValueError(
             "could not allocate sequence of length %i" % max_len)
+    
+    cdef int num_deletions = 0
+    for k from 0 <= k < pysam_get_n_cigar(src):
+        op = cigar_p[k] & BAM_CIGAR_MASK
+        if op == BAM_CDEL:
+            num_deletions += 1
+    cdef int * deletion_lengths = <int*>calloc(num_deletions, sizeof(int))
+    cdef int deletion_idx = 0
 
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
@@ -757,6 +765,8 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 r_idx += 1
                 s_idx += 1
         elif op == BAM_CDEL:
+            deletion_lengths[deletion_idx] = l
+            deletion_idx += 1
             for i from 0 <= i < l:
                 s[s_idx] = '-'
                 s_idx += 1
@@ -799,6 +809,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             "Invalid MD tag: MD length {} mismatch with CIGAR length {} and {} insertions".format(
             md_len, max_len, insertions))
 
+    deletion_idx = 0
     while md_tag[md_idx] != 0:
         # c is numerical
         if md_tag[md_idx] >= 48 and md_tag[md_idx] <= 57:
@@ -818,12 +829,16 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             r_idx += nmatches
             nmatches = 0
             if md_tag[md_idx] == '^':
+                # deletion, but how many?
+                deletion_length = deletion_lengths[deletion_idx]
+                deletion_idx += 1
                 md_idx += 1
-                while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
+                while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90 and deletion_length > 0:
                     # assert s[s_idx] == '-'
                     s[s_idx] = md_tag[md_idx]
                     s_idx += 1
                     md_idx += 1
+                    deletion_length -= 1
             else:
                 # save mismatch
                 # enforce lower case
@@ -834,6 +849,8 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 s_idx += 1
                 r_idx += 1
                 md_idx += 1
+
+    free(deletion_lengths)
 
     # save matches up to this point, skipping insertions
     for x from 0 <= x < nmatches:
