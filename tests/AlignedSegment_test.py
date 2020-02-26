@@ -1067,6 +1067,14 @@ class TestTags(ReadTest):
             "AAAAcTTAA",
             a.get_reference_sequence())
 
+
+        a.cigarstring = "11M3I3D3M2I1M2D2M2I3M1D3M1I7M3I3D7M1I2M1D2M"
+        a.set_tag("MD", "3C3T3^GGG4^TT1T3^AAAA6A^AAAAAAA5^A2")
+        ta.query_sequence = "AAAAAAAAAAACCCAAAAAAAAAAAAAGGGTAAAAAACCCCTTTTAAAAAAAA"
+        self.assertEqual(
+            "AAAcAAAtAAAGGGAAAATTAtAAAAaaaAAAAAAaAAAaaaaAAAAAAAA",
+            a.get_reference_sequence())
+
     def testArrayTags(self):
 
         r = self.build_read()
