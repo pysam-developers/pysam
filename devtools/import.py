@@ -1,27 +1,11 @@
 #################################################################
-# Importing samtools and htslib
+# Importing samtools, bcftools, and htslib
 #
-# For htslib, simply copy the whole release tar-ball
-# into the directory "htslib" and recreate the file version.h
+# For each package PKG:
 #
-# rm -rf htslib
-# mv download/htslib htslib
-# git checkout -- htslib/version.h
-# Edit the file htslib/version.h to set the right version number.
-#
-# For samtools, type:
-# rm -rf samtools
-# python import.py samtools download/samtools
-# git checkout -- samtools/version.h
-#
-# Manually, then:
-# modify config.h to set compatibility flags
-#
-# For bcftools, type:
-# rm -rf bcftools
-# python import.py bcftools download/bedtools
-# git checkout -- bcftools/version.h
-# rm -rf bedtools/test bedtools/plugins
+# rm -rf PKG
+# python import.py PKG path/to/download/PKG-X.Y
+# git checkout -- PKG/version.h
 
 import fnmatch
 import os
@@ -34,23 +18,19 @@ import hashlib
 
 EXCLUDE = {
     "samtools": (
+        "test", "misc",
         "razip.c",
         "bgzip.c",
         "main.c",
         "calDepth.c",
         "bam2bed.c",
-        "wgsim.c",
         "bam_tview.c",
         "bam_tview.h",
         "bam_tview_html.c",
         "bam_tview_curses.c",
-        "md5fa.c",
-        "md5sum-lite.c",
-        "maq2sam.c",
         "bamcheck.c",
         "chk_indel.c",
         "vcf-miniview.c",
-        "hfile_irods.c",  # requires irods library
     ),
     "bcftools": (
         "test", "plugins", "peakfit.c",
@@ -60,7 +40,8 @@ EXCLUDE = {
         "polysomy.c"),
     "htslib": (
         'htslib/tabix.c', 'htslib/bgzip.c',
-        'htslib/htsfile.c', 'htslib/hfile_irods.c'),
+        'htslib/htsfile.c',
+        "test"),
 }
 
 
@@ -71,13 +52,21 @@ MAIN = {
 
 
 
-def locate(pattern, root=os.curdir):
-    '''Locate all files matching supplied filename pattern in and below
-    supplied root directory.
+def locate(pattern, root=os.curdir, exclude=[], exclude_htslib=False):
+    '''Locate all files matching supplied filename pattern (but not listed
+    in exclude) in and below the supplied root directory. Omit any files under
+    directories listed in exclude or (if exclude_htslib=True) matching /htslib-*/.
     '''
     for path, dirs, files in os.walk(os.path.abspath(root)):
         for filename in fnmatch.filter(files, pattern):
-            yield os.path.join(path, filename)
+            if filename not in exclude:
+                yield os.path.join(path, filename)
+
+        for dirname in exclude:
+            if dirname in dirs: dirs.remove(dirname)
+        if exclude_htslib:
+            for dirname in [d for d in dirs if re.match(r"htslib-", d)]:
+                dirs.remove(dirname)
 
 
 def _update_pysam_files(cf, destdir):
@@ -149,16 +138,15 @@ if len(sys.argv) >= 1:
         raise IOError(
             "source directory `%s` does not exist." % srcdir)
 
-    cfiles = locate("*.c", srcdir)
-    hfiles = locate("*.h", srcdir)
+    cfiles = locate("*.c", srcdir, exclude=exclude, exclude_htslib=True)
+    hfiles = locate("*.h", srcdir, exclude=exclude, exclude_htslib=True)
     mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir))
-    
-    # remove unwanted files and htslib subdirectory.
-    cfiles = [x for x in cfiles if os.path.basename(x) not in exclude
-              and not re.search("htslib-", x)]
 
-    hfiles = [x for x in hfiles if os.path.basename(x) not in exclude
-              and not re.search("htslib-", x)]
+    if dest == "htslib":
+        # Add build files, including *.ac *.in *.mk *.m4
+        mfiles = itertools.chain(mfiles, locate("Makefile", srcdir),
+                                 locate("configure", srcdir),
+                                 locate("*.[aim][cnk4]", srcdir))
 
     ncopied = 0
 
@@ -203,10 +191,12 @@ if len(sys.argv) >= 1:
     sys.stdout.write(
         "installed latest source code from %s: "
         "%i files copied\n" % (srcdir, ncopied))
-    # redirect stderr to pysamerr and replace bam.h with a stub.
-    sys.stdout.write("applying stderr redirection\n")
 
-    _update_pysam_files(cf, destdir)
+    if dest in MAIN:
+        # redirect stderr to pysamerr and replace bam.h with a stub.
+        sys.stdout.write("applying stderr redirection\n")
+
+        _update_pysam_files(cf, destdir)
 
     sys.exit(0)
 
