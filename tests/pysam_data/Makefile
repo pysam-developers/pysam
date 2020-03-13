@@ -3,6 +3,7 @@ BAM=$(SAM:%.sam=%.bam)
 BAI=$(BAM:%.bam=%.bam.bai)
 CRAM=ex1.cram ex2.cram ex3.cram
 CRAI=$(CRAM:%.cram=%.cram.crai)
+NO_PG:=$(findstring --no-PG,$(shell samtools view))
 
 # ex2.bam - bam file without index
 
@@ -26,22 +27,22 @@ all: ex1.pileup.gz \
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
-	samtools view -h ex1.bam | gzip > ex2.sam.gz
+	samtools view $(NO_PG) -h ex1.bam | gzip > ex2.sam.gz
 
 with_md.sam.gz: ex2.bam ex1.fa
-	samtools calmd --output-fmt BAM $^ > $@
+	samtools calmd $(NO_PG) --output-fmt BAM $^ > $@
 
 #%.bam: %.sam ex1.fa.fai
-#	samtools import ex1.fa.fai $< $@
+#	samtools view $(NO_PG) -bo $@ -t ex1.fa.fai $<
 
 uncompressed.bam: ex2.sam
-	samtools view -buS $< > $@
+	samtools view $(NO_PG) -buS $< > $@
 
 %.bam: %.sam
-	samtools view -bS $< > $@
+	samtools view $(NO_PG) -bS $< > $@
 
 %.cram: %.sam
-	samtools view -bC -T ex1.fa $< > $@
+	samtools view $(NO_PG) -bC -T ex1.fa $< > $@
 
 %.cram.crai: %.cram
 	samtools index $<
@@ -53,7 +54,7 @@ ex1.fa.fai:ex1.fa
 		samtools faidx ex1.fa
 
 ex1.bam:ex1.sam.gz ex1.fa.fai
-		samtools import ex1.fa.fai ex1.sam.gz ex1.bam
+		samtools view $(NO_PG) -bo ex1.bam -t ex1.fa.fai ex1.sam.gz
 
 %.bam.bai:%.bam
 		samtools index $<
@@ -69,11 +70,11 @@ ex1_csi.bam: ex1.bam
 	samtools index -c ex1_csi.bam
 
 empty.bam: ex2.sam
-	grep "^@" $< | samtools view -Sb - > $@
+	grep "^@" $< | samtools view $(NO_PG) -Sb - > $@
 
 example_unmapped_reads_no_sq.bam: example_unmapped_reads_no_sq.sam
 	touch tmp.list
-	samtools import tmp.list $< $@
+	samtools view $(NO_PG) -bo $@ -t tmp.list $<
 	rm -f tmp.list
 
 example_bai.bam: ex1.bam

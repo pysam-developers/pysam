@@ -177,9 +177,9 @@ class BasicTestBAMFromFetch(unittest.TestCase):
 
     def testPresentOptionalFields(self):
         self.assertEqual(
-            self.reads[0].opt('NM'), 1,
+            self.reads[0].opt('NM'), 22,
             "optional field mismatch in read 1, NM: %s != %s" %
-            (self.reads[0].opt('NM'), 1))
+            (self.reads[0].opt('NM'), 22))
         self.assertEqual(
             self.reads[0].opt('RG'), 'L1',
             "optional field mismatch in read 1, RG: %s != %s" %
@@ -205,7 +205,7 @@ class BasicTestBAMFromFetch(unittest.TestCase):
 
     def testTags(self):
         self.assertEqual(self.reads[0].tags,
-                         [('NM', 1), ('RG', 'L1'),
+                         [('NM', 22), ('RG', 'L1'),
                           ('PG', 'P1'), ('XT', 'U')])
         self.assertEqual(self.reads[1].tags,
                          [('MF', 18), ('RG', 'L2'),
@@ -1382,21 +1382,6 @@ class TestDeNovoConstruction(unittest.TestCase):
         os.unlink(tmpfilename)
 
 
-class TestDeNovoConstructionUserTags(TestDeNovoConstruction):
-
-    '''test de novo construction with a header that contains lower-case tags.'''
-
-    header = {'HD': {'VN': '1.0'},
-              'SQ': [{'LN': 1575, 'SN': 'chr1'},
-                     {'LN': 1584, 'SN': 'chr2'}],
-              'x1': {'A': 2, 'B': 5},
-              'x3': {'A': 6, 'B': 5},
-              'x2': {'A': 4, 'B': 5}}
-
-    bamfile = os.path.join(BAM_DATADIR, "example_user_header.bam")
-    samfile = os.path.join(BAM_DATADIR, "example_user_header.sam")
-
-
 class TestEmptyHeader(unittest.TestCase):
     '''see issue 84.'''
 
@@ -1454,7 +1439,7 @@ class TestHeaderWithProgramOptions(unittest.TestCase):
                      'ID': 'bwa',
                      'VN': '0.7.9a-r786',
                      'CL': 'bwa mem -p -t 8 -M -R '
-                     '@RG\tID:None\tSM:None\t/mnt/data/hg19.fa\t'
+                     '@RG ID:None SM:None /mnt/data/hg19.fa '
                      '/mnt/analysis/default-0.fastq'}]})
 
 
