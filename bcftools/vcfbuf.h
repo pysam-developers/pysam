@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2017 Genome Research Ltd.
+   Copyright (c) 2017-2019 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -44,6 +44,7 @@ typedef enum
     VCFBUF_NSITES,          // leave at max this many sites in the window
     VCFBUF_AF_TAG,          // use this INFO tag with LD_NSITES
     VCFBUF_OVERLAP_WIN,     // keep only overlapping variants in the window
+    VCFBUF_RMDUP,           // remove duplicate sites (completely)
 }
 vcfbuf_opt_t;
 
@@ -63,6 +64,18 @@ void vcfbuf_destroy(vcfbuf_t *buf);
  *  @swap:  if set, do not create a copy, but return a substitute
  */
 bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec, int swap);
+
+/*
+ *  vcfbuf_peek() - return pointer to i-th record in the buffer but do not remove it from the buffer
+ *  @idx:  0-based index to buffered lines
+ */
+bcf1_t *vcfbuf_peek(vcfbuf_t *buf, int idx);
+
+/*
+ *  vcfbuf_remove() - return pointer to i-th record in the buffer and remove it from the buffer
+ *  @idx:  0-based index to buffered lines
+ */
+bcf1_t *vcfbuf_remove(vcfbuf_t *buf, int idx);
 
 bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all);
 

@@ -156,7 +156,7 @@ bcf1_t *gvcf_write(gvcf_t *gvcf, htsFile *fh, bcf_hdr_t *hdr, bcf1_t *rec, int i
         if ( gvcf->npl>0 )
             bcf_update_format_int32(hdr, gvcf->line, "PL", gvcf->pl, gvcf->npl);
         bcf_update_format_int32(hdr, gvcf->line, "DP", gvcf->dp, nsmpl);
-        bcf_write1(fh, hdr, gvcf->line);
+        if ( bcf_write1(fh, hdr, gvcf->line)!=0 ) error("[%s] Error: failed to write the record\n", __func__);
         gvcf->prev_range = 0;
         gvcf->rid  = -1;
         gvcf->npl  = 0;

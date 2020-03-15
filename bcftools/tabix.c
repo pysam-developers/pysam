@@ -27,6 +27,7 @@ THE SOFTWARE.  */
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <strings.h>
 #include <htslib/bgzf.h>
 #include <htslib/tbx.h>
 
@@ -84,7 +85,6 @@ int main_tabix(int argc, char *argv[])
         {
             // auto-detect file type by file name
             int l = strlen(argv[optind]);
-            int strcasecmp(const char *s1, const char *s2);
             if (l>=7 && strcasecmp(argv[optind]+l-7, ".gff.gz") == 0) conf = tbx_conf_gff;
             else if (l>=7 && strcasecmp(argv[optind]+l-7, ".bed.gz") == 0) conf = tbx_conf_bed;
             else if (l>=7 && strcasecmp(argv[optind]+l-7, ".sam.gz") == 0) conf = tbx_conf_sam;

@@ -2,7 +2,7 @@
 
 /*  bam_rmdupse.c -- duplicate read detection for unpaired reads.
 
-    Copyright (C) 2009, 2015 Genome Research Ltd.
+    Copyright (C) 2009, 2015, 2016, 2019 Genome Research Ltd.
     Portions copyright (C) 2009 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -86,7 +86,8 @@ static inline elem_t *push_queue(queue_t *queue, const bam1_t *b, int endpos, in
     p->discarded = 0;
     p->endpos = endpos; p->score = score;
     if (p->b == 0) p->b = bam_init1();
-    bam_copy1(p->b, b);
+    if (!p->b) { perror(NULL); exit(EXIT_FAILURE); }
+    if (bam_copy1(p->b, b) == NULL) { perror(NULL); exit(EXIT_FAILURE); }
     return p;
 }
 
@@ -98,7 +99,7 @@ static void clear_besthash(besthash_t *h, int32_t pos)
             kh_del(best, h, k);
 }
 
-static int dump_alignment(samFile *out, bam_hdr_t *hdr,
+static int dump_alignment(samFile *out, sam_hdr_t *hdr,
                           queue_t *queue, int32_t pos, khash_t(lib) *h)
 {
     if (queue->size > QUEUE_CLEAR_SIZE || pos == MAX_POS) {
@@ -127,7 +128,7 @@ static int dump_alignment(samFile *out, bam_hdr_t *hdr,
     return 0;
 }
 
-int bam_rmdupse_core(samFile *in, bam_hdr_t *hdr, samFile *out, int force_se)
+int bam_rmdupse_core(samFile *in, sam_hdr_t *hdr, samFile *out, int force_se)
 {
     bam1_t *b = NULL;
     queue_t *queue = NULL;
@@ -181,7 +182,9 @@ int bam_rmdupse_core(samFile *in, bam_hdr_t *hdr, samFile *out, int force_se)
                         kh_val(h, k) = push_queue(queue, b, endpos, score);
                     } else { // replace
                         p->score = score; p->endpos = endpos;
-                        bam_copy1(p->b, b);
+                        if (bam_copy1(p->b, b) == NULL) {
+                            perror(NULL); exit(EXIT_FAILURE);
+                        }
                     }
                 } // otherwise, discard the alignment
             } else kh_val(h, k) = push_queue(queue, b, endpos, score);

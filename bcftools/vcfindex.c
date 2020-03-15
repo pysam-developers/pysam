@@ -49,7 +49,7 @@ static void usage(void)
     fprintf(stderr, "    -m, --min-shift INT      set minimal interval size for CSI indices to 2^INT [14]\n");
     fprintf(stderr, "    -o, --output-file FILE   optional output index file name\n");
     fprintf(stderr, "    -t, --tbi                generate TBI-format index for VCF files\n");
-    fprintf(stderr, "        --threads            sets the number of threads [0]\n");
+    fprintf(stderr, "        --threads INT        use multithreading with INT worker threads [0]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Stats options:\n");
     fprintf(stderr, "    -n, --nrecords       print number of records based on existing index file\n");
@@ -112,7 +112,7 @@ int vcf_index_stats(char *fname, int stats)
     }
     if (stats&2) printf("%" PRIu64 "\n", sum);
     free(seq);
-    hts_close(fp);
+    if ( hts_close(fp)!=0 ) error("[%s] Error: close failed\n", __func__);
     bcf_hdr_destroy(hdr);
     if (tbx)
         tbx_destroy(tbx);

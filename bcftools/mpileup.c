@@ -1,6 +1,6 @@
 /*  mpileup.c -- mpileup subcommand. Previously bam_plcmd.c from samtools
 
-    Copyright (C) 2008-2017 Genome Research Ltd.
+    Copyright (C) 2008-2018 Genome Research Ltd.
     Portions copyright (C) 2009-2012 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -31,6 +31,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <string.h>
 #include <strings.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <getopt.h>
@@ -222,8 +223,8 @@ static int mplp_func(void *data, bam1_t *b)
         if (ma->conf->fai && b->core.tid >= 0) {
             has_ref = mplp_get_ref(ma, b->core.tid, &ref, &ref_len);
             if (has_ref && ref_len <= b->core.pos) { // exclude reads outside of the reference sequence
-                fprintf(stderr,"[%s] Skipping because %d is outside of %d [ref:%d]\n",
-                        __func__, b->core.pos, ref_len, b->core.tid);
+                fprintf(stderr,"[%s] Skipping because %"PRId64" is outside of %d [ref:%d]\n",
+                        __func__, (int64_t) b->core.pos, ref_len, b->core.tid);
                 continue;
             }
         } else {
@@ -246,13 +247,28 @@ static int mplp_func(void *data, bam1_t *b)
 
 // Called once per new bam added to the pileup.
 // We cache sample information here so we don't have to keep recomputing this
-// on each and every pileup column.
+// on each and every pileup column. If FMT/SCR annotation is requested, a flag
+// is set to indicate the presence of a soft clip.
 //
 // Cd is an arbitrary block of data we can write into, which ends up in
-// the pileup structures.  We stash the sample ID there.
-static int pileup_constructor(void *data, const bam1_t *b, bam_pileup_cd *cd) {
+// the pileup structures. We stash the sample ID there:
+//      has_soft_clip .. cd->i & 1
+//      sample_id     .. cd->i >> 1
+static int pileup_constructor(void *data, const bam1_t *b, bam_pileup_cd *cd)
+{
     mplp_aux_t *ma = (mplp_aux_t *)data;
-    cd->i = bam_smpl_get_sample_id(ma->conf->bsmpl, ma->bam_id, (bam1_t *)b);
+    cd->i = bam_smpl_get_sample_id(ma->conf->bsmpl, ma->bam_id, (bam1_t *)b) << 1;
+    if ( ma->conf->fmt_flag & (B2B_INFO_SCR|B2B_FMT_SCR) )
+    {
+        int i;
+        for (i=0; i<b->core.n_cigar; i++)
+        {
+            int cig = bam_get_cigar(b)[i] & BAM_CIGAR_MASK;
+            if ( cig!=BAM_CSOFT_CLIP ) continue;
+            cd->i |= 1;
+            break;
+        }
+    }
     return 0;
 }
 
@@ -265,7 +281,7 @@ static void group_smpl(mplp_pileup_t *m, bam_smpl_t *bsmpl, int n, int *n_plp, c
         for (j = 0; j < n_plp[i]; ++j)  // iterate over all reads available at this position
         {
             const bam_pileup1_t *p = plp[i] + j;
-            int id = p->cd.i;
+            int id = PLP_SAMPLE_ID(p->cd.i);
             if (m->n_plp[id] == m->m_plp[id]) 
             {
                 m->m_plp[id] = m->m_plp[id]? m->m_plp[id]<<1 : 8;
@@ -280,7 +296,7 @@ static void flush_bcf_records(mplp_conf_t *conf, htsFile *fp, bcf_hdr_t *hdr, bc
 {
     if ( !conf->gvcf )
     {
-        if ( rec ) bcf_write1(fp, hdr, rec);
+        if ( rec && bcf_write1(fp, hdr, rec)!=0 ) error("[%s] Error: failed to write the record to %s\n", __func__,conf->output_fname?conf->output_fname:"standard output");
         return;
     }
 
@@ -298,7 +314,7 @@ static void flush_bcf_records(mplp_conf_t *conf, htsFile *fp, bcf_hdr_t *hdr, bc
         if ( rec->d.allele[1][0]=='<' && rec->d.allele[1][1]=='*' && rec->d.allele[1][2]=='>' ) is_ref = 1;
     }
     rec = gvcf_write(conf->gvcf, fp, hdr, rec, is_ref);
-    if ( rec ) bcf_write1(fp,hdr,rec);
+    if ( rec && bcf_write1(fp,hdr,rec)!=0 ) error("[%s] Error: failed to write the record to %s\n", __func__,conf->output_fname?conf->output_fname:"standard output");
 }
 
 static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
@@ -310,7 +326,7 @@ static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
 
     while ( (ret=bam_mplp_auto(conf->iter, &tid, &pos, conf->n_plp, conf->plp)) > 0) 
     {
-        if ( end && (pos<beg || pos>end) ) continue;
+        if ( pos<beg || pos>end ) continue;
         if ( conf->bed && tid >= 0 )
         {
             int overlap = regidx_overlap(conf->bed, hdr->target_name[tid], pos, pos, NULL);
@@ -521,11 +537,13 @@ static int mpileup(mplp_conf_t *conf)
 
     bcf_hdr_append(conf->bcf_hdr,"##ALT=<ID=*,Description=\"Represents allele(s) other than observed.\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=INDEL,Number=0,Type=Flag,Description=\"Indicates that the variant is an INDEL.\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IDV,Number=1,Type=Integer,Description=\"Maximum number of reads supporting an indel\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IMF,Number=1,Type=Float,Description=\"Maximum fraction of reads supporting an indel\">");
+    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IDV,Number=1,Type=Integer,Description=\"Maximum number of raw reads supporting an indel\">");
+    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IMF,Number=1,Type=Float,Description=\"Maximum fraction of raw reads supporting an indel\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Raw read depth\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=VDB,Number=1,Type=Float,Description=\"Variant Distance Bias for filtering splice-site artefacts in RNA-seq data (bigger is better)\",Version=\"3\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Read Position Bias (bigger is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_VDB )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=VDB,Number=1,Type=Float,Description=\"Variant Distance Bias for filtering splice-site artefacts in RNA-seq data (bigger is better)\",Version=\"3\">");
+    if ( conf->fmt_flag&B2B_INFO_RPB )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Read Position Bias (bigger is better)\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality Bias (bigger is better)\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=BQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Base Quality Bias (bigger is better)\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQSB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality vs Strand Bias (bigger is better)\">");
@@ -553,17 +571,21 @@ static int mpileup(mplp_conf_t *conf)
     if ( conf->fmt_flag&B2B_FMT_SP )
         bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=SP,Number=1,Type=Integer,Description=\"Phred-scaled strand bias P-value\">");
     if ( conf->fmt_flag&B2B_FMT_AD )
-        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=AD,Number=R,Type=Integer,Description=\"Allelic depths\">");
+        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=AD,Number=R,Type=Integer,Description=\"Allelic depths (high-quality bases)\">");
     if ( conf->fmt_flag&B2B_FMT_ADF )
-        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=ADF,Number=R,Type=Integer,Description=\"Allelic depths on the forward strand\">");
+        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=ADF,Number=R,Type=Integer,Description=\"Allelic depths on the forward strand (high-quality bases)\">");
     if ( conf->fmt_flag&B2B_FMT_ADR )
-        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=ADR,Number=R,Type=Integer,Description=\"Allelic depths on the reverse strand\">");
+        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=ADR,Number=R,Type=Integer,Description=\"Allelic depths on the reverse strand (high-quality bases)\">");
     if ( conf->fmt_flag&B2B_INFO_AD )
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=AD,Number=R,Type=Integer,Description=\"Total allelic depths\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=AD,Number=R,Type=Integer,Description=\"Total allelic depths (high-quality bases)\">");
     if ( conf->fmt_flag&B2B_INFO_ADF )
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=ADF,Number=R,Type=Integer,Description=\"Total allelic depths on the forward strand\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=ADF,Number=R,Type=Integer,Description=\"Total allelic depths on the forward strand (high-quality bases)\">");
+    if ( conf->fmt_flag&B2B_INFO_SCR )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=SCR,Number=1,Type=Integer,Description=\"Number of soft-clipped reads (at high-quality bases)\">");
+    if ( conf->fmt_flag&B2B_FMT_SCR )
+        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=SCR,Number=1,Type=Integer,Description=\"Per-sample number of soft-clipped reads (at high-quality bases)\">");
     if ( conf->fmt_flag&B2B_INFO_ADR )
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=ADR,Number=R,Type=Integer,Description=\"Total allelic depths on the reverse strand\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=ADR,Number=R,Type=Integer,Description=\"Total allelic depths on the reverse strand (high-quality bases)\">");
     if ( conf->gvcf )
         gvcf_update_header(conf->gvcf, conf->bcf_hdr);
 
@@ -571,7 +593,7 @@ static int mpileup(mplp_conf_t *conf)
     const char **smpl = bam_smpl_get_samples(conf->bsmpl, &nsmpl);
     for (i=0; i<nsmpl; i++)
         bcf_hdr_add_sample(conf->bcf_hdr, smpl[i]);
-    bcf_hdr_write(conf->bcf_fp, conf->bcf_hdr);
+    if ( bcf_hdr_write(conf->bcf_fp, conf->bcf_hdr)!=0 ) error("[%s] Error: failed to write the header to %s\n",__func__,conf->output_fname?conf->output_fname:"standard output");
 
     conf->bca = bcf_call_init(-1., conf->min_baseQ);
     conf->bcr = (bcf_callret1_t*) calloc(nsmpl, sizeof(bcf_callret1_t));
@@ -579,6 +601,7 @@ static int mpileup(mplp_conf_t *conf)
     conf->bca->min_frac = conf->min_frac;
     conf->bca->min_support = conf->min_support;
     conf->bca->per_sample_flt = conf->flag & MPLP_PER_SAMPLE;
+    conf->bca->fmt_flag = conf->fmt_flag;
 
     conf->bc.bcf_hdr = conf->bcf_hdr;
     conf->bc.n  = nsmpl;
@@ -599,11 +622,14 @@ static int mpileup(mplp_conf_t *conf)
                 conf->bcr[i].ADF = conf->bc.ADF + (i+1)*B2B_MAX_ALLELES;
             }
         }
+        if ( conf->fmt_flag&(B2B_INFO_SCR|B2B_FMT_SCR) )
+            conf->bc.SCR = (int32_t*) malloc((nsmpl+1)*sizeof(*conf->bc.SCR));
     }
 
     // init mpileup
     conf->iter = bam_mplp_init(conf->nfiles, mplp_func, (void**)conf->mplp_data);
     if ( conf->flag & MPLP_SMART_OVERLAPS ) bam_mplp_init_overlaps(conf->iter);
+    fprintf(stderr, "[%s] maximum number of reads per input file set to -d %d\n",  __func__, conf->max_depth);
     if ( (double)conf->max_depth * conf->nfiles > 1<<20)
         fprintf(stderr, "Warning: Potential memory hog, up to %.0fM reads in the pileup!\n", (double)conf->max_depth*conf->nfiles);
     if ( (double)conf->max_depth * conf->nfiles / nsmpl < 250 )
@@ -623,7 +649,7 @@ static int mpileup(mplp_conf_t *conf)
             if ( ireg++ > 0 )
             {
                 conf->buf.l = 0;
-                ksprintf(&conf->buf,"%s:%u-%u",conf->reg_itr->seq,conf->reg_itr->beg,conf->reg_itr->end);
+                ksprintf(&conf->buf,"%s:%u-%u",conf->reg_itr->seq,conf->reg_itr->beg+1,conf->reg_itr->end+1);
 
                 for (i=0; i<conf->nfiles; i++) 
                 {
@@ -647,7 +673,7 @@ static int mpileup(mplp_conf_t *conf)
         while ( regitr_loop(conf->reg_itr) );
     }
     else
-        mpileup_reg(conf,0,0);
+        mpileup_reg(conf,0,UINT32_MAX);
 
     flush_bcf_records(conf, conf->bcf_fp, conf->bcf_hdr, NULL);
 
@@ -656,13 +682,14 @@ static int mpileup(mplp_conf_t *conf)
     bcf_destroy1(conf->bcf_rec);
     if (conf->bcf_fp)
     {
-        hts_close(conf->bcf_fp);
+        if ( hts_close(conf->bcf_fp)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,conf->output_fname);
         bcf_hdr_destroy(conf->bcf_hdr);
         bcf_call_destroy(conf->bca);
         free(conf->bc.PL);
         free(conf->bc.DP4);
         free(conf->bc.ADR);
         free(conf->bc.ADF);
+        free(conf->bc.SCR);
         free(conf->bc.fmt_arr);
         free(conf->bcr);
     }
@@ -738,7 +765,7 @@ int read_file_list(const char *file_list,int *n,char **argv[])
         files = (char**) realloc(files,nfiles*sizeof(char*));
         files[nfiles-1] = strdup(buf);
     }
-    fclose(fh);
+    if ( fclose(fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,file_list);
     if ( !nfiles )
     {
         fprintf(stderr,"No files read from %s\n", file_list);
@@ -765,6 +792,8 @@ int parse_format_flag(const char *str)
         else if ( !strcasecmp(tags[i],"AD") || !strcasecmp(tags[i],"FORMAT/AD") || !strcasecmp(tags[i],"FMT/AD") ) flag |= B2B_FMT_AD;
         else if ( !strcasecmp(tags[i],"ADF") || !strcasecmp(tags[i],"FORMAT/ADF") || !strcasecmp(tags[i],"FMT/ADF") ) flag |= B2B_FMT_ADF;
         else if ( !strcasecmp(tags[i],"ADR") || !strcasecmp(tags[i],"FORMAT/ADR") || !strcasecmp(tags[i],"FMT/ADR") ) flag |= B2B_FMT_ADR;
+        else if ( !strcasecmp(tags[i],"SCR") || !strcasecmp(tags[i],"FORMAT/SCR") || !strcasecmp(tags[i],"FMT/SCR") ) flag |= B2B_FMT_SCR;
+        else if ( !strcasecmp(tags[i],"INFO/SCR") ) flag |= B2B_INFO_SCR;
         else if ( !strcasecmp(tags[i],"INFO/AD") ) flag |= B2B_INFO_AD;
         else if ( !strcasecmp(tags[i],"INFO/ADF") ) flag |= B2B_INFO_ADF;
         else if ( !strcasecmp(tags[i],"INFO/ADR") ) flag |= B2B_INFO_ADR;
@@ -779,6 +808,9 @@ int parse_format_flag(const char *str)
     return flag;
 }
 
+// todo: make it possible to turn off some annotations or change the defaults,
+//      specifically RPB, VDB, MWU, SGB tests. It would be good to do some
+//      benchmarking first to see if it's worth it.
 static void list_annotations(FILE *fp)
 {
     fprintf(fp,
@@ -790,12 +822,14 @@ static void list_annotations(FILE *fp)
 "  FORMAT/ADR .. Allelic depths on the reverse strand (Number=R,Type=Integer)\n"
 "  FORMAT/DP  .. Number of high-quality bases (Number=1,Type=Integer)\n"
 "  FORMAT/SP  .. Phred-scaled strand bias P-value (Number=1,Type=Integer)\n"
+"  FORMAT/SCR .. Number of soft-clipped reads (Number=1,Type=Integer)\n"
 "\n"
 "INFO annotation tags available:\n"
 "\n"
 "  INFO/AD  .. Total allelic depth (Number=R,Type=Integer)\n"
 "  INFO/ADF .. Total allelic depths on the forward strand (Number=R,Type=Integer)\n"
 "  INFO/ADR .. Total allelic depths on the reverse strand (Number=R,Type=Integer)\n"
+"  INFO/SCR .. Number of soft-clipped reads (Number=1,Type=Integer)\n"
 "\n");
 }
 
@@ -818,7 +852,7 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
 "  -b, --bam-list FILE     list of input BAM filenames, one per line\n"
 "  -B, --no-BAQ            disable BAQ (per-Base Alignment Quality)\n"
 "  -C, --adjust-MQ INT     adjust mapping quality; recommended:50, disable:0 [0]\n"
-"  -d, --max-depth INT     max per-file depth; avoids excessive memory usage [%d]\n", mplp->max_depth);
+"  -d, --max-depth INT     max raw per-file depth; avoids excessive memory usage [%d]\n", mplp->max_depth);
     fprintf(fp,
 "  -E, --redo-BAQ          recalculate BAQ on the fly, ignore existing BQs\n"
 "  -f, --fasta-ref FILE    faidx indexed reference sequence file\n"
@@ -850,7 +884,7 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
 "  -o, --output FILE       write output to FILE [standard output]\n"
 "  -O, --output-type TYPE  'b' compressed BCF; 'u' uncompressed BCF;\n"
 "                          'z' compressed VCF; 'v' uncompressed VCF [v]\n"
-"      --threads INT       number of extra output compression threads [0]\n"
+"      --threads INT       use multithreading with INT worker threads [0]\n"
 "\n"
 "SNP/INDEL genotype likelihoods options:\n"
 "  -e, --ext-prob INT      Phred-scaled gap extension seq error probability [%d]\n", mplp->extQ);
@@ -870,6 +904,10 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
 "  -P, --platforms STR     comma separated list of platforms for indels [all]\n"
 "\n"
 "Notes: Assuming diploid individuals.\n"
+"\n"
+"Example:\n"
+"   # See also http://samtools.github.io/bcftools/howtos/variant-calling.html\n"
+"   bcftools mpileup -f reference.fa alignments.bam | bcftools call -mv -Ob -o calls.bcf\n"
 "\n");
 
     free(tmp_require);
@@ -897,6 +935,7 @@ int bam_mpileup(int argc, char *argv[])
     mplp.record_cmd_line = 1;
     mplp.n_threads = 0;
     mplp.bsmpl = bam_smpl_init();
+    mplp.fmt_flag = B2B_INFO_VDB|B2B_INFO_RPB;    // the default to be changed in future, see also parse_format_flag()
 
     static const struct option lopts[] =
     {
@@ -1049,7 +1088,7 @@ int bam_mpileup(int argc, char *argv[])
 
     if ( mplp.gvcf && !(mplp.fmt_flag&B2B_FMT_DP) )
     {
-        fprintf(stderr,"[warning] The -t DP option is required with --gvcf, switching on.\n");
+        fprintf(stderr,"[warning] The -a DP option is required with --gvcf, switching on.\n");
         mplp.fmt_flag |= B2B_FMT_DP;
     }
     if ( mplp.flag&(MPLP_BCF|MPLP_VCF|MPLP_NO_COMP) )

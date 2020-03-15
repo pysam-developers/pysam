@@ -30,7 +30,10 @@ THE SOFTWARE.  */
 #include <errno.h>
 #include <math.h>
 #include <sys/types.h>
+#include <inttypes.h>
+#ifndef _WIN32
 #include <pwd.h>
+#endif
 #include <regex.h>
 #include <htslib/khash_str2int.h>
 #include <htslib/hts_defs.h>
@@ -55,8 +58,8 @@ static int filter_ninit = 0;
 #  define __FUNCTION__ __func__
 #endif
 
-uint64_t bcf_double_missing    = 0x7ff0000000000001;
-uint64_t bcf_double_vector_end = 0x7ff0000000000002;
+static const uint64_t bcf_double_missing    = 0x7ff0000000000001;
+static const uint64_t bcf_double_vector_end = 0x7ff0000000000002;
 static inline void bcf_double_set(double *ptr, uint64_t value)
 {
     union { uint64_t i; double d; } u;
@@ -73,6 +76,7 @@ static inline int bcf_double_test(double d, uint64_t value)
 #define bcf_double_set_missing(x)    bcf_double_set(&(x),bcf_double_missing)
 #define bcf_double_is_vector_end(x)  bcf_double_test((x),bcf_double_vector_end)
 #define bcf_double_is_missing(x)     bcf_double_test((x),bcf_double_missing)
+#define bcf_double_is_missing_or_vector_end(x)     (bcf_double_test((x),bcf_double_missing) || bcf_double_test((x),bcf_double_vector_end))
 
 
 typedef struct _token_t
@@ -84,7 +88,7 @@ typedef struct _token_t
     char *tag;          // for debugging and printout only, VCF tag name
     double threshold;   // filtering threshold
     int is_constant;    // the threshold is set
-    int hdr_id, type;   // BCF header lookup ID and one of BCF_HT_* types
+    int hdr_id, tag_type;   // BCF header lookup ID and one of BCF_HL_* types
     int idx;            // 0-based index to VCF vectors,
                         //  -2: list (e.g. [0,1,2] or [1..3] or [1..] or any field[*], which is equivalent to [0..])
     int *idxs;          // set indexes to 0 to exclude, to 1 to include, and last element negative if unlimited
@@ -153,11 +157,14 @@ struct _filter_t
 #define TOK_CNT     26
 #define TOK_PERLSUB 27
 #define TOK_BINOM   28
+#define TOK_PHRED   29
+#define TOK_MEDIAN  30
+#define TOK_STDEV   31
 
-//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
-//                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p
-static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8};
-#define TOKEN_STRING "x()[<=>]!|&+-*/MmaAO~^S.lfcp"
+//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+//                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p  b  P  i  s
+static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8};
+#define TOKEN_STRING "x()[<=>]!|&+-*/MmaAO~^S.lfcpis"
 
 // Return negative values if it is a function with variable number of arguments
 static int filters_next_token(char **str, int *len)
@@ -181,12 +188,16 @@ static int filters_next_token(char **str, int *len)
 
     if ( !strncasecmp(tmp,"MAX(",4) ) { (*str) += 3; return TOK_MAX; }
     if ( !strncasecmp(tmp,"MIN(",4) ) { (*str) += 3; return TOK_MIN; }
+    if ( !strncasecmp(tmp,"MEAN(",5) ) { (*str) += 4; return TOK_AVG; }
+    if ( !strncasecmp(tmp,"MEDIAN(",7) ) { (*str) += 6; return TOK_MEDIAN; }
     if ( !strncasecmp(tmp,"AVG(",4) ) { (*str) += 3; return TOK_AVG; }
+    if ( !strncasecmp(tmp,"STDEV(",6) ) { (*str) += 5; return TOK_STDEV; }
     if ( !strncasecmp(tmp,"SUM(",4) ) { (*str) += 3; return TOK_SUM; }
     if ( !strncasecmp(tmp,"ABS(",4) ) { (*str) += 3; return TOK_ABS; }
     if ( !strncasecmp(tmp,"COUNT(",4) ) { (*str) += 5; return TOK_CNT; }
     if ( !strncasecmp(tmp,"STRLEN(",7) ) { (*str) += 6; return TOK_LEN; }
     if ( !strncasecmp(tmp,"BINOM(",6) ) { (*str) += 5; return -TOK_BINOM; }
+    if ( !strncasecmp(tmp,"PHRED(",6) ) { (*str) += 5; return TOK_PHRED; }
     if ( !strncasecmp(tmp,"%MAX(",5) ) { (*str) += 4; return TOK_MAX; } // for backward compatibility
     if ( !strncasecmp(tmp,"%MIN(",5) ) { (*str) += 4; return TOK_MIN; } // for backward compatibility
     if ( !strncasecmp(tmp,"%AVG(",5) ) { (*str) += 4; return TOK_AVG; } // for backward compatibility
@@ -197,6 +208,7 @@ static int filters_next_token(char **str, int *len)
     if ( !strncasecmp(tmp,"PERL.",5) ) { (*str) += 5; return -TOK_PERLSUB; }
     if ( !strncasecmp(tmp,"N_PASS(",7) ) { *len = 6; (*str) += 6; return -TOK_FUNC; }
     if ( !strncasecmp(tmp,"F_PASS(",7) ) { *len = 6; (*str) += 6; return -TOK_FUNC; }
+    if ( !strncasecmp(tmp,"%ILEN",5) ) { *len = 5; return TOK_VAL; }    // to be able to distinguish between INFO/ILEN and on-the-fly ILEN
 
     if ( tmp[0]=='@' )  // file name
     {
@@ -282,28 +294,30 @@ static int filters_next_token(char **str, int *len)
 }
 
 
-/* 
+/*
     Simple path expansion, expands ~/, ~user, $var. The result must be freed by the caller.
     
-    Based on jkb's staden code with some adjustements.
+    Based on jkb's staden code with some adjustments.
     https://sourceforge.net/p/staden/code/HEAD/tree/staden/trunk/src/Misc/getfile.c#l123
 */
 char *expand_path(char *path)
 {
-#ifdef _WIN32
-    return strdup(path);    // windows expansion: todo
-#endif
-
     kstring_t str = {0,0,0};
 
     if ( path[0] == '~' )
     {
         if ( !path[1] || path[1] == '/' )
         {
+#ifdef _WIN32
+            kputs(getenv("HOMEDRIVE"), &str);
+            kputs(getenv("HOMEPATH"), &str);
+#else
             // ~ or ~/path
             kputs(getenv("HOME"), &str);
             if ( path[1] ) kputs(path+1, &str);
+#endif
         }
+#ifndef _WIN32
         else
         {
             // user name: ~pd3/path
@@ -317,13 +331,18 @@ char *expand_path(char *path)
             else kputs(pwentry->pw_dir, &str);
             kputs(end, &str);
         }
-        return str.s;
+#endif
+        return ks_release(&str);
     }
     if ( path[0] == '$' )
     {
         char *var = getenv(path+1);
-        if ( var ) path = var;
+        if ( var ) {
+            kputs(var, &str);
+            return ks_release(&str);
+        }
     }
+
     return strdup(path);
 }
 
@@ -446,6 +465,8 @@ static void filters_cmp_id(token_t *atok, token_t *btok, token_t *rtok, bcf1_t *
         return;
     }
 
+    if ( !btok->str_value.l ) error("Error occurred while evaluating the expression\n");
+
     if ( rtok->tok_type==TOK_EQ ) 
         rtok->pass_site = strcmp(btok->str_value.s,line->d.id) ? 0 : 1;
     else
@@ -499,6 +520,14 @@ static int bcf_get_info_value(bcf1_t *line, int info_id, int ivec, void *value)
     }
     #undef BRANCH
     return -1;  // this shouldn't happen
+}
+
+static void filters_set_chrom(filter_t *flt, bcf1_t *line, token_t *tok)
+{
+    tok->str_value.l = 0;
+    kputs(bcf_seqname(flt->hdr,line), &tok->str_value);
+    tok->nvalues = tok->str_value.l;
+    tok->is_str  = 1;
 }
 
 static void filters_set_pos(filter_t *flt, bcf1_t *line, token_t *tok)
@@ -642,7 +671,7 @@ static void filters_set_info_flag(filter_t *flt, bcf1_t *line, token_t *tok)
 static void filters_set_format_int(filter_t *flt, bcf1_t *line, token_t *tok)
 {
     if ( line->n_sample != tok->nsamples )
-        error("Incorrect number of FORMAT fields at %s:%d .. %s, %d vs %d\n", bcf_seqname(flt->hdr,line),line->pos+1,tok->tag,line->n_sample,tok->nsamples);
+        error("Incorrect number of FORMAT fields at %s:%"PRId64" .. %s, %d vs %d\n", bcf_seqname(flt->hdr,line),(int64_t) line->pos+1,tok->tag,line->n_sample,tok->nsamples);
 
     int nvals;
     if ( (nvals=bcf_get_format_int32(flt->hdr,line,tok->tag,&flt->tmpi,&flt->mtmpi))<0 )
@@ -661,8 +690,10 @@ static void filters_set_format_int(filter_t *flt, bcf1_t *line, token_t *tok)
         {
             if ( !tok->usmpl[i] ) continue;
             int32_t *ptr = flt->tmpi + i*nsrc1;
-            if ( tok->idx>=nsrc1 || ptr[tok->idx]==bcf_int32_missing || ptr[tok->idx]==bcf_int32_vector_end )
+            if ( tok->idx>=nsrc1 || ptr[tok->idx]==bcf_int32_missing )
                 bcf_double_set_missing(tok->values[i]);
+            else if ( ptr[tok->idx]==bcf_int32_vector_end )
+                bcf_double_set_vector_end(tok->values[i]);
             else
                 tok->values[i] = ptr[tok->idx];
         }
@@ -679,15 +710,22 @@ static void filters_set_format_int(filter_t *flt, bcf1_t *line, token_t *tok)
             for (k=0; k<kend; k++)
             {
                 if ( k<tok->nidxs && !tok->idxs[k] ) continue;
-                if ( src[k]==bcf_int32_missing || src[k]==bcf_int32_vector_end )
+                if ( src[k]==bcf_int32_missing )
                     bcf_double_set_missing(dst[j]);
+                else if ( src[k]==bcf_int32_vector_end )
+                    bcf_double_set_vector_end(dst[j]);
                 else
                     dst[j] = src[k];
                 j++;
             }
-            while (j < tok->nval1)
+            if ( j==0 )
             {
                 bcf_double_set_missing(dst[j]);
+                j++;
+            }
+            while (j < tok->nval1)
+            {
+                bcf_double_set_vector_end(dst[j]);
                 j++;
             }
         }
@@ -696,7 +734,7 @@ static void filters_set_format_int(filter_t *flt, bcf1_t *line, token_t *tok)
 static void filters_set_format_float(filter_t *flt, bcf1_t *line, token_t *tok)
 {
     if ( line->n_sample != tok->nsamples )
-        error("Incorrect number of FORMAT fields at %s:%d .. %s, %d vs %d\n", bcf_seqname(flt->hdr,line),line->pos+1,tok->tag,line->n_sample,tok->nsamples);
+        error("Incorrect number of FORMAT fields at %s:%"PRId64" .. %s, %d vs %d\n", bcf_seqname(flt->hdr,line),(int64_t) line->pos+1,tok->tag,line->n_sample,tok->nsamples);
 
     int nvals;
     if ( (nvals=bcf_get_format_float(flt->hdr,line,tok->tag,&flt->tmpf,&flt->mtmpf))<0 )
@@ -715,8 +753,10 @@ static void filters_set_format_float(filter_t *flt, bcf1_t *line, token_t *tok)
         {
             if ( !tok->usmpl[i] ) continue;
             float *ptr = flt->tmpf + i*nsrc1;
-            if ( tok->idx>=nsrc1 || bcf_float_is_missing(ptr[tok->idx]) || bcf_float_is_vector_end(ptr[tok->idx]) )
+            if ( tok->idx>=nsrc1 || bcf_float_is_missing(ptr[tok->idx]) )
                 bcf_double_set_missing(tok->values[i]);
+            else if ( bcf_float_is_vector_end(ptr[tok->idx]) )
+                bcf_double_set_vector_end(tok->values[i]);
             else
                 tok->values[i] = ptr[tok->idx];
         }
@@ -733,15 +773,22 @@ static void filters_set_format_float(filter_t *flt, bcf1_t *line, token_t *tok)
             for (k=0; k<kend; k++)
             {
                 if ( k<tok->nidxs && !tok->idxs[k] ) continue;
-                if ( bcf_float_is_missing(src[k]) || bcf_float_is_vector_end(src[k]) )
+                if ( bcf_float_is_missing(src[k]) )
                     bcf_double_set_missing(dst[j]);
+                else if ( bcf_float_is_vector_end(src[k]) )
+                    bcf_double_set_vector_end(dst[j]);
                 else
                     dst[j] = src[k];
                 j++;
             }
-            while (j < tok->nval1)
+            if ( j==0 )
             {
                 bcf_double_set_missing(dst[j]);
+                j++;
+            }
+            while (j < tok->nval1)
+            {
+                bcf_double_set_vector_end(dst[j]);
                 j++;
             }
         }
@@ -750,7 +797,7 @@ static void filters_set_format_float(filter_t *flt, bcf1_t *line, token_t *tok)
 static void filters_set_format_string(filter_t *flt, bcf1_t *line, token_t *tok)
 {
     if ( line->n_sample != tok->nsamples )
-        error("Incorrect number of FORMAT fields at %s:%d .. %s, %d vs %d\n", bcf_seqname(flt->hdr,line),line->pos+1,tok->tag,line->n_sample,tok->nsamples);
+        error("Incorrect number of FORMAT fields at %s:%"PRId64" .. %s, %d vs %d\n", bcf_seqname(flt->hdr,line),(int64_t) line->pos+1,tok->tag,line->n_sample,tok->nsamples);
 
     int i, ndim = tok->str_value.m;
     int nstr = bcf_get_format_char(flt->hdr, line, tok->tag, &tok->str_value.s, &ndim);
@@ -870,7 +917,7 @@ static void _filters_set_genotype(filter_t *flt, bcf1_t *line, token_t *tok, int
         case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_vector_end); break;
         case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_vector_end); break;
         case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_vector_end); break;
-        default: error("The GT type is not lineognised: %d at %s:%d\n",fmt->type, bcf_seqname(flt->hdr,line),line->pos+1); break;
+        default: error("The GT type is not lineognised: %d at %s:%"PRId64"\n",fmt->type, bcf_seqname(flt->hdr,line),(int64_t) line->pos+1); break;
     }
 #undef BRANCH_INT
     assert( tok->nsamples == nsmpl );
@@ -917,6 +964,19 @@ gt_length_too_big:
     assert( tok->nsamples == nsmpl );
     tok->nvalues = tok->str_value.l;
     tok->nval1 = blen;
+}
+static void filters_set_ilen(filter_t *flt, bcf1_t *line, token_t *tok)
+{
+    tok->nvalues = line->n_allele - 1;
+    hts_expand(double,tok->nvalues,tok->mvalues,tok->values);
+
+    int i, rlen = strlen(line->d.allele[0]);
+    for (i=1; i<line->n_allele; i++)
+    {
+        int alen = strlen(line->d.allele[i]);
+        if ( rlen==alen ) bcf_double_set_missing(tok->values[i-1]);
+        else tok->values[i-1] = alen - rlen;
+    }
 }
 static void filters_set_ref_string(filter_t *flt, bcf1_t *line, token_t *tok)
 {
@@ -1016,10 +1076,16 @@ static int func_npass(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
         if ( rtok->pass_samples[i] ) npass++;
     }
 
-    assert( rtok->values );
-    rtok->nvalues = 1;
-    rtok->values[0] = rtok->tag[0]=='N' ? npass : (line->n_sample ? 1.0*npass/line->n_sample : 0);
-    rtok->nsamples = 0;
+    hts_expand(double,rtok->nsamples,rtok->mvalues,rtok->values);
+    double value = rtok->tag[0]=='N' ? npass : (line->n_sample ? 1.0*npass/line->n_sample : 0);
+    rtok->nval1 = 1;
+    rtok->nvalues = rtok->nsamples;
+
+    // Set per-sample status so that `query -i 'F_PASS(GT!="mis" & GQ >= 20) > 0.5'` or +trio-stats
+    // consider only the passing site AND samples. The values for failed samples is set to -1 so
+    // that it can never conflict with valid expressions.
+    for (i=0; i<rtok->nsamples; i++)
+        rtok->values[i] = rtok->pass_samples[i] ? value : -1;
 
     return 1;
 }
@@ -1105,7 +1171,7 @@ static int func_max(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack,
     int i, has_value = 0;
     for (i=0; i<tok->nvalues; i++)
     {
-        if ( bcf_double_is_missing(tok->values[i]) || bcf_double_is_vector_end(tok->values[i]) ) continue;
+        if ( bcf_double_is_missing_or_vector_end(tok->values[i]) ) continue;
         has_value = 1;
         if ( val < tok->values[i] ) val = tok->values[i];
     }
@@ -1125,7 +1191,7 @@ static int func_min(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack,
     int i, has_value = 0;
     for (i=0; i<tok->nvalues; i++)
     {
-        if ( bcf_double_is_missing(tok->values[i]) || bcf_double_is_vector_end(tok->values[i]) ) continue;
+        if ( bcf_double_is_missing_or_vector_end(tok->values[i]) ) continue;
         has_value = 1;
         if ( val > tok->values[i] ) val = tok->values[i];
     }
@@ -1144,12 +1210,67 @@ static int func_avg(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack,
     double val = 0;
     int i, n = 0;
     for (i=0; i<tok->nvalues; i++)
-        if ( !bcf_double_is_missing(tok->values[i]) ) { val += tok->values[i]; n++; }
+        if ( !bcf_double_is_missing_or_vector_end(tok->values[i]) ) { val += tok->values[i]; n++; }
     if ( n )
     {
         rtok->values[0] = val / n;
         rtok->nvalues   = 1;
     }
+    return 1;
+}
+static int compare_doubles(const void *lhs, const void *rhs)
+{
+    double arg1 = *(const double*) lhs;
+    double arg2 = *(const double*) rhs;
+    if (arg1 < arg2) return -1;
+    if (arg1 > arg2) return 1;
+    return 0;
+}
+static int func_median(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
+{
+    token_t *tok = stack[nstack - 1];
+    rtok->nvalues = 0;
+    if ( !tok->nvalues ) return 1;
+    int i, n = 0;
+    for (i=0; i<tok->nvalues; i++)
+    {
+        if ( bcf_double_is_missing_or_vector_end(tok->values[i]) ) continue;
+        if ( n < i ) tok->values[n] = tok->values[i];
+        n++;
+    }
+    if ( !n ) return 1;
+    if ( n==1 ) rtok->values[0] = tok->values[0];
+    else
+    {
+        qsort(tok->values, n, sizeof(double), compare_doubles);
+        rtok->values[0] = n % 2 ? tok->values[n/2] : (tok->values[n/2-1] + tok->values[n/2]) * 0.5;
+    }
+    rtok->nvalues = 1;
+    return 1;
+}
+static int func_stddev(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
+{
+    token_t *tok = stack[nstack - 1];
+    rtok->nvalues = 0;
+    if ( !tok->nvalues ) return 1;
+    int i, n = 0;
+    for (i=0; i<tok->nvalues; i++)
+    {
+        if ( bcf_double_is_missing_or_vector_end(tok->values[i]) ) continue;
+        if ( n < i ) tok->values[n] = tok->values[i];
+        n++;
+    }
+    if ( !n ) return 1;
+    if ( n==1 ) rtok->values[0] = 0;
+    else
+    {
+        double sdev = 0, avg = 0;
+        for (i=0; i<n; i++) avg += tok->values[n];
+        avg /= n;
+        for (i=0; i<n; i++) sdev += (tok->values[n] - avg) * (tok->values[n] - avg);
+        rtok->values[0] = sqrt(sdev/n);
+    }
+    rtok->nvalues = 1;
     return 1;
 }
 static int func_sum(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
@@ -1160,7 +1281,7 @@ static int func_sum(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack,
     double val = 0;
     int i, n = 0;
     for (i=0; i<tok->nvalues; i++)
-        if ( !bcf_double_is_missing(tok->values[i]) ) { val += tok->values[i]; n++; }
+        if ( !bcf_double_is_missing_or_vector_end(tok->values[i]) ) { val += tok->values[i]; n++; }
     if ( n )
     {
         rtok->values[0] = val;
@@ -1179,17 +1300,28 @@ static int func_abs(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack,
     int i;
     for (i=0; i<tok->nvalues; i++)
         if ( bcf_double_is_missing(tok->values[i]) ) bcf_double_set_missing(rtok->values[i]);
-        else rtok->values[i] = fabs(tok->values[i]);
+        else if ( !bcf_double_is_vector_end(tok->values[i]) ) rtok->values[i] = fabs(tok->values[i]);
     return 1;
 }
 static int func_count(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
 {
     token_t *tok = stack[nstack - 1];
-    if ( !tok->nsamples ) error("COUNT() can be applied only on FORMAT fields\n");
-
     int i, cnt = 0;
-    for (i=0; i<tok->nsamples; i++)
-        if ( tok->pass_samples[i] ) cnt++;
+    if ( !tok->nsamples )
+    {
+        if ( tok->is_str )
+        {
+            if ( tok->str_value.l ) cnt = 1;
+            for (i=0; i<tok->str_value.l; i++) if ( tok->str_value.s[i]==',' ) cnt++;
+        }
+        else
+            cnt = tok->nvalues;
+    }
+    else
+    {
+        for (i=0; i<tok->nsamples; i++)
+            if ( tok->pass_samples[i] ) cnt++;
+    }
 
     rtok->nvalues = 1;
     rtok->values[0] = cnt;
@@ -1305,10 +1437,10 @@ static int func_binom(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
                 }
                 int idx1 = bcf_gt_allele(ptr[0]);
                 int idx2 = bcf_gt_allele(ptr[1]);
-                if ( idx1>=line->n_allele ) error("Incorrect allele index at %s:%d, sample %s\n", bcf_seqname(flt->hdr,line),line->pos+1,flt->hdr->samples[i]);
-                if ( idx2>=line->n_allele ) error("Incorrect allele index at %s:%d, sample %s\n", bcf_seqname(flt->hdr,line),line->pos+1,flt->hdr->samples[i]);
+                if ( idx1>=line->n_allele ) error("Incorrect allele index at %s:%"PRId64", sample %s\n", bcf_seqname(flt->hdr,line),(int64_t) line->pos+1,flt->hdr->samples[i]);
+                if ( idx2>=line->n_allele ) error("Incorrect allele index at %s:%"PRId64", sample %s\n", bcf_seqname(flt->hdr,line),(int64_t) line->pos+1,flt->hdr->samples[i]);
                 double *vals = tok->values + tok->nval1*i;
-                if ( bcf_double_is_missing(vals[idx1]) || bcf_double_is_missing(vals[idx2]) )
+                if ( bcf_double_is_missing_or_vector_end(vals[idx1]) || bcf_double_is_missing_or_vector_end(vals[idx2]) )
                 {
                     bcf_double_set_missing(rtok->values[i]);
                     continue;
@@ -1326,13 +1458,13 @@ static int func_binom(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
             // the fields given explicitly: binom(AD[:0],AD[:1])
             token_t *tok2 = stack[istack+1];
             if ( tok->nval1!=1 || tok2->nval1!=1 )
-                error("Expected one value per binom() argument, found %d and %d at %s:%d\n",tok->nval1,tok2->nval1, bcf_seqname(flt->hdr,line),line->pos+1);
+                error("Expected one value per binom() argument, found %d and %d at %s:%"PRId64"\n",tok->nval1,tok2->nval1, bcf_seqname(flt->hdr,line),(int64_t) line->pos+1);
             for (i=0; i<rtok->nsamples; i++)
             {
                 if ( !rtok->usmpl[i] ) continue;
                 double *ptr1 = tok->values + tok->nval1*i;
                 double *ptr2 = tok2->values + tok2->nval1*i;
-                if ( bcf_double_is_missing(ptr1[0]) || bcf_double_is_missing(ptr2[0]) )
+                if ( bcf_double_is_missing_or_vector_end(ptr1[0]) || bcf_double_is_missing_or_vector_end(ptr2[0]) )
                 {
                     bcf_double_set_missing(rtok->values[i]);
                     continue;
@@ -1372,7 +1504,7 @@ static int func_binom(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
                 ptr2 = &tok2->values[0];
             }
         }
-        if ( !ptr1 || !ptr2 || bcf_double_is_missing(ptr1[0]) || bcf_double_is_missing(ptr2[0]) )
+        if ( !ptr1 || !ptr2 || bcf_double_is_missing_or_vector_end(ptr1[0]) || bcf_double_is_missing_or_vector_end(ptr2[0]) )
             bcf_double_set_missing(rtok->values[0]);
         else
         {
@@ -1382,6 +1514,31 @@ static int func_binom(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
         }
     }
     return rtok->nargs;
+}
+static int func_phred(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
+{
+    token_t *tok = stack[nstack - 1];
+    if ( tok->is_str ) error("PHRED() can be applied only on numeric values\n");
+
+    rtok->nsamples = tok->nsamples;
+    rtok->nval1 = tok->nval1;
+    memcpy(rtok->pass_samples, tok->pass_samples, rtok->nsamples*sizeof(*rtok->pass_samples));
+    assert(tok->usmpl);
+    if ( !rtok->usmpl )
+    {
+        rtok->usmpl = (uint8_t*) malloc(tok->nsamples*sizeof(*rtok->usmpl));
+        memcpy(rtok->usmpl, tok->usmpl, tok->nsamples*sizeof(*rtok->usmpl));
+    }
+    rtok->nvalues = tok->nvalues;
+    if ( !tok->nvalues ) return 1;
+
+    hts_expand(double, rtok->nvalues, rtok->mvalues, rtok->values);
+    int i;
+    for (i=0; i<tok->nvalues; i++)
+        if ( bcf_double_is_missing_or_vector_end(tok->values[i]) ) bcf_double_set_missing(rtok->values[i]);
+        else rtok->values[i] = -4.34294481903*log(tok->values[i]);
+
+    return 1;
 }
 inline static void tok_init_values(token_t *atok, token_t *btok, token_t *rtok)
 {
@@ -1416,7 +1573,7 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
             assert( atok->nsamples==btok->nsamples ); \
             for (i=0; i<atok->nvalues; i++) \
             { \
-                if ( bcf_double_is_missing(atok->values[i]) || bcf_double_is_missing(btok->values[i]) ) \
+                if ( bcf_double_is_missing_or_vector_end(atok->values[i]) || bcf_double_is_missing_or_vector_end(btok->values[i]) ) \
                 { \
                     bcf_double_set_missing(rtok->values[i]); \
                     continue; \
@@ -1430,11 +1587,11 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
             token_t *xtok = atok->nsamples ? atok : btok; \
             token_t *ytok = atok->nsamples ? btok : atok; \
             assert( ytok->nvalues==1 ); \
-            if ( !bcf_double_is_missing(ytok->values[0]) ) \
+            if ( !bcf_double_is_missing_or_vector_end(ytok->values[0]) ) \
             { \
                 for (i=0; i<xtok->nvalues; i++) \
                 { \
-                    if ( bcf_double_is_missing(xtok->values[i]) ) \
+                    if ( bcf_double_is_missing_or_vector_end(xtok->values[i]) ) \
                     { \
                         bcf_double_set_missing(rtok->values[i]); \
                         continue; \
@@ -1568,7 +1725,6 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
 { \
     token_t *rtok = _rtok; \
     int i, j, k; \
-    assert( !atok->nsamples || !btok->nsamples ); \
     tok_init_samples(atok, btok, rtok); \
     if ( !atok->nsamples && !btok->nsamples ) \
     { \
@@ -1578,7 +1734,7 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
             token_t *tok = atok->nvalues ? atok : btok; \
             for (j=0; j<tok->nvalues; j++) \
             { \
-                if ( bcf_double_is_missing(tok->values[j]) ) \
+                if ( bcf_double_is_missing_or_vector_end(tok->values[j]) ) \
                 { \
                     if ( missing_logic[2] ) { rtok->pass_site = 1; break; } \
                 } \
@@ -1589,15 +1745,19 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
         { \
             for (i=0; i<atok->nvalues; i++) \
             { \
-                int amiss = bcf_double_is_missing(atok->values[i]) ? 1 : 0; \
+                int amiss = bcf_double_is_missing_or_vector_end(atok->values[i]) ? 1 : 0; \
                 for (j=0; j<btok->nvalues; j++) \
                 { \
-                    int nmiss = amiss + (bcf_double_is_missing(btok->values[j]) ? 1 : 0); \
+                    int nmiss = amiss + (bcf_double_is_missing_or_vector_end(btok->values[j]) ? 1 : 0); \
                     if ( nmiss ) \
                     { \
                         if ( missing_logic[nmiss] ) { rtok->pass_site = 1; i = atok->nvalues; break; } \
                     } \
-                    else if ( atok->values[i] CMP_OP btok->values[j] ) { rtok->pass_site = 1; i = atok->nvalues; break; } \
+                    else if ( atok->values[i] > 16777216 || btok->values[j] > 16777216 ) /* Ugly, see #871 */ \
+                    { \
+                        if ( atok->values[i] CMP_OP btok->values[j] ) { rtok->pass_site = 1; i = atok->nvalues; break; } \
+                    } \
+                    else if ( (float)atok->values[i] CMP_OP (float)btok->values[j] ) { rtok->pass_site = 1; i = atok->nvalues; break; } \
                 } \
             } \
         } \
@@ -1619,7 +1779,7 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
             { \
                 int miss = 0; \
                 for (j=0; j<tok->nvalues; j++) \
-                    miss |= bcf_double_is_missing(tok->values[j]) ? 1 : 0; \
+                    miss |= bcf_double_is_missing_or_vector_end(tok->values[j]) ? 1 : 0; \
                 if ( missing_logic[++miss] ) \
                 { \
                     for (i=0; i<rtok->nsamples; i++) \
@@ -1633,9 +1793,35 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
                     double *ptr = tok->values + i*tok->nval1; \
                     int miss = 0; \
                     for (j=0; j<tok->nval1; j++) \
-                        miss |= bcf_double_is_missing(ptr[j]) ? 1 : 0; \
+                        miss |= bcf_double_is_missing_or_vector_end(ptr[j]) ? 1 : 0; \
                     if ( missing_logic[++miss] ) { rtok->pass_samples[i] = missing_logic[miss]; rtok->pass_site = 1; } \
                 } \
+        } \
+        else if ( atok->nsamples && btok->nsamples ) \
+        { \
+            if ( atok->nval1!=btok->nval1 ) error("Incompatible number of per-sample values in comparison: %d vs %d\n",atok->nval1,btok->nval1); \
+            if ( atok->nsamples!=btok->nsamples ) error("Incompatible number samples in comparison: %d vs %d\n",atok->nsamples,btok->nsamples); \
+            for (i=0; i<atok->nsamples; i++) \
+            { \
+                if ( !atok->usmpl[i] || !btok->usmpl[i] ) { rtok->usmpl[i] = 0; continue; } \
+                double *aptr = atok->values + i*atok->nval1; \
+                double *bptr = btok->values + i*btok->nval1; \
+                for (j=0; j<atok->nval1; j++) \
+                { \
+                    int nmiss = bcf_double_is_missing_or_vector_end(aptr[j]) ? 1 : 0; \
+                    if ( nmiss && !missing_logic[0] ) continue; /* any is missing => result is false */ \
+                    nmiss += (bcf_double_is_missing_or_vector_end(bptr[j]) ? 1 : 0); \
+                    if ( nmiss ) \
+                    { \
+                        if ( missing_logic[nmiss] ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; break; } \
+                    } \
+                    else if ( aptr[j] > 16777216 || bptr[j] > 16777216 ) /* Ugly, see #871 */ \
+                    { \
+                        if ( aptr[j] CMP_OP bptr[j] ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; break; } \
+                    } \
+                    else if ( (float)aptr[j] CMP_OP (float)bptr[j] ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; break; } \
+                } \
+            } \
         } \
         else \
         { \
@@ -1648,16 +1834,20 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
                 double *yptr = ytok->values + i*ytok->nval1; \
                 for (j=0; j<xtok->nval1; j++) \
                 { \
-                    int miss = bcf_double_is_missing(xptr[j]) ? 1 : 0; \
+                    int miss = bcf_double_is_missing_or_vector_end(xptr[j]) ? 1 : 0; \
                     if ( miss && !missing_logic[0] ) continue; /* any is missing => result is false */ \
                     for (k=0; k<ytok->nvalues; k++) \
                     { \
-                        int nmiss = miss + (bcf_double_is_missing(yptr[k]) ? 1 : 0); \
+                        int nmiss = miss + (bcf_double_is_missing_or_vector_end(yptr[k]) ? 1 : 0); \
                         if ( nmiss ) \
                         { \
                             if ( missing_logic[nmiss] ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; j = xtok->nval1; break; } \
                         } \
-                        else if ( xptr[j] CMP_OP yptr[k] ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; j = xtok->nval1; break; } \
+                        else if ( xptr[j] > 16777216 || yptr[k] > 16777216 ) /* Ugly, see #871 */ \
+                        { \
+                            if ( xptr[j] CMP_OP yptr[k] ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; j = xtok->nval1; break; } \
+                        } \
+                        else if ( (float)xptr[j] CMP_OP (float)yptr[k] ) { rtok->pass_samples[i] = 1; rtok->pass_site = 1; j = xtok->nval1; break; } \
                     } \
                 } \
             } \
@@ -1876,11 +2066,15 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
     int *idxs2 = NULL, nidxs2 = 0, idx2 = 0;
 
     int set_samples = 0;
-    char *colon = rindex(tag_idx, ':');
+    char *colon = strrchr(tag_idx, ':');
     if ( tag_idx[0]=='@' )     // file list with sample names
     {
         if ( !is_fmt ) error("Could not parse \"%s\". (Not a FORMAT tag yet a sample list provided.)\n", ori);
         char *fname = expand_path(tag_idx+1);
+#ifdef _WIN32
+        if (fname && strlen(fname) > 2 && fname[1] == ':') // Deal with Windows paths, such as 'C:\..'
+            colon = strrchr(fname+2, ':');
+#endif
         int nsmpl;
         char **list = hts_readlist(fname, 1, &nsmpl);
         if ( !list && colon )
@@ -1889,7 +2083,7 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
             tok->idxs  = idxs2;
             tok->nidxs = nidxs2;
             tok->idx   = idx2;
-            colon = rindex(fname, ':');
+            colon = strrchr(fname, ':');
             *colon = 0;
             list = hts_readlist(fname, 1, &nsmpl);
         }
@@ -1997,6 +2191,7 @@ static int max_ac_an_unpack(bcf_hdr_t *hdr)
 }
 static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
 {
+    tok->tag_type  = -1;
     tok->tok_type  = TOK_VAL;
     tok->hdr_id    = -1;
     tok->pass_site = -1;
@@ -2067,12 +2262,19 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
             tok->comparator = filters_cmp_filter;
             tok->tag = strdup("FILTER");
             filter->max_unpack |= BCF_UN_FLT;
+            tok->tag_type = BCF_HL_FLT;
             return 0;
         }
         else if ( !strncasecmp(str,"ID",len) || !strncasecmp(str,"%ID",len) /* for backward compatibility */ )
         {
             tok->comparator = filters_cmp_id;
             tok->tag = strdup("ID");
+            return 0;
+        }
+        else if ( !strncasecmp(str,"CHROM",len) )
+        {
+            tok->setter = &filters_set_chrom;
+            tok->tag = strdup("CHROM");
             return 0;
         }
         else if ( !strncasecmp(str,"POS",len) )
@@ -2113,12 +2315,14 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         }
         else if ( !strncasecmp(str,"N_MISSING",len) )
         {
+            filter->max_unpack |= BCF_UN_FMT;
             tok->setter = &filters_set_nmissing;
             tok->tag = strdup("N_MISSING");
             return 0;
         }
         else if ( !strncasecmp(str,"F_MISSING",len) )
         {
+            filter->max_unpack |= BCF_UN_FMT;
             tok->setter = &filters_set_nmissing;
             tok->tag = strdup("F_MISSING");
             return 0;
@@ -2156,7 +2360,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         for (i=0; i<tok->nsamples; i++) tok->usmpl[i] = 1;
     }
 
-    tok->type = is_fmt ? BCF_HL_FMT : BCF_HL_INFO;
+    tok->tag_type = is_fmt ? BCF_HL_FMT : BCF_HL_INFO;
     if ( is_fmt ) filter->max_unpack |= BCF_UN_FMT;
     if ( tok->hdr_id>=0 )
     {
@@ -2266,17 +2470,26 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         free(tmp.s);
         return 0;
     }
+    else if ( !strcasecmp(tmp.s,"ILEN") || !strcasecmp(tmp.s,"%ILEN") )
+    {
+        filter->max_unpack |= BCF_UN_STR;
+        tok->setter = &filters_set_ilen;
+        tok->tag = strdup("ILEN");
+        free(tmp.s);
+        return 0;
+    }
 
     // is it a value? Here we parse as integer/float separately and use strtof
     // rather than strtod, because the more accurate double representation
     // would invalidate floating point comparisons like QUAL=59.2, obtained via
-    // htslib/vcf parser
+    // htslib/vcf parser.
+    // Update: use strtod() and force floats only in comparisons
     char *end;
     tok->threshold = strtol(tmp.s, &end, 10);   // integer?
     if ( end - tmp.s != strlen(tmp.s) )
     {
         errno = 0;
-        tok->threshold = strtof(tmp.s, &end);   // float?
+        tok->threshold = strtod(tmp.s, &end);   // float?
         if ( errno!=0 || end!=tmp.s+len ) error("[%s:%d %s] Error: the tag \"%s\" is not defined in the VCF header\n", __FILE__,__LINE__,__FUNCTION__,tmp.s);
     }
     tok->is_constant = 1;
@@ -2457,7 +2670,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
         if ( ret==-1 ) error("Missing quotes in: %s\n", str);
 
         // fprintf(bcftools_stderr,"token=[%c] .. [%s] %d\n", TOKEN_STRING[ret], tmp, len);
-        // int i; for (i=0; i<nops; i++) fprintf(bcftools_stderr," .%c", TOKEN_STRING[ops[i]]); fprintf(bcftools_stderr,"\n");
+        // int i; for (i=0; i<nops; i++) fprintf(bcftools_stderr," .%c", TOKEN_STRING[ops[i].tok_type]); fprintf(bcftools_stderr,"\n");
 
         if ( ret==TOK_LFT )         // left bracket
         {
@@ -2504,8 +2717,18 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
                 tok->hdr_id    = -1;
                 tok->pass_site = -1;
                 tok->threshold = -1.0;
-                if ( !strncasecmp(tmp-len,"N_PASS",6) ) { tok->func = func_npass; tok->tag = strdup("N_PASS"); }
-                else if ( !strncasecmp(tmp-len,"F_PASS",6) ) { tok->func = func_npass; tok->tag = strdup("F_PASS"); }
+                if ( !strncasecmp(tmp-len,"N_PASS",6) )
+                {
+                    filter->max_unpack |= BCF_UN_FMT;
+                    tok->func = func_npass;
+                    tok->tag = strdup("N_PASS");
+                }
+                else if ( !strncasecmp(tmp-len,"F_PASS",6) )
+                {
+                    filter->max_unpack |= BCF_UN_FMT;
+                    tok->func = func_npass;
+                    tok->tag = strdup("F_PASS");
+                }
                 else error("The function \"%s\" is not supported\n", tmp-len);
                 continue;
             }
@@ -2609,7 +2832,8 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
     // list of operators and convert the strings (e.g. "PASS") to BCF ids. The string value token must be
     // just before or after the FILTER token and they must be followed with a comparison operator.
     // At this point we also initialize regex expressions which, in RPN, must preceed the LIKE/NLIKE operator.
-    // Additionally, treat "." as missing value rather than a string in numeric equalities.
+    // Additionally, treat "." as missing value rather than a string in numeric equalities; that
+    // @file is only used with ID; etc.
     // This code is fragile: improve me.
     int i;
     for (i=0; i<nout; i++)
@@ -2617,6 +2841,12 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
         if ( i+1<nout && (out[i].tok_type==TOK_LT || out[i].tok_type==TOK_BT) && out[i+1].tok_type==TOK_EQ )
             error("Error parsing the expression: \"%s\"\n", filter->str);
 
+        if ( out[i].hash )
+        {
+            int j = out[i+1].tok_type==TOK_VAL ? i+1 : i-1;
+            if ( out[j].comparator!=filters_cmp_id )
+                error("Error: could not parse the expression. Note that the \"@file_name\" syntax can be currently used with ID column only.\n");
+        }
         if ( out[i].tok_type==TOK_OR || out[i].tok_type==TOK_OR_VEC )
             out[i].func = vector_logic_or;
         if ( out[i].tok_type==TOK_AND || out[i].tok_type==TOK_AND_VEC )
@@ -2631,7 +2861,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
                 int set_missing = 0;
                 if ( out[k].hdr_id>0 )
                 {
-                    int type = bcf_hdr_id2type(filter->hdr,out[k].type,out[k].hdr_id);
+                    int type = bcf_hdr_id2type(filter->hdr,out[k].tag_type,out[k].hdr_id);
                     if ( type==BCF_HT_INT ) set_missing = 1;
                     else if ( type==BCF_HT_REAL ) set_missing = 1;
                 }
@@ -2657,7 +2887,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
         }
         if ( out[i].tok_type!=TOK_VAL ) continue;
         if ( !out[i].tag ) continue;
-        if ( !strcmp(out[i].tag,"TYPE") )
+        if ( out[i].setter==filters_set_type )
         {
             if ( i+1==nout ) error("Could not parse the expression: %s\n", filter->str);
             int itok, ival;
@@ -2671,6 +2901,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
             else if ( !strcasecmp(out[ival].key,"mnp") || !strcasecmp(out[ival].key,"mnps") ) { out[ival].threshold = VCF_MNP<<1; out[ival].is_str = 0; }
             else if ( !strcasecmp(out[ival].key,"other") ) { out[ival].threshold = VCF_OTHER<<1; out[ival].is_str = 0; }
             else if ( !strcasecmp(out[ival].key,"bnd") ) { out[ival].threshold = VCF_BND<<1; out[ival].is_str = 0; }
+            else if ( !strcasecmp(out[ival].key,"overlap") ) { out[ival].threshold = VCF_OVERLAP<<1; out[ival].is_str = 0; }
             else if ( !strcasecmp(out[ival].key,"ref") ) { out[ival].threshold = 1; out[ival].is_str = 0; }
             else error("The type \"%s\" not recognised: %s\n", out[ival].key, filter->str);
             if ( out[itok].tok_type==TOK_LIKE || out[itok].tok_type==TOK_NLIKE ) out[itok].comparator = filters_cmp_bit_and;
@@ -2705,7 +2936,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
             else if ( !strcasecmp(out[ival].key,"r") ) { out[i].setter = filters_set_genotype2; out[ival].key[0]='r'; out[ival].key[1]=0; }  // r
             continue;
         }
-        if ( !strcmp(out[i].tag,"FILTER") )
+        if ( out[i].tag_type==BCF_HL_FLT )
         {
             if ( i+1==nout ) error("Could not parse the expression: %s\n", filter->str);
             int itok = i, ival;
@@ -2734,13 +2965,17 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
     filter->nsamples = filter->max_unpack&BCF_UN_FMT ? bcf_hdr_nsamples(filter->hdr) : 0;
     for (i=0; i<nout; i++)
     {
-        if ( out[i].tok_type==TOK_MAX )      { out[i].func = func_max; out[i].tok_type = TOK_FUNC; out[i].tok_type = 1; }
-        else if ( out[i].tok_type==TOK_MIN ) { out[i].func = func_min; out[i].tok_type = TOK_FUNC; out[i].tok_type = 1; }
-        else if ( out[i].tok_type==TOK_AVG ) { out[i].func = func_avg; out[i].tok_type = TOK_FUNC; out[i].tok_type = 1; }
-        else if ( out[i].tok_type==TOK_SUM ) { out[i].func = func_sum; out[i].tok_type = TOK_FUNC; out[i].tok_type = 1; }
-        else if ( out[i].tok_type==TOK_ABS ) { out[i].func = func_abs; out[i].tok_type = TOK_FUNC; out[i].tok_type = 1; }
-        else if ( out[i].tok_type==TOK_CNT ) { out[i].func = func_count; out[i].tok_type = TOK_FUNC; out[i].tok_type = 1; }
-        else if ( out[i].tok_type==TOK_LEN ) { out[i].func = func_strlen; out[i].tok_type = TOK_FUNC; out[i].tok_type = 1; }
+        if ( out[i].tok_type==TOK_MAX )      { out[i].func = func_max; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_MIN ) { out[i].func = func_min; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_AVG ) { out[i].func = func_avg; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_MEDIAN ) { out[i].func = func_median; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_AVG ) { out[i].func = func_avg; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_STDEV ) { out[i].func = func_stddev; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_SUM ) { out[i].func = func_sum; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_ABS ) { out[i].func = func_abs; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_CNT ) { out[i].func = func_count; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_LEN ) { out[i].func = func_strlen; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_PHRED ) { out[i].func = func_phred; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_BINOM ) { out[i].func = func_binom; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_PERLSUB ) { out[i].func = perl_exec; out[i].tok_type = TOK_FUNC; }
         hts_expand0(double,1,out[i].mvalues,out[i].values);
@@ -2876,6 +3111,8 @@ int filter_test(filter_t *filter, bcf1_t *line, const uint8_t **samples)
         }
         else
         {
+            if ( is_str==1 ) error("Error: cannot use arithmetic operators to compare strings and numbers\n");
+
             // Determine what to do with one [1] or both [2] sides missing. The first field [0] gives [1]|[2]
             int missing_logic[] = {0,0,0};
             if ( filter->filters[i].tok_type == TOK_EQ ) { missing_logic[0] = missing_logic[2] = 1; }
@@ -2895,7 +3132,6 @@ int filter_test(filter_t *filter, bcf1_t *line, const uint8_t **samples)
                 CMP_VECTORS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],>=,missing_logic)
             else
                 error("todo: %s:%d .. type=%d\n", __FILE__,__LINE__,filter->filters[i].tok_type);
-
         }
         filter->flt_stack[nstack-2] = &filter->filters[i];
         nstack--;

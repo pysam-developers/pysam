@@ -34,6 +34,7 @@ THE SOFTWARE.  */
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <math.h>
+#include <inttypes.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
@@ -87,11 +88,14 @@ static void init_data(args_t *args)
 
     if (args->calc_ac && args->update_info)
     {
-        bcf_hdr_append(args->hdr,"##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Allele count in genotypes\">");
-        bcf_hdr_append(args->hdr,"##INFO=<ID=AN,Number=1,Type=Integer,Description=\"Total number of alleles in called genotypes\">");
+        if (bcf_hdr_append(args->hdr,"##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Allele count in genotypes\">") < 0)
+            error_errno("[%s] Failed to add \"AC\" INFO header", __func__);
+        if (bcf_hdr_append(args->hdr,"##INFO=<ID=AN,Number=1,Type=Integer,Description=\"Total number of alleles in called genotypes\">") < 0)
+            error_errno("[%s] Failed to add \"AN\" INFO header", __func__);
     }
     if (args->record_cmd_line) bcf_hdr_append_version(args->hdr, args->argc, args->argv, "bcftools_view");
-    else bcf_hdr_sync(args->hdr);
+    else if (bcf_hdr_sync(args->hdr) < 0)
+        error_errno("[%s] Failed to update header", __func__);
 
     // setup sample data
     if (args->sample_names)
@@ -454,7 +458,7 @@ int subset_vcf(args_t *args, bcf1_t *line)
     if (args->trim_alts)
     {
         int ret = bcf_trim_alleles(args->hsub ? args->hsub : args->hdr, line);
-        if ( ret<0 ) error("Error: Could not trim alleles at %s:%d\n", bcf_seqname(args->hsub ? args->hsub : args->hdr, line), line->pos+1);
+        if ( ret<0 ) error("Error: Could not trim alleles at %s:%"PRId64"\n", bcf_seqname(args->hsub ? args->hsub : args->hdr, line), (int64_t) line->pos+1);
     }
     if (args->phased) {
         int phased = bcf_all_phased(args->hdr, line);
@@ -505,10 +509,10 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -R, --regions-file <file>           restrict to regions listed in a file\n");
     fprintf(bcftools_stderr, "    -t, --targets [^]<region>           similar to -r but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
     fprintf(bcftools_stderr, "    -T, --targets-file [^]<file>        similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
-    fprintf(bcftools_stderr, "        --threads <int>                 number of extra (de)compression threads [0]\n");
+    fprintf(bcftools_stderr, "        --threads <int>                 use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Subset options:\n");
-    fprintf(bcftools_stderr, "    -a, --trim-alt-alleles        trim alternate alleles not seen in the subset\n");
+    fprintf(bcftools_stderr, "    -a, --trim-alt-alleles        trim ALT alleles not seen in the genotype fields (or their subset with -s/-S)\n");
     fprintf(bcftools_stderr, "    -I, --no-update               do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
     fprintf(bcftools_stderr, "    -s, --samples [^]<list>       comma separated list of samples to include (or exclude with \"^\" prefix)\n");
     fprintf(bcftools_stderr, "    -S, --samples-file [^]<file>  file of samples to include (or exclude with \"^\" prefix)\n");
@@ -696,7 +700,7 @@ int main_vcfview(int argc, char *argv[])
             }
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
-            case '?': usage(args);
+            case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }
@@ -739,12 +743,14 @@ int main_vcfview(int argc, char *argv[])
     }
 
     if ( bcf_sr_set_threads(args->files, args->n_threads)<0 ) error("Failed to create threads\n");
-    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
+    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
 
     init_data(args);
     bcf_hdr_t *out_hdr = args->hnull ? args->hnull : (args->hsub ? args->hsub : args->hdr);
     if (args->print_header)
-        bcf_hdr_write(args->out, out_hdr);
+    {
+        if ( bcf_hdr_write(args->out, out_hdr)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->fn_out);
+    }
     else if ( args->output_type & FT_BCF )
         error("BCF output requires header, cannot proceed with -H\n");
 
@@ -755,8 +761,7 @@ int main_vcfview(int argc, char *argv[])
         {
             bcf1_t *line = args->files->readers[0].buffer[0];
             if ( line->errcode && out_hdr!=args->hdr ) error("Undefined tags in the header, cannot proceed in the sample subset mode.\n");
-            if ( subset_vcf(args, line) )
-                bcf_write1(args->out, out_hdr, line);
+            if ( subset_vcf(args, line) && bcf_write1(args->out, out_hdr, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->fn_out);
         }
         ret = args->files->errnum;
         if ( ret ) fprintf(bcftools_stderr,"Error: %s\n", bcf_sr_strerror(args->files->errnum));

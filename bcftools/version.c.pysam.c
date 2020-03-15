@@ -27,6 +27,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 #include <htslib/hts.h>
 #include "bcftools.h"
 #include "version.h"
@@ -45,6 +46,22 @@ void error(const char *format, ...)
     va_end(ap);
     exit(-1);
 }
+
+void error_errno(const char *format, ...)
+{
+    va_list ap;
+    int e = errno;
+    va_start(ap, format);
+    vfprintf(bcftools_stderr, format, ap);
+    va_end(ap);
+    if (e) {
+        fprintf(bcftools_stderr, ": %s\n", strerror(e));
+    } else {
+        fprintf(bcftools_stderr, "\n");
+    }
+    exit(-1);
+}
+
 
 const char *hts_bcf_wmode(int file_type)
 {

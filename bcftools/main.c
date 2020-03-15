@@ -53,7 +53,9 @@ int main_vcfcnv(int argc, char *argv[]);
 #if USE_GPL
 int main_polysomy(int argc, char *argv[]);
 #endif
+#ifdef ENABLE_BCF_PLUGINS
 int main_plugin(int argc, char *argv[]);
+#endif
 int main_consensus(int argc, char *argv[]);
 int main_csq(int argc, char *argv[]);
 int bam_mpileup(int argc, char *argv[]);
@@ -110,15 +112,12 @@ static cmd_t cmds[] =
       .alias = "norm",
       .help  = "left-align and normalize indels"
     },
+#ifdef ENABLE_BCF_PLUGINS
     { .func  = main_plugin,
       .alias = "plugin",
-#ifdef ENABLE_BCF_PLUGINS
       .help  = "user-defined plugins"
-#else
-      /* Do not advertise when plugins disabled. */
-      .help  = "-user-defined plugins"
-#endif
     },
+#endif
     { .func  = main_vcfquery,
       .alias = "query",
       .help  = "transform VCF/BCF into user-defined formats"
@@ -235,12 +234,24 @@ static void usage(FILE *fp)
     fprintf(fp,"\n");
 }
 
+// This is a tricky one, but on Windows the filename wildcard expansion is done by
+// the application and not by the shell, as traditionally it never had a "shell".
+// Even now, DOS and Powershell do not do this expansion (but bash does).
+//
+// This means that Mingw/Msys implements code before main() that takes e.g. "*" and
+// expands it up to a list of matching filenames.  This in turn breaks things like
+// specifying "*" as a region (all the unmapped reads).  We take a hard line here -
+// filename expansion is the task of the shell, not our application!
+#ifdef _WIN32
+int _CRT_glob = 0;
+#endif
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) { usage(stderr); return 1; }
 
     if (strcmp(argv[1], "version") == 0 || strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
-        printf("bcftools %s\nUsing htslib %s\nCopyright (C) 2018 Genome Research Ltd.\n", bcftools_version(), hts_version());
+        printf("bcftools %s\nUsing htslib %s\nCopyright (C) 2019 Genome Research Ltd.\n", bcftools_version(), hts_version());
 #if USE_GPL
         printf("License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n");
 #else
