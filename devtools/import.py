@@ -5,7 +5,6 @@
 #
 # rm -rf PKG
 # python import.py PKG path/to/download/PKG-X.Y
-# git checkout -- PKG/version.h
 
 import fnmatch
 import os
@@ -50,6 +49,12 @@ MAIN = {
     "bcftools": "main"
 }
 
+
+C_VERSION = {
+    "htslib":   "HTS_VERSION_TEXT",
+    "samtools": "SAMTOOLS_VERSION",
+    "bcftools": "BCFTOOLS_VERSION"
+}
 
 
 def locate(pattern, root=os.curdir, exclude=[], exclude_htslib=False):
@@ -98,6 +103,9 @@ def _update_pysam_files(cf, destdir):
                 fn = os.path.basename(filename)
                 # some specific fixes:
                 SPECIFIC_SUBSTITUTIONS = {
+                    "bamtk.c": (
+                        'else if (strcmp(argv[1], "tview") == 0)',
+                        '//else if (strcmp(argv[1], "tview") == 0)'),
                     "bam_md.c": (
                         'sam_open_format("-", mode_w',
                         'sam_open_format({}_stdout_fn, mode_w'.format(basename)),
@@ -140,7 +148,8 @@ if len(sys.argv) >= 1:
 
     cfiles = locate("*.c", srcdir, exclude=exclude, exclude_htslib=True)
     hfiles = locate("*.h", srcdir, exclude=exclude, exclude_htslib=True)
-    mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir))
+    mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir),
+                             locate("version.sh", srcdir, exclude_htslib=True))
 
     if dest == "htslib":
         # Add build files, including *.ac *.in *.mk *.m4
@@ -197,6 +206,27 @@ if len(sys.argv) >= 1:
         sys.stdout.write("applying stderr redirection\n")
 
         _update_pysam_files(cf, destdir)
+
+    def _getVersion(srcdir):
+        with open(os.path.join(srcdir, "version.sh"), encoding="utf-8") as inf:
+            for line in inf:
+                m = re.match(r"VERSION=(\S+)", line)
+                if m: return m.group(1)
+            raise ValueError("no VERSION line in version.sh")
+
+    def _update_version_file(key, value, filename):
+        tmpfilename = filename + ".tmp"
+        with open(filename, encoding="utf-8") as inf:
+            with open(tmpfilename, "w", encoding="utf-8") as outf:
+                for line in inf:
+                    if key in line:
+                        line = re.sub(r'"[^"]*"', '"{}"'.format(value), line)
+                    outf.write(line)
+        os.rename(tmpfilename, filename)
+
+    version = _getVersion(srcdir)
+    _update_version_file("__{}_version__".format(dest), version, "pysam/version.py")
+    _update_version_file(C_VERSION[dest], version + " (pysam)", "pysam/version.h")
 
     sys.exit(0)
 
