@@ -4378,7 +4378,7 @@ cdef class VariantFile(HTSFile):
             bcf.seek(self.start_offset)
             return iter(bcf)
 
-        if not self.index:
+        if self.index is None:
             raise ValueError('fetch requires an index')
 
         _, tid, start, stop = self.parse_region(contig, start, stop, region,
