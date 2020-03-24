@@ -1995,7 +1995,7 @@ cdef class IteratorRow:
 
             if samfile.has_index():
                 if samfile.index_filename:
-                    cindexname = samfile.index_filename
+                    cindexname = bindex_filename = encode_filename(samfile.index_filename)
                 with nogil:
                     self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
             else:
