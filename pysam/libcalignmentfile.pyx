@@ -1310,11 +1310,6 @@ cdef class AlignmentFile(HTSFile):
            existing base qualities. The default is False (use existing
            base qualities).
 
-        adjust_capq_threshold: int
-
-            adjust mapping quality. The default is 0 for no
-            adjustment. The recommended value for adjustment is 50.
-
         Returns
         -------
 
