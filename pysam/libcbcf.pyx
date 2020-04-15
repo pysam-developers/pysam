@@ -100,6 +100,8 @@ from cpython.version cimport PY_MAJOR_VERSION
 
 from pysam.libchtslib cimport HTSFile, hisremote
 
+from pysam.utils import unquoted_str
+
 
 __all__ = ['VariantFile',
            'VariantHeader',
@@ -1556,16 +1558,16 @@ cdef class VariantHeaderMetadata(object):
             if type is not None:
                 raise ValueError('Type must be None when adding a filter')
 
-            items = [('ID', id), ('Description', description)]
+            items = [('ID', unquoted_str(id)), ('Description', description)]
         else:
             if type not in VALUE_TYPES:
                 raise ValueError('unknown type specified: {}'.format(type))
             if number is None:
                 number = '.'
 
-            items = [('ID', id),
-                     ('Number', number),
-                     ('Type', type),
+            items = [('ID', unquoted_str(id)),
+                     ('Number', unquoted_str(number)),
+                     ('Type', unquoted_str(type)),
                      ('Description', description)]
 
         items += kwargs.items()
@@ -1859,12 +1861,14 @@ cdef class VariantHeaderContigs(object):
 
     #TODO: implement __richcmp__
 
-    def add(self, id, **kwargs):
+    def add(self, id, length=None, **kwargs):
         """Add a new contig record"""
         if id in self:
             raise ValueError('Header already exists for contig {}'.format(id))
 
-        items = [('ID', id)]
+        items = [('ID', unquoted_str(id))]
+        if length is not None:
+            items.append(("length", unquoted_str(length)))
         items += kwargs.items()
         self.header.add_meta('contig', items=items)
 
@@ -2141,16 +2145,12 @@ cdef class VariantHeader(object):
                 hrec.value = strdup(force_bytes(value))
             else:
                 for key, value in items:
-                
-                    quoted = True
-                    if key in set(("ID", "Number", "Type")):
-                      quoted = False
+                    quoted = not isinstance(value, unquoted_str) and key not in ("ID", "Number", "Type")
 
                     key = force_bytes(key)
                     bcf_hrec_add_key(hrec, key, <int>len(key))
 
                     value = force_bytes(str(value))
-
                     bcf_hrec_set_val(hrec, hrec.nkeys-1, value, <int>len(value), quoted)
         except:
             bcf_hrec_destroy(hrec)

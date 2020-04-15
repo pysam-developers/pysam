@@ -102,3 +102,10 @@ class PysamDispatcher(object):
             return stderr
         else:
             return stdout
+
+
+class unquoted_str(str):
+    '''Tag a value as an unquoted string. Meta-information in the VCF
+    header takes the form of key=value pairs. By default, pysam will
+    enclose the value in quotation marks. Tagging that value with
+    unquoted_str will prevent this quoting.'''
