@@ -138,15 +138,15 @@ cdef class IteratorColumn:
     cdef _setup_iterator(self,
                          int tid,
                          int start,
-			 int stop,
- 			 int multiple_iterators=?)
+                         int stop,
+                         int multiple_iterators=?)
     cdef _setup_raw_rest_iterator(self)
 
     cdef reset(self, tid, start, stop)
     cdef _free_pileup_iter(self)
     # backwards compatibility
     cdef char * getSequence(self)
-    
+
 
 cdef class IteratorColumnRegion(IteratorColumn):
     cdef int start
