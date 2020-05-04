@@ -140,6 +140,7 @@ cdef class IteratorColumn:
                          int start,
 			 int stop,
  			 int multiple_iterators=?)
+    cdef _setup_raw_rest_iterator(self)
 
     cdef reset(self, tid, start, stop)
     cdef _free_pileup_iter(self)
@@ -154,6 +155,10 @@ cdef class IteratorColumnRegion(IteratorColumn):
 
 
 cdef class IteratorColumnAllRefs(IteratorColumn):
+    pass
+
+
+cdef class IteratorColumnAll(IteratorColumn):
     pass
 
 
