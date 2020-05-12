@@ -2316,6 +2316,7 @@ class TestHeader1000Genomes(unittest.TestCase):
 
     '''see issue 110'''
     bamfile = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/phase3_EX_or_LC_only_alignment/data/HG00104/alignment/HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"  # noqa
+    bambase = "HG00104.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"  # noqa
 
     def testRead(self):
 
@@ -2325,6 +2326,10 @@ class TestHeader1000Genomes(unittest.TestCase):
         f = pysam.AlignmentFile(self.bamfile, "rb")
         data = f.header.copy()
         self.assertTrue(data)
+
+    def tearDown(self):
+        if os.path.exists(self.bambase + ".bai"):
+            os.unlink(self.bambase + ".bai")
 
 
 class TestLargeCigar(unittest.TestCase):
