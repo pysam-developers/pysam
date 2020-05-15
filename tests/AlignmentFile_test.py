@@ -2036,6 +2036,10 @@ class TestLogging(unittest.TestCase):
             cols = bam.pileup()
         self.assertTrue(True)
 
+    def tearDown(self):
+        if os.path.exists('log.txt'):
+            os.unlink('log.txt')
+
     def testFail1(self):
         self.check(os.path.join(BAM_DATADIR, "ex9_fail.bam"),
                    False)
