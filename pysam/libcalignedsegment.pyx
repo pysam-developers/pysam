@@ -2952,9 +2952,10 @@ cdef class PileupColumn:
 
         add_indels : bool
 
-          If True, add bases for bases inserted into the reference and
-          'N's for base skipped from the reference. If a reference sequence
-          is given, add the actual bases.
+          If True, add bases for bases inserted into or skipped from the
+          reference. The latter requires a reference sequence file to have
+          been given, e.g. via `pileup(fastafile = ...)`. If no reference
+          sequence is available, skipped bases are represented as 'N's.
 
         Returns
         -------
