@@ -130,7 +130,7 @@ static void query_vcf(args_t *args)
     if ( args->print_header )
     {
         convert_header(args->convert,&str);
-        fwrite(str.s, str.l, 1, args->out);
+        if ( fwrite(str.s, str.l, 1, args->out)!=1 ) error("[%s] Error: cannot write to %s\n", __func__,args->fn_out?args->fn_out:"standard output");
     }
 
     int i,max_convert_unpack = convert_max_unpack(args->convert);
@@ -170,8 +170,7 @@ static void query_vcf(args_t *args)
 
         str.l = 0;
         convert_line(args->convert, line, &str);
-        if ( str.l )
-            fwrite(str.s, str.l, 1, args->out);
+        if ( str.l && fwrite(str.s, str.l, 1, args->out)!=1 ) error("[%s] Error: cannot write to %s\n", __func__,args->fn_out?args->fn_out:"standard output");
     }
     if ( str.m ) free(str.s);
 }
@@ -310,7 +309,7 @@ int main_vcfquery(int argc, char *argv[])
             case 's': args->sample_list = optarg; break;
             case 'S': args->sample_list = optarg; args->sample_is_file = 1; break;
             case 'h':
-            case '?': usage();
+            case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }
@@ -326,14 +325,18 @@ int main_vcfquery(int argc, char *argv[])
     {
         if ( !fname ) error("Missing the VCF file name\n");
         args->files = bcf_sr_init();
-        if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
+        if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
         list_columns(args);
         bcf_sr_destroy(args->files);
         free(args);
         return 0;
     }
 
-    if ( !args->format_str ) usage();
+    if ( !args->format_str )
+    {
+        if ( argc==1 && !fname ) usage();
+        error("Error: Missing the --format option\n");
+    }
     args->out = args->fn_out ? fopen(args->fn_out, "w") : bcftools_stdout;
     if ( !args->out ) error("%s: %s\n", args->fn_out,strerror(errno));
 
@@ -351,7 +354,7 @@ int main_vcfquery(int argc, char *argv[])
         }
         while ( fname )
         {
-            if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
+            if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
             fname = ++optind < argc ? argv[optind] : NULL;
         }
         init_data(args);
@@ -359,7 +362,7 @@ int main_vcfquery(int argc, char *argv[])
         free(args->format_str);
         destroy_data(args);
         bcf_sr_destroy(args->files);
-        fclose(args->out);
+        if ( fclose(args->out)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->fn_out);
         free(args);
         return 0;
     }
@@ -386,7 +389,10 @@ int main_vcfquery(int argc, char *argv[])
             if ( !bcf_sr_add_reader(args->files, argv[k]) ) error("Failed to open %s: %s\n", argv[k],bcf_sr_strerror(args->files->errnum));
         init_data(args);
         if ( i==0 )
+        {
             prev_samples = copy_header(args->header, args->files->readers[0].header->samples, bcf_hdr_nsamples(args->files->readers[0].header));
+            prev_nsamples = bcf_hdr_nsamples(args->files->readers[0].header);
+        }
         else
         {
             args->print_header = 0;
@@ -397,7 +403,7 @@ int main_vcfquery(int argc, char *argv[])
         destroy_data(args);
         bcf_sr_destroy(args->files);
     }
-    fclose(args->out);
+    if ( fclose(args->out)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->fn_out);;
     destroy_list(fnames, nfiles);
     destroy_list(prev_samples, prev_nsamples);
     free(args->format_str);

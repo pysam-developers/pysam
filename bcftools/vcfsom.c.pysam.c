@@ -37,6 +37,7 @@ THE SOFTWARE.  */
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
+#include <htslib/hts_os.h>
 #include <inttypes.h>
 #include "bcftools.h"
 
@@ -358,7 +359,7 @@ static som_t *som_init(args_t *args)
     if ( !som->w ) error("Could not alloc %"PRIu64" bytes [nbin=%d ndim=%d]\n", (uint64_t)(sizeof(double)*som->size),som->nbin,som->ndim);
     int i;
     for (i=0; i<som->size*som->kdim; i++)
-        som->w[i] = (double)random()/RAND_MAX;
+        som->w[i] = random();
     som->a_idx = (int*) malloc(sizeof(int)*som->ndim);
     som->b_idx = (int*) malloc(sizeof(int)*som->ndim);
     som->div   = (double*) malloc(sizeof(double)*som->ndim);
@@ -697,7 +698,7 @@ int main_vcfsom(int argc, char *argv[])
             case 't': args->action = SOM_TRAIN; break;
             case 'c': args->action = SOM_CLASSIFY; break;
             case 'h':
-            case '?': usage();
+            case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }

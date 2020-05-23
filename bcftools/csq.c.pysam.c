@@ -1,5 +1,8 @@
 #include "bcftools.pysam.h"
 
+//$bt csq -f $ref -g $gff -p r -Ou -o /dev/null /lustre/scratch116/vr/projects/g1k/phase3/release/ALL.chr4.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz
+
+
 /* The MIT License
 
    Copyright (c) 2016-2018 Genome Research Ltd.
@@ -27,6 +30,7 @@
  */
 /*
     Things that would be nice to have
+        - dynamic N_REF_PAD
         - for stop-lost events (also in frameshifts) report the number of truncated aa's
         - memory could be greatly reduced by indexing gff (but it is quite compact already)
         - deletions that go beyond transcript boundaries are not checked at sequence level
@@ -97,6 +101,7 @@
         splice_region_variant   .. change within 1-3 bases of the exon or 3-8 bases of the intron
         synonymous_variant      .. DNA sequence variant resulting in no amino acid change
         stop_retained_variant   .. different stop codon
+        start_retained_variant  .. start codon retained by indel realignment
         non_coding_variant      .. variant in non-coding sequence, such as RNA gene
         5_prime_UTR_variant
         3_prime_UTR_variant
@@ -135,6 +140,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <math.h>
+#include <inttypes.h>
 #include <htslib/hts.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
@@ -144,7 +150,6 @@
 #include <htslib/faidx.h>
 #include <errno.h>
 #include <unistd.h>
-#include <stdint.h>
 #include <ctype.h>
 #include "bcftools.h"
 #include "filter.h"
@@ -210,13 +215,15 @@
 #define CSQ_UPSTREAM_STOP       (1<<19)     // adds * in front of the csq string
 #define CSQ_INCOMPLETE_CDS      (1<<20)     // to remove START/STOP in incomplete CDS, see ENSG00000173376/synon.vcf
 #define CSQ_CODING_SEQUENCE     (1<<21)     // cannot tell exactly what it is, but it does affect the coding sequence
+#define CSQ_ELONGATION          (1<<22)     // symbolic insertion
+#define CSQ_START_RETAINED      (1<<23)
 
 // Haplotype-aware consequences, printed in one vcf record only, the rest has a reference @12345
 #define CSQ_COMPOUND (CSQ_SYNONYMOUS_VARIANT|CSQ_MISSENSE_VARIANT|CSQ_STOP_LOST|CSQ_STOP_GAINED| \
                       CSQ_INFRAME_DELETION|CSQ_INFRAME_INSERTION|CSQ_FRAMESHIFT_VARIANT| \
                       CSQ_START_LOST|CSQ_STOP_RETAINED|CSQ_INFRAME_ALTERING|CSQ_INCOMPLETE_CDS| \
-                      CSQ_UPSTREAM_STOP)
-#define CSQ_START_STOP          (CSQ_STOP_LOST|CSQ_STOP_GAINED|CSQ_STOP_RETAINED|CSQ_START_LOST)
+                      CSQ_UPSTREAM_STOP|CSQ_START_RETAINED)
+#define CSQ_START_STOP          (CSQ_STOP_LOST|CSQ_STOP_GAINED|CSQ_STOP_RETAINED|CSQ_START_LOST|CSQ_START_RETAINED)
 
 #define CSQ_PRN_STRAND(csq)     ((csq)&CSQ_COMPOUND && !((csq)&(CSQ_SPLICE_ACCEPTOR|CSQ_SPLICE_DONOR|CSQ_SPLICE_REGION)))
 #define CSQ_PRN_TSCRIPT         (~(CSQ_INTRON|CSQ_NON_CODING))
@@ -246,7 +253,9 @@ const char *csq_strings[] =
     "inframe_altering",
     NULL,
     NULL,
-    "coding_sequence"
+    "coding_sequence",
+    "feature_elongation",
+    "start_retained"
 };
 
 
@@ -341,7 +350,7 @@ gf_cds_t;
 typedef struct
 {
     char *name;           // human readable name, e.g. ORF45
-    uint8_t iseq;
+    uint32_t iseq;
 }
 gf_gene_t;
 typedef struct
@@ -394,7 +403,8 @@ typedef struct
 {
     bcf1_t *line;
     uint32_t *smpl;     // bitmask of sample consequences with first/second haplotype interleaved
-    uint32_t nfmt:4, nvcsq:28, mvcsq;
+    uint32_t nfmt:4,    // the bitmask size (the number of integers per sample)
+             nvcsq:28, mvcsq;
     vcsq_t *vcsq;       // there can be multiple consequences for a single VCF record
 }
 vrec_t;
@@ -410,6 +420,7 @@ struct _vbuf_t
 {
     vrec_t **vrec;   // buffer of VCF lines with the same position
     int n, m;
+    uint32_t keep_until;    // the maximum transcript end position
 };
 KHASH_MAP_INIT_INT(pos2vbuf, vbuf_t*)
 
@@ -582,9 +593,10 @@ typedef struct _args_t
     char *outdir, **argv, *fa_fname, *gff_fname, *output_fname;
     char *bcsq_tag;
     int argc, output_type;
-    int phase, quiet, local_csq;
+    int phase, verbosity, local_csq, record_cmd_line;
     int ncsq_max, nfmt_bcsq;    // maximum number of csq per site that can be accessed from FORMAT/BCSQ
     int ncsq_small_warned;
+    int brief_predictions;
     
     int rid;                    // current chromosome
     tr_heap_t *active_tr;       // heap of active transcripts for quick flushing
@@ -598,6 +610,7 @@ typedef struct _args_t
     int ncsq_buf, mcsq_buf;
     id_tbl_t tscript_ids;       // mapping between transcript id (eg. Zm00001d027245_T001) and a numeric idx
     int force;                  // force run under various conditions. Currently only to skip out-of-phase transcripts
+    int n_threads;              // extra compression/decompression threads
 
     faidx_t *fai;
     kstring_t str, str2;
@@ -673,7 +686,7 @@ static inline int feature_set_seq(args_t *args, char *chr_beg, char *chr_end)
         aux->seq[aux->nseq] = strdup(chr_beg);
         iseq = khash_str2int_inc(aux->seq2int, aux->seq[aux->nseq]);
         aux->nseq++;
-        assert( aux->nseq < 256 );  // see gf_gene_t.iseq
+        assert( aux->nseq < 1<<29 );  // see gf_gene_t.iseq and ftr_t.iseq
     }
     chr_end[1] = c;
     return iseq;
@@ -888,7 +901,7 @@ void gff_parse_transcript(args_t *args, const char *line, char *ss, ftr_t *ftr)
     int biotype = gff_parse_biotype(ss);
     if ( biotype <= 0 )
     {
-        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(bcftools_stderr,"ignored transcript: %s\n",line);
+        if ( !gff_ignored_biotype(args, ss) && args->verbosity > 0 ) fprintf(bcftools_stderr,"ignored transcript: %s\n",line);
         return;
     }
 
@@ -914,7 +927,7 @@ void gff_parse_gene(args_t *args, const char *line, char *ss, char *chr_beg, cha
     int biotype = gff_parse_biotype(ss);
     if ( biotype <= 0 )
     {
-        if ( !gff_ignored_biotype(args, ss) && args->quiet<2 ) fprintf(bcftools_stderr,"ignored gene: %s\n",line);
+        if ( !gff_ignored_biotype(args, ss) && args->verbosity > 0 ) fprintf(bcftools_stderr,"ignored gene: %s\n",line);
         return;
     }
 
@@ -980,7 +993,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
             if ( !ss ) return -1;   // no ID, ignore the line
             if ( !strncmp("chromosome",ss+3,10) ) return -1;
             if ( !strncmp("supercontig",ss+3,11) ) return -1;
-            if ( args->quiet<2 ) fprintf(bcftools_stderr,"ignored: %s\n", line);
+            if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"ignored: %s\n", line);
             return -1;
         }
 
@@ -1002,7 +1015,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     // 7. column: strand
     if ( *ss == '+' ) ftr->strand = STRAND_FWD;
     else if ( *ss == '-' ) ftr->strand = STRAND_REV;
-    else { if ( args->quiet<2 ) fprintf(bcftools_stderr,"Skipping unknown strand: %c\n", *ss); return -1; }
+    else { if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"Skipping unknown strand: %c\n", *ss); return -1; }
     ss += 2;
 
     // 8. column: phase (codon offset)
@@ -1010,7 +1023,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     else if ( *ss == '1' ) ftr->phase = 1;
     else if ( *ss == '2' ) ftr->phase = 2;
     else if ( *ss == '.' ) ftr->phase = 0;      // exons do not have phase
-    else { if ( args->quiet<2 ) fprintf(bcftools_stderr,"Skipping unknown phase: %c, %s\n", *ss, line); return -1; }
+    else { if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"Skipping unknown phase: %c, %s\n", *ss, line); return -1; }
     ss += 2;
 
     // substring search for "Parent=transcript:ENST00000437963"
@@ -1124,7 +1137,7 @@ void tscript_init_cds(args_t *args)
                 {
                     if ( args->force )
                     {
-                        if ( args->quiet < 2 )
+                        if ( args->verbosity > 0 )
                             fprintf(bcftools_stderr,"Warning: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                         tscript_ok = 0;
                         break;
@@ -1162,7 +1175,7 @@ void tscript_init_cds(args_t *args)
                 {
                     if ( args->force )
                     {
-                        if ( args->quiet < 2 )
+                        if ( args->verbosity > 0 )
                             fprintf(bcftools_stderr,"Warning: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                         tscript_ok = 0;
                         break;
@@ -1295,7 +1308,7 @@ void init_gff(args_t *args)
     }
     tscript_init_cds(args);
 
-    if ( !args->quiet )
+    if ( args->verbosity > 0 )
     {
         fprintf(bcftools_stderr,"Indexed %d transcripts, %d exons, %d CDSs, %d UTRs\n", 
                 regidx_nregs(args->idx_tscript),
@@ -1311,14 +1324,16 @@ void init_gff(args_t *args)
     free(aux->seq);
     gff_id_destroy(&aux->gene_ids);
 
-    if ( args->quiet<2 && khash_str2int_size(aux->ignored_biotypes) )
+    if ( args->verbosity > 0 && khash_str2int_size(aux->ignored_biotypes) )
     {
         khash_t(str2int) *ign = (khash_t(str2int)*)aux->ignored_biotypes;
         fprintf(bcftools_stderr,"Ignored the following biotypes:\n");
         for (i = kh_begin(ign); i < kh_end(ign); i++)
         {
             if ( !kh_exist(ign,i)) continue;
-            fprintf(bcftools_stderr,"\t%dx\t.. %s\n", kh_value(ign,i), kh_key(ign,i));
+            const char *biotype = kh_key(ign,i);
+            if ( !strcmp(biotype,"TCE") ) biotype = "TCE (\"To be Experimentally Confirmed\")";
+            fprintf(bcftools_stderr,"\t%dx\t.. %s\n", kh_value(ign,i), biotype);
         }
     }
     khash_str2int_destroy_free(aux->ignored_biotypes);
@@ -1328,7 +1343,7 @@ void init_data(args_t *args)
 {
     args->nfmt_bcsq = 1 + (args->ncsq_max - 1) / 32; 
 
-    if ( !args->quiet ) fprintf(bcftools_stderr,"Parsing %s ...\n", args->gff_fname);
+    if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"Parsing %s ...\n", args->gff_fname);
     init_gff(args);
 
     args->rid = -1;
@@ -1351,7 +1366,8 @@ void init_data(args_t *args)
         if ( args->output_type==FT_TAB_TEXT ) 
         {
             // significant speedup for plain VCFs
-            bcf_hdr_set_samples(args->hdr,NULL,0);
+            if (bcf_hdr_set_samples(args->hdr,NULL,0) < 0)
+                error_errno("[%s] Couldn't build sample filter", __func__);
         }
         args->phase = PHASE_DROP_GT;
     }
@@ -1362,7 +1378,7 @@ void init_data(args_t *args)
     if ( args->output_type==FT_TAB_TEXT )
     {
         args->out = args->output_fname ? fopen(args->output_fname,"w") : bcftools_stdout;
-        if ( !args->out ) error("Failed to open %s: %s\n", args->output_fname,strerror(errno));
+        if ( !args->out ) error("Failed to write to %s: %s\n", !strcmp("-",args->output_fname)?"standard output":args->output_fname,strerror(errno));
 
         fprintf(args->out,"# This file was produced by: bcftools +csq(%s+htslib-%s)\n", bcftools_version(),hts_version());
         fprintf(args->out,"# The command line was:\tbcftools +%s", args->argv[0]);
@@ -1382,14 +1398,16 @@ void init_data(args_t *args)
     else
     {
         args->out_fh = hts_open(args->output_fname? args->output_fname : "-",hts_bcf_wmode(args->output_type));
-        if ( args->out_fh == NULL ) error("Can't write to %s: %s\n", args->output_fname? args->output_fname : "standard output", strerror(errno));
-        bcf_hdr_append_version(args->hdr,args->argc,args->argv,"bcftools/csq");
-        bcf_hdr_printf(args->hdr,"##INFO=<ID=%s,Number=.,Type=String,Description=\"%s consequence annotation from BCFtools/csq. Format: '[*]consequence|gene|transcript|biotype[|strand|amino_acid_change|dna_change]' or, for consequences of variants split across multiple sites, a pointer to the record storing the consequences '@position'. '*' prefix indicates a consequence downstream from a stop \">",args->bcsq_tag, args->local_csq ? "Local" : "Haplotype-aware");
+        if ( args->out_fh == NULL ) error("[%s] Error: cannot write to %s: %s\n", __func__,args->output_fname? args->output_fname : "standard output", strerror(errno));
+        if ( args->n_threads > 0)
+            hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->sr->p);
+        if ( args->record_cmd_line ) bcf_hdr_append_version(args->hdr,args->argc,args->argv,"bcftools/csq");
+        bcf_hdr_printf(args->hdr,"##INFO=<ID=%s,Number=.,Type=String,Description=\"%s consequence annotation from BCFtools/csq, see http://samtools.github.io/bcftools/howtos/csq-calling.html for details. Format: Consequence|gene|transcript|biotype|strand|amino_acid_change|dna_change\">",args->bcsq_tag, args->local_csq ? "Local" : "Haplotype-aware");
         if ( args->hdr_nsmpl ) 
             bcf_hdr_printf(args->hdr,"##FORMAT=<ID=%s,Number=.,Type=Integer,Description=\"Bitmask of indexes to INFO/BCSQ, with interleaved first/second haplotype. Use \\\"bcftools query -f'[%%CHROM\\t%%POS\\t%%SAMPLE\\t%%TBCSQ\\n]'\\\" to translate.\">",args->bcsq_tag);
-        bcf_hdr_write(args->out_fh, args->hdr);
+        if ( bcf_hdr_write(args->out_fh, args->hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname?args->output_fname:"standard output");
     }
-    if ( !args->quiet ) fprintf(bcftools_stderr,"Calling...\n");
+    if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"Calling...\n");
 }
 
 void destroy_data(args_t *args)
@@ -1489,6 +1507,7 @@ void splice_init(splice_t *splice, bcf1_t *rec)
     splice->vcf.pos  = rec->pos;
     splice->vcf.rlen = rec->rlen;
     splice->vcf.ref  = rec->d.allele[0];
+    splice->csq      = 0;
 }
 static inline void splice_build_hap(splice_t *splice, uint32_t beg, int len)
 {
@@ -1596,7 +1615,7 @@ fprintf(bcftools_stderr," [%s]\n [%s]\n\n",splice->kref.s,splice->kalt.s);
 #endif
 }
 void csq_stage(args_t *args, csq_t *csq, bcf1_t *rec);
-static inline int csq_stage_utr(args_t *args, regitr_t *itr, bcf1_t *rec, uint32_t trid)
+static inline int csq_stage_utr(args_t *args, regitr_t *itr, bcf1_t *rec, uint32_t trid, uint32_t type)
 {
     while ( regitr_overlap(itr) )
     {
@@ -1606,7 +1625,7 @@ static inline int csq_stage_utr(args_t *args, regitr_t *itr, bcf1_t *rec, uint32
         csq_t csq; 
         memset(&csq, 0, sizeof(csq_t));
         csq.pos          = rec->pos;
-        csq.type.type    = utr->which==prime5 ? CSQ_UTR5 : CSQ_UTR3;
+        csq.type.type    = (utr->which==prime5 ? CSQ_UTR5 : CSQ_UTR3) | type;
         csq.type.biotype = tr->type;
         csq.type.strand  = tr->strand;
         csq.type.trid    = tr->id;
@@ -1660,7 +1679,7 @@ fprintf(bcftools_stderr,"ins: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
             const char *chr = bcf_seqname(args->hdr,splice->vcf.rec);
             if ( regidx_overlap(args->idx_utr,chr,splice->ref_beg+1,splice->ref_beg+1, itr) )     // adjacent utr
             {
-                ret = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id);
+                ret = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id, splice->csq);
                 if ( ret!=0 ) 
                 {
                     regitr_destroy(itr);
@@ -1698,7 +1717,7 @@ fprintf(bcftools_stderr,"ins: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
             const char *chr = bcf_seqname(args->hdr,splice->vcf.rec);
             if ( regidx_overlap(args->idx_utr,chr,splice->ref_end-1,splice->ref_end-1, itr) )     // adjacent utr
             {
-                ret = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id);
+                ret = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id, splice->csq);
                 if ( ret!=0 )
                 {
                     regitr_destroy(itr);
@@ -1765,14 +1784,105 @@ fprintf(bcftools_stderr,"ins: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
     return SPLICE_INSIDE;
 }
 
+int shifted_del_synonymous(args_t *args, splice_t *splice, uint32_t ex_beg, uint32_t ex_end)
+{
+    static int small_ref_padding_warned = 0;
+    tscript_t *tr = splice->tr;
+
+    // We know the VCF record overlaps the exon, but does it overlap the start codon?
+    if ( tr->strand==STRAND_REV && splice->vcf.pos + splice->vcf.rlen + 2 <= ex_end ) return 0;
+    if ( tr->strand==STRAND_FWD && splice->vcf.pos >= ex_beg + 3 ) return 0;
+
+#if XDBG
+    fprintf(bcftools_stderr,"shifted_del_synonymous: %d-%d  %s\n",ex_beg,ex_end, tr->strand==STRAND_FWD?"fwd":"rev");
+    fprintf(bcftools_stderr,"   %d  ..  %s > %s\n",splice->vcf.pos+1,splice->vcf.ref,splice->vcf.alt);
+#endif
+
+    // is there enough ref sequence for the extension? All coordinates are 0-based
+    int ref_len = strlen(splice->vcf.ref);
+    int alt_len = strlen(splice->vcf.alt);
+    assert( ref_len > alt_len );
+    int ndel = ref_len - alt_len;
+
+    if ( tr->strand==STRAND_REV )
+    {
+        int32_t vcf_ref_end = splice->vcf.pos + ref_len - 1;  // end pos of the VCF REF allele
+        int32_t tr_ref_end  = splice->tr->end + N_REF_PAD;    // the end pos of accessible cached ref seq
+        if ( vcf_ref_end + ndel > tr_ref_end )
+        {
+            if ( !small_ref_padding_warned )
+            {
+                fprintf(bcftools_stderr,"Warning: Could not verify synonymous start/stop at %s:%d due to small N_REF_PAD. (Improve me?)\n",bcf_seqname(args->hdr,splice->vcf.rec),splice->vcf.pos+1);
+                small_ref_padding_warned = 1;
+            }
+            return 0;
+        }
+
+        char *ptr_vcf = splice->vcf.ref + alt_len;                         // the first deleted base in the VCF REF allele
+        char *ptr_ref = splice->tr->ref + N_REF_PAD + (vcf_ref_end + 1 - splice->tr->beg);  // the first ref base after the ndel bases deleted
+#if XDBG
+        fprintf(bcftools_stderr,"vcf: %s\nref: %s\n",ptr_vcf,ptr_ref);
+#endif
+        int i = 0;
+        while ( ptr_vcf[i] && ptr_vcf[i]==ptr_ref[i] ) i++;
+        if ( ptr_vcf[i] ) return 0;       // the deleted sequence cannot be replaced
+    }
+    else 
+    {
+        // STRAND_FWD
+        int32_t vcf_block_beg = splice->vcf.pos + ref_len - 2*ndel;        // the position of the first base of the ref block that could potentially replace the deletion
+        if ( vcf_block_beg < 0 ) return 0;
+
+#if XDBG
+        fprintf(bcftools_stderr,"vcf_block_beg: %d\n",vcf_block_beg+1);
+#endif
+
+        if ( N_REF_PAD + vcf_block_beg < ex_beg )
+        {
+            if ( !small_ref_padding_warned )
+            {
+                fprintf(bcftools_stderr,"Warning: Could not verify synonymous start/stop at %s:%d due to small N_REF_PAD. (Improve me?)\n",bcf_seqname(args->hdr,splice->vcf.rec),splice->vcf.pos+1);
+                small_ref_padding_warned = 1;
+            }
+            return 0;
+        }
+
+        char *ptr_vcf = splice->vcf.ref + alt_len;                                      // the first deleted base in the VCF REF allele
+        char *ptr_ref = splice->tr->ref + N_REF_PAD + vcf_block_beg - splice->tr->beg;  // the replacement ref block
+#if XDBG
+        fprintf(bcftools_stderr,"vcf: %s\nref: %s\n",ptr_vcf,ptr_ref);
+#endif
+
+        int i = 0;
+        while ( ptr_vcf[i] && ptr_vcf[i]==ptr_ref[i] ) i++;
+        if ( ptr_vcf[i] ) return 0;       // the deleted sequence cannot be replaced
+    }
+
+    return 1;
+}
+
 static inline int splice_csq_del(args_t *args, splice_t *splice, uint32_t ex_beg, uint32_t ex_end)
 {
+    if ( splice->check_start )
+    {
+        // check for synonymous start
+        //      test/csq/ENST00000375992/incorrect-synon-del-not-start-lost.txt
+        //      test/csq/ENST00000368801.2/start-lost.txt
+        //      test/csq/ENST00000318249.2/synonymous-start-lost.txt
+        int is_synonymous = shifted_del_synonymous(args, splice, ex_beg, ex_end);
+        if ( is_synonymous )
+        {
+            splice->csq |= CSQ_START_RETAINED;
+            return SPLICE_OVERLAP;
+        }
+    }
+
     // coordinates that matter for consequences, eg AC>ACG trimmed to C>CG
     splice->ref_beg = splice->vcf.pos + splice->tbeg - 1;                       // 1b before the deleted base
     splice->ref_end = splice->vcf.pos + splice->vcf.rlen - splice->tend - 1;    // the last deleted base
 
 #if XDBG
-fprintf(bcftools_stderr,"del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
+fprintf(bcftools_stderr,"splice_csq_del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d  check_utr=%d start,stop,beg,end=%d,%d,%d,%d\n", splice->vcf.ref,splice->vcf.alt,ex_beg,ex_end,splice->ref_beg,splice->ref_end,splice->tbeg,splice->tend,splice->check_utr,splice->check_start,splice->check_stop,splice->check_region_beg,splice->check_region_end);
 #endif
 
     if ( splice->ref_beg + 1 < ex_beg )     // the part before the exon; ref_beg is off by -1
@@ -1785,7 +1895,7 @@ fprintf(bcftools_stderr,"del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
                 regitr_t *itr = regitr_init(NULL);
                 const char *chr = bcf_seqname(args->hdr,splice->vcf.rec);
                 if ( regidx_overlap(args->idx_utr,chr,splice->ref_beg,ex_beg-1, itr) )     // adjacent utr
-                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id);
+                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id, splice->csq);
                 regitr_destroy(itr);
             }
             if ( !csq )
@@ -1841,7 +1951,7 @@ fprintf(bcftools_stderr,"del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
                 regitr_t *itr = regitr_init(NULL);
                 const char *chr = bcf_seqname(args->hdr,splice->vcf.rec);
                 if ( regidx_overlap(args->idx_utr,chr,ex_end+1,splice->ref_end, itr) )     // adjacent utr
-                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id);
+                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id, splice->csq);
                 regitr_destroy(itr);
             }
             if ( !csq )
@@ -1876,7 +1986,6 @@ fprintf(bcftools_stderr,"del: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
         csq_stage_splice(args, splice->vcf.rec, splice->tr, splice->csq);
         return SPLICE_OUTSIDE;
     }
-
     if ( splice->ref_beg < ex_beg + 2 ) // ref_beg is off by -1
     {
         if ( splice->check_region_beg ) splice->csq |= CSQ_SPLICE_REGION;
@@ -1931,7 +2040,7 @@ fprintf(bcftools_stderr,"mnp: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
                 regitr_t *itr = regitr_init(NULL);
                 const char *chr = bcf_seqname(args->hdr,splice->vcf.rec);
                 if ( regidx_overlap(args->idx_utr,chr,splice->ref_beg,ex_beg-1, itr) )     // adjacent utr
-                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id);
+                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id, splice->csq);
                 regitr_destroy(itr);
             }
             if ( !csq )
@@ -1961,7 +2070,7 @@ fprintf(bcftools_stderr,"mnp: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
                 regitr_t *itr = regitr_init(NULL);
                 const char *chr = bcf_seqname(args->hdr,splice->vcf.rec);
                 if ( regidx_overlap(args->idx_utr,chr,ex_end+1,splice->ref_end, itr) )     // adjacent utr
-                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id);
+                    csq = csq_stage_utr(args, itr, splice->vcf.rec, splice->tr->id, splice->csq);
                 regitr_destroy(itr);
             }
             if ( !csq )
@@ -2010,7 +2119,6 @@ fprintf(bcftools_stderr,"mnp: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
 }
 static inline int splice_csq(args_t *args, splice_t *splice, uint32_t ex_beg, uint32_t ex_end)
 {
-    splice->csq = 0;
     splice->vcf.alen = strlen(splice->vcf.alt);
 
     int rlen1 = splice->vcf.rlen - 1, alen1 = splice->vcf.alen - 1, i = 0;
@@ -2039,6 +2147,7 @@ static inline int splice_csq(args_t *args, splice_t *splice, uint32_t ex_beg, ui
 
     return 0;
 }
+
 
 // return value: 0 added, 1 overlapping variant, 2 silent discard (intronic,alt=ref)
 int hap_init(args_t *args, hap_node_t *parent, hap_node_t *child, gf_cds_t *cds, bcf1_t *rec, int ial)
@@ -2072,7 +2181,7 @@ int hap_init(args_t *args, hap_node_t *parent, hap_node_t *child, gf_cds_t *cds,
     if ( child->icds!=tr->ncds-1 ) splice.check_region_end = 1;
 
 #if XDBG
-fprintf(bcftools_stderr,"\n%d [%s][%s]   check start:%d,stop:%d\n",splice.vcf.pos+1,splice.vcf.ref,splice.vcf.alt,splice.check_start,splice.check_stop);
+fprintf(bcftools_stderr,"\nhap_init: %d [%s][%s]   check start:%d,stop:%d\n",splice.vcf.pos+1,splice.vcf.ref,splice.vcf.alt,splice.check_start,splice.check_stop);
 #endif
     int ret = splice_csq(args, &splice, cds->beg, cds->beg + cds->len - 1);
 #if XDBG
@@ -2080,7 +2189,7 @@ fprintf(bcftools_stderr,"cds splice_csq: %d [%s][%s] .. beg,end=%d %d, ret=%d, c
 #endif
 
     if ( ret==SPLICE_VAR_REF ) return 2;  // not a variant, eg REF=CA ALT=CA
-    if ( ret==SPLICE_OUTSIDE || ret==SPLICE_OVERLAP )  // not a coding csq
+    if ( ret==SPLICE_OUTSIDE || ret==SPLICE_OVERLAP || splice.csq==CSQ_START_LOST )  // not a coding csq
     {
         free(splice.kref.s);
         free(splice.kalt.s);
@@ -2138,6 +2247,8 @@ fprintf(bcftools_stderr,"cds splice_csq: %d [%s][%s] .. beg,end=%d %d, ret=%d, c
             if ( len < 0 )   // overlapping variants
             {
                 free(str.s);
+                free(splice.kref.s);
+                free(splice.kalt.s);
                 return 1;
             }
             kputsn_(tr->ref + N_REF_PAD + parent->rbeg + parent->rlen - tr->beg, len, &str);
@@ -2175,6 +2286,7 @@ fprintf(bcftools_stderr,"cds splice_csq: %d [%s][%s] .. beg,end=%d %d, ret=%d, c
         if ( !child->csq ) child->csq |= CSQ_CODING_SEQUENCE;  // hack, specifically for ENST00000390520/deletion-overlap.vcf
     }
 
+
     free(splice.kref.s);
     free(splice.kalt.s);
     return 0;
@@ -2208,7 +2320,7 @@ void hap_destroy(hap_node_t *hap)
 void cds_translate(kstring_t *_ref, kstring_t *_seq, uint32_t sbeg, uint32_t rbeg, uint32_t rend, int strand, kstring_t *tseq, int fill)
 {
 #if XDBG
-fprintf(bcftools_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,fill,(int)_seq->l);
+fprintf(bcftools_stderr,"\ntranslate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,rend,fill,(int)_seq->l);
 #endif
     char tmp[3], *codon, *end;
     int i, len, npad;
@@ -2308,7 +2420,7 @@ fprintf(bcftools_stderr,"translate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,ren
 #if DBG>1
         fprintf(bcftools_stderr,"    npad: %d\n",npad);
 #endif
-if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(bcftools_stderr,"sbeg=%d  seq.l=%d seq.m=%d\n",sbeg,(int)seq.l,(int)seq.m);
+        if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(bcftools_stderr,"sbeg=%d  seq.l=%d seq.m=%d npad=%d\n",sbeg,(int)seq.l,(int)seq.m,npad);
         assert( npad>=0 && sbeg+seq.l+npad<=seq.m );  // todo: first codon on the rev strand
 
         if ( npad==2 )
@@ -2329,8 +2441,8 @@ if ( !(npad>=0 && sbeg+seq.l+npad<=seq.m) ) fprintf(bcftools_stderr,"sbeg=%d  se
         for (; i>=0 && end>seq.s; i--) tmp[i] = *(--end);
 #if DBG>1
         fprintf(bcftools_stderr,"\t i=%d\n", i);
-        if(i==1)fprintf(bcftools_stderr,"[0]    %c\n",tmp[2]);
-        if(i==0)fprintf(bcftools_stderr,"[0]  %c%c\n",tmp[1],tmp[2]);
+        if(i==1)fprintf(bcftools_stderr,"[0]  %c\n",tmp[2]);
+        if(i==0)fprintf(bcftools_stderr,"[0] %c%c\n",tmp[1],tmp[2]);
 #endif
         if ( i==-1 )
         {
@@ -2571,12 +2683,25 @@ void kput_vcsq(args_t *args, vcsq_t *csq, kstring_t *str)
         kputs(csq->vstr.s, str);
 }
 
+void kprint_aa_prediction(args_t *args, int beg, kstring_t *aa, kstring_t *str)
+{
+    if ( !args->brief_predictions )
+        kputs(aa->s, str);
+    else
+    {
+        int len = aa->l;
+        if ( aa->s[len-1]=='*' ) len--;
+        kputc(aa->s[0], str);
+        kputs("..", str);
+        kputw(beg+len, str);
+    }
+}
+
 void hap_add_csq(args_t *args, hap_t *hap, hap_node_t *node, int tlen, int ibeg, int iend, int dlen, int indel)
 {
     int i;
     tscript_t *tr = hap->tr;
     int ref_node = tr->strand==STRAND_FWD ? ibeg : iend;
-
     int icsq = node->ncsq_list++;
     hts_expand0(csq_t,node->ncsq_list,node->mcsq_list,node->csq_list);
     csq_t *csq = &node->csq_list[icsq];
@@ -2680,12 +2805,12 @@ void hap_add_csq(args_t *args, hap_t *hap, hap_node_t *node, int tlen, int ibeg,
     int aa_sbeg = tr->strand==STRAND_FWD ? node2sbeg(ibeg)/3+1 : (tlen - node2send(iend))/3+1;
     kputc_('|', &str);
     kputw(aa_rbeg, &str);
-    kputs(hap->tref.s, &str);
+    kprint_aa_prediction(args,aa_rbeg,&hap->tref,&str);
     if ( !(csq->type.type & CSQ_SYNONYMOUS_VARIANT) )
     {
         kputc_('>', &str);
         kputw(aa_sbeg, &str);
-        kputs(hap->tseq.s, &str);
+        kprint_aa_prediction(args,aa_sbeg,&hap->tseq,&str);
     }
     kputc_('|', &str);
 
@@ -2963,17 +3088,14 @@ static inline void hap_stage_vcf(args_t *args, tscript_t *tr, int ismpl, int iha
         int icsq = 2*csq->idx + ihap;
         if ( icsq >= args->ncsq_max ) // more than ncsq_max consequences, so can't fit it in FMT
         {
-            int print_warning = 1;
-            if ( args->quiet )
+            if ( args->verbosity && (!args->ncsq_small_warned || args->verbosity > 1) )
             {
-                if ( args->quiet > 1 || args->ncsq_small_warned ) print_warning = 0;
+                fprintf(bcftools_stderr,
+                    "Warning: Too many consequences for sample %s at %s:%"PRId64", keeping the first %d and skipping the rest.\n",
+                    args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),(int64_t) vrec->line->pos+1,csq->idx);
+                if ( !args->ncsq_small_warned )
+                    fprintf(bcftools_stderr,"         The limit can be increased by setting the --ncsq parameter. This warning is printed only once.\n");
                 args->ncsq_small_warned = 1;
-            }
-            if ( print_warning )
-            {
-                fprintf(bcftools_stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
-                        args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
-                if ( args->quiet ) fprintf(bcftools_stderr,"(This warning is printed only once)\n");
             }
             break;
         }
@@ -2986,12 +3108,10 @@ void hap_flush(args_t *args, uint32_t pos)
 {
     int i,j;
     tr_heap_t *heap = args->active_tr;
-
     while ( heap->ndat && heap->dat[0]->end<=pos )
     {
         tscript_t *tr = heap->dat[0];
         khp_delete(trhp, heap);
-
         args->hap->tr = tr;
         if ( tr->root && tr->root->nchild ) // normal, non-localized calling
         {
@@ -3030,7 +3150,7 @@ void hap_flush(args_t *args, uint32_t pos)
 
 #define SWAP(type_t, a, b) { type_t t = a; a = b; b = t; }
 
-void vbuf_push(args_t *args, bcf1_t **rec_ptr)
+vbuf_t *vbuf_push(args_t *args, bcf1_t **rec_ptr)
 {
     int i;
 
@@ -3046,6 +3166,7 @@ void vbuf_push(args_t *args, bcf1_t **rec_ptr)
         i = rbuf_append(&args->vcf_rbuf);
         if ( !args->vcf_buf[i] ) args->vcf_buf[i] = (vbuf_t*) calloc(1,sizeof(vbuf_t));
         args->vcf_buf[i]->n = 0;
+        args->vcf_buf[i]->keep_until = 0;
     }
     vbuf_t *vbuf = args->vcf_buf[i];
     vbuf->n++;
@@ -3065,16 +3186,29 @@ void vbuf_push(args_t *args, bcf1_t **rec_ptr)
     int ret;
     khint_t k = kh_put(pos2vbuf, args->pos2vbuf, (int)rec->pos, &ret);
     kh_val(args->pos2vbuf,k) = vbuf;
+
+    return vbuf;
 }
 
-void vbuf_flush(args_t *args)
+void vbuf_flush(args_t *args, uint32_t pos)
 {
-    if ( args->active_tr->ndat ) return; // cannot output buffered VCF lines (args.vbuf) until all active transcripts are gone
-
     int i,j;
-    while ( (i=rbuf_shift(&args->vcf_rbuf))>=0 )
+    while ( args->vcf_rbuf.n )
     {
-        vbuf_t *vbuf = args->vcf_buf[i];
+        vbuf_t *vbuf;
+        if ( !args->local_csq && args->active_tr->ndat )
+        {
+            // check if the first active transcript starts beyond the first buffered VCF record,
+            // cannot output buffered VCF lines (args.vbuf) until the active transcripts are gone
+            vbuf = args->vcf_buf[ args->vcf_rbuf.f ];
+            if ( vbuf->keep_until > pos ) break;
+            assert( vbuf->n );
+        }
+
+        i = rbuf_shift(&args->vcf_rbuf);
+        assert( i>=0 );
+        vbuf = args->vcf_buf[i];
+        int pos = vbuf->n ? vbuf->vrec[0]->line->pos : -1;
         for (i=0; i<vbuf->n; i++)
         {
             vrec_t *vrec = vbuf->vrec[i];
@@ -3085,7 +3219,10 @@ void vbuf_flush(args_t *args)
             }
             if ( !vrec->nvcsq )
             {
-                bcf_write(args->out_fh, args->hdr, vrec->line);
+                if ( bcf_write(args->out_fh, args->hdr, vrec->line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname?args->output_fname:"standard output");
+                int save_pos = vrec->line->pos;
+                bcf_empty(vrec->line);
+                vrec->line->pos = save_pos;  // this is necessary for compound variants
                 continue;
             }
             
@@ -3100,19 +3237,24 @@ void vbuf_flush(args_t *args)
             if ( args->hdr_nsmpl )
             {
                 if ( vrec->nfmt < args->nfmt_bcsq )
-                    for (j=1; j<args->hdr_nsmpl; j++) memcpy(vrec->smpl+j*vrec->nfmt, vrec->smpl+j*args->nfmt_bcsq, vrec->nfmt*sizeof(*vrec->smpl));
+                    for (j=1; j<args->hdr_nsmpl; j++)
+                        memmove(&vrec->smpl[j*vrec->nfmt], &vrec->smpl[j*args->nfmt_bcsq], vrec->nfmt*sizeof(*vrec->smpl));
                 bcf_update_format_int32(args->hdr, vrec->line, args->bcsq_tag, vrec->smpl, args->hdr_nsmpl*vrec->nfmt);
             }
             vrec->nvcsq = 0;
-            bcf_write(args->out_fh, args->hdr, vrec->line);
+            if ( bcf_write(args->out_fh, args->hdr, vrec->line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname?args->output_fname:"standard output");
+            int save_pos = vrec->line->pos;
+            bcf_empty(vrec->line);
+            vrec->line->pos = save_pos;
         }
-        if ( vbuf->n )
+        if ( pos!=-1 )
         {
-            khint_t k = kh_get(pos2vbuf, args->pos2vbuf, vbuf->vrec[0]->line->pos);
+            khint_t k = kh_get(pos2vbuf, args->pos2vbuf, pos);
             if ( k != kh_end(args->pos2vbuf) ) kh_del(pos2vbuf, args->pos2vbuf, k);
         }
         vbuf->n = 0;
     }
+    if ( args->active_tr->ndat ) return;
 
     for (i=0; i<args->nrm_tr; i++)
     {
@@ -3139,10 +3281,12 @@ void tscript_init_ref(args_t *args, tscript_t *tr, const char *chr)
     int pad_end = len - (tr->end - tr->beg + 1 + pad_beg);
     if ( pad_beg + pad_end != 2*N_REF_PAD )
     {
-        char *ref = (char*) malloc(tr->end - tr->beg + 1 + 2*N_REF_PAD);
+        char *ref = (char*) malloc(tr->end - tr->beg + 1 + 2*N_REF_PAD + 1);
         for (i=0; i < N_REF_PAD - pad_beg; i++) ref[i] = 'N';
         memcpy(ref+i, tr->ref, len);
+        len += i;
         for (i=0; i < N_REF_PAD - pad_end; i++) ref[i+len] = 'N';
+        ref[i+len] = 0;
         free(tr->ref);
         tr->ref = ref;
     }
@@ -3150,15 +3294,19 @@ void tscript_init_ref(args_t *args, tscript_t *tr, const char *chr)
 
 static void sanity_check_ref(args_t *args, tscript_t *tr, bcf1_t *rec)
 {
-    char *ref = tr->ref + (rec->pos + N_REF_PAD >= tr->beg ? rec->pos - tr->beg + N_REF_PAD : 0);
-    char *vcf = rec->d.allele[0] + (rec->pos + N_REF_PAD >= tr->beg ? 0 : tr->beg - N_REF_PAD - rec->pos);
-    assert( vcf - rec->d.allele[0] < strlen(rec->d.allele[0]) );
-    while ( *ref && *vcf )
+    int vbeg = 0;
+    int rbeg = rec->pos - tr->beg + N_REF_PAD;
+    if ( rbeg < 0 ) { vbeg += abs(rbeg); rbeg = 0; }
+    char *ref = tr->ref + rbeg;
+    char *vcf = rec->d.allele[0] + vbeg;
+    assert( vcf - rec->d.allele[0] < strlen(rec->d.allele[0]) && ref - tr->ref < tr->end - tr->beg + 2*N_REF_PAD );
+    int i = 0;
+    while ( ref[i] && vcf[i] )
     {
-        if ( *ref!=*vcf && toupper(*ref)!=toupper(*vcf) ) 
-            error("Error: the fasta reference does not match the VCF REF allele at %s:%d .. %s\n", bcf_seqname(args->hdr,rec),rec->pos+1,rec->d.allele[0]);
-        ref++;
-        vcf++;
+        if ( ref[i]!=vcf[i] && toupper(ref[i])!=toupper(vcf[i]) ) 
+            error("Error: the fasta reference does not match the VCF REF allele at %s:%"PRId64" .. fasta=%c vcf=%c\n",
+                    bcf_seqname(args->hdr,rec),(int64_t) rec->pos+vbeg+1,ref[i],vcf[i]);
+        i++;
     }
 }
 
@@ -3197,6 +3345,7 @@ int test_cds_local(args_t *args, bcf1_t *rec)
 
         for (i=1; i<rec->n_allele; i++)
         {
+            if ( rec->d.allele[i][0]=='<' || rec->d.allele[i][0]=='*' ) { continue; }
             if ( hap_init(args, &root, &node, cds, rec, i)!=0 ) continue;
 
             csq_t csq; 
@@ -3296,12 +3445,12 @@ int test_cds_local(args_t *args, bcf1_t *rec)
                     int aa_sbeg = tr->strand==STRAND_FWD ? node.sbeg/3+1 : (tr->nsref - 2*N_REF_PAD + node.dlen - node.sbeg - alen)/3+1;
                     kputc_('|', &str);
                     kputw(aa_rbeg, &str);
-                    kputs(tref->s, &str);
+                    kprint_aa_prediction(args,aa_rbeg,tref,&str);
                     if ( !(csq_type & CSQ_SYNONYMOUS_VARIANT) )
                     {
                         kputc_('>', &str);
                         kputw(aa_sbeg, &str);
-                        kputs(tseq->s, &str);
+                        kprint_aa_prediction(args,aa_sbeg,tseq,&str);
                     }
                     kputc_('|', &str);
                     kputw(rec->pos+1, &str);
@@ -3332,8 +3481,10 @@ int test_cds_local(args_t *args, bcf1_t *rec)
     return ret;
 }
 
-int test_cds(args_t *args, bcf1_t *rec)
+int test_cds(args_t *args, bcf1_t *rec, vbuf_t *vbuf)
 {
+    static int overlaps_warned = 0, multiploid_warned = 0;
+
     int i, ret = 0, hap_ret;
     const char *chr = bcf_seqname(args->hdr,rec);
     // note that the off-by-one extension of rlen is deliberate to account for insertions
@@ -3343,6 +3494,7 @@ int test_cds(args_t *args, bcf1_t *rec)
         gf_cds_t *cds = regitr_payload(args->itr,gf_cds_t*);
         tscript_t *tr = cds->tr;
         if ( !GF_is_coding(tr->type) ) continue;
+        if ( vbuf->keep_until < tr->end ) vbuf->keep_until = tr->end;
         ret = 1;
         if ( !tr->root )
         {
@@ -3372,10 +3524,17 @@ int test_cds(args_t *args, bcf1_t *rec)
                 // overlapping or intron variant, cannot apply
                 if ( hap_ret==1 )
                 {
-                    if ( !args->quiet )
-                        fprintf(bcftools_stderr,"Warning: Skipping overlapping variants at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+                    if ( args->verbosity && (!overlaps_warned || args->verbosity > 1) )
+                    {
+                        fprintf(bcftools_stderr,
+                            "Warning: Skipping overlapping variants at %s:%"PRId64"\t%s>%s.\n",
+                            chr,(int64_t) rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+                        if ( !overlaps_warned )
+                            fprintf(bcftools_stderr,"         This message is printed only once, the verbosity can be increased with `--verbose 2`\n");
+                        overlaps_warned = 1;
+                    }
                     if ( args->out ) 
-                        fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+                        fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%"PRId64"\t%s>%s\n", chr,(int64_t) rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
                 }
                 else ret = 1;   // prevent reporting as intron in test_tscript
                 hap_destroy(child);
@@ -3411,10 +3570,17 @@ int test_cds(args_t *args, bcf1_t *rec)
         ngts /= bcf_hdr_nsamples(args->hdr);
         if ( ngts!=1 && ngts!=2 ) 
         {
-            if ( !args->quiet )
-                fprintf(bcftools_stderr,"Warning: Skipping site with non-diploid/non-haploid genotypes at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+            if ( args->verbosity && (!multiploid_warned || args->verbosity > 1) )
+            {
+                fprintf(bcftools_stderr,
+                    "Warning: Skipping site with non-diploid/non-haploid genotypes at %s:%"PRId64"\t%s>%s.\n",
+                    chr,(int64_t) rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+                if ( !multiploid_warned )
+                    fprintf(bcftools_stderr,"         This message is printed only once, the verbosity can be increased with `--verbose 2`\n");
+                multiploid_warned = 1;
+            }
             if ( args->out ) 
-                fprintf(args->out,"LOG\tWarning: Skipping site with non-diploid/non-haploid genotypes at %s:%d\t%s>%s\n", chr,rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
+                fprintf(args->out,"LOG\tWarning: Skipping site with non-diploid/non-haploid genotypes at %s:%"PRId64"\t%s>%s\n", chr,(int64_t) rec->pos+1,rec->d.allele[0],rec->d.allele[1]);
             continue;
         }
         for (ismpl=0; ismpl<args->smpl->n; ismpl++)
@@ -3431,7 +3597,7 @@ int test_cds(args_t *args, bcf1_t *rec)
                 if ( !bcf_gt_is_phased(gt[0]) && !bcf_gt_is_phased(gt[1]) )
                 {
                     if ( args->phase==PHASE_REQUIRE )
-                        error("Unphased heterozygous genotype at %s:%d, sample %s. See the --phase option.\n", chr,rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]]);
+                        error("Unphased heterozygous genotype at %s:%"PRId64", sample %s. See the --phase option.\n", chr,(int64_t) rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]]);
                     if ( args->phase==PHASE_SKIP )
                         continue;
                     if ( args->phase==PHASE_NON_REF )
@@ -3470,12 +3636,18 @@ int test_cds(args_t *args, bcf1_t *rec)
                     // overlapping or intron variant, cannot apply
                     if ( hap_ret==1 )
                     {
-                        if ( !args->quiet )
-                            fprintf(bcftools_stderr,"Warning: Skipping overlapping variants at %s:%d, sample %s\t%s>%s\n",
-                                    chr,rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]],rec->d.allele[0],rec->d.allele[ial]);
+                        if ( args->verbosity && (!overlaps_warned || args->verbosity > 1) )
+                        {
+                            fprintf(bcftools_stderr,
+                                    "Warning: Skipping overlapping variants at %s:%"PRId64", sample %s\t%s>%s.\n",
+                                    chr,(int64_t) rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]],rec->d.allele[0],rec->d.allele[ial]);
+                            if ( !overlaps_warned )
+                                fprintf(bcftools_stderr,"         This message is printed only once, the verbosity can be increased with `--verbose 2`\n");
+                            overlaps_warned = 1;
+                        }
                         if ( args->out  )
-                            fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%d, sample %s\t%s>%s\n",
-                                    chr,rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]],rec->d.allele[0],rec->d.allele[ial]);
+                            fprintf(args->out,"LOG\tWarning: Skipping overlapping variants at %s:%"PRId64", sample %s\t%s>%s\n",
+                                    chr,(int64_t) rec->pos+1,args->hdr->samples[args->smpl->idx[ismpl]],rec->d.allele[0],rec->d.allele[ial]);
                     }
                     hap_destroy(child);
                     continue;
@@ -3561,19 +3733,15 @@ void csq_stage(args_t *args, csq_t *csq, bcf1_t *rec)
             if ( icsq >= args->ncsq_max ) // more than ncsq_max consequences, so can't fit it in FMT
             {
                 int ismpl = args->smpl->idx[i];
-                int print_warning = 1;
-                if ( args->quiet )
+                if ( args->verbosity && (!args->ncsq_small_warned || args->verbosity > 1) )
                 {
-                    if ( args->quiet > 1 || args->ncsq_small_warned ) print_warning = 0;
+                    fprintf(bcftools_stderr,
+                            "Warning: Too many consequences for sample %s at %s:%"PRId64", keeping the first %d and skipping the rest.\n",
+                            args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),(int64_t) vrec->line->pos+1,icsq+1);
+                    if ( !args->ncsq_small_warned )
+                        fprintf(bcftools_stderr,"         The limit can be increased by setting the --ncsq parameter. This warning is printed only once.\n");
                     args->ncsq_small_warned = 1;
                 }
-                if ( print_warning )
-                {
-                    fprintf(bcftools_stderr,"Warning: --ncsq %d is too small to annotate %s at %s:%d with %d-th csq\n",
-                            args->ncsq_max/2,args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),vrec->line->pos+1,csq->idx+1);
-                    if ( args->quiet ) fprintf(bcftools_stderr,"(This warning is printed only once)\n");
-                }
-                break;
             }
             if ( vrec->nfmt < 1 + icsq/32 ) vrec->nfmt = 1 + icsq/32;
             vrec->smpl[i*args->nfmt_bcsq + icsq/32] |= 1 << (icsq % 32);
@@ -3596,8 +3764,9 @@ int test_utr(args_t *args, bcf1_t *rec)
         tscript_t *tr = splice.tr = utr->tr;
         for (i=1; i<rec->n_allele; i++)
         {
-            if ( rec->d.allele[1][0]=='<' || rec->d.allele[1][0]=='*' ) { continue; }
+            if ( rec->d.allele[i][0]=='<' || rec->d.allele[i][0]=='*' ) { continue; }
             splice.vcf.alt = rec->d.allele[i];
+            splice.csq     = 0;
             int splice_ret = splice_csq(args, &splice, utr->beg, utr->end);
             if ( splice_ret!=SPLICE_INSIDE && splice_ret!=SPLICE_OVERLAP ) continue;
             csq_t csq; 
@@ -3639,6 +3808,7 @@ int test_splice(args_t *args, bcf1_t *rec)
         {
             if ( rec->d.allele[1][0]=='<' || rec->d.allele[1][0]=='*' ) { continue; }
             splice.vcf.alt = rec->d.allele[i];
+            splice.csq     = 0;
             splice_csq(args, &splice, exon->beg, exon->end);
             if ( splice.csq ) ret = 1;
         }
@@ -3661,8 +3831,9 @@ int test_tscript(args_t *args, bcf1_t *rec)
         tscript_t *tr = splice.tr = regitr_payload(args->itr, tscript_t*);
         for (i=1; i<rec->n_allele; i++)
         {
-            if ( rec->d.allele[1][0]=='<' || rec->d.allele[1][0]=='*' ) { continue; }
+            if ( rec->d.allele[i][0]=='<' || rec->d.allele[i][0]=='*' ) { continue; }
             splice.vcf.alt = rec->d.allele[i];
+            splice.csq     = 0;
             int splice_ret = splice_csq(args, &splice, tr->beg, tr->end);
             if ( splice_ret!=SPLICE_INSIDE && splice_ret!=SPLICE_OVERLAP ) continue;    // SPLICE_OUTSIDE or SPLICE_REF
             csq_t csq; 
@@ -3682,22 +3853,151 @@ int test_tscript(args_t *args, bcf1_t *rec)
     return ret;
 }
 
-void process(args_t *args, bcf1_t **rec_ptr)
+void test_symbolic_alt(args_t *args, bcf1_t *rec)
+{
+    static int warned = 0;
+    if ( args->verbosity && (!warned && args->verbosity > 0) )
+    {
+        fprintf(bcftools_stderr,"Warning: The support for symbolic ALT insertions is experimental.\n");
+        warned = 1;
+    }
+
+    const char *chr = bcf_seqname(args->hdr,rec);
+
+    // only insertions atm
+    int beg = rec->pos + 1;
+    int end = beg;
+    int csq_class = CSQ_ELONGATION;
+
+    int hit = 0;
+    if ( regidx_overlap(args->idx_cds,chr,beg,end, args->itr) )
+    {
+        while ( regitr_overlap(args->itr) )
+        {
+            csq_t csq; 
+            memset(&csq, 0, sizeof(csq_t));
+            gf_cds_t *cds    = regitr_payload(args->itr,gf_cds_t*);
+            tscript_t *tr    = cds->tr;
+            csq.type.type    = (GF_is_coding(tr->type) ? CSQ_CODING_SEQUENCE : CSQ_NON_CODING) | csq_class;
+            csq.pos          = rec->pos;
+            csq.type.biotype = tr->type;
+            csq.type.strand  = tr->strand;
+            csq.type.trid    = tr->id;
+            csq.type.gene    = tr->gene->name;
+            csq_stage(args, &csq, rec);
+            hit = 1;
+        }
+    }
+    if ( regidx_overlap(args->idx_utr,chr,beg,end, args->itr) )
+    {
+        while ( regitr_overlap(args->itr) )
+        {
+            csq_t csq; 
+            memset(&csq, 0, sizeof(csq_t));
+            gf_utr_t *utr    = regitr_payload(args->itr, gf_utr_t*);
+            tscript_t *tr    = utr->tr;
+            csq.type.type    = (utr->which==prime5 ? CSQ_UTR5 : CSQ_UTR3) | csq_class;
+            csq.pos          = rec->pos;
+            csq.type.biotype = tr->type;
+            csq.type.strand  = tr->strand;
+            csq.type.trid    = tr->id;
+            csq.type.gene    = tr->gene->name;
+            csq_stage(args, &csq, rec);
+            hit = 1;
+        }
+    }
+    if ( regidx_overlap(args->idx_exon,chr,beg,end, args->itr) )
+    {
+        splice_t splice;
+        splice_init(&splice, rec);
+        splice.check_acceptor = splice.check_donor = 1;
+
+        while ( regitr_overlap(args->itr) )
+        {
+            gf_exon_t *exon = regitr_payload(args->itr, gf_exon_t*);
+            splice.tr = exon->tr;
+            if ( !splice.tr->ncds ) continue;  // not a coding transcript, no interest in splice sites
+            splice.check_region_beg = splice.tr->beg==exon->beg ? 0 : 1;
+            splice.check_region_end = splice.tr->end==exon->end ? 0 : 1;
+            splice.vcf.alt = rec->d.allele[1];
+            splice.csq     = csq_class;
+            splice_csq(args, &splice, exon->beg, exon->end);
+            if ( splice.csq ) hit = 1;
+        }
+    }
+    if ( !hit && regidx_overlap(args->idx_tscript,chr,beg,end, args->itr) )
+    {
+        splice_t splice;
+        splice_init(&splice, rec);
+
+        while ( regitr_overlap(args->itr) )
+        {
+            csq_t csq; 
+            memset(&csq, 0, sizeof(csq_t));
+            tscript_t *tr = splice.tr = regitr_payload(args->itr, tscript_t*);
+            splice.vcf.alt = rec->d.allele[1];
+            splice.csq     = csq_class;
+            int splice_ret = splice_csq(args, &splice, tr->beg, tr->end);
+            if ( splice_ret!=SPLICE_INSIDE && splice_ret!=SPLICE_OVERLAP ) continue;    // SPLICE_OUTSIDE or SPLICE_REF
+            csq.type.type    = (GF_is_coding(tr->type) ? CSQ_INTRON : CSQ_NON_CODING) | csq_class;
+            csq.pos          = rec->pos;
+            csq.type.biotype = tr->type;
+            csq.type.strand  = tr->strand;
+            csq.type.trid    = tr->id;
+            csq.type.gene    = tr->gene->name;
+            csq_stage(args, &csq, rec);
+        }
+    }
+}
+
+void debug_print_buffers(args_t *args, int pos)
+{
+    int i,j;
+    fprintf(bcftools_stderr,"debug_print_buffers at %d\n", pos);
+    fprintf(bcftools_stderr,"vbufs:\n");
+    for (i=0; i<args->vcf_rbuf.n; i++)
+    {
+        int k = rbuf_kth(&args->vcf_rbuf, i);
+        vbuf_t *vbuf = args->vcf_buf[k];
+
+        fprintf(bcftools_stderr,"\tvbuf %d:\n", i);
+        for (j=0; j<vbuf->n; j++)
+        {
+            vrec_t *vrec = vbuf->vrec[j];
+            fprintf(bcftools_stderr,"\t\t%"PRId64" .. nvcsq=%d\n", (int64_t) vrec->line->pos+1, vrec->nvcsq);
+        }
+    }
+    fprintf(bcftools_stderr,"pos2vbuf:");
+    khint_t k;
+    for (k = 0; k < kh_end(args->pos2vbuf); ++k)
+        if (kh_exist(args->pos2vbuf, k)) fprintf(bcftools_stderr," %d",1+(int)kh_key(args->pos2vbuf, k));
+    fprintf(bcftools_stderr,"\n");
+    fprintf(bcftools_stderr,"active_tr: %d\n", args->active_tr->ndat);
+}
+
+static void process(args_t *args, bcf1_t **rec_ptr)
 {
     if ( !rec_ptr )
     {
         hap_flush(args, REGIDX_MAX);
-        vbuf_flush(args);
+        vbuf_flush(args, REGIDX_MAX);
         return;
     }
 
     bcf1_t *rec = *rec_ptr;
+    static int32_t prev_rid = -1, prev_pos = -1;
+    if ( prev_rid!=rec->rid ) { prev_rid = rec->rid; prev_pos = rec->pos; }
+    if ( prev_pos > rec->pos )
+        error("Error: The file is not sorted, %s:%d comes before %s:%"PRId64"\n",bcf_seqname(args->hdr,rec),prev_pos+1,bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
 
     int call_csq = 1;
-    if ( !rec->n_allele ) call_csq = 0;   // no alternate allele
-    else if ( rec->n_allele==2 && (rec->d.allele[1][0]=='<' || rec->d.allele[1][0]=='*') ) call_csq = 0;     // gVCF, no alt allele
-    else if ( rec->d.allele[1][0]=='<' && rec->d.allele[1][0]!='*') call_csq = 0;                            // a symbolic allele, not ready for CNVs etc
-    else if ( args->filter )
+    if ( rec->n_allele < 2 ) call_csq = 0;   // no alternate allele
+    else if ( rec->n_allele==2 && (rec->d.allele[1][0]=='*' || rec->d.allele[1][1]=='*') ) call_csq = 0;     // gVCF, not an alt allele
+    else if ( rec->d.allele[1][0]=='<' )
+    {
+        if ( strncmp("<INS",rec->d.allele[1], 4) ) call_csq = 0;    // only <INS[:.*]> is supported at the moment
+    }
+    if ( call_csq && args->filter )
     {
         call_csq = filter_test(args->filter, rec, NULL);
         if ( args->filter_logic==FLT_EXCLUDE ) call_csq = call_csq ? 0 : 1;
@@ -3706,25 +4006,34 @@ void process(args_t *args, bcf1_t **rec_ptr)
     {
         if ( !args->out_fh ) return;    // not a VCF output
         vbuf_push(args, rec_ptr);
-        vbuf_flush(args);
+        hap_flush(args, rec->pos-1);
+        vbuf_flush(args, rec->pos-1);
         return;
     }
 
     if ( args->rid != rec->rid ) 
     {
         hap_flush(args, REGIDX_MAX);
-        vbuf_flush(args);
+        vbuf_flush(args, REGIDX_MAX);
     }
     args->rid = rec->rid;
-    vbuf_push(args, rec_ptr);
+    vbuf_t *vbuf = vbuf_push(args, rec_ptr);
 
-    int hit = args->local_csq ? test_cds_local(args, rec) : test_cds(args, rec);
-    hit += test_utr(args, rec);
-    hit += test_splice(args, rec);
-    if ( !hit ) test_tscript(args, rec);
+    if ( rec->d.allele[1][0]!='<' )
+    {
+        int hit = args->local_csq ? test_cds_local(args, rec) : test_cds(args, rec, vbuf);
+        hit += test_utr(args, rec);
+        hit += test_splice(args, rec);
+        if ( !hit ) test_tscript(args, rec);
+    }
+    else
+        test_symbolic_alt(args, rec);
 
-    hap_flush(args, rec->pos-1);
-    vbuf_flush(args);
+    if ( rec->pos > 0 )
+    {
+        hap_flush(args, rec->pos-1);
+        vbuf_flush(args, rec->pos-1);
+    }
 
     return;
 }
@@ -3741,6 +4050,7 @@ static const char *usage(void)
         "   -g, --gff-annot <file>          gff3 annotation file\n"
         "\n"
         "CSQ options:\n"
+        "   -b, --brief-predictions         annotate with abbreviated protein-changing predictions\n"
         "   -c, --custom-tag <string>       use this tag instead of the default BCSQ\n"
         "   -l, --local-csq                 localized predictions, consider only one VCF record at a time\n"
         "   -n, --ncsq <int>                maximum number of consequences to consider per site [16]\n"
@@ -3754,16 +4064,18 @@ static const char *usage(void)
         "   -e, --exclude <expr>            exclude sites for which the expression is true\n"
         "       --force                     run even if some sanity checks fail\n"
         "   -i, --include <expr>            select sites for which the expression is true\n"
+        "       --no-version                do not append version and command line to the header\n"
         "   -o, --output <file>             write output to a file [standard output]\n"
         "   -O, --output-type <b|u|z|v|t>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF\n"
         "                                   v: uncompressed VCF, t: plain tab-delimited text output [v]\n"
-        "   -q, --quiet                     suppress warning messages. Can be given two times for even less messages\n"
         "   -r, --regions <region>          restrict to comma-separated list of regions\n"
         "   -R, --regions-file <file>       restrict to regions listed in a file\n"
         "   -s, --samples <-|list>          samples to include or \"-\" to apply all variants and ignore samples\n"
         "   -S, --samples-file <file>       samples to include\n"
         "   -t, --targets <region>          similar to -r but streams rather than index-jumps\n"
         "   -T, --targets-file <file>       similar to -R but streams rather than index-jumps\n"
+        "       --threads <int>             use multithreading with <int> worker threads [0]\n"
+        "   -v, --verbose <int>             verbosity level 0-2 [1]\n"
         "\n"
         "Example:\n"
         "   bcftools csq -f hs37d5.fa -g Homo_sapiens.GRCh37.82.gff3.gz in.vcf\n"
@@ -3781,12 +4093,16 @@ int main_csq(int argc, char *argv[])
     args->output_type = FT_VCF;
     args->bcsq_tag = "BCSQ";
     args->ncsq_max = 2*16;
+    args->verbosity = 1;
+    args->record_cmd_line = 1;
 
     static struct option loptions[] =
     {
         {"force",0,0,1},
+        {"threads",required_argument,NULL,2},
         {"help",0,0,'h'},
         {"ncsq",1,0,'n'},
+        {"brief-predictions",0,0,'b'},
         {"custom-tag",1,0,'c'},
         {"local-csq",0,0,'l'},
         {"gff-annot",1,0,'g'},
@@ -3797,24 +4113,36 @@ int main_csq(int argc, char *argv[])
         {"output-type",1,NULL,'O'},
         {"phase",1,0,'p'},
         {"quiet",0,0,'q'},
+        {"verbose",1,0,'v'},
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
         {"samples",1,0,'s'},
         {"samples-file",1,0,'S'},
         {"targets",1,0,'t'},
         {"targets-file",1,0,'T'},
+        {"no-version",no_argument,NULL,3},
         {0,0,0,0}
     };
     int c, targets_is_file = 0, regions_is_file = 0; 
-    char *targets_list = NULL, *regions_list = NULL;
-    while ((c = getopt_long(argc, argv, "?hr:R:t:T:i:e:f:o:O:g:s:S:p:qc:ln:",loptions,NULL)) >= 0)
+    char *targets_list = NULL, *regions_list = NULL, *tmp;
+    while ((c = getopt_long(argc, argv, "?hr:R:t:T:i:e:f:o:O:g:s:S:p:qc:ln:bv:",loptions,NULL)) >= 0)
     {
         switch (c) 
         {
             case  1 : args->force = 1; break;
+            case  2 :
+                args->n_threads = strtol(optarg,&tmp,10);
+                if ( *tmp ) error("Could not parse argument: --threads  %s\n", optarg);
+                break;
+            case  3 : args->record_cmd_line = 0; break;
+            case 'b': args->brief_predictions = 1; break;
             case 'l': args->local_csq = 1; break;
             case 'c': args->bcsq_tag = optarg; break;
-            case 'q': args->quiet++; break;
+            case 'q': error("Error: the -q option has been deprecated, use -v, --verbose instead.\n"); break;
+            case 'v': 
+                args->verbosity = atoi(optarg);
+                if ( args->verbosity<0 || args->verbosity>2 ) error("Error: expected integer 0-2 with -v, --verbose\n");
+                break;
             case 'p':
                 switch (optarg[0]) 
                 {
@@ -3871,8 +4199,9 @@ int main_csq(int argc, char *argv[])
         error("Failed to read the targets: %s\n", targets_list);
     if ( regions_list && bcf_sr_set_regions(args->sr, regions_list, regions_is_file)<0 )
         error("Failed to read the regions: %s\n", regions_list);
+    if ( bcf_sr_set_threads(args->sr, args->n_threads)<0 ) error("Failed to create %d extra threads\n", args->n_threads);
     if ( !bcf_sr_add_reader(args->sr, fname) )
-        error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->sr->errnum));
+        error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->sr->errnum));
     args->hdr = bcf_sr_get_header(args->sr,0);
 
     init_data(args);
@@ -3885,7 +4214,6 @@ int main_csq(int argc, char *argv[])
     destroy_data(args);
     bcf_sr_destroy(args->sr);
     free(args);
-
     return 0;
 }
 

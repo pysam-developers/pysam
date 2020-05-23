@@ -2124,6 +2124,7 @@ cdef class VariantHeader(object):
         if self.ptr.dirty:
             bcf_hdr_sync(self.ptr)
 
+
     def add_meta(self, key, value=None, items=None):
         """Add metadata to this header"""
         if not ((value is not None) ^ (items is not None)):
@@ -2140,11 +2141,16 @@ cdef class VariantHeader(object):
                 hrec.value = strdup(force_bytes(value))
             else:
                 for key, value in items:
+                
+                    quoted = True
+                    if key in set(("ID", "Number", "Type")):
+                      quoted = False
+
                     key = force_bytes(key)
                     bcf_hrec_add_key(hrec, key, <int>len(key))
 
                     value = force_bytes(str(value))
-                    quoted = strpbrk(value, ' ;,"\t<>') != NULL
+
                     bcf_hrec_set_val(hrec, hrec.nkeys-1, value, <int>len(value), quoted)
         except:
             bcf_hrec_destroy(hrec)
@@ -4372,7 +4378,7 @@ cdef class VariantFile(HTSFile):
             bcf.seek(self.start_offset)
             return iter(bcf)
 
-        if not self.index:
+        if self.index is None:
             raise ValueError('fetch requires an index')
 
         _, tid, start, stop = self.parse_region(contig, start, stop, region,
@@ -4451,3 +4457,4 @@ cdef class VariantFile(HTSFile):
         # potentially unnecessary optimization that also sets max_unpack
         if not include_samples:
             self.drop_samples = True
+

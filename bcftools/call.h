@@ -49,12 +49,35 @@ typedef struct
 }
 family_t;
 
+// For the single-sample and grouped -G calling
+typedef struct
+{
+    float *qsum;    // QS(quality sum) values
+    int nqsum, dp;
+    double fa,fb,fc,fa2,fb2,fc2,fab,fac,fbc;
+}
+grp1_t;
+typedef struct
+{
+    grp1_t *grp;
+    int ngrp;
+    int *smpl2grp;
+}
+grp_t;
+
+// For the `-C alleles -i` constrained calling
+typedef struct
+{
+    uint32_t n:31, used:1;
+    char **allele;
+}
+tgt_als_t;
+
 typedef struct _ccall_t ccall_t;
 typedef struct
 {
     // mcall only
-    float *qsum;            // QS(sum) values
-    int nqsum, npdg;
+    int npdg;
     int *als_map, nals_map; // mapping from full set of alleles to trimmed set of alleles (old -> new)
     int *pl_map, npl_map;   // same as above for PLs, but reverse (new -> old)
     char **als;             // array to hold the trimmed set of alleles to appear on output
@@ -65,14 +88,19 @@ typedef struct
     uint16_t *trio[5][5];   //  family type, second index: allele count (2-4, first two are unused)
     double *GLs;
     float *GPs;             // FORMAT/GP: posterior probabilities
-    int32_t *GQs;           // FORMAT/GQ: genotype qualities
+    int32_t *GQs, *ADs;     // FORMAT/GQ: genotype qualities; AD: allelic depth for -G
     int32_t *itmp;          // temporary int array, used for new PLs with CALL_CONSTR_ALLELES
-    int n_itmp, nGPs;
+    int n_itmp, nGPs, nADs;
     vcmp_t *vcmp;
     double trio_Pm_SNPs, trio_Pm_del, trio_Pm_ins;      // P(mendelian) for trio calling, see mcall_call_trio_genotypes()
     int32_t *ugts, *cgts;   // unconstraind and constrained GTs
     uint32_t output_tags;
     char *prior_AN, *prior_AC;  // reference panel AF tags (AF=AC/AN)
+    tgt_als_t *tgt_als;     // for CALL_CONSTR_ALLELES
+    char *sample_groups;    // for single-sample or grouped calling with -G
+    grp_t smpl_grp;
+    float *qsum;
+    int nqsum;
 
     // ccall only
     double indel_frac, min_perm_p, min_lrt;

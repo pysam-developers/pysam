@@ -55,10 +55,18 @@ DEALINGS IN THE SOFTWARE.  */
 #define B2B_INFO_AD     (1<<9)
 #define B2B_INFO_ADF    (1<<10)
 #define B2B_INFO_ADR    (1<<11)
+#define B2B_INFO_SCR    (1<<12)
+#define B2B_FMT_SCR     (1<<13)
+#define B2B_INFO_VDB    (1<<14)
+#define B2B_INFO_RPB    (1<<15)
 
 #define B2B_MAX_ALLELES 5
 
+#define PLP_HAS_SOFT_CLIP(i) ((i)&1)
+#define PLP_SAMPLE_ID(i)     ((i)>>1)
+
 typedef struct __bcf_callaux_t {
+    int fmt_flag;
     int capQ, min_baseQ;
     int openQ, extQ, tandemQ; // for indels
     uint32_t min_support, max_support; // for collecting indel candidates
@@ -77,10 +85,11 @@ typedef struct __bcf_callaux_t {
     void *rghash;
 } bcf_callaux_t;
 
+// per-sample values
 typedef struct {
     uint32_t ori_depth;
     unsigned int mq0;
-    int32_t *ADF, *ADR;
+    int32_t *ADF, *ADR, SCR;
     float qsum[4];
     // The fields are:
     //      depth fwd   .. ref (0) and non-ref (2)
@@ -98,6 +107,7 @@ typedef struct {
     float p[25];        // phred-scaled likelihood of each genotype
 } bcf_callret1_t;
 
+// values for all samples
 typedef struct {
     int tid, pos;
     bcf_hdr_t *bcf_hdr;
@@ -107,7 +117,7 @@ typedef struct {
     int n_supp; // number of supporting non-reference reads
     double anno[16];
     unsigned int depth, ori_depth, mq0;
-    int32_t *PL, *DP4, *ADR, *ADF;
+    int32_t *PL, *DP4, *ADR, *ADF, *SCR;
     uint8_t *fmt_arr;
     float vdb; // variant distance bias
     float mwu_pos, mwu_mq, mwu_bq, mwu_mqs;

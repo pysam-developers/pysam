@@ -30,12 +30,15 @@ THE SOFTWARE.  */
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <math.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
+#include <htslib/kfunc.h>
 #include "bcftools.h"
+#include "variantkey.h"
 #include "convert.h"
 
 #define T_CHROM   1
@@ -67,6 +70,9 @@ THE SOFTWARE.  */
 #define T_END          27
 #define T_POS0         28
 #define T_END0         29
+#define T_RSX          30   // RSID HEX
+#define T_VKX          31   // VARIANTKEY HEX
+#define T_PBINOM       32
 
 typedef struct _fmt_t
 {
@@ -196,13 +202,44 @@ static inline void _copy_field(char *src, uint32_t len, int idx, kstring_t *str)
 }
 static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
+    int i;
+    if ( !fmt->key )    // the whole INFO column
+    {
+        int first = 1;
+        for (i=0; i<line->n_info; i++)
+        {
+            bcf_info_t *inf = &line->d.info[i];
+            if ( !inf->vptr ) continue;
+            if ( !first ) kputc(';', str);
+            first = 0;
+            if ( inf->key >= convert->header->n[BCF_DT_ID] ) continue;
+            kputs(convert->header->id[BCF_DT_ID][inf->key].key, str);
+            if ( inf->len <= 0 ) continue;
+            kputc('=', str);
+            if ( inf->len == 1 )
+            {
+                switch (inf->type)
+                {
+                    case BCF_BT_INT8:  if ( inf->v1.i==bcf_int8_missing ) kputc('.', str); else kputw(inf->v1.i, str); break;
+                    case BCF_BT_INT16: if ( inf->v1.i==bcf_int16_missing ) kputc('.', str); else kputw(inf->v1.i, str); break;
+                    case BCF_BT_INT32: if ( inf->v1.i==bcf_int32_missing ) kputc('.', str); else kputw(inf->v1.i, str); break;
+                    case BCF_BT_FLOAT: if ( bcf_float_is_missing(inf->v1.f) ) kputc('.', str); else kputd(inf->v1.f, str); break;
+                    case BCF_BT_CHAR:  kputc(inf->v1.i, str); break;
+                    default: error("Unexpected type %d", inf->type); break;
+                }
+            }
+            else bcf_fmt_array(str, inf->len, inf->type, inf->vptr);
+        }
+        if ( first ) kputc('.', str);
+        return;
+    }
+
     if ( fmt->id<0 )
     {
         kputc('.', str);
         return;
     }
 
-    int i;
     for (i=0; i<line->n_info; i++)
         if ( line->d.info[i].key == fmt->id ) break;
 
@@ -275,6 +312,50 @@ static void init_format(convert_t *convert, bcf1_t *line, fmt_t *fmt)
         error("Error: no such tag defined in the VCF header: FORMAT/%s\n", fmt->key);
 
     fmt->ready = 1;
+}
+static void process_complete_format(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
+{
+    if ( convert->nsamples )
+    {
+        int i,j;
+        if ( line->n_fmt)
+        {
+            int gt_i = -1;
+            bcf_fmt_t *fmt = line->d.fmt;
+            int first = 1;
+            for (i=0; i<(int)line->n_fmt; i++)
+            {
+                if ( !fmt[i].p || fmt[i].id<0 ) continue;
+                if ( !first ) kputc(':', str);
+                first = 0;
+                kputs(convert->header->id[BCF_DT_ID][fmt[i].id].key, str);
+                if ( strcmp(convert->header->id[BCF_DT_ID][fmt[i].id].key, "GT") == 0) gt_i = i;
+            }
+            if ( first ) kputc('.', str);
+            for (j=0; j<convert->nsamples; j++)
+            {
+                kputc('\t', str);
+                first = 1;
+                for (i=0; i<(int)line->n_fmt; i++)
+                {
+                    bcf_fmt_t *f = &fmt[i];
+                    if ( !f->p ) continue;
+                    if ( !first ) kputc(':', str);
+                    first = 0;
+                    if (gt_i == i)
+                        bcf_format_gt(f,convert->samples[j],str);
+                    else
+                        bcf_fmt_array(str, f->n, f->type, f->p + convert->samples[j] * f->size);
+                }
+                if ( first ) kputc('.', str);
+            }
+        }
+        else
+            for (j=0; j<=line->n_sample; j++)
+                kputs("\t.", str);
+    }
+    else
+        kputc('.',str);
 }
 static void process_format(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
@@ -555,6 +636,7 @@ static void process_type(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
     if ( line_type & VCF_INDEL ) { if (i) kputc(',',str); kputs("INDEL", str); i++; }
     if ( line_type & VCF_OTHER ) { if (i) kputc(',',str); kputs("OTHER", str); i++; }
     if ( line_type & VCF_BND ) { if (i) kputc(',',str); kputs("BND", str); i++; }
+    if ( line_type & VCF_OVERLAP ) { if (i) kputc(',',str); kputs("OVERLAP", str); i++; }
 }
 static void process_line(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
@@ -590,7 +672,7 @@ static void process_gt_to_prob3(convert_t *convert, bcf1_t *line, fmt_t *fmt, in
         // for (i=0; i<convert->nsamples; i++) kputs(" 0.33 0.33 0.33", str);
         // return;
 
-        error("Error parsing GT tag at %s:%d\n", bcf_seqname(convert->header,line),line->pos+1);
+        error("Error parsing GT tag at %s:%"PRId64"\n", bcf_seqname(convert->header,line),(int64_t) line->pos+1);
     }
 
     n /= convert->nsamples;
@@ -641,7 +723,7 @@ static void process_pl_to_prob3(convert_t *convert, bcf1_t *line, fmt_t *fmt, in
         // for (i=0; i<convert->nsamples; i++) kputs(" 0.33 0.33 0.33", str);
         // return;
 
-        error("Error parsing PL tag at %s:%d\n", bcf_seqname(convert->header,line),line->pos+1);
+        error("Error parsing PL tag at %s:%"PRId64"\n", bcf_seqname(convert->header,line),(int64_t) line->pos+1);
     }
 
     n /= convert->nsamples;
@@ -690,7 +772,7 @@ static void process_gp_to_prob3(convert_t *convert, bcf1_t *line, fmt_t *fmt, in
         // for (i=0; i<convert->nsamples; i++) kputs(" 0.33 0.33 0.33", str);
         // return;
 
-        error("Error parsing GP tag at %s:%d\n", bcf_seqname(convert->header,line),line->pos+1);
+        error("Error parsing GP tag at %s:%"PRId64"\n", bcf_seqname(convert->header,line),(int64_t) line->pos+1);
     }
 
     n /= convert->nsamples;
@@ -702,7 +784,7 @@ static void process_gp_to_prob3(convert_t *convert, bcf1_t *line, fmt_t *fmt, in
         {
             if ( ptr[j]==bcf_int32_vector_end ) break;
             if ( ptr[j]==bcf_int32_missing ) { ptr[j]=0; continue; }
-            if ( ptr[j]<0 || ptr[j]>1 ) error("[%s:%d:%f] GP value outside range [0,1]; bcftools convert expects the VCF4.3+ spec for the GP field encoding genotype posterior probabilities", bcf_seqname(convert->header,line),line->pos+1,ptr[j]);
+            if ( ptr[j]<0 || ptr[j]>1 ) error("[%s:%"PRId64":%f] GP value outside range [0,1]; bcftools convert expects the VCF4.3+ spec for the GP field encoding genotype posterior probabilities", bcf_seqname(convert->header,line),(int64_t) line->pos+1,ptr[j]);
             sum+=ptr[j];
         }
         if ( j==line->n_allele )
@@ -745,24 +827,24 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
 
     int i, gt_id = bcf_hdr_id2int(convert->header, BCF_DT_ID, "GT");
     if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT,gt_id) )
-        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
+        error("FORMAT/GT tag not present at %s:%"PRId64"\n", bcf_seqname(convert->header, line),(int64_t) line->pos+1);
     if ( !(line->unpacked & BCF_UN_FMT) ) bcf_unpack(line, BCF_UN_FMT);
     bcf_fmt_t *fmt_gt = NULL;
     for (i=0; i<line->n_fmt; i++)
         if ( line->d.fmt[i].id==gt_id ) { fmt_gt = &line->d.fmt[i]; break; }
     if ( !fmt_gt )
-        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
+        error("FORMAT/GT tag not present at %s:%"PRId64"\n", bcf_seqname(convert->header, line),(int64_t) line->pos+1);
 
     // Alloc all memory in advance to avoid kput routines. The biggest allowed allele index is 99
     if ( line->n_allele > 100 )
-        error("Too many alleles (%d) at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+        error("Too many alleles (%d) at %s:%"PRId64"\n", line->n_allele, bcf_seqname(convert->header, line),(int64_t) line->pos+1);
     if ( ks_resize(str, str->l+convert->nsamples*8) != 0 )
-        error("Could not alloc %"PRIu64" bytes\n", (uint64_t)(str->l + convert->nsamples*8));
+        error("Could not alloc %" PRIu64 " bytes\n", (uint64_t)(str->l + convert->nsamples*8));
 
     if ( fmt_gt->type!=BCF_BT_INT8 )    // todo: use BRANCH_INT if the VCF is valid
-        error("Uh, too many alleles (%d) or redundant BCF representation at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+        error("Uh, too many alleles (%d) or redundant BCF representation at %s:%"PRId64"\n", line->n_allele, bcf_seqname(convert->header, line),(int64_t) line->pos+1);
     if ( fmt_gt->n!=1 && fmt_gt->n!=2 )
-        error("Uh, ploidy of %d not supported, see %s:%d\n", fmt_gt->n, bcf_seqname(convert->header, line), line->pos+1);
+        error("Uh, ploidy of %d not supported, see %s:%"PRId64"\n", fmt_gt->n, bcf_seqname(convert->header, line),(int64_t) line->pos+1);
 
     int8_t *ptr = ((int8_t*) fmt_gt->p) - fmt_gt->n;
     for (i=0; i<convert->nsamples; i++)
@@ -899,22 +981,22 @@ static void process_gt_to_hap2(convert_t *convert, bcf1_t *line, fmt_t *fmt, int
 
     int i, gt_id = bcf_hdr_id2int(convert->header, BCF_DT_ID, "GT");
     if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT,gt_id) )
-        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
+        error("FORMAT/GT tag not present at %s:%"PRId64"\n", bcf_seqname(convert->header, line),(int64_t) line->pos+1);
     if ( !(line->unpacked & BCF_UN_FMT) ) bcf_unpack(line, BCF_UN_FMT);
     bcf_fmt_t *fmt_gt = NULL;
     for (i=0; i<line->n_fmt; i++)
         if ( line->d.fmt[i].id==gt_id ) { fmt_gt = &line->d.fmt[i]; break; }
     if ( !fmt_gt )
-        error("FORMAT/GT tag not present at %s:%d\n", bcf_seqname(convert->header, line), line->pos+1);
+        error("FORMAT/GT tag not present at %s:%"PRId64"\n", bcf_seqname(convert->header, line),(int64_t)  line->pos+1);
 
     // Alloc all memory in advance to avoid kput routines. The biggest allowed allele index is 99
     if ( line->n_allele > 100 )
-        error("Too many alleles (%d) at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+        error("Too many alleles (%d) at %s:%"PRId64"\n", line->n_allele, bcf_seqname(convert->header, line),(int64_t) line->pos+1);
     if ( ks_resize(str, str->l+convert->nsamples*8) != 0 )
-        error("Could not alloc %"PRIu64" bytes\n", (uint64_t)(str->l + convert->nsamples*8));
+        error("Could not alloc %" PRIu64 " bytes\n", (uint64_t)(str->l + convert->nsamples*8));
 
     if ( fmt_gt->type!=BCF_BT_INT8 )    // todo: use BRANCH_INT if the VCF is valid
-        error("Uh, too many alleles (%d) or redundant BCF representation at %s:%d\n", line->n_allele, bcf_seqname(convert->header, line), line->pos+1);
+        error("Uh, too many alleles (%d) or redundant BCF representation at %s:%"PRId64"\n", line->n_allele, bcf_seqname(convert->header, line),(int64_t) line->pos+1);
 
     int8_t *ptr = ((int8_t*) fmt_gt->p) - fmt_gt->n;
     for (i=0; i<convert->nsamples; i++)
@@ -1020,6 +1102,91 @@ static void process_gt_to_hap2(convert_t *convert, bcf1_t *line, fmt_t *fmt, int
     str->s[--str->l] = 0;     // delete the last space
 }
 
+static void process_rsid_hex(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
+{
+    char *ptr = line->d.id;
+    ptr += 2; // remove 'rs'
+    ksprintf(str, "%08" PRIx32 "", (uint32_t)strtoul(ptr, NULL, 10));
+}
+
+static void process_variantkey_hex(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
+{
+    uint64_t vk = variantkey(
+        convert->header->id[BCF_DT_CTG][line->rid].key,
+        strlen(convert->header->id[BCF_DT_CTG][line->rid].key),
+        line->pos,
+        line->d.allele[0],
+        strlen(line->d.allele[0]),
+        line->d.allele[1],
+        strlen(line->d.allele[1]));
+    ksprintf(str, "%016" PRIx64 "", vk);
+}
+
+static void process_pbinom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
+{
+    int i;
+    if ( !fmt->ready )
+    {
+        fmt->fmt = NULL;    // AD
+        fmt->usr = NULL;    // GT
+
+        for (i=0; i<(int)line->n_fmt; i++)
+            if ( line->d.fmt[i].id==fmt->id ) { fmt->fmt = &line->d.fmt[i]; break; }
+
+        // Check that the first field is GT
+        int gt_id = bcf_hdr_id2int(convert->header, BCF_DT_ID, "GT");
+        if ( !bcf_hdr_idinfo_exists(convert->header, BCF_HL_FMT, fmt->id)  ) error("Error: FORMAT/GT is not defined in the header\n");
+        for (i=0; i<(int)line->n_fmt; i++)
+            if ( line->d.fmt[i].id==gt_id ) { fmt->usr = &line->d.fmt[i]; break; }  // it should always be first according to VCF spec, but...
+
+        if ( fmt->usr && line->d.fmt[i].type!=BCF_BT_INT8 )   // skip sites with many alleles
+            fmt->usr = NULL;
+
+        fmt->ready = 1;
+    }
+    bcf_fmt_t *gt_fmt = (bcf_fmt_t*) fmt->usr;
+    if ( !fmt->fmt || !gt_fmt || gt_fmt->n!=2 ) goto invalid;
+
+    int n[2] = {0,0};
+    int8_t *gt = (int8_t*)(gt_fmt->p + isample*gt_fmt->size);
+    for (i=0; i<2; i++)
+    {
+        if ( bcf_gt_is_missing(gt[i]) || gt[i] == bcf_int8_vector_end ) goto invalid;
+        int al = bcf_gt_allele(gt[i]);
+        if ( al > line->n_allele || al >= fmt->fmt->n ) goto invalid;
+
+        #define BRANCH(type_t, missing, vector_end) { \
+            type_t val = ((type_t *) fmt->fmt->p)[al + isample*fmt->fmt->n]; \
+            if ( val==missing || val==vector_end ) goto invalid; \
+            else n[i] = val; \
+        }
+        switch (fmt->fmt->type)
+        {
+            case BCF_BT_INT8:  BRANCH(int8_t,  bcf_int8_missing,  bcf_int8_vector_end); break;
+            case BCF_BT_INT16: BRANCH(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
+            case BCF_BT_INT32: BRANCH(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
+            default: goto invalid; break;
+        }
+        #undef BRANCH
+    }
+
+    if ( n[0]==n[1] ) kputc(n[0]==0 ? '.':'0', str);
+    else 
+    {
+        double pval = n[0] < n[1] ? kf_betai(n[1], n[0] + 1, 0.5) : kf_betai(n[0], n[1] + 1, 0.5);
+        pval *= 2;
+        assert( pval-1 < 1e-10 );
+        if ( pval>=1 ) pval = 0;     // this can happen, machine precision error, eg. kf_betai(1,0,0.5)
+        else
+            pval = -4.34294481903*log(pval);
+        kputd(pval, str);
+    }
+    return;
+
+invalid:
+    kputc('.', str);
+}
+
 static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
 {
     convert->nfmt++;
@@ -1054,11 +1221,14 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
             else if ( !strcmp("QUAL",key) ) { fmt->type = T_QUAL; }
             else if ( !strcmp("FILTER",key) ) { fmt->type = T_FILTER; }
             else if ( !strcmp("_CHROM_POS_ID",key) ) { fmt->type = T_CHROM_POS_ID; }
-            else if ( id>=0 && bcf_hdr_idinfo_exists(convert->header,BCF_HL_INFO,id) )
-            {
-                fmt->type = T_INFO;
-                fprintf(stderr,"Warning: Assuming INFO/%s\n", key);
-            }
+            else if ( !strcmp("RSX",key) ) { fmt->type = T_RSX; }
+            else if ( !strcmp("VKX",key) ) { fmt->type = T_VKX; }
+            else if ( id>=0 && bcf_hdr_idinfo_exists(convert->header,BCF_HL_INFO,id) ) { fmt->type = T_INFO; }
+        }
+        if ( fmt->type==T_PBINOM )
+        {
+            fmt->id = bcf_hdr_id2int(convert->header, BCF_DT_ID, fmt->key);
+            if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT, fmt->id)  ) error("No such FORMAT tag defined in the header: %s\n", fmt->key);
         }
     }
 
@@ -1072,15 +1242,15 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
         case T_CHROM: fmt->handler = &process_chrom; break;
         case T_POS: fmt->handler = &process_pos; break;
         case T_POS0: fmt->handler = &process_pos0; break;
-        case T_END: fmt->handler = &process_end; break;
-        case T_END0: fmt->handler = &process_end0; break;
+        case T_END: fmt->handler = &process_end; convert->max_unpack |= BCF_UN_INFO; break;
+        case T_END0: fmt->handler = &process_end0; convert->max_unpack |= BCF_UN_INFO; break;
         case T_ID: fmt->handler = &process_id; break;
         case T_REF: fmt->handler = &process_ref; break;
         case T_ALT: fmt->handler = &process_alt; break;
         case T_QUAL: fmt->handler = &process_qual; break;
         case T_FILTER: fmt->handler = &process_filter; convert->max_unpack |= BCF_UN_FLT; break;
         case T_INFO: fmt->handler = &process_info; convert->max_unpack |= BCF_UN_INFO; break;
-        case T_FORMAT: fmt->handler = &process_format; convert->max_unpack |= BCF_UN_FMT; break;
+        case T_FORMAT: fmt->handler = fmt->key ? &process_format : &process_complete_format; convert->max_unpack |= BCF_UN_FMT; break;
         case T_SAMPLE: fmt->handler = &process_sample; break;
         case T_SEP: fmt->handler = &process_sep; break;
         case T_IS_TS: fmt->handler = &process_is_ts; break;
@@ -1093,6 +1263,9 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
         case T_GT_TO_HAP2: fmt->handler = &process_gt_to_hap2; convert->max_unpack |= BCF_UN_FMT; break;
         case T_TBCSQ: fmt->handler = &process_tbcsq; fmt->destroy = &destroy_tbcsq; convert->max_unpack |= BCF_UN_FMT; break;
         case T_LINE: fmt->handler = &process_line; convert->max_unpack |= BCF_UN_FMT; break;
+        case T_RSX: fmt->handler = &process_rsid_hex; break;
+        case T_VKX: fmt->handler = &process_variantkey_hex; break;
+        case T_PBINOM: fmt->handler = &process_pbinom; convert->max_unpack |= BCF_UN_FMT; break;
         default: error("TODO: handler for type %d\n", fmt->type);
     }
     if ( key && fmt->type==T_INFO )
@@ -1144,7 +1317,14 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
         else if ( !strcmp(str.s, "IUPACGT") ) register_tag(convert, T_IUPAC_GT, "GT", is_gtf);
         else if ( !strcmp(str.s, "INFO") )
         {
-            if ( *q!='/' ) error("Could not parse format string: %s\n", convert->format_str);
+            if ( *q!='/' )
+            {
+                int id = bcf_hdr_id2int(convert->header, BCF_DT_ID, str.s);
+                if ( bcf_hdr_idinfo_exists(convert->header,BCF_HL_INFO,id) )
+                    error("Could not parse format string \"%s\". Did you mean %%INFO/%s?\n", convert->format_str,str.s);
+                else
+                    error("Could not parse format string: %s\n", convert->format_str);
+            }
             p = ++q;
             str.l = 0;
             while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
@@ -1152,6 +1332,17 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
             kputsn(p, q-p, &str);
             fmt_t *fmt = register_tag(convert, T_INFO, str.s, is_gtf);
             fmt->subscript = parse_subscript(&q);
+        }
+        else if ( !strcmp(str.s,"PBINOM") )
+        {
+            if ( *q!='(' ) error("Could not parse the expression: %s\n", convert->format_str);
+            p = ++q;
+            str.l = 0;
+            while ( *q && *q!=')' ) q++;
+            if ( q-p==0 ) error("Could not parse format string: %s\n", convert->format_str);
+            kputsn(p, q-p, &str);
+            register_tag(convert, T_PBINOM, str.s, is_gtf);
+            q++;
         }
         else
         {
@@ -1187,17 +1378,26 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
         else if ( !strcmp(str.s, "_GP_TO_PROB3") ) register_tag(convert, T_GP_TO_PROB3, str.s, is_gtf);
         else if ( !strcmp(str.s, "_GT_TO_HAP") ) register_tag(convert, T_GT_TO_HAP, str.s, is_gtf);
         else if ( !strcmp(str.s, "_GT_TO_HAP2") ) register_tag(convert, T_GT_TO_HAP2, str.s, is_gtf);
+        else if ( !strcmp(str.s, "RSX") ) register_tag(convert, T_RSX, str.s, is_gtf);
+        else if ( !strcmp(str.s, "VKX") ) register_tag(convert, T_VKX, str.s, is_gtf);
+        else if ( !strcmp(str.s,"pbinom") ) error("Error: pbinom() is currently supported only with FORMAT tags. (todo)\n");
         else if ( !strcmp(str.s, "INFO") )
         {
-            if ( *q!='/' ) error("Could not parse format string: %s\n", convert->format_str);
-            p = ++q;
-            str.l = 0;
-            while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
-            if ( q-p==0 ) error("Could not parse format string: %s\n", convert->format_str);
-            kputsn(p, q-p, &str);
-            fmt_t *fmt = register_tag(convert, T_INFO, str.s, is_gtf);
-            fmt->subscript = parse_subscript(&q);
+            if ( *q=='/' )
+            {
+                p = ++q;
+                str.l = 0;
+                while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
+                if ( q-p==0 ) error("Could not parse format string: %s\n", convert->format_str);
+                kputsn(p, q-p, &str);
+                fmt_t *fmt = register_tag(convert, T_INFO, str.s, is_gtf);
+                fmt->subscript = parse_subscript(&q);
+            }
+            else
+                register_tag(convert, T_INFO, NULL, is_gtf);    // the whole INFO
         }
+        else if ( !strcmp(str.s, "FORMAT") )
+             register_tag(convert, T_FORMAT, NULL, 0);
         else
         {
             fmt_t *fmt = register_tag(convert, T_INFO, str.s, is_gtf);
@@ -1336,7 +1536,15 @@ int convert_header(convert_t *convert, kstring_t *str)
 int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
 {
     if ( !convert->allow_undef_tags && convert->undef_info_tag )
-        error("Error: no such tag defined in the VCF header: INFO/%s. FORMAT fields must be in square brackets, e.g. \"[ %s]\"\n", convert->undef_info_tag,convert->undef_info_tag);
+    {
+        kstring_t msg = {0,0,0};
+        ksprintf(&msg,"Error: no such tag defined in the VCF header: INFO/%s", convert->undef_info_tag);
+
+        int hdr_id = bcf_hdr_id2int(convert->header,BCF_DT_ID,convert->undef_info_tag);
+        if ( hdr_id>=0 && bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT,hdr_id) )
+            ksprintf(&msg,". FORMAT fields must be enclosed in square brackets, e.g. \"[ %%%s]\"", convert->undef_info_tag);
+        error("%s\n", msg.s);
+    }
 
     int l_ori = str->l;
     bcf_unpack(line, convert->max_unpack);
@@ -1357,7 +1565,7 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
             for (js=0; js<convert->nsamples; js++)
             {
                 // Skip samples when filtering was requested
-                if ( *convert->subset_samples && !(*convert->subset_samples)[js] ) continue;
+                if ( convert->subset_samples && *convert->subset_samples && !(*convert->subset_samples)[js] ) continue;
 
                 // Here comes a hack designed for TBCSQ. When running on large files,
                 // such as 1000GP, there are too many empty fields in the output and

@@ -1,5 +1,6 @@
 import pysam
 import os
+import pytest
 from TestUtils import BAM_DATADIR
 
 

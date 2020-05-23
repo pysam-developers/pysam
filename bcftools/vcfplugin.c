@@ -38,7 +38,11 @@ THE SOFTWARE.  */
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/kseq.h>
 #include <htslib/khash_str2int.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 #include "bcftools.h"
 #include "vcmp.h"
 #include "filter.h"
@@ -154,7 +158,7 @@ static void add_plugin_paths(args_t *args, const char *path)
 {
     while (1)
     {
-        size_t len = strcspn(path, ":");
+        size_t len = strcspn(path, HTS_PATH_SEPARATOR_STR);
 
         if ( len == 0 )
         {
@@ -185,7 +189,7 @@ static void add_plugin_paths(args_t *args, const char *path)
         }
 
         path += len;
-        if ( *path == ':' ) path++;
+        if ( *path == HTS_PATH_SEPARATOR_CHAR ) path++;
         else break;
     }
 }
@@ -207,28 +211,55 @@ static void *dlopen_plugin(args_t *args, const char *fname)
 
     void *handle;
     char *tmp;
-    if ( fname[0]!='/' )    // not an absolute path
+    int is_absolute_path = 0;
+#ifdef _WIN32
+    // Windows accepts both forward slash (/) and backslash (\) as folder separator
+    // and can have any path prefixed by the drive letter and a colon (:).
+    if ( fname[0]=='/' || fname[0]=='\\') is_absolute_path = 1;
+    else if ( fname[0] && fname[1]==':' && (fname[2]=='/' || fname[2]=='\\') ) is_absolute_path = 1;
+#else
+    if ( fname[0]=='/' ) is_absolute_path = 1;
+#endif
+    if ( !is_absolute_path )
     {
         int i;
         for (i=0; i<args->nplugin_paths; i++)
         {
-	    tmp = msprintf("%s/%s%s", args->plugin_paths[i], fname, PLUGIN_EXT);
+            tmp = msprintf("%s/%s%s", args->plugin_paths[i], fname, PLUGIN_EXT);
+#ifdef _WIN32
+            handle = LoadLibraryA(tmp);
+#else
             handle = dlopen(tmp, RTLD_NOW); // valgrind complains about unfreed memory, not our problem though
+#endif
             if ( args->verbose > 1 )
             {
-                if ( !handle ) fprintf(stderr,"%s:\n\tdlopen   .. %s\n", tmp,dlerror());
-                else fprintf(stderr,"%s:\n\tdlopen   .. ok\n", tmp);
+                if ( !handle )
+#ifdef _WIN32
+                    fprintf(stderr,"%s:\n\tLoadLibraryA   .. %lu\n", tmp, GetLastError());
+#else
+                    fprintf(stderr,"%s:\n\tdlopen   .. %s\n", tmp, dlerror());
+#endif
+                else fprintf(stderr,"%s:\n\tplugin open   .. ok\n", tmp);
             }
             free(tmp);
             if ( handle ) return handle;
         }
     }
 
+#ifdef _WIN32
+    handle = LoadLibraryA(fname);
+#else
     handle = dlopen(fname, RTLD_NOW);
+#endif
     if ( args->verbose > 1 )
     {
-        if ( !handle ) fprintf(stderr,"%s:\n\tdlopen   .. %s\n", fname,dlerror());
-        else fprintf(stderr,"%s:\n\tdlopen   .. ok\n", fname);
+        if ( !handle )
+#ifdef _WIN32
+            fprintf(stderr,"%s:\n\tLoadLibraryA   .. %lu\n", fname, GetLastError());
+#else
+            fprintf(stderr,"%s:\n\tdlopen   .. %s\n", fname, dlerror());
+#endif
+        else fprintf(stderr,"%s:\n\tplugin open   .. ok\n", fname);
     }
 
     return handle;
@@ -264,6 +295,55 @@ static int load_plugin(args_t *args, const char *fname, int exit_on_error, plugi
         return -1;
     }
 
+#ifdef _WIN32
+    plugin->init = (dl_init_f) GetProcAddress(plugin->handle, "init");
+    if ( plugin->init && args->verbose > 1 ) fprintf(stderr,"\tinit     .. ok\n");
+
+    plugin->run = (dl_run_f) GetProcAddress(plugin->handle, "run");
+    if ( plugin->run && args->verbose > 1 ) fprintf(stderr,"\trun     .. ok\n");
+
+    if ( !plugin->init && !plugin->run )
+    {
+        if ( exit_on_error ) error("Could not initialize %s, neither run or init found \n", plugin->name);
+        else if ( args->verbose > 1 ) fprintf(stderr,"\tinit/run .. not found\n");
+        return -1;
+    }
+
+    plugin->version = (dl_version_f) GetProcAddress(plugin->handle, "version");
+    if ( !plugin->version )
+    {
+        if ( exit_on_error ) error("Could not initialize %s: version string not found\n", plugin->name);
+        else if ( args->verbose > 1 ) fprintf(stderr,"\tversion  .. not found\n");
+        return -1;
+    }
+
+    plugin->about = (dl_about_f) GetProcAddress(plugin->handle, "about");
+    if ( !plugin->about )
+    {
+        if ( exit_on_error ) error("Could not initialize %s: about string not found\n", plugin->name);
+        return -1;
+    }
+
+    plugin->usage = (dl_about_f) GetProcAddress(plugin->handle, "usage");
+    if ( !plugin->usage )
+        plugin->usage = plugin->about;
+
+    if ( plugin->run ) return 0;
+
+    plugin->process = (dl_process_f) GetProcAddress(plugin->handle, "process");
+    if ( !plugin->process )
+    {
+        if ( exit_on_error ) error("Could not initialize %s: process method not found\n", plugin->name);
+        return -1;
+    }
+
+    plugin->destroy = (dl_destroy_f) GetProcAddress(plugin->handle, "destroy");
+    if ( !plugin->destroy )
+    {
+        if ( exit_on_error ) error("Could not initialize %s: destroy method not found\n", plugin->name);
+        return -1;
+    }
+#else
     dlerror();
     plugin->init = (dl_init_f) dlsym(plugin->handle, "init");
     char *ret = dlerror();
@@ -325,6 +405,7 @@ static int load_plugin(args_t *args, const char *fname, int exit_on_error, plugi
         if ( exit_on_error ) error("Could not initialize %s: %s\n", plugin->name, ret);
         return -1;
     }
+#endif
 
     return 0;
 }
@@ -427,7 +508,7 @@ static void init_data(args_t *args)
         args->out_fh = hts_open(args->output_fname,hts_bcf_wmode(args->output_type));
         if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
         if ( args->n_threads ) hts_set_threads(args->out_fh, args->n_threads);
-        bcf_hdr_write(args->out_fh, args->hdr_out);
+        if ( bcf_hdr_write(args->out_fh, args->hdr_out)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
     }
 }
 
@@ -435,7 +516,11 @@ static void destroy_data(args_t *args)
 {
     free(args->plugin.name);
     if ( args->plugin.destroy ) args->plugin.destroy();
+#ifdef _WIN32
+    FreeLibrary(args->plugin.handle);
+#else
     dlclose(args->plugin.handle);
+#endif
     if ( args->hdr_out ) bcf_hdr_destroy(args->hdr_out);
     if ( args->nplugin_paths>0 )
     {
@@ -445,7 +530,7 @@ static void destroy_data(args_t *args)
     }
     if ( args->filter )
         filter_destroy(args->filter);
-    if (args->out_fh) hts_close(args->out_fh);
+    if (args->out_fh && hts_close(args->out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
 }
 
 static void usage(args_t *args)
@@ -466,7 +551,7 @@ static void usage(args_t *args)
     fprintf(stderr, "       --no-version            do not append version and command line to the header\n");
     fprintf(stderr, "   -o, --output <file>         write output to a file [standard output]\n");
     fprintf(stderr, "   -O, --output-type <type>    'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
-    fprintf(stderr, "       --threads <int>         number of extra output compression threads [0]\n");
+    fprintf(stderr, "       --threads <int>         use multithreading with <int> worker threads [0]\n");
     fprintf(stderr, "Plugin options:\n");
     fprintf(stderr, "   -h, --help                  list plugin's options\n");
     fprintf(stderr, "   -l, --list-plugins          list available plugins. See BCFTOOLS_PLUGINS environment variable and man page for details\n");
@@ -599,10 +684,16 @@ int main_plugin(int argc, char *argv[])
     char *fname = NULL;
     if ( optind>=argc || argv[optind][0]=='-' )
     {
-        if ( !isatty(fileno((FILE *)stdin)) ) fname = "-";  // reading from stdin
-        else usage(args);
         args->plugin.argc = argc - optind + 1;
         args->plugin.argv = argv + optind - 1;
+
+        if ( !isatty(fileno((FILE *)stdin)) ) fname = "-";  // reading from stdin
+        else if ( optind>=argc ) usage(args);
+        else
+        {
+            optind = 1;
+            init_plugin(args);
+        }
     }
     else
     {
@@ -624,7 +715,7 @@ int main_plugin(int argc, char *argv[])
             error("Failed to read the targets: %s\n", args->targets_list);
         args->files->collapse |= COLLAPSE_SOME;
     }
-    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
+    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
 
     init_data(args);
     while ( bcf_sr_next_line(args->files) )
@@ -640,7 +731,7 @@ int main_plugin(int argc, char *argv[])
         if ( line )
         {
             if ( line->errcode ) error("[E::main_plugin] Unchecked error (%d), exiting\n",line->errcode);
-            bcf_write1(args->out_fh, args->hdr_out, line);
+            if ( bcf_write1(args->out_fh, args->hdr_out, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
         }
     }
     destroy_data(args);

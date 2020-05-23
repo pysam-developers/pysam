@@ -40,7 +40,7 @@ parts have not been fully tested.
 A related issue is when different threads read from the same file
 objec - or the same thread uses two iterators over a file. There is
 only a single file-position for each opened file. To prevent this from
-hapeding, use the option ``mulitple_iterator=True`` when calling
+hapeding, use the option ``multiple_iterator=True`` when calling
 a fetch() method. This will return an iterator on a newly opened
 file.
 
@@ -109,7 +109,7 @@ Here, the output is::
 The reason for this behaviour is that every iterator needs to keep
 track of its current position in the file. Within pysam, each opened
 file can only keep track of one file position and hence there can only
-be one iterator per file. Using the option ``mulitple_iterators=True``
+be one iterator per file. Using the option ``multiple_iterators=True``
 will return an iterator within a newly opened file. This iterator will
 not interfere with existing iterators as it has its own file handle
 associated with it.
@@ -124,14 +124,14 @@ AlignmentFile.fetch does not show unmapped reads
 :meth:`~pysam.AlignmentFile.fetch` will only iterate over alignments
 in the SAM/BAM file. The following thus always works::
 
-    bf = pysam.AlignemFile(fname, "rb")
+    bf = pysam.AlignmentFile(fname, "rb")
     for r in bf.fetch():
         assert not r.is_unmapped
 
 If the SAM/BAM file contains unaligned reads, they can be included
 in the iteration by adding the ``until_eof=True`` flag::
 
-    bf = pysam.AlignemFile(fname, "rb")
+    bf = pysam.AlignmentFile(fname, "rb")
     for r in bf.fetch(until_eof=True):
         if r.is_unmapped:
 	    print ("read is unmapped")
@@ -143,7 +143,7 @@ I can't call AlignmentFile.fetch on a file without index
 iterating over a SAM/BAM file. To iterate over a file without
 index, use the ``until_eof=True`::
 
-    bf = pysam.AlignemFile(fname, "rb")
+    bf = pysam.AlignmentFile(fname, "rb")
     for r in bf.fetch(until_eof=True):
         print (r)
 

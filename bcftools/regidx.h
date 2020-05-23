@@ -33,14 +33,14 @@
         // and for working example see test/test-regidx.c.
         regidx_t *idx = regidx_init(in_fname,parse_custom,free_custom,sizeof(char*),NULL);
 
-        // Query overlap with chr:from-to
+        // Query overlap with chr:beg-end (beg,end are 1-based coordinates)
         regitr_t *itr = regitr_init(idx);
-        if ( regidx_overlap(idx, chr,from,to, itr) ) printf("There is an overlap!\n");
+        if ( regidx_overlap(idx, chr,beg-1,end-1, itr) ) printf("There is an overlap!\n");
 
         while ( regitr_overlap(itr) )
         {
-            printf("[%d,%d] overlaps with [%d,%d], payload=%s\n", from,to, 
-                itr->beg, itr->end, regitr_payload(itr,char*));
+            printf("[%d,%d] overlaps with [%d,%d], payload=%s\n", beg,end, 
+                itr->beg+1, itr->end+1, regitr_payload(itr,char*));
         }
 
         regidx_destroy(idx);
@@ -53,7 +53,7 @@
         regitr_t *itr = regitr_init(idx);
 
         while ( regitr_loop(itr) )
-            printf("chr=%s  beg=%d  end=%d\n", itr->seq, itr->beg, itr->end);
+            printf("chr=%s  beg=%d  end=%d\n", itr->seq, itr->beg+1, itr->end+1);
 
         regidx_destroy(idx);
         regitr_destroy(itr);

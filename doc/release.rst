@@ -2,6 +2,26 @@
 Release notes
 =============
 
+Release 0.15.4
+==============
+
+Bugfix release. Principal reason for release is to update cython
+version in order to fix pip install pysam with python 3.8.
+
+* [#879] Fix add_meta function in libcbcf.pyx, so meta-information
+  lines in header added with this function have double-quoting rules
+  in accordance to rules specified in VCF4.2 and VCF4.3 specifications
+* [#863] Force arg to bytes to support non-ASCII encoding
+* [#875] Bump minimum Cython version
+* [#868] Prevent segfault on Python 2.7 AlignedSegment.compare(other=None)
+* [#867] Fix wheel building on TravisCI
+* [#863] Force arg to bytes to support non-ASCII encoding
+* [#799] disambiguate interpretation of bcf_read return code
+* [#841] Fix silent truncation of FASTQ with bad q strings
+* [#846] Prevent segmentation fault on ID, when handling malformed records
+* [#829] Run configure with the correct CC/CFLAGS/LDFLAGS env vars
+
+
 Release 0.15.3
 ==============
 

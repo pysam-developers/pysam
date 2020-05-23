@@ -29,13 +29,18 @@
 #include <getopt.h>
 #include <ctype.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <math.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <htslib/vcf.h>
 #include <htslib/kstring.h>
+#include <htslib/hts_os.h>
 #include "kheap.h"
 #include "bcftools.h"
 
@@ -58,6 +63,33 @@ typedef struct _args_t
     blk_t *blk;
 }
 args_t;
+
+void clean_files(args_t *args)
+{
+    int i;
+    fprintf(stderr,"Cleaning\n");
+    for (i=0; i<args->nblk; i++)
+    {
+        blk_t *blk = args->blk + i;
+        if ( blk->fname )
+        {
+            unlink(blk->fname);
+            free(blk->fname);
+        }
+        if ( blk->rec ) 
+            bcf_destroy(blk->rec);
+    }
+    rmdir(args->tmp_dir);
+}
+void clean_files_and_throw(args_t *args, const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    vfprintf(stderr, format, ap);
+    va_end(ap);
+    clean_files(args);
+    exit(-1);
+}
 
 int cmp_bcf_pos(const void *aptr, const void *bptr)
 {
@@ -98,18 +130,20 @@ void buf_flush(args_t *args)
     kstring_t str = {0,0,0};
     ksprintf(&str, "%s/%05d.bcf", args->tmp_dir, (int)args->nblk);
     blk->fname = str.s;
+    blk->rec   = NULL;
+    blk->fh    = NULL;
 
     htsFile *fh = hts_open(blk->fname, "wbu");
-    if ( fh == NULL ) error("Cannot write %s: %s\n", blk->fname, strerror(errno));
-    bcf_hdr_write(fh, args->hdr);
+    if ( fh == NULL ) clean_files_and_throw(args, "Cannot write %s: %s\n", blk->fname, strerror(errno));
+    if ( bcf_hdr_write(fh, args->hdr)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,blk->fname);
     
     int i;
     for (i=0; i<args->nbuf; i++)
     {
-        bcf_write(fh, args->hdr, args->buf[i]);
+        if ( bcf_write(fh, args->hdr, args->buf[i])!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,blk->fname);
         bcf_destroy(args->buf[i]);
     }
-    hts_close(fh);
+    if ( hts_close(fh)!=0 ) clean_files_and_throw(args, "[%s] Error: close failed .. %s\n", __func__,blk->fname);
 
     args->nbuf = 0;
     args->mem  = 0;
@@ -128,25 +162,27 @@ void buf_push(args_t *args, bcf1_t *rec)
 void sort_blocks(args_t *args) 
 {
     htsFile *in = hts_open(args->fname, "r");
-    if ( !in ) error("Could not read %s\n", args->fname);
+    if ( !in ) clean_files_and_throw(args, "Could not read %s\n", args->fname);
     args->hdr = bcf_hdr_read(in);
+    if ( !args->hdr) clean_files_and_throw(args, "Could not read VCF/BCF headers from %s\n", args->fname);
 
     while ( 1 )
     {
         bcf1_t *rec = bcf_init();
         int ret = bcf_read1(in, args->hdr, rec);
-        if ( ret < -1 ) error("Error encountered while parsing the input\n");
+        if ( ret < -1 ) clean_files_and_throw(args,"Error encountered while parsing the input\n");
         if ( ret == -1 )
         {
             bcf_destroy(rec);
             break;
         }
+        if ( rec->errcode ) clean_files_and_throw(args,"Error encountered while parsing the input at %s:%d\n",bcf_seqname(args->hdr,rec),rec->pos+1);
         buf_push(args, rec);
     }
     buf_flush(args);
     free(args->buf);
 
-    if ( hts_close(in)!=0 ) error("Close failed: %s\n", args->fname);
+    if ( hts_close(in)!=0 ) clean_files_and_throw(args,"Close failed: %s\n", args->fname);
 }
 
 static inline int blk_is_smaller(blk_t **aptr, blk_t **bptr)
@@ -159,14 +195,14 @@ static inline int blk_is_smaller(blk_t **aptr, blk_t **bptr)
 }
 KHEAP_INIT(blk, blk_t*, blk_is_smaller)
 
-void blk_read(khp_blk_t *bhp, bcf_hdr_t *hdr, blk_t *blk)
+void blk_read(args_t *args, khp_blk_t *bhp, bcf_hdr_t *hdr, blk_t *blk)
 {
     if ( !blk->fh ) return;
     int ret = bcf_read(blk->fh, hdr, blk->rec);
-    if ( ret < -1 ) error("Error reading %s\n", blk->fname);
+    if ( ret < -1 ) clean_files_and_throw(args, "Error reading %s\n", blk->fname);
     if ( ret == -1 )
     {
-        if ( hts_close(blk->fh)!=0 ) error("Close failed: %s\n", blk->fname);
+        if ( hts_close(blk->fh)!=0 ) clean_files_and_throw(args, "Close failed: %s\n", blk->fname);
         blk->fh = 0;
         return;
     }
@@ -184,33 +220,26 @@ void merge_blocks(args_t *args)
     {
         blk_t *blk = args->blk + i;
         blk->fh = hts_open(blk->fname, "r");
-        if ( !blk->fh ) error("Could not read %s: %s\n", blk->fname, strerror(errno));
+        if ( !blk->fh ) clean_files_and_throw(args, "Could not read %s: %s\n", blk->fname, strerror(errno));
         bcf_hdr_t *hdr = bcf_hdr_read(blk->fh);
         bcf_hdr_destroy(hdr);
         blk->rec = bcf_init();
-        blk_read(bhp, args->hdr, blk);
+        blk_read(args, bhp, args->hdr, blk);
     }
 
     htsFile *out = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
-    bcf_hdr_write(out, args->hdr);
+    if ( bcf_hdr_write(out, args->hdr)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,args->output_fname);
     while ( bhp->ndat )
     {
         blk_t *blk = bhp->dat[0];
-        bcf_write(out, args->hdr, blk->rec);
+        if ( bcf_write(out, args->hdr, blk->rec)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,args->output_fname);
         khp_delete(blk, bhp);
-        blk_read(bhp, args->hdr, blk);
+        blk_read(args, bhp, args->hdr, blk);
     }
-    if ( hts_close(out)!=0 ) error("Close failed: %s\n", args->output_fname);
+    if ( hts_close(out)!=0 ) clean_files_and_throw(args, "Close failed: %s\n", args->output_fname);
 
-    fprintf(stderr,"Cleaning\n");
-    for (i=0; i<args->nblk; i++)
-    {
-        blk_t *blk = args->blk + i;
-        unlink(blk->fname);
-        free(blk->fname);
-        bcf_destroy(blk->rec);
-    }
-    rmdir(args->tmp_dir);
+    clean_files(args);
+
     free(args->blk);
     khp_destroy(blk, bhp);
     fprintf(stderr,"Done\n");
@@ -226,7 +255,7 @@ static void usage(args_t *args)
     fprintf(stderr, "    -m, --max-mem <float>[kMG]    maximum memory to use [768M]\n");    // using metric units, 1M=1e6
     fprintf(stderr, "    -o, --output-file <file>      output file name [stdout]\n");
     fprintf(stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(stderr, "    -T, --temp-dir <dir>          temporary files [/tmp/bcftools-sort.XXXXXX/]\n");
+    fprintf(stderr, "    -T, --temp-dir <dir>          temporary files [/tmp/bcftools-sort.XXXXXX]\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -243,22 +272,40 @@ size_t parse_mem_string(char *str)
 }
 
 void mkdir_p(const char *fmt, ...);
-void init(args_t *args)
+static void init(args_t *args)
 {
-    if ( !args->tmp_dir )
+#ifdef _WIN32
+    char tmp_path[MAX_PATH];
+    int ret = GetTempPath(MAX_PATH, tmp_path);
+    if (!ret || ret > MAX_PATH)
+        error("Could not get the path to the temporary folder\n");
+    if (strlen(tmp_path) + strlen("/bcftools-sort.XXXXXX") >= MAX_PATH)
+        error("Full path to the temporary folder is too long\n");
+    strcat(tmp_path, "/bcftools-sort.XXXXXX");
+    args->tmp_dir = strdup(tmp_path);
+#else
+    args->tmp_dir = args->tmp_dir ? strdup(args->tmp_dir) : strdup("/tmp/bcftools-sort.XXXXXX");
+#endif
+    size_t len = strlen(args->tmp_dir);
+    if ( !strcmp("XXXXXX",args->tmp_dir+len-6) )
     {
-        args->tmp_dir = strdup("/tmp/bcftools-sort.XXXXXX");
-        char *tmp_dir = mkdtemp(args->tmp_dir);
-        if ( !tmp_dir ) error("mkdtemp(%s) failed: %s\n", args->tmp_dir,strerror(errno));
+#ifdef _WIN32
+        int ret = mkdir(mktemp(args->tmp_dir), 0700);
+        if ( ret ) error("mkdir(%s) failed: %s\n", args->tmp_dir,strerror(errno));
+#else
+        char *tmp = mkdtemp(args->tmp_dir);
+        if ( !tmp ) error("mkdtemp(%s) failed: %s\n",  args->tmp_dir,strerror(errno));
+        int ret = chmod(tmp, S_IRUSR|S_IWUSR|S_IXUSR);
+        if ( ret ) error("chmod(%s,S_IRUSR|S_IWUSR|S_IXUSR) failed: %s\n", args->tmp_dir,strerror(errno));
+#endif
     }
-    else
-    {
-        args->tmp_dir = strdup(args->tmp_dir);
-        mkdir_p(args->tmp_dir);
+    else {
+        mkdir_p("%s/",args->tmp_dir);
     }
+
     fprintf(stderr,"Writing to %s\n", args->tmp_dir);
 }
-void destroy(args_t *args)
+static void destroy(args_t *args)
 {
     bcf_hdr_destroy(args->hdr);
     free(args->tmp_dir);
@@ -298,8 +345,8 @@ int main_sort(int argc, char *argv[])
                           default: error("The output type \"%s\" not recognised\n", optarg);
                       };
                       break;
-            case 'h': usage(args);
-            case '?': usage(args);
+            case 'h':
+            case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }

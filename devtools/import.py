@@ -1,27 +1,10 @@
 #################################################################
-# Importing samtools and htslib
+# Importing samtools, bcftools, and htslib
 #
-# For htslib, simply copy the whole release tar-ball
-# into the directory "htslib" and recreate the file version.h
+# For each package PKG:
 #
-# rm -rf htslib
-# mv download/htslib htslib
-# git checkout -- htslib/version.h
-# Edit the file htslib/version.h to set the right version number.
-#
-# For samtools, type:
-# rm -rf samtools
-# python import.py samtools download/samtools
-# git checkout -- samtools/version.h
-#
-# Manually, then:
-# modify config.h to set compatibility flags
-#
-# For bcftools, type:
-# rm -rf bcftools
-# python import.py bcftools download/bedtools
-# git checkout -- bcftools/version.h
-# rm -rf bedtools/test bedtools/plugins
+# rm -rf PKG
+# python import.py PKG path/to/download/PKG-X.Y
 
 import fnmatch
 import os
@@ -34,23 +17,19 @@ import hashlib
 
 EXCLUDE = {
     "samtools": (
+        "test", "misc",
         "razip.c",
         "bgzip.c",
         "main.c",
         "calDepth.c",
         "bam2bed.c",
-        "wgsim.c",
         "bam_tview.c",
         "bam_tview.h",
         "bam_tview_html.c",
         "bam_tview_curses.c",
-        "md5fa.c",
-        "md5sum-lite.c",
-        "maq2sam.c",
         "bamcheck.c",
         "chk_indel.c",
         "vcf-miniview.c",
-        "hfile_irods.c",  # requires irods library
     ),
     "bcftools": (
         "test", "plugins", "peakfit.c",
@@ -60,7 +39,8 @@ EXCLUDE = {
         "polysomy.c"),
     "htslib": (
         'htslib/tabix.c', 'htslib/bgzip.c',
-        'htslib/htsfile.c', 'htslib/hfile_irods.c'),
+        'htslib/htsfile.c',
+        "test"),
 }
 
 
@@ -70,14 +50,28 @@ MAIN = {
 }
 
 
+C_VERSION = {
+    "htslib":   "HTS_VERSION_TEXT",
+    "samtools": "SAMTOOLS_VERSION",
+    "bcftools": "BCFTOOLS_VERSION"
+}
 
-def locate(pattern, root=os.curdir):
-    '''Locate all files matching supplied filename pattern in and below
-    supplied root directory.
+
+def locate(pattern, root=os.curdir, exclude=[], exclude_htslib=False):
+    '''Locate all files matching supplied filename pattern (but not listed
+    in exclude) in and below the supplied root directory. Omit any files under
+    directories listed in exclude or (if exclude_htslib=True) matching /htslib-*/.
     '''
     for path, dirs, files in os.walk(os.path.abspath(root)):
         for filename in fnmatch.filter(files, pattern):
-            yield os.path.join(path, filename)
+            if filename not in exclude:
+                yield os.path.join(path, filename)
+
+        for dirname in exclude:
+            if dirname in dirs: dirs.remove(dirname)
+        if exclude_htslib:
+            for dirname in [d for d in dirs if re.match(r"htslib-", d)]:
+                dirs.remove(dirname)
 
 
 def _update_pysam_files(cf, destdir):
@@ -109,6 +103,9 @@ def _update_pysam_files(cf, destdir):
                 fn = os.path.basename(filename)
                 # some specific fixes:
                 SPECIFIC_SUBSTITUTIONS = {
+                    "bamtk.c": (
+                        'else if (strcmp(argv[1], "tview") == 0)',
+                        '//else if (strcmp(argv[1], "tview") == 0)'),
                     "bam_md.c": (
                         'sam_open_format("-", mode_w',
                         'sam_open_format({}_stdout_fn, mode_w'.format(basename)),
@@ -149,16 +146,16 @@ if len(sys.argv) >= 1:
         raise IOError(
             "source directory `%s` does not exist." % srcdir)
 
-    cfiles = locate("*.c", srcdir)
-    hfiles = locate("*.h", srcdir)
-    mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir))
-    
-    # remove unwanted files and htslib subdirectory.
-    cfiles = [x for x in cfiles if os.path.basename(x) not in exclude
-              and not re.search("htslib-", x)]
+    cfiles = locate("*.c", srcdir, exclude=exclude, exclude_htslib=True)
+    hfiles = locate("*.h", srcdir, exclude=exclude, exclude_htslib=True)
+    mfiles = itertools.chain(locate("README", srcdir), locate("LICENSE", srcdir),
+                             locate("version.sh", srcdir, exclude_htslib=True))
 
-    hfiles = [x for x in hfiles if os.path.basename(x) not in exclude
-              and not re.search("htslib-", x)]
+    if dest == "htslib":
+        # Add build files, including *.ac *.in *.mk *.m4
+        mfiles = itertools.chain(mfiles, locate("Makefile", srcdir),
+                                 locate("configure", srcdir),
+                                 locate("*.[aim][cnk4]", srcdir))
 
     ncopied = 0
 
@@ -203,10 +200,33 @@ if len(sys.argv) >= 1:
     sys.stdout.write(
         "installed latest source code from %s: "
         "%i files copied\n" % (srcdir, ncopied))
-    # redirect stderr to pysamerr and replace bam.h with a stub.
-    sys.stdout.write("applying stderr redirection\n")
 
-    _update_pysam_files(cf, destdir)
+    if dest in MAIN:
+        # redirect stderr to pysamerr and replace bam.h with a stub.
+        sys.stdout.write("applying stderr redirection\n")
+
+        _update_pysam_files(cf, destdir)
+
+    def _getVersion(srcdir):
+        with open(os.path.join(srcdir, "version.sh"), encoding="utf-8") as inf:
+            for line in inf:
+                m = re.match(r"VERSION=(\S+)", line)
+                if m: return m.group(1)
+            raise ValueError("no VERSION line in version.sh")
+
+    def _update_version_file(key, value, filename):
+        tmpfilename = filename + ".tmp"
+        with open(filename, encoding="utf-8") as inf:
+            with open(tmpfilename, "w", encoding="utf-8") as outf:
+                for line in inf:
+                    if key in line:
+                        line = re.sub(r'"[^"]*"', '"{}"'.format(value), line)
+                    outf.write(line)
+        os.rename(tmpfilename, filename)
+
+    version = _getVersion(srcdir)
+    _update_version_file("__{}_version__".format(dest), version, "pysam/version.py")
+    _update_version_file(C_VERSION[dest], version + " (pysam)", "pysam/version.h")
 
     sys.exit(0)
 

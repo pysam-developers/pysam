@@ -264,7 +264,11 @@ regidx_t *regidx_init(const char *fname, regidx_parse_f parser, regidx_free_f fr
     }
 
     free(str.s);
-    hts_close(fp);
+    if ( hts_close(fp)!=0 )
+    {
+        fprintf(bcftools_stderr,"[%s] Error: close failed .. %s\n", __func__,fname);
+        goto error;
+    }
     return idx;
 
 error:
@@ -394,12 +398,11 @@ int regidx_overlap(regidx_t *regidx, const char *chr, uint32_t beg, uint32_t end
         {
             int iend = iBIN(end);
             if ( iend > list->nidx ) iend = list->nidx;
-            for (i=ibeg; i<iend; i++)
+            for (i=ibeg; i<=iend; i++)
                 if ( list->idx[i] ) break;
-            if ( i==iend ) return 0;
+            if ( i>iend ) return 0;
             i = list->idx[i];
         }
-
         for (ireg=i-1; ireg<list->nreg; ireg++)
         {
             if ( list->reg[ireg].beg > end ) return 0;   // no match, past the query region

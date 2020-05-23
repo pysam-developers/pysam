@@ -130,6 +130,11 @@ void *smalloc(size_t size)
     return mem;
 }
 
+static inline int max255(int i)
+{
+    return i < 256 ? i : 255;
+}
+
 static void init_data(args_t *args)
 {
     int i;
@@ -156,7 +161,7 @@ static void init_data(args_t *args)
         if ( !strncmp("GT,",args->estimate_AF,3) ) args->estimate_AF += 3;
         else if ( !strncmp("PL,",args->estimate_AF,3) ) { args->estimate_AF += 3; args->af_from_PL = 1; }
         if ( strcmp("-",args->estimate_AF) )
-            args->af_smpl = smpl_ilist_init(args->hdr, args->estimate_AF, 1, SMPL_NONE);
+            args->af_smpl = smpl_ilist_init(args->hdr, args->estimate_AF, 1, SMPL_NONE|SMPL_VERBOSE);
     }
 
     if ( args->estimate_AF || args->fake_PLs )
@@ -181,7 +186,7 @@ static void init_data(args_t *args)
             error("Error: The FORMAT/GT tag not found in the header\n");
     }
 
-    args->roh_smpl = smpl_ilist_init(args->hdr, args->samples, args->samples_is_file, SMPL_NONE);
+    args->roh_smpl = smpl_ilist_init(args->hdr, args->samples, args->samples_is_file, SMPL_NONE|SMPL_VERBOSE);
     if ( args->samples )
     {
         // we may be able to subset to a few samples, for a text VCF this can be a major speedup
@@ -749,9 +754,9 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
                 if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
                 if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
                 double prob[3], norm = 0; \
-                prob[0] = p[irr] < 256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
-                prob[1] = p[ira] < 256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
-                prob[2] = p[iaa] < 256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                prob[0] = args->pl2p[ max255(p[irr]) ]; \
+                prob[1] = args->pl2p[ max255(p[ira]) ]; \
+                prob[2] = args->pl2p[ max255(p[iaa]) ]; \
                 for (j=0; j<3; j++) norm += prob[j]; \
                 for (j=0; j<3; j++) prob[j] /= norm; \
                 af += 0.5*prob[1] + prob[2]; \
@@ -779,9 +784,9 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
                 if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
                 if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
                 double prob[3], norm = 0; \
-                prob[0] = p[irr] < 256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
-                prob[1] = p[ira] < 256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
-                prob[2] = p[iaa] < 256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                prob[0] = args->pl2p[ max255(p[irr]) ]; \
+                prob[1] = args->pl2p[ max255(p[ira]) ]; \
+                prob[2] = args->pl2p[ max255(p[iaa]) ]; \
                 for (j=0; j<3; j++) norm += prob[j]; \
                 for (j=0; j<3; j++) prob[j] /= norm; \
                 af += 0.5*prob[1] + prob[2]; \
@@ -827,7 +832,7 @@ int process_line(args_t *args, bcf1_t *line, int ial)
         if ( ret>0 )
             alt_freq = args->AFs[ial-1];
         if ( ret==-2 )
-            error("Type mismatch for INFO/%s tag at %s:%d\n", args->af_tag, bcf_seqname(args->hdr,line), line->pos+1);
+            error("Type mismatch for INFO/%s tag at %s:%"PRId64"\n", args->af_tag, bcf_seqname(args->hdr,line), (int64_t) line->pos+1);
     }
     else if ( args->af_fname ) 
     {
@@ -926,9 +931,9 @@ int process_line(args_t *args, bcf1_t *line, int ial)
                 type_t *p = (type_t*)fmt_pl->p + fmt_pl->n*ismpl; \
                 if ( p[irr]<0 || p[ira]<0 || p[iaa]<0 ) continue;    /* missing value */ \
                 if ( p[irr]==p[ira] && p[irr]==p[iaa] ) continue;    /* all values are the same */ \
-                pdg[0] = p[irr] < 256 ? args->pl2p[ p[irr] ] : args->pl2p[255]; \
-                pdg[1] = p[ira] < 256 ? args->pl2p[ p[ira] ] : args->pl2p[255]; \
-                pdg[2] = p[iaa] < 256 ? args->pl2p[ p[iaa] ] : args->pl2p[255]; \
+                pdg[0] = args->pl2p[ max255(p[irr]) ]; \
+                pdg[1] = args->pl2p[ max255(p[ira]) ]; \
+                pdg[2] = args->pl2p[ max255(p[iaa]) ]; \
             }
             switch (fmt_pl->type) {
                 case BCF_BT_INT8:  BRANCH(int8_t); break;
@@ -1089,7 +1094,7 @@ static void usage(args_t *args)
     fprintf(stderr, "    -S, --samples-file <file>          file of samples to analyze [all samples]\n");
     fprintf(stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
-    fprintf(stderr, "        --threads <int>                number of extra decompression threads [0]\n");
+    fprintf(stderr, "        --threads <int>                use multithreading with <int> worker threads [0]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "HMM Options:\n");
     fprintf(stderr, "    -a, --hw-to-az <float>             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
@@ -1198,7 +1203,7 @@ int main_vcfroh(int argc, char *argv[])
         }
     }
     if ( !args->output_fname ) args->output_fname = "stdout";
-    if ( !args->output_type ) args->output_type = OUTPUT_ST|OUTPUT_RG;
+    if ( !args->output_type || args->output_type==OUTPUT_GZ ) args->output_type |= OUTPUT_ST|OUTPUT_RG;
     char *fname = NULL;
     if ( optind==argc )
     {
@@ -1229,7 +1234,7 @@ int main_vcfroh(int argc, char *argv[])
     }
     if ( args->n_threads && bcf_sr_set_threads(args->files, args->n_threads)<0)
         error("Failed to create threads\n");
-    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
+    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
 
     init_data(args);
     while ( bcf_sr_next_line(args->files) )

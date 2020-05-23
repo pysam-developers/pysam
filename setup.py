@@ -29,7 +29,7 @@ import subprocess
 import sys
 import sysconfig
 from contextlib import contextmanager
-from setuptools import Extension, setup
+from setuptools import setup
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
     import cython
@@ -159,8 +159,7 @@ HTSLIB_SOURCE = None
 package_list = ['pysam',
                 'pysam.include',
                 'pysam.include.samtools',
-                'pysam.include.bcftools',
-                'pysam.include.samtools.win32']
+                'pysam.include.bcftools']
 package_dirs = {'pysam': 'pysam',
                 'pysam.include.samtools': 'samtools',
                 'pysam.include.bcftools': 'bcftools'}
@@ -295,12 +294,15 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                     key, value = re.match(
                         "#define (\S+)\s+(\S+)", line).groups()
                     config_values[key] = value
-            for key in ["ENABLE_PLUGINS",
+            for key in ["ENABLE_GCS",
+                        "ENABLE_PLUGINS",
+                        "ENABLE_S3",
                         "HAVE_COMMONCRYPTO",
-                        "HAVE_GMTIME_R",
                         "HAVE_HMAC",
-                        "HAVE_IRODS",
+                        "HAVE_LIBBZ2",
                         "HAVE_LIBCURL",
+                        "HAVE_LIBDEFLATE",
+                        "HAVE_LIBLZMA",
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
                 print ("# pysam: config_option: {}={}".format(key, config_values[key]))
@@ -443,7 +445,7 @@ metadata = {
     'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
-    'requires': ['cython (>=0.21)'],
+    'requires': ['cython (>=0.29.12)'],
     'ext_modules': [Extension(**opts) for opts in modules],
     'cmdclass': cmdclass,
     'package_dir': package_dirs,
