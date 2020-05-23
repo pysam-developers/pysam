@@ -1,6 +1,6 @@
 /*  vcfconcat.c -- Concatenate or combine VCF/BCF files.
 
-    Copyright (C) 2013-2015 Genome Research Ltd.
+    Copyright (C) 2013-2019 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -34,6 +34,8 @@ THE SOFTWARE.  */
 #include <htslib/kseq.h>
 #include <htslib/bgzf.h>
 #include <htslib/tbx.h> // for hts_get_bgzfp()
+#include <htslib/thread_pool.h>
+#include <sys/time.h>
 #include "bcftools.h"
 
 typedef struct _args_t
@@ -53,7 +55,9 @@ typedef struct _args_t
 
     char **argv, *output_fname, *file_list, **fnames, *remove_dups, *regions_list;
     int argc, nfnames, allow_overlaps, phased_concat, regions_is_file;
-    int compact_PS, phase_set_changed, naive_concat;
+    int compact_PS, phase_set_changed, naive_concat, naive_concat_trust_headers;
+    int verbose;
+    htsThreadPool *tpool;
 }
 args_t;
 
@@ -70,6 +74,7 @@ static void init_data(args_t *args)
         line = bcf_init();
     }
 
+    if ( args->verbose ) fprintf(stderr,"Checking the headers and starting positions of %d files\n", args->nfnames);
     kstring_t str = {0,0,0};
     int i, prev_chrid = -1;
     for (i=0; i<args->nfnames; i++)
@@ -97,7 +102,7 @@ static void init_data(args_t *args)
             }
         }
         bcf_hdr_destroy(hdr);
-        hts_close(fp);
+        if ( hts_close(fp)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->fnames[i]);
     }
     free(str.s);
     if ( line ) bcf_destroy(line);
@@ -112,14 +117,30 @@ static void init_data(args_t *args)
     if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_concat");
     args->out_fh = hts_open(args->output_fname,hts_bcf_wmode(args->output_type));
     if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
-    if ( args->n_threads ) hts_set_threads(args->out_fh, args->n_threads);
-
-    bcf_hdr_write(args->out_fh, args->out_hdr);
-
-    if ( args->allow_overlaps )
+    if ( args->allow_overlaps || args->phased_concat )
     {
         args->files = bcf_sr_init();
         args->files->require_index = 1;
+    }
+    if ( args->n_threads )
+    {
+        if ( args->files )
+        {
+            if ( bcf_sr_set_threads(args->files, args->n_threads)<0 ) error("Failed to create threads\n");
+            args->tpool = args->files->p;
+        }
+        else
+        {
+            args->tpool = (htsThreadPool*) calloc(1, sizeof(htsThreadPool));
+            if ( !args->tpool ) error("Failed to allocate memory\n");
+            if ( !(args->tpool->pool = hts_tpool_init(args->n_threads)) ) error("Failed to initialize %d threads\n",args->n_threads);
+        }
+        hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->tpool);
+    }
+    if ( bcf_hdr_write(args->out_fh, args->out_hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname);
+
+    if ( args->allow_overlaps )
+    {
         if ( args->regions_list )
         {
             if ( bcf_sr_set_regions(args->files, args->regions_list, args->regions_is_file)<0 )
@@ -167,8 +188,6 @@ static void init_data(args_t *args)
         args->nmism  = (int*) calloc(bcf_hdr_nsamples(args->out_hdr),sizeof(int));
         args->phase_qual = (int32_t*) malloc(bcf_hdr_nsamples(args->out_hdr)*sizeof(int32_t));
         args->phase_set  = (int32_t*) malloc(bcf_hdr_nsamples(args->out_hdr)*sizeof(int32_t));
-        args->files = bcf_sr_init();
-        args->files->require_index = 1;
         args->ifname = 0;
     }
 }
@@ -176,13 +195,16 @@ static void init_data(args_t *args)
 static void destroy_data(args_t *args)
 {
     int i;
-    for (i=0; i<args->nfnames; i++) free(args->fnames[i]);
-    free(args->fnames);
-    if ( args->files ) bcf_sr_destroy(args->files);
     if ( args->out_fh )
     {
         if ( hts_close(args->out_fh)!=0 ) error("hts_close error\n");
     }
+    if ( args->tpool && !args->files )
+    {
+        hts_tpool_destroy(args->tpool->pool);
+        free(args->tpool);
+    }
+    if ( args->files ) bcf_sr_destroy(args->files);
     if ( args->out_hdr ) bcf_hdr_destroy(args->out_hdr);
     free(args->seen_seq);
     free(args->start_pos);
@@ -195,6 +217,8 @@ static void destroy_data(args_t *args)
     free(args->nmism);
     free(args->phase_qual);
     free(args->phase_set);
+    for (i=0; i<args->nfnames; i++) free(args->fnames[i]);
+    free(args->fnames);
 }
 
 int vcf_write_line(htsFile *fp, kstring_t *line);
@@ -235,7 +259,7 @@ static void phased_flush(args_t *args)
         {
             if ( !gt_absent_warned )
             {
-                fprintf(stderr,"GT is not present at %s:%d. (This warning is printed only once.)\n", bcf_seqname(ahdr,arec), arec->pos+1);
+                fprintf(stderr,"GT is not present at %s:%"PRId64". (This warning is printed only once.)\n", bcf_seqname(ahdr,arec), (int64_t) arec->pos+1);
                 gt_absent_warned = 1;
             }
             continue;
@@ -246,7 +270,7 @@ static void phased_flush(args_t *args)
         {
             if ( !gt_absent_warned )
             {
-                fprintf(stderr,"GT is not present at %s:%d. (This warning is printed only once.)\n", bcf_seqname(bhdr,brec), brec->pos+1);
+                fprintf(stderr,"GT is not present at %s:%"PRId64". (This warning is printed only once.)\n", bcf_seqname(bhdr,brec), (int64_t) brec->pos+1);
                 gt_absent_warned = 1;
             }
             continue;
@@ -282,9 +306,9 @@ static void phased_flush(args_t *args)
             bcf_update_format_int32(args->out_hdr,arec,"PS",args->phase_set,nsmpl);
             args->phase_set_changed = 0;
         }
-        bcf_write(args->out_fh, args->out_hdr, arec);
+        if ( bcf_write(args->out_fh, args->out_hdr, arec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
 
-        if ( arec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%d vs %d  [1]\n", bcf_seqname(args->files->readers[0].header,arec),arec->pos+1,args->prev_pos_check+1);
+        if ( arec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%"PRId64" vs %d  [1]\n", bcf_seqname(args->files->readers[0].header,arec),(int64_t) arec->pos+1,args->prev_pos_check+1);
         args->prev_pos_check = arec->pos;
     }
     args->nswap = 0;
@@ -332,9 +356,9 @@ static void phased_flush(args_t *args)
             bcf_update_format_int32(args->out_hdr,brec,"PS",args->phase_set,nsmpl);
             args->phase_set_changed = 0;
         }
-        bcf_write(args->out_fh, args->out_hdr, brec);
+        if ( bcf_write(args->out_fh, args->out_hdr, brec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
 
-        if ( brec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%d vs %d  [2]\n", bcf_seqname(args->files->readers[1].header,brec),brec->pos+1,args->prev_pos_check+1);
+        if ( brec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%"PRId64" vs %d  [2]\n", bcf_seqname(args->files->readers[1].header,brec),(int64_t) brec->pos+1,args->prev_pos_check+1);
         args->prev_pos_check = brec->pos;
     }
     args->nbuf = 0;
@@ -343,9 +367,9 @@ static void phased_flush(args_t *args)
 static void phased_push(args_t *args, bcf1_t *arec, bcf1_t *brec)
 {
     if ( arec && arec->errcode )
-        error("Parse error at %s:%d, cannot proceed: %s\n", bcf_seqname(args->files->readers[0].header,arec),arec->pos+1, args->files->readers[0].fname);
+        error("Parse error at %s:%"PRId64", cannot proceed: %s\n", bcf_seqname(args->files->readers[0].header,arec),(int64_t) arec->pos+1, args->files->readers[0].fname);
     if ( brec && brec->errcode )
-        error("Parse error at %s:%d, cannot proceed: %s\n", bcf_seqname(args->files->readers[1].header,brec),brec->pos+1, args->files->readers[1].fname);
+        error("Parse error at %s:%"PRId64", cannot proceed: %s\n", bcf_seqname(args->files->readers[1].header,brec),(int64_t) brec->pos+1, args->files->readers[1].fname);
 
     int i, nsmpl = bcf_hdr_nsamples(args->out_hdr);
     int chr_id = bcf_hdr_name2id(args->out_hdr, bcf_seqname(args->files->readers[0].header,arec));
@@ -373,10 +397,10 @@ static void phased_push(args_t *args, bcf1_t *arec, bcf1_t *brec)
             bcf_update_format_int32(args->out_hdr,arec,"PS",args->phase_set,nsmpl);
             args->phase_set_changed = 0;
         }
-        bcf_write(args->out_fh, args->out_hdr, arec);
+        if ( bcf_write(args->out_fh, args->out_hdr, arec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
 
         if ( arec->pos < args->prev_pos_check )
-            error("FIXME, disorder: %s:%d in %s vs %d written  [3]\n", bcf_seqname(args->files->readers[0].header,arec), arec->pos+1,args->files->readers[0].fname, args->prev_pos_check+1);
+            error("FIXME, disorder: %s:%"PRId64" in %s vs %d written  [3]\n", bcf_seqname(args->files->readers[0].header,arec), (int64_t) arec->pos+1,args->files->readers[0].fname, args->prev_pos_check+1);
         args->prev_pos_check = arec->pos;
         return;
     }
@@ -393,6 +417,7 @@ static void phased_push(args_t *args, bcf1_t *arec, bcf1_t *brec)
 
 static void concat(args_t *args)
 {
+    static int site_drop_warned = 0;
     int i;
     if ( args->phased_concat )  // phased concat
     {
@@ -429,8 +454,20 @@ static void concat(args_t *args)
                 if ( !bcf_sr_has_line(args->files,0) )  // no input from the first reader
                 {
                     // We are assuming that there is a perfect overlap, sites which are not present in both files are dropped
-                    if ( ! bcf_sr_region_done(args->files,0) ) continue;
-
+                    if ( ! bcf_sr_region_done(args->files,0) )
+                    {
+                        if ( !site_drop_warned )
+                        {
+                            fprintf(stderr,
+                                "Warning: Dropping the site %s:%"PRId64". The --ligate option is intended for VCFs with perfect\n"
+                                "         overlap, sites in overlapping regions present in one but missing in other are dropped.\n"
+                                "         This warning is printed only once.\n",
+                                bcf_seqname(bcf_sr_get_header(args->files,1),bcf_sr_get_line(args->files,1)), (int64_t) bcf_sr_get_line(args->files,1)->pos+1
+                                );
+                            site_drop_warned = 1;
+                        }
+                        continue;
+                    }
                     phased_flush(args);
                     bcf_sr_remove_reader(args->files, 0);
                 }
@@ -483,20 +520,27 @@ static void concat(args_t *args)
                 bcf1_t *line = bcf_sr_get_line(args->files,i);
                 if ( !line ) continue;
                 bcf_translate(args->out_hdr, args->files->readers[i].header, line);
-                bcf_write1(args->out_fh, args->out_hdr, line);
+                if ( bcf_write1(args->out_fh, args->out_hdr, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
                 if ( args->remove_dups ) break;
             }
         }
     }
     else    // concatenating
     {
+        struct timeval t0, t1;
         kstring_t tmp = {0,0,0};
         int prev_chr_id = -1, prev_pos;
         bcf1_t *line = bcf_init();
         for (i=0; i<args->nfnames; i++)
         {
-            htsFile *fp = hts_open(args->fnames[i], "r"); if ( !fp ) error("Failed to open: %s\n", args->fnames[i]);
-            bcf_hdr_t *hdr = bcf_hdr_read(fp); if ( !hdr ) error("Failed to parse header: %s\n", args->fnames[i]);
+            if ( args->verbose )
+            {
+                fprintf(stderr,"Concatenating %s", args->fnames[i]);
+                gettimeofday(&t0, NULL);
+            }
+            htsFile *fp = hts_open(args->fnames[i], "r"); if ( !fp ) error("\nFailed to open: %s\n", args->fnames[i]);
+            if ( args->n_threads ) hts_set_opt(fp, HTS_OPT_THREAD_POOL, args->tpool);
+            bcf_hdr_t *hdr = bcf_hdr_read(fp); if ( !hdr ) error("\nFailed to parse header: %s\n", args->fnames[i]);
             if ( !fp->is_bin && args->output_type&FT_VCF )
             {
                 line->max_unpack = BCF_UN_STR;
@@ -508,7 +552,7 @@ static void concat(args_t *args)
                     tmp.l = 0;
                     kputsn(fp->line.s,str-fp->line.s,&tmp);
                     int chr_id = bcf_hdr_name2id(args->out_hdr, tmp.s);
-                    if ( chr_id<0 ) error("The sequence \"%s\" not defined in the header: %s\n(Quick workaround: index the file.)\n", tmp.s, args->fnames[i]);
+                    if ( chr_id<0 ) error("\nThe sequence \"%s\" not defined in the header: %s\n(Quick workaround: index the file.)\n", tmp.s, args->fnames[i]);
                     if ( prev_chr_id!=chr_id )
                     {
                         prev_pos = -1;
@@ -519,11 +563,11 @@ static void concat(args_t *args)
                     int pos = strtol(str+1,&end,10) - 1;
                     if ( end==str+1 ) error("Could not parse line: %s\n", fp->line.s);
                     if ( prev_pos > pos )
-                        error("The chromosome block %s is not sorted, consider running with -a.\n", tmp.s);
+                        error("\nThe chromosome block %s is not sorted, consider running with -a.\n", tmp.s);
                     args->seen_seq[chr_id] = 1;
                     prev_chr_id = chr_id;
 
-                    if ( vcf_write_line(args->out_fh, &fp->line)!=0 ) error("Failed to write %"PRIu64" bytes\n", (uint64_t)fp->line.l);
+                    if ( vcf_write_line(args->out_fh, &fp->line)!=0 ) error("\nFailed to write %"PRIu64" bytes\n", (uint64_t)fp->line.l);
                 }
             }
             else
@@ -541,15 +585,21 @@ static void concat(args_t *args)
                             error("\nThe chromosome block %s is not contiguous, consider running with -a.\n", bcf_seqname(args->out_hdr, line));
                     }
                     if ( prev_pos > line->pos )
-                        error("The chromosome block %s is not sorted, consider running with -a.\n", bcf_seqname(args->out_hdr, line));
+                        error("\nThe chromosome block %s is not sorted, consider running with -a.\n", bcf_seqname(args->out_hdr, line));
                     args->seen_seq[line->rid] = 1;
                     prev_chr_id = line->rid;
 
-                    if ( bcf_write(args->out_fh, args->out_hdr, line)!=0 ) error("Failed to write\n");
+                    if ( bcf_write(args->out_fh, args->out_hdr, line)!=0 ) error("\nFailed to write\n");
                 }
             }
             bcf_hdr_destroy(hdr);
             hts_close(fp);
+            if ( args->verbose )
+            {
+                gettimeofday(&t1, NULL);
+                double delta = (t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_usec - t0.tv_usec);
+                fprintf(stderr,"\t%f seconds\n",delta/1e6);
+            }
         }
         bcf_destroy(line);
         free(tmp.s);
@@ -612,63 +662,141 @@ static int check_header(const uint8_t *header)
             && header[12] == 'B' && header[13] == 'C'
             && unpackInt16((uint8_t*)&header[14]) == 2) ? 0 : -1;
 }
+static void _check_hrecs(const bcf_hdr_t *hdr0, const bcf_hdr_t *hdr, char *fname0, char *fname)
+{
+    int j;
+    for (j=0; j<hdr0->nhrec; j++)
+    {
+        bcf_hrec_t *hrec0 = hdr0->hrec[j];
+        if ( hrec0->type!=BCF_HL_FLT && hrec0->type!=BCF_HL_INFO && hrec0->type!=BCF_HL_FMT && hrec0->type!=BCF_HL_CTG ) continue;    // skip fiels w/o IDX
+        int itag = bcf_hrec_find_key(hrec0, "ID");
+        bcf_hrec_t *hrec = bcf_hdr_get_hrec(hdr, hrec0->type, "ID", hrec0->vals[itag], NULL);
+
+        char *type = NULL;
+        if ( hrec0->type==BCF_HL_FLT ) type = "FILTER";
+        if ( hrec0->type==BCF_HL_INFO ) type = "INFO";
+        if ( hrec0->type==BCF_HL_FMT ) type = "FORMAT";
+        if ( hrec0->type==BCF_HL_CTG ) type = "contig";
+
+        if ( !hrec )
+            error("Cannot use --naive, incompatible headers, the tag %s/%s not present in %s\n",type,hrec0->vals[itag],fname);
+
+        int idx0 = bcf_hrec_find_key(hrec0, "IDX");
+        int idx  = bcf_hrec_find_key(hrec,  "IDX");
+        if ( idx0<0 || idx<0 )
+            error("fixme: unexpected IDX<0 for %s/%s in %s or %s\n",type,hrec0->vals[itag],fname0,fname);
+        if ( strcmp(hrec0->vals[idx0],hrec->vals[idx]) )
+            error("Cannot use --naive, use --naive-force instead: different order the tag %s/%s in %s vs %s\n",type,hrec0->vals[itag],fname0,fname);
+    }
+}
+static void naive_concat_check_headers(args_t *args)
+{
+    fprintf(stderr,"Checking the headers of %d files.\n",args->nfnames);
+    bcf_hdr_t *hdr0 = NULL;
+    int i,j;
+    for (i=0; i<args->nfnames; i++)
+    {
+        htsFile *fp = hts_open(args->fnames[i], "r"); if ( !fp ) error("Failed to open: %s\n", args->fnames[i]);
+        bcf_hdr_t *hdr = bcf_hdr_read(fp); if ( !hdr ) error("Failed to parse header: %s\n", args->fnames[i]);
+        htsFormat type = *hts_get_format(fp);
+        hts_close(fp);
+
+        if ( i==0 )
+        {
+            hdr0 = hdr;
+            continue;
+        }
+
+        // check the samples
+        if ( bcf_hdr_nsamples(hdr0)!=bcf_hdr_nsamples(hdr) )
+            error("Cannot concatenate, different number of samples: %d vs %d in %s vs %s\n",bcf_hdr_nsamples(hdr0),bcf_hdr_nsamples(hdr),args->fnames[0],args->fnames[i]);
+        for (j=0; j<bcf_hdr_nsamples(hdr0); j++)
+            if ( strcmp(hdr0->samples[j],hdr->samples[j]) )
+                error("Cannot concatenate, different samples in %s vs %s\n",args->fnames[0],args->fnames[i]);
+
+        // if BCF, check if tag IDs are consistent in the dictionary of strings
+        if ( type.compression!=bgzf )
+            error("The --naive option works only for compressed BCFs or VCFs, sorry :-/\n");
+        if ( type.format==vcf )
+        {
+            bcf_hdr_destroy(hdr);
+            continue;
+        }
+
+        _check_hrecs(hdr0,hdr,args->fnames[0],args->fnames[i]);
+        _check_hrecs(hdr,hdr0,args->fnames[i],args->fnames[0]);
+
+        bcf_hdr_destroy(hdr);
+    }
+    if ( hdr0 ) bcf_hdr_destroy(hdr0);
+    fprintf(stderr,"Done, the headers are compatible.\n");
+}
 static void naive_concat(args_t *args)
 {
+    if ( !args->naive_concat_trust_headers )
+        naive_concat_check_headers(args);
+
     // only compressed BCF atm
     BGZF *bgzf_out = bgzf_open(args->output_fname,"w");;
 
+    struct timeval t0, t1;
     const size_t page_size = BGZF_MAX_BLOCK_SIZE;
     uint8_t *buf = (uint8_t*) malloc(page_size);
     kstring_t tmp = {0,0,0};
     int i, file_types = 0;
     for (i=0; i<args->nfnames; i++)
     {
+        if ( args->verbose )
+        {
+            fprintf(stderr,"Concatenating %s", args->fnames[i]);
+            gettimeofday(&t0, NULL);
+        }
         htsFile *hts_fp = hts_open(args->fnames[i],"r");
-        if ( !hts_fp ) error("Failed to open: %s\n", args->fnames[i]);
+        if ( !hts_fp ) error("\nFailed to open: %s\n", args->fnames[i]);
         htsFormat type = *hts_get_format(hts_fp);
 
         if ( type.compression!=bgzf )
-            error("The --naive option works only for compressed BCFs or VCFs, sorry :-/\n");
+            error("\nThe --naive option works only for compressed BCFs or VCFs, sorry :-/\n");
         file_types |= type.format==vcf ? 1 : 2;
         if ( file_types==3 )
-            error("The --naive option works only for compressed files of the same type, all BCFs or all VCFs :-/\n");
+            error("\nThe --naive option works only for compressed files of the same type, all BCFs or all VCFs :-/\n");
 
         BGZF *fp = hts_get_bgzfp(hts_fp);
         if ( !fp || bgzf_read_block(fp) != 0 || !fp->block_length )
-            error("Failed to read %s: %s\n", args->fnames[i], strerror(errno));
+            error("\nFailed to read %s: %s\n", args->fnames[i], strerror(errno));
 
         int nskip;
         if ( type.format==bcf )
         {
             uint8_t magic[5];
-            if ( bgzf_read(fp, magic, 5) != 5 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
-            if (strncmp((char*)magic, "BCF\2\2", 5) != 0) error("Invalid BCF magic string in %s\n", args->fnames[i]);
+            if ( bgzf_read(fp, magic, 5) != 5 ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
+            if (strncmp((char*)magic, "BCF\2\2", 5) != 0) error("\nInvalid BCF magic string in %s\n", args->fnames[i]);
 
-            if ( bgzf_read(fp, &tmp.l, 4) != 4 ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+            if ( bgzf_read(fp, &tmp.l, 4) != 4 ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
             hts_expand(char,tmp.l,tmp.m,tmp.s);
-            if ( bgzf_read(fp, tmp.s, tmp.l) != tmp.l ) error("Failed to read the BCF header in %s\n", args->fnames[i]);
+            if ( bgzf_read(fp, tmp.s, tmp.l) != tmp.l ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
 
             // write only the first header
             if ( i==0 )
             {
-                if ( bgzf_write(bgzf_out, "BCF\2\2", 5) !=5 ) error("Failed to write %d bytes to %s\n", 5,args->output_fname);
-                if ( bgzf_write(bgzf_out, &tmp.l, 4) !=4 ) error("Failed to write %d bytes to %s\n", 4,args->output_fname);
-                if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("Failed to write %"PRId64" bytes to %s\n", (uint64_t)tmp.l,args->output_fname);
+                if ( bgzf_write(bgzf_out, "BCF\2\2", 5) !=5 ) error("\nFailed to write %d bytes to %s\n", 5,args->output_fname);
+                if ( bgzf_write(bgzf_out, &tmp.l, 4) !=4 ) error("\nFailed to write %d bytes to %s\n", 4,args->output_fname);
+                if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("\nFailed to write %"PRId64" bytes to %s\n", (uint64_t)tmp.l,args->output_fname);
             }
             nskip = fp->block_offset;
         }
         else
         {
             nskip = print_vcf_gz_header(fp, bgzf_out, i==0?1:0, &tmp);
-            if ( nskip==-1 ) error("Error reading %s\n", args->fnames[i]);
+            if ( nskip==-1 ) error("\nError reading %s\n", args->fnames[i]);
         }
 
         // Output all non-header data that were read together with the header block
         if ( fp->block_length - nskip > 0 )
         {
-            if ( bgzf_write(bgzf_out, (char *)fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("Error: %d\n",fp->errcode);
+            if ( bgzf_write(bgzf_out, (char *)fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("\nError: %d\n",fp->errcode);
         }
-        if ( bgzf_flush(bgzf_out)<0 ) error("Error: %d\n",bgzf_out->errcode);
+        if ( bgzf_flush(bgzf_out)<0 ) error("\nError: %d\n",bgzf_out->errcode);
 
 
         // Stream the rest of the file as it is, without recompressing, but remove BGZF EOF blocks
@@ -680,16 +808,22 @@ static void naive_concat(args_t *args)
         {
             nread = bgzf_raw_read(fp, buf, nheader);
             if ( !nread ) break;
-            if ( nread != nheader || check_header(buf)!=0 ) error("Could not parse the header of a bgzf block: %s\n",args->fnames[i]);
+            if ( nread != nheader || check_header(buf)!=0 ) error("\nCould not parse the header of a bgzf block: %s\n",args->fnames[i]);
             nblock = unpackInt16(buf+16) + 1;
             assert( nblock <= page_size && nblock >= nheader );
             nread += bgzf_raw_read(fp, buf+nheader, nblock - nheader);
-            if ( nread!=nblock ) error("Could not read %"PRId64" bytes: %s\n",(uint64_t)nblock,args->fnames[i]);
+            if ( nread!=nblock ) error("\nCould not read %"PRId64" bytes: %s\n",(uint64_t)nblock,args->fnames[i]);
             if ( nread==neof && !memcmp(buf,eof,neof) ) continue;
             nwr = bgzf_raw_write(bgzf_out, buf, nread);
-            if ( nwr != nread ) error("Write failed, wrote %"PRId64" instead of %d bytes.\n", (uint64_t)nwr,(int)nread);
+            if ( nwr != nread ) error("\nWrite failed, wrote %"PRId64" instead of %d bytes.\n", (uint64_t)nwr,(int)nread);
         }
-        if (hts_close(hts_fp)) error("Close failed: %s\n",args->fnames[i]);
+        if (hts_close(hts_fp)) error("\nClose failed: %s\n",args->fnames[i]);
+        if ( args->verbose )
+        {
+            gettimeofday(&t1, NULL);
+            double delta = (t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_usec - t0.tv_usec);
+            fprintf(stderr,"\t%f seconds\n",delta/1e6);
+        }
     }
     free(buf);
     free(tmp.s);
@@ -705,8 +839,7 @@ static void usage(args_t *args)
     fprintf(stderr, "         VCF into one. The input files must be sorted by chr and position. The files\n");
     fprintf(stderr, "         must be given in the correct order to produce sorted VCF on output unless\n");
     fprintf(stderr, "         the -a, --allow-overlaps option is specified. With the --naive option, the files\n");
-    fprintf(stderr, "         are concatenated without being recompressed, which is very fast but dangerous\n");
-    fprintf(stderr, "         if the BCF headers differ.\n");
+    fprintf(stderr, "         are concatenated without being recompressed, which is very fast.\n");
     fprintf(stderr, "Usage:   bcftools concat [options] <A.vcf.gz> [<B.vcf.gz> [...]]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
@@ -717,13 +850,15 @@ static void usage(args_t *args)
     fprintf(stderr, "   -f, --file-list <file>         Read the list of files from a file.\n");
     fprintf(stderr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
     fprintf(stderr, "       --no-version               Do not append version and command line to the header\n");
-    fprintf(stderr, "   -n, --naive                    Concatenate files without recompression (dangerous, use with caution)\n");
+    fprintf(stderr, "   -n, --naive                    Concatenate files without recompression, a header check compatibility is performed\n");
+    fprintf(stderr, "       --naive-force              Same as --naive, but header compatibility is not checked. Dangerous, use with caution.\n");
     fprintf(stderr, "   -o, --output <file>            Write output to a file [standard output]\n");
     fprintf(stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(stderr, "   -q, --min-PQ <int>             Break phase set if phasing quality is lower than <int> [30]\n");
     fprintf(stderr, "   -r, --regions <region>         Restrict to comma-separated list of regions\n");
     fprintf(stderr, "   -R, --regions-file <file>      Restrict to regions listed in a file\n");
-    fprintf(stderr, "       --threads <int>            Number of extra output compression threads [0]\n");
+    fprintf(stderr, "       --threads <int>            Use multithreading with <int> worker threads [0]\n");
+    fprintf(stderr, "   -v, --verbose <0|1>            Set verbosity level [1]\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -738,10 +873,13 @@ int main_vcfconcat(int argc, char *argv[])
     args->n_threads = 0;
     args->record_cmd_line = 1;
     args->min_PQ  = 30;
+    args->verbose = 1;
 
     static struct option loptions[] =
     {
+        {"verbose",required_argument,NULL,'v'},
         {"naive",no_argument,NULL,'n'},
+        {"naive-force",no_argument,NULL,7},
         {"compact-PS",no_argument,NULL,'c'},
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
@@ -758,7 +896,7 @@ int main_vcfconcat(int argc, char *argv[])
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:r:R:cn",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:r:R:cnv:",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'c': args->compact_PS = 1; break;
@@ -786,6 +924,11 @@ int main_vcfconcat(int argc, char *argv[])
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
+            case  7 : args->naive_concat = 1; args->naive_concat_trust_headers = 1; break;
+            case 'v':
+                      args->verbose = strtol(optarg, 0, 0);
+                      error("Error: currently only --verbose 0 or --verbose 1 is supported\n");
+                      break;
             case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
@@ -798,7 +941,7 @@ int main_vcfconcat(int argc, char *argv[])
         args->fnames[args->nfnames-1] = strdup(argv[optind]);
         optind++;
     }
-    if ( args->allow_overlaps && args->phased_concat ) args->allow_overlaps = 0;
+    if ( args->allow_overlaps && args->phased_concat ) error("The options -a and -l should not be combined. Please run with -l only.\n");
     if ( args->compact_PS && !args->phased_concat ) error("The -c option is intended only with -l\n");
     if ( args->file_list )
     {

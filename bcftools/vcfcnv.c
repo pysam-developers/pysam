@@ -34,6 +34,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <math.h>
+#include <inttypes.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/kstring.h>
@@ -226,9 +227,9 @@ static void init_sample_files(sample_t *smpl, char *dir)
 }
 static void close_sample_files(sample_t *smpl)
 {
-    fclose(smpl->dat_fh);
-    fclose(smpl->cn_fh);
-    fclose(smpl->summary_fh);
+    if ( fclose(smpl->dat_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,smpl->dat_fname);
+    if ( fclose(smpl->cn_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,smpl->cn_fname);
+    if ( fclose(smpl->summary_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,smpl->summary_fname);
 }
 
 static double norm_cdf(double mean, double dev);
@@ -1190,10 +1191,10 @@ static void cnv_next_line(args_t *args, bcf1_t *line)
         args->control_sample.lrr[args->nsites-1] = lrr2;
         args->control_sample.baf[args->nsites-1] = baf2;
         if ( baf2>=0 )  // skip missing values
-            fprintf(args->control_sample.dat_fh,"%s\t%d\t%.3f\t%.3f\n",bcf_hdr_id2name(args->hdr,args->prev_rid), line->pos+1,baf2,lrr2);
+            fprintf(args->control_sample.dat_fh,"%s\t%"PRId64"\t%.3f\t%.3f\n",bcf_hdr_id2name(args->hdr,args->prev_rid), (int64_t) line->pos+1,baf2,lrr2);
     }
     if ( baf1>=0 )  // skip missing values
-        fprintf(args->query_sample.dat_fh,"%s\t%d\t%.3f\t%.3f\n",bcf_hdr_id2name(args->hdr,args->prev_rid), line->pos+1,baf1,lrr1);
+        fprintf(args->query_sample.dat_fh,"%s\t%"PRId64"\t%.3f\t%.3f\n",bcf_hdr_id2name(args->hdr,args->prev_rid), (int64_t) line->pos+1,baf1,lrr1);
 
     if ( baf1>=0 )
     {
@@ -1277,13 +1278,13 @@ int main_vcfcnv(int argc, char *argv[])
         {"LRR-weight",1,0,'l'},
         {"same-prob",1,0,'P'},
         {"xy-prob",1,0,'x'},
-        {"sample",1,0,'s'},
-        {"control",1,0,'c'},
+        {"query-sample",1,0,'s'},
+        {"control-sample",1,0,'c'},
         {"targets",1,0,'t'},
         {"targets-file",1,0,'T'},
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
-        {"plot",1,0,'p'},
+        {"plot-threshold",1,0,'p'},
         {"output-dir",1,0,'o'},
         {0,0,0,0}
     };
@@ -1399,7 +1400,8 @@ int main_vcfcnv(int argc, char *argv[])
         if ( bcf_sr_set_targets(args->files, args->af_fname, 1, 3)<0 )
             error("Failed to read the targets: %s\n", args->af_fname);
     }
-    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
+    if ( !bcf_sr_add_reader(args->files, fname) )
+        error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
     
     init_data(args);
     while ( bcf_sr_next_line(args->files) )

@@ -125,6 +125,7 @@ void bcf_callaux_clean(bcf_callaux_t *bca, bcf_call_t *call)
     memset(bca->rev_mqs,0,sizeof(int)*bca->nqual);
     if ( call->ADF ) memset(call->ADF,0,sizeof(int32_t)*(call->n+1)*B2B_MAX_ALLELES);
     if ( call->ADR ) memset(call->ADR,0,sizeof(int32_t)*(call->n+1)*B2B_MAX_ALLELES);
+    if ( call->SCR ) memset(call->SCR,0,sizeof(*call->SCR)*(call->n+1));
 }
 
 /*
@@ -152,6 +153,7 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
     memset(r->qsum,0,sizeof(float)*4);
     memset(r->anno,0,sizeof(double)*16);
     memset(r->p,0,sizeof(float)*25);
+    r->SCR = 0;
 
     if (ref_base >= 0) {
         ref4 = seq_nt16_int[ref_base];
@@ -199,6 +201,7 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         if (q > 63) q = 63;
         if (q < 4) q = 4;       // MQ=0 reads count as BQ=4
         bca->bases[n++] = q<<5 | (int)bam_is_rev(p->b)<<4 | b;
+        if ( bca->fmt_flag&(B2B_INFO_SCR|B2B_FMT_SCR) && PLP_HAS_SOFT_CLIP(p->cd.i) ) r->SCR++;
         // collect annotations
         if (b < 4)
         {
@@ -225,8 +228,12 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         // collect for bias tests
         if ( baseQ > 59 ) baseQ = 59;
         if ( mapQ > 59 ) mapQ = 59;
-        int len, pos = get_position(p, &len);
-        int epos = (double)pos/(len+1) * bca->npos;
+        int len, epos = 0;
+        if ( bca->fmt_flag & (B2B_INFO_RPB|B2B_INFO_VDB) )
+        {
+            int pos = get_position(p, &len);
+            epos = (double)pos/(len+1) * bca->npos;
+        }
         int ibq  = baseQ/60. * bca->nqual;
         int imq  = mapQ/60. * bca->nqual;
         if ( bam_is_rev(p->b) ) bca->rev_mqs[imq]++;
@@ -650,6 +657,14 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
                 call->DP4[4*i+3] = calls[i].anno[3];
             }
         }
+        if ( call->SCR )
+        {
+            for (i=0; i<n; i++)
+            {
+                call->SCR[0]  += calls[i].SCR;
+                call->SCR[1+i] = calls[i].SCR;
+            }
+        }
         if ( call->ADF )
         {
             assert( call->n_alleles<=B2B_MAX_ALLELES );   // this is always true for SNPs and so far for indels as well
@@ -702,19 +717,23 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
     // calc_chisq_bias("XMQ", call->bcf_hdr->id[BCF_DT_CTG][call->tid].key, call->pos, bca->ref_mq, bca->alt_mq, bca->nqual);
     // calc_chisq_bias("XBQ", call->bcf_hdr->id[BCF_DT_CTG][call->tid].key, call->pos, bca->ref_bq, bca->alt_bq, bca->nqual);
 
-    call->mwu_pos = calc_mwu_bias(bca->ref_pos, bca->alt_pos, bca->npos);
+    if ( bca->fmt_flag & B2B_INFO_RPB )
+        call->mwu_pos = calc_mwu_bias(bca->ref_pos, bca->alt_pos, bca->npos);
     call->mwu_mq  = calc_mwu_bias(bca->ref_mq,  bca->alt_mq,  bca->nqual);
     call->mwu_bq  = calc_mwu_bias(bca->ref_bq,  bca->alt_bq,  bca->nqual);
     call->mwu_mqs = calc_mwu_bias(bca->fwd_mqs, bca->rev_mqs, bca->nqual);
 
 #if CDF_MWU_TESTS
-    call->mwu_pos_cdf = calc_mwu_bias_cdf(bca->ref_pos, bca->alt_pos, bca->npos);
+    // CDF version of MWU tests is not calculated by default
+    if ( bca->fmt_flag & B2B_INFO_RPB )
+        call->mwu_pos_cdf = calc_mwu_bias_cdf(bca->ref_pos, bca->alt_pos, bca->npos);
     call->mwu_mq_cdf  = calc_mwu_bias_cdf(bca->ref_mq,  bca->alt_mq,  bca->nqual);
     call->mwu_bq_cdf  = calc_mwu_bias_cdf(bca->ref_bq,  bca->alt_bq,  bca->nqual);
     call->mwu_mqs_cdf = calc_mwu_bias_cdf(bca->fwd_mqs, bca->rev_mqs, bca->nqual);
 #endif
 
-    call->vdb = calc_vdb(bca->alt_pos, bca->npos);
+    if ( bca->fmt_flag & B2B_INFO_VDB ) 
+        call->vdb = calc_vdb(bca->alt_pos, bca->npos);
 
     return 0;
 }
@@ -790,6 +809,8 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
         if ( fmt_flag&B2B_INFO_DPR )
             bcf_update_info_int32(hdr, rec, "DPR", bc->ADF, rec->n_allele);
     }
+    if ( fmt_flag&B2B_INFO_SCR )
+        bcf_update_info_int32(hdr, rec, "SCR", bc->SCR, 1);
 
     float tmpf[16];
     for (i=0; i<16; i++) tmpf[i] = bc->anno[i];
@@ -861,6 +882,8 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
         if ( fmt_flag&B2B_FMT_DPR )
             bcf_update_format_int32(hdr, rec, "DPR", bc->ADF+B2B_MAX_ALLELES, rec->n_sample*rec->n_allele);
     }
+    if ( fmt_flag&B2B_FMT_SCR )
+        bcf_update_format_int32(hdr, rec, "SCR", bc->SCR+1, rec->n_sample);
 
     return 0;
 }

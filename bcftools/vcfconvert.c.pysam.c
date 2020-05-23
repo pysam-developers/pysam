@@ -33,6 +33,7 @@ THE SOFTWARE.  */
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <inttypes.h>
 #include <htslib/faidx.h>
 #include <htslib/vcf.h>
 #include <htslib/bgzf.h>
@@ -389,7 +390,7 @@ static void gensample_to_vcf(args_t *args)
     htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
-    bcf_hdr_write(out_fh,args->header);
+    if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
     bcf1_t *rec = bcf_init();
 
     nsamples -= 2;
@@ -401,7 +402,9 @@ static void gensample_to_vcf(args_t *args)
         bcf_clear(rec);
         args->n.total++;
         if ( !tsv_parse(tsv, rec, line.s) )
-            bcf_write(out_fh, args->header, rec);
+        {
+            if ( bcf_write(out_fh, args->header, rec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
+        }
         else
             error("Error occurred while parsing: %s\n", line.s);
     }
@@ -515,7 +518,7 @@ static void haplegendsample_to_vcf(args_t *args)
     htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
-    bcf_hdr_write(out_fh,args->header);
+    if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
     bcf1_t *rec = bcf_init();
 
     args->gts = (int32_t *) malloc(sizeof(int32_t)*nsamples*2);
@@ -533,7 +536,7 @@ static void haplegendsample_to_vcf(args_t *args)
         if ( tsv_parse(hap_tsv, rec, line.s) )
             error("Error occurred while parsing %s: %s\n", hap_fname,line.s);
 
-        bcf_write(out_fh, args->header, rec);
+        if ( bcf_write(out_fh, args->header, rec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
 
         if ( hts_getline(leg_fh, KS_SEP_LINE, &line)<=0 )
         {
@@ -629,7 +632,7 @@ static void hapsample_to_vcf(args_t *args)
     htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
-    bcf_hdr_write(out_fh,args->header);
+    if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
     bcf1_t *rec = bcf_init();
 
     nsamples -= 2;
@@ -640,7 +643,9 @@ static void hapsample_to_vcf(args_t *args)
         bcf_clear(rec);
         args->n.total++;
         if ( !tsv_parse(tsv, rec, line.s) )
-            bcf_write(out_fh, args->header, rec);
+        {
+            if ( bcf_write(out_fh, args->header, rec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
+        }
         else
             error("Error occurred while parsing: %s\n", line.s);
     }
@@ -940,9 +945,9 @@ static void vcf_to_haplegendsample(args_t *args)
         if (legend_fname) {
             str.l = 0;
             if ( args->output_vcf_ids && (line->d.id[0]!='.' || line->d.id[1]!=0) )
-                ksprintf(&str, "%s %d %s %s\n", line->d.id, line->pos+1, line->d.allele[0], line->d.allele[1]);
+                ksprintf(&str, "%s %"PRId64" %s %s\n", line->d.id, (int64_t) line->pos+1, line->d.allele[0], line->d.allele[1]);
             else
-                ksprintf(&str, "%s:%d_%s_%s %d %s %s\n", bcf_seqname(args->header, line), line->pos+1, line->d.allele[0], line->d.allele[1], line->pos+1, line->d.allele[0], line->d.allele[1]);
+                ksprintf(&str, "%s:%"PRId64"_%s_%s %"PRId64" %s %s\n", bcf_seqname(args->header, line), (int64_t) line->pos+1, line->d.allele[0], line->d.allele[1], (int64_t) line->pos+1, line->d.allele[0], line->d.allele[1]);
 
             // write legend file
             ret = bgzf_write(lout, str.s, str.l);
@@ -1143,7 +1148,7 @@ static int tsv_setter_aa(tsv_t *tsv, bcf1_t *rec, void *usr)
 
     int len;
     char *ref = faidx_fetch_seq(args->ref, (char*)bcf_hdr_id2name(args->header,rec->rid), rec->pos, rec->pos, &len);
-    if ( !ref ) error("faidx_fetch_seq failed at %s:%d\n", bcf_hdr_id2name(args->header,rec->rid), rec->pos+1);
+    if ( !ref ) error("faidx_fetch_seq failed at %s:%"PRId64"\n", bcf_hdr_id2name(args->header,rec->rid),(int64_t) rec->pos+1);
 
     int nals = 1, alleles[5] = { -1, -1, -1, -1, -1 };    // a,c,g,t,n
     ref[0] = toupper(ref[0]);
@@ -1158,10 +1163,10 @@ static int tsv_setter_aa(tsv_t *tsv, bcf1_t *rec, void *usr)
         if ( i>0 )
         {
             ret = tsv_next(tsv);
-            if ( ret==-1 ) error("Too few columns for %d samples at %s:%d\n", rec->n_sample,bcf_hdr_id2name(args->header,rec->rid), rec->pos+1);
+            if ( ret==-1 ) error("Too few columns for %d samples at %s:%"PRId64"\n", rec->n_sample,bcf_hdr_id2name(args->header,rec->rid),(int64_t) rec->pos+1);
         }
         ret = tsv_setter_aa1(args, tsv->ss, tsv->se, alleles, &nals, iref, args->gts+i*2);
-        if ( ret==-1 ) error("Error parsing the site %s:%d, expected two characters\n", bcf_hdr_id2name(args->header,rec->rid), rec->pos+1);
+        if ( ret==-1 ) error("Error parsing the site %s:%"PRId64", expected two characters\n", bcf_hdr_id2name(args->header,rec->rid),(int64_t) rec->pos+1);
         if ( ret==-2 ) 
         {
             // something else than a SNP
@@ -1215,7 +1220,7 @@ static void tsv_to_vcf(args_t *args)
     htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
-    bcf_hdr_write(out_fh,args->header);
+    if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
 
     tsv_t *tsv = tsv_init(args->columns ? args->columns : "ID,CHROM,POS,AA");
     if ( tsv_register(tsv, "CHROM", tsv_setter_chrom, args->header) < 0 ) error("Expected CHROM column\n");
@@ -1236,7 +1241,9 @@ static void tsv_to_vcf(args_t *args)
 
         args->n.total++;
         if ( !tsv_parse(tsv, rec, line.s) )
-            bcf_write(out_fh, args->header, rec);
+        {
+            if ( bcf_write(out_fh, args->header, rec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
+        }
         else
             args->n.skipped++;
     }
@@ -1244,7 +1251,7 @@ static void tsv_to_vcf(args_t *args)
     free(line.s);
 
     bcf_hdr_destroy(args->header);
-    hts_close(out_fh);
+    if ( hts_close(out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->outfname);
     tsv_destroy(tsv);
     bcf_destroy(rec);
     free(args->str.s);
@@ -1267,7 +1274,7 @@ static void vcf_to_vcf(args_t *args)
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
 
     bcf_hdr_t *hdr = bcf_sr_get_header(args->files,0);
-    bcf_hdr_write(out_fh,hdr);
+    if ( bcf_hdr_write(out_fh,hdr)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
 
     while ( bcf_sr_next_line(args->files) )
     {
@@ -1278,9 +1285,9 @@ static void vcf_to_vcf(args_t *args)
             if ( args->filter_logic & FLT_EXCLUDE ) pass = pass ? 0 : 1;
             if ( !pass ) continue;
         }
-        bcf_write(out_fh,hdr,line);
+        if ( bcf_write(out_fh,hdr,line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
     }
-    hts_close(out_fh);
+    if ( hts_close(out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->outfname);
 }
 
 static void gvcf_to_vcf(args_t *args)
@@ -1297,7 +1304,7 @@ static void gvcf_to_vcf(args_t *args)
 
     bcf_hdr_t *hdr = bcf_sr_get_header(args->files,0);
     if (args->record_cmd_line) bcf_hdr_append_version(hdr, args->argc, args->argv, "bcftools_convert");
-    bcf_hdr_write(out_fh,hdr);
+    if ( bcf_hdr_write(out_fh,hdr)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
 
     int32_t *itmp = NULL, nitmp = 0;
 
@@ -1310,7 +1317,7 @@ static void gvcf_to_vcf(args_t *args)
             if ( args->filter_logic & FLT_EXCLUDE ) pass = pass ? 0 : 1;
             if ( !pass ) 
             {
-                bcf_write(out_fh,hdr,line);
+                if ( bcf_write(out_fh,hdr,line)!=0  ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
                 continue;
             }
         }
@@ -1334,7 +1341,7 @@ static void gvcf_to_vcf(args_t *args)
         // no gVCF compatible alleles
         if (gallele<0)
         {
-            bcf_write(out_fh,hdr,line);
+            if ( bcf_write(out_fh,hdr,line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
             continue;
         }
 
@@ -1342,7 +1349,7 @@ static void gvcf_to_vcf(args_t *args)
         if ( nend!=1 )
         {
             // No INFO/END => not gVCF record
-            bcf_write(out_fh,hdr,line);
+            if ( bcf_write(out_fh,hdr,line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
             continue;
         }
         bcf_update_info_int32(hdr,line,"END",NULL,0);
@@ -1351,14 +1358,14 @@ static void gvcf_to_vcf(args_t *args)
         {
             line->pos = pos;
             char *ref = faidx_fetch_seq(args->ref, (char*)bcf_hdr_id2name(hdr,line->rid), line->pos, line->pos, &len);
-            if ( !ref ) error("faidx_fetch_seq failed at %s:%d\n", bcf_hdr_id2name(hdr,line->rid), line->pos+1);
+            if ( !ref ) error("faidx_fetch_seq failed at %s:%"PRId64"\n", bcf_hdr_id2name(hdr,line->rid),(int64_t) line->pos+1);
             strncpy(line->d.allele[0],ref,len);
-            bcf_write(out_fh,hdr,line);
+            if ( bcf_write(out_fh,hdr,line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
             free(ref);
         }
     }
     free(itmp);
-    hts_close(out_fh);
+    if ( hts_close(out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->outfname);
 }
 
 static void usage(void)
@@ -1383,7 +1390,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "       --no-version               do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "   -o, --output <file>            output file name [bcftools_stdout]\n");
     fprintf(bcftools_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(bcftools_stderr, "       --threads <int>            number of extra output compression threads [0]\n");
+    fprintf(bcftools_stderr, "       --threads <int>            use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
     fprintf(bcftools_stderr, "   -G, --gensample2vcf <...>   <prefix>|<gen-file>,<sample-file>\n");
@@ -1507,7 +1514,7 @@ int main_vcfconvert(int argc, char *argv[])
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case 10 : args->record_cmd_line = 0; break;
             case 11 : args->sex_fname = optarg; break;
-            case '?': usage();
+            case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }

@@ -25,7 +25,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.  */
 
 #include <math.h>
+#include <inttypes.h>
 #include <htslib/kfunc.h>
+#include <htslib/khash_str2int.h>
 #include "call.h"
 
 // Using priors for GTs does not seem to be mathematically justified. Although
@@ -37,9 +39,6 @@ THE SOFTWARE.  */
 // Go with uniform PLs for samples with no coverage. If unset, missing
 // genotypes is reported instead.
 #define FLAT_PDG_FOR_MISSING 0
-
-// Estimate QS (combined quality and allele frequencies) from PLs
-#define QS_FROM_PDG 0
 
 
 void qcall_init(call_t *call) { return; }
@@ -246,12 +245,84 @@ static void mcall_destroy_trios(call_t *call)
             free(call->trio[j][i]);
 }
 
+static void init_sample_groups(call_t *call)
+{
+    int i, nsmpl = bcf_hdr_nsamples(call->hdr);
+    if ( !call->sample_groups )
+    {
+        // standard pooled calling, all samples in the same group
+        grp_t *grps = &call->smpl_grp;
+        grps->ngrp = 1;
+        grps->grp  = (grp1_t*)calloc(grps->ngrp, sizeof(grp1_t));
+        grps->smpl2grp = (int*)calloc(nsmpl,sizeof(int));
+    }
+    else if ( !strcmp("-",call->sample_groups) )
+    {
+        // single-sample calling, each sample creates its own group
+        grp_t *grps = &call->smpl_grp;
+        grps->ngrp = nsmpl;
+        grps->grp  = (grp1_t*)calloc(grps->ngrp, sizeof(grp1_t));
+        grps->smpl2grp = (int*)malloc(nsmpl*sizeof(int));
+        for (i=0; i<nsmpl; i++) grps->smpl2grp[i] = i;
+    }
+    else
+    {
+        int nlines;
+        char **lines = hts_readlist(call->sample_groups, 1, &nlines);
+        if ( !lines ) error("Could not read the file: %s\n", call->sample_groups);
+
+        uint32_t *smpl2grp1 = (uint32_t*)calloc(nsmpl,sizeof(uint32_t));
+        void *grp2idx = khash_str2int_init();
+
+        grp_t *grps = &call->smpl_grp;
+        for (i=0; i<nlines; i++)
+        {
+            char *ptr = lines[i];
+            while ( *ptr && *ptr!='\t' ) ptr++;
+            if ( !*ptr ) error("Could not parse the line in %s, expected a sample name followed by tab and a population name: %s\n",call->sample_groups,lines[i]);
+            *ptr = 0;
+            int ismpl = bcf_hdr_id2int(call->hdr, BCF_DT_SAMPLE, lines[i]); 
+            if ( ismpl<0 ) continue;
+            if ( smpl2grp1[ismpl] ) error("Error: the sample \"%s\" is listed twice in %s\n", lines[i],call->sample_groups);
+            if ( !khash_str2int_has_key(grp2idx,ptr+1) )
+            {
+                khash_str2int_inc(grp2idx, ptr+1);
+                grps->ngrp++;
+            }
+            int igrp;
+            if ( khash_str2int_get(grp2idx, ptr+1, &igrp)==0 )
+                smpl2grp1[ismpl] = igrp+1;
+            else
+                error("This should not happen, fixme: %s\n",ptr+1);
+        }
+        khash_str2int_destroy(grp2idx);
+
+        grps->grp = (grp1_t*)calloc(grps->ngrp, sizeof(grp1_t));
+        grps->smpl2grp = (int*)malloc(nsmpl*sizeof(int));
+        for (i=0; i<nsmpl; i++)
+        {
+            if ( !smpl2grp1[i] ) error("Error: The sample \"%s\" is not listed in %s\n",call->hdr->samples[i],call->sample_groups);
+            grps->smpl2grp[i] = smpl2grp1[i] - 1;
+        }
+        free(smpl2grp1);
+        for (i=0; i<nlines; i++) free(lines[i]);
+        free(lines);
+    }
+}
+static void destroy_sample_groups(call_t *call)
+{
+    int i;
+    grp_t *grps = &call->smpl_grp;
+    for (i=0; i<grps->ngrp; i++)
+        free(grps->grp[i].qsum);
+    free(grps->grp);
+    free(grps->smpl2grp);
+}
+
 void mcall_init(call_t *call)
 {
     call_init_pl2p(call);
 
-    call->nqsum = 5;
-    call->qsum  = (float*) malloc(sizeof(float)*call->nqsum); // will be expanded later if ncessary
     call->nals_map = 5;
     call->als_map  = (int*) malloc(sizeof(int)*call->nals_map);
     call->npl_map  = 5*(5+1)/2;     // will be expanded later if necessary
@@ -304,26 +375,28 @@ void mcall_init(call_t *call)
         call->theta = log(call->theta);
     }
 
-    return;
+    init_sample_groups(call);
 }
 
 void mcall_destroy(call_t *call)
 {
+    destroy_sample_groups(call);
     if (call->vcmp) vcmp_destroy(call->vcmp);
     free(call->itmp);
     mcall_destroy_trios(call);
     free(call->GPs);
+    free(call->ADs);
     free(call->GLs);
     free(call->GQs);
     free(call->anno16);
     free(call->PLs);
-    free(call->qsum);
     free(call->als_map);
     free(call->pl_map);
     free(call->gts); free(call->cgts); free(call->ugts);
     free(call->pdg);
     free(call->als);
     free(call->ac);
+    free(call->qsum);
     return;
 }
 
@@ -431,40 +504,6 @@ void set_pdg(double *pl2p, int *PLs, double *pdg, int n_smpl, int n_gt, int unse
         PLs += n_gt;
         pdg += n_gt;
     }
-}
-
-/*
-    Allele frequency estimated as:
-        #A  = \sum_i (2*P_AA + P_AB)
-        F_A = #A / ( #A + #B )
-    where i runs across all samples
-*/
-void estimate_qsum(call_t *call, bcf1_t *rec)
-{
-    double *pdg  = call->pdg;
-    int ngts = rec->n_allele*(rec->n_allele+1)/2;
-    int i,nsmpl = bcf_hdr_nsamples(call->hdr);
-
-    hts_expand(float,rec->n_allele,call->nqsum,call->qsum);
-    for (i=0; i<rec->n_allele; i++) call->qsum[i] = 0;
-
-    for (i=0; i<nsmpl; i++)
-    {
-        int a, b, k = 0;
-        for (a=0; a<rec->n_allele; a++)
-        {
-            for (b=0; b<=a; b++)
-            {
-                call->qsum[a] += pdg[k];
-                call->qsum[b] += pdg[k];
-                k++;
-            }
-        }
-        pdg += ngts;
-    }
-    float sum = 0;
-    for (i=0; i<rec->n_allele; i++) sum += call->qsum[i];
-    if ( sum ) for (i=0; i<rec->n_allele; i++) call->qsum[i] /= sum;
 }
 
 // Create mapping between old and new (trimmed) alleles
@@ -583,6 +622,7 @@ static inline double logsumexp2(double a, double b)
 // at most tri-allelic sites are considered. Returns the number of alleles.
 static int mcall_find_best_alleles(call_t *call, int nals, int *out_als)
 {
+    int j;
     int ia,ib,ic;   // iterators over up to three alleles
     int max_als=0;  // most likely combination of alleles
     double ref_lk = 0, max_lk = -HUGE_VAL; // likelihood of the reference and of most likely combination of alleles
@@ -608,32 +648,46 @@ static int mcall_find_best_alleles(call_t *call, int nals, int *out_als)
         UPDATE_MAX_LKs(1<<ia, ia>0 && lk_tot_set);
     }
 
+    grp_t *grps = &call->smpl_grp;
+
     // Two alleles
     if ( nals>1 )
     {
         for (ia=0; ia<nals; ia++)
         {
-            if ( call->qsum[ia]==0 ) continue;
+            if ( grps->ngrp==1 && grps->grp[0].qsum[ia]==0 ) continue;
             int iaa = (ia+1)*(ia+2)/2-1;
             for (ib=0; ib<ia; ib++)
             {
-                if ( call->qsum[ib]==0 ) continue;
+                if ( grps->ngrp==1 && grps->grp[0].qsum[ib]==0 ) continue;
                 double lk_tot  = 0;
                 int lk_tot_set = 0;
-                double fa  = call->qsum[ia]/(call->qsum[ia]+call->qsum[ib]);
-                double fb  = call->qsum[ib]/(call->qsum[ia]+call->qsum[ib]);
-                double fa2 = fa*fa;
-                double fb2 = fb*fb;
-                double fab = 2*fa*fb;
+                int ia_cov = 0, ib_cov = 0;
+                for (j=0; j<grps->ngrp; j++)
+                {
+                    grp1_t *grp = &grps->grp[j];
+                    if ( grp->qsum[ia] ) ia_cov = 1;
+                    if ( grp->qsum[ib] ) ib_cov = 1;
+                    if ( !grp->qsum[ia] && !grp->qsum[ib] ) { grp->dp = 0; continue; }
+                    grp->dp  = 1;
+                    grp->fa  = grp->qsum[ia]/(grp->qsum[ia]+grp->qsum[ib]);
+                    grp->fb  = grp->qsum[ib]/(grp->qsum[ia]+grp->qsum[ib]);
+                    grp->fa2 = grp->fa*grp->fa;
+                    grp->fb2 = grp->fb*grp->fb;
+                    grp->fab = 2*grp->fa*grp->fb;
+                }
+                if ( !ia_cov || !ib_cov ) continue;
                 int isample, ibb = (ib+1)*(ib+2)/2-1, iab = iaa - ia + ib;
                 double *pdg  = call->pdg;
                 for (isample=0; isample<nsmpl; isample++)
                 {
+                    grp1_t *grp = &grps->grp[grps->smpl2grp[isample]];
+                    if ( !grp->dp ) continue;
                     double val = 0;
                     if ( !call->ploidy || call->ploidy[isample]==2 )
-                        val = fa2*pdg[iaa] + fb2*pdg[ibb] + fab*pdg[iab];
+                        val = grp->fa2*pdg[iaa] + grp->fb2*pdg[ibb] + grp->fab*pdg[iab];
                     else if ( call->ploidy && call->ploidy[isample]==1 )
-                        val = fa*pdg[iaa] + fb*pdg[ibb];
+                        val = grp->fa*pdg[iaa] + grp->fb*pdg[ibb];
                     if ( val ) { lk_tot += log(val); lk_tot_set = 1; }
                     pdg += ngts;
                 }
@@ -649,35 +703,48 @@ static int mcall_find_best_alleles(call_t *call, int nals, int *out_als)
     {
         for (ia=0; ia<nals; ia++)
         {
-            if ( call->qsum[ia]==0 ) continue;
+            if ( grps->ngrp==1 && grps->grp[0].qsum[ia]==0 ) continue;
             int iaa = (ia+1)*(ia+2)/2-1;
             for (ib=0; ib<ia; ib++)
             {
-                if ( call->qsum[ib]==0 ) continue;
+                if (  grps->ngrp==1 && grps->grp[0].qsum[ib]==0 ) continue;
                 int ibb = (ib+1)*(ib+2)/2-1;
                 int iab = iaa - ia + ib;
                 for (ic=0; ic<ib; ic++)
                 {
-                    if ( call->qsum[ic]==0 ) continue;
+                    if (  grps->ngrp==1 && grps->grp[0].qsum[ic]==0 ) continue;
                     double lk_tot  = 0;
                     int lk_tot_set = 1;
-                    double fa  = call->qsum[ia]/(call->qsum[ia]+call->qsum[ib]+call->qsum[ic]);
-                    double fb  = call->qsum[ib]/(call->qsum[ia]+call->qsum[ib]+call->qsum[ic]);
-                    double fc  = call->qsum[ic]/(call->qsum[ia]+call->qsum[ib]+call->qsum[ic]);
-                    double fa2 = fa*fa;
-                    double fb2 = fb*fb;
-                    double fc2 = fc*fc;
-                    double fab = 2*fa*fb, fac = 2*fa*fc, fbc = 2*fb*fc;
+                    int ia_cov = 0, ib_cov = 0, ic_cov = 0;
+                    for (j=0; j<grps->ngrp; j++)
+                    {
+                        grp1_t *grp = &grps->grp[j];
+                        if ( grp->qsum[ia] ) ia_cov = 1;
+                        if ( grp->qsum[ib] ) ib_cov = 1;
+                        if ( grp->qsum[ic] ) ic_cov = 1;
+                        if ( !grp->qsum[ia] && !grp->qsum[ib] && !grp->qsum[ic] ) { grp->dp = 0; continue; }
+                        grp->dp  = 1;
+                        grp->fa  = grp->qsum[ia]/(grp->qsum[ia]+grp->qsum[ib]+grp->qsum[ic]);
+                        grp->fb  = grp->qsum[ib]/(grp->qsum[ia]+grp->qsum[ib]+grp->qsum[ic]);
+                        grp->fc  = grp->qsum[ic]/(grp->qsum[ia]+grp->qsum[ib]+grp->qsum[ic]);
+                        grp->fa2 = grp->fa*grp->fa;
+                        grp->fb2 = grp->fb*grp->fb;
+                        grp->fc2 = grp->fc*grp->fc;
+                        grp->fab = 2*grp->fa*grp->fb, grp->fac = 2*grp->fa*grp->fc, grp->fbc = 2*grp->fb*grp->fc;
+                    }
+                    if ( !ia_cov || !ib_cov || !ic_cov ) continue;
                     int isample, icc = (ic+1)*(ic+2)/2-1;
                     int iac = iaa - ia + ic, ibc = ibb - ib + ic;
                     double *pdg = call->pdg;
                     for (isample=0; isample<nsmpl; isample++)
                     {
+                        grp1_t *grp = &grps->grp[grps->smpl2grp[isample]];
+                        if ( !grp->dp ) continue;
                         double val = 0;
                         if ( !call->ploidy || call->ploidy[isample]==2 )
-                            val = fa2*pdg[iaa] + fb2*pdg[ibb] + fc2*pdg[icc] + fab*pdg[iab] + fac*pdg[iac] + fbc*pdg[ibc];
+                            val = grp->fa2*pdg[iaa] + grp->fb2*pdg[ibb] + grp->fc2*pdg[icc] + grp->fab*pdg[iab] + grp->fac*pdg[iac] + grp->fbc*pdg[ibc];
                         else if ( call->ploidy && call->ploidy[isample]==1 )
-                            val = fa*pdg[iaa] + fb*pdg[ibb] + fc*pdg[icc];
+                            val = grp->fa*pdg[iaa] + grp->fb*pdg[ibb] + grp->fc*pdg[icc];
                         if ( val ) { lk_tot += log(val); lk_tot_set = 1; }
                         pdg += ngts;
                     }
@@ -790,12 +857,13 @@ static void mcall_call_genotypes(call_t *call, bcf1_t *rec, int nals, int nout_a
         gts[1] = ploidy==2 ? bcf_gt_unphased(0) : bcf_int32_vector_end;
 
         // Non-zero depth, determine the most likely genotype
+        grp1_t *grp = &call->smpl_grp.grp[call->smpl_grp.smpl2grp[isample]];
         double best_lk = 0;
         for (ia=0; ia<nals; ia++)
         {
             if ( !(out_als & 1<<ia) ) continue;     // ia-th allele not in the final selection, skip
             int iaa = (ia+1)*(ia+2)/2-1;            // PL index of the ia/ia genotype
-            double lk = ploidy==2 ? pdg[iaa]*call->qsum[ia]*call->qsum[ia] : pdg[iaa]*call->qsum[ia];
+            double lk = ploidy==2 ? pdg[iaa]*grp->qsum[ia]*grp->qsum[ia] : pdg[iaa]*grp->qsum[ia];
             #if USE_PRIOR_FOR_GTS
                 if ( ia!=0 ) lk *= prior;
             #endif
@@ -818,7 +886,7 @@ static void mcall_call_genotypes(call_t *call, bcf1_t *rec, int nals, int nout_a
                 {
                     if ( !(out_als & 1<<ib) ) continue;
                     int iab = iaa - ia + ib;
-                    double lk = 2*pdg[iab]*call->qsum[ia]*call->qsum[ib];
+                    double lk = 2*pdg[iab]*grp->qsum[ia]*grp->qsum[ib];
                     #if USE_PRIOR_FOR_GTS
                         if ( ia!=0 ) lk *= prior;
                         if ( ib!=0 ) lk *= prior;
@@ -942,6 +1010,7 @@ static void mcall_call_trio_genotypes(call_t *call, bcf1_t *rec, int nals, int n
 
         for (i=0; i<nout_gts; i++) gls[i] = -HUGE_VAL;
 
+        grp1_t *grp = &call->smpl_grp.grp[call->smpl_grp.smpl2grp[isample]];
         double sum_lk  = 0;
         double best_lk = 0;
         for (ia=0; ia<nals; ia++)
@@ -949,7 +1018,7 @@ static void mcall_call_trio_genotypes(call_t *call, bcf1_t *rec, int nals, int n
             if ( !(out_als & 1<<ia) ) continue;     // ia-th allele not in the final selection, skip
             int iaa   = bcf_alleles2gt(ia,ia);      // PL index of the ia/ia genotype
             int idx   = bcf_alleles2gt(call->als_map[ia],call->als_map[ia]);
-            double lk = ploidy==2 ? pdg[iaa]*call->qsum[ia]*call->qsum[ia] : pdg[iaa]*call->qsum[ia];
+            double lk = ploidy==2 ? pdg[iaa]*grp->qsum[ia]*grp->qsum[ia] : pdg[iaa]*grp->qsum[ia];
             sum_lk   += lk;
             gls[idx]  = lk;
             if ( best_lk < lk )
@@ -968,7 +1037,7 @@ static void mcall_call_trio_genotypes(call_t *call, bcf1_t *rec, int nals, int n
                     if ( !(out_als & 1<<ib) ) continue;
                     int iab   = bcf_alleles2gt(ia,ib);
                     int idx   = bcf_alleles2gt(call->als_map[ia],call->als_map[ib]);
-                    double lk = 2*pdg[iab]*call->qsum[ia]*call->qsum[ib];
+                    double lk = 2*pdg[iab]*grp->qsum[ia]*grp->qsum[ib];
                     sum_lk   += lk;
                     gls[idx]  = lk;
                     if ( best_lk < lk )
@@ -1274,28 +1343,37 @@ void mcall_trim_numberR(call_t *call, bcf1_t *rec, int nals, int nout_als, int o
 //
 static int mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
 {
-    bcf_sr_regions_t *tgt = call->srs->targets;
-    if ( tgt->nals>5 ) error("Maximum accepted number of alleles is 5, got %d\n", tgt->nals);
-    hts_expand(char*,tgt->nals+1,call->nals,call->als);
+    assert( call->tgt_als->n );
+    if ( call->tgt_als->n>5 ) error("Maximum accepted number of alleles is 5, got %d\n", call->tgt_als->n);
+    hts_expand(char*,call->tgt_als->n+1,call->nals,call->als);
 
     int has_new = 0;
 
     int i, j, nals = 1;
     for (i=1; i<call->nals_map; i++) call->als_map[i] = -1;
 
-    if ( vcmp_set_ref(call->vcmp, rec->d.allele[0], tgt->als[0]) < 0 )
-        error("The reference alleles are not compatible at %s:%d .. %s vs %s\n", call->hdr->id[BCF_DT_CTG][rec->rid].key,rec->pos+1,tgt->als[0],rec->d.allele[0]);
+    if ( vcmp_set_ref(call->vcmp, rec->d.allele[0], call->tgt_als->allele[0]) < 0 )
+        error("The reference alleles are not compatible at %s:%d .. %s vs %s\n", call->hdr->id[BCF_DT_CTG][rec->rid].key,rec->pos+1,call->tgt_als->allele[0],rec->d.allele[0]);
 
     // create mapping from new to old alleles
-    call->als[0] = tgt->als[0];
+    call->als[0] = call->tgt_als->allele[0];
     call->als_map[0] = 0;
 
-    for (i=1; i<tgt->nals; i++)
+    for (i=1; i<call->tgt_als->n; i++)
     {
-        call->als[nals] = tgt->als[i];
-        j = vcmp_find_allele(call->vcmp, rec->d.allele+1, rec->n_allele - 1, tgt->als[i]);
+        call->als[nals] = call->tgt_als->allele[i];
+        j = vcmp_find_allele(call->vcmp, rec->d.allele+1, rec->n_allele - 1, call->tgt_als->allele[i]);
 
-        if ( j+1==*unseen ) { fprintf(bcftools_stderr,"fixme? Cannot constrain to %s\n",tgt->als[i]); return -1; }
+        if ( j+1==*unseen )
+        { 
+            fprintf(bcftools_stderr,"Fixme? Cannot constrain to %d-th allele (%s). VCF=",i,call->tgt_als->allele[i]);
+            int k;
+            for (k=0; k<rec->n_allele; k++) fprintf(bcftools_stderr,"%s%s",k==0?"":",",rec->d.allele[k]);
+            fprintf(bcftools_stderr,"\tTAB=");
+            for (k=0; k<call->tgt_als->n; k++) fprintf(bcftools_stderr,"%s%s",k==0?"":",",call->tgt_als->allele[k]);
+            fprintf(bcftools_stderr,"\n");
+            return -1;
+        }
         
         if ( j>=0 )
         {
@@ -1366,11 +1444,51 @@ static int mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
     bcf_update_format_int32(call->hdr, rec, "PL", call->itmp, npls_new*nsmpl);
 
     // update QS
-    float qsum[5];
-    int nqs = bcf_get_info_float(call->hdr, rec, "QS", &call->qsum, &call->nqsum);
+    int nqs = bcf_get_info_float(call->hdr, rec, "QS", &call->smpl_grp.grp[0].qsum, &call->smpl_grp.grp[0].nqsum);
+    hts_expand(float,nals,call->nqsum,call->qsum);
     for (i=0; i<nals; i++)
-        qsum[i] = call->als_map[i]<nqs ? call->qsum[call->als_map[i]] : 0;
-    bcf_update_info_float(call->hdr, rec, "QS", qsum, nals);
+        call->qsum[i] = call->als_map[i]<nqs ? call->smpl_grp.grp[0].qsum[call->als_map[i]] : 0;
+    bcf_update_info_float(call->hdr, rec, "QS", call->qsum, nals);
+
+    // update any Number=R tags
+    void *tmp_ori = call->itmp, *tmp_new = call->PLs;  // reusing PLs storage which is not used at this point
+    int ntmp_ori = call->n_itmp, ntmp_new = call->mPLs;
+    for (i=0; i<rec->n_fmt; i++)
+    {
+        bcf_fmt_t *fmt = &rec->d.fmt[i];
+        int vlen = bcf_hdr_id2length(call->hdr,BCF_HL_FMT,fmt->id);
+        if ( vlen!=BCF_VL_R ) continue; // not a Number=R tag
+
+        // NB:works only for BCF_HT_INT and BCF_HT_REAL
+        int type = bcf_hdr_id2type(call->hdr,BCF_HL_FMT,fmt->id);
+        assert( type==BCF_HT_INT || type==BCF_HT_REAL );
+        assert( sizeof(float)==sizeof(int32_t) );
+
+        const char *key = bcf_hdr_int2id(call->hdr,BCF_DT_ID,fmt->id);
+        int nret = bcf_get_format_values(call->hdr, rec, key, &tmp_ori, &ntmp_ori, type);
+        if (nret<=0) continue;
+        int nsmpl = bcf_hdr_nsamples(call->hdr);
+        int size1 = sizeof(float);
+        hts_expand(float, nsmpl * nals, ntmp_new, tmp_new);
+        for (j=0; j<nsmpl; j++)
+        {
+            uint8_t *ptr_ori = (uint8_t *) tmp_ori + j*size1*fmt->n;
+            uint8_t *ptr_new = (uint8_t *) tmp_new + j*nals*size1;
+            for (k=0; k<nals; k++)
+            {
+                uint8_t *dst = ptr_new + size1*k;
+                uint8_t *src = ptr_ori + size1*call->als_map[k];
+                memcpy(dst,src,size1);
+            }
+        }
+        nret = bcf_update_format(call->hdr, rec, key, tmp_new, nsmpl*nals, type);
+        assert( nret==0 );
+    }
+    call->PLs    = (int32_t*) tmp_new;
+    call->mPLs   = ntmp_new;
+    call->itmp   = (int32_t*) tmp_ori;
+    call->n_itmp = ntmp_ori;
+
 
     if ( *unseen ) *unseen = nals-1;
     return 0;
@@ -1385,7 +1503,7 @@ static int mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
   */
 int mcall(call_t *call, bcf1_t *rec)
 {
-    int i, unseen = call->unseen;
+    int i,j, unseen = call->unseen;
 
     // Force alleles when calling genotypes given alleles was requested
     if ( call->flag & CALL_CONSTR_ALLELES && mcall_constrain_alleles(call, rec, &unseen)!=0 ) return -2;
@@ -1406,61 +1524,83 @@ int mcall(call_t *call, bcf1_t *rec)
     hts_expand(double, call->nPLs, call->npdg, call->pdg);
     set_pdg(call->pl2p, call->PLs, call->pdg, nsmpl, ngts, unseen);
 
-    #if QS_FROM_PDG
-        estimate_qsum(call, rec);
-    #else
-        // Get sum of qualities, serves as an AF estimate, f_x = QS/N in Eq. 1 in call-m math notes.
-        int nqs = bcf_get_info_float(call->hdr, rec, "QS", &call->qsum, &call->nqsum);
+    // Get sum of qualities, serves as an AF estimate, f_x = QS/N in Eq. 1 in call-m math notes.
+    if ( call->smpl_grp.ngrp == 1  )
+    {
+        int nqs = bcf_get_info_float(call->hdr, rec, "QS", &call->smpl_grp.grp[0].qsum, &call->smpl_grp.grp[0].nqsum);
         if ( nqs<=0 ) error("The QS annotation not present at %s:%d\n", bcf_seqname(call->hdr,rec),rec->pos+1);
         if ( nqs < nals )
         {
             // Some of the listed alleles do not have the corresponding QS field. This is
-            // typically ref-only site with X in ALT.
-
-            hts_expand(float,nals,call->nqsum,call->qsum);
-            for (i=nqs; i<nals; i++) call->qsum[i] = 0;
+            // typically ref-only site with <*> in ALT.
+            hts_expand(float,nals,call->smpl_grp.grp[0].nqsum,call->smpl_grp.grp[0].qsum);
+            for (i=nqs; i<nals; i++) call->smpl_grp.grp[0].qsum[i] = 0;
+        }
+    }
+    else
+    {
+        for (j=0; j<call->smpl_grp.ngrp; j++)
+        {
+            hts_expand(float,nals,call->smpl_grp.grp[j].nqsum,call->smpl_grp.grp[j].qsum);
+            memset(call->smpl_grp.grp[j].qsum, 0, sizeof(float)*nals);
         }
 
-        // If available, take into account reference panel AFs
-        if ( call->prior_AN && bcf_get_info_int32(call->hdr, rec, call->prior_AN ,&call->ac, &call->nac)==1 )
+        int nad = bcf_get_format_int32(call->hdr, rec, "AD", &call->ADs, &call->nADs);
+        if ( nad<1 ) error("Error: FORMAT/AD is required with the -G option, mpileup must be run with -a AD\n");
+        nad /= bcf_hdr_nsamples(call->hdr);
+        hts_expand(float,nals,call->nqsum,call->qsum);
+        float qsum = 0;
+        for (i=0; i<bcf_hdr_nsamples(call->hdr); i++)
         {
-            int an = call->ac[0];
-            if ( bcf_get_info_int32(call->hdr, rec, call->prior_AC ,&call->ac, &call->nac)==nals-1 )
+            int32_t *ptr = call->ADs + i*nad;
+            for (j=0; j<nad; j++)
             {
-                int ac0 = an;   // number of alleles in the reference population
-                for (i=0; i<nals-1; i++)
-                {
-                    if ( call->ac[i]==bcf_int32_vector_end ) break;
-                    if ( call->ac[i]==bcf_int32_missing ) continue;
-                    ac0 -= call->ac[i];
-                    call->qsum[i+1] += call->ac[i]*0.5;
-                }
-                if ( ac0<0 ) error("Incorrect %s,%s values at %s:%d\n", call->prior_AN,call->prior_AC,bcf_seqname(call->hdr,rec),rec->pos+1);
-                call->qsum[0] += ac0*0.5;
-                for (i=0; i<nals; i++) call->qsum[i] /= nsmpl + 0.5*an;
+                if ( ptr[j]==bcf_int32_vector_end ) break;
+                if ( ptr[j]==bcf_int32_missing ) call->qsum[j] = 0;
+                else { call->qsum[j] = ptr[j]; qsum += ptr[j]; }
+            }
+            for (; j<nals; j++) call->qsum[j] = 0;
+            if ( qsum ) 
+                for (j=0; j<nals; j++) call->qsum[j] /= qsum;
+
+            grp1_t *grp = &call->smpl_grp.grp[call->smpl_grp.smpl2grp[i]];
+            for (j=0; j<nals; j++)
+                grp->qsum[j] += call->qsum[j];
+        }
+    }
+
+    // If available, take into account reference panel AFs
+    if ( call->prior_AN && bcf_get_info_int32(call->hdr, rec, call->prior_AN ,&call->ac, &call->nac)==1 )
+    {
+        int an = call->ac[0];
+        if ( bcf_get_info_int32(call->hdr, rec, call->prior_AC ,&call->ac, &call->nac)==nals-1 )
+        {
+            int ac0 = an;   // number of alleles in the reference population
+            for (i=0; i<nals-1; i++)
+            {
+                if ( call->ac[i]==bcf_int32_vector_end ) break;
+                if ( call->ac[i]==bcf_int32_missing ) continue;
+                ac0 -= call->ac[i];
+                for (j=0; j<call->smpl_grp.ngrp; j++)
+                    call->smpl_grp.grp[j].qsum[i+1] += call->ac[i]*0.5;
+            }
+            if ( ac0<0 ) error("Incorrect %s,%s values at %s:%d\n", call->prior_AN,call->prior_AC,bcf_seqname(call->hdr,rec),rec->pos+1);
+            for (j=0; j<call->smpl_grp.ngrp; j++)
+                call->smpl_grp.grp[j].qsum[0] += ac0*0.5;
+            for (i=0; i<nals; i++)
+            {
+                for (j=0; j<call->smpl_grp.ngrp; j++)
+                    call->smpl_grp.grp[j].qsum[i] /= nsmpl + 0.5*an;
             }
         }
+    }
 
+    for (j=0; j<call->smpl_grp.ngrp; j++)
+    {
         float qsum_tot = 0;
-        for (i=0; i<nals; i++) qsum_tot += call->qsum[i];
-
-        // Is this still necessary??
-        //
-        //  if (0&& !call->qsum[0] )
-        //  {
-        //      // As P(RR)!=0 even for QS(ref)=0, we set QS(ref) to a small value,
-        //      // an equivalent of a single reference read.
-        //      if ( bcf_get_info_int32(call->hdr, rec, "DP", &call->itmp, &call->n_itmp)!=1 )
-        //          error("Could not read DP at %s:%d\n", call->hdr->id[BCF_DT_CTG][rec->rid].key,rec->pos+1);
-        //      if ( call->itmp[0] )
-        //      {
-        //          call->qsum[0] = 1.0 / call->itmp[0] / nsmpl;
-        //          qsum_tot += call->qsum[0];
-        //      }
-        //  }
-
-        if ( qsum_tot ) for (i=0; i<nals; i++) call->qsum[i] /= qsum_tot;
-    #endif
+        for (i=0; i<nals; i++) qsum_tot += call->smpl_grp.grp[j].qsum[i];
+        if ( qsum_tot ) for (i=0; i<nals; i++) call->smpl_grp.grp[j].qsum[i] /= qsum_tot;
+    }
 
     bcf_update_info_int32(call->hdr, rec, "QS", NULL, 0);      // remove QS tag
 
@@ -1468,7 +1608,7 @@ int mcall(call_t *call, bcf1_t *rec)
     int out_als, nout;
     if ( nals > 8*sizeof(out_als) )
     { 
-        fprintf(bcftools_stderr,"Too many alleles at %s:%d, skipping.\n", bcf_seqname(call->hdr,rec),rec->pos+1); 
+        fprintf(bcftools_stderr,"Too many alleles at %s:%"PRId64", skipping.\n", bcf_seqname(call->hdr,rec),(int64_t) rec->pos+1);
         return 0; 
     }
     nout = mcall_find_best_alleles(call, nals, &out_als);
@@ -1512,7 +1652,7 @@ int mcall(call_t *call, bcf1_t *rec)
         {
             if ( nout>4 ) 
             { 
-                fprintf(bcftools_stderr,"Too many alleles at %s:%d, skipping.\n", bcf_seqname(call->hdr,rec),rec->pos+1); 
+                fprintf(bcftools_stderr,"Too many alleles at %s:%"PRId64", skipping.\n", bcf_seqname(call->hdr,rec),(int64_t) rec->pos+1);
                 return 0; 
             }
             mcall_call_trio_genotypes(call, rec, nals,nout,out_als);

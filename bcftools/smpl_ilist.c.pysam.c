@@ -24,15 +24,29 @@
     THE SOFTWARE.
 */
 
+#include <ctype.h>
 #include "bcftools.h"
 #include "smpl_ilist.h"
 
 void smpl_ilist_destroy(smpl_ilist_t *smpl)
 {
+    int i;
+    if ( smpl->pair )
+    {
+        for (i=0; i<smpl->n; i++) free(smpl->pair[i]);
+        free(smpl->pair);
+    }
     free(smpl->idx);
     free(smpl);
 }
 
+static inline int is_space_or_escaped(const char *min, const char *str)
+{
+    if ( !isspace(*str) ) return 0;
+    int n = 0;
+    while ( --str>=min && *str=='\\' ) n++;
+    return n%2 ? 0 : 1;
+}
 smpl_ilist_t *smpl_ilist_init(bcf_hdr_t *hdr, char *sample_list, int is_file, int flags)
 {
     smpl_ilist_t *smpl = (smpl_ilist_t*) calloc(1,sizeof(smpl_ilist_t));
@@ -46,32 +60,63 @@ smpl_ilist_t *smpl_ilist_init(bcf_hdr_t *hdr, char *sample_list, int is_file, in
         return smpl;
     }
 
+    int negate = sample_list[0]=='^' ? 1 : 0;
     int nlist;
-    char **list = hts_readlist(sample_list[0]=='^'?sample_list+1:sample_list, is_file, &nlist);
+    char **list = hts_readlist(negate?sample_list+1:sample_list, is_file, &nlist);
     if ( !list ) error("Could not parse %s\n", sample_list);
 
     // preserve the VCF order
     int *tmp = (int*)calloc(bcf_hdr_nsamples(hdr),sizeof(int));
+    char **pair = NULL;
     for (i=0; i<nlist; i++)
     {
-        int idx = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, list[i]);
-        if ( idx>=0 ) 
+        char *smpl1 = list[i];
+        char *smpl2 = NULL;
+
+        char *ptr = list[i];
+        while ( *ptr && !is_space_or_escaped(list[i], ptr) ) ptr++;
+        if ( *ptr )
         {
-            tmp[idx] = 1;
-            smpl->n++;
+            *ptr = 0;
+            smpl2 = ptr+1;
         }
-        else if ( flags&SMPL_STRICT )
-            error("No such sample: %s\n", list[i]);
+
+        char *smpl_name = flags&SMPL_PAIR2 && smpl2 ? smpl2 : smpl1;
+        int idx = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, smpl_name);
+        if ( idx<0 )
+        {
+            if ( !(flags&SMPL_STRICT) )
+            {
+                if ( flags&SMPL_VERBOSE ) fprintf(bcftools_stderr,"No such sample: \"%s\"\n",smpl_name);
+                continue;
+            }
+            error("No such sample: \"%s\"\n", smpl_name);
+        }
+
+        tmp[idx] = 1;
+        if ( smpl2 )
+        {
+            if ( !pair ) pair = (char**)calloc(bcf_hdr_nsamples(hdr),sizeof(char*));
+            if ( flags&SMPL_PAIR2 ) pair[idx] = strdup(smpl1);
+            else if ( flags&SMPL_PAIR1 ) pair[idx] = strdup(smpl2);
+        }
+        smpl->n++;
     }
 
-    if ( sample_list[0]=='^' ) smpl->n = bcf_hdr_nsamples(hdr) - smpl->n;
+    if ( negate ) smpl->n = bcf_hdr_nsamples(hdr) - smpl->n;
     smpl->idx = (int*) malloc(sizeof(int)*smpl->n);
 
     int j = 0;
-    if ( sample_list[0]!='^' )
+    if ( !negate )
     {
+        if ( pair ) smpl->pair = (char**) calloc(smpl->n,sizeof(char*));
         for (i=0; i<bcf_hdr_nsamples(hdr); i++)
-            if ( tmp[i] ) smpl->idx[j++] = i;
+        {
+            if ( !tmp[i] ) continue;
+            smpl->idx[j] = i;
+            if ( pair && pair[i] ) smpl->pair[j] = pair[i];
+            j++;
+        }
     }
     else
     {
@@ -80,6 +125,7 @@ smpl_ilist_t *smpl_ilist_init(bcf_hdr_t *hdr, char *sample_list, int is_file, in
     }
 
     free(tmp);
+    free(pair);
     for (i=0; i<nlist; i++) free(list[i]);
     free(list);
 

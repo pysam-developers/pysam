@@ -2,7 +2,7 @@
 
 /*  bam_rmdup.c -- duplicate read detection.
 
-    Copyright (C) 2009, 2015 Genome Research Ltd.
+    Copyright (C) 2009, 2015, 2016, 2019 Genome Research Ltd.
     Portions copyright (C) 2009 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -65,7 +65,7 @@ static inline void stack_insert(tmp_stack_t *stack, bam1_t *b)
     stack->a[stack->n++] = b;
 }
 
-static inline int dump_best(tmp_stack_t *stack, samFile *out, bam_hdr_t *hdr)
+static inline int dump_best(tmp_stack_t *stack, samFile *out, sam_hdr_t *hdr)
 {
     int i;
     for (i = 0; i != stack->n; ++i) {
@@ -129,7 +129,7 @@ static inline int sum_qual(const bam1_t *b)
     return q;
 }
 
-int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
+int bam_rmdup_core(samFile *in, sam_hdr_t *hdr, samFile *out)
 {
     bam1_t *b = NULL;
     int last_tid = -1, last_pos = -1, r;
@@ -167,7 +167,7 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
                     break;
                 }
                 last_tid = c->tid;
-                fprintf(samtools_stderr, "[bam_rmdup_core] processing reference %s...\n", hdr->target_name[c->tid]);
+                fprintf(samtools_stderr, "[bam_rmdup_core] processing reference %s...\n", sam_hdr_tid2name(hdr, c->tid));
             }
         }
         if (!(c->flag&BAM_FPAIRED) || (c->flag&(BAM_FUNMAP|BAM_FMUNMAP)) || (c->mtid >= 0 && c->tid != c->mtid)) {
@@ -181,13 +181,16 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
             q = lib? get_aux(aux, lib) : get_aux(aux, "\t");
             ++q->n_checked;
             k = kh_put(pos, q->best_hash, key, &ret);
+            if (ret < 0) goto fail;
             if (ret == 0) { // found in best_hash
                 bam1_t *p = kh_val(q->best_hash, k);
                 ++q->n_removed;
                 if (sum_qual(p) < sum_qual(b)) { // the current alignment is better; this can be accelerated in principle
                     kh_put(name, del_set, strdup(bam_get_qname(p)), &ret); // p will be removed
-                    bam_copy1(p, b); // replaced as b
+                    if (ret < 0) goto fail;
+                    if (bam_copy1(p, b) == NULL) goto fail; // replaced as b
                 } else kh_put(name, del_set, strdup(bam_get_qname(b)), &ret); // b will be removed
+                if (ret < 0) goto fail;
                 if (ret == 0)
                     fprintf(samtools_stderr, "[bam_rmdup_core] inconsistent BAM file for pair '%s'. Continue anyway.\n", bam_get_qname(b));
             } else { // not found in best_hash
@@ -252,7 +255,7 @@ int bam_rmdup_core(samFile *in, bam_hdr_t *hdr, samFile *out)
     return 1;
 }
 
-int bam_rmdupse_core(samFile *in, bam_hdr_t *hdr, samFile *out, int force_se);
+int bam_rmdupse_core(samFile *in, sam_hdr_t *hdr, samFile *out, int force_se);
 
 static int rmdup_usage(void) {
     fprintf(samtools_stderr, "\n");
@@ -260,7 +263,7 @@ static int rmdup_usage(void) {
     fprintf(samtools_stderr, "Option: -s    rmdup for SE reads\n");
     fprintf(samtools_stderr, "        -S    treat PE reads as SE in rmdup (force -s)\n");
 
-    sam_global_opt_help(samtools_stderr, "-....-");
+    sam_global_opt_help(samtools_stderr, "-....--.");
     return 1;
 }
 
@@ -268,7 +271,7 @@ int bam_rmdup(int argc, char *argv[])
 {
     int c, ret, is_se = 0, force_se = 0;
     samFile *in, *out;
-    bam_hdr_t *header;
+    sam_hdr_t *header;
     char wmode[3] = {'w', 'b', 0};
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
 
@@ -295,7 +298,7 @@ int bam_rmdup(int argc, char *argv[])
         return 1;
     }
     header = sam_hdr_read(in);
-    if (header == NULL || header->n_targets == 0) {
+    if (header == NULL || sam_hdr_nref(header) == 0) {
         fprintf(samtools_stderr, "[bam_rmdup] input SAM does not have header. Abort!\n");
         return 1;
     }
@@ -314,7 +317,7 @@ int bam_rmdup(int argc, char *argv[])
     if (is_se) ret = bam_rmdupse_core(in, header, out, force_se);
     else ret = bam_rmdup_core(in, header, out);
 
-    bam_hdr_destroy(header);
+    sam_hdr_destroy(header);
     sam_close(in);
     if (sam_close(out) < 0) {
         fprintf(samtools_stderr, "[bam_rmdup] error closing output file\n");

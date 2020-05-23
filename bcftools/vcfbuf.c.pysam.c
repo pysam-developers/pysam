@@ -2,7 +2,7 @@
 
 /* The MIT License
 
-   Copyright (c) 2016 Genome Research Ltd.
+   Copyright (c) 2016-2019 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -59,6 +59,12 @@ prune_t;
 
 typedef struct
 {
+    int active;
+}
+rmdup_t;
+
+typedef struct
+{
     int active, rid, end;
 }
 overlap_t;
@@ -72,6 +78,7 @@ struct _vcfbuf_t
     ld_t ld;
     prune_t prune;
     overlap_t overlap;
+    rmdup_t rmdup;
 };
 
 vcfbuf_t *vcfbuf_init(bcf_hdr_t *hdr, int win)
@@ -105,6 +112,7 @@ void vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, void *value)
     if ( key==VCFBUF_NSITES ) { buf->prune.max_sites = *((int*)value); return; }
     if ( key==VCFBUF_AF_TAG ) { buf->prune.af_tag = *((char**)value); return; }
     if ( key==VCFBUF_OVERLAP_WIN ) { buf->overlap.active = *((int*)value); return; }
+    if ( key==VCFBUF_RMDUP) { buf->rmdup.active = *((int*)value); return; }
 }
 
 int vcfbuf_nsites(vcfbuf_t *buf)
@@ -126,6 +134,21 @@ bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec, int swap)
     buf->vcf[i].af_set = 0;
 
     return ret;
+}
+
+bcf1_t *vcfbuf_peek(vcfbuf_t *buf, int idx)
+{
+    int i = rbuf_kth(&buf->rbuf, idx);
+    return i<0 ? NULL : buf->vcf[i].rec;
+}
+
+bcf1_t *vcfbuf_remove(vcfbuf_t *buf, int idx)
+{
+    int i = rbuf_kth(&buf->rbuf, idx);
+    if ( i<0 ) return NULL;
+    bcf1_t *rec = buf->vcf[i].rec;
+	rbuf_remove_kth(&buf->rbuf, vcfrec_t, idx, buf->vcf);
+    return rec;
 }
 
 static int cmpvrec(const void *_a, const void *_b)
@@ -200,6 +223,24 @@ static void _prune_sites(vcfbuf_t *buf, int flush_all)
         rbuf_remove_kth(&buf->rbuf, vcfrec_t, buf->prune.idx[i], buf->vcf);
 }
 
+static int _rmdup_can_flush(vcfbuf_t *buf, int flush_all)
+{
+    if ( flush_all ) return 1;
+
+    if ( buf->rbuf.n==1 ) return 0;
+
+    int k1 = rbuf_kth(&buf->rbuf, -1);
+    int k2 = rbuf_kth(&buf->rbuf, -2);
+
+    vcfrec_t *rec1 = &buf->vcf[k1];
+    vcfrec_t *rec2 = &buf->vcf[k2];
+
+    if ( rec1->rec->rid!=rec2->rec->rid ) return 1;
+    if ( rec1->rec->pos!=rec2->rec->pos ) return 1;
+
+    return 0;
+}
+
 static int _overlap_can_flush(vcfbuf_t *buf, int flush_all)
 {
     if ( flush_all ) { buf->overlap.rid = -1; return 1; }
@@ -254,13 +295,8 @@ bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all)
     j = rbuf_last(&buf->rbuf);      // last
 
     if ( buf->vcf[i].rec->rid != buf->vcf[j].rec->rid ) goto ret;
-    if ( buf->overlap.active )
-    {
-        int ret = _overlap_can_flush(buf, flush_all);
-        //printf("can_flush: %d  %d - %d\n", ret, buf->vcf[i].rec->pos+1, buf->vcf[j].rec->pos+1);
-        if ( ret ) goto ret;
-    }
-    //if ( buf->overlap.active && _overlap_can_flush(buf, flush_all) ) goto ret;
+    if ( buf->overlap.active && _overlap_can_flush(buf, flush_all) ) goto ret;
+    if ( buf->rmdup.active && _rmdup_can_flush(buf, flush_all) ) goto ret;
 
     if ( buf->win > 0 )
     {

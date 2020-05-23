@@ -190,7 +190,7 @@ static void flush_buffer(args_t *args, int n)
                 if ( args->snp_gap && rec->d.flt[j]==args->SnpGap_id ) { pass = 0; break; }
             }
         }
-        if ( pass ) bcf_write1(args->out_fh, args->hdr, rec);
+        if ( pass && bcf_write1(args->out_fh, args->hdr, rec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
     }
 }
 
@@ -280,7 +280,7 @@ static void buffered_filters(args_t *args, bcf1_t *line)
         if ( k_flush || !line )
         {
             // Select the best indel from the cluster of k_flush indels
-            int k = 0, max_ac = -1, imax_ac = -1;
+            int k = 0, max_ac = -1, imax_ac = -1, max_qual = -1, imax_qual = -1;
             for (i=-1; rbuf_next(&args->rbuf,&i) && k<k_flush; )
             {
                 k++;
@@ -289,9 +289,10 @@ static void buffered_filters(args_t *args, bcf1_t *line)
                 hts_expand(int, rec->n_allele, args->ntmpi, args->tmpi);
                 int ret = bcf_calc_ac(args->hdr, rec, args->tmpi, BCF_UN_ALL);
                 if ( imax_ac==-1 || (ret && max_ac < args->tmpi[1]) ) { max_ac = args->tmpi[1]; imax_ac = i; }
+                if ( imax_qual==-1 || max_qual < rec->qual ) { max_qual = rec->qual; imax_qual = i; }
             }
 
-            // Filter all but the best indel (with max AF or first if AF not available)
+            // Filter all but the best indel (with the best QUAL, bigger AC, or take the first if neither QUAL nor AC are available)
             k = 0;
             for (i=-1; rbuf_next(&args->rbuf,&i) && k<k_flush; )
             {
@@ -299,7 +300,14 @@ static void buffered_filters(args_t *args, bcf1_t *line)
                 bcf1_t *rec = args->rbuf_lines[i];
                 if ( !(rec->d.var_type & IndelGap_set) ) continue;
                 rec->d.var_type |= IndelGap_flush;
-                if ( i!=imax_ac ) bcf_add_filter(args->hdr, args->rbuf_lines[i], args->IndelGap_id);
+
+                int do_filter = 0;
+                if ( max_qual>0 )
+                {
+                    if ( i!=imax_qual ) do_filter = 1;
+                }
+                else if ( i!=imax_ac ) do_filter = 1;
+                if ( do_filter ) bcf_add_filter(args->hdr, args->rbuf_lines[i], args->IndelGap_id);
             }
         }
     }
@@ -420,7 +428,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -S, --set-GTs <.|0>           set genotypes of failed samples to missing (.) or ref (0)\n");
     fprintf(bcftools_stderr, "    -t, --targets <region>        similar to -r but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "        --threads <int>           number of extra output compression threads [0]\n");
+    fprintf(bcftools_stderr, "        --threads <int>           use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
     exit(1);
 }
@@ -496,7 +504,7 @@ int main_vcffilter(int argc, char *argv[])
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
             case 'h':
-            case '?': usage(args);
+            case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }
@@ -533,10 +541,10 @@ int main_vcffilter(int argc, char *argv[])
         if ( bcf_sr_set_targets(args->files, args->targets_list,targets_is_file, 0)<0 )
             error("Failed to read the targets: %s\n", args->targets_list);
     }
-    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to open %s: %s\n", fname,bcf_sr_strerror(args->files->errnum));
+    if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
 
     init_data(args);
-    bcf_hdr_write(args->out_fh, args->hdr);
+    if ( bcf_hdr_write(args->out_fh, args->hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname);
     while ( bcf_sr_next_line(args->files) )
     {
         bcf1_t *line = bcf_sr_get_line(args->files, 0);
@@ -560,14 +568,16 @@ int main_vcffilter(int argc, char *argv[])
             }
             if ( args->set_gts ) set_genotypes(args, line, pass);
             if ( !args->rbuf_lines )
-                bcf_write1(args->out_fh, args->hdr, line);
+            {
+                if ( bcf_write1(args->out_fh, args->hdr, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
+            }
             else
                 buffered_filters(args, line);
         }
     }
     buffered_filters(args, NULL);
 
-    hts_close(args->out_fh);
+    if ( hts_close(args->out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
     destroy_data(args);
     bcf_sr_destroy(args->files);
     free(args);

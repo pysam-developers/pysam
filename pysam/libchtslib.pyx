@@ -490,8 +490,7 @@ cdef class HTSFile(object):
             with nogil:
                 ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
         elif self.htsfile.format.compression == no_compression:
-            with nogil:
-                ret = hts_useek(self.htsfile, <int>offset, SEEK_SET)
+            ret = 0 if (hseek(self.htsfile.fp.hfile, offset, SEEK_SET) >= 0) else -1
         else:
             raise NotImplementedError("seek not implemented in files compressed by method {}".format(
                 self.htsfile.format.compression))
@@ -509,8 +508,7 @@ cdef class HTSFile(object):
             with nogil:
                 ret = bgzf_tell(hts_get_bgzfp(self.htsfile))
         elif self.htsfile.format.compression == no_compression:
-            with nogil:
-                ret = hts_utell(self.htsfile)
+            ret = htell(self.htsfile.fp.hfile)
         elif self.htsfile.format.format == cram:
             with nogil:
                 ret = htell(cram_fd_get_fp(self.htsfile.fp.cram))

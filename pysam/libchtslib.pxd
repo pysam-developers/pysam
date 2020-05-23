@@ -632,8 +632,6 @@ cdef extern from "htslib/hts.h" nogil:
     int8_t HTS_FMT_CRAI
 
     BGZF *hts_get_bgzfp(htsFile *fp)
-    int hts_useek(htsFile *fp, long uoffset, int where)
-    long hts_utell(htsFile *fp)
 
     ctypedef struct hts_idx_t
 

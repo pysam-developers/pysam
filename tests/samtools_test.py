@@ -115,7 +115,7 @@ class SamtoolsTest(unittest.TestCase):
     ]
 
     map_command = {
-        "import": "samimport"}
+    }
 
     executable = "samtools"
 
@@ -407,7 +407,7 @@ if sys.platform != "darwin":
 #     ]
 
 #     map_command = {
-#         "import": "samimport"}
+#     }
 
 #     executable = "bcftools"
 
