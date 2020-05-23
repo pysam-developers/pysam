@@ -1,4 +1,5 @@
 import pysam
+import pytest
 import unittest
 import os
 import gzip
@@ -328,6 +329,13 @@ class TestFastqRecord(unittest.TestCase):
         fastx_record.set_sequence("sequence")
         self.assertEqual(str(fastx_record), ">name\nsequence")
 
+
+class TestFastqProxy(unittest.TestCase):
+    
+    def test_fastq_proxy_instantiation_raises_error(self):
+        self.assertRaises(ValueError,
+                          pysam.FastqProxy)
+        
 
 if __name__ == "__main__":
     unittest.main()

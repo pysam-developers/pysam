@@ -356,7 +356,8 @@ cdef class FastaFile:
 
 cdef class FastqProxy:
     """A single entry in a fastq file."""
-    def __init__(self): pass
+    def __init__(self):
+        raise ValueError("do not instantiate FastqProxy directly")
 
     property name:
         """The name of each entry in the fastq file."""
