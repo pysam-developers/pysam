@@ -2,6 +2,17 @@
 Release notes
 =============
 
+Release 0.16.0
+==============
+
+This release wraps htslib/bcftools version 1.10.2 and samtools version
+1.10. Additional bugfixes:
+
+* [#909] Fix incorrect quoting in VariantFile contig records
+* [#916] Implement pileup() for unindexed files and/or SAM files
+* [#886] FastqProxy raises ValueError when instantiated from python
+
+
 Release 0.15.4
 ==============
 
