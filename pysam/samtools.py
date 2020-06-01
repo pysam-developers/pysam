@@ -1,8 +1,6 @@
 from pysam.utils import PysamDispatcher
 
 # samtools command line options to export in python
-#
-# import is a python reserved word.
 SAMTOOLS_DISPATCH = {
     # samtools 'documented' commands
     "view": ("view", None),
