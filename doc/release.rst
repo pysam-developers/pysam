@@ -6,11 +6,24 @@ Release 0.16.0
 ==============
 
 This release wraps htslib/bcftools version 1.10.2 and samtools version
-1.10. Additional bugfixes:
+1.10. The following bugs reported against pysam are fixed due to this:
 
-* [#909] Fix incorrect quoting in VariantFile contig records
-* [#916] Implement pileup() for unindexed files and/or SAM files
+* [#447] Writing out QNAME longer than 251 characters corrupts BAM
+* [#640, #734, #843] Setting VariantRecord pos or stop raises error
+* [#738, #919] FastxFile truncates concatenated plain gzip compressed files
+
+Additional bugfixes:
+
+* [#840] Pileup doesn't work on python3 when `index_filename` is used
 * [#886] FastqProxy raises ValueError when instantiated from python
+* [#904] VariantFile.fetch() throws ValueError on files with no records
+* [#909] Fix incorrect quoting in VariantFile contig records
+* [#915, #916] Implement pileup() for unindexed files and/or SAM files
+
+Backwards incompatible changes:
+
+* The `samtools import` command was removed in samtools 1.10, so pysam
+  no longer exports a `samimport` function. Use `pysam.view()` instead.
 
 
 Release 0.15.4
