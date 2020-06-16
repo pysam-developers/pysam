@@ -38,6 +38,8 @@ yum install -y zlib-devel bzip2-devel xz-devel
 export HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"
 
 PYBINS="/opt/python/*/bin"
+echo $PYBINS
+
 for PYBIN in ${PYBINS}; do
     ${PYBIN}/pip install -r /io/requirements.txt
     ${PYBIN}/pip wheel /io/ -w wheelhouse/
@@ -45,22 +47,27 @@ done
 
 # Bundle external shared libraries into the wheels
 #
-# The '-L .' option is a workaround. By default, auditwheel puts all external
+# The '-L ""' option is a workaround. By default, auditwheel puts all external
 # libraries (.so files) into a .libs directory and sets the RUNPATH to $ORIGIN/.libs.
 # When HTSLIB_MODE is 'shared' (now the default), then all so libraries part of
 # pysam require that RUNPATH is set to $ORIGIN (without the .libs). It seems
 # auditwheel overwrites $ORIGIN with $ORIGIN/.libs. This workaround makes
-# auditwheel set the RUNPATH to "$ORIGIN/." and it will work as desired.
-#
+# auditwheel keeps the RUNPATH at "$ORIGIN" and put all the external libraries into
+# the pysam directory.
 for whl in wheelhouse/*.whl; do
-    auditwheel repair -L . $whl -w /io/wheelhouse/
+    auditwheel repair -L "" $whl -w /io/wheelhouse/
 done
+
+# mkdir -p /io/wheelhouse
+# cp wheelhouse/*.whl /io/wheelhouse
 
 # Created files are owned by root, so fix permissions.
 chown -R --reference=/io/setup.py /io/wheelhouse/
 
 # TODO Install packages and test them
-#for PYBIN in ${PYBINS}; do
-#    ${PYBIN}/pip install pysam --no-index -f /io/wheelhouse
-#    (cd $HOME; ${PYBIN}/nosetests ...)
-#done
+for PYBIN in ${PYBINS}; do
+   ${PYBIN}/pip install pysam --no-index -f /io/wheelhouse
+   # smoketest
+   (cd $HOME; ${PYBIN}/python -c 'import pysam')
+   # todo: add more tests
+done
