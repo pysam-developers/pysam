@@ -29,7 +29,8 @@ import subprocess
 import sys
 import sysconfig
 from contextlib import contextmanager
-from setuptools import setup
+from distutils import log
+from setuptools import setup, Command
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
     import cython
@@ -140,6 +141,24 @@ def get_pysam_version():
     return version.__version__
 
 
+class clean_ext(Command):
+    description = "clean up Cython temporary files"
+    user_options = []
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
+    def run(self):
+        objs = glob.glob(os.path.join("pysam", "libc*.c"))
+        if objs:
+            self.announce("removing 'pysam/libc*.c' ({} Cython objects)".format(len(objs)), level=log.INFO)
+        for obj in objs:
+            os.remove(obj)
+
+
 # How to link against HTSLIB
 # shared:   build shared chtslib from builtin htslib code.
 # external: use shared libhts.so compiled outside of
@@ -170,7 +189,7 @@ package_dirs = {'pysam': 'pysam',
 config_headers = ["samtools/config.h",
                   "bcftools/config.h"]
 
-cmdclass = {'build_ext': build_ext}
+cmdclass = {'build_ext': build_ext, 'clean_ext': clean_ext}
 
 # If cython is available, the pysam will be built using cython from
 # the .pyx files. If no cython is available, the C-files included in the
