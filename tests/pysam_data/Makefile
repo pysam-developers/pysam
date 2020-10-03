@@ -89,9 +89,9 @@ explicit_index.cram: ex1.cram
 	cp ex1.cram $@
 
 clean:
-	rm -fr *.bam *.bai *.fai *.pileup* *.cram \
+	rm -fr *.bam *.bai *.csi *.fai *.gzi *.pileup* *.cram *.crai \
 	*~ calDepth *.dSYM pysam_*.sam \
-	ex2.sam ex2.sam.gz ex1.sam \
+	ex2.sam ex2.sam.gz ex1.sam ex1.fa.gz \
 	with_md.sam.gz \
 	*.fq.gz
 
