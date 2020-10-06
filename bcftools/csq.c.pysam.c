@@ -1,11 +1,8 @@
 #include "bcftools.pysam.h"
 
-//$bt csq -f $ref -g $gff -p r -Ou -o /dev/null /lustre/scratch116/vr/projects/g1k/phase3/release/ALL.chr4.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz
-
-
 /* The MIT License
 
-   Copyright (c) 2016-2018 Genome Research Ltd.
+   Copyright (c) 2016-2020 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -138,6 +135,7 @@
  
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <getopt.h>
 #include <math.h>
 #include <inttypes.h>
@@ -1142,7 +1140,8 @@ void tscript_init_cds(args_t *args)
                         tscript_ok = 0;
                         break;
                     }
-                    error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                    error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d). Use the --force option to proceed anyway (at your own risk).\n",
+                        args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                 }
                 len += tr->cds[i]->len; 
             }
@@ -1180,7 +1179,8 @@ void tscript_init_cds(args_t *args)
                         tscript_ok = 0;
                         break;
                     }
-                    error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                    error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d). Use the --force option to proceed anyway (at your own risk).\n",
+                        args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                 }
                 len += tr->cds[i]->len;
             }
@@ -1198,8 +1198,17 @@ void tscript_init_cds(args_t *args)
             gf_cds_t *a = tr->cds[i-1];
             gf_cds_t *b = tr->cds[i];
             if ( a->beg + a->len - 1 >= b->beg ) 
-                error("Error: CDS overlap in the transcript %"PRIu32": %"PRIu32"-%"PRIu32" and %"PRIu32"-%"PRIu32"\n", 
-                    kh_key(aux->id2tr, k), a->beg+1,a->beg+a->len, b->beg+1,b->beg+b->len);
+            {
+                if ( args->force )
+                {
+                    fprintf(bcftools_stderr,"Warning: GFF contains overlapping CDS %s: %"PRIu32"-%"PRIu32" and %"PRIu32"-%"PRIu32".\n",
+                        args->tscript_ids.str[tr->id], a->beg+1,a->beg+a->len, b->beg+1,b->beg+b->len);
+                }
+                else
+                    error("Error: CDS overlap in the transcript %s: %"PRIu32"-%"PRIu32" and %"PRIu32"-%"PRIu32", is this intended (e.g. ribosomal slippage)?\n"
+                          "       Use the --force option to override (at your own risk).\n", 
+                            args->tscript_ids.str[tr->id], a->beg+1,a->beg+a->len, b->beg+1,b->beg+b->len);
+            }
         }
         if ( len%3 != 0 )
         {

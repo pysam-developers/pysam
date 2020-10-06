@@ -2,7 +2,7 @@
 
 /*  vcfnorm.c -- Left-align and normalize indels.
 
-    Copyright (C) 2013-2019 Genome Research Ltd.
+    Copyright (C) 2013-2020 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -28,6 +28,7 @@ THE SOFTWARE.  */
 #include <strings.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <assert.h>
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
@@ -99,7 +100,7 @@ typedef struct
     char **argv, *output_fname, *ref_fname, *vcf_fname, *region, *targets;
     int argc, rmdup, output_type, n_threads, check_ref, strict_filter, do_indels;
     int nchanged, nskipped, nsplit, ntotal, mrows_op, mrows_collapse, parsimonious;
-    int record_cmd_line, force, force_warned;
+    int record_cmd_line, force, force_warned, keep_sum_ad;
 }
 args_t;
 
@@ -138,7 +139,7 @@ static void seq_to_upper(char *seq, int len)
 static void fix_ref(args_t *args, bcf1_t *line)
 {
     int reflen = strlen(line->d.allele[0]);
-    int i, maxlen = reflen, len;
+    int i,j, maxlen = reflen, len;
     for (i=1; i<line->n_allele; i++)
     {
         int len = strlen(line->d.allele[i]);
@@ -151,11 +152,11 @@ static void fix_ref(args_t *args, bcf1_t *line)
 
     args->nref.tot++;
 
-    // is the REF different?
+    // is the REF different? If not, we are done
     if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return; }
 
-    // is the REF allele missing or N?
-    if ( reflen==1 && (line->d.allele[0][0]=='.' || line->d.allele[0][0]=='N' || line->d.allele[0][0]=='n') ) 
+    // is the REF allele missing?
+    if ( reflen==1 && line->d.allele[0][0]=='.' ) 
     { 
         line->d.allele[0][0] = ref[0]; 
         args->nref.set++; 
@@ -164,13 +165,43 @@ static void fix_ref(args_t *args, bcf1_t *line)
         return;
     }
 
-    // does REF contain non-standard bases?
-    if ( replace_iupac_codes(line->d.allele[0],strlen(line->d.allele[0])) )
+    // does REF or ALT contain non-standard bases?
+    int has_non_acgtn = 0;
+    for (i=0; i<line->n_allele; i++)
+    {
+        if ( line->d.allele[i][0]=='<' ) continue;
+        has_non_acgtn += replace_iupac_codes(line->d.allele[i],strlen(line->d.allele[i]));
+    }
+    if ( has_non_acgtn )
     {
         args->nref.set++;
         bcf_update_alleles(args->hdr,line,(const char**)line->d.allele,line->n_allele);
         if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return; }
     }
+
+    // does the REF allele contain N's ?
+    int fix = 0;
+    for (i=0; i<reflen; i++)
+    {
+        if ( line->d.allele[0][i]!='N' ) continue;
+        if ( ref[i]=='N' ) continue;
+        line->d.allele[0][i] = ref[i];
+        fix++;
+        for (j=1; j<line->n_allele; j++)
+        {
+            int len = strlen(line->d.allele[j]);
+            if ( len <= i || line->d.allele[j][i]!='N' ) continue;
+            line->d.allele[j][i] = ref[i];
+            fix++;
+        }
+    }
+    if ( fix )
+    {
+        args->nref.set++;
+        bcf_update_alleles(args->hdr,line,(const char**)line->d.allele,line->n_allele);
+        if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return; }
+    }
+
 
     // is it swapped?
     for (i=1; i<line->n_allele; i++)
@@ -180,45 +211,35 @@ static void fix_ref(args_t *args, bcf1_t *line)
     }
 
     kstring_t str = {0,0,0};
-    if ( i==line->n_allele )
+    if ( i==line->n_allele )    // none of the alternate alleles matches the reference
     {
-        // none of the alternate alleles matches the reference
-        if ( line->n_allele>1 )
-            args->nref.set++;
-        else
-            args->nref.swap++;
-
-        kputs(line->d.allele[0],&str);
-        kputc(',',&str);
+        args->nref.set++;
+        kputsn(ref,reflen,&str);
         for (i=1; i<line->n_allele; i++)
         {
-            kputs(line->d.allele[i],&str);
             kputc(',',&str);
+            kputs(line->d.allele[i],&str);
         }
-        kputc(ref[0],&str);
         bcf_update_alleles_str(args->hdr,line,str.s);
-        str.l = 0;
+        free(ref);
+        free(str.s);
+        return;
     }
-    else
-        args->nref.swap++;
-    free(ref);
 
-    // swap the alleles
-    int j;
+    // one of the alternate alleles matches the reference, assume it's a simple swap
     kputs(line->d.allele[i],&str);
-    for (j=1; j<i; j++)
+    for (j=1; j<line->n_allele; j++)
     {
         kputc(',',&str);
-        kputs(line->d.allele[j],&str);
-    }
-    kputc(',',&str);
-    kputs(line->d.allele[0],&str);
-    for (j=i+1; j<line->n_allele; j++)
-    {
-        kputc(',',&str);
-        kputs(line->d.allele[j],&str);
+        if ( j==i ) 
+            kputs(line->d.allele[0],&str);
+        else
+            kputs(line->d.allele[j],&str);
     }
     bcf_update_alleles_str(args->hdr,line,str.s);
+    args->nref.swap++;
+    free(ref);
+    free(str.s);
 
     // swap genotypes
     int ntmp = args->ntmp_arr1 / sizeof(int32_t); // reuse tmp_arr declared as uint8_t
@@ -244,8 +265,6 @@ static void fix_ref(args_t *args, bcf1_t *line)
         ac[i-1] = ni;
         bcf_update_info_int32(args->hdr, line, "AC", ac, nac);
     }
-    
-    free(str.s);
 }
 
 static void fix_dup_alt(args_t *args, bcf1_t *line)
@@ -456,7 +475,7 @@ static int realign(args_t *args, bcf1_t *line)
 
 static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int ialt, bcf1_t *dst)
 {
-    #define BRANCH_NUMERIC(type,type_t) \
+    #define BRANCH_NUMERIC(type,type_t,is_vector_end,is_missing) \
     { \
         const char *tag = bcf_hdr_int2id(args->hdr,BCF_DT_ID,info->key); \
         int ntmp = args->ntmp_arr1 / sizeof(type_t); \
@@ -507,7 +526,17 @@ static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int 
                 error("Error: wrong number of fields in INFO/%s at %s:%"PRId64", expected %d, found %d\n", \
                         tag,bcf_seqname(args->hdr,src),(int64_t) src->pos+1,src->n_allele,ret); \
             } \
-            if ( ialt!=0 ) vals[1] = vals[ialt+1]; \
+            if ( args->keep_sum_ad >= 0 && args->keep_sum_ad==info->key ) \
+            { \
+                int j; \
+                for (j=1; j<info->len; j++) \
+                    if ( j!=ialt+1 && !(is_missing) && !(is_vector_end) ) vals[0] += vals[j]; \
+                vals[1] = vals[ialt+1]; \
+            } \
+            else \
+            { \
+                if ( ialt!=0 ) vals[1] = vals[ialt+1]; \
+            } \
             bcf_update_info_##type(args->hdr,dst,tag,vals,2); \
         } \
         else if ( len==BCF_VL_G ) \
@@ -542,8 +571,8 @@ static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int 
     }
     switch (bcf_hdr_id2type(args->hdr,BCF_HL_INFO,info->key))
     {
-        case BCF_HT_INT:  BRANCH_NUMERIC(int32, int32_t); break;
-        case BCF_HT_REAL: BRANCH_NUMERIC(float, float); break;
+        case BCF_HT_INT:  BRANCH_NUMERIC(int32, int32_t, vals[j]==bcf_int32_vector_end, vals[j]==bcf_int32_missing); break;
+        case BCF_HT_REAL: BRANCH_NUMERIC(float, float, bcf_float_is_vector_end(vals[j]), bcf_float_is_missing(vals[j])); break;
     }
     #undef BRANCH_NUMERIC
 }
@@ -656,7 +685,7 @@ static void split_format_genotype(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int
 }
 static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int ialt, bcf1_t *dst)
 {
-    #define BRANCH_NUMERIC(type,type_t,is_vector_end,set_vector_end) \
+    #define BRANCH_NUMERIC(type,type_t,is_vector_end,is_missing,set_vector_end) \
     { \
         const char *tag = bcf_hdr_int2id(args->hdr,BCF_DT_ID,fmt->id); \
         int ntmp = args->ntmp_arr1 / sizeof(type_t); \
@@ -665,7 +694,7 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
         assert( nvals>0 ); \
         type_t *vals = (type_t *) args->tmp_arr1; \
         int len = bcf_hdr_id2length(args->hdr,BCF_HL_FMT,fmt->id); \
-        int i, nsmpl = bcf_hdr_nsamples(args->hdr); \
+        int i,j, nsmpl = bcf_hdr_nsamples(args->hdr); \
         if ( nvals==nsmpl ) /* all values are missing */ \
         { \
             bcf_update_format_##type(args->hdr,dst,tag,vals,nsmpl); \
@@ -723,12 +752,27 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
             } \
             nvals /= nsmpl; \
             type_t *src_vals = vals, *dst_vals = vals; \
-            for (i=0; i<nsmpl; i++) \
+            if ( args->keep_sum_ad >= 0 && args->keep_sum_ad==fmt->id ) \
             { \
-                dst_vals[0] = src_vals[0]; \
-                dst_vals[1] = src_vals[ialt+1]; \
-                dst_vals += 2; \
-                src_vals += nvals; \
+                for (i=0; i<nsmpl; i++) \
+                { \
+                    dst_vals[0] = src_vals[0]; \
+                    for (j=1; j<nvals; j++) \
+                        if ( j!=ialt+1 && !(is_missing) && !(is_vector_end) ) dst_vals[0] += src_vals[j]; \
+                    dst_vals[1] = src_vals[ialt+1]; \
+                    dst_vals += 2; \
+                    src_vals += nvals; \
+                } \
+            } \
+            else \
+            { \
+                for (i=0; i<nsmpl; i++) \
+                { \
+                    dst_vals[0] = src_vals[0]; \
+                    dst_vals[1] = src_vals[ialt+1]; \
+                    dst_vals += 2; \
+                    src_vals += nvals; \
+                } \
             } \
             bcf_update_format_##type(args->hdr,dst,tag,vals,nsmpl*2); \
         } \
@@ -784,8 +828,8 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
     }
     switch (bcf_hdr_id2type(args->hdr,BCF_HL_FMT,fmt->id))
     {
-        case BCF_HT_INT:  BRANCH_NUMERIC(int32, int32_t, src_vals[j]==bcf_int32_vector_end, dst_vals[2]=bcf_int32_vector_end); break;
-        case BCF_HT_REAL: BRANCH_NUMERIC(float, float, bcf_float_is_vector_end(src_vals[j]), bcf_float_set_vector_end(dst_vals[2])); break;
+        case BCF_HT_INT:  BRANCH_NUMERIC(int32, int32_t, src_vals[j]==bcf_int32_vector_end, src_vals[j]==bcf_int32_missing, dst_vals[2]=bcf_int32_vector_end); break;
+        case BCF_HT_REAL: BRANCH_NUMERIC(float, float, bcf_float_is_vector_end(src_vals[j]), bcf_float_is_missing(src_vals[j]), bcf_float_set_vector_end(dst_vals[2])); break;
     }
     #undef BRANCH_NUMERIC
 }
@@ -1399,7 +1443,7 @@ static void merge_format_string(args_t *args, bcf1_t **lines, int nlines, bcf_fm
         for (i=0; i<nlines; i++)
         {
             int nret = bcf_get_format_char(args->hdr,lines[i],tag,&args->tmp_arr1,&args->ntmp_arr1);
-            if (nret<0) continue; /* format tag does not exist in this record, skip */ \
+            if (nret<0) continue; /* format tag does not exist in this record, skip */
             nret /= nsmpl;
             for (k=0; k<nsmpl; k++)
             {
@@ -1446,7 +1490,7 @@ static void merge_format_string(args_t *args, bcf1_t **lines, int nlines, bcf_fm
             if ( i ) // we already have a copy
             {
                 nret = bcf_get_format_char(args->hdr,lines[i],tag,&args->tmp_arr1,&args->ntmp_arr1);
-                if (nret<0) continue; /* format tag does not exist in this record, skip */ \
+                if (nret<0) continue; /* format tag does not exist in this record, skip */
                 nret /= nsmpl;
             }
             for (k=0; k<nsmpl; k++)
@@ -1769,6 +1813,14 @@ static void flush_buffer(args_t *args, htsFile *file, int n)
 static void init_data(args_t *args)
 {
     args->hdr = args->files->readers[0].header;
+    if ( args->keep_sum_ad )
+    {
+        args->keep_sum_ad = bcf_hdr_id2int(args->hdr,BCF_DT_ID,"AD");
+        if ( args->keep_sum_ad < 0 ) error("Error: --keep-sum-ad requested but the tag AD is not present\n");
+    }
+    else
+        args->keep_sum_ad = -1;
+
     rbuf_init(&args->rbuf, 100);
     args->lines = (bcf1_t**) calloc(args->rbuf.m, sizeof(bcf1_t*));
     if ( args->ref_fname )
@@ -1958,6 +2010,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -d, --rm-dup <type>               remove duplicate snps|indels|both|all|exact\n");
     fprintf(bcftools_stderr, "    -f, --fasta-ref <file>            reference sequence\n");
     fprintf(bcftools_stderr, "        --force                       try to proceed even if malformed tags are encountered. Experimental, use at your own risk\n");
+    fprintf(bcftools_stderr, "        --keep-sum <tag,..>           keep vector sum constant when splitting multiallelics (see github issue #360)\n");
     fprintf(bcftools_stderr, "    -m, --multiallelics <-|+>[type]   split multiallelics (-) or join biallelics (+), type: snps|indels|both|any [both]\n");
     fprintf(bcftools_stderr, "        --no-version                  do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "    -N, --do-not-normalize            do not normalize indels (with -m or -c s)\n");
@@ -2002,6 +2055,7 @@ int main_vcfnorm(int argc, char *argv[])
     {
         {"help",no_argument,NULL,'h'},
         {"force",no_argument,NULL,7},
+        {"keep-sum",required_argument,NULL,10},
         {"fasta-ref",required_argument,NULL,'f'},
         {"do-not-normalize",no_argument,NULL,'N'},
         {"multiallelics",required_argument,NULL,'m'},
@@ -2023,6 +2077,12 @@ int main_vcfnorm(int argc, char *argv[])
     char *tmp;
     while ((c = getopt_long(argc, argv, "hr:R:f:w:Dd:o:O:c:m:t:T:sN",loptions,NULL)) >= 0) {
         switch (c) {
+            case  10:
+                // possibly generalize this also to INFO/AD and other tags
+                if ( strcasecmp("ad",optarg) )
+                    error("Error: only --keep-sum AD is currently supported. See https://github.com/samtools/bcftools/issues/360 for more.\n");
+                args->keep_sum_ad = 1;  // this will be set to the header id or -1 in init_data
+                break;
             case 'N': args->do_indels = 0; break;
             case 'd':
                 if ( !strcmp("snps",optarg) ) args->rmdup = BCF_SR_PAIR_SNPS;

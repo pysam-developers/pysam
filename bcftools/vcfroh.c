@@ -1,6 +1,6 @@
 /*  vcfroh.c -- HMM model for detecting runs of autozygosity.
 
-    Copyright (C) 2013-2018 Genome Research Ltd.
+    Copyright (C) 2013-2020 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -103,7 +103,7 @@ typedef struct _args_t
     int ntot;                   // some stats to detect if things didn't go wrong
     int nno_af;                 // number of sites rejected because AF could not be determined
     int nfiltered;              // .. because of filters
-    int nnot_biallelic, ndup;
+    int nno_alt, nmultiallelic, ndup;
     smpl_t *smpl;               // HMM data for each sample
     smpl_ilist_t *af_smpl;      // list of samples to estimate AF from (--estimate-AF)
     smpl_ilist_t *roh_smpl;     // list of samples to analyze (--samples, --samples-file)
@@ -111,6 +111,7 @@ typedef struct _args_t
     int af_from_PL;             // estimate AF from FMT/PL rather than FMT/GT
     char **argv, *targets_list, *regions_list, *af_fname, *af_tag, *samples, *buffer_size, *output_fname;
     int argc, fake_PLs, snps_only, vi_training, samples_is_file, output_type, skip_homref, n_threads;
+    int include_noalt_sites;
     BGZF *out;
     kstring_t str;
 
@@ -548,6 +549,7 @@ static void flush_viterbi(args_t *args, int ismpl)
                     {
                         smpl->rg.state = 1;
                         smpl->rg.beg = smpl->sites[i];
+                        smpl->rg.end = smpl->sites[i];
                         smpl->rg.rid = args->prev_rid;
                         smpl->rg.qual  = qual;
                         smpl->rg.nqual = 1;
@@ -997,33 +999,32 @@ static void vcfroh(args_t *args, bcf1_t *line)
 
     // Skip unwanted lines, for simplicity we consider only biallelic sites 
     if ( line->rid == args->skip_rid ) return;
-    if ( line->n_allele==1 ) { args->nnot_biallelic++; return; }   // no ALT allele
-    if ( line->n_allele > 3 ) { args->nnot_biallelic++; return; }   // cannot be bi-allelic, even with <*>
 
     // This can be raw callable VCF with the symbolic unseen allele <*>
-    int ial = 0;
+    int ial = 0, nalt = line->n_allele - 1;
     for (i=1; i<line->n_allele; i++)
-        if ( !strcmp("<*>",line->d.allele[i]) ) { ial = i; break; }
-    if ( ial==0 )    // normal VCF, the symbolic allele is not present
     {
-        if ( line->n_allele!=2 ) { args->nnot_biallelic++; return; }   // not biallelic
-        ial = 1;
+        if ( !strcmp("<*>",line->d.allele[i]) || !strcmp("<NON_REF>",line->d.allele[i]) ) nalt--;
+        else if ( !ial ) ial = i;
     }
-    else
+
+    if ( !nalt ) // no ALT allele
     {
-        if ( line->n_allele!=3 ) return;    // not biallelic
-        ial = ial==1 ? 2 : 1;               // <*> can come in any order
+        args->nno_alt++;
+        if ( !args->include_noalt_sites ) return;
     }
+    else if ( nalt>1 )
+    {
+        args->nmultiallelic++;
+        return;
+    }
+
     if ( args->snps_only && !bcf_is_snp(line) ) return;
 
     // Initialize genetic map
     int skip_rid = 0;
     if ( args->prev_rid<0 )
-    {
-        args->prev_rid = line->rid;
-        args->prev_pos = line->pos;
         skip_rid = load_genmap(args, bcf_seqname(args->hdr,line));
-    }
 
     // New chromosome?
     if ( args->prev_rid!=line->rid )
@@ -1071,7 +1072,7 @@ static void usage(args_t *args)
     fprintf(stderr, "General Options:\n");
     fprintf(stderr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
     fprintf(stderr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
-    fprintf(stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF\\tALT\\tAF)\n");
+    fprintf(stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
     fprintf(stderr, "    -b  --buffer-size <int[,int]>      buffer size and the number of overlapping sites, 0 for unlimited [0]\n");
     fprintf(stderr, "                                           If the first number is negative, it is interpreted as the maximum memory to\n");
     fprintf(stderr, "                                           use, in MB. The default overlap is set to roughly 1%% of the buffer size.\n");
@@ -1082,6 +1083,7 @@ static void usage(args_t *args)
     fprintf(stderr, "                                           Safe value to use is 30 to account for GT errors.\n");
     fprintf(stderr, "        --include <expr>               select sites for which the expression is true\n");
     fprintf(stderr, "    -i, --ignore-homref                skip hom-ref genotypes (0/0)\n");
+    fprintf(stderr, "        --include-noalt                include sites with no ALT allele (ignored by default)\n");
     fprintf(stderr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
     fprintf(stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\"\n");
     fprintf(stderr, "                                           is replaced with chromosome name\n");
@@ -1122,6 +1124,7 @@ int main_vcfroh(int argc, char *argv[])
         {"AF-dflt",1,0,2},
         {"include",1,0,3},
         {"exclude",1,0,4},
+        {"include-noalt",0,0,5},
         {"buffer-size",1,0,'b'},
         {"ignore-homref",0,0,'i'},
         {"estimate-AF",1,0,'e'},
@@ -1156,6 +1159,7 @@ int main_vcfroh(int argc, char *argv[])
                 break;
             case 3: args->filter_str = optarg; args->filter_logic = FLT_INCLUDE; break;
             case 4: args->filter_str = optarg; args->filter_logic = FLT_EXCLUDE; break;
+            case 5: args->include_noalt_sites = 1; break;
             case 'o': args->output_fname = optarg; break;
             case 'O': 
                 if ( strchr(optarg,'s') || strchr(optarg,'S') ) args->output_type |= OUTPUT_ST;
@@ -1257,7 +1261,7 @@ int main_vcfroh(int argc, char *argv[])
         fprintf(stderr,"Number of lines overlapping with --AF-file/processed: %d/%d\n", args->ntot,nmin);
     else
         fprintf(stderr,"Number of lines total/processed: %d/%d\n", args->ntot,nmin);
-    fprintf(stderr,"Number of lines filtered/no AF/not biallelic/dup: %d/%d/%d/%d\n", args->nfiltered,args->nno_af,args->nnot_biallelic,args->ndup);
+    fprintf(stderr,"Number of lines filtered/no AF/no alt/multiallelic/dup: %d/%d/%d/%d/%d\n", args->nfiltered,args->nno_af,args->nno_alt,args->nmultiallelic,args->ndup);
     if ( nmin==0 )
     {
         fprintf(stderr,"No usable sites were found.\n");

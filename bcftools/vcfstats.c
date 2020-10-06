@@ -31,6 +31,7 @@ THE SOFTWARE.  */
 #include <stdarg.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <assert.h>
 #include <math.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
@@ -1482,10 +1483,10 @@ static void print_stats(args_t *args)
                 printf("# NRD and discordance is calculated as follows:\n");
                 printf("#   m .. number of matches\n");
                 printf("#   x .. number of mismatches\n");
-                printf("#   NRD = (xRR + xRA + xAA) / (xRR + xRA + xAA + mRA + mAA)\n");
-                printf("#   RR discordance = xRR / (xRR + mRR)\n");
-                printf("#   RA discordance = xRA / (xRA + mRA)\n");
-                printf("#   AA discordance = xAA / (xAA + mAA)\n");
+                printf("#   NRD = 100 * (xRR + xRA + xAA) / (xRR + xRA + xAA + mRA + mAA)\n");
+                printf("#   RR discordance = 100 * xRR / (xRR + mRR)\n");
+                printf("#   RA discordance = 100 * xRA / (xRA + mRA)\n");
+                printf("#   AA discordance = 100 * xAA / (xAA + mAA)\n");
                 printf("# Non-Reference Discordance (NRD), SNPs\n# NRDs\t[2]id\t[3]NRD\t[4]Ref/Ref discordance\t[5]Ref/Alt discordance\t[6]Alt/Alt discordance\n");
             }
             else

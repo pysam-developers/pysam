@@ -29,6 +29,7 @@
 #include <htslib/hts.h>
 #include <htslib/kstring.h>
 #include <stdlib.h>
+#include <assert.h>
 #include "bcftools.h"
 #include "hclust.h"
 

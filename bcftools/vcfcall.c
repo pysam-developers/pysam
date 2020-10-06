@@ -1,6 +1,6 @@
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
-    Copyright (C) 2013-2016 Genome Research Ltd.
+    Copyright (C) 2013-2020 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -25,6 +25,7 @@ THE SOFTWARE.  */
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
+#include <assert.h>
 #include <errno.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -536,7 +537,7 @@ bcf1_t *next_line(args_t *args)
             bcf_unpack(rec, BCF_UN_STR);
             if ( !rec0 ) rec0 = rec;
             recN = rec;
-            args->aux.srs->readers[0].buffer[0] = vcfbuf_push(args->vcfbuf, rec, 1);
+            args->aux.srs->readers[0].buffer[0] = vcfbuf_push(args->vcfbuf, rec);
             if ( rec0->rid!=recN->rid || rec0->pos!=recN->pos ) break;
         }
     }
@@ -611,7 +612,7 @@ static void init_data(args_t *args)
     // Open files for input and output, initialize structures
     if ( args->targets )
     {
-        args->tgt_idx = regidx_init(args->targets, tgt_parse, args->aux.flag&CALL_CONSTR_ALLELES ? tgt_free : NULL, sizeof(tgt_als_t), args->aux.flag&CALL_CONSTR_ALLELES ? args : NULL);
+        args->tgt_idx = regidx_init(args->targets, tgt_parse, args->aux.flag&CALL_CONSTR_ALLELES ? tgt_free : (regidx_free_f) NULL, sizeof(tgt_als_t), args->aux.flag&CALL_CONSTR_ALLELES ? args : NULL);
         args->tgt_itr = regitr_init(args->tgt_idx);
         args->tgt_itr_tmp = regitr_init(args->tgt_idx);
     }
@@ -890,7 +891,7 @@ static void usage(args_t *args)
     fprintf(stderr, "\n");
     fprintf(stderr, "Example:\n");
     fprintf(stderr, "   # See also http://samtools.github.io/bcftools/howtos/variant-calling.html\n");
-    fprintf(stderr, "   bcftools mpileup -f reference.fa alignments.bam | bcftools call -mv -Ob -o calls.bcf\n");
+    fprintf(stderr, "   bcftools mpileup -Ou -f reference.fa alignments.bam | bcftools call -mv -Ob -o calls.bcf\n");
 
     // todo (and more)
     // fprintf(stderr, "\nContrast calling and association test options:\n");

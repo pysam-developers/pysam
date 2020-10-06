@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2017-2019 Genome Research Ltd.
+   Copyright (c) 2017-2020 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -38,13 +38,17 @@ typedef struct _vcfbuf_t vcfbuf_t;
 // Modes of operation
 typedef enum
 {
-    VCFBUF_LD_MAX,          // vcfbuf_max_ld() stops at the first record that exceeds the threshold
-    VCFBUF_RAND_MISSING,    // randomize rather than ignore missing genotypes
-    VCFBUF_SKIP_FILTER,     // skip sites with FILTER diferent from "PASS" or "."
-    VCFBUF_NSITES,          // leave at max this many sites in the window
-    VCFBUF_AF_TAG,          // use this INFO tag with LD_NSITES
     VCFBUF_OVERLAP_WIN,     // keep only overlapping variants in the window
     VCFBUF_RMDUP,           // remove duplicate sites (completely)
+    VCFBUF_NSITES,          // leave at max this many sites in the window
+    VCFBUF_AF_TAG,          // use this INFO tag with VCFBUF_NSITES
+
+    // LD related options
+    LD_RAND_MISSING,        // randomize rather than ignore missing genotypes
+    LD_FILTER1,             // exclude the next record inserted by vcfbuf_push() from LD analysis
+    LD_MAX_R2,              // If set, vcfbuf_ld() will stop at the first record that exceeds the R2,
+    LD_MAX_LD,              //      LD, or HD threshold. When multiple are set, the OR logic is applied
+    LD_MAX_HD,              //      
 }
 vcfbuf_opt_t;
 
@@ -61,9 +65,8 @@ void vcfbuf_destroy(vcfbuf_t *buf);
 
 /*
  *  vcfbuf_push() - push a new site for analysis
- *  @swap:  if set, do not create a copy, but return a substitute
  */
-bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec, int swap);
+bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec);
 
 /*
  *  vcfbuf_peek() - return pointer to i-th record in the buffer but do not remove it from the buffer
@@ -85,10 +88,28 @@ bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all);
 int vcfbuf_nsites(vcfbuf_t *buf);
 
 /*
- *  vcfbuf_max_ld() - return a record that has maximum D or first record exceeding the threshold
- *  @ld:        will be filled with the maximum D found
+ *  vcfbuf_ld() - find records with maximum LD values or the values in first record that exceeds thresholds
+ *                set by vcfbuf_set_opt(..,LD_MAX*,..)
+ *
+ *  Returns 0 on success or -1 if no values were filled.
+ *
+ *  @val:  will be filled with the values
+ *          .. correlation coefficient r-squared
+ *          .. Lewontin's D' (PMID: 19433632)
+ *          .. Ragsdale's \hat{D} (doi:10.1093/molbev/msz265)
+ *  @rec: corresponding positions or NULL if the value(s) has not been set
  */
-bcf1_t *vcfbuf_max_ld(vcfbuf_t *buf, bcf1_t *rec, double *ld);
+#define VCFBUF_LD_N 3
+#define VCFBUF_LD_IDX_R2 0
+#define VCFBUF_LD_IDX_LD 1
+#define VCFBUF_LD_IDX_HD 2
+typedef struct
+{
+    double val[VCFBUF_LD_N];    // r2, ld, hd
+    bcf1_t *rec[VCFBUF_LD_N];   // record with max r2, ld, hd
+}
+vcfbuf_ld_t;
+int vcfbuf_ld(vcfbuf_t *buf, bcf1_t *rec, vcfbuf_ld_t *ld);
 
 #endif
 

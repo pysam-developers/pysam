@@ -32,6 +32,7 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <assert.h>
 #include <getopt.h>
 #include <math.h>
 #include <inttypes.h>

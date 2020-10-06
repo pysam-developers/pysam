@@ -1,6 +1,6 @@
 /*  vcfmerge.c -- Merge multiple VCF/BCF files to create one multi-sample file.
 
-    Copyright (C) 2012-2019 Genome Research Ltd.
+    Copyright (C) 2012-2020 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -25,6 +25,7 @@ THE SOFTWARE.  */
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <assert.h>
 #include <errno.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -57,6 +58,8 @@ typedef khash_t(strdict) strdict_t;
 #define IS_VL_R(hdr,id) (bcf_hdr_id2length(hdr,BCF_HL_FMT,id) == BCF_VL_R)
 
 #define SWAP(type_t,a,b) { type_t tmp = (a); (a) = (b); (b) = tmp; }
+
+#define PL2PROB_MAX 1024
 
 // For merging INFO Number=A,G,R tags
 typedef struct
@@ -132,6 +135,11 @@ typedef struct
     gvcf_aux_t *gvcf;   // buffer of gVCF lines, for each reader one line
     int nout_smpl;
     kstring_t *str;
+    int32_t *laa;           // localized alternate alleles given as input-based indexes in per-sample blocks of (args->local_alleles+1) values, 0 is always first
+    int nlaa, laa_dirty;    // number of LAA alleles actually used at this site, and was any L* added?
+    int32_t *tmpi, *k2k;
+    double *tmpd, *pl2prob; // mapping from phred-score likelihoods (PL) to probability
+    int ntmpi, ntmpd, nk2k;
 }
 maux_t;
 
@@ -141,7 +149,7 @@ typedef struct
     maux_t *maux;
     regidx_t *regs;    // apply regions only after the blocks are expanded
     regitr_t *regs_itr;
-    int header_only, collapse, output_type, force_samples, merge_by_id, do_gvcf, filter_logic, missing_to_ref;
+    int header_only, collapse, output_type, force_samples, merge_by_id, do_gvcf, filter_logic, missing_to_ref, no_index;
     char *header_fname, *output_fname, *regions_list, *info_rules, *file_list;
     faidx_t *gvcf_fai;
     info_rule_t *rules;
@@ -154,6 +162,7 @@ typedef struct
     bcf_hdr_t *out_hdr;
     char **argv;
     int argc, n_threads, record_cmd_line;
+    int local_alleles;    // the value of -L option
 }
 args_t;
 
@@ -262,7 +271,28 @@ static void info_rules_merge_join(bcf_hdr_t *hdr, bcf1_t *line, info_rule_t *rul
         bcf_update_info_string(hdr,line,rule->hdr_tag,rule->vals);
     }
     else
+    {
+        int isrc, idst = 0;
+        #define BRANCH(type_t,is_missing,is_vector_end) { \
+            type_t *ptr = (type_t*) rule->vals; \
+            for (isrc=0; isrc<rule->nvals; isrc++) \
+            { \
+                if ( is_vector_end ) break; \
+                if ( is_missing ) continue; \
+                if ( idst!=isrc ) ptr[idst] = ptr[isrc]; \
+                idst++; \
+            } \
+        }
+        switch (rule->type) {
+            case BCF_HT_INT:  BRANCH(int32_t, ptr[isrc]==bcf_int32_missing, ptr[isrc]==bcf_int32_vector_end); break;
+            case BCF_HT_REAL: BRANCH(float, bcf_float_is_missing(ptr[isrc]), bcf_float_is_vector_end(ptr[isrc])); break;
+            default: error("TODO: %s:%d .. type=%d\n", __FILE__,__LINE__, rule->type);
+        }
+        #undef BRANCH
+
+        rule->nvals = idst;
         bcf_update_info(hdr,line,rule->hdr_tag,rule->vals,rule->nvals,rule->type);
+    }
 }
 
 static int info_rules_comp_key2(const void *a, const void *b)
@@ -344,7 +374,7 @@ static void info_rules_init(args_t *args)
         if ( rule->type==BCF_HT_INT ) rule->type_size = sizeof(int32_t);
         else if ( rule->type==BCF_HT_REAL ) rule->type_size = sizeof(float);
         else if ( rule->type==BCF_HT_STR ) rule->type_size = sizeof(char); 
-        else error("The type is not supported: \"%s\"\n", rule->hdr_tag);
+        else error("The INFO rule \"%s\" is not supported; the tag \"%s\" type is %d\n", ss,rule->hdr_tag,rule->type);
 
         ss = strchr(ss, '\0'); ss++;
         if ( !*ss ) error("Could not parse INFO rules, missing logic of \"%s\"\n", rule->hdr_tag);
@@ -366,8 +396,17 @@ static void info_rules_init(args_t *args)
                     bcf_hdr_id2length(args->out_hdr,BCF_HL_INFO,id)==BCF_VL_G ||
                     bcf_hdr_id2length(args->out_hdr,BCF_HL_INFO,id)==BCF_VL_R
                     ) ? 1 : 0;
-            if ( is_join && is_agr )
-                error("Cannot -i %s:join on Number=[AGR] tags is not supported.\n", rule->hdr_tag);
+            if ( is_join && bcf_hdr_id2length(args->out_hdr,BCF_HL_INFO,id)!=BCF_VL_VAR )
+            {
+                bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->out_hdr, BCF_HL_INFO, "ID", rule->hdr_tag, NULL);
+                hrec = bcf_hrec_dup(hrec);
+                int i = bcf_hrec_find_key(hrec, "Number");
+                if ( i<0 ) error("Uh, could not find the entry Number in the header record of %s\n",rule->hdr_tag);
+                free(hrec->vals[i]);
+                hrec->vals[i] = strdup(".");
+                bcf_hdr_remove(args->out_hdr,BCF_HL_INFO, rule->hdr_tag);
+                bcf_hdr_add_hrec(args->out_hdr, hrec);
+            }
             if ( !is_join && !is_agr )
                 error("Only fixed-length vectors are supported with -i %s:%s\n", ss, rule->hdr_tag);
         }
@@ -689,7 +728,7 @@ maux_t *maux_init(args_t *args)
     assert( n_smpl==bcf_hdr_nsamples(args->out_hdr) );
     if ( args->do_gvcf )
     {
-        ma->gvcf = (gvcf_aux_t*) calloc(ma->n,sizeof(gvcf_aux_t));
+        ma->gvcf = (gvcf_aux_t*) calloc(ma->n,sizeof(gvcf_aux_t));  // -Walloc-size-larger-than gives a harmless warning caused by signed integer ma->n
         for (i=0; i<ma->n; i++)
             ma->gvcf[i].line = bcf_init1();
     }
@@ -699,6 +738,13 @@ maux_t *maux_init(args_t *args)
     for (i=0; i<ma->n; i++)
         ma->buf[i].rid = -1;
     ma->str = (kstring_t*) calloc(n_smpl,sizeof(kstring_t));
+    if ( args->local_alleles )
+    {
+        ma->laa = (int32_t*)malloc(sizeof(*ma->laa)*ma->nout_smpl*(1+args->local_alleles));
+        ma->pl2prob = (double*)malloc(PL2PROB_MAX*sizeof(*ma->pl2prob));
+        for (i=0; i<PL2PROB_MAX; i++)
+            ma->pl2prob[i] = pow(10,-0.1*i);
+    }
     return ma;
 }
 void maux_destroy(maux_t *ma)
@@ -737,6 +783,11 @@ void maux_destroy(maux_t *ma)
     free(ma->smpl_ploidy);
     free(ma->smpl_nGsize);
     free(ma->chr);
+    free(ma->laa);
+    free(ma->tmpi);
+    free(ma->k2k);
+    free(ma->tmpd);
+    free(ma->pl2prob);
     free(ma);
 }
 void maux_expand1(buffer_t *buf, int size)
@@ -1325,6 +1376,171 @@ static inline int max_used_gt_ploidy(bcf_fmt_t *fmt, int nsmpl)
     return max_ploidy;
 }
 
+// Sets ma->laa to local indexes relevant for each sample or missing/vector_end.
+// The indexes are with respect to the source indexes and must be translated as
+// the very last step.
+void init_local_alleles(args_t *args, bcf1_t *out, int ifmt_PL)
+{
+    bcf_srs_t *files = args->files;
+    maux_t *ma = args->maux;
+    int i,j,k,l, ismpl = 0, nlaa = 0;
+    static int warned = 0;
+
+    hts_expand(double,out->n_allele,ma->ntmpd,ma->tmpd); // allele probabilities
+    hts_expand(int,out->n_allele,ma->ntmpi,ma->tmpi);    // indexes of the sorted probabilities
+
+    // Let map[] be the mapping from src to output idx. Then k2k[] is mapping from src allele idxs to src allele idxs
+    // reordered so that if i<j then map[k2k[i]] < map[k2k[j]]
+    hts_expand(int,out->n_allele,ma->nk2k,ma->k2k);
+
+    // Determine local alleles: either take all that are present in the reader or use PL to determine the best
+    // subset for each sample. The alleles must be listed in the order of the alleles in the output file.
+    for (i=0; i<files->nreaders; i++)
+    {
+        bcf_sr_t *reader = &files->readers[i];
+        bcf_hdr_t *hdr = reader->header;
+        bcf_fmt_t *fmt_ori = ma->fmt_map[files->nreaders*ifmt_PL+i];
+        bcf1_t *line = maux_get_line(args, i);
+        int nsmpl = bcf_hdr_nsamples(hdr);
+        if ( line )
+        {
+            if ( nlaa < line->n_allele - 1 )
+                nlaa = line->n_allele - 1 <= args->local_alleles ? line->n_allele - 1 : args->local_alleles;
+
+            for (j=0; j<line->n_allele; j++) ma->k2k[j] = j;
+
+            if ( line->n_allele <= args->local_alleles + 1 )
+            {
+                // sort to the output order, insertion sort, ascending 
+                int *map = ma->buf[i].rec[ma->buf[i].cur].map;
+                int *k2k = ma->k2k;
+                int tmp;
+                for (k=1; k<line->n_allele; k++)
+                    for (l=k; l>0 && map[k2k[l]] < map[k2k[l-1]]; l--)
+                        tmp = k2k[l], k2k[l] = k2k[l-1], k2k[l-1] = tmp;
+
+                // fewer than the allowed number of alleles, use all alleles from this file
+                for (j=0; j<nsmpl; j++)
+                {
+                    int32_t *ptr = ma->laa + (1+args->local_alleles)*ismpl;
+                    for (k=0; k<line->n_allele; k++) ptr[k] = k2k[k];
+                    for (; k<=args->local_alleles; k++) ptr[k] = bcf_int32_vector_end;
+                    ismpl++;
+                }
+                continue;
+            }
+        }
+        if ( !line || !fmt_ori )
+        {
+            // no values, fill in missing values
+            for (j=0; j<nsmpl; j++)
+            {
+                int32_t *ptr = ma->laa + (1+args->local_alleles)*ismpl;
+                ptr[0] = bcf_int32_missing;
+                for (k=1; k<=args->local_alleles; k++) ptr[k] = bcf_int32_vector_end;
+                ismpl++;
+            }
+            continue;
+        }
+
+        // there are more alternate alleles in the input files than is allowed on output, need to subset
+        if ( ifmt_PL==-1 )
+        {
+            if ( !warned )
+                fprintf(stderr,"Warning: local alleles are determined from FORMAT/PL but the tag is missing, cannot apply --local-alleles\n");
+            warned = 1;
+            ma->nlaa = 0;
+            return;
+        }
+
+        if ( !IS_VL_G(hdr, fmt_ori->id) ) error("FORMAT/PL must be defined as Number=G\n");
+        if ( 2*fmt_ori->n != line->n_allele*(line->n_allele+1) ) error("Todo: haploid PL to LPL\n");
+
+        int *map = ma->buf[i].rec[ma->buf[i].cur].map;
+        double *allele_prob = ma->tmpd;
+        int *idx = ma->tmpi;
+        #define BRANCH(src_type_t, src_is_missing, src_is_vector_end, pl2prob_idx) { \
+            src_type_t *src = (src_type_t*) fmt_ori->p; \
+            for (j=0; j<nsmpl; j++) \
+            { \
+                for (k=0; k<line->n_allele; k++) allele_prob[k] = 0; \
+                for (k=0; k<line->n_allele; k++) \
+                    for (l=0; l<=k; l++) \
+                    { \
+                        if ( src_is_missing || src_is_vector_end ) { src++; continue; } \
+                        double prob = ma->pl2prob[pl2prob_idx]; \
+                        allele_prob[k] += prob; \
+                        allele_prob[l] += prob; \
+                        src++; \
+                    } \
+                /* insertion sort by allele probability, descending order, with the twist that REF (idx=0) always comes first */ \
+                allele_prob++; idx[0] = -1; idx++; /* keep REF first */ \
+                int si,sj,tmp; \
+                for (si=0; si<line->n_allele-1; si++) idx[si] = si; \
+                for (si=1; si<line->n_allele-1; si++) \
+                    for (sj=si; sj>0 && allele_prob[idx[sj]] > allele_prob[idx[sj-1]]; sj--) \
+                        tmp = idx[sj], idx[sj] = idx[sj-1], idx[sj-1] = tmp; \
+                /*for debugging only: test order*/ \
+                for (si=1; si<line->n_allele-1; si++) \
+                    assert( allele_prob[idx[si-1]] >= allele_prob[idx[si]] ); \
+                allele_prob--; idx--; /* this was to keep REF first */ \
+                int32_t *ptr = ma->laa + (1+args->local_alleles)*ismpl; \
+                ptr[0] = 0; \
+                for (k=1; k<=args->local_alleles && k<line->n_allele; k++) ptr[k] = idx[k]+1; \
+                int kmax = k; \
+                for (; k<=args->local_alleles; k++) ptr[k] = bcf_int32_vector_end; \
+                /* insertion sort by indexes to the output order, ascending */ \
+                for (k=1; k<kmax; k++) \
+                    for (l=k; l>0 && map[ptr[l]] < map[ptr[l-1]]; l--) \
+                        tmp = ptr[l], ptr[l] = ptr[l-1], ptr[l-1] = tmp; \
+                ismpl++; \
+            } \
+        }
+        switch (fmt_ori->type)
+        {
+            case BCF_BT_INT8:  BRANCH( int8_t, *src==bcf_int8_missing,  *src==bcf_int8_vector_end,  *src); break;
+            case BCF_BT_INT16: BRANCH(int16_t, *src==bcf_int16_missing, *src==bcf_int16_vector_end, *src>=0 && *src<PL2PROB_MAX ? *src : PL2PROB_MAX-1); break;
+            case BCF_BT_INT32: BRANCH(int32_t, *src==bcf_int32_missing, *src==bcf_int32_vector_end, *src>=0 && *src<PL2PROB_MAX ? *src : PL2PROB_MAX-1); break;
+            default: error("Unexpected case: %d, PL\n", fmt_ori->type);
+        }
+        #undef BRANCH
+    }
+    ma->nlaa = nlaa;
+}
+
+void update_local_alleles(args_t *args, bcf1_t *out)
+{
+    bcf_srs_t *files = args->files;
+    maux_t *ma = args->maux;
+    int i,j,k,ismpl=0,nsamples = bcf_hdr_nsamples(args->out_hdr);
+    for (i=0; i<files->nreaders; i++)
+    {
+        int irec = ma->buf[i].cur;
+        bcf_sr_t *reader = &files->readers[i];
+        int nsmpl = bcf_hdr_nsamples(reader->header);
+        for (k=0; k<nsmpl; k++)
+        {
+            int32_t *src = ma->laa + ismpl*(1+args->local_alleles);
+            int32_t *dst = ma->laa + ismpl*ma->nlaa;
+            j = 0;
+            if ( irec>=0 )
+            {
+                for (; j<ma->nlaa; j++)
+                {
+                    if ( src[j+1]==bcf_int32_missing ) dst[j] = bcf_int32_missing;
+                    else if ( src[j+1]==bcf_int32_vector_end ) break;
+                    else
+                        dst[j] = ma->buf[i].rec[irec].map[src[j+1]];
+                }
+            }
+            if ( j==0 ) dst[j++] = bcf_int32_missing;
+            for (; j<ma->nlaa; j++) src[j] = bcf_int32_vector_end;
+            ismpl++;
+        }
+    }
+    bcf_update_format_int32(args->out_hdr, out, "LAA", ma->laa, nsamples*ma->nlaa);
+}
+
 void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
 {
     bcf_srs_t *files = args->files;
@@ -1333,7 +1549,7 @@ void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
     int i, ismpl = 0, nsamples = bcf_hdr_nsamples(out_hdr);
     static int warned = 0;
 
-    int nsize = 0, msize = sizeof(int32_t);
+    int nsize = 0;
     for (i=0; i<files->nreaders; i++)
     {
         bcf_fmt_t *fmt = fmt_map[i];
@@ -1343,17 +1559,18 @@ void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
     }
     if ( nsize==0 ) nsize = 1;
 
-    if ( ma->ntmp_arr < nsamples*nsize*msize )
+    size_t msize = sizeof(int32_t)*nsize*nsamples;
+    if ( msize > 2147483647 )
     {
-        ma->ntmp_arr = nsamples*nsize*msize;
-        ma->tmp_arr  = realloc(ma->tmp_arr, ma->ntmp_arr);
-        if ( !ma->tmp_arr ) error("Could not allocate %zu bytes\n",ma->ntmp_arr);
-        if ( ma->ntmp_arr > 2147483647 )
-        {
-            if ( !warned ) fprintf(stderr,"Warning: Too many genotypes at %s:%"PRId64", requires %zu bytes, skipping.\n", bcf_seqname(out_hdr,out),(int64_t) out->pos+1,ma->ntmp_arr);
-            warned = 1;
-            return;
-        }
+        if ( !warned ) fprintf(stderr,"Warning: Too many genotypes at %s:%"PRId64", requires %zu bytes, skipping.\n", bcf_seqname(out_hdr,out),(int64_t) out->pos+1,msize);
+        warned = 1;
+        return;
+    }
+    if ( ma->ntmp_arr < msize )
+    {
+        ma->tmp_arr  = realloc(ma->tmp_arr, msize);
+        if ( !ma->tmp_arr ) error("Could not allocate %zu bytes\n",msize);
+        ma->ntmp_arr = msize;
     }
     memset(ma->smpl_ploidy,0,nsamples*sizeof(int));
 
@@ -1520,17 +1737,18 @@ void merge_format_string(args_t *args, const char *key, bcf_fmt_t **fmt_map, bcf
               "If you don't really need it, use `bcftools annotate -x` to remove the annotation before merging.\n", __func__,key);
     }
     // update the record
-    if ( ma->ntmp_arr < nsamples*nmax )
+    size_t msize = nsamples*nmax;
+    if ( msize > 2147483647 )
     {
-        ma->ntmp_arr = nsamples*nmax;
-        ma->tmp_arr  = realloc(ma->tmp_arr, ma->ntmp_arr);
-        if ( !ma->tmp_arr ) error("Could not allocate %zu bytes\n",ma->ntmp_arr);
-        if ( ma->ntmp_arr > 2147483647 )
-        {
-            if ( !warned ) fprintf(stderr,"Warning: The row size is too big for FORMAT/%s at %s:%"PRId64", requires %zu bytes, skipping.\n", key,bcf_seqname(out_hdr,out),(int64_t) out->pos+1,ma->ntmp_arr);
-            warned = 1;
-            return;
-        }
+        if ( !warned ) fprintf(stderr,"Warning: The row size is too big for FORMAT/%s at %s:%"PRId64", requires %zu bytes, skipping.\n", key,bcf_seqname(out_hdr,out),(int64_t) out->pos+1,msize);
+        warned = 1;
+        return;
+    }
+    if ( ma->ntmp_arr < msize )
+    {
+        ma->tmp_arr  = realloc(ma->tmp_arr, msize);
+        if ( !ma->tmp_arr ) error("Could not allocate %zu bytes\n",msize);
+        ma->ntmp_arr = msize;
     }
     char *tgt = (char*) ma->tmp_arr;
     for (i=0; i<nsamples; i++)
@@ -1542,6 +1760,204 @@ void merge_format_string(args_t *args, const char *key, bcf_fmt_t **fmt_map, bcf
     bcf_update_format_char(out_hdr, out, key, (float*)ma->tmp_arr, nsamples*nmax);
 }
 
+// Note: only diploid Number=G tags only for now
+void merge_localized_numberG_format_field(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out, int irdr)
+{
+    int i,j,k, nsamples = bcf_hdr_nsamples(args->out_hdr);
+    bcf_srs_t *files = args->files;
+    maux_t *ma = args->maux;
+    bcf_fmt_t *fmt = fmt_map[irdr];
+    const char *key = files->readers[irdr].header->id[BCF_DT_ID][fmt_map[irdr]->id].key;
+    size_t nsize = (ma->nlaa+1)*(ma->nlaa+2)/2;             // max number of Number=G localized fields
+    size_t msize = sizeof(float)>sizeof(int32_t) ? sizeof(float) : sizeof(int32_t);
+    msize *= nsamples*nsize;
+    if ( msize > 2147483647 )
+    {
+        static int warned = 0;
+        if ( !warned ) fprintf(stderr,"Warning: The row size is too big for FORMAT/%s at %s:%"PRId64", requires %zu bytes, skipping.\n", key,bcf_seqname(args->out_hdr,out),(int64_t) out->pos+1,msize);
+        warned = 1;
+        return;
+    }
+    if ( ma->ntmp_arr < msize )
+    {
+        ma->tmp_arr  = realloc(ma->tmp_arr, msize);
+        if ( !ma->tmp_arr ) error("Failed to allocate %zu bytes at %s:%"PRId64" for FORMAT/%s\n", msize,bcf_seqname(args->out_hdr,out),(int64_t) out->pos+1,key);
+        ma->ntmp_arr = msize;
+    }
+    int ismpl = 0;
+    for (i=0; i<files->nreaders; i++)
+    {
+        bcf_sr_t *reader = &files->readers[i];
+        bcf_hdr_t *hdr = reader->header;
+        bcf_fmt_t *fmt_ori = fmt_map[i];
+        bcf1_t *line = maux_get_line(args, i);
+        int nsmpl = bcf_hdr_nsamples(hdr);
+
+        if ( !fmt_ori )
+        {
+            // fill missing values
+            #define BRANCH(tgt_type_t, tgt_set_missing, tgt_set_vector_end) { \
+                for (j=0; j<nsmpl; j++) \
+                { \
+                    tgt_type_t *tgt = (tgt_type_t *) ma->tmp_arr + ismpl*nsize; \
+                    tgt_set_missing; \
+                    for (k=1; k<nsize; k++) { tgt++; tgt_set_vector_end; } \
+                    ismpl++; \
+                } \
+            }
+            switch (fmt->type)
+            {
+                case BCF_BT_INT8:  BRANCH(int32_t, *tgt=bcf_int32_missing, *tgt=bcf_int32_vector_end); break;
+                case BCF_BT_INT16: BRANCH(int32_t, *tgt=bcf_int32_missing, *tgt=bcf_int32_vector_end); break;
+                case BCF_BT_INT32: BRANCH(int32_t, *tgt=bcf_int32_missing, *tgt=bcf_int32_vector_end); break;
+                case BCF_BT_FLOAT: BRANCH(float, bcf_float_set_missing(*tgt), bcf_float_set_vector_end(*tgt)); break;
+                default: error("Unexpected case: %d, %s\n", fmt->type, key);
+            }
+            #undef BRANCH
+            continue;
+        }
+        if ( 2*fmt_ori->n!=line->n_allele*(line->n_allele+1) ) error("Todo: localization of missing or haploid Number=G tags\n");
+
+        // localize
+        #define BRANCH(tgt_type_t, src_type_t, src_is_missing, src_is_vector_end, tgt_set_missing, tgt_set_vector_end) { \
+            for (j=0; j<nsmpl; j++) \
+            { \
+                src_type_t *src = (src_type_t*) fmt_ori->p + j*fmt_ori->n; \
+                tgt_type_t *tgt = (tgt_type_t *) ma->tmp_arr + ismpl*nsize; \
+                int *laa = ma->laa + (1+args->local_alleles)*ismpl; \
+                int ii,ij,tgt_idx = 0; \
+                for (ii=0; ii<=ma->nlaa; ii++) \
+                { \
+                    if ( laa[ii]==bcf_int32_missing || laa[ii]==bcf_int32_vector_end ) break; \
+                    for (ij=0; ij<=ii; ij++) \
+                    { \
+                        int src_idx = bcf_alleles2gt(laa[ii],laa[ij]); \
+                        if ( src_is_missing ) tgt_set_missing; \
+                        else if ( src_is_vector_end ) break; \
+                        else tgt[tgt_idx] = src[src_idx]; \
+                        tgt_idx++; \
+                    } \
+                } \
+                if ( !tgt_idx ) { tgt_set_missing; tgt_idx++; } \
+                for (; tgt_idx<nsize; tgt_idx++) tgt_set_vector_end; \
+                ismpl++; \
+            } \
+        }
+        switch (fmt_ori->type)
+        {
+            case BCF_BT_INT8:  BRANCH(int32_t,  int8_t, src[src_idx]==bcf_int8_missing,  src[src_idx]==bcf_int8_vector_end,  tgt[tgt_idx]=bcf_int32_missing, tgt[tgt_idx]=bcf_int32_vector_end); break;
+            case BCF_BT_INT16: BRANCH(int32_t, int16_t, src[src_idx]==bcf_int16_missing, src[src_idx]==bcf_int16_vector_end, tgt[tgt_idx]=bcf_int32_missing, tgt[tgt_idx]=bcf_int32_vector_end); break;
+            case BCF_BT_INT32: BRANCH(int32_t, int32_t, src[src_idx]==bcf_int32_missing, src[src_idx]==bcf_int32_vector_end, tgt[tgt_idx]=bcf_int32_missing, tgt[tgt_idx]=bcf_int32_vector_end); break;
+            case BCF_BT_FLOAT: BRANCH(float, float, bcf_float_is_missing(src[src_idx]), bcf_float_is_vector_end(src[src_idx]), bcf_float_set_missing(tgt[tgt_idx]), bcf_float_set_vector_end(tgt[tgt_idx])); break;
+            default: error("Unexpected case: %d, %s\n", fmt_ori->type, key);
+        }
+        #undef BRANCH
+    }
+    args->tmps.l = 0;
+    kputc('L',&args->tmps);
+    kputs(key,&args->tmps);
+    if ( fmt_map[irdr]->type==BCF_BT_FLOAT )
+        bcf_update_format_float(args->out_hdr, out, args->tmps.s, (float*)ma->tmp_arr, nsamples*nsize);
+    else
+        bcf_update_format_int32(args->out_hdr, out, args->tmps.s, (int32_t*)ma->tmp_arr, nsamples*nsize);
+    ma->laa_dirty = 1;
+}
+void merge_localized_numberAR_format_field(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out, int irdr)
+{
+    int i,j,k, nsamples = bcf_hdr_nsamples(args->out_hdr);
+    bcf_srs_t *files = args->files;
+    maux_t *ma = args->maux;
+    bcf_fmt_t *fmt = fmt_map[irdr];
+    const char *key = files->readers[irdr].header->id[BCF_DT_ID][fmt->id].key;
+    size_t nsize = IS_VL_R(files->readers[irdr].header, fmt->id) ? ma->nlaa + 1 : ma->nlaa;
+    size_t msize = sizeof(float)>sizeof(int32_t) ? sizeof(float) : sizeof(int32_t);
+    msize *= nsamples*nsize;
+    if ( msize > 2147483647 )
+    {
+        static int warned = 0;
+        if ( !warned ) fprintf(stderr,"Warning: The row size is too big for FORMAT/%s at %s:%"PRId64", requires %zu bytes, skipping.\n", key,bcf_seqname(args->out_hdr,out),(int64_t) out->pos+1,msize);
+        warned = 1;
+        return;
+    }
+    if ( ma->ntmp_arr < msize )
+    {
+        ma->tmp_arr  = realloc(ma->tmp_arr, msize);
+        if ( !ma->tmp_arr ) error("Failed to allocate %zu bytes at %s:%"PRId64" for FORMAT/%s\n", msize,bcf_seqname(args->out_hdr,out),(int64_t) out->pos+1,key);
+        ma->ntmp_arr = msize;
+    }
+    int ismpl = 0, ibeg = IS_VL_R(files->readers[irdr].header, fmt->id) ? 0 : 1;;
+    for (i=0; i<files->nreaders; i++)
+    {
+        bcf_sr_t *reader = &files->readers[i];
+        bcf_hdr_t *hdr = reader->header;
+        bcf_fmt_t *fmt_ori = fmt_map[i];
+        int nsmpl = bcf_hdr_nsamples(hdr);
+
+        if ( !fmt_ori )
+        {
+            // fill missing values
+            #define BRANCH(tgt_type_t, tgt_set_missing, tgt_set_vector_end) { \
+                for (j=0; j<nsmpl; j++) \
+                { \
+                    tgt_type_t *tgt = (tgt_type_t *) ma->tmp_arr + ismpl*nsize; \
+                    tgt_set_missing; \
+                    for (k=1; k<nsize; k++) { tgt++; tgt_set_vector_end; } \
+                    ismpl++; \
+                } \
+            }
+            switch (fmt->type)
+            {
+                case BCF_BT_INT8:  BRANCH(int32_t, *tgt=bcf_int32_missing, *tgt=bcf_int32_vector_end); break;
+                case BCF_BT_INT16: BRANCH(int32_t, *tgt=bcf_int32_missing, *tgt=bcf_int32_vector_end); break;
+                case BCF_BT_INT32: BRANCH(int32_t, *tgt=bcf_int32_missing, *tgt=bcf_int32_vector_end); break;
+                case BCF_BT_FLOAT: BRANCH(float, bcf_float_set_missing(*tgt), bcf_float_set_vector_end(*tgt)); break;
+                default: error("Unexpected case: %d, %s\n", fmt->type, key);
+            }
+            #undef BRANCH
+            continue;
+        }
+
+        // localize
+        #define BRANCH(tgt_type_t, src_type_t, src_is_missing, src_is_vector_end, tgt_set_missing, tgt_set_vector_end) { \
+            for (j=0; j<nsmpl; j++) \
+            { \
+                src_type_t *src = (src_type_t*) fmt_ori->p + j*fmt_ori->n; \
+                tgt_type_t *tgt = (tgt_type_t *) ma->tmp_arr + ismpl*nsize; \
+                int *laa = ma->laa + (1+args->local_alleles)*ismpl; \
+                int ii,tgt_idx = 0; \
+                for (ii=ibeg; ii<=ma->nlaa; ii++) \
+                { \
+                    if ( laa[ii]==bcf_int32_missing || laa[ii]==bcf_int32_vector_end ) break; \
+                    int src_idx = laa[ii] - ibeg; \
+                    if ( src_is_missing ) tgt_set_missing; \
+                    else if ( src_is_vector_end ) break; \
+                    else tgt[tgt_idx] = src[src_idx]; \
+                    tgt_idx++; \
+                } \
+                if ( !tgt_idx ) { tgt_set_missing; tgt_idx++; } \
+                for (; tgt_idx<nsize; tgt_idx++) tgt_set_vector_end; \
+                ismpl++; \
+            } \
+        }
+        switch (fmt_ori->type)
+        {
+            case BCF_BT_INT8:  BRANCH(int32_t,  int8_t, src[src_idx]==bcf_int8_missing,  src[src_idx]==bcf_int8_vector_end,  tgt[tgt_idx]=bcf_int32_missing, tgt[tgt_idx]=bcf_int32_vector_end); break;
+            case BCF_BT_INT16: BRANCH(int32_t, int16_t, src[src_idx]==bcf_int16_missing, src[src_idx]==bcf_int16_vector_end, tgt[tgt_idx]=bcf_int32_missing, tgt[tgt_idx]=bcf_int32_vector_end); break;
+            case BCF_BT_INT32: BRANCH(int32_t, int32_t, src[src_idx]==bcf_int32_missing, src[src_idx]==bcf_int32_vector_end, tgt[tgt_idx]=bcf_int32_missing, tgt[tgt_idx]=bcf_int32_vector_end); break;
+            case BCF_BT_FLOAT: BRANCH(float, float, bcf_float_is_missing(src[src_idx]), bcf_float_is_vector_end(src[src_idx]), bcf_float_set_missing(tgt[tgt_idx]), bcf_float_set_vector_end(tgt[tgt_idx])); break;
+            default: error("Unexpected case: %d, %s\n", fmt_ori->type, key);
+        }
+        #undef BRANCH
+    }
+    args->tmps.l = 0;
+    kputc('L',&args->tmps);
+    kputs(key,&args->tmps);
+    if ( fmt_map[irdr]->type==BCF_BT_FLOAT )
+        bcf_update_format_float(args->out_hdr, out, args->tmps.s, (float*)ma->tmp_arr, nsamples*nsize);
+    else
+        bcf_update_format_int32(args->out_hdr, out, args->tmps.s, (int32_t*)ma->tmp_arr, nsamples*nsize);
+    ma->laa_dirty = 1;
+}
 void merge_format_field(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
 {
     bcf_srs_t *files = args->files;
@@ -1579,6 +1995,13 @@ void merge_format_field(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
         }
         if ( fmt_map[i]->n > nsize ) nsize = fmt_map[i]->n;
     }
+    if ( ma->nlaa && length!=BCF_VL_FIXED )
+    {
+        if ( length==BCF_VL_G ) merge_localized_numberG_format_field(args,fmt_map,out,i);
+        else if ( length==BCF_VL_A || length==BCF_VL_R ) merge_localized_numberAR_format_field(args,fmt_map,out,i);
+        return;
+    }
+
     if ( type==BCF_BT_CHAR )
     {
         merge_format_string(args, key, fmt_map, out, length, nsize);
@@ -1586,17 +2009,18 @@ void merge_format_field(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
     }
 
     size_t msize = sizeof(float)>sizeof(int32_t) ? sizeof(float) : sizeof(int32_t);
-    if ( ma->ntmp_arr < nsamples*nsize*msize )
+    msize *= nsamples*nsize;
+    if ( msize > 2147483647 )
     {
-        ma->ntmp_arr = nsamples*nsize*msize;
-        ma->tmp_arr  = realloc(ma->tmp_arr, ma->ntmp_arr);
-        if ( !ma->tmp_arr ) error("Failed to allocate %zu bytes at %s:%"PRId64" for FORMAT/%s\n", ma->ntmp_arr,bcf_seqname(args->out_hdr,out),(int64_t) out->pos+1,key);
-        if ( ma->ntmp_arr > 2147483647 )
-        {
-            if ( !warned ) fprintf(stderr,"Warning: The row size is too big for FORMAT/%s at %s:%"PRId64", requires %zu bytes, skipping.\n", key,bcf_seqname(out_hdr,out),(int64_t) out->pos+1,ma->ntmp_arr);
-            warned = 1;
-            return;
-        }
+        if ( !warned ) fprintf(stderr,"Warning: The row size is too big for FORMAT/%s at %s:%"PRId64", requires %zu bytes, skipping.\n", key,bcf_seqname(out_hdr,out),(int64_t) out->pos+1,msize);
+        warned = 1;
+        return;
+    }
+    if ( ma->ntmp_arr < msize )
+    {
+        ma->tmp_arr  = realloc(ma->tmp_arr, msize);
+        if ( !ma->tmp_arr ) error("Failed to allocate %zu bytes at %s:%"PRId64" for FORMAT/%s\n", msize,bcf_seqname(args->out_hdr,out),(int64_t) out->pos+1,key);
+        ma->ntmp_arr = msize;
     }
 
     // Fill the temp array for all samples by collecting values from all files
@@ -1790,7 +2214,7 @@ void merge_format(args_t *args, bcf1_t *out)
     khiter_t kitr;
     strdict_t *tmph = args->tmph;
     kh_clear(strdict, tmph);
-    int i, j, ret, has_GT = 0, max_ifmt = 0; // max fmt index
+    int i, j, ret, has_GT = 0, has_PL = -1, max_ifmt = 0; // max fmt index
     for (i=0; i<files->nreaders; i++)
     {
         bcf1_t *line = maux_get_line(args,i);
@@ -1820,6 +2244,7 @@ void merge_format(args_t *args, bcf1_t *out)
                         memset(ma->fmt_map+ma->nfmt_map*files->nreaders, 0, (max_ifmt-ma->nfmt_map+1)*files->nreaders*sizeof(bcf_fmt_t*));
                         ma->nfmt_map = max_ifmt+1;
                     }
+                    if ( key[0]=='P' && key[1]=='L' && key[2]==0  ) { has_PL = ifmt; }
                 }
                 kitr = kh_put(strdict, tmph, key, &ret);
                 kh_value(tmph, kitr) = ifmt;
@@ -1833,6 +2258,12 @@ void merge_format(args_t *args, bcf1_t *out)
         ma->buf[i].rec[irec].als_differ = j==line->n_allele ? 0 : 1;
     }
 
+    if ( args->local_alleles )
+    {
+        ma->laa_dirty = ma->nlaa = 0;
+        if ( out->n_allele > args->local_alleles + 1 ) init_local_alleles(args, out, has_PL);
+    }
+
     out->n_sample = bcf_hdr_nsamples(out_hdr);
     if ( has_GT )
         merge_GT(args, ma->fmt_map, out);
@@ -1840,6 +2271,10 @@ void merge_format(args_t *args, bcf1_t *out)
 
     for (i=1; i<=max_ifmt; i++)
         merge_format_field(args, &ma->fmt_map[i*files->nreaders], out);
+
+    if ( ma->laa_dirty )
+        update_local_alleles(args, out);
+
     out->d.indiv_dirty = 1;
 }
 
@@ -2041,6 +2476,23 @@ void gvcf_flush(args_t *args, int done)
     }
 }
 
+static inline int is_gvcf_block(bcf1_t *line)
+{
+    if ( line->rlen<=1 ) return 0;
+    if ( strlen(line->d.allele[0])==line->rlen ) return 0;
+    if ( line->n_allele==1 ) return 1;
+
+    int i;
+    for (i=1; i<line->n_allele; i++)
+    {
+        if ( !strcmp(line->d.allele[i],"<*>") ) return 1;
+        if ( !strcmp(line->d.allele[i],"<NON_REF>") ) return 1;
+        if ( !strcmp(line->d.allele[i],"<X>") ) return 1;
+    }
+    return 0;
+}
+static const int snp_mask = (VCF_SNP<<2)|(VCF_MNP<<2), indel_mask = VCF_INDEL<<2, ref_mask = 2;
+
 /*
     Check incoming lines for new gVCF blocks, set pointer to the current source
     buffer (gvcf or readers).  In contrast to gvcf_flush, this function can be
@@ -2059,6 +2511,7 @@ void gvcf_stage(args_t *args, int pos)
     maux->gvcf_min = INT_MAX;
     for (i=0; i<files->nreaders; i++)
     {
+        if ( gaux[i].active && gaux[i].end < pos ) gaux[i].active = 0;
         if ( gaux[i].active )
         {
             // gvcf block should not overlap with another record
@@ -2077,7 +2530,7 @@ void gvcf_stage(args_t *args, int pos)
         int irec = maux->buf[i].beg;
         bcf_hdr_t *hdr = bcf_sr_get_header(files, i);
         bcf1_t *line = args->files->readers[i].buffer[irec];
-        int ret = bcf_get_info_int32(hdr,line,"END",&end,&nend);
+        int ret = is_gvcf_block(line) ? bcf_get_info_int32(hdr,line,"END",&end,&nend) : 0;
         if ( ret==1 )
         {
             if ( end[0] == line->pos + 1 )  // POS and INFO/END are identical, treat as if a normal w/o INFO/END
@@ -2218,7 +2671,6 @@ void debug_state(args_t *args)
     fprintf(stderr,"\n");
 }
 
-
 /*
    Determine which line should be merged from which reader: go through all
    readers and all buffered lines, expand REF,ALT and try to match lines with
@@ -2227,7 +2679,6 @@ void debug_state(args_t *args)
 int can_merge(args_t *args)
 {
     bcf_srs_t *files = args->files;
-    int snp_mask = (VCF_SNP<<1)|(VCF_MNP<<1), indel_mask = VCF_INDEL<<1, ref_mask = 1;
     maux_t *maux = args->maux;
     gvcf_aux_t *gaux = maux->gvcf;
     char *id = NULL, ref = 'N';
@@ -2239,6 +2690,9 @@ int can_merge(args_t *args)
         maux->als[i] = NULL;
     }
     maux->var_types = maux->nals = 0;
+
+    // this is only for the `-m none -g` mode, ensure that <*> lines come last
+    #define VCF_GVCF_REF 1
 
     for (i=0; i<files->nreaders; i++)
     {
@@ -2257,12 +2711,17 @@ int can_merge(args_t *args)
             buf->rec[j].skip = SKIP_DIFF;
             ntodo++;
 
+            bcf1_t *line = buf->lines[j];
             if ( args->merge_by_id )
-                id = buf->lines[j]->d.id;
+                id = line->d.id;
             else
             {
-                int var_type = bcf_get_variant_types(buf->lines[j]);
-                maux->var_types |= var_type ? var_type<<1 : 1;
+                int var_type = bcf_get_variant_types(line);
+                maux->var_types |= var_type ? var_type<<2 : 2;
+
+                // for the `-m none -g` mode
+                if ( args->collapse==COLLAPSE_NONE && args->do_gvcf && is_gvcf_block(line) )
+                    maux->var_types |= VCF_GVCF_REF;
             }
         }
 
@@ -2294,7 +2753,7 @@ int can_merge(args_t *args)
             bcf1_t *line = buf->lines[j]; // ptr to reader's buffer or gvcf buffer
 
             int line_type = bcf_get_variant_types(line);
-            line_type = line_type ? line_type<<1 : 1;
+            line_type = line_type ? line_type<<2 : 2;
 
             // select relevant lines
             if ( args->merge_by_id )
@@ -2303,6 +2762,12 @@ int can_merge(args_t *args)
             }
             else
             {
+                // when merging gVCF in -m none mode, make sure that gVCF blocks with the same POS as variant
+                // records come last, otherwise infinite loop is created (#1164)
+                if ( args->collapse==COLLAPSE_NONE && args->do_gvcf )
+                {
+                    if ( is_gvcf_block(line) && (maux->var_types & (~(VCF_GVCF_REF|2))) ) continue;
+                }
                 if ( args->collapse==COLLAPSE_NONE && maux->nals )
                 {
                     // All alleles of the tested record must be present in the
@@ -2366,7 +2831,6 @@ int can_merge(args_t *args)
 */
 void stage_line(args_t *args)
 {
-    int snp_mask = (VCF_SNP<<1)|(VCF_MNP<<1), indel_mask = VCF_INDEL<<1, ref_mask = 1;
     bcf_srs_t *files = args->files;
     maux_t *maux = args->maux;
 
@@ -2490,6 +2954,56 @@ void bcf_hdr_append_version(bcf_hdr_t *hdr, int argc, char **argv, const char *c
     error_errno("[%s] Failed to add program information to header", __func__);
 }
 
+void hdr_add_localized_tags(args_t *args, bcf_hdr_t *hdr)
+{
+    char **str = NULL;
+    int i,j, nstr = 0, mstr = 0;
+    for (i=0; i<hdr->nhrec; i++)
+    {
+        if ( hdr->hrec[i]->type!=BCF_HL_FMT ) continue;
+        j = bcf_hrec_find_key(hdr->hrec[i],"ID");
+        if ( j<0 ) continue;
+        char *key = hdr->hrec[i]->vals[j];
+        int id = bcf_hdr_id2int(hdr, BCF_DT_ID, key);
+        assert( id>=0 );
+        int localize = 0;
+        if ( bcf_hdr_id2length(hdr,BCF_HL_FMT,id) == BCF_VL_G ) localize = 1;
+        if ( bcf_hdr_id2length(hdr,BCF_HL_FMT,id) == BCF_VL_A ) localize = 1;
+        if ( bcf_hdr_id2length(hdr,BCF_HL_FMT,id) == BCF_VL_R ) localize = 1;
+        if ( !localize ) continue;
+        args->tmps.l = 0;
+
+        uint32_t e = 0, nout = 0;
+        e |= ksprintf(&args->tmps, "##%s=<", hdr->hrec[i]->key) < 0;
+        for (j=0; j<hdr->hrec[i]->nkeys; j++)
+        {
+            if ( !strcmp("IDX",hdr->hrec[i]->keys[j]) ) continue;
+            if ( nout ) e |= kputc(',',&args->tmps) < 0;
+            if ( !strcmp("ID",hdr->hrec[i]->keys[j]) )
+                e |= ksprintf(&args->tmps,"%s=L%s", hdr->hrec[i]->keys[j], hdr->hrec[i]->vals[j]) < 0;
+            else if ( !strcmp("Number",hdr->hrec[i]->keys[j]) )
+                e |= ksprintf(&args->tmps,"Number=.") < 0;
+            else if ( !strcmp("Description",hdr->hrec[i]->keys[j]) && hdr->hrec[i]->vals[j][0]=='"' )
+                e |= ksprintf(&args->tmps,"Description=\"Localized field: %s", hdr->hrec[i]->vals[j]+1) < 0;
+            else
+                e |= ksprintf(&args->tmps,"%s=%s", hdr->hrec[i]->keys[j], hdr->hrec[i]->vals[j]) < 0;
+            nout++;
+        }
+        e |= ksprintf(&args->tmps,">\n") < 0;
+        if ( e ) error("Failed to format the header line for %s\n", key);
+        nstr++;
+        hts_expand(char*,nstr,mstr,str);
+        str[nstr-1] = strdup(args->tmps.s);
+    }
+    if ( !nstr ) return;
+    bcf_hdr_append(hdr,"##FORMAT=<ID=LAA,Number=.,Type=Integer,Description=\"Localized alleles: subset of alternate alleles relevant for each sample\">");
+    for (i=0; i<nstr; i++)
+    {
+        bcf_hdr_append(hdr, str[i]);
+        free(str[i]);
+    }
+    free(str);
+}
 void merge_vcf(args_t *args)
 {
     args->out_fh  = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
@@ -2509,6 +3023,7 @@ void merge_vcf(args_t *args)
             char buf[24]; snprintf(buf,sizeof buf,"%d",i+1);
             merge_headers(args->out_hdr, args->files->readers[i].header,buf,args->force_samples);
         }
+        if ( args->local_alleles ) hdr_add_localized_tags(args, args->out_hdr);
         if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_merge");
         if (bcf_hdr_sync(args->out_hdr) < 0)
             error_errno("[%s] Failed to update header", __func__);
@@ -2580,7 +3095,9 @@ static void usage(void)
     fprintf(stderr, "    -g, --gvcf <-|ref.fa>              merge gVCF blocks, INFO/END tag is expected. Implies -i QS:sum,MinDP:min,I16:sum,IDV:max,IMF:max\n");
     fprintf(stderr, "    -i, --info-rules <tag:method,..>   rules for merging INFO fields (method is one of sum,avg,min,max,join) or \"-\" to turn off the default [DP:sum,DP4:sum]\n");
     fprintf(stderr, "    -l, --file-list <file>             read file names from the file\n");
+    fprintf(stderr, "    -L, --local-alleles <int>          EXPERIMENTAL: if more than <int> ALT alleles are encountered, drop FMT/PL and output LAA+LPL instead; 0=unlimited [0]\n");
     fprintf(stderr, "    -m, --merge <string>               allow multiallelic records for <snps|indels|both|all|none|id>, see man page for details [both]\n");
+    fprintf(stderr, "        --no-index                     merge unindexed files, the same chromosomal order is required and -r/-R are not allowed\n");
     fprintf(stderr, "        --no-version                   do not append version and command line to the header\n");
     fprintf(stderr, "    -o, --output <file>                write output to a file [standard output]\n");
     fprintf(stderr, "    -O, --output-type <b|u|z|v>        'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
@@ -2608,6 +3125,7 @@ int main_vcfmerge(int argc, char *argv[])
     {
         {"help",no_argument,NULL,'h'},
         {"merge",required_argument,NULL,'m'},
+        {"local-alleles",required_argument,NULL,'L'},
         {"gvcf",required_argument,NULL,'g'},
         {"file-list",required_argument,NULL,'l'},
         {"missing-to-ref",no_argument,NULL,'0'},
@@ -2622,11 +3140,19 @@ int main_vcfmerge(int argc, char *argv[])
         {"regions-file",required_argument,NULL,'R'},
         {"info-rules",required_argument,NULL,'i'},
         {"no-version",no_argument,NULL,8},
+        {"no-index",no_argument,NULL,10},
         {"filter-logic",required_argument,NULL,'F'},
         {NULL,0,NULL,0}
     };
-    while ((c = getopt_long(argc, argv, "hm:f:r:R:o:O:i:l:g:F:0",loptions,NULL)) >= 0) {
+    char *tmp;
+    while ((c = getopt_long(argc, argv, "hm:f:r:R:o:O:i:l:g:F:0L:",loptions,NULL)) >= 0) {
         switch (c) {
+            case 'L':
+                args->local_alleles = strtol(optarg,&tmp,10);
+                if ( *tmp ) error("Could not parse argument: --local-alleles %s\n", optarg);
+                if ( args->local_alleles < 1 )
+                    error("Error: \"--local-alleles %s\" makes no sense, expected value bigger or equal than 1\n", optarg);
+                break;
             case 'F': 
                 if ( !strcmp(optarg,"+") ) args->filter_logic = FLT_LOGIC_ADD;
                 else if ( !strcmp(optarg,"x") ) args->filter_logic = FLT_LOGIC_REMOVE;
@@ -2672,6 +3198,7 @@ int main_vcfmerge(int argc, char *argv[])
             case  3 : args->force_samples = 1; break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
+            case 10 : args->no_index = 1; break;
             case 'h':
             case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);
@@ -2680,7 +3207,13 @@ int main_vcfmerge(int argc, char *argv[])
     if ( argc==optind && !args->file_list ) usage();
     if ( argc-optind<2 && !args->file_list ) usage();
 
-    args->files->require_index = 1;
+    if ( args->no_index )
+    {
+        if ( args->regions_list ) error("Error: cannot combine --no-index with -r/-R\n");
+        bcf_sr_set_opt(args->files,BCF_SR_ALLOW_NO_IDX);
+    }
+    else
+        bcf_sr_set_opt(args->files,BCF_SR_REQUIRE_IDX);
     if ( args->regions_list )
     {
         if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )

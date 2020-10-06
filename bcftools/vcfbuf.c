@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2016-2019 Genome Research Ltd.
+   Copyright (c) 2016-2020 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -24,6 +24,7 @@
 
  */
 
+#include <assert.h>
 #include <htslib/vcf.h>
 #include <htslib/vcfutils.h>
 #include "bcftools.h"
@@ -32,8 +33,8 @@
 
 typedef struct
 {
-    double max;
-    int rand_missing, skip_filter;
+    double max[VCFBUF_LD_N];
+    int rand_missing, filter1;
 }
 ld_t;
 
@@ -41,7 +42,7 @@ typedef struct
 {
     bcf1_t *rec;
     double af;
-    int af_set:1, idx:31;
+    int af_set:1, filter:1, idx:30;
 }
 vcfrec_t;
 
@@ -85,6 +86,8 @@ vcfbuf_t *vcfbuf_init(bcf_hdr_t *hdr, int win)
     buf->hdr = hdr;
     buf->win = win;
     buf->overlap.rid = -1;
+    int i;
+    for (i=0; i<VCFBUF_LD_N; i++) buf->ld.max[i] = HUGE_VAL;
     rbuf_init(&buf->rbuf, 0);
     return buf;
 }
@@ -104,9 +107,12 @@ void vcfbuf_destroy(vcfbuf_t *buf)
 
 void vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, void *value)
 {
-    if ( key==VCFBUF_LD_MAX ) { buf->ld.max = *((double*)value); return; }
-    if ( key==VCFBUF_RAND_MISSING ) { buf->ld.rand_missing = *((int*)value); return; }
-    if ( key==VCFBUF_SKIP_FILTER ) { buf->ld.skip_filter = *((int*)value); return; }
+    if ( key==LD_FILTER1 ) { buf->ld.filter1 = *((int*)value); return; }
+    if ( key==LD_RAND_MISSING ) { buf->ld.rand_missing = *((int*)value); return; }
+    if ( key==LD_MAX_R2 ) { buf->ld.max[VCFBUF_LD_IDX_R2] = *((double*)value); return; }
+    if ( key==LD_MAX_LD ) { buf->ld.max[VCFBUF_LD_IDX_LD] = *((double*)value); return; }
+    if ( key==LD_MAX_HD ) { buf->ld.max[VCFBUF_LD_IDX_HD] = *((double*)value); return; }
+
     if ( key==VCFBUF_NSITES ) { buf->prune.max_sites = *((int*)value); return; }
     if ( key==VCFBUF_AF_TAG ) { buf->prune.af_tag = *((char**)value); return; }
     if ( key==VCFBUF_OVERLAP_WIN ) { buf->overlap.active = *((int*)value); return; }
@@ -118,10 +124,8 @@ int vcfbuf_nsites(vcfbuf_t *buf)
     return buf->rbuf.n;
 }
 
-bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec, int swap)
+bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec)
 {
-    if ( !swap ) error("todo: swap=%d\n", swap);
-
     rbuf_expand0(&buf->rbuf, vcfrec_t, buf->rbuf.n+1, buf->vcf);
 
     int i = rbuf_append(&buf->rbuf);
@@ -130,6 +134,8 @@ bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec, int swap)
     bcf1_t *ret = buf->vcf[i].rec;
     buf->vcf[i].rec = rec;
     buf->vcf[i].af_set = 0;
+    buf->vcf[i].filter = buf->ld.filter1;
+    buf->ld.filter1 = 0;
 
     return ret;
 }
@@ -333,10 +339,21 @@ static double _estimate_af(int8_t *ptr, int size, int nvals, int nsamples)
 }
 
 /*
-    For unphased genotypes D is approximated as suggested in https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2710162/
+    The `ld` is set to D approximated as suggested in https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2710162/
         D =~ (GT correlation) * sqrt(Pa*(1-Pa)*Pb*(1-Pb))
+
+    and `hd` as proposed in Ragsdale, A. P., & Gravel, S. (2019). Unbiased estimation of linkage
+    disequilibrium from unphased data.  Molecular Biology and Evolution. doi:10.1093/molbev/msz265 
+
+        \hat{D} = 1/[n*(n+1)]*[
+                             (n1 + n2/2 + n4/2 + n5/4)*(n5/4 + n6/2 + n8/2 + n9)
+                            -(n2/2 + n3 + n5/4 + n6/2)*(n4/2 + n5/4 + n7 + n8/2)
+                        ]
+    where n1,n2,..n9 are counts of RR/RR,RR/RA,..,AA/AA genotypes.
+
+    Returns 0 on success, -1 if the values could not be determined (missing genotypes)
 */
-static double _calc_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec)
+static int _calc_r2_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec, vcfbuf_ld_t *ld)
 {
     if ( arec->n_sample!=brec->n_sample ) error("Different number of samples: %d vs %d\n",arec->n_sample,brec->n_sample);
     assert( arec->n_sample );
@@ -365,14 +382,17 @@ static double _calc_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec)
         baf = _estimate_af((int8_t*)bfmt->p, bfmt->size, bfmt->n, brec->n_sample);
     }
 
-    // Calculate correlation 
+    // Calculate r2, lf, hd
+    double nhd[] = {0,0,0,0,0,0,0,0,0};
     double ab = 0, aa = 0, bb = 0, a = 0, b = 0;
-    int nab = 0, na = 0, nb = 0, ndiff = 0;
+    int nab = 0, ndiff = 0;
+    int an_tot = 0, bn_tot = 0; 
     for (i=0; i<arec->n_sample; i++)
     {
         int8_t *aptr = (int8_t*) (afmt->p + i*afmt->size);
         int8_t *bptr = (int8_t*) (bfmt->p + i*bfmt->size);
-        int adsg = 0, bdsg = 0, an = 0, bn = 0;
+        int adsg = 0, bdsg = 0;     // dosages (0,1,2) at sites (a,b)
+        int an = 0, bn = 0;         // number of alleles at sites (a,b)
         for (j=0; j<afmt->n; j++)
         {
             if ( aptr[j]==bcf_int8_vector_end ) break;
@@ -395,84 +415,107 @@ static double _calc_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec)
             else if ( bcf_gt_allele(bptr[j]) ) bdsg += 1;
             bn++;
         }
-        if ( an )
-        {
-            aa += adsg*adsg;
-            a  += adsg;
-            na++;
-        }
-        if ( bn )
-        {
-            bb += bdsg*bdsg;
-            b  += bdsg;
-            nb++;
-        }
         if ( an && bn )
         {
+            an_tot += an;
+            aa += adsg*adsg;
+            a  += adsg;
+
+            bn_tot += bn;
+            bb += bdsg*bdsg;
+            b  += bdsg;
+
             if ( adsg!=bdsg ) ndiff++;
             ab += adsg*bdsg;
             nab++;
         }
+        if ( an==2 && bn==2 )   // for now only diploid genotypes
+        {
+            assert( adsg<=2 && bdsg<=2 );
+            nhd[ bdsg*3 + adsg ]++;
+        }
     }
-    if ( !nab ) return -1;
+    if ( !nab ) return -1;  // no data in common for the two sites
 
+    double pa = a/an_tot;
+    double pb = b/bn_tot;
     double cor;
     if ( !ndiff ) cor = 1;
     else
     {
-        // Don't know how to deal with zero variance. Since this the purpose is filtering,
-        // it is not enough to say the value is undefined. Therefore an artificial noise is
-        // added to make the denominator non-zero.
-        if ( aa == a*a/na || bb == b*b/nb )
+        if ( aa == a*a/nab || bb == b*b/nab )     // zero variance, add small noise
         {
-            aa += 3*3;
-            bb += 3*3;
-            ab += 3*3;
-            a  += 3;
-            b  += 3;
-            na++;
-            nb++;
+            aa += 1e-4;
+            bb += 1e-4;
+            ab += 1e-4;
+            a  += 1e-2;
+            b  += 1e-2;
             nab++;
         }
-        cor = (ab/nab - a/na*b/nb) / sqrt(aa/na - a/na*a/na) / sqrt(bb/nb - b/nb*b/nb);
+        cor = (ab - a*b/nab) / sqrt(aa - a*a/nab) / sqrt(bb - b*b/nab);
     }
-    return cor*cor;
+
+    ld->val[VCFBUF_LD_IDX_R2] = cor * cor;
+
+    // Lewontin's normalization of D. Also we cap at 1 as the calculation
+    // can result in values bigger than 1 for high AFs.
+    ld->val[VCFBUF_LD_IDX_LD] = cor * sqrt(pa*(1-pa)*pb*(1-pb));
+    double norm;
+    if ( ld->val[VCFBUF_LD_IDX_LD] < 0 )
+        norm = -pa*pb > -(1-pa)*(1-pb) ? -pa*pb : -(1-pa)*(1-pb);
+    else
+        norm = pa*(1-pb) > (1-pa)*pb ? pa*(1-pb) : (1-pa)*pb;
+    if ( norm )
+        ld->val[VCFBUF_LD_IDX_LD] = fabs(norm) > fabs(ld->val[VCFBUF_LD_IDX_LD]) ? ld->val[VCFBUF_LD_IDX_LD]/norm : 1;
+    if ( !ld->val[VCFBUF_LD_IDX_LD] )
+        ld->val[VCFBUF_LD_IDX_LD] = fabs(ld->val[VCFBUF_LD_IDX_LD]);    // avoid "-0" on output
+
+    ld->val[VCFBUF_LD_IDX_HD] =
+        (nhd[0] + nhd[1]/2. + nhd[3]/2. + nhd[4]/4.)*(nhd[4]/4. + nhd[5]/2. + nhd[7]/2. + nhd[8]) 
+        - (nhd[1]/2. + nhd[2] + nhd[4]/4. + nhd[5]/2.)*(nhd[3]/2. + nhd[4]/4. + nhd[6] + nhd[7]/2.);
+    ld->val[VCFBUF_LD_IDX_HD] /= nab;
+    ld->val[VCFBUF_LD_IDX_HD] /= nab+1;
+
+    return 0;
 }
 
-bcf1_t *vcfbuf_max_ld(vcfbuf_t *buf, bcf1_t *rec, double *ld)
+int vcfbuf_ld(vcfbuf_t *buf, bcf1_t *rec, vcfbuf_ld_t *ld)
 {
-    *ld = -1;
-    if ( !buf->rbuf.n ) return NULL;
+    int ret = -1;
+    if ( !buf->rbuf.n ) return ret;
 
-    int i = buf->rbuf.f;
+    int j, i = buf->rbuf.f;
 
     // Relying on vcfbuf being properly flushed - all sites in the buffer
     // must come from the same chromosome
-    if ( buf->vcf[i].rec->rid != rec->rid ) return NULL;
+    if ( buf->vcf[i].rec->rid != rec->rid ) return ret;
 
-    int imax = 0;
-    double max = 0;
+    vcfbuf_ld_t tmp;
+    for (j=0; j<VCFBUF_LD_N; j++)
+    {
+        ld->val[j] = -HUGE_VAL;
+        ld->rec[j] = NULL;
+    }
+
     for (i=-1; rbuf_next(&buf->rbuf,&i); )
     {   
-        if ( buf->ld.skip_filter )
+        if ( buf->vcf[i].filter ) continue;
+        if ( _calc_r2_ld(buf, buf->vcf[i].rec, rec, &tmp) < 0 ) continue;   // missing genotypes
+
+        int done = 0;
+        for (j=0; j<VCFBUF_LD_N; j++)
         {
-            if ( buf->vcf[i].rec->d.n_flt > 1 ) continue;   // multiple filters are set
-            if ( buf->vcf[i].rec->d.n_flt==1 && buf->vcf[i].rec->d.flt[0]!=0 ) continue;    // not PASS
+            if ( ld->val[j] < tmp.val[j] )
+            {
+                ld->val[j] = tmp.val[j];
+                ld->rec[j] = buf->vcf[i].rec;
+            }
+            if ( buf->ld.max[j] < tmp.val[j] ) done = 1;
+            ret = 0;
         }
-        double val = _calc_ld(buf, buf->vcf[i].rec, rec);
-        if ( buf->ld.max && buf->ld.max < val ) 
-        {
-            *ld = val;
-            return buf->vcf[i].rec;
-        }
-        if ( val > max )
-        {
-            max  = val;
-            imax = i;
-        }
+        if ( done ) return ret;
     }
-    *ld = max;
-    return buf->vcf[imax].rec;
+    return ret;
 }
 
 

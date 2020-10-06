@@ -25,6 +25,7 @@
  */
 
 #include <stdio.h>
+#include <assert.h>
 #include "bcftools.h"
 #include "bin.h"
 

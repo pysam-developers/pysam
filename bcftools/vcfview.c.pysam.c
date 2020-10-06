@@ -2,7 +2,7 @@
 
 /*  vcfview.c -- VCF/BCF conversion, view, subset and filter VCF/BCF files.
 
-    Copyright (C) 2013-2018 Genome Research Ltd.
+    Copyright (C) 2013-2020 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -503,7 +503,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -h/H, --header-only/--no-header     print the header only/suppress the header in VCF output\n");
     fprintf(bcftools_stderr, "    -l,   --compression-level [0-9]     compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
     fprintf(bcftools_stderr, "          --no-version                  do not append version and command line to the header\n");
-    fprintf(bcftools_stderr, "    -o,   --output-file <file>          output file name [bcftools_stdout]\n");
+    fprintf(bcftools_stderr, "    -o,   --output <file>               output file name [bcftools_stdout]\n");
     fprintf(bcftools_stderr, "    -O,   --output-type <b|u|z|v>       b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(bcftools_stderr, "    -r, --regions <region>              restrict to comma-separated list of regions\n");
     fprintf(bcftools_stderr, "    -R, --regions-file <file>           restrict to regions listed in a file\n");
@@ -577,6 +577,7 @@ int main_vcfview(int argc, char *argv[])
         {"force-samples",no_argument,NULL,1},
         {"output-type",required_argument,NULL,'O'},
         {"output-file",required_argument,NULL,'o'},
+        {"output",required_argument,NULL,'o'},
         {"types",required_argument,NULL,'v'},
         {"exclude-types",required_argument,NULL,'V'},
         {"targets",required_argument,NULL,'t'},
