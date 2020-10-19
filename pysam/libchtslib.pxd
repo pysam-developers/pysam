@@ -1353,10 +1353,10 @@ cdef extern from "htslib/tbx.h" nogil:
 
     # tbx.h definitions
     int8_t TBX_MAX_SHIFT
-    int8_t TBX_GENERIC
-    int8_t TBX_SAM
-    int8_t TBX_VCF
-    int8_t TBX_UCSC
+    int32_t TBX_GENERIC
+    int32_t TBX_SAM
+    int32_t TBX_VCF
+    int32_t TBX_UCSC
 
     ctypedef struct tbx_conf_t:
         int32_t preset
