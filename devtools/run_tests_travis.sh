@@ -37,8 +37,8 @@ conda config --add channels conda-forge
 
 # pin versions, so that tests do not fail when pysam/htslib out of step
 # add htslib dependencies
-# NB: we force conda-forge:ncurses due to bioconda/bioconda-recipes#13488
-conda install -y "samtools=1.9" "bcftools=1.9" "htslib=1.9" xz curl bzip2 conda-forge:ncurses
+# NB: force conda-forge:blas due to conda/conda#7548
+conda install -y "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" xz curl bzip2 "conda-forge::blas=*=openblas"
 
 # As HTSLIB_MODE is (defaulted to) 'shared', ensure we don't pick up
 # the external headers from the Conda-installed htslib package.
