@@ -134,7 +134,7 @@ cdef inline uint8_t strand_mark_char(uint8_t ch, bam1_t *b):
             return toupper(ch)
 
 
-cdef inline bint pileup_base_qual_skip(bam_pileup1_t * p, uint32_t threshold):
+cdef inline bint pileup_base_qual_skip(const bam_pileup1_t * p, uint32_t threshold):
     cdef uint32_t c
     if p.qpos < p.b.core.l_qseq:
         c = bam_get_qual(p.b)[p.qpos]
@@ -608,7 +608,7 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
 
 
 cdef class PileupColumn
-cdef PileupColumn makePileupColumn(bam_pileup1_t ** plp,
+cdef PileupColumn makePileupColumn(const bam_pileup1_t ** plp,
                       int tid,
                       int pos,
                       int n_pu,
@@ -635,7 +635,7 @@ cdef PileupColumn makePileupColumn(bam_pileup1_t ** plp,
 
 
 cdef class PileupRead
-cdef PileupRead makePileupRead(bam_pileup1_t *src,
+cdef PileupRead makePileupRead(const bam_pileup1_t *src,
                                AlignmentHeader header):
     '''return a PileupRead object construted from a bam_pileup1_t * object.'''
     # note that the following does not call __init__
@@ -2841,7 +2841,7 @@ cdef class PileupColumn:
                 raise ValueError("PileupColumn accessed after iterator finished")
 
             cdef int x
-            cdef bam_pileup1_t * p = NULL
+            cdef const bam_pileup1_t * p = NULL
             pileups = []
 
             # warning: there could be problems if self.n and self.buf are
@@ -2893,7 +2893,7 @@ cdef class PileupColumn:
         cdef uint32_t x = 0
         cdef uint32_t c = 0
         cdef uint32_t cnt = 0
-        cdef bam_pileup1_t * p = NULL
+        cdef const bam_pileup1_t * p = NULL
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
 
@@ -2969,7 +2969,7 @@ cdef class PileupColumn:
         cdef uint8_t cc = 0
         cdef uint8_t rb = 0
         cdef kstring_t * buf = &self.buf
-        cdef bam_pileup1_t * p = NULL
+        cdef const bam_pileup1_t * p = NULL
 
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
@@ -3052,7 +3052,7 @@ cdef class PileupColumn:
         list: a list of quality scores
         """
         cdef uint32_t x = 0
-        cdef bam_pileup1_t * p = NULL
+        cdef const bam_pileup1_t * p = NULL
         cdef uint32_t c = 0
         result = []
         for x from 0 <= x < self.n_pu:
@@ -3083,7 +3083,7 @@ cdef class PileupColumn:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         cdef uint32_t x = 0
-        cdef bam_pileup1_t * p = NULL
+        cdef const bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
@@ -3109,7 +3109,7 @@ cdef class PileupColumn:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         cdef uint32_t x = 0
-        cdef bam_pileup1_t * p = NULL
+        cdef const bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])
@@ -3135,7 +3135,7 @@ cdef class PileupColumn:
             raise ValueError("PileupColumn accessed after iterator finished")
 
         cdef uint32_t x = 0
-        cdef bam_pileup1_t * p = NULL
+        cdef const bam_pileup1_t * p = NULL
         result = []
         for x from 0 <= x < self.n_pu:
             p = &(self.plp[0][x])

@@ -64,7 +64,7 @@ cdef class AlignedSegment:
 
 
 cdef class PileupColumn:
-    cdef bam_pileup1_t ** plp
+    cdef const bam_pileup1_t ** plp
     cdef int tid
     cdef int pos
     cdef int n_pu
@@ -89,7 +89,7 @@ cdef AlignedSegment makeAlignedSegment(
     AlignmentHeader header)
 
 cdef PileupColumn makePileupColumn(
-     bam_pileup1_t ** plp,
+    const bam_pileup1_t ** plp,
     int tid,
     int pos,
     int n_pu,
@@ -97,7 +97,7 @@ cdef PileupColumn makePileupColumn(
     char * reference_sequence,
     AlignmentHeader header)
 
-cdef PileupRead makePileupRead(bam_pileup1_t * src,
+cdef PileupRead makePileupRead(const bam_pileup1_t * src,
 		               AlignmentHeader header)
 
 cdef uint32_t get_alignment_length(bam1_t * src)

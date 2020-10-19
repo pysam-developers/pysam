@@ -2661,7 +2661,7 @@ cdef class IteratorColumn:
         # reset in order to avoid memory leak messages for iterators
         # that have not been fully consumed
         self._free_pileup_iter()
-        self.plp = <bam_pileup1_t*>NULL
+        self.plp = <const bam_pileup1_t*>NULL
 
         if self.iterdata.seq != NULL:
             free(self.iterdata.seq)

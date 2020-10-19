@@ -581,7 +581,7 @@ cdef class TabixFile:
     property contigs:
         '''list of chromosome names'''
         def __get__(self):
-            cdef char ** sequences
+            cdef const char ** sequences
             cdef int nsequences
             
             with nogil:

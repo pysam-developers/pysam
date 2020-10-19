@@ -59,7 +59,7 @@ cdef class AlignmentFile(HTSFile):
 
 
 cdef class PileupColumn:
-    cdef bam_pileup1_t ** plp
+    cdef const bam_pileup1_t ** plp
     cdef int tid
     cdef int pos
     cdef int n_pu
@@ -124,7 +124,7 @@ cdef class IteratorColumn:
     cdef int pos
     cdef int n_plp
     cdef uint32_t min_base_quality
-    cdef bam_pileup1_t * plp
+    cdef const bam_pileup1_t * plp
     cdef bam_mplp_t pileup_iter
     cdef __iterdata iterdata
     cdef AlignmentFile samfile
