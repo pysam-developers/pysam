@@ -36,13 +36,13 @@ with_md.sam.gz: ex2.bam ex1.fa
 #	samtools view $(NO_PG) -bo $@ -t ex1.fa.fai $<
 
 uncompressed.bam: ex2.sam
-	samtools view $(NO_PG) -buS $< > $@
+	samtools view $(NO_PG) -bu -o $@ $<
 
 %.bam: %.sam
-	samtools view $(NO_PG) -bS $< > $@
+	samtools view $(NO_PG) -bo $@ $<
 
 %.cram: %.sam
-	samtools view $(NO_PG) -bC -T ex1.fa $< > $@
+	samtools view $(NO_PG) -Co $@ -T ex1.fa $<
 
 %.cram.crai: %.cram
 	samtools index $<
@@ -70,7 +70,7 @@ ex1_csi.bam: ex1.bam
 	samtools index -c ex1_csi.bam
 
 empty.bam: ex2.sam
-	grep "^@" $< | samtools view $(NO_PG) -Sb - > $@
+	grep "^@" $< | samtools view $(NO_PG) -bo $@ -
 
 example_unmapped_reads_no_sq.bam: example_unmapped_reads_no_sq.sam
 	touch tmp.list
