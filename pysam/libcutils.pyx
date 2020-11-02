@@ -179,7 +179,7 @@ cpdef parse_region(contig=None,
     `end`. `start` and `end` denote 0-based, half-open intervals.
     
     :term:`reference` and `end` are also accepted for backward
-    compatiblity as synonyms for :term:`contig` and `stop`,
+    compatibility as synonyms for :term:`contig` and `stop`,
     respectively.
 
     Alternatively, a samtools :term:`region` string can be supplied.

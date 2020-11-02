@@ -784,7 +784,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
 
     # Check if MD tag is valid by matching CIGAR length to MD tag defined length
     # Insertions would be in addition to what is described by MD, so we calculate
-    # the number of insertions seperately.
+    # the number of insertions separately.
     cdef int insertions = 0
 
     while s[s_idx] != 0:
@@ -1570,7 +1570,7 @@ cdef class AlignedSegment:
         def __set__(self, val):
             pysam_update_flag(self._delegate, val, BAM_FUNMAP)
             # setting the unmapped flag requires recalculation of
-            # bin as alignment length is now implicitely 1
+            # bin as alignment length is now implicitly 1
             update_bin(self._delegate)
 
     property mate_is_unmapped:
@@ -2242,7 +2242,7 @@ cdef class AlignedSegment:
         *value*.
 
         An existing value of the same *tag* will be overwritten unless
-        *replace* is set to False. This is usually not recommened as a
+        *replace* is set to False. This is usually not recommended as a
         tag may only appear once in the optional alignment section.
 
         If *value* is None, the tag will be deleted.
@@ -2468,7 +2468,7 @@ cdef class AlignedSegment:
             return value
 
     def get_tags(self, with_value_type=False):
-        """the fields in the optional aligment section.
+        """the fields in the optional alignment section.
 
         Returns a list of all fields in the optional
         alignment section. Values are converted to appropriate python

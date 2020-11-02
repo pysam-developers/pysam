@@ -100,7 +100,7 @@ IndexStats = collections.namedtuple("IndexStats",
 ########################################################
 ## global variables
 # maximum genomic coordinace
-# for some reason, using 'int' causes overlflow
+# for some reason, using 'int' causes overflow
 cdef int MAX_POS = (1 << 31) - 1
 
 # valid types for SAM headers
@@ -1029,7 +1029,7 @@ cdef class AlignmentFile(HTSFile):
 
         See :meth:`~pysam.HTSFile.parse_region` for more information
         on how genomic regions can be specified. :term:`reference` and
-        `end` are also accepted for backward compatiblity as synonyms
+        `end` are also accepted for backward compatibility as synonyms
         for :term:`contig` and `stop`, respectively.
 
         Without a `contig` or `region` all mapped reads in the file
@@ -1212,7 +1212,7 @@ cdef class AlignmentFile(HTSFile):
         """perform a :term:`pileup` within a :term:`region`. The region is
         specified by :term:`contig`, `start` and `stop` (using
         0-based indexing).  :term:`reference` and `end` are also accepted for
-        backward compatiblity as synonyms for :term:`contig` and `stop`,
+        backward compatibility as synonyms for :term:`contig` and `stop`,
         respectively.  Alternatively, a samtools 'region' string
         can be supplied.
 
@@ -1239,7 +1239,7 @@ cdef class AlignmentFile(HTSFile):
 
            By default, the samtools pileup engine outputs all reads
            overlapping a region. If truncate is True and a region is
-           given, only columns in the exact region specificied are
+           given, only columns in the exact region specified are
            returned.
 
         max_depth : int
@@ -1354,7 +1354,7 @@ cdef class AlignmentFile(HTSFile):
 
         The region is specified by :term:`contig`, `start` and `stop`.
         :term:`reference` and `end` are also accepted for backward
-        compatiblity as synonyms for :term:`contig` and `stop`,
+        compatibility as synonyms for :term:`contig` and `stop`,
         respectively.  Alternatively, a :term:`samtools` :term:`region`
         string can be supplied.
 
@@ -1458,7 +1458,7 @@ cdef class AlignmentFile(HTSFile):
 
         The region is specified by :term:`contig`, `start` and `stop`.
         :term:`reference` and `end` are also accepted for backward
-        compatiblity as synonyms for :term:`contig` and `stop`,
+        compatibility as synonyms for :term:`contig` and `stop`,
         respectively.  Alternatively, a :term:`samtools` :term:`region`
         string can be supplied.  The coverage is computed per-base [ACGT].
 
@@ -2434,7 +2434,7 @@ cdef class IteratorColumn:
 
     For reasons of efficiency, the iterator points to the current
     pileup buffer. The pileup buffer is updated at every iteration.
-    This might cause some unexpected behavious. For example,
+    This might cause some unexpected behaviour. For example,
     consider the conversion to a list::
 
        f = AlignmentFile("file.bam", "rb")

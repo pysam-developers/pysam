@@ -184,7 +184,7 @@ cdef inline bcf_str_cache_get_charptr(const char* s):
 ########################################################################
 
 cdef int comb(int n, int k) except -1:
-    """Return binomial coeffient: n choose k
+    """Return binomial coefficient: n choose k
 
     >>> comb(5, 1)
     5
@@ -3159,7 +3159,7 @@ cdef class VariantRecord(object):
         # causes a memory leak https://github.com/pysam-developers/pysam/issues/773
         # return bcf_str_cache_get_charptr(r.d.id) if r.d.id != b'.' else None
         if (r.d.m_id == 0):
-            raise ValueError('Error extracing ID')
+            raise ValueError('Error extracting ID')
         return charptr_to_str(r.d.id) if r.d.id != b'.' else None
 
     @id.setter
@@ -3773,7 +3773,7 @@ cdef class BaseIterator(object):
     pass
 
 
-# Interal function to clean up after iteration stop or failure.
+# Internal function to clean up after iteration stop or failure.
 # This would be a nested function if it weren't a cdef function.
 cdef void _stop_BCFIterator(BCFIterator self, bcf1_t *record):
     bcf_destroy1(record)
@@ -3804,7 +3804,7 @@ cdef class BCFIterator(BaseIterator):
         try:
             rid = index.refmap[contig]
         except KeyError:
-            # A query for a non-existant contig yields an empty iterator, does not raise an error
+            # A query for a non-existent contig yields an empty iterator, does not raise an error
             self.iter = NULL
             return
 
@@ -3892,7 +3892,7 @@ cdef class TabixIterator(BaseIterator):
         try:
             rid = index.refmap[contig]
         except KeyError:
-            # A query for a non-existant contig yields an empty iterator, does not raise an error
+            # A query for a non-existent contig yields an empty iterator, does not raise an error
             self.iter = NULL
             return
 

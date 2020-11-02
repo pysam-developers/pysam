@@ -275,7 +275,7 @@ cdef extern from "htslib/bgzf.h" nogil:
     int SEEK_SET
 
     #  Return a virtual file pointer to the current location in the file.
-    #  No interpetation of the value should be made, other than a subsequent
+    #  No interpretation of the value should be made, other than a subsequent
     #  call to bgzf_seek can be used to position the file at the same point.
     #  Return value is non-negative on success.
     int64_t bgzf_tell(BGZF *fp)
@@ -326,7 +326,7 @@ cdef extern from "htslib/bgzf.h" nogil:
     #  Read one line from a BGZF file. It is faster than bgzf_getc()
     #
     #  @param fp     BGZF file handler
-    #  @param delim  delimitor
+    #  @param delim  delimiter
     #  @param str    string to write to; must be initialized
     #  @return       length of the string; 0 on end-of-file; negative on error
     int bgzf_getline(BGZF *fp, int delim, kstring_t *str)
@@ -796,7 +796,7 @@ cdef extern from "htslib/hts.h" nogil:
 
     ctypedef struct hts_md5_context
 
-    # /*! @abstract   Intialises an MD5 context.
+    # /*! @abstract   Initialises an MD5 context.
     #  *  @discussion
     #  *    The expected use is to allocate an hts_md5_context using
     #  *    hts_md5_init().  This pointer is then passed into one or more calls
@@ -1418,7 +1418,7 @@ cdef extern from "htslib/vcf.h" nogil:
 
     # === Dictionary ===
     #
-    # The header keeps three dictonaries. The first keeps IDs in the
+    # The header keeps three dictionaries. The first keeps IDs in the
     # "FILTER/INFO/FORMAT" lines, the second keeps the sequence names and lengths
     # in the "contig" lines and the last keeps the sample names. bcf_hdr_t::dict[]
     # is the actual hash table, which is opaque to the end users. In the hash
@@ -2112,8 +2112,7 @@ cdef extern from "htslib/vcfutils.h" nogil:
     # be determined.
     #
     # The value of @which determines if existing INFO/AC,AN can be
-    # used (BCF_UN_INFO) and and if indv fields can be splitted
-    # (BCF_UN_FMT).
+    # used (BCF_UN_INFO) and and if indv fields can be split (BCF_UN_FMT).
     int bcf_calc_ac(const bcf_hdr_t *header, bcf1_t *line, int *ac, int which)
 
     # bcf_gt_type() - determines type of the genotype
@@ -2261,7 +2260,7 @@ cdef extern from "htslib/cram.h" nogil:
     # the container, meaning multiple compression headers to manipulate.
     # Changing RG may change the size of the compression header and
     # therefore the length field in the container.  Hence we rewrite all
-    # blocks just incase and also emit the adjusted container.
+    # blocks just in case and also emit the adjusted container.
     #
     # The current implementation can only cope with renumbering a single
     # RG (and only then if it is using HUFFMAN or BETA codecs).  In
@@ -2511,7 +2510,7 @@ cdef extern from "htslib/cram.h" nogil:
     #         2 if the file is a stream and thus unseekable
     #         1 if the file contains an EOF block
     #         0 if the file does not contain an EOF block
-    #        -1 if an error occured whilst reading the file or we could not seek back to where we were
+    #        -1 if an error occurred whilst reading the file or we could not seek back to where we were
     #
     #
     int cram_check_EOF(cram_fd *fd)
