@@ -1779,7 +1779,8 @@ cdef class AlignmentFile(HTSFile):
 
     property nocoordinate:
         """int with total number of reads without coordinates according to the
-        statistics recorded in the index. This is a read-only attribute.
+        statistics recorded in the index, i.e., the statistic printed for "*"
+        by the ``samtools idxstats`` command. This is a read-only attribute.
         """
         def __get__(self):
             self.check_index()
@@ -1790,7 +1791,8 @@ cdef class AlignmentFile(HTSFile):
 
     def get_index_statistics(self):
         """return statistics about mapped/unmapped reads per chromosome as
-        they are stored in the index.
+        they are stored in the index, similarly to the statistics printed
+        by the ``samtools idxstats`` command.
 
         Returns:
             list :
