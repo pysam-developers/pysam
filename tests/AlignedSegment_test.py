@@ -525,13 +525,13 @@ class TestAlignedSegment(ReadTest):
     def test_query_length_is_limited(self):
         a = self.build_read()
         a.query_name = "A" * 1
-        a.query_name = "A" * 251
+        a.query_name = "A" * 254
         self.assertRaises(
             ValueError,
             setattr,
             a,
             "query_name",
-            "A" * 252)
+            "A" * 255)
 
     def test_header_accessible(self):
         a = self.build_read()
