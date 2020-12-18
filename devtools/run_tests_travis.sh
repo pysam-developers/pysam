@@ -60,7 +60,7 @@ echo "============ installing via setup.py from repository ============"
 echo
 python setup.py install || exit
 
-# create auxilliary data
+# create auxiliary data
 echo
 echo 'building test data'
 echo

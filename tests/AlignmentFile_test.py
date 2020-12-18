@@ -723,7 +723,7 @@ class TestIO(unittest.TestCase):
         read = load_bam()
         self.assertEqual(read.reference_name, "chr1")
         
-    # TOOD
+    # TODO
     # def testReadingFromSamFileWithoutHeader(self):
     #     '''read from samfile without header.
     #     '''

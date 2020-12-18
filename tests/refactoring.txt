@@ -57,7 +57,7 @@ overlap() -> getOverlap()
 Backwards incompatible changes:
 ================================
 
-1. Empty cigarstring now returns None (intstead of '')
+1. Empty cigarstring now returns None (instead of '')
 
 2. Empty cigar now returns None (instead of [])
 

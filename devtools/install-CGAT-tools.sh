@@ -80,7 +80,7 @@ else
 fi # if-OS
 } # install_os_packages
 
-# funcion to install Python dependencies
+# function to install Python dependencies
 install_python_deps() {
 
 if [ "$OS" == "ubuntu" -o "$OS" == "sl" ] ; then
@@ -185,7 +185,7 @@ python setup.py install
 # problems in the compilation test.
 cd tests
 
-# create auxilliary data
+# create auxiliary data
 echo
 echo 'building test data'
 echo 

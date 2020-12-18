@@ -12,7 +12,7 @@ directories:
    Code specific to pysam
 
 :file:`doc`
-   The documentation. To build the latest documention type::
+   The documentation. To build the latest documentation type::
 
        make -C doc html
 

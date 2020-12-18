@@ -93,7 +93,7 @@ class SamtoolsTest(unittest.TestCase):
         # Samtools-htslib-API: bam_get_library() not yet implemented
         # causes downstream problems
         # TODO: The following cause subsequent commands to fail
-        # unknow option
+        # unknown option
         # "rmdup -s ex1.bam %(out)s_ex1.rmdup.bam",
         # "merge -f %(out)s_ex1.merge.bam ex1.bam ex1.bam",
         "reheader ex2.sam ex1.bam > %(out)s_ex1.reheader.bam",
@@ -242,7 +242,7 @@ class SamtoolsTest(unittest.TestCase):
     def testStatements(self):
         for statement in self.statements:
             command = self.get_command(statement, map_to_internal=False)
-            # bam2fq differs between version 1.5 and 1.6 - reenable if
+            # bam2fq differs between version 1.5 and 1.6 - re-enable if
             # bioconda samtools will be available.
             if command in ("bedcov", "stats", "dict", "bam2fq"):
                 continue
@@ -401,7 +401,7 @@ if sys.platform != "darwin":
 #         # "filter -s A ex1.vcf.gz  > %(out)s_ex1.filter",
 #         # exit
 #         # "gtcheck -s A ex1.vcf.gz  > %(out)s_ex1.gtcheck",
-#         # segfauld, used to work wit bcftools 1.3
+#         # segfault, used to work with bcftools 1.3
 #         # "roh -s A ex1.vcf.gz > %(out)s_ex1.roh",
 #         "stats ex1.vcf.gz > %(out)s_ex1.stats",
 #     ]

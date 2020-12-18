@@ -46,7 +46,7 @@ features. If these fail, for example due to missing library
 dependencies (`libcurl`, `libcrypto`), it will fall back to
 conservative defaults.
 
-Options can be passed to the configure script explicitely by
+Options can be passed to the configure script explicitly by
 setting the environment variable `HTSLIB_CONFIGURE_OPTIONS`.
 For example::
 

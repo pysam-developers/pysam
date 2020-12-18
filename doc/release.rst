@@ -252,7 +252,7 @@ Release 0.11.2
 ==============
 
 This release wraps htslib/samtools/bcfools versions 1.4.1 in response
-to a security fix in these libraries. Additionaly the following
+to a security fix in these libraries. Additionally the following
 issues have been fixed:
 
 * [#452] add GFF3 support for tabix parsers
@@ -373,7 +373,7 @@ Overview
 --------
 
 The 0.9.0 release upgrades htslib to htslib 1.3 and numerous other
-enchancements and bugfixes. See below for a detailed list.
+enhancements and bugfixes. See below for a detailed list.
 
 `Htslib 1.3 <https://github.com/samtools/htslib/releases/tag/1.3>`_
 comes with additional capabilities for remote file access which depend
@@ -416,7 +416,7 @@ Detailed release notes
      and code bloat.
    * run configure for the builtin htslib library in order to detect
      optional libraries such as libcurl. Configure behaviour can be
-     controlled by setting the environmet variable
+     controlled by setting the environment variable
      HTSLIB_CONFIGURE_OPTIONS.
 * get_reference_sequence() now returns the reference sequence and not
   something looking like it. This bug had effects on
@@ -619,7 +619,7 @@ Other changes:
 
 Backwards incompatible changes
 
-* Empty cigarstring now returns None (intstead of '')
+* Empty cigarstring now returns None (instead of '')
 * Empty cigar now returns None (instead of [])
 * When using the extension classes in cython modules, AlignedRead
   needs to be substituted with AlignedSegment. 
