@@ -40,7 +40,6 @@ __all__ = \
     libcbcf.__all__ +\
     libcbgzf.__all__ +\
     libcfaidx.__all__ +\
-    libctabixproxies.__all__ +\
     libcalignmentfile.__all__ +\
     libcalignedsegment.__all__ +\
     libcsamfile.__all__ +\
@@ -87,7 +86,7 @@ def get_libraries():
     # Note that this list does not include libcsamtools.so as there are
     # numerous name conflicts with libchtslib.so.
     dirname = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-    pysam_libs = ['libctabixproxies',
+    pysam_libs = [
                   'libcfaidx',
                   'libcsamfile',
                   'libcvcf',
