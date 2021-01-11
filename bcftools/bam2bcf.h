@@ -87,7 +87,7 @@ typedef struct __bcf_callaux_t {
 
 // per-sample values
 typedef struct {
-    uint32_t ori_depth;
+    uint32_t ori_depth;     // ori_depth = anno[0..3] but before --min-BQ is applied
     unsigned int mq0;
     int32_t *ADF, *ADR, SCR;
     float qsum[4];

@@ -27,6 +27,7 @@ THE SOFTWARE.  */
 #include <stdio.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <assert.h>
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
@@ -42,6 +43,7 @@ THE SOFTWARE.  */
 #include "bcftools.h"
 #include "variantkey.h"
 #include "convert.h"
+#include "filter.h"
 
 #define T_CHROM   1
 #define T_POS     2
@@ -75,6 +77,7 @@ THE SOFTWARE.  */
 #define T_RSX          30   // RSID HEX
 #define T_VKX          31   // VARIANTKEY HEX
 #define T_PBINOM       32
+#define T_NPASS        33
 
 typedef struct _fmt_t
 {
@@ -784,8 +787,8 @@ static void process_gp_to_prob3(convert_t *convert, bcf1_t *line, fmt_t *fmt, in
         int j;
         for (j=0; j<n; j++)
         {
-            if ( ptr[j]==bcf_int32_vector_end ) break;
-            if ( ptr[j]==bcf_int32_missing ) { ptr[j]=0; continue; }
+            if ( bcf_float_is_vector_end(ptr[j]) ) break;
+            if ( bcf_float_is_missing(ptr[j]) ) { ptr[j]=0; continue; }
             if ( ptr[j]<0 || ptr[j]>1 ) error("[%s:%"PRId64":%f] GP value outside range [0,1]; bcftools convert expects the VCF4.3+ spec for the GP field encoding genotype posterior probabilities", bcf_seqname(convert->header,line),(int64_t) line->pos+1,ptr[j]);
             sum+=ptr[j];
         }
@@ -1124,6 +1127,21 @@ static void process_variantkey_hex(convert_t *convert, bcf1_t *line, fmt_t *fmt,
     ksprintf(str, "%016" PRIx64 "", vk);
 }
 
+static void process_npass(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
+{
+    int i, nsmpl = 0;
+    filter_t *flt = (filter_t*) fmt->usr;
+    const uint8_t *smpl;
+    filter_test(flt,line,&smpl);
+    for (i=0; i<convert->nsamples; i++)
+        if ( smpl[i] ) nsmpl++;
+    kputd(nsmpl, str);
+}
+static void destroy_npass(void *usr)
+{
+    filter_destroy((filter_t*)usr);
+}
+
 static void process_pbinom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
     int i;
@@ -1227,10 +1245,16 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
             else if ( !strcmp("VKX",key) ) { fmt->type = T_VKX; }
             else if ( id>=0 && bcf_hdr_idinfo_exists(convert->header,BCF_HL_INFO,id) ) { fmt->type = T_INFO; }
         }
-        if ( fmt->type==T_PBINOM )
+        else if ( fmt->type==T_PBINOM )
         {
             fmt->id = bcf_hdr_id2int(convert->header, BCF_DT_ID, fmt->key);
             if ( !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT, fmt->id)  ) error("No such FORMAT tag defined in the header: %s\n", fmt->key);
+        }
+        else if ( fmt->type==T_NPASS )
+        {
+            filter_t *flt = filter_init(convert->header,key);
+            convert->max_unpack |= filter_max_unpack(flt);
+            fmt->usr = (void*) flt;
         }
     }
 
@@ -1268,6 +1292,7 @@ static fmt_t *register_tag(convert_t *convert, int type, char *key, int is_gtf)
         case T_RSX: fmt->handler = &process_rsid_hex; break;
         case T_VKX: fmt->handler = &process_variantkey_hex; break;
         case T_PBINOM: fmt->handler = &process_pbinom; convert->max_unpack |= BCF_UN_FMT; break;
+        case T_NPASS: fmt->handler = &process_npass; fmt->destroy = &destroy_npass; break;
         default: error("TODO: handler for type %d\n", fmt->type);
     }
     if ( key && fmt->type==T_INFO )
@@ -1346,6 +1371,8 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
             register_tag(convert, T_PBINOM, str.s, is_gtf);
             q++;
         }
+        else if ( !strcmp(str.s,"N_PASS") )
+            error("N_PASS() must be placed outside the square brackets\n");
         else
         {
             fmt_t *fmt = register_tag(convert, T_FORMAT, str.s, is_gtf);
@@ -1400,6 +1427,22 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
         }
         else if ( !strcmp(str.s, "FORMAT") )
              register_tag(convert, T_FORMAT, NULL, 0);
+        else if ( !strcmp(str.s,"N_PASS") )
+        {
+            if ( *q!='(' ) error("Could not parse the expression: %s\n", convert->format_str);
+            p = ++q;
+            str.l = 0;
+            int nopen = 1;
+            while ( *q && nopen )
+            {
+                if ( *q=='(' ) nopen++;
+                else if ( *q==')' ) nopen--;
+                q++;
+            }
+            if ( q-p==0 || nopen ) error("Could not parse format string: %s\n", convert->format_str);
+            kputsn(p, q-p-1, &str);
+            register_tag(convert, T_NPASS, str.s, is_gtf);
+        }
         else
         {
             fmt_t *fmt = register_tag(convert, T_INFO, str.s, is_gtf);

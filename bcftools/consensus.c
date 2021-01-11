@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2014-2017 Genome Research Ltd.
+   Copyright (c) 2014-2020 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <assert.h>
 #include <errno.h>
 #include <getopt.h>
 #include <unistd.h>
@@ -52,6 +53,9 @@
 #define PICK_SHORT 8
 #define PICK_IUPAC 16
 
+#define TO_UPPER 0
+#define TO_LOWER 1
+
 typedef struct
 {
     int num;                // number of ungapped blocks in this chain
@@ -64,16 +68,16 @@ typedef struct
 }
 chain_t;
 
-
 typedef struct
 {
     kstring_t fa_buf;   // buffered reference sequence
     int fa_ori_pos;     // start position of the fa_buffer (wrt original sequence)
     int fa_frz_pos;     // protected position to avoid conflicting variants (last pos for SNPs/ins)
     int fa_mod_off;     // position difference of fa_frz_pos in the ori and modified sequence (ins positive)
+    int fa_frz_mod;     // the fa_buf offset of the protected fa_frz_pos position, includes the modified sequence
     int fa_end_pos;     // region's end position in the original sequence
     int fa_length;      // region's length in the original sequence (in case end_pos not provided in the FASTA header)
-    int fa_case;        // output upper case or lower case?
+    int fa_case;        // output upper case or lower case: TO_UPPER|TO_LOWER
     int fa_src_pos;     // last genomic coordinate read from the input fasta (0-based)
     char prev_base;     // this is only to validate the REF allele in the VCF - the modified fa_buf cannot be used for inserts following deletions, see 600#issuecomment-383186778
     int prev_base_pos;  // the position of prev_base
@@ -101,7 +105,7 @@ typedef struct
     FILE *fp_chain;
     char **argv;
     int argc, output_iupac, haplotype, allele, isample, napplied;
-    char *fname, *ref_fname, *sample, *output_fname, *mask_fname, *chain_fname, missing_allele;
+    char *fname, *ref_fname, *sample, *output_fname, *mask_fname, *chain_fname, missing_allele, absent_allele;
 }
 args_t;
 
@@ -182,7 +186,7 @@ static void push_chain_gap(chain_t *chain, int ref_start, int ref_len, int alt_s
 //     fprintf(stderr, "push_chain_gap(*chain, ref_start=%d, ref_len=%d, alt_start=%d, alt_len=%d)\n", ref_start, ref_len, alt_start, alt_len);
     int num = chain->num;
 
-    if (ref_start <= chain->ref_last_block_ori) {
+    if (num && ref_start <= chain->ref_last_block_ori) {
         // In case this variant is back-to-back with the previous one
         chain->ref_last_block_ori = ref_start + ref_len;
         chain->alt_last_block_ori = alt_start + alt_len;
@@ -245,6 +249,7 @@ static void init_data(args_t *args)
     if ( args->isample<0 ) fprintf(stderr,"Note: the --sample option not given, applying all records regardless of the genotype\n");
     if ( args->filter_str )
         args->filter = filter_init(args->hdr, args->filter_str);
+    args->rid = -1;
 }
 
 static void destroy_data(args_t *args)
@@ -297,6 +302,7 @@ static void init_region(args_t *args, char *line)
     args->fa_src_pos = from;
     args->fa_mod_off = 0;
     args->fa_frz_pos = -1;
+    args->fa_frz_mod = -1;
     args->fa_case    = -1;
     args->vcf_rbuf.n = 0;
     bcf_sr_seek(args->files,line,args->fa_ori_pos);
@@ -345,7 +351,6 @@ static void unread_vcf_line(args_t *args, bcf1_t **rec_ptr)
 static void flush_fa_buffer(args_t *args, int len)
 {
     if ( !args->fa_buf.l ) return;
-
     int nwr = 0;
     while ( nwr + 60 <= args->fa_buf.l )
     {
@@ -355,6 +360,8 @@ static void flush_fa_buffer(args_t *args, int len)
     }
     if ( nwr )
         args->fa_ori_pos += nwr;
+
+    args->fa_frz_mod -= nwr;
 
     if ( len )
     {
@@ -375,11 +382,28 @@ static void flush_fa_buffer(args_t *args, int len)
     args->fa_mod_off = 0;
     args->fa_buf.l = 0;
 }
+static void apply_absent(args_t *args, hts_pos_t pos)
+{
+    if ( !args->fa_buf.l || pos <= args->fa_frz_pos + 1 || pos <= args->fa_ori_pos ) return;
+
+    int ie = pos && pos - args->fa_ori_pos + args->fa_mod_off < args->fa_buf.l ? pos - args->fa_ori_pos + args->fa_mod_off : args->fa_buf.l;
+    int ib = args->fa_frz_mod < 0 ? 0 : args->fa_frz_mod;
+    int i;
+    for (i=ib; i<ie; i++)
+        args->fa_buf.s[i] = args->absent_allele;
+}
+static void freeze_ref(args_t *args, bcf1_t *rec)
+{
+    if ( args->fa_frz_pos >= rec->pos + rec->rlen - 1 ) return;
+    args->fa_frz_pos = rec->pos + rec->rlen - 1;
+    args->fa_frz_mod = rec->pos - args->fa_ori_pos + args->fa_mod_off + rec->rlen;
+}
 static void apply_variant(args_t *args, bcf1_t *rec)
 {
     static int warned_haplotype = 0;
 
-    if ( rec->n_allele==1 && !args->missing_allele ) return;
+    if ( args->absent_allele ) apply_absent(args, rec->pos);
+    if ( rec->n_allele==1 && !args->missing_allele && !args->absent_allele ) { return; }
 
     if ( args->mask )
     {
@@ -520,17 +544,27 @@ static void apply_variant(args_t *args, bcf1_t *rec)
                 }
             }
         }
-        if ( !ialt ) return;  // ref allele
+        if ( !ialt )
+        {
+            // ref allele
+            if ( args->absent_allele ) freeze_ref(args,rec);
+            return;
+        }
         if ( rec->n_allele <= ialt ) error("Broken VCF, too few alts at %s:%"PRId64"\n", bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
     }
-    else if ( args->output_iupac && !rec->d.allele[0][1] && !rec->d.allele[1][1] )
+    else if ( args->output_iupac && rec->n_allele>1 && !rec->d.allele[0][1] && !rec->d.allele[1][1] )
     {
         char ial = rec->d.allele[0][0];
         char jal = rec->d.allele[1][0];
         rec->d.allele[1][0] = gt2iupac(ial,jal);
     }
 
-    if ( rec->n_allele==1 && ialt!=-1 ) return; // non-missing reference
+    if ( rec->n_allele==1 && ialt!=-1 )
+    {
+        // non-missing reference
+        if ( args->absent_allele ) freeze_ref(args,rec);
+        return;
+    }
     if ( ialt==-1 )
     {
         char alleles[4];
@@ -542,15 +576,27 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         ialt = 1;
     }
 
+    // For some variant types POS+REF refer to the base *before* the event; in such case set trim_beg
+    int trim_beg = 0;
+    int var_type = bcf_get_variant_type(rec,ialt);
+    int var_len  = rec->d.var[ialt].n;
+    if ( var_type & VCF_INDEL ) trim_beg = 1;
+    else if ( (var_type & VCF_OTHER) && !strcasecmp(rec->d.allele[ialt],"<DEL>") )
+    {
+        trim_beg = 1;
+        var_len  = 1 - rec->rlen;
+    }
+    else if ( (var_type & VCF_OTHER) && !strncasecmp(rec->d.allele[ialt],"<INS",4) ) trim_beg = 1;
+
     // Overlapping variant?
     if ( rec->pos <= args->fa_frz_pos )
     {
         // Can be still OK iff this is an insertion (and which does not follow another insertion, see #888).
         // This still may not be enough for more complicated cases with multiple duplicate positions
         // and other types in between. In such case let the user normalize the VCF and remove duplicates.
+
         int overlap = 0;
-        if ( rec->pos < args->fa_frz_pos || !(bcf_get_variant_type(rec,ialt) & VCF_INDEL) ) overlap = 1;
-        else if ( rec->d.var[ialt].n <= 0 || args->prev_is_insert ) overlap = 1;
+        if ( rec->pos < args->fa_frz_pos || !trim_beg || var_len==0 || args->prev_is_insert ) overlap = 1;
 
         if ( overlap )
         {
@@ -583,12 +629,25 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     // sanity check the reference base
     if ( rec->d.allele[ialt][0]=='<' )
     {
-        if ( strcasecmp(rec->d.allele[ialt], "<DEL>") )
-            error("Symbolic alleles other than <DEL> are currently not supported: %s at %s:%"PRId64"\n",rec->d.allele[ialt],bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
+        // TODO: symbolic deletions probably need more work above with PICK_SHORT|PICK_LONG
+
+        if ( strcasecmp(rec->d.allele[ialt],"<DEL>") && strcasecmp(rec->d.allele[ialt],"<*>") && strcasecmp(rec->d.allele[ialt],"<NON_REF>") )
+            error("Symbolic alleles other than <DEL>, <*> or <NON_REF> are currently not supported, e.g. %s at %s:%"PRId64".\n"
+                  "Please use filtering expressions to exclude such sites, for example by running with: -e 'ALT~\"<.*>\"'\n",
+                rec->d.allele[ialt],bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
         assert( rec->d.allele[0][1]==0 );           // todo: for now expecting strlen(REF) = 1
-        len_diff = 1-rec->rlen;
-        rec->d.allele[ialt] = rec->d.allele[0];     // according to VCF spec, REF must precede the event
-        alen = strlen(rec->d.allele[ialt]);
+        if ( !strcasecmp(rec->d.allele[ialt],"<DEL>") )
+        {
+            len_diff = 1-rec->rlen;
+            rec->d.allele[ialt] = rec->d.allele[0];     // according to VCF spec, REF must precede the event
+            alen = strlen(rec->d.allele[ialt]);
+        }
+        else
+        {
+            // <*>  or <NON_REF> .. gVCF, evidence for the reference allele throughout the whole block
+            freeze_ref(args,rec);
+            return;
+        }
     }
     else if ( strncasecmp(rec->d.allele[0],args->fa_buf.s+idx,rec->rlen) )
     {
@@ -630,7 +689,8 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         len_diff = alen - rec->rlen;
     }
 
-    if ( args->fa_case )
+    args->fa_case = toupper(args->fa_buf.s[idx])==args->fa_buf.s[idx] ? TO_UPPER : TO_LOWER;
+    if ( args->fa_case==TO_UPPER )
         for (i=0; i<alen; i++) rec->d.allele[ialt][i] = toupper(rec->d.allele[ialt][i]);
     else
         for (i=0; i<alen; i++) rec->d.allele[ialt][i] = tolower(rec->d.allele[ialt][i]);
@@ -638,15 +698,18 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     if ( len_diff <= 0 )
     {
         // deletion or same size event
-        for (i=0; i<alen; i++)
+
+        assert( args->fa_buf.l >= idx+rec->rlen );
+        args->prev_base = args->fa_buf.s[idx+rec->rlen-1];
+        args->prev_base_pos = rec->pos + rec->rlen - 1;
+        args->prev_is_insert = 0;
+        args->fa_frz_mod = idx + alen;
+
+        for (i=trim_beg; i<alen; i++)
             args->fa_buf.s[idx+i] = rec->d.allele[ialt][i];
 
         if ( len_diff )
             memmove(args->fa_buf.s+idx+alen,args->fa_buf.s+idx+rec->rlen,args->fa_buf.l-idx-rec->rlen);
-
-        args->prev_base = rec->d.allele[0][rec->rlen - 1];
-        args->prev_base_pos = rec->pos + rec->rlen - 1;
-        args->prev_is_insert = 0;
     }
     else
     {
@@ -666,6 +729,8 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         while ( ibeg<alen && rec->d.allele[0][ibeg]==rec->d.allele[ialt][ibeg] && rec->pos + ibeg <= args->prev_base_pos  ) ibeg++;
         for (i=ibeg; i<alen; i++)
             args->fa_buf.s[idx+i] = rec->d.allele[ialt][i];
+
+        args->fa_frz_mod = idx + alen - ibeg + 1;
     }
     if (args->chain && len_diff != 0)
     {
@@ -720,13 +785,20 @@ static void consensus(args_t *args)
                 print_chain(args);
                 destroy_chain(args);
             }
-            // apply all cached variants
-            while ( args->vcf_rbuf.n )
+            // apply all cached variants and variants that might have been missed because of short fasta (see test/consensus.9.*)
+            bcf1_t **rec_ptr = NULL;
+            while ( args->rid>=0 && (rec_ptr = next_vcf_line(args)) )
             {
-                bcf1_t *rec = args->vcf_buf[args->vcf_rbuf.f];
+                bcf1_t *rec = *rec_ptr;
                 if ( rec->rid!=args->rid || ( args->fa_end_pos && rec->pos > args->fa_end_pos ) ) break;
-                int i = rbuf_shift(&args->vcf_rbuf);
-                apply_variant(args, args->vcf_buf[i]);
+                apply_variant(args, rec);
+            }
+            if ( args->absent_allele )
+            {
+                int pos = 0;
+                if ( args->vcf_rbuf.n && args->vcf_buf[args->vcf_rbuf.f]->rid==args->rid )
+                    pos = args->vcf_buf[args->vcf_rbuf.f]->pos;
+                apply_absent(args, pos);
             }
             flush_fa_buffer(args, 0);
             init_region(args, str.s+1);
@@ -771,7 +843,11 @@ static void consensus(args_t *args)
             }
             apply_variant(args, rec);
         }
-        if ( !rec_ptr ) flush_fa_buffer(args, 60);
+        if ( !rec_ptr )
+        {
+            if ( args->absent_allele ) apply_absent(args, args->fa_ori_pos - args->fa_mod_off + args->fa_buf.l);
+            flush_fa_buffer(args, 60);
+        }
     }
     bcf1_t **rec_ptr = NULL;
     while ( args->rid>=0 && (rec_ptr = next_vcf_line(args)) )
@@ -787,6 +863,7 @@ static void consensus(args_t *args)
         print_chain(args);
         destroy_chain(args);
     }
+    if ( args->absent_allele ) apply_absent(args, HTS_POS_MAX);
     flush_fa_buffer(args, 0);
     bgzf_close(fasta);
     free(str.s);
@@ -804,6 +881,7 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools consensus [OPTIONS] <file.vcf.gz>\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    -c, --chain <file>         write a chain file for liftover\n");
+    fprintf(stderr, "    -a, --absent <char>        replace positions absent from VCF with <char>\n");
     fprintf(stderr, "    -e, --exclude <expr>       exclude sites for which the expression is true (see man page for details)\n");
     fprintf(stderr, "    -f, --fasta-ref <file>     reference sequence in fasta format\n");
     fprintf(stderr, "    -H, --haplotype <which>    choose which allele to use from the FORMAT/GT field, note\n");
@@ -818,7 +896,7 @@ static void usage(args_t *args)
     fprintf(stderr, "    -i, --include <expr>       select sites for which the expression is true (see man page for details)\n");
     fprintf(stderr, "    -I, --iupac-codes          output variants in the form of IUPAC ambiguity codes\n");
     fprintf(stderr, "    -m, --mask <file>          replace regions with N\n");
-    fprintf(stderr, "    -M, --missing <char>       output <char> instead of skipping the missing genotypes\n");
+    fprintf(stderr, "    -M, --missing <char>       output <char> instead of skipping a missing genotype \"./.\"\n");
     fprintf(stderr, "    -o, --output <file>        write output to a file [standard output]\n");
     fprintf(stderr, "    -p, --prefix <string>      prefix to add to output sequence names\n");
     fprintf(stderr, "    -s, --sample <name>        apply variants of the given sample\n");
@@ -846,12 +924,13 @@ int main_consensus(int argc, char *argv[])
         {"fasta-ref",1,0,'f'},
         {"mask",1,0,'m'},
         {"missing",1,0,'M'},
+        {"absent",1,0,'a'},
         {"chain",1,0,'c'},
         {"prefix",required_argument,0,'p'},
         {0,0,0,0}
     };
     int c;
-    while ((c = getopt_long(argc, argv, "h?s:1Ii:e:H:f:o:m:c:M:p:",loptions,NULL)) >= 0) 
+    while ((c = getopt_long(argc, argv, "h?s:1Ii:e:H:f:o:m:c:M:p:a:",loptions,NULL)) >= 0)
     {
         switch (c) 
         {
@@ -863,6 +942,10 @@ int main_consensus(int argc, char *argv[])
             case 'i': args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
             case 'f': args->ref_fname = optarg; break;
             case 'm': args->mask_fname = optarg; break;
+            case 'a':
+                args->absent_allele = optarg[0];
+                if ( optarg[1]!=0 ) error("Expected single character with -a, got \"%s\"\n", optarg);
+                break;
             case 'M': 
                 args->missing_allele = optarg[0]; 
                 if ( optarg[1]!=0 ) error("Expected single character with -M, got \"%s\"\n", optarg);

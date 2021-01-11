@@ -33,6 +33,7 @@ THE SOFTWARE.  */
 #include <stdarg.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <assert.h>
 #include <math.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
@@ -1484,10 +1485,10 @@ static void print_stats(args_t *args)
                 fprintf(bcftools_stdout, "# NRD and discordance is calculated as follows:\n");
                 fprintf(bcftools_stdout, "#   m .. number of matches\n");
                 fprintf(bcftools_stdout, "#   x .. number of mismatches\n");
-                fprintf(bcftools_stdout, "#   NRD = (xRR + xRA + xAA) / (xRR + xRA + xAA + mRA + mAA)\n");
-                fprintf(bcftools_stdout, "#   RR discordance = xRR / (xRR + mRR)\n");
-                fprintf(bcftools_stdout, "#   RA discordance = xRA / (xRA + mRA)\n");
-                fprintf(bcftools_stdout, "#   AA discordance = xAA / (xAA + mAA)\n");
+                fprintf(bcftools_stdout, "#   NRD = 100 * (xRR + xRA + xAA) / (xRR + xRA + xAA + mRA + mAA)\n");
+                fprintf(bcftools_stdout, "#   RR discordance = 100 * xRR / (xRR + mRR)\n");
+                fprintf(bcftools_stdout, "#   RA discordance = 100 * xRA / (xRA + mRA)\n");
+                fprintf(bcftools_stdout, "#   AA discordance = 100 * xAA / (xAA + mAA)\n");
                 fprintf(bcftools_stdout, "# Non-Reference Discordance (NRD), SNPs\n# NRDs\t[2]id\t[3]NRD\t[4]Ref/Ref discordance\t[5]Ref/Alt discordance\t[6]Alt/Alt discordance\n");
             }
             else

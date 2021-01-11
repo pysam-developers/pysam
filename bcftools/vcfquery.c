@@ -1,6 +1,6 @@
 /*  vcfquery.c -- Extracts fields from VCF/BCF file.
 
-    Copyright (C) 2013-2017 Genome Research Ltd.
+    Copyright (C) 2013-2020 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -226,7 +226,7 @@ static void usage(void)
     fprintf(stderr, "    -H, --print-header                print header\n");
     fprintf(stderr, "    -i, --include <expr>              select sites for which the expression is true (see man page for details)\n");
     fprintf(stderr, "    -l, --list-samples                print the list of samples and exit\n");
-    fprintf(stderr, "    -o, --output-file <file>          output file name [stdout]\n");
+    fprintf(stderr, "    -o, --output <file>               output file name [stdout]\n");
     fprintf(stderr, "    -r, --regions <region>            restrict to comma-separated list of regions\n");
     fprintf(stderr, "    -R, --regions-file <file>         restrict to regions listed in a file\n");
     fprintf(stderr, "    -s, --samples <list>              list of samples to include\n");
@@ -257,6 +257,7 @@ int main_vcfquery(int argc, char *argv[])
         {"exclude",1,0,'e'},
         {"format",1,0,'f'},
         {"output-file",1,0,'o'},
+        {"output",1,0,'o'},
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
         {"targets",1,0,'t'},

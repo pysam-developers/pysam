@@ -2,7 +2,7 @@
 
 /*  vcfindex.c -- Index bgzip compressed VCF/BCF files for random access.
 
-    Copyright (C) 2014-2016 Genome Research Ltd.
+    Copyright (C) 2014-2020 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -49,7 +49,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -c, --csi                generate CSI-format index for VCF/BCF files [default]\n");
     fprintf(bcftools_stderr, "    -f, --force              overwrite index if it already exists\n");
     fprintf(bcftools_stderr, "    -m, --min-shift INT      set minimal interval size for CSI indices to 2^INT [14]\n");
-    fprintf(bcftools_stderr, "    -o, --output-file FILE   optional output index file name\n");
+    fprintf(bcftools_stderr, "    -o, --output FILE        optional output index file name\n");
     fprintf(bcftools_stderr, "    -t, --tbi                generate TBI-format index for VCF files\n");
     fprintf(bcftools_stderr, "        --threads INT        use multithreading with INT worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
@@ -139,6 +139,7 @@ int main_vcfindex(int argc, char *argv[])
         {"nrecords",no_argument,NULL,'n'},
         {"threads",required_argument,NULL,9},
         {"output-file",required_argument,NULL,'o'},
+        {"output",required_argument,NULL,'o'},
         {NULL, 0, NULL, 0}
     };
 

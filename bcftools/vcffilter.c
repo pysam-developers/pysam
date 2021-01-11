@@ -1,6 +1,6 @@
 /*  vcffilter.c -- Apply fixed-threshold filters.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2020 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -25,6 +25,7 @@ THE SOFTWARE.  */
 #include <stdio.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <assert.h>
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
@@ -60,7 +61,8 @@ typedef struct _args_t
     char *soft_filter;  // drop failed sites or annotate FILTER column?
     int annot_mode;     // add to existing FILTER annotation or replace? Otherwise reset FILTER to PASS or leave as it is?
     int flt_fail, flt_pass;     // BCF ids of fail and pass filters
-    int snp_gap, indel_gap, IndelGap_id, SnpGap_id;
+    int snp_gap, snp_gap_type, indel_gap, IndelGap_id, SnpGap_id;
+    char *snp_gap_str;
     int32_t ntmpi, *tmpi, ntmp_ac, *tmp_ac;
     rbuf_t rbuf;
     bcf1_t **rbuf_lines;
@@ -138,7 +140,7 @@ static void init_data(args_t *args)
         args->rbuf_lines = (bcf1_t**) calloc(args->rbuf.m, sizeof(bcf1_t*));
         if ( args->snp_gap )
         {
-            bcf_hdr_printf(args->hdr, "##FILTER=<ID=SnpGap,Description=\"SNP within %d bp of an indel\">", args->snp_gap);
+            bcf_hdr_printf(args->hdr, "##FILTER=<ID=SnpGap,Description=\"SNP within %d bp of %s\">", args->snp_gap,args->snp_gap_str);
             args->SnpGap_id = bcf_hdr_id2int(args->hdr, BCF_DT_ID, "SnpGap");
             assert( args->SnpGap_id>=0 );
         }
@@ -217,9 +219,9 @@ static void buffered_filters(args_t *args, bcf1_t *line)
      */
 
     // To avoid additional data structure, we abuse bcf1_t's var and var_type records.
-    const int SnpGap_set     = VCF_OTHER<<1;
-    const int IndelGap_set   = VCF_OTHER<<2;
-    const int IndelGap_flush = VCF_OTHER<<3;
+    const int SnpGap_set     = 1 << (8*sizeof(int)/2);
+    const int IndelGap_set   = 1 << (8*sizeof(int)/2-1);
+    const int IndelGap_flush = 1 << (8*sizeof(int)/2-2);
 
     int var_type = 0, i;
     if ( line )
@@ -245,15 +247,8 @@ static void buffered_filters(args_t *args, bcf1_t *line)
         // output REF=CAGAGAGAGA, ALT=CAGAGAGAGAGA where REF=C,ALT=CGA could be
         // used. This filter is therefore more strict and may remove some valid
         // SNPs.
-        int len = 1;
-        if ( var_type & VCF_INDEL )
-        {
-            for (i=1; i<line->n_allele; i++)
-                if ( len < 1-line->d.var[i].n ) len = 1-line->d.var[i].n;
-        }
-
         // Set the REF allele's length to max deletion length or to 1 if a SNP or an insertion.
-        line->d.var[0].n = len;
+        line->d.var[0].n = line->rlen;
     }
 
     int k_flush = 1;
@@ -328,13 +323,13 @@ static void buffered_filters(args_t *args, bcf1_t *line)
             int rec_to  = rec->pos + rec->d.var[0].n - 1;   // last position affected by the variant
             if ( rec_to + args->snp_gap < last_from )
                 j_flush++;
-            else if ( (var_type & VCF_INDEL) && (rec->d.var_type & VCF_SNP) && !(rec->d.var_type & SnpGap_set) )
+            else if ( (var_type & args->snp_gap_type) && (rec->d.var_type & VCF_SNP) && !(rec->d.var_type & SnpGap_set) )
             {
                 // this SNP has not been SnpGap-filtered yet
                 rec->d.var_type |= SnpGap_set;
                 bcf_add_filter(args->hdr, rec, args->SnpGap_id);
             }
-            else if ( (var_type & VCF_SNP) && (rec->d.var_type & VCF_INDEL) )
+            else if ( (var_type & VCF_SNP) && (rec->d.var_type & args->snp_gap_type) )
             {
                 // the line which we are adding is a SNP and needs to be filtered
                 line->d.var_type |= SnpGap_set;
@@ -413,7 +408,7 @@ static void usage(args_t *args)
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    -e, --exclude <expr>          exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(stderr, "    -g, --SnpGap <int>            filter SNPs within <int> base pairs of an indel\n");
+    fprintf(stderr, "    -g, --SnpGap <int>[:type]     filter SNPs within <int> base pairs of an indel (the default) or any combination of indel,mnp,bnd,other,overlap\n");
     fprintf(stderr, "    -G, --IndelGap <int>          filter clusters of indels separated by <int> or fewer base pairs allowing only one to pass\n");
     fprintf(stderr, "    -i, --include <expr>          include only sites for which the expression is true (see man page for details\n");
     fprintf(stderr, "    -m, --mode [+x]               \"+\": do not replace but add to existing FILTER; \"x\": reset filters at sites which pass\n");
@@ -465,9 +460,31 @@ int main_vcffilter(int argc, char *argv[])
     char *tmp;
     while ((c = getopt_long(argc, argv, "e:i:t:T:r:R:h?s:m:o:O:g:G:S:",loptions,NULL)) >= 0) {
         switch (c) {
-            case 'g': 
+            case 'g':
                 args->snp_gap = strtol(optarg,&tmp,10); 
-                if ( *tmp ) error("Could not parse argument: --SnpGap %s\n", optarg);
+                if ( *tmp && *tmp!=':' ) error("Could not parse argument: --SnpGap %s\n", optarg);
+                if ( *tmp==':' )
+                {
+                    args->snp_gap_str = tmp+1;
+                    int i,n;
+                    char **keys = hts_readlist(tmp+1,0,&n);
+                    for(i=0; i<n; i++)
+                    {
+                        if ( !strcasecmp(keys[i],"indel") ) args->snp_gap_type |= VCF_INDEL;
+                        else if ( !strcasecmp(keys[i],"mnp") ) args->snp_gap_type |= VCF_MNP;
+                        else if ( !strcasecmp(keys[i],"bnd") ) args->snp_gap_type |= VCF_BND;
+                        else if ( !strcasecmp(keys[i],"other") ) args->snp_gap_type |= VCF_OTHER;
+                        else if ( !strcasecmp(keys[i],"overlap") ) args->snp_gap_type |= VCF_OVERLAP;
+                        else error("Could not parse \"%s\" in \"--SnpGap %s\"\n", keys[i], optarg);
+                        free(keys[i]);
+                    }
+                    if ( n ) free(keys);
+                }
+                else
+                {
+                    args->snp_gap_type = VCF_INDEL;
+                    args->snp_gap_str = "indel";
+                }
                 break;
             case 'G':
                 args->indel_gap = strtol(optarg,&tmp,10);

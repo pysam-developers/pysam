@@ -27,6 +27,7 @@ THE SOFTWARE.  */
 #include <stdio.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <assert.h>
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
@@ -167,15 +168,16 @@ void annots_reader_close(args_t *args)
 static void som_write_map(char *prefix, som_t **som, int nsom)
 {
     FILE *fp = open_file(NULL,"w","%s.som",prefix);
-    fwrite("SOMv1",5,1,fp);
-    fwrite(&nsom,sizeof(int),1,fp);
+    size_t nw;
+    if ( (nw=fwrite("SOMv1",5,1,fp))!=5 ) error("Failed to write 5 bytes\n");
+    if ( (nw=fwrite(&nsom,sizeof(int),1,fp))!=sizeof(int) ) error("Failed to write %zu bytes\n",sizeof(int));
     int i;
     for (i=0; i<nsom; i++)
     {
-        fwrite(&som[i]->size,sizeof(int),1,fp);
-        fwrite(&som[i]->kdim,sizeof(int),1,fp);
-        fwrite(som[i]->w,sizeof(double),som[i]->size*som[i]->kdim,fp);
-        fwrite(som[i]->c,sizeof(double),som[i]->size,fp);
+        if ( (nw=fwrite(&som[i]->size,sizeof(int),1,fp))!=sizeof(int) ) error("Failed to write %zu bytes\n",sizeof(int));
+        if ( (nw=fwrite(&som[i]->kdim,sizeof(int),1,fp))!=sizeof(int) ) error("Failed to write %zu bytes\n",sizeof(int));
+        if ( (nw=fwrite(som[i]->w,sizeof(double),som[i]->size*som[i]->kdim,fp))!=sizeof(double)*som[i]->size*som[i]->kdim ) error("Failed to write %zu bytes\n",sizeof(double)*som[i]->size*som[i]->kdim);
+        if ( (nw=fwrite(som[i]->c,sizeof(double),som[i]->size,fp))!=sizeof(double)*som[i]->size ) error("Failed to write %zu bytes\n",sizeof(double)*som[i]->size);
     }
     if ( fclose(fp) ) error("%s.som: fclose failed\n",prefix);
 }

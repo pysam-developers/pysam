@@ -37,6 +37,8 @@ SAMTOOLS_DISPATCH = {
     "quickcheck": ("quickcheck", None),
     "split": ("split", None),
     "flags": ("flags", None),
+    "ampliconclip": ("ampliconclip", None),
+    "ampliconstats": ("ampliconstats", None),
 }
 
 # instantiate samtools commands as python functions

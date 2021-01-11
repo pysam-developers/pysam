@@ -46,6 +46,11 @@ void filter_destroy(filter_t *filter);
   */
 int filter_test(filter_t *filter, bcf1_t *rec, const uint8_t **samples);
 
+/**
+  *  filter_get_doubles() - return a pointer to values from the last filter_test() evaluation
+  */
+const double *filter_get_doubles(filter_t *filter, int *nval, int *nval1);
+
 void filter_expression_info(FILE *fp);
 int filter_max_unpack(filter_t *filter);
 

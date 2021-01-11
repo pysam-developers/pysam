@@ -2,7 +2,7 @@
 
 /*  vcfsort.c -- sort subcommand
 
-   Copyright (C) 2017 Genome Research Ltd.
+   Copyright (C) 2017-2020 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -255,18 +255,18 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Options:\n");
     fprintf(bcftools_stderr, "    -m, --max-mem <float>[kMG]    maximum memory to use [768M]\n");    // using metric units, 1M=1e6
-    fprintf(bcftools_stderr, "    -o, --output-file <file>      output file name [bcftools_stdout]\n");
+    fprintf(bcftools_stderr, "    -o, --output <file>           output file name [bcftools_stdout]\n");
     fprintf(bcftools_stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(bcftools_stderr, "    -T, --temp-dir <dir>          temporary files [/tmp/bcftools-sort.XXXXXX]\n");
     fprintf(bcftools_stderr, "\n");
     exit(1);
 }
 
-size_t parse_mem_string(char *str) 
+size_t parse_mem_string(const char *str) 
 {
     char *tmp;
     double mem = strtod(str, &tmp);
-    if ( tmp==str ) error("Could not parse: --max-mem %s\n", str);
+    if ( tmp==str ) error("Could not parse the memory string: \"%s\"\n", str);
     if ( !strcasecmp("k",tmp) ) mem *= 1000;
     else if ( !strcasecmp("m",tmp) ) mem *= 1000*1000;
     else if ( !strcasecmp("g",tmp) ) mem *= 1000*1000*1000;
@@ -328,6 +328,7 @@ int main_sort(int argc, char *argv[])
         {"temp-dir",required_argument,NULL,'T'},
         {"output-type",required_argument,NULL,'O'},
         {"output-file",required_argument,NULL,'o'},
+        {"output",required_argument,NULL,'o'},
         {"help",no_argument,NULL,'h'},
         {0,0,0,0}
     };
