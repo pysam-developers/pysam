@@ -6,7 +6,11 @@ import tempfile
 import os
 import io
 from contextlib import contextmanager
-from pathlib import Path
+try:
+    from pathlib import Path
+except:
+    # for Python 2
+    Path = str
 
 from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
 from cpython cimport PyBytes_Check, PyUnicode_Check
