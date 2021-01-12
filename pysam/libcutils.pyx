@@ -6,6 +6,7 @@ import tempfile
 import os
 import io
 from contextlib import contextmanager
+from pathlib import Path
 
 from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
 from cpython cimport PyBytes_Check, PyUnicode_Check
@@ -102,6 +103,8 @@ cdef str TEXT_ENCODING = 'utf-8'
 
 cdef bytes encode_filename(object filename):
     """Make sure a filename is 8-bit encoded (or None)."""
+    if isinstance(filename, Path):
+        filename = str(filename)
     if filename is None:
         return None
     elif PY_MAJOR_VERSION >= 3 and PY_MINOR_VERSION >= 2:
