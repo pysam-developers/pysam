@@ -4364,9 +4364,10 @@ cdef class VariantFile(HTSFile):
         return bcf_str_cache_get_charptr(bcf_hdr_id2name(hdr, rid))
 
     def fetch(self, contig=None, start=None, stop=None, region=None, reopen=False, end=None, reference=None):
-        """fetch records in a :term:`region` using 0-based indexing. The
-        region is specified by :term:`contig`, *start* and *end*.
-        Alternatively, a samtools :term:`region` string can be supplied.
+        """fetch records in a :term:`region`, specified either by
+        :term:`contig`, *start*, and *end* (which are 0-based, half-open);
+        or alternatively by a samtools :term:`region` string (which is
+        1-based inclusive).
 
         Without *contig* or *region* all mapped records will be fetched.  The
         records will be returned ordered by contig, which will not necessarily
