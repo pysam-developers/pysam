@@ -2939,7 +2939,7 @@ cdef class PileupColumn:
 
         mark_matches: bool
 
-          If True, output bases matching the reference as "," or "."
+          If True, output bases matching the reference as "." or ","
           for forward and reverse strand, respectively. This mark
           requires the reference sequence. If no reference is
           present, this option is ignored.
