@@ -522,7 +522,10 @@ cdef class AlignmentHeader(object):
         returns -1 if reference is not known.
         """
         reference = force_bytes(reference)
-        return bam_name2id(self.ptr, reference)
+        tid = bam_name2id(self.ptr, reference)
+        if tid < -1:
+            raise ValueError('could not parse header')
+        return tid
 
     def __str__(self):
         '''string with the full contents of the :term:`sam file` header as a
