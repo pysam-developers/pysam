@@ -2222,7 +2222,7 @@ cdef class IteratorRowAllRefs(IteratorRow):
         self.rowiter = IteratorRowRegion(self.samfile,
                                          self.tid,
                                          0,
-                                         1<<29)
+                                         MAX_POS)
         # set htsfile and header of the rowiter
         # to the values in this iterator to reflect multiple_iterators
         self.rowiter.htsfile = self.htsfile
