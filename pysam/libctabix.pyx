@@ -928,15 +928,12 @@ def tabix_index(filename,
     compressed. The original file will be removed and only the compressed
     file will be retained.
 
-    *min-shift* sets the minimal interval size to 1<<INT; 0 for the
-    old tabix index. The default of -1 is changed inside htslib to 
-    the old tabix default of 0.
+    By default or when *min_shift* is 0, creates a TBI index. If *min_shift*
+    is greater than zero and/or *csi* is True, creates a CSI index with a
+    minimal interval size of 1<<*min_shift* (1<<14 if only *csi* is set).
 
     *index* controls the filename which should be used for creating the index.
     If not set, the default is to append ``.tbi`` to *filename*.
-
-    If *csi* is set, create a CSI index, the default is to create a
-    TBI index.
 
     When automatically compressing files, if *keep_original* is set the
     uncompressed file will not be deleted.
@@ -981,8 +978,6 @@ def tabix_index(filename,
     conf_data = None
     if preset == "bcf" or fmt == bcf:
         csi = True
-        if min_shift == -1:
-            min_shift = 14
     elif preset:
         try:
             conf_data = preset2conf[preset]
@@ -1010,10 +1005,13 @@ def tabix_index(filename,
     if conf_data:
         conf.preset, conf.sc, conf.bc, conf.ec, conf.meta_char, conf.line_skip = conf_data
 
-    if csi:
+    if csi or min_shift > 0:
         suffix = ".csi"
+        if min_shift <= 0: min_shift = 14
     else:
         suffix = ".tbi"
+        min_shift = 0
+
     index = index or filename + suffix    
     fn_index = encode_filename(index)
 

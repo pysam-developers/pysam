@@ -33,6 +33,12 @@ def read_header(filename):
     return data
 
 
+def read_index_header(filename):
+    with gzip.open(filename) as infile:
+        magic = infile.read(4)
+    return magic
+
+
 class TestMissingGenotypes(unittest.TestCase):
 
     filename = "missing_genotypes.vcf"
@@ -199,6 +205,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
             shutil.copyfile(self.vcf_filename, fn)
             pysam.tabix_index(fn, preset="vcf", force=True)
             self.assertTrue(os.path.exists(fn + ".gz" + ".tbi"))
+            self.assertEqual(read_index_header(fn + ".gz.tbi"), b"TBI\1")
             self.assertFalse(os.path.exists(fn + ".gz" + ".csi"))
             
             with pysam.VariantFile(fn + ".gz") as inf:
@@ -210,6 +217,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
 
             pysam.tabix_index(fn, preset="vcf", force=True, csi=True)
             self.assertTrue(os.path.exists(fn + ".gz" + ".csi"))
+            self.assertEqual(read_index_header(fn + ".gz.csi"), b"CSI\1")
             self.assertFalse(os.path.exists(fn + ".gz" + ".tbi"))
             
             with pysam.VariantFile(fn + ".gz") as inf:
@@ -221,6 +229,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
             shutil.copyfile(self.bcf_filename + ".csi", fn + ".csi")
 
             self.assertTrue(os.path.exists(fn + ".csi"))
+            self.assertEqual(read_index_header(fn + ".csi"), b"CSI\1")
             self.assertFalse(os.path.exists(fn + ".tbi"))
             
             with pysam.VariantFile(fn) as inf:
@@ -232,6 +241,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
 
             pysam.tabix_index(fn, preset="bcf", force=True, csi=False)
             self.assertTrue(os.path.exists(fn + ".csi"))
+            self.assertEqual(read_index_header(fn + ".csi"), b"CSI\1")
             self.assertFalse(os.path.exists(fn + ".tbi"))
             
             with pysam.VariantFile(fn) as inf:
@@ -244,6 +254,7 @@ class TestIndexFormatsVCF(unittest.TestCase):
             pysam.tabix_index(fn, preset="vcf", force=True, csi=True)
             
             self.assertTrue(os.path.exists(fn + ".csi"))
+            self.assertEqual(read_index_header(fn + ".csi"), b"CSI\1")
             self.assertFalse(os.path.exists(fn + ".tbi"))
             
             with pysam.VariantFile(fn) as inf:
