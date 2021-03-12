@@ -93,6 +93,9 @@ def _update_pysam_files(cf, destdir):
                 else:
                     lines = re.sub(r"int main\(", "int {}_{}_main(".format(
                         basename, subname), lines)
+                if basename == "samtools":
+                    lines = re.sub(r"main_(reheader)\(",
+                                   r"samtools_main_\1(", lines)
                 lines = re.sub("stderr", "{}_stderr".format(basename), lines)
                 lines = re.sub("stdout", "{}_stdout".format(basename), lines)
                 lines = re.sub(r" printf\(", " fprintf({}_stdout, ".format(basename), lines)

@@ -48,7 +48,7 @@ int bam_fillmd(int argc, char *argv[]);
 int bam_idxstats(int argc, char *argv[]);
 int bam_markdup(int argc, char *argv[]);
 int main_samview(int argc, char *argv[]);
-int main_reheader(int argc, char *argv[]);
+int samtools_main_reheader(int argc, char *argv[]);
 int main_cut_target(int argc, char *argv[]);
 int main_phase(int argc, char *argv[]);
 int main_cat(int argc, char *argv[]);
@@ -185,7 +185,7 @@ int samtools_main(int argc, char *argv[])
              strcmp(argv[1], "flagstats") == 0) ret = bam_flagstat(argc-1, argv+1);
     else if (strcmp(argv[1], "calmd") == 0)     ret = bam_fillmd(argc-1, argv+1);
     else if (strcmp(argv[1], "fillmd") == 0)    ret = bam_fillmd(argc-1, argv+1);
-    else if (strcmp(argv[1], "reheader") == 0)  ret = main_reheader(argc-1, argv+1);
+    else if (strcmp(argv[1], "reheader") == 0)  ret = samtools_main_reheader(argc-1, argv+1);
     else if (strcmp(argv[1], "cat") == 0)       ret = main_cat(argc-1, argv+1);
     else if (strcmp(argv[1], "targetcut") == 0) ret = main_cut_target(argc-1, argv+1);
     else if (strcmp(argv[1], "phase") == 0)     ret = main_phase(argc-1, argv+1);
