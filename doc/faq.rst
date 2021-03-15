@@ -141,7 +141,7 @@ I can't call AlignmentFile.fetch on a file without index
 
 :meth:`~pysam.AlignmentFile.fetch` requires an index when
 iterating over a SAM/BAM file. To iterate over a file without
-index, use the ``until_eof=True`::
+index, use the ``until_eof=True``::
 
     bf = pysam.AlignmentFile(fname, "rb")
     for r in bf.fetch(until_eof=True):
