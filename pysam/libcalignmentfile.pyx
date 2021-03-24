@@ -1891,7 +1891,7 @@ cdef class AlignmentFile(HTSFile):
 
     def get_reference_length(self, reference):
         """
-        return :term:`reference` name corresponding to numerical :term:`tid`
+        return :term:`reference` length corresponding to numerical :term:`tid`
         """
         if self.header is None:
             raise ValueError("header not available in closed files")
