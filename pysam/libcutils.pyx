@@ -82,7 +82,29 @@ cpdef qualities_to_qualitystring(qualities, int offset=33):
 
 
 ########################################################################
+## String encoding configuration facilities
 ########################################################################
+
+# Codec error handler that just interprets each bad byte as ISO-8859-1.
+def latin1_replace(exception):
+    return (chr(exception.object[exception.start]), exception.end)
+
+
+cdef str ERROR_HANDLER = 'strict'
+
+cpdef get_encoding_error_handler():
+    return ERROR_HANDLER
+
+cpdef set_encoding_error_handler(name):
+    global ERROR_HANDLER
+    previous = ERROR_HANDLER
+    if name.startswith('pysam.'):
+        from codecs import register_error
+        register_error('pysam.latin1replace', latin1_replace)
+
+    ERROR_HANDLER = name
+    return previous
+
 ########################################################################
 ## Python 3 compatibility functions
 ########################################################################
@@ -91,7 +113,7 @@ cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
 
 cdef from_string_and_size(const char* s, size_t length):
     if IS_PYTHON3:
-        return s[:length].decode("utf8")
+        return s[:length].decode('utf-8', ERROR_HANDLER)
     else:
         return s[:length]
 
@@ -135,7 +157,7 @@ cdef charptr_to_str(const char* s, encoding=TEXT_ENCODING):
     if PY_MAJOR_VERSION < 3:
         return s
     else:
-        return s.decode(encoding)
+        return s.decode(encoding, ERROR_HANDLER)
 
 
 cdef charptr_to_str_w_len(const char* s, size_t n, encoding=TEXT_ENCODING):
@@ -144,7 +166,7 @@ cdef charptr_to_str_w_len(const char* s, size_t n, encoding=TEXT_ENCODING):
     if PY_MAJOR_VERSION < 3:
         return s[:n]
     else:
-        return s[:n].decode(encoding)
+        return s[:n].decode(encoding, ERROR_HANDLER)
 
 
 cdef bytes charptr_to_bytes(const char* s, encoding=TEXT_ENCODING):
@@ -162,7 +184,7 @@ cdef force_str(object s, encoding=TEXT_ENCODING):
     if PY_MAJOR_VERSION < 3:
         return s
     elif PyBytes_Check(s):
-        return s.decode(encoding)
+        return s.decode(encoding, ERROR_HANDLER)
     else:
         # assume unicode
         return s
@@ -425,6 +447,10 @@ def _pysam_dispatch(collection,
     return retval, out_stderr, out_stdout
 
 
-__all__ = ["qualitystring_to_array",
-           "array_to_qualitystring",
-           "qualities_to_qualitystring"]
+__all__ = [
+    "qualitystring_to_array",
+    "array_to_qualitystring",
+    "qualities_to_qualitystring",
+    "get_encoding_error_handler",
+    "set_encoding_error_handler",
+]

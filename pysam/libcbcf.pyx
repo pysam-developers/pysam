@@ -302,7 +302,7 @@ cdef bcf_array_to_object(void *data, int type, ssize_t n, ssize_t count, int sca
             else:
                 # Otherwise, copy the entire block
                 b = datac[:n]
-            value = tuple(v.decode('utf-8') if v and v != bcf_str_missing else None for v in b.split(b','))
+            value = tuple(force_str(v) if v and v != bcf_str_missing else None for v in b.split(b','))
     else:
         value = []
         if type == BCF_BT_INT8:

@@ -14,7 +14,12 @@ cpdef array_to_qualitystring(c_array.array arr, int offset=*)
 cpdef qualities_to_qualitystring(qualities, int offset=*)
 
 ########################################################################
+## String encoding configuration facilities
 ########################################################################
+
+cpdef get_encoding_error_handler()
+cpdef set_encoding_error_handler(name)
+
 ########################################################################
 ## Python 3 compatibility functions
 ########################################################################
