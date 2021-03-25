@@ -227,9 +227,25 @@ if len(sys.argv) >= 1:
                     outf.write(line)
         os.rename(tmpfilename, filename)
 
+    def _update_version_doc_file(dest, value, filename):
+        tmpfilename = filename + ".tmp"
+        with open(filename, encoding="utf-8") as inf:
+            with open(tmpfilename, "w", encoding="utf-8") as outf:
+                for line in inf:
+                    if " wraps " in line:
+                        # hide the sentence's fullstop from the main regexp
+                        line = re.sub(r'\.$', ',DOT', line)
+                        line = re.sub(r'{}-[^*,]*'.format(dest),
+                                      '{}-{}'.format(dest, value), line)
+                        line = re.sub(',DOT', '.', line)
+                    outf.write(line)
+        os.rename(tmpfilename, filename)
+
     version = _getVersion(srcdir)
     _update_version_file("__{}_version__".format(dest), version, "pysam/version.py")
     _update_version_file(C_VERSION[dest], version + " (pysam)", "pysam/version.h")
+    _update_version_doc_file(dest, version, "README.rst")
+    _update_version_doc_file(dest, version, "doc/index.rst")
 
     sys.exit(0)
 
