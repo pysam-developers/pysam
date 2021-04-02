@@ -1291,7 +1291,7 @@ cdef class AlignmentFile(HTSFile):
         min_base_quality: int
 
            Minimum base quality. Bases below the minimum quality will
-           not be output.
+           not be output. The default is 13.
 
         adjust_capq_threshold: int
 
