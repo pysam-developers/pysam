@@ -80,6 +80,61 @@ def run_make_print_config():
     return make_print_config
 
 
+# This function emulates the way distutils combines settings from sysconfig,
+# environment variables, and the extension being built. It returns a dictionary
+# representing the usual set of variables, suitable for writing to a generated
+# file or for running configure (provided the returned LIBS is ignored).
+def build_config_dict(ext):
+    def env(var):
+        return [os.environ[var]] if var in os.environ else []
+
+    def sc(var):
+        value = sysconfig.get_config_var(var)
+        return [value] if value is not None else []
+
+    def optionise(option, valuelist):
+        def quote(s): return "'"+s+"'" if " " in s else s
+        return list(quote(option+v) for v in valuelist)
+
+    def kvtuples(pairlist):
+        def appendoptvalue(t): return t[0] if t[1] is None else t[0]+"="+t[1]
+        return map(appendoptvalue, pairlist)
+
+    # For CC, select the first of these that is set
+    cc = (env('CC') + sc('CC') + ['gcc'])[0]
+
+    # distutils ignores sysconfig for CPPFLAGS
+    cppflags = " ".join(env('CPPFLAGS') + optionise('-I', ext.include_dirs) +
+                        optionise('-D', kvtuples(ext.define_macros)) +
+                        optionise('-U', ext.undef_macros))
+
+    cflags = " ".join(sc('CFLAGS') + env('CFLAGS') + ext.extra_compile_args)
+
+    # distutils actually includes $CPPFLAGS here too, but that's weird and
+    # unnecessary for us as we know the output LDFLAGS will be used correctly
+    ldflags = " ".join(sc('LDFLAGS') + env('LDFLAGS') + env('CFLAGS') +
+                       optionise('-L', ext.library_dirs) +
+                       ext.extra_link_args)
+
+    # ext.libraries is computed (incorporating $LIBS etc) during configure
+    libs = " ".join(optionise('-l', ext.libraries))
+
+    return { 'CC': cc, 'CPPFLAGS': cppflags, 'CFLAGS': cflags,
+             'LDFLAGS': ldflags, 'LIBS': libs }
+
+
+def write_configvars_header(filename, ext, prefix):
+    config = build_config_dict(ext)
+    if prefix != 'HTS':
+        config['HTSDIR'] = '(unused)'
+        config['CURSES_LIB'] = '(unused)'
+
+    log.info("creating %s for '%s' extension", filename, ext.name)
+    with open(filename, "w") as outf:
+        for var, value in config.items():
+            outf.write('#define {}_{} "{}"\n'.format(prefix, var, value))
+
+
 @contextmanager
 def set_compiler_envvars():
     tmp_vars = []
@@ -154,9 +209,17 @@ class clean_ext(Command):
     def run(self):
         objs = glob.glob(os.path.join("pysam", "libc*.c"))
         if objs:
-            self.announce("removing 'pysam/libc*.c' ({} Cython objects)".format(len(objs)), level=log.INFO)
+            log.info("removing 'pysam/libc*.c' (%s Cython objects)", len(objs))
         for obj in objs:
             os.remove(obj)
+
+        headers = (glob.glob(os.path.join("htslib",   "*config*.h")) +
+                   glob.glob(os.path.join("samtools", "*config*.h")) +
+                   glob.glob(os.path.join("bcftools", "*config*.h")))
+        if headers:
+            log.info("removing '*/*config*.h' (%s generated headers)", len(headers))
+        for header in headers:
+            os.remove(header)
 
 
 # How to link against HTSLIB
@@ -383,11 +446,20 @@ libraries_for_pysam_module = external_htslib_libraries + internal_htslib_librari
 # The list below uses the union of include_dirs and library_dirs for
 # reasons of simplicity.
 
+def prebuild_libchtslib(ext, force):
+    if HTSLIB_MODE not in ['shared', 'separate']: return
+    write_configvars_header("htslib/config_vars.h", ext, "HTS")
+
+def prebuild_libcsamtools(ext, force):
+    write_configvars_header("samtools/samtools_config_vars.h", ext, "SAMTOOLS")
+
 modules = [
     dict(name="pysam.libchtslib",
+         prebuild_func=prebuild_libchtslib,
          sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + shared_htslib_sources + os_c_files,
          libraries=external_htslib_libraries),
     dict(name="pysam.libcsamtools",
+         prebuild_func=prebuild_libcsamtools,
          sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
          [os.path.join("samtools", "lz4", "lz4.c")] + htslib_sources + os_c_files,
          libraries=external_htslib_libraries + internal_htslib_libraries),

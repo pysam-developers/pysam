@@ -40,7 +40,7 @@ EXCLUDE = {
     "htslib": (
         'htslib/tabix.c', 'htslib/bgzip.c',
         'htslib/htsfile.c',
-        "test"),
+        "test", "tests"),
 }
 
 
@@ -106,9 +106,6 @@ def _update_pysam_files(cf, destdir):
                 fn = os.path.basename(filename)
                 # some specific fixes:
                 SPECIFIC_SUBSTITUTIONS = {
-                    "bamtk.c": (
-                        'else if (strcmp(argv[1], "tview") == 0)',
-                        '//else if (strcmp(argv[1], "tview") == 0)'),
                     "bam_md.c": (
                         'sam_open_format("-", mode_w',
                         'sam_open_format({}_stdout_fn, mode_w'.format(basename)),
@@ -123,6 +120,10 @@ def _update_pysam_files(cf, destdir):
                     lines = lines.replace(
                         SPECIFIC_SUBSTITUTIONS[fn][0],
                         SPECIFIC_SUBSTITUTIONS[fn][1])
+                if fn == "bamtk.c":
+                    lines = re.sub(r'(#include "version.h")', r'\1\n#include "samtools_config_vars.h"', lines)
+                    lines = re.sub(r'(else if.*"tview")', r'//\1', lines)
+
                 outfile.write(lines)
 
     with open(os.path.join("import", "pysam.h")) as inf, \
