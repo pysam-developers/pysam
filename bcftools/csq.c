@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2016-2020 Genome Research Ltd.
+   Copyright (c) 2016-2021 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -590,8 +590,8 @@ typedef struct _args_t
     char *bcsq_tag;
     int argc, output_type;
     int phase, verbosity, local_csq, record_cmd_line;
-    int ncsq_max, nfmt_bcsq;    // maximum number of csq per site that can be accessed from FORMAT/BCSQ
-    int ncsq_small_warned;
+    int ncsq2_max, nfmt_bcsq;   // maximum number of csq per site that can be accessed from FORMAT/BCSQ (*2 and 1 bit skipped to avoid BCF missing values)
+    int ncsq2_small_warned;
     int brief_predictions;
     
     int rid;                    // current chromosome
@@ -1346,9 +1346,19 @@ void init_gff(args_t *args)
     khash_str2int_destroy_free(aux->ignored_biotypes);
 }
 
+static inline int ncsq2_to_nfmt(int ncsq2)
+{
+    return 1 + (ncsq2 - 1) / 30;
+}
+static inline void icsq2_to_bit(int icsq2, int *ival, int *ibit)
+{
+    *ival = icsq2 / 30;
+    *ibit = icsq2 % 30;
+}
+
 void init_data(args_t *args)
 {
-    args->nfmt_bcsq = 1 + (args->ncsq_max - 1) / 32; 
+    args->nfmt_bcsq = ncsq2_to_nfmt(args->ncsq2_max);
 
     if ( args->verbosity > 0 ) fprintf(stderr,"Parsing %s ...\n", args->gff_fname);
     init_gff(args);
@@ -1404,7 +1414,7 @@ void init_data(args_t *args)
     }
     else
     {
-        args->out_fh = hts_open(args->output_fname? args->output_fname : "-",hts_bcf_wmode(args->output_type));
+        args->out_fh = hts_open(args->output_fname? args->output_fname : "-",hts_bcf_wmode2(args->output_type,args->output_fname));
         if ( args->out_fh == NULL ) error("[%s] Error: cannot write to %s: %s\n", __func__,args->output_fname? args->output_fname : "standard output", strerror(errno));
         if ( args->n_threads > 0)
             hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->sr->p);
@@ -1419,6 +1429,11 @@ void init_data(args_t *args)
 
 void destroy_data(args_t *args)
 {
+    if ( args->ncsq2_small_warned )
+        fprintf(stderr,
+            "Note: Some samples had too many consequences to be represented in %d bytes. If you need to record them all,\n"
+            "      the limit can be increased by running with `--ncsq %d`.\n",ncsq2_to_nfmt(args->ncsq2_max)/8,1+args->ncsq2_small_warned/2);
+
     regidx_destroy(args->idx_cds);
     regidx_destroy(args->idx_utr);
     regidx_destroy(args->idx_exon);
@@ -3092,22 +3107,24 @@ static inline void hap_stage_vcf(args_t *args, tscript_t *tr, int ismpl, int iha
     {
         csq_t *csq = node->csq_list + i;
         vrec_t *vrec = csq->vrec;
-        int icsq = 2*csq->idx + ihap;
-        if ( icsq >= args->ncsq_max ) // more than ncsq_max consequences, so can't fit it in FMT
+        int icsq2 = 2*csq->idx + ihap;
+        if ( icsq2 >= args->ncsq2_max ) // more than ncsq2_max consequences, so can't fit it in FMT
         {
-            if ( args->verbosity && (!args->ncsq_small_warned || args->verbosity > 1) )
+            if ( args->verbosity && (!args->ncsq2_small_warned || args->verbosity > 1) )
             {
                 fprintf(stderr,
                     "Warning: Too many consequences for sample %s at %s:%"PRId64", keeping the first %d and skipping the rest.\n",
                     args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),(int64_t) vrec->line->pos+1,csq->idx);
-                if ( !args->ncsq_small_warned )
+                if ( !args->ncsq2_small_warned )
                     fprintf(stderr,"         The limit can be increased by setting the --ncsq parameter. This warning is printed only once.\n");
-                args->ncsq_small_warned = 1;
             }
+            if ( args->ncsq2_small_warned < icsq2 ) args->ncsq2_small_warned = icsq2;
             break;
         }
-        if ( vrec->nfmt < 1 + icsq/32 ) vrec->nfmt = 1 + icsq/32;
-        vrec->smpl[ismpl*args->nfmt_bcsq + icsq/32] |= 1 << (icsq % 32);
+        int ival, ibit;
+        icsq2_to_bit(icsq2, &ival,&ibit);
+        if ( vrec->nfmt < 1 + ival ) vrec->nfmt = 1 + ival;
+        vrec->smpl[ismpl*args->nfmt_bcsq + ival] |= 1 << ibit;
     }
 }
 
@@ -3736,22 +3753,26 @@ void csq_stage(args_t *args, csq_t *csq, bcf1_t *rec)
         {
             if ( gt[j]==bcf_gt_missing || gt[j]==bcf_int32_vector_end || !bcf_gt_allele(gt[j]) ) continue;
 
-            int icsq = 2*csq->idx + j;
-            if ( icsq >= args->ncsq_max ) // more than ncsq_max consequences, so can't fit it in FMT
+            int icsq2 = 2*csq->idx + j;
+            if ( icsq2 >= args->ncsq2_max ) // more than ncsq_max consequences, so can't fit it in FMT
             {
                 int ismpl = args->smpl->idx[i];
-                if ( args->verbosity && (!args->ncsq_small_warned || args->verbosity > 1) )
+                if ( args->verbosity && (!args->ncsq2_small_warned || args->verbosity > 1) )
                 {
                     fprintf(stderr,
                             "Warning: Too many consequences for sample %s at %s:%"PRId64", keeping the first %d and skipping the rest.\n",
-                            args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),(int64_t) vrec->line->pos+1,icsq+1);
-                    if ( !args->ncsq_small_warned )
+                            args->hdr->samples[ismpl],bcf_hdr_id2name(args->hdr,args->rid),(int64_t) vrec->line->pos+1,icsq2+1);
+                    if ( !args->ncsq2_small_warned )
                         fprintf(stderr,"         The limit can be increased by setting the --ncsq parameter. This warning is printed only once.\n");
-                    args->ncsq_small_warned = 1;
+                    args->ncsq2_small_warned = 1;
                 }
+                if ( args->ncsq2_small_warned < icsq2 ) args->ncsq2_small_warned = icsq2;
+                break;
             }
-            if ( vrec->nfmt < 1 + icsq/32 ) vrec->nfmt = 1 + icsq/32;
-            vrec->smpl[i*args->nfmt_bcsq + icsq/32] |= 1 << (icsq % 32);
+            int ival, ibit;
+            icsq2_to_bit(icsq2, &ival,&ibit);
+            if ( vrec->nfmt < 1 + ival ) vrec->nfmt = 1 + ival;
+            vrec->smpl[i*args->nfmt_bcsq + ival] |= 1 << ibit;
         }
     }
 }
@@ -4050,39 +4071,39 @@ static const char *usage(void)
     return 
         "\n"
         "About: Haplotype-aware consequence caller.\n"
-        "Usage: bcftools csq [options] in.vcf\n"
+        "Usage: bcftools csq [OPTIONS] in.vcf\n"
         "\n"
         "Required options:\n"
-        "   -f, --fasta-ref <file>          reference file in fasta format\n"
-        "   -g, --gff-annot <file>          gff3 annotation file\n"
+        "   -f, --fasta-ref FILE            reference file in fasta format\n"
+        "   -g, --gff-annot FILE            gff3 annotation file\n"
         "\n"
         "CSQ options:\n"
         "   -b, --brief-predictions         annotate with abbreviated protein-changing predictions\n"
-        "   -c, --custom-tag <string>       use this tag instead of the default BCSQ\n"
+        "   -c, --custom-tag STRING         use this tag instead of the default BCSQ\n"
         "   -l, --local-csq                 localized predictions, consider only one VCF record at a time\n"
-        "   -n, --ncsq <int>                maximum number of consequences to consider per site [16]\n"
-        "   -p, --phase <a|m|r|R|s>         how to handle unphased heterozygous genotypes: [r]\n"
+        "   -n, --ncsq INT                  maximum number of per-haplotype consequences to consider for each site [15]\n"
+        "   -p, --phase a|m|r|R|s           how to handle unphased heterozygous genotypes: [r]\n"
         "                                     a: take GTs as is, create haplotypes regardless of phase (0/1 -> 0|1)\n"
         "                                     m: merge *all* GTs into a single haplotype (0/1 -> 1, 1/2 -> 1)\n"
         "                                     r: require phased GTs, throw an error on unphased het GTs\n"
         "                                     R: create non-reference haplotypes if possible (0/1 -> 1|1, 1/2 -> 1|2)\n"
         "                                     s: skip unphased hets\n"
         "Options:\n"
-        "   -e, --exclude <expr>            exclude sites for which the expression is true\n"
+        "   -e, --exclude EXPR              exclude sites for which the expression is true\n"
         "       --force                     run even if some sanity checks fail\n"
-        "   -i, --include <expr>            select sites for which the expression is true\n"
+        "   -i, --include EXPR              select sites for which the expression is true\n"
         "       --no-version                do not append version and command line to the header\n"
-        "   -o, --output <file>             write output to a file [standard output]\n"
-        "   -O, --output-type <b|u|z|v|t>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF\n"
+        "   -o, --output FILE               write output to a file [standard output]\n"
+        "   -O, --output-type b|u|z|v|t     b: compressed BCF, u: uncompressed BCF, z: compressed VCF\n"
         "                                   v: uncompressed VCF, t: plain tab-delimited text output [v]\n"
-        "   -r, --regions <region>          restrict to comma-separated list of regions\n"
-        "   -R, --regions-file <file>       restrict to regions listed in a file\n"
-        "   -s, --samples <-|list>          samples to include or \"-\" to apply all variants and ignore samples\n"
-        "   -S, --samples-file <file>       samples to include\n"
-        "   -t, --targets <region>          similar to -r but streams rather than index-jumps\n"
-        "   -T, --targets-file <file>       similar to -R but streams rather than index-jumps\n"
-        "       --threads <int>             use multithreading with <int> worker threads [0]\n"
-        "   -v, --verbose <int>             verbosity level 0-2 [1]\n"
+        "   -r, --regions REGION            restrict to comma-separated list of regions\n"
+        "   -R, --regions-file FILE         restrict to regions listed in a file\n"
+        "   -s, --samples -|LIST            samples to include or \"-\" to apply all variants and ignore samples\n"
+        "   -S, --samples-file FILE         samples to include\n"
+        "   -t, --targets REGION            similar to -r but streams rather than index-jumps\n"
+        "   -T, --targets-file FILE         similar to -R but streams rather than index-jumps\n"
+        "       --threads INT               use multithreading with <int> worker threads [0]\n"
+        "   -v, --verbose INT               verbosity level 0-2 [1]\n"
         "\n"
         "Example:\n"
         "   bcftools csq -f hs37d5.fa -g Homo_sapiens.GRCh37.82.gff3.gz in.vcf\n"
@@ -4099,7 +4120,7 @@ int main_csq(int argc, char *argv[])
     args->argc = argc; args->argv = argv;
     args->output_type = FT_VCF;
     args->bcsq_tag = "BCSQ";
-    args->ncsq_max = 2*16;
+    args->ncsq2_max = 2*(16-1);      // 1 bit is reserved for BCF missing values
     args->verbosity = 1;
     args->record_cmd_line = 1;
 
@@ -4164,8 +4185,8 @@ int main_csq(int argc, char *argv[])
             case 'f': args->fa_fname = optarg; break;
             case 'g': args->gff_fname = optarg; break;
             case 'n': 
-                args->ncsq_max = 2 * atoi(optarg);
-                if ( args->ncsq_max <=0 ) error("Expected positive integer with -n, got %s\n", optarg);
+                args->ncsq2_max = 2 * atoi(optarg);
+                if ( args->ncsq2_max <= 0 ) error("Expected positive integer with -n, got %s\n", optarg);
                 break;
             case 'o': args->output_fname = optarg; break;
             case 'O':
@@ -4178,8 +4199,12 @@ int main_csq(int argc, char *argv[])
                           default: error("The output type \"%s\" not recognised\n", optarg);
                       }
                       break;
-            case 'e': args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
-            case 'i': args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
+            case 'e':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
+            case 'i':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
             case 'r': regions_list = optarg; break;
             case 'R': regions_list = optarg; regions_is_file = 1; break;
             case 's': args->sample_list = optarg; break;

@@ -1,7 +1,7 @@
 /*  bam2bcf.c -- variant calling.
 
     Copyright (C) 2010-2012 Broad Institute.
-    Copyright (C) 2012-2014 Genome Research Ltd.
+    Copyright (C) 2012-2020 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -126,13 +126,14 @@ void bcf_callaux_clean(bcf_callaux_t *bca, bcf_call_t *call)
     if ( call->ADF ) memset(call->ADF,0,sizeof(int32_t)*(call->n+1)*B2B_MAX_ALLELES);
     if ( call->ADR ) memset(call->ADR,0,sizeof(int32_t)*(call->n+1)*B2B_MAX_ALLELES);
     if ( call->SCR ) memset(call->SCR,0,sizeof(*call->SCR)*(call->n+1));
+    memset(call->QS,0,sizeof(*call->QS)*call->n*B2B_MAX_ALLELES);
 }
 
 /*
     Notes:
-    - Called from bam_plcmd.c by mpileup. Amongst other things, sets the bcf_callret1_t.qsum frequencies
-        which are carried over via bcf_call_combine and bcf_call2bcf to the output BCF as the QS annotation.
-        Later it's used for multiallelic calling by bcftools -m
+    - Called from bam_plcmd.c by mpileup. Amongst other things, sets the bcf_callret1_t.QS frequencies
+        which are carried over via bcf_call_combine and bcf_call2bcf to the output BCF as the INFO/QS and FMT/QS annotations.
+        Later it's used for multiallelic calling by `call -m`, `call -mG` and `+trio-dnm`.
     - ref_base is the 4-bit representation of the reference base. It is negative if we are looking at an indel.
  */
 /*
@@ -150,7 +151,6 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
     // clean from previous run
     r->ori_depth = 0;
     r->mq0 = 0;
-    memset(r->qsum,0,sizeof(float)*4);
     memset(r->anno,0,sizeof(double)*16);
     memset(r->p,0,sizeof(float)*25);
     r->SCR = 0;
@@ -205,7 +205,7 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         // collect annotations
         if (b < 4)
         {
-            r->qsum[b] += q;
+            r->QS[b] += q;
             if ( r->ADF )
             {
                 if ( bam_is_rev(p->b) )
@@ -558,7 +558,7 @@ void calc_SegBias(const bcf_callret1_t *bcr, bcf_call_t *call)
 int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int ref_base /*4-bit*/, bcf_call_t *call)
 {
     int ref4, i, j;
-    float qsum[5] = {0,0,0,0,0};
+    float qsum[B2B_MAX_ALLELES] = {0,0,0,0,0};
     if (ref_base >= 0) {
         call->ori_ref = ref4 = seq_nt16_int[ref_base];
         if (ref4 > 4) ref4 = 4;
@@ -569,9 +569,9 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
     for (i = 0; i < n; ++i)
     {
         float sum = 0;
-        for (j = 0; j < 4; ++j) sum += calls[i].qsum[j];
+        for (j = 0; j < 4; ++j) sum += calls[i].QS[j];
         if ( sum )
-            for (j = 0; j < 4; j++) qsum[j] += calls[i].qsum[j] / sum;
+            for (j = 0; j < 4; j++) qsum[j] += (float)calls[i].QS[j] / sum;
     }
 
     // sort qsum in ascending order (insertion sort)
@@ -583,7 +583,7 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
 
     // Set the reference allele and alternative allele(s)
     for (i=0; i<5; i++) call->a[i] = -1;
-    for (i=0; i<5; i++) call->qsum[i] = 0;
+    for (i=0; i<B2B_MAX_ALLELES; i++) call->qsum[i] = 0;
     call->unseen = -1;
     call->a[0] = ref4;
     for (i=3, j=1; i>=0; i--)   // i: alleles sorted by QS; j, a[j]: output allele ordering
@@ -693,6 +693,21 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
                 adr_out += call->n_alleles;
                 adr += B2B_MAX_ALLELES;
                 adf += B2B_MAX_ALLELES;
+            }
+        }
+        if ( bca->fmt_flag & B2B_FMT_QS )
+        {
+            assert( call->n_alleles<=B2B_MAX_ALLELES );   // this is always true for SNPs and so far for indels as well
+
+            // reorder QS to match the allele ordering at this site
+            int32_t tmp[B2B_MAX_ALLELES];
+            int32_t *qs = call->QS, *qs_out = call->QS;
+            for (i=0; i<n; i++)
+            {
+                for (j=0; j<call->n_alleles; j++) tmp[j] = qs[ call->a[j] ];
+                for (j=0; j<call->n_alleles; j++) qs_out[j] = tmp[j] < BCF_MAX_BT_INT32 ? tmp[j] : BCF_MAX_BT_INT32;
+                qs_out += call->n_alleles;
+                qs += B2B_MAX_ALLELES;
             }
         }
 
@@ -884,6 +899,8 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
     }
     if ( fmt_flag&B2B_FMT_SCR )
         bcf_update_format_int32(hdr, rec, "SCR", bc->SCR+1, rec->n_sample);
+    if ( fmt_flag&B2B_FMT_QS )
+        bcf_update_format_int32(hdr, rec, "QS", bc->QS, rec->n_sample*rec->n_allele);
 
     return 0;
 }

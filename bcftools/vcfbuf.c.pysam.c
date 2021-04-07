@@ -2,7 +2,7 @@
 
 /* The MIT License
 
-   Copyright (c) 2016-2020 Genome Research Ltd.
+   Copyright (c) 2016-2021 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -27,8 +27,10 @@
  */
 
 #include <assert.h>
+#include <strings.h>
 #include <htslib/vcf.h>
 #include <htslib/vcfutils.h>
+#include <htslib/hts_os.h>
 #include "bcftools.h"
 #include "vcfbuf.h"
 #include "rbuf.h"
@@ -48,9 +50,12 @@ typedef struct
 }
 vcfrec_t;
 
+#define PRUNE_MODE_MAX_AF 1
+#define PRUNE_MODE_1ST    2
+#define PRUNE_MODE_RAND   3
 typedef struct
 {
-    int max_sites, mvrec, mac, mfarr;
+    int max_sites, mvrec, mac, mfarr, mode;
     int *ac, *idx;
     float *farr;
     char *af_tag;
@@ -115,10 +120,24 @@ void vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, void *value)
     if ( key==LD_MAX_LD ) { buf->ld.max[VCFBUF_LD_IDX_LD] = *((double*)value); return; }
     if ( key==LD_MAX_HD ) { buf->ld.max[VCFBUF_LD_IDX_HD] = *((double*)value); return; }
 
-    if ( key==VCFBUF_NSITES ) { buf->prune.max_sites = *((int*)value); return; }
+    if ( key==VCFBUF_NSITES )
+    {
+        buf->prune.max_sites = *((int*)value);
+        if ( !buf->prune.mode ) buf->prune.mode = PRUNE_MODE_MAX_AF;
+        return;
+    }
     if ( key==VCFBUF_AF_TAG ) { buf->prune.af_tag = *((char**)value); return; }
     if ( key==VCFBUF_OVERLAP_WIN ) { buf->overlap.active = *((int*)value); return; }
     if ( key==VCFBUF_RMDUP) { buf->rmdup.active = *((int*)value); return; }
+
+    if ( key==VCFBUF_NSITES_MODE )
+    {
+        char *mode = *((char**)value);
+        if ( !strcasecmp(mode,"maxAF") ) buf->prune.mode = PRUNE_MODE_MAX_AF;
+        else if ( !strcasecmp(mode,"1st") ) buf->prune.mode = PRUNE_MODE_1ST;
+        else if ( !strcasecmp(mode,"rand") ) buf->prune.mode = PRUNE_MODE_RAND;
+        else error("The mode \"%s\" is not recognised\n",mode);
+    }
 }
 
 int vcfbuf_nsites(vcfbuf_t *buf)
@@ -178,6 +197,26 @@ static void _prune_sites(vcfbuf_t *buf, int flush_all)
 {
     int nbuf = flush_all ? buf->rbuf.n : buf->rbuf.n - 1;
 
+    int nprune = nbuf - buf->prune.max_sites;
+    int i,k,irec = 0;
+    if ( buf->prune.mode==PRUNE_MODE_1ST )
+    {
+        int eoff = flush_all ? 1 : 2;
+        for (i=0; i<nprune; i++)
+            rbuf_remove_kth(&buf->rbuf, vcfrec_t, buf->rbuf.n - eoff, buf->vcf);
+        return;
+    }
+    if ( buf->prune.mode==PRUNE_MODE_RAND )
+    {
+        int eoff = flush_all ? 0 : 1;
+        for (i=0; i<nprune; i++)
+        {
+            int j = (buf->rbuf.n - eoff) * hts_drand48();
+            rbuf_remove_kth(&buf->rbuf, vcfrec_t, j, buf->vcf);
+        }
+        return;
+    }
+
     if ( nbuf > buf->prune.mvrec )
     {
         buf->prune.idx   = (int*) realloc(buf->prune.idx, nbuf*sizeof(int));
@@ -186,7 +225,6 @@ static void _prune_sites(vcfbuf_t *buf, int flush_all)
     }
 
     // set allele frequency and prepare buffer for sorting
-    int i,k,irec = 0;
     for (i=-1; rbuf_next(&buf->rbuf,&i) && irec<nbuf; )
     {
         bcf1_t *line = buf->vcf[i].rec;
@@ -219,7 +257,6 @@ static void _prune_sites(vcfbuf_t *buf, int flush_all)
 
     // sort the rbuf indexes to be pruned descendently so that j-th rbuf index
     // is removed before i-th index if i<j
-    int nprune = nbuf - buf->prune.max_sites;
     for (i=0; i<nprune; i++)
         buf->prune.idx[i] = buf->prune.vrec[i]->idx;
 
@@ -401,7 +438,7 @@ static int _calc_r2_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec, vcfbuf_ld_t *l
             if ( aptr[j]==bcf_gt_missing )
             {
                 if ( !buf->ld.rand_missing ) break;
-                if ( rand()/RAND_MAX >= aaf ) adsg += 1;
+                if ( hts_drand48() >= aaf ) adsg += 1;
             }
             else if ( bcf_gt_allele(aptr[j]) ) adsg += 1;
             an++;
@@ -412,7 +449,7 @@ static int _calc_r2_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec, vcfbuf_ld_t *l
             if ( bptr[j]==bcf_gt_missing )
             {
                 if ( !buf->ld.rand_missing ) break;
-                if ( rand()/RAND_MAX >= baf ) bdsg += 1;
+                if ( hts_drand48() >= baf ) bdsg += 1;
             }
             else if ( bcf_gt_allele(bptr[j]) ) bdsg += 1;
             bn++;

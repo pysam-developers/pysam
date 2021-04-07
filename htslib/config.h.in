@@ -25,6 +25,9 @@
 /* Define to 1 if you have the `drand48' function. */
 #undef HAVE_DRAND48
 
+/* Define if using an external libhtscodecs */
+#undef HAVE_EXTERNAL_LIBHTSCODECS
+
 /* Define to 1 if you have the `fdatasync' function. */
 #undef HAVE_FDATASYNC
 

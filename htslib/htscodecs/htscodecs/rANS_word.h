@@ -6,16 +6,20 @@
  */
 
 /*-------------------------------------------------------------------------- */
+/* rans_byte.h from https://github.com/rygorous/ryg_rans */
 
 // Simple byte-aligned rANS encoder/decoder - public domain - Fabian 'ryg' Giesen 2014
 //
 // Not intended to be "industrial strength"; just meant to illustrate the general
 // idea.
 
-#ifndef RANS_BYTE_HEADER
-#define RANS_BYTE_HEADER
+#ifndef RANS_WORD_HEADER
+#define RANS_WORD_HEADER
 
+#include <stdio.h>
 #include <stdint.h>
+#include <assert.h>
+#include "htscodecs_endian.h"
 
 #ifdef assert
 #define RansAssert assert
@@ -56,7 +60,7 @@
 // Between this and our byte-aligned emission, we use 31 (not 32!) bits.
 // This is done intentionally because exact reciprocals for 31-bit uints
 // fit in 32-bit uints: this permits some optimizations during encoding.
-#define RANS_BYTE_L (1u << 23)  // lower bound of our normalization interval
+#define RANS_BYTE_L (1u << 15)  // lower bound of our normalization interval
 
 // State for a rANS encoder. Yep, that's all there is to it.
 typedef uint32_t RansState;
@@ -70,14 +74,12 @@ static inline void RansEncInit(RansState* r)
 // Renormalize the encoder. Internal function.
 static inline RansState RansEncRenorm(RansState x, uint8_t** pptr, uint32_t freq, uint32_t scale_bits)
 {
-    uint32_t x_max = ((RANS_BYTE_L >> scale_bits) << 8) * freq; // this turns into a shift.
+    uint32_t x_max = ((RANS_BYTE_L >> scale_bits) << 16) * freq; // this turns into a shift.
     if (x >= x_max) {
-        uint8_t* ptr = *pptr;
-        do {
-            *--ptr = (uint8_t) (x & 0xff);
-            x >>= 8;
-        } while (x >= x_max);
-        *pptr = ptr;
+        uint16_t* ptr = (uint16_t *)*pptr;
+        *--ptr = (uint16_t) (x & 0xffff);
+        x >>= 16;
+        *pptr = (uint8_t *)ptr;
     }
     return x;
 }
@@ -120,10 +122,10 @@ static inline void RansDecInit(RansState* r, uint8_t** pptr)
     uint32_t x;
     uint8_t* ptr = *pptr;
 
-    x  = ((uint32_t) ptr[0]) << 0;
-    x |= ((uint32_t) ptr[1]) << 8;
-    x |= ((uint32_t) ptr[2]) << 16;
-    x |= ((uint32_t) ptr[3]) << 24;
+    x  = ptr[0] << 0;
+    x |= ptr[1] << 8;
+    x |= ptr[2] << 16;
+    x |= ((uint32_t)ptr[3]) << 24;
     ptr += 4;
 
     *pptr = ptr;
@@ -171,6 +173,11 @@ typedef struct {
     uint32_t bias;      // Bias
     uint16_t cmpl_freq; // Complement of frequency: (1 << scale_bits) - freq
     uint16_t rcp_shift; // Reciprocal shift
+
+    // FIXME: temporary
+    uint16_t scale_bits;
+    uint16_t freq;
+    uint16_t start;
 } RansEncSymbol;
 
 // Decoder symbols are straightforward.
@@ -202,8 +209,13 @@ static inline void RansEncSymbolInit(RansEncSymbol* s, uint32_t start, uint32_t 
     // and we can just precompute cmpl_freq. Now we just need to
     // set up our parameters such that the original encoder and
     // the fast encoder agree.
+    
+    // FIXME: temporary
+    s->scale_bits = scale_bits;
+    s->freq = freq;
+    s->start = start;
 
-    s->x_max = ((RANS_BYTE_L >> scale_bits) << 8) * freq;
+    s->x_max = ((RANS_BYTE_L >> scale_bits) << 16) * freq;
     s->cmpl_freq = (uint16_t) ((1 << scale_bits) - freq);
     if (freq < 2) {
         // freq=0 symbols are never valid to encode, so it doesn't matter what
@@ -274,14 +286,22 @@ static inline void RansEncPutSymbol(RansState* r, uint8_t** pptr, RansEncSymbol 
     uint32_t x = *r;
     uint32_t x_max = sym->x_max;
 
+#ifdef HTSCODECS_LITTLE_ENDIAN
     if (x >= x_max) {
-        uint8_t* ptr = *pptr;
-        do {
-            *--ptr = (uint8_t) (x & 0xff);
-            x >>= 8;
-        } while (x >= x_max);
-        *pptr = ptr;
+	(*pptr) -= 2;
+        **(uint16_t **)pptr = x;
+	x >>= 16;
     }
+#else
+    if (x >= x_max) {
+	uint8_t* ptr = *pptr;
+        ptr -= 2;
+	ptr[0] = x & 0xff;
+	ptr[1] = (x >> 8) & 0xff;
+	x >>= 16;
+	*pptr = ptr;
+    }
+#endif
 
     // x = C(s,x)
     // NOTE: written this way so we get a 32-bit "multiply high" when
@@ -289,9 +309,15 @@ static inline void RansEncPutSymbol(RansState* r, uint8_t** pptr, RansEncSymbol 
     // (e.g. x64), just bake the +32 into rcp_shift.
     //uint32_t q = (uint32_t) (((uint64_t)x * sym->rcp_freq) >> 32) >> sym->rcp_shift;
 
+    // Slow method, but robust
+//    *r = ((x / sym->freq) << sym->scale_bits) + (x % sym->freq) + sym->start;
+//    return;
+
     // The extra >>32 has already been added to RansEncSymbolInit
     uint32_t q = (uint32_t) (((uint64_t)x * sym->rcp_freq) >> sym->rcp_shift);
     *r = x + sym->bias + q * sym->cmpl_freq;
+
+//    assert(((x / sym->freq) << sym->scale_bits) + (x % sym->freq) + sym->start == *r);
 }
 
 // Equivalent to RansDecAdvance that takes a symbol.
@@ -319,34 +345,68 @@ static inline void RansDecAdvanceSymbolStep(RansState* r, RansDecSymbol const* s
 }
 
 // Renormalize.
+
+#if defined(__x86_64) && !defined(__ILP32__)
+
+/*
+ * Assembly variants of the RansDecRenorm code.
+ * These are based on joint ideas from Rob Davies and from looking at
+ * the clang assembly output.
+ */
+static inline void RansDecRenorm(RansState* r, uint8_t** pptr) {
+    //       q4        q40
+    // clang 730/608   717/467
+    // gcc8  733/588   737/458
+    uint32_t  x   = *r;
+    uint16_t  *ptr = *(uint16_t **)pptr;
+    __asm__ ("movzwl (%0),  %%eax\n\t"
+	     "mov    %1,    %%edx\n\t"
+	     "shl    $0x10, %%edx\n\t"
+             "or     %%eax, %%edx\n\t"
+	     "xor    %%eax, %%eax\n\t"
+             "cmp    $0x8000,%1\n\t"
+             "cmovb  %%edx, %1\n\t"
+	     "lea    2(%0), %%rax\n\t"
+	     "cmovb  %%rax, %0\n\t"
+             : "=r" (ptr), "=r" (x)
+             : "0"  (ptr), "1"  (x)
+             : "eax", "edx"
+             );
+    *pptr = (uint8_t *)ptr;
+    *r = x;
+}
+
+#else /* __x86_64 */
+
 static inline void RansDecRenorm(RansState* r, uint8_t** pptr)
 {
     // renormalize
     uint32_t x = *r;
 
-    if (x < RANS_BYTE_L) {
-        uint8_t* ptr = *pptr;
-        x = (x << 8) | *ptr++;
-        if (x < RANS_BYTE_L)
-            x = (x << 8) | *ptr++;
-        *pptr = ptr;
-    }
+    // Up to 6% quicker (rans4x16pr -t) if using unaligned access,
+    // but normally closer.
+    uint32_t y = (*pptr)[0] | ((*pptr)[1]<<8);
+
+    if (x < RANS_BYTE_L)
+	(*pptr)+=2;
+    if (x < RANS_BYTE_L)
+	x = (x << 16) | y;
 
     *r = x;
 }
+#endif /* __x86_64 */
 
-// Renormalize, with extra checks for falling off the end of the input.
+// Note the data may not be word aligned here.
+// This function is only used sparingly, for the last few bytes in the buffer,
+// so speed isn't critical.
 static inline void RansDecRenormSafe(RansState* r, uint8_t** pptr, uint8_t *ptr_end)
 {
     uint32_t x = *r;
-    uint8_t* ptr = *pptr;
-    if (x >= RANS_BYTE_L || ptr >= ptr_end) return;
-    x = (x << 8) | *ptr++;
-    if (x < RANS_BYTE_L && ptr < ptr_end)
-        x = (x << 8) | *ptr++;
-    *pptr = ptr;
+    if (x >= RANS_BYTE_L || *pptr+1 >= ptr_end) return;
+    uint16_t y = (*pptr)[0] + ((*pptr)[1]<<8);
+    x = (x << 16) | y;
+    (*pptr) += 2;
     *r = x;
 }
 
-
-#endif // RANS_BYTE_HEADER
+#endif // RANS_WORD_HEADER

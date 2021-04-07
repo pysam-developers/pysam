@@ -2,7 +2,7 @@
 
 /*  vcfconcat.c -- Concatenate or combine VCF/BCF files.
 
-    Copyright (C) 2013-2019 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -118,7 +118,7 @@ static void init_data(args_t *args)
         bcf_hdr_append(args->out_hdr,"##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase Set\">");
     }
     if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_concat");
-    args->out_fh = hts_open(args->output_fname,hts_bcf_wmode(args->output_type));
+    args->out_fh = hts_open(args->output_fname,hts_bcf_wmode2(args->output_type,args->output_fname));
     if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->allow_overlaps || args->phased_concat )
     {
@@ -236,6 +236,7 @@ static void phase_update(args_t *args, bcf_hdr_t *hdr, bcf1_t *rec)
         if ( !args->swap_phase[i] ) continue;
         int *gt = &args->GTa[i*2];
         if ( bcf_gt_is_missing(gt[0]) || gt[1]==bcf_int32_vector_end ) continue;
+        if ( !bcf_gt_is_phased(gt[1]) ) continue;
         SWAP(int, gt[0], gt[1]);
         gt[1] |= 1;
     }

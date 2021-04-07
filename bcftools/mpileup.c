@@ -1,6 +1,6 @@
 /*  mpileup.c -- mpileup subcommand. Previously bam_plcmd.c from samtools
 
-    Copyright (C) 2008-2018 Genome Research Ltd.
+    Copyright (C) 2008-2021 Genome Research Ltd.
     Portions copyright (C) 2009-2012 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -499,7 +499,7 @@ static int mpileup(mplp_conf_t *conf)
 
     fprintf(stderr, "[%s] %d samples in %d input files\n", __func__, conf->gplp->n, conf->nfiles);
     // write the VCF header
-    conf->bcf_fp = hts_open(conf->output_fname?conf->output_fname:"-", hts_bcf_wmode(conf->output_type));
+    conf->bcf_fp = hts_open(conf->output_fname?conf->output_fname:"-", hts_bcf_wmode2(conf->output_type,conf->output_fname));
     if (conf->bcf_fp == NULL) {
         fprintf(stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname? conf->output_fname : "standard output", strerror(errno));
         exit(EXIT_FAILURE);
@@ -580,6 +580,8 @@ static int mpileup(mplp_conf_t *conf)
         bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=ADF,Number=R,Type=Integer,Description=\"Allelic depths on the forward strand (high-quality bases)\">");
     if ( conf->fmt_flag&B2B_FMT_ADR )
         bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=ADR,Number=R,Type=Integer,Description=\"Allelic depths on the reverse strand (high-quality bases)\">");
+    if ( conf->fmt_flag&B2B_FMT_QS )
+        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=QS,Number=R,Type=Integer,Description=\"Phred-score allele quality sum used by `call -mG` and `+trio-dnm`\">");
     if ( conf->fmt_flag&B2B_INFO_AD )
         bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=AD,Number=R,Type=Integer,Description=\"Total allelic depths (high-quality bases)\">");
     if ( conf->fmt_flag&B2B_INFO_ADF )
@@ -610,6 +612,9 @@ static int mpileup(mplp_conf_t *conf)
     conf->bc.bcf_hdr = conf->bcf_hdr;
     conf->bc.n  = nsmpl;
     conf->bc.PL = (int32_t*) malloc(15 * nsmpl * sizeof(*conf->bc.PL));
+    conf->bc.QS = (int32_t*) malloc(nsmpl*sizeof(*conf->bc.QS)*B2B_MAX_ALLELES);
+    for (i=0; i<nsmpl; i++)
+        conf->bcr[i].QS = conf->bc.QS + i*B2B_MAX_ALLELES;
     if (conf->fmt_flag)
     {
         assert( sizeof(float)==sizeof(int32_t) );
@@ -694,6 +699,7 @@ static int mpileup(mplp_conf_t *conf)
         free(conf->bc.ADR);
         free(conf->bc.ADF);
         free(conf->bc.SCR);
+        free(conf->bc.QS);
         free(conf->bc.fmt_arr);
         free(conf->bcr);
     }
@@ -797,6 +803,7 @@ int parse_format_flag(const char *str)
         else if ( !strcasecmp(tags[i],"ADF") || !strcasecmp(tags[i],"FORMAT/ADF") || !strcasecmp(tags[i],"FMT/ADF") ) flag |= B2B_FMT_ADF;
         else if ( !strcasecmp(tags[i],"ADR") || !strcasecmp(tags[i],"FORMAT/ADR") || !strcasecmp(tags[i],"FMT/ADR") ) flag |= B2B_FMT_ADR;
         else if ( !strcasecmp(tags[i],"SCR") || !strcasecmp(tags[i],"FORMAT/SCR") || !strcasecmp(tags[i],"FMT/SCR") ) flag |= B2B_FMT_SCR;
+        else if ( !strcasecmp(tags[i],"QS") || !strcasecmp(tags[i],"FORMAT/QS") || !strcasecmp(tags[i],"FMT/QS") ) flag |= B2B_FMT_QS;
         else if ( !strcasecmp(tags[i],"INFO/SCR") ) flag |= B2B_INFO_SCR;
         else if ( !strcasecmp(tags[i],"INFO/AD") ) flag |= B2B_INFO_AD;
         else if ( !strcasecmp(tags[i],"INFO/ADF") ) flag |= B2B_INFO_ADF;
@@ -825,6 +832,7 @@ static void list_annotations(FILE *fp)
 "  FORMAT/ADF .. Allelic depths on the forward strand (Number=R,Type=Integer)\n"
 "  FORMAT/ADR .. Allelic depths on the reverse strand (Number=R,Type=Integer)\n"
 "  FORMAT/DP  .. Number of high-quality bases (Number=1,Type=Integer)\n"
+"  FORMAT/QS  .. Allele phred-score quality sum for use with `call -mG` and +trio-dnm (Number=R,Type=Integer)\n"
 "  FORMAT/SP  .. Phred-scaled strand bias P-value (Number=1,Type=Integer)\n"
 "  FORMAT/SCR .. Number of soft-clipped reads (Number=1,Type=Integer)\n"
 "\n"
@@ -855,7 +863,7 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
 "  -A, --count-orphans     do not discard anomalous read pairs\n"
 "  -b, --bam-list FILE     list of input BAM filenames, one per line\n"
 "  -B, --no-BAQ            disable BAQ (per-Base Alignment Quality)\n"
-"  -C, --adjust-MQ INT     adjust mapping quality; recommended:50, disable:0 [0]\n"
+"  -C, --adjust-MQ INT     adjust mapping quality [0]\n"
 "  -d, --max-depth INT     max raw per-file depth; avoids excessive memory usage [%d]\n", mplp->max_depth);
     fprintf(fp,
 "  -E, --redo-BAQ          recalculate BAQ on the fly, ignore existing BQs\n"
@@ -881,7 +889,7 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
 "  -x, --ignore-overlaps   disable read-pair overlap detection\n"
 "\n"
 "Output options:\n"
-"  -a, --annotate LIST     optional tags to output; '?' to list []\n"
+"  -a, --annotate LIST     optional tags to output; '?' to list available tags []\n"
 "  -g, --gvcf INT[,...]    group non-variant sites into gVCF blocks according\n"
 "                          to minimum per-sample DP\n"
 "      --no-version        do not append version and command line to the header\n"

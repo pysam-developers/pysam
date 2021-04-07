@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 Genome Research Ltd.
+ * Copyright (c) 2014-2019 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,7 +31,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
 #ifndef RANS_STATIC_H
 #define RANS_STATIC_H
 
@@ -40,9 +39,9 @@ extern "C" {
 #endif
 
 unsigned char *rans_compress(unsigned char *in, unsigned int in_size,
-                             unsigned int *out_size, int order);
+			     unsigned int *out_size, int order);
 unsigned char *rans_uncompress(unsigned char *in, unsigned int in_size,
-                               unsigned int *out_size);
+			       unsigned int *out_size);
 
 #ifdef __cplusplus
 }
