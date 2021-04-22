@@ -58,24 +58,6 @@ cdef class AlignmentFile(HTSFile):
     cpdef int write(self, AlignedSegment read) except -1
 
 
-cdef class PileupColumn:
-    cdef const bam_pileup1_t ** plp
-    cdef int tid
-    cdef int pos
-    cdef int n_pu
-
-
-cdef class PileupRead:
-    cdef AlignedSegment _alignment
-    cdef int32_t  _qpos
-    cdef int _indel
-    cdef int _level
-    cdef uint32_t _is_del
-    cdef uint32_t _is_head
-    cdef uint32_t _is_tail
-    cdef uint32_t _is_refskip
-
-
 cdef class IteratorRow:
     cdef int retval
     cdef bam1_t * b
