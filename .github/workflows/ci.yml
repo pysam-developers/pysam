@@ -1,0 +1,39 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7]
+    defaults:
+      run:
+        shell: bash -l {0}  # needed for conda activation
+    env:
+      HTSLIB_CONFIGURE_OPTIONS: "--disable-libcurl"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          channel-priority: strict
+          activate-environment: testenv
+          auto-activate-base: false
+          use-only-tar-bz2: true
+      - run: conda config --add channels bioconda --add channels conda-forge
+      - run: conda install python=${{ matrix.python-version }} cython
+      - name: Build package and create sdist
+        # TODO sdist should cythonize, 'build' does too much
+        run: python setup.py build sdist
+      - name: Ensure sdist does not contain config.h
+        run: "! tar -tf dist/pysam-*.tar.gz | grep '/config.h$'"
+      - name: Install
+        run: python setup.py install
+      - name: Prepare test data
+        run: |
+          conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest
+          make -C tests/pysam_data
+          make -C tests/cbcf_data
+      - run: pytest
