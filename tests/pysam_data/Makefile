@@ -3,7 +3,7 @@ BAM=$(SAM:%.sam=%.bam)
 BAI=$(BAM:%.bam=%.bam.bai)
 CRAM=ex1.cram ex2.cram ex3.cram
 CRAI=$(CRAM:%.cram=%.cram.crai)
-NO_PG:=$(findstring --no-PG,$(shell samtools view))
+NO_PG:=$(findstring --no-PG,$(shell samtools view '-?'))
 
 # ex2.bam - bam file without index
 
