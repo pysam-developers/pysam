@@ -1,6 +1,5 @@
 import pysam
 import os
-import pytest
 from TestUtils import make_data_files, BAM_DATADIR
 
 

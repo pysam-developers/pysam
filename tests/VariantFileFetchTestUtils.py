@@ -8,8 +8,6 @@ except ImportError:
     pass
     
 
-from TestUtils import CBCF_DATADIR, force_str
-
 def build_filter_from_vcf_with_samtoolsshell(fn):
     retval = os.popen(
         "bcftools filter -e \"N_ALT != 1 || QUAL < 20 || maf[0]>0.05\" {} | grep -cv ^# ".format(fn)).read()

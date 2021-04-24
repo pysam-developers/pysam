@@ -1,7 +1,6 @@
 import unittest
 import pysam
 import os
-import sys
 import re
 import copy
 import gzip

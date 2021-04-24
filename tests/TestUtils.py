@@ -1,7 +1,6 @@
 import sys
 import os
 import glob
-import difflib
 import gzip
 import contextlib
 import inspect
