@@ -72,7 +72,7 @@ cdef class HFile(object):
     cdef hFILE *fp
     cdef readonly object name, mode
 
-    def __init__(self, name, mode='r', closedf=True):
+    def __init__(self, name, mode='r', closefd=True):
         self._open(name, mode, closefd=True)
 
     def __dealloc__(self):
