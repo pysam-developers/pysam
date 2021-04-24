@@ -3,6 +3,7 @@ import sys
 import sysconfig
 
 from pysam.libchtslib import *
+import pysam.libchtslib as libchtslib
 from pysam.libcsamtools import *
 from pysam.libcbcftools import *
 from pysam.libcutils import *
@@ -11,7 +12,7 @@ import pysam.libcfaidx as libcfaidx
 from pysam.libcfaidx import *
 import pysam.libctabix as libctabix
 from pysam.libctabix import *
-# import pysam.libctabixproxies as libctabixproxies
+import pysam.libctabixproxies as libctabixproxies
 # from pysam.libctabixproxies import *
 import pysam.libcsamfile as libcsamfile
 from pysam.libcsamfile import *
