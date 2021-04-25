@@ -31,6 +31,8 @@ import sysconfig
 from contextlib import contextmanager
 from distutils import log
 from setuptools import setup, Command
+from setuptools.command.sdist import sdist as _sdist
+
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
     import cython
@@ -188,8 +190,6 @@ package_dirs = {'pysam': 'pysam',
 # subpackages.
 config_headers = ["samtools/config.h",
                   "bcftools/config.h"]
-
-cmdclass = {'build_ext': build_ext, 'clean_ext': clean_ext}
 
 # If cython is available, the pysam will be built using cython from
 # the .pyx files. If no cython is available, the C-files included in the
@@ -439,6 +439,18 @@ common_options = dict(
 for module in modules:
     module.update(**common_options)
 
+extensions = [Extension(**opts) for opts in modules]
+
+
+class sdist(_sdist):
+    def run(self):
+        from Cython.Build import cythonize
+        cythonize(extensions)
+        super().run()
+
+
+cmdclass = {'build_ext': build_ext, 'clean_ext': clean_ext, 'sdist': sdist}
+
 classifiers = """
 Development Status :: 4 - Beta
 Intended Audience :: Science/Research
@@ -465,7 +477,7 @@ metadata = {
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
     'requires': ['cython (>=0.29.12)'],
-    'ext_modules': [Extension(**opts) for opts in modules],
+    'ext_modules': extensions,
     'cmdclass': cmdclass,
     'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h'], },
