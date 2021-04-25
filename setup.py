@@ -210,22 +210,6 @@ if not os.path.exists(fn):
         "from the repository"
         .format(fn))
 
-# exclude sources that contain a main function
-EXCLUDE = {
-    "samtools": (
-    ),
-    "bcftools": (
-        "test", "plugins", "peakfit.c",
-        "peakfit.h",
-        # needs to renamed, name conflict with samtools reheader
-        "reheader.c",
-        "polysomy.c"),
-    "htslib": (
-        'htslib/tabix.c',
-        'htslib/bgzip.c',
-        'htslib/htsfile.c'),
-}
-
 print ("# pysam: htslib mode is {}".format(HTSLIB_MODE))
 print ("# pysam: HTSLIB_CONFIGURE_OPTIONS={}".format(
     HTSLIB_CONFIGURE_OPTIONS))
