@@ -31,6 +31,8 @@ import sysconfig
 from contextlib import contextmanager
 from distutils import log
 from setuptools import setup, Command
+from setuptools.command.sdist import sdist
+
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
     import cython
@@ -196,6 +198,14 @@ def get_pysam_version():
     return version.__version__
 
 
+# Override sdist command to ensure Cythonized *.c files are included.
+class cythonize_sdist(sdist):
+    def run(self):
+        from Cython.Build import cythonize
+        cythonize(self.distribution.ext_modules)
+        super().run()
+
+
 class clean_ext(Command):
     description = "clean up Cython temporary files"
     user_options = []
@@ -251,8 +261,6 @@ package_dirs = {'pysam': 'pysam',
 # subpackages.
 config_headers = ["samtools/config.h",
                   "bcftools/config.h"]
-
-cmdclass = {'build_ext': build_ext, 'clean_ext': clean_ext}
 
 # If cython is available, the pysam will be built using cython from
 # the .pyx files. If no cython is available, the C-files included in the
@@ -522,7 +530,7 @@ metadata = {
     'packages': package_list,
     'requires': ['cython (>=0.29.12)'],
     'ext_modules': [Extension(**opts) for opts in modules],
-    'cmdclass': cmdclass,
+    'cmdclass': {'build_ext': build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
     'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h'], },
     # do not pack in order to permit linking to csamtools.so
