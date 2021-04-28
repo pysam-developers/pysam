@@ -1390,9 +1390,9 @@ cdef class AlignedSegment:
            read.query_squence = read.query_sequence[5:10]
            read.query_qualities = q[5:10]
 
-        The sequence is returned as it is stored in the BAM file. Some mappers
-        might have stored a reverse complement of the original read
-        sequence.
+        The sequence is returned as it is stored in the BAM file. (This will
+        be the reverse complement of the original read sequence if the mapper
+        has aligned the read to the reverse strand.)
         """
         def __get__(self):
             if self.cache_query_sequence:
@@ -1841,8 +1841,9 @@ cdef class AlignedSegment:
     def get_forward_sequence(self):
         """return the original read sequence.
 
-        Reads mapping to the reverse strand will be reverse
-        complemented.
+        Reads mapped to the reverse strand are stored reverse complemented in
+        the BAM file. This method returns such reads reverse complemented back
+        to their original orientation.
 
         Returns None if the record has no query sequence.
         """
@@ -1854,9 +1855,12 @@ cdef class AlignedSegment:
         return s
 
     def get_forward_qualities(self):
-        """return base qualities of the read sequence.
+        """return the original base qualities of the read sequence,
+        in the same format as the :attr:`query_qualities` property.
 
-        Reads mapping to the reverse strand will be reversed.
+        Reads mapped to the reverse strand have their base qualities stored
+        reversed in the BAM file. This method returns such reads' base qualities
+        reversed back to their original orientation.
         """
         if self.is_reverse:
             return self.query_qualities[::-1]
