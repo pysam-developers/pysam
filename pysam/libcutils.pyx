@@ -6,6 +6,7 @@ import tempfile
 import os
 import io
 from contextlib import contextmanager
+from codecs import register_error
 
 from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
 from cpython cimport PyBytes_Check, PyUnicode_Check
@@ -89,6 +90,8 @@ cpdef qualities_to_qualitystring(qualities, int offset=33):
 def latin1_replace(exception):
     return (chr(exception.object[exception.start]), exception.end)
 
+register_error('pysam.latin1replace', latin1_replace)
+
 
 cdef str ERROR_HANDLER = 'strict'
 
@@ -98,10 +101,6 @@ cpdef get_encoding_error_handler():
 cpdef set_encoding_error_handler(name):
     global ERROR_HANDLER
     previous = ERROR_HANDLER
-    if name.startswith('pysam.'):
-        from codecs import register_error
-        register_error('pysam.latin1replace', latin1_replace)
-
     ERROR_HANDLER = name
     return previous
 
@@ -137,7 +136,7 @@ cdef bytes encode_filename(object filename):
         raise TypeError("Argument must be string or unicode.")
 
 
-cdef bytes force_bytes(object s, encoding=TEXT_ENCODING):
+cdef bytes force_bytes(object s, encoding=None, errors=None):
     """convert string or unicode object to bytes, assuming
     utf8 encoding.
     """
@@ -146,37 +145,37 @@ cdef bytes force_bytes(object s, encoding=TEXT_ENCODING):
     elif PyBytes_Check(s):
         return s
     elif PyUnicode_Check(s):
-        return s.encode(encoding)
+        return s.encode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
     else:
         raise TypeError("Argument must be string, bytes or unicode.")
 
 
-cdef charptr_to_str(const char* s, encoding=TEXT_ENCODING):
+cdef charptr_to_str(const char* s, encoding=None, errors=None):
     if s == NULL:
         return None
     if PY_MAJOR_VERSION < 3:
         return s
     else:
-        return s.decode(encoding, ERROR_HANDLER)
+        return s.decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
 
 
-cdef charptr_to_str_w_len(const char* s, size_t n, encoding=TEXT_ENCODING):
+cdef charptr_to_str_w_len(const char* s, size_t n, encoding=None, errors=None):
     if s == NULL:
         return None
     if PY_MAJOR_VERSION < 3:
         return s[:n]
     else:
-        return s[:n].decode(encoding, ERROR_HANDLER)
+        return s[:n].decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
 
 
-cdef bytes charptr_to_bytes(const char* s, encoding=TEXT_ENCODING):
+cdef bytes charptr_to_bytes(const char* s, encoding=None, errors=None):
     if s == NULL:
         return None
     else:
         return s
 
 
-cdef force_str(object s, encoding=TEXT_ENCODING):
+cdef force_str(object s, encoding=None, errors=None):
     """Return s converted to str type of current Python
     (bytes in Py2, unicode in Py3)"""
     if s is None:
@@ -184,10 +183,19 @@ cdef force_str(object s, encoding=TEXT_ENCODING):
     if PY_MAJOR_VERSION < 3:
         return s
     elif PyBytes_Check(s):
-        return s.decode(encoding, ERROR_HANDLER)
+        return s.decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
     else:
         # assume unicode
         return s
+
+
+cdef decode_bytes(bytes s, encoding=None, errors=None):
+    """Return s converted to current Python's str type,
+    always decoding even in Python 2"""
+    if s is None:
+        return None
+    else:
+        return s.decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
 
 
 cpdef parse_region(contig=None,
