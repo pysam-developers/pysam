@@ -1578,6 +1578,8 @@ cdef class AlignmentFile(HTSFile):
 
             # count
             seq = read.seq
+            if seq is None:
+                continue
             quality = read.query_qualities
 
             for qpos, refpos in read.get_aligned_pairs(True):
