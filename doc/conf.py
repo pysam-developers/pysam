@@ -201,8 +201,8 @@ htmlhelp_basename = 'samtoolsdoc'
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-    ('index', 'pysam.tex', ur'pysam documentation',
-     ur'Andreas Heger, Kevin Jacobs et al.', 'manual'),
+    ('index', 'pysam.tex', u'pysam documentation',
+     u'Andreas Heger, Kevin Jacobs, et al.', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
