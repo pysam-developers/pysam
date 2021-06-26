@@ -33,7 +33,8 @@ jobs:
         run: python setup.py install
       - name: Prepare test data
         run: |
-          conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest
+          conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest mypy
           make -C tests/pysam_data
           make -C tests/cbcf_data
       - run: pytest
+      - run: mypy pysam
