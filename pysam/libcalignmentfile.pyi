@@ -10,7 +10,7 @@ else:
 
 from pysam.libchtslib import HTSFile
 from pysam.libcalignedsegment import AlignedSegment
-from pysam.libcfaidx import FastaFile  # type: ignore
+from pysam.libcfaidx import FastaFile
 
 class IndexStats(NamedTuple):
     contig: str
