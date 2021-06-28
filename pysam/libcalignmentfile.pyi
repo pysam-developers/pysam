@@ -8,7 +8,7 @@ if sys.version_info < (3, 8):
 else:
     from typing import Literal
 
-from pysam.libchtslib import HTSFile
+from pysam.libchtslib import HTSFile, _HasFileNo
 from pysam.libcalignedsegment import AlignedSegment
 from pysam.libcfaidx import FastaFile
 
@@ -52,7 +52,7 @@ class AlignmentHeader:
 class AlignmentFile(HTSFile):
     def __init__(
         self,
-        filename,
+        filename: Union[str, bytes, int, _HasFileNo],
         mode: Optional[Literal["r", "w", "wh", "rb", "wb", "wbu", "wb0", "rc", "wc"]] = ...,
         template: Optional[AlignmentFile] = ...,
         reference_names: Optional[Sequence[str]] = ...,
