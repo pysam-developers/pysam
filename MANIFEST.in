@@ -54,7 +54,6 @@ include htslib/cram/*.h
 include htslib/os/*.c
 include htslib/os/*.h
 include cy_build.py
-include pysam.py
 include requirements.txt
 
 # documentation
