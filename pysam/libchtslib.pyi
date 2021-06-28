@@ -1,4 +1,12 @@
+import sys
 from typing import List, Union, NoReturn, Iterable, Any, Tuple, Optional
+if sys.version_info < (3, 8):
+    from typing_extensions import Protocol
+else:
+    from typing import Protocol
+
+class _HasFileNo(Protocol):
+    def fileno(self) -> int: ...
 
 def get_verbosity() -> int: ...
 def set_verbosity(level: int): ...
