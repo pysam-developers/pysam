@@ -143,7 +143,7 @@ cdef tuple METADATA_LENGTHS = ('FIXED', 'VARIABLE', 'A', 'G', 'R')
 ########################################################################
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
-from pysam.libcutils cimport encode_filename, from_string_and_size
+from pysam.libcutils cimport encode_filename, from_string_and_size, decode_bytes
 
 
 ########################################################################
@@ -302,7 +302,7 @@ cdef bcf_array_to_object(void *data, int type, ssize_t n, ssize_t count, int sca
             else:
                 # Otherwise, copy the entire block
                 b = datac[:n]
-            value = tuple(v.decode('utf-8') if v and v != bcf_str_missing else None for v in b.split(b','))
+            value = tuple(decode_bytes(v, 'utf-8') if v and v != bcf_str_missing else None for v in b.split(b','))
     else:
         value = []
         if type == BCF_BT_INT8:
