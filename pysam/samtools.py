@@ -39,6 +39,7 @@ SAMTOOLS_DISPATCH = {
     "flags": ("flags", None),
     "ampliconclip": ("ampliconclip", None),
     "ampliconstats": ("ampliconstats", None),
+    "version": ("version", None),
 }
 
 # instantiate samtools commands as python functions
