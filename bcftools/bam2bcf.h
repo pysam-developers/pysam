@@ -1,7 +1,7 @@
 /*  bam2bcf.h -- variant calling.
 
     Copyright (C) 2010-2012 Broad Institute.
-    Copyright (C) 2012-2014,2016 Genome Research Ltd.
+    Copyright (C) 2012-2020 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -59,6 +59,7 @@ DEALINGS IN THE SOFTWARE.  */
 #define B2B_FMT_SCR     (1<<13)
 #define B2B_INFO_VDB    (1<<14)
 #define B2B_INFO_RPB    (1<<15)
+#define B2B_FMT_QS      (1<<16)
 
 #define B2B_MAX_ALLELES 5
 
@@ -89,8 +90,7 @@ typedef struct __bcf_callaux_t {
 typedef struct {
     uint32_t ori_depth;     // ori_depth = anno[0..3] but before --min-BQ is applied
     unsigned int mq0;
-    int32_t *ADF, *ADR, SCR;
-    float qsum[4];
+    int32_t *ADF, *ADR, SCR, *QS;   // FMT/QS
     // The fields are:
     //      depth fwd   .. ref (0) and non-ref (2)
     //      depth rev   .. ref (1) and non-ref (3)
@@ -112,12 +112,12 @@ typedef struct {
     int tid, pos;
     bcf_hdr_t *bcf_hdr;
     int a[5]; // alleles: ref, alt, alt2, alt3
-    float qsum[5];  // for the QS tag
+    float qsum[B2B_MAX_ALLELES];  // INFO/QS tag
     int n, n_alleles, shift, ori_ref, unseen;
     int n_supp; // number of supporting non-reference reads
     double anno[16];
     unsigned int depth, ori_depth, mq0;
-    int32_t *PL, *DP4, *ADR, *ADF, *SCR;
+    int32_t *PL, *DP4, *ADR, *ADF, *SCR, *QS;
     uint8_t *fmt_arr;
     float vdb; // variant distance bias
     float mwu_pos, mwu_mq, mwu_bq, mwu_mqs;

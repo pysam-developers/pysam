@@ -1,6 +1,6 @@
 /*  vcfstats.c -- Produces stats which can be plotted using plot-vcfstats.
 
-    Copyright (C) 2012-2017 Genome Research Ltd.
+    Copyright (C) 2012-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -41,6 +41,7 @@ THE SOFTWARE.  */
 #include "bcftools.h"
 #include "filter.h"
 #include "bin.h"
+#include "dist.h"
 
 // Logic of the filters: include or exclude sites which match the filters?
 #define FLT_INCLUDE 1
@@ -58,7 +59,7 @@ typedef struct
     float min, max;
     uint64_t *vals_ts, *vals_tv;
     void *val;
-    int nbins, type, m_val;
+    int nbins, type, m_val, idx;
 }
 user_stats_t;
 
@@ -82,7 +83,9 @@ typedef struct
     #endif
     int ts_alt1, tv_alt1;
     #if QUAL_STATS
-        int *qual_ts, *qual_tv, *qual_snps, *qual_indels;
+        // Values are rounded to one significant digit and 1 is added (Q*10+1); missing and negative values go in the first bin
+        // Only SNPs that are the 1st alternate allele are counted
+        dist_t *qual_ts, *qual_tv, *qual_indels;
     #endif
     int *insertions, *deletions, m_indel;   // maximum indel length
     int in_frame, out_frame, na_frame, in_frame_alt1, out_frame_alt1, na_frame_alt1;
@@ -185,13 +188,6 @@ static inline int idist_i2bin(idist_t *d, int i)
     if ( i<=0 ) return d->min;
     if ( i>= d->m_vals ) return d->max;
     return i-1+d->min;
-}
-
-static inline int clip_nonnegative(float x, int limit)
-{
-    if (x >= limit || isnan(x)) return limit - 1;
-    else if (x <= 0.0) return 0;
-    else return (int) x;
 }
 
 #define IC_DBG 0
@@ -350,12 +346,29 @@ static void add_user_stats(args_t *args, char *str)
     args->usr = (user_stats_t*) realloc(args->usr,sizeof(user_stats_t)*args->nusr);
     user_stats_t *usr = &args->usr[args->nusr-1];
     memset(usr,0,sizeof(*usr));
-    usr->min  = 0;
-    usr->max  = 1;
+    usr->min   = 0;
+    usr->max   = 1;
     usr->nbins = 100;
+    usr->idx   = 0;
 
     char *tmp = str;
     while ( *tmp && *tmp!=':' ) tmp++;
+
+    // Tag with an index or just tag? (e.g. PV4[1] vs DP)
+    if ( tmp > str && tmp[-1]==']' )
+    {
+        char *ptr = tmp;
+        while ( ptr>str && *ptr!='[' ) ptr--;
+        if ( *ptr=='[' )
+        {
+            char *ptr2;
+            usr->idx = strtol(ptr+1, &ptr2, 10);
+            if ( ptr+1==ptr2 || ptr2 != tmp-1 ) error("Could not parse the index in \"%s\" (ptr=%s;ptr2=%s(%p),tmp=%s(%p),idx=%d)\n", str,ptr,ptr2,ptr2,tmp,tmp,usr->idx);
+            if ( usr->idx<0 ) error("Error: negative index is not allowed: \"%s\"\n", str);
+            *ptr = 0;
+        }
+    }
+
     usr->tag = (char*)calloc(tmp-str+2,sizeof(char));
     memcpy(usr->tag,str,tmp-str);
 
@@ -466,10 +479,9 @@ static void init_stats(args_t *args)
         int j;
         for (j=0; j<3; j++) stats->af_repeats[j] = (int*) calloc(args->m_af,sizeof(int));
         #if QUAL_STATS
-            stats->qual_ts     = (int*) calloc(args->m_qual,sizeof(int));
-            stats->qual_tv     = (int*) calloc(args->m_qual,sizeof(int));
-            stats->qual_snps   = (int*) calloc(args->m_qual,sizeof(int));
-            stats->qual_indels = (int*) calloc(args->m_qual,sizeof(int));
+            stats->qual_ts     = dist_init(5);
+            stats->qual_tv     = dist_init(5);
+            stats->qual_indels = dist_init(5);
         #endif
         if ( args->files->n_smpl )
         {
@@ -549,10 +561,9 @@ static void destroy_stats(args_t *args)
         for (j=0; j<3; j++)
             if (stats->af_repeats[j]) free(stats->af_repeats[j]);
         #if QUAL_STATS
-            if (stats->qual_ts) free(stats->qual_ts);
-            if (stats->qual_tv) free(stats->qual_tv);
-            if (stats->qual_snps) free(stats->qual_snps);
-            if (stats->qual_indels) free(stats->qual_indels);
+            if (stats->qual_ts) dist_destroy(stats->qual_ts);
+            if (stats->qual_tv) dist_destroy(stats->qual_tv);
+            if (stats->qual_indels) dist_destroy(stats->qual_indels);
         #endif
         #if HWE_STATS
             free(stats->af_hwe);
@@ -679,8 +690,8 @@ static void do_indel_stats(args_t *args, stats_t *stats, bcf_sr_t *reader)
     bcf1_t *line = reader->buffer[0];
 
     #if QUAL_STATS
-        int iqual = clip_nonnegative(line->qual, args->m_qual);
-        stats->qual_indels[iqual]++;
+        int iqual = (isnan(line->qual) || line->qual<0) ? 0 : 1 + (int)(line->qual*10);
+        dist_insert(stats->qual_indels, iqual);
     #endif
 
     // Check if the indel is near an exon for the frameshift statistics
@@ -781,7 +792,7 @@ static void do_indel_stats(args_t *args, stats_t *stats, bcf_sr_t *reader)
 
 static void do_user_stats(stats_t *stats, bcf_sr_t *reader, int is_ts)
 {
-    int i;
+    int i, nval;
     for (i=0; i<stats->nusr; i++)
     {
         user_stats_t *usr = &stats->usr[i];
@@ -789,13 +800,15 @@ static void do_user_stats(stats_t *stats, bcf_sr_t *reader, int is_ts)
         float val;
         if ( usr->type==BCF_HT_REAL )
         {
-            if ( bcf_get_info_float(reader->header,reader->buffer[0],usr->tag,&usr->val,&usr->m_val)<=0 ) continue;
-            val = ((float*)usr->val)[0];
+            if ( (nval=bcf_get_info_float(reader->header,reader->buffer[0],usr->tag,&usr->val,&usr->m_val))<=0 ) continue;
+            if ( usr->idx >= nval ) continue;
+            val = ((float*)usr->val)[usr->idx];
         }
         else
         {
-            if ( bcf_get_info_int32(reader->header,reader->buffer[0],usr->tag,&usr->val,&usr->m_val)<=0 ) continue;
-            val = ((int32_t*)usr->val)[0];
+            if ( (nval=bcf_get_info_int32(reader->header,reader->buffer[0],usr->tag,&usr->val,&usr->m_val))<=0 ) continue;
+            if ( usr->idx >= nval ) continue;
+            val = ((int32_t*)usr->val)[usr->idx];
         }
         int idx;
         if ( val<=usr->min ) idx = 0;
@@ -814,8 +827,7 @@ static void do_snp_stats(args_t *args, stats_t *stats, bcf_sr_t *reader)
     if ( ref<0 ) return;
 
     #if QUAL_STATS
-        int iqual = clip_nonnegative(line->qual, args->m_qual);
-        stats->qual_snps[iqual]++;
+        int iqual = (isnan(line->qual) || line->qual<0) ? 0 : 1 + (int)(line->qual*10);
     #endif
 
     int i;
@@ -834,7 +846,7 @@ static void do_snp_stats(args_t *args, stats_t *stats, bcf_sr_t *reader)
             {
                 stats->ts_alt1++;
                 #if QUAL_STATS
-                    stats->qual_ts[iqual]++;
+                    dist_insert(stats->qual_ts,iqual);
                 #endif
                 do_user_stats(stats, reader, 1);
             }
@@ -846,7 +858,7 @@ static void do_snp_stats(args_t *args, stats_t *stats, bcf_sr_t *reader)
             {
                 stats->tv_alt1++;
                 #if QUAL_STATS
-                    stats->qual_tv[iqual]++;
+                    dist_insert(stats->qual_tv,iqual);
                 #endif
                 do_user_stats(stats, reader, 0);
             }
@@ -1355,21 +1367,50 @@ static void print_stats(args_t *args)
         }
     }
     #if QUAL_STATS
-        printf("# QUAL, Stats by quality:\n# QUAL\t[2]id\t[3]Quality\t[4]number of SNPs\t[5]number of transitions (1st ALT)\t[6]number of transversions (1st ALT)\t[7]number of indels\n");
+        printf("# QUAL, Stats by quality\n# QUAL\t[2]id\t[3]Quality\t[4]number of SNPs\t[5]number of transitions (1st ALT)\t[6]number of transversions (1st ALT)\t[7]number of indels\n");
         for (id=0; id<args->nstats; id++)
         {
             stats_t *stats = &args->stats[id];
-            for (i=0; i<args->m_qual; i++)
+            int ndist_ts = dist_nbins(stats->qual_ts);
+            int ndist_tv = dist_nbins(stats->qual_tv);
+            int ndist_in = dist_nbins(stats->qual_indels);
+            int ndist_max = ndist_ts;
+            if ( ndist_max < ndist_tv ) ndist_max = ndist_tv;
+            if ( ndist_max < ndist_in ) ndist_max = ndist_in;
+            uint32_t beg, end;
+            uint32_t nts, ntv, nin;
+            for (i=0; i<ndist_max; i++)
             {
-                if ( stats->qual_snps[i]+stats->qual_ts[i]+stats->qual_tv[i]+stats->qual_indels[i] == 0  ) continue;
-                printf("QUAL\t%d\t%d\t%d\t%d\t%d\t%d\n", id,i,stats->qual_snps[i],stats->qual_ts[i],stats->qual_tv[i],stats->qual_indels[i]);
+                nts = ntv = nin = 0;
+                float qval = -1;
+                if ( i < ndist_ts )
+                {
+                    nts = dist_get(stats->qual_ts, i, &beg, &end);
+                    qval = beg>0 ? 0.1*(beg - 1) : -1;
+                }
+                if ( i < ndist_tv )
+                {
+                    ntv = dist_get(stats->qual_tv, i, &beg, &end);
+                    if ( qval==-1 ) qval = beg > 0 ? 0.1*(beg - 1) : -1;
+                }
+                if ( i < ndist_in )
+                {
+                    nin = dist_get(stats->qual_indels, i, &beg, &end);
+                    if ( qval==-1 ) qval = beg > 0 ? 0.1*(beg - 1) : -1;
+                }
+                if ( nts+ntv+nin==0 ) continue;
+
+                printf("QUAL\t%d\t",id);
+                if ( qval==-1 ) printf(".");
+                else printf("%.1f",qval);
+                printf("\t%d\t%d\t%d\t%d\n",nts+ntv,nts,ntv,nin);
             }
         }
     #endif
     for (i=0; i<args->nusr; i++)
     {
-        printf("# USR:%s, Stats by %s:\n# USR:%s\t[2]id\t[3]%s\t[4]number of SNPs\t[5]number of transitions (1st ALT)\t[6]number of transversions (1st ALT)\n",
-            args->usr[i].tag,args->usr[i].tag,args->usr[i].tag,args->usr[i].tag);
+        printf("# USR:%s/%d\t[2]id\t[3]%s/%d\t[4]number of SNPs\t[5]number of transitions (1st ALT)\t[6]number of transversions (1st ALT)\n",
+            args->usr[i].tag,args->usr[i].idx,args->usr[i].tag,args->usr[i].idx);
         for (id=0; id<args->nstats; id++)
         {
             user_stats_t *usr = &args->stats[id].usr[i];
@@ -1378,8 +1419,8 @@ static void print_stats(args_t *args)
             {
                 if ( usr->vals_ts[j]+usr->vals_tv[j] == 0 ) continue;   // skip empty bins
                 float val = usr->min + (usr->max - usr->min)*j/(usr->nbins-1);
-                const char *fmt = usr->type==BCF_HT_REAL ? "USR:%s\t%d\t%e\t%d\t%d\t%d\n" : "USR:%s\t%d\t%.0f\t%d\t%d\t%d\n";
-                printf(fmt,usr->tag,id,val,usr->vals_ts[j]+usr->vals_tv[j],usr->vals_ts[j],usr->vals_tv[j]);
+                const char *fmt = usr->type==BCF_HT_REAL ? "USR:%s/%d\t%d\t%e\t%d\t%d\t%d\n" : "USR:%s/%d\t%d\t%.0f\t%d\t%d\t%d\n";
+                printf(fmt,usr->tag,usr->idx,id,val,usr->vals_ts[j]+usr->vals_tv[j],usr->vals_ts[j],usr->vals_tv[j]);
             }
         }
     }
@@ -1705,26 +1746,27 @@ static void usage(void)
     fprintf(stderr, "Usage:   bcftools stats [options] <A.vcf.gz> [<B.vcf.gz>]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "        --af-bins <list>               allele frequency bins, a list (0.1,0.5,1) or a file (0.1\\n0.5\\n1)\n");
-    fprintf(stderr, "        --af-tag <string>              allele frequency tag to use, by default estimated from AN,AC or GT\n");
-    fprintf(stderr, "    -1, --1st-allele-only              include only 1st allele at multiallelic sites\n");
-    fprintf(stderr, "    -c, --collapse <string>            treat as identical records with <snps|indels|both|all|some|none>, see man page for details [none]\n");
-    fprintf(stderr, "    -d, --depth <int,int,int>          depth distribution: min,max,bin size [0,500,1]\n");
-    fprintf(stderr, "    -e, --exclude <expr>               exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(stderr, "    -E, --exons <file.gz>              tab-delimited file with exons for indel frameshifts (chr,from,to; 1-based, inclusive, bgzip compressed)\n");
-    fprintf(stderr, "    -f, --apply-filters <list>         require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
-    fprintf(stderr, "    -F, --fasta-ref <file>             faidx indexed reference sequence file to determine INDEL context\n");
-    fprintf(stderr, "    -i, --include <expr>               select sites for which the expression is true (see man page for details)\n");
-    fprintf(stderr, "    -I, --split-by-ID                  collect stats for sites with ID separately (known vs novel)\n");
-    fprintf(stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(stderr, "    -s, --samples <list>               list of samples for sample stats, \"-\" to include all samples\n");
-    fprintf(stderr, "    -S, --samples-file <file>          file of samples to include\n");
-    fprintf(stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
-    fprintf(stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
-    fprintf(stderr, "    -u, --user-tstv <TAG[:min:max:n]>  collect Ts/Tv stats for any tag using the given binning [0:1:100]\n");
-    fprintf(stderr, "        --threads <int>                use multithreading with <int> worker threads [0]\n");
-    fprintf(stderr, "    -v, --verbose                      produce verbose per-site and per-sample output\n");
+    fprintf(stderr, "        --af-bins LIST               Allele frequency bins, a list (0.1,0.5,1) or a file (0.1\\n0.5\\n1)\n");
+    fprintf(stderr, "        --af-tag STRING              Allele frequency tag to use, by default estimated from AN,AC or GT\n");
+    fprintf(stderr, "    -1, --1st-allele-only            Include only 1st allele at multiallelic sites\n");
+    fprintf(stderr, "    -c, --collapse STRING            Treat as identical records with <snps|indels|both|all|some|none>, see man page for details [none]\n");
+    fprintf(stderr, "    -d, --depth INT,INT,INT          Depth distribution: min,max,bin size [0,500,1]\n");
+    fprintf(stderr, "    -e, --exclude EXPR               Exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(stderr, "    -E, --exons FILE.gz              Tab-delimited file with exons for indel frameshifts (chr,beg,end; 1-based, inclusive, bgzip compressed)\n");
+    fprintf(stderr, "    -f, --apply-filters LIST         Require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
+    fprintf(stderr, "    -F, --fasta-ref FILE             Faidx indexed reference sequence file to determine INDEL context\n");
+    fprintf(stderr, "    -i, --include EXPR               Select sites for which the expression is true (see man page for details)\n");
+    fprintf(stderr, "    -I, --split-by-ID                Collect stats for sites with ID separately (known vs novel)\n");
+    fprintf(stderr, "    -r, --regions REGION             Restrict to comma-separated list of regions\n");
+    fprintf(stderr, "    -R, --regions-file FILE          Restrict to regions listed in a file\n");
+    fprintf(stderr, "    -s, --samples LIST               List of samples for sample stats, \"-\" to include all samples\n");
+    fprintf(stderr, "    -S, --samples-file FILE          File of samples to include\n");
+    fprintf(stderr, "    -t, --targets REGION             Similar to -r but streams rather than index-jumps\n");
+    fprintf(stderr, "    -T, --targets-file FILE          Similar to -R but streams rather than index-jumps\n");
+    fprintf(stderr, "    -u, --user-tstv TAG[:min:max:n]  Collect Ts/Tv stats for any tag using the given binning [0:1:100]\n");
+    fprintf(stderr, "                                       A subfield can be selected as e.g. 'PV4[0]', here the first value of the PV4 tag\n");
+    fprintf(stderr, "        --threads INT                Use multithreading with <int> worker threads [0]\n");
+    fprintf(stderr, "    -v, --verbose                    Produce verbose per-site and per-sample output\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -1796,8 +1838,12 @@ int main_vcfstats(int argc, char *argv[])
             case 's': args->samples_list = optarg; break;
             case 'S': args->samples_list = optarg; args->samples_is_file = 1; break;
             case 'I': args->split_by_id = 1; break;
-            case 'e': args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
-            case 'i': args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
+            case 'e':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
+            case 'i':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case 'h':
             case '?': usage(); break;

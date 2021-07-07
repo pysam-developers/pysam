@@ -1,6 +1,6 @@
 /*  vcfsort.c -- sort subcommand
 
-   Copyright (C) 2017-2020 Genome Research Ltd.
+   Copyright (C) 2017-2021 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -227,7 +227,7 @@ void merge_blocks(args_t *args)
         blk_read(args, bhp, args->hdr, blk);
     }
 
-    htsFile *out = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
+    htsFile *out = hts_open(args->output_fname, hts_bcf_wmode2(args->output_type,args->output_fname));
     if ( bcf_hdr_write(out, args->hdr)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,args->output_fname);
     while ( bhp->ndat )
     {

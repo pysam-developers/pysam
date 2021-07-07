@@ -29,6 +29,7 @@ THE SOFTWARE.  */
 #include <assert.h>
 #include <ctype.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -37,6 +38,7 @@ THE SOFTWARE.  */
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
 #include <htslib/kbitset.h>
+#include <htslib/hts_os.h>
 #include <inttypes.h>
 #include <sys/time.h>
 #include "bcftools.h"
@@ -177,28 +179,14 @@ static inline void diff_sites_reset(args_t *args)
 {
     kbs_clear(args->kbs_diff);
 }
-/* 
-    Generage a 32-bit random number, taken from
-        https://www.pcg-random.org/download.html#minimal-c-implementation
-*/
-typedef struct { uint64_t state;  uint64_t inc; } pcg32_random_t;
-static uint32_t pcg32_random_r(pcg32_random_t* rng)
-{
-    uint64_t oldstate = rng->state;
-    rng->state = oldstate * 6364136223846793005ULL + (rng->inc|1);
-    uint32_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-    uint32_t rot = oldstate >> 59u;
-    return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-}
 static inline void diff_sites_push(args_t *args, int ndiff, int rid, int pos)
 {
-    static pcg32_random_t rng = { 0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL };
     diff_sites_t *dat = (diff_sites_t*) malloc(args->diff_sites_size);
     memset(dat,0,sizeof(*dat)); // for debugging: prevent warnings about uninitialized memory coming from struct padding (not needed after rand added)
     dat->ndiff = ndiff;
     dat->rid  = rid;
     dat->pos  = pos;
-    dat->rand = pcg32_random_r(&rng);
+    dat->rand = hts_lrand48();
     memcpy(dat->kbs_dat,args->kbs_diff->b,args->kbs_diff->n*sizeof(unsigned long));
     extsort_push(args->es,dat);
 }
@@ -213,8 +201,39 @@ static inline int diff_sites_shift(args_t *args, int *ndiff, int *rid, int *pos)
     return 1;
 }
 
+static void init_samples(char *list, int list_is_file, int **smpl, int *nsmpl, bcf_hdr_t *hdr, char *vcf_fname)
+{
+    int i;
+    if ( !strcmp(list,"-") )
+    {
+        *nsmpl = bcf_hdr_nsamples(hdr);
+        *smpl  = (int*) malloc(sizeof(**smpl)*(*nsmpl));
+        for (i=0; i<*nsmpl; i++) (*smpl)[i] = i;
+        return;
+    }
+
+    char **tmp = hts_readlist(list, list_is_file, nsmpl);
+    if ( !tmp || !*nsmpl ) error("Failed to parse %s\n", list);
+    *smpl = (int*) malloc(sizeof(**smpl)*(*nsmpl));
+    for (i=0; i<*nsmpl; i++)
+    {
+        int idx = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, tmp[i]);
+        if ( idx<0 ) error("No such sample in %s: [%s]\n",vcf_fname,tmp[i]);
+        (*smpl)[i] = idx;
+        free(tmp[i]);
+    }
+    free(tmp);
+    qsort(*smpl,*nsmpl,sizeof(**smpl),cmp_int);
+    // check for duplicates
+    for (i=1; i<*nsmpl; i++)
+        if ( (*smpl)[i-1]==(*smpl)[i] )
+            error("Error: the sample \"%s\" is listed twice in %s\n", hdr->samples[(*smpl)[i]],list);
+}
+
 static void init_data(args_t *args)
 {
+    hts_srand48(0);
+
     args->files = bcf_sr_init();
     if ( args->regions && bcf_sr_set_regions(args->files, args->regions, args->regions_is_file)<0 ) error("Failed to read the regions: %s\n", args->regions);
     if ( args->targets && bcf_sr_set_targets(args->files, args->targets, args->targets_is_file, 0)<0 ) error("Failed to read the targets: %s\n", args->targets);
@@ -277,43 +296,13 @@ static void init_data(args_t *args)
     args->nqry_smpl = bcf_hdr_nsamples(args->qry_hdr);
     if ( args->qry_samples )
     {
-        char **tmp = hts_readlist(args->qry_samples, args->qry_samples_is_file, &args->nqry_smpl);
-        if ( !tmp || !args->nqry_smpl ) error("Failed to parse %s\n", args->qry_samples);
-        args->qry_smpl = (int*) malloc(sizeof(*args->qry_smpl)*args->nqry_smpl);
-        for (i=0; i<args->nqry_smpl; i++)
-        {
-            int idx = bcf_hdr_id2int(args->qry_hdr, BCF_DT_SAMPLE, tmp[i]);
-            if ( idx<0 ) error("No such sample in %s: [%s]\n",args->qry_fname,tmp[i]);
-            args->qry_smpl[i] = idx;
-            free(tmp[i]);
-        }
-        free(tmp);
-        qsort(args->qry_smpl,args->nqry_smpl,sizeof(*args->qry_smpl),cmp_int);
-        // check for duplicates
-        for (i=1; i<args->nqry_smpl; i++)
-            if ( args->qry_smpl[i-1]==args->qry_smpl[i] )
-                error("Error: the sample \"%s\" is listed twice in %s\n",args->qry_hdr->samples[args->qry_smpl[i]],args->qry_fname);
+        init_samples(args->qry_samples, args->qry_samples_is_file, &args->qry_smpl, &args->nqry_smpl, args->qry_hdr, args->qry_fname);
     }
     if ( args->gt_samples )
-    {
-        char **tmp = hts_readlist(args->gt_samples, args->gt_samples_is_file, &args->ngt_smpl);
-        if ( !tmp || !args->ngt_smpl ) error("Failed to parse %s\n", args->gt_samples);
-        args->gt_smpl = (int*) malloc(sizeof(*args->gt_smpl)*args->ngt_smpl);
-        for (i=0; i<args->ngt_smpl; i++)
-        {
-            int idx = bcf_hdr_id2int(args->gt_hdr ? args->gt_hdr : args->qry_hdr, BCF_DT_SAMPLE, tmp[i]);
-            if ( idx<0 ) error("No such sample in %s: [%s]\n",args->gt_fname ? args->gt_fname : args->qry_fname,tmp[i]);
-            args->gt_smpl[i] = idx;
-            free(tmp[i]);
-        }
-        free(tmp);
-        qsort(args->gt_smpl,args->ngt_smpl,sizeof(*args->gt_smpl),cmp_int);
-        // check for duplicates
-        for (i=1; i<args->ngt_smpl; i++)
-            if ( args->gt_smpl[i-1]==args->gt_smpl[i] )
-                error("Error: the sample \"%s\" is listed twice in %s\n",
-                    args->qry_hdr ? args->qry_hdr->samples[args->gt_smpl[i]] : args->qry_hdr->samples[args->gt_smpl[i]],
-                    args->gt_fname ? args->gt_fname : args->qry_fname);
+    {   
+        init_samples(args->gt_samples, args->gt_samples_is_file, &args->gt_smpl, &args->ngt_smpl,
+            args->gt_hdr ? args->gt_hdr : args->qry_hdr,
+            args->gt_fname ? args->gt_fname : args->qry_fname);
     }
     else if ( args->pair_samples )
     {
@@ -959,14 +948,14 @@ static void usage(void)
     fprintf(stderr, "    -e, --error-probability INT        Phred-scaled probability of genotyping error, 0 for faster but less accurate results [40]\n");
     fprintf(stderr, "    -g, --genotypes FILE               Genotypes to compare against\n");
     fprintf(stderr, "    -H, --homs-only                    Homozygous genotypes only, useful with low coverage data (requires -g)\n");
-    fprintf(stderr, "        --n-matches INT                Print only top INT matches for each sample, 0 for unlimited. Use negative value\n");
-    fprintf(stderr, "                                            to sort by HWE probability rather than the number of discordant sites [0]\n");
+    fprintf(stderr, "        --n-matches INT                Print only top INT matches for each sample (sorted by average score), 0 for unlimited.\n");
+    fprintf(stderr, "                                           Use negative value to sort by HWE probability rather than by discordance [0]\n");
     fprintf(stderr, "        --no-HWE-prob                  Disable calculation of HWE probability\n");
     fprintf(stderr, "    -p, --pairs LIST                   Comma-separated sample pairs to compare (qry,gt[,qry,gt..] with -g or qry,qry[,qry,qry..] w/o)\n");
     fprintf(stderr, "    -P, --pairs-file FILE              File with tab-delimited sample pairs to compare (qry,gt with -g or qry,qry w/o)\n");
     fprintf(stderr, "    -r, --regions REGION               Restrict to comma-separated list of regions\n");
     fprintf(stderr, "    -R, --regions-file FILE            Restrict to regions listed in a file\n");
-    fprintf(stderr, "    -s, --samples [qry|gt]:LIST        List of query or -g samples (by default all samples are compared)\n");
+    fprintf(stderr, "    -s, --samples [qry|gt]:LIST        List of query or -g samples, \"-\" to select all samples (by default all samples are compared)\n");
     fprintf(stderr, "    -S, --samples-file [qry|gt]:FILE   File with the query or -g samples to compare\n");
     fprintf(stderr, "    -t, --targets REGION               Similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file FILE            Similar to -R but streams rather than index-jumps\n");

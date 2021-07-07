@@ -1,6 +1,6 @@
 /*  vcfmerge.c -- Merge multiple VCF/BCF files to create one multi-sample file.
 
-    Copyright (C) 2012-2020 Genome Research Ltd.
+    Copyright (C) 2012-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1726,6 +1726,7 @@ void merge_format_string(args_t *args, const char *key, bcf_fmt_t **fmt_map, bcf
                     int ret = copy_string_field(src, iori - ifrom, fmt_ori->size, str, inew);
                     if ( ret<-1 ) error("[E::%s] fixme: internal error at %s:%"PRId64" .. %d\n",__func__,bcf_seqname(hdr,line),(int64_t) line->pos+1,ret);
                 }
+                if ( nmax < str->l ) nmax = str->l;
                 src += fmt_ori->size;
             }
             continue;
@@ -2900,13 +2901,9 @@ void stage_line(args_t *args)
 
 void merge_line(args_t *args)
 {
-    if ( args->regs )
-    {
-        if ( !regidx_overlap(args->regs,args->maux->chr,args->maux->pos,args->maux->pos,NULL) ) return;
-    }
-
     bcf1_t *out = args->out_line;
     merge_chrom2qual(args, out);
+    if ( args->regs && !regidx_overlap(args->regs,args->maux->chr,out->pos,out->pos+out->rlen-1,NULL) ) return;
     merge_filter(args, out);
     merge_info(args, out);
     if ( args->do_gvcf )
@@ -3006,7 +3003,7 @@ void hdr_add_localized_tags(args_t *args, bcf_hdr_t *hdr)
 }
 void merge_vcf(args_t *args)
 {
-    args->out_fh  = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
+    args->out_fh  = hts_open(args->output_fname, hts_bcf_wmode2(args->output_type,args->output_fname));
     if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->n_threads ) hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->files->p); //hts_set_threads(args->out_fh, args->n_threads);
     args->out_hdr = bcf_hdr_init("w");

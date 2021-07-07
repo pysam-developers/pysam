@@ -2,7 +2,7 @@
 
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
-    Copyright (C) 2013-2020 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -191,6 +191,11 @@ static ploidy_predef_t ploidy_predefs[] =
       .about  = "Treat all samples as haploid",
       .ploidy =
           "*  * *     * 1\n"
+    },
+    { .alias  = "2",
+      .about  = "Treat all samples as diploid",
+      .ploidy =
+          "*  * *     * 2\n"
     },
     {
         .alias  = NULL,
@@ -689,7 +694,7 @@ static void init_data(args_t *args)
     if ( args->aux.flag & CALL_CONSTR_ALLELES )
         args->vcfbuf = vcfbuf_init(args->aux.hdr, 0);
 
-    args->out_fh = hts_open(args->output_fname, hts_bcf_wmode(args->output_type));
+    args->out_fh = hts_open(args->output_fname, hts_bcf_wmode2(args->output_type,args->output_fname));
     if ( args->out_fh == NULL ) error("Error: cannot write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(args->out_fh, args->n_threads);
 
@@ -771,7 +776,20 @@ void parse_novel_rate(args_t *args, const char *str)
     else error("Could not parse --novel-rate %s\n", str);
 }
 
-static int parse_format_flag(const char *str)
+static void list_annotations(FILE *fp)
+{
+    fprintf(fp,
+        "\n"
+        "Optional INFO annotations available with -m (\"INFO/\" prefix is optional):\n"
+        "  INFO/PV4   .. P-values for strand bias, baseQ bias, mapQ bias and tail distance bias (Number=4,Type=Float)\n"
+        "\n"
+        "Optional FORMAT annotations available with -m (\"FORMAT/\" prefix is optional):\n"
+        "  FORMAT/GQ  .. Phred-scaled genotype quality (Number=1,Type=Integer)\n"
+        "  FORMAT/GP  .. Phred-scaled genotype posterior probabilities (Number=G,Type=Float)\n"
+        "\n");
+}
+
+static int parse_output_tags(const char *str)
 {
     int flag = 0;
     const char *ss = str;
@@ -779,8 +797,9 @@ static int parse_format_flag(const char *str)
     {
         const char *se = ss;
         while ( *se && *se!=',' ) se++;
-        if ( !strncasecmp(ss,"GQ",se-ss) ) flag |= CALL_FMT_GQ;
-        else if ( !strncasecmp(ss,"GP",se-ss) ) flag |= CALL_FMT_GP;
+        if ( !strncasecmp(ss,"GQ",se-ss) || !strncasecmp(ss,"FORMAT/GQ",se-ss) || !strncasecmp(ss,"FMT/GQ",se-ss)  ) flag |= CALL_FMT_GQ;
+        else if ( !strncasecmp(ss,"GP",se-ss) || !strncasecmp(ss,"FORMAT/GP",se-ss) || !strncasecmp(ss,"FMT/GP",se-ss) ) flag |= CALL_FMT_GP;
+        else if ( !strncasecmp(ss,"PV4",se-ss) || !strncasecmp(ss,"INFO/PV4",se-ss) ) flag |= CALL_FMT_PV4;
         else
         {
             fprintf(bcftools_stderr,"Could not parse \"%s\"\n", str);
@@ -859,37 +878,42 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "Usage:   bcftools call [options] <in.vcf.gz>\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "File format options:\n");
-    fprintf(bcftools_stderr, "       --no-version                do not append version and command line to the header\n");
-    fprintf(bcftools_stderr, "   -o, --output <file>             write output to a file [standard output]\n");
-    fprintf(bcftools_stderr, "   -O, --output-type <b|u|z|v>     output type: 'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
-    fprintf(bcftools_stderr, "       --ploidy <assembly>[?]      predefined ploidy, 'list' to print available settings, append '?' for details\n");
-    fprintf(bcftools_stderr, "       --ploidy-file <file>        space/tab-delimited list of CHROM,FROM,TO,SEX,PLOIDY\n");
-    fprintf(bcftools_stderr, "   -r, --regions <region>          restrict to comma-separated list of regions\n");
-    fprintf(bcftools_stderr, "   -R, --regions-file <file>       restrict to regions listed in a file\n");
-    fprintf(bcftools_stderr, "   -s, --samples <list>            list of samples to include [all samples]\n");
-    fprintf(bcftools_stderr, "   -S, --samples-file <file>       PED file or a file with an optional column with sex (see man page for details) [all samples]\n");
-    fprintf(bcftools_stderr, "   -t, --targets <region>          similar to -r but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "   -T, --targets-file <file>       similar to -R but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "       --threads <int>             use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "       --no-version              Do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "   -o, --output FILE             Write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "   -O, --output-type b|u|z|v     Output type: 'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]\n");
+    fprintf(bcftools_stderr, "       --ploidy ASSEMBLY[?]      Predefined ploidy, 'list' to print available settings, append '?' for details [2]\n");
+    fprintf(bcftools_stderr, "       --ploidy-file FILE        Space/tab-delimited list of CHROM,FROM,TO,SEX,PLOIDY\n");
+    fprintf(bcftools_stderr, "   -r, --regions REGION          Restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "   -R, --regions-file FILE       Restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "   -s, --samples LIST            List of samples to include [all samples]\n");
+    fprintf(bcftools_stderr, "   -S, --samples-file FILE       PED file or a file with an optional column with sex (see man page for details) [all samples]\n");
+    fprintf(bcftools_stderr, "   -t, --targets REGION          Similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "   -T, --targets-file FILE       Similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "       --threads INT             Use multithreading with INT worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Input/output options:\n");
-    fprintf(bcftools_stderr, "   -A, --keep-alts                 keep all possible alternate alleles at variant sites\n");
-    fprintf(bcftools_stderr, "   -f, --format-fields <list>      output format fields: GQ,GP (lowercase allowed) []\n");
-    fprintf(bcftools_stderr, "   -F, --prior-freqs <AN,AC>       use prior allele frequencies\n");
-    fprintf(bcftools_stderr, "   -G, --group-samples <file|->    group samples by population (file with \"sample\\tgroup\") or \"-\" for single-sample calling\n");
-    fprintf(bcftools_stderr, "   -g, --gvcf <int>,[...]          group non-variant sites into gVCF blocks by minimum per-sample DP\n");
-    fprintf(bcftools_stderr, "   -i, --insert-missed             output also sites missed by mpileup but present in -T\n");
-    fprintf(bcftools_stderr, "   -M, --keep-masked-ref           keep sites with masked reference allele (REF=N)\n");
-    fprintf(bcftools_stderr, "   -V, --skip-variants <type>      skip indels/snps\n");
-    fprintf(bcftools_stderr, "   -v, --variants-only             output variant sites only\n");
+    fprintf(bcftools_stderr, "   -A, --keep-alts               Keep all possible alternate alleles at variant sites\n");
+    fprintf(bcftools_stderr, "   -a, --annotate LIST           Optional tags to output (lowercase allowed); '?' to list available tags\n");
+//todo?    
+//    fprintf(bcftools_stderr, "   -a, --annots LIST             Add annotations: GQ,GP,PV4 (lowercase allowed). Prefixed with ^ indicates a request for\n");
+//    fprintf(bcftools_stderr, "                                 tag removal [^I16,^QS,^FMT/QS]\n");
+    fprintf(bcftools_stderr, "   -F, --prior-freqs AN,AC       Use prior allele frequencies, determined from these pre-filled tags\n");
+    fprintf(bcftools_stderr, "   -G, --group-samples FILE|-    Group samples by population (file with \"sample\\tgroup\") or \"-\" for single-sample calling.\n");
+    fprintf(bcftools_stderr, "                                 This requires FORMAT/QS or other Number=R,Type=Integer tag such as FORMAT/AD\n"); 
+    fprintf(bcftools_stderr, "       --group-samples-tag TAG   The tag to use with -G, by default FORMAT/QS and FORMAT/AD are checked automatically\n");
+    fprintf(bcftools_stderr, "   -g, --gvcf INT,[...]          Group non-variant sites into gVCF blocks by minimum per-sample DP\n");
+    fprintf(bcftools_stderr, "   -i, --insert-missed           Output also sites missed by mpileup but present in -T\n");
+    fprintf(bcftools_stderr, "   -M, --keep-masked-ref         Keep sites with masked reference allele (REF=N)\n");
+    fprintf(bcftools_stderr, "   -V, --skip-variants TYPE      Skip indels/snps\n");
+    fprintf(bcftools_stderr, "   -v, --variants-only           Output variant sites only\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Consensus/variant calling options:\n");
-    fprintf(bcftools_stderr, "   -c, --consensus-caller          the original calling method (conflicts with -m)\n");
-    fprintf(bcftools_stderr, "   -C, --constrain <str>           one of: alleles, trio (see manual)\n");
-    fprintf(bcftools_stderr, "   -m, --multiallelic-caller       alternative model for multiallelic and rare-variant calling (conflicts with -c)\n");
-    fprintf(bcftools_stderr, "   -n, --novel-rate <float>,[...]  likelihood of novel mutation for constrained trio calling, see man page for details [1e-8,1e-9,1e-9]\n");
-    fprintf(bcftools_stderr, "   -p, --pval-threshold <float>    variant if P(ref|D)<FLOAT with -c [0.5]\n");
-    fprintf(bcftools_stderr, "   -P, --prior <float>             mutation rate (use bigger for greater sensitivity), use with -m [1.1e-3]\n");
+    fprintf(bcftools_stderr, "   -c, --consensus-caller        The original calling method (conflicts with -m)\n");
+    fprintf(bcftools_stderr, "   -C, --constrain STR           One of: alleles, trio (see manual)\n");
+    fprintf(bcftools_stderr, "   -m, --multiallelic-caller     Alternative model for multiallelic and rare-variant calling (conflicts with -c)\n");
+    fprintf(bcftools_stderr, "   -n, --novel-rate FLOAT,[...]  Likelihood of novel mutation for constrained trio calling, see man page for details [1e-8,1e-9,1e-9]\n");
+    fprintf(bcftools_stderr, "   -p, --pval-threshold FLOAT    Variant if P(ref|D)<FLOAT with -c [0.5]\n");
+    fprintf(bcftools_stderr, "   -P, --prior FLOAT             Mutation rate (use bigger for greater sensitivity), use with -m [1.1e-3]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Example:\n");
     fprintf(bcftools_stderr, "   # See also http://samtools.github.io/bcftools/howtos/variant-calling.html\n");
@@ -930,9 +954,11 @@ int main_vcfcall(int argc, char *argv[])
     {
         {"help",no_argument,NULL,'h'},
         {"format-fields",required_argument,NULL,'f'},
+        {"annotate",required_argument,NULL,'a'},
         {"prior-freqs",required_argument,NULL,'F'},
         {"gvcf",required_argument,NULL,'g'},
         {"group-samples",required_argument,NULL,'G'},
+        {"group-samples-tag",required_argument,NULL,3},
         {"output",required_argument,NULL,'o'},
         {"output-type",required_argument,NULL,'O'},
         {"regions",required_argument,NULL,'r'},
@@ -963,7 +989,7 @@ int main_vcfcall(int argc, char *argv[])
     };
 
     char *tmp = NULL;
-    while ((c = getopt_long(argc, argv, "h?o:O:r:R:s:S:t:T:ANMV:vcmp:C:n:P:f:ig:XYF:G:", loptions, NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h?o:O:r:R:s:S:t:T:ANMV:vcmp:C:n:P:f:a:ig:XYF:G:", loptions, NULL)) >= 0)
     {
         switch (c)
         {
@@ -972,7 +998,12 @@ int main_vcfcall(int argc, char *argv[])
             case 'X': ploidy = "X"; fprintf(bcftools_stderr,"Warning: -X will be deprecated, please use --ploidy instead.\n"); break;
             case 'Y': ploidy = "Y"; fprintf(bcftools_stderr,"Warning: -Y will be deprecated, please use --ploidy instead.\n"); break;
             case 'G': args.aux.sample_groups = optarg; break;
-            case 'f': args.aux.output_tags |= parse_format_flag(optarg); break;
+            case  3 : args.aux.sample_groups_tag = optarg; break;
+            case 'f': fprintf(bcftools_stderr,"Warning: -f, --format-fields will be deprecated, please use -a, --annotate instead.\n");
+            case 'a':
+                      if (optarg[0]=='?') { list_annotations(bcftools_stderr); return 1; }
+                      args.aux.output_tags |= parse_output_tags(optarg);
+                      break;
             case 'M': args.flag &= ~CF_ACGT_ONLY; break;     // keep sites where REF is N
             case 'N': args.flag |= CF_ACGT_ONLY; break;      // omit sites where first base in REF is N (the new default)
             case 'A': args.aux.flag |= CALL_KEEPALT; break;

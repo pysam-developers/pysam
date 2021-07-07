@@ -40,7 +40,7 @@ EXCLUDE = {
     "htslib": (
         'htslib/tabix.c', 'htslib/bgzip.c',
         'htslib/htsfile.c',
-        "test"),
+        "test", "tests"),
 }
 
 
@@ -93,6 +93,9 @@ def _update_pysam_files(cf, destdir):
                 else:
                     lines = re.sub(r"int main\(", "int {}_{}_main(".format(
                         basename, subname), lines)
+                if basename == "samtools":
+                    lines = re.sub(r"main_(reheader)\(",
+                                   r"samtools_main_\1(", lines)
                 lines = re.sub("stderr", "{}_stderr".format(basename), lines)
                 lines = re.sub("stdout", "{}_stdout".format(basename), lines)
                 lines = re.sub(r" printf\(", " fprintf({}_stdout, ".format(basename), lines)
@@ -103,9 +106,6 @@ def _update_pysam_files(cf, destdir):
                 fn = os.path.basename(filename)
                 # some specific fixes:
                 SPECIFIC_SUBSTITUTIONS = {
-                    "bamtk.c": (
-                        'else if (strcmp(argv[1], "tview") == 0)',
-                        '//else if (strcmp(argv[1], "tview") == 0)'),
                     "bam_md.c": (
                         'sam_open_format("-", mode_w',
                         'sam_open_format({}_stdout_fn, mode_w'.format(basename)),
@@ -120,6 +120,10 @@ def _update_pysam_files(cf, destdir):
                     lines = lines.replace(
                         SPECIFIC_SUBSTITUTIONS[fn][0],
                         SPECIFIC_SUBSTITUTIONS[fn][1])
+                if fn == "bamtk.c":
+                    lines = re.sub(r'(#include "version.h")', r'\1\n#include "samtools_config_vars.h"', lines)
+                    lines = re.sub(r'(else if.*"tview")', r'//\1', lines)
+
                 outfile.write(lines)
 
     with open(os.path.join("import", "pysam.h")) as inf, \
@@ -224,9 +228,25 @@ if len(sys.argv) >= 1:
                     outf.write(line)
         os.rename(tmpfilename, filename)
 
+    def _update_version_doc_file(dest, value, filename):
+        tmpfilename = filename + ".tmp"
+        with open(filename, encoding="utf-8") as inf:
+            with open(tmpfilename, "w", encoding="utf-8") as outf:
+                for line in inf:
+                    if " wraps " in line:
+                        # hide the sentence's fullstop from the main regexp
+                        line = re.sub(r'\.$', ',DOT', line)
+                        line = re.sub(r'{}-[^*,]*'.format(dest),
+                                      '{}-{}'.format(dest, value), line)
+                        line = re.sub(',DOT', '.', line)
+                    outf.write(line)
+        os.rename(tmpfilename, filename)
+
     version = _getVersion(srcdir)
     _update_version_file("__{}_version__".format(dest), version, "pysam/version.py")
     _update_version_file(C_VERSION[dest], version + " (pysam)", "pysam/version.h")
+    _update_version_doc_file(dest, version, "README.rst")
+    _update_version_doc_file(dest, version, "doc/index.rst")
 
     sys.exit(0)
 

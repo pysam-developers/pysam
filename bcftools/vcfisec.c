@@ -1,6 +1,6 @@
 /*  vcfisec.c -- Create intersections, unions and complements of VCF files.
 
-    Copyright (C) 2012-2019 Genome Research Ltd.
+    Copyright (C) 2012-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -141,7 +141,7 @@ void isec_vcf(args_t *args)
     if ( args->targets_list && files->nreaders==1 ) out_std = 1;
     if ( out_std )
     {
-        out_fh = hts_open(args->output_fname? args->output_fname : "-",hts_bcf_wmode(args->output_type));
+        out_fh = hts_open(args->output_fname? args->output_fname : "-",hts_bcf_wmode2(args->output_type,args->output_fname));
         if ( out_fh == NULL ) error("Can't write to %s: %s\n", args->output_fname? args->output_fname : "standard output", strerror(errno));
         if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
         if (args->record_cmd_line) bcf_hdr_append_version(files->readers[args->iwrite].header,args->argc,args->argv,"bcftools_isec");
@@ -356,7 +356,7 @@ static void init_data(args_t *args)
 
             #define OPEN_FILE(i,j) { \
                 open_file(&args->fnames[i], NULL, "%s/%04d.%s", args->prefix, i, suffix); \
-                args->fh_out[i] = hts_open(args->fnames[i], hts_bcf_wmode(args->output_type));  \
+                args->fh_out[i] = hts_open(args->fnames[i], hts_bcf_wmode2(args->output_type,args->fnames[i]));  \
                 if ( !args->fh_out[i] ) error("Could not open %s\n", args->fnames[i]); \
                 if ( args->n_threads ) hts_set_threads(args->fh_out[i], args->n_threads); \
                 if (args->record_cmd_line) bcf_hdr_append_version(args->files->readers[j].header,args->argc,args->argv,"bcftools_isec"); \

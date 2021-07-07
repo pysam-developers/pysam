@@ -1,6 +1,6 @@
 /*  vcfroh.c -- HMM model for detecting runs of autozygosity.
 
-    Copyright (C) 2013-2020 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -658,8 +658,10 @@ static void flush_viterbi(args_t *args, int ismpl)
     }
 }
 
-int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq)
+int read_AF(args_t *args, bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq)
 {
+    if ( tgt->nals < 2 )
+        error("Expected two comma-separated alleles (REF,ALT) in the third column of %s, found:\n\t%s\n", args->af_fname,tgt->line.s);
     if ( tgt->nals != line->n_allele ) return -1;    // number of alleles does not match
 
     int i;
@@ -839,7 +841,7 @@ int process_line(args_t *args, bcf1_t *line, int ial)
     else if ( args->af_fname ) 
     {
         // Read AF from a file
-        ret = read_AF(args->files->targets, line, &alt_freq);
+        ret = read_AF(args, args->files->targets, line, &alt_freq);
     }
     else if ( args->dflt_AF > 0 )
     {
@@ -1157,8 +1159,12 @@ int main_vcfroh(int argc, char *argv[])
                 args->dflt_AF = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: --AF-dflt %s\n", optarg);
                 break;
-            case 3: args->filter_str = optarg; args->filter_logic = FLT_INCLUDE; break;
-            case 4: args->filter_str = optarg; args->filter_logic = FLT_EXCLUDE; break;
+            case  3 :
+                if ( args->filter_str ) error("Error: only one --include or --exclude expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
+            case  4 :
+                if ( args->filter_str ) error("Error: only one --include or --exclude expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
             case 5: args->include_noalt_sites = 1; break;
             case 'o': args->output_fname = optarg; break;
             case 'O': 

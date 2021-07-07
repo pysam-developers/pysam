@@ -1,6 +1,6 @@
 /*  vcfannotate.c -- Annotate and edit VCF/BCF files.
 
-    Copyright (C) 2013-2020 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -78,10 +78,13 @@ annot_line_t;
 #define MM_AVG     4
 #define MM_MIN     5
 #define MM_MAX     6
+#define MM_APPEND_MISSING 7     // missing values will be transferred as well
 typedef struct _annot_col_t
 {
     int icol, replace, number;  // number: one of BCF_VL_* types
     char *hdr_key_src, *hdr_key_dst;
+    // The setters return 0 on successful update of the bcf record, negative value (bcf_update_* return status) on errors,
+    // or 1 on (repeated partial updates) concluded with a src=NULL call
     int (*setter)(struct _args_t *, bcf1_t *dst, struct _annot_col_t *, void *src); // the last is the annotation line, either src bcf1_t or annot_line_t
     int (*getter)(struct _args_t *, bcf1_t *src, struct _annot_col_t *, void **ptr, int *mptr);
     int merge_method;               // one of the MM_* defines
@@ -94,7 +97,7 @@ typedef struct _annot_col_t
     double
         *mm_dbl;
     void *ptr;
-    int mptr;
+    int mptr, done;
 }
 annot_col_t;
 
@@ -128,7 +131,9 @@ typedef struct _args_t
 
     vcmp_t *vcmp;           // for matching annotation and VCF lines by allele
     annot_line_t *alines;   // buffered annotation lines
-    int nalines, malines;
+    annot_line_t *aline_missing;
+    uint32_t *srt_alines;   // sorted indexes (iALT<<16 || iAline)
+    int nalines, malines, nsrt_alines, msrt_alines;
     int ref_idx, alt_idx, chr_idx, beg_idx, end_idx;   // -1 if not present
     annot_col_t *cols;      // column indexes and setters
     int ncols;
@@ -149,9 +154,10 @@ typedef struct _args_t
     kstring_t tmpks;
 
     char **argv, *output_fname, *targets_fname, *regions_list, *header_fname;
-    char *remove_annots, *columns, *rename_chrs, *sample_names, *mark_sites;
+    char *remove_annots, *columns, *rename_chrs, *rename_annots, *sample_names, *mark_sites;
     kstring_t merge_method_str;
     int argc, drop_header, record_cmd_line, tgts_is_vcf, mark_sites_logic, force, single_overlaps;
+    int columns_is_file, has_append_mode;
 }
 args_t;
 
@@ -495,24 +501,24 @@ static int setter_filter(args_t *args, bcf1_t *line, annot_col_t *col, void *dat
     if ( tab->cols[col->icol] && tab->cols[col->icol][0]=='.' && !tab->cols[col->icol][1] ) return 0; // don't replace with "."
     hts_expand(int,1,args->mtmpi,args->tmpi);
     args->tmpi[0] = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, tab->cols[col->icol]);
-    if ( args->tmpi[0]<0 ) error("The FILTER is not defined in the header: %s\n", tab->cols[col->icol]);
-    if ( col->replace==SET_OR_APPEND ) { bcf_add_filter(args->hdr_out,line,args->tmpi[0]); return 0; }
+    if ( args->tmpi[0]<0 ) error("The FILTER \"%s\" is not defined in the header, was the -h option provided?\n", tab->cols[col->icol]);
+    if ( col->replace==SET_OR_APPEND ) return bcf_add_filter(args->hdr_out,line,args->tmpi[0]);
     if ( col->replace!=REPLACE_MISSING )
     {
         bcf_update_filter(args->hdr_out,line,NULL,0);
-        bcf_update_filter(args->hdr_out,line,args->tmpi,1); 
-        return 0; 
+        return bcf_update_filter(args->hdr_out,line,args->tmpi,1); 
     }
     
     // only update missing FILTER
     if ( !(line->unpacked & BCF_UN_FLT) ) bcf_unpack(line, BCF_UN_FLT);
     if ( !line->d.n_flt )
-        bcf_update_filter(args->hdr_out,line,args->tmpi,1);
+        return bcf_update_filter(args->hdr_out,line,args->tmpi,1);
+
     return 0;
 }
 static int vcf_setter_filter(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
-    int i;
+    int i, ret = 0;
     bcf1_t *rec = (bcf1_t*) data;
     if ( !(rec->unpacked & BCF_UN_FLT) ) bcf_unpack(rec, BCF_UN_FLT);
     if ( !(line->unpacked & BCF_UN_FLT) ) bcf_unpack(line, BCF_UN_FLT);
@@ -523,9 +529,9 @@ static int vcf_setter_filter(args_t *args, bcf1_t *line, annot_col_t *col, void 
         for (i=0; i<rec->d.n_flt; i++)
         {
             const char *flt = bcf_hdr_int2id(args->files->readers[1].header, BCF_DT_ID, rec->d.flt[i]);
-            bcf_add_filter(args->hdr_out,line,bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, flt));
+            if ( bcf_add_filter(args->hdr_out,line,bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, flt)) < 0 ) ret = -1;
         }
-        return 0;
+        return ret;
     }
     hts_expand(int,rec->d.n_flt,args->mtmpi,args->tmpi);
     for (i=0; i<rec->d.n_flt; i++)
@@ -534,8 +540,7 @@ static int vcf_setter_filter(args_t *args, bcf1_t *line, annot_col_t *col, void 
         args->tmpi[i] = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, flt);
     }
     bcf_update_filter(args->hdr_out,line,NULL,0);
-    bcf_update_filter(args->hdr_out,line,args->tmpi,rec->d.n_flt);
-    return 0;
+    return bcf_update_filter(args->hdr_out,line,args->tmpi,rec->d.n_flt);
 }
 static int setter_id(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -592,9 +597,9 @@ static int vcf_setter_ref(args_t *args, bcf1_t *line, annot_col_t *col, void *da
     als[0] = rec->d.allele[0];
     int i;
     for (i=1; i<line->n_allele; i++) als[i] = line->d.allele[i];
-    bcf_update_alleles(args->hdr_out, line, als, line->n_allele);
+    int ret = bcf_update_alleles(args->hdr_out, line, als, line->n_allele);
     free(als);
-    return 0;
+    return ret;
 }
 static int vcf_setter_alt(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -608,9 +613,9 @@ static int vcf_setter_alt(args_t *args, bcf1_t *line, annot_col_t *col, void *da
     const char **als = (const char**) malloc(sizeof(char*)*rec->n_allele);
     als[0] = line->d.allele[0];
     for (i=1; i<rec->n_allele; i++) als[i] = rec->d.allele[i];
-    bcf_update_alleles(args->hdr_out, line, als, rec->n_allele);
+    int ret = bcf_update_alleles(args->hdr_out, line, als, rec->n_allele);
     free(als);
-    return 0;
+    return ret;
 }
 static int setter_qual(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -684,8 +689,7 @@ static int setter_ARinfo_int32(args_t *args, bcf1_t *line, annot_col_t *col, int
 
         args->tmpi2[i] = args->tmpi[ map[i] ];
     }
-    bcf_update_info_int32(args->hdr_out,line,col->hdr_key_dst,args->tmpi2,ndst);
-    return 0;
+    return bcf_update_info_int32(args->hdr_out,line,col->hdr_key_dst,args->tmpi2,ndst);
 }
 static int setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -697,25 +701,39 @@ static int setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, void *d
 
     if ( !tab )
     {
-        if ( col->merge_method!=MM_SUM && col->merge_method!=MM_AVG && col->merge_method!=MM_MIN && col->merge_method!=MM_MAX && col->merge_method!=MM_APPEND )
-            error("Error: at the moment only the sum,avg,min,max,append options are supported with --merge-logic for INFO type=Integer\n");
+        if ( col->merge_method!=MM_SUM && col->merge_method!=MM_AVG &&
+             col->merge_method!=MM_MIN && col->merge_method!=MM_MAX &&
+             col->merge_method!=MM_APPEND && 
+             col->merge_method!=MM_APPEND_MISSING )
+            error("Error: at the moment only the sum,avg,min,max,append,append-missing options are supported with --merge-logic for INFO type=Integer\n");
     }
 
     int i,ntmpi = 0;
-    if ( tab )
+    if ( tab )  // has data, not flushing yet
     {
         char *str = tab->cols[col->icol], *end = str;
-        if ( str[0]=='.' && str[1]==0 ) return 0;
+        if ( str[0]=='.' && str[1]==0 && col->merge_method!=MM_APPEND_MISSING ) return 1;
 
         while ( *end )
         {
-            int val = strtol(str, &end, 10); 
-            if ( end==str )
-                error("Could not parse %s at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
             ntmpi++;
             hts_expand(int32_t,ntmpi,args->mtmpi,args->tmpi);
-            args->tmpi[ntmpi-1] = val;
-            str = end+1;
+            if ( str[0]=='.' && (str[1]==0 || str[1]==',') )
+            {
+                if ( col->merge_method==MM_APPEND_MISSING )
+                    args->tmpi[ntmpi-1] = bcf_int32_missing;
+                else
+                    ntmpi--;
+                if ( str[1]==0 ) end = str+1;
+                str += 2;
+            }
+            else
+            {
+                args->tmpi[ntmpi-1] = strtol(str, &end, 10); 
+                if ( end==str )
+                    error("Could not parse %s at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
+                str = end+1;
+            }
         }
         if ( col->merge_method!=MM_FIRST )
         {
@@ -728,7 +746,7 @@ static int setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, void *d
             }
             else
             {
-                if ( col->merge_method==MM_APPEND )
+                if ( col->merge_method==MM_APPEND || col->merge_method==MM_APPEND_MISSING )
                 {
                     int nori = col->mm_dbl_nused;
                     col->mm_dbl_nused += ntmpi;
@@ -748,9 +766,10 @@ static int setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, void *d
                 }
             }
             col->mm_dbl_ndat++;
+            return 1;
         }
     }
-    else if ( col->merge_method==MM_SUM || col->merge_method==MM_MIN || col->merge_method==MM_MAX || col->merge_method==MM_APPEND )
+    else if ( col->merge_method==MM_SUM || col->merge_method==MM_MIN || col->merge_method==MM_MAX || col->merge_method==MM_APPEND || col->merge_method==MM_APPEND_MISSING )
     {
         ntmpi = col->mm_dbl_nused;
         hts_expand(int32_t,ntmpi,args->mtmpi,args->tmpi);
@@ -774,8 +793,7 @@ static int setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, void *d
         if ( ret>0 && args->tmpi2[0]!=bcf_int32_missing ) return 0;
     }
 
-    bcf_update_info_int32(args->hdr_out,line,col->hdr_key_dst,args->tmpi,ntmpi);
-    return 0;
+    return bcf_update_info_int32(args->hdr_out,line,col->hdr_key_dst,args->tmpi,ntmpi);
 }
 static int vcf_setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -792,8 +810,7 @@ static int vcf_setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, voi
         if ( ret>0 && args->tmpi2[0]!=bcf_int32_missing ) return 0;
     }
 
-    bcf_update_info_int32(args->hdr_out,line,col->hdr_key_dst,args->tmpi,ntmpi);
-    return 0;
+    return bcf_update_info_int32(args->hdr_out,line,col->hdr_key_dst,args->tmpi,ntmpi);
 }
 static int setter_ARinfo_real(args_t *args, bcf1_t *line, annot_col_t *col, int nals, char **als, int ntmpf)
 {
@@ -824,8 +841,7 @@ static int setter_ARinfo_real(args_t *args, bcf1_t *line, annot_col_t *col, int 
 
         args->tmpf2[i] = args->tmpf[ map[i] ];
     }
-    bcf_update_info_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf2,ndst);
-    return 0;
+    return bcf_update_info_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf2,ndst);
 }
 static int setter_info_real(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -837,25 +853,39 @@ static int setter_info_real(args_t *args, bcf1_t *line, annot_col_t *col, void *
 
     if ( !tab )
     {
-        if ( col->merge_method!=MM_SUM && col->merge_method!=MM_AVG && col->merge_method!=MM_MIN && col->merge_method!=MM_MAX && col->merge_method!=MM_APPEND )
-            error("Error: at the moment only the sum,avg,min,max,append options are supported with --merge-logic for INFO type=Float\n");
+        if ( col->merge_method!=MM_SUM && col->merge_method!=MM_AVG &&
+             col->merge_method!=MM_MIN && col->merge_method!=MM_MAX &&
+             col->merge_method!=MM_APPEND &&
+             col->merge_method!=MM_APPEND_MISSING )
+            error("Error: at the moment only the sum,avg,min,max,append,append-missing options are supported with --merge-logic for INFO type=Float\n");
     }
 
     int i,ntmpf = 0;
     if ( tab )
     {
         char *str = tab->cols[col->icol], *end = str;
-        if ( str[0]=='.' && str[1]==0 ) return 0;
+        if ( str[0]=='.' && str[1]==0 && col->merge_method!=MM_APPEND_MISSING ) return 1;
 
         while ( *end )
         {
-            double val = strtod(str, &end);
-            if ( end==str )
-                error("Could not parse %s at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
             ntmpf++;
             hts_expand(float,ntmpf,args->mtmpf,args->tmpf);
-            args->tmpf[ntmpf-1] = val;
-            str = end+1;
+            if ( str[0]=='.' && (str[1]==0 || str[1]==',') )
+            {
+                if ( col->merge_method==MM_APPEND_MISSING ) 
+                    bcf_float_set_missing(args->tmpf[ntmpf-1]);
+                else
+                    ntmpf--;
+                if ( str[1]==0 ) end = str+1;
+                str += 2;
+            }
+            else
+            {
+                args->tmpf[ntmpf-1] = strtod(str, &end);
+                if ( end==str )
+                    error("Could not parse %s at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
+                str = end+1;
+            }
         }
         if ( col->merge_method!=MM_FIRST )
         {
@@ -864,17 +894,27 @@ static int setter_info_real(args_t *args, bcf1_t *line, annot_col_t *col, void *
                 col->mm_dbl_nused = ntmpf;
                 hts_expand(double,col->mm_dbl_nused,col->mm_dbl_nalloc,col->mm_dbl);
                 for (i=0; i<ntmpf; i++)
-                    col->mm_dbl[i] = args->tmpf[i];
+                {
+                    if ( bcf_float_is_missing(args->tmpf[i]) )
+                        bcf_double_set_missing(col->mm_dbl[i]);
+                    else
+                        col->mm_dbl[i] = args->tmpf[i];
+                }
             }
             else
             {
-                if ( col->merge_method==MM_APPEND )
+                if ( col->merge_method==MM_APPEND || col->merge_method==MM_APPEND_MISSING )
                 {
                     int nori = col->mm_dbl_nused;
                     col->mm_dbl_nused += ntmpf;
                     hts_expand(double,col->mm_dbl_nused,col->mm_dbl_nalloc,col->mm_dbl);
                     for (i=0; i<ntmpf; i++)
-                        col->mm_dbl[i+nori] = args->tmpf[i];
+                    {
+                        if ( bcf_float_is_missing(args->tmpf[i]) )
+                            bcf_double_set_missing(col->mm_dbl[i+nori]);
+                        else
+                            col->mm_dbl[i+nori] = args->tmpf[i];
+                    }
                 }
                 else
                 {
@@ -888,13 +928,20 @@ static int setter_info_real(args_t *args, bcf1_t *line, annot_col_t *col, void *
                 }
             }
             col->mm_dbl_ndat++;
+            return 1;
         }
     }
-    else if ( col->merge_method==MM_SUM || col->merge_method==MM_MIN || col->merge_method==MM_MAX || col->merge_method==MM_APPEND )
+    else if ( col->merge_method==MM_SUM || col->merge_method==MM_MIN || col->merge_method==MM_MAX || col->merge_method==MM_APPEND || col->merge_method==MM_APPEND_MISSING )
     {
         ntmpf = col->mm_dbl_nused;
         hts_expand(int32_t,ntmpf,args->mtmpf,args->tmpf);
-        for (i=0; i<ntmpf; i++) args->tmpf[i] = col->mm_dbl[i];
+        for (i=0; i<ntmpf; i++)
+        {
+            if ( bcf_double_is_missing(col->mm_dbl[i]) )
+                bcf_float_set_missing(args->tmpf[i]);
+            else
+                args->tmpf[i] = col->mm_dbl[i];
+        }
         col->mm_dbl_nused = col->mm_dbl_ndat = 0;
     }
     else if ( col->merge_method==MM_AVG )
@@ -914,8 +961,7 @@ static int setter_info_real(args_t *args, bcf1_t *line, annot_col_t *col, void *
         if ( ret>0 && !bcf_float_is_missing(args->tmpf2[0]) ) return 0;
     }
 
-    bcf_update_info_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf,ntmpf);
-    return 0;
+    return bcf_update_info_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf,ntmpf);
 }
 static int vcf_setter_info_real(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -932,8 +978,7 @@ static int vcf_setter_info_real(args_t *args, bcf1_t *line, annot_col_t *col, vo
         if ( ret>0 && !bcf_float_is_missing(args->tmpf2[0]) ) return 0;
     }
 
-    bcf_update_info_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf,ntmpf);
-    return 0;
+    return bcf_update_info_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf,ntmpf);
 }
 int copy_string_field(char *src, int isrc, int src_len, kstring_t *dst, int idst); // see vcfmerge.c
 static int setter_ARinfo_string(args_t *args, bcf1_t *line, annot_col_t *col, int nals, char **als)
@@ -990,8 +1035,7 @@ static int setter_ARinfo_string(args_t *args, bcf1_t *line, annot_col_t *col, in
         int ret = copy_string_field(args->tmps,map[i],lsrc,&args->tmpks,i);
         if ( ret!=0 ) error("[%s:%d %s] Failed to copy a string field\n",  __FILE__,__LINE__,__func__);
     }
-    bcf_update_info_string(args->hdr_out,line,col->hdr_key_dst,args->tmpks.s);
-    return 0;
+    return bcf_update_info_string(args->hdr_out,line,col->hdr_key_dst,args->tmpks.s);
 }
 void khash_str2int_clear_free(void *_hash)
 {
@@ -1021,7 +1065,7 @@ static int setter_info_str(args_t *args, bcf1_t *line, annot_col_t *col, void *d
     {
         len = strlen(tab->cols[col->icol]);
         if ( !len ) return 0;
-        if ( len==1 && tab->cols[col->icol][0]=='.' ) return 0;
+        if ( len==1 && tab->cols[col->icol][0]=='.' && col->merge_method!=MM_APPEND_MISSING ) return 1;
     }
 
     if ( col->merge_method!=MM_FIRST )
@@ -1031,17 +1075,17 @@ static int setter_info_str(args_t *args, bcf1_t *line, annot_col_t *col, void *d
 
         if ( data )
         {
-            assert( col->merge_method==MM_APPEND || col->merge_method==MM_UNIQUE );
+            assert( col->merge_method==MM_APPEND || col->merge_method==MM_APPEND_MISSING || col->merge_method==MM_UNIQUE );
             if ( col->merge_method==MM_UNIQUE )
             {
                 if ( !col->mm_str_hash ) col->mm_str_hash = (khash_t(str2int)*)khash_str2int_init();
-                if ( khash_str2int_has_key(col->mm_str_hash, tab->cols[col->icol]) ) return 0;
+                if ( khash_str2int_has_key(col->mm_str_hash, tab->cols[col->icol]) ) return 1;
                 khash_str2int_inc(col->mm_str_hash, strdup(tab->cols[col->icol]));
             }
 
             if ( col->mm_kstr.l ) kputc(',',&col->mm_kstr);
             kputs(tab->cols[col->icol], &col->mm_kstr);
-            return 0;
+            return 1;
         }
 
         if ( col->mm_kstr.l )
@@ -1052,12 +1096,10 @@ static int setter_info_str(args_t *args, bcf1_t *line, annot_col_t *col, void *d
         else
             return 0;
 
-        if ( !data )    // flush the line
-        {
-            if ( col->merge_method==MM_UNIQUE )
-                khash_str2int_clear_free(col->mm_str_hash);
-            col->mm_kstr.l = 0;
-        }
+        // flush the line
+        if ( col->merge_method==MM_UNIQUE )
+            khash_str2int_clear_free(col->mm_str_hash);
+        col->mm_kstr.l = 0;
     }
     else
     {
@@ -1069,8 +1111,7 @@ static int setter_info_str(args_t *args, bcf1_t *line, annot_col_t *col, void *d
             return setter_ARinfo_string(args,line,col,tab->nals,tab->als);
     }
 
-    bcf_update_info_string(args->hdr_out,line,col->hdr_key_dst,args->tmps);
-    return 0;
+    return bcf_update_info_string(args->hdr_out,line,col->hdr_key_dst,args->tmps);
 }
 static int vcf_setter_info_str(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -1093,8 +1134,7 @@ static int vcf_setter_info_str(args_t *args, bcf1_t *line, annot_col_t *col, voi
         if ( ret>0 && (args->tmps2[0]!='.' || args->tmps2[1]!=0) ) return 0;
     }
 
-    bcf_update_info_string(args->hdr_out,line,col->hdr_key_dst,args->tmps);
-    return 0;
+    return bcf_update_info_string(args->hdr_out,line,col->hdr_key_dst,args->tmps);
 }
 static int genotypes_to_string(args_t *args, int nsrc1, int32_t *src, int nsmpl_dst, kstring_t *str)
 {
@@ -1764,7 +1804,6 @@ static int vcf_setter_format_real(args_t *args, bcf1_t *line, annot_col_t *col, 
         }
     }
     return bcf_update_format_float(args->hdr_out,line,col->hdr_key_dst,args->tmpf2,nsmpl_dst*ndst1);
-
 }
 
 static int vcf_setter_format_str(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
@@ -1970,11 +2009,45 @@ static void init_columns(args_t *args)
     int need_sample_map = 0;
     int sample_map_ok = init_sample_map(args, args->tgts_is_vcf?args->files->readers[1].header:NULL, args->hdr);
 
+    kstring_t tmp = {0,0,0};
+    if ( args->columns_is_file )
+    {
+        int i,n;
+        char **str = hts_readlist(args->columns, args->columns_is_file, &n);
+        if ( !str ) error("Could not parse %s\n", args->columns);
+        for (i=0; i<n; i++)
+        {
+            char *ptr = str[i];
+            while ( *ptr && !isspace(*ptr) ) ptr++;
+            if ( *ptr )
+            {
+                *ptr = 0;
+                ptr++;
+                while ( *ptr && isspace(*ptr) ) ptr++;
+                if ( *ptr )
+                {
+                    if ( args->merge_method_str.l ) kputc(',',&args->merge_method_str);
+                    kputs(str[i],&args->merge_method_str);
+                    kputc(':',&args->merge_method_str);
+                    kputs(ptr,&args->merge_method_str);
+                }
+            }
+            if ( tmp.l ) kputc(',',&tmp);
+            kputs(str[i],&tmp);
+            free(str[i]);
+        }
+        free(str);
+        free(args->columns);
+        args->columns = tmp.s;
+        tmp.l = tmp.m = 0;
+        tmp.s = NULL;
+    }
+
     void *skip_fmt = NULL, *skip_info = NULL;
     if ( args->tgts_is_vcf )
         args->columns = columns_complement(args->columns, &skip_info, &skip_fmt);
 
-    kstring_t str = {0,0,0}, tmp = {0,0,0};
+    kstring_t str = {0,0,0};
     char *ss = args->columns, *se = ss;
     args->ncols = 0;
     int icol = -1, has_fmt_str = 0;
@@ -2194,7 +2267,7 @@ static void init_columns(args_t *args)
             }
             int hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, key_dst);
             if ( !bcf_hdr_idinfo_exists(args->hdr_out,BCF_HL_FMT,hdr_id) )
-                error("The tag \"%s\" is not defined in %s\n", str.s, args->targets_fname);
+                error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", str.s, args->targets_fname);
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
             memset(col,0,sizeof(*col));
@@ -2281,14 +2354,12 @@ static void init_columns(args_t *args)
                         // transferring ID column into a new INFO tag
                         tmp.l = 0;
                         ksprintf(&tmp,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Transferred ID column\">",key_dst);
-                        col->getter = vcf_getter_id2str;
                     }
                     else if ( !strcasecmp("FILTER",key_src) && !explicit_src_info )
                     {
                         // transferring FILTER column into a new INFO tag
                         tmp.l = 0;
                         ksprintf(&tmp,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Transferred FILTER column\">",key_dst);
-                        col->getter = vcf_getter_filter2str;
                     }
                     else
                     {
@@ -2303,7 +2374,7 @@ static void init_columns(args_t *args)
                                 *ptr = 0; tmp.l = 0; ksprintf(&tmp,"%s:=%s",key_src,ptr+1); *ptr = '=';
                                 error("The tag \"%s\" is not defined, is this what you want \"%s\" ?\n",key_src,tmp.s);
                             }
-                            error("The tag \"%s\" is not defined in %s\n", key_src,args->files->readers[1].fname);
+                            error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", key_src,args->files->readers[1].fname);
                         }
                         tmp.l = 0;
                         bcf_hrec_format_rename(hrec, key_dst, &tmp);
@@ -2314,8 +2385,13 @@ static void init_columns(args_t *args)
                     hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, key_dst);
                 }
                 else
-                    error("The tag \"%s\" is not defined in %s\n", key_src, args->targets_fname);
+                    error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", key_src, args->targets_fname);
                 assert( bcf_hdr_idinfo_exists(args->hdr_out,BCF_HL_INFO,hdr_id) );
+            }
+            if  ( args->tgts_is_vcf )
+            {
+                if ( !strcasecmp("ID",key_src) && !explicit_src_info ) col->getter = vcf_getter_id2str;
+                else if ( !strcasecmp("FILTER",key_src) && !explicit_src_info ) col->getter = vcf_getter_filter2str;
             }
             col->number = bcf_hdr_id2length(args->hdr_out,BCF_HL_INFO,hdr_id);
             switch ( bcf_hdr_id2type(args->hdr_out,BCF_HL_INFO,hdr_id) )
@@ -2393,6 +2469,11 @@ static void init_merge_method(args_t *args)
         int mm_type = MM_FIRST;
         if ( !strcasecmp("unique",mm_type_str) ) mm_type = MM_UNIQUE;
         else if ( !strcasecmp("append",mm_type_str) ) mm_type = MM_APPEND;
+        else if ( !strcasecmp("append-missing",mm_type_str) )
+        {
+            mm_type = MM_APPEND_MISSING;
+            if ( args->ref_idx!=-1 ) args->has_append_mode = 1;
+        }
         else if ( !strcasecmp("sum",mm_type_str) ) mm_type = MM_SUM;
         else if ( !strcasecmp("avg",mm_type_str) ) mm_type = MM_AVG;
         else if ( !strcasecmp("min",mm_type_str) ) mm_type = MM_MIN;
@@ -2401,13 +2482,27 @@ static void init_merge_method(args_t *args)
         for (i=0; i<args->ncols; i++)
         {
             if ( strcmp(args->cols[i].hdr_key_dst,args->tmpks.s) ) continue;
-            if ( mm_type==MM_APPEND && args->cols[i].number!=BCF_VL_VAR )
+            if ( (mm_type==MM_APPEND || mm_type==MM_APPEND_MISSING) && args->cols[i].number!=BCF_VL_VAR )
                 error("Error: --merge-logic append can be requested only for tags of variable length (Number=.)\n");
             args->cols[i].merge_method = mm_type;
             break;
         }
         if ( i==args->ncols ) error("No such tag in the destination file: %s\n", args->tmpks.s);
         sb = *se ? se + 1 : se;
+    }
+    if ( args->has_append_mode )
+    {
+        // create a missing line to insert missing values when VCF ALT finds no match in the annotation file
+        args->aline_missing = (annot_line_t*)calloc(1,sizeof(*args->aline_missing));
+        int ncol = 0;
+        for (i=0; i<args->ncols; i++)
+            if ( ncol < args->cols[i].icol + 1 ) ncol = args->cols[i].icol + 1;
+        if ( ncol < args->ref_idx + 1 ) ncol = args->ref_idx + 1;
+        args->aline_missing->mcols = ncol;
+        args->aline_missing->ncols = ncol;
+        args->aline_missing->cols = (char**) malloc(ncol*sizeof(char*));
+        for (i=0; i<ncol; i++)
+            args->aline_missing->cols[i] = strdup(".");
     }
 }
 
@@ -2435,6 +2530,42 @@ static void rename_chrs(args_t *args, char *fname)
         *se = 0;
         hrec->vals[j] = strdup(ss);
         args->hdr_out->id[BCF_DT_CTG][rid].key = hrec->vals[j];
+    }
+    for (i=0; i<n; i++) free(map[i]);
+    free(map);
+}
+
+static void rename_annots(args_t *args, char *fname)
+{
+    int n, i;
+    char **map = hts_readlist(fname, 1, &n);
+    if ( !map ) error("Could not read: %s\n", fname);
+    for (i=0; i<n; i++)
+    {
+        char *sb = NULL, *ss = map[i];
+        while ( *ss && !isspace(*ss) ) ss++;
+        if ( !*ss ) error("Could not parse: %s\n", fname);
+        *ss = 0;
+        int type;
+        if ( !strncasecmp("info/",map[i],5) ) type = BCF_HL_INFO, sb = map[i] + 5;
+        else if ( !strncasecmp("format/",map[i],7) ) type = BCF_HL_FMT, sb = map[i] + 7;
+        else if ( !strncasecmp("fmt/",map[i],4) ) type = BCF_HL_FMT, sb = map[i] + 4;
+        else if ( !strncasecmp("filter/",map[i],7) ) type = BCF_HL_FLT, sb = map[i] + 7;
+        else error("Could not parse \"%s\", expected INFO, FORMAT, or FILTER prefix for each line: %s\n",map[i],fname);
+        int id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, sb);
+        if ( id<0 ) continue;
+        bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->hdr_out, type, "ID", sb, NULL);
+        if ( !hrec ) continue;  // the sequence not present
+        int j = bcf_hrec_find_key(hrec, "ID");
+        assert( j>=0 );
+        free(hrec->vals[j]);
+        ss++;
+        while ( *ss && isspace(*ss) ) ss++;
+        char *se = ss;
+        while ( *se && !isspace(*se) ) se++;
+        *se = 0;
+        hrec->vals[j] = strdup(ss);
+        args->hdr_out->id[BCF_DT_ID][id].key = hrec->vals[j];
     }
     for (i=0; i<n; i++) free(map[i]);
     free(map);
@@ -2505,8 +2636,9 @@ static void init_data(args_t *args)
     if ( !args->drop_header )
     {
         if ( args->rename_chrs ) rename_chrs(args, args->rename_chrs);
+        if ( args->rename_annots ) rename_annots(args, args->rename_annots);
 
-        args->out_fh = hts_open(args->output_fname,hts_bcf_wmode(args->output_type));
+        args->out_fh = hts_open(args->output_fname,hts_bcf_wmode2(args->output_type,args->output_fname));
         if ( args->out_fh == NULL ) error("[%s] Error: cannot write to \"%s\": %s\n", __func__,args->output_fname, strerror(errno));
         if ( args->n_threads )
             hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->files->p);
@@ -2531,6 +2663,12 @@ static void destroy_data(args_t *args)
         free(args->cols[i].ptr);
     }
     free(args->cols);
+    if ( args->aline_missing )
+    {
+        for (i=0; i<args->aline_missing->ncols; i++) free(args->aline_missing->cols[i]);
+        free(args->aline_missing->cols);
+        free(args->aline_missing);
+    }
     for (i=0; i<args->malines; i++)
     {
         free(args->alines[i].cols);
@@ -2538,6 +2676,7 @@ static void destroy_data(args_t *args)
         free(args->alines[i].line.s);
     }
     free(args->alines);
+    free(args->srt_alines);
     if ( args->tgt_idx )
     {
         regidx_destroy(args->tgt_idx);
@@ -2627,7 +2766,6 @@ static void buffer_annot_lines(args_t *args, bcf1_t *line, int start_pos, int en
         }
         else i++;
     }
-
     if ( args->ref_idx==-1 && args->nalines ) return;
 
     while ( !bcf_sr_regions_overlap(args->tgts, bcf_seqname(args->hdr,line), start_pos,end_pos) )
@@ -2657,6 +2795,7 @@ static void annotate(args_t *args, bcf1_t *line)
     int has_overlap = 0;
     if ( args->tgt_idx )
     {
+        for (j=0; j<args->ncols; j++) args->cols[j].done = 0;
         if ( regidx_overlap(args->tgt_idx, bcf_seqname(args->hdr,line),line->pos,line->pos+line->rlen-1, args->tgt_itr) )
         {
             while ( regitr_overlap(args->tgt_itr) )
@@ -2667,47 +2806,148 @@ static void annotate(args_t *args, bcf1_t *line)
                 tmp->end   = args->tgt_itr->end;
                 parse_annot_line(args, regitr_payload(args->tgt_itr,char*), tmp);
                 for (j=0; j<args->ncols; j++)
-                    if ( args->cols[j].setter(args,line,&args->cols[j],tmp) )
+                {
+                    if ( args->cols[j].done==1 ) continue;
+                    int ret = args->cols[j].setter(args,line,&args->cols[j],tmp);
+                    if ( ret < 0 )
                         error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+                    if ( ret==0 )
+                        args->cols[j].done = 1;
+                }
             }
             has_overlap = 1;
         }
         for (j=0; j<args->ncols; j++)
-            if ( args->cols[j].merge_method != MM_FIRST )
-                args->cols[j].setter(args,line,&args->cols[j],NULL);
+        {
+            if ( args->cols[j].done==1 || args->cols[j].merge_method == MM_FIRST ) continue;
+            if ( args->cols[j].setter(args,line,&args->cols[j],NULL) < 0 )
+                error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+        }
     }
     else if ( args->tgts )
     {
-        // Buffer annotation lines. When multiple ALT alleles are present in the
-        // annotation file, at least one must match one of the VCF alleles.
+        // Buffer annotation lines. When multiple ALT alleles are present in the annotation file, at least one
+        // must match some of the VCF alleles. If the append-missing mode is set (and REF+ALT is requested), the
+        // buffered lines will annotate the VCF respecting the order in ALT and when no matching line is found
+        // for an ALT, missing value is appended instead.
         int len = 0;
         bcf_get_variant_types(line);
         for (i=1; i<line->n_allele; i++)
             if ( len > line->d.var[i].n ) len = line->d.var[i].n;
         int end_pos = len<0 ? line->pos - len : line->pos;
         buffer_annot_lines(args, line, line->pos, end_pos);
+
+        args->nsrt_alines = 0;
+        hts_expand(uint32_t,args->nalines,args->msrt_alines,args->srt_alines);
+        if ( args->nalines >= 0xffff || line->n_allele >= 0xffff )
+            error("Error: too many alleles or annotation lines in the buffer at %s:%"PRId64" (todo:skip?)\n",bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+
+        // Find matching lines
         for (i=0; i<args->nalines; i++)
         {
             if ( line->pos > args->alines[i].end || end_pos < args->alines[i].start ) continue;
-            if ( args->ref_idx != -1 )
+            if ( args->ref_idx != -1 )  // REF+ALT matching requested
             {
-                if ( vcmp_set_ref(args->vcmp, line->d.allele[0], args->alines[i].als[0]) < 0 ) continue;   // refs not compatible
+                if ( line->pos!=args->alines[i].start || vcmp_set_ref(args->vcmp, line->d.allele[0], args->alines[i].als[0]) < 0 ) continue;   // refs are not compatible
                 for (j=1; j<args->alines[i].nals; j++)
                 {
-                    if ( line->n_allele==1 && args->alines[i].als[j][0]=='.' && args->alines[i].als[j][1]==0 ) break;   // no ALT allele in VCF and annot file has "."
-                    if ( vcmp_find_allele(args->vcmp, line->d.allele+1, line->n_allele - 1, args->alines[i].als[j]) >= 0 ) break;
+                    int ialt;
+                    if ( line->n_allele==1 && args->alines[i].als[j][0]=='.' && args->alines[i].als[j][1]==0 )  // match: no ALT allele in VCF and annot file has "."
+                        ialt = 0;
+                    else
+                    {
+                        ialt = vcmp_find_allele(args->vcmp, line->d.allele+1, line->n_allele - 1, args->alines[i].als[j]);
+                        if ( ialt < 0 ) continue;
+                        ialt++;
+                    }
+                    args->srt_alines[args->nsrt_alines++] = (ialt<<16) | i;
+                    has_overlap = 1;
+                    break;
                 }
-                if ( j==args->alines[i].nals ) continue;    // none of the annot alleles present in VCF's ALT
             }
-            // there is a matching line
-            has_overlap = 1;
-            for (j=0; j<args->ncols; j++)
-                if ( args->cols[j].setter(args,line,&args->cols[j],&args->alines[i]) )
-                    error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+            else    // overlap, REF+ALT matching not requested
+            {
+                args->srt_alines[args->nsrt_alines++] = (0xffff<<16) | i;
+                has_overlap = 1;
+            }
         }
-        for (j=0; j<args->ncols; j++)
-            if ( args->cols[j].merge_method != MM_FIRST )
-                args->cols[j].setter(args,line,&args->cols[j],NULL);
+        // Sort lines if needed
+        if ( args->has_append_mode )
+        {
+            // insertion sort by VCF ALT index (top bits) and alines index (low bits)
+            uint32_t tmp;
+            for (i=1; i<args->nsrt_alines; i++)
+                for (j=i; j>0 && args->srt_alines[j] < args->srt_alines[j-1]; j--)
+                    tmp = args->srt_alines[j], args->srt_alines[j] = args->srt_alines[j-1], args->srt_alines[j-1] = tmp;
+        }
+        // Annotate
+        for (j=0; j<args->ncols; j++) args->cols[j].done = 0;
+        int ialt_exp = 1;
+        for (i=0; i<args->nsrt_alines; i++)
+        {
+            int ialt = args->srt_alines[i] >> 16;
+            int ilin = args->srt_alines[i] & 0xffff;
+            if ( args->has_append_mode )
+            {
+                if ( ialt_exp > ialt ) continue;    // multiple annotation lines for the same position
+                if ( ialt_exp < ialt )
+                {
+                    // REF+ALT matching requested, append-missing mode: insert "." if no annotation line was found for the ALT
+                    while ( ialt_exp++ < ialt )
+                    {
+                        for (j=0; j<args->ncols; j++)
+                        {
+                            if ( args->cols[j].merge_method != MM_APPEND_MISSING ) continue;
+                            if ( args->cols[j].done==1 ) continue;
+                            int ret = args->cols[j].setter(args,line,&args->cols[j],args->aline_missing);
+                            if ( ret < 0 )
+                                error("fixme: Could not set missing %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+                            if ( ret==0 )
+                                args->cols[j].done = 1;
+                        }
+                    }
+                }
+            }
+            for (j=0; j<args->ncols; j++)
+            {
+                if ( args->cols[j].done==1 ) continue;
+                int ret = args->cols[j].setter(args,line,&args->cols[j],&args->alines[ilin]);
+                if ( ret < 0 )
+                    error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+                if ( ret==0 )
+                    args->cols[j].done = 1;
+            }
+            ialt_exp = ialt + 1;
+        }
+        if ( args->nsrt_alines )
+        {
+            // In the append-missing mode fill missing values to all trailing ALTs, but only if at least one
+            // record was found. Otherwise leave the row will be left without annotation.
+            if ( args->has_append_mode && ialt_exp < line->n_allele )
+            {
+                while ( ialt_exp++ < line->n_allele )
+                {
+                    for (j=0; j<args->ncols; j++)
+                    {
+                        if ( args->cols[j].merge_method != MM_APPEND_MISSING ) continue;
+                        if ( args->cols[j].done==1 ) continue;
+                        int ret = args->cols[j].setter(args,line,&args->cols[j],args->aline_missing);
+                        if ( ret < 0 )
+                            error("fixme: Could not set missing %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+                        if ( ret==0 )
+                            args->cols[j].done = 1;
+                    }
+                }
+            }
+            // Flush
+            for (j=0; j<args->ncols; j++)
+            {
+                if ( args->cols[j].done==1 || args->cols[j].merge_method == MM_FIRST ) continue;
+                int ret = args->cols[j].setter(args,line,&args->cols[j],NULL);
+                if ( ret < 0 )
+                    error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+            }
+        }
     }
     else if ( args->files->nreaders == 2 )
     {
@@ -2752,28 +2992,30 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools annotate [options] <in.vcf.gz>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "   -a, --annotations <file>       VCF file or tabix-indexed file with annotations: CHR\\tPOS[\\tVALUE]+\n");
-    fprintf(stderr, "       --collapse <string>        matching records by <snps|indels|both|all|some|none>, see man page for details [some]\n");
-    fprintf(stderr, "   -c, --columns <list>           list of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
-    fprintf(stderr, "   -e, --exclude <expr>           exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(stderr, "       --force                    continue despite parsing error (at your own risk!)\n");
-    fprintf(stderr, "   -h, --header-lines <file>      lines which should be appended to the VCF header\n");
-    fprintf(stderr, "   -I, --set-id [+]<format>       set ID column, see man page for details\n");
-    fprintf(stderr, "   -i, --include <expr>           select sites for which the expression is true (see man page for details)\n");
-    fprintf(stderr, "   -k, --keep-sites               leave -i/-e sites unchanged instead of discarding them\n");
-    fprintf(stderr, "   -l, --merge-logic <tag:type>   merge logic for multiple overlapping regions (see man page for details), EXPERIMENTAL\n");
-    fprintf(stderr, "   -m, --mark-sites [+-]<tag>     add INFO/tag flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
-    fprintf(stderr, "       --no-version               do not append version and command line to the header\n");
-    fprintf(stderr, "   -o, --output <file>            write output to a file [standard output]\n");
-    fprintf(stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(stderr, "   -r, --regions <region>         restrict to comma-separated list of regions\n");
-    fprintf(stderr, "   -R, --regions-file <file>      restrict to regions listed in a file\n");
-    fprintf(stderr, "       --rename-chrs <file>       rename sequences according to map file: from\\tto\n");
-    fprintf(stderr, "   -s, --samples [^]<list>        comma separated list of samples to annotate (or exclude with \"^\" prefix)\n");
-    fprintf(stderr, "   -S, --samples-file [^]<file>   file of samples to annotate (or exclude with \"^\" prefix)\n");
-    fprintf(stderr, "       --single-overlaps          keep memory low by avoiding complexities arising from handling multiple overlapping intervals\n");
-    fprintf(stderr, "   -x, --remove <list>            list of annotations (e.g. ID,INFO/DP,FORMAT/DP,FILTER) to remove (or keep with \"^\" prefix). See man page for details\n");
-    fprintf(stderr, "       --threads <int>            number of extra output compression threads [0]\n");
+    fprintf(stderr, "   -a, --annotations FILE       VCF file or tabix-indexed FILE with annotations: CHR\\tPOS[\\tVALUE]+\n");
+    fprintf(stderr, "       --collapse STR           matching records by <snps|indels|both|all|some|none>, see man page for details [some]\n");
+    fprintf(stderr, "   -c, --columns LIST           list of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
+    fprintf(stderr, "   -C, --columns-file FILE      read -c columns from FILE, one name per row, with optional --merge-logic TYPE: NAME[ TYPE]\n");
+    fprintf(stderr, "   -e, --exclude EXPR           exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(stderr, "       --force                  continue despite parsing error (at your own risk!)\n");
+    fprintf(stderr, "   -h, --header-lines FILE      lines which should be appended to the VCF header\n");
+    fprintf(stderr, "   -I, --set-id [+]FORMAT       set ID column using a `bcftools query`-like expression, see man page for details\n");
+    fprintf(stderr, "   -i, --include EXPR           select sites for which the expression is true (see man page for details)\n");
+    fprintf(stderr, "   -k, --keep-sites             leave -i/-e sites unchanged instead of discarding them\n");
+    fprintf(stderr, "   -l, --merge-logic TAG:TYPE   merge logic for multiple overlapping regions (see man page for details), EXPERIMENTAL\n");
+    fprintf(stderr, "   -m, --mark-sites [+-]TAG     add INFO/TAG flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
+    fprintf(stderr, "       --no-version             do not append version and command line to the header\n");
+    fprintf(stderr, "   -o, --output FILE            write output to a file [standard output]\n");
+    fprintf(stderr, "   -O, --output-type [b|u|z|v]  b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(stderr, "   -r, --regions REGION         restrict to comma-separated list of regions\n");
+    fprintf(stderr, "   -R, --regions-file FILE      restrict to regions listed in FILE\n");
+    fprintf(stderr, "       --rename-annots FILE     rename annotations: TYPE/old\\tnew, where TYPE is one of FILTER,INFO,FORMAT\n");
+    fprintf(stderr, "       --rename-chrs FILE       rename sequences according to the mapping: old\\tnew\n");
+    fprintf(stderr, "   -s, --samples [^]LIST        comma separated list of samples to annotate (or exclude with \"^\" prefix)\n");
+    fprintf(stderr, "   -S, --samples-file [^]FILE   file of samples to annotate (or exclude with \"^\" prefix)\n");
+    fprintf(stderr, "       --single-overlaps        keep memory low by avoiding complexities arising from handling multiple overlapping intervals\n");
+    fprintf(stderr, "   -x, --remove LIST            list of annotations (e.g. ID,INFO/DP,FORMAT/DP,FILTER) to remove (or keep with \"^\" prefix). See man page for details\n");
+    fprintf(stderr, "       --threads INT            number of extra output compression threads [0]\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -2808,7 +3050,9 @@ int main_vcfannotate(int argc, char *argv[])
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
         {"remove",required_argument,NULL,'x'},
+        {"columns-file",required_argument,NULL,'C'},
         {"columns",required_argument,NULL,'c'},
+        {"rename-annots",required_argument,NULL,11},
         {"rename-chrs",required_argument,NULL,1},
         {"header-lines",required_argument,NULL,'h'},
         {"samples",required_argument,NULL,'s'},
@@ -2818,7 +3062,7 @@ int main_vcfannotate(int argc, char *argv[])
         {"force",no_argument,NULL,'f'},
         {NULL,0,NULL,0}
     };
-    while ((c = getopt_long(argc, argv, "h:?o:O:r:R:a:x:c:i:e:S:s:I:m:kl:f",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:?o:O:r:R:a:x:c:C:i:e:S:s:I:m:kl:f",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'f': args->force = 1; break;
@@ -2837,6 +3081,7 @@ int main_vcfannotate(int argc, char *argv[])
             case 's': args->sample_names = optarg; break;
             case 'S': args->sample_names = optarg; args->sample_is_file = 1; break;
             case 'c': args->columns = strdup(optarg); break;
+            case 'C': args->columns = strdup(optarg); args->columns_is_file = 1; break;
             case 'o': args->output_fname = optarg; break;
             case 'O':
                 switch (optarg[0]) {
@@ -2847,8 +3092,12 @@ int main_vcfannotate(int argc, char *argv[])
                     default: error("The output type \"%s\" not recognised\n", optarg);
                 };
                 break;
-            case 'e': args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
-            case 'i': args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
+            case 'e':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
+            case 'i':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
             case 'x': args->remove_annots = optarg; break;
             case 'a': args->targets_fname = optarg; break;
             case 'r': args->regions_list = optarg; break;
@@ -2868,6 +3117,7 @@ int main_vcfannotate(int argc, char *argv[])
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
             case 10 : args->single_overlaps = 1; break;
+            case 11 : args->rename_annots = optarg; break;
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }

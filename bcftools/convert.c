@@ -1,6 +1,6 @@
 /*  convert.c -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2018 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -506,7 +506,7 @@ static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isam
                 type_t val = x[j]; \
                 if ( !val ) continue; \
                 for (i=0; i<nbits; i+=2) \
-                    if ( val & (mask<<i) ) { kputs(csq->str[(j*32+i)/2], &csq->hap1); kputc_(',', &csq->hap1); } \
+                    if ( val & (mask<<i) ) { kputs(csq->str[(j*30+i)/2], &csq->hap1); kputc_(',', &csq->hap1); } \
             } \
         } \
         if ( fmt->subscript<0 || fmt->subscript==2 ) \
@@ -516,7 +516,7 @@ static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isam
                 type_t val = x[j]; \
                 if ( !val ) continue; \
                 for (i=1; i<nbits; i+=2) \
-                    if ( val & (1<<i) ) { kputs(csq->str[(j*32+i)/2], &csq->hap2); kputc_(',', &csq->hap2); } \
+                    if ( val & (1<<i) ) { kputs(csq->str[(j*30+i)/2], &csq->hap2); kputc_(',', &csq->hap2); } \
             } \
         } \
     }
@@ -524,7 +524,7 @@ static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isam
     {
         case BCF_BT_INT8:  BRANCH(uint8_t, 8); break;
         case BCF_BT_INT16: BRANCH(uint16_t,16); break;
-        case BCF_BT_INT32: BRANCH(uint32_t,32); break;
+        case BCF_BT_INT32: BRANCH(uint32_t,30); break;  // 2 bytes unused to account for the reserved BCF values
         default: error("Unexpected type: %d\n", fmt->fmt->type); exit(1); break;
     }
     #undef BRANCH
@@ -1608,7 +1608,8 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
             for (js=0; js<convert->nsamples; js++)
             {
                 // Skip samples when filtering was requested
-                if ( convert->subset_samples && *convert->subset_samples && !(*convert->subset_samples)[js] ) continue;
+                int ks = convert->samples[js];
+                if ( convert->subset_samples && *convert->subset_samples && !(*convert->subset_samples)[ks] ) continue;
 
                 // Here comes a hack designed for TBCSQ. When running on large files,
                 // such as 1000GP, there are too many empty fields in the output and
@@ -1617,7 +1618,6 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
                 // brackets here. This may be changed in future, time will show...
                 size_t l_start = str->l;
             
-                int ks = convert->samples[js];
                 for (k=i; k<j; k++)
                 {
                     if ( convert->fmt[k].type == T_MASK )

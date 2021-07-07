@@ -57,27 +57,6 @@ static int filter_ninit = 0;
 #  define __FUNCTION__ __func__
 #endif
 
-static const uint64_t bcf_double_missing    = 0x7ff0000000000001;
-static const uint64_t bcf_double_vector_end = 0x7ff0000000000002;
-static inline void bcf_double_set(double *ptr, uint64_t value)
-{
-    union { uint64_t i; double d; } u;
-    u.i = value;
-    *ptr = u.d;
-}
-static inline int bcf_double_test(double d, uint64_t value)
-{
-    union { uint64_t i; double d; } u;
-    u.d = d;
-    return u.i==value ? 1 : 0;
-}
-#define bcf_double_set_vector_end(x) bcf_double_set(&(x),bcf_double_vector_end)
-#define bcf_double_set_missing(x)    bcf_double_set(&(x),bcf_double_missing)
-#define bcf_double_is_vector_end(x)  bcf_double_test((x),bcf_double_vector_end)
-#define bcf_double_is_missing(x)     bcf_double_test((x),bcf_double_missing)
-#define bcf_double_is_missing_or_vector_end(x)     (bcf_double_test((x),bcf_double_missing) || bcf_double_test((x),bcf_double_vector_end))
-
-
 typedef struct _token_t
 {
     // read-only values, same for all VCF lines
@@ -1081,54 +1060,46 @@ static void filters_set_nmissing(filter_t *flt, bcf1_t *line, token_t *tok)
         tok->nvalues = 0;
         return;
     }
-    if ( fmt->type!=BCF_BT_INT8 ) error("TODO: the GT fmt_type is not int8\n");
-
+    
     int j,nmissing = 0;
-    for (i=0; i<line->n_sample; i++)
-    {
-        int8_t *ptr = (int8_t*) (fmt->p + i*fmt->size);
-        for (j=0; j<fmt->n; j++)
-        {
-            if ( ptr[j]==bcf_int8_vector_end ) break;
-            if ( ptr[j]==bcf_gt_missing ) { nmissing++; break; }
-        }
+    #define BRANCH(type_t, is_vector_end) { \
+        for (i=0; i<line->n_sample; i++) \
+        { \
+            type_t *ptr = (type_t *) (fmt->p + i*fmt->size); \
+            for (j=0; j<fmt->n; j++) \
+            { \
+                if ( ptr[j]==is_vector_end ) break; \
+                if ( ptr[j]==bcf_gt_missing ) { nmissing++; break; } \
+            } \
+        } \
     }
+    switch (fmt->type) {
+        case BCF_BT_INT8:  BRANCH(int8_t,  bcf_int8_vector_end); break;
+        case BCF_BT_INT16: BRANCH(int16_t, bcf_int16_vector_end); break;
+        case BCF_BT_INT32: BRANCH(int32_t, bcf_int32_vector_end); break;
+        default: fprintf(stderr,"todo: type %d\n", fmt->type); exit(1); break;
+    }
+    #undef BRANCH
     tok->nvalues = 1;
     tok->values[0] = tok->tag[0]=='N' ? nmissing : (double)nmissing / line->n_sample;
 }
 static int func_npass(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
 {
-    if ( nstack==0 ) error("Error parsing the expresion\n");
+    if ( nstack==0 ) error("Error parsing the expression\n");
     token_t *tok = stack[nstack - 1];
     if ( !tok->nsamples ) error("The function %s works with FORMAT fields\n", rtok->tag);
-
-    rtok->nsamples = tok->nsamples;
-    memcpy(rtok->pass_samples, tok->pass_samples, rtok->nsamples*sizeof(*rtok->pass_samples));
-
     assert(tok->usmpl);
-    if ( !rtok->usmpl )
-    {
-        rtok->usmpl = (uint8_t*) malloc(tok->nsamples*sizeof(*rtok->usmpl));
-        memcpy(rtok->usmpl, tok->usmpl, tok->nsamples*sizeof(*rtok->usmpl));
-    }
 
     int i, npass = 0;
-    for (i=0; i<rtok->nsamples; i++)
+    for (i=0; i<tok->nsamples; i++)
     {
-        if ( !rtok->usmpl[i] ) continue;
-        if ( rtok->pass_samples[i] ) npass++;
+        if ( !tok->usmpl[i] ) continue;
+        if ( tok->pass_samples[i] ) npass++;
     }
-
-    hts_expand(double,rtok->nsamples,rtok->mvalues,rtok->values);
-    double value = rtok->tag[0]=='N' ? npass : (line->n_sample ? 1.0*npass/line->n_sample : 0);
-    rtok->nval1 = 1;
-    rtok->nvalues = rtok->nsamples;
-
-    // Set per-sample status so that `query -i 'F_PASS(GT!="mis" & GQ >= 20) > 0.5'` or +trio-stats
-    // consider only the passing site AND samples. The values for failed samples is set to -1 so
-    // that it can never conflict with valid expressions.
-    for (i=0; i<rtok->nsamples; i++)
-        rtok->values[i] = rtok->pass_samples[i] ? value : -1;
+    hts_expand(double,1,rtok->mvalues,rtok->values);
+    rtok->nsamples = 0;
+    rtok->nvalues = 1;
+    rtok->values[0] = rtok->tag[0]=='N' ? npass : (line->n_sample ? 1.0*npass/line->n_sample : 0);
 
     return 1;
 }
@@ -2767,7 +2738,8 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         {
             int is_info = bcf_hdr_idinfo_exists(filter->hdr,BCF_HL_INFO,tok->hdr_id) ? 1 : 0;
             is_fmt = bcf_hdr_idinfo_exists(filter->hdr,BCF_HL_FMT,tok->hdr_id) ? 1 : 0;
-            if ( is_info && is_fmt ) error("Both INFO/%s and FORMAT/%s exist, which one do you want?\n", tmp.s,tmp.s);
+            if ( is_info && is_fmt )
+                error("Error: ambiguous filtering expression, both INFO/%s and FORMAT/%s are defined in the VCF header.\n" , tmp.s,tmp.s);
         }
         if ( is_fmt==-1 ) is_fmt = 0;
     }
