@@ -39,6 +39,16 @@ _cibw_linux: &cibw_linux
     - docker
   <<: *cibw_common
 
+_cibw_linux_aarch64: &cibw_linux_aarch64
+  stage: deploy
+  os: linux
+  arch: arm64
+  language: python
+  python: '3.9'
+  services:
+    - docker
+  <<: *cibw_common
+
 matrix:
   include:
     - stage: deploy
@@ -70,6 +80,13 @@ matrix:
     - <<: *cibw_linux
       env:
         - CIBW_BUILD="*_i686"
+        - CIBW_BEFORE_BUILD="yum install -y zlib-devel bzip2-devel xz-devel && python -m pip install -r requirements.txt"
+        - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
+        - CIBW_REPAIR_WHEEL_COMMAND_LINUX='auditwheel repair -L . -w {dest_dir} {wheel}'
+        - CIBW_TEST_COMMAND='python -c "import pysam"'
+    - <<: *cibw_linux_aarch64
+      env:
+        - CIBW_BUILD="*_aarch64"
         - CIBW_BEFORE_BUILD="yum install -y zlib-devel bzip2-devel xz-devel && python -m pip install -r requirements.txt"
         - CIBW_ENVIRONMENT='HTSLIB_CONFIGURE_OPTIONS="--disable-libcurl"'
         - CIBW_REPAIR_WHEEL_COMMAND_LINUX='auditwheel repair -L . -w {dest_dir} {wheel}'
