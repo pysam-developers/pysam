@@ -42,7 +42,12 @@ Unit testing
 ============
 
 Unit tests are in the :file:`tests` directory. To run all unit tests,
-run::
+first ensure that the generated test data files exist::
+
+   make -C tests/pysam_data
+   make -C tests/cbcf_data
+
+and then run::
 
    pytest tests
 
