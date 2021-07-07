@@ -3,6 +3,7 @@ import sys
 import sysconfig
 
 from pysam.libchtslib import *
+import pysam.libchtslib as libchtslib
 from pysam.libcsamtools import *
 from pysam.libcbcftools import *
 from pysam.libcutils import *
@@ -11,7 +12,7 @@ import pysam.libcfaidx as libcfaidx
 from pysam.libcfaidx import *
 import pysam.libctabix as libctabix
 from pysam.libctabix import *
-# import pysam.libctabixproxies as libctabixproxies
+import pysam.libctabixproxies as libctabixproxies
 # from pysam.libctabixproxies import *
 import pysam.libcsamfile as libcsamfile
 from pysam.libcsamfile import *
@@ -32,21 +33,21 @@ import pysam.config
 
 
 # export all the symbols from separate modules
-__all__ = \
-    libchtslib.__all__ +\
-    libcutils.__all__ +\
-    libctabix.__all__ +\
-    libcvcf.__all__ +\
-    libcbcf.__all__ +\
-    libcbgzf.__all__ +\
-    libcfaidx.__all__ +\
-    libctabixproxies.__all__ +\
-    libcalignmentfile.__all__ +\
-    libcalignedsegment.__all__ +\
-    libcsamfile.__all__ +\
-    ["SamtoolsError"] +\
+__all__ = (
+    libchtslib.__all__ +  # type: ignore
+    libcutils.__all__ +  # type: ignore
+    libctabix.__all__ +  # type: ignore
+    libcvcf.__all__ +  # type: ignore
+    libcbcf.__all__ +  # type: ignore
+    libcbgzf.__all__ +  # type: ignore
+    libcfaidx.__all__ +  # type: ignore
+    libctabixproxies.__all__ +  # type: ignore
+    libcalignmentfile.__all__ +  # type: ignore
+    libcalignedsegment.__all__ +  # type: ignore
+    libcsamfile.__all__ +  # type: ignore
+    ["SamtoolsError"] +
     ["Pileup"]
-
+)
 from pysam.version import __version__, __samtools_version__
 
 
