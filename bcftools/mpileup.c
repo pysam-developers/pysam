@@ -39,6 +39,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <htslib/faidx.h>
 #include <htslib/kstring.h>
 #include <htslib/khash_str2int.h>
+#include <htslib/hts_os.h>
 #include <assert.h>
 #include "regidx.h"
 #include "bcftools.h"
@@ -59,16 +60,19 @@ DEALINGS IN THE SOFTWARE.  */
 #define MPLP_PRINT_MAPQ (1<<10)
 #define MPLP_PER_SAMPLE (1<<11)
 #define MPLP_SMART_OVERLAPS (1<<12)
+#define MPLP_REALN_PARTIAL  (1<<13)
 
 typedef struct _mplp_aux_t mplp_aux_t;
 typedef struct _mplp_pileup_t mplp_pileup_t;
 
 // Data shared by all bam files
 typedef struct {
-    int min_mq, flag, min_baseQ, capQ_thres, max_depth, max_indel_depth, fmt_flag;
+    int min_mq, flag, min_baseQ, max_baseQ, delta_baseQ, capQ_thres, max_depth,
+        max_indel_depth, max_read_len, fmt_flag, ambig_reads;
     int rflag_require, rflag_filter, output_type;
     int openQ, extQ, tandemQ, min_support; // for indels
     double min_frac; // for indels
+    double indel_bias;
     char *reg_fname, *pl_list, *fai_fname, *output_fname;
     int reg_is_file, record_cmd_line, n_threads;
     faidx_t *fai;
@@ -231,7 +235,46 @@ static int mplp_func(void *data, bam1_t *b)
             has_ref = 0;
         }
 
-        if (has_ref && (ma->conf->flag&MPLP_REALN)) sam_prob_realn(b, ref, ref_len, (ma->conf->flag & MPLP_REDO_BAQ)? 7 : 3);
+        // Allow sufficient room for bam_aux_append of ZQ tag without
+        // a realloc and consequent breakage of pileup's cached pointers.
+        if (has_ref && (ma->conf->flag &MPLP_REALN) && !bam_aux_get(b, "ZQ")) {
+            // Doing sam_prob_realn later is problematic as it adds to
+            // the tag list (ZQ or BQ), which causes a realloc of b->data.
+            // This happens after pileup has built a hash table on the
+            // read name.  It's a deficiency in pileup IMO.
+
+            // We could implement a new sam_prob_realn that returns ZQ
+            // somewhere else and cache it ourselves (pileup clientdata),
+            // but for now we simply use a workaround.
+            //
+            // We create a fake tag of the correct length, which we remove
+            // just prior calling sam_prob_realn so we can guarantee there is
+            // room. (We can't just make room now as bam_copy1 removes it
+            // again).
+            if (b->core.l_qseq > 500) {
+                uint8_t *ZQ = malloc((uint32_t)b->core.l_qseq+1);
+                memset(ZQ, '@', b->core.l_qseq);
+                ZQ[b->core.l_qseq] = 0;
+                bam_aux_append(b, "_Q", 'Z', b->core.l_qseq+1, ZQ);
+                free(ZQ);
+            } else {
+                static uint8_t ZQ[501] =
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+                    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@";
+                ZQ[b->core.l_qseq] = 0;
+                bam_aux_append(b, "_Q", 'Z', b->core.l_qseq+1, ZQ);
+                ZQ[b->core.l_qseq] = '@';
+            }
+        }
+
         if (has_ref && ma->conf->capQ_thres > 10) {
             int q = sam_cap_mapq(b, ref, ref_len, ma->conf->capQ_thres);
             if (q < 0) continue;    // skip
@@ -257,18 +300,46 @@ static int mplp_func(void *data, bam1_t *b)
 static int pileup_constructor(void *data, const bam1_t *b, bam_pileup_cd *cd)
 {
     mplp_aux_t *ma = (mplp_aux_t *)data;
-    cd->i = bam_smpl_get_sample_id(ma->conf->bsmpl, ma->bam_id, (bam1_t *)b) << 1;
-    if ( ma->conf->fmt_flag & (B2B_INFO_SCR|B2B_FMT_SCR) )
-    {
-        int i;
-        for (i=0; i<b->core.n_cigar; i++)
-        {
-            int cig = bam_get_cigar(b)[i] & BAM_CIGAR_MASK;
-            if ( cig!=BAM_CSOFT_CLIP ) continue;
-            cd->i |= 1;
+    int n = bam_smpl_get_sample_id(ma->conf->bsmpl, ma->bam_id, (bam1_t *)b);
+    cd->i = 0;
+    PLP_SET_SAMPLE_ID(cd->i, n);
+    // Whether read has a soft-clip is used in mplp_realn's heuristics.
+    // TODO: consider whether clip length is beneficial to use?
+    int i;
+    for (i=0; i<b->core.n_cigar; i++) {
+        int cig = bam_get_cigar(b)[i] & BAM_CIGAR_MASK;
+        if (cig == BAM_CSOFT_CLIP) {
+            PLP_SET_SOFT_CLIP(cd->i);
             break;
         }
     }
+
+    if (ma->conf->flag & MPLP_REALN) {
+        int i, tot_ins = 0;
+        uint32_t *cigar = bam_get_cigar(b);
+        int p = 0;
+        for (i=0; i<b->core.n_cigar; i++) {
+            int cig = cigar[i] & BAM_CIGAR_MASK;
+            if (bam_cigar_type(cig) & 2)
+                p += cigar[i] >> BAM_CIGAR_SHIFT;
+            if (cig == BAM_CINS || cig == BAM_CDEL || cig == BAM_CREF_SKIP) {
+                tot_ins += cigar[i] >> BAM_CIGAR_SHIFT;
+                // Possible further optimsation, check tot_ins==1 later
+                // (and remove break) so we can detect single bp indels.
+                // We may want to focus BAQ on more complex regions only.
+                PLP_SET_INDEL(cd->i);
+                break;
+            }
+
+            // TODO: proper p->cd struct and have cd->i as a size rather
+            // than a flag.
+
+            // Then aggregate together the sizes and if just 1 size for all
+            // reads or 2 sizes for approx 50/50 split in all reads, then
+            // treat this as a well-aligned variant and don't run BAQ.
+        }
+    }
+
     return 0;
 }
 
@@ -317,6 +388,150 @@ static void flush_bcf_records(mplp_conf_t *conf, htsFile *fp, bcf_hdr_t *hdr, bc
     if ( rec && bcf_write1(fp,hdr,rec)!=0 ) error("[%s] Error: failed to write the record to %s\n", __func__,conf->output_fname?conf->output_fname:"standard output");
 }
 
+/*
+ * Loops for an indel at this position.
+ *
+ * Only reads that overlap an indel loci get realigned.  This considerably
+ * reduces the cost of running BAQ while keeping the main benefits.
+ *
+ * TODO: also consider only realigning reads that don't span the indel
+ * by more than a certain amount either-side.  Ie focus BAQ only on reads
+ * ending adjacent to the indel, where the alignment is most likely to
+ * be wrong.  (2nd TODO: do this based on sequence context; STRs bad, unique
+ * data good.)
+ *
+ * NB: this may sadly realign after we've already used the data.  Hmm...
+ */
+static void mplp_realn(int n, int *n_plp, const bam_pileup1_t **plp,
+                       int flag, int max_read_len,
+                       char *ref, int ref_len, int pos) {
+    int i, j, has_indel = 0, has_clip = 0, nt = 0;
+    int min_indel = INT_MAX, max_indel = INT_MIN;
+
+    // Is an indel present.
+    // NB: don't bother even checking if very long as almost guaranteed
+    // to have indel (and likely soft-clips too).
+    for (i = 0; i < n; i++) { // iterate over bams
+        nt += n_plp[i];
+        for (j = 0; j < n_plp[i]; j++) { // iterate over reads
+            bam_pileup1_t *p = (bam_pileup1_t *)plp[i] + j;
+            has_indel += (PLP_HAS_INDEL(p->cd.i) || p->indel) ? 1 : 0;
+            // Has_clip is almost always true for very long reads
+            // (eg PacBio CCS), but these rarely matter as the clip
+            // is likely a long way from this indel.
+            has_clip  += (PLP_HAS_SOFT_CLIP(p->cd.i))         ? 1 : 0;
+            if (max_indel < p->indel)
+                max_indel = p->indel;
+            if (min_indel > p->indel)
+                min_indel = p->indel;
+        }
+    }
+
+    if (flag & MPLP_REALN_PARTIAL) {
+        if (has_indel == 0 ||
+            (has_clip < 0.2*nt && max_indel == min_indel &&
+             (has_indel < 0.1*nt /*|| has_indel > 0.9*nt*/ || has_indel == 1)))
+            return;
+    }
+
+    // Realign
+    for (i = 0; i < n; i++) { // iterate over bams
+        for (j = 0; j < n_plp[i]; j++) { // iterate over reads
+            const bam_pileup1_t *p = plp[i] + j;
+            bam1_t *b = p->b;
+
+            // Avoid doing multiple times.
+            //
+            // Note we cannot modify p->cd.i here with a PLP_SET macro
+            // because the cd item is held by mpileup in an lbnode_t
+            // struct and copied over to the pileup struct for each
+            // iteration, essentially making p->cd.i read only.
+            //
+            // We could use our own structure (p->cd.p), allocated during
+            // the constructor, but for simplicity we play dirty and
+            // abuse an unused flag bit instead.
+            if (b->core.flag & 32768)
+                continue;
+            b->core.flag |= 32768;
+
+            if (b->core.l_qseq > max_read_len)
+                continue;
+
+            // Check p->cigar_ind and see what cigar elements are before
+            // and after.  How close is this location to the end of the
+            // read?  Only realign if we don't span by more than X bases.
+            //
+            // Again, best only done on deeper data as BAQ helps
+            // disproportionately more on shallow data sets.
+            //
+            // This rescues some of the false negatives that are caused by
+            // systematic reduction in quality due to sample vs ref alignment.
+
+// At deep coverage we skip realigning more reads as we have sufficient depth.
+// This rescues for false negatives.  At shallow depth we pay for this with
+// more FP so are more stringent on spanning size.
+#define REALN_DIST (40+10*(nt<40)+10*(nt<20))
+            uint32_t *cig = bam_get_cigar(b);
+            int ncig = b->core.n_cigar;
+
+            // Don't realign reads where indel is in middle?
+            // On long read data we don't care about soft-clips at the ends.
+            // For short read data, we always calc BAQ on these as they're
+            // a common source of false positives.
+            if ((flag & MPLP_REALN_PARTIAL) && nt > 15 && ncig > 1) {
+                // Left & right cigar op match.
+                int lr = b->core.l_qseq > 500;
+                int lm = 0, rm = 0, k;
+                for (k = 0; k < ncig; k++) {
+                    int cop = bam_cigar_op(cig[k]);
+                    if (lr && (cop == BAM_CHARD_CLIP || cop == BAM_CSOFT_CLIP))
+                        continue;
+
+                    if (cop == BAM_CMATCH || cop == BAM_CDIFF ||
+                        cop == BAM_CEQUAL)
+                        lm += bam_cigar_oplen(cig[k]);
+                    else
+                        break;
+                }
+
+                for (k = ncig-1; k >= 0; k--) {
+                    int cop = bam_cigar_op(cig[k]);
+                    if (lr && (cop == BAM_CHARD_CLIP || cop == BAM_CSOFT_CLIP))
+                        continue;
+
+                    if (cop == BAM_CMATCH || cop == BAM_CDIFF ||
+                        cop == BAM_CEQUAL)
+                        rm += bam_cigar_oplen(cig[k]);
+                    else
+                        break;
+                }
+
+                if (lm >= REALN_DIST*4 && rm >= REALN_DIST*4)
+                    continue;
+
+                if (lm >= REALN_DIST && rm >= REALN_DIST &&
+                    has_clip < (0.15+0.05*(nt>20))*nt)
+                    continue;
+            }
+
+            if (b->core.l_qseq > 500) {
+                // don't do BAQ on long-read data if it's going to
+                // cause us to have a large band-with and costly in CPU
+                int rl = bam_cigar2rlen(b->core.n_cigar, bam_get_cigar(b));
+                if (abs(rl - b->core.l_qseq) * b->core.l_qseq >= 500000)
+                    continue;
+            }
+
+            // Fudge: make room for ZQ tag.
+            uint8_t *_Q = bam_aux_get(b, "_Q");
+            if (_Q) bam_aux_del(b, _Q);
+            sam_prob_realn(b, ref, ref_len, (flag & MPLP_REDO_BAQ) ? 7 : 3);
+        }
+    }
+
+    return;
+}
+
 static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
 {
     bam_hdr_t *hdr = conf->mplp_data[0]->h; // header of first file in input list
@@ -333,7 +548,10 @@ static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
             if ( !conf->bed_logic ) overlap = overlap ? 0 : 1;
             if ( !overlap ) continue;
         }
-        mplp_get_ref(conf->mplp_data[0], tid, &ref, &ref_len);
+        int has_ref = mplp_get_ref(conf->mplp_data[0], tid, &ref, &ref_len);
+        if (has_ref && (conf->flag & MPLP_REALN))
+            mplp_realn(conf->nfiles, conf->n_plp, conf->plp, conf->flag,
+                       conf->max_read_len, ref, ref_len, pos);
 
         int total_depth, _ref0, ref16;
         for (i = total_depth = 0; i < conf->nfiles; ++i) total_depth += conf->n_plp[i];
@@ -346,15 +564,16 @@ static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
         conf->bc.tid = tid; conf->bc.pos = pos;
         bcf_call_combine(conf->gplp->n, conf->bcr, conf->bca, ref16, &conf->bc);
         bcf_clear1(conf->bcf_rec);
-        bcf_call2bcf(&conf->bc, conf->bcf_rec, conf->bcr, conf->fmt_flag, 0, 0);
+        bcf_call2bcf(&conf->bc, conf->bcf_rec, conf->bcr, conf->fmt_flag,
+                     conf->bca, 0);
         flush_bcf_records(conf, conf->bcf_fp, conf->bcf_hdr, conf->bcf_rec);
 
         // call indels; todo: subsampling with total_depth>max_indel_depth instead of ignoring?
         // check me: rghash in bcf_call_gap_prep() should have no effect, reads mplp_func already excludes them
         if (!(conf->flag&MPLP_NO_INDEL) && total_depth < conf->max_indel_depth
-            && bcf_call_gap_prep(conf->gplp->n, conf->gplp->n_plp, conf->gplp->plp, pos, conf->bca, ref) >= 0)
+            && (bcf_callaux_clean(conf->bca, &conf->bc),
+                bcf_call_gap_prep(conf->gplp->n, conf->gplp->n_plp, conf->gplp->plp, pos, conf->bca, ref) >= 0))
         {
-            bcf_callaux_clean(conf->bca, &conf->bc);
             for (i = 0; i < conf->gplp->n; ++i)
                 bcf_call_glfgen(conf->gplp->n_plp[i], conf->gplp->plp[i], -1, conf->bca, conf->bcr + i);
             if (bcf_call_combine(conf->gplp->n, conf->bcr, conf->bca, -1, &conf->bc) >= 0)
@@ -546,11 +765,24 @@ static int mpileup(mplp_conf_t *conf)
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Raw read depth\">");
     if ( conf->fmt_flag&B2B_INFO_VDB )
         bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=VDB,Number=1,Type=Float,Description=\"Variant Distance Bias for filtering splice-site artefacts in RNA-seq data (bigger is better)\",Version=\"3\">");
-    if ( conf->fmt_flag&B2B_INFO_RPB )
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Read Position Bias (bigger is better)\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality Bias (bigger is better)\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=BQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Base Quality Bias (bigger is better)\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQSB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality vs Strand Bias (bigger is better)\">");
+
+    if (conf->fmt_flag & B2B_INFO_ZSCORE) {
+        if ( conf->fmt_flag&B2B_INFO_RPB )
+            bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Read Position Bias (closer to 0 is better)\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Mapping Quality Bias (closer to 0 is better)\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=BQBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Base Quality Bias (closer to 0 is better)\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQSBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Mapping Quality vs Strand Bias (closer to 0 is better)\">");
+        if ( conf->fmt_flag&B2B_INFO_SCB )
+            bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=SCBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Soft-Clip Length Bias (closer to 0 is better)\">");
+    } else {
+        if ( conf->fmt_flag&B2B_INFO_RPB )
+            bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Read Position Bias (bigger is better)\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality Bias (bigger is better)\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=BQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Base Quality Bias (bigger is better)\">");
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQSB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality vs Strand Bias (bigger is better)\">");
+    }
+
+    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=FS,Number=1,Type=Float,Description=\"Phred-scaled p-value using Fisher's exact test to detect strand bias\">");
 #if CDF_MWU_TESTS
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPB2,Number=1,Type=Float,Description=\"Mann-Whitney U test of Read Position Bias [CDF] (bigger is better)\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQB2,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality Bias [CDF] (bigger is better)\">");
@@ -601,13 +833,16 @@ static int mpileup(mplp_conf_t *conf)
         bcf_hdr_add_sample(conf->bcf_hdr, smpl[i]);
     if ( bcf_hdr_write(conf->bcf_fp, conf->bcf_hdr)!=0 ) error("[%s] Error: failed to write the header to %s\n",__func__,conf->output_fname?conf->output_fname:"standard output");
 
-    conf->bca = bcf_call_init(-1., conf->min_baseQ);
+    conf->bca = bcf_call_init(-1., conf->min_baseQ, conf->max_baseQ,
+                              conf->delta_baseQ);
     conf->bcr = (bcf_callret1_t*) calloc(nsmpl, sizeof(bcf_callret1_t));
     conf->bca->openQ = conf->openQ, conf->bca->extQ = conf->extQ, conf->bca->tandemQ = conf->tandemQ;
+    conf->bca->indel_bias = conf->indel_bias;
     conf->bca->min_frac = conf->min_frac;
     conf->bca->min_support = conf->min_support;
     conf->bca->per_sample_flt = conf->flag & MPLP_PER_SAMPLE;
     conf->bca->fmt_flag = conf->fmt_flag;
+    conf->bca->ambig_reads = conf->ambig_reads;
 
     conf->bc.bcf_hdr = conf->bcf_hdr;
     conf->bc.n  = nsmpl;
@@ -808,6 +1043,7 @@ int parse_format_flag(const char *str)
         else if ( !strcasecmp(tags[i],"INFO/AD") ) flag |= B2B_INFO_AD;
         else if ( !strcasecmp(tags[i],"INFO/ADF") ) flag |= B2B_INFO_ADF;
         else if ( !strcasecmp(tags[i],"INFO/ADR") ) flag |= B2B_INFO_ADR;
+        else if ( !strcasecmp(tags[i],"SCB") || !strcasecmp(tags[i],"INFO/SCB")) flag |= B2B_INFO_SCB;
         else
         {
             fprintf(stderr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
@@ -855,72 +1091,92 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
     // source code in 80 columns, to the extent that's possible.)
 
     fprintf(fp,
-"\n"
-"Usage: bcftools mpileup [options] in1.bam [in2.bam [...]]\n"
-"\n"
-"Input options:\n"
-"  -6, --illumina1.3+      quality is in the Illumina-1.3+ encoding\n"
-"  -A, --count-orphans     do not discard anomalous read pairs\n"
-"  -b, --bam-list FILE     list of input BAM filenames, one per line\n"
-"  -B, --no-BAQ            disable BAQ (per-Base Alignment Quality)\n"
-"  -C, --adjust-MQ INT     adjust mapping quality [0]\n"
-"  -d, --max-depth INT     max raw per-file depth; avoids excessive memory usage [%d]\n", mplp->max_depth);
+        "\n"
+        "Usage: bcftools mpileup [options] in1.bam [in2.bam [...]]\n"
+        "\n"
+        "Input options:\n"
+        "  -6, --illumina1.3+      quality is in the Illumina-1.3+ encoding\n"
+        "  -A, --count-orphans     do not discard anomalous read pairs\n"
+        "  -b, --bam-list FILE     list of input BAM filenames, one per line\n"
+        "  -B, --no-BAQ            disable BAQ (per-Base Alignment Quality)\n"
+        "  -C, --adjust-MQ INT     adjust mapping quality [0]\n"
+        "  -D, --full-BAQ          Apply BAQ everywhere, not just in problematic regions\n"
+        "  -d, --max-depth INT     max raw per-file depth; avoids excessive memory usage [%d]\n", mplp->max_depth);
+            fprintf(fp,
+        "  -E, --redo-BAQ          recalculate BAQ on the fly, ignore existing BQs\n"
+        "  -f, --fasta-ref FILE    faidx indexed reference sequence file\n"
+        "      --no-reference      do not require fasta reference file\n"
+        "  -G, --read-groups FILE  select or exclude read groups listed in the file\n"
+        "  -q, --min-MQ INT        skip alignments with mapQ smaller than INT [%d]\n", mplp->min_mq);
     fprintf(fp,
-"  -E, --redo-BAQ          recalculate BAQ on the fly, ignore existing BQs\n"
-"  -f, --fasta-ref FILE    faidx indexed reference sequence file\n"
-"      --no-reference      do not require fasta reference file\n"
-"  -G, --read-groups FILE  select or exclude read groups listed in the file\n"
-"  -q, --min-MQ INT        skip alignments with mapQ smaller than INT [%d]\n", mplp->min_mq);
+        "  -Q, --min-BQ INT        skip bases with baseQ/BAQ smaller than INT [%d]\n", mplp->min_baseQ);
     fprintf(fp,
-"  -Q, --min-BQ INT        skip bases with baseQ/BAQ smaller than INT [%d]\n", mplp->min_baseQ);
+        "      --max-BQ INT        limit baseQ/BAQ to no more than INT [%d]\n", mplp->max_baseQ);
     fprintf(fp,
-"  -r, --regions REG[,...] comma separated list of regions in which pileup is generated\n"
-"  -R, --regions-file FILE restrict to regions listed in a file\n"
-"      --ignore-RG         ignore RG tags (one BAM = one sample)\n"
-"  --rf, --incl-flags STR|INT  required flags: skip reads with mask bits unset [%s]\n", tmp_require);
+        "      --delta-BQ INT      Use neighbour_qual + INT if less than qual [%d]\n", mplp->delta_baseQ);
     fprintf(fp,
-"  --ff, --excl-flags STR|INT  filter flags: skip reads with mask bits set\n"
-"                                            [%s]\n", tmp_filter);
+        "  -r, --regions REG[,...] comma separated list of regions in which pileup is generated\n"
+        "  -R, --regions-file FILE restrict to regions listed in a file\n"
+        "      --ignore-RG         ignore RG tags (one BAM = one sample)\n"
+        "  --rf, --incl-flags STR|INT  required flags: skip reads with mask bits unset [%s]\n", tmp_require);
     fprintf(fp,
-"  -s, --samples LIST      comma separated list of samples to include\n"
-"  -S, --samples-file FILE file of samples to include\n"
-"  -t, --targets REG[,...] similar to -r but streams rather than index-jumps\n"
-"  -T, --targets-file FILE similar to -R but streams rather than index-jumps\n"
-"  -x, --ignore-overlaps   disable read-pair overlap detection\n"
-"\n"
-"Output options:\n"
-"  -a, --annotate LIST     optional tags to output; '?' to list available tags []\n"
-"  -g, --gvcf INT[,...]    group non-variant sites into gVCF blocks according\n"
-"                          to minimum per-sample DP\n"
-"      --no-version        do not append version and command line to the header\n"
-"  -o, --output FILE       write output to FILE [standard output]\n"
-"  -O, --output-type TYPE  'b' compressed BCF; 'u' uncompressed BCF;\n"
-"                          'z' compressed VCF; 'v' uncompressed VCF [v]\n"
-"      --threads INT       use multithreading with INT worker threads [0]\n"
-"\n"
-"SNP/INDEL genotype likelihoods options:\n"
-"  -e, --ext-prob INT      Phred-scaled gap extension seq error probability [%d]\n", mplp->extQ);
+        "  --ff, --excl-flags STR|INT  filter flags: skip reads with mask bits set\n"
+        "                                            [%s]\n", tmp_filter);
     fprintf(fp,
-"  -F, --gap-frac FLOAT    minimum fraction of gapped reads [%g]\n", mplp->min_frac);
+        "  -s, --samples LIST      comma separated list of samples to include\n"
+        "  -S, --samples-file FILE file of samples to include\n"
+        "  -t, --targets REG[,...] similar to -r but streams rather than index-jumps\n"
+        "  -T, --targets-file FILE similar to -R but streams rather than index-jumps\n"
+        "  -x, --ignore-overlaps   disable read-pair overlap detection\n"
+        "      --seed INT          random number seed used for sampling deep regions [0]\n"
+        "\n"
+        "Output options:\n"
+        "  -a, --annotate LIST     optional tags to output; '?' to list available tags []\n"
+        "  -g, --gvcf INT[,...]    group non-variant sites into gVCF blocks according\n"
+        "                          to minimum per-sample DP\n"
+        "      --no-version        do not append version and command line to the header\n"
+        "  -o, --output FILE       write output to FILE [standard output]\n"
+        "  -O, --output-type TYPE  'b' compressed BCF; 'u' uncompressed BCF;\n"
+        "                          'z' compressed VCF; 'v' uncompressed VCF [v]\n"
+        "  -U, --mwu-u             use older probability scale for Mann-Whitney U test\n"
+        "      --threads INT       use multithreading with INT worker threads [0]\n"
+        "\n"
+        "SNP/INDEL genotype likelihoods options:\n"
+        "  -X, --config STR        Specify platform specific profiles (see below)\n"
+        "  -e, --ext-prob INT      Phred-scaled gap extension seq error probability [%d]\n", mplp->extQ);
     fprintf(fp,
-"  -h, --tandem-qual INT   coefficient for homopolymer errors [%d]\n", mplp->tandemQ);
+        "  -F, --gap-frac FLOAT    minimum fraction of gapped reads [%g]\n", mplp->min_frac);
     fprintf(fp,
-"  -I, --skip-indels       do not perform indel calling\n"
-"  -L, --max-idepth INT    maximum per-file depth for INDEL calling [%d]\n", mplp->max_indel_depth);
+        "  -h, --tandem-qual INT   coefficient for homopolymer errors [%d]\n", mplp->tandemQ);
     fprintf(fp,
-"  -m, --min-ireads INT    minimum number gapped reads for indel candidates [%d]\n", mplp->min_support);
+        "  -I, --skip-indels       do not perform indel calling\n"
+        "  -L, --max-idepth INT    maximum per-file depth for INDEL calling [%d]\n", mplp->max_indel_depth);
     fprintf(fp,
-"  -o, --open-prob INT     Phred-scaled gap open seq error probability [%d]\n", mplp->openQ);
+        "  -m, --min-ireads INT    minimum number gapped reads for indel candidates [%d]\n", mplp->min_support);
     fprintf(fp,
-"  -p, --per-sample-mF     apply -m and -F per-sample for increased sensitivity\n"
-"  -P, --platforms STR     comma separated list of platforms for indels [all]\n"
-"\n"
-"Notes: Assuming diploid individuals.\n"
-"\n"
-"Example:\n"
-"   # See also http://samtools.github.io/bcftools/howtos/variant-calling.html\n"
-"   bcftools mpileup -Ou -f reference.fa alignments.bam | bcftools call -mv -Ob -o calls.bcf\n"
-"\n");
+        "  -M, --max-read-len INT  maximum length of read to pass to BAQ algorithm [%d]\n", mplp->max_read_len);
+    fprintf(fp,
+        "  -o, --open-prob INT     Phred-scaled gap open seq error probability [%d]\n", mplp->openQ);
+    fprintf(fp,
+        "  -p, --per-sample-mF     apply -m and -F per-sample for increased sensitivity\n"
+        "  -P, --platforms STR     comma separated list of platforms for indels [all]\n"
+        "  --ar, --ambig-reads STR   What to do with ambiguous indel reads: drop,incAD,incAD0 [drop]\n");
+    fprintf(fp,
+        "      --indel-bias FLOAT  Raise to favour recall over precision [%.2f]\n", mplp->indel_bias);
+    fprintf(fp,"\n");
+    fprintf(fp,
+        "Configuration profiles activated with -X, --config:\n"
+        "    1.12:        -Q13 -h100 -m1 -F0.002\n"
+        "    illumina:    [ default values ]\n"
+        "    ont:         -B -Q5 --max-BQ 30 -I [also try eg |bcftools call -P0.01]\n"
+        "    pacbio-ccs:  -D -Q5 --max-BQ 50 -F0.1 -o25 -e1 --delta-BQ 10 -M99999\n"
+        "\n"
+        "Notes: Assuming diploid individuals.\n"
+        "\n"
+        "Example:\n"
+        "   # See also http://samtools.github.io/bcftools/howtos/variant-calling.html\n"
+        "   bcftools mpileup -Ou -f reference.fa alignments.bam | bcftools call -mv -Ob -o calls.bcf\n"
+        "\n");
 
     free(tmp_require);
     free(tmp_filter);
@@ -934,12 +1190,15 @@ int main_mpileup(int argc, char *argv[])
     int nfiles = 0, use_orphan = 0, noref = 0;
     mplp_conf_t mplp;
     memset(&mplp, 0, sizeof(mplp_conf_t));
-    mplp.min_baseQ = 13;
+    mplp.min_baseQ = 1;
+    mplp.max_baseQ = 60;
+    mplp.delta_baseQ = 30;
     mplp.capQ_thres = 0;
     mplp.max_depth = 250; mplp.max_indel_depth = 250;
-    mplp.openQ = 40; mplp.extQ = 20; mplp.tandemQ = 100;
-    mplp.min_frac = 0.002; mplp.min_support = 1;
-    mplp.flag = MPLP_NO_ORPHAN | MPLP_REALN | MPLP_SMART_OVERLAPS;
+    mplp.openQ = 40; mplp.extQ = 20; mplp.tandemQ = 500;
+    mplp.min_frac = 0.05; mplp.indel_bias = 1.0; mplp.min_support = 2;
+    mplp.flag = MPLP_NO_ORPHAN | MPLP_REALN | MPLP_REALN_PARTIAL
+              | MPLP_SMART_OVERLAPS;
     mplp.argc = argc; mplp.argv = argv;
     mplp.rflag_filter = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP;
     mplp.output_fname = NULL;
@@ -947,7 +1206,11 @@ int main_mpileup(int argc, char *argv[])
     mplp.record_cmd_line = 1;
     mplp.n_threads = 0;
     mplp.bsmpl = bam_smpl_init();
-    mplp.fmt_flag = B2B_INFO_VDB|B2B_INFO_RPB;    // the default to be changed in future, see also parse_format_flag()
+    // the default to be changed in future, see also parse_format_flag()
+    mplp.fmt_flag = B2B_INFO_VDB|B2B_INFO_RPB|B2B_INFO_SCB|B2B_INFO_ZSCORE;
+    mplp.max_read_len = 500;
+    mplp.ambig_reads = B2B_DROP;
+    hts_srand48(0);
 
     static const struct option lopts[] =
     {
@@ -968,6 +1231,8 @@ int main_mpileup(int argc, char *argv[])
         {"bam-list", required_argument, NULL, 'b'},
         {"no-BAQ", no_argument, NULL, 'B'},
         {"no-baq", no_argument, NULL, 'B'},
+        {"full-BAQ", no_argument, NULL, 'D'},
+        {"full-baq", no_argument, NULL, 'D'},
         {"adjust-MQ", required_argument, NULL, 'C'},
         {"adjust-mq", required_argument, NULL, 'C'},
         {"max-depth", required_argument, NULL, 'd'},
@@ -984,6 +1249,9 @@ int main_mpileup(int argc, char *argv[])
         {"min-mq", required_argument, NULL, 'q'},
         {"min-BQ", required_argument, NULL, 'Q'},
         {"min-bq", required_argument, NULL, 'Q'},
+        {"max-bq", required_argument, NULL, 11},
+        {"max-BQ", required_argument, NULL, 11},
+        {"delta-BQ", required_argument, NULL, 12},
         {"ignore-overlaps", no_argument, NULL, 'x'},
         {"output-type", required_argument, NULL, 'O'},
         {"samples", required_argument, NULL, 's'},
@@ -991,16 +1259,23 @@ int main_mpileup(int argc, char *argv[])
         {"annotate", required_argument, NULL, 'a'},
         {"ext-prob", required_argument, NULL, 'e'},
         {"gap-frac", required_argument, NULL, 'F'},
+        {"indel-bias", required_argument, NULL, 10},
         {"tandem-qual", required_argument, NULL, 'h'},
         {"skip-indels", no_argument, NULL, 'I'},
         {"max-idepth", required_argument, NULL, 'L'},
-        {"min-ireads ", required_argument, NULL, 'm'},
+        {"min-ireads", required_argument, NULL, 'm'},
         {"per-sample-mF", no_argument, NULL, 'p'},
         {"per-sample-mf", no_argument, NULL, 'p'},
         {"platforms", required_argument, NULL, 'P'},
+        {"max-read-len", required_argument, NULL, 'M'},
+        {"config", required_argument, NULL, 'X'},
+        {"mwu-u", no_argument, NULL, 'U'},
+        {"seed", required_argument, NULL, 13},
+        {"ambig-reads", required_argument, NULL, 14},
+        {"ar", required_argument, NULL, 14},
         {NULL, 0, NULL, 0}
     };
-    while ((c = getopt_long(argc, argv, "Ag:f:r:R:q:Q:C:Bd:L:b:P:po:e:h:Im:F:EG:6O:xa:s:S:t:T:",lopts,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "Ag:f:r:R:q:Q:C:BDd:L:b:P:po:e:h:Im:F:EG:6O:xa:s:S:t:T:M:X:U",lopts,NULL)) >= 0) {
         switch (c) {
         case 'x': mplp.flag &= ~MPLP_SMART_OVERLAPS; break;
         case  1 :
@@ -1052,6 +1327,7 @@ int main_mpileup(int argc, char *argv[])
         case 'P': mplp.pl_list = strdup(optarg); break;
         case 'p': mplp.flag |= MPLP_PER_SAMPLE; break;
         case 'B': mplp.flag &= ~MPLP_REALN; break;
+        case 'D': mplp.flag &= ~MPLP_REALN_PARTIAL; break;
         case 'I': mplp.flag |= MPLP_NO_INDEL; break;
         case 'E': mplp.flag |= MPLP_REDO_BAQ; break;
         case '6': mplp.flag |= MPLP_ILLUMINA13; break;
@@ -1069,6 +1345,8 @@ int main_mpileup(int argc, char *argv[])
         case 'C': mplp.capQ_thres = atoi(optarg); break;
         case 'q': mplp.min_mq = atoi(optarg); break;
         case 'Q': mplp.min_baseQ = atoi(optarg); break;
+        case  11: mplp.max_baseQ = atoi(optarg); break;
+        case  12: mplp.delta_baseQ = atoi(optarg); break;
         case 'b': file_list = optarg; break;
         case 'o': {
                 char *end;
@@ -1080,6 +1358,12 @@ int main_mpileup(int argc, char *argv[])
             break;
         case 'e': mplp.extQ = atoi(optarg); break;
         case 'h': mplp.tandemQ = atoi(optarg); break;
+        case 10: // --indel-bias (inverted so higher => more indels called)
+            if (atof(optarg) < 1e-2)
+                mplp.indel_bias = 1/1e2;
+            else
+                mplp.indel_bias = 1/atof(optarg);
+            break;
         case 'A': use_orphan = 1; break;
         case 'F': mplp.min_frac = atof(optarg); break;
         case 'm': mplp.min_support = atoi(optarg); break;
@@ -1092,6 +1376,49 @@ int main_mpileup(int argc, char *argv[])
             }
             mplp.fmt_flag |= parse_format_flag(optarg);
         break;
+        case 'M': mplp.max_read_len = atoi(optarg); break;
+        case 'U': mplp.fmt_flag &= ~B2B_INFO_ZSCORE; break;
+        case 'X':
+            if (strcasecmp(optarg, "pacbio-ccs") == 0) {
+                mplp.min_frac = 0.1;
+                mplp.min_baseQ = 5;
+                mplp.max_baseQ = 50;
+                mplp.delta_baseQ = 10;
+                mplp.openQ = 25;
+                mplp.extQ = 1;
+                mplp.flag |= MPLP_REALN_PARTIAL;
+                mplp.max_read_len = 99999;
+            } else if (strcasecmp(optarg, "ont") == 0) {
+                fprintf(stderr, "For ONT it may be beneficial to also run bcftools call with "
+                        "a higher -P, eg -P0.01 or -P 0.1\n");
+                mplp.min_baseQ = 5;
+                mplp.max_baseQ = 30;
+                mplp.flag &= ~MPLP_REALN;
+                mplp.flag |= MPLP_NO_INDEL;
+            } else if (strcasecmp(optarg, "1.12") == 0) {
+                // 1.12 and earlier
+                mplp.min_frac = 0.002;
+                mplp.min_support = 1;
+                mplp.min_baseQ = 13;
+                mplp.tandemQ = 100;
+                mplp.flag &= ~MPLP_REALN_PARTIAL;
+                mplp.flag |= MPLP_REALN;
+            } else if (strcasecmp(optarg, "illumina") == 0) {
+                mplp.flag |= MPLP_REALN_PARTIAL;
+            } else {
+                fprintf(stderr, "Unknown configuration name '%s'\n"
+                        "Please choose from 1.12, illumina, pacbio-ccs or ont\n",
+                        optarg);
+                return 1;
+            }
+            break;
+        case 13: hts_srand48(atoi(optarg)); break;
+        case 14:
+            if ( !strcasecmp(optarg,"drop") ) mplp.ambig_reads = B2B_DROP;
+            else if ( !strcasecmp(optarg,"incAD") ) mplp.ambig_reads = B2B_INC_AD;
+            else if ( !strcasecmp(optarg,"incAD0") ) mplp.ambig_reads = B2B_INC_AD0;
+            else error("The option to --ambig-reads not recognised: %s\n",optarg);
+            break;
         default:
             fprintf(stderr,"Invalid option: '%c'\n", c);
             return 1;
@@ -1154,5 +1481,6 @@ int main_mpileup(int argc, char *argv[])
     if (mplp.bed_itr) regitr_destroy(mplp.bed_itr);
     if (mplp.reg) regidx_destroy(mplp.reg);
     bam_smpl_destroy(mplp.bsmpl);
+
     return ret;
 }

@@ -397,10 +397,9 @@ static void init_data(args_t *args)
                 fprintf(args->fh_log,"%s\tfor stripped\t%s\n", args->fnames[i], args->files->readers[i].fname);
             }
             #undef OPEN_FILE
-
-            args->fh_sites = open_file(NULL, "w", "%s/sites.txt", args->prefix);
-            if ( !args->fh_sites ) error("%s/sites.txt: %s\n", args->prefix, strerror(errno));
         }
+        args->fh_sites = open_file(NULL, "w", "%s/sites.txt", args->prefix);
+        if ( !args->fh_sites ) error("%s/sites.txt: %s\n", args->prefix, strerror(errno));
     }
     else {
         if (args->output_fname) {

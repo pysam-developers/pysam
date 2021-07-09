@@ -2,7 +2,7 @@
 
 /*  vcfindex.c -- Index bgzip compressed VCF/BCF files for random access.
 
-    Copyright (C) 2014-2020 Genome Research Ltd.
+    Copyright (C) 2014-2021 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -26,6 +26,7 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <htslib/vcf.h>
@@ -38,6 +39,11 @@ DEALINGS IN THE SOFTWARE.  */
 #include "bcftools.h"
 
 #define BCF_LIDX_SHIFT    14
+
+enum {
+    per_contig = 1,
+    total = 2
+};
 
 static void usage(void)
 {
@@ -62,65 +68,137 @@ static void usage(void)
 
 int vcf_index_stats(char *fname, int stats)
 {
-    const char **seq;
-    int i, nseq;
+    const char **seq = NULL;
+    int tid, nseq = 0, ret = 0;
     tbx_t *tbx = NULL;
+    bcf_hdr_t *hdr = NULL;
     hts_idx_t *idx = NULL;
-
-    htsFile *fp = hts_open(fname,"r");
-    if ( !fp ) { fprintf(bcftools_stderr,"Could not read %s\n", fname); return 1; }
-    bcf_hdr_t *hdr = bcf_hdr_read(fp);
-    if ( !hdr ) { fprintf(bcftools_stderr,"Could not read the header: %s\n", fname); return 1; }
-
-    if ( hts_get_format(fp)->format==vcf )
-    {
-        tbx = tbx_index_load(fname);
-        if ( !tbx ) { fprintf(bcftools_stderr,"Could not load index for VCF: %s\n", fname); return 1; }
-    }
-    else if ( hts_get_format(fp)->format==bcf )
-    {
-        idx = bcf_index_load(fname);
-        if ( !idx ) { fprintf(bcftools_stderr,"Could not load index for BCF file: %s\n", fname); return 1; }
-    }
-    else
-    {
-        fprintf(bcftools_stderr,"Could not detect the file type as VCF or BCF: %s\n", fname);
-        return 1;
-    }
-
-    seq = tbx ? tbx_seqnames(tbx, &nseq) : bcf_index_seqnames(idx, hdr, &nseq);
+    htsFile *fp = NULL;
     uint64_t sum = 0;
-    for (i=0; i<nseq; i++)
+    char *fntemp = NULL, *fnidx = NULL;
+
+    /*
+     * First, has the user provided an index file? If per contig stats
+     * are requested, open the variant file (together with the index file,
+     * if provided), since the contig names can only be retrieved from its
+     * header. Otherwise, use just the corresponding index file to count
+     * the total number of records.
+     */
+    int len = strlen(fname);
+    if ( (fnidx = strstr(fname, HTS_IDX_DELIM)) != NULL ) {
+        fntemp = strdup(fname);
+        if ( !fntemp ) return 1;
+        fntemp[fnidx-fname] = 0;
+        fname = fntemp;
+        fnidx += strlen(HTS_IDX_DELIM);
+    }
+    else if ( len>4 && (!strcasecmp(".csi",fname+len-4) || !strcasecmp(".tbi",fname+len-4)) )
+    {
+        fnidx  = fname;
+        fntemp = strdup(fname);
+        fname  = fntemp;
+        fname[len-4] = 0;
+    }
+
+    if ( stats&per_contig )
+    {
+        fp = hts_open(fname,"r");
+        if ( !fp ) {
+            fprintf(bcftools_stderr,"Could not read %s\n", fname);
+            ret = 1; goto cleanup;
+        }
+        hdr = bcf_hdr_read(fp);
+        if ( !hdr ) {
+            fprintf(bcftools_stderr,"Could not read the header: %s\n", fname);
+            ret = 1; goto cleanup;
+        }
+
+        if ( hts_get_format(fp)->format==vcf )
+        {
+            tbx = tbx_index_load2(fname, fnidx);
+            if ( !tbx ) { fprintf(bcftools_stderr,"Could not load index for VCF: %s\n", fname); return 1; }
+        }
+        else if ( hts_get_format(fp)->format==bcf )
+        {
+            idx = bcf_index_load2(fname, fnidx);
+            if ( !idx ) { fprintf(bcftools_stderr,"Could not load index for BCF file: %s\n", fname); return 1; }
+        }
+        else
+        {
+            fprintf(bcftools_stderr,"Could not detect the file type as VCF or BCF: %s\n", fname);
+            return 1;
+        }
+    }
+    else if ( fnidx )
+    {
+        char *ext = strrchr(fnidx, '.');
+        if ( ext && strcmp(ext, ".tbi") == 0 ) {
+            tbx = tbx_index_load2(fname, fnidx);
+        } else if ( ext && strcmp(ext, ".csi") == 0 ) {
+            idx = bcf_index_load2(fname, fnidx);
+        }
+        if ( !tbx && !idx ) {
+            fprintf(bcftools_stderr,"Could not load index file '%s'\n", fnidx);
+            ret = 1; goto cleanup;
+        }
+    } else {
+        char *ext = strrchr(fname, '.');
+        if ( ext && strcmp(ext, ".bcf") == 0 ) {
+            idx = bcf_index_load(fname);
+        } else if ( ext && (ext-fname) > 4 && strcmp(ext-4, ".vcf.gz") == 0 ) {
+            tbx = tbx_index_load(fname);
+        }
+    }
+
+    if ( !tbx && !idx ) {
+        fprintf(bcftools_stderr,"No index file could be found for '%s'. Use 'bcftools index' to create one\n", fname);
+        ret = 1; goto cleanup;
+    }
+
+    if ( tbx ) {
+        seq = tbx_seqnames(tbx, &nseq);
+    } else {
+        nseq = hts_idx_nseq(idx);
+    }
+
+    for (tid=0; tid<nseq; tid++)
     {
         uint64_t records, v;
-        hts_idx_get_stat(tbx ? tbx->idx : idx, i, &records, &v);
-        sum+=records;
-        if (stats&2 || !records) continue;
-        bcf_hrec_t *hrec = bcf_hdr_get_hrec(hdr, BCF_HL_CTG, "ID", seq[i], NULL);
-        int hkey = hrec ? bcf_hrec_find_key(hrec, "length") : -1;
-        fprintf(bcftools_stdout, "%s\t%s\t%" PRIu64 "\n", seq[i], hkey<0?".":hrec->vals[hkey], records);
+        hts_idx_get_stat(tbx ? tbx->idx : idx, tid, &records, &v);
+        sum += records;
+        if ( (stats&total) || !records ) continue;
+        const char *ctg_name = tbx ? seq[tid] : hdr ? bcf_hdr_id2name(hdr, tid) : NULL;
+        if ( ctg_name ) {
+            bcf_hrec_t *hrec = hdr ? bcf_hdr_get_hrec(hdr, BCF_HL_CTG, "ID", ctg_name, NULL) : NULL;
+            int hkey = hrec ? bcf_hrec_find_key(hrec, "length") : -1;
+            fprintf(bcftools_stdout, "%s\t%s\t%" PRIu64 "\n", ctg_name, hkey<0?".":hrec->vals[hkey], records);
+        }
     }
-    if (!sum)
+    if ( !sum )
     {
         // No counts found.
         // Is this because index version has no stored count data, or no records?
         bcf1_t *rec = bcf_init1();
-        if (bcf_read1(fp, hdr, rec) >= 0)
-        {
+        if (fp && hdr && rec && bcf_read1(fp, hdr, rec) >= 0) {
             fprintf(bcftools_stderr,"index of %s does not contain any count metadata. Please re-index with a newer version of bcftools or tabix.\n", fname);
-            return 1;
+            ret = 1;
         }
         bcf_destroy1(rec);
     }
-    if (stats&2) fprintf(bcftools_stdout, "%" PRIu64 "\n", sum);
+    if ( (stats&total) && !ret ) {
+        fprintf(bcftools_stdout, "%" PRIu64 "\n", sum);
+    }
+
+cleanup:
     free(seq);
-    if ( hts_close(fp)!=0 ) error("[%s] Error: close failed\n", __func__);
+    free(fntemp);
+    if ( fp && hts_close(fp)!=0 ) error("[%s] Error: close failed\n", __func__);
     bcf_hdr_destroy(hdr);
     if (tbx)
         tbx_destroy(tbx);
     if (idx)
         hts_idx_destroy(idx);
-    return 0;
+    return ret;
 }
 
 int main_vcfindex(int argc, char *argv[])
@@ -155,8 +233,8 @@ int main_vcfindex(int argc, char *argv[])
                 min_shift = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --min-shift %s\n", optarg);
                 break;
-            case 's': stats |= 1; break;
-            case 'n': stats |= 2; break;
+            case 's': stats |= per_contig; break;
+            case 'n': stats |= total; break;
             case 9:
                 n_threads = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --threads %s\n", optarg);
@@ -165,7 +243,7 @@ int main_vcfindex(int argc, char *argv[])
             default: usage();
         }
     }
-    if (stats>2)
+    if (stats > total)
     {
         fprintf(bcftools_stderr, "[E::%s] expected only one of --stats or --nrecords options\n", __func__);
         return 1;

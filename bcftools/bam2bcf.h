@@ -1,7 +1,7 @@
 /*  bam2bcf.h -- variant calling.
 
     Copyright (C) 2010-2012 Broad Institute.
-    Copyright (C) 2012-2020 Genome Research Ltd.
+    Copyright (C) 2012-2021 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -60,21 +60,35 @@ DEALINGS IN THE SOFTWARE.  */
 #define B2B_INFO_VDB    (1<<14)
 #define B2B_INFO_RPB    (1<<15)
 #define B2B_FMT_QS      (1<<16)
+#define B2B_INFO_SCB    (1<<17)
+#define B2B_INFO_ZSCORE (1<<30) // MWU as-is or Z-normalised
 
 #define B2B_MAX_ALLELES 5
 
+#define B2B_DROP      0
+#define B2B_INC_AD    1
+#define B2B_INC_AD0   2
+
 #define PLP_HAS_SOFT_CLIP(i) ((i)&1)
-#define PLP_SAMPLE_ID(i)     ((i)>>1)
+#define PLP_HAS_INDEL(i)     ((i)&2)
+#define PLP_SAMPLE_ID(i)     ((i)>>2)
+
+#define PLP_SET_SOFT_CLIP(i)     ((i)|=1)
+#define PLP_SET_INDEL(i)         ((i)|=2)
+#define PLP_SET_SAMPLE_ID(i,n)   ((i)|=(n)<<2)
 
 typedef struct __bcf_callaux_t {
-    int fmt_flag;
-    int capQ, min_baseQ;
+    int fmt_flag, ambig_reads;
+    int capQ, min_baseQ, max_baseQ, delta_baseQ;
     int openQ, extQ, tandemQ; // for indels
     uint32_t min_support, max_support; // for collecting indel candidates
     double min_frac; // for collecting indel candidates
     float max_frac; // for collecting indel candidates
     int per_sample_flt; // indel filtering strategy
     int *ref_pos, *alt_pos, npos, *ref_mq, *alt_mq, *ref_bq, *alt_bq, *fwd_mqs, *rev_mqs, nqual; // for bias tests
+    int *iref_pos, *ialt_pos, *iref_mq, *ialt_mq; // for indels
+    int ref_scl[100], alt_scl[100];   // soft-clip length bias; SNP
+    int iref_scl[100], ialt_scl[100]; // soft-clip length bias; INDEL
     // for internal uses
     int max_bases;
     int indel_types[4];     // indel lengths
@@ -84,6 +98,7 @@ typedef struct __bcf_callaux_t {
     uint16_t *bases;        // 5bit: unused, 6:quality, 1:is_rev, 4:2-bit base or indel allele (index to bcf_callaux_t.indel_types)
     errmod_t *e;
     void *rghash;
+    float indel_bias;  // adjusts indel score threshold; lower => call more.
 } bcf_callaux_t;
 
 // per-sample values
@@ -120,11 +135,12 @@ typedef struct {
     int32_t *PL, *DP4, *ADR, *ADF, *SCR, *QS;
     uint8_t *fmt_arr;
     float vdb; // variant distance bias
-    float mwu_pos, mwu_mq, mwu_bq, mwu_mqs;
+    float mwu_pos, mwu_mq, mwu_bq, mwu_mqs, mwu_sc;
 #if CDF_MWU_TESTS
     float mwu_pos_cdf, mwu_mq_cdf, mwu_bq_cdf, mwu_mqs_cdf;
 #endif
     float seg_bias;
+    float strand_bias; // phred-scaled fisher-exact test
     kstring_t tmp;
 } bcf_call_t;
 
@@ -132,7 +148,8 @@ typedef struct {
 extern "C" {
 #endif
 
-    bcf_callaux_t *bcf_call_init(double theta, int min_baseQ);
+    bcf_callaux_t *bcf_call_init(double theta, int min_baseQ, int max_baseQ,
+                                 int delta_baseQ);
     void bcf_call_destroy(bcf_callaux_t *bca);
     int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t *bca, bcf_callret1_t *r);
     int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int ref_base /*4-bit*/, bcf_call_t *call);

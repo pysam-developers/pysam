@@ -1,6 +1,6 @@
 /*  vcfgtcheck.c -- Check sample identity.
 
-    Copyright (C) 2013-2020 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -67,6 +67,7 @@ typedef struct
     double min_inter_err, max_intra_err;
     int all_sites, hom_only, ntop, cross_check, calc_hwe_prob, sort_by_hwe, dry_run, use_PLs;
     FILE *fp;
+    unsigned int nskip_no_match, nskip_not_ba, nskip_mono, nskip_no_data, nskip_dip_GT, nskip_dip_PL;
 
     // for --distinctive-sites
     double distinctive_sites;
@@ -470,39 +471,74 @@ static inline uint8_t pl_to_prob(args_t *args, int32_t *ptr, double *prob)
     }
     return dsg;
 }
+static int set_data(args_t *args, bcf_hdr_t *hdr, bcf1_t *rec, int32_t **arr, int32_t *narr, int *narr1, int *use_GT)
+{
+    static int warn_dip_GT = 1;
+    static int warn_dip_PL = 1;
+    int i;
+    for (i=0; i<2; i++)
+    {
+        if ( *use_GT )
+        {
+            int ret = bcf_get_genotypes(hdr,rec,arr,narr);
+            if ( ret < 0 )
+            {
+                if ( !i ) { *use_GT = 0; continue; }
+                args->nskip_no_data++;
+                return -1;
+            }
+            if ( ret != 2*bcf_hdr_nsamples(hdr) )
+            {
+                if ( warn_dip_GT )
+                {
+                    fprintf(stderr,"INFO: skipping %s:%"PRIhts_pos", only diploid FORMAT/GT fields supported. (This is printed only once.)\n", bcf_seqname(hdr,rec),rec->pos+1);
+                    warn_dip_GT = 0;
+                }
+                args->nskip_dip_GT++;
+                return -1;
+            }
+            *narr1 = 2;
+            return 0;
+        }
+
+        int ret = bcf_get_format_int32(hdr,rec,"PL",arr,narr);
+        if ( ret < 0 )
+        {
+            if ( !i ) { *use_GT = 1; continue; }
+            args->nskip_no_data++;
+            return -1;
+        }
+        if ( ret != 3*bcf_hdr_nsamples(hdr) )
+        {
+            if ( warn_dip_PL )
+            {
+                fprintf(stderr,"INFO: skipping %s:%"PRIhts_pos", only diploid FORMAT/PL fields supported. (This is printed only once.)\n", bcf_seqname(hdr,rec),rec->pos+1);
+                warn_dip_PL = 0;
+            }
+            args->nskip_dip_PL++;
+            return -1;
+        }
+        *narr1 = 3;
+        return 0;
+    }
+    return -1;  // should never reach
+}
 static void process_line(args_t *args)
 {
-    int i,j,k, nqry1, ngt1;
+    int i,j,k, nqry1, ngt1, ret;
 
     bcf1_t *gt_rec = NULL, *qry_rec = bcf_sr_get_line(args->files,0);   // the query file
-    if ( args->qry_use_GT )
-    {
-        if ( (nqry1=bcf_get_genotypes(args->qry_hdr,qry_rec,&args->qry_arr,&args->nqry_arr)) <= 0 ) return;
-        if ( nqry1 != 2*bcf_hdr_nsamples(args->qry_hdr) ) return;    // only diploid data for now
-        nqry1 = 2;
-    }
-    else
-    {
-        if ( (nqry1=bcf_get_format_int32(args->qry_hdr,qry_rec,"PL",&args->qry_arr,&args->nqry_arr)) <= 0 ) return;
-        if ( nqry1 != 3*bcf_hdr_nsamples(args->qry_hdr) ) return;    // not diploid
-        nqry1 = 3;
-    }
+    int qry_use_GT = args->qry_use_GT;
+    int gt_use_GT  = args->gt_use_GT;
+
+    ret = set_data(args, args->qry_hdr, qry_rec, &args->qry_arr, &args->nqry_arr, &nqry1, &qry_use_GT);
+    if ( ret<0 ) return;
 
     if ( args->gt_hdr )
     {
         gt_rec = bcf_sr_get_line(args->files,1);
-        if ( args->gt_use_GT )
-        {
-            if ( (ngt1=bcf_get_genotypes(args->gt_hdr,gt_rec,&args->gt_arr,&args->ngt_arr)) <= 0 ) return;
-            if ( ngt1 != 2*bcf_hdr_nsamples(args->gt_hdr) ) return;    // not diploid
-            ngt1 = 2;
-        }
-        else
-        {
-            if ( (ngt1=bcf_get_format_int32(args->gt_hdr,gt_rec,"PL",&args->gt_arr,&args->ngt_arr)) <= 0 ) return;
-            if ( ngt1 != 3*bcf_hdr_nsamples(args->gt_hdr) ) return;    // not diploid
-            ngt1 = 3;
-        }
+        ret = set_data(args, args->gt_hdr, gt_rec, &args->gt_arr, &args->ngt_arr, &ngt1, &gt_use_GT);
+        if ( ret<0 ) return;
     }
     else
     {
@@ -559,12 +595,12 @@ static void process_line(args_t *args)
                 uint8_t qry_dsg, gt_dsg;
 
                 ptr = args->gt_arr + args->pairs[i].igt*ngt1;
-                gt_dsg = args->gt_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
+                gt_dsg = gt_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
                 if ( !gt_dsg ) continue;                        // missing value
                 if ( args->hom_only && !(gt_dsg&5) ) continue;  // not a hom
 
                 ptr = args->qry_arr + args->pairs[i].iqry*nqry1;
-                qry_dsg = args->qry_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
+                qry_dsg = qry_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
                 if ( !qry_dsg ) continue;                       // missing value
 
                 int match = qry_dsg & gt_dsg;
@@ -588,12 +624,12 @@ static void process_line(args_t *args)
                 uint8_t qry_dsg, gt_dsg;
 
                 ptr = args->gt_arr + args->pairs[i].igt*ngt1;
-                gt_dsg = args->gt_use_GT ? gt_to_prob(args,ptr,gt_prob) : pl_to_prob(args,ptr,gt_prob);
+                gt_dsg = gt_use_GT ? gt_to_prob(args,ptr,gt_prob) : pl_to_prob(args,ptr,gt_prob);
                 if ( !gt_dsg ) continue;                        // missing value
                 if ( args->hom_only && !(gt_dsg&5) ) continue;  // not a hom
                
                 ptr = args->qry_arr + args->pairs[i].iqry*nqry1;
-                qry_dsg = args->qry_use_GT ? gt_to_prob(args,ptr,qry_prob) : pl_to_prob(args,ptr,qry_prob);
+                qry_dsg = qry_use_GT ? gt_to_prob(args,ptr,qry_prob) : pl_to_prob(args,ptr,qry_prob);
                 if ( !qry_dsg ) continue;                       // missing value
 
                 double min = qry_prob[0] + gt_prob[0];
@@ -621,7 +657,7 @@ static void process_line(args_t *args)
         {
             int iqry = args->qry_smpl ? args->qry_smpl[i] : i;
             int32_t *ptr = args->qry_arr + nqry1*iqry;
-            args->qry_dsg[i] = args->qry_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
+            args->qry_dsg[i] = qry_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
         }
         if ( !args->cross_check )   // in this case gt_dsg points to qry_dsg
         {
@@ -629,7 +665,7 @@ static void process_line(args_t *args)
             {
                 int igt = args->gt_smpl ? args->gt_smpl[i] : i;
                 int32_t *ptr = args->gt_arr + ngt1*igt;
-                args->gt_dsg[i] = args->gt_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
+                args->gt_dsg[i] = gt_use_GT ? gt_to_dsg(ptr) : pl_to_dsg(ptr);
                 if ( args->hom_only && !(args->gt_dsg[i]&5) ) args->gt_dsg[i] = 0;      // not a hom, set to a missing value
             }
         }
@@ -654,7 +690,7 @@ static void process_line(args_t *args)
         {
             int iqry = args->qry_smpl ? args->qry_smpl[i] : i;
             int32_t *ptr = args->qry_arr + nqry1*iqry;
-            args->qry_dsg[i] = args->qry_use_GT ? gt_to_prob(args,ptr,args->qry_prob+i*3) : pl_to_prob(args,ptr,args->qry_prob+i*3);
+            args->qry_dsg[i] = qry_use_GT ? gt_to_prob(args,ptr,args->qry_prob+i*3) : pl_to_prob(args,ptr,args->qry_prob+i*3);
         }
         if ( !args->cross_check )   // in this case gt_dsg points to qry_dsg
         {
@@ -662,7 +698,7 @@ static void process_line(args_t *args)
             {
                 int igt = args->gt_smpl ? args->gt_smpl[i] : i;
                 int32_t *ptr = args->gt_arr + ngt1*igt;
-                args->gt_dsg[i] = args->gt_use_GT ? gt_to_prob(args,ptr,args->gt_prob+i*3) : pl_to_prob(args,ptr,args->gt_prob+i*3);
+                args->gt_dsg[i] = gt_use_GT ? gt_to_prob(args,ptr,args->gt_prob+i*3) : pl_to_prob(args,ptr,args->gt_prob+i*3);
                 if ( args->hom_only && !(args->gt_dsg[i]&5) ) args->gt_dsg[i] = 0;      // not a hom, set to a missing value
             }
         }
@@ -745,6 +781,13 @@ static void report_distinctive_sites(args_t *args)
 }
 static void report(args_t *args)
 {
+    fprintf(args->fp,"INFO\tsites-compared\t%u\n",args->ncmp);
+    fprintf(args->fp,"INFO\tsites-skipped-no-match\t%u\n",args->nskip_no_match);
+    fprintf(args->fp,"INFO\tsites-skipped-multiallelic\t%u\n",args->nskip_not_ba);
+    fprintf(args->fp,"INFO\tsites-skipped-monoallelic\t%u\n",args->nskip_mono);
+    fprintf(args->fp,"INFO\tsites-skipped-no-data\t%u\n",args->nskip_no_data);
+    fprintf(args->fp,"INFO\tsites-skipped-GT-not-diploid\t%u\n",args->nskip_dip_GT);
+    fprintf(args->fp,"INFO\tsites-skipped-PL-not-diploid\t%u\n",args->nskip_dip_PL);
     fprintf(args->fp,"# DC, discordance:\n");
     fprintf(args->fp,"#     - query sample\n");
     fprintf(args->fp,"#     - genotyped sample\n");
@@ -931,6 +974,51 @@ static void report(args_t *args)
     }
 }
 
+static int is_input_okay(args_t *args, int nmatch)
+{
+    int i;
+    const char *msg;
+    bcf_hdr_t *hdr;
+    bcf1_t *rec;
+    if ( args->gt_hdr && nmatch!=2 )
+    {
+        if ( args->nskip_no_match++ ) return 0;
+        for (i=0; i<2; i++)
+        {
+            rec = bcf_sr_get_line(args->files,i);
+            if ( rec ) break;
+        }
+        hdr = bcf_sr_get_header(args->files,i);
+        fprintf(stderr,"INFO: skipping %s:%"PRIhts_pos", no record with matching POS+ALT. (This is printed only once.)\n",
+                bcf_seqname(hdr,rec),rec->pos+1);
+        return 0;
+    }
+    for (i=0; i<2; i++)
+    {
+        hdr = bcf_sr_get_header(args->files,i);
+        rec = bcf_sr_get_line(args->files,i);
+        if ( rec->n_allele>2 )
+        {
+            if ( args->nskip_not_ba++ ) return 0;
+            msg = "not a biallelic site, run `bcftools norm -m -` first";
+            goto not_okay;
+        }
+        if ( bcf_get_variant_types(rec)==VCF_REF )
+        {
+            if ( args->nskip_mono++ ) return 0;
+            msg = "monoallelic site";
+            goto not_okay;
+        }
+        if ( !args->gt_hdr ) break;
+    }
+    return 1;
+
+not_okay:
+    fprintf(stderr,"INFO: skipping %s:%"PRIhts_pos", %s. (This is printed only once.)\n", 
+        bcf_seqname(hdr,rec),rec->pos+1,msg);
+    return 0;
+}
+
 static void usage(void)
 {
     fprintf(stderr, "\n");
@@ -943,7 +1031,11 @@ static void usage(void)
     fprintf(stderr, "        --distinctive-sites            Find sites that can distinguish between at least NUM sample pairs.\n");
     fprintf(stderr, "                  NUM[,MEM[,TMP]]          If the number is smaller or equal to 1, it is interpreted as the fraction of pairs.\n");
     fprintf(stderr, "                                           The optional MEM string sets the maximum memory used for in-memory sorting [500M]\n");
-    fprintf(stderr, "                                           and TMP is a prefix of temporary files used by external sorting [/tmp/bcftools-gtcheck]\n");
+#ifdef _WIN32
+    fprintf(stderr, "                                           and TMP is a prefix of temporary files used by external sorting [/bcftools.XXXXXX]\n");
+#else
+    fprintf(stderr, "                                           and TMP is a prefix of temporary files used by external sorting [/tmp/bcftools.XXXXXX]\n");
+#endif
     fprintf(stderr, "        --dry-run                      Stop after first record to estimate required time\n");
     fprintf(stderr, "    -e, --error-probability INT        Phred-scaled probability of genotyping error, 0 for faster but less accurate results [40]\n");
     fprintf(stderr, "    -g, --genotypes FILE               Genotypes to compare against\n");
@@ -1073,6 +1165,7 @@ int main_vcfgtcheck(int argc, char *argv[])
                     while ( *tmp && *tmp!=',' ) tmp++;
                     if ( *tmp ) { *tmp = 0; args->es_tmp_prefix = tmp+1; }
                 }
+                args->use_PLs = 0;
                 break;
             case 'c':
                 error("The -c option is to be implemented, please open an issue on github\n");
@@ -1131,7 +1224,7 @@ int main_vcfgtcheck(int argc, char *argv[])
     int ret;
     while ( (ret=bcf_sr_next_line(args->files)) )
     {
-        if ( args->gt_hdr && ret!=2 ) continue;     // not a cross-check mode and lines don't match
+        if ( !is_input_okay(args,ret) ) continue;
 
         // time one record to give the user an estimate with very big files
         struct timeval t0, t1;

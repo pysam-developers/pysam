@@ -680,11 +680,42 @@ static inline int feature_set_seq(args_t *args, char *chr_beg, char *chr_end)
     int iseq;
     if ( khash_str2int_get(aux->seq2int, chr_beg, &iseq)!=0 )
     {
-        hts_expand(char*, aux->nseq+1, aux->mseq, aux->seq);
-        aux->seq[aux->nseq] = strdup(chr_beg);
-        iseq = khash_str2int_inc(aux->seq2int, aux->seq[aux->nseq]);
-        aux->nseq++;
-        assert( aux->nseq < 1<<29 );  // see gf_gene_t.iseq and ftr_t.iseq
+        // check for possible mismatch in chromosome naming convention such as chrX vs X
+        char *new_chr = NULL;
+        if ( faidx_has_seq(args->fai,chr_beg) )
+            new_chr = strdup(chr_beg);                  // valid chr name, the same in gff and faidx
+        else
+        {
+            int len = strlen(chr_beg);
+            if ( !strncmp("chr",chr_beg,3) && len>3 )
+                new_chr = strdup(chr_beg+3);            // gff has the prefix, faidx does not
+            else
+            {
+                new_chr = malloc(len+3);                // gff does not have the prefix, faidx has
+                memcpy(new_chr,"chr",3);
+                memcpy(new_chr+3,chr_beg,len);
+                new_chr[len+3] = 0;
+            }
+            if ( !faidx_has_seq(args->fai,new_chr) )    // modification did not help, this sequence is not in fai
+            {
+                static int unkwn_chr_warned = 0;
+                if ( !unkwn_chr_warned && args->verbosity>0 )
+                    fprintf(bcftools_stderr,"Warning: GFF chromosome \"%s\" not part of the reference genome\n",chr_beg);
+                unkwn_chr_warned = 1;
+                free(new_chr);
+                new_chr = strdup(chr_beg);              // use the original sequence name
+            }
+        }
+        if ( khash_str2int_get(aux->seq2int, new_chr, &iseq)!=0 )
+        {
+            hts_expand(char*, aux->nseq+1, aux->mseq, aux->seq);
+            aux->seq[aux->nseq] = new_chr;
+            iseq = khash_str2int_inc(aux->seq2int, aux->seq[aux->nseq]);
+            aux->nseq++;
+            assert( aux->nseq < 1<<29 );  // see gf_gene_t.iseq and ftr_t.iseq
+        }
+        else
+            free(new_chr);
     }
     chr_end[1] = c;
     return iseq;
@@ -1362,6 +1393,9 @@ void init_data(args_t *args)
 {
     args->nfmt_bcsq = ncsq2_to_nfmt(args->ncsq2_max);
 
+    args->fai = fai_load(args->fa_fname);
+    if ( !args->fai ) error("Failed to load the fai index: %s\n", args->fa_fname);
+
     if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"Parsing %s ...\n", args->gff_fname);
     init_gff(args);
 
@@ -1369,9 +1403,6 @@ void init_data(args_t *args)
 
     if ( args->filter_str )
         args->filter = filter_init(args->hdr, args->filter_str);
-
-    args->fai = fai_load(args->fa_fname);
-    if ( !args->fai ) error("Failed to load the fai index: %s\n", args->fa_fname);
 
     args->pos2vbuf  = kh_init(pos2vbuf);
     args->active_tr = khp_init(trhp);
@@ -2709,13 +2740,13 @@ void kput_vcsq(args_t *args, vcsq_t *csq, kstring_t *str)
 
 void kprint_aa_prediction(args_t *args, int beg, kstring_t *aa, kstring_t *str)
 {
-    if ( !args->brief_predictions )
+    if ( !args->brief_predictions || (int)aa->l - args->brief_predictions < 3 )
         kputs(aa->s, str);
     else
     {
-        int len = aa->l;
+        int i, len = aa->l;
         if ( aa->s[len-1]=='*' ) len--;
-        kputc(aa->s[0], str);
+        for (i=0; i<len && i<args->brief_predictions; i++) kputc(aa->s[i], str);
         kputs("..", str);
         kputw(beg+len, str);
     }
@@ -4080,7 +4111,7 @@ static const char *usage(void)
         "   -g, --gff-annot FILE            gff3 annotation file\n"
         "\n"
         "CSQ options:\n"
-        "   -b, --brief-predictions         annotate with abbreviated protein-changing predictions\n"
+        "   -B, --trim-protein-seq INT      abbreviate protein-changing predictions to max INT aminoacids\n" 
         "   -c, --custom-tag STRING         use this tag instead of the default BCSQ\n"
         "   -l, --local-csq                 localized predictions, consider only one VCF record at a time\n"
         "   -n, --ncsq INT                  maximum number of per-haplotype consequences to consider for each site [15]\n"
@@ -4132,7 +4163,8 @@ int main_csq(int argc, char *argv[])
         {"threads",required_argument,NULL,2},
         {"help",0,0,'h'},
         {"ncsq",1,0,'n'},
-        {"brief-predictions",0,0,'b'},
+        {"brief-predictions",no_argument,0,'b'},
+        {"trim-protein-seq",required_argument,0,'B'},
         {"custom-tag",1,0,'c'},
         {"local-csq",0,0,'l'},
         {"gff-annot",1,0,'g'},
@@ -4155,7 +4187,7 @@ int main_csq(int argc, char *argv[])
     };
     int c, targets_is_file = 0, regions_is_file = 0; 
     char *targets_list = NULL, *regions_list = NULL, *tmp;
-    while ((c = getopt_long(argc, argv, "?hr:R:t:T:i:e:f:o:O:g:s:S:p:qc:ln:bv:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "?hr:R:t:T:i:e:f:o:O:g:s:S:p:qc:ln:bB:v:",loptions,NULL)) >= 0)
     {
         switch (c) 
         {
@@ -4165,7 +4197,14 @@ int main_csq(int argc, char *argv[])
                 if ( *tmp ) error("Could not parse argument: --threads  %s\n", optarg);
                 break;
             case  3 : args->record_cmd_line = 0; break;
-            case 'b': args->brief_predictions = 1; break;
+            case 'b':
+                    args->brief_predictions = 1;
+                    fprintf(bcftools_stderr,"Warning: the -b option will be removed in future versions. Please use -B 1 instead.\n");
+                    break;
+            case 'B': 
+                    args->brief_predictions = strtol(optarg,&tmp,10);
+                    if ( *tmp || args->brief_predictions<1 ) error("Could not parse argument: --trim-protein-seq %s\n", optarg);
+                    break;
             case 'l': args->local_csq = 1; break;
             case 'c': args->bcsq_tag = optarg; break;
             case 'q': error("Error: the -q option has been deprecated, use -v, --verbose instead.\n"); break;

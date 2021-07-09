@@ -336,7 +336,7 @@ static void set_old_rec_tag(args_t *args, bcf1_t *dst, bcf1_t *src, int ialt)
     }
     if ( ialt>0 )
     {
-        args->tmp_kstr.s[args->tmp_kstr.l-1] = '|';
+        kputc('|',&args->tmp_kstr);
         kputw(ialt,&args->tmp_kstr);
     }
     if ( (bcf_update_info_string(args->out_hdr, dst, args->old_rec_tag, args->tmp_kstr.s))!=0 )

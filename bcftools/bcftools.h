@@ -51,6 +51,7 @@ void error_errno(const char *format, ...) HTS_NORETURN HTS_FORMAT(HTS_PRINTF_FMT
 void bcf_hdr_append_version(bcf_hdr_t *hdr, int argc, char **argv, const char *cmd);
 const char *hts_bcf_wmode(int file_type);
 const char *hts_bcf_wmode2(int file_type, char *fname);
+char *init_tmp_prefix(const char *prefix);
 
 void *smalloc(size_t size);     // safe malloc
 

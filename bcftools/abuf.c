@@ -32,6 +32,12 @@
 #include "abuf.h"
 #include "rbuf.h"
 
+typedef enum
+{
+    M_FIRST, M_SUM
+}
+merge_rule_t;
+
 typedef struct
 {
     kstring_t ref, alt;
@@ -44,7 +50,7 @@ typedef struct
 {
     bcf1_t *rec;
     int nori, nout;     // number of ALTs in the input, and VCF rows on output
-    uint8_t *tbl;       // nori columns, nout rows
+    uint8_t *tbl;       // nori columns, nout rows; indicates allele contribution to output rows, see "The atomization works as follows" below
     uint8_t *overlaps;  // is the star allele needed for this variant?
     atom_t **atoms;
     int matoms, mtbl, moverlaps;
@@ -289,7 +295,7 @@ static void _split_table_set_chrom_qual(abuf_t *buf)
         bcf_update_filter(buf->out_hdr, out, rec->d.flt, rec->d.n_flt);
     }
 }
-static void _split_table_set_info(abuf_t *buf, bcf_info_t *info)
+static void _split_table_set_info(abuf_t *buf, bcf_info_t *info, merge_rule_t mode)
 {
     const char *tag = bcf_hdr_int2id(buf->hdr,BCF_DT_ID,info->key);
     int type = bcf_hdr_id2type(buf->hdr,BCF_HL_INFO,info->key);
@@ -303,9 +309,9 @@ static void _split_table_set_info(abuf_t *buf, bcf_info_t *info)
     int nval = bcf_get_info_values(buf->hdr,rec,tag,&buf->tmp,&mtmp,type);
     if ( type==BCF_HT_INT || type==BCF_HT_REAL ) buf->mtmp = mtmp*4;
 
-    if ( (len==BCF_VL_A && nval != rec->n_allele - 1) || (len==BCF_VL_R && nval != rec->n_allele) )
-        error("Incorrect number of values at %s:%"PRIhts_pos" .. tag=INFO/%s Number=%c nAlleles=%d nValues=%d\n",
-                bcf_seqname(buf->hdr,rec),rec->pos+1,tag,len==BCF_VL_A?'A':'R',rec->n_allele,nval);
+    // Check for incorrect number of values. Note this check does not consider all values missing
+    // and will remove annotations that don't pass.
+    if ( (len==BCF_VL_A && nval != rec->n_allele - 1) || (len==BCF_VL_R && nval != rec->n_allele) ) return;
 
     if ( buf->mtmp2 < buf->mtmp )
     {
@@ -313,19 +319,19 @@ static void _split_table_set_info(abuf_t *buf, bcf_info_t *info)
         if ( !buf->tmp2 ) error("Failed to alloc %d bytes\n", buf->mtmp);
         buf->mtmp2 = buf->mtmp;
     }
-    
+
     int32_t missing = bcf_int32_missing;
     void *missing_ptr = (void*)&missing;
     if ( type==BCF_HT_REAL ) bcf_float_set_missing(*((float*)missing_ptr));
 
-    int iout;
+    int iout,i;
     for (iout=0; iout<buf->split.nout; iout++)
     {
         bcf1_t *out = buf->vcf[rbuf_kth(&buf->rbuf,iout)];
         int star_allele = _has_star_allele(buf,iout);
         int ret = 0;
         if ( len==BCF_VL_FIXED || len==BCF_VL_VAR )
-            ret = bcf_update_info(buf->out_hdr, out, tag, buf->tmp, nval, type);
+            ret = bcf_update_info(buf->out_hdr, out, tag, type==BCF_HT_FLAG ? NULL : buf->tmp, nval, type);
         else if ( len==BCF_VL_A )
         {
             int iori = buf->split.atoms[iout]->ial - 1;
@@ -337,10 +343,18 @@ static void _split_table_set_info(abuf_t *buf, bcf_info_t *info)
         }
         else if ( len==BCF_VL_R )
         {
+            memcpy(buf->tmp2,buf->tmp,4);   // REF contributes to all records
             int iori = buf->split.atoms[iout]->ial;
-            assert( iori < nval );
-            memcpy(buf->tmp2,buf->tmp,4);
+            assert( iori<nval && iori<=buf->split.nori );
             memcpy(buf->tmp2+4,buf->tmp+4*iori,4);
+            if ( type==BCF_HT_INT && mode==M_SUM ) 
+            {
+                uint8_t *tbl = buf->split.tbl + iout*buf->split.nori;
+                for (i=iori; i<buf->split.nori; i++)
+                {
+                    if ( tbl[i]==1 ) ((int32_t*)buf->tmp2)[1] += ((int32_t*)buf->tmp)[i+1];
+                }
+            }
             if ( star_allele )
                 memcpy(buf->tmp2+8,missing_ptr,4);
             ret = bcf_update_info(buf->out_hdr, out, tag, buf->tmp2, 2 + star_allele, type);
@@ -421,7 +435,7 @@ static void _split_table_set_gt(abuf_t *buf)
         bcf_update_genotypes(buf->out_hdr,out,buf->tmpi,buf->ngt);
     }
 }
-static void _split_table_set_format(abuf_t *buf, bcf_fmt_t *fmt)
+static void _split_table_set_format(abuf_t *buf, bcf_fmt_t *fmt, merge_rule_t mode)
 {
     int nsmpl = bcf_hdr_nsamples(buf->hdr);
     if ( !nsmpl ) return;
@@ -445,20 +459,21 @@ static void _split_table_set_format(abuf_t *buf, bcf_fmt_t *fmt)
     if ( type==BCF_HT_REAL ) bcf_float_set_missing(*((float*)missing_ptr));
 
     bcf1_t *rec = buf->split.rec;
-    int mtmp = ( type==BCF_HT_INT || type==BCF_HT_REAL ) ? buf->mtmp/num_size : buf->mtmp;
+    int mtmp = ( type==BCF_HT_INT || type==BCF_HT_REAL ) ? buf->mtmp/num_size : buf->mtmp;  // number of items
     int nval = bcf_get_format_values(buf->hdr,rec,tag,&buf->tmp,&mtmp,type);
-    if ( type==BCF_HT_INT || type==BCF_HT_REAL ) buf->mtmp = mtmp*num_size;
+    if ( type==BCF_HT_INT || type==BCF_HT_REAL ) buf->mtmp = mtmp*num_size;                 // number of bytes
 
     if ( len==BCF_VL_G && nval!=nsmpl*rec->n_allele && nval!=nsmpl*rec->n_allele*(rec->n_allele+1)/2 ) return;      // not haploid nor diploid
 
-    if ( (len==BCF_VL_A && nval != nsmpl*(rec->n_allele - 1)) || (len==BCF_VL_R && nval != nsmpl*rec->n_allele) )
-        error("Incorrect number of values at %s:%"PRIhts_pos" .. tag=FORMAT/%s Number=%c nAlleles=%d nValues=%d\n",
-                bcf_seqname(buf->hdr,rec),rec->pos+1,tag,len==BCF_VL_A?'A':'R',rec->n_allele,nval);
+    // Check for incorrect number of values. Note this check does not consider all values missing
+    // and will remove annotations that don't pass.
+    if ( (len==BCF_VL_A && nval != nsmpl*(rec->n_allele - 1)) || (len==BCF_VL_R && nval != nsmpl*rec->n_allele) ) return;
 
     // Increase buffer size to accommodate star allele
+    int nval1 = nval / nsmpl;
     mtmp = buf->mtmp;
-    if ( (len==BCF_VL_A || len==BCF_VL_R) && mtmp < num_size*(nval+nsmpl) ) mtmp = num_size*(nval+nsmpl);
-    else if ( len==BCF_VL_G && mtmp < num_size*(nval+nsmpl*3) ) mtmp = num_size*(nval+nsmpl*3);
+    if ( (len==BCF_VL_A || len==BCF_VL_R) && mtmp < num_size*nsmpl*(nval1+1) ) mtmp = num_size*nsmpl*(nval1+1); // +1 for the possibility of the star allele
+    else if ( len==BCF_VL_G && mtmp < num_size*nsmpl*(nval1+3) ) mtmp = num_size*nsmpl*(nval1+3);
 
     if ( buf->mtmp2 < mtmp )
     {
@@ -467,7 +482,6 @@ static void _split_table_set_format(abuf_t *buf, bcf_fmt_t *fmt)
         buf->mtmp2 = mtmp;
     }
 
-    int nval1 = nval / nsmpl;
     int iout, i, j;
     for (iout=0; iout<buf->split.nout; iout++)
     {
@@ -492,14 +506,21 @@ static void _split_table_set_format(abuf_t *buf, bcf_fmt_t *fmt)
         }
         else if ( len==BCF_VL_R )
         {
-            int iori = buf->split.atoms[iout]->ial - 1;
-            assert( iori<nval );
+            int iori = buf->split.atoms[iout]->ial;
+            assert( iori<=nval );
             for (i=0; i<nsmpl; i++)
             {
                 void *src = buf->tmp  + nval1*num_size*i;
                 void *dst = buf->tmp2 + num_size*i*(star_allele+2);
                 memcpy(dst,src,num_size);
                 memcpy(dst+num_size,src+iori*num_size,num_size);
+
+                if ( type==BCF_HT_INT && mode==M_SUM )
+                {
+                    uint8_t *tbl = buf->split.tbl + iout*buf->split.nori;
+                    for (j=iori; j<buf->split.nori; j++)
+                        if ( tbl[j]==1 ) ((int32_t*)dst)[1] += ((int32_t*)src)[j+1];
+                }
                 if ( star_allele )
                     memcpy(dst+num_size*2,missing_ptr,num_size);
             }
@@ -590,10 +611,23 @@ static inline int _is_acgtn(char *seq)
     and merge logic provided, similarly to `merge -l`. For example, the allelic depths (AD) should
     be summed for the same atomized output allele. However, this level of complexity is not addressed
     in this initial draft. Higher priority for now is to provide the inverse "join" operation.
+
+    Update 2021-04-09:
+        Tags QS,AD are now automatically incremented as they should be, for both INFO and FORMAT.
+        Note that the code will fail on missing values (todo) and it needs to be generalized and
+        made customizable.
 */
 void _abuf_split(abuf_t *buf, bcf1_t *rec)
 {
     int i,j;
+    if ( rec->n_allele < 2 )
+    {
+        rbuf_expand0(&buf->rbuf, bcf1_t*, buf->rbuf.n+1, buf->vcf);
+        int j = rbuf_append(&buf->rbuf);
+        if ( buf->vcf[j] ) bcf_destroy(buf->vcf[j]);
+        buf->vcf[j] = bcf_dup(rec);
+        return;
+    }
     for (i=1; i<rec->n_allele; i++)
     {
         if ( _is_acgtn(rec->d.allele[i]) ) continue;
@@ -634,15 +668,29 @@ void _abuf_split(abuf_t *buf, bcf1_t *rec)
 
     // INFO
     for (i=0; i<rec->n_info; i++)
-        _split_table_set_info(buf, &rec->d.info[i]);
+    {
+        // this implementation of merging rules is temporary: generalize and made customizable through the API
+        merge_rule_t mode = M_FIRST;
+        const char *tag = bcf_hdr_int2id(buf->hdr,BCF_DT_ID,rec->d.info[i].key);
+        if ( !strcmp(tag,"QS") || !strcmp(tag,"AD") ) mode = M_SUM;
 
-    // Set INFO tag with the original result
+        _split_table_set_info(buf, &rec->d.info[i], mode);
+    }
+
+    // Set INFO tag showing the original record
     if ( buf->split.info_tag )
         _split_table_set_history(buf);
 
     // FORMAT
     for (i=0; i<rec->n_fmt; i++)
-        _split_table_set_format(buf, &rec->d.fmt[i]);
+    {
+        // this implementation of merging rules is temporary: generalize and made customizable through the API
+        merge_rule_t mode = M_FIRST;
+        const char *tag = bcf_hdr_int2id(buf->hdr,BCF_DT_ID,rec->d.fmt[i].id);
+        if ( !strcmp(tag,"QS") || !strcmp(tag,"AD") ) mode = M_SUM;
+
+        _split_table_set_format(buf, &rec->d.fmt[i], mode);
+    }
 }
 
 void abuf_push(abuf_t *buf, bcf1_t *rec)

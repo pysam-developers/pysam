@@ -1,6 +1,6 @@
 /*  vcfsom.c -- SOM (Self-Organizing Map) filtering.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2014, 2020 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 

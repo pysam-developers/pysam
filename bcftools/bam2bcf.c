@@ -1,7 +1,7 @@
 /*  bam2bcf.c -- variant calling.
 
     Copyright (C) 2010-2012 Broad Institute.
-    Copyright (C) 2012-2020 Genome Research Ltd.
+    Copyright (C) 2012-2021 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -40,7 +40,8 @@ extern  void ks_introsort_uint32_t(size_t n, uint32_t a[]);
 
 #define CAP_DIST 25
 
-bcf_callaux_t *bcf_call_init(double theta, int min_baseQ)
+bcf_callaux_t *bcf_call_init(double theta, int min_baseQ, int max_baseQ,
+                             int delta_baseQ)
 {
     bcf_callaux_t *bca;
     if (theta <= 0.) theta = CALL_DEFTHETA;
@@ -48,6 +49,8 @@ bcf_callaux_t *bcf_call_init(double theta, int min_baseQ)
     bca->capQ = 60;
     bca->openQ = 40; bca->extQ = 20; bca->tandemQ = 100;
     bca->min_baseQ = min_baseQ;
+    bca->max_baseQ = max_baseQ;
+    bca->delta_baseQ = delta_baseQ;
     bca->e = errmod_init(1. - theta);
     bca->min_frac = 0.002;
     bca->min_support = 1;
@@ -55,9 +58,13 @@ bcf_callaux_t *bcf_call_init(double theta, int min_baseQ)
     bca->npos = 100;
     bca->ref_pos = (int*) malloc(bca->npos*sizeof(int));
     bca->alt_pos = (int*) malloc(bca->npos*sizeof(int));
+    bca->iref_pos= (int*) malloc(bca->npos*sizeof(int));
+    bca->ialt_pos= (int*) malloc(bca->npos*sizeof(int));
     bca->nqual = 60;
     bca->ref_mq  = (int*) malloc(bca->nqual*sizeof(int));
     bca->alt_mq  = (int*) malloc(bca->nqual*sizeof(int));
+    bca->iref_mq = (int*) malloc(bca->nqual*sizeof(int));
+    bca->ialt_mq = (int*) malloc(bca->nqual*sizeof(int));
     bca->ref_bq  = (int*) malloc(bca->nqual*sizeof(int));
     bca->alt_bq  = (int*) malloc(bca->nqual*sizeof(int));
     bca->fwd_mqs = (int*) malloc(bca->nqual*sizeof(int));
@@ -69,47 +76,68 @@ void bcf_call_destroy(bcf_callaux_t *bca)
 {
     if (bca == 0) return;
     errmod_destroy(bca->e);
-    if (bca->npos) { free(bca->ref_pos); free(bca->alt_pos); bca->npos = 0; }
-    free(bca->ref_mq); free(bca->alt_mq); free(bca->ref_bq); free(bca->alt_bq);
+    if (bca->npos) {
+        free(bca->ref_pos);  free(bca->alt_pos);
+        free(bca->iref_pos); free(bca->ialt_pos);
+        bca->npos = 0;
+    }
+    free(bca->ref_mq); free(bca->alt_mq);
+    free(bca->iref_mq); free(bca->ialt_mq);
+    free(bca->ref_bq); free(bca->alt_bq);
     free(bca->fwd_mqs); free(bca->rev_mqs);
     bca->nqual = 0;
     free(bca->bases); free(bca->inscns); free(bca);
 }
 
 // position in the sequence with respect to the aligned part of the read
-static int get_position(const bam_pileup1_t *p, int *len)
-{
-    int icig, n_tot_bases = 0, iread = 0, edist = p->qpos + 1;
-    for (icig=0; icig<p->b->core.n_cigar; icig++)
-    {
-        int cig  = bam_get_cigar(p->b)[icig] & BAM_CIGAR_MASK;
-        int ncig = bam_get_cigar(p->b)[icig] >> BAM_CIGAR_SHIFT;
-        if ( cig==BAM_CMATCH || cig==BAM_CEQUAL || cig==BAM_CDIFF )
-        {
-            n_tot_bases += ncig;
-            iread += ncig;
+static int get_position(const bam_pileup1_t *p, int *len,
+                        int *sc_len, int *sc_dist) {
+    int i, j, edist = p->qpos + 1;
+    int sc_left = 0, sc_right = 0;
+    int sc_left_dist = -1, sc_right_dist = -1;
+
+    // left end
+    for (i = 0; i < p->b->core.n_cigar; i++) {
+        int cig  = bam_get_cigar(p->b)[i] & BAM_CIGAR_MASK;
+        if (cig == BAM_CHARD_CLIP)
             continue;
-        }
-        if ( cig==BAM_CINS )
-        {
-            n_tot_bases += ncig;
-            iread += ncig;
-            continue;
-        }
-        if ( cig==BAM_CSOFT_CLIP )
-        {
-            iread += ncig;
-            if ( iread<=p->qpos ) edist -= ncig;
-            continue;
-        }
-        if ( cig==BAM_CDEL ) continue;
-        if ( cig==BAM_CHARD_CLIP ) continue;
-        if ( cig==BAM_CPAD ) continue;
-        if ( cig==BAM_CREF_SKIP ) continue;
-        fprintf(stderr,"todo: cigar %d\n", cig);
-        assert(0);
+        else if (cig == BAM_CSOFT_CLIP)
+            sc_left += bam_get_cigar(p->b)[i] >> BAM_CIGAR_SHIFT;
+        else
+            break;
     }
-    *len = n_tot_bases;
+    if (sc_left)
+        sc_left_dist = p->qpos+1 - sc_left;
+    edist -= sc_left;
+
+    // right end
+    for (j = p->b->core.n_cigar-1; j >= i; j--) {
+        int cig  = bam_get_cigar(p->b)[j] & BAM_CIGAR_MASK;
+        if (cig == BAM_CHARD_CLIP)
+            continue;
+        else if (cig == BAM_CSOFT_CLIP)
+            sc_right += bam_get_cigar(p->b)[j] >> BAM_CIGAR_SHIFT;
+        else
+            break;
+    }
+    if (sc_right)
+        sc_right_dist = p->b->core.l_qseq - sc_right - p->qpos;
+
+    // Distance to nearest soft-clips and length of that clip.
+    if (sc_left_dist >= 0) {
+        if (sc_right_dist < 0 || sc_left_dist < sc_right_dist) {
+            *sc_len  = sc_left;
+            *sc_dist = sc_left_dist;
+        }
+    } else if (sc_right_dist >= 0) {
+        *sc_len  = sc_right;
+        *sc_dist = sc_right_dist;
+    } else {
+        *sc_len  = 0;
+        *sc_dist = 0;
+    }
+
+    *len = p->b->core.l_qseq - sc_left - sc_right;
     return edist;
 }
 
@@ -117,8 +145,12 @@ void bcf_callaux_clean(bcf_callaux_t *bca, bcf_call_t *call)
 {
     memset(bca->ref_pos,0,sizeof(int)*bca->npos);
     memset(bca->alt_pos,0,sizeof(int)*bca->npos);
+    memset(bca->iref_pos,0,sizeof(int)*bca->npos);
+    memset(bca->ialt_pos,0,sizeof(int)*bca->npos);
     memset(bca->ref_mq,0,sizeof(int)*bca->nqual);
     memset(bca->alt_mq,0,sizeof(int)*bca->nqual);
+    memset(bca->iref_mq,0,sizeof(int)*bca->nqual);
+    memset(bca->ialt_mq,0,sizeof(int)*bca->nqual);
     memset(bca->ref_bq,0,sizeof(int)*bca->nqual);
     memset(bca->alt_bq,0,sizeof(int)*bca->nqual);
     memset(bca->fwd_mqs,0,sizeof(int)*bca->nqual);
@@ -127,6 +159,10 @@ void bcf_callaux_clean(bcf_callaux_t *bca, bcf_call_t *call)
     if ( call->ADR ) memset(call->ADR,0,sizeof(int32_t)*(call->n+1)*B2B_MAX_ALLELES);
     if ( call->SCR ) memset(call->SCR,0,sizeof(*call->SCR)*(call->n+1));
     memset(call->QS,0,sizeof(*call->QS)*call->n*B2B_MAX_ALLELES);
+    memset(bca->ref_scl,  0, 100*sizeof(int));
+    memset(bca->alt_scl,  0, 100*sizeof(int));
+    memset(bca->iref_scl, 0, 100*sizeof(int));
+    memset(bca->ialt_scl, 0, 100*sizeof(int));
 }
 
 /*
@@ -166,30 +202,65 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         kroundup32(bca->max_bases);
         bca->bases = (uint16_t*)realloc(bca->bases, 2 * bca->max_bases);
     }
+
     // fill the bases array
+    double nqual_over_60 = bca->nqual / 60.0;
+    int ADR_ref_missed[4] = {0};
+    int ADF_ref_missed[4] = {0};
     for (i = n = 0; i < _n; ++i) {
         const bam_pileup1_t *p = pl + i;
         int q, b, mapQ, baseQ, is_diff, min_dist, seqQ;
+        if ( bca->fmt_flag&(B2B_INFO_SCR|B2B_FMT_SCR) && PLP_HAS_SOFT_CLIP(p->cd.i) ) r->SCR++;
         if (p->is_refskip || (p->b->core.flag&BAM_FUNMAP)) continue;
         if (p->is_del && !is_indel) continue;
         ++ori_depth;
         if (is_indel)
         {
-            b     = p->aux>>16&0x3f;
-            baseQ = q = p->aux&0xff;
-            // This read is not counted as indel. Instead of skipping it, treat it as ref. It is
-            // still only an approximation, but gives more accurate AD counts and calls correctly
-            // hets instead of alt-homs in some cases (see test/mpileup/indel-AD.1.sam)
-            if ( q < bca->min_baseQ ) b = 0, q = (int)bam_get_qual(p->b)[p->qpos];
-            seqQ  = p->aux>>8&0xff;
+            b = p->aux>>16&0x3f;
+            seqQ = q = (p->aux & 0xff); // mp2 + builtin indel-bias
+            if (q < bca->min_baseQ)
+            {
+                if (!p->indel && b < 4)
+                {
+                    if (bam_is_rev(p->b))
+                        ADR_ref_missed[b]++;
+                    else
+                        ADF_ref_missed[b]++;
+                }
+                continue;
+            }
+            if (p->indel == 0 && (q < _n/2 || _n > 20)) {
+                // high quality indel calls without p->indel set aren't
+                // particularly indicative of being a good REF match either,
+                // at least not in low coverage.  So require solid coverage
+                // before we start utilising such quals.
+                b = 0;
+                q = (int)bam_get_qual(p->b)[p->qpos];
+                seqQ = (3*seqQ + 2*q)/8;
+            }
+            if (_n > 20 && seqQ > 40) seqQ = 40;
+            baseQ  = p->aux>>8&0xff;
+
             is_diff = (b != 0);
         }
         else
         {
             b = bam_seqi(bam_get_seq(p->b), p->qpos); // base
             b = seq_nt16_int[b? b : ref_base]; // b is the 2-bit base
-            baseQ = q = (int)bam_get_qual(p->b)[p->qpos];
+
+            // Lowest of this and neighbour quality values
+            uint8_t *qual = bam_get_qual(p->b);
+            q = qual[p->qpos];
+            if (p->qpos > 0 &&
+                q > qual[p->qpos-1]+bca->delta_baseQ)
+                q = qual[p->qpos-1]+bca->delta_baseQ;
+            if (p->qpos+1 < p->b->core.l_qseq &&
+                q > qual[p->qpos+1]+bca->delta_baseQ)
+                q = qual[p->qpos+1]+bca->delta_baseQ;
+
             if (q < bca->min_baseQ) continue;
+            if (q > bca->max_baseQ) q = bca->max_baseQ;
+            baseQ = q;
             seqQ  = 99;
             is_diff = (ref4 < 4 && b == ref4)? 0 : 1;
         }
@@ -201,7 +272,6 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         if (q > 63) q = 63;
         if (q < 4) q = 4;       // MQ=0 reads count as BQ=4
         bca->bases[n++] = q<<5 | (int)bam_is_rev(p->b)<<4 | b;
-        if ( bca->fmt_flag&(B2B_INFO_SCR|B2B_FMT_SCR) && PLP_HAS_SOFT_CLIP(p->cd.i) ) r->SCR++;
         // collect annotations
         if (b < 4)
         {
@@ -228,29 +298,65 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         // collect for bias tests
         if ( baseQ > 59 ) baseQ = 59;
         if ( mapQ > 59 ) mapQ = 59;
-        int len, epos = 0;
-        if ( bca->fmt_flag & (B2B_INFO_RPB|B2B_INFO_VDB) )
+        int len, epos = 0, sc_len = 0, sc_dist = 0;
+        if ( bca->fmt_flag & (B2B_INFO_RPB|B2B_INFO_VDB|B2B_INFO_SCB) )
         {
-            int pos = get_position(p, &len);
+            int pos = get_position(p, &len, &sc_len, &sc_dist);
             epos = (double)pos/(len+1) * bca->npos;
+
+            if (sc_len) {
+                sc_len = 15.0*sc_len / sc_dist;
+                if (sc_len > 99) sc_len = 99;
+            }
         }
-        int ibq  = baseQ/60. * bca->nqual;
-        int imq  = mapQ/60. * bca->nqual;
-        if ( bam_is_rev(p->b) ) bca->rev_mqs[imq]++;
-        else bca->fwd_mqs[imq]++;
+
+        int imq  = mapQ * nqual_over_60;
+        int ibq  = baseQ * nqual_over_60;
+
+        if ( bam_is_rev(p->b) )
+            bca->rev_mqs[imq]++;
+        else
+            bca->fwd_mqs[imq]++;
+
         if ( bam_seqi(bam_get_seq(p->b),p->qpos) == ref_base )
         {
             bca->ref_pos[epos]++;
             bca->ref_bq[ibq]++;
             bca->ref_mq[imq]++;
+            bca->ref_scl[sc_len]++;
         }
         else
         {
             bca->alt_pos[epos]++;
             bca->alt_bq[ibq]++;
             bca->alt_mq[imq]++;
+            bca->alt_scl[sc_len]++;
         }
     }
+
+    // Compensate for AD not being counted on low quality REF indel matches.
+    if ( r->ADF && bca->ambig_reads==B2B_INC_AD0 )
+    {
+        for (i=0; i<4; i++) // verify: are the counters ever non-zero for i!=0?
+        {
+            r->ADR[i] += ADR_ref_missed[i];
+            r->ADF[i] += ADF_ref_missed[i];
+        }
+    }
+    else if ( r->ADF && bca->ambig_reads==B2B_INC_AD )
+    {
+        int dp = 0, dp_ambig = 0;
+        for (i=0; i<4; i++) dp += r->ADR[i];
+        for (i=0; i<4; i++) dp_ambig += ADR_ref_missed[i];
+        if ( dp )
+            for (i=0; i<4; i++) r->ADR[i] += lroundf((float)dp_ambig * r->ADR[i]/dp);
+        dp = 0, dp_ambig = 0;
+        for (i=0; i<4; i++) dp += r->ADF[i];
+        for (i=0; i<4; i++) dp_ambig += ADF_ref_missed[i];
+        if ( dp )
+            for (i=0; i<4; i++) r->ADF[i] += lroundf((float)dp_ambig * r->ADF[i]/dp);
+    }
+
     r->ori_depth = ori_depth;
     // glfgen
     errmod_cal(bca->e, n, 5, bca->bases, r->p); // calculate PL of each genotype
@@ -437,7 +543,7 @@ double calc_mwu_bias_cdf(int *a, int *b, int n)
     return pval>1 ? 1 : pval;
 }
 
-double calc_mwu_bias(int *a, int *b, int n)
+double calc_mwu_bias(int *a, int *b, int n, int left)
 {
     int na = 0, nb = 0, i;
     double U = 0, ties = 0;
@@ -461,6 +567,7 @@ double calc_mwu_bias(int *a, int *b, int n)
     if ( na==1 || nb==1 ) return 1.0;       // Flat probability, all U values are equally likely
 
     double mean = ((double)na*nb)*0.5;
+    if (left && U > mean) return 1; // for MQB which is asymmetrical
     if ( na==2 || nb==2 )
     {
         // Linear approximation
@@ -481,6 +588,85 @@ double calc_mwu_bias(int *a, int *b, int n)
 
     // Exact calculation
     return mann_whitney_1947(na,nb,U) * sqrt(2*M_PI*var2);
+}
+
+// A Z-score version of the above function.
+//
+// See "Normal approximation and tie correction" at
+// https://en.wikipedia.org/wiki/Mann%E2%80%93Whitney_U_test
+//
+// The Z score is the number of standard deviations above or below the mean
+// with 0 being equality of the two distributions and +ve/-ve from there.
+//
+// This is a more robust score to filter on.
+double calc_mwu_biasZ(int *a, int *b, int n, int left_only, int do_Z) {
+    int i;
+    int64_t t;
+
+    // Optimisation
+    for (i = 0; i < n; i++)
+        if (b[i])
+            break;
+    int b_empty = (i == n);
+
+    // Count equal (e), less-than (l) and greater-than (g) permutations.
+    int e = 0, l = 0, na = 0, nb = 0;
+    if (b_empty) {
+        for (t = 0, i = n-1; i >= 0; i--) {
+            na += a[i];
+            t += (a[i]*a[i]-1)*a[i];  // adjustment score for ties
+        }
+    } else {
+        for (t = 0, i = n-1; i >= 0; i--) {
+            // Combinations of a[i] and b[j] for i==j
+            e += a[i]*b[i];
+
+            // nb is running total of b[i+1]..b[n-1].
+            // Therefore a[i]*nb is the number of combinations of a[i] and b[j]
+            // for all i < j.
+            l += a[i]*nb;    // a<b
+
+            na += a[i];
+            nb += b[i];
+            int p = a[i]+b[i];
+            t += (p*p-1)*p;  // adjustment score for ties
+        }
+    }
+
+    if (na+nb <= 1)
+        return HUGE_VAL;
+
+    double U, m;
+    U = l + e*0.5; // Mann-Whitney U score
+    m = na*nb / 2.0;
+
+    // With ties adjustment
+    double var2 = (na*nb)/12.0 * ((na+nb+1) - t/(double)((na+nb)*(na+nb-1)));
+    // var = na*nb*(na+nb+1)/12.0; // simpler; minus tie adjustment
+    if (var2 <= 0)
+        return HUGE_VAL;
+
+    if (do_Z) {
+        // S.D. normalised Z-score
+        //Z = (U - m - (U-m >= 0 ? 0.5 : -0.5)) / sd; // gatk method?
+        return (U - m) / sqrt(var2);
+    }
+
+    // Else U score, which can be asymmetric for some data types.
+    if (left_only && U > m)
+        return HUGE_VAL; // one-sided, +ve bias is OK, -ve is not.
+
+    if (na >= 8 || nb >= 8) {
+        // Normal approximation, very good for na>=8 && nb>=8 and
+        // reasonable if na<8 or nb<8
+        return exp(-0.5*(U-m)*(U-m)/var2);
+    }
+
+    // Exact calculation
+    if (na==1 || nb == 1)
+        return mann_whitney_1947_(na, nb, U) * sqrt(2*M_PI*var2);
+    else
+        return mann_whitney_1947(na, nb, U) * sqrt(2*M_PI*var2);
 }
 
 static inline double logsumexp2(double a, double b)
@@ -732,11 +918,43 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
     // calc_chisq_bias("XMQ", call->bcf_hdr->id[BCF_DT_CTG][call->tid].key, call->pos, bca->ref_mq, bca->alt_mq, bca->nqual);
     // calc_chisq_bias("XBQ", call->bcf_hdr->id[BCF_DT_CTG][call->tid].key, call->pos, bca->ref_bq, bca->alt_bq, bca->nqual);
 
-    if ( bca->fmt_flag & B2B_INFO_RPB )
-        call->mwu_pos = calc_mwu_bias(bca->ref_pos, bca->alt_pos, bca->npos);
-    call->mwu_mq  = calc_mwu_bias(bca->ref_mq,  bca->alt_mq,  bca->nqual);
-    call->mwu_bq  = calc_mwu_bias(bca->ref_bq,  bca->alt_bq,  bca->nqual);
-    call->mwu_mqs = calc_mwu_bias(bca->fwd_mqs, bca->rev_mqs, bca->nqual);
+    if (bca->fmt_flag & B2B_INFO_ZSCORE) {
+        // U z-normalised as +/- number of standard deviations from mean.
+        if (call->ori_ref < 0) {
+            if (bca->fmt_flag & B2B_INFO_RPB)
+                call->mwu_pos = calc_mwu_biasZ(bca->iref_pos, bca->ialt_pos,
+                                               bca->npos, 0, 1);
+            call->mwu_mq  = calc_mwu_biasZ(bca->iref_mq,  bca->ialt_mq,
+                                           bca->nqual,1,1);
+            if ( bca->fmt_flag & B2B_INFO_SCB )
+                call->mwu_sc  = calc_mwu_biasZ(bca->iref_scl, bca->ialt_scl,
+                                               100, 0,1);
+        } else {
+            if (bca->fmt_flag & B2B_INFO_RPB)
+                call->mwu_pos = calc_mwu_biasZ(bca->ref_pos, bca->alt_pos,
+                                               bca->npos, 0, 1);
+            call->mwu_mq  = calc_mwu_biasZ(bca->ref_mq,  bca->alt_mq,
+                                           bca->nqual,1,1);
+            call->mwu_bq  = calc_mwu_biasZ(bca->ref_bq,  bca->alt_bq,
+                                           bca->nqual,0,1);
+            call->mwu_mqs = calc_mwu_biasZ(bca->fwd_mqs, bca->rev_mqs,
+                                           bca->nqual,0,1);
+            if ( bca->fmt_flag & B2B_INFO_SCB )
+                call->mwu_sc  = calc_mwu_biasZ(bca->ref_scl, bca->alt_scl,
+                                               100, 0,1);
+        }
+    } else {
+        // Old method; U as probability between 0 and 1
+        if ( bca->fmt_flag & B2B_INFO_RPB )
+            call->mwu_pos = calc_mwu_biasZ(bca->ref_pos, bca->alt_pos,
+                                           bca->npos, 0, 0);
+        call->mwu_mq  = calc_mwu_biasZ(bca->ref_mq,  bca->alt_mq,
+                                       bca->nqual, 1, 0);
+        call->mwu_bq  = calc_mwu_biasZ(bca->ref_bq,  bca->alt_bq,
+                                       bca->nqual, 0, 0);
+        call->mwu_mqs = calc_mwu_biasZ(bca->fwd_mqs, bca->rev_mqs,
+                                       bca->nqual, 0, 0);
+    }
 
 #if CDF_MWU_TESTS
     // CDF version of MWU tests is not calculated by default
@@ -747,7 +965,7 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
     call->mwu_mqs_cdf = calc_mwu_bias_cdf(bca->fwd_mqs, bca->rev_mqs, bca->nqual);
 #endif
 
-    if ( bca->fmt_flag & B2B_INFO_VDB ) 
+    if ( bca->fmt_flag & B2B_INFO_VDB )
         call->vdb = calc_vdb(bca->alt_pos, bca->npos);
 
     return 0;
@@ -834,10 +1052,32 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
 
     if ( bc->vdb != HUGE_VAL )      bcf_update_info_float(hdr, rec, "VDB", &bc->vdb, 1);
     if ( bc->seg_bias != HUGE_VAL ) bcf_update_info_float(hdr, rec, "SGB", &bc->seg_bias, 1);
-    if ( bc->mwu_pos != HUGE_VAL )  bcf_update_info_float(hdr, rec, "RPB", &bc->mwu_pos, 1);
-    if ( bc->mwu_mq != HUGE_VAL )   bcf_update_info_float(hdr, rec, "MQB", &bc->mwu_mq, 1);
-    if ( bc->mwu_mqs != HUGE_VAL )  bcf_update_info_float(hdr, rec, "MQSB", &bc->mwu_mqs, 1);
-    if ( bc->mwu_bq != HUGE_VAL )   bcf_update_info_float(hdr, rec, "BQB", &bc->mwu_bq, 1);
+
+    if (bca->fmt_flag & B2B_INFO_ZSCORE) {
+        if ( bc->mwu_pos != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "RPBZ", &bc->mwu_pos, 1);
+        if ( bc->mwu_mq != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "MQBZ", &bc->mwu_mq, 1);
+        if ( bc->mwu_mqs != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "MQSBZ", &bc->mwu_mqs, 1);
+        if ( bc->mwu_bq != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "BQBZ", &bc->mwu_bq, 1);
+        if ( bc->mwu_sc != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "SCBZ", &bc->mwu_sc, 1);
+    } else {
+        if ( bc->mwu_pos != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "RPB", &bc->mwu_pos, 1);
+        if ( bc->mwu_mq != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "MQB", &bc->mwu_mq, 1);
+        if ( bc->mwu_mqs != HUGE_VAL )
+             bcf_update_info_float(hdr, rec, "MQSB", &bc->mwu_mqs, 1);
+        if ( bc->mwu_bq != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "BQB", &bc->mwu_bq, 1);
+    }
+
+    if ( bc->strand_bias != HUGE_VAL )
+        bcf_update_info_float(hdr, rec, "FS", &bc->strand_bias, 1);
+
 #if CDF_MWU_TESTS
     if ( bc->mwu_pos_cdf != HUGE_VAL )  bcf_update_info_float(hdr, rec, "RPB2", &bc->mwu_pos_cdf, 1);
     if ( bc->mwu_mq_cdf != HUGE_VAL )   bcf_update_info_float(hdr, rec, "MQB2", &bc->mwu_mq_cdf, 1);

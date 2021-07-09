@@ -2,7 +2,7 @@
 
 /*  vcmp.c -- reference allele utility functions.
 
-    Copyright (C) 2013 Genome Research Ltd.
+    Copyright (C) 2013-2015, 2018 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
