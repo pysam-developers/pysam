@@ -2,7 +2,7 @@
 
 /* bam_addrprg.c -- samtools command to add or replace readgroups.
 
-   Copyright (c) 2013, 2015-2017, 2019-2020 Genome Research Limited.
+   Copyright (c) 2013, 2015-2017, 2019-2021 Genome Research Limited.
 
    Author: Martin O. Pollard <mp15@sanger.ac.uk>
 
@@ -54,6 +54,7 @@ struct parsed_opts {
     sam_global_args ga;
     htsThreadPool p;
     int uncompressed;
+    int overwrite_hdr_rg;
 };
 
 struct state;
@@ -175,6 +176,7 @@ static void usage(FILE *fp)
             "  -r STRING @RG line text\n"
             "  -R STRING ID of @RG line in existing header to use\n"
             "  -u        Output uncompressed data\n"
+            "  -w        Overwrite an existing @RG line\n"
             "  --no-PG   Do not add a PG line\n"
             );
     sam_global_opt_help(fp, "..O..@..");
@@ -202,7 +204,7 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
     };
     kstring_t rg_line = {0,0,NULL};
 
-    while ((n = getopt_long(argc, argv, "r:R:m:o:O:h@:u", lopts, NULL)) >= 0) {
+    while ((n = getopt_long(argc, argv, "r:R:m:o:O:h@:uw", lopts, NULL)) >= 0) {
         switch (n) {
             case 'r':
                 // Are we adding to existing rg line?
@@ -241,6 +243,9 @@ static bool parse_args(int argc, char** argv, parsed_opts_t** opts)
                 break;
             case 'u':
                 retval->uncompressed = 1;
+                break;
+            case 'w':
+                retval->overwrite_hdr_rg = 1;
                 break;
             case '?':
                 usage(samtools_stderr);
@@ -362,10 +367,20 @@ static bool init(const parsed_opts_t* opts, state_t** state_out) {
         // Check does not already exist
         kstring_t hdr_line = { 0, 0, NULL };
         if (sam_hdr_find_line_id(retval->output_header, "RG", "ID", opts->rg_id, &hdr_line) == 0) {
-            fprintf(samtools_stderr, "[init] ID of new RG line specified conflicts with that of an existing header RG line. Overwrite not yet implemented.\n");
-            free(hdr_line.s);
-            return false;
+            if (opts->overwrite_hdr_rg) {
+                if(-1 == sam_hdr_remove_line_id(retval->output_header, "RG", "ID", opts->rg_id)) {
+                    fprintf(samtools_stderr, "[init] Error removing the RG line with ID:%s from the output header.\n", opts->rg_id);
+                    ks_free(&hdr_line);
+                    return false;
+                }
+            } else {
+                fprintf(samtools_stderr, "[init] RG line with ID:%s already present in the header. Use -w to overwrite.\n", opts->rg_id);
+                ks_free(&hdr_line);
+                return false;
+            }
         }
+        ks_free(&hdr_line);
+
         if (-1 == sam_hdr_add_lines(retval->output_header, opts->rg_line, strlen(opts->rg_line))) {
             fprintf(samtools_stderr, "[init] Error adding RG line with ID:%s to the output header.\n", opts->rg_id);
             return false;
@@ -385,7 +400,7 @@ static bool init(const parsed_opts_t* opts, state_t** state_out) {
                 return false;
             }
             retval->rg_id = strdup(opts->rg_id);
-            free(hdr_line.s);
+            ks_free(&hdr_line);
         } else {
             kstring_t rg_id = { 0, 0, NULL };
             if (sam_hdr_find_tag_id(retval->output_header, "RG", NULL, NULL, "ID", &rg_id) < 0) {

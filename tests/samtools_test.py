@@ -244,7 +244,8 @@ class SamtoolsTest(unittest.TestCase):
             command = self.get_command(statement, map_to_internal=False)
             # bam2fq differs between version 1.5 and 1.6 - re-enable if
             # bioconda samtools will be available.
-            if command in ("bedcov", "stats", "dict", "bam2fq"):
+            # flagstat differs between version <=1.12 and >=1.13
+            if command in ("bedcov", "stats", "dict", "bam2fq", "flagstat"):
                 continue
 
             if (command == "calmd" and

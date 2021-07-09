@@ -1,6 +1,6 @@
 /*  sam_view.c -- SAM<->BAM<->CRAM conversion.
 
-    Copyright (C) 2009-2020 Genome Research Ltd.
+    Copyright (C) 2009-2021 Genome Research Ltd.
     Portions copyright (C) 2009, 2011, 2012 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -37,20 +37,20 @@ DEALINGS IN THE SOFTWARE.  */
 #include "htslib/faidx.h"
 #include "htslib/khash.h"
 #include "htslib/thread_pool.h"
+#include "htslib/hts_expr.h"
 #include "samtools.h"
 #include "sam_opts.h"
 #include "bedidx.h"
 
-KHASH_SET_INIT_STR(rg)
-KHASH_SET_INIT_STR(tv)
+KHASH_SET_INIT_STR(str)
 
-typedef khash_t(rg) *rghash_t;
-typedef khash_t(tv) *tvhash_t;
+typedef khash_t(str) *strhash_t;
 
 // This structure contains the settings for a samview run
 typedef struct samview_settings {
-    rghash_t rghash;
-    tvhash_t tvhash;
+    strhash_t rghash;
+    strhash_t rnhash;
+    strhash_t tvhash;
     int min_mapQ;
     int flag_on;
     int flag_off;
@@ -65,6 +65,9 @@ typedef struct samview_settings {
     char** remove_aux;
     int multi_region;
     char* tag;
+    hts_filter_t *filter;
+    int remove_flag;
+    int add_flag;
 } samview_settings_t;
 
 
@@ -97,16 +100,36 @@ static int process_aln(const sam_hdr_t *h, bam1_t *b, samview_settings_t* settin
     if (settings->rghash) {
         uint8_t *s = bam_aux_get(b, "RG");
         if (s) {
-            khint_t k = kh_get(rg, settings->rghash, (char*)(s + 1));
+            khint_t k = kh_get(str, settings->rghash, (char*)(s + 1));
             if (k == kh_end(settings->rghash)) return 1;
         }
     }
-    if (settings->tvhash && settings->tag) {
+    if (settings->tag) {
         uint8_t *s = bam_aux_get(b, settings->tag);
         if (s) {
-            khint_t k = kh_get(tv, settings->tvhash, (char*)(s + 1));
-            if (k == kh_end(settings->tvhash)) return 1;
+            if (settings->tvhash) {
+                char t[32], *val;
+                if (*s == 'i' || *s == 'I' || *s == 's' || *s == 'S' || *s == 'c' || *s == 'C') {
+                    int ret = snprintf(t, 32, "%"PRId64, bam_aux2i(s));
+                    if (ret > 0) val = t;
+                    else return 1;
+                } else if (*s == 'A') {
+                    t[0] = *(s+1);
+                    t[1] = 0;
+                    val = t;
+                } else {
+                    val = (char *)(s+1);
+                }
+                khint_t k = kh_get(str, settings->tvhash, val);
+                if (k == kh_end(settings->tvhash)) return 1;
+            }
         } else {
+            return 1;
+        }
+    }
+    if (settings->rnhash) {
+        const char* rn = bam_get_qname(b);
+        if (!rn || kh_get(str, settings->rnhash, rn) == kh_end(settings->rnhash)) {
             return 1;
         }
     }
@@ -123,47 +146,20 @@ static int process_aln(const sam_hdr_t *h, bam1_t *b, samview_settings_t* settin
             }
         }
     }
+
+    if (settings->filter && sam_passes_filter(h, b, settings->filter) < 1)
+        return 1;
+
     return 0;
 }
 
 static int usage(FILE *fp, int exit_status, int is_long_help);
 
-static int add_read_group_single(const char *subcmd, samview_settings_t *settings, char *name)
-{
-    char *d = strdup(name);
-    int ret = 0;
-
-    if (d == NULL) goto err;
-
-    if (settings->rghash == NULL) {
-        settings->rghash = kh_init(rg);
-        if (settings->rghash == NULL) goto err;
-    }
-
-    kh_put(rg, settings->rghash, d, &ret);
-    if (ret == -1) goto err;
-    if (ret ==  0) free(d); /* Duplicate */
-    return 0;
-
- err:
-    print_error(subcmd, "Couldn't add \"%s\" to read group list: memory exhausted?", name);
-    free(d);
-    return -1;
-}
-
-static int add_read_groups_file(const char *subcmd, samview_settings_t *settings, char *fn)
+static int populate_lookup_from_file(const char *subcmd, strhash_t lookup, char *fn)
 {
     FILE *fp;
     char buf[1024];
     int ret = 0;
-    if (settings->rghash == NULL) {
-        settings->rghash = kh_init(rg);
-        if (settings->rghash == NULL) {
-            perror(NULL);
-            return -1;
-        }
-    }
-
     fp = fopen(fn, "r");
     if (fp == NULL) {
         print_error_errno(subcmd, "failed to open \"%s\" for reading", fn);
@@ -173,7 +169,7 @@ static int add_read_groups_file(const char *subcmd, samview_settings_t *settings
     while (ret != -1 && !feof(fp) && fscanf(fp, "%1023s", buf) > 0) {
         char *d = strdup(buf);
         if (d != NULL) {
-            kh_put(rg, settings->rghash, d, &ret);
+            kh_put(str, lookup, d, &ret);
             if (ret == 0) free(d); /* Duplicate */
         } else {
             ret = -1;
@@ -187,6 +183,53 @@ static int add_read_groups_file(const char *subcmd, samview_settings_t *settings
     return (ret != -1) ? 0 : -1;
 }
 
+static int add_read_group_single(const char *subcmd, samview_settings_t *settings, char *name)
+{
+    char *d = strdup(name);
+    int ret = 0;
+
+    if (d == NULL) goto err;
+
+    if (settings->rghash == NULL) {
+        settings->rghash = kh_init(str);
+        if (settings->rghash == NULL) goto err;
+    }
+
+    kh_put(str, settings->rghash, d, &ret);
+    if (ret == -1) goto err;
+    if (ret ==  0) free(d); /* Duplicate */
+    return 0;
+
+ err:
+    print_error(subcmd, "Couldn't add \"%s\" to read group list: memory exhausted?", name);
+    free(d);
+    return -1;
+}
+
+static int add_read_names_file(const char *subcmd, samview_settings_t *settings, char *fn)
+{
+    if (settings->rnhash == NULL) {
+        settings->rnhash = kh_init(str);
+        if (settings->rnhash == NULL) {
+            perror(NULL);
+            return -1;
+        }
+    }
+    return populate_lookup_from_file(subcmd, settings->rnhash, fn);
+}
+
+static int add_read_groups_file(const char *subcmd, samview_settings_t *settings, char *fn)
+{
+    if (settings->rghash == NULL) {
+        settings->rghash = kh_init(str);
+        if (settings->rghash == NULL) {
+            perror(NULL);
+            return -1;
+        }
+    }
+    return populate_lookup_from_file(subcmd, settings->rghash, fn);
+}
+
 static int add_tag_value_single(const char *subcmd, samview_settings_t *settings, char *name)
 {
     char *d = strdup(name);
@@ -195,11 +238,11 @@ static int add_tag_value_single(const char *subcmd, samview_settings_t *settings
     if (d == NULL) goto err;
 
     if (settings->tvhash == NULL) {
-        settings->tvhash = kh_init(tv);
+        settings->tvhash = kh_init(str);
         if (settings->tvhash == NULL) goto err;
     }
 
-    kh_put(tv, settings->tvhash, d, &ret);
+    kh_put(str, settings->tvhash, d, &ret);
     if (ret == -1) goto err;
     if (ret ==  0) free(d); /* Duplicate */
     return 0;
@@ -212,38 +255,14 @@ static int add_tag_value_single(const char *subcmd, samview_settings_t *settings
 
 static int add_tag_values_file(const char *subcmd, samview_settings_t *settings, char *fn)
 {
-    FILE *fp;
-    char buf[1024];
-    int ret = 0;
     if (settings->tvhash == NULL) {
-        settings->tvhash = kh_init(tv);
+        settings->tvhash = kh_init(str);
         if (settings->tvhash == NULL) {
             perror(NULL);
             return -1;
         }
     }
-
-    fp = fopen(fn, "r");
-    if (fp == NULL) {
-        print_error_errno(subcmd, "failed to open \"%s\" for reading", fn);
-        return -1;
-    }
-
-    while (ret != -1 && !feof(fp) && fscanf(fp, "%1023s", buf) > 0) {
-        char *d = strdup(buf);
-        if (d != NULL) {
-            kh_put(tv, settings->tvhash, d, &ret);
-            if (ret == 0) free(d); /* Duplicate */
-        } else {
-            ret = -1;
-        }
-    }
-    if (ferror(fp)) ret = -1;
-    if (ret == -1) {
-        print_error_errno(subcmd, "failed to read \"%s\"", fn);
-    }
-    fclose(fp);
-    return (ret != -1) ? 0 : -1;
+    return populate_lookup_from_file(subcmd, settings->tvhash, fn);
 }
 
 static inline int check_sam_write1(samFile *fp, const sam_hdr_t *h, const bam1_t *b, const char *fname, int *retp)
@@ -258,6 +277,18 @@ static inline int check_sam_write1(samFile *fp, const sam_hdr_t *h, const bam1_t
     return r;
 }
 
+static inline void change_flag(bam1_t *b, samview_settings_t *settings)
+{
+    if (settings->add_flag)
+        b->core.flag |= settings->add_flag;
+
+    if (settings->remove_flag)
+        b->core.flag &= ~settings->remove_flag;
+}
+
+// Make mnemonic distinct values for longoption-only options
+#define LONGOPT(c)  ((c) + 128)
+
 int main_samview(int argc, char *argv[])
 {
     int c, is_header = 0, is_header_only = 0, ret = 0, compress_level = -1, is_count = 0, has_index_file = 0, no_pg = 0;
@@ -265,7 +296,7 @@ int main_samview(int argc, char *argv[])
     samFile *in = 0, *out = 0, *un_out=0;
     FILE *fp_out = NULL;
     sam_hdr_t *header = NULL;
-    char out_mode[5], out_un_mode[5], *out_format = "";
+    char out_mode[6] = {0}, out_un_mode[6] = {0}, *out_format = "";
     char *fn_in = 0, *fn_idx_in = 0, *fn_out = 0, *fn_fai = 0, *q, *fn_un_out = 0;
     char *fn_out_idx = NULL, *fn_un_out_idx = NULL, *arg_list = NULL;
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
@@ -287,12 +318,59 @@ int main_samview(int argc, char *argv[])
         .library = NULL,
         .bed = NULL,
         .multi_region = 0,
-        .tag = NULL
+        .tag = NULL,
+        .filter = NULL,
+        .remove_flag = 0,
+        .add_flag = 0
     };
 
     static const struct option lopts[] = {
         SAM_OPT_GLOBAL_OPTIONS('-', 0, 'O', 0, 'T', '@'),
-        {"no-PG", no_argument, NULL, 1},
+        {"add-flags", required_argument, NULL, LONGOPT('a')},
+        {"bam", no_argument, NULL, 'b'},
+        {"count", no_argument, NULL, 'c'},
+        {"cram", no_argument, NULL, 'C'},
+        {"customised-index", no_argument, NULL, 'X'},
+        {"customized-index", no_argument, NULL, 'X'},
+        {"excl-flags", required_argument, NULL, 'F'},
+        {"exclude-flags", required_argument, NULL, 'F'},
+        {"expr", required_argument, NULL, 'e'},
+        {"expression", required_argument, NULL, 'e'},
+        {"fai-reference", required_argument, NULL, 't'},
+        {"fast", no_argument, NULL, '1'},
+        {"header-only", no_argument, NULL, 'H'},
+        {"help", no_argument, NULL, LONGOPT('?')},
+        {"library", required_argument, NULL, 'l'},
+        {"min-mapq", required_argument, NULL, 'q'},
+        {"min-MQ", required_argument, NULL, 'q'},
+        {"min-mq", required_argument, NULL, 'q'},
+        {"min-qlen", required_argument, NULL, 'm'},
+        {"no-header", no_argument, NULL, LONGOPT('H')},
+        {"no-PG", no_argument, NULL, LONGOPT('P')},
+        {"output", required_argument, NULL, 'o'},
+        {"output-unselected", required_argument, NULL, 'U'},
+        {"QNAME-file", required_argument, NULL, 'N'},
+        {"qname-file", required_argument, NULL, 'N'},
+        {"read-group", required_argument, NULL, 'r'},
+        {"read-group-file", required_argument, NULL, 'R'},
+        {"readgroup", required_argument, NULL, 'r'},
+        {"readgroup-file", required_argument, NULL, 'R'},
+        {"region-file", required_argument, NULL, LONGOPT('L')},
+        {"regions-file", required_argument, NULL, LONGOPT('L')},
+        {"remove-B", no_argument, NULL, 'B'},
+        {"remove-flags", required_argument, NULL, LONGOPT('r')},
+        {"remove-tag", required_argument, NULL, 'x'},
+        {"require-flags", required_argument, NULL, 'f'},
+        {"subsample", required_argument, NULL, LONGOPT('s')},
+        {"subsample-seed", required_argument, NULL, LONGOPT('S')},
+        {"tag", required_argument, NULL, 'd'},
+        {"tag-file", required_argument, NULL, 'D'},
+        {"target-file", required_argument, NULL, 'L'},
+        {"targets-file", required_argument, NULL, 'L'},
+        {"uncompressed", no_argument, NULL, 'u'},
+        {"unoutput", required_argument, NULL, 'U'},
+        {"use-index", no_argument, NULL, 'M'},
+        {"with-header", no_argument, NULL, 'h'},
         { NULL, 0, NULL, 0 }
     };
 
@@ -309,16 +387,11 @@ int main_samview(int argc, char *argv[])
     opterr = 0;
 
     while ((c = getopt_long(argc, argv,
-                            "SbBcCt:h1Ho:O:q:f:F:G:ul:r:T:R:d:D:L:s:@:m:x:U:MX",
+                            "SbBcCt:h1Ho:O:q:f:F:G:ul:r:T:R:N:d:D:L:s:@:m:x:U:MXe:",
                             lopts, NULL)) >= 0) {
         switch (c) {
         case 's':
-            if ((settings.subsam_seed = strtol(optarg, &q, 10)) != 0) {
-                // Convert likely user input 0,1,2,... to pseudo-random
-                // values with more entropy and more bits set
-                srand(settings.subsam_seed);
-                settings.subsam_seed = rand();
-            }
+            settings.subsam_seed = strtol(optarg, &q, 10);
             if (q && *q == '.') {
                 settings.subsam_frac = strtod(q, &q);
                 if (*q) ret = 1;
@@ -331,6 +404,14 @@ int main_samview(int argc, char *argv[])
                 goto view_end;
             }
             break;
+        case LONGOPT('s'):
+            settings.subsam_frac = strtod(optarg, &q);
+            if (*q || settings.subsam_frac < 0.0 || settings.subsam_frac > 1.0) {
+                print_error("view", "Incorrect sampling argument \"%s\"", optarg);
+                goto view_end;
+            }
+            break;
+        case LONGOPT('S'): settings.subsam_seed = atoi(optarg); break;
         case 'm': settings.min_qlen = atoi(optarg); break;
         case 'c': is_count = 1; break;
         case 'S': break;
@@ -339,16 +420,20 @@ int main_samview(int argc, char *argv[])
         case 't': fn_fai = strdup(optarg); break;
         case 'h': is_header = 1; break;
         case 'H': is_header_only = 1; break;
+        case LONGOPT('H'): is_header = is_header_only = 0; break;
         case 'o': fn_out = strdup(optarg); break;
         case 'U': fn_un_out = strdup(optarg); break;
         case 'X': has_index_file = 1; break;
-        case 'f': settings.flag_on |= strtol(optarg, 0, 0); break;
-        case 'F': settings.flag_off |= strtol(optarg, 0, 0); break;
-        case 'G': settings.flag_alloff |= strtol(optarg, 0, 0); break;
+        case 'f': settings.flag_on |= bam_str2flag(optarg); break;
+        case 'F': settings.flag_off |= bam_str2flag(optarg); break;
+        case 'G': settings.flag_alloff |= bam_str2flag(optarg); break;
         case 'q': settings.min_mapQ = atoi(optarg); break;
         case 'u': compress_level = 0; break;
         case '1': compress_level = 1; break;
         case 'l': settings.library = strdup(optarg); break;
+        case LONGOPT('L'):
+            settings.multi_region = 1;
+            // fall through
         case 'L':
             if ((settings.bed = bed_read(optarg)) == NULL) {
                 print_error_errno("view", "Could not read file \"%s\"", optarg);
@@ -368,8 +453,14 @@ int main_samview(int argc, char *argv[])
                 goto view_end;
             }
             break;
+        case 'N':
+            if (add_read_names_file("view", &settings, optarg) != 0) {
+                ret = 1;
+                goto view_end;
+            }
+            break;
         case 'd':
-            if (strlen(optarg) < 4 || optarg[2] != ':') {
+            if (strlen(optarg) < 2 || (strlen(optarg) > 2 && optarg[2] != ':')) {
                 print_error_errno("view", "Invalid \"tag:value\" option: \"%s\"", optarg);
                 ret = 1;
                 goto view_end;
@@ -390,7 +481,8 @@ int main_samview(int argc, char *argv[])
                 memcpy(settings.tag, optarg, 2);
             }
 
-            if (add_tag_value_single("view", &settings, optarg+3) != 0) {
+            if (strlen(optarg) > 3 && add_tag_value_single("view", &settings, optarg+3) != 0) {
+                print_error("view", "Could not add tag:value \"%s\"", optarg);
                 ret = 1;
                 goto view_end;
             }
@@ -398,7 +490,7 @@ int main_samview(int argc, char *argv[])
         case 'D':
             // Allow ";" as delimiter besides ":" to support MinGW CLI POSIX
             // path translation as described at:
-            //   http://www.mingw.org/wiki/Posix_path_conversion
+            // http://www.mingw.org/wiki/Posix_path_conversion
             if (strlen(optarg) < 4 || (optarg[2] != ':' && optarg[2] != ';')) {
                 print_error_errno("view", "Invalid \"tag:file\" option: \"%s\"", optarg);
                 ret = 1;
@@ -429,6 +521,8 @@ int main_samview(int argc, char *argv[])
         //case 'x': out_format = "x"; break;
         //case 'X': out_format = "X"; break;
                  */
+        case LONGOPT('?'):
+            return usage(stdout, EXIT_SUCCESS, 1);
         case '?':
             if (optopt == '?') {  // '-?' appeared on command line
                 return usage(stdout, EXIT_SUCCESS, 1);
@@ -450,7 +544,7 @@ int main_samview(int argc, char *argv[])
         case 'x':
             {
                 if (strlen(optarg) != 2) {
-                    fprintf(stderr, "main_samview: Error parsing -x auxiliary tags should be exactly two characters long.\n");
+                    print_error("main_samview", "Error parsing -x auxiliary tags should be exactly two characters long.");
                     return usage(stderr, EXIT_FAILURE, 0);
                 }
                 settings.remove_aux = (char**)realloc(settings.remove_aux, sizeof(char*) * (++settings.remove_aux_len));
@@ -458,7 +552,15 @@ int main_samview(int argc, char *argv[])
             }
             break;
         case 'M': settings.multi_region = 1; break;
-        case 1: no_pg = 1; break;
+        case LONGOPT('P'): no_pg = 1; break;
+        case 'e':
+            if (!(settings.filter = hts_filter_init(optarg))) {
+                print_error("main_samview", "Couldn't initialise filter");
+                return 1;
+            }
+            break;
+        case LONGOPT('r'): settings.remove_flag |= bam_str2flag(optarg); break;
+        case LONGOPT('a'): settings.add_flag |= bam_str2flag(optarg); break;
         default:
             if (parse_sam_global_opt(c, optarg, lopts, &ga) != 0)
                 return usage(stderr, EXIT_FAILURE, 0);
@@ -474,8 +576,7 @@ int main_samview(int argc, char *argv[])
     // Overridden by manual -b, -C
     if (*out_format)
         out_mode[1] = out_un_mode[1] = *out_format;
-    out_mode[2] = out_un_mode[2] = '\0';
-    // out_(un_)mode now 1 or 2 bytes long, followed by nul.
+    // out_(un_)mode now 1, 2 or 3 bytes long, followed by nul.
     if (compress_level >= 0) {
         char tmp[2];
         tmp[0] = compress_level + '0'; tmp[1] = '\0';
@@ -485,6 +586,12 @@ int main_samview(int argc, char *argv[])
     if (argc == optind && isatty(STDIN_FILENO)) {
         print_error("view", "No input provided or missing option argument.");
         return usage(stderr, EXIT_FAILURE, 0); // potential memory leak...
+    }
+    if (settings.subsam_seed != 0) {
+        // Convert likely user input 1,2,... to pseudo-random
+        // values with more entropy and more bits set
+        srand(settings.subsam_seed);
+        settings.subsam_seed = rand();
     }
 
     fn_in = (optind < argc)? argv[optind] : "-";
@@ -651,7 +758,10 @@ int main_samview(int argc, char *argv[])
                         // fetch alignments
                         while ((result = sam_itr_multi_next(in, iter, b)) >= 0) {
                             if (!process_aln(header, b, &settings)) {
-                                if (!is_count) { if (check_sam_write1(out, header, b, fn_out, &ret) < 0) break; }
+                                if (!is_count) {
+                                    change_flag(b, &settings);
+                                    if (check_sam_write1(out, header, b, fn_out, &ret) < 0) break;
+                                }
                                 count++;
                             } else {
                                 if (un_out) { if (check_sam_write1(un_out, header, b, fn_un_out, &ret) < 0) break; }
@@ -682,7 +792,10 @@ int main_samview(int argc, char *argv[])
             errno = 0;
             while ((r = sam_read1(in, header, b)) >= 0) { // read one alignment from `in'
                 if (!process_aln(header, b, &settings)) {
-                    if (!is_count) { if (check_sam_write1(out, header, b, fn_out, &ret) < 0) break; }
+                    if (!is_count) {
+                        change_flag(b, &settings);
+                        if (check_sam_write1(out, header, b, fn_out, &ret) < 0) break;
+                    }
                     count++;
                 } else {
                     if (un_out) { if (check_sam_write1(un_out, header, b, fn_un_out, &ret) < 0) break; }
@@ -720,7 +833,10 @@ int main_samview(int argc, char *argv[])
                 // fetch alignments
                 while ((result = sam_itr_next(in, iter, b)) >= 0) {
                     if (!process_aln(header, b, &settings)) {
-                        if (!is_count) { if (check_sam_write1(out, header, b, fn_out, &ret) < 0) break; }
+                        if (!is_count) {
+                            change_flag(b, &settings);
+                            if (check_sam_write1(out, header, b, fn_out, &ret) < 0) break;
+                        }
                         count++;
                     } else {
                         if (un_out) { if (check_sam_write1(un_out, header, b, fn_un_out, &ret) < 0) break; }
@@ -772,13 +888,19 @@ view_end:
         khint_t k;
         for (k = 0; k < kh_end(settings.rghash); ++k)
             if (kh_exist(settings.rghash, k)) free((char*)kh_key(settings.rghash, k));
-        kh_destroy(rg, settings.rghash);
+        kh_destroy(str, settings.rghash);
+    }
+    if (settings.rnhash) {
+        khint_t k;
+        for (k = 0; k < kh_end(settings.rnhash); ++k)
+            if (kh_exist(settings.rnhash, k)) free((char*)kh_key(settings.rnhash, k));
+        kh_destroy(str, settings.rnhash);
     }
     if (settings.tvhash) {
         khint_t k;
         for (k = 0; k < kh_end(settings.tvhash); ++k)
             if (kh_exist(settings.tvhash, k)) free((char*)kh_key(settings.tvhash, k));
-        kh_destroy(tv, settings.tvhash);
+        kh_destroy(str, settings.tvhash);
     }
     if (settings.remove_aux_len) {
         free(settings.remove_aux);
@@ -786,6 +908,8 @@ view_end:
     if (settings.tag) {
         free(settings.tag);
     }
+    if (settings.filter)
+        hts_filter_free(settings.filter);
 
     if (p.pool)
         hts_tpool_destroy(p.pool);
@@ -805,47 +929,52 @@ static int usage(FILE *fp, int exit_status, int is_long_help)
 "\n"
 "Usage: samtools view [options] <in.bam>|<in.sam>|<in.cram> [region ...]\n"
 "\n"
-"Options:\n"
-// output options
-"  -b       output BAM\n"
-"  -C       output CRAM (requires -T)\n"
-"  -1       use fast BAM compression (implies -b)\n"
-"  -u       uncompressed BAM output (implies -b)\n"
-"  -h       include header in SAM output\n"
-"  -H       print SAM header only (no alignments)\n"
-"  -c       print only the count of matching records\n"
-"  -o FILE  output file name [stdout]\n"
-"  -U FILE  output reads not selected by filters to FILE [null]\n"
-// extra input
-"  -t FILE  FILE listing reference names and lengths (see long help) [null]\n"
-"  -X       include customized index file\n"
-// read filters
-"  -L FILE  only include reads overlapping this BED FILE [null]\n"
-"  -r STR   only include reads in read group STR [null]\n"
-"  -R FILE  only include reads with read group listed in FILE [null]\n"
-"  -d STR:STR\n"
-"           only include reads with tag STR and associated value STR [null]\n"
-"  -D STR:FILE\n"
-"           only include reads with tag STR and associated values listed in\n"
-"           FILE [null]\n"
-"  -q INT   only include reads with mapping quality >= INT [0]\n"
-"  -l STR   only include reads in library STR [null]\n"
-"  -m INT   only include reads with number of CIGAR operations consuming\n"
-"           query sequence >= INT [0]\n"
-"  -f INT   only include reads with all  of the FLAGs in INT present [0]\n"       //   F&x == x
-"  -F INT   only include reads with none of the FLAGS in INT present [0]\n"       //   F&x == 0
-"  -G INT   only EXCLUDE reads with all  of the FLAGs in INT present [0]\n"       // !(F&x == x)
-"  -s FLOAT subsample reads (given INT.FRAC option value, 0.FRAC is the\n"
-"           fraction of templates/read pairs to keep; INT part sets seed)\n"
-"  -M       use the multi-region iterator (increases the speed, removes\n"
-"           duplicates and outputs the reads as they are ordered in the file)\n"
-// read processing
-"  -x STR   read tag to strip (repeatable) [null]\n"
-"  -B       collapse the backward CIGAR operation\n"
-// general options
-"  -?       print long help, including note about region specification\n"
-"  -S       ignored (input format is auto-detected)\n"
-"  --no-PG  do not add a PG line\n");
+"Output options:\n"
+"  -b, --bam                  Output BAM\n"
+"  -C, --cram                 Output CRAM (requires -T)\n"
+"  -1, --fast                 Use fast BAM compression (implies --bam)\n"
+"  -u, --uncompressed         Uncompressed BAM output (implies --bam)\n"
+"  -h, --with-header          Include header in SAM output\n"
+"  -H, --header-only          Print SAM header only (no alignments)\n"
+"      --no-header            Print SAM alignment records only [default]\n"
+"  -c, --count                Print only the count of matching records\n"
+"  -o, --output FILE          Write output to FILE [standard output]\n"
+"  -U, --unoutput FILE, --output-unselected FILE\n"
+"                             Output reads not selected by filters to FILE\n"
+"Input options:\n"
+"  -t, --fai-reference FILE   FILE listing reference names and lengths\n"
+"  -M, --use-index            Use index and multi-region iterator for regions\n"
+"      --region[s]-file FILE  Use index to include only reads overlapping FILE\n"
+"  -X, --customized-index     Expect extra index file argument after <in.bam>\n"
+"\n"
+"Filtering options (Only include in output reads that...):\n"
+"  -L, --target[s]-file FILE  ...overlap (BED) regions in FILE\n"
+"  -r, --read-group STR       ...are in read group STR\n"
+"  -R, --read-group-file FILE ...are in a read group listed in FILE\n"
+"  -N, --qname-file FILE      ...whose read name is listed in FILE\n"
+"  -d, --tag STR1[:STR2]      ...have a tag STR1 (with associated value STR2)\n"
+"  -D, --tag-file STR:FILE    ...have a tag STR whose value is listed in FILE\n"
+"  -q, --min-MQ INT           ...have mapping quality >= INT\n"
+"  -l, --library STR          ...are in library STR\n"
+"  -m, --min-qlen INT         ...cover >= INT query bases (as measured via CIGAR)\n"
+"  -e, --expr STR             ...match the filter expression STR\n"
+"  -f, --require-flags FLAG   ...have all of the FLAGs present\n"             //   F&x == x
+"  -F, --excl[ude]-flags FLAG ...have none of the FLAGs present\n"            //   F&x == 0
+"  -G FLAG                    EXCLUDE reads with all of the FLAGs present\n"  // !(F&x == x)  TODO long option
+"      --subsample FLOAT      Keep only FLOAT fraction of templates/read pairs\n"
+"      --subsample-seed INT   Influence WHICH reads are kept in subsampling [0]\n"
+"  -s INT.FRAC                Same as --subsample 0.FRAC --subsample-seed INT\n"
+"\n"
+"Processing options:\n"
+"      --add-flags FLAG       Add FLAGs to reads\n"
+"      --remove-flags FLAG    Remove FLAGs from reads\n"
+"  -x, --remove-tag STR       Strip tag STR from reads (option may be repeated)\n"
+"  -B, --remove-B             Collapse the backward CIGAR operation\n"
+"\n"
+"General options:\n"
+"  -?, --help   Print long help, including note about region specification\n"
+"  -S           Ignored (input format is auto-detected)\n"
+"      --no-PG  Do not add a PG line\n");
 
     sam_global_opt_help(fp, "-.O.T@..");
     fprintf(fp, "\n");
@@ -885,6 +1014,15 @@ static int usage(FILE *fp, int exit_status, int is_long_help)
 "\n"
 "6. Option `-u' is preferred over `-b' when the output is piped to\n"
 "   another samtools command.\n"
+"\n"
+"7. Option `-M`/`--use-index` causes overlaps with `-L` BED file regions and\n"
+"   command-line region arguments to be computed using the multi-region iterator\n"
+"   and an index. This increases speed, omits duplicates, and outputs the reads\n"
+"   as they are ordered in the input SAM/BAM/CRAM file.\n"
+"\n"
+"8. Options `-L`/`--target[s]-file` and `--region[s]-file` may not be used\n"
+"   together. `--region[s]-file FILE` is simply equivalent to `-M -L FILE`,\n"
+"   so using both causes one of the specified BED files to be ignored.\n"
 "\n");
 
     return exit_status;

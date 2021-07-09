@@ -303,8 +303,8 @@ static int update_bcf1(call_t *call, bcf1_t *rec, const bcf_p1rst_t *pr, double 
     // trim Number=R tags
     int out_als = 0;
     for (i=0; i<nals; i++) out_als |= 1<<i;
-    init_allele_trimming_maps(call, out_als, nals_ori);
-    mcall_trim_numberR(call, rec, nals_ori, nals, out_als);
+    init_allele_trimming_maps(call, nals_ori, out_als);
+    mcall_trim_and_update_numberR(call, rec, nals_ori, nals);
 
     return is_var;
 }

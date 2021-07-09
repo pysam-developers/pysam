@@ -1,6 +1,6 @@
 /*  synced_bcf_reader.c -- stream through multiple VCF files.
 
-    Copyright (C) 2012-2020 Genome Research Ltd.
+    Copyright (C) 2012-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -171,21 +171,26 @@ static int *init_filters(bcf_hdr_t *hdr, const char *filters, int *nfilters)
 
 int bcf_sr_set_regions(bcf_srs_t *readers, const char *regions, int is_file)
 {
-    assert( !readers->regions );
-    if ( readers->nreaders )
+    if ( readers->nreaders || readers->regions )
     {
         hts_log_error("Must call bcf_sr_set_regions() before bcf_sr_add_reader()");
         return -1;
     }
+
     readers->regions = bcf_sr_regions_init(regions,is_file,0,1,-2);
     if ( !readers->regions ) return -1;
     readers->explicit_regs = 1;
     readers->require_index = REQUIRE_IDX_;
     return 0;
 }
+
 int bcf_sr_set_targets(bcf_srs_t *readers, const char *targets, int is_file, int alleles)
 {
-    assert( !readers->targets );
+    if ( readers->nreaders || readers->targets )
+    {
+        hts_log_error("Must call bcf_sr_set_targets() before bcf_sr_add_reader()");
+        return -1;
+    }
     if ( targets[0]=='^' )
     {
         readers->targets_exclude = 1;
@@ -614,7 +619,7 @@ static int _reader_fill_buffer(bcf_srs_t *files, bcf_sr_t *reader)
         }
         reader->nbuffer++;
 
-        if ( files->require_index==ALLOW_NO_IDX_ && reader->buffer[reader->nbuffer]->rid != reader->buffer[1]->rid ) break;
+        if ( reader->buffer[reader->nbuffer]->rid != reader->buffer[1]->rid ) break;
         if ( reader->buffer[reader->nbuffer]->pos != reader->buffer[1]->pos ) break;    // the buffer is full
     }
     if ( ret<0 )
@@ -638,11 +643,12 @@ static void _reader_shift_buffer(bcf_sr_t *reader)
 {
     int i;
     for (i=2; i<=reader->nbuffer; i++)
-        if ( reader->buffer[i]->pos!=reader->buffer[1]->pos ) break;
+        if ( reader->buffer[i]->rid!=reader->buffer[1]->rid || reader->buffer[i]->pos!=reader->buffer[1]->pos ) break;
     if ( i<=reader->nbuffer )
     {
         // A record with a different position follows, swap it. Because of the reader's logic,
         // only one such line can be present.
+        assert( i==reader->nbuffer );
         bcf1_t *tmp = reader->buffer[1]; reader->buffer[1] = reader->buffer[i]; reader->buffer[i] = tmp;
         reader->nbuffer = 1;
     }

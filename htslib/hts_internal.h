@@ -29,7 +29,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include "htslib/hts.h"
 #include "textutils_internal.h"
 
-#define HTS_MAX_EXT_LEN 8
+#define HTS_MAX_EXT_LEN 9
 
 #ifdef __cplusplus
 extern "C" {
@@ -104,6 +104,7 @@ plugin_void_func *load_plugin(void **pluginp, const char *filename, const char *
 void *plugin_sym(void *plugin, const char *name, const char **errmsg);
 plugin_void_func *plugin_func(void *plugin, const char *name, const char **errmsg);
 void close_plugin(void *plugin);
+const char *hts_plugin_path(void);
 
 /*
  * Buffers up arguments to hts_idx_push for later use, once we've written all bar

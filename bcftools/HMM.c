@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2014-2015 Genome Research Ltd.
+   Copyright (c) 2014-2017 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 

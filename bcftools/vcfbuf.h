@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2017-2020 Genome Research Ltd.
+   Copyright (c) 2017-2021 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -41,6 +41,7 @@ typedef enum
     VCFBUF_OVERLAP_WIN,     // keep only overlapping variants in the window
     VCFBUF_RMDUP,           // remove duplicate sites (completely)
     VCFBUF_NSITES,          // leave at max this many sites in the window
+    VCFBUF_NSITES_MODE,     // one of: maxAF (keep sites with max AF), 1st (sites that come first), rand (pick randomly)
     VCFBUF_AF_TAG,          // use this INFO tag with VCFBUF_NSITES
 
     // LD related options

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 Genome Research Ltd.
+ * Copyright (c) 2021 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,21 +31,25 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef HTSCODECS_H
+#define HTSCODECS_H
 
-#ifndef RANS_STATIC_H
-#define RANS_STATIC_H
+/*
+ * Version X.Y.Z encoded as XYYYZZ.
+ * We mainly increment X and Y.  Z *may* get bumped in between official
+ * releases in order to distinguish untagged github checkouts from
+ * official release tarballs.
+ *
+ * Note currently this needs manually editing as it isn't automatically
+ * updated by autoconf.
+ */
+#define HTSCODECS_VERSION 100101
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/*
+ * A const string form of the HTSCODECS_VERSION define.
+ * NB: This is obtained from the auto-generated version.h, so
+ * we can include release number and git hash.
+ */
+const char *htscodecs_version();
 
-unsigned char *rans_compress(unsigned char *in, unsigned int in_size,
-                             unsigned int *out_size, int order);
-unsigned char *rans_uncompress(unsigned char *in, unsigned int in_size,
-                               unsigned int *out_size);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* RANS_STATIC_H */
+#endif /* HTSCODECS_H */

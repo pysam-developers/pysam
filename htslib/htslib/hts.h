@@ -1,7 +1,7 @@
 /// @file htslib/hts.h
 /// Format-neutral I/O, indexing, and iterator API functions.
 /*
-    Copyright (C) 2012-2020 Genome Research Ltd.
+    Copyright (C) 2012-2021 Genome Research Ltd.
     Copyright (C) 2010, 2012 Broad Institute.
     Portions copyright (C) 2003-2006, 2008-2010 by Heng Li <lh3@live.co.uk>
 
@@ -209,7 +209,7 @@ enum htsExactFormat {
 };
 
 enum htsCompression {
-    no_compression, gzip, bgzf, custom, bzip2_compression,
+    no_compression, gzip, bgzf, custom, bzip2_compression, razf_compression,
     compression_maximum = 32767
 };
 
@@ -224,6 +224,7 @@ typedef struct htsFormat {
 
 struct hts_idx_t;
 typedef struct hts_idx_t hts_idx_t;
+struct hts_filter_t;
 
 /**
  * @brief File handle returned by hts_open() etc.
@@ -256,6 +257,7 @@ typedef struct htsFile {
     hts_idx_t *idx;
     const char *fnidx;
     struct sam_hdr_t *bam_header;
+    struct hts_filter_t *filter;
 } htsFile;
 
 // A combined thread pool and queue allocation size.
@@ -314,6 +316,10 @@ enum hts_fmt_option {
     CRAM_OPT_STORE_MD,
     CRAM_OPT_STORE_NM,
     CRAM_OPT_RANGE_NOSEEK, // CRAM_OPT_RANGE minus the seek
+    CRAM_OPT_USE_TOK,
+    CRAM_OPT_USE_FQZ,
+    CRAM_OPT_USE_ARITH,
+    CRAM_OPT_POS_DELTA,  // force delta for AP, even on non-pos sorted data
 
     // General purpose
     HTS_OPT_COMPRESSION_LEVEL = 100,
@@ -321,6 +327,47 @@ enum hts_fmt_option {
     HTS_OPT_THREAD_POOL,
     HTS_OPT_CACHE_SIZE,
     HTS_OPT_BLOCK_SIZE,
+    HTS_OPT_FILTER,
+    HTS_OPT_PROFILE,
+
+    // Fastq
+
+    // Boolean.
+    // Read / Write CASAVA 1.8 format.
+    // See https://emea.support.illumina.com/content/dam/illumina-support/documents/documentation/software_documentation/bcl2fastq/bcl2fastq_letterbooklet_15038058brpmi.pdf
+    //
+    // The CASAVA tag matches \d:[YN]:\d+:[ACGTN]+
+    // The first \d is read 1/2 (1 or 2), [YN] is QC-PASS/FAIL flag,
+    // \d+ is a control number, and the sequence at the end is
+    // for barcode sequence.  Barcodes are read into the aux tag defined
+    // by FASTQ_OPT_BARCODE ("BC" by default).
+    FASTQ_OPT_CASAVA = 1000,
+
+    // String.
+    // Whether to read / write extra SAM format aux tags from the fastq
+    // identifier line.  For reading this can simply be "1" to request
+    // decoding aux tags.  For writing it is a comma separated list of aux
+    // tag types to be written out.
+    FASTQ_OPT_AUX,
+
+    // Boolean.
+    // Whether to add /1 and /2 to read identifiers when writing FASTQ.
+    // These come from the BAM_FREAD1 or BAM_FREAD2 flags.
+    // (Detecting the /1 and /2 is automatic when reading fastq.)
+    FASTQ_OPT_RNUM,
+
+    // Two character string.
+    // Barcode aux tag for CASAVA; defaults to "BC".
+    FASTQ_OPT_BARCODE,
+};
+
+// Profile options for encoding; primarily used at present in CRAM
+// but also usable in BAM as a synonym for deflate compression levels.
+enum hts_profile_option {
+    HTS_PROFILE_FAST,
+    HTS_PROFILE_NORMAL,
+    HTS_PROFILE_SMALL,
+    HTS_PROFILE_ARCHIVE,
 };
 
 // For backwards compatibility
@@ -432,7 +479,48 @@ const char *hts_version(void);
 // Immediately after release, bump ZZ to 90 to distinguish in-development
 // Git repository builds from the release; you may wish to increment this
 // further when significant features are merged.
-#define HTS_VERSION 101100
+#define HTS_VERSION 101300
+
+/*! @abstract Introspection on the features enabled in htslib
+ *
+ * @return a bitfield of HTS_FEATURE_* macros.
+ */
+HTSLIB_EXPORT
+unsigned int hts_features(void);
+
+HTSLIB_EXPORT
+const char *hts_test_feature(unsigned int id);
+
+/*! @abstract Introspection on the features enabled in htslib, string form
+ *
+ * @return a string describing htslib build features
+ */
+HTSLIB_EXPORT
+const char *hts_feature_string(void);
+
+// Whether ./configure was used or vanilla Makefile
+#define HTS_FEATURE_CONFIGURE    1
+
+// Whether --enable-plugins was used
+#define HTS_FEATURE_PLUGINS      2
+
+// Transport specific
+#define HTS_FEATURE_LIBCURL      (1u<<10)
+#define HTS_FEATURE_S3           (1u<<11)
+#define HTS_FEATURE_GCS          (1u<<12)
+
+// Compression options
+#define HTS_FEATURE_LIBDEFLATE   (1u<<20)
+#define HTS_FEATURE_LZMA         (1u<<21)
+#define HTS_FEATURE_BZIP2        (1u<<22)
+#define HTS_FEATURE_HTSCODECS    (1u<<23) // htscodecs library version
+
+// Build params
+#define HTS_FEATURE_CC           (1u<<27)
+#define HTS_FEATURE_CFLAGS       (1u<<28)
+#define HTS_FEATURE_CPPFLAGS     (1u<<29)
+#define HTS_FEATURE_LDFLAGS      (1u<<30)
+
 
 /*!
   @abstract    Determine format by peeking at the start of a file
@@ -457,7 +545,7 @@ char *hts_format_description(const htsFormat *format);
   @param fn       The file name or "-" for stdin/stdout. For indexed files
                   with a non-standard naming, the file name can include the
                   name of the index file delimited with HTS_IDX_DELIM
-  @param mode     Mode matching / [rwa][bceguxz0-9]* /
+  @param mode     Mode matching / [rwa][bcefFguxz0-9]* /
   @discussion
       With 'r' opens for reading; any further format mode letters are ignored
       as the format is detected by checking the first few bytes or BGZF blocks
@@ -465,6 +553,8 @@ char *hts_format_description(const htsFormat *format);
       specifier letters:
         b  binary format (BAM, BCF, etc) rather than text (SAM, VCF, etc)
         c  CRAM format
+        f  FASTQ format
+        F  FASTA format
         g  gzip compressed
         u  uncompressed
         z  bgzf compressed
@@ -608,6 +698,15 @@ int hts_set_fai_filename(htsFile *fp, const char *fn_aux);
 
 
 /*!
+  @abstract  Sets a filter expression
+  @return    0 for success, negative on failure
+  @discussion
+      To clear an existing filter, specifying expr as NULL.
+*/
+HTSLIB_EXPORT
+int hts_set_filter_expression(htsFile *fp, const char *expr);
+
+/*!
   @abstract  Determine whether a given htsFile contains a valid EOF block
   @return    3 for a non-EOF checkable filetype;
              2 for an unseekable file type where EOF cannot be checked;
@@ -746,8 +845,10 @@ typedef struct hts_itr_t {
 
 typedef hts_itr_t hts_itr_multi_t;
 
-    #define hts_bin_first(l) (((1<<(((l)<<1) + (l))) - 1) / 7)
-    #define hts_bin_parent(l) (((l) - 1) >> 3)
+/// Compute the first bin on a given level
+#define hts_bin_first(l) (((1<<(((l)<<1) + (l))) - 1) / 7)
+/// Compute the parent bin of a given bin
+#define hts_bin_parent(b) (((b) - 1) >> 3)
 
 ///////////////////////////////////////////////////////////
 // Low-level API for building indexes.
@@ -909,6 +1010,8 @@ hts_idx_t *hts_idx_load3(const char *fn, const char *fnidx, int fmt, int flags);
 ///////////////////////////////////////////////////////////
 // Functions for accessing meta-data stored in indexes
 
+typedef const char *(*hts_id2name_f)(void*, int);
+
 /// Get extra index meta-data
 /** @param idx    The index
     @param l_meta Pointer to where the length of the extra data is stored
@@ -965,6 +1068,26 @@ int hts_idx_get_stat(const hts_idx_t* idx, int tid, uint64_t* mapped, uint64_t* 
 HTSLIB_EXPORT
 uint64_t hts_idx_get_n_no_coor(const hts_idx_t* idx);
 
+/// Return a list of target names from an index
+/** @param      idx    Index
+    @param[out] n      Location to store the number of targets
+    @param      getid  Callback function to get the name for a target ID
+    @param      hdr    Header from indexed file
+    @return An array of pointers to the names on success; NULL on failure
+
+    @note The names are pointers into the header data structure.  When cleaning
+    up, only the array should be freed, not the names.
+ */
+HTSLIB_EXPORT
+const char **hts_idx_seqnames(const hts_idx_t *idx, int *n, hts_id2name_f getid, void *hdr); // free only the array, not the values
+
+/// Return the number of targets from an index
+/** @param      idx    Index
+    @return The number of targets
+ */
+HTSLIB_EXPORT
+int hts_idx_nseq(const hts_idx_t *idx);
+
 ///////////////////////////////////////////////////////////
 // Region parsing
 
@@ -988,7 +1111,6 @@ HTSLIB_EXPORT
 long long hts_parse_decimal(const char *str, char **strend, int flags);
 
 typedef int (*hts_name2id_f)(void*, const char*);
-typedef const char *(*hts_id2name_f)(void*, int);
 
 /// Parse a "CHR:START-END"-style region string
 /** @param str  String to be parsed
@@ -1137,19 +1259,6 @@ hts_itr_t *hts_itr_querys(const hts_idx_t *idx, const char *reg, hts_name2id_f g
  */
 HTSLIB_EXPORT
 int hts_itr_next(BGZF *fp, hts_itr_t *iter, void *r, void *data) HTS_RESULT_USED;
-
-/// Return a list of target names from an index
-/** @param      idx    Index
-    @param[out] n      Location to store the number of targets
-    @param      getid  Callback function to get the name for a target ID
-    @param      hdr    Header from indexed file
-    @return An array of pointers to the names on success; NULL on failure
-
-    @note The names are pointers into the header data structure.  When cleaning
-    up, only the array should be freed, not the names.
- */
-HTSLIB_EXPORT
-const char **hts_idx_seqnames(const hts_idx_t *idx, int *n, hts_id2name_f getid, void *hdr); // free only the array, not the values
 
 /**********************************
  * Iterator with multiple regions *
@@ -1347,10 +1456,27 @@ static inline int hts_reg2bin(hts_pos_t beg, hts_pos_t end, int min_shift, int n
     return 0;
 }
 
+/// Compute the level of a bin in a binning index
+static inline int hts_bin_level(int bin) {
+    int l, b;
+    for (l = 0, b = bin; b; ++l, b = hts_bin_parent(b));
+    return l;
+}
+
+//! Compute the corresponding entry into the linear index of a given bin from
+//! a binning index
+/*!
+ *  @param bin    The bin number
+ *  @param n_lvls The index depth (number of levels - 0 based)
+ *  @return       The integer offset into the linear index
+ *
+ *  Explanation of the return value formula:
+ *  Each bin on level l covers exp(2, (n_lvls - l)*3 + min_shift) base pairs.
+ *  A linear index entry covers exp(2, min_shift) base pairs.
+ */
 static inline int hts_bin_bot(int bin, int n_lvls)
 {
-    int l, b;
-    for (l = 0, b = bin; b; ++l, b = hts_bin_parent(b)); // compute the level of bin
+    int l = hts_bin_level(bin);
     return (bin - hts_bin_first(l)) << (n_lvls - l) * 3;
 }
 

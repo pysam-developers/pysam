@@ -1,6 +1,6 @@
 /*  hts.c -- format-neutral I/O, indexing, and iterator API functions.
 
-    Copyright (C) 2008, 2009, 2012-2020 Genome Research Ltd.
+    Copyright (C) 2008, 2009, 2012-2021 Genome Research Ltd.
     Copyright (C) 2012, 2013 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -31,6 +31,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdint.h>
@@ -46,15 +47,22 @@ DEALINGS IN THE SOFTWARE.  */
 #include "htslib/hfile.h"
 #include "htslib/hts_endian.h"
 #include "version.h"
+#include "config_vars.h"
 #include "hts_internal.h"
 #include "hfile_internal.h"
 #include "sam_internal.h"
+#include "htslib/hts_expr.h"
 #include "htslib/hts_os.h" // drand48
 
 #include "htslib/khash.h"
 #include "htslib/kseq.h"
 #include "htslib/ksort.h"
 #include "htslib/tbx.h"
+#if defined(HAVE_EXTERNAL_LIBHTSCODECS)
+#include <htscodecs/htscodecs.h>
+#else
+#include "htscodecs/htscodecs/htscodecs.h"
+#endif
 
 #ifndef EFTYPE
 #define EFTYPE ENOEXEC
@@ -69,6 +77,150 @@ const char *hts_version()
 {
     return HTS_VERSION_TEXT;
 }
+
+unsigned int hts_features(void) {
+    unsigned int feat = HTS_FEATURE_HTSCODECS; // Always present
+
+#ifdef PACKAGE_URL
+    feat |= HTS_FEATURE_CONFIGURE;
+#endif
+
+#ifdef ENABLE_PLUGINS
+    feat |= HTS_FEATURE_PLUGINS;
+#endif
+
+#ifdef HAVE_LIBCURL
+    feat |= HTS_FEATURE_LIBCURL;
+#endif
+
+#ifdef ENABLE_S3
+    feat |= HTS_FEATURE_S3;
+#endif
+
+#ifdef ENABLE_GCS
+    feat |= HTS_FEATURE_GCS;
+#endif
+
+#ifdef HAVE_LIBDEFLATE
+    feat |= HTS_FEATURE_LIBDEFLATE;
+#endif
+
+#ifdef HAVE_LIBLZMA
+    feat |= HTS_FEATURE_LZMA;
+#endif
+
+#ifdef HAVE_LIBBZ2
+    feat |= HTS_FEATURE_BZIP2;
+#endif
+
+    return feat;
+}
+
+const char *hts_test_feature(unsigned int id) {
+    unsigned int feat = hts_features();
+
+    switch (id) {
+    case HTS_FEATURE_CONFIGURE:
+        return feat & HTS_FEATURE_CONFIGURE ? "yes" : NULL;
+    case HTS_FEATURE_PLUGINS:
+        return feat & HTS_FEATURE_PLUGINS ? "yes" : NULL;
+    case HTS_FEATURE_LIBCURL:
+        return feat & HTS_FEATURE_LIBCURL ? "yes" : NULL;
+    case HTS_FEATURE_S3:
+        return feat & HTS_FEATURE_S3 ? "yes" : NULL;
+    case HTS_FEATURE_GCS:
+        return feat & HTS_FEATURE_GCS ? "yes" : NULL;
+    case HTS_FEATURE_LIBDEFLATE:
+        return feat & HTS_FEATURE_LIBDEFLATE ? "yes" : NULL;
+    case HTS_FEATURE_BZIP2:
+        return feat & HTS_FEATURE_BZIP2 ? "yes" : NULL;
+    case HTS_FEATURE_LZMA:
+        return feat & HTS_FEATURE_LZMA ? "yes" : NULL;
+
+    case HTS_FEATURE_HTSCODECS:
+        return htscodecs_version();
+
+    case HTS_FEATURE_CC:
+        return HTS_CC;
+    case HTS_FEATURE_CFLAGS:
+        return HTS_CFLAGS;
+    case HTS_FEATURE_LDFLAGS:
+        return HTS_LDFLAGS;
+    case HTS_FEATURE_CPPFLAGS:
+        return HTS_CPPFLAGS;
+
+    default:
+        fprintf(stderr, "Unknown feature code: %u\n", id);
+    }
+
+    return NULL;
+}
+
+// Note this implementation also means we can just "strings" the library
+// to find the configuration parameters.
+const char *hts_feature_string(void) {
+    static char config[1200];
+    const char *fmt=
+
+#ifdef PACKAGE_URL
+    "build=configure "
+#else
+    "build=Makefile "
+#endif
+
+#ifdef ENABLE_PLUGINS
+    "plugins=yes, plugin-path=%.1000s "
+#else
+    "plugins=no "
+#endif
+
+#ifdef HAVE_LIBCURL
+    "libcurl=yes "
+#else
+    "libcurl=no "
+#endif
+
+#ifdef ENABLE_S3
+    "S3=yes "
+#else
+    "S3=no "
+#endif
+
+#ifdef ENABLE_GCS
+    "GCS=yes "
+#else
+    "GCS=no "
+#endif
+
+#ifdef HAVE_LIBDEFLATE
+    "libdeflate=yes "
+#else
+    "libdeflate=no "
+#endif
+
+#ifdef HAVE_LIBLZMA
+    "lzma=yes "
+#else
+    "lzma=no "
+#endif
+
+#ifdef HAVE_LIBBZ2
+    "bzip2=yes "
+#else
+    "bzip2=no "
+#endif
+
+    "htscodecs=%.40s";
+
+#ifdef ENABLE_PLUGINS
+    snprintf(config, sizeof(config), fmt,
+             hts_plugin_path(), htscodecs_version());
+#else
+    snprintf(config, sizeof(config), fmt, htscodecs_version());
+#endif
+    return config;
+}
+
 
 HTSLIB_EXPORT
 const unsigned char seq_nt16_table[256] = {
@@ -108,6 +260,7 @@ static enum htsFormatCategory format_category(enum htsExactFormat fmt)
     case sam:
     case cram:
     case fastq_format:
+    case fasta_format:
         return sequence_data;
 
     case vcf:
@@ -126,7 +279,6 @@ static enum htsFormatCategory format_category(enum htsExactFormat fmt)
     case bed:
         return region_list;
 
-    case fasta_format:
     case htsget:
     case hts_crypt4gh_format:
         return unknown_category;
@@ -327,8 +479,13 @@ int hts_detect_format(hFILE *hfile, htsFormat *fmt)
     if (len >= 2 && s[0] == 0x1f && s[1] == 0x8b) {
         // The stream is either gzip-compressed or BGZF-compressed.
         // Determine which, and decompress the first few records or lines.
-        fmt->compression = (len >= 18 && (s[3] & 4) &&
-                            memcmp(&s[12], "BC\2\0", 4) == 0)? bgzf : gzip;
+        fmt->compression = gzip;
+        if (len >= 18 && (s[3] & 4)) {
+            if (memcmp(&s[12], "BC\2\0", 4) == 0)
+                fmt->compression = bgzf;
+            else if (memcmp(&s[12], "RAZF", 4) == 0)
+                fmt->compression = razf_compression;
+        }
         if (len >= 9 && s[2] == 8)
             fmt->compression_level = (s[8] == 2)? 9 : (s[8] == 4)? 1 : -1;
 
@@ -434,6 +591,7 @@ int hts_detect_format(hFILE *hfile, htsFormat *fmt)
         return 0;
     }
     else if (len >= 1 && s[0] == '>' && secondline_is_bases(s, &s[len])) {
+        fmt->category = sequence_data;
         fmt->format = fasta_format;
         return 0;
     }
@@ -523,6 +681,7 @@ char *hts_format_description(const htsFormat *format)
 
     switch (format->compression) {
     case bzip2_compression:  kputs(" bzip2-compressed", &str); break;
+    case razf_compression:   kputs(" legacy-RAZF-compressed", &str); break;
     case custom: kputs(" compressed", &str); break;
     case gzip:   kputs(" gzip-compressed", &str); break;
     case bgzf:
@@ -584,7 +743,8 @@ htsFile *hts_open_format(const char *fn, const char *mode, const htsFormat *fmt)
     htsFile *fp = NULL;
     hFILE *hfile = NULL;
     char fmt_code = '\0';
-    const char format_to_mode[] = "\0g\0\0b\0c\0\0b\0g\0\0";
+    // see enum htsExactFormat in htslib/hts.h
+    const char format_to_mode[] = "\0g\0\0b\0c\0\0b\0g\0\0\0\0\0Ff\0\0";
 
     strncpy(smode, mode, 99);
     smode[99]=0;
@@ -743,6 +903,10 @@ int hts_opt_add(hts_opt **opts, const char *c_arg) {
              strcmp(o->arg, "NO_REF") == 0)
         o->opt = CRAM_OPT_NO_REF, o->val.i = atoi(val);
 
+    else if (strcmp(o->arg, "pos_delta") == 0 ||
+             strcmp(o->arg, "POS_DELTA") == 0)
+        o->opt = CRAM_OPT_POS_DELTA, o->val.i = atoi(val);
+
     else if (strcmp(o->arg, "ignore_md5") == 0 ||
              strcmp(o->arg, "IGNORE_MD5") == 0)
         o->opt = CRAM_OPT_IGNORE_MD5, o->val.i = atoi(val);
@@ -758,6 +922,34 @@ int hts_opt_add(hts_opt **opts, const char *c_arg) {
     else if (strcmp(o->arg, "use_lzma") == 0 ||
              strcmp(o->arg, "USE_LZMA") == 0)
         o->opt = CRAM_OPT_USE_LZMA, o->val.i = atoi(val);
+
+    else if (strcmp(o->arg, "use_tok") == 0 ||
+             strcmp(o->arg, "USE_TOK") == 0)
+        o->opt = CRAM_OPT_USE_TOK, o->val.i = atoi(val);
+
+    else if (strcmp(o->arg, "use_fqz") == 0 ||
+             strcmp(o->arg, "USE_FQZ") == 0)
+        o->opt = CRAM_OPT_USE_FQZ, o->val.i = atoi(val);
+
+    else if (strcmp(o->arg, "use_arith") == 0 ||
+             strcmp(o->arg, "USE_ARITH") == 0)
+        o->opt = CRAM_OPT_USE_ARITH, o->val.i = atoi(val);
+
+    else if (strcmp(o->arg, "fast") == 0 ||
+             strcmp(o->arg, "FAST") == 0)
+        o->opt = HTS_OPT_PROFILE, o->val.i = HTS_PROFILE_FAST;
+
+    else if (strcmp(o->arg, "normal") == 0 ||
+             strcmp(o->arg, "NORMAL") == 0)
+        o->opt = HTS_OPT_PROFILE, o->val.i = HTS_PROFILE_NORMAL;
+
+    else if (strcmp(o->arg, "small") == 0 ||
+             strcmp(o->arg, "SMALL") == 0)
+        o->opt = HTS_OPT_PROFILE, o->val.i = HTS_PROFILE_SMALL;
+
+    else if (strcmp(o->arg, "archive") == 0 ||
+             strcmp(o->arg, "ARCHIVE") == 0)
+        o->opt = HTS_OPT_PROFILE, o->val.i = HTS_PROFILE_ARCHIVE;
 
     else if (strcmp(o->arg, "reference") == 0 ||
              strcmp(o->arg, "REFERENCE") == 0)
@@ -783,8 +975,8 @@ int hts_opt_add(hts_opt **opts, const char *c_arg) {
         // NB: Doesn't support floats, eg 1.5g
         // TODO: extend hts_parse_decimal? See also samtools sort.
         switch (*endp) {
-        case 'g': case 'G': o->val.i *= 1024;
-        case 'm': case 'M': o->val.i *= 1024;
+        case 'g': case 'G': o->val.i *= 1024; // fall through
+        case 'm': case 'M': o->val.i *= 1024; // fall through
         case 'k': case 'K': o->val.i *= 1024; break;
         case '\0': break;
         default:
@@ -822,6 +1014,26 @@ int hts_opt_add(hts_opt **opts, const char *c_arg) {
     else if (strcmp(o->arg, "level") == 0 ||
              strcmp(o->arg, "LEVEL") == 0)
         o->opt = HTS_OPT_COMPRESSION_LEVEL, o->val.i = strtol(val, NULL, 0);
+
+    else if (strcmp(o->arg, "filter") == 0 ||
+             strcmp(o->arg, "FILTER") == 0)
+        o->opt = HTS_OPT_FILTER, o->val.s = val;
+
+    else if (strcmp(o->arg, "fastq_aux") == 0 ||
+        strcmp(o->arg, "FASTQ_AUX") == 0)
+        o->opt = FASTQ_OPT_AUX, o->val.s = val;
+
+    else if (strcmp(o->arg, "fastq_barcode") == 0 ||
+        strcmp(o->arg, "FASTQ_BARCODE") == 0)
+        o->opt = FASTQ_OPT_BARCODE, o->val.s = val;
+
+    else if (strcmp(o->arg, "fastq_rnum") == 0 ||
+        strcmp(o->arg, "FASTQ_RNUM") == 0)
+        o->opt = FASTQ_OPT_RNUM, o->val.i = 1;
+
+    else if (strcmp(o->arg, "fastq_casava") == 0 ||
+        strcmp(o->arg, "FASTQ_CASAVA") == 0)
+        o->opt = FASTQ_OPT_CASAVA, o->val.i = 1;
 
     else {
         hts_log_error("Unknown option '%s'", o->arg);
@@ -862,6 +1074,9 @@ int hts_opt_apply(htsFile *fp, hts_opt *opts) {
                 // fall through
             case CRAM_OPT_VERSION:
             case CRAM_OPT_PREFIX:
+            case HTS_OPT_FILTER:
+            case FASTQ_OPT_AUX:
+            case FASTQ_OPT_BARCODE:
                 if (hts_set_opt(fp,  opts->opt,  opts->val.s) != 0)
                     return -1;
                 break;
@@ -946,7 +1161,7 @@ int hts_parse_format(htsFormat *format, const char *str) {
     if (strcmp(fmt, "sam") == 0) {
         format->category          = sequence_data;
         format->format            = sam;
-        format->compression       = no_compression;;
+        format->compression       = no_compression;
         format->compression_level = 0;
     } else if (strcmp(fmt, "sam.gz") == 0) {
         format->category          = sequence_data;
@@ -966,13 +1181,33 @@ int hts_parse_format(htsFormat *format, const char *str) {
     } else if (strcmp(fmt, "vcf") == 0) {
         format->category          = variant_data;
         format->format            = vcf;
-        format->compression       = no_compression;;
+        format->compression       = no_compression;
         format->compression_level = 0;
     } else if (strcmp(fmt, "bcf") == 0) {
         format->category          = variant_data;
         format->format            = bcf;
         format->compression       = bgzf;
         format->compression_level = -1;
+    } else if (strcmp(fmt, "fastq") == 0 || strcmp(fmt, "fq") == 0) {
+        format->category          = sequence_data;
+        format->format            = fastq_format;
+        format->compression       = no_compression;
+        format->compression_level = 0;
+    } else if (strcmp(fmt, "fastq.gz") == 0 || strcmp(fmt, "fq.gz") == 0) {
+        format->category          = sequence_data;
+        format->format            = fastq_format;
+        format->compression       = bgzf;
+        format->compression_level = 0;
+    } else if (strcmp(fmt, "fasta") == 0 || strcmp(fmt, "fa") == 0) {
+        format->category          = sequence_data;
+        format->format            = fasta_format;
+        format->compression       = no_compression;
+        format->compression_level = 0;
+    } else if (strcmp(fmt, "fasta.gz") == 0 || strcmp(fmt, "fa.gz") == 0) {
+        format->category          = sequence_data;
+        format->format            = fasta_format;
+        format->compression       = bgzf;
+        format->compression_level = 0;
     } else {
         return -1;
     }
@@ -1097,6 +1332,8 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
 
         if (strchr(simple_mode, 'b')) fmt->format = binary_format;
         else if (strchr(simple_mode, 'c')) fmt->format = cram;
+        else if (strchr(simple_mode, 'f')) fmt->format = fastq_format;
+        else if (strchr(simple_mode, 'F')) fmt->format = fasta_format;
         else fmt->format = text_format;
 
         if (strchr(simple_mode, 'z')) fmt->compression = bgzf;
@@ -1107,6 +1344,8 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
             switch (fmt->format) {
             case binary_format: fmt->compression = bgzf; break;
             case cram: fmt->compression = custom; break;
+            case fastq_format: fmt->compression = no_compression; break;
+            case fasta_format: fmt->compression = no_compression; break;
             case text_format: fmt->compression = no_compression; break;
             default: abort();
             }
@@ -1134,7 +1373,7 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
         fp->fp.cram = cram_dopen(hfile, fn, simple_mode);
         if (fp->fp.cram == NULL) goto error;
         if (!fp->is_write)
-            cram_set_option(fp->fp.cram, CRAM_OPT_DECODE_MD, 1);
+            cram_set_option(fp->fp.cram, CRAM_OPT_DECODE_MD, -1); // auto
         fp->is_cram = 1;
         break;
 
@@ -1184,7 +1423,7 @@ error:
 
 int hts_close(htsFile *fp)
 {
-    int ret, save;
+    int ret = 0, save;
 
     switch (fp->format.format) {
     case binary_format:
@@ -1214,7 +1453,11 @@ int hts_close(htsFile *fp)
     case fastq_format:
     case sam:
     case vcf:
-        ret = sam_state_destroy(fp);
+        if (fp->format.format == sam)
+            ret = sam_state_destroy(fp);
+        else if (fp->format.format == fastq_format ||
+                 fp->format.format == fasta_format)
+            fastq_state_destroy(fp);
 
         if (fp->format.compression != no_compression)
             ret |= bgzf_close(fp->fp.bgzf);
@@ -1230,6 +1473,7 @@ int hts_close(htsFile *fp)
     save = errno;
     sam_hdr_destroy(fp->bam_header);
     hts_idx_destroy(fp->idx);
+    hts_filter_free(fp->filter);
     free(fp->fn);
     free(fp->fn_aux);
     free(fp->line.s);
@@ -1275,6 +1519,8 @@ static hFILE *hts_hfile(htsFile *fp) {
     case cram:         return cram_hfile(fp->fp.cram);
     case text_format:  return fp->fp.hfile;
     case vcf:          // fall through
+    case fastq_format: // fall through
+    case fasta_format: // fall through
     case sam:          return fp->format.compression != no_compression
                               ? bgzf_hfile(fp->fp.bgzf)
                               : fp->fp.hfile;
@@ -1326,12 +1572,72 @@ int hts_set_opt(htsFile *fp, enum hts_fmt_option opt, ...) {
         return 0;
     }
 
+    case FASTQ_OPT_CASAVA:
+    case FASTQ_OPT_RNUM:
+        if (fp->format.format == fastq_format ||
+            fp->format.format == fasta_format)
+            return fastq_state_set(fp, opt);
+        return 0;
+
+    case FASTQ_OPT_AUX:
+        if (fp->format.format == fastq_format ||
+            fp->format.format == fasta_format) {
+            va_start(args, opt);
+            char *list = va_arg(args, char *);
+            va_end(args);
+            return fastq_state_set(fp, opt, list);
+        }
+        return 0;
+
+    case FASTQ_OPT_BARCODE:
+        if (fp->format.format == fastq_format ||
+            fp->format.format == fasta_format) {
+            va_start(args, opt);
+            char *bc = va_arg(args, char *);
+            va_end(args);
+            return fastq_state_set(fp, opt, bc);
+        }
+        return 0;
+
+    // Options below here flow through to cram_set_voption
     case HTS_OPT_COMPRESSION_LEVEL: {
         va_start(args, opt);
         int level = va_arg(args, int);
         va_end(args);
         if (fp->is_bgzf)
             fp->fp.bgzf->compress_level = level;
+        else if (fp->format.format == cram)
+            return cram_set_option(fp->fp.cram, opt, level);
+        return 0;
+    }
+
+    case HTS_OPT_FILTER: {
+        va_start(args, opt);
+        char *expr = va_arg(args, char *);
+        va_end(args);
+        return hts_set_filter_expression(fp, expr);
+    }
+
+    case HTS_OPT_PROFILE: {
+        va_start(args, opt);
+        enum hts_profile_option prof = va_arg(args, int);
+        va_end(args);
+        if (fp->is_bgzf) {
+            switch (prof) {
+#ifdef HAVE_LIBDEFLATE
+            case HTS_PROFILE_FAST:    fp->fp.bgzf->compress_level =  2; break;
+            case HTS_PROFILE_NORMAL:  fp->fp.bgzf->compress_level = -1; break;
+            case HTS_PROFILE_SMALL:   fp->fp.bgzf->compress_level = 10; break;
+            case HTS_PROFILE_ARCHIVE: fp->fp.bgzf->compress_level = 12; break;
+#else
+            case HTS_PROFILE_FAST:    fp->fp.bgzf->compress_level =  1; break;
+            case HTS_PROFILE_NORMAL:  fp->fp.bgzf->compress_level = -1; break;
+            case HTS_PROFILE_SMALL:   fp->fp.bgzf->compress_level =  8; break;
+            case HTS_PROFILE_ARCHIVE: fp->fp.bgzf->compress_level =  9; break;
+#endif
+            }
+        } // else CRAM manages this in its own way
+        break;
     }
 
     default:
@@ -1393,6 +1699,18 @@ int hts_set_fai_filename(htsFile *fp, const char *fn_aux)
             return -1;
 
     return 0;
+}
+
+int hts_set_filter_expression(htsFile *fp, const char *expr)
+{
+    if (fp->filter)
+        hts_filter_free(fp->filter);
+
+    if (!expr)
+        return 0;
+
+    return (fp->filter = hts_filter_init(expr))
+        ? 0 : -1;
 }
 
 hFILE *hts_open_tmpfile(const char *fname, const char *mode, kstring_t *tmpname)
@@ -1674,6 +1992,46 @@ static char * idx_format_name(int fmt) {
     }
 }
 
+#ifdef DEBUG_INDEX
+static void idx_dump(const hts_idx_t *idx) {
+    int i;
+    int64_t j;
+
+    if (!idx) fprintf(stderr, "Null index\n");
+
+    fprintf(stderr, "format='%s', min_shift=%d, n_lvls=%d, n_bins=%d, l_meta=%u ",
+            idx_format_name(idx->fmt), idx->min_shift, idx->n_lvls, idx->n_bins, idx->l_meta);
+    fprintf(stderr, "n=%d, m=%d, n_no_coor=%"PRIu64"\n", idx->n, idx->m, idx->n_no_coor);
+    for (i = 0; i < idx->n; i++) {
+        bidx_t *bidx = idx->bidx[i];
+        lidx_t *lidx = &idx->lidx[i];
+        if (bidx) {
+            fprintf(stderr, "======== BIN Index - tid=%d, n_buckets=%d, size=%d\n", i, bidx->n_buckets, bidx->size);
+            int b;
+            for (b = 0; b < META_BIN(idx); b++) {
+                khint_t k;
+                if ((k = kh_get(bin, bidx, b)) != kh_end(bidx)) {
+                    bins_t *entries = &kh_value(bidx, k);
+                    int l = hts_bin_level(b);
+                    int64_t bin_width = 1LL << ((idx->n_lvls - l) * 3 + idx->min_shift);
+                    fprintf(stderr, "\tbin=%d, level=%d, parent=%d, n_chunks=%d, loff=%"PRIu64", interval=[%"PRId64" - %"PRId64"]\n",
+                        b, l, hts_bin_parent(b), entries->n, entries->loff, (b-hts_bin_first(l))*bin_width+1, (b+1-hts_bin_first(l))*bin_width);
+                    for (j = 0; j < entries->n; j++)
+                        fprintf(stderr, "\t\tchunk=%"PRId64", u=%"PRIu64", v=%"PRIu64"\n", j, entries->list[j].u, entries->list[j].v);
+                }
+            }
+        }
+        if (lidx) {
+            fprintf(stderr, "======== LINEAR Index - tid=%d, n_values=%"PRId64"\n", i, lidx->n);
+            for (j = 0; j < lidx->n; j++) {
+                fprintf(stderr, "\t\tentry=%"PRId64", offset=%"PRIu64", interval=[%"PRId64" - %"PRId64"]\n",
+                    j, lidx->offset[j], j*(1<<idx->min_shift)+1, (j+1)*(1<<idx->min_shift));
+            }
+        }
+    }
+}
+#endif
+
 static inline int insert_to_b(bidx_t *b, int bin, uint64_t beg, uint64_t end)
 {
     khint_t k;
@@ -1757,17 +2115,11 @@ static void update_loff(hts_idx_t *idx, int i, int free_lidx)
     lidx_t *lidx = &idx->lidx[i];
     khint_t k;
     int l;
-    uint64_t offset0 = 0;
-    if (bidx) {
-        k = kh_get(bin, bidx, META_BIN(idx));
-        if (k != kh_end(bidx))
-            offset0 = kh_val(bidx, k).list[0].u;
-        for (l = 0; l < lidx->n && lidx->offset[l] == (uint64_t)-1; ++l)
-            lidx->offset[l] = offset0;
-    } else l = 1;
-    for (; l < lidx->n; ++l) // fill missing values
+    // the last entry is always valid
+    for (l=lidx->n-2; l >= 0; l--) {
         if (lidx->offset[l] == (uint64_t)-1)
-            lidx->offset[l] = lidx->offset[l-1];
+            lidx->offset[l] = lidx->offset[l+1];
+    }
     if (bidx == 0) return;
     for (k = kh_begin(bidx); k != kh_end(bidx); ++k) // set loff
         if (kh_exist(bidx, k))
@@ -1864,26 +2216,16 @@ int hts_idx_check_range(hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t end)
     int64_t maxpos = (int64_t) 1 << (idx->min_shift + idx->n_lvls * 3);
     if (tid < 0 || (beg <= maxpos && end <= maxpos))
         return 0;
-    int64_t max = end > beg ? end : beg, s = 1 << 14;
-    int n_lvls = 0;
-    while (max > s) {
-        n_lvls++;
-        s <<= 3;
-    }
 
     if (idx->fmt == HTS_FMT_CSI) {
-        hts_log_error("Region %"PRIhts_pos"..%"PRIhts_pos" cannot be stored in a csi index "
-                      "with min_shift = %d, n_lvls = %d. Try using "
-                      "min_shift = 14, n_lvls >= %d",
-                      beg, end,
-                      idx->min_shift, idx->n_lvls,
-                      n_lvls);
+        hts_log_error("Region %"PRIhts_pos"..%"PRIhts_pos
+                      " cannot be stored in a csi index. "
+                      "Please check headers match the data",
+                      beg, end);
     } else {
-        hts_log_error("Region %"PRIhts_pos"..%"PRIhts_pos" cannot be stored in a %s index. "
-                      "Try using a csi index with min_shift = 14, "
-                      "n_lvls >= %d",
-                      beg, end, idx_format_name(idx->fmt),
-                      n_lvls);
+        hts_log_error("Region %"PRIhts_pos"..%"PRIhts_pos
+                      " cannot be stored in a %s index. Try using a csi index",
+                      beg, end, idx_format_name(idx->fmt));
     }
     errno = ERANGE;
     return -1;
@@ -2081,7 +2423,7 @@ static inline void swap_bins(bins_t *p)
     }
 }
 
-static int hts_idx_save_core(const hts_idx_t *idx, BGZF *fp, int fmt)
+static int idx_save_core(const hts_idx_t *idx, BGZF *fp, int fmt)
 {
     int32_t i, j;
 
@@ -2134,6 +2476,10 @@ static int hts_idx_save_core(const hts_idx_t *idx, BGZF *fp, int fmt)
     }
 
     check(idx_write_uint64(fp, idx->n_no_coor));
+#ifdef DEBUG_INDEX
+    idx_dump(idx);
+#endif
+
     return 0;
     #undef check
 }
@@ -2183,7 +2529,7 @@ int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int
         check(bgzf_write(fp, "BAI\1", 4));
     } else abort();
 
-    check(hts_idx_save_core(idx, fp, fmt));
+    check(idx_save_core(idx, fp, fmt));
 
     return bgzf_close(fp);
     #undef check
@@ -2231,7 +2577,7 @@ static int idx_read_core(hts_idx_t *idx, BGZF *fp, int fmt)
             if (is_be) swap_bins(p);
         }
         if (fmt != HTS_FMT_CSI) { // load linear index
-            int j;
+            int j, k;
             uint32_t x;
             if (bgzf_read(fp, &x, 4) != 4) return -1;
             if (is_be) ed_swap_4p(&x);
@@ -2243,13 +2589,18 @@ static int idx_read_core(hts_idx_t *idx, BGZF *fp, int fmt)
             if (l->offset == NULL) return -2;
             if (bgzf_read(fp, l->offset, l->n << 3) != l->n << 3) return -1;
             if (is_be) for (j = 0; j < l->n; ++j) ed_swap_8p(&l->offset[j]);
-            for (j = 1; j < l->n; ++j) // fill missing values; may happen given older samtools and tabix
-                if (l->offset[j] == 0) l->offset[j] = l->offset[j-1];
+            for (k = j = 0; j < l->n && l->offset[j] == 0; k = ++j); // stop at the first non-zero entry
+            for (j = l->n-1; j > k; j--) // fill missing values; may happen given older samtools and tabix
+                if (l->offset[j-1] == 0) l->offset[j-1] = l->offset[j];
             update_loff(idx, i, 0);
         }
     }
     if (bgzf_read(fp, &idx->n_no_coor, 8) != 8) idx->n_no_coor = 0;
     if (is_be) ed_swap_8p(&idx->n_no_coor);
+#ifdef DEBUG_INDEX
+    idx_dump(idx);
+#endif
+
     return 0;
 }
 
@@ -2355,7 +2706,7 @@ uint8_t *hts_idx_get_meta(hts_idx_t *idx, uint32_t *l_meta)
 
 const char **hts_idx_seqnames(const hts_idx_t *idx, int *n, hts_id2name_f getid, void *hdr)
 {
-    if ( !idx->n )
+    if ( !idx || !idx->n )
     {
         *n = 0;
         return NULL;
@@ -2373,14 +2724,21 @@ const char **hts_idx_seqnames(const hts_idx_t *idx, int *n, hts_id2name_f getid,
     return names;
 }
 
+int hts_idx_nseq(const hts_idx_t *idx) {
+    if (!idx) return -1;
+    return idx->n;
+}
+
 int hts_idx_get_stat(const hts_idx_t* idx, int tid, uint64_t* mapped, uint64_t* unmapped)
 {
+    if (!idx) return -1;
     if ( idx->fmt == HTS_FMT_CRAI ) {
         *mapped = 0; *unmapped = 0;
         return -1;
     }
 
     bidx_t *h = idx->bidx[tid];
+    if (!h) return -1;
     khint_t k = kh_get(bin, h, META_BIN(idx));
     if (k != kh_end(h)) {
         *mapped = kh_val(h, k).list[1].u;
@@ -2561,6 +2919,7 @@ hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t
     bidx_t *bidx;
     uint64_t min_off, max_off;
     hts_itr_t *iter;
+    uint32_t unmapped = 0, rel_off;
 
     // It's possible to call this function with NULL idx iff
     // tid is one of the special values HTS_IDX_REST or HTS_IDX_NONE
@@ -2594,13 +2953,20 @@ hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t
               return NULL;
             }
 
+            k = kh_get(bin, bidx, META_BIN(idx));
+            if (k != kh_end(bidx))
+                unmapped = kh_val(bidx, k).list[1].v;
+            else
+                unmapped = 1;
+
             iter->tid = tid, iter->beg = beg, iter->end = end; iter->i = -1;
             iter->readrec = readrec;
 
             if ( !kh_size(bidx) ) { iter->finished = 1; return iter; }
 
+            rel_off = beg>>idx->min_shift;
             // compute min_off
-            bin = hts_bin_first(idx->n_lvls) + (beg>>idx->min_shift);
+            bin = hts_bin_first(idx->n_lvls) + rel_off;
             do {
                 int first;
                 k = kh_get(bin, bidx, bin);
@@ -2611,10 +2977,31 @@ hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t
             } while (bin);
             if (bin == 0) k = kh_get(bin, bidx, bin);
             min_off = k != kh_end(bidx)? kh_val(bidx, k).loff : 0;
+            // min_off can be calculated more accurately if the
+            // linear index is available
             if (idx->lidx[tid].offset
-                && beg>>idx->min_shift < idx->lidx[tid].n
-                && min_off < idx->lidx[tid].offset[beg>>idx->min_shift])
-                min_off = idx->lidx[tid].offset[beg>>idx->min_shift];
+                && rel_off < idx->lidx[tid].n) {
+                if (min_off < idx->lidx[tid].offset[rel_off])
+                    min_off = idx->lidx[tid].offset[rel_off];
+                if (unmapped) {
+                    // unmapped reads are not covered by the linear index,
+                    // so search backwards for a smaller offset
+                    int tmp_off;
+                    for (tmp_off = rel_off-1; tmp_off >= 0; tmp_off--) {
+                        if (idx->lidx[tid].offset[tmp_off] < min_off) {
+                            min_off = idx->lidx[tid].offset[tmp_off];
+                            break;
+                        }
+                    }
+                    // if the search went too far back or no satisfactory entry
+                    // was found, revert to the bin index loff value
+                    if (k != kh_end(bidx) && (min_off < kh_val(bidx, k).loff || tmp_off < 0))
+                        min_off = kh_val(bidx, k).loff;
+                }
+            } else if (unmapped) { //CSI index
+                if (k != kh_end(bidx))
+                    min_off = kh_val(bidx, k).loff;
+            }
 
             // compute max_off: a virtual offset from a bin to the right of end
             bin = hts_bin_first(idx->n_lvls) + ((end-1) >> idx->min_shift) + 1;
@@ -2697,6 +3084,7 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
     int tid;
     hts_pos_t beg, end;
     hts_reglist_t *curr_reg;
+    uint32_t unmapped = 0, rel_off;
 
     if (!idx || !iter || !iter->multi)
         return -1;
@@ -2713,6 +3101,7 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
                 switch (tid) {
                 case HTS_IDX_NONE:
                     iter->finished = 1;
+                    // fall through
                 case HTS_IDX_START:
                 case HTS_IDX_REST:
                     iter->curr_off = t_off;
@@ -2729,6 +3118,12 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
             if (tid >= idx->n || (bidx = idx->bidx[tid]) == NULL || !kh_size(bidx))
                 continue;
 
+            k = kh_get(bin, bidx, META_BIN(idx));
+            if (k != kh_end(bidx))
+                unmapped = kh_val(bidx, k).list[1].v;
+            else
+                unmapped = 1;
+
             for(j=0; j<curr_reg->count; j++) {
                 hts_pair32_t *curr_intv = &curr_reg->intervals[j];
                 if (curr_intv->end < curr_intv->beg)
@@ -2736,12 +3131,13 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
 
                 beg = curr_intv->beg;
                 end = curr_intv->end;
+                rel_off = beg>>idx->min_shift;
 
                 /* Compute 'min_off' by searching the lowest level bin containing 'beg'.
                        If the computed bin is not in the index, try the next bin to the
                        left, belonging to the same parent. If it is the first sibling bin,
                        try the parent bin. */
-                bin = hts_bin_first(idx->n_lvls) + (beg>>idx->min_shift);
+                bin = hts_bin_first(idx->n_lvls) + rel_off;
                 do {
                     int first;
                     k = kh_get(bin, bidx, bin);
@@ -2756,9 +3152,25 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
                 // min_off can be calculated more accurately if the
                 // linear index is available
                 if (idx->lidx[tid].offset
-                    && beg>>idx->min_shift < idx->lidx[tid].n
-                    && min_off < idx->lidx[tid].offset[beg>>idx->min_shift])
-                    min_off = idx->lidx[tid].offset[beg>>idx->min_shift];
+                    && rel_off < idx->lidx[tid].n) {
+                    if (min_off < idx->lidx[tid].offset[rel_off])
+                        min_off = idx->lidx[tid].offset[rel_off];
+                    if (unmapped) {
+                        int tmp_off;
+                        for (tmp_off = rel_off-1; tmp_off >= 0; tmp_off--) {
+                            if (idx->lidx[tid].offset[tmp_off] < min_off) {
+                                min_off = idx->lidx[tid].offset[tmp_off];
+                                break;
+                            }
+                        }
+
+                        if (k != kh_end(bidx) && (min_off < kh_val(bidx, k).loff || tmp_off < 0))
+                            min_off = kh_val(bidx, k).loff;
+                    }
+                } else if (unmapped) { //CSI index
+                    if (k != kh_end(bidx))
+                        min_off = kh_val(bidx, k).loff;
+                }
 
                 // compute max_off: a virtual offset from a bin to the right of end
                 bin = hts_bin_first(idx->n_lvls) + ((end-1) >> idx->min_shift) + 1;
@@ -3968,11 +4380,11 @@ static hts_idx_t *idx_find_and_load(const char *fn, int fmt, int flags)
 
     if (hts_idx_check_local(fn, fmt, &fnidx) == 0 && hisremote(fn)) {
         if (flags & HTS_IDX_SAVE_REMOTE) {
-            fnidx = hts_idx_getfn(fn, ".csi");
+            fnidx = idx_filename(fn, ".csi", HTS_IDX_SAVE_REMOTE);
             if (!fnidx) {
                 switch (fmt) {
-                case HTS_FMT_BAI: fnidx = hts_idx_getfn(fn, ".bai"); break;
-                case HTS_FMT_TBI: fnidx = hts_idx_getfn(fn, ".tbi"); break;
+                case HTS_FMT_BAI: fnidx = idx_filename(fn, ".bai", HTS_IDX_SAVE_REMOTE); break;
+                case HTS_FMT_TBI: fnidx = idx_filename(fn, ".tbi", HTS_IDX_SAVE_REMOTE); break;
                 default: break;
                 }
             }

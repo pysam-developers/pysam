@@ -1,6 +1,6 @@
 /*  reheader.c -- reheader subcommand.
 
-    Copyright (C) 2014-2020 Genome Research Ltd.
+    Copyright (C) 2014-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -49,7 +49,7 @@ THE SOFTWARE.  */
 typedef struct _args_t
 {
     char **argv, *fname, *samples_fname, *header_fname, *output_fname;
-    char *fai_fname, *rm_tmpfile;
+    char *fai_fname, *rm_tmpfile, *tmp_prefix;
     htsFile *fp;
     htsFormat type;
     htsThreadPool *threads;
@@ -140,6 +140,33 @@ static char *copy_and_update_contig_line(faidx_t *fai, char *line, void *chr_see
     free(key.s); free(val.s); free(tmp.s);
     return q;
 }
+char *init_tmp_prefix(const char *tmp_prefix)
+{
+    char *prefix = NULL;
+    if ( tmp_prefix )
+    {
+        int len = strlen(tmp_prefix);
+        prefix = (char*) calloc(len+7,1);
+        memcpy(prefix,tmp_prefix,len);
+        memcpy(prefix+len,"XXXXXX",6);
+    }
+    else
+    {
+        #ifdef _WIN32
+            char tmp_path[MAX_PATH];
+            int ret = GetTempPath(MAX_PATH, tmp_path);
+            if (!ret || ret > MAX_PATH)
+                error("Could not get the path to the temporary folder\n");
+            if (strlen(tmp_path) + strlen("/bcftools.XXXXXX") >= MAX_PATH)
+                error("Full path to the temporary folder is too long\n");
+            strcat(tmp_path, "/bcftools.XXXXXX");
+            prefix = strdup(tmp_path);
+        #else
+            prefix = strdup("/tmp/bcftools.XXXXXX");
+        #endif
+    }
+    return prefix;
+}
 static void update_from_fai(args_t *args)
 {
     if ( !strcmp("-",args->fname) )
@@ -147,18 +174,7 @@ static void update_from_fai(args_t *args)
 
     faidx_t *fai = fai_load3(args->fai_fname,args->fai_fname,NULL,FAI_FASTA);
     if ( !fai ) error("Could not parse %s\n", args->fai_fname);
-#ifdef _WIN32
-    char tmp_path[MAX_PATH];
-    int ret = GetTempPath(MAX_PATH, tmp_path);
-    if (!ret || ret > MAX_PATH)
-        error("Could not get the path to the temporary folder\n");
-    if (strlen(tmp_path) + strlen("/bcftools-fai-header-XXXXXX") >= MAX_PATH)
-        error("Full path to the temporary folder is too long\n");
-    strcat(tmp_path, "/bcftools-fai-header-XXXXXX");
-    args->rm_tmpfile = strdup(tmp_path);
-#else
-    args->rm_tmpfile = strdup("/tmp/bcftools-fai-header-XXXXXX");
-#endif
+    args->rm_tmpfile = init_tmp_prefix(args->tmp_prefix);
     int fd = mkstemp(args->rm_tmpfile);
     if ( fd<0 ) error("Could not open a temporary file for writing: %s\n", args->rm_tmpfile);
 
@@ -273,8 +289,8 @@ static int set_sample_pairs(char **samples, int nsamples, kstring_t *hdr, int id
     hdr->s[hdr->l] = 0;
 
     kstring_t tmp = {0,0,0};
-    i = j = n = 0;
-    while ( hdr->s[idx+i] && hdr->s[idx+i])
+    i = j = n = 0;  // i:traverse the #CHROM line 1 by 1; j:points to the last column
+    while ( hdr->s[idx+i] )
     {
         if ( hdr->s[idx+i]=='\t' )
         {
@@ -282,8 +298,8 @@ static int set_sample_pairs(char **samples, int nsamples, kstring_t *hdr, int id
 
             if ( ++n>9 )
             {
-                char *ori = khash_str2str_get(hash,hdr->s+idx+j);
-                kputs(ori ? ori : hdr->s+idx+j, &tmp);
+                char *new_name = khash_str2str_get(hash,hdr->s+idx+j);
+                kputs(new_name ? new_name : hdr->s+idx+j, &tmp);
             }
             else
                 kputs(hdr->s+idx+j, &tmp);
@@ -295,8 +311,8 @@ static int set_sample_pairs(char **samples, int nsamples, kstring_t *hdr, int id
         }
         i++;
     }
-    char *ori = khash_str2str_get(hash,hdr->s+idx+j);
-    kputs(ori ? ori : hdr->s+idx+j, &tmp);
+    char *new_name = khash_str2str_get(hash,hdr->s+idx+j);
+    kputs(new_name ? new_name : hdr->s+idx+j, &tmp);
 
     khash_str2str_destroy_free_all(hash);
 
@@ -654,11 +670,16 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools reheader [OPTIONS] <in.vcf.gz>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -f, --fai <file>        update sequences and their lengths from the .fai file\n");
-    fprintf(stderr, "    -h, --header <file>     new header\n");
-    fprintf(stderr, "    -o, --output <file>     write output to a file [standard output]\n");
-    fprintf(stderr, "    -s, --samples <file>    new sample names\n");
-    fprintf(stderr, "        --threads <int>     use multithreading with <int> worker threads (BCF only) [0]\n");
+    fprintf(stderr, "    -f, --fai FILE             update sequences and their lengths from the .fai file\n");
+    fprintf(stderr, "    -h, --header FILE          new header\n");
+    fprintf(stderr, "    -o, --output FILE          write output to a file [standard output]\n");
+    fprintf(stderr, "    -s, --samples FILE         new sample names\n");
+#ifdef _WIN32
+    fprintf(stderr, "    -T, --temp-prefix PATH     template for temporary file name [/bcftools.XXXXXX]\n");
+#else
+    fprintf(stderr, "    -T, --temp-prefix PATH     template for temporary file name [/tmp/bcftools.XXXXXX]\n");
+#endif
+    fprintf(stderr, "        --threads INT          use multithreading with <int> worker threads (BCF only) [0]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Example:\n");
     fprintf(stderr, "   # Write out the header to be modified\n");
@@ -681,6 +702,7 @@ int main_reheader(int argc, char *argv[])
     
     static struct option loptions[] =
     {
+        {"temp-prefix",1,0,'T'},
         {"fai",1,0,'f'},
         {"output",1,0,'o'},
         {"header",1,0,'h'},
@@ -688,11 +710,12 @@ int main_reheader(int argc, char *argv[])
         {"threads",1,NULL,1},
         {0,0,0,0}
     };
-    while ((c = getopt_long(argc, argv, "s:h:o:f:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "s:h:o:f:T:",loptions,NULL)) >= 0)
     {
         switch (c)
         {
             case  1 : args->n_threads = strtol(optarg, 0, 0); break;
+            case 'T': args->tmp_prefix = optarg; break;
             case 'f': args->fai_fname = optarg; break;
             case 'o': args->output_fname = optarg; break;
             case 's': args->samples_fname = optarg; break;

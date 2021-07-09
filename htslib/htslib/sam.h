@@ -1,7 +1,7 @@
 /// @file htslib/sam.h
 /// High-level SAM/BAM/CRAM sequence file operations.
 /*
-    Copyright (C) 2008, 2009, 2013-2020 Genome Research Ltd.
+    Copyright (C) 2008, 2009, 2013-2021 Genome Research Ltd.
     Copyright (C) 2010, 2012, 2013 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -27,7 +27,9 @@ DEALINGS IN THE SOFTWARE.  */
 #ifndef HTSLIB_SAM_H
 #define HTSLIB_SAM_H
 
+#include <errno.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include "hts.h"
 #include "hts_endian.h"
 
@@ -237,7 +239,7 @@ typedef struct bam1_core_t {
     See the bam_cigar_* macros for manipulation.
  4. seq is nibble-encoded according to bam_nt16_table.
     See the bam_seqi macro for retrieving individual bases.
- 5. Per base qualilties are stored in the Phred scale with no +33 offset.
+ 5. Per base qualities are stored in the Phred scale with no +33 offset.
     Ie as per the BAM specification and not the SAM ASCII printable method.
  */
 typedef struct bam1_t {
@@ -902,7 +904,7 @@ void bam_destroy1(bam1_t *b);
 
    if (!recs || !buffer) goto cleanup;
    for (nrecs = 0; nrecs < MAX_RECS; nrecs++) {
-      bam_set_mempolicy(BAM_USER_OWNS_STRUCT|BAM_USER_OWNS_DATA);
+      bam_set_mempolicy(&recs[nrecs], BAM_USER_OWNS_STRUCT|BAM_USER_OWNS_DATA);
 
       // Set data pointer to unused part of buffer
       recs[nrecs].data = &buffer[buff_used];
@@ -1002,6 +1004,37 @@ bam1_t *bam_copy1(bam1_t *bdst, const bam1_t *bsrc) HTS_RESULT_USED;
 HTSLIB_EXPORT
 bam1_t *bam_dup1(const bam1_t *bsrc);
 
+/// Sets all components of an alignment structure
+/**
+   @param bam      Target alignment structure. Must be initialized by a call to bam_init1().
+                   The data field will be reallocated automatically as needed.
+   @param l_qname  Length of the query name. If set to 0, the placeholder query name "*" will be used.
+   @param qname    Query name, may be NULL if l_qname = 0
+   @param flag     Bitwise flag, a combination of the BAM_F* constants.
+   @param tid      Chromosome ID, defined by sam_hdr_t (a.k.a. RNAME).
+   @param pos      0-based leftmost coordinate.
+   @param mapq     Mapping quality.
+   @param n_cigar  Number of CIGAR operations.
+   @param cigar    CIGAR data, may be NULL if n_cigar = 0.
+   @param mtid     Chromosome ID of next read in template, defined by sam_hdr_t (a.k.a. RNEXT).
+   @param mpos     0-based leftmost coordinate of next read in template (a.k.a. PNEXT).
+   @param isize    Observed template length ("insert size") (a.k.a. TLEN).
+   @param l_seq    Length of the query sequence (read) and sequence quality string.
+   @param seq      Sequence, may be NULL if l_seq = 0.
+   @param qual     Sequence quality, may be NULL.
+   @param l_aux    Length to be reserved for auxiliary field data, may be 0.
+
+   @return >= 0 on success (number of bytes written to bam->data), negative (with errno set) on failure.
+*/
+HTSLIB_EXPORT
+int bam_set1(bam1_t *bam,
+             size_t l_qname, const char *qname,
+             uint16_t flag, int32_t tid, hts_pos_t pos, uint8_t mapq,
+             size_t n_cigar, const uint32_t *cigar,
+             int32_t mtid, hts_pos_t mpos, hts_pos_t isize,
+             size_t l_seq, const char *seq, const char *qual,
+             size_t l_aux);
+
 /// Calculate query length from CIGAR data
 /**
    @param n_cigar   Number of items in @p cigar
@@ -1071,6 +1104,29 @@ char *bam_flag2str(int flag);   /** The string must be freed by the user */
 HTSLIB_EXPORT
 int bam_set_qname(bam1_t *b, const char *qname);
 
+/*! @function
+ @abstract  Parse a CIGAR string into a uint32_t array
+ @param  in      [in]  pointer to the source string
+ @param  end     [out] address of the pointer to the new end of the input string
+                       can be NULL
+ @param  a_cigar [in/out]  address of the destination uint32_t buffer
+ @param  a_mem   [in/out]  address of the allocated number of buffer elements
+ @return         number of processed CIGAR operators; -1 on error
+ */
+HTSLIB_EXPORT
+ssize_t sam_parse_cigar(const char *in, char **end, uint32_t **a_cigar, size_t *a_mem);
+
+/*! @function
+ @abstract  Parse a CIGAR string into a bam1_t struct
+ @param  in      [in]  pointer to the source string
+ @param  end     [out] address of the pointer to the new end of the input string
+                       can be NULL
+ @param  b       [in/out]  address of the destination bam1_t struct
+ @return         number of processed CIGAR operators; -1 on error
+ */
+HTSLIB_EXPORT
+ssize_t bam_parse_cigar(const char *in, char **end, bam1_t *b);
+
 /*************************
  *** BAM/CRAM indexing ***
  *************************/
@@ -1080,7 +1136,7 @@ int bam_set_qname(bam1_t *b, const char *qname);
 #define bam_itr_destroy(iter) hts_itr_destroy(iter)
 #define bam_itr_queryi(idx, tid, beg, end) sam_itr_queryi(idx, tid, beg, end)
 #define bam_itr_querys(idx, hdr, region) sam_itr_querys(idx, hdr, region)
-#define bam_itr_next(htsfp, itr, r) hts_itr_next((htsfp)->fp.bgzf, (itr), (r), 0)
+#define bam_itr_next(htsfp, itr, r) sam_itr_next((htsfp), (itr), (r))
 
 // Load/build .csi or .bai BAM index file.  Does not work with CRAM.
 // It is recommended to use the sam_index_* functions below instead.
@@ -1103,7 +1159,7 @@ int sam_idx_init(htsFile *fp, sam_hdr_t *h, int min_shift, const char *fnidx);
 
 /// Writes the index initialised with sam_idx_init to disk.
 /** @param fp        File handle for the data file being written.
-    @return          0 on success, <0 on filaure.
+    @return          0 on success, <0 on failure.
 */
 HTSLIB_EXPORT
 int sam_idx_save(htsFile *fp) HTS_RESULT_USED;
@@ -1352,6 +1408,19 @@ const char *sam_parse_region(sam_hdr_t *h, const char *s, int *tid,
     HTSLIB_EXPORT
     int sam_write1(samFile *fp, const sam_hdr_t *h, const bam1_t *b) HTS_RESULT_USED;
 
+// Forward declaration, see hts_expr.h for full.
+struct hts_filter_t;
+
+/// sam_passes_filter - Checks whether a record passes an hts_filter.
+/** @param h      Pointer to the header structure previously read
+ *  @param b      Pointer to the BAM record to be checked
+ *  @param filt   Pointer to the filter, created from hts_filter_init.
+ *  @return       1 if passes, 0 if not, and <0 on error.
+ */
+HTSLIB_EXPORT
+int sam_passes_filter(const sam_hdr_t *h, const bam1_t *b,
+                      struct hts_filter_t *filt);
+
     /*************************************
      *** Manipulating auxiliary fields ***
      *************************************/
@@ -1363,7 +1432,7 @@ const char *sam_parse_region(sam_hdr_t *h, const char *s, int *tid,
  * @param type Single letter type code: ACcSsIifHZB.
  * @param tag  Tag data pointer, in BAM format
  * @param end  Pointer to end of bam record (largest extent of tag)
- * @param ks   Kstring to write the formatted tag to
+ * @param ks   kstring to write the formatted tag to
  *
  * @return pointer to end of tag on success,
  *         NULL on failure.
@@ -1962,6 +2031,21 @@ typedef struct bam_mplp_s *bam_mplp_t;
 HTSLIB_EXPORT
 int sam_cap_mapq(bam1_t *b, const char *ref, hts_pos_t ref_len, int thres);
 
+// Used as flag parameter in sam_prob_realn.
+enum htsRealnFlags {
+    BAQ_APPLY = 1,
+    BAQ_EXTEND = 2,
+    BAQ_REDO = 4,
+
+    // Platform subfield, in bit position 3 onwards
+    BAQ_AUTO = 0<<3,
+    BAQ_ILLUMINA = 1<<3,
+    BAQ_PACBIOCCS = 2<<3,
+    BAQ_PACBIO = 3<<3,
+    BAQ_ONT = 4<<3,
+    BAQ_GENAPSYS = 5<<3
+};
+
 /// Calculate BAQ scores
 /** @param b   BAM record
     @param ref     Reference sequence
@@ -1976,9 +2060,15 @@ This function calculates base alignment quality (BAQ) values using the method
 described in "Improving SNP discovery by base alignment quality", Heng Li,
 Bioinformatics, Volume 27, Issue 8 (https://doi.org/10.1093/bioinformatics/btr076).
 
+The @param flag value can be generated using the htsRealnFlags enum, but for
+backwards compatibilty reasons is retained as an "int".  An example usage
+of the enum could be this, equivalent to flag 19:
+
+    sam_prob_realn(b, ref, len, BAQ_APPLY | BAQ_EXTEND | BAQ_PACBIOCCS);
+
 The following @param flag bits can be used:
 
-Bit 0: Adjust the quality values using the BAQ values
+Bit 0 (BAQ_APPLY): Adjust the quality values using the BAQ values
 
  If set, the data in the BQ:Z tag is used to adjust the quality values, and
  the BQ:Z tag is renamed to ZQ:Z.
@@ -1986,22 +2076,28 @@ Bit 0: Adjust the quality values using the BAQ values
  If clear, and a ZQ:Z tag is present, the quality values are reverted using
  the data in the tag, and the tag is renamed to BQ:Z.
 
-Bit 1: Use "extended" BAQ.
+Bit 1 (BAQ_EXTEND): Use "extended" BAQ.
 
  Changes the BAQ calculation to increase sensitivity at the expense of
  reduced specificity.
 
-Bit 2: Recalculate BAQ, even if a BQ tag is present.
+Bit 2 (BAQ_REDO): Recalculate BAQ, even if a BQ tag is present.
 
  Force BAQ to be recalculated.  Note that a ZQ:Z tag will always disable
  recalculation.
+
+Bits 3-10: Choose parameters tailored to a specific instrument type.
+
+ One of BAQ_AUTO, BAQ_ILLUMINA, BAQ_PACBIOCCS, BAQ_PACBIO, BAQ_ONT and
+ BAQ_GENAPSYS.  The BAQ parameter tuning are still a work in progress and
+ at the time of writing mainly consist of Illumina vs long-read technology
+ adjustments.
 
 @bug
 If the input read has both BQ:Z and ZQ:Z tags, the ZQ:Z one will be removed.
 Depending on what previous processing happened, this may or may not be the
 correct thing to do.  It would be wise to avoid this situation if possible.
 */
-
 HTSLIB_EXPORT
 int sam_prob_realn(bam1_t *b, const char *ref, hts_pos_t ref_len, int flag);
 

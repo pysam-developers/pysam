@@ -3,7 +3,7 @@
 /*  em.c -- mathematical functions.
 
     Copyright (C) 2010, 2011 Broad Institute.
-    Portions copyright (C) 2013 Genome Research Ltd.
+    Portions copyright (C) 2013-2014 Genome Research Ltd.
 
     Author: Heng Li <lh3@live.co.uk>
 

@@ -1,6 +1,6 @@
 /*  bam_cat.c -- efficiently concatenates bam files.
 
-    Copyright (C) 2008-2009, 2011-2013, 2015-2017, 2019 Genome Research Ltd.
+    Copyright (C) 2008-2009, 2011-2013, 2015-2017, 2019, 2021 Genome Research Ltd.
     Modified SAMtools work copyright (C) 2010 Illumina, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -270,22 +270,13 @@ int cram_cat(int nfn, char * const *fn, const sam_hdr_t *h, const char* outcram,
 
         // Copy contains and blocks within them
         while ((c = cram_read_container(in_c))) {
-            cram_block *blk;
-
-           if (cram_container_is_empty(in_c)) {
-                if (cram_write_container(out_c, c) != 0)
-                    return -1;
-
+            if (cram_container_is_empty(in_c)) {
+                cram_block *blk;
                 // Container compression header
                 if (!(blk = cram_read_block(in_c)))
                     return -1;
-                if (cram_write_block(out_c, blk) != 0) {
-                    cram_free_block(blk);
-                    return -1;
-                }
                 cram_free_block(blk);
                 cram_free_container(c);
-
                 continue;
             }
 
@@ -297,6 +288,7 @@ int cram_cat(int nfn, char * const *fn, const sam_hdr_t *h, const char* outcram,
                 cram_transcode_rg(in_c, out_c, c, 1, &zero, &new_rg);
             } else {
                 int32_t num_slices;
+                cram_block *blk;
 
                 // Not switching rg so do the usual read/write loop
                 if (cram_write_container(out_c, c) != 0)
@@ -467,7 +459,7 @@ int main_cat(int argc, char *argv[])
     char *outfn = 0;
     char **infns = NULL; // files to concatenate
     int infns_size = 0;
-    int c, ret = 0, no_pg = 0;
+    int c, ret = 0, no_pg = 0, usage = 0;
     samFile *in;
     sam_global_args ga;
 
@@ -481,7 +473,7 @@ int main_cat(int argc, char *argv[])
 
     sam_global_args_init(&ga);
 
-    while ((c = getopt_long(argc, argv, "h:o:b:", lopts, NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "h:o:b:@:", lopts, NULL)) >= 0) {
         switch (c) {
             case 'h': {
                 samFile *fph = sam_open(optarg, "r");
@@ -522,6 +514,8 @@ int main_cat(int argc, char *argv[])
                 break;
             default:
                 if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
+                /* else fall-through */
+            case '?': usage=1; break;
         }
     }
 
@@ -539,7 +533,7 @@ int main_cat(int argc, char *argv[])
     }
 
     // Require at least one input file
-    if (infns_size + nargv_fns == 0) {
+    if (infns_size + nargv_fns == 0 || usage) {
         fprintf(stderr, "Usage: samtools cat [options] <in1.bam>  [... <inN.bam>]\n");
         fprintf(stderr, "       samtools cat [options] <in1.cram> [... <inN.cram>]\n\n");
         fprintf(stderr, "Concatenate BAM or CRAM files, first those in <bamlist.fofn>, then those\non the command line.\n\n");

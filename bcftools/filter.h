@@ -1,6 +1,6 @@
 /*  filter.h -- filter expressions.
 
-    Copyright (C) 2013-2014 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -45,6 +45,13 @@ void filter_destroy(filter_t *filter);
   *  Returns 1 if the expression is true and 0 if false.
   */
 int filter_test(filter_t *filter, bcf1_t *rec, const uint8_t **samples);
+
+/**
+  *  filter_set_samples() - restrict filtering expression to samples.
+  *             Call after filter_init().
+  *  @samples:  use samples set to 1, ignore samples set 0
+  */
+void filter_set_samples(filter_t *filter, const uint8_t *samples);
 
 /**
   *  filter_get_doubles() - return a pointer to values from the last filter_test() evaluation

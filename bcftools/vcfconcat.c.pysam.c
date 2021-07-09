@@ -2,7 +2,7 @@
 
 /*  vcfconcat.c -- Concatenate or combine VCF/BCF files.
 
-    Copyright (C) 2013-2019 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -118,7 +118,7 @@ static void init_data(args_t *args)
         bcf_hdr_append(args->out_hdr,"##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase Set\">");
     }
     if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_concat");
-    args->out_fh = hts_open(args->output_fname,hts_bcf_wmode(args->output_type));
+    args->out_fh = hts_open(args->output_fname,hts_bcf_wmode2(args->output_type,args->output_fname));
     if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->allow_overlaps || args->phased_concat )
     {
@@ -157,6 +157,7 @@ static void init_data(args_t *args)
             else if ( !strcmp(args->remove_dups,"any") ) args->files->collapse |= COLLAPSE_ANY;
             else if ( !strcmp(args->remove_dups,"all") ) args->files->collapse |= COLLAPSE_ANY;
             else if ( !strcmp(args->remove_dups,"none") ) args->files->collapse = COLLAPSE_NONE;
+            else if ( !strcmp(args->remove_dups,"exact") ) args->files->collapse = COLLAPSE_NONE;
             else error("The -D string \"%s\" not recognised.\n", args->remove_dups);
         }
         for (i=0; i<args->nfnames; i++)
@@ -236,6 +237,7 @@ static void phase_update(args_t *args, bcf_hdr_t *hdr, bcf1_t *rec)
         if ( !args->swap_phase[i] ) continue;
         int *gt = &args->GTa[i*2];
         if ( bcf_gt_is_missing(gt[0]) || gt[1]==bcf_int32_vector_end ) continue;
+        if ( !bcf_gt_is_phased(gt[1]) ) continue;
         SWAP(int, gt[0], gt[1]);
         gt[1] |= 1;
     }
@@ -848,8 +850,8 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "Options:\n");
     fprintf(bcftools_stderr, "   -a, --allow-overlaps           First coordinate of the next file can precede last record of the current file.\n");
     fprintf(bcftools_stderr, "   -c, --compact-PS               Do not output PS tag at each site, only at the start of a new phase set block.\n");
-    fprintf(bcftools_stderr, "   -d, --rm-dups <string>         Output duplicate records present in multiple files only once: <snps|indels|both|all|none>\n");
-    fprintf(bcftools_stderr, "   -D, --remove-duplicates        Alias for -d none\n");
+    fprintf(bcftools_stderr, "   -d, --rm-dups <string>         Output duplicate records present in multiple files only once: <snps|indels|both|all|exact>\n");
+    fprintf(bcftools_stderr, "   -D, --remove-duplicates        Alias for -d exact\n");
     fprintf(bcftools_stderr, "   -f, --file-list <file>         Read the list of files from a file.\n");
     fprintf(bcftools_stderr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
     fprintf(bcftools_stderr, "       --no-version               Do not append version and command line to the header\n");
@@ -906,7 +908,7 @@ int main_vcfconcat(int argc, char *argv[])
             case 'r': args->regions_list = optarg; break;
             case 'R': args->regions_list = optarg; args->regions_is_file = 1; break;
             case 'd': args->remove_dups = optarg; break;
-            case 'D': args->remove_dups = "none"; break;
+            case 'D': args->remove_dups = "exact"; break;
             case 'q': 
                 args->min_PQ = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --min-PQ %s\n", optarg);

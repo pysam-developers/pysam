@@ -17,11 +17,14 @@ tests/cbcf_data
 tests/tabix_data
 
 samtools/config.h
+samtools/samtools_config_vars.h
 bcftools/config.h
 htslib/config.status
 htslib/config.h
 htslib/config.log
 htslib/config.mk
+htslib/config_vars.h
+htslib/htscodecs.mk
 htslib/htslib.pc.tmp
 htslib/htslib-uninstalled.pc
 pysam/config.py

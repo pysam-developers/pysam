@@ -1,6 +1,6 @@
 /*  vcfconvert.c -- convert between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2020 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -394,7 +394,7 @@ static void gensample_to_vcf(args_t *args)
     for (i=0; i<nsamples; i++) free(samples[i]);
     free(samples);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
+    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
@@ -522,7 +522,7 @@ static void haplegendsample_to_vcf(args_t *args)
     for (i=0; i<nrows; i++) free(samples[i]);
     free(samples);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
+    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
@@ -636,7 +636,7 @@ static void hapsample_to_vcf(args_t *args)
     for (i=0; i<nsamples; i++) free(samples[i]);
     free(samples);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
+    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
@@ -986,7 +986,7 @@ static void vcf_to_hapsample(args_t *args)
     if ( args->output_vcf_ids )
         kputs("%CHROM %ID %POS %REF %FIRST_ALT ", &str);
     else
-        kputs("%CHROM %CHROM:%POS\\_%REF\\_%FIRST_ALT %POS %REF %FIRST_ALT ", &str);
+        kputs("%CHROM:%POS\\_%REF\\_%FIRST_ALT %CHROM:%POS\\_%REF\\_%FIRST_ALT %POS %REF %FIRST_ALT ", &str);
     
     if ( args->hap2dip )
         kputs("%_GT_TO_HAP2\n", &str);
@@ -1003,7 +1003,7 @@ static void vcf_to_hapsample(args_t *args)
     if ( n_files==1 )
     {
         int l = str.l;
-        kputs(".sample",&str);
+        kputs(".samples",&str);
         sample_fname = strdup(str.s);
         str.l = l;
         kputs(".hap.gz",&str);
@@ -1224,7 +1224,7 @@ static void tsv_to_vcf(args_t *args)
     bcf_hdr_add_sample(args->header, NULL);
     args->gts = (int32_t *) malloc(sizeof(int32_t)*n*2);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
+    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
@@ -1276,7 +1276,7 @@ static void tsv_to_vcf(args_t *args)
 static void vcf_to_vcf(args_t *args)
 {
     open_vcf(args,NULL);
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
+    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
 
@@ -1305,7 +1305,7 @@ static void gvcf_to_vcf(args_t *args)
     if ( !args->ref ) error("Could not load the fai index for reference %s\n", args->ref_fname);
 
     open_vcf(args,NULL);
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode(args->output_type));
+    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
 
@@ -1488,8 +1488,12 @@ int main_vcfconvert(int argc, char *argv[])
     };
     while ((c = getopt_long(argc, argv, "?h:r:R:s:S:t:T:i:e:g:G:o:O:c:f:H:",loptions,NULL)) >= 0) {
         switch (c) {
-            case 'e': args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
-            case 'i': args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
+            case 'e':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
+            case 'i':
+                if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
+                args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
             case 'r': args->regions_list = optarg; break;
             case 'R': args->regions_list = optarg; args->regions_is_file = 1; break;
             case 't': args->targets_list = optarg; break;

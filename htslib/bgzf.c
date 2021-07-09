@@ -2,7 +2,7 @@
 
    Copyright (c) 2008 Broad Institute / Massachusetts Institute of Technology
                  2011, 2012 Attractive Chaos <attractor@live.co.uk>
-   Copyright (C) 2009, 2013-2020 Genome Research Ltd
+   Copyright (C) 2009, 2013-2021 Genome Research Ltd
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -48,6 +48,10 @@
 #include "htslib/hts_endian.h"
 #include "cram/pooled_alloc.h"
 #include "hts_internal.h"
+
+#ifndef EFTYPE
+#define EFTYPE ENOEXEC
+#endif
 
 #define BGZF_CACHE
 #define BGZF_MT
@@ -273,7 +277,7 @@ static int bgzf_idx_flush(BGZF *fp) {
     hts_idx_cache_entry *e = mt->idx_cache.e;
     int i;
 
-    assert(mt->idx_cache.nentries == 0 || mt->block_written >= e[0].block_number);
+    assert(mt->idx_cache.nentries == 0 || mt->block_written <= e[0].block_number);
 
     for (i = 0; i < mt->idx_cache.nentries && e[i].block_number == mt->block_written; i++) {
         if (hts_idx_push(mt->hts_idx, e[i].tid, e[i].beg, e[i].end,
@@ -315,6 +319,37 @@ static inline void packInt32(uint8_t *buffer, uint32_t value)
     buffer[3] = value >> 24;
 }
 
+static void razf_info(hFILE *hfp, const char *filename)
+{
+    uint64_t usize, csize;
+    off_t sizes_pos;
+
+    if (filename == NULL || strcmp(filename, "-") == 0) filename = "FILE";
+
+    // RAZF files end with USIZE,CSIZE stored as big-endian uint64_t
+    if ((sizes_pos = hseek(hfp, -16, SEEK_END)) < 0) goto no_sizes;
+    if (hread(hfp, &usize, 8) != 8 || hread(hfp, &csize, 8) != 8) goto no_sizes;
+    if (!ed_is_big()) ed_swap_8p(&usize), ed_swap_8p(&csize);
+    if (csize >= sizes_pos) goto no_sizes; // Very basic validity check
+
+    hts_log_error(
+"To decompress this file, use the following commands:\n"
+"    truncate -s %" PRIu64 " %s\n"
+"    gunzip %s\n"
+"The resulting uncompressed file should be %" PRIu64 " bytes in length.\n"
+"If you do not have a truncate command, skip that step (though gunzip will\n"
+"likely produce a \"trailing garbage ignored\" message, which can be ignored).",
+                  csize, filename, filename, usize);
+    return;
+
+no_sizes:
+    hts_log_error(
+"To decompress this file, use the following command:\n"
+"    gunzip %s\n"
+"This will likely produce a \"trailing garbage ignored\" message, which can\n"
+"usually be safely ignored.", filename);
+}
+
 static const char *bgzf_zerr(int errnum, z_stream *zs)
 {
     static char buffer[32];
@@ -352,7 +387,7 @@ static const char *bgzf_zerr(int errnum, z_stream *zs)
     }
 }
 
-static BGZF *bgzf_read_init(hFILE *hfpr)
+static BGZF *bgzf_read_init(hFILE *hfpr, const char *filename)
 {
     BGZF *fp;
     uint8_t magic[18];
@@ -368,12 +403,22 @@ static BGZF *bgzf_read_init(hFILE *hfpr)
     fp->compressed_block = (char *)fp->uncompressed_block + BGZF_MAX_BLOCK_SIZE;
     fp->is_compressed = (n==18 && magic[0]==0x1f && magic[1]==0x8b);
     fp->is_gzip = ( !fp->is_compressed || ((magic[3]&4) && memcmp(&magic[12], "BC\2\0",4)==0) ) ? 0 : 1;
+    if (fp->is_compressed && (magic[3]&4) && memcmp(&magic[12], "RAZF", 4)==0) {
+        hts_log_error("Cannot decompress legacy RAZF format");
+        razf_info(hfpr, filename);
+        free(fp->uncompressed_block);
+        free(fp);
+        errno = EFTYPE;
+        return NULL;
+    }
 #ifdef BGZF_CACHE
     if (!(fp->cache = malloc(sizeof(*fp->cache)))) {
+        free(fp->uncompressed_block);
         free(fp);
         return NULL;
     }
     if (!(fp->cache->h = kh_init(cache))) {
+        free(fp->uncompressed_block);
         free(fp->cache);
         free(fp);
         return NULL;
@@ -446,11 +491,10 @@ fail:
 BGZF *bgzf_open(const char *path, const char *mode)
 {
     BGZF *fp = 0;
-    assert(compressBound(BGZF_BLOCK_SIZE) < BGZF_MAX_BLOCK_SIZE);
     if (strchr(mode, 'r')) {
         hFILE *fpr;
         if ((fpr = hopen(path, mode)) == 0) return 0;
-        fp = bgzf_read_init(fpr);
+        fp = bgzf_read_init(fpr, path);
         if (fp == 0) { hclose_abruptly(fpr); return NULL; }
         fp->fp = fpr;
     } else if (strchr(mode, 'w') || strchr(mode, 'a')) {
@@ -469,11 +513,10 @@ BGZF *bgzf_open(const char *path, const char *mode)
 BGZF *bgzf_dopen(int fd, const char *mode)
 {
     BGZF *fp = 0;
-    assert(compressBound(BGZF_BLOCK_SIZE) < BGZF_MAX_BLOCK_SIZE);
     if (strchr(mode, 'r')) {
         hFILE *fpr;
         if ((fpr = hdopen(fd, mode)) == 0) return 0;
-        fp = bgzf_read_init(fpr);
+        fp = bgzf_read_init(fpr, NULL);
         if (fp == 0) { hclose_abruptly(fpr); return NULL; } // FIXME this closes fd
         fp->fp = fpr;
     } else if (strchr(mode, 'w') || strchr(mode, 'a')) {
@@ -492,9 +535,8 @@ BGZF *bgzf_dopen(int fd, const char *mode)
 BGZF *bgzf_hopen(hFILE *hfp, const char *mode)
 {
     BGZF *fp = NULL;
-    assert(compressBound(BGZF_BLOCK_SIZE) < BGZF_MAX_BLOCK_SIZE);
     if (strchr(mode, 'r')) {
-        fp = bgzf_read_init(hfp);
+        fp = bgzf_read_init(hfp, NULL);
         if (fp == NULL) return NULL;
     } else if (strchr(mode, 'w') || strchr(mode, 'a')) {
         fp = bgzf_write_init(mode);
@@ -572,6 +614,7 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
     uint8_t *dst = (uint8_t*)_dst;
 
     if (level == 0) {
+    uncomp:
         // Uncompressed data
         if (*dlen < slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH) return -1;
         dst[BLOCK_HEADER_LENGTH] = 1; // BFINAL=1, BTYPE=00; see RFC1951
@@ -593,8 +636,20 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
             return -1;
         }
         if ((ret = deflate(&zs, Z_FINISH)) != Z_STREAM_END) {
-            hts_log_error("Deflate operation failed: %s", bgzf_zerr(ret, ret == Z_DATA_ERROR ? &zs : NULL));
+            if (ret == Z_OK && zs.avail_out == 0) {
+                deflateEnd(&zs);
+                goto uncomp;
+            } else {
+                hts_log_error("Deflate operation failed: %s", bgzf_zerr(ret, ret == Z_DATA_ERROR ? &zs : NULL));
+            }
             return -1;
+        }
+        // If we used up the entire output buffer, then we either ran out of
+        // room or we *just* fitted, but either way we may as well store
+        // uncompressed for faster decode.
+        if (zs.avail_out == 0) {
+            deflateEnd(&zs);
+            goto uncomp;
         }
         if ((ret = deflateEnd(&zs)) != Z_OK) {
             hts_log_error("Call to deflateEnd failed: %s", bgzf_zerr(ret, NULL));

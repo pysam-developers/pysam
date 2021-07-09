@@ -2,7 +2,7 @@
 
 /*  bamtk.c -- main samtools command front-end.
 
-    Copyright (C) 2008-2020 Genome Research Ltd.
+    Copyright (C) 2008-2021 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -32,8 +32,10 @@ DEALINGS IN THE SOFTWARE.  */
 #include <string.h>
 
 #include "htslib/hts.h"
+#include "htslib/hfile.h"
 #include "samtools.h"
 #include "version.h"
+#include "samtools_config_vars.h"
 
 int bam_taf2baf(int argc, char *argv[]);
 int bam_mpileup(int argc, char *argv[]);
@@ -48,7 +50,7 @@ int bam_fillmd(int argc, char *argv[]);
 int bam_idxstats(int argc, char *argv[]);
 int bam_markdup(int argc, char *argv[]);
 int main_samview(int argc, char *argv[]);
-int main_reheader(int argc, char *argv[]);
+int samtools_main_reheader(int argc, char *argv[]);
 int main_cut_target(int argc, char *argv[]);
 int main_phase(int argc, char *argv[]);
 int main_cat(int argc, char *argv[]);
@@ -68,10 +70,74 @@ int dict_main(int argc, char *argv[]);
 int fqidx_main(int argc, char *argv[]);
 int amplicon_clip_main(int argc, char *argv[]);
 int main_ampliconstats(int argc, char *argv[]);
+int main_import(int argc, char *argv[]);
 
 const char *samtools_version()
 {
     return SAMTOOLS_VERSION;
+}
+
+// These come out of the config.h file built by autoconf or Makefile
+const char *samtools_feature_string(void) {
+    const char *fmt =
+
+#ifdef PACKAGE_URL
+    "build=configure "
+#else
+    "build=Makefile "
+#endif
+
+#ifdef HAVE_CURSES
+    "curses=yes "
+#else
+    "curses=no "
+#endif
+    ;
+
+    return fmt;
+}
+
+static void long_version(void) {
+    fprintf(samtools_stdout, "samtools %s\n"
+           "Using htslib %s\n"
+           "Copyright (C) 2021 Genome Research Ltd.\n",
+           samtools_version(), hts_version());
+
+    fprintf(samtools_stdout, "\nSamtools compilation details:\n");
+    fprintf(samtools_stdout, "    Features:       %s\n", samtools_feature_string());
+    fprintf(samtools_stdout, "    CC:             %s\n", SAMTOOLS_CC);
+    fprintf(samtools_stdout, "    CPPFLAGS:       %s\n", SAMTOOLS_CPPFLAGS);
+    fprintf(samtools_stdout, "    CFLAGS:         %s\n", SAMTOOLS_CFLAGS);
+    fprintf(samtools_stdout, "    LDFLAGS:        %s\n", SAMTOOLS_LDFLAGS);
+    fprintf(samtools_stdout, "    HTSDIR:         %s\n", SAMTOOLS_HTSDIR);
+    fprintf(samtools_stdout, "    LIBS:           %s\n", SAMTOOLS_LIBS);
+    fprintf(samtools_stdout, "    CURSES_LIB:     %s\n", SAMTOOLS_CURSES_LIB);
+
+    fprintf(samtools_stdout, "\nHTSlib compilation details:\n");
+    fprintf(samtools_stdout, "    Features:       %s\n", hts_feature_string());
+    fprintf(samtools_stdout, "    CC:             %s\n", hts_test_feature(HTS_FEATURE_CC));
+    fprintf(samtools_stdout, "    CPPFLAGS:       %s\n", hts_test_feature(HTS_FEATURE_CPPFLAGS));
+    fprintf(samtools_stdout, "    CFLAGS:         %s\n", hts_test_feature(HTS_FEATURE_CFLAGS));
+    fprintf(samtools_stdout, "    LDFLAGS:        %s\n", hts_test_feature(HTS_FEATURE_LDFLAGS));
+
+    // Plugins and schemes
+    fprintf(samtools_stdout, "\nHTSlib URL scheme handlers present:\n");
+    const char *plugins[100];
+    int np = 100, i, j;
+
+    if (hfile_list_plugins(plugins, &np) < 0)
+        return;
+
+    for (i = 0; i < np; i++) {
+        const char *sc_list[100];
+        int nschemes = 100;
+        if (hfile_list_schemes(plugins[i], sc_list, &nschemes) < 0)
+            return;
+
+        fprintf(samtools_stdout, "    %s:\t", plugins[i]);
+        for (j = 0; j < nschemes; j++)
+            fprintf(samtools_stdout, " %s%c", sc_list[j], ",\n"[j+1==nschemes]);
+    }
 }
 
 static void usage(FILE *fp)
@@ -111,6 +177,7 @@ static void usage(FILE *fp)
 "     quickcheck     quickly check if SAM/BAM/CRAM file appears intact\n"
 "     fastq          converts a BAM to a FASTQ\n"
 "     fasta          converts a BAM to a FASTA\n"
+"     import         Converts FASTA or FASTQ files to SAM/BAM/CRAM\n"
 "\n"
 "  -- Statistics\n"
 "     bedcov         read depth per BED region\n"
@@ -127,6 +194,10 @@ static void usage(FILE *fp)
 "     tview          text alignment viewer\n"
 "     view           SAM<->BAM<->CRAM conversion\n"
 "     depad          convert padded BAM to unpadded BAM\n"
+"\n"
+"  -- Misc\n"
+"     help [cmd]     display this help message or help for [cmd]\n"
+"     version        detailed version information\n"
 "\n");
 }
 
@@ -141,11 +212,6 @@ static void usage(FILE *fp)
 #ifdef _WIN32
 int _CRT_glob = 0;
 #endif
-
-static void bam_import_err(void) {
-    fprintf(samtools_stderr, "[main] \"samtools import\" has been removed. "
-            "Please use \"samtools view\" instead.\n");
-}
 
 int samtools_main(int argc, char *argv[])
 {
@@ -167,7 +233,7 @@ int samtools_main(int argc, char *argv[])
 
     int ret = 0;
     if (strcmp(argv[1], "view") == 0)           ret = main_samview(argc-1, argv+1);
-    else if (strcmp(argv[1], "import") == 0)    { bam_import_err(); return 1; }
+    else if (strcmp(argv[1], "import") == 0)    ret = main_import(argc-1, argv+1);
     else if (strcmp(argv[1], "mpileup") == 0)   ret = bam_mpileup(argc-1, argv+1);
     else if (strcmp(argv[1], "merge") == 0)     ret = bam_merge(argc-1, argv+1);
     else if (strcmp(argv[1], "sort") == 0)      ret = bam_sort(argc-1, argv+1);
@@ -185,7 +251,7 @@ int samtools_main(int argc, char *argv[])
              strcmp(argv[1], "flagstats") == 0) ret = bam_flagstat(argc-1, argv+1);
     else if (strcmp(argv[1], "calmd") == 0)     ret = bam_fillmd(argc-1, argv+1);
     else if (strcmp(argv[1], "fillmd") == 0)    ret = bam_fillmd(argc-1, argv+1);
-    else if (strcmp(argv[1], "reheader") == 0)  ret = main_reheader(argc-1, argv+1);
+    else if (strcmp(argv[1], "reheader") == 0)  ret = samtools_main_reheader(argc-1, argv+1);
     else if (strcmp(argv[1], "cat") == 0)       ret = main_cat(argc-1, argv+1);
     else if (strcmp(argv[1], "targetcut") == 0) ret = main_cut_target(argc-1, argv+1);
     else if (strcmp(argv[1], "phase") == 0)     ret = main_phase(argc-1, argv+1);
@@ -212,12 +278,9 @@ int samtools_main(int argc, char *argv[])
     }
     //else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
     else if (strcmp(argv[1], "ampliconstats") == 0)     ret = main_ampliconstats(argc-1, argv+1);
-    else if (strcmp(argv[1], "--version") == 0) {
-        fprintf(samtools_stdout, 
-"samtools %s\n"
-"Using htslib %s\n"
-"Copyright (C) 2020 Genome Research Ltd.\n",
-               samtools_version(), hts_version());
+    else if (strcmp(argv[1], "version") == 0 || \
+             strcmp(argv[1], "--version") == 0) {
+        long_version();
     }
     else if (strcmp(argv[1], "--version-only") == 0) {
         fprintf(samtools_stdout, "%s+htslib-%s\n", samtools_version(), hts_version());
