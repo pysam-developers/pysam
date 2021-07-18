@@ -151,6 +151,11 @@ class TestAlignedSegment(ReadTest):
         # reset qual
         b = self.build_read()
 
+        def dual(name):
+            if name.endswith('is_unmapped'): return name.replace('unmapped', 'mapped')
+            elif name.endswith('is_mapped'): return name.replace('mapped', 'unmapped')
+            else: return name
+
         # check flags:
         for x in (
             "is_paired",
@@ -168,9 +173,20 @@ class TestAlignedSegment(ReadTest):
         ):
             setattr(b, x, True)
             self.assertEqual(getattr(b, x), True)
-            checkFieldEqual(self, a, b, ("flag", x,))
+            checkFieldEqual(self, a, b, ("flag", x, dual(x),))
             setattr(b, x, False)
             self.assertEqual(getattr(b, x), False)
+            checkFieldEqual(self, a, b)
+
+        for x in (
+            "is_mapped",
+            "mate_is_mapped",
+        ):
+            setattr(b, x, False)
+            self.assertEqual(getattr(b, x), False)
+            checkFieldEqual(self, a, b, ("flag", x, dual(x),))
+            setattr(b, x, True)
+            self.assertEqual(getattr(b, x), True)
             checkFieldEqual(self, a, b)
 
     def testUpdate2(self):
@@ -731,6 +747,7 @@ class TestAlignedSegment(ReadTest):
         # changing unmapped flag changes bin because length is 0
         a.is_unmapped = True
         self.assertTrue(a.is_unmapped)
+        self.assertFalse(a.is_mapped)
         self.assertEqual(a.bin, 4681)
 
         # unmapped read without chromosomal location
@@ -742,6 +759,7 @@ class TestAlignedSegment(ReadTest):
         a = self.build_read()
         a.pos = 20000
         self.assertFalse(a.is_unmapped)
+        self.assertTrue(a.is_mapped)
         self.assertEqual(a.bin, 4682)
 
         # updating length updates bin

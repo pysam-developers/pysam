@@ -1561,6 +1561,7 @@ cdef class AlignedSegment:
             return (self.flag & BAM_FPROPER_PAIR) != 0
         def __set__(self,val):
             pysam_update_flag(self._delegate, val, BAM_FPROPER_PAIR)
+
     property is_unmapped:
         """true if read itself is unmapped"""
         def __get__(self):
@@ -1571,12 +1572,30 @@ cdef class AlignedSegment:
             # bin as alignment length is now implicitly 1
             update_bin(self._delegate)
 
+    property is_mapped:
+        """true if read itself is mapped
+        (implemented in terms of :attr:`is_unmapped`)"""
+        def __get__(self):
+            return (self.flag & BAM_FUNMAP) == 0
+        def __set__(self, val):
+            pysam_update_flag(self._delegate, not val, BAM_FUNMAP)
+            update_bin(self._delegate)
+
     property mate_is_unmapped:
         """true if the mate is unmapped"""
         def __get__(self):
             return (self.flag & BAM_FMUNMAP) != 0
         def __set__(self,val):
             pysam_update_flag(self._delegate, val, BAM_FMUNMAP)
+
+    property mate_is_mapped:
+        """true if the mate is mapped
+        (implemented in terms of :attr:`mate_is_unmapped`)"""
+        def __get__(self):
+            return (self.flag & BAM_FMUNMAP) == 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, not val, BAM_FMUNMAP)
+
     property is_reverse:
         """true if read is mapped to reverse strand"""
         def __get__(self):
