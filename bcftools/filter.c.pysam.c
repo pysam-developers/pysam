@@ -2,7 +2,7 @@
 
 /*  filter.c -- filter expressions.
 
-    Copyright (C) 2013-2020 Genome Research Ltd.
+    Copyright (C) 2013-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1919,7 +1919,8 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
         for (i=0; i<atok->nsamples; i++) rtok->usmpl[i] |= atok->usmpl[i];
         for (i=0; i<btok->nsamples; i++) rtok->usmpl[i] |= btok->usmpl[i];
     }
-    memset(rtok->pass_samples, 0, rtok->nsamples);
+    if (rtok->nsamples)
+        memset(rtok->pass_samples, 0, rtok->nsamples);
 }
 
 #define VECTOR_ARITHMETICS(atok,btok,_rtok,AOP) \
@@ -3571,10 +3572,29 @@ int filter_max_unpack(filter_t *flt)
 
 const double *filter_get_doubles(filter_t *filter, int *nval, int *nval1)
 {
-    token_t *tok = filter->flt_stack[filter->nfilters-1];
-    *nval  = tok->nvalues;
-    *nval1 = tok->nval1;
+    token_t *tok = filter->flt_stack[0];
+    if ( tok->nvalues )
+    {
+        *nval  = tok->nvalues;
+        *nval1 = tok->nval1;
+    }
+    else
+    {
+        if ( !tok->values ) error("fixme in filter_get_doubles(): %s\n", filter->str);
+        *nval  = 1;
+        *nval1 = 1;
+        tok->values[0] = filter->flt_stack[0]->pass_site;
+    }
     return tok->values;
 }
 
+void filter_set_samples(filter_t *filter, const uint8_t *samples)
+{
+    int i,j;
+    for (i=0; i<filter->nfilters; i++)
+    {
+        if ( !filter->filters[i].nsamples ) continue;
+        for (j=0; j<filter->filters[i].nsamples; j++) filter->filters[i].usmpl[j] = samples[j];
+    }
+}
 

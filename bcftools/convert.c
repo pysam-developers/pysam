@@ -1407,7 +1407,7 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
         else if ( !strcmp(str.s, "_GT_TO_HAP2") ) register_tag(convert, T_GT_TO_HAP2, str.s, is_gtf);
         else if ( !strcmp(str.s, "RSX") ) register_tag(convert, T_RSX, str.s, is_gtf);
         else if ( !strcmp(str.s, "VKX") ) register_tag(convert, T_VKX, str.s, is_gtf);
-        else if ( !strcmp(str.s,"pbinom") ) error("Error: pbinom() is currently supported only with FORMAT tags. (todo)\n");
+        else if ( !strcmp(str.s,"PBINOM") ) error("Error: PBINOM() is currently supported only with FORMAT tags. (todo)\n");
         else if ( !strcmp(str.s, "INFO") )
         {
             if ( *q=='/' )

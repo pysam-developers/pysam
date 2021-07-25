@@ -1,6 +1,6 @@
 /*  ext-sort.h -- sort on disk
 
-   Copyright (C) 2020 Genome Research Ltd.
+   Copyright (C) 2020-2021 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -71,32 +71,6 @@ static inline int blk_is_smaller(blk_t **aptr, blk_t **bptr)
 
 size_t parse_mem_string(const char *str);
 
-static void _init_tmp_prefix(extsort_t *es, const char *tmp_prefix)
-{
-    if ( tmp_prefix )
-    {
-        int len = strlen(tmp_prefix);
-        es->tmp_prefix = (char*) calloc(len+7,1);
-        memcpy(es->tmp_prefix,tmp_prefix,len);
-        memcpy(es->tmp_prefix+len,"XXXXXX",6);
-    }
-    else
-    {
-        #ifdef _WIN32
-            char tmp_path[MAX_PATH];
-            int ret = GetTempPath(MAX_PATH, tmp_path);
-            if (!ret || ret > MAX_PATH)
-                error("Could not get the path to the temporary folder\n");
-            if (strlen(tmp_path) + strlen("/bcftools-sort.XXXXXX") >= MAX_PATH)
-                error("Full path to the temporary folder is too long\n");
-            strcat(tmp_path, "/bcftools-sort.XXXXXX");
-            es->tmp_prefix = strdup(tmp_path);
-        #else
-            es->tmp_prefix = strdup("/tmp/bcftools-sort.XXXXXX");
-        #endif
-    }
-}
-
 void extsort_set(extsort_t *es, extsort_opt_t key, void *value)
 {
     if ( key==DAT_SIZE ) { es->dat_size = *((size_t*)value); return; }
@@ -106,7 +80,7 @@ void extsort_set(extsort_t *es, extsort_opt_t key, void *value)
         if ( es->max_mem <=0 ) error("Could not parse the memory string, expected positive number: %s\n",*((const char**)value));
         return;
     }
-    if ( key==TMP_PREFIX ) { _init_tmp_prefix(es, *((const char**)value)); return; }
+    if ( key==TMP_PREFIX ) { es->tmp_prefix = init_tmp_prefix(*((const char**)value)); return; }
     if ( key==FUNC_CMP ) { es->cmp = *((extsort_cmp_f*)value); return; }
 }
 
@@ -120,7 +94,7 @@ void extsort_init(extsort_t *es)
 {
     assert( es->cmp );
     assert( es->dat_size );
-    if ( !es->tmp_prefix ) _init_tmp_prefix(es, NULL);
+    if ( !es->tmp_prefix ) es->tmp_prefix = init_tmp_prefix(NULL);
     es->tmp_dat = malloc(es->dat_size);
 }
 

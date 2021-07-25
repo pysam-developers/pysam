@@ -71,6 +71,7 @@ annot_line_t;
 #define REPLACE_ALL      1      // replace both missing and existing values
 #define REPLACE_NON_MISSING 2   // replace only if tgt is not missing
 #define SET_OR_APPEND    3      // set new value if missing or non-existent, append otherwise
+#define MATCH_VALUE      4      // do not set, just match the value -c ~ID
 #define MM_FIRST   0    // if multiple annotation lines overlap a VCF record, use the first, discarding the rest
 #define MM_APPEND  1    // append, possibly multiple times
 #define MM_UNIQUE  2    // append, only unique values
@@ -137,6 +138,7 @@ typedef struct _args_t
     int ref_idx, alt_idx, chr_idx, beg_idx, end_idx;   // -1 if not present
     annot_col_t *cols;      // column indexes and setters
     int ncols;
+    int match_id;           // set iff `-c ~ID` given
 
     char *set_ids_fmt;
     convert_t *set_ids;
@@ -206,6 +208,8 @@ void remove_info(args_t *args, bcf1_t *line, rm_tag_t *tag)
     for (i=0; i<line->n_info; i++)
     {
         bcf_info_t *inf = &line->d.info[i];
+        if (  !strcmp("END",bcf_hdr_int2id(args->hdr,BCF_DT_ID,inf->key)) )
+            line->rlen = line->n_allele ? strlen(line->d.allele[0]) : 0;
         if ( inf->vptr_free )
         {
             free(inf->vptr - inf->vptr_off);
@@ -545,6 +549,7 @@ static int vcf_setter_filter(args_t *args, bcf1_t *line, annot_col_t *col, void 
 static int setter_id(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
     if ( !data ) error("Error: the --merge-logic option cannot be used with ID (yet?)\n");
+    if ( col->replace==MATCH_VALUE ) return 0;
 
     // possible cases:
     //      IN  ANNOT   OUT     ACHIEVED_BY
@@ -567,6 +572,8 @@ static int setter_id(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 }
 static int vcf_setter_id(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
+    if ( col->replace==MATCH_VALUE ) return 0;
+
     bcf1_t *rec = (bcf1_t*) data;
 
     char *id;
@@ -2092,9 +2099,11 @@ static void init_columns(args_t *args)
             }
             else args->alt_idx = icol;
         }
-        else if ( !strcasecmp("ID",str.s) )
+        else if ( !strcasecmp("ID",str.s) || !strcasecmp("~ID",str.s) )
         {
             if ( replace==REPLACE_NON_MISSING ) error("Apologies, the -ID feature has not been implemented yet.\n");
+            if ( str.s[0]=='~' ) replace = MATCH_VALUE;
+            if ( args->tgts_is_vcf && replace==MATCH_VALUE ) error("todo: -c ~ID with -a VCF?\n");
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
             memset(col,0,sizeof(*col));
@@ -2103,6 +2112,7 @@ static void init_columns(args_t *args)
             col->setter = args->tgts_is_vcf ? vcf_setter_id : setter_id;
             col->hdr_key_src = strdup(str.s);
             col->hdr_key_dst = strdup(str.s);
+            if ( replace==MATCH_VALUE ) args->match_id = icol;
         }
         else if ( !strncasecmp("ID:=",str.s,4) )    // transfer a tag from INFO to ID column
         {
@@ -2228,7 +2238,11 @@ static void init_columns(args_t *args)
                 col->replace = replace;
                 col->hdr_key_src = strdup(hrec->vals[k]);
                 col->hdr_key_dst = strdup(hrec->vals[k]);
-                if ( !strcasecmp("GT",col->hdr_key_src) ) col->setter = vcf_setter_format_gt;
+                if ( !strcasecmp("GT",col->hdr_key_src) )
+                {
+                    if ( !args->tgts_is_vcf ) error("The FORMAT/GT field can be currently populated only from a VCF\n");
+                    col->setter = vcf_setter_format_gt;
+                }
                 else
                     switch ( bcf_hdr_id2type(args->hdr_out,BCF_HL_FMT,hdr_id) )
                     {
@@ -2281,7 +2295,11 @@ static void init_columns(args_t *args)
             col->replace = replace;
             col->hdr_key_src = strdup(key_src);
             col->hdr_key_dst = strdup(key_dst);
-            if ( !strcasecmp("GT",key_src) ) col->setter = vcf_setter_format_gt;
+            if ( !strcasecmp("GT",key_src) )
+            {
+                if ( !args->tgts_is_vcf ) error("The FORMAT/GT field can be currently populated only from a VCF\n");
+                col->setter = vcf_setter_format_gt;
+            }
             else
                 switch ( bcf_hdr_id2type(args->hdr_out,BCF_HL_FMT,hdr_id) )
                 {
@@ -2468,6 +2486,7 @@ static void init_merge_method(args_t *args)
         mm_type_str++;
         int mm_type = MM_FIRST;
         if ( !strcasecmp("unique",mm_type_str) ) mm_type = MM_UNIQUE;
+        else if ( !strcasecmp("first",mm_type_str) ) mm_type = MM_FIRST;
         else if ( !strcasecmp("append",mm_type_str) ) mm_type = MM_APPEND;
         else if ( !strcasecmp("append-missing",mm_type_str) )
         {
@@ -2786,6 +2805,36 @@ static void buffer_annot_lines(args_t *args, bcf1_t *line, int start_pos, int en
     }
 }
 
+// search string in semicolon separated strings (xx vs aa;bb)
+static int str_match(char *needle, char *haystack)
+{
+    int len = strlen(needle);
+    char *ptr = haystack;
+    while ( *ptr && (ptr=strstr(ptr,needle)) )
+    {
+        if ( ptr[len]!=0 && ptr[len]!=';' ) ptr++;          // a prefix, not a match
+        else if ( ptr==haystack || ptr[-1]==';' ) return 1; // a match
+        ptr++;  // a suffix, not a match
+    }
+    return 0;
+}
+// search common string in semicolon separated strings (xx;yy;zz vs aa;bb)
+static int strstr_match(char *a, char *b)
+{
+    char *beg = a;
+    while ( *beg )
+    {
+        char *end = beg;
+        while ( *end && *end!=';' ) end++;
+        char tmp = *end;
+        if ( *end==';' ) *end = 0;
+        int ret = str_match(beg,b);
+        *end = tmp;
+        if ( ret || !*end ) return ret;
+        beg = end + 1;
+    }
+    return 0;
+}
 static void annotate(args_t *args, bcf1_t *line)
 {
     int i, j;
@@ -2830,11 +2879,7 @@ static void annotate(args_t *args, bcf1_t *line)
         // must match some of the VCF alleles. If the append-missing mode is set (and REF+ALT is requested), the
         // buffered lines will annotate the VCF respecting the order in ALT and when no matching line is found
         // for an ALT, missing value is appended instead.
-        int len = 0;
-        bcf_get_variant_types(line);
-        for (i=1; i<line->n_allele; i++)
-            if ( len > line->d.var[i].n ) len = line->d.var[i].n;
-        int end_pos = len<0 ? line->pos - len : line->pos;
+        int end_pos = line->pos + line->rlen - 1;
         buffer_annot_lines(args, line, line->pos, end_pos);
 
         args->nsrt_alines = 0;
@@ -2860,6 +2905,7 @@ static void annotate(args_t *args, bcf1_t *line)
                         if ( ialt < 0 ) continue;
                         ialt++;
                     }
+                    if ( args->match_id>=0 && !strstr_match(line->d.id,args->alines[i].cols[args->match_id]) ) continue;
                     args->srt_alines[args->nsrt_alines++] = (ialt<<16) | i;
                     has_overlap = 1;
                     break;
@@ -3032,6 +3078,7 @@ int main_vcfannotate(int argc, char *argv[])
     args->record_cmd_line = 1;
     args->ref_idx = args->alt_idx = args->chr_idx = args->beg_idx = args->end_idx = -1;
     args->set_ids_replace = 1;
+    args->match_id = -1;
     int regions_is_file = 0, collapse = 0;
 
     static struct option loptions[] =

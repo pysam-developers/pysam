@@ -211,7 +211,7 @@ static name_context *create_context(int max_names) {
 	if (!ctx) return NULL;
 	ctx->max_names = max_names;
 	pthread_setspecific(tok_key, ctx);
-    } else if (ctx->max_names < max_names) {
+    } else if (ctx->max_names < max_names+1) {
 	ctx = realloc(ctx, sizeof(*ctx) + ++max_names*sizeof(*ctx->lc));
 	if (!ctx) return NULL;
 	ctx->max_names = max_names;
@@ -1057,6 +1057,8 @@ static int decode_name(name_context *ctx, char *name, int name_len) {
 	enum name_type tok;
 	tok = decode_token_type(ctx, ntok);
 	//fprintf(stderr, "Tok %d = %d\n", ntok, tok);
+
+	ctx->lc[cnum].last_ntok = 0;
 
 	switch (tok) {
 	case N_CHAR:

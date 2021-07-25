@@ -252,10 +252,14 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools sort [OPTIONS] <FILE.vcf>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -m, --max-mem <float>[kMG]    maximum memory to use [768M]\n");    // using metric units, 1M=1e6
-    fprintf(stderr, "    -o, --output <file>           output file name [stdout]\n");
-    fprintf(stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(stderr, "    -T, --temp-dir <dir>          temporary files [/tmp/bcftools-sort.XXXXXX]\n");
+    fprintf(stderr, "    -m, --max-mem FLOAT[kMG]    maximum memory to use [768M]\n");    // using metric units, 1M=1e6
+    fprintf(stderr, "    -o, --output FILE           output file name [stdout]\n");
+    fprintf(stderr, "    -O, --output-type b|u|z|v   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+#ifdef _WIN32
+    fprintf(stderr, "    -T, --temp-dir DIR          temporary files [/bcftools.XXXXXX]\n");
+#else
+    fprintf(stderr, "    -T, --temp-dir DIR          temporary files [/tmp/bcftools.XXXXXX]\n");
+#endif
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -274,21 +278,8 @@ size_t parse_mem_string(const char *str)
 void mkdir_p(const char *fmt, ...);
 static void init(args_t *args)
 {
-#ifdef _WIN32
-    char tmp_path[MAX_PATH];
-    int ret = GetTempPath(MAX_PATH, tmp_path);
-    if (!ret || ret > MAX_PATH)
-        error("Could not get the path to the temporary folder\n");
-    if (strlen(tmp_path) + strlen("/bcftools-sort.XXXXXX") >= MAX_PATH)
-        error("Full path to the temporary folder is too long\n");
-    strcat(tmp_path, "/bcftools-sort.XXXXXX");
-    args->tmp_dir = strdup(tmp_path);
-#else
-    args->tmp_dir = args->tmp_dir ? strdup(args->tmp_dir) : strdup("/tmp/bcftools-sort.XXXXXX");
-#endif
-    size_t len = strlen(args->tmp_dir);
-    if ( !strcmp("XXXXXX",args->tmp_dir+len-6) )
-    {
+    args->tmp_dir = init_tmp_prefix(args->tmp_dir);
+
 #ifdef _WIN32
         int ret = mkdir(mktemp(args->tmp_dir), 0700);
         if ( ret ) error("mkdir(%s) failed: %s\n", args->tmp_dir,strerror(errno));
@@ -298,10 +289,6 @@ static void init(args_t *args)
         int ret = chmod(tmp, S_IRUSR|S_IWUSR|S_IXUSR);
         if ( ret ) error("chmod(%s,S_IRUSR|S_IWUSR|S_IXUSR) failed: %s\n", args->tmp_dir,strerror(errno));
 #endif
-    }
-    else {
-        mkdir_p("%s/",args->tmp_dir);
-    }
 
     fprintf(stderr,"Writing to %s\n", args->tmp_dir);
 }
