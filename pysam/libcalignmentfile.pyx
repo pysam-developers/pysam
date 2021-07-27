@@ -1853,12 +1853,14 @@ cdef class AlignmentFile(HTSFile):
 
     def __next__(self):
         cdef int ret = self.cnext()
-        if (ret >= 0):
+        if ret >= 0:
             return makeAlignedSegment(self.b, self.header)
+        elif ret == -1:
+            raise StopIteration
         elif ret == -2:
             raise IOError('truncated file')
         else:
-            raise StopIteration
+            raise IOError("error while reading file: {}".format(ret))
 
     ###########################################
     # methods/properties referencing the header
@@ -2145,10 +2147,12 @@ cdef class IteratorRowHead(IteratorRow):
         if ret >= 0:
             self.current_row += 1
             return makeAlignedSegment(self.b, self.header)
+        elif ret == -1:
+            raise StopIteration
         elif ret == -2:
             raise IOError('truncated file')
         else:
-            raise StopIteration
+            raise IOError("error while reading file: {}".format(ret))
 
 
 cdef class IteratorRowAll(IteratorRow):
@@ -2190,10 +2194,12 @@ cdef class IteratorRowAll(IteratorRow):
         cdef int ret = self.cnext()
         if ret >= 0:
             return makeAlignedSegment(self.b, self.header)
+        elif ret == -1:
+            raise StopIteration
         elif ret == -2:
             raise IOError('truncated file')
         else:
-            raise StopIteration
+            raise IOError("error while reading file: {}".format(ret))
 
 
 cdef class IteratorRowAllRefs(IteratorRow):
@@ -2308,10 +2314,12 @@ cdef class IteratorRowSelection(IteratorRow):
         cdef int ret = self.cnext()
         if ret >= 0:
             return makeAlignedSegment(self.b, self.header)
+        elif ret == -1:
+            raise StopIteration
         elif ret == -2:
             raise IOError('truncated file')
         else:
-            raise StopIteration
+            raise IOError("error while reading file: {}".format(ret))
 
 
 cdef int __advance_nofilter(void *data, bam1_t *b):

@@ -1461,6 +1461,18 @@ class TestTruncatedBAM(unittest.TestCase):
         self.assertRaises(IOError, iterall, s)
 
 
+class TestCorruptBAM(unittest.TestCase):
+    """See pull request 1035."""
+
+    def testCorruptBamIterator(self):
+        s = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex2_corrupt.bam"))
+
+        def iterall(x):
+            return len([a for a in x])
+
+        self.assertRaises(IOError, iterall, s)
+
+
 COMPARE_BTAG = [100, 1, 91, 0, 7, 101, 0, 201, 96, 204,
                 0, 0, 87, 109, 0, 7, 97, 112, 1, 12, 78,
                 197, 0, 7, 100, 95, 101, 202, 0, 6, 0, 1,

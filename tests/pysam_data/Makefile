@@ -17,6 +17,7 @@ all: ex1.pileup.gz \
 	example_bai.bam \
         rg_with_tab.bam \
 	ex2_truncated.bam \
+	ex2_corrupt.bam \
 	empty.bam empty.bam.bai \
 	explicit_index.bam explicit_index.cram \
 	faidx_empty_seq.fq.gz \
@@ -64,6 +65,9 @@ ex1.pileup.gz:ex1.bam ex1.fa
 
 ex2_truncated.bam: ex2.bam
 	head -c 124000 ex2.bam > ex2_truncated.bam
+
+ex2_corrupt.bam: ex2.bam
+	./make_corrupt_bam.sh $< $@
 
 ex1_csi.bam: ex1.bam
 	cp ex1.bam ex1_csi.bam
