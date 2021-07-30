@@ -66,8 +66,9 @@ ex1.pileup.gz:ex1.bam ex1.fa
 ex2_truncated.bam: ex2.bam
 	head -c 124000 ex2.bam > ex2_truncated.bam
 
+# Append a corrupt read with block_size < sizeof(bam_core_t fields)
 ex2_corrupt.bam: ex2.bam
-	./make_corrupt_bam.sh $< $@
+	(bgzip -d < $<; printf '\37\0\0\0\1\0\0\0') | bgzip > $@
 
 ex1_csi.bam: ex1.bam
 	cp ex1.bam ex1_csi.bam

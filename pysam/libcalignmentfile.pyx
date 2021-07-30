@@ -175,6 +175,12 @@ cdef AlignmentHeader makeAlignmentHeader(bam_hdr_t *hdr):
 
     return header
 
+def read_failure_reason(code):
+    if code == -2:
+        return 'truncated file'
+    else:
+        return "error {} while reading file".format(code)
+
 
 # the following should be class-method for VariantHeader, but cdef @classmethods
 # are not implemented in cython.
@@ -1857,10 +1863,8 @@ cdef class AlignmentFile(HTSFile):
             return makeAlignedSegment(self.b, self.header)
         elif ret == -1:
             raise StopIteration
-        elif ret == -2:
-            raise IOError('truncated file')
         else:
-            raise IOError("error while reading file: {}".format(ret))
+            raise IOError(read_failure_reason(ret))
 
     ###########################################
     # methods/properties referencing the header
@@ -2149,10 +2153,8 @@ cdef class IteratorRowHead(IteratorRow):
             return makeAlignedSegment(self.b, self.header)
         elif ret == -1:
             raise StopIteration
-        elif ret == -2:
-            raise IOError('truncated file')
         else:
-            raise IOError("error while reading file: {}".format(ret))
+            raise IOError(read_failure_reason(ret))
 
 
 cdef class IteratorRowAll(IteratorRow):
@@ -2196,10 +2198,8 @@ cdef class IteratorRowAll(IteratorRow):
             return makeAlignedSegment(self.b, self.header)
         elif ret == -1:
             raise StopIteration
-        elif ret == -2:
-            raise IOError('truncated file')
         else:
-            raise IOError("error while reading file: {}".format(ret))
+            raise IOError(read_failure_reason(ret))
 
 
 cdef class IteratorRowAllRefs(IteratorRow):
@@ -2316,10 +2316,8 @@ cdef class IteratorRowSelection(IteratorRow):
             return makeAlignedSegment(self.b, self.header)
         elif ret == -1:
             raise StopIteration
-        elif ret == -2:
-            raise IOError('truncated file')
         else:
-            raise IOError("error while reading file: {}".format(ret))
+            raise IOError(read_failure_reason(ret))
 
 
 cdef int __advance_nofilter(void *data, bam1_t *b):
