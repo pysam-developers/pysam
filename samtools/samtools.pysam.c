@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <unistd.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +55,25 @@ int samtools_puts(const char *s)
   if (fputs(s, samtools_stdout) == EOF) return EOF;
   return putc('\n', samtools_stdout);
 }
+
+
+static jmp_buf samtools_jmpbuf;
+static int samtools_status = 0;
+
+int samtools_dispatch(int argc, char *argv[])
+{
+  if (setjmp(samtools_jmpbuf) == 0)
+    return samtools_main(argc, argv);
+  else
+    return samtools_status;
+}
+
+void samtools_exit(int status)
+{
+  samtools_status = status;
+  longjmp(samtools_jmpbuf, 1);
+}
+
 
 void samtools_set_optind(int val)
 {

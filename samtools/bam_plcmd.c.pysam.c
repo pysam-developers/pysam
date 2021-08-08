@@ -390,7 +390,7 @@ static void group_smpl(mplp_pileup_t *m, bam_sample_t *sm, kstring_t *buf,
             if (id < 0 || id >= m->n) {
                 assert(q); // otherwise a bug
                 fprintf(samtools_stderr, "[%s] Read group %s used in file %s but absent from the header or an alignment missing read group.\n", __func__, (char*)q+1, fn[i]);
-                exit(EXIT_FAILURE);
+                samtools_exit(EXIT_FAILURE);
             }
             if (m->n_plp[id] == m->m_plp[id]) {
                 m->m_plp[id] = m->m_plp[id]? m->m_plp[id]<<1 : 8;
@@ -443,7 +443,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
 
     if (n == 0) {
         fprintf(samtools_stderr,"[%s] no input file/data given\n", __func__);
-        exit(EXIT_FAILURE);
+        samtools_exit(EXIT_FAILURE);
     }
 
     // read the header of each file in the list and initialize data
@@ -454,23 +454,23 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
         if ( !data[i]->fp )
         {
             fprintf(samtools_stderr, "[%s] failed to open %s: %s\n", __func__, fn[i], strerror(errno));
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
         if (hts_set_opt(data[i]->fp, CRAM_OPT_DECODE_MD, 0)) {
             fprintf(samtools_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
         if (conf->fai_fname && hts_set_fai_filename(data[i]->fp, conf->fai_fname) != 0) {
             fprintf(samtools_stderr, "[%s] failed to process %s: %s\n",
                     __func__, conf->fai_fname, strerror(errno));
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
         data[i]->conf = conf;
         data[i]->ref = &mp_ref;
         h_tmp = sam_hdr_read(data[i]->fp);
         if ( !h_tmp ) {
             fprintf(samtools_stderr,"[%s] fail to read the header of %s\n", __func__, fn[i]);
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
         bam_smpl_add(sm, fn[i], (conf->flag&MPLP_IGNORE_RG)? 0 : sam_hdr_str(h_tmp));
         if (conf->flag & MPLP_BCF) {
@@ -488,11 +488,11 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
 
             if (idx == NULL) {
                 fprintf(samtools_stderr, "[%s] fail to load index for %s\n", __func__, fn[i]);
-                exit(EXIT_FAILURE);
+                samtools_exit(EXIT_FAILURE);
             }
             if ( (data[i]->iter=sam_itr_querys(idx, h_tmp, conf->reg)) == 0) {
                 fprintf(samtools_stderr, "[E::%s] fail to parse region '%s' with %s\n", __func__, conf->reg, fn[i]);
-                exit(EXIT_FAILURE);
+                samtools_exit(EXIT_FAILURE);
             }
             if (i == 0) beg0 = data[i]->iter->beg, end0 = data[i]->iter->end, tid0 = data[i]->iter->tid;
             hts_idx_destroy(idx);
@@ -530,7 +530,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
         bcf_fp = bcf_open(conf->output_fname? conf->output_fname : "-", mode);
         if (bcf_fp == NULL) {
             fprintf(samtools_stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname? conf->output_fname : "standard output", strerror(errno));
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
 
         // BCF header creation
@@ -614,7 +614,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
         if (bcf_hdr_write(bcf_fp, bcf_hdr) != 0) {
             print_error_errno("mpileup", "Failed to write VCF/BCF header to \"%s\"",
                               conf->output_fname? conf->output_fname : "standard output");
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
         // End of BCF header creation
 
@@ -653,7 +653,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
 
         if (pileup_fp == NULL) {
             fprintf(samtools_stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname, strerror(errno));
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
     }
 
@@ -699,7 +699,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
             if (bcf_write1(bcf_fp, bcf_hdr, bcf_rec) != 0) {
                 print_error_errno("mpileup", "Failed to write VCF/BCF record to \"%s\"",
                                   conf->output_fname?conf->output_fname:"standard output");
-                exit(EXIT_FAILURE);
+                samtools_exit(EXIT_FAILURE);
             }
             // call indels; todo: subsampling with total_depth>max_indel_depth instead of ignoring?
             if (!(conf->flag&MPLP_NO_INDEL) && total_depth < max_indel_depth && bcf_call_gap_prep(gplp.n, gplp.n_plp, gplp.plp, pos, bca, ref, rghash) >= 0)
@@ -713,7 +713,7 @@ static int mpileup(mplp_conf_t *conf, int n, char **fn, char **fn_idx)
                     if (bcf_write1(bcf_fp, bcf_hdr, bcf_rec) != 0) {
                         print_error_errno("mpileup", "Failed to write VCF/BCF record to \"%s\"",
                                           conf->output_fname?conf->output_fname:"standard output");
-                        exit(EXIT_FAILURE);
+                        samtools_exit(EXIT_FAILURE);
                     }
                 }
             }
@@ -1067,7 +1067,7 @@ int parse_format_flag(const char *str)
         else
         {
             fprintf(samtools_stderr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
-            exit(EXIT_FAILURE);
+            samtools_exit(EXIT_FAILURE);
         }
         free(tags[i]);
     }

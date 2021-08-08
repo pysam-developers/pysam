@@ -40,6 +40,8 @@ int @pysam@_puts(const char *s);
 
 int @pysam@_dispatch(int argc, char *argv[]);
 
+void @pysam@_exit(int status);
+
 void @pysam@_set_optind(int);
 
 extern int @pysam@_main(int argc, char *argv[]);

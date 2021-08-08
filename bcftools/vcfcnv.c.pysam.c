@@ -1237,7 +1237,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -P, --same-prob <float>            prior probability of -s/-c being the same [0.5]\n");
     fprintf(bcftools_stderr, "    -x, --xy-prob <float>              P(x|y) transition probability [1e-9]\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfcnv(int argc, char *argv[])

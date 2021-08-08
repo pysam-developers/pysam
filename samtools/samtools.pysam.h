@@ -40,6 +40,8 @@ int samtools_puts(const char *s);
 
 int samtools_dispatch(int argc, char *argv[]);
 
+void samtools_exit(int status);
+
 void samtools_set_optind(int);
 
 extern int samtools_main(int argc, char *argv[]);

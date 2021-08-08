@@ -885,7 +885,7 @@ static inline void update_dvaf(stats_t *stats, bcf1_t *line, bcf_fmt_t *fmt, int
         case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
         case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
         case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
-        default: fprintf(bcftools_stderr, "[E::%s] todo: %d\n", __func__, fmt->type); exit(1); break;
+        default: fprintf(bcftools_stderr, "[E::%s] todo: %d\n", __func__, fmt->type); bcftools_exit(1); break;
     }
     #undef BRANCH_INT
 
@@ -1033,7 +1033,7 @@ static void do_sample_stats(args_t *args, stats_t *stats, bcf_sr_t *reader, int 
             case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
             case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
             case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
-            default: fprintf(bcftools_stderr, "[E::%s] todo: %d\n", __func__, fmt_ptr->type); exit(1); break;
+            default: fprintf(bcftools_stderr, "[E::%s] todo: %d\n", __func__, fmt_ptr->type); bcftools_exit(1); break;
         }
         #undef BRANCH_INT
     }
@@ -1064,7 +1064,7 @@ static void do_sample_stats(args_t *args, stats_t *stats, bcf_sr_t *reader, int 
             case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
             case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
             case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
-            default: fprintf(bcftools_stderr, "[E::%s] todo: %d\n", __func__, fmt_ptr->type); exit(1); break;
+            default: fprintf(bcftools_stderr, "[E::%s] todo: %d\n", __func__, fmt_ptr->type); bcftools_exit(1); break;
         }
         #undef BRANCH_INT
     }
@@ -1770,7 +1770,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "        --threads INT                Use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "    -v, --verbose                    Produce verbose per-site and per-sample output\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfstats(int argc, char *argv[])

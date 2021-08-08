@@ -241,7 +241,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "Examples:\n");
     fprintf(bcftools_stderr, "\tbcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%SAMPLE=%%GT]\\n' file.vcf.gz\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfquery(int argc, char *argv[])

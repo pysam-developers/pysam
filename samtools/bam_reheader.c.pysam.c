@@ -444,7 +444,7 @@ static void usage(FILE *fp, int ret) {
            "    -i, --in-place      Modify the CRAM file directly, if possible.\n"
            "                        (Defaults to outputting to samtools_stdout.)\n"
            "    -c, --command CMD   Pass the header in SAM format to external program CMD.\n");
-    exit(ret);
+    samtools_exit(ret);
 }
 
 static sam_hdr_t* external_reheader(samFile* in, const char* external) {

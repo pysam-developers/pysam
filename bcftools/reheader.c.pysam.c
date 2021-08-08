@@ -693,7 +693,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   # Reheader the file\n");
     fprintf(bcftools_stderr, "   bcftools reheader -h header.txt -o new.bcf old.bcf\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_reheader(int argc, char *argv[])

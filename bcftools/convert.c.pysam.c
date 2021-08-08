@@ -273,7 +273,7 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
             case BCF_BT_INT32: if ( info->v1.i==bcf_int32_missing ) kputc('.', str); else kputw(info->v1.i, str); break;
             case BCF_BT_FLOAT: if ( bcf_float_is_missing(info->v1.f) ) kputc('.', str); else kputd(info->v1.f, str); break;
             case BCF_BT_CHAR:  kputc(info->v1.i, str); break;
-            default: fprintf(bcftools_stderr,"todo: type %d\n", info->type); exit(1); break;
+            default: fprintf(bcftools_stderr,"todo: type %d\n", info->type); bcftools_exit(1); break;
         }
     }
     else if ( fmt->subscript >=0 )
@@ -295,7 +295,7 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
             case BCF_BT_INT32: BRANCH(int32_t, val==bcf_int32_missing, val==bcf_int32_vector_end, kputw(val, str)); break;
             case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(val), bcf_float_is_vector_end(val), kputd(val, str)); break;
             case BCF_BT_CHAR:  _copy_field((char*)info->vptr, info->vptr_len, fmt->subscript, str); break;
-            default: fprintf(bcftools_stderr,"todo: type %d\n", info->type); exit(1); break;
+            default: fprintf(bcftools_stderr,"todo: type %d\n", info->type); bcftools_exit(1); break;
         }
         #undef BRANCH
     }
@@ -527,7 +527,7 @@ static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isam
         case BCF_BT_INT8:  BRANCH(uint8_t, 8); break;
         case BCF_BT_INT16: BRANCH(uint16_t,16); break;
         case BCF_BT_INT32: BRANCH(uint32_t,30); break;  // 2 bytes unused to account for the reserved BCF values
-        default: error("Unexpected type: %d\n", fmt->fmt->type); exit(1); break;
+        default: error("Unexpected type: %d\n", fmt->fmt->type); bcftools_exit(1); break;
     }
     #undef BRANCH
 

@@ -1158,7 +1158,7 @@ static void merge_AGR_info_tag(bcf_hdr_t *hdr, bcf1_t *line, bcf_info_t *info, i
                 case BCF_BT_INT16: BRANCH(int16_t, *src==bcf_int16_missing, *src==bcf_int16_vector_end, int); break;
                 case BCF_BT_INT32: BRANCH(int32_t, *src==bcf_int32_missing, *src==bcf_int32_vector_end, int); break;
                 case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(*src), bcf_float_is_vector_end(*src), float); break;
-                default: fprintf(bcftools_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); exit(1);
+                default: fprintf(bcftools_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); bcftools_exit(1);
             }
             #undef BRANCH
         }
@@ -1188,7 +1188,7 @@ static void merge_AGR_info_tag(bcf_hdr_t *hdr, bcf1_t *line, bcf_info_t *info, i
                 case BCF_BT_INT16: BRANCH(int16_t, src[kori]==bcf_int16_missing, src[kori]==bcf_int16_vector_end, int); break;
                 case BCF_BT_INT32: BRANCH(int32_t, src[kori]==bcf_int32_missing, src[kori]==bcf_int32_vector_end, int); break;
                 case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(src[kori]), bcf_float_is_vector_end(src[kori]), float); break;
-                default: fprintf(bcftools_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); exit(1);
+                default: fprintf(bcftools_stderr,"TODO: %s:%d .. info->type=%d\n", __FILE__,__LINE__, info->type); bcftools_exit(1);
             }
             #undef BRANCH
         }
@@ -3104,7 +3104,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
     fprintf(bcftools_stderr, "        --threads <int>                use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfmerge(int argc, char *argv[])

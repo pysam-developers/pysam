@@ -2091,7 +2091,7 @@ static void HTS_NORETURN error(const char *format, ...)
         vfprintf(samtools_stderr, format, ap);
         va_end(ap);
     }
-    exit(1);
+    samtools_exit(1);
 }
 
 void cleanup_stats_info(stats_info_t* info){

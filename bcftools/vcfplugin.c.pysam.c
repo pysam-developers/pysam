@@ -577,7 +577,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -v, --verbose               print verbose information, -vv increases verbosity\n");
     fprintf(bcftools_stderr, "   -V, --version               print version string and exit\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 static int is_verbose(int argc, char *argv[])

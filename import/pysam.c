@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <unistd.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +55,25 @@ int @pysam@_puts(const char *s)
   if (fputs(s, @pysam@_stdout) == EOF) return EOF;
   return putc('\n', @pysam@_stdout);
 }
+
+
+static jmp_buf @pysam@_jmpbuf;
+static int @pysam@_status = 0;
+
+int @pysam@_dispatch(int argc, char *argv[])
+{
+  if (setjmp(@pysam@_jmpbuf) == 0)
+    return @pysam@_main(argc, argv);
+  else
+    return @pysam@_status;
+}
+
+void @pysam@_exit(int status)
+{
+  @pysam@_status = status;
+  longjmp(@pysam@_jmpbuf, 1);
+}
+
 
 void @pysam@_set_optind(int val)
 {

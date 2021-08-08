@@ -803,7 +803,7 @@ static int parse_output_tags(const char *str)
         else
         {
             fprintf(bcftools_stderr,"Could not parse \"%s\"\n", str);
-            exit(1);
+            bcftools_exit(1);
         }
         if ( !*se ) break;
         ss = se + 1;
@@ -857,12 +857,12 @@ ploidy_t *init_ploidy(char *alias)
         fprintf(bcftools_stderr,"Run as --ploidy <alias> (e.g. --ploidy GRCh37).\n");
         fprintf(bcftools_stderr,"To see the detailed ploidy definition, append a question mark (e.g. --ploidy GRCh37?).\n");
         fprintf(bcftools_stderr,"\n");
-        exit(-1);
+        bcftools_exit(-1);
     }
     else if ( detailed )
     {
         fprintf(bcftools_stderr,"%s", pld->ploidy);
-        exit(-1);
+        bcftools_exit(-1);
     }
     return ploidy_init_string(pld->ploidy,2);
 }
@@ -926,7 +926,7 @@ static void usage(args_t *args)
     // fprintf(bcftools_stderr, "       -U INT    number of permutations for association testing (effective with -1) [0]\n");
     // fprintf(bcftools_stderr, "       -X FLOAT  only perform permutations for P(chi^2)<FLOAT [%g]\n", args->aux.min_perm_p);
     fprintf(bcftools_stderr, "\n");
-    exit(-1);
+    bcftools_exit(-1);
 }
 
 int main_vcfcall(int argc, char *argv[])

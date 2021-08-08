@@ -773,7 +773,7 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
             case BCF_BT_INT8:  BRANCH(int8_t); break;
             case BCF_BT_INT16: BRANCH(int16_t); break;
             case BCF_BT_INT32: BRANCH(int32_t); break;
-            default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+            default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); bcftools_exit(1);
         }
         #undef BRANCH
     }
@@ -803,7 +803,7 @@ int estimate_AF_from_PL(args_t *args, bcf_fmt_t *fmt_pl, int ial, double *alt_fr
             case BCF_BT_INT8:  BRANCH(int8_t); break;
             case BCF_BT_INT16: BRANCH(int16_t); break;
             case BCF_BT_INT32: BRANCH(int32_t); break;
-            default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+            default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); bcftools_exit(1);
         }
         #undef BRANCH
     }
@@ -945,7 +945,7 @@ int process_line(args_t *args, bcf1_t *line, int ial)
                 case BCF_BT_INT8:  BRANCH(int8_t); break;
                 case BCF_BT_INT16: BRANCH(int16_t); break;
                 case BCF_BT_INT32: BRANCH(int32_t); break;
-                default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); exit(1);
+                default: fprintf(bcftools_stderr,"Unknown format type for PL: %s:%d .. fmt->type=%d\n", __FILE__,__LINE__, fmt_pl->type); bcftools_exit(1);
             }
             #undef BRANCH
         }
@@ -1107,7 +1107,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -H, --az-to-hw <float>             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
     fprintf(bcftools_stderr, "    -V, --viterbi-training <float>     estimate HMM parameters, <float> is the convergence threshold, e.g. 1e-10 (experimental)\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfroh(int argc, char *argv[])

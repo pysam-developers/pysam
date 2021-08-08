@@ -540,7 +540,7 @@ static int bcf_get_info_value(bcf1_t *line, int info_id, int ivec, void *value)
         case BCF_BT_INT16: BRANCH(int16_t, p[j]==bcf_int16_missing, p[j]==bcf_int16_vector_end, int64_t); break;
         case BCF_BT_INT32: BRANCH(int32_t, p[j]==bcf_int32_missing, p[j]==bcf_int32_vector_end, int64_t); break;
         case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(p[j]), bcf_float_is_vector_end(p[j]), double); break;
-        default: fprintf(bcftools_stderr,"todo: type %d\n", info->type); exit(1); break;
+        default: fprintf(bcftools_stderr,"todo: type %d\n", info->type); bcftools_exit(1); break;
     }
     #undef BRANCH
     return -1;  // this shouldn't happen
@@ -1079,7 +1079,7 @@ static void filters_set_nmissing(filter_t *flt, bcf1_t *line, token_t *tok)
         case BCF_BT_INT8:  BRANCH(int8_t,  bcf_int8_vector_end); break;
         case BCF_BT_INT16: BRANCH(int16_t, bcf_int16_vector_end); break;
         case BCF_BT_INT32: BRANCH(int32_t, bcf_int32_vector_end); break;
-        default: fprintf(bcftools_stderr,"todo: type %d\n", fmt->type); exit(1); break;
+        default: fprintf(bcftools_stderr,"todo: type %d\n", fmt->type); bcftools_exit(1); break;
     }
     #undef BRANCH
     tok->nvalues = 1;

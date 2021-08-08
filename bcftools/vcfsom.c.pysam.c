@@ -640,7 +640,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -n, --ntrain-sites <int>           effective number of training sites [number of good sites]\n");
     fprintf(bcftools_stderr, "    -r, --random-seed <int>            random seed, 0 for time() [1]\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfsom(int argc, char *argv[])

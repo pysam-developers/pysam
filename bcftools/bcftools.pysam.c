@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <unistd.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +55,25 @@ int bcftools_puts(const char *s)
   if (fputs(s, bcftools_stdout) == EOF) return EOF;
   return putc('\n', bcftools_stdout);
 }
+
+
+static jmp_buf bcftools_jmpbuf;
+static int bcftools_status = 0;
+
+int bcftools_dispatch(int argc, char *argv[])
+{
+  if (setjmp(bcftools_jmpbuf) == 0)
+    return bcftools_main(argc, argv);
+  else
+    return bcftools_status;
+}
+
+void bcftools_exit(int status)
+{
+  bcftools_status = status;
+  longjmp(bcftools_jmpbuf, 1);
+}
+
 
 void bcftools_set_optind(int val)
 {

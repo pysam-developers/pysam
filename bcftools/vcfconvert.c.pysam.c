@@ -1443,7 +1443,7 @@ static void usage(void)
     // fprintf(bcftools_stderr, "PBWT options:\n");
     // fprintf(bcftools_stderr, "   -b, --pbwt          <prefix> or <pbwt>,<sites>,<sample>,<missing>\n");
     // fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfconvert(int argc, char *argv[])

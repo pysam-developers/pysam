@@ -90,7 +90,7 @@ void clean_files_and_throw(args_t *args, const char *format, ...)
     vfprintf(bcftools_stderr, format, ap);
     va_end(ap);
     clean_files(args);
-    exit(-1);
+    bcftools_exit(-1);
 }
 
 int cmp_bcf_pos(const void *aptr, const void *bptr)
@@ -263,7 +263,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -T, --temp-dir DIR          temporary files [/tmp/bcftools.XXXXXX]\n");
 #endif
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 size_t parse_mem_string(const char *str) 

@@ -593,7 +593,7 @@ static int mpileup(mplp_conf_t *conf)
 {
     if (conf->nfiles == 0) {
         fprintf(bcftools_stderr,"[%s] no input file/data given\n", __func__);
-        exit(EXIT_FAILURE);
+        bcftools_exit(EXIT_FAILURE);
     }
 
     mplp_ref_t mp_ref = MPLP_REF_INIT;
@@ -614,7 +614,7 @@ static int mpileup(mplp_conf_t *conf)
             conf->reg = regidx_init(conf->reg_fname,NULL,NULL,0,NULL);
             if ( !conf->reg ) {
                 fprintf(bcftools_stderr,"Could not parse the regions: %s\n", conf->reg_fname);
-                exit(EXIT_FAILURE);
+                bcftools_exit(EXIT_FAILURE);
             }
         }
         else
@@ -622,7 +622,7 @@ static int mpileup(mplp_conf_t *conf)
             conf->reg = regidx_init(NULL,regidx_parse_reg,NULL,sizeof(char*),NULL);
             if ( regidx_insert_list(conf->reg,conf->reg_fname,',') !=0 ) {
                 fprintf(bcftools_stderr,"Could not parse the regions: %s\n", conf->reg_fname);
-                exit(EXIT_FAILURE);
+                bcftools_exit(EXIT_FAILURE);
             }
         }
         nregs = regidx_nregs(conf->reg);
@@ -641,23 +641,23 @@ static int mpileup(mplp_conf_t *conf)
         if ( !conf->mplp_data[i]->fp )
         {
             fprintf(bcftools_stderr, "[%s] failed to open %s: %s\n", __func__, conf->files[i], strerror(errno));
-            exit(EXIT_FAILURE);
+            bcftools_exit(EXIT_FAILURE);
         }
         if (hts_set_opt(conf->mplp_data[i]->fp, CRAM_OPT_DECODE_MD, 0)) {
             fprintf(bcftools_stderr, "Failed to set CRAM_OPT_DECODE_MD value\n");
-            exit(EXIT_FAILURE);
+            bcftools_exit(EXIT_FAILURE);
         }
         if (conf->fai_fname && hts_set_fai_filename(conf->mplp_data[i]->fp, conf->fai_fname) != 0) {
             fprintf(bcftools_stderr, "[%s] failed to process %s: %s\n",
                     __func__, conf->fai_fname, strerror(errno));
-            exit(EXIT_FAILURE);
+            bcftools_exit(EXIT_FAILURE);
         }
         conf->mplp_data[i]->conf = conf;
         conf->mplp_data[i]->ref = &mp_ref;
         h_tmp = sam_hdr_read(conf->mplp_data[i]->fp);
         if ( !h_tmp ) {
             fprintf(bcftools_stderr,"[%s] fail to read the header of %s\n", __func__, conf->files[i]);
-            exit(EXIT_FAILURE);
+            bcftools_exit(EXIT_FAILURE);
         }
         conf->mplp_data[i]->h = i ? hdr : h_tmp; // for j==0, "h" has not been set yet
         conf->mplp_data[i]->bam_id = bam_smpl_add_bam(conf->bsmpl,h_tmp->text,conf->files[i]);
@@ -677,7 +677,7 @@ static int mpileup(mplp_conf_t *conf)
             hts_idx_t *idx = sam_index_load(conf->mplp_data[i]->fp, conf->files[i]);
             if (idx == NULL) {
                 fprintf(bcftools_stderr, "[%s] fail to load index for %s\n", __func__, conf->files[i]);
-                exit(EXIT_FAILURE);
+                bcftools_exit(EXIT_FAILURE);
             }
             conf->buf.l = 0;
             ksprintf(&conf->buf,"%s:%u-%u",conf->reg_itr->seq,conf->reg_itr->beg+1,conf->reg_itr->end+1);
@@ -687,10 +687,10 @@ static int mpileup(mplp_conf_t *conf)
                 conf->mplp_data[i]->iter = sam_itr_querys(idx, conf->mplp_data[i]->h, conf->reg_itr->seq);
                 if ( conf->mplp_data[i]->iter ) {
                     fprintf(bcftools_stderr,"[E::%s] fail to parse region '%s'\n", __func__, conf->buf.s);
-                    exit(EXIT_FAILURE);
+                    bcftools_exit(EXIT_FAILURE);
                 }
                 fprintf(bcftools_stderr,"[E::%s] the sequence \"%s\" not found: %s\n",__func__,conf->reg_itr->seq,conf->files[i]);
-                exit(EXIT_FAILURE);
+                bcftools_exit(EXIT_FAILURE);
             }
             if ( nregs==1 ) // no need to keep the index in memory
                hts_idx_destroy(idx);
@@ -710,7 +710,7 @@ static int mpileup(mplp_conf_t *conf)
     }
     if ( !hdr ) {
         fprintf(bcftools_stderr, "[%s] failed to find a file header with usable read groups\n", __func__);
-        exit(EXIT_FAILURE);
+        bcftools_exit(EXIT_FAILURE);
     }
     // allocate data storage proportionate to number of samples being studied sm->n
     bam_smpl_get_samples(conf->bsmpl, &conf->gplp->n);
@@ -723,7 +723,7 @@ static int mpileup(mplp_conf_t *conf)
     conf->bcf_fp = hts_open(conf->output_fname?conf->output_fname:"-", hts_bcf_wmode2(conf->output_type,conf->output_fname));
     if (conf->bcf_fp == NULL) {
         fprintf(bcftools_stderr, "[%s] failed to write to %s: %s\n", __func__, conf->output_fname? conf->output_fname : "standard output", strerror(errno));
-        exit(EXIT_FAILURE);
+        bcftools_exit(EXIT_FAILURE);
     }
     if ( conf->n_threads ) hts_set_threads(conf->bcf_fp, conf->n_threads);
 
@@ -906,10 +906,10 @@ static int mpileup(mplp_conf_t *conf)
                         conf->mplp_data[i]->iter = sam_itr_querys(conf->mplp_data[i]->idx, conf->mplp_data[i]->h, conf->reg_itr->seq);
                         if ( conf->mplp_data[i]->iter ) {
                             fprintf(bcftools_stderr,"[E::%s] fail to parse region '%s'\n", __func__, conf->buf.s);
-                            exit(EXIT_FAILURE);
+                            bcftools_exit(EXIT_FAILURE);
                         }
                         fprintf(bcftools_stderr,"[E::%s] the sequence \"%s\" not found: %s\n",__func__,conf->reg_itr->seq,conf->files[i]);
-                        exit(EXIT_FAILURE);
+                        bcftools_exit(EXIT_FAILURE);
                     }
                     bam_mplp_reset(conf->iter);
                 }
@@ -1049,7 +1049,7 @@ int parse_format_flag(const char *str)
         else
         {
             fprintf(bcftools_stderr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
-            exit(EXIT_FAILURE);
+            bcftools_exit(EXIT_FAILURE);
         }
         free(tags[i]);
     }
@@ -1317,7 +1317,7 @@ int main_mpileup(int argc, char *argv[])
                   if ( regidx_insert_list(mplp.bed,optarg,',') !=0 )
                   {
                       fprintf(bcftools_stderr,"Could not parse the targets: %s\n", optarg);
-                      exit(EXIT_FAILURE);
+                      bcftools_exit(EXIT_FAILURE);
                   }
                   break;
         case 'T':

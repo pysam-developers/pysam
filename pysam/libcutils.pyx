@@ -18,10 +18,10 @@ from libc.stdio cimport fprintf, stderr, fflush
 from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY
 
-from libcsamtools cimport samtools_main, samtools_set_stdout, samtools_set_stderr, \
+from libcsamtools cimport samtools_dispatch, samtools_set_stdout, samtools_set_stderr, \
     samtools_close_stdout, samtools_close_stderr, samtools_set_stdout_fn, samtools_set_optind
 
-from libcbcftools cimport bcftools_main, bcftools_set_stdout, bcftools_set_stderr, \
+from libcbcftools cimport bcftools_dispatch, bcftools_set_stdout, bcftools_set_stderr, \
     bcftools_close_stdout, bcftools_close_stderr, bcftools_set_stdout_fn, bcftools_set_optind
 
 #####################################################################
@@ -416,13 +416,13 @@ def _pysam_dispatch(collection,
     if collection == b"samtools":
         samtools_set_stdout(stdout_h)
         samtools_set_stderr(stderr_h)
-        retval = samtools_main(n + 2, cargs)
+        retval = samtools_dispatch(n + 2, cargs)
         samtools_close_stdout()
         samtools_close_stderr()
     elif collection == b"bcftools":
         bcftools_set_stdout(stdout_h)
         bcftools_set_stderr(stderr_h)
-        retval = bcftools_main(n + 2, cargs)
+        retval = bcftools_dispatch(n + 2, cargs)
         bcftools_close_stdout()
         bcftools_close_stderr()
 

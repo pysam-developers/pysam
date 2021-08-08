@@ -493,7 +493,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "   # Extract records private to A or B comparing by position only\n");
     fprintf(bcftools_stderr, "   bcftools isec A.vcf.gz B.vcf.gz -p dir -n -1 -c all\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfisec(int argc, char *argv[])

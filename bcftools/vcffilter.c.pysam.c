@@ -426,7 +426,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "        --threads <int>           use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcffilter(int argc, char *argv[])

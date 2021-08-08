@@ -63,7 +63,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -n, --nrecords       print number of records based on existing index file\n");
     fprintf(bcftools_stderr, "    -s, --stats          print per contig stats based on existing index file\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int vcf_index_stats(char *fname, int stats)

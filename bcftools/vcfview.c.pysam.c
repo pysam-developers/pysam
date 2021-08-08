@@ -166,7 +166,7 @@ static void init_data(args_t *args)
     if (args->include_types || args->exclude_types) {
         if (args->include_types && args->exclude_types) {
             fprintf(bcftools_stderr, "Error: only supply one of --include-types, --exclude-types options\n");
-            exit(1);
+            bcftools_exit(1);
         }
         char **type_list = 0;
         int m = 0, n = 0;
@@ -197,7 +197,7 @@ static void init_data(args_t *args)
                 else {
                     fprintf(bcftools_stderr, "[E::%s] unknown type\n", type_list[i]);
                     fprintf(bcftools_stderr, "Accepted types are snps, indels, mnps, other\n");
-                    exit(1);
+                    bcftools_exit(1);
                 }
             }
         }
@@ -213,7 +213,7 @@ static void init_data(args_t *args)
                 else {
                     fprintf(bcftools_stderr, "[E::%s] unknown type\n", type_list[i]);
                     fprintf(bcftools_stderr, "Accepted types are snps, indels, mnps, other\n");
-                    exit(1);
+                    bcftools_exit(1);
                 }
             }
         }
@@ -300,7 +300,7 @@ int bcf_all_phased(const bcf_hdr_t *header, bcf1_t *line)
                 case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_vector_end); break;
                 case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_vector_end); break;
                 case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_vector_end); break;
-                default: fprintf(bcftools_stderr, "[E::%s] todo: fmt_type %d\n", __func__, fmt_ptr->type); exit(1); break;
+                default: fprintf(bcftools_stderr, "[E::%s] todo: fmt_type %d\n", __func__, fmt_ptr->type); bcftools_exit(1); break;
             }
             #undef BRANCH_INT
             if (!sample_phased) {
@@ -531,7 +531,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -v/V, --types/--exclude-types <list>        select/exclude comma-separated list of variant types: snps,indels,mnps,ref,bnd,other [null]\n");
     fprintf(bcftools_stderr, "    -x/X, --private/--exclude-private           select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfview(int argc, char *argv[])

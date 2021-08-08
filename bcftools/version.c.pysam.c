@@ -45,7 +45,7 @@ void error(const char *format, ...)
     va_start(ap, format);
     vfprintf(bcftools_stderr, format, ap);
     va_end(ap);
-    exit(-1);
+    bcftools_exit(-1);
 }
 
 void error_errno(const char *format, ...)
@@ -60,7 +60,7 @@ void error_errno(const char *format, ...)
     } else {
         fprintf(bcftools_stderr, "\n");
     }
-    exit(-1);
+    bcftools_exit(-1);
 }
 
 const char *hts_bcf_wmode(int file_type)

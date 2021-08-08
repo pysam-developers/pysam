@@ -1064,7 +1064,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "   # Compare only two pairs a1,b1 and a1,b2\n");
     fprintf(bcftools_stderr, "   bcftools gtcheck -p a1,b1,a1,b2 -g A.bcf B.bcf\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfgtcheck(int argc, char *argv[])

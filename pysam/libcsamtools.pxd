@@ -1,6 +1,6 @@
 cdef extern from "samtools.pysam.h":
 
-    int samtools_main(int argc, char *argv[])
+    int samtools_dispatch(int argc, char *argv[])
     void samtools_set_stderr(int fd)
     void samtools_close_stderr()
     void samtools_set_stdout(int fd)

@@ -725,7 +725,7 @@ static void usage_exit(FILE *fp, int exit_status)
     fprintf(fp, "  -J           Include reads with deletions in depth computation\n");
     fprintf(fp, "  -s           Do not count overlapping reads within a template\n");
     sam_global_opt_help(fp, "-.---@-.");
-    exit(exit_status);
+    samtools_exit(exit_status);
 }
 
 int main_depth(int argc, char *argv[])

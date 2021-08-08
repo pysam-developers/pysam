@@ -865,7 +865,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "       --threads <int>            Use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "   -v, --verbose <0|1>            Set verbosity level [1]\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfconcat(int argc, char *argv[])

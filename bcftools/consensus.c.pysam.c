@@ -1077,7 +1077,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   # in the form \">chr:from-to\".\n");
     fprintf(bcftools_stderr, "   samtools faidx ref.fa 8:11870-11890 | bcftools consensus in.vcf.gz > out.fa\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_consensus(int argc, char *argv[])

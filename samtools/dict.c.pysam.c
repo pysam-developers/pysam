@@ -56,19 +56,19 @@ static void write_dict(const char *fn, args_t *args)
     fp = strcmp(fn, "-") ? gzopen(fn, "r") : gzdopen(fileno(stdin), "r");
     if (fp == 0) {
         fprintf(samtools_stderr, "dict: %s: No such file or directory\n", fn);
-        exit(1);
+        samtools_exit(1);
     }
     FILE *out = samtools_stdout;
     if (args->output_fname) {
         out = fopen(args->output_fname, "w");
         if (out == NULL) {
           fprintf(samtools_stderr, "dict: %s: Cannot open file for writing\n", args->output_fname);
-          exit(1);
+          samtools_exit(1);
         }
     }
 
     if (!(md5 = hts_md5_init()))
-        exit(1);
+        samtools_exit(1);
 
     seq = kseq_init(fp);
     if (args->header) fprintf(out, "@HD\tVN:1.0\tSO:unsorted\n");

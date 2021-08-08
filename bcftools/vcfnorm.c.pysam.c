@@ -2103,7 +2103,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "   # split multi-allelic sites\n");
     fprintf(bcftools_stderr, "   bcftools norm -m- in.vcf\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfnorm(int argc, char *argv[])

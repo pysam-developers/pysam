@@ -412,7 +412,7 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, hts_pos_t pos, bcf
                     uint8_t *qq;
                     if (qend < qbeg) {
                         fprintf(samtools_stderr, "Impossible data in bcf_call_gap_prep\n");
-                        exit(1);
+                        samtools_exit(1);
                     }
                     qq = calloc(qend - qbeg, 1);
                     bq = (uint8_t*)bam_aux_get(p->b, "ZQ");

@@ -120,7 +120,7 @@ static void usage_exit(FILE *fp, int exit_status)
     fprintf(fp, "  -O, --");
     fprintf(fp, "output-fmt FORMAT[,OPT[=VAL]]...\n"
             "               Specify output format (json, tsv)\n");
-    exit(exit_status);
+    samtools_exit(exit_status);
 }
 
 static void out_fmt_default(bam_flagstat_t *s)

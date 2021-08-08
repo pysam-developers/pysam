@@ -1,6 +1,6 @@
 cdef extern from "bcftools.pysam.h":
 
-    int bcftools_main(int argc, char *argv[])
+    int bcftools_dispatch(int argc, char *argv[])
     void bcftools_set_stderr(int fd)
     void bcftools_close_stderr()
     void bcftools_set_stdout(int fd)

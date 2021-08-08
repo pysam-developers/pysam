@@ -998,7 +998,7 @@ int amplicon_clip_main(int argc, char **argv) {
             case 1015: param.tol = atoi(optarg); break;
             default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
                       /* else fall-through */
-            case '?': usage(); exit(1);
+            case '?': usage(); samtools_exit(1);
         }
     }
 

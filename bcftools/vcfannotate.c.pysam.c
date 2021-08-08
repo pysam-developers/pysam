@@ -3065,7 +3065,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -x, --remove LIST            list of annotations (e.g. ID,INFO/DP,FORMAT/DP,FILTER) to remove (or keep with \"^\" prefix). See man page for details\n");
     fprintf(bcftools_stderr, "       --threads INT            number of extra output compression threads [0]\n");
     fprintf(bcftools_stderr, "\n");
-    exit(1);
+    bcftools_exit(1);
 }
 
 int main_vcfannotate(int argc, char *argv[])
