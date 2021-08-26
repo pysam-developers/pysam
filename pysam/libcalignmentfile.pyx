@@ -75,7 +75,7 @@ from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
 from pysam.libchtslib cimport HTSFile, hisremote
-
+import json
 if PY_MAJOR_VERSION >= 3:
     from io import StringIO
 else:
@@ -2918,6 +2918,14 @@ cdef class IndexedReads:
             self.htsfile = self.samfile.htsfile
             self.header = samfile.header
             self.owns_samfile = False
+    
+    def store(self, filename):
+        with open(filename, 'w') as f:
+            json.dump(self.index, f)
+    
+    def load(self, filename):
+        with open(filename) as f:
+            self.index = json.load(f)
 
     def build(self):
         '''build the index.'''
