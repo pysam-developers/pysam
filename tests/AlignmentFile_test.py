@@ -1460,6 +1460,12 @@ class TestTruncatedBAM(unittest.TestCase):
             return len([a for a in x])
         self.assertRaises(IOError, iterall, s)
 
+        # Ignore closing errors, as s is now in an error state
+        try:
+            s.close()
+        except IOError:
+            pass
+
 
 class TestCorruptBAM(unittest.TestCase):
     """See pull request 1035."""
