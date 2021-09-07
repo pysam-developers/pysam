@@ -11,13 +11,16 @@ import shutil
 import gzip
 import pysam
 import unittest
-import subprocess
 import glob
 import re
 from TestUtils import checkBinaryEqual, checkGZBinaryEqual, check_url, \
-    load_and_convert, TABIX_DATADIR, get_temp_filename
+    load_and_convert, make_data_files, TABIX_DATADIR, get_temp_filename
 
 IS_PYTHON3 = sys.version_info[0] >= 3
+
+
+def setUpModule():
+    make_data_files(TABIX_DATADIR)
 
 
 def myzip_open(infile, mode="r"):
@@ -1239,5 +1242,4 @@ class TestMultithreadTabixFile(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    subprocess.call("make -C %s" % TABIX_DATADIR, shell=True)
     unittest.main()

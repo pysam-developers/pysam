@@ -18,10 +18,14 @@ import pysam.samtools
 import pysam.bcftools
 from TestUtils import checkBinaryEqual, check_lines_equal, \
     check_samtools_view_equal, get_temp_filename, force_bytes, WORKDIR, \
-    BAM_DATADIR
+    make_data_files, BAM_DATADIR
 
 
 IS_PYTHON3 = sys.version_info[0] >= 3
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
 
 
 def run_command(cmd):
@@ -416,9 +420,6 @@ if sys.platform != "darwin":
 
 
 if __name__ == "__main__":
-    # build data files
-    print("building data files")
-    subprocess.call("make -C %s" % BAM_DATADIR, shell=True)
     print("starting tests")
     unittest.main()
     print("completed tests")

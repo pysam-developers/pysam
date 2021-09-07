@@ -5,6 +5,7 @@ import difflib
 import gzip
 import contextlib
 import inspect
+import subprocess
 import tempfile
 import pysam
 
@@ -249,6 +250,18 @@ def get_temp_context(suffix="", keep=False):
         # clear up any indices as well
         for f in glob.glob(f.name + "*"):
             os.unlink(f)
+
+
+def make_data_files(directory):
+    what = None
+    try:
+        if not os.path.exists(os.path.join(directory, "all.stamp")):
+            subprocess.check_output(["make", "-C", directory], stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        what = "Making test data in '%s' failed:\n%s" % (directory, force_str(e.output))
+
+    if what is not None:
+        raise RuntimeError(what)
 
 
 def load_and_convert(filename, encode=True):

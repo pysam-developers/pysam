@@ -2,8 +2,12 @@
 import os
 import pysam
 import unittest
-from TestUtils import BAM_DATADIR, IS_PYTHON3, force_str, flatten_nested_list
+from TestUtils import make_data_files, BAM_DATADIR, IS_PYTHON3, force_str, flatten_nested_list
 import PileupTestUtils
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
 
 
 class TestPileupReadSelection(unittest.TestCase):

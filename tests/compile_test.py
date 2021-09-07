@@ -10,7 +10,13 @@ pysam and tabix works.
 import os
 import unittest
 import pysam
-from TestUtils import BAM_DATADIR, TABIX_DATADIR
+from TestUtils import make_data_files, BAM_DATADIR, TABIX_DATADIR
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
+    make_data_files(TABIX_DATADIR)
+
 
 try:
     os.unlink('tests/_compile_test.c')

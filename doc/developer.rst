@@ -42,14 +42,20 @@ Unit testing
 ============
 
 Unit tests are in the :file:`tests` directory. To run all unit tests,
-first ensure that the generated test data files exist::
-
-   make -C tests/pysam_data
-   make -C tests/cbcf_data
-
-and then run::
+run::
 
    pytest tests
+
+Most tests use test data from the :file:`tests/*_data` directories.
+Some of these test data files are generated from other files in these
+directories, which is done by running ``make`` in each directory::
+
+   make -C tests/pysam_data
+   # etc
+
+Alternatively if any :file:`tests/*_data/all.stamp` file is not already
+present, running the unit tests should generate that directory's data
+files automatically.
 
 Benchmarking
 ============

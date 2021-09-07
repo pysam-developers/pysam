@@ -5,7 +5,11 @@ import sys
 import re
 import copy
 import gzip
-from TestUtils import load_and_convert, TABIX_DATADIR
+from TestUtils import load_and_convert, make_data_files, TABIX_DATADIR
+
+
+def setUpModule():
+    make_data_files(TABIX_DATADIR)
 
 
 class TestParser(unittest.TestCase):

@@ -191,6 +191,7 @@ echo 'building test data'
 echo 
 make -C pysam_data all
 make -C cbcf_data all
+make -C tabix_data all
 
 # run nosetests
 # -s: do not capture stdout, conflicts with pysam.dispatch

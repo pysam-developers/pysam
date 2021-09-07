@@ -6,7 +6,11 @@ import gzip
 import copy
 import shutil
 
-from TestUtils import check_url, BAM_DATADIR, get_temp_filename
+from TestUtils import check_url, make_data_files, BAM_DATADIR, get_temp_filename
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
 
 
 class TestFastaFile(unittest.TestCase):

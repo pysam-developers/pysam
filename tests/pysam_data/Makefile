@@ -7,7 +7,9 @@ NO_PG:=$(findstring --no-PG,$(shell samtools view '-?'))
 
 # ex2.bam - bam file without index
 
-all: ex1.pileup.gz \
+all: all.stamp
+
+all.stamp: ex1.pileup.gz \
 	ex1.sam ex1.bam \
 	ex2.sam.gz ex2.sam ex2.bam ex2.bam.bai \
 	with_md.sam.gz with_md.bam with_md.bam.bai \
@@ -25,6 +27,7 @@ all: ex1.pileup.gz \
 	ex1_csi.bam \
 	example_reverse_complement.bam \
 	example_dash_in_chr.bam
+	touch $@
 
 # ex2.sam - as ex1.sam, but with header
 ex2.sam.gz: ex1.bam ex1.bam.bai
@@ -95,7 +98,7 @@ explicit_index.cram: ex1.cram
 
 clean:
 	rm -fr [a-z]*.bam *.bai *.csi *.fai *.gzi *.pileup* [a-z]*.cram *.crai \
-	*~ calDepth *.dSYM pysam_*.sam \
+	all.stamp *~ calDepth *.dSYM pysam_*.sam \
 	ex2.sam ex2.sam.gz ex1.sam ex1.fa.gz \
 	with_md.sam.gz \
 	*.fq.gz

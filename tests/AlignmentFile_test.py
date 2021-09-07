@@ -24,7 +24,11 @@ import pysam
 import pysam.samtools
 from TestUtils import checkBinaryEqual, checkGZBinaryEqual, check_url, \
     check_samtools_view_equal, checkFieldEqual, force_str, \
-    get_temp_filename, BAM_DATADIR
+    get_temp_filename, make_data_files, BAM_DATADIR
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
 
 
 ##################################################
@@ -2420,9 +2424,6 @@ class TestLargeCigar(unittest.TestCase):
 #     mode = "w"
 
 if __name__ == "__main__":
-    # build data files
-    print("building data files")
-    subprocess.call("make -C %s" % BAM_DATADIR, shell=True)
     print("starting tests")
     unittest.main()
     print("completed tests")

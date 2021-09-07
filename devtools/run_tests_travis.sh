@@ -66,6 +66,7 @@ echo 'building test data'
 echo
 make -C tests/pysam_data
 make -C tests/cbcf_data
+make -C tests/tabix_data
 
 # echo any limits that are in place
 ulimit -a

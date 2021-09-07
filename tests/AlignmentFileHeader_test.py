@@ -13,12 +13,16 @@ import copy
 from collections import OrderedDict as odict
 import pysam
 import pysam.samtools
-from TestUtils import get_temp_filename, BAM_DATADIR
+from TestUtils import get_temp_filename, make_data_files, BAM_DATADIR
 
 if sys.version_info.major >= 3:
     from io import StringIO
 else:
     from StringIO import StringIO
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
 
 
 class TestHeaderConstruction(unittest.TestCase):

@@ -5,9 +5,13 @@ import threading
 import errno
 import unittest
 from pysam import AlignmentFile
-from TestUtils import BAM_DATADIR
+from TestUtils import make_data_files, BAM_DATADIR
 
 IS_PYTHON2 = sys.version_info[0] == 2
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
 
 
 def alignmentfile_writer_thread(infile, outfile):

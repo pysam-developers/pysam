@@ -13,7 +13,11 @@ try:
 except ImportError:
     Path = None
 
-from TestUtils import get_temp_filename, check_lines_equal, load_and_convert, CBCF_DATADIR, get_temp_context
+from TestUtils import get_temp_filename, check_lines_equal, load_and_convert, make_data_files, CBCF_DATADIR, get_temp_context
+
+
+def setUpModule():
+    make_data_files(CBCF_DATADIR)
 
 
 @pytest.fixture

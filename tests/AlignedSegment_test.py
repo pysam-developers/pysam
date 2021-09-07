@@ -7,13 +7,18 @@ import string
 import copy
 import array
 
-from TestUtils import checkFieldEqual, BAM_DATADIR, get_temp_filename, get_temp_context, IS_PYTHON3
+from TestUtils import checkFieldEqual, make_data_files, BAM_DATADIR, get_temp_filename, get_temp_context, IS_PYTHON3
 
 
 if IS_PYTHON3:
     maketrans = str.maketrans
 else:
     maketrans = string.maketrans
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
+
 
 class ReadTest(unittest.TestCase):
 

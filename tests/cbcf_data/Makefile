@@ -4,7 +4,10 @@ VCF=$(filter-out example_empty.vcf,$(ALL_VCF))
 VCFGZ=$(VCF:%.vcf=%.vcf.gz)
 BCF=$(VCF:%.vcf=%.bcf)
 
-all: $(VCFGZ) $(BCF)
+all: all.stamp
+
+all.stamp: $(VCFGZ) $(BCF)
+	touch $@
 
 %.vcf.gz: %.vcf
 	bgzip < $< > $@
@@ -19,5 +22,4 @@ example_empty.bcf: example_empty.vcf.gz
 	touch $@
 
 clean:
-	rm -f *.gz *.tbi *.csi *.bcf
-
+	-rm -f all.stamp *.gz *.tbi *.csi *.bcf

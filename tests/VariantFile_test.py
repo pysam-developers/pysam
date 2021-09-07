@@ -7,14 +7,17 @@ import unittest
 import pysam
 import shutil
 import gzip
-import subprocess
 
 try:
     from pathlib import Path
 except ImportError:
     Path = None
 
-from TestUtils import get_temp_filename, check_lines_equal, load_and_convert, CBCF_DATADIR, get_temp_context
+from TestUtils import get_temp_filename, check_lines_equal, load_and_convert, make_data_files, CBCF_DATADIR, get_temp_context
+
+
+def setUpModule():
+    make_data_files(CBCF_DATADIR)
 
 
 def read_header(filename):
@@ -679,9 +682,6 @@ class TestUnicode(unittest.TestCase):
                 
 
 if __name__ == "__main__":
-    # build data files
-    print("building data files")
-    subprocess.call("make -C %s" % CBCF_DATADIR, shell=True)
     print("starting tests")
     unittest.main()
     print("completed tests")

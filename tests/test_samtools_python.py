@@ -1,7 +1,11 @@
 import pysam
 import os
 import pytest
-from TestUtils import BAM_DATADIR
+from TestUtils import make_data_files, BAM_DATADIR
+
+
+def setUpModule():
+    make_data_files(BAM_DATADIR)
 
 
 def test_idxstats_parse_split_lines():
