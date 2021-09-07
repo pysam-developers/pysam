@@ -48,7 +48,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'pysam'
-copyright = u'2009, Andreas Heger, Kevin Jacobs et al.'
+copyright = u'2009–2021, Andreas Heger, Kevin Jacobs, et al'
 
 # Included at the end of each rst file
 rst_epilog = '''

@@ -302,7 +302,7 @@ cdef class TabixFile:
 
     index : string
         The filename of the index. If not set, the default is to
-        assume that the index is called ``filename.tbi`
+        assume that the index is called ``filename.tbi``
 
     mode : char
         The file opening mode. Currently, only ``r`` is permitted.

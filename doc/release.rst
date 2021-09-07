@@ -149,7 +149,7 @@ Backwards incompatible changes:
 
   The rationale for this change is to have consistency between
   AlignmentFile and VariantFile.
-  	      
+
 * AlignmentFile and FastaFile now raise IOError instead of OSError
 
 Medium term we plan to have a 1.0 release. The pysam
@@ -190,6 +190,7 @@ contains a series of bugfixes.
 * [#473] A new FastxRecord class that can be instantiated from class and
   modified in-place. Replaces PersistentFastqProxy.
 * [#521] In AligmentFile, Simplify file detection logic and allow remote index files
+
   * Removed attempts to guess data and index file names; this is magic left
     to htslib.
   * Removed file existence check prior to opening files with htslib
@@ -200,6 +201,7 @@ contains a series of bugfixes.
   * Allow remote indices (tested using S3 signed URLs).
   * Document filepath_index and make it an alias for index_filename.
   * Added a require_index parameter to AlignmentFile
+
 * [#526] handle unset ref when creating new records
 * [#513] fix bcf_translate to skip deleted FORMAT fields to avoid
   segfaults
@@ -225,7 +227,7 @@ are created will need to change as the constructor requires a header::
     header = pysam.AlignmentHeader(
         reference_names=["chr1", "chr2"],
         reference_lengths=[1000, 1000])
-        
+
     read = pysam.AlignedSegment(header)
 
 This will affect all code that instantiates AlignedSegment objects
@@ -440,15 +442,17 @@ Potential isses when upgrading from v0.8.3:
 
 * renamed several methods for pep8 compatibility, old names still retained for	
   backwards compatibility, but should be considered deprecated.
+
    * gettid() is now get_tid()
    * getrname() is now get_reference_name()
    * parseRegion() is now parse_region()
 
 * some methods have changed for pep8 compatibility without the old
   names being present:
+
    * fromQualityString() is now qualitystring_to_array()
    * toQualityString() is now qualities_to_qualitystring()
-   
+
 * faidx now returns strings and not binary strings in py3.
 
 * The cython components have been broken up into smaller files with
@@ -557,7 +561,7 @@ Release 0.8.2
   with reading and writing capability. However, the interface is still
   incomplete and preliminary and lacks capability to mutate the
   resulting data.
-  
+
 Release 0.8.1
 =============
 
@@ -569,7 +573,7 @@ Release 0.8.1
   * issue #19: multiple iterators can now be made to work on the same tabix file
   * issue #24: All strings returned from/passed to the pysam API are now unicode in python 3
   * issue #5:  type guessing for lists of integers fixed    
-    
+
 * API changes for consistency. The old API is still present,
   but deprecated.
   In particular:
@@ -686,18 +690,18 @@ Release 0.7.5
 
 Release 0.7.4
 =============
-	
+
 * further bugfixes to setup.py and package layout
 
 Release 0.7.3
 =============
-	
+
 * further bugfixes to setup.py
 * upgraded distribute_setup.py to 0.6.34
 
 Release 0.7.2
 =============
-  
+
 * bugfix in installer - failed when cython not present
 * changed installation locations of shared libraries
 

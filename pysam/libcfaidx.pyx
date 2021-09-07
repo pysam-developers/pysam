@@ -496,7 +496,7 @@ cdef class FastxRecord:
 
 
 cdef class FastxFile:
-    """Stream access to :term:`fasta` or :term:`fastq` formatted files.
+    r"""Stream access to :term:`fasta` or :term:`fastq` formatted files.
 
     The file is automatically opened.
 

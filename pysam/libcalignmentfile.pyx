@@ -2871,9 +2871,7 @@ cdef class SNPCall:
 
 
 cdef class IndexedReads:
-    """*(AlignmentFile samfile, multiple_iterators=True)
-
-    Index a Sam/BAM-file by query name while keeping the
+    """Index a Sam/BAM-file by query name while keeping the
     original sort order intact.
 
     The index is kept in memory and can be substantial.
