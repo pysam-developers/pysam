@@ -3,6 +3,17 @@
 
 #include <stdio.h>
 
+#ifndef __has_attribute
+#define __has_attribute(attribute) 0
+#endif
+#ifndef PYSAM_NORETURN
+#if __has_attribute(__noreturn__) || __GNUC__ >= 3
+#define PYSAM_NORETURN __attribute__((__noreturn__))
+#else
+#define PYSAM_NORETURN
+#endif
+#endif
+
 extern FILE * @pysam@_stderr;
 
 extern FILE * @pysam@_stdout;
@@ -40,7 +51,7 @@ int @pysam@_puts(const char *s);
 
 int @pysam@_dispatch(int argc, char *argv[]);
 
-void @pysam@_exit(int status);
+void PYSAM_NORETURN @pysam@_exit(int status);
 
 void @pysam@_set_optind(int);
 

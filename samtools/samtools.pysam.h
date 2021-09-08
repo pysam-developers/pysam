@@ -3,6 +3,17 @@
 
 #include <stdio.h>
 
+#ifndef __has_attribute
+#define __has_attribute(attribute) 0
+#endif
+#ifndef PYSAM_NORETURN
+#if __has_attribute(__noreturn__) || __GNUC__ >= 3
+#define PYSAM_NORETURN __attribute__((__noreturn__))
+#else
+#define PYSAM_NORETURN
+#endif
+#endif
+
 extern FILE * samtools_stderr;
 
 extern FILE * samtools_stdout;
@@ -40,7 +51,7 @@ int samtools_puts(const char *s);
 
 int samtools_dispatch(int argc, char *argv[]);
 
-void samtools_exit(int status);
+void PYSAM_NORETURN samtools_exit(int status);
 
 void samtools_set_optind(int);
 
