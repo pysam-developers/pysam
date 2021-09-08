@@ -23,7 +23,7 @@ all.stamp: ex1.pileup.gz \
 	empty.bam empty.bam.bai \
 	explicit_index.bam explicit_index.cram \
 	faidx_empty_seq.fq.gz \
-	ex1.fa.gz ex1.fa.gz.csi \
+	ex1.fa.gz ex1.fa.gz.fai ex1.fa.gz.gzi \
 	ex1_csi.bam \
 	example_reverse_complement.bam \
 	example_dash_in_chr.bam
@@ -54,8 +54,11 @@ uncompressed.bam: ex2.sam
 %.sam: %.sam.gz
 	gunzip < $< > $@
 
-ex1.fa.fai:ex1.fa
-		samtools faidx ex1.fa
+%.fa.fai: %.fa
+	samtools faidx $<
+
+%.fa.gz.fai %.fa.gz.gzi: %.fa.gz
+	samtools faidx $<
 
 ex1.bam:ex1.sam.gz ex1.fa.fai
 		samtools view $(NO_PG) -bo ex1.bam -t ex1.fa.fai ex1.sam.gz
@@ -108,6 +111,3 @@ clean:
 
 %.fa.gz: %.fa
 	bgzip < $< > $@
-
-%.fa.gz.csi: %.fa.gz
-	samtools faidx $<
