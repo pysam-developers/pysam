@@ -535,7 +535,6 @@ metadata = {
     'package_data': {'': ['*.pxd', '*.h'], },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe': False,
-    'use_2to3': True,
 }
 
 if __name__ == '__main__':
