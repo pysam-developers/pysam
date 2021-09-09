@@ -53,7 +53,6 @@
 # DEALINGS IN THE SOFTWARE.
 #
 ###############################################################################
-import binascii
 import os
 import sys
 
@@ -75,8 +74,8 @@ from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
     tbx_index_build2, tbx_index_load2, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, hisremote, region_list, hts_getline, \
-    TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC, htsExactFormat, bcf, \
-    bcf_index_build2
+    TBX_GENERIC, TBX_SAM, TBX_VCF, TBX_UCSC, hts_get_format, htsFormat, \
+    no_compression, bcf, bcf_index_build2
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
@@ -880,13 +879,6 @@ def tabix_compress(filename_in,
             raise IOError("error %i when closing file %s" % (r, filename_in))
 
 
-def is_gzip_file(filename):
-    gzip_magic_hex = b'1f8b'
-    fd = os.open(filename, os.O_RDONLY)
-    header = os.read(fd, 2)
-    return header == binascii.a2b_hex(gzip_magic_hex)
-
-
 def tabix_index(filename,
                 force=False,
                 seq_col=None,
@@ -942,27 +934,29 @@ def tabix_index(filename,
 
     '''
     
-    if not os.path.exists(filename):
-        raise IOError("No such file '%s'" % filename)
-
     if preset is None and \
        (seq_col is None or start_col is None or end_col is None):
         raise ValueError(
             "neither preset nor seq_col,start_col and end_col given")
 
-    if not is_gzip_file(filename):
-        tabix_compress(filename, filename + ".gz", force=force)
-        if not keep_original:
-            os.unlink(filename)
-        filename += ".gz"
-
     fn = encode_filename(filename)
     cdef char *cfn = fn
 
     cdef htsFile *fp = hts_open(cfn, "r")
-    cdef htsExactFormat fmt = fp.format.format
+    if fp == NULL:
+        raise IOError("Could not open file '%s': %s" % (filename, force_str(strerror(errno))))
+
+    cdef htsFormat fmt = hts_get_format(fp)[0]
     hts_close(fp)
-    
+
+    if fmt.compression == no_compression:
+        tabix_compress(filename, filename + ".gz", force=force)
+        if not keep_original:
+            os.unlink(filename)
+        filename += ".gz"
+        fn = encode_filename(filename)
+        cfn = fn
+
     # columns (1-based):
     #   preset-code, contig, start, end, metachar for
     #     comments, lines to ignore at beginning
@@ -976,7 +970,7 @@ def tabix_index(filename,
         }
     
     conf_data = None
-    if preset == "bcf" or fmt == bcf:
+    if preset == "bcf" or fmt.format == bcf:
         csi = True
     elif preset:
         try:
@@ -1022,7 +1016,7 @@ def tabix_index(filename,
     cdef char *fnidx = fn_index
     cdef int retval = 0
 
-    if csi and fmt == bcf:
+    if csi and fmt.format == bcf:
         with nogil:
             retval = bcf_index_build2(cfn, fnidx, min_shift)
     else:
