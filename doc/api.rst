@@ -21,7 +21,7 @@ iteration returns a :class:`~pysam.AlignedSegment` object which
 represents a single read along with its fields and optional tags::
 
    for read in samfile.fetch('chr1', 100, 120):
-	print read
+       print read
 
    samfile.close()
 
@@ -38,8 +38,8 @@ You can also write to a :class:`~pysam.AlignmentFile`::
    samfile = pysam.AlignmentFile("ex1.bam", "rb")
    pairedreads = pysam.AlignmentFile("allpaired.bam", "wb", template=samfile)
    for read in samfile.fetch():
-	if read.is_paired:
-		pairedreads.write(read)
+       if read.is_paired:
+           pairedreads.write(read)
 
    pairedreads.close()
    samfile.close()
@@ -189,13 +189,13 @@ To iterate over tabix files, use :func:`~pysam.tabix_iterator`:
    :members:
 
 
-Fasta files
+FASTA files
 ===========
 
 .. autoclass:: pysam.FastaFile
    :members:
 
-Fastq files
+FASTQ files
 ===========
 
 .. autoclass:: pysam.FastxFile
@@ -206,8 +206,8 @@ Fastq files
    :members:
 
 
-VCF files
-=========
+VCF/BCF files
+=============
 
 .. autoclass:: pysam.VariantFile
    :members:
