@@ -48,6 +48,11 @@ Glossary
        Binary SAM format. BAM files are binary formatted, indexed and
        allow random access.
 
+   CRAM
+       CRAM is a binary format representing the same sequence alignment
+       information as SAM and BAM, but offering significantly better
+       lossless compression than BAM.
+
    TAM
        Text SAM file. TAM files are human readable files of
        tab-separated fields. TAM files do not allow random access.
@@ -105,6 +110,14 @@ Glossary
 
    BCF
       Binary :term:`VCF`
+
+   FASTA
+      Simple text format containing sequence data, with only the bare
+      minimum of metadata. Typically used for reference sequence data.
+
+   FASTQ
+      Simple text format containing sequence data and associated base
+      qualities.
 
    tabix
       Utility in the htslib package to index :term:`bgzip` compressed

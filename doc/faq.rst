@@ -15,7 +15,7 @@ Is pysam thread-safe?
 
 Pysam is a mix of python and C code. Instructions within python are
 generally made thread-safe through python's `global interpreter lock`_
-(GIL_). This ensures that python data structures will always be in a
+(:dfn:`GIL`). This ensures that python data structures will always be in a
 consistent state. 
 
 If an external function outside python is called, the programmer has a

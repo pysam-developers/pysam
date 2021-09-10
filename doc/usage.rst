@@ -269,7 +269,8 @@ simple variant attributes such as :class:`~pysam.VariantRecord.contig`,
        print (rec.pos)
 
 but also to complex attributes such as the contents to the
-:term:`info`, :term:`format` and :term:`genotype` columns. These
+:class:`~pysam.VariantRecord.info`, :class:`~pysam.VariantRecord.format`
+and :term:`genotype` columns. These
 complex attributes are views on the underlying htslib data structures
 and provide dictionary-like access to the data::
 
