@@ -2,9 +2,6 @@
 pysam - An interface for reading and writing SAM files
 ======================================================
 
-Introduction
-============
-
 Pysam is a python module that makes it easy to read and manipulate
 mapped short read sequence data stored in SAM/BAM files.  It is a
 lightweight wrapper of the htslib_ C-API.
@@ -130,11 +127,12 @@ More detailed usage instructions is at :ref:`usage`.
 
        The pysam website containing documentation
 
+===
 API
 ===
 
 SAM/BAM/CRAM files
--------------------
+==================
 
 Objects of type :class:`~pysam.AlignmentFile` allow working with
 BAM/SAM formatted files.
@@ -162,7 +160,7 @@ a SAM/BAM file.
 
 
 Tabix files
------------
+===========
 
 :class:`~pysam.TabixFile` opens tabular files that have been
 indexed with tabix_.
@@ -192,13 +190,13 @@ To iterate over tabix files, use :func:`~pysam.tabix_iterator`:
 
 
 Fasta files
------------
+===========
 
 .. autoclass:: pysam.FastaFile
    :members:
 
 Fastq files
------------
+===========
 
 .. autoclass:: pysam.FastxFile
    :members:
@@ -209,7 +207,7 @@ Fastq files
 
 
 VCF files
----------
+=========
 
 .. autoclass:: pysam.VariantFile
    :members:
@@ -224,7 +222,7 @@ VCF files
    :members:
 
 HTSFile
--------
+=======
 
 HTSFile is the base class for :class:`pysam.AlignmentFile` and
 :class:`pysam.VariantFile`.
