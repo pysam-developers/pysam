@@ -8,7 +8,8 @@ How should I cite pysam
 Pysam has not been published in print. When referring to pysam, please
 use the github URL: https://github.com/pysam-developers/pysam. 
 As pysam is a wrapper around htslib and the samtools package, I
-suggest cite `Li et al (2009) <http://www.ncbi.nlm.nih.gov/pubmed/19505943>`.
+suggest citing [Li.2009]_, [Bonfield.2021]_, and/or [Danecek.2021]_,
+as appropriate.
 
 Is pysam thread-safe?
 =====================

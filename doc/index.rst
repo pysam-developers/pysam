@@ -53,9 +53,21 @@ Contents:
 References
 ----------
 
-.. [Li2009] The Sequence Alignment/Map format and SAMtools. Li H, Handsaker B, Wysoker A, Fennell T, Ruan J, Homer N, Marth G, Abecasis G, Durbin R; 1000 Genome Project Data Processing Subgroup.
-   	    Bioinformatics. 2009 Aug 15;25(16):2078-9. Epub 2009 Jun 8.
-	    `PMID: 19505943 <http://www.ncbi.nlm.nih.gov/pubmed/19505943?dopt=Abstract>`_
+.. [Li.2009] *The Sequence Alignment/Map format and SAMtools.*
+   Li H, Handsaker B, Wysoker A, Fennell T, Ruan J, Homer N, Marth G, Abecasis G, Durbin R; 1000 Genome Project Data Processing Subgroup.
+   Bioinformatics. 2009 Aug 15;25(16):2078-9.
+   Epub 2009 Jun 8 `btp352 <https://doi.org/10.1093/bioinformatics/btp352>`_.
+   PMID: `19505943 <https://pubmed.ncbi.nlm.nih.gov/19505943>`_.
+
+.. [Bonfield.2021] *HTSlib: C library for reading/writing high-throughput sequencing data.*
+   Bonfield JK, Marshall J, Danecek P, Li H, Ohan V, Whitwham A, Keane T, Davies RM.
+   GigaScience (2021) 10(2) `giab007 <https://doi.org/10.1093/gigascience/giab007>`_.
+   PMID: `33594436 <https://pubmed.ncbi.nlm.nih.gov/33594436>`_.
+
+.. [Danecek.2021] *Twelve years of SAMtools and BCFtools.*
+   Danecek P, Bonfield JK, Liddle J, Marshall J, Ohan V, Pollard MO, Whitwham A, Keane T, McCarthy SA, Davies RM, Li H.
+   GigaScience (2021) 10(2) `giab008 <https://doi.org/10.1093/gigascience/giab008>`_.
+   PMID: `33590861 <https://pubmed.ncbi.nlm.nih.gov/33590861>`_.
 
 .. seealso::
  
