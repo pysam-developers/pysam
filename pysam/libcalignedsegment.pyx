@@ -978,13 +978,13 @@ cdef class AlignedSegment:
         # requires a valid header.
         return "\t".join(map(str, (self.query_name,
                                    self.flag,
-                                   self.reference_id,
-                                   self.reference_start,
+                                   "#%d" % self.reference_id if self.reference_id >= 0 else "*",
+                                   self.reference_start + 1,
                                    self.mapping_quality,
                                    self.cigarstring,
-                                   self.next_reference_id,
-                                   self.next_reference_start,
-                                   self.query_alignment_length,
+                                   "#%d" % self.next_reference_id if self.next_reference_id >= 0 else "*",
+                                   self.next_reference_start + 1,
+                                   self.template_length,
                                    self.query_sequence,
                                    self.query_qualities,
                                    self.tags)))
