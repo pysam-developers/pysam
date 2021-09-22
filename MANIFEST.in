@@ -16,6 +16,8 @@ include pysam/libc*.pyx
 include pysam/libc*.c
 include pysam/*.c
 include pysam/*.h
+exclude pysam/config.py
+
 include win32/*.[ch]
 
 # exclude tests from pypi tar-ball - they
