@@ -70,7 +70,7 @@ class TestAlignedSegment(ReadTest):
         a = pysam.AlignedSegment()
         s = str(a)
         self.assertEqual(
-            "None\t0\t-1\t-1\t0\tNone\t-1\t-1\t0\tNone\tNone\t[]",
+            "None\t0\t*\t0\t0\tNone\t*\t0\t0\tNone\tNone\t[]",
             s)
 
     def testSettingTagInEmptyRead(self):
