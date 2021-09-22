@@ -23,36 +23,27 @@ include win32/*.[ch]
 prune tests/
 
 # samtools
-include samtools/configure
-include samtools/config.mk.in
-include samtools/config.h.in
-include samtools/*.h
-include samtools/*.c
-exclude samtools/config.h
-include samtools/*/*.h
+include samtools/LICENSE samtools/README samtools/lz4/LICENSE
+recursive-include samtools *.[ch]
+include samtools/version.sh
+exclude samtools/*config*.h
 
 # bcftools
-include bcftools/*.h
-include bcftools/*.c
-exclude bcftools/config.h
+include bcftools/LICENSE bcftools/README
+include bcftools/*.[ch]
+include bcftools/version.sh
+exclude bcftools/*config*.h
 
 # htslib
-include htslib/*.c
-include htslib/*.h
-include htslib/INSTALL
-include htslib/NEWS
-exclude htslib/config.h
-include htslib/Makefile
-include htslib/htslib_vars.mk
-include htslib/configure
-include htslib/config.mk.in
-include htslib/config.h.in
-include htslib/htslib.pc.in
-include htslib/htslib/*.h
-include htslib/cram/*.c
-include htslib/cram/*.h
-include htslib/os/*.c
-include htslib/os/*.h
+include htslib/LICENSE htslib/README
+recursive-include htslib *.[ch]
+exclude htslib/*config*.h
+
+include htslib/configure.ac htslib/m4/*.m4 htslib/*.in
+include htslib/configure htslib/version.sh
+include htslib/Makefile htslib/*.mk
+exclude htslib/config.mk htslib/htscodecs.mk
+
 include cy_build.py
 include requirements.txt
 

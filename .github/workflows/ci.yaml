@@ -1,0 +1,143 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  direct:
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [ubuntu, macos]
+        python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
+        exclude:
+          # Run only the latest 2.x and 3.x on macOS
+          - os: macos
+            python-version: 3.6
+          - os: macos
+            python-version: 3.7
+          - os: macos
+            python-version: 3.8
+
+    steps:
+      - name: Checkout pysam
+        uses: actions/checkout@v2
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install prerequisite Python libraries
+        run:  pip install cython pytest pytest-pep8
+
+      - name: Install build prerequisites
+        if:   runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
+
+      - name: Build (directly from checkout)
+        run:  python setup.py build
+
+      - name: Install test prerequisites
+        run: |
+          case $RUNNER_OS in
+          Linux)
+              sudo apt-get install -q --no-install-recommends --no-install-suggests samtools bcftools tabix
+              ;;
+          macOS)
+              brew install -q samtools bcftools
+              ;;
+          esac
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=$(echo $GITHUB_WORKSPACE/build/lib.*)
+          export REF_PATH=':'
+          pytest
+
+
+  sdist:
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [ubuntu, macos]
+        python-version: [3.9]
+
+    steps:
+      - name: Checkout pysam
+        uses: actions/checkout@v2
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install prerequisite Python libraries
+        run:  pip install cython pytest pytest-pep8
+
+      - name: Install build prerequisites
+        if:   runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
+
+      - name: Create source distribution
+        run:  python setup.py sdist
+
+      - name: Build (via sdist tarball)
+        run:  pip install --verbose --no-deps --no-binary=':all:' pysam-*.tar.gz
+        working-directory: dist
+
+      - name: Install test prerequisites
+        run: |
+          case $RUNNER_OS in
+          Linux)
+              sudo apt-get install -q --no-install-recommends --no-install-suggests samtools bcftools tabix
+              ;;
+          macOS)
+              brew install -q samtools bcftools
+              ;;
+          esac
+
+      - name: Run tests
+        run:  REF_PATH=':' pytest
+
+
+  conda:
+    timeout-minutes: 20
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [ubuntu]
+        python-version: [3.7]
+    defaults:
+      run:
+        shell: bash -l {0}  # needed for conda activation
+    env:
+      HTSLIB_CONFIGURE_OPTIONS: "--disable-libcurl"
+
+    steps:
+      - name: Checkout pysam
+        uses: actions/checkout@v2
+
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          channel-priority: strict
+          activate-environment: testenv
+          auto-activate-base: false
+          use-only-tar-bz2: true
+
+      - name: Set up Conda and Python ${{ matrix.python-version }}
+        run: |
+          conda config --add channels bioconda --add channels conda-forge
+          conda install python=${{ matrix.python-version }} cython
+
+      - name: Build (directly from checkout)
+        run:  python setup.py install
+
+      - name: Install test prerequisites via Conda
+        run:  conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest
+
+      - name: Run tests
+        run:  REF_PATH=':' pytest
