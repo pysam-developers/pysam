@@ -200,6 +200,12 @@ def get_pysam_version():
 
 # Override sdist command to ensure Cythonized *.c files are included.
 class cythonize_sdist(sdist):
+    # Remove when setuptools (as installed on GH runners) has these options
+    if not any(opt[0] == 'owner=' for opt in sdist.user_options):
+        sdist.user_options.append(('owner=', 'u', 'Specify owner inside tar'))
+    if not any(opt[0] == 'group=' for opt in sdist.user_options):
+        sdist.user_options.append(('group=', 'g', 'Specify group inside tar'))
+
     def run(self):
         from Cython.Build import cythonize
         cythonize(self.distribution.ext_modules)

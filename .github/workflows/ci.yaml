@@ -83,7 +83,7 @@ jobs:
           sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
 
       - name: Create source distribution
-        run:  python setup.py sdist
+        run:  python setup.py sdist --owner=root --group=root
 
       - name: Build (via sdist tarball)
         run:  pip install --verbose --no-deps --no-binary=':all:' pysam-*.tar.gz
@@ -102,6 +102,14 @@ jobs:
 
       - name: Run tests
         run:  REF_PATH=':' pytest
+
+      - name: Upload sdist tarball
+        if:   runner.os == 'Linux'
+        uses: actions/upload-artifact@v2
+        with:
+          name: sdist
+          path: dist/pysam-*.tar.gz
+          retention-days: 14
 
 
   conda:
