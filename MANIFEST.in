@@ -57,4 +57,5 @@ include cy_build.py
 include requirements.txt
 
 # documentation
-include doc/*
+include doc/*.py doc/*.rst
+include doc/Makefile doc/make.bat
