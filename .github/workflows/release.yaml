@@ -28,7 +28,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.1.2
         env:
           CIBW_BUILD: cp36-* cp37-* cp38-*
-          CIBW_BEFORE_BUILD: sudo apt-get update && sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
+          CIBW_BEFORE_BUILD: apt install libcurl4-openssl-dev
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
