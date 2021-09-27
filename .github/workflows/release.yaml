@@ -81,7 +81,7 @@ jobs:
   upload_pypi:
 
     needs: [build_wheels, build_sdist]
-    runs_on: ubuntu-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Get Artifacts
