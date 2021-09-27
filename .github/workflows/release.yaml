@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip        
           pip install cython pytest pytest-pep8
 
-      - name: Install build prerequisites
+      - name: Build wheels for linux
         if:   runner.os == 'Linux'
         uses: pypa/cibuildwheel@v2.1.2
         env:
@@ -33,16 +33,7 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux1
           CIBW_MANYLINUX_I686_IMAGE: manylinux1
 
-      - name: Install build prerequisites
-        if:   runner.os == 'Linux'
-        uses: pypa/cibuildwheel@v2.1.2
-        env:
-          CIBW_BUILD: cp36-* cp37-* cp38-*
-          CIBW_BEFORE_BUILD: yum install -y libcurl-devel zlib-devel bzip2-devel xz-devel && pip install cython
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux1
-          CIBW_MANYLINUX_I686_IMAGE: manylinux1
-          
-      - name: Build wheels
+      - name: Build wheels for macos
         if:   runner.os != 'Linux'
         uses: pypa/cibuildwheel@v2.1.2
         env:
