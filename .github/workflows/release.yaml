@@ -38,7 +38,8 @@ jobs:
         uses: pypa/cibuildwheel@v2.1.2
         env:
           CIBW_BUILD: cp36-* cp37-* cp38-*
-          
+          CIBW_BEFORE_BUILD: pip install cython
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
