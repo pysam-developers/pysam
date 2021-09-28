@@ -18,7 +18,7 @@ Bugs fixed:
 * [#983] Add win32/\*.[ch] to MANIFEST.in
 * [#994] Raise exception in ``get_tid()`` if header could not be parsed
 * [#995] Choose TBI/CSI in ``tabix_index()`` via both min_shift and csi
-* [#996] Replace remaining use of 1<<29 with MAX_POS
+* [#996] ``AlignmentFile.fetch()`` now works with large chromosomes longer than 2\ :sup:`29` bases
 * [#1019] Fix Sphinx documentation generation by avoiding Python 2 ``ur'string'`` syntax
 * [#1035] Improved handling of file iteration errors
 * [#1038] ``tabix_index()`` no longer leaks file descriptors
