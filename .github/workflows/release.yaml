@@ -1,6 +1,14 @@
 name: Publish pysam wheels to PyPI and TestPyPI
 
-on: push
+on:
+  push:
+    branches:
+      - v[0-9]+.[0-9]+.x
+    tags:
+      - v*
+  release:
+    types:
+      - published
 
 jobs:
   build_wheels:
