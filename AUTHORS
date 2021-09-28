@@ -1,7 +1,16 @@
+Many people have contributed to pysam. The list of github contributors
+is the best place to get a full list of authors and their contributions.
+The list and summary below is a out-of-date and represents the earlier
+stages of the project.
+
 List of contributors:
 
 Andreas Heger, Tildon Grant Belgard, Florian Finkernagel, Leo
 Goodstadt, Martin Goodson all contributed code to pysam.
+
+John Marshall has been looking after pysam and its community for
+several years, as well as making many code contributions and improving
+the engineering of pysam.
 
 Kevin B. Jacobs implemented a Cython wrapper for the VCF/BCF
 reader/writer in htslib.
