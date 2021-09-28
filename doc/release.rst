@@ -2,6 +2,48 @@
 Release notes
 =============
 
+Release 0.17.0
+==============
+
+This release wraps htslib/samtools/bcftools version 1.13. Corresponding
+to new samtools commands, `pysam.samtools` now has additional functions
+`ampliconclip`, `ampliconstats`, `fqimport`, and `version`.
+
+Bugs fixed:
+
+* [#447] The maximum QNAME length is fully restored to 254
+* [#506, #958, #1000] Don't crash the Python interpreter on ``pysam.bcftools.*()`` errors
+* [#603] count_coverage: ignore reads that have no SEQ field
+* [#928] Fix ``pysam.bcftools.mpileup()`` segmentation fault
+* [#983] Add win32/\*.[ch] to MANIFEST.in
+* [#994] Raise exception in ``get_tid()`` if header could not be parsed
+* [#995] Choose TBI/CSI in ``tabix_index()`` via both min_shift and csi
+* [#996] ``AlignmentFile.fetch()`` now works with large chromosomes longer than 2\ :sup:`29` bases
+* [#1019] Fix Sphinx documentation generation by avoiding Python 2 ``ur'string'`` syntax
+* [#1035] Improved handling of file iteration errors
+* [#1038] ``tabix_index()`` no longer leaks file descriptors
+* [#1040] ``print(aligned_segment)`` now prints the correct TLEN value
+  (it also now prints RNAME/RNEXT more clearly and prints POS/PNEXT 1-based)
+* *setup.py* longer uses ``setup(use_2to3)`` for compatibility with setuptools >= v58.0.0
+
+New facilities:
+
+* [PR #963] Additional VCF classes are exposed to pysam programmers
+* [#998, PR #1001] Add ``get/set_encoding_error_handler()`` to control UTF-8 conversion
+* [PR #1012] Running ``python setup.py sdist`` now automatically runs cythonize
+* Running tests with ``pytest`` now automatically runs ``make`` to generate test data
+
+Documentation improvements:
+
+* [#726] Clarify get_forward_sequence/get_forward_qualities documentation
+* [#865] Improved example
+* [#968] ``get_index_statstics`` parameters
+* [#986] Clarify ``VariantFile.fetch`` start/stop region parameters are 0-based and half-open.
+* [#990] Corrected ``PileupColumn.get_query_sequences`` documentation
+* [#999] Fix documentation for ``AlignmentFile.get_reference_length()``
+* [#1002] Document the default min_base_quality for ``pileup()``
+
+
 Release 0.16.0
 ==============
 
