@@ -930,11 +930,11 @@ class TestVCFFromVariantFile(TestVCFFromVCF):
                "filter", "info", "format")
 
     fail_on_parsing = [
-        (24, "Could not parse the header, sample line not found"),
+        (24, 'Could not parse the "#CHROM.." line'),
         ("issue85", "empty VCF"),
     ]
     fail_on_opening = [
-        (24, "Could not parse the header, sample line not found"),
+        (24, 'Could not parse the "#CHROM.." line'),
         ("issue85", "empty VCF"),
     ]
     coordinate_offset = 0
