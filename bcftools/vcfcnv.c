@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2014-2018 Genome Research Ltd.
+   Copyright (c) 2014-2021 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -346,7 +346,7 @@ static void plot_sample(args_t *args, sample_t *smpl)
             "        chr = row[0]\n"
             "        if chr[0]=='#': continue\n"
             "        if chr not in dat: dat[chr] = []\n"
-            "        dat[chr].append([row[1], float(row[2]), float(row[3])])\n"
+            "        dat[chr].append([int(row[1]), float(row[2]), float(row[3])])\n"
             "\n"
             "cnv = {}\n"
             "with open('%s', 'r') as f:\n"
@@ -356,6 +356,7 @@ static void plot_sample(args_t *args, sample_t *smpl)
             "        if chr[0]=='#': continue\n"
             "        if chr not in cnv: cnv[chr] = []\n"
             "        row[2] = int(row[2]) + 0.5\n"
+            "        row[1] = int(row[1])\n"
             "        cnv[chr].append(row[1:])\n"
             "\n"
             "for chr in dat:\n"
@@ -372,7 +373,7 @@ static void plot_sample(args_t *args, sample_t *smpl)
             "       heat[1][x] = cn_dat[x][3]\n"
             "       heat[2][x] = cn_dat[x][4]\n"
             "       heat[3][x] = cn_dat[x][5]\n"
-            "    mesh = ax3.pcolormesh(xgrid, ygrid, heat, cmap='bwr_r')\n"
+            "    mesh = ax3.pcolormesh(xgrid, ygrid, heat, cmap='bwr_r', shading='auto', alpha=0)\n"
             "    mesh.set_clim(vmin=-1,vmax=1)\n"
             "    ax3.plot([x[0] for x in cn_dat],[x[1] for x in cn_dat],'.-',ms=3,color='black')\n"
             "    fig.suptitle('%s (chr '+chr+')')\n"
@@ -458,7 +459,7 @@ static void create_plots(args_t *args)
             "       for row in reader:\n"
             "           chr = row[0]\n"
             "           if chr != plot_chr: continue\n"
-            "           dat.append([row[1], float(row[2]), float(row[3])])\n"
+            "           dat.append([int(row[1]), float(row[2]), float(row[3])])\n"
             "def read_cnv(file,cnv,plot_chr):\n"
             "   with open(file, 'r') as f:\n"
             "       reader = csv.reader(f, 'tab')\n"
@@ -466,6 +467,7 @@ static void create_plots(args_t *args)
             "           chr = row[0]\n"
             "           if chr != plot_chr: continue\n"
             "           row[2] = int(row[2]) + 0.5\n"
+            "           row[1] = int(row[1])\n"
             "           cnv.append(row[1:])\n"
             "def find_diffs(a,b):\n"
             "    out = []\n"
@@ -504,7 +506,7 @@ static void create_plots(args_t *args)
             "       heat[1][x] = cn_dat[x][3]\n"
             "       heat[2][x] = cn_dat[x][4]\n"
             "       heat[3][x] = cn_dat[x][5]\n"
-            "    mesh = ax3.pcolormesh(xgrid, ygrid, heat, cmap='bwr')\n"
+            "    mesh = ax3.pcolormesh(xgrid, ygrid, heat, cmap='bwr', shading='auto', alpha=0)\n"
             "    mesh.set_clim(vmin=-1,vmax=1)\n"
             "    ax3.plot([x[0] for x in cn_dat],[x[1] for x in cn_dat],'-',ms=3,color='black',lw=1.7)\n"
             "\n"
@@ -1212,28 +1214,30 @@ static void usage(args_t *args)
     fprintf(stderr, "About:   Copy number variation caller, requires Illumina's B-allele frequency (BAF) and Log R\n");
     fprintf(stderr, "         Ratio intensity (LRR). The HMM considers the following copy number states: CN 2\n");
     fprintf(stderr, "         (normal), 1 (single-copy loss), 0 (complete loss), 3 (single-copy gain)\n");
-    fprintf(stderr, "Usage:   bcftools cnv [OPTIONS] <file.vcf>\n");
+    fprintf(stderr, "Usage:   bcftools cnv [OPTIONS] FILE.vcf\n");
     fprintf(stderr, "General Options:\n");
-    fprintf(stderr, "    -c, --control-sample <string>      optional control sample name to highlight differences\n");
-    fprintf(stderr, "    -f, --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
-    fprintf(stderr, "    -o, --output-dir <path>            \n");
-    fprintf(stderr, "    -p, --plot-threshold <float>       plot aberrant chromosomes with quality at least 'float'\n");
-    fprintf(stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(stderr, "    -s, --query-sample <string>        query samply name\n");
-    fprintf(stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
-    fprintf(stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
+    fprintf(stderr, "    -c, --control-sample STRING      Optional control sample name to highlight differences\n");
+    fprintf(stderr, "    -f, --AF-file FILE               Read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
+    fprintf(stderr, "    -o, --output-dir PATH            \n");
+    fprintf(stderr, "    -p, --plot-threshold FLOAT       Plot aberrant chromosomes with quality at least FLOAT\n");
+    fprintf(stderr, "    -r, --regions REGION             Restrict to comma-separated list of regions\n");
+    fprintf(stderr, "    -R, --regions-file FILE          Restrict to regions listed in a file\n");
+    fprintf(stderr, "        --regions-overlap 0|1|2      Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(stderr, "    -s, --query-sample STRING        Query samply name\n");
+    fprintf(stderr, "    -t, --targets REGION             Similar to -r but streams rather than index-jumps\n");
+    fprintf(stderr, "    -T, --targets-file FILE          Similar to -R but streams rather than index-jumps\n");
+    fprintf(stderr, "        --targets-overlap 0|1|2      Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(stderr, "HMM Options:\n");
-    fprintf(stderr, "    -a, --aberrant <float[,float]>     fraction of aberrant cells in query and control [1.0,1.0]\n");
-    fprintf(stderr, "    -b, --BAF-weight <float>           relative contribution from BAF [1]\n");
-    fprintf(stderr, "    -d, --BAF-dev <float[,float]>      expected BAF deviation in query and control [0.04,0.04]\n"); // experimental
-    fprintf(stderr, "    -e, --err-prob <float>             uniform error probability [1e-4]\n");
-    fprintf(stderr, "    -k, --LRR-dev <float[,float]>      expected LRR deviation [0.2,0.2]\n"); // experimental
-    fprintf(stderr, "    -l, --LRR-weight <float>           relative contribution from LRR [0.2]\n");
-    fprintf(stderr, "    -L, --LRR-smooth-win <int>         window of LRR moving average smoothing [10]\n");
-    fprintf(stderr, "    -O, --optimize <float>             estimate fraction of aberrant cells down to <float> [1.0]\n");
-    fprintf(stderr, "    -P, --same-prob <float>            prior probability of -s/-c being the same [0.5]\n");
-    fprintf(stderr, "    -x, --xy-prob <float>              P(x|y) transition probability [1e-9]\n");
+    fprintf(stderr, "    -a, --aberrant FLOAT[,FLOAT]     Fraction of aberrant cells in query and control [1.0,1.0]\n");
+    fprintf(stderr, "    -b, --BAF-weight FLOAT           Relative contribution from BAF [1]\n");
+    fprintf(stderr, "    -d, --BAF-dev FLOAT[,FLOAT]      Expected BAF deviation in query and control [0.04,0.04]\n"); // experimental
+    fprintf(stderr, "    -e, --err-prob FLOAT             Uniform error probability [1e-4]\n");
+    fprintf(stderr, "    -k, --LRR-dev FLOAT[,FLOAT]      Expected LRR deviation [0.2,0.2]\n"); // experimental
+    fprintf(stderr, "    -l, --LRR-weight FLOAT           Relative contribution from LRR [0.2]\n");
+    fprintf(stderr, "    -L, --LRR-smooth-win INT         Window of LRR moving average smoothing [10]\n");
+    fprintf(stderr, "    -O, --optimize FLOAT             Estimate fraction of aberrant cells down to FLOAT [1.0]\n");
+    fprintf(stderr, "    -P, --same-prob FLOA>            Prior probability of -s/-c being the same [0.5]\n");
+    fprintf(stderr, "    -x, --xy-prob FLOAT              P(x|y) transition probability [1e-9]\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -1265,6 +1269,9 @@ int main_vcfcnv(int argc, char *argv[])
     args->query_sample.lrr_dev2 = args->control_sample.lrr_dev2 = 0.2*0.2; //0.20*0.20;   // illumina: 0.18
 
     int regions_is_file = 0, targets_is_file = 0;
+    int regions_overlap = 1;
+    int targets_overlap = 0;
+
     static struct option loptions[] = 
     {
         {"BAF-dev",1,0,'d'},
@@ -1283,8 +1290,10 @@ int main_vcfcnv(int argc, char *argv[])
         {"control-sample",1,0,'c'},
         {"targets",1,0,'t'},
         {"targets-file",1,0,'T'},
+        {"targets-overlap",required_argument,NULL,4},
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
+        {"regions-overlap",required_argument,NULL,3},
         {"plot-threshold",1,0,'p'},
         {"output-dir",1,0,'o'},
         {0,0,0,0}
@@ -1371,6 +1380,18 @@ int main_vcfcnv(int argc, char *argv[])
             case 'T': args->targets_list = optarg; targets_is_file = 1; break;
             case 'r': args->regions_list = optarg; break;
             case 'R': args->regions_list = optarg; regions_is_file = 1; break;
+            case  3 :
+                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
+            case  4 :
+                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
+                else error("Could not parse: --targets-overlap %s\n",optarg);
+                break;
             case 'h': 
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
@@ -1388,11 +1409,13 @@ int main_vcfcnv(int argc, char *argv[])
     if ( !args->output_dir ) error("Expected -o option\n");
     if ( args->regions_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,regions_overlap);
         if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
             error("Failed to read the regions: %s\n", args->regions_list);
     }
     if ( args->targets_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,targets_overlap);
         if ( bcf_sr_set_targets(args->files, args->targets_list, targets_is_file, 0)<0 )
             error("Failed to read the targets: %s\n", args->targets_list);
     }

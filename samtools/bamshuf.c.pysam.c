@@ -183,7 +183,7 @@ static inline int write_to_bin_file(bam1_t *bam, int64_t *count, samFile **bin_f
 
 
 static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
-                   int is_samtools_stdout, const char *output_file, int fast, int store_max, sam_global_args *ga, char *arg_list, int no_pg)
+                   int is_stdout, const char *output_file, int fast, int store_max, sam_global_args *ga, char *arg_list, int no_pg)
 {
     samFile *fp, *fpw = NULL, **fpt = NULL;
     char **fnt = NULL, modew[8];
@@ -228,7 +228,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
 
     sprintf(modew, "wb%d", (clevel >= 0 && clevel <= 9)? clevel : DEF_CLEVEL);
 
-    if (!is_samtools_stdout && !output_file) { // output to a file (name based on prefix)
+    if (!is_stdout && !output_file) { // output to a file (name based on prefix)
         char *fnw = (char*)calloc(l + 5, 1);
         if (!fnw) goto mem_fail;
         if (ga->out.format == unknown_format)
@@ -246,7 +246,7 @@ static int bamshuf(const char *fn, int n_files, const char *pre, int clevel,
         fpw = sam_open_format(output_file, modew, &ga->out);
     } else fpw = sam_open_format("-", modew, &ga->out); // output to samtools_stdout
     if (fpw == NULL) {
-        if (is_samtools_stdout) print_error_errno("collate", "Cannot open standard output");
+        if (is_stdout) print_error_errno("collate", "Cannot open standard output");
         else print_error_errno("collate", "Cannot open output file \"%s.bam\"", pre);
         goto fail;
     }
@@ -582,7 +582,7 @@ char * generate_prefix() {
 
 int main_bamshuf(int argc, char *argv[])
 {
-    int c, n_files = 64, clevel = DEF_CLEVEL, is_samtools_stdout = 0, is_un = 0, fast_coll = 0, reads_store = 10000, ret, pre_mem = 0, no_pg = 0;
+    int c, n_files = 64, clevel = DEF_CLEVEL, is_stdout = 0, is_un = 0, fast_coll = 0, reads_store = 10000, ret, pre_mem = 0, no_pg = 0;
     const char *output_file = NULL;
     char *prefix = NULL, *arg_list = NULL;
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
@@ -597,7 +597,7 @@ int main_bamshuf(int argc, char *argv[])
         case 'n': n_files = atoi(optarg); break;
         case 'l': clevel = atoi(optarg); break;
         case 'u': is_un = 1; break;
-        case 'O': is_samtools_stdout = 1; break;
+        case 'O': is_stdout = 1; break;
         case 'o': output_file = optarg; break;
         case 'f': fast_coll = 1; break;
         case 'r': reads_store = atoi(optarg); break;
@@ -609,9 +609,9 @@ int main_bamshuf(int argc, char *argv[])
     }
     if (is_un) clevel = 0;
     if (argc >= optind + 2) prefix = argv[optind+1];
-    if (!(prefix || is_samtools_stdout || output_file))
+    if (!(prefix || is_stdout || output_file))
         return usage(samtools_stderr, n_files, reads_store);
-    if (is_samtools_stdout && output_file) {
+    if (is_stdout && output_file) {
         fprintf(samtools_stderr, "collate: -o and -O options cannot be used together.\n");
         return usage(samtools_stderr, n_files, reads_store);
     }
@@ -627,7 +627,7 @@ int main_bamshuf(int argc, char *argv[])
         return 1;
     }
 
-    ret = bamshuf(argv[optind], n_files, prefix, clevel, is_samtools_stdout,
+    ret = bamshuf(argv[optind], n_files, prefix, clevel, is_stdout,
                    output_file, fast_coll, reads_store, &ga, arg_list, no_pg);
 
     if (pre_mem) free(prefix);

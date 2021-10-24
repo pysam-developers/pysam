@@ -57,6 +57,7 @@ static int usage(FILE *fp, int exit_status) {
     fprintf(fp, "               Tag to use with barcode sequences [BC]\n");
     fprintf(fp, "  --quality-tag TAG\n");
     fprintf(fp, "               Tag to use with barcode qualities [QT]\n");
+    fprintf(fp, "  -N, --name2  Use 2nd field as read name (SRA format)\n");
     fprintf(fp, "  -r STRING    Build up a complete @RG line\n");
     fprintf(fp, "  -R STRING    Add a simple RG line of \"@RG\\tID:STRING\"\n");
     fprintf(fp, "  -T TAGLIST   Parse tags in SAM format; list of '*' for all\n");
@@ -96,6 +97,7 @@ typedef struct {
     char *order;
     int compress_level;
     htsThreadPool p;
+    int name2;
 } opts_t;
 
 // Append a sequence and quality string from a BAM record to a BC:Z and
@@ -176,6 +178,8 @@ static int import_fastq(int argc, char **argv, opts_t *opts) {
             hts_set_thread_pool(fp_in[i], &opts->p);
         ids[n++] = i;
 
+        if (opts->name2)
+            hts_set_opt(fp_in[i], FASTQ_OPT_NAME2, 1);
         if (opts->casava)
             hts_set_opt(fp_in[i], FASTQ_OPT_CASAVA, 1);
         if (opts->barcode_seq) // for auto-CASAVA parsing
@@ -230,6 +234,7 @@ static int import_fastq(int argc, char **argv, opts_t *opts) {
         perror(opts->fn_out);
         goto err;
     }
+    autoflush_if_stdout(fp_out, opts->fn_out);
     if (opts->p.pool)
         hts_set_thread_pool(fp_out, &opts->p);
 
@@ -380,6 +385,7 @@ err:
     ks_free(&index_str);
     ks_free(&read_str);
     if (fp_out) {
+        release_autoflush(fp_out);
         if (sam_close(fp_out) < 0) {
             perror(opts->fn_out);
             ret |= -1;
@@ -412,6 +418,7 @@ int main_import(int argc, char *argv[]) {
         .rg_line = NULL,
         .order = NULL,
         .compress_level = -1,
+        .name2 = 0,
     };
     kstring_t rg = {0};
 
@@ -427,10 +434,11 @@ int main_import(int argc, char *argv[]) {
         {"order", required_argument, NULL, 3},
         {"barcode-tag", required_argument, NULL, 4},
         {"quality-tag", required_argument, NULL, 5},
+        {"name2", no_argument, NULL, 'N'},
         { NULL, 0, NULL, 0 }
     };
 
-    while ((c = getopt_long(argc, argv, "1:2:s:0:bhiT:r:R:o:O:u@:", lopts, NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "1:2:s:0:bhiT:r:R:o:O:u@:N", lopts, NULL)) >= 0) {
         switch (c) {
         case 'b': opts.idx_both = 1; break;
         case '0': opts.fn[FQ_R0] = optarg; break;
@@ -454,6 +462,8 @@ int main_import(int argc, char *argv[]) {
             kputs(optarg, &rg);
             opts.rg_line = rg.s;
             break;
+
+        case 'N': opts.name2 = 1; break;
 
         case 9: opts.no_pg = 1; break;
         case 3: opts.order = optarg; break;

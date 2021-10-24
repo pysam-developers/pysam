@@ -1293,16 +1293,16 @@ static int mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
         call->als[nals] = call->tgt_als->allele[i];
         j = vcmp_find_allele(call->vcmp, rec->d.allele+1, rec->n_allele - 1, call->tgt_als->allele[i]);
 
-        if ( j+1==*unseen )
-        { 
-            fprintf(bcftools_stderr,"Fixme? Cannot constrain to %d-th allele (%s). VCF=",i,call->tgt_als->allele[i]);
-            int k;
-            for (k=0; k<rec->n_allele; k++) fprintf(bcftools_stderr,"%s%s",k==0?"":",",rec->d.allele[k]);
-            fprintf(bcftools_stderr,"\tTAB=");
-            for (k=0; k<call->tgt_als->n; k++) fprintf(bcftools_stderr,"%s%s",k==0?"":",",call->tgt_als->allele[k]);
-            fprintf(bcftools_stderr,"\n");
-            return -1;
-        }
+        // if ( j+1==*unseen )
+        // { 
+        //     fprintf(bcftools_stderr,"Fixme? Cannot constrain to %d-th allele (%s); j=%d,unseen=%d. VCF=",i,call->tgt_als->allele[i],j,*unseen);
+        //     int k;
+        //     for (k=0; k<rec->n_allele; k++) fprintf(bcftools_stderr,"%s%s",k==0?"":",",rec->d.allele[k]);
+        //     fprintf(bcftools_stderr,"\tTAB=");
+        //     for (k=0; k<call->tgt_als->n; k++) fprintf(bcftools_stderr,"%s%s",k==0?"":",",call->tgt_als->allele[k]);
+        //     fprintf(bcftools_stderr,"\n");
+        //     return -1;
+        // }
         
         if ( j>=0 )
         {

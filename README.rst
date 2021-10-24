@@ -25,7 +25,7 @@ as it resolves non-python dependencies and uses pre-configured
 compilation options. Especially for OS X this will potentially save a
 lot of trouble.
 
-The current version of pysam wraps 3rd-party code from htslib-1.13, samtools-1.13, and bcftools-1.13.
+The current version of pysam wraps 3rd-party code from htslib-1.14, samtools-1.14, and bcftools-1.14.
 
 Pysam is available through `pypi
 <https://pypi.python.org/pypi/pysam>`_. To install, type::

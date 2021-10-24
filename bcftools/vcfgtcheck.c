@@ -57,6 +57,7 @@ typedef struct
     bcf_hdr_t *gt_hdr, *qry_hdr; // VCF with genotypes to compare against and the query VCF
     char *cwd, **argv, *gt_samples, *qry_samples, *regions, *targets, *qry_fname, *gt_fname, *pair_samples;
     int argc, gt_samples_is_file, qry_samples_is_file, regions_is_file, targets_is_file, pair_samples_is_file;
+    int regions_overlap, targets_overlap;
     int qry_use_GT,gt_use_GT, nqry_smpl,ngt_smpl, *qry_smpl,*gt_smpl;
     double *pdiff, *qry_prob, *gt_prob;
     uint32_t *ndiff,*ncnt,ncmp, npairs;
@@ -236,8 +237,16 @@ static void init_data(args_t *args)
     hts_srand48(0);
 
     args->files = bcf_sr_init();
-    if ( args->regions && bcf_sr_set_regions(args->files, args->regions, args->regions_is_file)<0 ) error("Failed to read the regions: %s\n", args->regions);
-    if ( args->targets && bcf_sr_set_targets(args->files, args->targets, args->targets_is_file, 0)<0 ) error("Failed to read the targets: %s\n", args->targets);
+    if ( args->regions )
+    {
+        bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,args->regions_overlap);
+        if ( bcf_sr_set_regions(args->files, args->regions, args->regions_is_file)<0 ) error("Failed to read the regions: %s\n", args->regions);
+    }
+    if ( args->targets )
+    {
+        bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,args->targets_overlap);
+        if ( bcf_sr_set_targets(args->files, args->targets, args->targets_is_file, 0)<0 ) error("Failed to read the targets: %s\n", args->targets);
+    }
 
     if ( args->gt_fname ) bcf_sr_set_opt(args->files, BCF_SR_REQUIRE_IDX);
     if ( !bcf_sr_add_reader(args->files,args->qry_fname) ) error("Failed to open %s: %s\n", args->qry_fname,bcf_sr_strerror(args->files->errnum));
@@ -1047,10 +1056,12 @@ static void usage(void)
     fprintf(stderr, "    -P, --pairs-file FILE              File with tab-delimited sample pairs to compare (qry,gt with -g or qry,qry w/o)\n");
     fprintf(stderr, "    -r, --regions REGION               Restrict to comma-separated list of regions\n");
     fprintf(stderr, "    -R, --regions-file FILE            Restrict to regions listed in a file\n");
+    fprintf(stderr, "        --regions-overlap 0|1|2        Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(stderr, "    -s, --samples [qry|gt]:LIST        List of query or -g samples, \"-\" to select all samples (by default all samples are compared)\n");
     fprintf(stderr, "    -S, --samples-file [qry|gt]:FILE   File with the query or -g samples to compare\n");
     fprintf(stderr, "    -t, --targets REGION               Similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file FILE            Similar to -R but streams rather than index-jumps\n");
+    fprintf(stderr, "        --targets-overlap 0|1|2        Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(stderr, "    -u, --use TAG1[,TAG2]              Which tag to use in the query file (TAG1) and the -g file (TAG2) [PL,GT]\n");
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "   # Check discordance of all samples from B against all sample in A\n");
@@ -1074,6 +1085,8 @@ int main_vcfgtcheck(int argc, char *argv[])
     args->gt_use_GT  = -1;
     args->calc_hwe_prob = 1;
     args->use_PLs = 40;
+    args->regions_overlap = 1;
+    args->targets_overlap = 0;
 
     // external sort for --distinctive-sites
 #ifdef _WIN32
@@ -1110,8 +1123,10 @@ int main_vcfgtcheck(int argc, char *argv[])
         {"distinctive-sites",1,0,6},
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
+        {"regions-overlap",required_argument,NULL,7},
         {"targets",1,0,'t'},
         {"targets-file",1,0,'T'},
+        {"targets-overlap",required_argument,NULL,8},
         {"pairs",1,0,'p'},
         {"pairs-file",1,0,'P'},
         {0,0,0,0}
@@ -1198,6 +1213,18 @@ int main_vcfgtcheck(int argc, char *argv[])
             case 'R': args->regions = optarg; args->regions_is_file = 1; break;
             case 't': args->targets = optarg; break;
             case 'T': args->targets = optarg; args->targets_is_file = 1; break;
+            case  7 :
+                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
+            case  8 :
+                if ( !strcasecmp(optarg,"0") ) args->targets_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) args->targets_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) args->targets_overlap = 2;
+                else error("Could not parse: --targets-overlap %s\n",optarg);
+                break;
             case 'h':
             case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);

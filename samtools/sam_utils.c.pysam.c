@@ -34,9 +34,21 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include "samtools.h"
 
+static htsFile *samtools_stdout_internal = NULL;
+
+void autoflush_if_stdout(htsFile *fp, const char *fname) {
+    if (fname == NULL || strcmp(fname, "-") == 0) samtools_stdout_internal = fp;
+}
+
+void release_autoflush(htsFile *fp) {
+    if (samtools_stdout_internal == fp) samtools_stdout_internal = NULL;
+}
+
 static void vprint_error_core(const char *subcommand, const char *format, va_list args, const char *extra)
 {
     fflush(samtools_stdout);
+    if (samtools_stdout_internal) hts_flush(samtools_stdout_internal);
+
     if (subcommand && *subcommand) fprintf(samtools_stderr, "samtools %s: ", subcommand);
     else fprintf(samtools_stderr, "samtools: ");
     vfprintf(samtools_stderr, format, args);
@@ -64,6 +76,7 @@ void print_error_errno(const char *subcommand, const char *format, ...)
 
 void check_sam_close(const char *subcmd, samFile *fp, const char *fname, const char *null_fname, int *retp)
 {
+    release_autoflush(fp);
     int r = sam_close(fp);
     if (r >= 0) return;
 

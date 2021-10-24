@@ -1094,10 +1094,12 @@ static void usage(args_t *args)
     fprintf(stderr, "    -O, --output-type [srz]            output s:per-site, r:regions, z:compressed [sr]\n");
     fprintf(stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
     fprintf(stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
+    fprintf(stderr, "        --regions-overlap 0|1|2        Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(stderr, "    -s, --samples <list>               list of samples to analyze [all samples]\n");
     fprintf(stderr, "    -S, --samples-file <file>          file of samples to analyze [all samples]\n");
     fprintf(stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
+    fprintf(stderr, "        --targets-overlap 0|1|2        Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(stderr, "        --threads <int>                use multithreading with <int> worker threads [0]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "HMM Options:\n");
@@ -1118,6 +1120,8 @@ int main_vcfroh(int argc, char *argv[])
     args->t2HW    = 5e-9;
     args->rec_rate = 0;
     int regions_is_file = 0, targets_is_file = 0;
+    int regions_overlap = 1;
+    int targets_overlap = 0;
 
     static struct option loptions[] =
     {
@@ -1140,8 +1144,10 @@ int main_vcfroh(int argc, char *argv[])
         {"viterbi-training",1,0,'V'},
         {"targets",1,0,'t'},
         {"targets-file",1,0,'T'},
+        {"targets-overlap",required_argument,NULL,6},
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
+        {"regions-overlap",required_argument,NULL,7},
         {"genetic-map",1,0,'m'},
         {"rec-rate",1,0,'M'},
         {"skip-indels",0,0,'I'},
@@ -1201,6 +1207,18 @@ int main_vcfroh(int argc, char *argv[])
             case 'T': args->targets_list = optarg; targets_is_file = 1; break;
             case 'r': args->regions_list = optarg; break;
             case 'R': args->regions_list = optarg; regions_is_file = 1; break;
+            case  6 :
+                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
+                else error("Could not parse: --targets-overlap %s\n",optarg);
+                break;
+            case  7 :
+                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case 'V': 
                 args->vi_training = 1; 
@@ -1229,11 +1247,13 @@ int main_vcfroh(int argc, char *argv[])
     if ( args->af_fname && args->targets_list ) error("Error: The options --AF-file and -t are mutually exclusive\n");
     if ( args->regions_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,regions_overlap);
         if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
             error("Failed to read the regions: %s\n", args->regions_list);
     }
     if ( args->targets_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,targets_overlap);
         if ( bcf_sr_set_targets(args->files, args->targets_list, targets_is_file, 0)<0 )
             error("Failed to read the targets: %s\n", args->targets_list);
     }

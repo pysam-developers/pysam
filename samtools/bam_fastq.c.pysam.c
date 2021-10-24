@@ -151,7 +151,7 @@ typedef struct bam2fq_state {
     samFile *fpse;
     samFile *fpr[3];
     samFile *fpi[3];
-    samFile *hsamtools_stdout;
+    samFile *hstdout;
     sam_hdr_t *h;
     bool has12, use_oq, copy_tags, illumina_tag;
     int flag_on, flag_off, flag_alloff;
@@ -406,7 +406,7 @@ static bool init_state(const bam2fq_opts_t* opts, bam2fq_state_t** state_out)
     state->filetype = opts->filetype;
     state->def_qual = opts->def_qual;
     state->index_sequence = NULL;
-    state->hsamtools_stdout = NULL;
+    state->hstdout = NULL;
     state->compression_level = opts->compression_level;
 
     state->fp = sam_open(opts->fn_input, "r");
@@ -475,15 +475,16 @@ static bool init_state(const bam2fq_opts_t* opts, bam2fq_state_t** state_out)
                 state->fpr[i] = state->fpr[j];
             }
         } else {
-            if (!state->hsamtools_stdout) {
-                if (!(state->hsamtools_stdout = sam_open_z("-", mode, state))) {
+            if (!state->hstdout) {
+                if (!(state->hstdout = sam_open_z("-", mode, state))) {
                     print_error_errno("bam2fq", "Cannot open STDOUT");
                     free(state);
                     return false;
                 }
-                set_sam_opts(state->hsamtools_stdout, state, opts);
+                set_sam_opts(state->hstdout, state, opts);
+                autoflush_if_stdout(state->hstdout, "-");
             }
-            state->fpr[i] = state->hsamtools_stdout;
+            state->fpr[i] = state->hstdout;
         }
     }
 
@@ -537,7 +538,7 @@ static bool destroy_state(const bam2fq_opts_t *opts, bam2fq_state_t *state, int*
 
     int i, j;
     for (i = 0; i < 3; ++i) {
-        if (state->fpr[i] != state->hsamtools_stdout) {
+        if (state->fpr[i] != state->hstdout) {
             for (j = 0; j < i; j++)
                 if (state->fpr[i] == state->fpr[j])
                     break;
@@ -547,8 +548,9 @@ static bool destroy_state(const bam2fq_opts_t *opts, bam2fq_state_t *state, int*
             }
         }
     }
-    if (state->hsamtools_stdout) {
-        if (sam_close(state->hsamtools_stdout) < 0) {
+    if (state->hstdout) {
+        release_autoflush(state->hstdout);
+        if (sam_close(state->hstdout) < 0) {
             print_error_errno("bam2fq", "Error closing STDOUT");
             valid = false;
         }
@@ -624,7 +626,7 @@ int write_index_rec(samFile *fp, bam1_t *b, bam2fq_state_t *state,
 
 int output_index(bam1_t *b1, bam1_t *b2, bam2fq_state_t *state,
                  bam2fq_opts_t* opts) {
-    bam1_t *b[2] = {b1, b2};
+    bam1_t *b = b1 ? b1 : b2;
 
     char *ifmt = opts->index_format;
     if (!ifmt)
@@ -677,7 +679,7 @@ int output_index(bam1_t *b1, bam1_t *b2, bam2fq_state_t *state,
             break;
 
         case 'i':
-            if (write_index_rec(state->fpi[inum], b[inum], state, opts,
+            if (write_index_rec(state->fpi[inum], b, state, opts,
                                 bc, bc_end-bc, qt, qt_end-qt) < 0)
                 return -1;
             bc = bc_end + (len==0);
@@ -789,7 +791,7 @@ static bool bam2fq_mainloop(bam2fq_state_t *state, bam2fq_opts_t* opts)
     while (true) {
         int res = sam_read1(state->fp, state->h, b[n]);
         if (res < -1) {
-            fprintf(samtools_stderr, "[bam2fq_mainloop] Failed to read bam record.\n");
+            print_error("bam2fq", "Failed to read bam record");
             goto err;
         }
         at_eof = res < 0;

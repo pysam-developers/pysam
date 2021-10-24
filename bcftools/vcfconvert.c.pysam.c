@@ -68,9 +68,10 @@ struct _args_t
     float *flt;
     int rev_als, output_vcf_ids, hap2dip, output_chrom_first_col;
     int nsamples, *samples, sample_is_file, targets_is_file, regions_is_file, output_type;
+    int regions_overlap, targets_overlap;
     char **argv, *sample_list, *targets_list, *regions_list, *tag, *columns;
     char *outfname, *infname, *ref_fname, *sex_fname;
-    int argc, n_threads, record_cmd_line, keep_duplicates;
+    int argc, n_threads, record_cmd_line, keep_duplicates, clevel;
 };
 
 static void destroy_data(args_t *args)
@@ -90,11 +91,13 @@ static void open_vcf(args_t *args, const char *format_str)
 
     if ( args->regions_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,args->regions_overlap);
         if ( bcf_sr_set_regions(args->files, args->regions_list, args->regions_is_file)<0 )
             error("Failed to read the regions: %s\n", args->regions_list);
     }
     if ( args->targets_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,args->targets_overlap);
         if ( bcf_sr_set_targets(args->files, args->targets_list, args->targets_is_file, 0)<0 )
             error("Failed to read the targets: %s\n", args->targets_list);
     }
@@ -396,7 +399,9 @@ static void gensample_to_vcf(args_t *args)
     for (i=0; i<nsamples; i++) free(samples[i]);
     free(samples);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->outfname,args->clevel);
+    htsFile *out_fh = hts_open(args->outfname ? args->outfname : "-", wmode);
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
@@ -524,7 +529,9 @@ static void haplegendsample_to_vcf(args_t *args)
     for (i=0; i<nrows; i++) free(samples[i]);
     free(samples);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->outfname,args->clevel);
+    htsFile *out_fh = hts_open(args->outfname ? args->outfname : "-", wmode);
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
@@ -638,7 +645,9 @@ static void hapsample_to_vcf(args_t *args)
     for (i=0; i<nsamples; i++) free(samples[i]);
     free(samples);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->outfname,args->clevel);
+    htsFile *out_fh = hts_open(args->outfname ? args->outfname : "-", wmode);
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
@@ -1226,7 +1235,9 @@ static void tsv_to_vcf(args_t *args)
     bcf_hdr_add_sample(args->header, NULL);
     args->gts = (int32_t *) malloc(sizeof(int32_t)*n*2);
 
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->outfname,args->clevel);
+    htsFile *out_fh = hts_open(args->outfname ? args->outfname : "-", wmode);
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
@@ -1278,7 +1289,9 @@ static void tsv_to_vcf(args_t *args)
 static void vcf_to_vcf(args_t *args)
 {
     open_vcf(args,NULL);
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->outfname,args->clevel);
+    htsFile *out_fh = hts_open(args->outfname ? args->outfname : "-", wmode);
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
 
@@ -1307,7 +1320,9 @@ static void gvcf_to_vcf(args_t *args)
     if ( !args->ref ) error("Could not load the fai index for reference %s\n", args->ref_fname);
 
     open_vcf(args,NULL);
-    htsFile *out_fh = hts_open(args->outfname,hts_bcf_wmode2(args->output_type,args->outfname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->outfname,args->clevel);
+    htsFile *out_fh = hts_open(args->outfname ? args->outfname : "-", wmode);
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
 
@@ -1382,58 +1397,60 @@ static void usage(void)
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "About:   Converts VCF/BCF to other formats and back. See man page for file\n");
     fprintf(bcftools_stderr, "         formats details. When specifying output files explicitly instead\n");
-    fprintf(bcftools_stderr, "         of with <prefix>, one can use '-' for bcftools_stdout and '.' to suppress.\n");
-    fprintf(bcftools_stderr, "Usage:   bcftools convert [OPTIONS] <input_file>\n");
+    fprintf(bcftools_stderr, "         of with PREFIX, one can use '-' for bcftools_stdout and '.' to suppress.\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools convert [OPTIONS] INPUT_FILE\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "VCF input options:\n");
-    fprintf(bcftools_stderr, "   -e, --exclude <expr>        exclude sites for which the expression is true\n");
-    fprintf(bcftools_stderr, "   -i, --include <expr>        select sites for which the expression is true\n");
-    fprintf(bcftools_stderr, "   -r, --regions <region>      restrict to comma-separated list of regions\n");
-    fprintf(bcftools_stderr, "   -R, --regions-file <file>   restrict to regions listed in a file\n");
-    fprintf(bcftools_stderr, "   -s, --samples <list>        list of samples to include\n");
-    fprintf(bcftools_stderr, "   -S, --samples-file <file>   file of samples to include\n");
-    fprintf(bcftools_stderr, "   -t, --targets <region>      similar to -r but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "   -T, --targets-file <file>   similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "   -e, --exclude EXPR             Exclude sites for which the expression is true\n");
+    fprintf(bcftools_stderr, "   -i, --include EXPR             Select sites for which the expression is true\n");
+    fprintf(bcftools_stderr, "   -r, --regions REGION           Restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "   -R, --regions-file FILE        Restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "       --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(bcftools_stderr, "   -s, --samples LIST             List of samples to include\n");
+    fprintf(bcftools_stderr, "   -S, --samples-file FILE        File of samples to include\n");
+    fprintf(bcftools_stderr, "   -t, --targets REGION           Similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "   -T, --targets-file FILE        Similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "       --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "VCF output options:\n");
-    fprintf(bcftools_stderr, "       --no-version               do not append version and command line to the header\n");
-    fprintf(bcftools_stderr, "   -o, --output <file>            output file name [bcftools_stdout]\n");
-    fprintf(bcftools_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(bcftools_stderr, "       --threads <int>            use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "       --no-version               Do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "   -o, --output FILE              Output file name [bcftools_stdout]\n");
+    fprintf(bcftools_stderr, "   -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
+    fprintf(bcftools_stderr, "       --threads INT              Use multithreading with INT worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
-    fprintf(bcftools_stderr, "   -G, --gensample2vcf <...>   <prefix>|<gen-file>,<sample-file>\n");
-    fprintf(bcftools_stderr, "   -g, --gensample <...>       <prefix>|<gen-file>,<sample-file>\n");
-    fprintf(bcftools_stderr, "       --tag <string>          tag to take values for .gen file: GT,PL,GL,GP [GT]\n");
-    fprintf(bcftools_stderr, "       --chrom                 output chromosome in first column instead of CHROM:POS_REF_ALT\n");
-    fprintf(bcftools_stderr, "       --keep-duplicates       keep duplicate positions\n");
-    fprintf(bcftools_stderr, "       --sex <file>            output sex column in the sample-file, input format is: Sample\\t[MF]\n");
-    fprintf(bcftools_stderr, "       --vcf-ids               output VCF IDs in second column instead of CHROM:POS_REF_ALT\n");
+    fprintf(bcftools_stderr, "   -G, --gensample2vcf ...        <PREFIX>|<GEN-FILE>,<SAMPLE-FILE>\n");
+    fprintf(bcftools_stderr, "   -g, --gensample ...            <PREFIX>|<GEN-FILE>,<SAMPLE-FILE>\n");
+    fprintf(bcftools_stderr, "       --tag STRING               Tag to take values for .gen file: GT,PL,GL,GP [GT]\n");
+    fprintf(bcftools_stderr, "       --chrom                    Output chromosome in first column instead of CHROM:POS_REF_ALT\n");
+    fprintf(bcftools_stderr, "       --keep-duplicates          Keep duplicate positions\n");
+    fprintf(bcftools_stderr, "       --sex FILE                 Output sex column in the sample-file, input format is: Sample\\t[MF]\n");
+    fprintf(bcftools_stderr, "       --vcf-ids                  Output VCF IDs in second column instead of CHROM:POS_REF_ALT\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "gVCF conversion:\n");
-    fprintf(bcftools_stderr, "       --gvcf2vcf              expand gVCF reference blocks\n");
-    fprintf(bcftools_stderr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
+    fprintf(bcftools_stderr, "       --gvcf2vcf                 Expand gVCF reference blocks\n");
+    fprintf(bcftools_stderr, "   -f, --fasta-ref FILE           Reference sequence in fasta format\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "HAP/SAMPLE conversion (output from SHAPEIT):\n");
-    fprintf(bcftools_stderr, "       --hapsample2vcf <...>   <prefix>|<hap-file>,<sample-file>\n");
-    fprintf(bcftools_stderr, "       --hapsample <...>       <prefix>|<hap-file>,<sample-file>\n");
-    fprintf(bcftools_stderr, "       --haploid2diploid       convert haploid genotypes to diploid homozygotes\n");
-    fprintf(bcftools_stderr, "       --sex <file>            output sex column in the sample-file, input format is: Sample\\t[MF]\n");
-    fprintf(bcftools_stderr, "       --vcf-ids               output VCF IDs instead of CHROM:POS_REF_ALT\n");
+    fprintf(bcftools_stderr, "       --hapsample2vcf ...        <PREFIX>|<HAP-FILE>,<SAMPLE-FILE>\n");
+    fprintf(bcftools_stderr, "       --hapsample ...            <PREFIX>|<HAP-FILE>,<SAMPLE-FILE>\n");
+    fprintf(bcftools_stderr, "       --haploid2diploid          Convert haploid genotypes to diploid homozygotes\n");
+    fprintf(bcftools_stderr, "       --sex FILE                 Output sex column in the sample-file, input format is: Sample\\t[MF]\n");
+    fprintf(bcftools_stderr, "       --vcf-ids                  Output VCF IDs instead of CHROM:POS_REF_ALT\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "HAP/LEGEND/SAMPLE conversion:\n");
-    fprintf(bcftools_stderr, "   -H, --haplegendsample2vcf <...>  <prefix>|<hap-file>,<legend-file>,<sample-file>\n");
-    fprintf(bcftools_stderr, "   -h, --haplegendsample <...>      <prefix>|<hap-file>,<legend-file>,<sample-file>\n");
-    fprintf(bcftools_stderr, "       --haploid2diploid            convert haploid genotypes to diploid homozygotes\n");
-    fprintf(bcftools_stderr, "       --sex <file>                 output sex column in the sample-file, input format is: Sample\\t[MF]\n");
-    fprintf(bcftools_stderr, "       --vcf-ids                    output VCF IDs instead of CHROM:POS_REF_ALT\n");
+    fprintf(bcftools_stderr, "   -H, --haplegendsample2vcf ...  <PREFIX>|<HAP-FILE>,<LEGEND-FILE>,<SAMPLE-FILE>\n");
+    fprintf(bcftools_stderr, "   -h, --haplegendsample ...      <PREFIX>|<HAP-FILE>,<LEGEND-FILE>,<SAMPLE-FILE>\n");
+    fprintf(bcftools_stderr, "       --haploid2diploid          Convert haploid genotypes to diploid homozygotes\n");
+    fprintf(bcftools_stderr, "       --sex FILE                 Output sex column in the sample-file, input format is: Sample\\t[MF]\n");
+    fprintf(bcftools_stderr, "       --vcf-ids                  Output VCF IDs instead of CHROM:POS_REF_ALT\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "TSV conversion:\n");
-    fprintf(bcftools_stderr, "       --tsv2vcf <file>        \n");
-    fprintf(bcftools_stderr, "   -c, --columns <string>      columns of the input tsv file [ID,CHROM,POS,AA]\n");
-    fprintf(bcftools_stderr, "   -f, --fasta-ref <file>      reference sequence in fasta format\n");
-    fprintf(bcftools_stderr, "   -s, --samples <list>        list of sample names\n");
-    fprintf(bcftools_stderr, "   -S, --samples-file <file>   file of sample names\n");
+    fprintf(bcftools_stderr, "       --tsv2vcf FILE\n");
+    fprintf(bcftools_stderr, "   -c, --columns STRING           Columns of the input tsv file [ID,CHROM,POS,AA]\n");
+    fprintf(bcftools_stderr, "   -f, --fasta-ref FILE           Reference sequence in fasta format\n");
+    fprintf(bcftools_stderr, "   -s, --samples LIST             List of sample names\n");
+    fprintf(bcftools_stderr, "   -S, --samples-file FILE        File of sample names\n");
     fprintf(bcftools_stderr, "\n");
     // fprintf(bcftools_stderr, "PLINK options:\n");
     // fprintf(bcftools_stderr, "   -p, --plink <prefix>|<ped>,<map>,<fam>|<bed>,<bim>,<fam>|<tped>,<tfam>\n");
@@ -1455,6 +1472,9 @@ int main_vcfconvert(int argc, char *argv[])
     args->output_type = FT_VCF;
     args->n_threads = 0;
     args->record_cmd_line = 1;
+    args->regions_overlap = 1;
+    args->targets_overlap = 0;
+    args->clevel = -1;
 
     static struct option loptions[] =
     {
@@ -1465,8 +1485,10 @@ int main_vcfconvert(int argc, char *argv[])
         {"threads",required_argument,NULL,9},
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
+        {"regions-overlap",required_argument,NULL,13},
         {"targets",required_argument,NULL,'t'},
         {"targets-file",required_argument,NULL,'T'},
+        {"targets-overlap",required_argument,NULL,14},
         {"samples",required_argument,NULL,'s'},
         {"samples-file",required_argument,NULL,'S'},
         {"sex",required_argument,NULL,11},
@@ -1488,6 +1510,7 @@ int main_vcfconvert(int argc, char *argv[])
         {"keep-duplicates",no_argument,NULL,12},
         {NULL,0,NULL,0}
     };
+    char *tmp;
     while ((c = getopt_long(argc, argv, "?h:r:R:s:S:t:T:i:e:g:G:o:O:c:f:H:",loptions,NULL)) >= 0) {
         switch (c) {
             case 'e':
@@ -1522,7 +1545,16 @@ int main_vcfconvert(int argc, char *argv[])
                     case 'u': args->output_type = FT_BCF; break;
                     case 'z': args->output_type = FT_VCF_GZ; break;
                     case 'v': args->output_type = FT_VCF; break;
-                    default: error("The output type \"%s\" not recognised\n", optarg);
+                    default:
+                    {
+                        args->clevel = strtol(optarg,&tmp,10);
+                        if ( *tmp || args->clevel<0 || args->clevel>9 ) error("The output type \"%s\" not recognised\n", optarg);
+                    }
+                }
+                if ( optarg[1] )
+                {
+                    args->clevel = strtol(optarg+1,&tmp,10);
+                    if ( *tmp || args->clevel<0 || args->clevel>9 ) error("Could not parse argument: --compression-level %s\n", optarg+1);
                 }
                 break;
             case 'h': args->convert_func = vcf_to_haplegendsample; args->outfname = optarg; break;
@@ -1530,6 +1562,18 @@ int main_vcfconvert(int argc, char *argv[])
             case 10 : args->record_cmd_line = 0; break;
             case 11 : args->sex_fname = optarg; break;
             case 12 : args->keep_duplicates = 1; break;
+            case 13 :
+                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
+            case 14 :
+                if ( !strcasecmp(optarg,"0") ) args->targets_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) args->targets_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) args->targets_overlap = 2;
+                else error("Could not parse: --targets-overlap %s\n",optarg);
+                break;
             case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);
         }

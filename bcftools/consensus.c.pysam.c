@@ -977,7 +977,7 @@ static void consensus(args_t *args)
         // determine if uppercase or lowercase is used in this fasta file
         if ( args->fa_case==-1 ) args->fa_case = toupper(str.s[0])==str.s[0] ? 1 : 0;
 
-        if ( args->mask && args->rid>=0) mask_region(args, str.s, str.l);
+        if ( args->mask ) mask_region(args, str.s, str.l);
         kputs(str.s, &args->fa_buf);
 
         bcf1_t **rec_ptr = NULL;

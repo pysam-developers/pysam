@@ -56,9 +56,10 @@ typedef struct _args_t
 {
     bcf_hdr_t *hdr;
     char **argv, *fname, *output_fname, *tmp_dir;
-    int argc, output_type;
+    int argc, output_type, clevel;
     size_t max_mem, mem;
     bcf1_t **buf;
+    uint8_t *mem_block;
     size_t nbuf, mbuf, nblk;
     blk_t *blk;
 }
@@ -104,8 +105,6 @@ int cmp_bcf_pos(const void *aptr, const void *bptr)
     // This will be called rarely so should not slow the sorting down
     // noticeably.
 
-    if ( !a->unpacked ) bcf_unpack(a, BCF_UN_STR);
-    if ( !b->unpacked ) bcf_unpack(b, BCF_UN_STR);
     int i;
     for (i=0; i<a->n_allele; i++)
     { 
@@ -141,7 +140,6 @@ void buf_flush(args_t *args)
     for (i=0; i<args->nbuf; i++)
     {
         if ( bcf_write(fh, args->hdr, args->buf[i])!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,blk->fname);
-        bcf_destroy(args->buf[i]);
     }
     if ( hts_close(fh)!=0 ) clean_files_and_throw(args, "[%s] Error: close failed .. %s\n", __func__,blk->fname);
 
@@ -149,14 +147,83 @@ void buf_flush(args_t *args)
     args->mem  = 0;
 }
 
+
+static inline uint8_t *_align_up(uint8_t *ptr)
+{
+    return (uint8_t*)(((size_t)ptr + 8 - 1) & ~((size_t)(8 - 1)));
+}
+
 void buf_push(args_t *args, bcf1_t *rec)
 {
-    int delta = sizeof(bcf1_t) + rec->shared.l + rec->indiv.l + sizeof(bcf1_t*);
-    if ( args->mem + delta > args->max_mem ) buf_flush(args);
+    size_t delta = sizeof(bcf1_t) + rec->shared.l + rec->indiv.l + rec->unpack_size[0] + rec->unpack_size[1]
+        + sizeof(*rec->d.allele)*rec->d.m_allele
+        + sizeof(bcf1_t*)       // args->buf
+        + 8;                    // the number of _align_up() calls
+
+    if ( delta > args->max_mem - args->mem )
+    {
+        args->nbuf++;
+        hts_expand(bcf1_t*, args->nbuf, args->mbuf, args->buf);
+        args->buf[args->nbuf-1] = rec;
+        buf_flush(args);
+        bcf_destroy(rec);
+        return;
+    }
+
+    // make sure nothing has changed in htslib
+    assert( rec->unpacked==BCF_UN_STR && !rec->d.flt && !rec->d.info && !rec->d.fmt && !rec->d.var );
+
+    uint8_t *ptr_beg = args->mem_block + args->mem;
+    uint8_t *ptr = _align_up(ptr_beg);
+    bcf1_t *new_rec = (bcf1_t*)ptr;
+    memcpy(new_rec,rec,sizeof(*rec));
+    ptr += sizeof(*rec);
+
+    // The array of allele pointers does not need alignment as bcf1_t is already padded to the biggest
+    // data type in the structure
+    char **allele = (char**)ptr;
+    ptr += rec->n_allele*sizeof(*allele);
+
+    // This is just to prevent valgrind from complaining about memcpy, unpack_size is a high-water mark
+    // and the end may be uninitialized
+    delta = rec->d.allele[rec->n_allele-1] - rec->d.allele[0];
+    while ( delta < rec->unpack_size[1] ) if ( !rec->d.als[delta++] ) break;
+    memcpy(ptr,rec->d.als,delta);
+    new_rec->d.als = (char*)ptr;
+    ptr = ptr + delta;
+
+    int i;
+    for (i=0; i<rec->n_allele; i++) allele[i] = new_rec->d.als + (ptrdiff_t)(rec->d.allele[i] - rec->d.allele[0]);
+    new_rec->d.allele = allele;
+
+    memcpy(ptr,rec->shared.s,rec->shared.l);
+    new_rec->shared.s = (char*)ptr;
+    new_rec->shared.m = rec->shared.l;
+    ptr += rec->shared.l;
+
+    memcpy(ptr,rec->indiv.s,rec->indiv.l);
+    new_rec->indiv.s = (char*)ptr;
+    new_rec->indiv.m = rec->indiv.l;
+    ptr += rec->indiv.l;
+
+    // This is just to prevent valgrind from complaining about memcpy, unpack_size is a high-water mark
+    // and the end may be uninitialized
+    i = 0;
+    while ( i < rec->unpack_size[0] ) if ( !rec->d.id[i++] ) break;
+    memcpy(ptr,rec->d.id,i);
+    new_rec->d.id = (char*)ptr;
+    ptr += i;
+
     args->nbuf++;
-    args->mem += delta;
     hts_expand(bcf1_t*, args->nbuf, args->mbuf, args->buf);
-    args->buf[args->nbuf-1] = rec;
+    args->buf[args->nbuf-1] = new_rec;
+
+    delta = ptr - ptr_beg;
+    args->mem += delta;
+
+    assert( args->mem <= args->max_mem );
+
+    bcf_destroy(rec);
 }
 
 void sort_blocks(args_t *args) 
@@ -177,6 +244,7 @@ void sort_blocks(args_t *args)
             break;
         }
         if ( rec->errcode ) clean_files_and_throw(args,"Error encountered while parsing the input at %s:%d\n",bcf_seqname(args->hdr,rec),rec->pos+1);
+        bcf_unpack(rec, BCF_UN_STR);
         buf_push(args, rec);
     }
     buf_flush(args);
@@ -206,13 +274,13 @@ void blk_read(args_t *args, khp_blk_t *bhp, bcf_hdr_t *hdr, blk_t *blk)
         blk->fh = 0;
         return;
     }
+    bcf_unpack(blk->rec, BCF_UN_STR);
     khp_insert(blk, bhp, &blk);
 }
 
 void merge_blocks(args_t *args) 
 {
     fprintf(stderr,"Merging %d temporary files\n", (int)args->nblk);
-
     khp_blk_t *bhp = khp_init(blk);
 
     int i;
@@ -227,7 +295,9 @@ void merge_blocks(args_t *args)
         blk_read(args, bhp, args->hdr, blk);
     }
 
-    htsFile *out = hts_open(args->output_fname, hts_bcf_wmode2(args->output_type,args->output_fname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->output_fname,args->clevel);
+    htsFile *out = hts_open(args->output_fname ? args->output_fname : "-", wmode);
     if ( bcf_hdr_write(out, args->hdr)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,args->output_fname);
     while ( bhp->ndat )
     {
@@ -252,13 +322,15 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools sort [OPTIONS] <FILE.vcf>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -m, --max-mem FLOAT[kMG]    maximum memory to use [768M]\n");    // using metric units, 1M=1e6
-    fprintf(stderr, "    -o, --output FILE           output file name [stdout]\n");
-    fprintf(stderr, "    -O, --output-type b|u|z|v   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(stderr, "    -m, --max-mem FLOAT[kMG]       maximum memory to use [768M]\n");    // using metric units, 1M=1e6
+    fprintf(stderr, "    -o, --output FILE              output file name [stdout]\n");
+    fprintf(stderr, "    -O, --output-type b|u|z|v      b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
+    fprintf(stderr, "    -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
+
 #ifdef _WIN32
-    fprintf(stderr, "    -T, --temp-dir DIR          temporary files [/bcftools.XXXXXX]\n");
+    fprintf(stderr, "    -T, --temp-dir DIR             temporary files [/bcftools.XXXXXX]\n");
 #else
-    fprintf(stderr, "    -T, --temp-dir DIR          temporary files [/tmp/bcftools.XXXXXX]\n");
+    fprintf(stderr, "    -T, --temp-dir DIR             temporary files [/tmp/bcftools.XXXXXX]\n");
 #endif
     fprintf(stderr, "\n");
     exit(1);
@@ -278,6 +350,10 @@ size_t parse_mem_string(const char *str)
 void mkdir_p(const char *fmt, ...);
 static void init(args_t *args)
 {
+    args->max_mem *= 0.9;
+    args->mem_block = malloc(args->max_mem);
+    args->mem = 0;
+
     args->tmp_dir = init_tmp_prefix(args->tmp_dir);
 
 #ifdef _WIN32
@@ -295,6 +371,7 @@ static void init(args_t *args)
 static void destroy(args_t *args)
 {
     bcf_hdr_destroy(args->hdr);
+    free(args->mem_block);
     free(args->tmp_dir);
     free(args);
 }
@@ -306,6 +383,7 @@ int main_sort(int argc, char *argv[])
     args->argc    = argc; args->argv = argv;
     args->max_mem = 768*1000*1000;
     args->output_fname = "-";
+    args->clevel = -1;
 
     static struct option loptions[] =
     {
@@ -317,6 +395,7 @@ int main_sort(int argc, char *argv[])
         {"help",no_argument,NULL,'h'},
         {0,0,0,0}
     };
+    char *tmp;
     while ((c = getopt_long(argc, argv, "m:T:O:o:h?",loptions,NULL)) >= 0)
     {
         switch (c)
@@ -330,8 +409,17 @@ int main_sort(int argc, char *argv[])
                           case 'u': args->output_type = FT_BCF; break;
                           case 'z': args->output_type = FT_VCF_GZ; break;
                           case 'v': args->output_type = FT_VCF; break;
-                          default: error("The output type \"%s\" not recognised\n", optarg);
+                          default:
+                          {
+                              args->clevel = strtol(optarg,&tmp,10);
+                              if ( *tmp || args->clevel<0 || args->clevel>9 ) error("The output type \"%s\" not recognised\n", optarg);
+                          }
                       };
+                      if ( optarg[1] )
+                      {
+                          args->clevel = strtol(optarg+1,&tmp,10);
+                          if ( *tmp || args->clevel<0 || args->clevel>9 ) error("Could not parse argument: --compression-level %s\n", optarg+1);
+                      }
                       break;
             case 'h':
             case '?': usage(args); break;

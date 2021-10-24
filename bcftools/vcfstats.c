@@ -1759,10 +1759,12 @@ static void usage(void)
     fprintf(stderr, "    -I, --split-by-ID                Collect stats for sites with ID separately (known vs novel)\n");
     fprintf(stderr, "    -r, --regions REGION             Restrict to comma-separated list of regions\n");
     fprintf(stderr, "    -R, --regions-file FILE          Restrict to regions listed in a file\n");
+    fprintf(stderr, "        --regions-overlap 0|1|2      Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(stderr, "    -s, --samples LIST               List of samples for sample stats, \"-\" to include all samples\n");
     fprintf(stderr, "    -S, --samples-file FILE          File of samples to include\n");
     fprintf(stderr, "    -t, --targets REGION             Similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "    -T, --targets-file FILE          Similar to -R but streams rather than index-jumps\n");
+    fprintf(stderr, "        --targets-overlap 0|1|2      Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(stderr, "    -u, --user-tstv TAG[:min:max:n]  Collect Ts/Tv stats for any tag using the given binning [0:1:100]\n");
     fprintf(stderr, "                                       A subfield can be selected as e.g. 'PV4[0]', here the first value of the PV4 tag\n");
     fprintf(stderr, "        --threads INT                Use multithreading with <int> worker threads [0]\n");
@@ -1779,6 +1781,8 @@ int main_vcfstats(int argc, char *argv[])
     args->argc   = argc; args->argv = argv;
     args->dp_min = 0; args->dp_max = 500; args->dp_step = 1;
     int regions_is_file = 0, targets_is_file = 0;
+    int regions_overlap = 1;
+    int targets_overlap = 0;
 
     static struct option loptions[] =
     {
@@ -1791,6 +1795,7 @@ int main_vcfstats(int argc, char *argv[])
         {"collapse",1,0,'c'},
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
+        {"regions-overlap",required_argument,NULL,3},
         {"verbose",0,0,'v'},
         {"depth",1,0,'d'},
         {"apply-filters",1,0,'f'},
@@ -1800,6 +1805,7 @@ int main_vcfstats(int argc, char *argv[])
         {"split-by-ID",0,0,'I'},
         {"targets",1,0,'t'},
         {"targets-file",1,0,'T'},
+        {"targets-overlap",required_argument,NULL,4},
         {"fasta-ref",1,0,'F'},
         {"user-tstv",1,0,'u'},
         {"threads",1,0,9},
@@ -1844,6 +1850,18 @@ int main_vcfstats(int argc, char *argv[])
             case 'i':
                 if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
                 args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
+            case  3 :
+                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
+            case  4 :
+                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
+                else error("Could not parse: --targets-overlap %s\n",optarg);
+                break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case 'h':
             case '?': usage(); break;
@@ -1865,10 +1883,18 @@ int main_vcfstats(int argc, char *argv[])
         if ( args->split_by_id ) error("Only one file can be given with -i.\n");
     }
     if ( !args->samples_list ) args->files->max_unpack = BCF_UN_INFO;
-    if ( args->targets_list && bcf_sr_set_targets(args->files, args->targets_list, targets_is_file, 0)<0 )
-        error("Failed to read the targets: %s\n", args->targets_list);
-    if ( args->regions_list && bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
-        error("Failed to read the regions: %s\n", args->regions_list);
+    if ( args->targets_list )
+    {
+        bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,targets_overlap);
+        if ( bcf_sr_set_targets(args->files, args->targets_list, targets_is_file, 0)<0 )
+            error("Failed to read the targets: %s\n", args->targets_list);
+    }
+    if ( args->regions_list)
+    {
+        bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,regions_overlap);
+        if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
+            error("Failed to read the regions: %s\n", args->regions_list);
+    }
     if ( args->n_threads && bcf_sr_set_threads(args->files, args->n_threads)<0)
         error("Failed to create threads\n");
 
