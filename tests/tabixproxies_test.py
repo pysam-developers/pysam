@@ -5,11 +5,37 @@ import sys
 import re
 import copy
 import gzip
-from TestUtils import load_and_convert, make_data_files, TABIX_DATADIR
+from TestUtils import load_and_convert, make_data_files, TABIX_DATADIR, IS_PYTHON3
 
 
 def setUpModule():
     make_data_files(TABIX_DATADIR)
+
+
+@unittest.skipUnless(IS_PYTHON3, "Requires Python 3 Extended Iterable Unpacking")
+class TestBED(unittest.TestCase):
+
+    filename = os.path.join(TABIX_DATADIR, "fivecolumns.bed.gz")
+
+    def setUp(self):
+        self.tabix = pysam.TabixFile(self.filename)
+
+    def tearDown(self):
+        self.tabix.close()
+
+    def testAssignmentToTargetList(self):
+        # TODO When we drop Python 2, remove exec() & my and simplify these
+        my = {}
+        for row in self.tabix.fetch(parser=pysam.asTuple()):
+            my['row'] = row
+
+            # Test that *others gets the right columns...
+            exec('contig, start, end, *others = row', globals(), my)
+            self.assertEqual(3 + len(my['others']), len(row))
+
+            # ...and that a TupleProxy can be assigned from more than once
+            exec('contig, *others = row', globals(), my)
+            self.assertEqual(1 + len(my['others']), len(row))
 
 
 class TestParser(unittest.TestCase):
@@ -42,6 +68,13 @@ class TestParser(unittest.TestCase):
                                      r[y:cc])
             self.assertEqual("\t".join(map(str, c)),
                              str(r))
+
+    @unittest.skipUnless(IS_PYTHON3, "Requires Python 3 Extended Iterable Unpacking")
+    def testAssignmentToTargetList(self):
+        for x, r in enumerate(self.tabix.fetch(parser=pysam.asTuple())):
+            my = { 'r': r }
+            exec('col1, col2, *others, colN = r', globals(), my)
+            self.assertEqual(2 + len(my['others']) + 1, len(r))
 
     def testWrite(self):
 

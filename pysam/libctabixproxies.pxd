@@ -9,7 +9,6 @@ cdef class TupleProxy:
         char * data
         char ** fields
         int nfields
-        int index
         int nbytes
         int offset
         bint is_modified
@@ -24,6 +23,11 @@ cdef class TupleProxy:
     cdef present(self, char * buffer, size_t nbytes)
     cdef copy(self, char * buffer, size_t nbytes, bint reset=*)
     cdef update(self, char * buffer, size_t nbytes)
+
+
+cdef class TupleProxyIterator:
+    cdef TupleProxy proxy
+    cdef int index
 
 
 cdef class NamedTupleProxy(TupleProxy):

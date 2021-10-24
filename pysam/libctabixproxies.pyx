@@ -42,7 +42,6 @@ cdef class TupleProxy:
     def __cinit__(self, encoding="ascii"): 
         self.data = NULL
         self.fields = NULL
-        self.index = 0
         self.nbytes = 0
         self.is_modified = 0
         self.nfields = 0
@@ -301,20 +300,7 @@ cdef class TupleProxy:
         return self.nfields
 
     def __iter__(self):
-        self.index = 0
-        return self
-
-    def __next__(self): 
-        """python version of next().
-        """
-        if self.index >= self.nfields:
-            raise StopIteration
-        cdef char * retval = self.fields[self.index]
-        self.index += 1
-        if retval == NULL:
-            return None
-        else:
-            return force_str(retval, self.encoding)
+        return TupleProxyIterator(self)
 
     def __str__(self):
         '''return original data'''
@@ -338,6 +324,23 @@ cdef class TupleProxy:
             free(cpy)
             r = result.decode(self.encoding)
             return r
+
+
+cdef class TupleProxyIterator:
+    def __init__(self, proxy):
+        self.proxy = proxy
+        self.index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.index >= self.proxy.nfields:
+            raise StopIteration
+        cdef char *retval = self.proxy.fields[self.index]
+        self.index += 1
+        return force_str(retval, self.proxy.encoding) if retval != NULL else None
+
 
 def toDot(v):
     '''convert value to '.' if None'''
