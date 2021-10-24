@@ -41,6 +41,7 @@ SAMTOOLS_DISPATCH = {
     "ampliconstats": ("ampliconstats", None),
     "version": ("version", None),
     "fqimport": ("import", None),
+    "samples": ("samples", None),
 }
 
 # instantiate samtools commands as python functions
