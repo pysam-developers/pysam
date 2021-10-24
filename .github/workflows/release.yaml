@@ -16,8 +16,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-10.15]  # windows-2019, 
-        
+        os: [ubuntu-20.04, macos-10.15]  # windows-2019,
+
     steps:
       - name: Checkout pysam
         uses: actions/checkout@v2
@@ -26,10 +26,10 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: '3.8'
-        
+
       - name: Install prerequisite Python libraries
         run:  |
-          python -m pip install --upgrade pip        
+          python -m pip install --upgrade pip
           pip install cython pytest pytest-pep8
 
       - name: Build wheels for linux

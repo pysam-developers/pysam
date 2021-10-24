@@ -1,7 +1,6 @@
 name: CI
 
-# on: [push, pull_request]
-on: [pull_request]
+on: [push, pull_request]
 
 jobs:
   direct:
@@ -9,7 +8,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos]
-        python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
+        python-version: ['2.7', '3.6', '3.7', '3.8', '3.9', '3.10']
         exclude:
           # Run only the latest 2.x and 3.x on macOS
           - os: macos
@@ -18,6 +17,8 @@ jobs:
             python-version: 3.7
           - os: macos
             python-version: 3.8
+          - os: macos
+            python-version: 3.9
 
     steps:
       - name: Checkout pysam
@@ -63,7 +64,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos]
-        python-version: [3.9]
+        python-version: ['3.10']
 
     steps:
       - name: Checkout pysam
@@ -119,7 +120,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu]
-        python-version: [3.7]
+        python-version: ['3.7']
     defaults:
       run:
         shell: bash -l {0}  # needed for conda activation
