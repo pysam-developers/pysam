@@ -425,6 +425,9 @@ def _pysam_dispatch(collection,
         retval = bcftools_dispatch(n + 2, cargs)
         bcftools_close_stdout()
         bcftools_close_stderr()
+    else:
+        # unknown -- just return a Unix shell's "command not found" exit status
+        retval = 127
 
     for i from 0 <= i < n:
         free(cargs[i + 2])
