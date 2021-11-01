@@ -83,6 +83,7 @@ int vcf_index_stats(char *fname, int stats)
      * the total number of records.
      */
     int len = strlen(fname);
+    int idx_only = 0;
     if ( (fnidx = strstr(fname, HTS_IDX_DELIM)) != NULL ) {
         fntemp = strdup(fname);
         if ( !fntemp ) return 1;
@@ -96,27 +97,45 @@ int vcf_index_stats(char *fname, int stats)
         fntemp = strdup(fname);
         fname  = fntemp;
         fname[len-4] = 0;
+        idx_only = 1;
     }
 
     if ( stats&per_contig )
     {
-        fp = hts_open(fname,"r");
-        if ( !fp ) {
-            fprintf(stderr,"Could not read %s\n", fname);
-            ret = 1; goto cleanup;
-        }
-        hdr = bcf_hdr_read(fp);
-        if ( !hdr ) {
-            fprintf(stderr,"Could not read the header: %s\n", fname);
-            ret = 1; goto cleanup;
+        if ( idx_only )
+        {
+            struct stat buf;
+            if ( stat(fname, &buf)==0 ) idx_only = 0;
         }
 
-        if ( hts_get_format(fp)->format==vcf )
+        enum htsExactFormat fmt;
+        if ( !idx_only )
+        {
+            fp = hts_open(fname,"r");
+            if ( !fp ) {
+                fprintf(stderr,"Could not read %s\n", fname);
+                ret = 1; goto cleanup;
+            }
+            hdr = bcf_hdr_read(fp);
+            if ( !hdr ) {
+                fprintf(stderr,"Could not read the header: %s\n", fname);
+                ret = 1; goto cleanup;
+            }
+            fmt = hts_get_format(fp)->format;
+        }
+        else
+        {
+            int len = strlen(fnidx);
+            if ( !strcasecmp(".tbi",fnidx+len-4) ) fmt = vcf;
+            else fmt = bcf;
+        }
+
+        if ( fmt==vcf )
         {
             tbx = tbx_index_load2(fname, fnidx);
             if ( !tbx ) { fprintf(stderr,"Could not load index for VCF: %s\n", fname); return 1; }
         }
-        else if ( hts_get_format(fp)->format==bcf )
+        else if ( fmt==bcf )
         {
             idx = bcf_index_load2(fname, fnidx);
             if ( !idx ) { fprintf(stderr,"Could not load index for BCF file: %s\n", fname); return 1; }
@@ -158,19 +177,17 @@ int vcf_index_stats(char *fname, int stats)
     } else {
         nseq = hts_idx_nseq(idx);
     }
-
+    if ( !tbx && !hdr ) fprintf(stderr,"Warning: cannot determine contig names given the .csi index alone\n");
     for (tid=0; tid<nseq; tid++)
     {
         uint64_t records, v;
         hts_idx_get_stat(tbx ? tbx->idx : idx, tid, &records, &v);
         sum += records;
         if ( (stats&total) || !records ) continue;
-        const char *ctg_name = tbx ? seq[tid] : hdr ? bcf_hdr_id2name(hdr, tid) : NULL;
-        if ( ctg_name ) {
-            bcf_hrec_t *hrec = hdr ? bcf_hdr_get_hrec(hdr, BCF_HL_CTG, "ID", ctg_name, NULL) : NULL;
-            int hkey = hrec ? bcf_hrec_find_key(hrec, "length") : -1;
-            printf("%s\t%s\t%" PRIu64 "\n", ctg_name, hkey<0?".":hrec->vals[hkey], records);
-        }
+        const char *ctg_name = tbx ? seq[tid] : hdr ? bcf_hdr_id2name(hdr, tid) : "n/a";
+        bcf_hrec_t *hrec = hdr ? bcf_hdr_get_hrec(hdr, BCF_HL_CTG, "ID", ctg_name, NULL) : NULL;
+        int hkey = hrec ? bcf_hrec_find_key(hrec, "length") : -1;
+        printf("%s\t%s\t%" PRIu64 "\n", ctg_name, hkey<0?".":hrec->vals[hkey], records);
     }
     if ( !sum )
     {

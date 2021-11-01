@@ -4,7 +4,7 @@
 ##INFO=<ID=Sanger,Number=1,Type=String,Description="Status of Sanger Sequencing for this site">
 ##INFO=<ID=NotCalledInValidationSamples,Number=.,Type=Flag,Description="Was not called polymorphic in sequencing for any of the passing validation samples; could still be polymorphic">
 ##reference=file:///humgen/1kg/reference/human_g1k_v37.fasta
-#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
 20	207414	.	G	A	.	.	PacBio=NoCall;Sqnm=NoCall
 20	792106	.	C	G	.	.	PacBio=Poly;Sqnm=NoCall
 20	894031	.	G	A	.	.	PacBio=Poly;Sqnm=Poly

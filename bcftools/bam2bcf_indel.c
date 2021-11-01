@@ -37,7 +37,6 @@ DEALINGS IN THE SOFTWARE.  */
 KSORT_INIT_GENERIC(uint32_t)
 
 #define MINUS_CONST 0x10000000
-#define INDEL_WINDOW_SIZE 110
 
 #define MAX_TYPES 64
 
@@ -235,8 +234,8 @@ static int *bcf_cgp_find_types(int n, int *n_plp, bam_pileup1_t **plp,
     // To prevent long stretches of N's to be mistaken for indels
     // (sometimes thousands of bases), check the number of N's in the
     // sequence and skip places where half or more reference bases are Ns.
-    int nN=0, i_end = pos + (2*INDEL_WINDOW_SIZE < max_rd_len
-                            ?2*INDEL_WINDOW_SIZE : max_rd_len);
+    int nN=0, i_end = pos + (2*bca->indel_win_size < max_rd_len
+                            ?2*bca->indel_win_size : max_rd_len);
     for (i=pos; i<i_end && ref[i]; i++)
         nN += ref[i] == 'N';
     if ( nN*2>(i-pos) ) {
@@ -720,8 +719,8 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos,
 
 
     // calculate left and right boundary
-    left = pos > INDEL_WINDOW_SIZE? pos - INDEL_WINDOW_SIZE : 0;
-    right = pos + INDEL_WINDOW_SIZE;
+    left = pos > bca->indel_win_size ? pos - bca->indel_win_size : 0;
+    right = pos + bca->indel_win_size;
     if (types[0] < 0) right -= types[0];
 
     // in case the alignments stand out the reference
@@ -865,10 +864,10 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos,
                     // long read data needs less context.  It also tends to
                     // have many more candidate indels to investigate so
                     // speed here matters more.
-                    if (pos - left >= INDEL_WINDOW_SIZE)
-                        left2 += INDEL_WINDOW_SIZE/2;
-                    if (right-pos >= INDEL_WINDOW_SIZE)
-                        right2 -= INDEL_WINDOW_SIZE/2;
+                    if (pos - left >= bca->indel_win_size)
+                        left2 += bca->indel_win_size/2;
+                    if (right-pos >= bca->indel_win_size)
+                        right2 -= bca->indel_win_size/2;
                 }
 
                 int r_start = p->b->core.pos;

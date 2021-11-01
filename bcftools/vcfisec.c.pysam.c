@@ -52,7 +52,7 @@ THE SOFTWARE.  */
 
 typedef struct
 {
-    int isec_op, isec_n, *write, iwrite, nwrite, output_type, n_threads;
+    int isec_op, isec_n, *write, iwrite, nwrite, output_type, n_threads, clevel;
     int nflt, *flt_logic;
     filter_t **flt;
     char **flt_expr;
@@ -143,7 +143,9 @@ void isec_vcf(args_t *args)
     if ( args->targets_list && files->nreaders==1 ) out_std = 1;
     if ( out_std )
     {
-        out_fh = hts_open(args->output_fname? args->output_fname : "-",hts_bcf_wmode2(args->output_type,args->output_fname));
+        char wmode[8];
+        set_wmode(wmode,args->output_type,args->output_fname,args->clevel);
+        out_fh = hts_open(args->output_fname ? args->output_fname : "-", wmode);
         if ( out_fh == NULL ) error("Can't write to %s: %s\n", args->output_fname? args->output_fname : "standard output", strerror(errno));
         if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
         if (args->record_cmd_line) bcf_hdr_append_version(files->readers[args->iwrite].header,args->argc,args->argv,"bcftools_isec");
@@ -358,7 +360,9 @@ static void init_data(args_t *args)
 
             #define OPEN_FILE(i,j) { \
                 open_file(&args->fnames[i], NULL, "%s/%04d.%s", args->prefix, i, suffix); \
-                args->fh_out[i] = hts_open(args->fnames[i], hts_bcf_wmode2(args->output_type,args->fnames[i]));  \
+                char wmode[8]; \
+                set_wmode(wmode,args->output_type,args->fnames[i],args->clevel); \
+                args->fh_out[i] = hts_open(args->fnames[i], wmode); \
                 if ( !args->fh_out[i] ) error("Could not open %s\n", args->fnames[i]); \
                 if ( args->n_threads ) hts_set_threads(args->fh_out[i], args->n_threads); \
                 if (args->record_cmd_line) bcf_hdr_append_version(args->files->readers[j].header,args->argc,args->argv,"bcftools_isec"); \
@@ -460,22 +464,24 @@ static void usage(void)
     fprintf(bcftools_stderr, "Usage:   bcftools isec [options] <A.vcf.gz> <B.vcf.gz> [...]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Options:\n");
-    fprintf(bcftools_stderr, "    -c, --collapse <string>       treat as identical records with <snps|indels|both|all|some|none>, see man page for details [none]\n");
-    fprintf(bcftools_stderr, "    -C, --complement              output positions present only in the first file but missing in the others\n");
-    fprintf(bcftools_stderr, "    -e, --exclude <expr>          exclude sites for which the expression is true\n");
-    fprintf(bcftools_stderr, "    -f, --apply-filters <list>    require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
-    fprintf(bcftools_stderr, "    -i, --include <expr>          include only sites for which the expression is true\n");
-    fprintf(bcftools_stderr, "        --no-version                  do not append version and command line to the header\n");
-    fprintf(bcftools_stderr, "    -n, --nfiles [+-=~]<int>      output positions present in this many (=), this many or more (+), this many or fewer (-), the exact (~) files\n");
-    fprintf(bcftools_stderr, "    -o, --output <file>           write output to a file [standard output]\n");
-    fprintf(bcftools_stderr, "    -O, --output-type <b|u|z|v>   b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(bcftools_stderr, "    -p, --prefix <dir>            if given, subset each of the input files accordingly, see also -w\n");
-    fprintf(bcftools_stderr, "    -r, --regions <region>        restrict to comma-separated list of regions\n");
-    fprintf(bcftools_stderr, "    -R, --regions-file <file>     restrict to regions listed in a file\n");
-    fprintf(bcftools_stderr, "    -t, --targets <region>        similar to -r but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "    -T, --targets-file <file>     similar to -R but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "        --threads <int>           use multithreading with <int> worker threads [0]\n");
-    fprintf(bcftools_stderr, "    -w, --write <list>            list of files to write with -p given as 1-based indexes. By default, all files are written\n");
+    fprintf(bcftools_stderr, "    -c, --collapse STRING          Treat as identical records with <snps|indels|both|all|some|none>, see man page for details [none]\n");
+    fprintf(bcftools_stderr, "    -C, --complement               Output positions present only in the first file but missing in the others\n");
+    fprintf(bcftools_stderr, "    -e, --exclude EXPR             Exclude sites for which the expression is true\n");
+    fprintf(bcftools_stderr, "    -f, --apply-filters LIST       Require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
+    fprintf(bcftools_stderr, "    -i, --include EXPR             Include only sites for which the expression is true\n");
+    fprintf(bcftools_stderr, "        --no-version               Do not append version and command line to the header\n");
+    fprintf(bcftools_stderr, "    -n, --nfiles [+-=~]INT         Output positions present in this many (=), this many or more (+), this many or fewer (-), the exact (~) files\n");
+    fprintf(bcftools_stderr, "    -o, --output FILE              Write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "    -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
+    fprintf(bcftools_stderr, "    -p, --prefix DIR               If given, subset each of the input files accordingly, see also -w\n");
+    fprintf(bcftools_stderr, "    -r, --regions REGION           Restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file FILE        Restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "        --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(bcftools_stderr, "    -t, --targets REGION           Similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "    -T, --targets-file FILE        Similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "        --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
+    fprintf(bcftools_stderr, "        --threads INT              Use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "    -w, --write LIST               List of files to write with -p given as 1-based indexes. By default, all files are written\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Examples:\n");
     fprintf(bcftools_stderr, "   # Create intersection and complements of two sets saving the output in dir/*\n");
@@ -506,7 +512,10 @@ int main_vcfisec(int argc, char *argv[])
     args->output_type = FT_VCF;
     args->n_threads = 0;
     args->record_cmd_line = 1;
+    args->clevel = -1;
     int targets_is_file = 0, regions_is_file = 0;
+    int regions_overlap = 1;
+    int targets_overlap = 0;
 
     static struct option loptions[] =
     {
@@ -521,14 +530,17 @@ int main_vcfisec(int argc, char *argv[])
         {"write",required_argument,NULL,'w'},
         {"targets",required_argument,NULL,'t'},
         {"targets-file",required_argument,NULL,'T'},
+        {"targets-overlap",required_argument,NULL,4},
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
+        {"regions-overlap",required_argument,NULL,3},
         {"output",required_argument,NULL,'o'},
         {"output-type",required_argument,NULL,'O'},
         {"threads",required_argument,NULL,9},
         {"no-version",no_argument,NULL,8},
         {NULL,0,NULL,0}
     };
+    char *tmp;
     while ((c = getopt_long(argc, argv, "hc:r:R:p:n:w:t:T:Cf:o:O:i:e:",loptions,NULL)) >= 0) {
         switch (c) {
             case 'o': args->output_fname = optarg; break;
@@ -538,7 +550,16 @@ int main_vcfisec(int argc, char *argv[])
                     case 'u': args->output_type = FT_BCF; break;
                     case 'z': args->output_type = FT_VCF_GZ; break;
                     case 'v': args->output_type = FT_VCF; break;
-                    default: error("The output type \"%s\" not recognised\n", optarg);
+                    default:
+                    {
+                        args->clevel = strtol(optarg,&tmp,10);
+                        if ( *tmp || args->clevel<0 || args->clevel>9 ) error("The output type \"%s\" not recognised\n", optarg);
+                    }
+                }
+                if ( optarg[1] )
+                {
+                    args->clevel = strtol(optarg+1,&tmp,10);
+                    if ( *tmp || args->clevel<0 || args->clevel>9 ) error("Could not parse argument: --compression-level %s\n", optarg+1);
                 }
                 break;
             case 'c':
@@ -578,6 +599,18 @@ int main_vcfisec(int argc, char *argv[])
                     else if ( sscanf(p,"%d",&args->isec_n)!=1 ) error("Could not parse --nfiles %s\n", optarg);
                 }
                 break;
+            case  3 :
+                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
+            case  4 :
+                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
+                else error("Could not parse: --targets-overlap %s\n",optarg);
+                break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
             case 'h':
@@ -586,10 +619,18 @@ int main_vcfisec(int argc, char *argv[])
         }
     }
     if ( argc-optind<1 ) usage();   // no file given
-    if ( args->targets_list && bcf_sr_set_targets(args->files, args->targets_list, targets_is_file,0)<0 )
-        error("Failed to read the targets: %s\n", args->targets_list);
-    if ( args->regions_list && bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
-        error("Failed to read the regions: %s\n", args->regions_list);
+    if ( args->targets_list )
+    {
+        bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,targets_overlap);
+        if ( bcf_sr_set_targets(args->files, args->targets_list, targets_is_file,0)<0 )
+            error("Failed to read the targets: %s\n", args->targets_list);
+    }
+    if ( args->regions_list )
+    {
+        bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,regions_overlap);
+        if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
+            error("Failed to read the regions: %s\n", args->regions_list);
+    }
     if ( argc-optind==2 && !args->isec_op )
     {
         args->isec_op = OP_VENN;

@@ -82,3 +82,23 @@ const char *hts_bcf_wmode2(int file_type, char *fname)
     return hts_bcf_wmode(file_type);
 }
 
+void set_wmode(char dst[8], int file_type, char *fname, int clevel)
+{
+    const char *ret = NULL;
+    int len = fname ? strlen(fname) : 0;
+    if ( len >= 4 && !strcasecmp(".bcf",fname+len-4) ) ret = hts_bcf_wmode(FT_BCF|FT_GZ);
+    else if ( len >= 4 && !strcasecmp(".vcf",fname+len-4) ) ret = hts_bcf_wmode(FT_VCF);
+    else if ( len >= 7 && !strcasecmp(".vcf.gz",fname+len-7) ) ret = hts_bcf_wmode(FT_VCF|FT_GZ);
+    else if ( len >= 8 && !strcasecmp(".vcf.bgz",fname+len-8) ) ret = hts_bcf_wmode(FT_VCF|FT_GZ);
+    else ret = hts_bcf_wmode(file_type);
+    if ( clevel>=0 && clevel<=9 )
+    {
+        if ( strchr(ret,'v') || strchr(ret,'u') ) error("Error: compression level (%d) cannot be set on uncompressed streams (%s)\n",clevel,fname);
+        len = strlen(ret);
+        if ( len>6 ) error("Fixme: %s\n", ret);
+        sprintf(dst, "%s%d", ret, clevel);
+    }
+    else
+        strcpy(dst, ret);
+}
+

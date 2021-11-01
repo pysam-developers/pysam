@@ -1,6 +1,6 @@
 /*  convert.h -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2014 Genome Research Ltd.
+    Copyright (C) 2014-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -40,6 +40,8 @@ int convert_set_option(convert_t *convert, enum convert_option opt, ...);
 int convert_header(convert_t *convert, kstring_t *str);
 int convert_line(convert_t *convert, bcf1_t *rec, kstring_t *str);
 int convert_max_unpack(convert_t *convert);
+int convert_is_tag_used(convert_t *convert, char *tag);
+const char **convert_list_used_tags(convert_t *convert, int *ntags);
 
 #endif
 

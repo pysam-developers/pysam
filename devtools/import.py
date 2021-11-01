@@ -96,9 +96,10 @@ def _update_pysam_files(cf, destdir):
                 if basename == "samtools":
                     lines = re.sub(r"main_(reheader)\(",
                                    r"samtools_main_\1(", lines)
+                lines = re.sub(r"\b({}_stdout)\b".format(basename), r"\1_internal", lines)
                 lines = re.sub(r"\bexit\(", "{}_exit(".format(basename), lines)
-                lines = re.sub("stderr", "{}_stderr".format(basename), lines)
-                lines = re.sub("stdout", "{}_stdout".format(basename), lines)
+                lines = re.sub(r"\bstderr\b", "{}_stderr".format(basename), lines)
+                lines = re.sub(r"\bstdout\b", "{}_stdout".format(basename), lines)
                 lines = re.sub(r" printf\(", " fprintf({}_stdout, ".format(basename), lines)
                 lines = re.sub(r"([^kf])puts\(", r"\1{}_puts(".format(basename), lines)
                 lines = re.sub(r"putchar\(([^)]+)\)",

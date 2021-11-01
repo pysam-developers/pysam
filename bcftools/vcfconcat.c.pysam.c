@@ -45,7 +45,7 @@ typedef struct _args_t
 {
     bcf_srs_t *files;
     htsFile *out_fh;
-    int output_type, n_threads, record_cmd_line;
+    int output_type, n_threads, record_cmd_line, clevel;
     bcf_hdr_t *out_hdr;
     int *seen_seq;
 
@@ -53,13 +53,14 @@ typedef struct _args_t
     int *start_pos, start_tid, ifname;
     int *swap_phase, nswap, *nmatch, *nmism;
     bcf1_t **buf;
+    uint8_t *buf_mask;
     int nbuf, mbuf, prev_chr, min_PQ, prev_pos_check;
     int32_t *GTa, *GTb, mGTa, mGTb, *phase_qual, *phase_set;
 
     char **argv, *output_fname, *file_list, **fnames, *remove_dups, *regions_list;
-    int argc, nfnames, allow_overlaps, phased_concat, regions_is_file;
+    int argc, nfnames, allow_overlaps, phased_concat, regions_is_file, regions_overlap;
     int compact_PS, phase_set_changed, naive_concat, naive_concat_trust_headers;
-    int verbose;
+    int verbose, explicit_output_type, ligate_force, ligate_warn;
     htsThreadPool *tpool;
 }
 args_t;
@@ -118,7 +119,9 @@ static void init_data(args_t *args)
         bcf_hdr_append(args->out_hdr,"##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase Set\">");
     }
     if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_concat");
-    args->out_fh = hts_open(args->output_fname,hts_bcf_wmode2(args->output_type,args->output_fname));
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->output_fname,args->clevel);
+    args->out_fh = hts_open(args->output_fname ? args->output_fname : "-", wmode);
     if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->allow_overlaps || args->phased_concat )
     {
@@ -146,6 +149,7 @@ static void init_data(args_t *args)
     {
         if ( args->regions_list )
         {
+            bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,args->regions_overlap);
             if ( bcf_sr_set_regions(args->files, args->regions_list, args->regions_is_file)<0 )
                 error("Failed to read the regions: %s\n", args->regions_list);
         }
@@ -215,6 +219,7 @@ static void destroy_data(args_t *args)
     free(args->swap_phase);
     for (i=0; i<args->mbuf; i++) bcf_destroy(args->buf[i]);
     free(args->buf);
+    free(args->buf_mask);
     free(args->GTa);
     free(args->GTb);
     free(args->nmatch);
@@ -253,9 +258,10 @@ static void phased_flush(args_t *args)
 
     int i, j, nsmpl = bcf_hdr_nsamples(args->out_hdr);
     static int gt_absent_warned = 0;
-
     for (i=0; i<args->nbuf; i+=2)
     {
+        if ( args->buf_mask[i/2]!=3 ) continue;
+
         bcf1_t *arec = args->buf[i];
         bcf1_t *brec = args->buf[i+1];
 
@@ -302,19 +308,23 @@ static void phased_flush(args_t *args)
     }
     for (i=0; i<args->nbuf/2; i+=2)
     {
-        bcf1_t *arec = args->buf[i];
-        bcf_translate(args->out_hdr, args->files->readers[0].header, arec);
-        if ( args->nswap )
-            phase_update(args, args->out_hdr, arec);
+        bcf1_t *rec;
+        bcf_hdr_t *hdr;
+        int mask = args->buf_mask[i/2];
+        if ( mask & 1 ) { rec = args->buf[i]; hdr = args->files->readers[0].header; }
+        else { rec = args->buf[i+1]; hdr = args->files->readers[1].header; }
+        bcf_translate(args->out_hdr, hdr, rec);
+        if ( args->nswap && (mask&1) )
+            phase_update(args, args->out_hdr, rec);
         if ( !args->compact_PS || args->phase_set_changed )
         {
-            bcf_update_format_int32(args->out_hdr,arec,"PS",args->phase_set,nsmpl);
+            bcf_update_format_int32(args->out_hdr,rec,"PS",args->phase_set,nsmpl);
             args->phase_set_changed = 0;
         }
-        if ( bcf_write(args->out_fh, args->out_hdr, arec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
+        if ( bcf_write(args->out_fh, args->out_hdr, rec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
 
-        if ( arec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%"PRId64" vs %d  [1]\n", bcf_seqname(args->files->readers[0].header,arec),(int64_t) arec->pos+1,args->prev_pos_check+1);
-        args->prev_pos_check = arec->pos;
+        if ( rec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%"PRId64" vs %d  [1]\n", bcf_seqname(hdr,rec),(int64_t)rec->pos+1,args->prev_pos_check+1);
+        args->prev_pos_check = rec->pos;
     }
     args->nswap = 0;
     for (j=0; j<nsmpl; j++)
@@ -340,61 +350,70 @@ static void phased_flush(args_t *args)
     int PQ_printed = 0;
     for (; i<args->nbuf; i+=2)
     {
-        bcf1_t *brec = args->buf[i+1];
-        bcf_translate(args->out_hdr, args->files->readers[1].header, brec);
-        if ( !PQ_printed )
+        bcf1_t *rec;
+        bcf_hdr_t *hdr;
+        int mask = args->buf_mask[i/2];
+        if ( mask & 2 ) { rec = args->buf[i+1]; hdr = args->files->readers[1].header; }
+        else { rec = args->buf[i]; hdr = args->files->readers[0].header; }
+        bcf_translate(args->out_hdr, hdr, rec);
+        if ( !PQ_printed && mask==3 )
         {
-            bcf_update_format_int32(args->out_hdr,brec,"PQ",args->phase_qual,nsmpl);
+            bcf_update_format_int32(args->out_hdr,rec,"PQ",args->phase_qual,nsmpl);
             PQ_printed = 1;
             for (j=0; j<nsmpl; j++)
                 if ( args->phase_qual[j] < args->min_PQ ) 
                 {
-                    args->phase_set[j] = brec->pos+1;
+                    args->phase_set[j] = rec->pos+1;
                     args->phase_set_changed = 1;
                 }
                 else if ( args->compact_PS ) args->phase_set[j] = bcf_int32_missing;
         }
         if ( args->nswap )
-            phase_update(args, args->out_hdr, brec);
+            phase_update(args, args->out_hdr, rec);
         if ( !args->compact_PS || args->phase_set_changed )
         {
-            bcf_update_format_int32(args->out_hdr,brec,"PS",args->phase_set,nsmpl);
+            bcf_update_format_int32(args->out_hdr,rec,"PS",args->phase_set,nsmpl);
             args->phase_set_changed = 0;
         }
-        if ( bcf_write(args->out_fh, args->out_hdr, brec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
+        if ( bcf_write(args->out_fh, args->out_hdr, rec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
 
-        if ( brec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%"PRId64" vs %d  [2]\n", bcf_seqname(args->files->readers[1].header,brec),(int64_t) brec->pos+1,args->prev_pos_check+1);
-        args->prev_pos_check = brec->pos;
+        if ( rec->pos < args->prev_pos_check ) error("FIXME, disorder: %s:%"PRId64" vs %d  [2]\n", bcf_seqname(hdr,rec),(int64_t)rec->pos+1,args->prev_pos_check+1);
+        args->prev_pos_check = rec->pos;
     }
     args->nbuf = 0;
 }
 
-static void phased_push(args_t *args, bcf1_t *arec, bcf1_t *brec)
+static void phased_push(args_t *args, bcf1_t *arec, bcf1_t *brec, int is_overlap)
 {
+    bcf_hdr_t *ahdr = arec ? bcf_sr_get_header(args->files,0) : NULL;
+    bcf_hdr_t *bhdr = brec ? bcf_sr_get_header(args->files,1) : NULL;
+
     if ( arec && arec->errcode )
-        error("Parse error at %s:%"PRId64", cannot proceed: %s\n", bcf_seqname(args->files->readers[0].header,arec),(int64_t) arec->pos+1, args->files->readers[0].fname);
+        error("Parse error at %s:%"PRId64", cannot proceed: %s\n", bcf_seqname(ahdr,arec),(int64_t) arec->pos+1, args->files->readers[0].fname);
     if ( brec && brec->errcode )
-        error("Parse error at %s:%"PRId64", cannot proceed: %s\n", bcf_seqname(args->files->readers[1].header,brec),(int64_t) brec->pos+1, args->files->readers[1].fname);
+        error("Parse error at %s:%"PRId64", cannot proceed: %s\n", bcf_seqname(bhdr,brec),(int64_t) brec->pos+1, args->files->readers[1].fname);
 
     int i, nsmpl = bcf_hdr_nsamples(args->out_hdr);
-    int chr_id = bcf_hdr_name2id(args->out_hdr, bcf_seqname(args->files->readers[0].header,arec));
+    int chr_id = arec ? bcf_hdr_name2id(args->out_hdr,bcf_seqname(ahdr,arec)) : bcf_hdr_name2id(args->out_hdr,bcf_seqname(bhdr,brec));
     if ( args->prev_chr<0 || args->prev_chr!=chr_id )
     {
         if ( args->prev_chr>=0 ) phased_flush(args);
 
         for (i=0; i<nsmpl; i++)
-            args->phase_set[i] = arec->pos+1;
+            args->phase_set[i] = arec ? arec->pos+1 : brec->pos+1;
         args->phase_set_changed = 1;
 
-        if ( args->seen_seq[chr_id] ) error("The chromosome block %s is not contiguous\n", bcf_seqname(args->files->readers[0].header,arec));
+        if ( args->seen_seq[chr_id] ) error("The chromosome block %s is not contiguous\n", arec ? bcf_seqname(ahdr,arec) : bcf_seqname(bhdr,brec));
         args->seen_seq[chr_id] = 1;
         args->prev_chr = chr_id;
         args->prev_pos_check = -1;
     }
 
-    if ( !brec )
+    if ( !is_overlap )
     {
-        bcf_translate(args->out_hdr, args->files->readers[0].header, arec);
+        assert(arec);
+
+        bcf_translate(args->out_hdr, ahdr, arec);
         if ( args->nswap )
             phase_update(args, args->out_hdr, arec);
         if ( !args->compact_PS || args->phase_set_changed )
@@ -405,7 +424,7 @@ static void phased_push(args_t *args, bcf1_t *arec, bcf1_t *brec)
         if ( bcf_write(args->out_fh, args->out_hdr, arec)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
 
         if ( arec->pos < args->prev_pos_check )
-            error("FIXME, disorder: %s:%"PRId64" in %s vs %d written  [3]\n", bcf_seqname(args->files->readers[0].header,arec), (int64_t) arec->pos+1,args->files->readers[0].fname, args->prev_pos_check+1);
+            error("FIXME, disorder: %s:%"PRId64" in %s vs %d written  [3]\n", bcf_seqname(ahdr,arec), (int64_t) arec->pos+1,args->files->readers[0].fname, args->prev_pos_check+1);
         args->prev_pos_check = arec->pos;
         return;
     }
@@ -413,11 +432,21 @@ static void phased_push(args_t *args, bcf1_t *arec, bcf1_t *brec)
     int m = args->mbuf;
     args->nbuf += 2;
     hts_expand(bcf1_t*,args->nbuf,args->mbuf,args->buf);
+    if ( m < args->mbuf ) args->buf_mask = (uint8_t*)realloc(args->buf_mask,sizeof(*args->buf_mask)*args->mbuf);
     for (i=m; i<args->mbuf; i++)
         args->buf[i] = bcf_init1();
 
-    SWAP(bcf1_t*, args->files->readers[0].buffer[0], args->buf[args->nbuf-2]);
-    SWAP(bcf1_t*, args->files->readers[1].buffer[0], args->buf[args->nbuf-1]);
+    if ( arec ) SWAP(bcf1_t*, args->files->readers[0].buffer[0], args->buf[args->nbuf-2]);
+    if ( brec ) SWAP(bcf1_t*, args->files->readers[1].buffer[0], args->buf[args->nbuf-1]);
+    args->buf_mask[args->nbuf/2-1] = (arec?1:0) | (brec?2:0);
+}
+
+static int _get_active_index(bcf_srs_t *sr)
+{
+    int i;
+    for (i=0; i<sr->nreaders; i++)
+        if ( bcf_sr_has_line(sr,i) ) return i;
+    return -1;
 }
 
 static void concat(args_t *args)
@@ -453,37 +482,47 @@ static void concat(args_t *args)
             else if ( new_file )
                 bcf_sr_seek(args->files,NULL,0);  // set to start
 
-            int nret;
+            int nret, ir;
             while ( (nret = bcf_sr_next_line(args->files)) )
             {
+                int is_overlap = args->files->nreaders==1 ? 0 : 1;
                 if ( !bcf_sr_has_line(args->files,0) )  // no input from the first reader
                 {
                     // We are assuming that there is a perfect overlap, sites which are not present in both files are dropped
-                    if ( ! bcf_sr_region_done(args->files,0) )
+                    if ( bcf_sr_region_done(args->files,0) )
+                    {
+                        phased_flush(args);
+                        bcf_sr_remove_reader(args->files, 0);
+                        is_overlap = 0;
+                    }
+                    else if ( args->ligate_warn )
                     {
                         if ( !site_drop_warned )
                         {
+                            ir = _get_active_index(args->files);
                             fprintf(bcftools_stderr,
                                 "Warning: Dropping the site %s:%"PRId64". The --ligate option is intended for VCFs with perfect\n"
                                 "         overlap, sites in overlapping regions present in one but missing in other are dropped.\n"
                                 "         This warning is printed only once.\n",
-                                bcf_seqname(bcf_sr_get_header(args->files,1),bcf_sr_get_line(args->files,1)), (int64_t) bcf_sr_get_line(args->files,1)->pos+1
-                                );
+                                bcf_seqname(bcf_sr_get_header(args->files,ir),bcf_sr_get_line(args->files,ir)), (int64_t) bcf_sr_get_line(args->files,ir)->pos+1);
                             site_drop_warned = 1;
                         }
                         continue;
                     }
-                    phased_flush(args);
-                    bcf_sr_remove_reader(args->files, 0);
+                    else if ( !args->ligate_force )
+                    {
+                        ir = _get_active_index(args->files);
+                        error("Error: The --ligate option is intended for VCFs with perfect overlap, the site %s:%"PRId64" breaks the assumption\n",
+                            bcf_seqname(bcf_sr_get_header(args->files,ir),bcf_sr_get_line(args->files,ir)), (int64_t) bcf_sr_get_line(args->files,ir)->pos+1);
+                    }
                 }
 
                 // Get a line to learn about current position
-                for (i=0; i<args->files->nreaders; i++)
-                    if ( bcf_sr_has_line(args->files,i) ) break;
-                bcf1_t *line = bcf_sr_get_line(args->files,i);
+                ir = _get_active_index(args->files);
+                bcf1_t *line = bcf_sr_get_line(args->files,ir);
 
                 // This can happen after bcf_sr_seek: indel may start before the coordinate which we seek to.
-                if ( seek_chr>=0 && seek_pos>line->pos && seek_chr==bcf_hdr_name2id(args->out_hdr, bcf_seqname(args->files->readers[i].header,line)) ) continue;
+                if ( seek_chr>=0 && seek_pos>line->pos && seek_chr==bcf_hdr_name2id(args->out_hdr, bcf_seqname(args->files->readers[ir].header,line)) ) continue;
                 seek_pos = seek_chr = -1;
 
                 //  Check if the position overlaps with the next, yet unopened, reader
@@ -496,16 +535,37 @@ static void concat(args_t *args)
                 }
                 if ( must_seek )
                 {
-                    bcf_sr_seek(args->files, bcf_seqname(args->files->readers[i].header,line), line->pos);
+                    bcf_sr_seek(args->files, bcf_seqname(args->files->readers[ir].header,line), line->pos);
                     seek_pos = line->pos;
-                    seek_chr = bcf_hdr_name2id(args->out_hdr, bcf_seqname(args->files->readers[i].header,line));
+                    seek_chr = bcf_hdr_name2id(args->out_hdr, bcf_seqname(args->files->readers[ir].header,line));
                     continue;
                 }
 
                 // We are assuming that there is a perfect overlap, sites which are not present in both files are dropped
-                if ( args->files->nreaders>1 && !bcf_sr_has_line(args->files,1) && !bcf_sr_region_done(args->files,1) ) continue;
+                if ( args->files->nreaders>1 && !bcf_sr_has_line(args->files,1) && !bcf_sr_region_done(args->files,1) && !args->ligate_force )
+                {
+                    if ( args->ligate_warn && !site_drop_warned )
+                    {
+                        ir = _get_active_index(args->files);
+                        fprintf(bcftools_stderr,
+                                "Warning: Dropping the site %s:%"PRId64". The --ligate option is intended for VCFs with perfect\n"
+                                "         overlap, sites in overlapping regions present in one but missing in other are dropped.\n"
+                                "         This warning is printed only once.\n",
+                                bcf_seqname(bcf_sr_get_header(args->files,ir),line), (int64_t) line->pos+1);
+                        site_drop_warned = 1;
+                    }
+                    else if ( !args->ligate_warn )
+                    {
+                        ir = _get_active_index(args->files);
+                        error("Error: The --ligate option is intended for VCFs with perfect overlap, the site %s:%"PRId64" breaks the assumption\n",
+                            bcf_seqname(bcf_sr_get_header(args->files,ir),bcf_sr_get_line(args->files,ir)), (int64_t) bcf_sr_get_line(args->files,ir)->pos+1);
+                    }
+                    continue;
+                }
 
-                phased_push(args, bcf_sr_get_line(args->files,0), args->files->nreaders>1 ? bcf_sr_get_line(args->files,1) : NULL);
+                bcf1_t *line0 = bcf_sr_get_line(args->files,0);
+                bcf1_t *line1 = args->files->nreaders > 1 ? bcf_sr_get_line(args->files,1) : NULL;
+                phased_push(args, line0, line1, is_overlap);
             }
 
             if ( args->files->nreaders )
@@ -722,11 +782,6 @@ static void naive_concat_check_headers(args_t *args)
         // if BCF, check if tag IDs are consistent in the dictionary of strings
         if ( type.compression!=bgzf )
             error("The --naive option works only for compressed BCFs or VCFs, sorry :-/\n");
-        if ( type.format==vcf )
-        {
-            bcf_hdr_destroy(hdr);
-            continue;
-        }
 
         _check_hrecs(hdr0,hdr,args->fnames[0],args->fnames[i]);
         _check_hrecs(hdr,hdr0,args->fnames[i],args->fnames[0]);
@@ -743,6 +798,10 @@ static void naive_concat(args_t *args)
 
     // only compressed BCF atm
     BGZF *bgzf_out = bgzf_open(args->output_fname,"w");;
+
+    htsFormat output_type;
+    output_type.format = (args->output_type & FT_VCF) ? vcf : bcf;
+    output_type.compression = (args->output_type & FT_GZ) ? bgzf : no_compression;
 
     struct timeval t0, t1;
     const size_t page_size = BGZF_MAX_BLOCK_SIZE;
@@ -761,10 +820,17 @@ static void naive_concat(args_t *args)
         htsFormat type = *hts_get_format(hts_fp);
 
         if ( type.compression!=bgzf )
-            error("\nThe --naive option works only for compressed BCFs or VCFs, sorry :-/\n");
+            error("\nThe --naive option works only for compressed BCFs or VCFs\n");
         file_types |= type.format==vcf ? 1 : 2;
         if ( file_types==3 )
-            error("\nThe --naive option works only for compressed files of the same type, all BCFs or all VCFs :-/\n");
+            error("\nThe --naive option works only for compressed files of the same type, all BCFs or all VCFs\n");
+        if ( args->explicit_output_type )
+        {
+            if ( output_type.format!=type.format )
+                error("\nThe --naive option works only for the output of the same type, all BCFs or all VCFs\n");
+            if ( output_type.compression!=type.compression )
+                error("\nThe --naive option works only for the output of the same compression type\n");
+        }
 
         BGZF *fp = hts_get_bgzfp(hts_fp);
         if ( !fp || bgzf_read_block(fp) != 0 || !fp->block_length )
@@ -850,20 +916,23 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "Options:\n");
     fprintf(bcftools_stderr, "   -a, --allow-overlaps           First coordinate of the next file can precede last record of the current file.\n");
     fprintf(bcftools_stderr, "   -c, --compact-PS               Do not output PS tag at each site, only at the start of a new phase set block.\n");
-    fprintf(bcftools_stderr, "   -d, --rm-dups <string>         Output duplicate records present in multiple files only once: <snps|indels|both|all|exact>\n");
+    fprintf(bcftools_stderr, "   -d, --rm-dups STRING           Output duplicate records present in multiple files only once: <snps|indels|both|all|exact>\n");
     fprintf(bcftools_stderr, "   -D, --remove-duplicates        Alias for -d exact\n");
-    fprintf(bcftools_stderr, "   -f, --file-list <file>         Read the list of files from a file.\n");
+    fprintf(bcftools_stderr, "   -f, --file-list FILE           Read the list of files from a file.\n");
     fprintf(bcftools_stderr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
+    fprintf(bcftools_stderr, "       --ligate-force             Ligate even non-overlapping chunks, keep all sites\n");
+    fprintf(bcftools_stderr, "       --ligate-warn              Drop sites in imperfect overlaps\n");
     fprintf(bcftools_stderr, "       --no-version               Do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "   -n, --naive                    Concatenate files without recompression, a header check compatibility is performed\n");
     fprintf(bcftools_stderr, "       --naive-force              Same as --naive, but header compatibility is not checked. Dangerous, use with caution.\n");
-    fprintf(bcftools_stderr, "   -o, --output <file>            Write output to a file [standard output]\n");
-    fprintf(bcftools_stderr, "   -O, --output-type <b|u|z|v>    b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(bcftools_stderr, "   -q, --min-PQ <int>             Break phase set if phasing quality is lower than <int> [30]\n");
-    fprintf(bcftools_stderr, "   -r, --regions <region>         Restrict to comma-separated list of regions\n");
-    fprintf(bcftools_stderr, "   -R, --regions-file <file>      Restrict to regions listed in a file\n");
-    fprintf(bcftools_stderr, "       --threads <int>            Use multithreading with <int> worker threads [0]\n");
-    fprintf(bcftools_stderr, "   -v, --verbose <0|1>            Set verbosity level [1]\n");
+    fprintf(bcftools_stderr, "   -o, --output FILE              Write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "   -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
+    fprintf(bcftools_stderr, "   -q, --min-PQ INT               Break phase set if phasing quality is lower than <int> [30]\n");
+    fprintf(bcftools_stderr, "   -r, --regions REGION           Restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "   -R, --regions-file FILE        Restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "       --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(bcftools_stderr, "       --threads INT              Use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "   -v, --verbose 0|1              Set verbosity level [1]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -879,6 +948,7 @@ int main_vcfconcat(int argc, char *argv[])
     args->record_cmd_line = 1;
     args->min_PQ  = 30;
     args->verbose = 1;
+    args->clevel = -1;
 
     static struct option loptions[] =
     {
@@ -888,10 +958,13 @@ int main_vcfconcat(int argc, char *argv[])
         {"compact-PS",no_argument,NULL,'c'},
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
+        {"regions-overlap",required_argument,NULL,12},
         {"remove-duplicates",no_argument,NULL,'D'},
         {"rm-dups",required_argument,NULL,'d'},
         {"allow-overlaps",no_argument,NULL,'a'},
         {"ligate",no_argument,NULL,'l'},
+        {"ligate-force",no_argument,NULL,10},
+        {"ligate-warn",no_argument,NULL,11},
         {"output",required_argument,NULL,'o'},
         {"output-type",required_argument,NULL,'O'},
         {"threads",required_argument,NULL,9},
@@ -919,17 +992,35 @@ int main_vcfconcat(int argc, char *argv[])
             case 'f': args->file_list = optarg; break;
             case 'o': args->output_fname = optarg; break;
             case 'O':
+                args->explicit_output_type = 1;
                 switch (optarg[0]) {
                     case 'b': args->output_type = FT_BCF_GZ; break;
                     case 'u': args->output_type = FT_BCF; break;
                     case 'z': args->output_type = FT_VCF_GZ; break;
                     case 'v': args->output_type = FT_VCF; break;
-                    default: error("The output type \"%s\" not recognised\n", optarg);
+                    default:
+                    {
+                        args->clevel = strtol(optarg,&tmp,10);
+                        if ( *tmp || args->clevel<0 || args->clevel>9 ) error("The output type \"%s\" not recognised\n", optarg);
+                    }
                 };
+                if ( optarg[1] )
+                {
+                    args->clevel = strtol(optarg+1,&tmp,10);
+                    if ( *tmp || args->clevel<0 || args->clevel>9 ) error("Could not parse argument: --compression-level %s\n", optarg+1);
+                }
                 break;
+            case 10 : args->ligate_force = 1; break;
+            case 11 : args->ligate_warn  = 1; break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
             case  7 : args->naive_concat = 1; args->naive_concat_trust_headers = 1; break;
+            case 12 :
+                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
             case 'v':
                       args->verbose = strtol(optarg, 0, 0);
                       error("Error: currently only --verbose 0 or --verbose 1 is supported\n");
@@ -946,6 +1037,7 @@ int main_vcfconcat(int argc, char *argv[])
         args->fnames[args->nfnames-1] = strdup(argv[optind]);
         optind++;
     }
+    if ( args->ligate_force && args->ligate_warn ) error("The options cannot be combined: --ligate-force and --ligate-warn\n");
     if ( args->allow_overlaps && args->phased_concat ) error("The options -a and -l should not be combined. Please run with -l only.\n");
     if ( args->compact_PS && !args->phased_concat ) error("The -c option is intended only with -l\n");
     if ( args->file_list )

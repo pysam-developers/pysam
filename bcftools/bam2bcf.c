@@ -337,10 +337,10 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
     // Compensate for AD not being counted on low quality REF indel matches.
     if ( r->ADF && bca->ambig_reads==B2B_INC_AD0 )
     {
-        for (i=0; i<4; i++) // verify: are the counters ever non-zero for i!=0?
+        for (i=0; i<4; i++)
         {
-            r->ADR[i] += ADR_ref_missed[i];
-            r->ADF[i] += ADF_ref_missed[i];
+            r->ADR[0] += ADR_ref_missed[i];
+            r->ADF[0] += ADF_ref_missed[i];
         }
     }
     else if ( r->ADF && bca->ambig_reads==B2B_INC_AD )
@@ -502,17 +502,18 @@ double mann_whitney_1947_cdf(int n, int m, int U)
 double calc_mwu_bias_cdf(int *a, int *b, int n)
 {
     int na = 0, nb = 0, i;
-    double U = 0, ties = 0;
+    double U = 0;
+    //double ties = 0;
     for (i=0; i<n; i++)
     {
         na += a[i];
         U  += a[i] * (nb + b[i]*0.5);
         nb += b[i];
-        if ( a[i] && b[i] )
-        {
-            double tie = a[i] + b[i];
-            ties += (tie*tie-1)*tie;
-        }
+        // if ( a[i] && b[i] )
+        // {
+        //     double tie = a[i] + b[i];
+        //     ties += (tie*tie-1)*tie;
+        // }
     }
     if ( !na || !nb ) return HUGE_VAL;
 
@@ -546,7 +547,8 @@ double calc_mwu_bias_cdf(int *a, int *b, int n)
 double calc_mwu_bias(int *a, int *b, int n, int left)
 {
     int na = 0, nb = 0, i;
-    double U = 0, ties = 0;
+    double U = 0;
+    // double ties = 0;
     for (i=0; i<n; i++)
     {
         if (!a[i]) {
@@ -559,8 +561,8 @@ double calc_mwu_bias(int *a, int *b, int n, int left)
             na += a[i];
             U  += a[i] * (nb + b[i]*0.5);
             nb += b[i];
-            double tie = a[i] + b[i];
-            ties += (tie*tie-1)*tie;
+            // double tie = a[i] + b[i];
+            // ties += (tie*tie-1)*tie;
         }
     }
     if ( !na || !nb ) return HUGE_VAL;
@@ -633,7 +635,7 @@ double calc_mwu_biasZ(int *a, int *b, int n, int left_only, int do_Z) {
         }
     }
 
-    if (na+nb <= 1)
+    if (!na || !nb)
         return HUGE_VAL;
 
     double U, m;
@@ -644,7 +646,7 @@ double calc_mwu_biasZ(int *a, int *b, int n, int left_only, int do_Z) {
     double var2 = (na*nb)/12.0 * ((na+nb+1) - t/(double)((na+nb)*(na+nb-1)));
     // var = na*nb*(na+nb+1)/12.0; // simpler; minus tie adjustment
     if (var2 <= 0)
-        return HUGE_VAL;
+        return do_Z ? 0 : 1;
 
     if (do_Z) {
         // S.D. normalised Z-score

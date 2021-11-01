@@ -65,6 +65,7 @@ typedef struct _args_t
     bcf_srs_t *files;
     bcf_hdr_t *hdr, *hnull, *hsub; // original header, sites-only header, subset header
     char **argv, *format, *sample_names, *subset_fname, *targets_list, *regions_list;
+    int regions_overlap, targets_overlap;
     int argc, clevel, n_threads, output_type, print_header, update_info, header_only, n_samples, *imap, calc_ac;
     int trim_alts, sites_only, known, novel, min_alleles, max_alleles, private_vars, uncalled, phased;
     int min_ac, min_ac_type, max_ac, max_ac_type, min_af_type, max_af_type, gt_type;
@@ -220,12 +221,9 @@ static void init_data(args_t *args)
         free(type_list);
     }
 
-    // setup output
-    const char *tmp = hts_bcf_wmode2(args->output_type,args->fn_out);
-    char modew[8];
-    strcpy(modew,tmp);
-    if (args->clevel >= 0 && args->clevel <= 9) sprintf(modew + 1, "%d", args->clevel);
-    args->out = hts_open(args->fn_out ? args->fn_out : "-", modew);
+    char wmode[8];
+    set_wmode(wmode,args->output_type,args->fn_out,args->clevel);
+    args->out = hts_open(args->fn_out ? args->fn_out : "-", wmode);
     if ( !args->out ) error("%s: %s\n", args->fn_out,strerror(errno));
     if ( args->n_threads > 0)
         hts_set_opt(args->out, HTS_OPT_THREAD_POOL, args->files->p);
@@ -495,39 +493,43 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools view [options] <in.vcf.gz> [region1 [...]]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Output options:\n");
-    fprintf(stderr, "    -G,   --drop-genotypes              drop individual genotype information (after subsetting if -s option set)\n");
-    fprintf(stderr, "    -h/H, --header-only/--no-header     print the header only/suppress the header in VCF output\n");
-    fprintf(stderr, "    -l,   --compression-level [0-9]     compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
-    fprintf(stderr, "          --no-version                  do not append version and command line to the header\n");
-    fprintf(stderr, "    -o,   --output <file>               output file name [stdout]\n");
-    fprintf(stderr, "    -O,   --output-type <b|u|z|v>       b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
-    fprintf(stderr, "    -r, --regions <region>              restrict to comma-separated list of regions\n");
-    fprintf(stderr, "    -R, --regions-file <file>           restrict to regions listed in a file\n");
-    fprintf(stderr, "    -t, --targets [^]<region>           similar to -r but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
-    fprintf(stderr, "    -T, --targets-file [^]<file>        similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
-    fprintf(stderr, "        --threads <int>                 use multithreading with <int> worker threads [0]\n");
+    fprintf(stderr, "    -G, --drop-genotypes              Drop individual genotype information (after subsetting if -s option set)\n");
+    fprintf(stderr, "    -h, --header-only                 Print only the header in VCF output (equivalent to bcftools head)\n");
+    fprintf(stderr, "    -H, --no-header                   Suppress the header in VCF output\n");
+    fprintf(stderr, "        --with-header                 Print both header and records in VCF output [default]\n");
+    fprintf(stderr, "    -l, --compression-level [0-9]     Compression level: 0 uncompressed, 1 best speed, 9 best compression [%d]\n", args->clevel);
+    fprintf(stderr, "        --no-version                  Do not append version and command line to the header\n");
+    fprintf(stderr, "    -o, --output FILE                 Output file name [stdout]\n");
+    fprintf(stderr, "    -O, --output-type u|b|v|z[0-9]    u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
+    fprintf(stderr, "    -r, --regions REGION              Restrict to comma-separated list of regions\n");
+    fprintf(stderr, "    -R, --regions-file FILE           Restrict to regions listed in FILE\n");
+    fprintf(stderr, "        --regions-overlap 0|1|2       Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(stderr, "    -t, --targets [^]REGION           Similar to -r but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
+    fprintf(stderr, "    -T, --targets-file [^]FILE        Similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
+    fprintf(stderr, "        --targets-overlap 0|1|2       Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
+    fprintf(stderr, "        --threads INT                 Use multithreading with INT worker threads [0]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Subset options:\n");
-    fprintf(stderr, "    -a, --trim-alt-alleles        trim ALT alleles not seen in the genotype fields (or their subset with -s/-S)\n");
-    fprintf(stderr, "    -I, --no-update               do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
-    fprintf(stderr, "    -s, --samples [^]<list>       comma separated list of samples to include (or exclude with \"^\" prefix)\n");
-    fprintf(stderr, "    -S, --samples-file [^]<file>  file of samples to include (or exclude with \"^\" prefix)\n");
-    fprintf(stderr, "        --force-samples           only warn about unknown subset samples\n");
+    fprintf(stderr, "    -a, --trim-alt-alleles            Trim ALT alleles not seen in the genotype fields (or their subset with -s/-S)\n");
+    fprintf(stderr, "    -I, --no-update                   Do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
+    fprintf(stderr, "    -s, --samples [^]LIST             Comma separated list of samples to include (or exclude with \"^\" prefix)\n");
+    fprintf(stderr, "    -S, --samples-file [^]FILE        File of samples to include (or exclude with \"^\" prefix)\n");
+    fprintf(stderr, "        --force-samples               Only warn about unknown subset samples\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Filter options:\n");
-    fprintf(stderr, "    -c/C, --min-ac/--max-ac <int>[:<type>]      minimum/maximum count for non-reference (nref), 1st alternate (alt1), least frequent\n");
-    fprintf(stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
-    fprintf(stderr, "    -f,   --apply-filters <list>                require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
-    fprintf(stderr, "    -g,   --genotype [^]<hom|het|miss>          require one or more hom/het/missing genotype or, if prefixed with \"^\", exclude sites with hom/het/missing genotypes\n");
-    fprintf(stderr, "    -i/e, --include/--exclude <expr>            select/exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(stderr, "    -k/n, --known/--novel                       select known/novel sites only (ID is not/is '.')\n");
-    fprintf(stderr, "    -m/M, --min-alleles/--max-alleles <int>     minimum/maximum number of alleles listed in REF and ALT (e.g. -m2 -M2 for biallelic sites)\n");
-    fprintf(stderr, "    -p/P, --phased/--exclude-phased             select/exclude sites where all samples are phased\n");
-    fprintf(stderr, "    -q/Q, --min-af/--max-af <float>[:<type>]    minimum/maximum frequency for non-reference (nref), 1st alternate (alt1), least frequent\n");
-    fprintf(stderr, "                                                   (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
-    fprintf(stderr, "    -u/U, --uncalled/--exclude-uncalled         select/exclude sites without a called genotype\n");
-    fprintf(stderr, "    -v/V, --types/--exclude-types <list>        select/exclude comma-separated list of variant types: snps,indels,mnps,ref,bnd,other [null]\n");
-    fprintf(stderr, "    -x/X, --private/--exclude-private           select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
+    fprintf(stderr, "    -c/C, --min-ac/--max-ac INT[:TYPE]     Minimum/maximum count for non-reference (nref), 1st alternate (alt1), least frequent\n");
+    fprintf(stderr, "                                               (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
+    fprintf(stderr, "    -f,   --apply-filters LIST             Require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
+    fprintf(stderr, "    -g,   --genotype [^]hom|het|miss       Require one or more hom/het/missing genotype or, if prefixed with \"^\", exclude such sites\n");
+    fprintf(stderr, "    -i/e, --include/--exclude EXPR         Select/exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(stderr, "    -k/n, --known/--novel                  Select known/novel sites only (ID is not/is '.')\n");
+    fprintf(stderr, "    -m/M, --min-alleles/--max-alleles INT  Minimum/maximum number of alleles listed in REF and ALT (e.g. -m2 -M2 for biallelic sites)\n");
+    fprintf(stderr, "    -p/P, --phased/--exclude-phased        Select/exclude sites where all samples are phased\n");
+    fprintf(stderr, "    -q/Q, --min-af/--max-af FLOAT[:TYPE]   Minimum/maximum frequency for non-reference (nref), 1st alternate (alt1), least frequent\n");
+    fprintf(stderr, "                                               (minor), most frequent (major) or sum of all but most frequent (nonmajor) alleles [nref]\n");
+    fprintf(stderr, "    -u/U, --uncalled/--exclude-uncalled    Select/exclude sites without a called genotype\n");
+    fprintf(stderr, "    -v/V, --types/--exclude-types LIST     Select/exclude comma-separated list of variant types: snps,indels,mnps,ref,bnd,other [null]\n");
+    fprintf(stderr, "    -x/X, --private/--exclude-private      Select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -545,6 +547,8 @@ int main_vcfview(int argc, char *argv[])
     args->n_threads = 0;
     args->record_cmd_line = 1;
     args->min_ac = args->max_ac = args->min_af = args->max_af = -1;
+    args->regions_overlap = 1;
+    args->targets_overlap = 0;
     int targets_is_file = 0, regions_is_file = 0;
 
     static struct option loptions[] =
@@ -554,6 +558,7 @@ int main_vcfview(int argc, char *argv[])
         {"threads",required_argument,NULL,9},
         {"header-only",no_argument,NULL,'h'},
         {"no-header",no_argument,NULL,'H'},
+        {"with-header",no_argument,NULL,4},
         {"exclude",required_argument,NULL,'e'},
         {"include",required_argument,NULL,'i'},
         {"trim-alt-alleles",no_argument,NULL,'a'},
@@ -578,8 +583,10 @@ int main_vcfview(int argc, char *argv[])
         {"exclude-types",required_argument,NULL,'V'},
         {"targets",required_argument,NULL,'t'},
         {"targets-file",required_argument,NULL,'T'},
+        {"targets-overlap",required_argument,NULL,2},
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
+        {"regions-overlap",required_argument,NULL,3},
         {"min-ac",required_argument,NULL,'c'},
         {"max-ac",required_argument,NULL,'C'},
         {"min-af",required_argument,NULL,'q'},
@@ -601,8 +608,17 @@ int main_vcfview(int argc, char *argv[])
                     case 'u': args->output_type = FT_BCF; break;
                     case 'z': args->output_type = FT_VCF_GZ; break;
                     case 'v': args->output_type = FT_VCF; break;
-                    default: error("The output type \"%s\" not recognised\n", optarg);
+                    default:
+                    {
+                        args->clevel = strtol(optarg,&tmp,10);
+                        if ( *tmp || args->clevel<0 || args->clevel>9 ) error("The output type \"%s\" not recognised\n", optarg);
+                    }
                 };
+                if ( optarg[1] )
+                {
+                    args->clevel = strtol(optarg+1,&tmp,10);
+                    if ( *tmp || args->clevel<0 || args->clevel>9 ) error("Could not parse argument: --compression-level %s\n", optarg+1);
+                }
                 break;
             case 'l':
                 args->clevel = strtol(optarg,&tmp,10);
@@ -612,6 +628,7 @@ int main_vcfview(int argc, char *argv[])
             case 'o': args->fn_out = optarg; break;
             case 'H': args->print_header = 0; break;
             case 'h': args->header_only = 1; break;
+            case  4 : args->print_header = 1; args->header_only = 0; break;
 
             case 't': args->targets_list = optarg; break;
             case 'T': args->targets_list = optarg; targets_is_file = 1; break;
@@ -698,6 +715,18 @@ int main_vcfview(int argc, char *argv[])
                 else error("The argument to -g not recognised. Expected one of hom/het/miss/^hom/^het/^miss, got \"%s\".\n", optarg);
                 break;
             }
+            case  2 :
+                if ( !strcasecmp(optarg,"0") ) args->targets_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) args->targets_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) args->targets_overlap = 2;
+                else error("Could not parse: --targets-overlap %s\n",optarg);
+                break;
+            case  3 :
+                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
+                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
+                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
+                else error("Could not parse: --regions-overlap %s\n",optarg);
+                break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
             case '?': usage(args); break;
@@ -723,6 +752,7 @@ int main_vcfview(int argc, char *argv[])
     // read in the regions from the command line
     if ( args->regions_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,args->regions_overlap);
         if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
             error("Failed to read the regions: %s\n", args->regions_list);
     }
@@ -738,6 +768,7 @@ int main_vcfview(int argc, char *argv[])
     }
     if ( args->targets_list )
     {
+        bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,args->targets_overlap);
         if ( bcf_sr_set_targets(args->files, args->targets_list, targets_is_file, 0)<0 )
             error("Failed to read the targets: %s\n", args->targets_list);
     }
