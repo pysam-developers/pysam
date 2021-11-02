@@ -17,6 +17,10 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-20.04, macos-10.15]  # windows-2019,
+        cibw_archs: ["auto"]
+        include:
+          - os: ubuntu-20.04
+            cibw_archs: "aarch64"
 
     steps:
       - name: Checkout pysam
@@ -36,17 +40,19 @@ jobs:
         if:   runner.os == 'Linux'
         uses: pypa/cibuildwheel@v2.1.2
         env:
-          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-*
+          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-*
           CIBW_BEFORE_BUILD: yum install -y libcurl-devel zlib-devel bzip2-devel xz-devel && pip install cython
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux1
           CIBW_MANYLINUX_I686_IMAGE: manylinux1
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - name: Build wheels for macos
         if:   runner.os != 'Linux'
         uses: pypa/cibuildwheel@v2.1.2
         env:
-          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-*
+          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-*
           CIBW_BEFORE_BUILD: pip install cython
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
@@ -106,10 +112,10 @@ jobs:
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           repository_url: https://test.pypi.org/legacy/
 
-      - name: Publish distribution to PyPI
-        if: github.event_name == 'release' && github.event.action == 'published'
-        uses: pypa/gh-action-pypi-publish@master
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+      # - name: Publish distribution to PyPI
+      #   if: github.event_name == 'release' && github.event.action == 'published'
+      #   uses: pypa/gh-action-pypi-publish@master
+      #   with:
+      #     user: __token__
+      #     password: ${{ secrets.PYPI_API_TOKEN }}
 
