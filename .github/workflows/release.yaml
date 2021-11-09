@@ -38,7 +38,7 @@ jobs:
 
       - name: Build wheels for linux
         if:   runner.os == 'Linux'
-        uses: pypa/cibuildwheel@v2.1.2
+        uses: pypa/cibuildwheel@v2.2.2
         env:
           CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-*
           CIBW_BEFORE_BUILD: yum install -y libcurl-devel zlib-devel bzip2-devel xz-devel && pip install cython
@@ -48,7 +48,7 @@ jobs:
 
       - name: Build wheels for macos
         if:   runner.os != 'Linux'
-        uses: pypa/cibuildwheel@v2.1.2
+        uses: pypa/cibuildwheel@v2.2.2
         env:
           CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-*
           CIBW_BEFORE_BUILD: pip install cython
