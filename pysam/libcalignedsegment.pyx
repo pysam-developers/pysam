@@ -1743,6 +1743,41 @@ cdef class AlignedSegment:
         def __get__(self):
             return getQueryEnd(self._delegate)
 
+    property modified_bases:
+        """Modified bases annotations from Ml/Mm tags. The output is
+        Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
+        with qual being (256*probability), or -1 if unknown.
+        Strand==0 for forward and 1 for reverse strand modification
+        """
+        def __get__(self):
+            cdef bam1_t * src
+            cdef hts_base_mod_state *m = hts_base_mod_state_alloc()
+            cdef hts_base_mod mods[5]
+            cdef int pos
+
+            ret = {}
+            src = self._delegate
+            if bam_parse_basemod(src, m) < 0:        
+                return ret
+            
+            n = bam_next_basemod(src, m, mods, 5, &pos)
+
+            while n>0:
+                for i in range(n):
+                    mod_code = chr(mods[i].canonical_base) if mods[i].canonical_base>0 else -mods[i].canonical_base
+                    key = (mod_code, 
+                            mods[i].strand,
+                            chr(mods[i].modified_base) )
+                    ret.setdefault(key,[]).append((pos,mods[i].qual))
+                    
+                n = bam_next_basemod(src, m, mods, 5, &pos)
+
+            if n<0:
+                return None
+
+            hts_base_mod_state_free(m)
+            return ret
+
     property query_alignment_length:
         """length of the aligned query sequence.
 
