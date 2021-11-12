@@ -1747,7 +1747,7 @@ cdef class AlignedSegment:
         """Modified bases annotations from Ml/Mm tags. The output is
         Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
         with qual being (256*probability), or -1 if unknown.
-        Strand==0 for forward and 1 for reverse strand modification
+        Strand=='+' for forward and '-' for reverse strand modification
         """
         def __get__(self):
             cdef bam1_t * src
@@ -1757,16 +1757,20 @@ cdef class AlignedSegment:
 
             ret = {}
             src = self._delegate
+            
             if bam_parse_basemod(src, m) < 0:        
-                return ret
+                return None
             
             n = bam_next_basemod(src, m, mods, 5, &pos)
 
             while n>0:
                 for i in range(n):
                     mod_code = chr(mods[i].canonical_base) if mods[i].canonical_base>0 else -mods[i].canonical_base
+                    mod_strand = mods[i].strand
+                    if self.is_reverse:
+                        mod_strand = 1 - mod_strand
                     key = (mod_code, 
-                            mods[i].strand,
+                            mod_strand,
                             chr(mods[i].modified_base) )
                     ret.setdefault(key,[]).append((pos,mods[i].qual))
                     
@@ -1778,6 +1782,28 @@ cdef class AlignedSegment:
             hts_base_mod_state_free(m)
             return ret
 
+    property modified_bases_forward:
+        """Modified bases annotations from Ml/Mm tags. The output is
+        Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
+        with qual being (256*probability), or -1 if unknown.
+        Strand==0 for forward and 1 for reverse strand modification.
+        The positions are with respect to the original sequence from get_forward_sequence()
+        """
+        def __get__(self):
+            pmods = self.modified_bases
+            if pmods and self.is_reverse:                
+                rlen = self.infer_read_length()
+                rmod = {}
+                for k,mods in pmods.items():
+                    nk = k[0],1 - k[1],k[2]
+                    for i in range(len(mods)):
+                        mods[i] = (rlen - 1 -mods[i][0], mods[i][1])
+                    rmod[nk] = mods
+                pmods = rmod
+            
+            return pmods
+
+ 
     property query_alignment_length:
         """length of the aligned query sequence.
 

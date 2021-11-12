@@ -1249,7 +1249,7 @@ cdef extern from "htslib/sam.h" nogil:
     #  @field canonical_base    The canonical base referred to in the MM tag.
     #                           One of A, C, G, T or N.  Note this may not be the
     #                           explicit base recorded in the SEQ column (esp. if N).
-    #  @field stran             0 or 1, indicating + or - strand from MM tag.
+    #  @field strand            0 or 1, indicating + or - strand from MM tag.
     #  @field qual              Quality code (256*probability), or -1 if unknown
 
     #  @discussion
