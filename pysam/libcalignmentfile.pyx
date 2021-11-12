@@ -1760,6 +1760,8 @@ cdef class AlignmentFile(HTSFile):
         """int with total number of mapped alignments according to the
         statistics recorded in the index. This is a read-only
         attribute.
+        (This will be 0 for a CRAM file indexed by a .crai index, as that
+        index format does not record these statistics.)
         """
         def __get__(self):
             self.check_index()
@@ -1776,6 +1778,8 @@ cdef class AlignmentFile(HTSFile):
         """int with total number of unmapped reads according to the statistics
         recorded in the index. This number of reads includes the number of reads
         without coordinates. This is a read-only attribute.
+        (This will be 0 for a CRAM file indexed by a .crai index, as that
+        index format does not record these statistics.)
         """
         def __get__(self):
             self.check_index()
@@ -1792,6 +1796,8 @@ cdef class AlignmentFile(HTSFile):
         """int with total number of reads without coordinates according to the
         statistics recorded in the index, i.e., the statistic printed for "*"
         by the ``samtools idxstats`` command. This is a read-only attribute.
+        (This will be 0 for a CRAM file indexed by a .crai index, as that
+        index format does not record these statistics.)
         """
         def __get__(self):
             self.check_index()
@@ -1804,6 +1810,9 @@ cdef class AlignmentFile(HTSFile):
         """return statistics about mapped/unmapped reads per chromosome as
         they are stored in the index, similarly to the statistics printed
         by the ``samtools idxstats`` command.
+
+        CRAI indexes do not record these statistics, so for a CRAM file
+        with a .crai index the returned statistics will all be 0.
 
         Returns:
             list :
