@@ -1747,7 +1747,7 @@ cdef class AlignedSegment:
         """Modified bases annotations from Ml/Mm tags. The output is
         Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
         with qual being (256*probability), or -1 if unknown.
-        Strand=='+' for forward and '-' for reverse strand modification
+        Strand==0 for forward and 1 for reverse strand modification
         """
         def __get__(self):
             cdef bam1_t * src
@@ -1765,13 +1765,13 @@ cdef class AlignedSegment:
 
             while n>0:
                 for i in range(n):
-                    mod_code = chr(mods[i].canonical_base) if mods[i].canonical_base>0 else -mods[i].canonical_base
+                    mod_code = chr(mods[i].modified_base) if mods[i].modified_base>0 else -mods[i].modified_base
                     mod_strand = mods[i].strand
                     if self.is_reverse:
                         mod_strand = 1 - mod_strand
-                    key = (mod_code, 
+                    key = (chr(mods[i].canonical_base), 
                             mod_strand,
-                            chr(mods[i].modified_base) )
+                            mod_code )
                     ret.setdefault(key,[]).append((pos,mods[i].qual))
                     
                 n = bam_next_basemod(src, m, mods, 5, &pos)
@@ -1792,14 +1792,22 @@ cdef class AlignedSegment:
         def __get__(self):
             pmods = self.modified_bases
             if pmods and self.is_reverse:                
-                rlen = self.infer_read_length()
                 rmod = {}
+
+                # Try to find the length of the original sequence
+                rlen = self.infer_read_length()
+                if rlen is None and self.query_sequence is None:
+                    return rmod
+                else:
+                    rlen = len(self.query_sequence)
+                    
                 for k,mods in pmods.items():
                     nk = k[0],1 - k[1],k[2]
                     for i in range(len(mods)):
+                        
                         mods[i] = (rlen - 1 -mods[i][0], mods[i][1])
                     rmod[nk] = mods
-                pmods = rmod
+                return rmod
             
             return pmods
 
