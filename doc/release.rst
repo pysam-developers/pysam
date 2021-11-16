@@ -2,6 +2,16 @@
 Release notes
 =============
 
+Release 0.18.0
+==============
+
+This release wraps htslib/samtools/bcftools version 1.14.
+
+* [#1048] and [#1060], clarify documentation of index statistics with CRAM files
+* Prevent "retval may be used uninitialised" warning.
+* Add new "samples" subcommand to pysam/samtools.py
+* Introduce TupleProxyIterator iterator object class
+
 Release 0.17.0
 ==============
 
