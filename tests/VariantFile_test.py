@@ -615,10 +615,10 @@ class TestMultiThreading(unittest.TestCase):
 
     def testSingleThreadEqualsMultithreadResult(self):
         with pysam.VariantFile(self.filename) as inf:
-             header = inf.header
-             single = [r for r in inf]
+            header = inf.header
+            single = [r for r in inf]
         with pysam.VariantFile(self.filename, threads=2) as inf:
-             multi = [r for r in inf]
+            multi = [r for r in inf]
         for r1, r2 in zip(single, multi):
             assert str(r1) == str(r2)
 
