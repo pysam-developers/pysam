@@ -3,6 +3,19 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install flake8
+      - name: Run flake8
+        run: flake8 pysam/ tests/
+
   direct:
     runs-on: ${{ matrix.os }}-latest
     strategy:
