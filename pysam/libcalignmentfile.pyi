@@ -1,7 +1,18 @@
 import array
 import sys
-from typing import Any, Dict, Type, NamedTuple, Tuple, Optional, Sequence, Union, \
-    Callable, List, Iterable
+from typing import (
+    Any,
+    Dict,
+    Type,
+    NamedTuple,
+    Tuple,
+    Optional,
+    Sequence,
+    Union,
+    Callable,
+    List,
+    Iterable,
+)
 
 if sys.version_info < (3, 8):
     from typing_extensions import Literal
@@ -20,7 +31,7 @@ class IndexStats(NamedTuple):
 
 VALID_HEADER_TYPES: Dict[str, Type]
 VALID_HEADERS: Tuple[str]
-KNOWN_HEADER_FIELDS: Dict[str, Dict[str,Type]]
+KNOWN_HEADER_FIELDS: Dict[str, Dict[str, Type]]
 VALID_HEADER_ORDER: Dict[str, Tuple[str]]
 
 def build_header_line(fields: Dict[str, str], record: str) -> str: ...
@@ -28,13 +39,24 @@ def build_header_line(fields: Dict[str, str], record: str) -> str: ...
 class AlignmentHeader:
     def __init__(self) -> None: ...
     @classmethod
-    def _from_text_and_lengths(cls, text: Optional[str], reference_names: Optional[Sequence[str]], reference_lengths: Optional[Sequence[int]]) -> AlignmentHeader: ...
+    def _from_text_and_lengths(
+        cls,
+        text: Optional[str],
+        reference_names: Optional[Sequence[str]],
+        reference_lengths: Optional[Sequence[int]],
+    ) -> AlignmentHeader: ...
     @classmethod
     def from_text(cls, text: str) -> AlignmentHeader: ...
     @classmethod
     def from_dict(cls, header_dict: Dict) -> AlignmentHeader: ...
     @classmethod
-    def from_references(cls, reference_names: Sequence[str], reference_lengths: Sequence[int], text: Optional[str] = ..., add_sq_text: bool = ...) -> AlignmentHeader: ...
+    def from_references(
+        cls,
+        reference_names: Sequence[str],
+        reference_lengths: Sequence[int],
+        text: Optional[str] = ...,
+        add_sq_text: bool = ...,
+    ) -> AlignmentHeader: ...
     def __bool__(self) -> bool: ...
     def copy(self) -> AlignmentHeader: ...
     @property
@@ -53,7 +75,9 @@ class AlignmentFile(HTSFile):
     def __init__(
         self,
         filename: Union[str, bytes, int, _HasFileNo],
-        mode: Optional[Literal["r", "w", "wh", "rb", "wb", "wbu", "wb0", "rc", "wc"]] = ...,
+        mode: Optional[
+            Literal["r", "w", "wh", "rb", "wb", "wbu", "wb0", "rc", "wc"]
+        ] = ...,
         template: Optional[AlignmentFile] = ...,
         reference_names: Optional[Sequence[str]] = ...,
         reference_lengths: Optional[Sequence[int]] = ...,
@@ -131,8 +155,12 @@ class AlignmentFile(HTSFile):
         reference: Optional[str] = ...,
         end: Optional[int] = ...,
     ) -> Tuple[array.array, array.array, array.array, array.array]: ...
-    def find_introns_slow(self, read_iterator: Iterable[AlignedSegment]) -> Dict[Tuple[int, int], int]: ...
-    def find_introns(self, read_iterator: Iterable[AlignedSegment]) -> Dict[Tuple[int, int], int]: ...
+    def find_introns_slow(
+        self, read_iterator: Iterable[AlignedSegment]
+    ) -> Dict[Tuple[int, int], int]: ...
+    def find_introns(
+        self, read_iterator: Iterable[AlignedSegment]
+    ) -> Dict[Tuple[int, int], int]: ...
     def close(self) -> None: ...
     def write(self, read: AlignedSegment) -> int: ...
     def __enter__(self) -> AlignmentFile: ...
@@ -202,6 +230,8 @@ class SNPCall:
     def coverage(self) -> int: ...
 
 class IndexedReads:
-    def __init__(self, samfile: AlignmentFile, multiple_iterators: bool = ...) -> None: ...
+    def __init__(
+        self, samfile: AlignmentFile, multiple_iterators: bool = ...
+    ) -> None: ...
     def build(self) -> None: ...
     def find(self, query_name: str) -> IteratorRow: ...

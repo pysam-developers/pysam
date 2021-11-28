@@ -29,8 +29,9 @@ class TabixFile(HTSFile):
         parser: Parser = ...,
         index: Optional[str] = ...,
         encoding: str = ...,
-        threads: int =...,
-        *args, **kwargs
+        threads: int = ...,
+        *args,
+        **kwargs
     ) -> None: ...
     def fetch(
         self,
@@ -39,7 +40,7 @@ class TabixFile(HTSFile):
         end: Optional[int] = ...,
         region: Optional[str] = ...,
         parser: Optional[Parser] = ...,
-        multiple_iterators: bool = ...
+        multiple_iterators: bool = ...,
     ) -> Any: ...
     def close(self) -> None: ...
 
@@ -57,7 +58,9 @@ class TabixIteratorParsed(TabixIterator):
     def __next__(self) -> Any: ...
 
 class GZIterator:
-    def __init__(self, filename: str, bufer_size: int = ..., encoding: str = ...) -> None: ...
+    def __init__(
+        self, filename: str, bufer_size: int = ..., encoding: str = ...
+    ) -> None: ...
     def __iter__(self) -> GZIterator: ...
     def __next__(self) -> str: ...
 
@@ -81,7 +84,7 @@ def tabix_index(
     min_shift: int = ...,
     index: Optional[str] = ...,
     keep_original: bool = ...,
-    csi: bool = ...
+    csi: bool = ...,
 ) -> str: ...
 
 class tabix_file_iterator:

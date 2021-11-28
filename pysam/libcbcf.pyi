@@ -11,7 +11,8 @@ from typing import (
     Dict,
     overload,
     TypeVar,
-    Mapping, Generic,
+    Mapping,
+    Generic,
 )
 
 if sys.version_info < (3, 8):
@@ -196,9 +197,13 @@ class VariantRecordSamples(_Mapping[Union[str, int], "VariantRecordSample"]):
     def __ne__(self, other) -> bool: ...
     # TODO Do these work? Isn’t the container read only?
     def update(
-        self, items: Optional[Mapping[Union[str, int], VariantRecordSample]] = ..., **kwargs
+        self,
+        items: Optional[Mapping[Union[str, int], VariantRecordSample]] = ...,
+        **kwargs
     ) -> None: ...
-    def pop(self, key: str | int, default: _D = ...) -> Union[_D, VariantRecordSample]: ...
+    def pop(
+        self, key: str | int, default: _D = ...
+    ) -> Union[_D, VariantRecordSample]: ...
 
 class VariantRecord:
     @property
