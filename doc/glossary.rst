@@ -17,15 +17,20 @@ Glossary
 
    region
       A genomic region, stated relative to a reference sequence. A
-      region consists of reference name ('chr1'), start (10000), and
+      region consists of reference name ('chr1'), start (15000), and
       end (20000). Start and end can be omitted for regions spanning
-      a whole chromosome. If end is missing, the region will span from
-      start to the end of the chromosome. Within pysam, coordinates
-      are 0-based, half-open intervals, i.e., the position 10,000 is
-      part of the interval, but 20,000 is not. An exception are
-      :term:`samtools` compatible region strings such as
-      'chr1:10000-20000', which are closed, i.e., both positions 10,000
-      and 20,000 are part of the interval.
+      a whole chromosome. If ``end`` is missing, the region will span from
+      ``start`` to the end of the chromosome. Within pysam, coordinates
+      are 0-based half-open intervals, i.e., the first base of the
+      reference sequence is numbered zero; and the base at position
+      ``start`` is part of the interval, but the base at ``end`` is not.
+
+      When a region is written as a single string using
+      :term:`samtools`-compatible notation, e.g., 'chr1:15001-20000',
+      the string's coordinates instead represent a 1-based closed interval,
+      i.e., both (1-based) positions 15,001 and 20,000 are part of the
+      interval. (This example denotes the same 5,000-base region as the
+      example in the previous paragraph.)
 
    column
       Reads that are aligned to a base in the :term:`reference` sequence.
