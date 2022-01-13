@@ -12,15 +12,29 @@ on:
 
 jobs:
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }} for ${{ matrix.cibw_archs }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-10.15]  # windows-2019,
-        cibw_archs: ["auto"]
-        # include:
-        #   - os: ubuntu-latest
-        #     cibw_archs: "aarch64"
+        cibw_archs: [auto]
+        cibw_build: ['cp36-* cp37-* cp38-* cp39-* cp310-*']
+        include:
+           - os: ubuntu-latest
+             cibw_archs: aarch64
+             cibw_build: cp36-*
+           - os: ubuntu-latest
+             cibw_archs: aarch64
+             cibw_build: cp37-*
+           - os: ubuntu-latest
+             cibw_archs: aarch64
+             cibw_build: cp38-*
+           - os: ubuntu-latest
+             cibw_archs: aarch64
+             cibw_build: cp39-*
+           - os: ubuntu-latest
+             cibw_archs: aarch64
+             cibw_build: cp310-*
 
     steps:
       - name: Checkout pysam
@@ -31,6 +45,10 @@ jobs:
         with:
           python-version: '3.8'
 
+      - name: Set up QEMU
+        if: ${{ matrix.cibw_archs == 'aarch64' }}
+        uses: docker/setup-qemu-action@v1
+
       - name: Install prerequisite Python libraries
         run:  |
           python -m pip install --upgrade pip
@@ -40,7 +58,7 @@ jobs:
         if:   runner.os == 'Linux'
         uses: pypa/cibuildwheel@v2.2.2
         env:
-          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-*
+          CIBW_BUILD: ${{ matrix.cibw_build }}
           CIBW_SKIP: "*musllinux*"
           CIBW_BEFORE_BUILD: yum install -y libcurl-devel zlib-devel bzip2-devel xz-devel && pip install cython
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
@@ -49,7 +67,7 @@ jobs:
         if:   runner.os != 'Linux'
         uses: pypa/cibuildwheel@v2.2.2
         env:
-          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-*
+          CIBW_BUILD: ${{ matrix.cibw_build }}
           CIBW_BEFORE_BUILD: pip install cython
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
