@@ -35,7 +35,7 @@ object::
 
    iter = samfile.fetch("seq1", 10, 20)
    for x in iter:
-       print (str(x))
+       print(str(x))
 
 :meth:`pysam.AlignmentFile.fetch` returns all reads overlapping a
 region sorted by the first aligned base in the :term:`reference`
@@ -62,7 +62,7 @@ some additional information::
 
    iter = samfile.pileup('seq1', 10, 20)
    for x in iter:
-      print (str(x))
+      print(str(x))
  
 
 Creating BAM/CRAM/SAM files from scratch
@@ -186,21 +186,21 @@ Similar to :class:`~pysam.AlignmentFile.fetch`, intervals within a
 region can be retrieved by calling :meth:`~pysam.TabixFile.fetch()`::
 
     for row in tbx.fetch("chr1", 1000, 2000):
-         print (str(row))
+         print(str(row))
 
 This will return a tuple-like data structure in which columns can
 be retrieved by numeric index::
 
     for row in tbx.fetch("chr1", 1000, 2000):
-         print ("chromosome is", row[0])
+         print("chromosome is", row[0])
 
 By providing a parser to :class:`~pysam.AlignmentFile.fetch`
 or :class:`~pysam.TabixFile`, the data will we presented in parsed
 form::
 
     for row in tbx.fetch("chr1", 1000, 2000, parser=pysam.asTuple()):
-         print ("chromosome is", row.contig)
-         print ("first field (chrom)=", row[0])
+         print("chromosome is", row.contig)
+         print("first field (chrom)=", row[0])
 
 Pre-built parsers are available for :term:`bed`
 (:class:`~pysam.asBed`) formatted files and :term:`gtf`
@@ -208,7 +208,7 @@ Pre-built parsers are available for :term:`bed`
 become available through named access, for example::
 
     for row in tbx.fetch("chr1", 1000, 2000, parser=pysam.asBed()):
-         print ("name is", row.name)
+         print("name is", row.name)
 
 
 .. Currently inactivated as pileup deprecated
@@ -227,7 +227,7 @@ become available through named access, for example::
 ..     pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
 ..     sncpall_iter = pysam.IteratorSNPCalls(pileup_iter)
 ..     for call in snpcall_iter:
-..         print str(call)
+..         print(str(call))
 
 .. Usage of :class:`pysam.SNPCaller` is similar::
 
@@ -235,7 +235,7 @@ become available through named access, for example::
 ..     fastafile = pysam.Fastafile( "ex1.fa" )
 ..     pileup_iter = samfile.pileup( stepper = "samtools", fastafile = fastafile )
 ..     snpcaller = pysam.SNPCaller.call(pileup_iter)
-..     print snpcaller( "chr1", 100 )
+..     print(snpcaller( "chr1", 100 ))
 
 .. Note the use of the option *stepper* to control which reads are included in the 
 .. in the :term:`pileup`. The ``samtools`` stepper implements the same read selection
@@ -266,7 +266,7 @@ simple variant attributes such as :class:`~pysam.VariantRecord.contig`,
 :class:`~pysam.VariantRecord.pos`, :class:`~pysam.VariantRecord.ref`::
 
    for rec in bcf_in.fetch():
-       print (rec.pos)
+       print(rec.pos)
 
 but also to complex attributes such as the contents to the
 :class:`~pysam.VariantRecord.info`, :class:`~pysam.VariantRecord.format`
@@ -275,15 +275,15 @@ complex attributes are views on the underlying htslib data structures
 and provide dictionary-like access to the data::
 
    for rec in bcf_in.fetch():
-       print (rec.info)
-       print (rec.info.keys())
-       print (rec.info["DP"])
+       print(rec.info)
+       print(rec.info.keys())
+       print(rec.info["DP"])
 
 The :py:attr:`~pysam.VariantFile.header` attribute
 (:class:`~pysam.VariantHeader`) provides access information
 stored in the :term:`vcf` header. The complete header can be printed::
 
-   >>> print (bcf_in.header)
+   >>> print(bcf_in.header)
    ##fileformat=VCFv4.2
    ##FILTER=<ID=PASS,Description="All filters passed">
    ##fileDate=20090805
@@ -315,26 +315,26 @@ stored in the :term:`vcf` header. The complete header can be printed::
 Individual contents such as contigs, info fields, samples, formats can
 be retrieved as attributes from :py:attr:`~pysam.VariantFile.header`::
 
-   >>> print (bcf_in.header.contigs)
+   >>> print(bcf_in.header.contigs)
    <pysam.cbcf.VariantHeaderContigs object at 0xf250f8>
 
 To convert these views to native python types, iterate through the views::
 
-   >>> print list((bcf_in.header.contigs))
+   >>> print(list((bcf_in.header.contigs)))
    ['M', '17', '20']
-   >>> print list((bcf_in.header.filters))
+   >>> print(list((bcf_in.header.filters)))
    ['PASS', 'q10', 's50']
-   >>> print list((bcf_in.header.info))
+   >>> print(list((bcf_in.header.info)))
    ['NS', 'DP', 'AF', 'AA', 'DB', 'H2']
-   >>> print list((bcf_in.header.samples))
+   >>> print(list((bcf_in.header.samples)))
    ['NA00001', 'NA00002', 'NA00003']
 
 Alternatively, it is possible to iterate through all records in the
 header returning objects of type :py:class:`~pysam.VariantHeaderRecord`:: ::
 
    >>> for x in bcf_in.header.records:
-   >>>    print (x)
-   >>>    print (x.type, x.key)
+   >>>    print(x)
+   >>>    print(x.type, x.key)
    GENERIC fileformat
    FILTER FILTER
    GENERIC fileDate

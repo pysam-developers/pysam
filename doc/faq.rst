@@ -73,10 +73,10 @@ The following code will cause unexpected behaviour::
    samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
 
    iter1 = samfile.fetch("chr1")
-   print (iter1.next().reference_id)
+   print(iter1.next().reference_id)
    iter2 = samfile.fetch("chr2")
-   print (iter2.next().reference_id)
-   print (iter1.next().reference_id)
+   print(iter2.next().reference_id)
+   print(iter1.next().reference_id)
    
 This will give the following output::
 
@@ -96,10 +96,10 @@ chr2. The correct way to work with multiple iterators is::
    samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
 
    iter1 = samfile.fetch("chr1", all)
-   print (iter1.next().reference_id)
+   print(iter1.next().reference_id)
    iter2 = samfile.fetch("chr2")
-   print (iter2.next().reference_id)
-   print (iter1.next().reference_id)
+   print(iter2.next().reference_id)
+   print(iter1.next().reference_id)
 
 Here, the output is::
 
@@ -135,7 +135,7 @@ in the iteration by adding the ``until_eof=True`` flag::
     bf = pysam.AlignmentFile(fname, "rb")
     for r in bf.fetch(until_eof=True):
         if r.is_unmapped:
-	    print ("read is unmapped")
+	    print("read is unmapped")
 
 I can't call AlignmentFile.fetch on a file without index
 ========================================================
@@ -146,7 +146,7 @@ index, use the ``until_eof=True``::
 
     bf = pysam.AlignmentFile(fname, "rb")
     for r in bf.fetch(until_eof=True):
-        print (r)
+        print(r)
 
 	
 BAM files with a large number of reference sequences are slow
@@ -216,14 +216,14 @@ error::
         pass
     
     for pp in p.pileups:
-        print pp
+        print(pp)
 
 The iteration has finished, thus the contents of p are invalid. A
 variation of this::
 
     p = next(AlignmentFile('ex1.bam').pileup('chr1', 1000, 1010))
     for pp in p.pileups:
-        print pp
+        print(pp)
 
 Again, the iteration finishes as the temporary iterator created
 by pileup goes out of scope. The solution is to keep a handle
@@ -232,7 +232,7 @@ to the iterator that remains alive::
     i = AlignmentFile('ex1.bam').pileup('chr1', 1000, 1010)
     p = next(i)
     for pp in p.pileups:
-        print pp
+        print(pp)
 
 Pysam won't compile
 ===================

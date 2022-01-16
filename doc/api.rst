@@ -21,7 +21,7 @@ iteration returns a :class:`~pysam.AlignedSegment` object which
 represents a single read along with its fields and optional tags::
 
    for read in samfile.fetch('chr1', 100, 120):
-       print read
+       print(read)
 
    samfile.close()
 
@@ -55,12 +55,12 @@ reads are represented as :class:`~pysam.PileupRead` objects in the
     import pysam
     samfile = pysam.AlignmentFile("ex1.bam", "rb" )
     for pileupcolumn in samfile.pileup("chr1", 100, 120):
-        print ("\ncoverage at base %s = %s" %
-               (pileupcolumn.pos, pileupcolumn.n))
+        print("\ncoverage at base %s = %s" %
+              (pileupcolumn.pos, pileupcolumn.n))
         for pileupread in pileupcolumn.pileups:
             if not pileupread.is_del and not pileupread.is_refskip:
                 # query position is None if is_del or is_refskip is set.
-                print ('\tbase in read %s = %s' %
+                print('\tbase in read %s = %s' %
                       (pileupread.alignment.query_name,
                        pileupread.alignment.query_sequence[pileupread.query_position]))
 
@@ -99,7 +99,7 @@ tabix indexed tab-separated file formats with genomic data::
    tabixfile = pysam.TabixFile("example.gtf.gz")
 
    for gtf in tabixfile.fetch("chr1", 1000, 2000):
-       print (gtf.contig, gtf.start, gtf.end, gtf.gene_id)
+       print(gtf.contig, gtf.start, gtf.end, gtf.gene_id)
 
 :class:`~pysam.TabixFile` implements lazy parsing in order to iterate
 over large tables efficiently.
