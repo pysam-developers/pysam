@@ -73,21 +73,20 @@ The following code will cause unexpected behaviour::
    samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
 
    iter1 = samfile.fetch("chr1")
-   print(iter1.next().reference_id)
+   print(next(iter1).reference_id)
    iter2 = samfile.fetch("chr2")
-   print(iter2.next().reference_id)
-   print(iter1.next().reference_id)
-   
+   print(next(iter2).reference_id)
+   print(next(iter1).reference_id)
+
 This will give the following output::
 
     0
     1
     Traceback (most recent call last):
       File "xx.py", line 8, in <module>
-	print iter1.next().reference_id
-      File "calignmentfile.pyx", line 1408, in
-      pysam.calignmentfile.IteratorRowRegion.__next__
-      (pysam/calignmentfile.c:16461)
+        print(next(iter1).reference_id)
+      File "libcalignmentfile.pyx", line 2103,
+      in pysam.libcalignmentfile.IteratorRowRegion.__next__
     StopIteration
 
 Note how the second iterator stops as the file pointer has moved to
@@ -95,11 +94,11 @@ chr2. The correct way to work with multiple iterators is::
 
    samfile = pysam.AlignmentFile("pysam_ex1.bam", "rb")
 
-   iter1 = samfile.fetch("chr1", all)
-   print(iter1.next().reference_id)
+   iter1 = samfile.fetch("chr1", multiple_iterators=True)
+   print(next(iter1).reference_id)
    iter2 = samfile.fetch("chr2")
-   print(iter2.next().reference_id)
-   print(iter1.next().reference_id)
+   print(next(iter2).reference_id)
+   print(next(iter1).reference_id)
 
 Here, the output is::
 
