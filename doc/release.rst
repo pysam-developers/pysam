@@ -398,7 +398,7 @@ changes, for example::
 
 will become::
 
-   cimport pysam.libcamtools
+   cimport pysam.libcsamtools
 
 Release 0.9.1
 =============
