@@ -16,7 +16,7 @@ Glossary
       insertions and another 2 matches.
 
    region
-      A genomic region, stated relative to a reference sequence. A
+      A genomic region, stated relative to a :term:`reference` sequence. A
       region consists of reference name ('chr1'), start (15000), and
       end (20000). Start and end can be omitted for regions spanning
       a whole chromosome. If ``end`` is missing, the region will span from
@@ -26,14 +26,19 @@ Glossary
       ``start`` is part of the interval, but the base at ``end`` is not.
 
       When a region is written as a single string using
-      :term:`samtools`-compatible notation, e.g., 'chr1:15001-20000',
+      `samtools`_-compatible notation, e.g., 'chr1:15001-20000',
       the string's coordinates instead represent a 1-based closed interval,
       i.e., both (1-based) positions 15,001 and 20,000 are part of the
       interval. (This example denotes the same 5,000-base region as the
       example in the previous paragraph.)
 
+   genotype
+      An individual's collection of genes. It can also refer to the two alleles
+	  inherited for a particular gene.
+
    column
-      Reads that are aligned to a base in the :term:`reference` sequence.
+      The portion of reads aligned to a single base in the 
+	  :term:`reference` sequence.
 
    tid
       The :term:`target` id. The target id is 0 or a positive integer mapping to
@@ -43,8 +48,16 @@ Glossary
    contig
       The sequence that a :term:`tid` refers to. For example ``chr1``, ``contig123``.
 
-   Reference
-      Synonym for contig
+   reference
+      Synonym for contig.
+
+   BED
+      Browser Extensible Data format. A text file format used to store genomic
+      :term:`regions<region>` as coordinates and associated notations.
+
+   GTF
+      The Gene Transfer Format is a file format used to hold information
+	  about gene structure.
 
    SAM
        A textual format for storing genomic alignment information.
@@ -68,12 +81,6 @@ Glossary
 
    pileup
       Pileup
-
-   samtools
-      The samtools_ package.
-
-   csamtools
-      The samtools_ C-API.
 
    fetching
       Retrieving all mapped reads mapped to a :term:`region`.
@@ -111,10 +118,10 @@ Glossary
       to :term:`soft clipped` reads.
 
    VCF
-      Variant call format
+      Variant Call Format.
 
    BCF
-      Binary :term:`VCF`
+      Binary :term:`VCF`.
 
    FASTA
       Simple text format containing sequence data, with only the bare
@@ -129,7 +136,7 @@ Glossary
       files.
 
    faidx
-      Utility in the samtools package to index :term:`fasta` formatted
+      Utility in the `samtools`_ package to index :term:`fasta` formatted
       files.
 
    bgzip

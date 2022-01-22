@@ -51,7 +51,7 @@ each base in the :term:`reference` sequence the reads that map to that
 particular position. In the typical view of reads stacking vertically
 on top of the reference sequence similar to a multiple alignment,
 :term:`fetching` iterates over the rows of this implied multiple
-alignment while a :term:`pileup` iterates over the :term:`columns`.
+alignment while a :term:`pileup` iterates over the :term:`columns<column>`.
 
 Calling :meth:`~pysam.AlignmentFile.pileup` will return an iterator
 over each :term:`column` (reference base) of a specified
@@ -123,7 +123,7 @@ Note that the file open mode needs to changed from ``r`` to ``rb``.
 Using samtools commands within python
 =====================================
 
-Commands available in :term:`csamtools` are available as simple
+Commands available in `samtools`_ are available as simple
 function calls. Command line options are provided as arguments. For
 example::
 
@@ -152,7 +152,7 @@ Argument errors raise a :class:`pysam.SamtoolsError`::
      if retval: raise SamtoolsError( "\n".join( stderr ) )
    pysam.SamtoolsError: 'Usage: samtools sort [-n] [-m <maxMem>] <in.bam> <out.prefix>\n'
 
-Messages from :term:`csamtools` on stderr are captured and are
+Messages from `samtools`_ on stderr are captured and are
 available using the :meth:`getMessages` method::
 
    pysam.sort.getMessage()
@@ -364,7 +364,7 @@ Extending pysam
 ===============
 
 Using pyximport_, it is (relatively) straight-forward to access pysam
-internals and the underlying samtools library. An example is provided
+internals and the underlying `samtools`_ library. An example is provided
 in the :file:`tests` directory. The example emulates the samtools
 flagstat command and consists of three files:
 

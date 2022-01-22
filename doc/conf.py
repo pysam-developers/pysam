@@ -57,15 +57,16 @@ rst_epilog = '''
 .. _samtools: http://samtools.sourceforge.net/
 .. _bcftools: https://samtools.github.io/bcftools/bcftools.html
 .. _htslib: http://www.htslib.org/
-.. _tabix: http://samtools.sourceforge.net/tabix.shtml
+.. _tabix: http://www.htslib.org/doc/tabix.html
 .. _Galaxy: https://main.g2.bx.psu.edu/
-.. _cython: http://cython.org/
-.. _python: http://python.org/
+.. _cython: https://cython.org/
+.. _python: https://www.python.org/
 .. _pypi: https://pypi.org/
 .. _pip: https://pip.pypa.io/
-.. _pyximport: http://www.prescod.net/pyximport/
+.. _pyximport: https://github.com/cython/cython/tree/master/pyximport
 .. _conda: https://conda.io/docs/
 .. _bioconda: https://bioconda.github.io/
+.. _sphinx: https://www.sphinx-doc.org/en/master/usage/installation.html
 '''
 
 autosummary_generate = True
