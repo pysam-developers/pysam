@@ -354,12 +354,17 @@ class TestAlignedSegment(ReadTest):
 
     def test_get_aligned_pairs_padding(self):
         a = self.build_read()
-        a.cigartuples = ((7, 20), (6, 1), (8, 19))
+        a.cigartuples = ((0, 1), (6, 1), (0, 1))
+        self.assertEqual(a.get_aligned_pairs(),
+                         [(0, 0), (None, None), (1, 1)])
 
-        def inner():
-            a.get_aligned_pairs()
-        # padding is not bein handled right now
-        self.assertRaises(NotImplementedError, inner)
+    def test_get_aligned_pairs_padding_with_seq(self):
+        a = self.build_read()
+        # a.cigartuples = ((0, 1), (6, 1), (0, 1))
+        a.query_sequence = "AT"
+        a.cigarstring = "1M1P1M"
+        self.assertEqual(a.get_aligned_pairs(with_seq=True),
+                         [(0, 0, 'A'), (None, None), (1, 1, 'T')])
 
     def test_get_aligned_pairs(self):
         a = self.build_read()

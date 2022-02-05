@@ -1975,9 +1975,13 @@ cdef class AlignedSegment:
                 pos += l
 
             elif op == BAM_CPAD:
-                raise NotImplementedError(
-                    "Padding (BAM_CPAD, 6) is currently not supported. "
-                    "Please implement. Sorry about that.")
+                if not _matches_only:
+                    if _with_seq:
+                        for i from pos <= i < pos + l:
+                            result.append((None, None, None))
+                    else:
+                        for i from pos <= i < pos + l:
+                            result.append((None, None))
 
         return result
 
