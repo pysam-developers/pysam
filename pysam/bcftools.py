@@ -13,6 +13,7 @@ BCFTOOLS_DISPATCH = [
     "reheader",
     "sort",
     "view",
+    "head",
     "call",
     "consensus",
     "cnv",

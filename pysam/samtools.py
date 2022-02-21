@@ -4,8 +4,10 @@ from pysam.utils import PysamDispatcher
 SAMTOOLS_DISPATCH = {
     # samtools 'documented' commands
     "view": ("view", None),
+    "head": ("head", None),
     "sort": ("sort", None),
     "mpileup": ("mpileup", None),
+    "consensus": ("consensus", None),
     "depth": ("depth", None),
     "faidx": ("faidx", None),
     "fqidx": ("fqidx", None),
