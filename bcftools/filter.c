@@ -1,6 +1,6 @@
 /*  filter.c -- filter expressions.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -151,6 +151,8 @@ struct _filter_t
 //                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p  b  P  i  s 
 static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8 };
 #define TOKEN_STRING "x()[<=>]!|&+-*/MmaAO~^S.lfcpis"       // this is only for debugging, not maintained diligently
+
+static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok);
 
 // Return negative values if it is a function with variable number of arguments
 static int filters_next_token(char **str, int *len)
@@ -471,16 +473,15 @@ static void filters_cmp_filter(token_t *atok, token_t *btok, token_t *rtok, bcf1
 }
 static void filters_cmp_id(token_t *atok, token_t *btok, token_t *rtok, bcf1_t *line)
 {
-    // multiple IDs not supported yet (easy to add though)
-    if ( rtok->tok_type!=TOK_EQ && rtok->tok_type!=TOK_NE )
-        error("Only == and != operators are supported for ID\n");
-
     if ( btok->hash )
     {
         token_t *tmp = atok; atok = btok; btok = tmp;
     }
     if ( atok->hash )
     {
+        if ( rtok->tok_type!=TOK_EQ && rtok->tok_type!=TOK_NE )
+            error("Only == and != operators are supported for strings read from a file\n");
+
         int ret = khash_str2int_has_key(atok->hash, line->d.id);
         if ( rtok->tok_type==TOK_NE ) ret = ret ? 0 : 1;
         rtok->pass_site = ret;
@@ -491,8 +492,19 @@ static void filters_cmp_id(token_t *atok, token_t *btok, token_t *rtok, bcf1_t *
 
     if ( rtok->tok_type==TOK_EQ ) 
         rtok->pass_site = strcmp(btok->str_value.s,line->d.id) ? 0 : 1;
-    else
+    else if ( rtok->tok_type==TOK_NE )
         rtok->pass_site = strcmp(btok->str_value.s,line->d.id) ? 1 : 0;
+    else
+    {
+        if ( rtok->tok_type!=TOK_LIKE && rtok->tok_type!=TOK_NLIKE )
+            error("Only the following operators are supported for querying ID: ==, !=, ~, !~; the operator type %d is not supported (%p %p)\n",
+                rtok->tok_type,atok->regex,btok->regex);
+
+        regex_t *regex = atok->regex ? atok->regex : (btok->regex ? btok->regex : NULL);
+        if ( !regex ) error("fixme: regex initialization failed\n");
+        rtok->pass_site = regexec(regex,line->d.id, 0,NULL,0) ? 0 : 1;
+        if ( rtok->tok_type==TOK_NLIKE ) rtok->pass_site = rtok->pass_site ? 0 : 1;
+    }
 }
 
 /**
@@ -1902,7 +1914,11 @@ static int func_phred(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
 }
 inline static void tok_init_values(token_t *atok, token_t *btok, token_t *rtok)
 {
-    token_t *tok = atok->nvalues > btok->nvalues ? atok : btok;
+    token_t *tok;
+    if ( (atok->nsamples || btok->nsamples) && (!atok->nsamples || !btok->nsamples) )
+        tok = atok->nsamples ? atok : btok;
+    else
+        tok = atok->nvalues > btok->nvalues ? atok : btok;
     rtok->nvalues = tok->nvalues;
     rtok->nval1   = tok->nval1;
     hts_expand(double, rtok->nvalues, rtok->mvalues, rtok->values);

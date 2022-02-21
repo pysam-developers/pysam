@@ -735,11 +735,14 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     if ( rec->rlen > args->fa_buf.l - idx )
     {
         rec->rlen = args->fa_buf.l - idx;
-        alen = strlen(alt_allele);
-        if ( alen > rec->rlen )
+        if ( alt_allele[0]!='<' )
         {
-            alt_allele[rec->rlen] = 0;
-            fprintf(bcftools_stderr,"Warning: trimming variant starting at %s:%"PRId64"\n", bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
+            alen = strlen(alt_allele);
+            if ( alen > rec->rlen )
+            {
+                fprintf(bcftools_stderr,"Warning: trimming variant \"%s\" starting at %s:%"PRId64"\n", alt_allele,bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
+                alt_allele[rec->rlen] = 0;
+            }
         }
     }
     if ( idx>=args->fa_buf.l ) 
@@ -751,7 +754,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         // TODO: symbolic deletions probably need more work above with PICK_SHORT|PICK_LONG
 
         if ( strcasecmp(alt_allele,"<DEL>") && strcasecmp(alt_allele,"<*>") && strcasecmp(alt_allele,"<NON_REF>") )
-            error("Symbolic alleles other than <DEL>, <*> or <NON_REF> are currently not supported, e.g. %s at %s:%"PRId64".\n"
+            error("Symbolic alleles other than <DEL>, <*> or <NON_REF> are currently not supported, e.g. \"%s\" at %s:%"PRId64".\n"
                   "Please use filtering expressions to exclude such sites, for example by running with: -e 'ALT~\"<.*>\"'\n",
                 alt_allele,bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
         if ( !strcasecmp(alt_allele,"<DEL>") )

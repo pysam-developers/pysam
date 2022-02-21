@@ -1014,10 +1014,8 @@ int main_vcfconcat(int argc, char *argv[])
             case  8 : args->record_cmd_line = 0; break;
             case  7 : args->naive_concat = 1; args->naive_concat_trust_headers = 1; break;
             case 12 :
-                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                args->regions_overlap = parse_overlap_option(optarg);
+                if ( args->regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case 'v':
                       args->verbose = strtol(optarg, 0, 0);

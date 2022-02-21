@@ -1,5 +1,5 @@
 /* 
-    Copyright (C) 2016, 2018 Genome Research Ltd.
+    Copyright (C) 2016-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -63,7 +63,10 @@ smpl_ilist_t *smpl_ilist_init(bcf_hdr_t *hdr, char *sample_list, int is_file, in
     char **list = hts_readlist(negate?sample_list+1:sample_list, is_file, &nlist);
     if ( !list ) error("Could not parse %s\n", sample_list);
 
-    // preserve the VCF order
+    if ( negate && (flags&SMPL_REORDER) ) flags &= ~SMPL_REORDER;
+
+    // preserve the VCF order unless flags&SMPL_REORDER is set
+    int j = 0;
     int *tmp = (int*)calloc(bcf_hdr_nsamples(hdr),sizeof(int));
     char **pair = NULL;
     for (i=0; i<nlist; i++)
@@ -91,20 +94,35 @@ smpl_ilist_t *smpl_ilist_init(bcf_hdr_t *hdr, char *sample_list, int is_file, in
             error("No such sample: \"%s\"\n", smpl_name);
         }
 
-        tmp[idx] = 1;
-        if ( smpl2 )
+        if ( flags & SMPL_REORDER )
         {
-            if ( !pair ) pair = (char**)calloc(bcf_hdr_nsamples(hdr),sizeof(char*));
-            if ( flags&SMPL_PAIR2 ) pair[idx] = strdup(smpl1);
-            else if ( flags&SMPL_PAIR1 ) pair[idx] = strdup(smpl2);
+            tmp[j++] = idx;
+        }
+        else
+        {
+            tmp[idx] = 1;
+            if ( smpl2 )
+            {
+                if ( !pair ) pair = (char**)calloc(bcf_hdr_nsamples(hdr),sizeof(char*));
+                if ( flags&SMPL_PAIR2 ) pair[idx] = strdup(smpl1);
+                else if ( flags&SMPL_PAIR1 ) pair[idx] = strdup(smpl2);
+            }
         }
         smpl->n++;
+    }
+
+    if ( flags & SMPL_REORDER )
+    {
+        smpl->idx = tmp;
+        for (i=0; i<nlist; i++) free(list[i]);
+        free(list);
+        return smpl;
     }
 
     if ( negate ) smpl->n = bcf_hdr_nsamples(hdr) - smpl->n;
     smpl->idx = (int*) malloc(sizeof(int)*smpl->n);
 
-    int j = 0;
+    j = 0;
     if ( !negate )
     {
         if ( pair ) smpl->pair = (char**) calloc(smpl->n,sizeof(char*));

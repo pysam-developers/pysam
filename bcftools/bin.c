@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2016 Genome Research Ltd.
+   Copyright (c) 2016-2022 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -43,6 +43,7 @@ bin_t *bin_init(const char *list_def, float min, float max)
     int is_file = strchr(list_def,',') ? 0 : 1;
     int i, nlist;
     char **list = hts_readlist(list_def, is_file, &nlist);
+    if ( !list ) error("Error: failed to read %s\n",list_def);
     bin->nbins = nlist;
     bin->bins  = (float*) malloc(sizeof(float)*nlist);
     for (i=0; i<nlist; i++)

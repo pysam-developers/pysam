@@ -718,16 +718,12 @@ int main_vcfview(int argc, char *argv[])
                 break;
             }
             case  2 :
-                if ( !strcasecmp(optarg,"0") ) args->targets_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) args->targets_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) args->targets_overlap = 2;
-                else error("Could not parse: --targets-overlap %s\n",optarg);
+                args->targets_overlap = parse_overlap_option(optarg);
+                if ( args->targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case  3 :
-                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                args->regions_overlap = parse_overlap_option(optarg);
+                if ( args->regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;

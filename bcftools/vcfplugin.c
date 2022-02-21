@@ -455,11 +455,22 @@ static int cmp_plugin_name(const void *p1, const void *p2)
     return strcmp(a->name,b->name);
 }
 
+// If args=NULL then returns the number of plugins available. Otherwise prints the
+// plugins on stdout and returns 0 on success.
 static int list_plugins(args_t *args)
 {
     plugin_t *plugins = NULL;
     int nplugins = 0, mplugins = 0;
 
+    int count_only = 0;
+    args_t _args;
+    if ( !args )
+    {
+        memset(&_args,0,sizeof(_args));
+        args = &_args;
+        args->nplugin_paths = -1;
+        count_only = 1;
+    }
     init_plugin_paths(args);
 
     kstring_t str = {0,0,0};
@@ -490,6 +501,11 @@ static int list_plugins(args_t *args)
         }
         closedir(dp);
     }
+    if ( count_only )
+    {
+        free(str.s);
+        return nplugins;
+    }
     if ( nplugins )
     {
         qsort(plugins, nplugins, sizeof(plugins[0]), cmp_plugin_name);
@@ -507,6 +523,10 @@ static int list_plugins(args_t *args)
         print_plugin_usage_hint(NULL);
     free(str.s);
     return nplugins ? 0 : 1;
+}
+int count_plugins(void)
+{
+    return list_plugins(NULL);
 }
 
 static void init_data(args_t *args)
@@ -694,16 +714,12 @@ int main_plugin(int argc, char *argv[])
             case 'T': args->targets_list = optarg; targets_is_file = 1; break;
             case 'l': args->plist_only = 1; break;
             case  1 :
-                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                regions_overlap = parse_overlap_option(optarg);
+                if ( regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  2 :
-                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
-                else error("Could not parse: --targets-overlap %s\n",optarg);
+                targets_overlap = parse_overlap_option(optarg);
+                if ( targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;

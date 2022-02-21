@@ -69,7 +69,7 @@ const char *hts_bcf_wmode(int file_type)
     return "w";                                 // uncompressed VCF
 }
 
-const char *hts_bcf_wmode2(int file_type, char *fname)
+const char *hts_bcf_wmode2(int file_type, const char *fname)
 {
     if ( !fname ) return hts_bcf_wmode(file_type);
     int len = strlen(fname);
@@ -80,7 +80,7 @@ const char *hts_bcf_wmode2(int file_type, char *fname)
     return hts_bcf_wmode(file_type);
 }
 
-void set_wmode(char dst[8], int file_type, char *fname, int clevel)
+void set_wmode(char dst[8], int file_type, const char *fname, int clevel)
 {
     const char *ret = NULL;
     int len = fname ? strlen(fname) : 0;
@@ -100,3 +100,10 @@ void set_wmode(char dst[8], int file_type, char *fname, int clevel)
         strcpy(dst, ret);
 }
 
+int parse_overlap_option(const char *arg)
+{
+    if ( strcasecmp(arg, "pos") == 0 || strcmp(arg, "0") == 0 ) return 0;
+    else if ( strcasecmp(arg, "record") == 0 || strcmp(arg, "1") == 0 ) return 1;
+    else if ( strcasecmp(arg, "variant") == 0 || strcmp(arg, "2") == 0 ) return 2;
+    else return -1;
+}

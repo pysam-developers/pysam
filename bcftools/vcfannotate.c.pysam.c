@@ -2,7 +2,7 @@
 
 /*  vcfannotate.c -- Annotate and edit VCF/BCF files.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -161,9 +161,13 @@ typedef struct _args_t
 
     char **argv, *output_fname, *targets_fname, *regions_list, *header_fname;
     char *remove_annots, *columns, *rename_chrs, *rename_annots, *sample_names, *mark_sites;
+    char **rename_annots_map;
+    char *min_overlap_str;
+    float min_overlap_ann, min_overlap_vcf;
+    int rename_annots_nmap;
     kstring_t merge_method_str;
     int argc, drop_header, record_cmd_line, tgts_is_vcf, mark_sites_logic, force, single_overlaps;
-    int columns_is_file, has_append_mode;
+    int columns_is_file, has_append_mode, pair_logic;
 }
 args_t;
 
@@ -653,6 +657,7 @@ static int vcf_setter_alt(args_t *args, bcf1_t *line, annot_col_t *col, void *da
 {
     bcf1_t *rec = (bcf1_t*) data;
     int i;
+    if ( line->n_allele>1 && (col->replace & REPLACE_MISSING) ) return 0;
     if ( rec->n_allele==line->n_allele )
     {
         for (i=1; i<rec->n_allele; i++) if ( strcmp(rec->d.allele[i],line->d.allele[i]) ) break;
@@ -2117,6 +2122,7 @@ static char *set_replace_mode(char *ss, int *replace)
     *replace = mode;
     return ss;
 }
+static void rename_annots_push(args_t *args, char *src, char *dst);
 static void init_columns(args_t *args)
 {
     int need_sample_map = 0;
@@ -2166,6 +2172,7 @@ static void init_columns(args_t *args)
     int icol = -1, has_fmt_str = 0;
     while ( *ss )
     {
+        char *ptr;
         if ( *se && *se!=',' ) { se++; continue; }
         int replace;
         ss = set_replace_mode(ss, &replace);
@@ -2200,6 +2207,8 @@ static void init_columns(args_t *args)
                 col->setter = vcf_setter_alt;
                 col->hdr_key_src = strdup(str.s);
                 col->hdr_key_dst = strdup(str.s);
+                col->replace = replace;
+                if ( args->pair_logic==-1 ) bcf_sr_set_opt(args->files,BCF_SR_PAIR_LOGIC,BCF_SR_PAIR_BOTH_REF);
             }
             else args->alt_idx = icol;
         }
@@ -2263,6 +2272,12 @@ static void init_columns(args_t *args)
                 error("The INFO tag \"%s\" is not defined in %s\n", col->hdr_key_src, args->targets_fname);
             if ( bcf_hdr_id2type(args->tgts_hdr,BCF_HL_INFO,hdr_id)!=BCF_HT_STR )
                 error("Only Type=String tags can be used to annotate the ID column\n");
+        }
+        else if ( (ptr=strstr(str.s,":=")) && !args->targets_fname )
+        {
+            *ptr = 0;
+            rename_annots_push(args,ptr+2,str.s);
+            *ptr = ':';
         }
         else if ( !strcasecmp("FILTER",str.s) )
         {
@@ -2538,7 +2553,7 @@ static void init_columns(args_t *args)
                     hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, key_dst);
                 }
                 else
-                    error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", key_src, args->targets_fname);
+                    error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", key_dst, args->targets_fname);
                 assert( bcf_hdr_idinfo_exists(args->hdr_out,BCF_HL_INFO,hdr_id) );
             }
             if  ( args->tgts_is_vcf )
@@ -2688,41 +2703,58 @@ static void rename_chrs(args_t *args, char *fname)
     for (i=0; i<n; i++) free(map[i]);
     free(map);
 }
-
-static void rename_annots(args_t *args, char *fname)
+// Dirty: this relies on bcf_hdr_sync NOT being called
+static int rename_annots_core(args_t *args, char *ori_tag, char *new_tag)
 {
-    int n, i;
-    char **map = hts_readlist(fname, 1, &n);
-    if ( !map ) error("Could not read: %s\n", fname);
-    for (i=0; i<n; i++)
+    int type;
+    if ( !strncasecmp("info/",ori_tag,5) ) type = BCF_HL_INFO, ori_tag += 5;
+    else if ( !strncasecmp("format/",ori_tag,7) ) type = BCF_HL_FMT, ori_tag += 7;
+    else if ( !strncasecmp("fmt/",ori_tag,4) ) type = BCF_HL_FMT, ori_tag += 4;
+    else if ( !strncasecmp("filter/",ori_tag,7) ) type = BCF_HL_FLT, ori_tag += 7;
+    else return -1;
+    int id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, ori_tag);
+    if ( id<0 ) return 1;
+    bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->hdr_out, type, "ID", ori_tag, NULL);
+    if ( !hrec ) return 1;  // the ID attribute not present
+    int j = bcf_hrec_find_key(hrec, "ID");
+    assert( j>=0 );
+    free(hrec->vals[j]);
+    char *ptr = new_tag;
+    while ( *ptr && !isspace(*ptr) ) ptr++;
+    *ptr = 0;
+    hrec->vals[j] = strdup(new_tag);
+    args->hdr_out->id[BCF_DT_ID][id].key = hrec->vals[j];
+    return 0;
+}
+static void rename_annots(args_t *args)
+{
+    int i;
+    if ( args->rename_annots )
     {
-        char *sb = NULL, *ss = map[i];
-        while ( *ss && !isspace(*ss) ) ss++;
-        if ( !*ss ) error("Could not parse: %s\n", fname);
-        *ss = 0;
-        int type;
-        if ( !strncasecmp("info/",map[i],5) ) type = BCF_HL_INFO, sb = map[i] + 5;
-        else if ( !strncasecmp("format/",map[i],7) ) type = BCF_HL_FMT, sb = map[i] + 7;
-        else if ( !strncasecmp("fmt/",map[i],4) ) type = BCF_HL_FMT, sb = map[i] + 4;
-        else if ( !strncasecmp("filter/",map[i],7) ) type = BCF_HL_FLT, sb = map[i] + 7;
-        else error("Could not parse \"%s\", expected INFO, FORMAT, or FILTER prefix for each line: %s\n",map[i],fname);
-        int id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, sb);
-        if ( id<0 ) continue;
-        bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->hdr_out, type, "ID", sb, NULL);
-        if ( !hrec ) continue;  // the sequence not present
-        int j = bcf_hrec_find_key(hrec, "ID");
-        assert( j>=0 );
-        free(hrec->vals[j]);
-        ss++;
-        while ( *ss && isspace(*ss) ) ss++;
-        char *se = ss;
-        while ( *se && !isspace(*se) ) se++;
-        *se = 0;
-        hrec->vals[j] = strdup(ss);
-        args->hdr_out->id[BCF_DT_ID][id].key = hrec->vals[j];
+        args->rename_annots_map = hts_readlist(args->rename_annots, 1, &args->rename_annots_nmap);
+        if ( !args->rename_annots_map ) error("Could not read: %s\n", args->rename_annots);
     }
-    for (i=0; i<n; i++) free(map[i]);
-    free(map);
+    for (i=0; i<args->rename_annots_nmap; i++)
+    {
+        char *ptr = args->rename_annots_map[i];
+        while ( *ptr && !isspace(*ptr) ) ptr++;
+        if ( !*ptr ) error("Could not parse: %s\n", args->rename_annots_map[i]);
+        char *rmme = ptr;
+        *ptr = 0;
+        ptr++;
+        while ( *ptr && isspace(*ptr) ) ptr++;
+        if ( !*ptr ) { *rmme = ' '; error("Could not parse: %s\n", args->rename_annots_map[i]); }
+        if ( rename_annots_core(args, args->rename_annots_map[i], ptr) < 0 )
+            error("Could not parse \"%s %s\", expected INFO, FORMAT, or FILTER prefix\n",args->rename_annots_map[i],ptr);
+    }
+}
+static void rename_annots_push(args_t *args, char *src, char *dst)
+{
+    args->rename_annots_nmap++;
+    args->rename_annots_map = (char**)realloc(args->rename_annots_map,sizeof(*args->rename_annots_map)*args->rename_annots_nmap);
+    kstring_t str = {0,0,0};
+    ksprintf(&str,"%s %s",src,dst);
+    args->rename_annots_map[ args->rename_annots_nmap - 1 ] = str.s;
 }
 
 static void init_data(args_t *args)
@@ -2771,6 +2803,22 @@ static void init_data(args_t *args)
             args->nalines++;
             hts_expand0(annot_line_t,args->nalines,args->malines,args->alines);
         }
+        if ( args->min_overlap_str )
+        {
+            char *tmp = args->min_overlap_str;
+            if ( args->min_overlap_str[0] != ':' )
+            {
+                args->min_overlap_ann = strtod(args->min_overlap_str,&tmp);
+                if ( args->min_overlap_ann < 0 || args->min_overlap_ann > 1 || (*tmp && *tmp!=':') )
+                    error("Could not parse \"--min-overlap %s\", expected value(s) between 0-1\n", args->min_overlap_str);
+            }
+            if ( *tmp && *tmp==':' )
+            {
+                args->min_overlap_vcf = strtod(tmp+1,&tmp);
+                if ( args->min_overlap_vcf < 0 || args->min_overlap_vcf > 1 || *tmp )
+                    error("Could not parse \"--min-overlap %s\", expected value(s) between 0-1\n", args->min_overlap_str);
+            }
+        }
     }
     init_merge_method(args);
     args->vcmp = vcmp_init();
@@ -2789,7 +2837,7 @@ static void init_data(args_t *args)
     if ( !args->drop_header )
     {
         if ( args->rename_chrs ) rename_chrs(args, args->rename_chrs);
-        if ( args->rename_annots ) rename_annots(args, args->rename_annots);
+        if ( args->rename_annots || args->rename_annots_map ) rename_annots(args);
 
         char wmode[8];
         set_wmode(wmode,args->output_type,args->output_fname,args->clevel);
@@ -2836,6 +2884,11 @@ static void destroy_data(args_t *args)
     {
         regidx_destroy(args->tgt_idx);
         regitr_destroy(args->tgt_itr);
+    }
+    if ( args->rename_annots_map )
+    {
+        for (i=0; i<args->rename_annots_nmap; i++) free(args->rename_annots_map[i]);
+        free(args->rename_annots_map);
     }
     if ( args->tgts ) bcf_sr_regions_destroy(args->tgts);
     free(args->tmpks.s);
@@ -2990,6 +3043,15 @@ static void annotate(args_t *args, bcf1_t *line)
                 tmp->rid   = line->rid;
                 tmp->start = args->tgt_itr->beg;
                 tmp->end   = args->tgt_itr->end;
+
+                // Check min overlap
+                int len_ann = tmp->end - tmp->start + 1;
+                int len_vcf = line->rlen;
+                int isec = (tmp->end < line->pos+line->rlen-1 ? tmp->end : line->pos+line->rlen-1) - (tmp->start > line->pos ? tmp->start : line->pos) + 1;
+                assert( isec > 0 );
+                if ( args->min_overlap_ann && args->min_overlap_ann > (float)isec/len_ann ) continue;
+                if ( args->min_overlap_vcf && args->min_overlap_vcf > (float)isec/len_vcf ) continue;
+
                 parse_annot_line(args, regitr_payload(args->tgt_itr,char*), tmp);
                 for (j=0; j<args->ncols; j++)
                 {
@@ -3188,11 +3250,10 @@ static void usage(args_t *args)
 {
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "About:   Annotate and edit VCF/BCF files.\n");
-    fprintf(bcftools_stderr, "Usage:   bcftools annotate [options] <in.vcf.gz>\n");
+    fprintf(bcftools_stderr, "Usage:   bcftools annotate [options] VCF\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Options:\n");
     fprintf(bcftools_stderr, "   -a, --annotations FILE          VCF file or tabix-indexed FILE with annotations: CHR\\tPOS[\\tVALUE]+\n");
-    fprintf(bcftools_stderr, "       --collapse STR              Matching records by <snps|indels|both|all|some|none>, see man page for details [some]\n");
     fprintf(bcftools_stderr, "   -c, --columns LIST              List of columns in the annotation file, e.g. CHROM,POS,REF,ALT,-,INFO/TAG. See man page for details\n");
     fprintf(bcftools_stderr, "   -C, --columns-file FILE         Read -c columns from FILE, one name per row, with optional --merge-logic TYPE: NAME[ TYPE]\n");
     fprintf(bcftools_stderr, "   -e, --exclude EXPR              Exclude sites for which the expression is true (see man page for details)\n");
@@ -3203,9 +3264,11 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -k, --keep-sites                Leave -i/-e sites unchanged instead of discarding them\n");
     fprintf(bcftools_stderr, "   -l, --merge-logic TAG:TYPE      Merge logic for multiple overlapping regions (see man page for details), EXPERIMENTAL\n");
     fprintf(bcftools_stderr, "   -m, --mark-sites [+-]TAG        Add INFO/TAG flag to sites which are (\"+\") or are not (\"-\") listed in the -a file\n");
+    fprintf(bcftools_stderr, "       --min-overlap ANN:VCF       Required overlap as a fraction of variant in the -a file (ANN), the VCF (:VCF), or reciprocal (ANN:VCF)\n");
     fprintf(bcftools_stderr, "       --no-version                Do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "   -o, --output FILE               Write output to a file [standard output]\n");
     fprintf(bcftools_stderr, "   -O, --output-type u|b|v|z[0-9]  u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
+    fprintf(bcftools_stderr, "       --pair-logic STR            Matching records by <snps|indels|both|all|some|exact>, see man page for details [some]\n");
     fprintf(bcftools_stderr, "   -r, --regions REGION            Restrict to comma-separated list of regions\n");
     fprintf(bcftools_stderr, "   -R, --regions-file FILE         Restrict to regions listed in FILE\n");
     fprintf(bcftools_stderr, "       --regions-overlap 0|1|2     Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
@@ -3237,7 +3300,8 @@ int main_vcfannotate(int argc, char *argv[])
     args->set_ids_replace = 1;
     args->match_id = -1;
     args->clevel = -1;
-    int regions_is_file = 0, collapse = 0;
+    args->pair_logic = -1;
+    int regions_is_file = 0;
     int regions_overlap = 1;
 
     static struct option loptions[] =
@@ -3251,6 +3315,7 @@ int main_vcfannotate(int argc, char *argv[])
         {"annotations",required_argument,NULL,'a'},
         {"merge-logic",required_argument,NULL,'l'},
         {"collapse",required_argument,NULL,2},
+        {"pair-logic",required_argument,NULL,2},
         {"include",required_argument,NULL,'i'},
         {"exclude",required_argument,NULL,'e'},
         {"regions",required_argument,NULL,'r'},
@@ -3265,6 +3330,7 @@ int main_vcfannotate(int argc, char *argv[])
         {"samples",required_argument,NULL,'s'},
         {"samples-file",required_argument,NULL,'S'},
         {"single-overlaps",no_argument,NULL,10},
+        {"min-overlap",required_argument,NULL,12},
         {"no-version",no_argument,NULL,8},
         {"force",no_argument,NULL,'f'},
         {NULL,0,NULL,0}
@@ -3322,25 +3388,25 @@ int main_vcfannotate(int argc, char *argv[])
             case 'h': args->header_fname = optarg; break;
             case  1 : args->rename_chrs = optarg; break;
             case  2 :
-                if ( !strcmp(optarg,"snps") ) collapse |= COLLAPSE_SNPS;
-                else if ( !strcmp(optarg,"indels") ) collapse |= COLLAPSE_INDELS;
-                else if ( !strcmp(optarg,"both") ) collapse |= COLLAPSE_SNPS | COLLAPSE_INDELS;
-                else if ( !strcmp(optarg,"any") ) collapse |= COLLAPSE_ANY;
-                else if ( !strcmp(optarg,"all") ) collapse |= COLLAPSE_ANY;
-                else if ( !strcmp(optarg,"some") ) collapse |= COLLAPSE_SOME;
-                else if ( !strcmp(optarg,"none") ) collapse = COLLAPSE_NONE;
-                else error("The --collapse string \"%s\" not recognised.\n", optarg);
+                if ( !strcmp(optarg,"snps") ) args->pair_logic |= BCF_SR_PAIR_SNP_REF;
+                else if ( !strcmp(optarg,"indels") ) args->pair_logic |= BCF_SR_PAIR_INDEL_REF;
+                else if ( !strcmp(optarg,"both") ) args->pair_logic |= BCF_SR_PAIR_BOTH_REF;
+                else if ( !strcmp(optarg,"any") ) args->pair_logic |= BCF_SR_PAIR_ANY;
+                else if ( !strcmp(optarg,"all") ) args->pair_logic |= BCF_SR_PAIR_ANY;
+                else if ( !strcmp(optarg,"some") ) args->pair_logic |= BCF_SR_PAIR_SOME;
+                else if ( !strcmp(optarg,"none") ) args->pair_logic = BCF_SR_PAIR_EXACT;
+                else if ( !strcmp(optarg,"exact") ) args->pair_logic = BCF_SR_PAIR_EXACT;
+                else error("The --pair-logic string \"%s\" not recognised.\n", optarg);
                 break;
             case  3 :
-                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                regions_overlap = parse_overlap_option(optarg);
+                if ( regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
             case 10 : args->single_overlaps = 1; break;
             case 11 : args->rename_annots = optarg; break;
+            case 12 : args->min_overlap_str = optarg; break;
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
@@ -3371,9 +3437,11 @@ int main_vcfannotate(int argc, char *argv[])
         {
             args->tgts_is_vcf = 1;
             args->files->require_index = 1;
-            args->files->collapse = collapse ? collapse : COLLAPSE_SOME;
+            bcf_sr_set_opt(args->files,BCF_SR_PAIR_LOGIC,args->pair_logic>=0 ? args->pair_logic : BCF_SR_PAIR_SOME);
+            if ( args->min_overlap_str ) error("The --min-overlap option cannot be used when annotating from a VCF\n");
         }
     }
+    if ( args->min_overlap_str && args->single_overlaps ) error("The options --single-overlaps and --min-overlap cannot be combined\n");
     if ( bcf_sr_set_threads(args->files, args->n_threads)<0 ) error("Failed to create threads\n");
     if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
 

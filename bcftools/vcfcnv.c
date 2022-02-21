@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2014-2021 Genome Research Ltd.
+   Copyright (c) 2014-2022 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
    
@@ -1131,8 +1131,6 @@ static int parse_lrr_baf(sample_t *smpl, bcf_fmt_t *baf_fmt, bcf_fmt_t *lrr_fmt,
     return *baf<0 ? 0 : 1;
 }
 
-int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq);
-
 static void cnv_next_line(args_t *args, bcf1_t *line)
 {
     if ( !line ) 
@@ -1381,16 +1379,12 @@ int main_vcfcnv(int argc, char *argv[])
             case 'r': args->regions_list = optarg; break;
             case 'R': args->regions_list = optarg; regions_is_file = 1; break;
             case  3 :
-                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                regions_overlap = parse_overlap_option(optarg);
+                if ( regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  4 :
-                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
-                else error("Could not parse: --targets-overlap %s\n",optarg);
+                targets_overlap = parse_overlap_option(optarg);
+                if ( targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case 'h': 
             case '?': usage(args); break;

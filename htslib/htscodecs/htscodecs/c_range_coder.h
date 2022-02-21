@@ -61,7 +61,7 @@ static inline void RC_StartDecode(RangeCoder *rc)
     rc->Carry = 0;
     rc->Cache = 0;
     rc->code  = 0;
-    if (rc->in_buf+5 >= rc->in_end) {
+    if (rc->in_buf+5 > rc->in_end) {
         rc->in_buf = rc->in_end; // prevent decode
         return;
     }

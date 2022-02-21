@@ -333,6 +333,7 @@ const char *csq_strings[] =
 #define GF_UTR5     ((1<<(GF_coding_bit+1))+4)
 // GF_MAX = (1<<30)-1, see hap_node_t
 
+#define CDS_PHASE_UNKN 3
 typedef struct _tscript_t tscript_t;
 typedef struct
 {
@@ -342,7 +343,7 @@ typedef struct
                         //  update hap_node_t.sbeg in hap_init, could be calculated on the fly)
     uint32_t len;       // exon length
     uint32_t icds:30,   // exon index within the transcript
-             phase:2;   // offset of the CDS
+             phase:2;   // offset of the CDS: 0,1,2 or 3 for unknown
 }
 gf_cds_t;
 typedef struct
@@ -519,7 +520,7 @@ typedef struct
     uint32_t end;
     uint32_t trid;
     uint32_t strand:1;   // STRAND_REV,STRAND_FWD
-    uint32_t phase:2;    // 0, 1 or 2
+    uint32_t phase:2;    // 0, 1, 2, or 3 for unknown
     uint32_t iseq:29;
 }
 ftr_t;
@@ -1053,7 +1054,7 @@ int gff_parse(args_t *args, char *line, ftr_t *ftr)
     if ( *ss == '0' ) ftr->phase = 0;
     else if ( *ss == '1' ) ftr->phase = 1;
     else if ( *ss == '2' ) ftr->phase = 2;
-    else if ( *ss == '.' ) ftr->phase = 0;      // exons do not have phase
+    else if ( *ss == '.' ) ftr->phase = CDS_PHASE_UNKN;     // exons and even CDS in some GFFs do not have phase
     else { if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"Skipping unknown phase: %c, %s\n", *ss, line); return -1; }
     ss += 2;
 
@@ -1134,6 +1135,7 @@ void tscript_init_cds(args_t *args)
 
     // Sort CDS in all transcripts, set offsets, check their phase, length, create index (idx_cds)
     khint_t k;
+    int warn_phase_unkn = 0;
     for (k=0; k<kh_end(aux->id2tr); k++)
     {
         if ( !kh_exist(aux->id2tr, k) ) continue;
@@ -1153,28 +1155,38 @@ void tscript_init_cds(args_t *args)
         int i, len = 0;
         if ( tr->strand==STRAND_FWD )
         {
-            if ( tr->cds[0]->phase ) tr->trim |= TRIM_5PRIME;
-            tr->cds[0]->beg += tr->cds[0]->phase;
-            tr->cds[0]->len -= tr->cds[0]->phase;
-            tr->cds[0]->phase = 0;
+            if ( tr->cds[0]->phase != CDS_PHASE_UNKN )
+            {
+                if ( tr->cds[0]->phase ) tr->trim |= TRIM_5PRIME;
+                tr->cds[0]->beg += tr->cds[0]->phase;
+                tr->cds[0]->len -= tr->cds[0]->phase;
+                tr->cds[0]->phase = 0;
+            }
 
             // sanity check phase; the phase number in gff tells us how many bases to skip in this
             // feature to reach the first base of the next codon
             int tscript_ok = 1;
             for (i=0; i<tr->ncds; i++)
             {
+                if ( tr->cds[i]->phase == CDS_PHASE_UNKN )
+                {
+                    warn_phase_unkn = 1;
+                    len += tr->cds[i]->len;
+                    continue;
+                }
                 int phase = tr->cds[i]->phase ? 3 - tr->cds[i]->phase : 0;
-                if ( phase!=len%3)
+                if ( phase!=len%3 )
                 {
                     if ( args->force )
                     {
                         if ( args->verbosity > 0 )
-                            fprintf(bcftools_stderr,"Warning: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                            fprintf(bcftools_stderr,"Warning: the GFF has inconsistent phase column in transcript %s, skipping. CDS pos=%d: phase!=len%%3 (phase=%d, len=%d)\n",
+                                args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                         tscript_ok = 0;
                         break;
                     }
                     error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d). Use the --force option to proceed anyway (at your own risk).\n",
-                        args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                            args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                 }
                 len += tr->cds[i]->len; 
             }
@@ -1182,33 +1194,43 @@ void tscript_init_cds(args_t *args)
         }
         else
         {
-            // Check that the phase is not bigger than CDS length. Curiously, this can really happen,
-            // see Mus_musculus.GRCm38.85.gff3.gz, transcript:ENSMUST00000163141
-            // todo: the same for the fwd strand
-            i = tr->ncds - 1;
-            int phase = tr->cds[i]->phase;
-            if ( phase ) tr->trim |= TRIM_5PRIME;
-            while ( i>=0 && phase > tr->cds[i]->len )
+            if ( tr->cds[tr->ncds-1]->phase != CDS_PHASE_UNKN )
             {
-                phase -= tr->cds[i]->len;
+                // Check that the phase is not bigger than CDS length. Curiously, this can really happen,
+                // see Mus_musculus.GRCm38.85.gff3.gz, transcript:ENSMUST00000163141
+                // todo: the same for the fwd strand
+                i = tr->ncds - 1;
+                int phase = tr->cds[i]->phase;
+                if ( phase ) tr->trim |= TRIM_5PRIME;
+                while ( i>=0 && phase > tr->cds[i]->len )
+                {
+                    phase -= tr->cds[i]->len;
+                    tr->cds[i]->phase = 0;
+                    tr->cds[i]->len   = 0;
+                    i--;
+                }
+                tr->cds[i]->len  -= tr->cds[i]->phase;
                 tr->cds[i]->phase = 0;
-                tr->cds[i]->len   = 0;
-                i--;
             }
-            tr->cds[i]->len  -= tr->cds[i]->phase;
-            tr->cds[i]->phase = 0;
 
             // sanity check phase
             int tscript_ok = 1;
             for (i=tr->ncds-1; i>=0; i--)
             {
+                if ( tr->cds[i]->phase == CDS_PHASE_UNKN )
+                {
+                    warn_phase_unkn = 1;
+                    len += tr->cds[i]->len;
+                    continue;
+                }
                 int phase = tr->cds[i]->phase ? 3 - tr->cds[i]->phase : 0;
                 if ( phase!=len%3)
                 {
                     if ( args->force )
                     {
                         if ( args->verbosity > 0 )
-                            fprintf(bcftools_stderr,"Warning: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d)\n",args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
+                            fprintf(bcftools_stderr,"Warning: the GFF has inconsistent phase column in transcript %s, skipping. CDS pos=%d: phase!=len%%3 (phase=%d, len=%d)\n",
+                                args->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                         tscript_ok = 0;
                         break;
                     }
@@ -1284,6 +1306,8 @@ void tscript_init_cds(args_t *args)
             regidx_push(args->idx_cds, chr_beg,chr_end, tr->cds[i]->beg,tr->cds[i]->beg+tr->cds[i]->len-1, &tr->cds[i]);
         }
     }
+    if ( warn_phase_unkn && args->verbosity > 0 )
+        fprintf(bcftools_stderr,"Warning: encountered CDS with phase column unset, could not verify reading frame\n");
 }
 
 void regidx_free_gf(void *payload) { free(*((gf_cds_t**)payload)); }
@@ -4318,16 +4342,12 @@ int main_csq(int argc, char *argv[])
             case 't': targets_list = optarg; break;
             case 'T': targets_list = optarg; targets_is_file = 1; break;
             case  4 :
-                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                regions_overlap = parse_overlap_option(optarg);
+                if ( regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  5 :
-                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
-                else error("Could not parse: --targets-overlap %s\n",optarg);
+                targets_overlap = parse_overlap_option(optarg);
+                if ( targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case 'h':
             case '?': error("%s",usage());

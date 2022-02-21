@@ -2,7 +2,7 @@
 
 /*  bamtk.c -- main samtools command front-end.
 
-    Copyright (C) 2008-2021 Genome Research Ltd.
+    Copyright (C) 2008-2022 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -50,7 +50,8 @@ int bam_fillmd(int argc, char *argv[]);
 int bam_idxstats(int argc, char *argv[]);
 int bam_markdup(int argc, char *argv[]);
 int main_samview(int argc, char *argv[]);
-int samtools_main_reheader(int argc, char *argv[]);
+int main_head(int argc, char *argv[]);
+int main_reheader(int argc, char *argv[]);
 int main_cut_target(int argc, char *argv[]);
 int main_phase(int argc, char *argv[]);
 int main_cat(int argc, char *argv[]);
@@ -72,6 +73,7 @@ int amplicon_clip_main(int argc, char *argv[]);
 int main_ampliconstats(int argc, char *argv[]);
 int main_import(int argc, char *argv[]);
 int main_samples(int argc, char *argv[]);
+int main_consensus(int argc, char *argv[]);
 
 const char *samtools_version()
 {
@@ -101,7 +103,7 @@ const char *samtools_feature_string(void) {
 static void long_version(void) {
     fprintf(samtools_stdout, "samtools %s\n"
            "Using htslib %s\n"
-           "Copyright (C) 2021 Genome Research Ltd.\n",
+           "Copyright (C) 2022 Genome Research Ltd.\n",
            samtools_version(), hts_version());
 
     fprintf(samtools_stdout, "\nSamtools compilation details:\n");
@@ -171,6 +173,7 @@ static void usage(FILE *fp)
 "  -- File operations\n"
 "     collate        shuffle and group alignments by name\n"
 "     cat            concatenate BAMs\n"
+"     consensus      produce a consensus Pileup/FASTA/FASTQ\n"
 "     merge          merge sorted alignments\n"
 "     mpileup        multi-way pileup\n"
 "     sort           sort alignment file\n"
@@ -192,6 +195,7 @@ static void usage(FILE *fp)
 "\n"
 "  -- Viewing\n"
 "     flags          explain BAM flags\n"
+"     head           header viewer\n"
 "     tview          text alignment viewer\n"
 "     view           SAM<->BAM<->CRAM conversion\n"
 "     depad          convert padded BAM to unpadded BAM\n"
@@ -245,6 +249,7 @@ int samtools_main(int argc, char *argv[])
     else if (strcmp(argv[1], "faidx") == 0)     ret = faidx_main(argc-1, argv+1);
     else if (strcmp(argv[1], "fqidx") == 0)     ret = fqidx_main(argc-1, argv+1);
     else if (strcmp(argv[1], "dict") == 0)      ret = dict_main(argc-1, argv+1);
+    else if (strcmp(argv[1], "head") == 0)      ret = main_head(argc-1, argv+1);
     else if (strcmp(argv[1], "fixmate") == 0)   ret = bam_mating(argc-1, argv+1);
     else if (strcmp(argv[1], "rmdup") == 0)     ret = bam_rmdup(argc-1, argv+1);
     else if (strcmp(argv[1], "markdup") == 0)   ret = bam_markdup(argc-1, argv+1);
@@ -253,7 +258,7 @@ int samtools_main(int argc, char *argv[])
              strcmp(argv[1], "flagstats") == 0) ret = bam_flagstat(argc-1, argv+1);
     else if (strcmp(argv[1], "calmd") == 0)     ret = bam_fillmd(argc-1, argv+1);
     else if (strcmp(argv[1], "fillmd") == 0)    ret = bam_fillmd(argc-1, argv+1);
-    else if (strcmp(argv[1], "reheader") == 0)  ret = samtools_main_reheader(argc-1, argv+1);
+    else if (strcmp(argv[1], "reheader") == 0)  ret = main_reheader(argc-1, argv+1);
     else if (strcmp(argv[1], "cat") == 0)       ret = main_cat(argc-1, argv+1);
     else if (strcmp(argv[1], "targetcut") == 0) ret = main_cut_target(argc-1, argv+1);
     else if (strcmp(argv[1], "phase") == 0)     ret = main_phase(argc-1, argv+1);
@@ -281,10 +286,10 @@ int samtools_main(int argc, char *argv[])
     //else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
     else if (strcmp(argv[1], "ampliconstats") == 0)     ret = main_ampliconstats(argc-1, argv+1);
     else if (strcmp(argv[1], "samples") == 0)     ret = main_samples(argc-1, argv+1);
+    else if (strcmp(argv[1], "consensus") == 0) ret = main_consensus(argc-1, argv+1);
     else if (strcmp(argv[1], "version") == 0 || \
-             strcmp(argv[1], "--version") == 0) {
+             strcmp(argv[1], "--version") == 0)
         long_version();
-    }
     else if (strcmp(argv[1], "--version-only") == 0) {
         fprintf(samtools_stdout, "%s+htslib-%s\n", samtools_version(), hts_version());
     }

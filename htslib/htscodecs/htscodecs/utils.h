@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019,2021 Genome Research Ltd.
+ * Copyright (c) 2019-2022 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,28 @@
  */
 
 #include <string.h>
+#include <stdlib.h>
+
+// pthread_once is used to allocate large local memory blocks in hist8
+// and hist1_4.  This avoids issues with systems having small stacks, and
+// removes overheads of repeated malloc/free cycles.
+//
+// If NO_THREADS is defined it reverts back to the more traditional malloc
+// and free instead.
+#ifndef NO_THREADS
+#include <pthread.h>
+
+static pthread_once_t hist_once = PTHREAD_ONCE_INIT;
+static pthread_key_t hist_key;
+
+static void hist_tb_free(void *vp) {
+    free(vp);
+}
+
+static void hist_tls_init(void) {
+    pthread_key_create(&hist_key, hist_tb_free);
+}
+#endif
 
 /*
  * Data transpose by N.  Common to rANS4x16 and arith_dynamic decoders.
@@ -46,17 +68,44 @@ static inline void unstripe(unsigned char *out, unsigned char *outN,
     if (ulen >= N) {
 	switch (N) {
 	case 4:
+#define LLN 16
+	    if (ulen >= 4*LLN) {
+		while (j < ulen-4*LLN) {
+		    int l;
+		    for (l = 0; l < LLN; l++) {
+			for (k = 0; k < 4; k++)
+			    out[j+k+l*4] = outN[idxN[k]+l];
+		    }
+		    for (k = 0; k < 4; k++)
+			idxN[k] += LLN;
+		    j += 4*LLN;
+		}
+	    }
 	    while (j < ulen-4) {
 		for (k = 0; k < 4; k++)
 		    out[j++] = outN[idxN[k]++];
 	    }
+#undef LLN
 	    break;
 
 	case 2:
+#define LLN 4
+	    if (ulen >= 2*LLN) {
+		while (j < ulen-2*LLN) {
+		    int l;
+		    for (l = 0; l < LLN; l++) {
+			for (k = 0; k < 2; k++)
+			    out[j++] = outN[idxN[k]+l];
+		    }
+		    for (k = 0; k < 2; k++)
+			idxN[k] += l;
+		}
+	    }
 	    while (j < ulen-2) {
 		for (k = 0; k < 2; k++)
 		    out[j++] = outN[idxN[k]++];
 	    }
+#undef LLN
 	    break;
 
 	default:
@@ -79,26 +128,74 @@ static inline void unstripe(unsigned char *out, unsigned char *outN,
  */
 static inline
 void hist8(unsigned char *in, unsigned int in_size, uint32_t F0[256]) {
-    uint32_t F1[256+MAGIC] = {0}, F2[256+MAGIC] = {0}, F3[256+MAGIC] = {0};
-    uint32_t F4[256+MAGIC] = {0}, F5[256+MAGIC] = {0}, F6[256+MAGIC] = {0};
-    uint32_t F7[256+MAGIC] = {0};
+    if (in_size > 500000) {
+	// Note this is a static inline so we allocate more blocks than
+	// we really need, so we could consider moving this initialisation
+	// code to a utils.c instead.
+	// However it's relatively bounded and not a leak.
+#ifndef NO_THREADS
+	pthread_once(&hist_once, hist_tls_init);
+	uint32_t *f0 = pthread_getspecific(hist_key);
+	if (!f0) {
+	    f0 = calloc((65536+37)*3, sizeof(uint32_t));
+	    pthread_setspecific(hist_key, f0);
+	} else {
+	    memset(f0, 0, (65536+37)*3*sizeof(*f0));
+	}
+#else
+	uint32_t *f0 = calloc((65536+37)*3, sizeof(*f0));
+#endif
+	uint32_t *f1 = f0 + 65536+37;
+	uint32_t *f2 = f1 + 65536+37;
 
-    unsigned int i, i8 = in_size & ~7;
-    for (i = 0; i < i8; i+=8) {
-	F0[in[i+0]]++;
-	F1[in[i+1]]++;
-	F2[in[i+2]]++;
-	F3[in[i+3]]++;
-	F4[in[i+4]]++;
-	F5[in[i+5]]++;
-	F6[in[i+6]]++;
-	F7[in[i+7]]++;
+	uint32_t i, i8 = in_size & ~15;
+
+	for (i = 0; i < i8; i+=16) {
+	    uint16_t i16a[4], i16b[4];
+	    memcpy(i16a, in+i, 8);
+	    f0[i16a[0]]++;
+	    f1[i16a[1]]++;
+	    f2[i16a[2]]++;
+	    f0[i16a[3]]++;
+
+	    memcpy(i16b, in+i+8, 8);
+	    f1[i16b[0]]++;
+	    f0[i16b[1]]++;
+	    f1[i16b[2]]++;
+	    f2[i16b[3]]++;
+	}
+
+	while (i < in_size)
+	    F0[in[i++]]++;
+
+	for (i = 0; i < 65536; i++) {
+	    F0[i & 0xff] += f0[i] + f1[i] + f2[i];
+	    F0[i >> 8  ] += f0[i] + f1[i] + f2[i];
+	}
+#ifdef NO_THREADS
+	free(f0);
+#endif
+    } else {
+	uint32_t F1[256+MAGIC] = {0}, F2[256+MAGIC] = {0}, F3[256+MAGIC] = {0};
+	uint32_t i, i8 = in_size & ~7;
+
+	for (i = 0; i < i8; i+=8) {
+	    F0[in[i+0]]++;
+	    F1[in[i+1]]++;
+	    F2[in[i+2]]++;
+	    F3[in[i+3]]++;
+	    F0[in[i+4]]++;
+	    F1[in[i+5]]++;
+	    F2[in[i+6]]++;
+	    F3[in[i+7]]++;
+	}
+
+	while (i < in_size)
+	    F0[in[i++]]++;
+
+	for (i = 0; i < 256; i++)
+	    F0[i] += F1[i] + F2[i] + F3[i];
     }
-    while (i < in_size)
-	F0[in[i++]]++;
-
-    for (i = 0; i < 256; i++)
-	F0[i] += F1[i] + F2[i] + F3[i] + F4[i] + F5[i] + F6[i] + F7[i];
 }
 
 /*
@@ -133,70 +230,151 @@ void present8(unsigned char *in, unsigned int in_size,
 /*
  * Order 1 histogram construction.  4-way unrolled to avoid cache collisions.
  */
+#if 1
 static inline
 void hist1_4(unsigned char *in, unsigned int in_size,
 	     uint32_t F0[256][256], uint32_t *T0) {
-    uint32_t T1[256+MAGIC] = {0}, T2[256+MAGIC] = {0}, T3[256+MAGIC] = {0};
-
     unsigned char l = 0, c;
     unsigned char *in_end = in + in_size;
 
     unsigned char cc[5] = {0};
     if (in_size > 500000) {
-	uint32_t F1[256][259] = {{0}};
+#ifndef NO_THREADS
+	pthread_once(&hist_once, hist_tls_init);
+	// NB (*F1)[259] works better on old Opterons or other systems
+	// with low N-way associative caches.  However it's slightly poorer
+	// on more modern CPUs.  Mileage may vary by CPU and compiler.
+	//
+	// Note our pthread_once key is shared by both this and hist8, so
+	// the buffer allocated here is reused by both functions and has to
+	// be allocated accordingly (hence to the larger hist8 size).
+	uint32_t (*F1)[259] = pthread_getspecific(hist_key);
+	if (!F1) {
+	    F1 = calloc((65536+37)*3, sizeof(uint32_t));
+	    pthread_setspecific(hist_key, F1);
+	} else {
+	    memset(F1, 0, 256*sizeof(*F1));
+	}
+#else
+	uint32_t (*F1)[259] = calloc(256, sizeof(*F1));
+#endif
 	while (in < in_end-8) {
 	    memcpy(cc, in, 4); in += 4;
-	    T0[cc[4]]++; F0[cc[4]][cc[0]]++;
-	    T1[cc[0]]++; F1[cc[0]][cc[1]]++;
-	    T2[cc[1]]++; F0[cc[1]][cc[2]]++;
-	    T3[cc[2]]++; F1[cc[2]][cc[3]]++;
+	    F0[cc[4]][cc[0]]++;
+	    F1[cc[0]][cc[1]]++;
+	    F0[cc[1]][cc[2]]++;
+	    F1[cc[2]][cc[3]]++;
 	    cc[4] = cc[3];
 
 	    memcpy(cc, in, 4); in += 4;
-	    T0[cc[4]]++; F0[cc[4]][cc[0]]++;
-	    T1[cc[0]]++; F1[cc[0]][cc[1]]++;
-	    T2[cc[1]]++; F0[cc[1]][cc[2]]++;
-	    T3[cc[2]]++; F1[cc[2]][cc[3]]++;
+	    F0[cc[4]][cc[0]]++;
+	    F1[cc[0]][cc[1]]++;
+	    F0[cc[1]][cc[2]]++;
+	    F1[cc[2]][cc[3]]++;
 	    cc[4] = cc[3];
 	}
 	l = cc[3];
 
 	while (in < in_end) {
 	    F0[l][c = *in++]++;
-	    T0[l]++;
 	    l = c;
 	}
+	T0[l]++;
 
 	int i, j;
-	for (i = 0; i < 256; i++)
-	    for (j = 0; j < 256; j++)
+	for (i = 0; i < 256; i++) {
+	    int tt = 0;
+	    for (j = 0; j < 256; j++) {
 		F0[i][j] += F1[i][j];
+		tt += F0[i][j];
+	    }
+	    T0[i]+=tt;
+	}
+#ifdef NO_THREADS
+	free(F1);
+#endif
     } else {
 	while (in < in_end-8) {
 	    memcpy(cc, in, 4); in += 4;
-	    T0[cc[4]]++; F0[cc[4]][cc[0]]++;
-	    T1[cc[0]]++; F0[cc[0]][cc[1]]++;
-	    T2[cc[1]]++; F0[cc[1]][cc[2]]++;
-	    T3[cc[2]]++; F0[cc[2]][cc[3]]++;
+	    F0[cc[4]][cc[0]]++;
+	    F0[cc[0]][cc[1]]++;
+	    F0[cc[1]][cc[2]]++;
+	    F0[cc[2]][cc[3]]++;
 	    cc[4] = cc[3];
 
 	    memcpy(cc, in, 4); in += 4;
-	    T0[cc[4]]++; F0[cc[4]][cc[0]]++;
-	    T1[cc[0]]++; F0[cc[0]][cc[1]]++;
-	    T2[cc[1]]++; F0[cc[1]][cc[2]]++;
-	    T3[cc[2]]++; F0[cc[2]][cc[3]]++;
+	    F0[cc[4]][cc[0]]++;
+	    F0[cc[0]][cc[1]]++;
+	    F0[cc[1]][cc[2]]++;
+	    F0[cc[2]][cc[3]]++;
 	    cc[4] = cc[3];
 	}
 	l = cc[3];
 
 	while (in < in_end) {
 	    F0[l][c = *in++]++;
-	    T0[l]++;
 	    l = c;
 	}
+	T0[l]++;
+
+	int i, j;
+	for (i = 0; i < 256; i++) {
+	    int tt = 0;
+	    for (j = 0; j < 256; j++)
+		tt += F0[i][j];
+	    T0[i]+=tt;
+	}
+    }
+}
+
+#else
+// 16 bit mode, similar to O0 freq.
+// This is better on some low entropy data, but generally we prefer to do
+// bit-packing and/or RLE to turn it into higher-entropy data first.
+//
+// Kept here for posterity incase we need it again, as it's quick tricky.
+static inline
+void hist1_4(unsigned char *in, unsigned int in_size,
+	     uint32_t F0[256][256], uint32_t *T0) {
+    uint32_t f0[65536+MAGIC] = {0};
+    uint32_t f1[65536+MAGIC] = {0};
+
+    uint32_t i, i8 = (in_size-1) & ~15;
+
+    T0[0]++; f0[in[0]<<8]++;
+    for (i = 0; i < i8; i+=16) {
+	uint16_t i16a[16];
+        memcpy(i16a,   in+i,   16); // faster in 2 as gcc recognises this
+	memcpy(i16a+8, in+i+1, 16); // faster in 2 as gcc recognises this
+
+        f0[i16a[0]]++;
+        f1[i16a[1]]++;
+        f0[i16a[2]]++;
+        f1[i16a[3]]++;
+        f0[i16a[4]]++;
+        f1[i16a[5]]++;
+        f0[i16a[6]]++;
+        f1[i16a[7]]++;
+        f0[i16a[8]]++;
+        f1[i16a[9]]++;
+        f0[i16a[10]]++;
+        f1[i16a[11]]++;
+        f0[i16a[12]]++;
+        f1[i16a[13]]++;
+        f0[i16a[14]]++;
+        f1[i16a[15]]++;
     }
 
-    int i;
-    for (i = 0; i < 256; i++)
-	T0[i]+=T1[i]+T2[i]+T3[i];
+    while (i < in_size-1) {
+	F0[in[i]][in[i+1]]++;
+	T0[in[i+1]]++;
+	i++;
+    }
+
+    for (i = 0; i < 65536; i++) {
+        F0[i&0xff][i>>8] += f0[i] + f1[i];
+	T0[i>>8]         += f0[i] + f1[i];
+    }
 }
+
+#endif /* RANS_UTILS_H */
