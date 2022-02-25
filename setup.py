@@ -35,7 +35,7 @@ from setuptools.command.sdist import sdist
 
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
-    import cython
+    import cython  # noqa
     HAVE_CYTHON = True
 except ImportError:
     HAVE_CYTHON = False
@@ -142,10 +142,10 @@ def set_compiler_envvars():
     tmp_vars = []
     for var in ['CC', 'CFLAGS', 'LDFLAGS']:
         if var in os.environ:
-            print ("# pysam: (env) {}={}".format(var, os.environ[var]))
+            print("# pysam: (env) {}={}".format(var, os.environ[var]))
         elif var in sysconfig.get_config_vars():
             value = sysconfig.get_config_var(var)
-            print ("# pysam: (sysconfig) {}={}".format(var, value))
+            print("# pysam: (sysconfig) {}={}".format(var, value))
             os.environ[var] = value
             tmp_vars += [var]
 
@@ -272,10 +272,10 @@ config_headers = ["samtools/config.h",
 # the .pyx files. If no cython is available, the C-files included in the
 # distribution will be used.
 if HAVE_CYTHON:
-    print ("# pysam: cython is available - using cythonize if necessary")
+    print("# pysam: cython is available - using cythonize if necessary")
     source_pattern = "pysam/libc%s.pyx"
 else:
-    print ("# pysam: no cython available - using pre-compiled C")
+    print("# pysam: no cython available - using pre-compiled C")
     source_pattern = "pysam/libc%s.c"
 
 # Exit if there are no pre-compiled files and no cython available
@@ -287,8 +287,8 @@ if not os.path.exists(fn):
         "from the repository"
         .format(fn))
 
-print ("# pysam: htslib mode is {}".format(HTSLIB_MODE))
-print ("# pysam: HTSLIB_CONFIGURE_OPTIONS={}".format(
+print("# pysam: htslib mode is {}".format(HTSLIB_MODE))
+print("# pysam: HTSLIB_CONFIGURE_OPTIONS={}".format(
     HTSLIB_CONFIGURE_OPTIONS))
 htslib_configure_options = None
 
@@ -304,7 +304,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
          "--disable-libcurl"])
 
     HTSLIB_SOURCE = "builtin"
-    print ("# pysam: htslib configure options: {}".format(
+    print("# pysam: htslib configure options: {}".format(
         str(htslib_configure_options)))
 
     config_headers += ["htslib/config.h"]
@@ -320,7 +320,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
         htslib_make_options = run_make_print_config()
 
     for key, value in htslib_make_options.items():
-        print ("# pysam: htslib_config {}={}".format(key, value))
+        print("# pysam: htslib_config {}={}".format(key, value))
 
     external_htslib_libraries = ['z']
     if "LIBS" in htslib_make_options:
@@ -385,7 +385,7 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
                         "HAVE_LIBLZMA",
                         "HAVE_MMAP"]:
                 outf.write("{} = {}\n".format(key, config_values[key]))
-                print ("# pysam: config_option: {}={}".format(key, config_values[key]))
+                print("# pysam: config_option: {}={}".format(key, config_values[key]))
 
 # create empty config.h files if they have not been created automatically
 # or created by the user:
