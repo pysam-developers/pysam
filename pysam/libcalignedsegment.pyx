@@ -1362,8 +1362,8 @@ cdef class AlignedSegment:
         The length includes soft-clipped bases and is equal to
         ``len(query_sequence)``.
 
-        This property is read-only but can be set by providing a
-        sequence.
+        This property is read-only but is updated when a new query
+        sequence is assigned to this AlignedSegment.
 
         Returns 0 if not available.
 
@@ -1382,7 +1382,7 @@ cdef class AlignedSegment:
         """read sequence bases, including :term:`soft clipped` bases
         (None if not present).
 
-        Note that assigning to seq will invalidate any quality scores.
+        Assigning to this attribute will invalidate any quality scores.
         Thus, to in-place edit the sequence and quality scores, copies of
         the quality scores need to be taken. Consider trimming for example::
 
@@ -1645,7 +1645,7 @@ cdef class AlignedSegment:
     property reference_length:
         '''aligned length of the read on the reference genome.
 
-        This is equal to `aend - pos`. Returns None if not available.'''
+        This is equal to `reference_end - reference_start`. Returns None if not available.'''
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
@@ -1657,9 +1657,9 @@ cdef class AlignedSegment:
     property query_alignment_sequence:
         """aligned portion of the read.
 
-        This is a substring of :attr:`seq` that excludes flanking
+        This is a substring of :attr:`query_sequence` that excludes flanking
         bases that were :term:`soft clipped` (None if not present). It
-        is equal to ``seq[qstart:qend]``.
+        is equal to ``query_sequence[query_alignment_start:query_alignment_end]``.
 
         SAM/BAM files may include extra flanking bases that are not
         part of the alignment.  These bases may be the result of the
@@ -1692,9 +1692,9 @@ cdef class AlignedSegment:
 
     property query_alignment_qualities:
         """aligned query sequence quality values (None if not present). These
-        are the quality values that correspond to :attr:`query`, that
+        are the quality values that correspond to :attr:`query_alignment_sequence`, that
         is, they exclude qualities of :term:`soft clipped` bases. This
-        is equal to ``qual[qstart:qend]``.
+        is equal to ``query_qualities[query_alignment_start:query_alignment_end]``.
 
         Quality scores are returned as a python array of unsigned
         chars. Note that this is not the ASCII-encoded value typically
@@ -1727,7 +1727,7 @@ cdef class AlignedSegment:
         """start index of the aligned query portion of the sequence (0-based,
         inclusive).
 
-        This the index of the first base in :attr:`seq` that is not
+        This the index of the first base in :attr:`query_sequence` that is not
         soft-clipped.
         """
         def __get__(self):
@@ -1737,7 +1737,7 @@ cdef class AlignedSegment:
         """end index of the aligned query portion of the sequence (0-based,
         exclusive)
 
-        This the index just past the last base in :attr:`seq` that is not
+        This the index just past the last base in :attr:`query_sequence` that is not
         soft-clipped.
         """
         def __get__(self):
@@ -1746,7 +1746,7 @@ cdef class AlignedSegment:
     property query_alignment_length:
         """length of the aligned query sequence.
 
-        This is equal to :attr:`qend` - :attr:`qstart`"""
+        This is equal to :attr:`query_alignment_end` - :attr:`query_alignment_start`"""
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
