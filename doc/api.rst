@@ -81,7 +81,7 @@ The above code outputs::
         base in read EAS51_64:3:190:727:308 = G
     ...
 
-Commands available in :term:`csamtools` are available as simple
+Commands available in `samtools`_ are available as simple
 function calls. For example::
 
    pysam.sort("-o", "output.bam", "ex1.bam")

@@ -41,7 +41,7 @@ parts have not been fully tested.
 A related issue is when different threads read from the same file
 object - or the same thread uses two iterators over a file. There is
 only a single file-position for each opened file. To prevent this from
-hapeding, use the option ``multiple_iterator=True`` when calling
+happening, use the option ``multiple_iterators=True`` when calling
 a fetch() method. This will return an iterator on a newly opened
 file.
 
@@ -136,12 +136,12 @@ in the iteration by adding the ``until_eof=True`` flag::
         if r.is_unmapped:
 	    print("read is unmapped")
 
-I can't call AlignmentFile.fetch on a file without index
-========================================================
+I can't call AlignmentFile.fetch on a file without an index
+===========================================================
 
 :meth:`~pysam.AlignmentFile.fetch` requires an index when
-iterating over a SAM/BAM file. To iterate over a file without
-index, use the ``until_eof=True``::
+iterating over a SAM/BAM file. To iterate over a file without an
+index, use ``until_eof=True``::
 
     bf = pysam.AlignmentFile(fname, "rb")
     for r in bf.fetch(until_eof=True):
@@ -151,14 +151,14 @@ index, use the ``until_eof=True``::
 BAM files with a large number of reference sequences are slow
 =============================================================
 
-If you have many reference sequences in a bam file, the following
+If you have many reference sequences in a BAM file, the following
 might be slow::
 
       track = pysam.AlignmentFile(fname, "rb")
       for aln in track.fetch():
       	  pass
 	  
-The reason is that track.fetch() will iterate through the bam file
+The reason is that track.fetch() will iterate through the BAM file
 for each reference sequence in the order as it is defined in the
 header. This might require a lot of jumping around in the file. To
 avoid this, use::
@@ -173,24 +173,24 @@ Weirdness with spliced reads in samfile.pileup(chr,start,end) given spliced alig
 ===============================================================================================================
 
 Spliced reads are reported within samfile.pileup. To ignore these
-in your analysis, test the flags ``is_del == True and indel=0``
+in your analysis, test the flags ``is_del == True and indel == 0``
 in the :class:`~.PileupRead` object.
 
 I can't edit quality scores in place
 ====================================
 
-Editing reads in-place generally works, though there is some
-quirk to be aware of. Assigning to AlignedRead.seq will invalidate 
-any quality scores in AlignedRead.qual. The reason is that samtools
+Editing reads in-place generally works, though there is one
+quirk to be aware of. Assigning to AlignedSegment.query_sequence will invalidate 
+any quality scores in AlignedSegment.query_qualities. The reason is that samtools
 manages the memory of the sequence and quality scores together 
 and thus requires them to always be of the same length or 0.
 
 Thus, to in-place edit the sequence and quality scores, copies of
 the quality scores need to be taken. Consider trimming for example::
 
-    q = read.qual
-    read.seq = read.seq[5:10]
-    read.qual = q[5:10]
+    quals = read.query_qualities
+    read.query_sequence = read.query_sequence[5:10]
+    read.query_qualities = quals[5:10]
  
 Why is there no SNPCaller class anymore?
 =========================================
@@ -200,13 +200,13 @@ danger that the pysam implementations might show different behaviour from the
 samtools implementation, which would have caused a lot of confusion.
 
 The best way to use samtools SNP calling from python is to use the 
-:meth:`pysam.mpileup` command and parse the output  directly.
+:meth:`pysam.mpileup` command and parse the output directly.
 
 I get an error 'PileupProxy accessed after iterator finished'
 =============================================================
 
 Pysam works by providing proxy objects to objects defined within
-the C-samtools package. Thus, some attention must be paid at the
+the C-samtools package. Thus, some attention must be paid to the
 lifetime of objects. The following to code snippets will cause an
 error::
 
@@ -217,7 +217,7 @@ error::
     for pp in p.pileups:
         print(pp)
 
-The iteration has finished, thus the contents of p are invalid. A
+The iteration has finished, thus the contents of ``p`` are invalid. Another
 variation of this::
 
     p = next(AlignmentFile('ex1.bam').pileup('chr1', 1000, 1010))
@@ -238,7 +238,7 @@ Pysam won't compile
 
 Compiling pysam can be tricky as there are numerous variables that
 differ between build environments such as OS, version, python version,
-and compiler. It is difficult to build software that build cleanly
+and compiler. It is difficult to build software that builds cleanly
 on all systems and the process might fail. Please see the 
 `pysam user group
 <https://groups.google.com/forum/#!forum/pysam-user-group>`_
@@ -253,7 +253,7 @@ this at the very top of its error messages but will follow it
 with any unknown function or variable definition it encounters later
 on.
 
-A general advice is to always use the latest version on python_ and
+General advice is to always use the latest version on python_ and
 cython_ when building pysam. There are some known incompatibilities:
 
 * Python 3.4 requires cython 0.20.2 or later (see `here
@@ -268,11 +268,11 @@ In version 0.10.0 and onwards, all pysam extension modules contain a
 ``lib``-prefix. This facilates linking against pysam extension modules
 with compilers that require to start with ``lib``. As a consequence,
 all code using pysam extension modules directly will need to be
-adapted. For example, for example::
+adapted. For example,::
 
    cimport pysam.csamtools
 
 will become::
 
-   cimport pysam.libcamtools
+   cimport pysam.libcsamtools
 
