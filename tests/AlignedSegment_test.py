@@ -355,16 +355,38 @@ class TestAlignedSegment(ReadTest):
     def test_get_aligned_pairs_padding(self):
         a = self.build_read()
         a.cigartuples = ((0, 1), (6, 1), (0, 1))
+        # The padding operation is like an insertion into the
+        # reference. See comment in test_get_aligned_pairs_padding_with_seq
+        # (below).
         self.assertEqual(a.get_aligned_pairs(),
-                         [(0, 0), (None, None), (1, 1)])
+                         [(0, 20), (1, None), (2, 21)])
 
     def test_get_aligned_pairs_padding_with_seq(self):
         a = self.build_read()
-        # a.cigartuples = ((0, 1), (6, 1), (0, 1))
         a.query_sequence = "AT"
         a.cigarstring = "1M1P1M"
+        a.set_tag("MD", "2")
+        # When the reference is padded (conventionally with '*', according
+        # to the SAM format specificatio (June 3, 2021), as indicated by a
+        # `P` CIGAR operation, this is equivalent to an insertion into the
+        # reference. Thus we get the same result back as for an insertion,
+        # but the reference character (if requested) is returned as `*`.
+        #
+        # Note that we're here assuming (as in the treatment of `N`
+        # (skipped region from the reference) in build_alignment_sequence
+        # in libcalignedsegment.pyx) that the MD tag will not mention the
+        # region of the reference with the padding character.
+        #
+        # Note also that we are not dealing with a "Padded SAM" file, as
+        # described in section 3.2 of the SAM format, but with the simpler
+        # case (section 3.1) where a reference sequence has had '*'
+        # characters inserted in order to make it easier to specify details
+        # of an insertion using `P` in the CIGAR string: "Alternatively, to
+        # describe the same alignments, we can modify the reference
+        # sequence to contain pads that make room for sequences inserted
+        # relative to the reference."
         self.assertEqual(a.get_aligned_pairs(with_seq=True),
-                         [(0, 0, 'A'), (None, None), (1, 1, 'T')])
+                         [(0, 20, 'A'), (1, None, ord('*')), (2, 21, 'T')])
 
     def test_get_aligned_pairs(self):
         a = self.build_read()
