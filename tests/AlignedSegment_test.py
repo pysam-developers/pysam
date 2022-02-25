@@ -958,45 +958,38 @@ class TestAlignedPairs(unittest.TestCase):
 
 
 class TestBaseModifications(unittest.TestCase):
-    filenames = """MM-chebi.sam
-MM-double.sam
-MM-multi.sam
-MM-orient.sam
-MM-pileup2.sam
-MM-pileup.sam"""
-
     def testChebi(self):
         """reference bases should always be the same nucleotide
         """
-        filename = os.path.join(BAM_DATADIR, "MM-chebi.sam")
+        filename = os.path.join(BAM_DATADIR, "MM-chebi.bam")
         expect = {
             ("C", 0, "m"): [(6, 102), (17, 128), (20, 153), (31, 179), (34, 204)],
             ("N", 0, "n"): [(15, 212)],
-            ("C", 0, 76792): [(19, 161), (34, 33)],
+            ("C", 0, 76792): [(19, 161), (34, 187)],
         }
 
-        with pysam.AlignmentFile(filename) as inf:
+        with pysam.AlignmentFile(filename, check_sq=False) as inf:
             r = next(iter(inf))
             self.assertDictEqual(r.modified_bases, expect)
 
     def testDouble(self):
         """reference bases should always be the same nucleotide
         """
-        filename = os.path.join(BAM_DATADIR, "MM-double.sam")
+        filename = os.path.join(BAM_DATADIR, "MM-double.bam")
         expect = {
             ("G", 1, "m"): [(1, 115), (12, 141), (13, 166), (22, 192)],
             ("C", 0, "m"): [(7, 128), (30, 153), (31, 179)],
             ("G", 0, "o"): [(13, 102)],
         }
 
-        with pysam.AlignmentFile(filename) as inf:
+        with pysam.AlignmentFile(filename, check_sq=False) as inf:
             r = next(iter(inf))
             self.assertDictEqual(r.modified_bases, expect)
 
     def testMulti(self):
         """reference bases should always be the same nucleotide
         """
-        filename = os.path.join(BAM_DATADIR, "MM-multi.sam")
+        filename = os.path.join(BAM_DATADIR, "MM-multi.bam")
         expect = {
             "r1": {
                 ("C", 0, "m"): [(6, 128), (17, 153), (20, 179), (31, 204), (34, 230)],
@@ -1024,14 +1017,14 @@ MM-pileup.sam"""
             },
         }
 
-        with pysam.AlignmentFile(filename) as inf:
+        with pysam.AlignmentFile(filename, check_sq=False) as inf:
             for r in inf:
                 self.assertDictEqual(r.modified_bases, expect[r.query_name])
 
     def testOrient(self):
         """reference bases should always be the same nucleotide
         """
-        filename = os.path.join(BAM_DATADIR, "MM-orient.sam")
+        filename = os.path.join(BAM_DATADIR, "MM-orient.bam")
         expect = {
             "top-fwd": [
                 {("C", 0, "m"): [(7, 128), (30, 153), (31, 179)]},
@@ -1051,7 +1044,7 @@ MM-pileup.sam"""
             ],
         }
 
-        with pysam.AlignmentFile(filename) as inf:
+        with pysam.AlignmentFile(filename, check_sq=False) as inf:
             for r in inf:
                 self.assertDictEqual(r.modified_bases, expect[r.query_name][0])
                 self.assertDictEqual(r.modified_bases_forward, expect[r.query_name][1])
