@@ -494,7 +494,7 @@ cdef class AlignmentHeader(object):
         return result
 
     def as_dict(self):
-        """deprecated: use :meth:`to_dict()`"""
+        """deprecated, use :meth:`to_dict()` instead"""
         return self.to_dict()
 
     def get_reference_name(self, tid):
@@ -605,7 +605,7 @@ cdef class AlignmentFile(HTSFile):
     be constituted from several sources (see also the samtools format
     specification):
 
-        1. If `template` is given, the header is copied from a another
+        1. If `template` is given, the header is copied from another
            `AlignmentFile` (`template` must be a
            :class:`~pysam.AlignmentFile`).
 
@@ -1073,7 +1073,7 @@ cdef class AlignmentFile(HTSFile):
         Returns
         -------
 
-        An iterator over a collection of reads.
+		An iterator over a collection of reads. : IteratorRow
 
         Raises
         ------
@@ -1145,14 +1145,14 @@ cdef class AlignmentFile(HTSFile):
         Returns
         -------
 
-        an iterator over a collection of reads
+		an iterator over a collection of reads : IteratorRowHead
 
         '''
         return IteratorRowHead(self, n,
                                multiple_iterators=multiple_iterators)
 
     def mate(self, AlignedSegment read):
-        '''return the mate of :class:`~pysam.AlignedSegment` `read`.
+        '''return the mate of :class:`pysam.AlignedSegment` `read`.
 
         .. note::
 
@@ -1169,7 +1169,7 @@ cdef class AlignmentFile(HTSFile):
         Returns
         -------
 
-        :class:`~pysam.AlignedSegment` : the mate
+        the mate : AlignedSegment
 
         Raises
         ------
@@ -1266,7 +1266,7 @@ cdef class AlignmentFile(HTSFile):
               uses every single read turning off any filtering.
 
            ``samtools``
-              same filter and read processing as in :term:`csamtools`
+              same filter and read processing as in samtools
               pileup. For full compatibility, this requires a
               'fastafile' to be given. The following options all pertain
               to filtering of the ``samtools`` stepper.
@@ -1323,7 +1323,7 @@ cdef class AlignmentFile(HTSFile):
         Returns
         -------
 
-        an iterator over genomic positions.
+        an iterator over genomic positions. : IteratorColumn
 
         """
         cdef int rtid, has_coord
@@ -1364,7 +1364,7 @@ cdef class AlignmentFile(HTSFile):
         The region is specified by :term:`contig`, `start` and `stop`.
         :term:`reference` and `end` are also accepted for backward
         compatibility as synonyms for :term:`contig` and `stop`,
-        respectively.  Alternatively, a :term:`samtools` :term:`region`
+        respectively.  Alternatively, a `samtools`_ :term:`region`
         string can be supplied.
 
         A :term:`SAM` file does not allow random access and if
@@ -1468,7 +1468,7 @@ cdef class AlignmentFile(HTSFile):
         The region is specified by :term:`contig`, `start` and `stop`.
         :term:`reference` and `end` are also accepted for backward
         compatibility as synonyms for :term:`contig` and `stop`,
-        respectively.  Alternatively, a :term:`samtools` :term:`region`
+        respectively.  Alternatively, a `samtools`_ :term:`region`
         string can be supplied.  The coverage is computed per-base [ACGT].
 
         Parameters
@@ -1946,7 +1946,7 @@ cdef class AlignmentFile(HTSFile):
 
     # Compatibility functions for pysam < 0.14
     property text:
-        """deprecated, use .header directly"""
+        """deprecated, use :attr:`references` and :attr:`lengths` instead"""
         def __get__(self):
             if self.header:
                 return self.header.__str__()
@@ -1955,11 +1955,11 @@ cdef class AlignmentFile(HTSFile):
 
     # Compatibility functions for pysam < 0.8.3
     def gettid(self, reference):
-        """deprecated, use get_tid() instead"""
+        """deprecated, use :meth:`get_tid` instead"""
         return self.get_tid(reference)
 
     def getrname(self, tid):
-        """deprecated, use get_reference_name() instead"""
+        """deprecated, use :meth:`get_reference_name` instead"""
         return self.get_reference_name(tid)
 
 
@@ -2885,7 +2885,7 @@ cdef class IndexedReads:
 
     The index is kept in memory and can be substantial.
 
-    By default, the file is re-openend to avoid conflicts if multiple
+    By default, the file is re-opened to avoid conflicts if multiple
     operators work on the same file. Set `multiple_iterators` = False
     to not re-open `samfile`.
 

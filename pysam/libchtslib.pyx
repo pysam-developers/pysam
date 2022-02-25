@@ -473,7 +473,7 @@ cdef class HTSFile(object):
         Returns
         -------
 
-        The file position after moving the file pointer.
+        The file position after moving the file pointer. : pointer
 
         """
         return self.seek(self.start_offset)

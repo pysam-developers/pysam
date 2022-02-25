@@ -78,7 +78,7 @@ References
       http://samtools.sourceforge.net
    
    The cython C-extensions for python
-      http://cython.org/
+      https://cython.org/
 
    The python language
-      http://www.python.org
+      https://www.python.org

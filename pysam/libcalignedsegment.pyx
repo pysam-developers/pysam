@@ -1361,8 +1361,8 @@ cdef class AlignedSegment:
         The length includes soft-clipped bases and is equal to
         ``len(query_sequence)``.
 
-        This property is read-only but can be set by providing a
-        sequence.
+        This property is read-only but is updated when a new query
+        sequence is assigned to this AlignedSegment.
 
         Returns 0 if not available.
 
@@ -1381,12 +1381,12 @@ cdef class AlignedSegment:
         """read sequence bases, including :term:`soft clipped` bases
         (None if not present).
 
-        Note that assigning to seq will invalidate any quality scores.
+        Assigning to this attribute will invalidate any quality scores.
         Thus, to in-place edit the sequence and quality scores, copies of
         the quality scores need to be taken. Consider trimming for example::
 
            q = read.query_qualities
-           read.query_squence = read.query_sequence[5:10]
+           read.query_sequence = read.query_sequence[5:10]
            read.query_qualities = q[5:10]
 
         The sequence is returned as it is stored in the BAM file. (This will
@@ -1465,8 +1465,8 @@ cdef class AlignedSegment:
             self.cache_query_alignment_qualities = None
 
     property query_qualities:
-        """read sequence base qualities, including :term:`soft
-        clipped` bases (None if not present).
+        """read sequence base qualities, including :term:`soft clipped` bases 
+        (None if not present).
 
         Quality scores are returned as a python array of unsigned
         chars. Note that this is not the ASCII-encoded value typically
@@ -1644,7 +1644,9 @@ cdef class AlignedSegment:
     property reference_length:
         '''aligned length of the read on the reference genome.
 
-        This is equal to `aend - pos`. Returns None if not available.'''
+        This is equal to `reference_end - reference_start`. 
+        Returns None if not available.
+        '''
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
@@ -1656,9 +1658,9 @@ cdef class AlignedSegment:
     property query_alignment_sequence:
         """aligned portion of the read.
 
-        This is a substring of :attr:`seq` that excludes flanking
+        This is a substring of :attr:`query_sequence` that excludes flanking
         bases that were :term:`soft clipped` (None if not present). It
-        is equal to ``seq[qstart:qend]``.
+        is equal to ``query_sequence[query_alignment_start:query_alignment_end]``.
 
         SAM/BAM files may include extra flanking bases that are not
         part of the alignment.  These bases may be the result of the
@@ -1691,9 +1693,10 @@ cdef class AlignedSegment:
 
     property query_alignment_qualities:
         """aligned query sequence quality values (None if not present). These
-        are the quality values that correspond to :attr:`query`, that
-        is, they exclude qualities of :term:`soft clipped` bases. This
-        is equal to ``qual[qstart:qend]``.
+        are the quality values that correspond to 
+        :attr:`query_alignment_sequence`, that is, they exclude qualities of 
+        :term:`soft clipped` bases. This is equal to 
+        ``query_qualities[query_alignment_start:query_alignment_end]``.
 
         Quality scores are returned as a python array of unsigned
         chars. Note that this is not the ASCII-encoded value typically
@@ -1726,8 +1729,8 @@ cdef class AlignedSegment:
         """start index of the aligned query portion of the sequence (0-based,
         inclusive).
 
-        This the index of the first base in :attr:`seq` that is not
-        soft-clipped.
+        This the index of the first base in :attr:`query_sequence` 
+        that is not soft-clipped.
         """
         def __get__(self):
             return getQueryStart(self._delegate)
@@ -1736,16 +1739,87 @@ cdef class AlignedSegment:
         """end index of the aligned query portion of the sequence (0-based,
         exclusive)
 
-        This the index just past the last base in :attr:`seq` that is not
-        soft-clipped.
+        This the index just past the last base in :attr:`query_sequence` 
+        that is not soft-clipped.
         """
         def __get__(self):
             return getQueryEnd(self._delegate)
 
+    property modified_bases:
+        """Modified bases annotations from Ml/Mm tags. The output is
+        Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
+        with qual being (256*probability), or -1 if unknown.
+        Strand==0 for forward and 1 for reverse strand modification
+        """
+        def __get__(self):
+            cdef bam1_t * src
+            cdef hts_base_mod_state *m = hts_base_mod_state_alloc()
+            cdef hts_base_mod mods[5]
+            cdef int pos
+
+            ret = {}
+            src = self._delegate
+            
+            if bam_parse_basemod(src, m) < 0:        
+                return None
+            
+            n = bam_next_basemod(src, m, mods, 5, &pos)
+
+            while n>0:
+                for i in range(n):
+                    mod_code = chr(mods[i].modified_base) if mods[i].modified_base>0 else -mods[i].modified_base
+                    mod_strand = mods[i].strand
+                    if self.is_reverse:
+                        mod_strand = 1 - mod_strand
+                    key = (chr(mods[i].canonical_base), 
+                            mod_strand,
+                            mod_code )
+                    ret.setdefault(key,[]).append((pos,mods[i].qual))
+                    
+                n = bam_next_basemod(src, m, mods, 5, &pos)
+
+            if n<0:
+                return None
+
+            hts_base_mod_state_free(m)
+            return ret
+
+    property modified_bases_forward:
+        """Modified bases annotations from Ml/Mm tags. The output is
+        Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
+        with qual being (256*probability), or -1 if unknown.
+        Strand==0 for forward and 1 for reverse strand modification.
+        The positions are with respect to the original sequence from get_forward_sequence()
+        """
+        def __get__(self):
+            pmods = self.modified_bases
+            if pmods and self.is_reverse:                
+                rmod = {}
+
+                # Try to find the length of the original sequence
+                rlen = self.infer_read_length()
+                if rlen is None and self.query_sequence is None:
+                    return rmod
+                else:
+                    rlen = len(self.query_sequence)
+                    
+                for k,mods in pmods.items():
+                    nk = k[0],1 - k[1],k[2]
+                    for i in range(len(mods)):
+                        
+                        mods[i] = (rlen - 1 -mods[i][0], mods[i][1])
+                    rmod[nk] = mods
+                return rmod
+            
+            return pmods
+
+ 
     property query_alignment_length:
         """length of the aligned query sequence.
 
-        This is equal to :attr:`qend` - :attr:`qstart`"""
+        This is equal to :attr:`query_alignment_end` - 
+        :attr:`query_alignment_start`
+        """
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
@@ -2255,7 +2329,7 @@ cdef class AlignedSegment:
         *replace* is set to False. This is usually not recommended as a
         tag may only appear once in the optional alignment section.
 
-        If *value* is None, the tag will be deleted.
+        If *value* is `None`, the tag will be deleted.
 
         This method accepts valid SAM specification value types, which
         are::
@@ -2482,9 +2556,7 @@ cdef class AlignedSegment:
 
         Returns a list of all fields in the optional
         alignment section. Values are converted to appropriate python
-        values. For example:
-
-        [(NM, 2), (RG, "GJP00TM04")]
+        values. For example: ``[(NM, 2), (RG, "GJP00TM04")]``
 
         If *with_value_type* is set, the value type as encode in
         the AlignedSegment record will be returned as well:
@@ -2560,7 +2632,7 @@ cdef class AlignedSegment:
         """sets the fields in the optional alignment section with
         a list of (tag, value) tuples.
 
-        The :term:`value type` of the values is determined from the
+        The value type of the values is determined from the
         python type. Optionally, a type may be given explicitly as
         a third value in the tuple, For example:
 
@@ -2597,7 +2669,7 @@ cdef class AlignedSegment:
                                                 new_size,
                                                 pysam_bam_get_aux(src))
         if retval == NULL:
-            raise MemoryError("could not allocated memory")
+            raise MemoryError("could not allocate memory")
 
         # copy data only if there is any
         if new_size > 0:
@@ -2627,33 +2699,33 @@ cdef class AlignedSegment:
     #     explicit declaration of getters/setters
     ########################################################
     property qname:
-        """deprecated, use query_name instead"""
+        """deprecated, use :attr:`query_name` instead."""
         def __get__(self): return self.query_name
         def __set__(self, v): self.query_name = v
     property tid:
-        """deprecated, use reference_id instead"""
+        """deprecated, use :attr:`reference_id` instead."""
         def __get__(self): return self.reference_id
         def __set__(self, v): self.reference_id = v
     property pos:
-        """deprecated, use reference_start instead"""
+        """deprecated, use :attr:`reference_start` instead."""
         def __get__(self): return self.reference_start
         def __set__(self, v): self.reference_start = v
     property mapq:
-        """deprecated, use mapping_quality instead"""
+        """deprecated, use :attr:`mapping_quality` instead."""
         def __get__(self): return self.mapping_quality
         def __set__(self, v): self.mapping_quality = v
     property rnext:
-        """deprecated, use next_reference_id instead"""
+        """deprecated, use :attr:`next_reference_id` instead."""
         def __get__(self): return self.next_reference_id
         def __set__(self, v): self.next_reference_id = v
     property pnext:
-        """deprecated, use next_reference_start instead"""
+        """deprecated, use :attr:`next_reference_start` instead."""
         def __get__(self):
             return self.next_reference_start
         def __set__(self, v):
             self.next_reference_start = v
     property cigar:
-        """deprecated, use cigartuples instead"""
+        """deprecated, use :attr:`cigarstring` or :attr:`cigartuples` instead."""
         def __get__(self):
             r = self.cigartuples
             if r is None:
@@ -2661,125 +2733,129 @@ cdef class AlignedSegment:
             return r
         def __set__(self, v): self.cigartuples = v
     property tlen:
-        """deprecated, use template_length instead"""
+        """deprecated, use :attr:`template_length` instead."""
         def __get__(self):
             return self.template_length
         def __set__(self, v):
             self.template_length = v
     property seq:
-        """deprecated, use query_sequence instead"""
+        """deprecated, use :attr:`query_sequence` instead."""
         def __get__(self):
             return self.query_sequence
         def __set__(self, v):
             self.query_sequence = v
     property qual:
-        """deprecated, query_qualities instead"""
+        """deprecated, use :attr:`query_qualities` instead."""
         def __get__(self):
             return array_to_qualitystring(self.query_qualities)
         def __set__(self, v):
             self.query_qualities = qualitystring_to_array(v)
     property alen:
-        """deprecated, reference_length instead"""
+        """deprecated, use :attr:`reference_length` instead."""
         def __get__(self):
             return self.reference_length
         def __set__(self, v):
             self.reference_length = v
     property aend:
-        """deprecated, reference_end instead"""
+        """deprecated, use :attr:`reference_end` instead."""
         def __get__(self):
             return self.reference_end
         def __set__(self, v):
             self.reference_end = v
     property rlen:
-        """deprecated, query_length instead"""
+        """deprecated, use :attr:`query_length` instead."""
         def __get__(self):
             return self.query_length
         def __set__(self, v):
             self.query_length = v
     property query:
-        """deprecated, query_alignment_sequence instead"""
+        """deprecated, use :attr:`query_alignment_sequence` 
+        instead."""
         def __get__(self):
             return self.query_alignment_sequence
         def __set__(self, v):
             self.query_alignment_sequence = v
     property qqual:
-        """deprecated, query_alignment_qualities instead"""
+        """deprecated, use :attr:`query_alignment_qualities` 
+        instead."""
         def __get__(self):
             return array_to_qualitystring(self.query_alignment_qualities)
         def __set__(self, v):
             self.query_alignment_qualities = qualitystring_to_array(v)
     property qstart:
-        """deprecated, use query_alignment_start instead"""
+        """deprecated, use :attr:`query_alignment_start` instead."""
         def __get__(self):
             return self.query_alignment_start
         def __set__(self, v):
             self.query_alignment_start = v
     property qend:
-        """deprecated, use query_alignment_end instead"""
+        """deprecated, use :attr:`query_alignment_end` instead."""
         def __get__(self):
             return self.query_alignment_end
         def __set__(self, v):
             self.query_alignment_end = v
     property qlen:
-        """deprecated, use query_alignment_length instead"""
+        """deprecated, use :attr:`query_alignment_length` 
+        instead."""
         def __get__(self):
             return self.query_alignment_length
         def __set__(self, v):
             self.query_alignment_length = v
     property mrnm:
-        """deprecated, use next_reference_id instead"""
+        """deprecated, use :attr:`next_reference_id` instead."""
         def __get__(self):
             return self.next_reference_id
         def __set__(self, v):
             self.next_reference_id = v
     property mpos:
-        """deprecated, use next_reference_start instead"""
+        """deprecated, use :attr:`next_reference_start` 
+        instead."""
         def __get__(self):
             return self.next_reference_start
         def __set__(self, v):
             self.next_reference_start = v
     property rname:
-        """deprecated, use reference_id instead"""
+        """deprecated, use :attr:`reference_id` instead."""
         def __get__(self):
             return self.reference_id
         def __set__(self, v):
             self.reference_id = v
     property isize:
-        """deprecated, use template_length instead"""
+        """deprecated, use :attr:`template_length` instead."""
         def __get__(self):
             return self.template_length
         def __set__(self, v):
             self.template_length = v
     property blocks:
-        """deprecated, use get_blocks() instead"""
+        """deprecated, use :meth:`get_blocks()` instead."""
         def __get__(self):
             return self.get_blocks()
     property aligned_pairs:
-        """deprecated, use get_aligned_pairs() instead"""
+        """deprecated, use :meth:`get_aligned_pairs()` instead."""
         def __get__(self):
             return self.get_aligned_pairs()
     property inferred_length:
-        """deprecated, use infer_query_length() instead"""
+        """deprecated, use :meth:`infer_query_length()` instead."""
         def __get__(self):
             return self.infer_query_length()
     property positions:
-        """deprecated, use get_reference_positions() instead"""
+        """deprecated, use :meth:`get_reference_positions()` instead."""
         def __get__(self):
             return self.get_reference_positions()
     property tags:
-        """deprecated, use get_tags() instead"""
+        """deprecated, use :meth:`get_tags()` instead."""
         def __get__(self):
             return self.get_tags()
         def __set__(self, tags):
             self.set_tags(tags)
     def overlap(self):
-        """deprecated, use get_overlap() instead"""
+        """deprecated, use :meth:`get_overlap()` instead."""
         return self.get_overlap()
     def opt(self, tag):
-        """deprecated, use get_tag() instead"""
+        """deprecated, use :meth:`get_tag()` instead."""
         return self.get_tag(tag)
     def setTag(self, tag, value, value_type=None, replace=True):
-        """deprecated, use set_tag() instead"""
+        """deprecated, use :meth:`set_tag()` instead."""
         return self.set_tag(tag, value, value_type, replace)
 
 
@@ -2872,21 +2948,21 @@ cdef class PileupColumn:
     # Functions, properties for compatibility with pysam < 0.8
     ########################################################
     property pos:
-        """deprecated: use reference_pos"""
+        """deprecated, use :attr:`reference_pos` instead."""
         def __get__(self):
             return self.reference_pos
         def __set__(self, v):
             self.reference_pos = v
 
     property tid:
-        """deprecated: use reference_id"""
+        """deprecated, use :attr:`reference_id` instead."""
         def __get__(self):
             return self.reference_id
         def __set__(self, v):
             self.reference_id = v
 
     property n:
-        """deprecated: use nsegments"""
+        """deprecated, use :attr:`nsegments` instead."""
         def __get__(self):
             return self.nsegments
         def __set__(self, v):
@@ -2970,7 +3046,7 @@ cdef class PileupColumn:
         Returns
         -------
 
-        list: a list of bases/sequences per read at pileup column position.
+        a list of bases/sequences per read at pileup column position. : list
 
         """
         cdef uint32_t x = 0
@@ -3059,7 +3135,7 @@ cdef class PileupColumn:
         Returns
         -------
 
-        list: a list of quality scores
+        a list of quality scores : list
         """
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
@@ -3087,7 +3163,7 @@ cdef class PileupColumn:
         Returns
         -------
 
-        list: a list of quality scores
+        a list of quality scores : list
         """
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
@@ -3113,7 +3189,7 @@ cdef class PileupColumn:
         Returns
         -------
 
-        list: a list of read positions
+        a list of read positions : list
         """
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
@@ -3139,7 +3215,7 @@ cdef class PileupColumn:
         Returns
         -------
 
-        list: a list of query names at pileup column position.
+        a list of query names at pileup column position. : list
         """
         if self.plp == NULL or self.plp[0] == NULL:
             raise ValueError("PileupColumn accessed after iterator finished")
@@ -3185,7 +3261,7 @@ cdef class PileupRead:
 
     property query_position:
         """position of the read base at the pileup site, 0-based.
-        None if is_del or is_refskip is set.
+        None if :attr:`is_del` or :attr:`is_refskip` is set.
 
         """
         def __get__(self):
