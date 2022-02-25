@@ -1362,8 +1362,8 @@ cdef class AlignedSegment:
         The length includes soft-clipped bases and is equal to
         ``len(query_sequence)``.
 
-        This property is read-only but can be set by providing a
-        sequence.
+        This property is read-only but is updated when a new query
+        sequence is assigned to this AlignedSegment.
 
         Returns 0 if not available.
 
@@ -1382,7 +1382,7 @@ cdef class AlignedSegment:
         """read sequence bases, including :term:`soft clipped` bases
         (None if not present).
 
-        Note that assigning to ``query_sequence`` will invalidate any quality scores.
+        Assigning to this attribute will invalidate any quality scores.
         Thus, to in-place edit the sequence and quality scores, copies of
         the quality scores need to be taken. Consider trimming for example::
 
@@ -1646,7 +1646,8 @@ cdef class AlignedSegment:
         '''aligned length of the read on the reference genome.
 
         This is equal to `reference_end - reference_start`. 
-        Returns None if not available.'''
+        Returns None if not available.
+        '''
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
@@ -1745,11 +1746,81 @@ cdef class AlignedSegment:
         def __get__(self):
             return getQueryEnd(self._delegate)
 
+    property modified_bases:
+        """Modified bases annotations from Ml/Mm tags. The output is
+        Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
+        with qual being (256*probability), or -1 if unknown.
+        Strand==0 for forward and 1 for reverse strand modification
+        """
+        def __get__(self):
+            cdef bam1_t * src
+            cdef hts_base_mod_state *m = hts_base_mod_state_alloc()
+            cdef hts_base_mod mods[5]
+            cdef int pos
+
+            ret = {}
+            src = self._delegate
+            
+            if bam_parse_basemod(src, m) < 0:        
+                return None
+            
+            n = bam_next_basemod(src, m, mods, 5, &pos)
+
+            while n>0:
+                for i in range(n):
+                    mod_code = chr(mods[i].modified_base) if mods[i].modified_base>0 else -mods[i].modified_base
+                    mod_strand = mods[i].strand
+                    if self.is_reverse:
+                        mod_strand = 1 - mod_strand
+                    key = (chr(mods[i].canonical_base), 
+                            mod_strand,
+                            mod_code )
+                    ret.setdefault(key,[]).append((pos,mods[i].qual))
+                    
+                n = bam_next_basemod(src, m, mods, 5, &pos)
+
+            if n<0:
+                return None
+
+            hts_base_mod_state_free(m)
+            return ret
+
+    property modified_bases_forward:
+        """Modified bases annotations from Ml/Mm tags. The output is
+        Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
+        with qual being (256*probability), or -1 if unknown.
+        Strand==0 for forward and 1 for reverse strand modification.
+        The positions are with respect to the original sequence from get_forward_sequence()
+        """
+        def __get__(self):
+            pmods = self.modified_bases
+            if pmods and self.is_reverse:                
+                rmod = {}
+
+                # Try to find the length of the original sequence
+                rlen = self.infer_read_length()
+                if rlen is None and self.query_sequence is None:
+                    return rmod
+                else:
+                    rlen = len(self.query_sequence)
+                    
+                for k,mods in pmods.items():
+                    nk = k[0],1 - k[1],k[2]
+                    for i in range(len(mods)):
+                        
+                        mods[i] = (rlen - 1 -mods[i][0], mods[i][1])
+                    rmod[nk] = mods
+                return rmod
+            
+            return pmods
+
+ 
     property query_alignment_length:
         """length of the aligned query sequence.
 
         This is equal to :attr:`query_alignment_end` - 
-        :attr:`query_alignment_start`"""
+        :attr:`query_alignment_start`
+        """
         def __get__(self):
             cdef bam1_t * src
             src = self._delegate
