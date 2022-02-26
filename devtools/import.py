@@ -18,7 +18,6 @@ import hashlib
 EXCLUDE = {
     "samtools": (
         "test", "misc",
-        "razip.c",
         "bgzip.c",
         "main.c",
         "calDepth.c",
@@ -27,8 +26,8 @@ EXCLUDE = {
         "bam_tview.h",
         "bam_tview_html.c",
         "bam_tview_curses.c",
-        "bamcheck.c",
-        "chk_indel.c",
+        "bam2bcf.c",
+        "bam2bcf.h",
         "vcf-miniview.c",
     ),
     "bcftools": (

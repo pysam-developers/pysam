@@ -65,7 +65,11 @@ extern int @pysam@_main(int argc, char *argv[]);
     to collisions and wrong functions being called. #define these names so the
     actual symbol names include distinct prefixes to avoid collisions.
  */
+#define main_consensus @pysam@_main_consensus
 #define main_reheader @pysam@_main_reheader
+#define bam_smpl_init @pysam@_bam_smpl_init
+#define bam_smpl_destroy @pysam@_bam_smpl_destroy
+#define read_file_list @pysam@_read_file_list
 
 #endif
 
