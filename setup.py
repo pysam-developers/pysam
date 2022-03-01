@@ -33,6 +33,7 @@ from distutils import log
 from setuptools import setup, Command
 from distutils.command.build import build
 from setuptools.command.sdist import sdist
+from distutils.errors import LinkError
 
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
@@ -249,9 +250,13 @@ class extra_build(build):
             for sym in run_nm_defined_symbols(build_ext_obj.get_ext_fullpath(ext.name)):
                 symbols.setdefault(sym, []).append(ext.name.lstrip('pysam.'))
 
+        errors = 0
         for (sym, objs) in symbols.items():
             if (len(objs) > 1):
                 log.error("conflicting symbol (%s): %s", " ".join(objs), sym)
+                errors += 1
+
+        if errors > 0: raise LinkError("symbols defined in multiple extensions")
 
     def run(self):
         build.run(self)
