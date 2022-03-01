@@ -65,7 +65,11 @@ extern int bcftools_main(int argc, char *argv[]);
     to collisions and wrong functions being called. #define these names so the
     actual symbol names include distinct prefixes to avoid collisions.
  */
+#define main_consensus bcftools_main_consensus
 #define main_reheader bcftools_main_reheader
+#define bam_smpl_init bcftools_bam_smpl_init
+#define bam_smpl_destroy bcftools_bam_smpl_destroy
+#define read_file_list bcftools_read_file_list
 
 #endif
 

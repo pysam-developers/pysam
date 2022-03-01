@@ -65,7 +65,11 @@ extern int samtools_main(int argc, char *argv[]);
     to collisions and wrong functions being called. #define these names so the
     actual symbol names include distinct prefixes to avoid collisions.
  */
+#define main_consensus samtools_main_consensus
 #define main_reheader samtools_main_reheader
+#define bam_smpl_init samtools_bam_smpl_init
+#define bam_smpl_destroy samtools_bam_smpl_destroy
+#define read_file_list samtools_read_file_list
 
 #endif
 
