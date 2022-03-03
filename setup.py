@@ -209,7 +209,7 @@ class cythonize_sdist(sdist):
     def run(self):
         from Cython.Build import cythonize
         cythonize(self.distribution.ext_modules)
-        super().run()
+        sdist.run(self)
 
 
 class clean_ext(Command):
