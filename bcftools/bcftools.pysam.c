@@ -1,5 +1,4 @@
-#include <ctype.h>
-#include <assert.h>
+#include <getopt.h>
 #include <unistd.h>
 #include <setjmp.h>
 #include <stdio.h>
@@ -62,6 +61,15 @@ static int bcftools_status = 0;
 
 int bcftools_dispatch(int argc, char *argv[])
 {
+  /* Reset getopt()/getopt_long() processing. */
+#if defined __GLIBC__
+  optind = 0;
+#elif defined _OPTRESET || defined _OPTRESET_DECLARED
+  optreset = optind = 1;
+#else
+  optind = 1;
+#endif
+
   if (setjmp(bcftools_jmpbuf) == 0)
     return bcftools_main(argc, argv);
   else
@@ -73,17 +81,3 @@ void bcftools_exit(int status)
   bcftools_status = status;
   longjmp(bcftools_jmpbuf, 1);
 }
-
-
-void bcftools_set_optind(int val)
-{
-  // setting this in cython via 
-  // "from posix.unistd cimport optind"
-  // did not work.
-  //
-  // setting to 0 forces a complete re-initialization
-  optind = val;
-}
-
-
-
