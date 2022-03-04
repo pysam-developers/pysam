@@ -6,4 +6,3 @@ cdef extern from "bcftools.pysam.h":
     void bcftools_set_stdout(int fd)
     void bcftools_set_stdout_fn(const char *)
     void bcftools_close_stdout()
-    void bcftools_set_optind(int)

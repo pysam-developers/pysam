@@ -19,10 +19,10 @@ from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY
 
 from libcsamtools cimport samtools_dispatch, samtools_set_stdout, samtools_set_stderr, \
-    samtools_close_stdout, samtools_close_stderr, samtools_set_stdout_fn, samtools_set_optind
+    samtools_close_stdout, samtools_close_stderr, samtools_set_stdout_fn
 
 from libcbcftools cimport bcftools_dispatch, bcftools_set_stdout, bcftools_set_stderr, \
-    bcftools_close_stdout, bcftools_close_stderr, bcftools_set_stdout_fn, bcftools_set_optind
+    bcftools_close_stdout, bcftools_close_stderr, bcftools_set_stdout_fn
 
 #####################################################################
 # hard-coded constants
@@ -401,16 +401,6 @@ def _pysam_dispatch(collection,
         l = len(args[i])
         cargs[i + 2] = <char *>calloc(l + 1, sizeof(char))
         strncpy(cargs[i + 2], args[i], l)
-    
-    # reset getopt. On OsX there getopt reset is different
-    # between getopt and getopt_long
-    if method in [b'index', b'cat', b'quickcheck',
-                  b'faidx', b'kprobaln']:
-        samtools_set_optind(1)
-        bcftools_set_optind(1)
-    else:
-        samtools_set_optind(0)
-        bcftools_set_optind(0)
 
     # call samtools/bcftools
     if collection == b"samtools":
