@@ -1602,12 +1602,30 @@ cdef class AlignedSegment:
             return (self.flag & BAM_FREVERSE) != 0
         def __set__(self,val):
             pysam_update_flag(self._delegate, val, BAM_FREVERSE)
+
+    property is_forward:
+        """true if read is mapped to forward strand
+        (implemented in terms of :attr:`is_reverse`)"""
+        def __get__(self):
+            return (self.flag & BAM_FREVERSE) == 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, not val, BAM_FREVERSE)
+
     property mate_is_reverse:
-        """true is read is mapped to reverse strand"""
+        """true if the mate is mapped to reverse strand"""
         def __get__(self):
             return (self.flag & BAM_FMREVERSE) != 0
         def __set__(self,val):
             pysam_update_flag(self._delegate, val, BAM_FMREVERSE)
+
+    property mate_is_forward:
+        """true if the mate is mapped to forward strand
+        (implemented in terms of :attr:`mate_is_reverse`)"""
+        def __get__(self):
+            return (self.flag & BAM_FMREVERSE) == 0
+        def __set__(self,val):
+            pysam_update_flag(self._delegate, not val, BAM_FMREVERSE)
+
     property is_read1:
         """true if this is read1"""
         def __get__(self):

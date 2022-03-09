@@ -154,6 +154,8 @@ class TestAlignedSegment(ReadTest):
         def dual(name):
             if name.endswith('is_unmapped'): return name.replace('unmapped', 'mapped')
             elif name.endswith('is_mapped'): return name.replace('mapped', 'unmapped')
+            elif name.endswith('is_reverse'): return name.replace('reverse', 'forward')
+            elif name.endswith('is_forward'): return name.replace('forward', 'reverse')
             else: return name
 
         # check flags:
@@ -181,6 +183,8 @@ class TestAlignedSegment(ReadTest):
         for x in (
             "is_mapped",
             "mate_is_mapped",
+            "is_forward",
+            "mate_is_forward",
         ):
             setattr(b, x, False)
             self.assertEqual(getattr(b, x), False)
