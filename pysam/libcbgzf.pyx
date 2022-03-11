@@ -115,7 +115,7 @@ cdef class BGZFile(object):
             if read_size < 0:
                 raise IOError('Error reading from BGZFile')
             elif read_size < size:
-                chunk = chunk[:size]
+                chunk = chunk[:read_size]
             return chunk
         else:
             return b''
