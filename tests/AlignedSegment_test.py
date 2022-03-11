@@ -4,6 +4,7 @@ import unittest
 import json
 import collections
 import string
+import struct
 import copy
 import array
 
@@ -189,6 +190,43 @@ class TestAlignedSegment(ReadTest):
         a.query_qualities = pysam.qualitystring_to_array(s[5:10])
 
         self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), s[5:10])
+
+    def testUpdateQual(self):
+        """Ensure SEQ and QUAL updates leading to absent QUAL set all bytes to 0xff"""
+
+        a = self.build_read()
+        with get_temp_context("absent_qual.bam") as fname:
+            with pysam.AlignmentFile(fname, "wb", header=a.header) as outf:
+                a.query_sequence = "ATGC"
+                outf.write(a)
+
+                a.query_sequence = "ATGCATGCATGC"
+                outf.write(a)
+
+                a.query_sequence = "ATGCATGC"
+                a.query_qualities = pysam.qualitystring_to_array("<<<<<<<<")
+                a.query_qualities = None
+                outf.write(a)
+
+            with pysam.BGZFile(fname) as f:
+                # Skip BAM header
+                (l_text,) = struct.unpack("<4xL", f.read(8))
+                f.read(l_text)
+                (n_ref,) = struct.unpack("<L", f.read(4))
+                for i in range(n_ref):
+                    (l_name,) = struct.unpack("<L", f.read(4))
+                    f.read(l_name + 4)
+
+                # Read each BAM record and check its qual bytes
+                while True:
+                    core = f.read(36)
+                    if len(core) != 36: break
+
+                    (block_size, l_read_name, n_cigar_op, l_seq) = struct.unpack("<L8xB3xH2xL12x", core)
+                    data = f.read(block_size - 32)
+                    qual = data[l_read_name + 4*n_cigar_op + ((l_seq+1) // 2):]
+
+                    self.assertEqual(qual, b'\xff' * l_seq)
 
     def testLargeRead(self):
         """build an example read."""

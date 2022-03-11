@@ -64,7 +64,7 @@ cimport cython
 from cpython cimport array as c_array
 from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyBytes_FromStringAndSize
-from libc.string cimport strchr
+from libc.string cimport memset, strchr
 from cpython cimport array as c_array
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
@@ -1457,7 +1457,7 @@ cdef class AlignedSegment:
 
                 # erase qualities
                 p = pysam_bam_get_qual(src)
-                p[0] = 0xff
+                memset(p, 0xff, l)
 
             self.cache_query_sequence = force_str(seq)
 
@@ -1510,8 +1510,7 @@ cdef class AlignedSegment:
             p = pysam_bam_get_qual(src)
             if qual is None or len(qual) == 0:
                 # if absent and there is a sequence: set to 0xff
-                if src.core.l_qseq != 0:
-                    p[0] = 0xff
+                memset(p, 0xff, src.core.l_qseq)
                 return
 
             # check for length match
