@@ -81,6 +81,6 @@ def build_aligned_pairs_with_pysam(*args, **kwargs):
     with_seq = kwargs.pop("with_seq", False)
     with pysam.AlignmentFile(*args, **kwargs) as inf:
         data = [x.get_aligned_pairs(matches_only=matches_only, with_seq=with_seq)
-                for x in inf if not x.is_unmapped]
+                for x in inf if x.is_mapped]
     return data
     

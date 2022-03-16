@@ -177,8 +177,10 @@ def checkFieldEqual(cls, read1, read2, exclude=[]):
               ".query_qualities",
               ".bin",
               ".is_paired", ".is_proper_pair",
-              ".is_unmapped", ".mate_is_unmapped",
-              ".is_reverse", ".mate_is_reverse",
+              ".is_unmapped", ".is_mapped",
+              ".mate_is_unmapped", ".mate_is_mapped",
+              ".is_reverse", ".is_forward",
+              ".mate_is_reverse", ".mate_is_forward",
               ".is_read1", ".is_read2",
               ".is_secondary", ".is_qcfail",
               ".is_duplicate"):
