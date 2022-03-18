@@ -28,6 +28,7 @@ import re
 import subprocess
 import sys
 import sysconfig
+import distutils
 from contextlib import contextmanager
 from distutils import log
 from setuptools import setup, Command
@@ -57,7 +58,7 @@ def run_configure(option):
     sys.stdout.flush()
     try:
         retcode = subprocess.call(
-            " ".join(("./configure", option)),
+            " ".join(("sh ./configure", option)),
             shell=True)
         if retcode != 0:
             return False
@@ -322,7 +323,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
     for key, value in htslib_make_options.items():
         print ("# pysam: htslib_config {}={}".format(key, value))
 
-    external_htslib_libraries = ['z']
+    external_htslib_libraries = ['z', 'regex', 'tre', 'intl', 'iconv']
     if "LIBS" in htslib_make_options:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
@@ -399,7 +400,7 @@ for fn in config_headers:
 
 #######################################################
 # Windows compatibility - untested
-if platform.system() == 'Windows':
+if False:
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
     extra_compile_args = []
@@ -418,20 +419,27 @@ else:
 
 define_macros = []
 
-suffix = sysconfig.get_config_var('EXT_SUFFIX')
+suffix = distutils.sysconfig.get_config_var('EXT_SUFFIX')
 if not suffix:
-    suffix = sysconfig.get_config_var('SO')
+    suffix = distutils.sysconfig.get_config_var('SO')
 
 internal_htslib_libraries = [
-    os.path.splitext("chtslib{}".format(suffix))[0]]
+    ":libchtslib{}".format(suffix)]
 internal_samtools_libraries = [
-    os.path.splitext("csamtools{}".format(suffix))[0],
-    os.path.splitext("cbcftools{}".format(suffix))[0],
+    ":libcsamtools{}".format(suffix),
+    ":libcbcftools{}".format(suffix),
     ]
 internal_pysamutil_libraries = [
-    os.path.splitext("cutils{}".format(suffix))[0]]
+    ":libcutils{}".format(suffix)]
 
-libraries_for_pysam_module = external_htslib_libraries + internal_htslib_libraries + internal_pysamutil_libraries
+external_htslib_objects = []
+for lib in external_htslib_libraries:
+    if lib != "ws2_32":
+        external_htslib_objects.append("C:/msys64/mingw64/lib/lib{}.a".format(lib))
+
+internal_htslib_libraries.append("ws2_32")
+
+libraries_for_pysam_module = internal_htslib_libraries + internal_pysamutil_libraries
 
 # Order of modules matters in order to make sure that dependencies are resolved.
 # The structures of dependencies is as follows:
@@ -455,18 +463,20 @@ modules = [
     dict(name="pysam.libchtslib",
          prebuild_func=prebuild_libchtslib,
          sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + shared_htslib_sources + os_c_files,
-         libraries=external_htslib_libraries),
+         extra_link_args=["-Wl,--export-all-symbols"]),
     dict(name="pysam.libcsamtools",
          prebuild_func=prebuild_libcsamtools,
          sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
          [os.path.join("samtools", "lz4", "lz4.c")] + htslib_sources + os_c_files,
-         libraries=external_htslib_libraries + internal_htslib_libraries),
+         libraries=internal_htslib_libraries,
+         extra_link_args=["-Wl,--export-all-symbols"]),
     dict(name="pysam.libcbcftools",
          sources=[source_pattern % "bcftools"] + glob.glob(os.path.join("bcftools", "*.pysam.c")) + htslib_sources + os_c_files,
-         libraries=external_htslib_libraries + internal_htslib_libraries),
+         libraries=internal_htslib_libraries,
+         extra_link_args=["-Wl,--export-all-symbols"]),
     dict(name="pysam.libcutils",
          sources=[source_pattern % "utils", "pysam/pysam_util.c"] + htslib_sources + os_c_files,
-         libraries=external_htslib_libraries + internal_htslib_libraries + internal_samtools_libraries),
+         libraries=internal_htslib_libraries + internal_samtools_libraries),
     dict(name="pysam.libcalignmentfile",
          sources=[source_pattern % "alignmentfile"] + htslib_sources + os_c_files,
          libraries=libraries_for_pysam_module),
@@ -502,6 +512,7 @@ common_options = dict(
     define_macros=define_macros,
     # for out-of-tree compilation, use absolute paths
     library_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_library_dirs],
+    extra_objects=external_htslib_objects,
     include_dirs=[os.path.abspath(x) for x in htslib_include_dirs + \
                   ["samtools", "samtools/lz4", "bcftools", "pysam", "."] + include_os])
 
