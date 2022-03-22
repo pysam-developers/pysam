@@ -2,7 +2,8 @@ import os
 import subprocess
 import pysam
 
-from TestUtils import BAM_DATADIR, force_str
+from TestUtils import force_str
+
 
 def build_pileup_with_samtoolsshell(fn):
     os.system("samtools mpileup {} 2> /dev/null | wc -l > /dev/null".format(fn))

@@ -7,18 +7,12 @@ and data files located there.
 
 import unittest
 import os
-import sys
 import re
 import copy
 from collections import OrderedDict as odict
 import pysam
 import pysam.samtools
 from TestUtils import get_temp_filename, make_data_files, BAM_DATADIR
-
-if sys.version_info.major >= 3:
-    from io import StringIO
-else:
-    from StringIO import StringIO
 
 
 def setUpModule():

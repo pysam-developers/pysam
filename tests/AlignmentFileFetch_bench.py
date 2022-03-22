@@ -1,9 +1,8 @@
 """Benchmarking module for AlignmentFile functionality"""
-import os
 import pytest
 
 
-from TestUtils import BAM_DATADIR, force_str, flatten_nested_list
+from TestUtils import BAM_DATADIR
 from AlignmentFileFetchTestUtils import *
 
 

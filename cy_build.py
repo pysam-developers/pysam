@@ -8,7 +8,7 @@ except ImportError:
     from setuptools.command.build_ext import build_ext
 
 from distutils.extension import Extension
-from distutils.sysconfig import get_config_vars, get_python_lib, get_python_version
+from distutils.sysconfig import get_config_vars, get_python_version
 from pkg_resources import Distribution
 
 

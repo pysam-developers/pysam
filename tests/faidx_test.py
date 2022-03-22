@@ -1,5 +1,4 @@
 import pysam
-import pytest
 import unittest
 import os
 import gzip

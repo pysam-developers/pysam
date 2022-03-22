@@ -2,7 +2,8 @@ import os
 import subprocess
 import pysam
 
-from TestUtils import BAM_DATADIR, force_str
+from TestUtils import force_str
+
 
 def build_fetch_with_samtoolsshell(fn):
     retval = os.popen("samtools view {} 2> /dev/null | wc -l".format(fn)).read()

@@ -1,7 +1,5 @@
 """Benchmarking module for AlignmentFile functionality"""
-import os
-
-from TestUtils import BAM_DATADIR, force_str, flatten_nested_list
+from TestUtils import BAM_DATADIR, flatten_nested_list
 from PileupTestUtils import *
 
 
