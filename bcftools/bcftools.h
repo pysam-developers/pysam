@@ -1,6 +1,6 @@
 /*  bcftools.h -- utility function declarations.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -28,6 +28,7 @@ THE SOFTWARE.  */
 #include <stdarg.h>
 #include <htslib/hts_defs.h>
 #include <htslib/vcf.h>
+#include <htslib/synced_bcf_reader.h>
 #include <math.h>
 
 #define FT_TAB_TEXT 0       // custom tab-delimited text file
@@ -50,9 +51,11 @@ void error_errno(const char *format, ...) HTS_NORETURN HTS_FORMAT(HTS_PRINTF_FMT
 
 void bcf_hdr_append_version(bcf_hdr_t *hdr, int argc, char **argv, const char *cmd);
 const char *hts_bcf_wmode(int file_type);
-const char *hts_bcf_wmode2(int file_type, char *fname);
-void set_wmode(char dst[8], int file_type, char *fname, int compression_level);  // clevel: 0-9 with or zb type, -1 unset
+const char *hts_bcf_wmode2(int file_type, const char *fname);
+void set_wmode(char dst[8], int file_type, const char *fname, int compression_level);  // clevel: 0-9 with or zb type, -1 unset
 char *init_tmp_prefix(const char *prefix);
+int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq);
+int parse_overlap_option(const char *arg);
 
 void *smalloc(size_t size);     // safe malloc
 

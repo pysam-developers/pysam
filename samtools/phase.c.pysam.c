@@ -599,6 +599,8 @@ int main_phase(int argc, char *argv[])
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
     static const struct option lopts[] = {
         SAM_OPT_GLOBAL_OPTIONS('-', 0, 0, 0, 0, '-'),
+        {"min-BQ", required_argument, NULL, 'Q'},
+        {"min-bq", required_argument, NULL, 'Q'},
         {"no-PG", no_argument, NULL, 1},
         { NULL, 0, NULL, 0 }
     };
@@ -632,7 +634,8 @@ int main_phase(int argc, char *argv[])
         fprintf(samtools_stderr, "Options: -k INT    block length [%d]\n", g.k);
         fprintf(samtools_stderr, "         -b STR    prefix of BAMs to output [null]\n");
         fprintf(samtools_stderr, "         -q INT    min het phred-LOD [%d]\n", g.min_varLOD);
-        fprintf(samtools_stderr, "         -Q INT    min base quality in het calling [%d]\n", g.min_baseQ);
+        fprintf(samtools_stderr, "         -Q, --min-BQ INT\n"
+                        "                   min base quality in het calling [%d]\n", g.min_baseQ);
         fprintf(samtools_stderr, "         -D INT    max read depth [%d]\n", g.max_depth);
 //      fprintf(samtools_stderr, "         -l FILE   list of sites to phase [null]\n");
         fprintf(samtools_stderr, "         -F        do not attempt to fix chimeras\n");

@@ -1,6 +1,6 @@
 /*  tsv2vcf.c -- convert from whitespace-separated fields to VCF
 
-    Copyright (C) 2014 Genome Research Ltd.
+    Copyright (C) 2014-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -116,6 +116,19 @@ int tsv_setter_id(tsv_t *tsv, bcf1_t *rec, void *usr)
     *tsv->se = 0;
     bcf_update_id((bcf_hdr_t*)usr, rec, tsv->ss);
     *tsv->se = tmp;
+    return 0;
+}
+
+int tsv_setter_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
+{
+    bcf_hdr_t *hdr = (bcf_hdr_t*)usr;
+    char *sb = tsv->ss;
+    while ( *sb && !isspace(*sb) ) sb++;
+    if ( !*sb ) return -1;
+    char tmp = *sb;
+    *sb = ',';
+    bcf_update_alleles_str(hdr, rec, tsv->ss);
+    *sb = tmp;
     return 0;
 }
 

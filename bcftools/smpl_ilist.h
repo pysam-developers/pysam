@@ -1,5 +1,5 @@
 /* 
-    Copyright (C) 2016 Genome Research Ltd.
+    Copyright (C) 2016-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -36,6 +36,7 @@
 #define SMPL_PAIR1    4   // two samples expected, the first is from the bcf hdr
 #define SMPL_PAIR2    8   // two samples expected, the second is from the bcf hdr
 #define SMPL_VERBOSE 16   // print warnings 
+#define SMPL_REORDER 32   // reorder samples as asked, sample_list[i] points to the VCF header index
 
 typedef struct
 {

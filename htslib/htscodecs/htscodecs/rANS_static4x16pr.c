@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Genome Research Ltd.
+ * Copyright (c) 2017-2021 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -650,20 +650,19 @@ static int compute_shift(uint32_t *F0, uint32_t (*F)[256], uint32_t *T,
 
 	double l10 = log(TOTFREQ_O1_FAST + sm10);
 	double l12 = log(TOTFREQ_O1      + sm12);
+	double T_slow = (double)TOTFREQ_O1/T[i];
+	double T_fast = (double)TOTFREQ_O1_FAST/T[i];
 
 	for (j = 0; j < 256; j++) {
 	    if (F[i][j]) {
 		ns++;
 
-		int x = (double)TOTFREQ_O1_FAST * F[i][j]/T[i];
-		e10 -= F[i][j] * (fast_log(MAX(x,1)) - l10);
+		e10 -= F[i][j] * (fast_log(MAX(F[i][j]*T_fast,1)) - l10);
+		e12 -= F[i][j] * (fast_log(MAX(F[i][j]*T_slow,1)) - l12);
 
-		x = (double)TOTFREQ_O1 * F[i][j]/T[i];
-		e12 -= F[i][j] * (fast_log(MAX(x,1)) - l12);
-
-		// Estimation of compressedf symbol freq table too.
-		e10 += 4;
-		e12 += 6;
+		// Estimation of compressed symbol freq table too.
+		e10 += 1.3;
+		e12 += 4.7;
 	    }
 	}
 
@@ -682,7 +681,9 @@ static int compute_shift(uint32_t *F0, uint32_t (*F)[256], uint32_t *T,
 	if (max_tot < max_val)
 	    max_tot = max_val;
     }
-    int shift = e10/e12 < 1.01 || max_tot <= TOTFREQ_O1_FAST ? TF_SHIFT_O1_FAST : TF_SHIFT_O1;
+    int shift = e10/e12 < 1.01 || max_tot <= TOTFREQ_O1_FAST
+	? TF_SHIFT_O1_FAST
+	: TF_SHIFT_O1;
 
 //    fprintf(stderr, "e10/12 = %f %f %f, shift %d\n",
 //    	    e10/log(256), e12/log(256), e10/e12, shift);
@@ -1170,10 +1171,24 @@ unsigned char *rans_compress_to_4x16(unsigned char *in,  unsigned int in_size,
 	    idx[i] = i ? idx[i-1] + part_len[i-1] : 0; // cumulative index
 	}
 
-	for (i = x = 0; i < in_size-N; i += N, x++) {
+#define KN 8
+	i = x = 0;
+	if (in_size >= N*KN) {
+	    for (; i < in_size-N*KN;) {
+		int k;
+		unsigned char *ink = in+i;
+		for (j = 0; j < N; j++)
+		    for (k = 0; k < KN; k++)
+			transposed[idx[j]+x+k] = ink[j+N*k];
+		x += KN; i+=N*KN;
+	    }
+	}
+#undef KN
+	for (; i < in_size-N; i += N, x++) {
 	    for (j = 0; j < N; j++)
 		transposed[idx[j]+x] = in[i+j];
 	}
+
 	for (; i < in_size; i += N, x++) {
 	    for (j = 0; i+j < in_size; j++)
 		transposed[idx[j]+x] = in[i+j];

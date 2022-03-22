@@ -533,7 +533,7 @@ cleanup:
     return h;
 }
 
-int samtools_main_reheader(int argc, char *argv[])
+int main_reheader(int argc, char *argv[])
 {
     int inplace = 0, r, no_pg = 0, c, skip_header = 0;
     sam_hdr_t *h;

@@ -814,7 +814,7 @@ void maux_expand1(buffer_t *buf, int size)
         buf->mrec = size;
     }
 }
-void maux_reset(maux_t *ma)
+void maux_reset(maux_t *ma, int *rid_tab)
 {
     int i,j;
     for (i=0; i<ma->n; i++) maux_expand1(&ma->buf[i],ma->files->readers[i].nbuffer+1);
@@ -846,7 +846,10 @@ void maux_reset(maux_t *ma)
     for (i=0; i<ma->n; i++)
     {
         bcf_hdr_t *hdr = bcf_sr_get_header(ma->files,i);
-        ma->buf[i].rid = bcf_hdr_name2id(hdr,chr);
+        if (new_chr)
+            rid_tab[i] = bcf_hdr_name2id(hdr,chr);
+
+        ma->buf[i].rid = rid_tab[i];
         ma->buf[i].beg = bcf_sr_has_line(ma->files,i) ? 0 : 1;
         for (j=ma->buf[i].beg; j<=ma->files->readers[i].nbuffer; j++)
         {
@@ -1267,7 +1270,12 @@ void merge_info(args_t *args, bcf1_t *out)
             bcf_info_t *inf = &line->d.info[j];
 
             const char *key = hdr->id[BCF_DT_ID][inf->key].key;
-            if ( !args->keep_AC_AN && (!strcmp("AC",key) || !strcmp("AN",key)) ) continue;  // AC and AN are done in merge_format() after genotypes are done
+            // AC and AN are done in merge_format() after genotypes are done
+            if (!args->keep_AC_AN &&
+                (key[0] == 'A'
+                  && (key[1] == 'C' || key[1] == 'N')
+                  && key[2] == 0))
+                continue;
 
             int id = bcf_hdr_id2int(out_hdr, BCF_DT_ID, key);
             if ( id==-1 ) error("Error: The INFO field is not defined in the header: %s\n", key);
@@ -3060,13 +3068,17 @@ void merge_vcf(args_t *args)
     args->out_line = bcf_init1();
     args->tmph = kh_init(strdict);
 
+    int *rid_tab = calloc(args->maux->n, sizeof(*rid_tab));
+    if (!rid_tab)
+        error("[%s:%d] Could not allocate %zu bytes\n", __FILE__, __LINE__, args->maux->n*sizeof(*rid_tab));
+
     while ( bcf_sr_next_line(args->files) )
     {
         // output cached gVCF blocks which end before the new record
         if ( args->do_gvcf )
             gvcf_flush(args,0);
 
-        maux_reset(args->maux);
+        maux_reset(args->maux, rid_tab);
 
         // determine which of the new records are gvcf blocks
         if ( args->do_gvcf )
@@ -3080,6 +3092,7 @@ void merge_vcf(args_t *args)
         clean_buffer(args);
         // debug_state(args);
     }
+    free(rid_tab);
     if ( args->do_gvcf )
         gvcf_flush(args,1);
 
@@ -3226,10 +3239,8 @@ int main_vcfmerge(int argc, char *argv[])
             case  2 : args->header_only = 1; break;
             case  3 : args->force_samples = 1; break;
             case  4 :
-                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                regions_overlap = parse_overlap_option(optarg);
+                if ( regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;

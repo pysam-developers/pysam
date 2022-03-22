@@ -1,7 +1,7 @@
 /*  bam_sample.c -- group data by sample.
 
     Copyright (C) 2010, 2011 Broad Institute.
-    Copyright (C) 2013, 2016-2018 Genome Research Ltd.
+    Copyright (C) 2013, 2016-2022 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>, Petr Danecek <pd3@sanger.ac.uk>
 
@@ -281,7 +281,7 @@ int bam_smpl_add_samples(bam_smpl_t *bsmpl, char *list, int is_file)
 
     int i, nsamples = 0;
     char **samples = hts_readlist(list, is_file, &nsamples);
-    if ( !nsamples ) return 0;
+    if ( !samples || !nsamples ) return 0;
 
     kstring_t ori = {0,0,0};
     kstring_t ren = {0,0,0};
@@ -328,7 +328,7 @@ int bam_smpl_add_readgroups(bam_smpl_t *bsmpl, char *list, int is_file)
 
     int i, nrows  = 0;
     char **rows = hts_readlist(list, is_file, &nrows);
-    if ( !nrows ) return 0;
+    if ( !rows || !nrows ) return 0;
 
     kstring_t fld1 = {0,0,0};
     kstring_t fld2 = {0,0,0};

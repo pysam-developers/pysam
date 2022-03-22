@@ -1,6 +1,6 @@
 /*  reheader.c -- reheader subcommand.
 
-    Copyright (C) 2014-2021 Genome Research Ltd.
+    Copyright (C) 2014-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -142,14 +142,16 @@ static char *copy_and_update_contig_line(faidx_t *fai, char *line, void *chr_see
 }
 char *init_tmp_prefix(const char *tmp_prefix)
 {
-    char *prefix = NULL;
+    kstring_t prefix = {0,0,0};
     if ( tmp_prefix )
     {
-        int len = strlen(tmp_prefix);
-        prefix = (char*) calloc(len+7,1);
-        memcpy(prefix,tmp_prefix,len);
-        memcpy(prefix+len,"XXXXXX",6);
+        ksprintf(&prefix,"%sXXXXXX",tmp_prefix);
+        return prefix.s;
     }
+
+    char *tmpdir = getenv("TMPDIR");
+    if ( tmpdir )
+        kputs(tmpdir, &prefix);
     else
     {
         #ifdef _WIN32
@@ -157,15 +159,13 @@ char *init_tmp_prefix(const char *tmp_prefix)
             int ret = GetTempPath(MAX_PATH, tmp_path);
             if (!ret || ret > MAX_PATH)
                 error("Could not get the path to the temporary folder\n");
-            if (strlen(tmp_path) + strlen("/bcftools.XXXXXX") >= MAX_PATH)
-                error("Full path to the temporary folder is too long\n");
-            strcat(tmp_path, "/bcftools.XXXXXX");
-            prefix = strdup(tmp_path);
+            kputs(tmp_path, &prefix);
         #else
-            prefix = strdup("/tmp/bcftools.XXXXXX");
+            kputs("/tmp", &prefix);
         #endif
     }
-    return prefix;
+    kputs("/bcftools.XXXXXX", &prefix);
+    return prefix.s;
 }
 static void update_from_fai(args_t *args)
 {

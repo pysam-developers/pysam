@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013, 2018-2019 Genome Research Ltd.
+ * Copyright (c) 2011-2013, 2018-2022 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -163,7 +163,7 @@ static int read_array(unsigned char *in, size_t in_size, unsigned int *array, in
 		return -1;
 	    int copy = in[++i];
 	    z += run * copy;
-	    while (copy-- && z < size && j < 1024)
+	    while (copy-- && z <= size && j < 1024)
 		R[j++] = run;
 	}
 	if (j >= 1024)

@@ -56,5 +56,21 @@ void PYSAM_NORETURN @pysam@_exit(int status);
 void @pysam@_set_optind(int);
 
 extern int @pysam@_main(int argc, char *argv[]);
-  
+
+/* Define these only in samtools/bcftools C source, not Cython code. */
+#ifndef CYTHON_HEX_VERSION
+
+/*! Several non-static function names are used in both samtools and bcftools.
+    Both libcsamtools.so and libcbcftools.so are loaded simultaneously, leading
+    to collisions and wrong functions being called. #define these names so the
+    actual symbol names include distinct prefixes to avoid collisions.
+ */
+#define main_consensus @pysam@_main_consensus
+#define main_reheader @pysam@_main_reheader
+#define bam_smpl_init @pysam@_bam_smpl_init
+#define bam_smpl_destroy @pysam@_bam_smpl_destroy
+#define read_file_list @pysam@_read_file_list
+
+#endif
+
 #endif

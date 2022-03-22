@@ -66,7 +66,7 @@ struct _args_t
     kstring_t str;
     int32_t *gts;
     float *flt;
-    int rev_als, output_vcf_ids, hap2dip, output_chrom_first_col;
+    int rev_als, output_vcf_ids, hap2dip, gen_3N6;
     int nsamples, *samples, sample_is_file, targets_is_file, regions_is_file, output_type;
     int regions_overlap, targets_overlap;
     char **argv, *sample_list, *targets_list, *regions_list, *tag, *columns;
@@ -141,53 +141,82 @@ static void open_vcf(args_t *args, const char *format_str)
     free(samples);
 }
 
-static int tsv_setter_chrom_pos_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
+// Try to set CHROM:POS_REF_ALT[_END]. Return 0 on success, -1 on error
+static int _set_chrom_pos_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
 {
     args_t *args = (args_t*) usr;
 
     char tmp, *se = tsv->ss, *ss = tsv->ss;
     while ( se < tsv->se && *se!=':' ) se++;
-    if ( *se!=':' ) error("Could not parse CHROM in CHROM:POS_REF_ALT id: %s\n", tsv->ss);
+    if ( *se!=':' ) return -1;
     tmp = *se; *se = 0;
-    rec->rid = bcf_hdr_name2id(args->header,ss); 
-    if ( rec->rid<0 ) error("Could not determine sequence name or multiple sequences present: %s\n", tsv->ss);
+    int rid = bcf_hdr_name2id(args->header,ss);
     *se = tmp;
+    if ( rid<0 ) return -1;
 
     // POS
-    rec->pos = strtol(se+1,&ss,10);
-    if ( ss==se+1 ) error("Could not parse POS in CHROM:POS_REF_ALT: %s\n", tsv->ss);
-    rec->pos--;
-
-    // ID
-    if ( args->output_vcf_ids )
-    {
-        char tmp = *tsv->se;
-        *tsv->se = 0;
-        bcf_update_id(args->header, rec, tsv->ss);
-        *tsv->se = tmp;
-    }
+    hts_pos_t pos = strtol(se+1,&ss,10);
+    if ( ss==se+1 ) return -1;
+    pos--;
 
     // REF,ALT
     args->str.l = 0;
     se = ++ss;
     while ( se < tsv->se && *se!='_' ) se++; 
-    if ( *se!='_' ) error("Could not parse REF in CHROM:POS_REF_ALT id: %s\n", tsv->ss);
+    if ( *se!='_' ) return -1;
     kputsn(ss,se-ss,&args->str);
     ss = ++se;
     while ( se < tsv->se && *se!='_' && isspace(*tsv->se) ) se++;
-    if ( se < tsv->se && *se!='_' && isspace(*tsv->se) ) error("Could not parse ALT in CHROM:POS_REF_ALT id: %s\n", tsv->ss);
+    if ( se < tsv->se && *se!='_' && isspace(*tsv->se) ) return -1;
     kputc(',',&args->str);
     kputsn(ss,se-ss,&args->str);
-    bcf_update_alleles_str(args->header, rec, args->str.s);
 
     // END - optional
-    if (*se && *se=='_') {
+    if (*se && *se=='_')
+    {
         long end = strtol(se+1,&ss,10);
-        if ( ss==se+1 ) error("Could not parse END in CHROM:POS_REF_ALT_END: %s\n", tsv->ss);
+        if ( ss==se+1 ) return -1;
         bcf_update_info_int32(args->header, rec, "END", &end, 1);
     }
 
+    rec->rid = rid;
+    rec->pos = pos;
+    bcf_update_alleles_str(args->header, rec, args->str.s);
+
     return 0;
+}
+static int tsv_setter_chrom_pos_ref_alt_or_chrom(tsv_t *tsv, bcf1_t *rec, void *usr)
+{
+    args_t *args = (args_t*)usr;
+    int ret = _set_chrom_pos_ref_alt(tsv,rec,usr);
+    if ( !ret ) return ret;
+    return tsv_setter_chrom(tsv,rec,args->header);
+}
+static int tsv_setter_chrom_pos_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
+{
+    int ret = _set_chrom_pos_ref_alt(tsv,rec,usr);
+    if ( ret!=0 ) error("Could not parse the CHROM:POS_REF_ALT[_END] string: %s\n", tsv->ss);
+    return ret;
+}
+// This function must be called first, then tsv_setter_chrom_pos_ref_alt_id_or_die.
+// One of them is expected to find the CHROM:POS_REF_ALT[_END] string, if not, die.
+static int tsv_setter_chrom_pos_ref_alt_or_id(tsv_t *tsv, bcf1_t *rec, void *usr)
+{
+    args_t *args = (args_t*)usr;
+    if ( _set_chrom_pos_ref_alt(tsv,rec,usr)==0 )  return 0;
+    rec->pos = -1;  // mark the record as unset
+    if ( !args->output_vcf_ids) return 0;
+    return tsv_setter_id(tsv,rec,usr);
+}
+static int tsv_setter_chrom_pos_ref_alt_id_or_die(tsv_t *tsv, bcf1_t *rec, void *usr)
+{
+    args_t *args = (args_t*)usr;
+    if ( rec->pos!=-1 )
+    {
+        if ( !args->output_vcf_ids ) return 0;
+        return tsv_setter_id(tsv,rec,usr);
+    }
+    return tsv_setter_chrom_pos_ref_alt(tsv,rec,usr);
 }
 static int tsv_setter_verify_pos(tsv_t *tsv, bcf1_t *rec, void *usr)
 {
@@ -336,7 +365,8 @@ static void gensample_to_vcf(args_t *args)
      *
      *  Second column is expected in the form of CHROM:POS_REF_ALT. We use second
      *  column because the first can be empty ("--") when filling sites from reference 
-     *  panel.
+     *  panel. When the option --vcf-ids is given, the first column is used to set the
+     *  VCF ID.
      *
      *  Output: VCF with filled GT,GP
      *
@@ -364,22 +394,29 @@ static void gensample_to_vcf(args_t *args)
     if ( !gen_fh ) error("Could not read: %s\n", gen_fname);
     if ( hts_getline(gen_fh, KS_SEP_LINE, &line) <= 0 ) error("Empty file: %s\n", gen_fname);
 
-    // Find out the chromosome name, sample names, init and print the VCF header
+    // Find out the chromosome name, depending on the format variant (--3N6 or plain) and the ordering
+    // of the columns (CHROM:POS_REF_ALT comes first or second)
     args->str.l = 0;
-    char *ss, *se = line.s;
+    char *sb = line.s, *se = line.s;
     while ( *se && !isspace(*se) ) se++;
-    if ( !*se ) error("Could not parse %s: %s\n", gen_fname,line.s);
-    ss = se+1;
-    se = strchr(ss,':');
-    if ( !se ) error("Expected CHROM:POS_REF_ALT in second column of %s\n", gen_fname);
-    kputsn(ss, se-ss, &args->str);
+    if ( !*se ) error("Could not determine CHROM in %s: %s\n", gen_fname,line.s);
+    if ( args->gen_3N6 )    // first column, just CHROM
+        kputsn(sb, se-sb, &args->str);
+    else                    // first or second column, part of CHROM:POS_REF_ALT
+    {
+        char *sc = strchr(sb,':');
+        if ( !sc || sc > se )
+        {
+            while ( *se && !isspace(*se) ) se++;
+            if ( !*se ) error("Could not determine CHROM in %s: %s\n", gen_fname,line.s);
+            sb = ++se;
+            sc = strchr(sb,':');
+            if ( !sc ) error("Could not determine CHROM in %s: %s\n", gen_fname,line.s);
+        }
+        kputsn(sb, sc-sb, &args->str);
+    }
 
-    tsv_t *tsv = tsv_init("-,CHROM_POS_REF_ALT,POS,REF_ALT,GT_GP");
-    tsv_register(tsv, "CHROM_POS_REF_ALT", tsv_setter_chrom_pos_ref_alt, args);
-    tsv_register(tsv, "POS", tsv_setter_verify_pos, NULL);
-    tsv_register(tsv, "REF_ALT", tsv_setter_verify_ref_alt, args);
-    tsv_register(tsv, "GT_GP", tsv_setter_gt_gp, args);
-
+    // Initialize and print the VCF header, args->str.s contains the chr name
     args->header = bcf_hdr_init("w");
     bcf_hdr_append(args->header, "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position of the variant described in this record\">");
     bcf_hdr_append(args->header, "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">");
@@ -387,6 +424,21 @@ static void gensample_to_vcf(args_t *args)
     bcf_hdr_printf(args->header, "##contig=<ID=%s,length=%d>", args->str.s,0x7fffffff);   // MAX_CSI_COOR
     if (args->record_cmd_line) bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
 
+    tsv_t *tsv;
+    if ( args->gen_3N6 )
+    {
+        tsv = tsv_init("CHROM,CHROM_POS_REF_ALT,ID,POS,REF_ALT,GT_GP");
+        tsv_register(tsv, "CHROM", tsv_setter_chrom, args);
+    }
+    else
+        tsv = tsv_init("CHROM_POS_REF_ALT,ID,POS,REF_ALT,GT_GP");
+    tsv_register(tsv, "CHROM_POS_REF_ALT", tsv_setter_chrom_pos_ref_alt_or_id, args);
+    tsv_register(tsv, "ID", tsv_setter_chrom_pos_ref_alt_id_or_die, args);
+    tsv_register(tsv, "POS", tsv_setter_verify_pos, NULL);
+    tsv_register(tsv, "REF_ALT", tsv_setter_verify_ref_alt, args);
+    tsv_register(tsv, "GT_GP", tsv_setter_gt_gp, args);
+
+    // Find out sample names
     int i, nsamples;
     char **samples = hts_readlist(sample_fname, 1, &nsamples);
     if ( !samples ) error("Could not read %s\n", sample_fname);
@@ -458,6 +510,11 @@ static void haplegendsample_to_vcf(args_t *args)
      */
     kstring_t line = {0,0,0};
 
+    if ( args->output_vcf_ids )
+        error(
+            "The option --haplegendsample2vcf cannot be combined with --vcf-ids. This is because the\n"
+            "ID column must be formatted as \"CHROM:POS_REF_ALT\" to check sanity of the operation\n");
+
     char *hap_fname = NULL, *leg_fname = NULL, *sample_fname = NULL;
     sample_fname = strchr(args->infname,',');
     if ( !sample_fname )
@@ -502,7 +559,6 @@ static void haplegendsample_to_vcf(args_t *args)
     tsv_register(leg_tsv, "CHROM_POS_REF_ALT", tsv_setter_chrom_pos_ref_alt, args);
     tsv_register(leg_tsv, "POS", tsv_setter_verify_pos, NULL);
     tsv_register(leg_tsv, "REF_ALT", tsv_setter_verify_ref_alt, args);
-
     tsv_t *hap_tsv = tsv_init("HAPS");
     tsv_register(hap_tsv, "HAPS", tsv_setter_haps, args);
 
@@ -584,7 +640,8 @@ static void hapsample_to_vcf(args_t *args)
     /*
      *  Input: SHAPEIT output
      *
-     *      20:19995888_A_G 20:19995888 19995888 A G 0 0 0 0 ...
+     *      20:19995888_A_G rsid1 19995888 A G 0 0 0 0 ...
+     *      20 20:19995888_A_G 19995888 A G 0 0 0 0 ...
      *
      *  First column is expected in the form of CHROM:POS_REF_ALT
      *
@@ -614,23 +671,48 @@ static void hapsample_to_vcf(args_t *args)
     if ( !hap_fh ) error("Could not read: %s\n", hap_fname);
     if ( hts_getline(hap_fh, KS_SEP_LINE, &line) <= 0 ) error("Empty file: %s\n", hap_fname);
 
-    // Find out the chromosome name, sample names, init and print the VCF header
+    // Find out the chromosome name, it can be either in the first or second column
     args->str.l = 0;
-    char *se = strchr(line.s,':');
-    if ( !se ) error("Expected CHROM:POS_REF_ALT in first column of %s\n", hap_fname);
-    kputsn(line.s, se-line.s, &args->str);
+    char *sb = line.s, *se = line.s;
+    while ( *se && !isspace(*se) ) se++;
+    if ( !*se ) error("Could not determine CHROM in %s: %s\n", hap_fname,line.s);
+    if ( !args->output_vcf_ids )
+    {
+        // first column should be just CHROM, but the second must be CHROM:POS_REF_ALT, use that
+        sb = ++se;
+        while ( *se && !isspace(*se) ) se++;
+        if ( !*se ) error("Could not determine CHROM in %s: %s\n", hap_fname,line.s);
+        if ( !strchr(sb,':') )
+            error("Could not determine CHROM in the second column of %s: %s\n", hap_fname,line.s);
+    }
+    // Parse CHROM:POS_REF_ALT
+    char *sc = strchr(sb,':');
+    if ( !sc || sc > se )
+        error("Could not determine CHROM in %s: %s\n", hap_fname,line.s);
+    kputsn(sb, sc-sb, &args->str);
 
-    tsv_t *tsv = tsv_init("CHROM_POS_REF_ALT,-,POS,REF_ALT,HAPS");
-    tsv_register(tsv, "CHROM_POS_REF_ALT", tsv_setter_chrom_pos_ref_alt, args);
-    tsv_register(tsv, "POS", tsv_setter_verify_pos, NULL);
-    tsv_register(tsv, "REF_ALT", tsv_setter_verify_ref_alt, args);
-    tsv_register(tsv, "HAPS", tsv_setter_haps, args);
-
+    // Initialize and print the VCF header, args->str.s contains the chr name
     args->header = bcf_hdr_init("w");
     bcf_hdr_append(args->header, "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position of the variant described in this record\">");
     bcf_hdr_append(args->header, "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">");
     bcf_hdr_printf(args->header, "##contig=<ID=%s,length=%d>", args->str.s,0x7fffffff);   // MAX_CSI_COOR
     if (args->record_cmd_line) bcf_hdr_append_version(args->header, args->argc, args->argv, "bcftools_convert");
+
+    tsv_t *tsv;
+    if ( args->output_vcf_ids )
+    {
+        tsv = tsv_init("CHROM_POS_REF_ALT,ID,POS,REF_ALT,HAPS");
+        tsv_register(tsv, "ID", tsv_setter_id, args);
+    }
+    else
+    {
+        tsv = tsv_init("CHROM,CHROM_POS_REF_ALT,POS,REF_ALT,HAPS");
+        tsv_register(tsv, "CHROM", tsv_setter_chrom_pos_ref_alt_or_chrom, args);
+    }
+    tsv_register(tsv, "CHROM_POS_REF_ALT", tsv_setter_chrom_pos_ref_alt, args);
+    tsv_register(tsv, "POS", tsv_setter_verify_pos, NULL);
+    tsv_register(tsv, "REF_ALT", tsv_setter_verify_ref_alt, args);
+    tsv_register(tsv, "HAPS", tsv_setter_haps, args);
 
     int i, nsamples;
     char **samples = hts_readlist(sample_fname, 1, &nsamples);
@@ -714,13 +796,13 @@ static void vcf_to_gensample(args_t *args)
     kstring_t str = {0,0,0};
 
     // insert chrom as first column if needed
-    if(args->output_chrom_first_col)
+    if ( args->gen_3N6 )
         kputs("%CHROM ", &str);
-    else
-        kputs("%CHROM:%POS\\_%REF\\_%FIRST_ALT ", &str);
+
+    kputs("%CHROM:%POS\\_%REF\\_%FIRST_ALT ", &str);
 
     // insert rsid as second column if needed
-    if(args->output_vcf_ids)
+    if ( args->output_vcf_ids )
         kputs("%ID ", &str);
     else
         kputs("%CHROM:%POS\\_%REF\\_%FIRST_ALT ", &str);
@@ -995,9 +1077,9 @@ static void vcf_to_hapsample(args_t *args)
 
     // print ID instead of CHROM:POS_REF_ALT1
     if ( args->output_vcf_ids )
-        kputs("%CHROM %ID %POS %REF %FIRST_ALT ", &str);
+        kputs("%CHROM:%POS\\_%REF\\_%FIRST_ALT %ID %POS %REF %FIRST_ALT ", &str);
     else
-        kputs("%CHROM:%POS\\_%REF\\_%FIRST_ALT %CHROM:%POS\\_%REF\\_%FIRST_ALT %POS %REF %FIRST_ALT ", &str);
+        kputs("%CHROM %CHROM:%POS\\_%REF\\_%FIRST_ALT %POS %REF %FIRST_ALT ", &str);
     
     if ( args->hap2dip )
         kputs("%_GT_TO_HAP2\n", &str);
@@ -1421,6 +1503,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
     fprintf(bcftools_stderr, "   -G, --gensample2vcf ...        <PREFIX>|<GEN-FILE>,<SAMPLE-FILE>\n");
     fprintf(bcftools_stderr, "   -g, --gensample ...            <PREFIX>|<GEN-FILE>,<SAMPLE-FILE>\n");
+    fprintf(bcftools_stderr, "       --3N6                      Use 3*N+6 column format instead of the old 3*N+5 column format\n");
     fprintf(bcftools_stderr, "       --tag STRING               Tag to take values for .gen file: GT,PL,GL,GP [GT]\n");
     fprintf(bcftools_stderr, "       --chrom                    Output chromosome in first column instead of CHROM:POS_REF_ALT\n");
     fprintf(bcftools_stderr, "       --keep-duplicates          Keep duplicate positions\n");
@@ -1495,7 +1578,8 @@ int main_vcfconvert(int argc, char *argv[])
         {"gensample",required_argument,NULL,'g'},
         {"gensample2vcf",required_argument,NULL,'G'},
         {"tag",required_argument,NULL,1},
-        {"chrom",no_argument,NULL,8},        
+        {"chrom",no_argument,NULL,8},
+        {"3N6",no_argument,NULL,15},
         {"tsv2vcf",required_argument,NULL,2},
         {"hapsample",required_argument,NULL,7},
         {"hapsample2vcf",required_argument,NULL,3},
@@ -1534,7 +1618,8 @@ int main_vcfconvert(int argc, char *argv[])
             case  5 : args->hap2dip = 1; break;
             case  6 : args->convert_func = gvcf_to_vcf; break;
             case  7 : args->convert_func = vcf_to_hapsample; args->outfname = optarg; break;
-            case  8 : args->output_chrom_first_col = 1; break;
+            case  8 : error("The --chrom option has been deprecated, please use --3N6 instead\n"); break;
+            case 15 : args->gen_3N6 = 1; break;
             case 'H': args->convert_func = haplegendsample_to_vcf; args->infname = optarg; break;
             case 'f': args->ref_fname = optarg; break;
             case 'c': args->columns = optarg; break;
@@ -1563,16 +1648,12 @@ int main_vcfconvert(int argc, char *argv[])
             case 11 : args->sex_fname = optarg; break;
             case 12 : args->keep_duplicates = 1; break;
             case 13 :
-                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                args->regions_overlap = parse_overlap_option(optarg);
+                if ( args->regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case 14 :
-                if ( !strcasecmp(optarg,"0") ) args->targets_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) args->targets_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) args->targets_overlap = 2;
-                else error("Could not parse: --targets-overlap %s\n",optarg);
+                args->targets_overlap = parse_overlap_option(optarg);
+                if ( args->targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);

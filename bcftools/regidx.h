@@ -65,6 +65,28 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+/* Avoid conflicts with HTSlib's regidx_* functions. */
+#define regidx_destroy bcftools_regidx_destroy
+#define regidx_init bcftools_regidx_init
+#define regidx_init_string bcftools_regidx_init_string
+#define regidx_insert bcftools_regidx_insert
+#define regidx_insert_list bcftools_regidx_insert_list
+#define regidx_nregs bcftools_regidx_nregs
+#define regidx_overlap bcftools_regidx_overlap
+#define regidx_parse_bed bcftools_regidx_parse_bed
+#define regidx_parse_reg bcftools_regidx_parse_reg
+#define regidx_parse_tab bcftools_regidx_parse_tab
+#define regidx_parse_vcf bcftools_regidx_parse_vcf
+#define regidx_push bcftools_regidx_push
+#define regidx_seq_names bcftools_regidx_seq_names
+#define regidx_seq_nregs bcftools_regidx_seq_nregs
+#define regitr_copy bcftools_regitr_copy
+#define regitr_destroy bcftools_regitr_destroy
+#define regitr_init bcftools_regitr_init
+#define regitr_loop bcftools_regitr_loop
+#define regitr_overlap bcftools_regitr_overlap
+#define regitr_reset bcftools_regitr_reset
+
 #ifdef __cplusplus
 extern "C" {
 #endif

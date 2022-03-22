@@ -1065,6 +1065,7 @@ static void remove_overlaps(bam1_t *bam_line, khash_t(qn2pair) *read_pairs, stat
         pc->chunks = calloc(pc->m, sizeof(hts_pair_pos_t));
         if ( !pc->chunks ) {
             fprintf(samtools_stderr, "Error allocating memory\n");
+            free(pc);
             return;
         }
 
@@ -2454,13 +2455,13 @@ int main_stats(int argc, char *argv[])
     }
 
     if (init_stat_info_fname(info, bam_fname, &ga.in)) {
-        free(info);
+        cleanup_stats_info(info);
         return 1;
     }
 
     if (has_index_file && !(bam_idx_fname = argv[optind++])) {
         fprintf(samtools_stderr, "No index file provided\n");
-        free(info);
+        cleanup_stats_info(info);
         return 1;
     }
 

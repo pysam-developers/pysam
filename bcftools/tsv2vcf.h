@@ -1,6 +1,6 @@
 /*  tsv2vcf.h -- convert from whitespace-separated fields to VCF
 
-    Copyright (C) 2014 Genome Research Ltd.
+    Copyright (C) 2014-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -80,6 +80,7 @@ static inline int tsv_next(tsv_t *tsv)
 int tsv_setter_chrom(tsv_t *tsv, bcf1_t *rec, void *usr);
 int tsv_setter_pos(tsv_t *tsv, bcf1_t *rec, void *usr);
 int tsv_setter_id(tsv_t *tsv, bcf1_t *rec, void *usr);
+int tsv_setter_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr);     // usr must point to bcf_hdr_t 
 
 #endif
 

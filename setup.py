@@ -31,7 +31,9 @@ import sysconfig
 from contextlib import contextmanager
 from distutils import log
 from setuptools import setup, Command
+from distutils.command.build import build
 from setuptools.command.sdist import sdist
+from distutils.errors import LinkError
 
 from cy_build import CyExtension as Extension, cy_build_ext as build_ext
 try:
@@ -41,6 +43,7 @@ except ImportError:
     HAVE_CYTHON = False
 
 IS_PYTHON3 = sys.version_info.major >= 3
+IS_DARWIN = platform.system() == 'Darwin'
 
 
 @contextmanager
@@ -80,6 +83,26 @@ def run_make_print_config():
                 make_print_config.update(
                     {row[0].strip(): row[1].strip()})
     return make_print_config
+
+
+def run_nm_defined_symbols(objfile):
+    stdout = subprocess.check_output(["nm", objfile])
+    if IS_PYTHON3:
+        stdout = stdout.decode("ascii")
+
+    symbols = set()
+    for line in stdout.splitlines():
+        row = line.split(" ")
+        if row[-2].isupper() and row[-2] != 'U':
+            sym = row[-1]
+            if IS_DARWIN:
+                # On macOS, all symbols have a leading underscore
+                symbols.add(sym.lstrip('_'))
+            else:
+                # Ignore symbols such as _edata (present in all shared objects)
+                if not sym.startswith('_'): symbols.add(sym)
+
+    return symbols
 
 
 # This function emulates the way distutils combines settings from sysconfig,
@@ -210,6 +233,39 @@ class cythonize_sdist(sdist):
         from Cython.Build import cythonize
         cythonize(self.distribution.ext_modules)
         sdist.run(self)
+
+
+# Override build command to add extra build steps.
+class extra_build(build):
+    def check_ext_symbol_conflicts(self):
+        """Checks for symbols defined in multiple extension modules,
+        which can lead to crashes due to incorrect functions being invoked.
+        Avoid by adding an appropriate #define to import/pysam.h or in
+        unusual cases adding another rewrite rule to devtools/import.py.
+        """
+        build_ext_obj = self.distribution.get_command_obj('build_ext')
+
+        symbols = dict()
+        for ext in self.distribution.ext_modules:
+            for sym in run_nm_defined_symbols(build_ext_obj.get_ext_fullpath(ext.name)):
+                symbols.setdefault(sym, []).append(ext.name.lstrip('pysam.'))
+
+        errors = 0
+        for (sym, objs) in symbols.items():
+            if (len(objs) > 1):
+                log.error("conflicting symbol (%s): %s", " ".join(objs), sym)
+                errors += 1
+
+        if errors > 0: raise LinkError("symbols defined in multiple extensions")
+
+    def run(self):
+        build.run(self)
+        try:
+            self.check_ext_symbol_conflicts()
+        except OSError as e:
+            log.warn("skipping symbol collision check (invoking nm failed: %s)", e)
+        except subprocess.CalledProcessError:
+            log.warn("skipping symbol collision check (invoking nm failed)")
 
 
 class clean_ext(Command):
@@ -536,7 +592,7 @@ metadata = {
     'packages': package_list,
     'requires': ['cython (>=0.29.12)'],
     'ext_modules': [Extension(**opts) for opts in modules],
-    'cmdclass': {'build_ext': build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
+    'cmdclass': {'build': extra_build, 'build_ext': build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
     'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h'], },
     # do not pack in order to permit linking to csamtools.so

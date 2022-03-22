@@ -18,7 +18,6 @@ import hashlib
 EXCLUDE = {
     "samtools": (
         "test", "misc",
-        "razip.c",
         "bgzip.c",
         "main.c",
         "calDepth.c",
@@ -27,15 +26,13 @@ EXCLUDE = {
         "bam_tview.h",
         "bam_tview_html.c",
         "bam_tview_curses.c",
-        "bamcheck.c",
-        "chk_indel.c",
+        "bam2bcf.c",
+        "bam2bcf.h",
         "vcf-miniview.c",
     ),
     "bcftools": (
         "test", "plugins", "peakfit.c",
         "peakfit.h",
-        # needs to renamed, name conflict with samtools reheader
-        # "reheader.c",
         "polysomy.c"),
     "htslib": (
         'htslib/tabix.c', 'htslib/bgzip.c',
@@ -93,9 +90,6 @@ def _update_pysam_files(cf, destdir):
                 else:
                     lines = re.sub(r"int main\(", "int {}_{}_main(".format(
                         basename, subname), lines)
-                if basename == "samtools":
-                    lines = re.sub(r"main_(reheader)\(",
-                                   r"samtools_main_\1(", lines)
                 lines = re.sub(r"\b({}_stdout)\b".format(basename), r"\1_internal", lines)
                 lines = re.sub(r"\bexit\(", "{}_exit(".format(basename), lines)
                 lines = re.sub(r"\bstderr\b", "{}_stderr".format(basename), lines)

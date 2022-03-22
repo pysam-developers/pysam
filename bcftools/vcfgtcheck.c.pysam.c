@@ -1216,16 +1216,12 @@ int main_vcfgtcheck(int argc, char *argv[])
             case 't': args->targets = optarg; break;
             case 'T': args->targets = optarg; args->targets_is_file = 1; break;
             case  7 :
-                if ( !strcasecmp(optarg,"0") ) args->regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) args->regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) args->regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                args->regions_overlap = parse_overlap_option(optarg);
+                if ( args->regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  8 :
-                if ( !strcasecmp(optarg,"0") ) args->targets_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) args->targets_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) args->targets_overlap = 2;
-                else error("Could not parse: --targets-overlap %s\n",optarg);
+                args->targets_overlap = parse_overlap_option(optarg);
+                if ( args->targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case 'h':
             case '?': usage(); break;

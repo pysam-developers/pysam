@@ -1,6 +1,6 @@
 /*  vcfisec.c -- Create intersections, unions and complements of VCF files.
 
-    Copyright (C) 2012-2021 Genome Research Ltd.
+    Copyright (C) 2012-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -182,6 +182,7 @@ void isec_vcf(args_t *args)
             }
             ret |= 1<<i;    // this may overflow for many files, but will be used only with two (OP_VENN)
         }
+        if ( !line ) continue;  // the site has been filtered in all files
 
         switch (args->isec_op)
         {
@@ -598,16 +599,12 @@ int main_vcfisec(int argc, char *argv[])
                 }
                 break;
             case  3 :
-                if ( !strcasecmp(optarg,"0") ) regions_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) regions_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) regions_overlap = 2;
-                else error("Could not parse: --regions-overlap %s\n",optarg);
+                regions_overlap = parse_overlap_option(optarg);
+                if ( regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case  4 :
-                if ( !strcasecmp(optarg,"0") ) targets_overlap = 0;
-                else if ( !strcasecmp(optarg,"1") ) targets_overlap = 1;
-                else if ( !strcasecmp(optarg,"2") ) targets_overlap = 2;
-                else error("Could not parse: --targets-overlap %s\n",optarg);
+                targets_overlap = parse_overlap_option(optarg);
+                if ( targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
