@@ -764,7 +764,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 s_idx += 1
         elif op == BAM_CREF_SKIP:
             pass
-        elif op == BAM_CINS:
+        elif op == BAM_CINS or op == BAM_CPAD:
             for i from 0 <= i < l:
                 # encode insertions into reference as lowercase
                 s[s_idx] = read_sequence[r_idx] + 32
@@ -774,8 +774,6 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
             pass
         elif op == BAM_CHARD_CLIP:
             pass # advances neither
-        elif op == BAM_CPAD:
-            pass
 
     cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
     cdef int md_idx = 0
@@ -887,14 +885,12 @@ cdef inline bytes build_reference_sequence(bam1_t * src):
                 s_idx += 1
         elif op == BAM_CREF_SKIP:
             pass
-        elif op == BAM_CINS:
+        elif op == BAM_CINS or op == BAM_CPAD:
             r_idx += l
         elif op == BAM_CSOFT_CLIP:
             pass
         elif op == BAM_CHARD_CLIP:
             pass # advances neither
-        elif op == BAM_CPAD:
-            pass
 
     seq = PyBytes_FromStringAndSize(s, s_idx)
     free(s)
@@ -1947,7 +1943,8 @@ cdef class AlignedSegment:
         For inserts, deletions, skipping either query or reference
         position may be None.
 
-        For padding, the reference position will always be None.
+        For padding in the reference, the reference position will
+        always be None.
 
         Parameters
         ----------
@@ -1957,9 +1954,9 @@ cdef class AlignedSegment:
           side.
         with_seq : bool
           If True, return a third element in the tuple containing the
-          reference sequence. Substitutions are lower-case. For CIGAR
-          'P' (padding in the reference) operations, '*' is used.
-          This option requires an MD tag to be present.
+          reference sequence. For CIGAR 'P' (padding in the reference)
+          operations, the third tuple element will be None. Substitutions
+          are lower-case. This option requires an MD tag to be present.
 
         Returns
         -------
@@ -2008,7 +2005,7 @@ cdef class AlignedSegment:
                         qpos += 1
                 pos += l
 
-            elif op == BAM_CINS or op == BAM_CSOFT_CLIP:
+            elif op == BAM_CINS or op == BAM_CSOFT_CLIP or op == BAM_CPAD:
                 if not _matches_only:
                     if _with_seq:
                         for i from pos <= i < pos + l:
@@ -2047,19 +2044,6 @@ cdef class AlignedSegment:
                             result.append((None, i))
 
                 pos += l
-
-            elif op == BAM_CPAD:
-                if not _matches_only:
-                    if _with_seq:
-                        for i from pos <= i < pos + l:
-                            result.append((qpos, None, ord("*")))
-                            qpos += 1
-                    else:
-                        for i from pos <= i < pos + l:
-                            result.append((qpos, None))
-                            qpos += 1
-                else:
-                    qpos += l
 
         return result
 
