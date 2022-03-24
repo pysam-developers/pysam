@@ -527,13 +527,39 @@ class TestAlignedSegment(ReadTest):
 
     def test_get_aligned_pairs_padding(self):
         a = self.build_read()
-        a.cigartuples = ((7, 20), (6, 1), (8, 19))
+        a.cigartuples = ((0, 1), (6, 1), (0, 1))
+        # The padding operation is like an insertion into the reference.
+        # See comment in test_get_aligned_pairs_padding_with_seq (below).
+        self.assertEqual(a.get_aligned_pairs(),
+                         [(0, 20), (1, None), (2, 21)])
 
-        def inner():
-            a.get_aligned_pairs()
-
-        # padding is not bein handled right now
-        self.assertRaises(NotImplementedError, inner)
+    def test_get_aligned_pairs_padding_with_seq(self):
+        a = self.build_read()
+        a.query_sequence = "AGT"
+        a.cigarstring = "1M1P1M"
+        a.set_tag("MD", "2")
+        # When the reference is padded (conventionally with '*', according
+        # to the SAM format specification (June 3, 2021)), as indicated by a
+        # `P` CIGAR operation, this is equivalent to an insertion into the
+        # reference. Thus we get the same result back as for an insertion,
+        # and the reference character (if requested via with_seq=True) is
+        # returned as None.
+        #
+        # Note that we're here assuming (as in the treatment of `N`
+        # (skipped region from the reference) in build_alignment_sequence
+        # in libcalignedsegment.pyx) that the MD tag will not mention the
+        # region of the reference with the padding character.
+        #
+        # Note also that we are not dealing with a "Padded SAM" file, as
+        # described in section 3.2 of the SAM format, but with the simpler
+        # case (section 3.1) where a reference sequence has had '*'
+        # characters inserted (by some unspecified tool) in order to make it
+        # easier to specify details of an insertion using `P` in the CIGAR
+        # string: "Alternatively, to describe the same alignments, we can
+        # modify the reference sequence to contain pads that make room for
+        # sequences inserted relative to the reference."
+        self.assertEqual(a.get_aligned_pairs(with_seq=True),
+                         [(0, 20, 'A'), (1, None, None), (2, 21, 'T')])
 
     def test_get_aligned_pairs(self):
         a = self.build_read()
