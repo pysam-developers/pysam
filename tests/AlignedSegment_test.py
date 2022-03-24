@@ -67,7 +67,7 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(a.reference_id, -1)
         self.assertEqual(a.mapping_quality, 0)
         self.assertEqual(a.cigartuples, None)
-        self.assertEqual(a.tags, [])
+        self.assertEqual(a.get_tags(), [])
         self.assertEqual(a.next_reference_id, -1)
         self.assertEqual(a.next_reference_start, -1)
         self.assertEqual(a.template_length, 0)

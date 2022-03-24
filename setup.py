@@ -594,7 +594,7 @@ metadata = {
     'ext_modules': [Extension(**opts) for opts in modules],
     'cmdclass': {'build': extra_build, 'build_ext': build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
     'package_dir': package_dirs,
-    'package_data': {'': ['*.pxd', '*.h'], },
+    'package_data': {'': ['*.pxd', '*.h', 'py.typed', '*.pyi'], },
     # do not pack in order to permit linking to csamtools.so
     'zip_safe': False,
 }

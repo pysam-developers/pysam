@@ -3,7 +3,7 @@ import collections
 import pysam
 
 PileupSubstitution = collections.namedtuple("PileupSubstitution",
-                                            " ".join((
+                                            (
                                                 "chromosome",
                                                 "pos",
                                                 "reference_base",
@@ -13,10 +13,10 @@ PileupSubstitution = collections.namedtuple("PileupSubstitution",
                                                 "mapping_quality",
                                                 "coverage",
                                                 "read_bases",
-                                                "base_qualities")))
+                                                "base_qualities"))
 
 PileupIndel = collections.namedtuple("PileupIndel",
-                                     " ".join((
+                                     (
                                          "chromosome",
                                          "pos",
                                          "reference_base",
@@ -29,7 +29,7 @@ PileupIndel = collections.namedtuple("PileupIndel",
                                          "second_allele",
                                          "reads_first",
                                          "reads_second",
-                                         "reads_diff")))
+                                         "reads_diff"))
 
 
 def iterate(infile):
