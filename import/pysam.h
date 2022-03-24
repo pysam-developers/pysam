@@ -53,8 +53,6 @@ int @pysam@_dispatch(int argc, char *argv[]);
 
 void PYSAM_NORETURN @pysam@_exit(int status);
 
-void @pysam@_set_optind(int);
-
 extern int @pysam@_main(int argc, char *argv[]);
 
 /* Define these only in samtools/bcftools C source, not Cython code. */

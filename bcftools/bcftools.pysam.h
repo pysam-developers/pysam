@@ -53,8 +53,6 @@ int bcftools_dispatch(int argc, char *argv[]);
 
 void PYSAM_NORETURN bcftools_exit(int status);
 
-void bcftools_set_optind(int);
-
 extern int bcftools_main(int argc, char *argv[]);
 
 /* Define these only in samtools/bcftools C source, not Cython code. */
