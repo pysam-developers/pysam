@@ -2,6 +2,25 @@
 Release notes
 =============
 
+Release 0.19.0
+==============
+
+This release wraps htslib/samtools/bcftools version 1.15.
+
+* [#1085] Improve getopt()/getopt_long() resetting when running samtools/bcftools commands
+
+* [#1078] Support BAM_CPAD in get_aligned_pairs
+
+* [#1063] Run flake8 and fix some linting issues
+
+* [#1088] Add AlignedSegment is_mapped/mate_is_mapped/is_forward/mate_is_forward properties
+
+* Write an absent AlignedSegment.qual as all-bytes-0xff
+
+* Fix BGZFile.read() behaviour near or at EOF
+
+* First API for the htslib modified bases interface
+  
 Release 0.18.0
 ==============
 
