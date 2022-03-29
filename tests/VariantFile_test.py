@@ -364,6 +364,23 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(alleles, [
                          ('T',), ('G', 'A'), ('T', 'A'), ('A', 'G', 'T'), ('GTCT', 'G', 'GTACT')])
 
+    def testAllelesVariantTypes(self):
+        fn = os.path.join(CBCF_DATADIR, self.filename)
+        v = pysam.VariantFile(fn)
+        rec = next(v)
+
+        self.assertEqual(rec.alleles, ('T',))
+        self.assertEqual(rec.alleles_variant_types, ("REF",))
+
+        rec.alleles = ("T", "C")
+        self.assertEqual(rec.alleles_variant_types, ("REF", "SNP"))
+
+        rec.alts = ("TC",)
+        self.assertEqual(rec.alleles_variant_types, ("REF", "INDEL"))
+
+        rec.ref = "AG"
+        self.assertEqual(rec.alleles_variant_types, ("REF", "MNP"))
+
     def testQual(self):
         fn = os.path.join(CBCF_DATADIR, self.filename)
         v = pysam.VariantFile(fn)
