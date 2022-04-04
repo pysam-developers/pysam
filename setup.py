@@ -86,15 +86,14 @@ def run_make_print_config():
 
 
 def run_nm_defined_symbols(objfile):
-    stdout = subprocess.check_output(["nm", objfile])
+    stdout = subprocess.check_output(["nm", "-g", "-P", objfile])
     if IS_PYTHON3:
         stdout = stdout.decode("ascii")
 
     symbols = set()
     for line in stdout.splitlines():
-        row = line.split(" ")
-        if row[-2].isupper() and row[-2] != 'U':
-            sym = row[-1]
+        (sym, symtype) = line.split()[:2]
+        if symtype not in "UFWw":
             if IS_DARWIN:
                 # On macOS, all symbols have a leading underscore
                 symbols.add(sym.lstrip('_'))
