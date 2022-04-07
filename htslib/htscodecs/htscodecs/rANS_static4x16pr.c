@@ -362,7 +362,7 @@ unsigned int rans_compress_bound_4x16(unsigned int size, int order) {
     if (!N) N=4;
 
     order &= 0xff;
-    int sz = (order == 0
+    unsigned int sz = (order == 0
 	? 1.05*size + 257*3 + 4
 	: 1.05*size + 257*257*3 + 4 + 257*3+4) +
 	((order & X_PACK) ? 1 : 0) +
@@ -911,16 +911,18 @@ unsigned char *rans_uncompress_O1_4x16(unsigned char *in, unsigned int in_size,
 
     uint8_t *sfb_ = pthread_getspecific(rans_key);
     if (!sfb_) {
-	sfb_ = calloc(256*(TOTFREQ_O1+MAGIC2), sizeof(*sfb_));
+	sfb_ = calloc(256*(TOTFREQ_O1+MAGIC2)
+                      + 256*256*sizeof(fb_t), sizeof(*sfb_));
 	pthread_setspecific(rans_key, sfb_);
     }
 #else
-    uint8_t *sfb_ = calloc(256*(TOTFREQ_O1+MAGIC2), sizeof(*sfb_));
+    uint8_t *sfb_ = calloc(256*(TOTFREQ_O1+MAGIC2)
+                           + 256*256*sizeof(fb_t), sizeof(*sfb_));
 #endif
 
     if (!sfb_)
 	return NULL;
-    fb_t fb[256][256];
+    fb_t (*fb)[256] = (fb_t (*)[256]) (sfb_ + 256*(TOTFREQ_O1+MAGIC2));
     uint8_t *sfb[256];
     if ((*cp >> 4) == TF_SHIFT_O1) {
 	for (i = 0; i < 256; i++)
@@ -1382,6 +1384,8 @@ unsigned char *rans_uncompress_to_4x16(unsigned char *in,  unsigned int in_size,
 	if (c_meta_len >= in_size)
 	    return NULL;
 	unsigned int N = in[c_meta_len++];
+        if (N < 1)  // Must be at least one stripe
+            return NULL;
 	unsigned int clenN[256], ulenN[256], idxN[256];
 	if (!out) {
 	    if (ulen >= INT_MAX)
@@ -1605,7 +1609,6 @@ unsigned char *rans_uncompress_to_4x16(unsigned char *in,  unsigned int in_size,
 		goto err;
 	}
     } else {
-	tmp1 = NULL;
 	tmp1_size = 0;
     }
     tmp2_size = tmp3_size = tmp1_size;

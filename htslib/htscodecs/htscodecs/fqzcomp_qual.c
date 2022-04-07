@@ -1204,24 +1204,36 @@ int fqz_read_parameters1(fqz_param *pm, unsigned char *in, size_t in_size) {
     }
 
     if (pm->qbits) {
-	if (pm->use_qtab)
-	    in_idx += read_array(in+in_idx, in_size-in_idx, pm->qtab, 256);
-	else
+	if (pm->use_qtab) {
+	    int used = read_array(in+in_idx, in_size-in_idx, pm->qtab, 256);
+	    if (used < 0)
+		return -1;
+	    in_idx += used;
+	} else {
 	    for (i = 0; i < 256; i++)
 		pm->qtab[i] = i;
+	}
     }
 
-    if (pm->use_ptab)
-	in_idx += read_array(in+in_idx, in_size-in_idx, pm->ptab, 1024);
-    else
+    if (pm->use_ptab) {
+	int used = read_array(in+in_idx, in_size-in_idx, pm->ptab, 1024);
+	if (used < 0)
+	    return -1;
+	in_idx += used;
+    } else {
 	for (i = 0; i < 1024; i++)
 	    pm->ptab[i] = 0;
+    }
 
-    if (pm->use_dtab)
-        in_idx += read_array(in+in_idx, in_size-in_idx, pm->dtab, 256);
-    else
+    if (pm->use_dtab) {
+        int used = read_array(in+in_idx, in_size-in_idx, pm->dtab, 256);
+	if (used < 0)
+	    return -1;
+	in_idx += used;
+    } else {
 	for (i = 0; i < 256; i++)
 	    pm->dtab[i] = 0;
+    }
 
     return in_idx;
 }
@@ -1250,7 +1262,10 @@ int fqz_read_parameters(fqz_gparams *gp, unsigned char *in, size_t in_size) {
 
     if (gp->gflags & GFLAG_HAVE_STAB) {
 	gp->max_sel = in[in_idx++];
-	in_idx += read_array(in+in_idx, in_size-in_idx, gp->stab, 256);
+	int used = read_array(in+in_idx, in_size-in_idx, gp->stab, 256);
+        if (used < 0)
+            goto err;
+	in_idx += used;
     } else {
 	for (i = 0; i < gp->nparam; i++)
 	    gp->stab[i] = i;
@@ -1267,6 +1282,8 @@ int fqz_read_parameters(fqz_gparams *gp, unsigned char *in, size_t in_size) {
 	int e = fqz_read_parameters1(&gp->p[i], in + in_idx, in_size-in_idx);
 	if (e < 0)
 	    goto err;
+        if (gp->p[i].do_sel && gp->max_sel == 0)
+            goto err; // Inconsistent
 	in_idx += e;
 
 	if (gp->max_sym < gp->p[i].max_sym)

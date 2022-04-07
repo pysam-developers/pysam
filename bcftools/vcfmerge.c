@@ -1,6 +1,6 @@
 /*  vcfmerge.c -- Merge multiple VCF/BCF files to create one multi-sample file.
 
-    Copyright (C) 2012-2021 Genome Research Ltd.
+    Copyright (C) 2012-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -387,7 +387,7 @@ static void info_rules_init(args_t *args)
         rule->type = bcf_hdr_id2type(args->out_hdr,BCF_HL_INFO,id);
         if ( rule->type==BCF_HT_INT ) rule->type_size = sizeof(int32_t);
         else if ( rule->type==BCF_HT_REAL ) rule->type_size = sizeof(float);
-        else if ( rule->type==BCF_HT_STR ) rule->type_size = sizeof(char); 
+        else if ( rule->type==BCF_HT_STR ) rule->type_size = sizeof(char);
         else error("The INFO rule \"%s\" is not supported; the tag \"%s\" type is %d\n", ss,rule->hdr_tag,rule->type);
 
         if ( !strcmp(rule->hdr_tag,"AC") || !strcmp(rule->hdr_tag,"AN") ) args->keep_AC_AN = 1;
@@ -1074,8 +1074,8 @@ static void bcf_info_set_id(bcf1_t *line, bcf_info_t *info, int id, kstring_t *t
 /*
  *  copy_string_field() - copy a comma-separated field
  *  @param src:     source string
- *  @param isrc:    index of the field to copy 
- *  @param src_len: length of source string (excluding the terminating \0) 
+ *  @param isrc:    index of the field to copy
+ *  @param src_len: length of source string (excluding the terminating \0)
  *  @param dst:     destination kstring (must be initialized with missing values, e.g. as ".")
  *  @param idst:    index of the destination field
  */
@@ -1334,7 +1334,7 @@ void merge_info(args_t *args, bcf1_t *out)
                 out->d.info[out->n_info].vptr_off  = inf->vptr_off;
                 out->d.info[out->n_info].vptr_len  = inf->vptr_len;
                 out->d.info[out->n_info].vptr_free = 1;
-                out->d.info[out->n_info].vptr = (uint8_t*) malloc(inf->vptr_len+inf->vptr_off); 
+                out->d.info[out->n_info].vptr = (uint8_t*) malloc(inf->vptr_len+inf->vptr_off);
                 memcpy(out->d.info[out->n_info].vptr,inf->vptr-inf->vptr_off, inf->vptr_len+inf->vptr_off);
                 out->d.info[out->n_info].vptr += inf->vptr_off;
                 if ( (args->output_type & FT_BCF) && id!=bcf_hdr_id2int(hdr, BCF_DT_ID, key) )
@@ -1435,7 +1435,7 @@ void init_local_alleles(args_t *args, bcf1_t *out, int ifmt_PL)
 
             if ( line->n_allele <= args->local_alleles + 1 )
             {
-                // sort to the output order, insertion sort, ascending 
+                // sort to the output order, insertion sort, ascending
                 int *map = ma->buf[i].rec[ma->buf[i].cur].map;
                 int *k2k = ma->k2k;
                 int tmp;
@@ -1746,7 +1746,7 @@ void merge_format_string(args_t *args, const char *key, bcf_fmt_t **fmt_map, bcf
                 int iori,inew;
                 for (iori=ifrom; iori<line->n_allele; iori++)
                 {
-                    inew = ma->buf[i].rec[irec].map[iori] - ifrom; 
+                    inew = ma->buf[i].rec[irec].map[iori] - ifrom;
                     int ret = copy_string_field(src, iori - ifrom, fmt_ori->size, str, inew);
                     if ( ret<-1 ) error("[E::%s] fixme: internal error at %s:%"PRId64" .. %d\n",__func__,bcf_seqname(hdr,line),(int64_t) line->pos+1,ret);
                 }
@@ -2310,7 +2310,7 @@ void gvcf_set_alleles(args_t *args)
     bcf_srs_t *files = args->files;
     maux_t *maux = args->maux;
     gvcf_aux_t *gaux = maux->gvcf;
-    for (i=0; i<maux->nals; i++) 
+    for (i=0; i<maux->nals; i++)
     {
         free(maux->als[i]);
         maux->als[i] = NULL;
@@ -2373,11 +2373,11 @@ void gvcf_write_block(args_t *args, int start, int end)
     for (i=0; i<args->files->nreaders; i++)
     {
         if ( !gaux[i].active ) continue;
-        if ( gaux[i].end < start ) 
-        { 
-            gaux[i].active = 0; 
+        if ( gaux[i].end < start )
+        {
+            gaux[i].active = 0;
             maux->buf[i].cur = -1;
-            continue; 
+            continue;
         }
         gaux[i].line->d.allele[0][0] = ref;
         if ( min > gaux[i].end ) min = gaux[i].end;
@@ -2430,9 +2430,9 @@ void gvcf_write_block(args_t *args, int start, int end)
         if ( !gaux[i].active ) continue;
         if ( gaux[i].end < end )
         {
-            gaux[i].active = 0; 
+            gaux[i].active = 0;
             maux->buf[i].cur = -1;
-            continue; 
+            continue;
         }
         // next min END position bigger than the current one
         if ( maux->gvcf_min < gaux[i].end+1 && min > gaux[i].end+1 ) min = gaux[i].end + 1;
@@ -2455,7 +2455,7 @@ void gvcf_write_block(args_t *args, int start, int end)
             3 END=5  A B C
             6 END=7  A B .
             8 END=10 A . .
-    
+
 */
 void gvcf_flush(args_t *args, int done)
 {
@@ -2589,7 +2589,7 @@ void gvcf_stage(args_t *args, int pos)
             if ( maux->gvcf_min > gaux[i].end+1 ) maux->gvcf_min = gaux[i].end + 1;
         }
         else
-            maux->gvcf_break = line->pos;   // must break the gvcf block 
+            maux->gvcf_break = line->pos;   // must break the gvcf block
     }
     maux->ntmp_arr = nend * sizeof(int32_t);
     maux->tmp_arr  = end;
@@ -2710,7 +2710,7 @@ int can_merge(args_t *args)
     char *id = NULL, ref = 'N';
     int i,j,k, ntodo = 0;
 
-    for (i=0; i<maux->nals; i++) 
+    for (i=0; i<maux->nals; i++)
     {
         free(maux->als[i]);
         maux->als[i] = NULL;
@@ -3186,7 +3186,7 @@ int main_vcfmerge(int argc, char *argv[])
                 if ( args->local_alleles < 1 )
                     error("Error: \"--local-alleles %s\" makes no sense, expected value bigger or equal than 1\n", optarg);
                 break;
-            case 'F': 
+            case 'F':
                 if ( !strcmp(optarg,"+") ) args->filter_logic = FLT_LOGIC_ADD;
                 else if ( !strcmp(optarg,"x") ) args->filter_logic = FLT_LOGIC_REMOVE;
                 else error("Filter logic not recognised: %s\n", optarg);
