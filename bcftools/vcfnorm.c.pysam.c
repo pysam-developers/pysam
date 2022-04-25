@@ -144,6 +144,7 @@ static void seq_to_upper(char *seq, int len)
 
 static void fix_ref(args_t *args, bcf1_t *line)
 {
+    bcf_unpack(line, BCF_UN_STR);
     int reflen = strlen(line->d.allele[0]);
     int i,j, maxlen = reflen, len;
     for (i=1; i<line->n_allele; i++)
@@ -162,10 +163,10 @@ static void fix_ref(args_t *args, bcf1_t *line)
     if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return; }
 
     // is the REF allele missing?
-    if ( reflen==1 && line->d.allele[0][0]=='.' ) 
-    { 
-        line->d.allele[0][0] = ref[0]; 
-        args->nref.set++; 
+    if ( reflen==1 && line->d.allele[0][0]=='.' )
+    {
+        line->d.allele[0][0] = ref[0];
+        args->nref.set++;
         free(ref);
         bcf_update_alleles(args->out_hdr,line,(const char**)line->d.allele,line->n_allele);
         return;
@@ -237,7 +238,7 @@ static void fix_ref(args_t *args, bcf1_t *line)
     for (j=1; j<line->n_allele; j++)
     {
         kputc(',',&str);
-        if ( j==i ) 
+        if ( j==i )
             kputs(line->d.allele[0],&str);
         else
             kputs(line->d.allele[j],&str);
@@ -1776,7 +1777,7 @@ static int cmpals_match(cmpals_t *ca, bcf1_t *rec)
         }
 
         khash_t(str2int) *hash = (khash_t(str2int)*) cmpals->hash;
-        for (j=1; j<rec->n_allele; j++) 
+        for (j=1; j<rec->n_allele; j++)
             if ( !khash_str2int_has_key(hash, rec->d.allele[j]) ) break;
         if ( j<rec->n_allele ) continue;
         return 1;
@@ -1865,7 +1866,7 @@ static void init_data(args_t *args)
 
     args->out_hdr = bcf_hdr_dup(args->hdr);
     if ( args->old_rec_tag )
-        bcf_hdr_printf(args->out_hdr,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Original variant. Format: CHR|POS|REF|ALT|USED_ALT_IDX\">",args->old_rec_tag); 
+        bcf_hdr_printf(args->out_hdr,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Original variant. Format: CHR|POS|REF|ALT|USED_ALT_IDX\">",args->old_rec_tag);
 
     rbuf_init(&args->rbuf, 100);
     args->lines = (bcf1_t**) calloc(args->rbuf.m, sizeof(bcf1_t*));
@@ -1882,7 +1883,7 @@ static void init_data(args_t *args)
     }
     if ( args->atomize==SPLIT )
     {
-        args->abuf = abuf_init(args->hdr, SPLIT); 
+        args->abuf = abuf_init(args->hdr, SPLIT);
         abuf_set_opt(args->abuf, bcf_hdr_t*, BCF_HDR, args->out_hdr);
         if ( args->old_rec_tag )
             abuf_set_opt(args->abuf, const char*, INFO_TAG, args->old_rec_tag);
@@ -2228,7 +2229,7 @@ int main_vcfnorm(int argc, char *argv[])
                 break;
             case 'o': args->output_fname = optarg; break;
             case 'D':
-                fprintf(bcftools_stderr,"Warning: `-D` is functional but deprecated, replaced by and alias of `-d none`.\n"); 
+                fprintf(bcftools_stderr,"Warning: `-D` is functional but deprecated, replaced by and alias of `-d none`.\n");
                 args->rmdup = BCF_SR_PAIR_EXACT;
                 break;
             case 's': args->strict_filter = 1; break;

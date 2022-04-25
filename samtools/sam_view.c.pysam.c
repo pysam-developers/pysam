@@ -1208,6 +1208,7 @@ int main_samview(int argc, char *argv[])
                 goto view_end;
             }
         }
+        settings.unmap = 0;  // Not valid in counting mode
     }
 
     if (ga.nthreads > 1) {
@@ -1232,7 +1233,7 @@ int main_samview(int argc, char *argv[])
         print_error("view", "Incorrect number of arguments for -X option. Aborting.");
         return 1;
     }
-    if ( settings.fn_idx_in || nregs )
+    if ( settings.fn_idx_in || nregs || settings.multi_region )
     {
         settings.hts_idx = settings.fn_idx_in ? sam_index_load2(settings.in, settings.fn_in, settings.fn_idx_in) : sam_index_load(settings.in, settings.fn_in);
         if ( !settings.hts_idx )

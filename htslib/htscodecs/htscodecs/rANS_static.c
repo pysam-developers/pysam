@@ -304,6 +304,13 @@ unsigned char *rans_uncompress_O0(unsigned char *in, unsigned int in_size,
 
     if (x < TOTFREQ-1 || x > TOTFREQ)
 	goto cleanup;
+    if (x != TOTFREQ) {
+	// Protection against accessing uninitialised memory in the case
+	// where SUM(freqs) == 4095 and not 4096.
+	ssym [x] = ssym [x-1];
+	sfreq[x] = sfreq[x-1];
+	sbase[x] = sbase[x-1]+1;
+    }
 
     // 16 bytes of cp here. Also why cp - 16 in above loop.
     if (cp > cp_end - 16) goto cleanup; // Not enough input bytes left

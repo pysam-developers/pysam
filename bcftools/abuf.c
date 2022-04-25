@@ -1,19 +1,19 @@
 /* The MIT License
 
-   Copyright (c) 2021 Genome Research Ltd.
+   Copyright (c) 2021-2022 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
-   
+
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
    in the Software without restriction, including without limitation the rights
    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
    copies of the Software, and to permit persons to whom the Software is
    furnished to do so, subject to the following conditions:
-   
+
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
-   
+
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -117,7 +117,7 @@ void abuf_set(abuf_t *buf, abuf_opt_t key, void *value)
     if ( key==INFO_TAG )
     {
         buf->split.info_tag = *((char**)value);
-        bcf_hdr_printf(buf->out_hdr,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Original variant. Format: CHR|POS|REF|ALT|USED_ALT_IDX\">",buf->split.info_tag); 
+        bcf_hdr_printf(buf->out_hdr,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Original variant. Format: CHR|POS|REF|ALT|USED_ALT_IDX\">",buf->split.info_tag);
         return;
     }
     if ( key==STAR_ALLELE ) { buf->star_allele = *((int*)value); return; }
@@ -141,7 +141,7 @@ static void _atomize_allele(abuf_t *buf, bcf1_t *rec, int ial)
     while ( rlen>1 && alen>1 && ref[rlen-1]==alt[alen-1] ) rlen--, alen--;
     int Mlen = rlen > alen ? rlen : alen;
 
-    atom_t *atom = NULL; 
+    atom_t *atom = NULL;
     int i;
     for (i=0; i<Mlen; i++)
     {
@@ -374,7 +374,7 @@ static void _split_table_set_info(abuf_t *buf, bcf_info_t *info, merge_rule_t mo
                 memcpy(buf->tmp2+num_size,missing_ptr,num_size);
             else
                 memcpy(buf->tmp2+num_size,buf->tmp+num_size*iori,num_size);
-            if ( type==BCF_HT_INT && mode==M_SUM ) 
+            if ( type==BCF_HT_INT && mode==M_SUM )
             {
                 uint8_t *tbl = buf->split.tbl + iout*buf->split.nori;
                 for (i=iori; i<buf->split.nori; i++)
@@ -466,7 +466,10 @@ static void _split_table_set_gt(abuf_t *buf)
                     error("Out-of-bounds genotypes at %s:%"PRIhts_pos"\n",bcf_seqname(buf->hdr,rec),rec->pos+1);
                 int ial = _split_table_get_ial(buf,iout,iori);
                 if ( ial==2 && !star_allele )
+                {
                     dst[j] = bcf_gt_missing;
+                    if ( bcf_gt_is_phased(src[j]) ) dst[j] |= 1;
+                }
                 else
                     dst[j] = bcf_gt_is_phased(src[j]) ? bcf_gt_phased(ial) : bcf_gt_unphased(ial);
             }
@@ -542,7 +545,7 @@ static void _split_table_set_format(abuf_t *buf, bcf_fmt_t *fmt, merge_rule_t mo
     {
         int star_allele = _has_star_allele(buf,iout);
         bcf1_t *out = buf->vcf[rbuf_kth(&buf->rbuf,iout)];
-        int ret = 0; 
+        int ret = 0;
         if ( len==BCF_VL_FIXED || len==BCF_VL_VAR )
             ret = bcf_update_format(buf->out_hdr, out, tag, buf->tmp, nval, type);
         else if ( len==BCF_VL_A && type!=BCF_HT_STR )
@@ -707,7 +710,7 @@ void _abuf_split(abuf_t *buf, bcf1_t *rec)
         buf->vcf[j] = bcf_dup(rec);
         return;
     }
-    for (i=1; i<rec->n_allele; i++)
+    for (i=0; i<rec->n_allele; i++)
     {
         if ( _is_acgtn(rec->d.allele[i]) ) continue;
         rbuf_expand0(&buf->rbuf, bcf1_t*, buf->rbuf.n+1, buf->vcf);

@@ -1214,6 +1214,7 @@ static int64_t arith_decode(uint8_t *in, uint64_t in_len, uint8_t *out, uint64_t
     if (arith_uncompress_to(in+nb, in_len-nb, out, &olen) == NULL)
 	return -1;
     //fprintf(stderr, "    Stored clen=%d\n", (int)clen);
+    *out_len = olen;
     return clen+nb;
 }
 
@@ -1240,6 +1241,7 @@ static int64_t rans_decode(uint8_t *in, uint64_t in_len, uint8_t *out, uint64_t 
     if (rans_uncompress_to_4x16(in+nb, in_len-nb, out, &olen) == NULL)
 	return -1;
     //fprintf(stderr, "    Stored clen=%d\n", (int)clen);
+    *out_len = olen;
     return clen+nb;
 }
 
@@ -1594,6 +1596,8 @@ uint8_t *decode_names(uint8_t *in, uint32_t sz, uint32_t *out_len) {
 	    i = (tnum<<4) | (ttype&15);
 	    if (j >= i)
 		goto err;
+            if (!ctx->desc[j].buf)
+                goto err; // Attempt to copy a non-existent stream
 
 	    ctx->desc[i].buf_l = 0;
 	    ctx->desc[i].buf_a = ctx->desc[j].buf_a;
@@ -1650,9 +1654,8 @@ uint8_t *decode_names(uint8_t *in, uint32_t sz, uint32_t *out_len) {
 	uint64_t usz = ctx->desc[i].buf_a; // convert from size_t for 32-bit sys
 	clen = uncompress(use_arith, &in[o], sz-o, ctx->desc[i].buf, &usz);
 	ctx->desc[i].buf_a = usz;
-	if (clen < 0)
+	if (clen < 0 || ctx->desc[i].buf_a != ulen)
 	    goto err;
-	assert(ctx->desc[i].buf_a == ulen);
 
 	// fprintf(stderr, "%d: Decode tnum %d type %d clen %d ulen %d via %d\n",
 	// 	o, tnum, ttype, (int)clen, (int)ctx->desc[i].buf_a, ctx->desc[i].buf[0]);
