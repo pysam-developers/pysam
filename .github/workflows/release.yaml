@@ -60,7 +60,10 @@ jobs:
         env:
           CIBW_BUILD: ${{ matrix.cibw_build }}
           CIBW_SKIP: "*musllinux*"
-          CIBW_BEFORE_BUILD: yum install -y libcurl-devel zlib-devel bzip2-devel xz-devel && pip install cython
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_24
+          CIBW_MANYLINUX_I686_IMAGE: manylinux_2_24
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_24
+          CIBW_BEFORE_BUILD: apt-get install -y libcurl-dev zlib-dev bzip2-dev xz-dev && pip install cython
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - name: Build wheels for macos
