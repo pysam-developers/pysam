@@ -2176,6 +2176,11 @@ cdef class VariantHeader(object):
 
         self._hdr_sync()
 
+    cdef _add_sample(self, name):
+        bname = force_bytes(name)
+        if bcf_hdr_add_sample(self.ptr, bname) < 0:
+            raise ValueError('Duplicated sample name: {}'.format(name))
+
     cdef _hdr_sync(self):
         cdef bcf_hdr_t *hdr = self.ptr
         if hdr.dirty:
@@ -2184,9 +2189,21 @@ cdef class VariantHeader(object):
 
     def add_sample(self, name):
         """Add a new sample to this header"""
-        bname = force_bytes(name)
-        if bcf_hdr_add_sample(self.ptr, bname) < 0:
-            raise ValueError('Duplicated sample name: {}'.format(name))
+        self._add_sample(name)
+        self._hdr_sync()
+
+    def add_samples(self, *args):
+        """Add several new samples to this header.
+        This function takes multiple arguments, each of which may
+        be either a sample name or an iterable returning sample names
+        (e.g., a list of sample names).
+        """
+        for arg in args:
+            if isinstance(arg, str):
+                self._add_sample(arg)
+            else:
+                for name in arg:
+                    self._add_sample(name)
         self._hdr_sync()
 
 
