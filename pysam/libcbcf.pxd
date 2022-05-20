@@ -38,6 +38,7 @@ from pysam.libchtslib cimport *
 cdef class VariantHeader(object):
     cdef bcf_hdr_t *ptr
 
+    cdef _hdr_sync(self)
     cdef _subset_samples(self, include_samples)
 
 
