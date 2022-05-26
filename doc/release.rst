@@ -2,6 +2,14 @@
 Release notes
 =============
 
+Release 0.19.1
+==============
+
+This release wraps htslib/samtools/bcftools version 1.15.1.
+
+* [#1104] add an add_samples() method to quickly add multiple samples
+  to VCF.
+
 Release 0.19.0
 ==============
 
