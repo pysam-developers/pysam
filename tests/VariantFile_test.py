@@ -536,8 +536,7 @@ class TestConstructionVCFWithContigs(unittest.TestCase):
         vcf_in = pysam.VariantFile(fn_in)
 
         header = pysam.VariantHeader()
-        for sample in vcf_in.header.samples:
-            header.add_sample(sample)
+        header.add_samples(vcf_in.header.samples)
 
         for hr in vcf_in.header.records:
             header.add_line(str(hr))

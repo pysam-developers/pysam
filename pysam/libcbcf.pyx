@@ -2134,8 +2134,7 @@ cdef class VariantHeader(object):
 
         bcf_hdr_add_hrec(self.ptr, hrec)
 
-        if self.ptr.dirty:
-            bcf_hdr_sync(self.ptr)
+        self._hdr_sync()
 
     def add_line(self, line):
         """Add a metadata line to this header"""
@@ -2143,8 +2142,7 @@ cdef class VariantHeader(object):
         if bcf_hdr_append(self.ptr, bline) < 0:
             raise ValueError('invalid header line')
 
-        if self.ptr.dirty:
-            bcf_hdr_sync(self.ptr)
+        self._hdr_sync()
 
 
     def add_meta(self, key, value=None, items=None):
@@ -2176,16 +2174,37 @@ cdef class VariantHeader(object):
 
         bcf_hdr_add_hrec(self.ptr, hrec)
 
-        if self.ptr.dirty:
-            bcf_hdr_sync(self.ptr)
+        self._hdr_sync()
 
-    def add_sample(self, name):
-        """Add a new sample to this header"""
+    cdef _add_sample(self, name):
         bname = force_bytes(name)
         if bcf_hdr_add_sample(self.ptr, bname) < 0:
             raise ValueError('Duplicated sample name: {}'.format(name))
-        if self.ptr.dirty:
-            bcf_hdr_sync(self.ptr)
+
+    cdef _hdr_sync(self):
+        cdef bcf_hdr_t *hdr = self.ptr
+        if hdr.dirty:
+            if bcf_hdr_sync(hdr) < 0:
+                raise MemoryError('unable to reallocate VariantHeader')
+
+    def add_sample(self, name):
+        """Add a new sample to this header"""
+        self._add_sample(name)
+        self._hdr_sync()
+
+    def add_samples(self, *args):
+        """Add several new samples to this header.
+        This function takes multiple arguments, each of which may
+        be either a sample name or an iterable returning sample names
+        (e.g., a list of sample names).
+        """
+        for arg in args:
+            if isinstance(arg, str):
+                self._add_sample(arg)
+            else:
+                for name in arg:
+                    self._add_sample(name)
+        self._hdr_sync()
 
 
 cdef VariantHeader makeVariantHeader(bcf_hdr_t *hdr):

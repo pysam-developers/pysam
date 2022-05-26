@@ -16,8 +16,7 @@ def setUpModule():
 @pytest.fixture
 def vcf_header():
     vcf_header = pysam.VariantHeader()
-    vcf_header.add_sample("sample1")
-    vcf_header.add_sample("sample2")
+    vcf_header.add_samples("sample1", "sample2")
     vcf_header.contigs.add("1")
     return vcf_header
 
