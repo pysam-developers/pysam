@@ -3261,6 +3261,7 @@ cdef class VariantRecord(object):
             self.ptr.rlen = rlen
         else:
             self.ptr.rlen = len(values[0])
+        r.d.var_type = -1
         bcf_sync_end(self)
 
     @property
@@ -3289,6 +3290,7 @@ cdef class VariantRecord(object):
             raise ValueError('cannot set null alt allele')
         ref  = [r.d.allele[0] if r.d.allele and r.n_allele else b'.']
         self.alleles = ref + value
+        r.d.var_type = -1
 
     @property
     def filter(self):
@@ -3317,6 +3319,34 @@ cdef class VariantRecord(object):
         if bcf_unpack(self.ptr, BCF_UN_ALL) < 0:
             raise ValueError('Error unpacking VariantRecord')
         return makeVariantRecordSamples(self)
+
+    property alleles_variant_types:
+        def __get__(self):
+            cdef bcf1_t *r = self.ptr
+            cdef tuple result = PyTuple_New(r.n_allele)
+
+            for i in range(r.n_allele):
+                tp = bcf_get_variant_type(r, i)
+
+                if tp == VCF_REF:
+                    v_type = "REF"
+                elif tp == VCF_SNP:
+                    v_type = "SNP"
+                elif tp == VCF_MNP:
+                    v_type = "MNP"
+                elif tp == VCF_INDEL:
+                    v_type = "INDEL"
+                elif tp == VCF_BND:
+                    v_type = "BND"
+                elif tp == VCF_OVERLAP:
+                    v_type = "OVERLAP"
+                else:
+                    v_type = "OTHER"
+
+                PyTuple_SET_ITEM(result, i, v_type)
+                Py_INCREF(v_type)
+
+            return result
 
     def __richcmp__(VariantRecord self not None, VariantRecord other not None, int op):
         if op != 2 and op != 3:

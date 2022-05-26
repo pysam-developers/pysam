@@ -1558,6 +1558,9 @@ cdef extern from "htslib/vcf.h" nogil:
     uint8_t VCF_MNP
     uint8_t VCF_INDEL
     uint8_t VCF_OTHER
+    uint8_t VCF_BND
+    uint8_t VCF_OVERLAP
+
 
     ctypedef struct variant_t:
         int type, n     # variant type and the number of bases affected, negative for deletions
