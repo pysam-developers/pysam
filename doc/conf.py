@@ -11,13 +11,15 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys, os, sysconfig
+import sys, os, setuptools
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-_pyversion = sysconfig.get_python_version()
-_libdir = "../build/lib.%s-%s" % (sysconfig.get_platform(), _pyversion)
+_build_obj = setuptools.dist.Distribution().get_command_obj('build')
+_build_obj.ensure_finalized()
+
+_libdir = os.path.join('..', _build_obj.build_platlib)
 if os.path.exists(_libdir):
     sys.path.insert(0, os.path.abspath(_libdir))
 
@@ -32,7 +34,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.intersphinx',
               'sphinx.ext.napoleon']
 
-intersphinx_mapping = {'python': ('https://docs.python.org/%s' % _pyversion, None)}
+intersphinx_mapping = {'python': ('https://docs.python.org/%d.%d' % sys.version_info[:2], None)}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
