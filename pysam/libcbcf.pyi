@@ -155,7 +155,7 @@ class VariantHeader:
         qual: Optional[int] = ...,
         filter: Optional[Any] = ...,
         info: Optional[Mapping[str, _InfoValue]] = ...,
-        samples: Optional[Iterable[str]] = ...,
+        samples: Optional[Iterable[Optional[Mapping[str, _FormatValue]]]] = ...,
         **kwargs
     ) -> VariantRecord: ...
     def add_record(self, record: VariantHeaderRecord) -> None: ...
