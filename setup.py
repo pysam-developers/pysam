@@ -93,13 +93,13 @@ def run_nm_defined_symbols(objfile):
     symbols = set()
     for line in stdout.splitlines():
         (sym, symtype) = line.split()[:2]
-        if symtype not in "UFWw":
+        if symtype not in "UFNWw":
             if IS_DARWIN:
                 # On macOS, all symbols have a leading underscore
                 symbols.add(sym.lstrip('_'))
             else:
                 # Ignore symbols such as _edata (present in all shared objects)
-                if not sym.startswith('_'): symbols.add(sym)
+                if sym[0] not in "_$.@": symbols.add(sym)
 
     return symbols
 
