@@ -3481,8 +3481,24 @@ cdef class VariantRecordSample(object):
         return bcf_format_get_alleles(self)
 
     @alleles.setter
-    def alleles(self, value):
-        self['GT'] = value
+    def alleles(self, value: tuple):
+        # Sets the genotype, supply a tuple of alleles to set.
+        # The supplied alleles need to be defined in the correspoding pysam.libcbcf.VariantRecord
+        # The genotype is reset when an empty tuple, None or (None,) is supplied
+
+        if value==(None,) or value==tuple() or value is None:
+            self['GT'] = ()
+            return
+
+        if any((type(x) == int for x in value)):
+            raise ValueError('Use .allele_indices to set integer allele indices')
+
+        # determine and set allele indices:    
+        try:
+            self['GT'] = tuple( (self.record.alleles.index(allele) for allele in value) )
+        except ValueError:
+            raise ValueError("One or more of the supplied sample alleles are not defined as alleles of the corresponding pysam.libcbcf.VariantRecord."
+                             "First set the .alleles of this record to define the alleles")
 
     @alleles.deleter
     def alleles(self):
