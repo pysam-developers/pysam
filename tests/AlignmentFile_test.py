@@ -6,6 +6,7 @@ and data files located there.
 '''
 
 import unittest
+import pytest
 import os
 import shutil
 import sys
@@ -1456,6 +1457,7 @@ class TestTruncatedBAM(unittest.TestCase):
                           pysam.AlignmentFile,
                           os.path.join(BAM_DATADIR, 'ex2_truncated.bam'))
 
+    @pytest.mark.filterwarnings('ignore:no BGZF EOF marker')
     def testTruncatedBamIterator(self):
         s = pysam.AlignmentFile(os.path.join(BAM_DATADIR, 'ex2_truncated.bam'),
                                 ignore_truncation=True)
