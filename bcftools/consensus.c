@@ -1,19 +1,19 @@
 /* The MIT License
 
-   Copyright (c) 2014-2021 Genome Research Ltd.
+   Copyright (c) 2014-2022 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
-   
+
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
    in the Software without restriction, including without limitation the rights
    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
    copies of the Software, and to permit persons to whom the Software is
    furnished to do so, subject to the following conditions:
-   
+
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
-   
+
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -123,9 +123,17 @@ typedef struct
 }
 args_t;
 
+static void destroy_chain(chain_t *chain)
+{
+    if ( !chain ) return;
+    free(chain->ref_gaps);
+    free(chain->alt_gaps);
+    free(chain->block_lengths);
+    free(chain);
+}
 static chain_t* init_chain(chain_t *chain, int ref_ori_pos)
 {
-//     fprintf(stderr, "init_chain(*chain, ref_ori_pos=%d)\n", ref_ori_pos);
+    if ( chain ) destroy_chain(chain);
     chain = (chain_t*) calloc(1,sizeof(chain_t));
     chain->num = 0;
     chain->block_lengths = NULL;
@@ -135,18 +143,6 @@ static chain_t* init_chain(chain_t *chain, int ref_ori_pos)
     chain->ref_last_block_ori = ref_ori_pos;
     chain->alt_last_block_ori = ref_ori_pos;
     return chain;
-}
-
-static void destroy_chain(args_t *args)
-{
-    chain_t *chain = args->chain;
-    free(chain->ref_gaps);
-    free(chain->alt_gaps);
-    free(chain->block_lengths);
-    free(chain);
-    chain = NULL;
-    free(args->chr);
-    args->chr = NULL;
 }
 
 static void print_chain(args_t *args)
@@ -172,7 +168,7 @@ static void print_chain(args_t *args)
         - alt_start (same as ref_start, as no edits are recorded/applied before that position)
         - alt_end (adjusted to match the length of the alt sequence)
         - chain_num (just an auto-increment id)
-        
+
         the other (sorted) lines are:
         - length of the ungapped alignment block
         - gap on the ref sequence between this and the next block (all but the last line)
@@ -197,7 +193,7 @@ static void print_chain(args_t *args)
 
 static void push_chain_gap(chain_t *chain, int ref_start, int ref_len, int alt_start, int alt_len)
 {
-//     fprintf(stderr, "push_chain_gap(*chain, ref_start=%d, ref_len=%d, alt_start=%d, alt_len=%d)\n", ref_start, ref_len, alt_start, alt_len);
+    // fprintf(stderr, "push_chain_gap(chain=%p, ref_start=%d, ref_len=%d, alt_start=%d, alt_len=%d)\n", chain, ref_start, ref_len, alt_start, alt_len);
     int num = chain->num;
 
     if (num && ref_start <= chain->ref_last_block_ori) {
@@ -305,6 +301,7 @@ static void destroy_data(args_t *args)
     if ( args->chain_fname )
         if ( fclose(args->fp_chain) ) error("Close failed: %s\n", args->chain_fname);
     if ( fclose(args->fp_out) ) error("Close failed: %s\n", args->output_fname);
+    destroy_chain(args->chain);
 }
 
 static void init_region(args_t *args, char *line)
@@ -346,12 +343,8 @@ static void init_region(args_t *args, char *line)
     bcf_sr_seek(args->files,line,args->fa_ori_pos);
     if ( tmp_ptr ) *tmp_ptr = tmp;
     fprintf(args->fp_out,">%s%s\n",args->chr_prefix?args->chr_prefix:"",line);
-    if (args->chain_fname )
-    {
+    if ( args->chain_fname )
         args->chain = init_chain(args->chain, args->fa_ori_pos);
-    } else {
-        args->chain = NULL;
-    }
 }
 
 static bcf1_t **next_vcf_line(args_t *args)
@@ -526,7 +519,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
                     if ( !args->missing_allele ) return;
                     ialt = -1;
                 }
-                else 
+                else
                 {
                     if ( !warned_haplotype )
                     {
@@ -544,11 +537,11 @@ static void apply_variant(args_t *args, bcf1_t *rec)
                     if ( !args->missing_allele ) return;
                     ialt = -1;
                 }
-                else 
+                else
                     ialt = bcf_gt_allele(ialt);
             }
         }
-        else if ( action==use_iupac ) 
+        else if ( action==use_iupac )
         {
             ialt = -1;
             int is_missing = 0, alen = 0, mlen = 0, fallback_alt = -1;
@@ -717,7 +710,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
             fprintf(stderr,"The site %s:%"PRId64" overlaps with another variant, skipping...\n", bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
             return;
         }
-        
+
     }
 
     char *alt_allele = rec->d.allele[ialt];
@@ -743,7 +736,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
             }
         }
     }
-    if ( idx>=args->fa_buf.l ) 
+    if ( idx>=args->fa_buf.l )
         error("FIXME: %s:%"PRId64" .. idx=%d, ori_pos=%d, len=%"PRIu64", off=%d\n",bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1,idx,args->fa_ori_pos,(uint64_t)args->fa_buf.l,args->fa_mod_off);
 
     // sanity check the reference base
@@ -803,8 +796,8 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         if ( fail )
         {
             char tmp = 0;
-            if ( args->fa_buf.l - idx > rec->rlen ) 
-            { 
+            if ( args->fa_buf.l - idx > rec->rlen )
+            {
                 tmp = args->fa_buf.s[idx+rec->rlen];
                 args->fa_buf.s[idx+rec->rlen] = 0;
             }
@@ -820,7 +813,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         alen = strlen(alt_allele);
         len_diff = alen - rec->rlen;
 
-        if ( args->mark_del && len_diff<0 ) 
+        if ( args->mark_del && len_diff<0 )
         {
             alt_allele = mark_del(rec->d.allele[0], rec->rlen, alt_allele, args->mark_del);
             alen = rec->rlen;
@@ -833,7 +826,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         alen = strlen(alt_allele);
         len_diff = alen - rec->rlen;
 
-        if ( args->mark_del && len_diff<0 ) 
+        if ( args->mark_del && len_diff<0 )
         {
             alt_allele = mark_del(rec->d.allele[0], rec->rlen, alt_allele, args->mark_del);
             alen = rec->rlen;
@@ -949,10 +942,8 @@ static void consensus(args_t *args)
         if ( str.s[0]=='>' )
         {
             // new sequence encountered
-            if (args->chain) {
-                print_chain(args);
-                destroy_chain(args);
-            }
+            if ( args->chain ) print_chain(args);
+
             // apply all cached variants and variants that might have been missed because of short fasta (see test/consensus.9.*)
             bcf1_t **rec_ptr = NULL;
             while ( args->rid>=0 && (rec_ptr = next_vcf_line(args)) )
@@ -1026,11 +1017,7 @@ static void consensus(args_t *args)
         if ( args->fa_ori_pos + args->fa_buf.l - args->fa_mod_off <= rec->pos ) break;
         apply_variant(args, rec);
     }
-    if (args->chain)
-    {
-        print_chain(args);
-        destroy_chain(args);
-    }
+    if (args->chain) print_chain(args);
     if ( args->absent_allele ) apply_absent(args, HTS_POS_MAX);
     flush_fa_buffer(args, 0);
     bgzf_close(fasta);
@@ -1078,6 +1065,8 @@ static void usage(args_t *args)
     fprintf(stderr, "   # in the form \">chr:from-to\".\n");
     fprintf(stderr, "   samtools faidx ref.fa 8:11870-11890 | bcftools consensus in.vcf.gz > out.fa\n");
     fprintf(stderr, "\n");
+    fprintf(stderr, "   # See also http://samtools.github.io/bcftools/howtos/consensus-sequence.html\n");
+    fprintf(stderr, "\n");
     exit(1);
 }
 
@@ -1086,7 +1075,7 @@ int main_consensus(int argc, char *argv[])
     args_t *args = (args_t*) calloc(1,sizeof(args_t));
     args->argc   = argc; args->argv = argv;
 
-    static struct option loptions[] = 
+    static struct option loptions[] =
     {
         {"mark-del",required_argument,NULL,1},
         {"mark-ins",required_argument,NULL,2},
@@ -1109,7 +1098,7 @@ int main_consensus(int argc, char *argv[])
     int c;
     while ((c = getopt_long(argc, argv, "h?s:1Ii:e:H:f:o:m:c:M:p:a:",loptions,NULL)) >= 0)
     {
-        switch (c) 
+        switch (c)
         {
             case  1 : args->mark_del = optarg[0]; break;
             case  2 :
@@ -1126,10 +1115,10 @@ int main_consensus(int argc, char *argv[])
             case 's': args->sample = optarg; break;
             case 'o': args->output_fname = optarg; break;
             case 'I': args->output_iupac = 1; break;
-            case 'e': 
+            case 'e':
                 if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
                 args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;
-            case 'i': 
+            case 'i':
                 if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
                 args->filter_str = optarg; args->filter_logic |= FLT_INCLUDE; break;
             case 'f': args->ref_fname = optarg; break;
@@ -1139,12 +1128,12 @@ int main_consensus(int argc, char *argv[])
                 args->absent_allele = optarg[0];
                 if ( optarg[1]!=0 ) error("Expected single character with -a, got \"%s\"\n", optarg);
                 break;
-            case 'M': 
-                args->missing_allele = optarg[0]; 
+            case 'M':
+                args->missing_allele = optarg[0];
                 if ( optarg[1]!=0 ) error("Expected single character with -M, got \"%s\"\n", optarg);
                 break;
             case 'c': args->chain_fname = optarg; break;
-            case 'H': 
+            case 'H':
                 if ( !strcasecmp(optarg,"R") ) args->allele |= PICK_REF;
                 else if ( !strcasecmp(optarg,"A") ) args->allele |= PICK_ALT;
                 else if ( !strcasecmp(optarg,"L") ) args->allele |= PICK_LONG|PICK_REF;

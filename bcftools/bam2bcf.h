@@ -1,7 +1,7 @@
 /*  bam2bcf.h -- variant calling.
 
     Copyright (C) 2010-2012 Broad Institute.
-    Copyright (C) 2012-2021 Genome Research Ltd.
+    Copyright (C) 2012-2022 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -61,9 +61,12 @@ DEALINGS IN THE SOFTWARE.  */
 #define B2B_INFO_RPB    (1<<15)
 #define B2B_FMT_QS      (1<<16)
 #define B2B_INFO_SCB    (1<<17)
+#define B2B_FMT_NMBZ    (1<<18) // per-sample NMBZ
 #define B2B_INFO_ZSCORE (1<<30) // MWU as-is or Z-normalised
 
 #define B2B_MAX_ALLELES 5
+#define B2B_N_NM 32             // number of NMBZ bins, i.e. max number of mismatches
+
 
 #define B2B_DROP      0
 #define B2B_INC_AD    1
@@ -100,6 +103,7 @@ typedef struct __bcf_callaux_t {
     errmod_t *e;
     void *rghash;
     float indel_bias;  // adjusts indel score threshold; lower => call more.
+    int32_t *ref_nm, *alt_nm;   // pointers to bcf_call_t.{ref_nm,alt_nm}
 } bcf_callaux_t;
 
 // per-sample values
@@ -107,6 +111,7 @@ typedef struct {
     uint32_t ori_depth;     // ori_depth = anno[0..3] but before --min-BQ is applied
     unsigned int mq0;
     int32_t *ADF, *ADR, SCR, *QS;   // FMT/QS
+    int32_t *ref_nm, *alt_nm;
     // The fields are:
     //      depth fwd   .. ref (0) and non-ref (2)
     //      depth rev   .. ref (1) and non-ref (3)
@@ -133,10 +138,10 @@ typedef struct {
     int n_supp; // number of supporting non-reference reads
     double anno[16];
     unsigned int depth, ori_depth, mq0;
-    int32_t *PL, *DP4, *ADR, *ADF, *SCR, *QS;
+    int32_t *PL, *DP4, *ADR, *ADF, *SCR, *QS, *ref_nm, *alt_nm;
     uint8_t *fmt_arr;
     float vdb; // variant distance bias
-    float mwu_pos, mwu_mq, mwu_bq, mwu_mqs, mwu_sc;
+    float mwu_pos, mwu_mq, mwu_bq, mwu_mqs, mwu_sc, *mwu_nm;
 #if CDF_MWU_TESTS
     float mwu_pos_cdf, mwu_mq_cdf, mwu_bq_cdf, mwu_mqs_cdf;
 #endif

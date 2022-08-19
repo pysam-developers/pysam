@@ -142,8 +142,8 @@ typedef struct _args_t
     int ref_idx, alt_idx, chr_idx, beg_idx, end_idx;   // -1 if not present
     annot_col_t *cols;      // column indexes and setters
     int ncols;
-    int match_id;           // set iff `-c ~ID` given
-    int match_end;          // set iff `-c ~INFO/END` is given
+    int match_id;           // set iff `-c ~ID` given, -1 otherwise
+    int match_end;          // set iff `-c ~INFO/END` is given, -1 otherwise
 
     char *set_ids_fmt;
     convert_t *set_ids;
@@ -2443,7 +2443,7 @@ static void init_columns(args_t *args)
             }
             int hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, key_dst);
             if ( !bcf_hdr_idinfo_exists(args->hdr_out,BCF_HL_FMT,hdr_id) )
-                error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", str.s, args->targets_fname);
+                error("The FORMAT tag \"%s\" is not defined in %s, was the -h option provided?\n", str.s, args->targets_fname);
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
             memset(col,0,sizeof(*col));
@@ -2557,9 +2557,9 @@ static void init_columns(args_t *args)
                             if ( ptr )
                             {
                                 *ptr = 0; tmp.l = 0; ksprintf(&tmp,"%s:=%s",key_src,ptr+1); *ptr = '=';
-                                error("The tag \"%s\" is not defined, is this what you want \"%s\" ?\n",key_src,tmp.s);
+                                error("The INFO tag \"%s\" is not defined, is this what you want \"%s\" ?\n",key_src,tmp.s);
                             }
-                            error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", key_src,args->files->readers[1].fname);
+                            error("The INFO tag \"%s\" is not defined in %s, was the -h option provided?\n", key_src,args->files->readers[1].fname);
                         }
                         tmp.l = 0;
                         bcf_hrec_format_rename(hrec, key_dst, &tmp);
@@ -2570,7 +2570,7 @@ static void init_columns(args_t *args)
                     hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, key_dst);
                 }
                 else
-                    error("The tag \"%s\" is not defined in %s, was the -h option provided?\n", key_dst, args->targets_fname);
+                    error("The INFO tag \"%s\" is not defined in %s, was the -h option provided?\n", key_dst, args->targets_fname);
                 assert( bcf_hdr_idinfo_exists(args->hdr_out,BCF_HL_INFO,hdr_id) );
             }
             if  ( args->tgts_is_vcf )
@@ -2729,6 +2729,26 @@ static int rename_annots_core(args_t *args, char *ori_tag, char *new_tag)
     else if ( !strncasecmp("fmt/",ori_tag,4) ) type = BCF_HL_FMT, ori_tag += 4;
     else if ( !strncasecmp("filter/",ori_tag,7) ) type = BCF_HL_FLT, ori_tag += 7;
     else return -1;
+    if ( !strncasecmp("info/",new_tag,5) )
+    {
+        if ( type != BCF_HL_INFO ) error("Cannot transfer %s to INFO\n", ori_tag);
+        new_tag += 5;
+    }
+    else if ( !strncasecmp("format/",new_tag,7) )
+    {
+        if ( type != BCF_HL_FMT ) error("Cannot transfer %s to FORMAT\n", ori_tag);
+        new_tag += 7;
+    }
+    else if ( !strncasecmp("fmt/",new_tag,4) )
+    {
+        if ( type != BCF_HL_FMT ) error("Cannot transfer %s to FORMAT\n", ori_tag);
+        new_tag += 4;
+    }
+    else if ( !strncasecmp("filter/",new_tag,7) )
+    {
+        if ( type != BCF_HL_FLT ) error("Cannot transfer %s to FILTER\n", ori_tag);
+        new_tag += 7;
+    }
     int id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, ori_tag);
     if ( id<0 ) return 1;
     bcf_hrec_t *hrec = bcf_hdr_get_hrec(args->hdr_out, type, "ID", ori_tag, NULL);
@@ -3127,7 +3147,7 @@ static void annotate(args_t *args, bcf1_t *line)
                         ialt++;
                     }
                     if ( args->match_id>=0 && !strstr_match(line->d.id,args->alines[i].cols[args->match_id]) ) continue;
-                    if ( match_end.l && strcmp(match_end.s,args->alines[i].cols[args->match_end]) ) continue;
+                    if ( args->match_end>=0 && match_end.l && strcmp(match_end.s,args->alines[i].cols[args->match_end]) ) continue;
                     args->srt_alines[args->nsrt_alines++] = (ialt<<16) | i;
                     has_overlap = 1;
                     break;
@@ -3317,6 +3337,7 @@ int main_vcfannotate(int argc, char *argv[])
     args->ref_idx = args->alt_idx = args->chr_idx = args->beg_idx = args->end_idx = -1;
     args->set_ids_replace = 1;
     args->match_id = -1;
+    args->match_end = -1;
     args->clevel = -1;
     args->pair_logic = -1;
     int regions_is_file = 0;

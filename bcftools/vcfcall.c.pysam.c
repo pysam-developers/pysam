@@ -2,7 +2,7 @@
 
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -34,7 +34,6 @@ THE SOFTWARE.  */
 #include <math.h>
 #include <htslib/vcf.h>
 #include <time.h>
-#include <zlib.h>
 #include <stdarg.h>
 #include <htslib/kfunc.h>
 #include <htslib/synced_bcf_reader.h>
@@ -231,9 +230,13 @@ static char **parse_ped_samples(call_t *call, char **vals, int nvals, int *nsmpl
             }
             tmp++;
         }
-        if ( j!=5 ) break;
+        if ( j<4 ) break;
 
-        char sex = col_ends[3][1]=='1' ? 'M' : 'F';
+        char sex;
+        if ( col_ends[3][1]=='1' ) sex = 'M';
+        else if ( col_ends[3][1]=='2' ) sex = 'F';
+        else break;
+
         lines = add_sample(name2idx, lines, &nlines, &mlines, col_ends[0]+1, sex, &j);
         if ( strcmp(col_ends[1]+1,"0") && strcmp(col_ends[2]+1,"0") )   // father and mother
         {
@@ -258,11 +261,8 @@ static char **parse_ped_samples(call_t *call, char **vals, int nvals, int *nsmpl
     free(fam_str.s);
     khash_str2int_destroy_free(name2idx);
 
-    if ( i!=nvals ) // not a ped file
-    {
-        if ( i>0 ) error("Could not parse samples, not a PED format.\n");
-        return NULL;
-    }
+    if ( i!=nvals ) return NULL; // not a ped file
+
     *nsmpl = nlines;
     return lines;
 }
@@ -289,6 +289,8 @@ static void set_samples(args_t *args, const char *fn, int is_file)
         lines = smpls;
         nlines = nsmpls;
     }
+    else if ( is_file )
+        fprintf(bcftools_stderr,"Note: could not parse as PED: %s\n",fn);
 
     args->samples_map = (int*) malloc(sizeof(int)*bcf_hdr_nsamples(args->aux.hdr)); // for subsetting
     args->sample2sex  = (int*) malloc(sizeof(int)*bcf_hdr_nsamples(args->aux.hdr));
@@ -562,7 +564,7 @@ bcf1_t *next_line(args_t *args)
         return NULL;
     }
 
-    // Find the VCF and tab record with the best matching combination of alleles, prioritize 
+    // Find the VCF and tab record with the best matching combination of alleles, prioritize
     // records of the same type (snp vs indel)
     rec_tgt_t rec_tgt;
     memset(&rec_tgt,0,sizeof(rec_tgt));
@@ -662,7 +664,7 @@ static void init_data(args_t *args)
         args->aux.ploidy = (uint8_t*) malloc(args->nsamples);
         for (i=0; i<args->nsamples; i++) args->aux.ploidy[i] = ploidy_max(args->ploidy);
         for (i=0; i<args->nsex; i++) args->sex2ploidy_prev[i] = ploidy_max(args->ploidy);
-        for (i=0; i<args->nsamples; i++) 
+        for (i=0; i<args->nsamples; i++)
             if ( args->sample2sex[i] >= args->nsex ) args->sample2sex[i] = args->nsex - 1;
     }
 
@@ -901,7 +903,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -a, --annotate LIST             Optional tags to output (lowercase allowed); '?' to list available tags\n");
     fprintf(bcftools_stderr, "   -F, --prior-freqs AN,AC         Use prior allele frequencies, determined from these pre-filled tags\n");
     fprintf(bcftools_stderr, "   -G, --group-samples FILE|-      Group samples by population (file with \"sample\\tgroup\") or \"-\" for single-sample calling.\n");
-    fprintf(bcftools_stderr, "                                   This requires FORMAT/QS or other Number=R,Type=Integer tag such as FORMAT/AD\n"); 
+    fprintf(bcftools_stderr, "                                   This requires FORMAT/QS or other Number=R,Type=Integer tag such as FORMAT/AD\n");
     fprintf(bcftools_stderr, "       --group-samples-tag TAG     The tag to use with -G, by default FORMAT/QS and FORMAT/AD are checked automatically\n");
     fprintf(bcftools_stderr, "   -g, --gvcf INT,[...]            Group non-variant sites into gVCF blocks by minimum per-sample DP\n");
     fprintf(bcftools_stderr, "   -i, --insert-missed             Output also sites missed by mpileup but present in -T\n");
@@ -1022,7 +1024,7 @@ int main_vcfcall(int argc, char *argv[])
                 *args.aux.prior_AC = 0;
                 args.aux.prior_AC++;
                 break;
-            case 'g': 
+            case 'g':
                 args.gvcf = gvcf_init(optarg);
                 if ( !args.gvcf ) error("Could not parse: --gvcf %s\n", optarg);
                 break;

@@ -30,18 +30,11 @@ THE SOFTWARE.  */
 #include <errno.h>
 #include <assert.h>
 #include <limits.h>
-#include <zlib.h>
 #include "prob1.h"
-
-// #include "kstring.h"
-// #include "kseq.h"
-// KSTREAM_INIT(gzFile, gzread, 16384)
 
 #define MC_MAX_EM_ITER 16
 #define MC_EM_EPS 1e-5
 #define MC_DEF_INDEL 0.15
-
-gzFile bcf_p1_fp_lk;
 
 void bcf_p1_indel_prior(bcf_p1aux_t *ma, double x)
 {
@@ -304,8 +297,6 @@ static void mc_cal_y_core(bcf_p1aux_t *ma, int beg)
         }
     }
     if (z[0] != ma->z) memcpy(ma->z, z[0], sizeof(double) * (ma->M + 1));
-    if (bcf_p1_fp_lk)
-        gzwrite(bcf_p1_fp_lk, ma->z, sizeof(double) * (ma->M + 1));
 }
 
 static void mc_cal_y(bcf_p1aux_t *ma)
