@@ -70,7 +70,7 @@ ex1.pileup.gz:ex1.bam ex1.fa
 		samtools mpileup -f ex1.fa ex1.bam | gzip > ex1.pileup.gz
 
 ex2_truncated.bam: ex2.bam
-	head -c 124000 ex2.bam > ex2_truncated.bam
+	dd if=ex2.bam of=ex2_truncated.bam bs=$$((`wc -c < ex2.bam`-512)) count=1
 
 # Append a corrupt read with block_size < sizeof(bam_core_t fields)
 ex2_corrupt.bam: ex2.bam
