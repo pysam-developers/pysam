@@ -150,7 +150,7 @@ class VariantHeader:
         contig: Optional[str] = ...,
         start: int = ...,
         stop: int = ...,
-        alleles: Optional[Tuple[str]] = ...,
+        alleles: Optional[Tuple[str, ...]] = ...,
         id: Optional[str] = ...,
         qual: Optional[int] = ...,
         filter: Optional[Any] = ...,
@@ -221,8 +221,8 @@ class VariantRecord:
     qual: Optional[int]
     id: Optional[str]
     ref: Optional[str]
-    alleles: Optional[Tuple[str]]
-    alts: Optional[Tuple[str]]
+    alleles: Optional[Tuple[str, ...]]
+    alts: Optional[Tuple[str, ...]]
     @property
     def filter(self) -> VariantRecordFilter: ...
     @property
@@ -241,8 +241,8 @@ class VariantRecordSample(_Mapping[str, _FormatValue]):
     def index(self) -> int: ...
     @property
     def name(self) -> str: ...
-    allele_indices: Optional[Tuple[Optional[int]]]
-    alleles: Optional[Tuple[Optional[str]]]
+    allele_indices: Optional[Tuple[Optional[int, ...]]]
+    alleles: Optional[Tuple[Optional[str, ...]]]
     phased: bool
     def __setitem__(self, key: str, value: _FormatValue) -> None: ...
     def __delitem__(self, key: str) -> None: ...
