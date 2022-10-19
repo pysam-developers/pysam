@@ -86,7 +86,7 @@ class VariantHeaderMetadata(_Mapping[str, VariantMetadata]):
     def add(
         self,
         id: str,
-        number: Optional[str],
+        number: Optional[Union[int, str]],
         type: Optional[str],
         description: str,
         **kwargs
