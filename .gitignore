@@ -27,6 +27,7 @@ htslib/config_vars.h
 htslib/htscodecs.mk
 htslib/htslib.pc.tmp
 htslib/htslib-uninstalled.pc
+htslib/config.h.orig
 pysam/config.py
 
 # linking tests

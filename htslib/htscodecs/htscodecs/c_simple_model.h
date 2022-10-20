@@ -86,12 +86,12 @@ static inline void SIMPLE_MODEL(NSYM,_init)(SIMPLE_MODEL(NSYM,_) *m, int max_sym
     int i;
     
     for (i=0; i<max_sym; i++) {
-	m->F[i].Symbol = i;
-	m->F[i].Freq   = 1;
+        m->F[i].Symbol = i;
+        m->F[i].Freq   = 1;
     }
     for (; i<NSYM; i++) {
-	m->F[i].Symbol = i;
-	m->F[i].Freq   = 0;
+        m->F[i].Symbol = i;
+        m->F[i].Freq   = 0;
     }
 
     m->TotFreq         = max_sym;
@@ -109,8 +109,8 @@ static inline void SIMPLE_MODEL(NSYM,_normalize)(SIMPLE_MODEL(NSYM,_) *m) {
     /* Faster than F[i].Freq for 0 <= i < NSYM */
     m->TotFreq=0;
     for (s = m->F; s->Freq; s++) {
-	s->Freq -= s->Freq>>1;
-	m->TotFreq += s->Freq;
+        s->Freq -= s->Freq>>1;
+        m->TotFreq += s->Freq;
     }
 }
 
@@ -126,7 +126,7 @@ static inline void SIMPLE_MODEL(NSYM,_encodeSymbol)(SIMPLE_MODEL(NSYM,_) *m,
     uint32_t AccFreq  = 0;
 
     while (s->Symbol != sym) {
-	AccFreq += s++->Freq;
+        AccFreq += s++->Freq;
         _mm_prefetch((const char *)(s+1), _MM_HINT_T0);
     }
 
@@ -135,13 +135,13 @@ static inline void SIMPLE_MODEL(NSYM,_encodeSymbol)(SIMPLE_MODEL(NSYM,_) *m,
     m->TotFreq += STEP;
 
     if (m->TotFreq > MAX_FREQ)
-	SIMPLE_MODEL(NSYM,_normalize)(m);
+        SIMPLE_MODEL(NSYM,_normalize)(m);
 
     /* Keep approx sorted */
     if (s[0].Freq > s[-1].Freq) {
-	SymFreqs t = s[0];
-	s[0] = s[-1];
-	s[-1] = t;
+        SymFreqs t = s[0];
+        s[0] = s[-1];
+        s[-1] = t;
     }
 }
 
@@ -165,14 +165,14 @@ static inline uint16_t SIMPLE_MODEL(NSYM,_decodeSymbol)(SIMPLE_MODEL(NSYM,_) *m,
     m->TotFreq += STEP;
 
     if (m->TotFreq > MAX_FREQ)
-	SIMPLE_MODEL(NSYM,_normalize)(m);
+        SIMPLE_MODEL(NSYM,_normalize)(m);
 
     /* Keep approx sorted */
     if (s[0].Freq > s[-1].Freq) {
-	SymFreqs t = s[0];
-	s[0] = s[-1];
-	s[-1] = t;
-	return t.Symbol;
+        SymFreqs t = s[0];
+        s[0] = s[-1];
+        s[-1] = t;
+        return t.Symbol;
     }
 
     return s->Symbol;

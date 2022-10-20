@@ -172,10 +172,10 @@ char *fqz_decompress(char *in, size_t in_size, size_t *out_size,
  *  fqz_compress.
  */
 void fqz_qual_stats(fqz_slice *s,
-		    unsigned char *in, size_t in_size,
-		    fqz_param *pm,
-		    uint32_t qhist[256],
-		    int one_param);
+                    unsigned char *in, size_t in_size,
+                    fqz_param *pm,
+                    uint32_t qhist[256],
+                    int one_param);
 
 #ifdef __cplusplus
 }

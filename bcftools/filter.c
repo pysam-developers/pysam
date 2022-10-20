@@ -144,12 +144,13 @@ struct _filter_t
 #define TOK_sMEDIAN 35
 #define TOK_sSTDEV  36
 #define TOK_sSUM    37
-#define TOK_IN      38      // contains, e.g. FILTER~"A" 
-#define TOK_NOT_IN  39      // does not contain, e.g. FILTER!~"A" 
+#define TOK_IN      38      // contains, e.g. FILTER~"A"
+#define TOK_NOT_IN  39      // does not contain, e.g. FILTER!~"A"
+#define TOK_MODULO  40      // %
 
-//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37
-//                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p  b  P  i  s 
-static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8 };
+//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
+//                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p  b  P  i  s                          %
+static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7 };
 #define TOKEN_STRING "x()[<=>]!|&+-*/MmaAO~^S.lfcpis"       // this is only for debugging, not maintained diligently
 
 static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok);
@@ -240,9 +241,10 @@ static int filters_next_token(char **str, int *len)
             if ( tmp[0]=='-' ) break;
             if ( tmp[0]=='/' ) break;
             if ( tmp[0]=='~' ) break;
+            if ( tmp[0]=='%' ) break;
         }
         if ( tmp[0]==']' ) { if (square_brackets) tmp++; break; }
-        if ( tmp[0]=='[' ) square_brackets++; 
+        if ( tmp[0]=='[' ) square_brackets++;
         tmp++;
     }
     if ( tmp > *str )
@@ -290,6 +292,7 @@ static int filters_next_token(char **str, int *len)
     if ( tmp[0]=='*' ) { (*str) += 1; return TOK_MULT; }
     if ( tmp[0]=='/' ) { (*str) += 1; return TOK_DIV; }
     if ( tmp[0]=='~' ) { (*str) += 1; return TOK_LIKE; }
+    if ( tmp[0]=='%' ) { (*str) += 1; return TOK_MODULO; }
 
     *len = tmp - (*str);
     return TOK_VAL;
@@ -298,7 +301,7 @@ static int filters_next_token(char **str, int *len)
 
 /*
     Simple path expansion, expands ~/, ~user, $var. The result must be freed by the caller.
-    
+
     Based on jkb's staden code with some adjustments.
     https://sourceforge.net/p/staden/code/HEAD/tree/staden/trunk/src/Misc/getfile.c#l123
 */
@@ -420,54 +423,81 @@ static void filters_cmp_bit_and(token_t *atok, token_t *btok, token_t *rtok, bcf
 }
 static void filters_cmp_filter(token_t *atok, token_t *btok, token_t *rtok, bcf1_t *line)
 {
-    int i;
-    if ( rtok->tok_type==TOK_NOT_IN )
+    // the btok values contain FILTER ids obtained by parsing the user expression
+    int i,j;
+    if ( rtok->tok_type==TOK_NOT_IN )   // fail if the query expression is a subset of the VCF FILTER
     {
-        if ( !line->d.n_flt )
+        if ( !btok->nvalues )   // the query expression is ".", pass everything unless the VCF is also "."
         {
-            if ( atok->hdr_id==-1 ) return;   // missing value
-            rtok->pass_site = 1;
-            return; // no filter present, eval to true
+            if ( line->d.n_flt ) rtok->pass_site = 1;
+            return;
         }
-        for (i=0; i<line->d.n_flt; i++)
-            if ( atok->hdr_id==line->d.flt[i] ) return;
-        rtok->pass_site = 1;
+        if ( !line->d.n_flt )   // no filters at this VCF line and the query expression has a value
+        {
+            rtok->pass_site = 1;
+            return;
+        }
+        for (j=0; j<btok->nvalues; j++) // some query expression value must be absent from VCF in order to pass
+        {
+            for (i=0; i<line->d.n_flt; i++)
+                if ( btok->values[j]==line->d.flt[i] ) break;
+            if ( i==line->d.n_flt ) break;  // the query is not in the VCF
+        }
+        if ( j!=btok->nvalues ) rtok->pass_site = 1;
         return;
     }
     else if ( rtok->tok_type==TOK_IN )
     {
-        if ( !line->d.n_flt )
+        if ( !btok->nvalues )   // the query expression is ".", fail everything unless the VCF is also "."
         {
-            if ( atok->hdr_id==-1 ) { rtok->pass_site = 1; return; }
-            return; // no filter present, eval to false
+            if ( !line->d.n_flt ) rtok->pass_site = 1;
+            return;
         }
-        for (i=0; i<line->d.n_flt; i++)
-            if ( atok->hdr_id==line->d.flt[i] ) { rtok->pass_site = 1; return; }
+        if ( !line->d.n_flt ) return;   // no filters at this VCF line and the query expression has a value
+        for (j=0; j<btok->nvalues; j++) // all of the query values must be present in the VCF in order to pass
+        {
+            for (i=0; i<line->d.n_flt; i++)
+                if ( btok->values[j]==line->d.flt[i] ) break;
+            if ( i==line->d.n_flt ) break;  // the query is not in the VCF
+        }
+        if ( j==btok->nvalues ) rtok->pass_site = 1;
         return;
     }
-    else if ( rtok->tok_type==TOK_NE )  // exact match
+    else if ( rtok->tok_type==TOK_NE )  // require anything but exact match
     {
-        if ( !line->d.n_flt )
+        if ( btok->nvalues != line->d.n_flt )
         {
-            if ( atok->hdr_id==-1 ) return;   // missing value
             rtok->pass_site = 1;
-            return; // no filter present, eval to true
+            return;
         }
-        if ( line->d.n_flt==1 && atok->hdr_id==line->d.flt[0] ) return;    // exact match, fail iff a single matching value is present
-        rtok->pass_site = 1;
-        return;
-    }
-    else if ( rtok->tok_type==TOK_EQ )  // exact match, pass iff a single matching value is present
-    {
-        if ( !line->d.n_flt )
+        if ( !btok->nvalues ) return;
+        for (j=0; j<btok->nvalues; j++) // some of the query values must be absent from the VCF in order to pass
         {
-            if ( atok->hdr_id==-1 ) { rtok->pass_site = 1; return; }
-            return; // no filter present, eval to false
+            for (i=0; i<line->d.n_flt; i++)
+                if ( btok->values[j]==line->d.flt[i] ) break;
+            if ( i==line->d.n_flt ) break;  // the query is not in the VCF
         }
-        if ( line->d.n_flt==1 && atok->hdr_id==line->d.flt[0] ) rtok->pass_site = 1;
+        if ( j!=btok->nvalues ) rtok->pass_site = 1;
         return;
     }
-    else 
+    else if ( rtok->tok_type==TOK_EQ )  // require exact match
+    {
+        if ( btok->nvalues != line->d.n_flt ) return;
+        if ( !btok->nvalues )
+        {
+            rtok->pass_site = 1;
+            return;
+        }
+        for (j=0; j<btok->nvalues; j++) // all of the query values must be present in the VCF in order to pass
+        {
+            for (i=0; i<line->d.n_flt; i++)
+                if ( btok->values[j]==line->d.flt[i] ) break;
+            if ( i==line->d.n_flt ) break;  // the query is not in the VCF
+        }
+        if ( j==btok->nvalues ) rtok->pass_site = 1;
+        return;
+    }
+    else
         error("Only ==, !=, ~, and !~ operators are supported for FILTER\n");
     return;
 }
@@ -490,7 +520,7 @@ static void filters_cmp_id(token_t *atok, token_t *btok, token_t *rtok, bcf1_t *
 
     if ( !btok->str_value.l ) error("Error occurred while evaluating the expression\n");
 
-    if ( rtok->tok_type==TOK_EQ ) 
+    if ( rtok->tok_type==TOK_EQ )
         rtok->pass_site = strcmp(btok->str_value.s,line->d.id) ? 0 : 1;
     else if ( rtok->tok_type==TOK_NE )
         rtok->pass_site = strcmp(btok->str_value.s,line->d.id) ? 1 : 0;
@@ -886,7 +916,7 @@ static void _filters_set_genotype(filter_t *flt, bcf1_t *line, token_t *tok, int
         tok->nvalues = tok->str_value.l = 0;
         return;
     }
-    
+
     int i,j, nsmpl = bcf_hdr_nsamples(flt->hdr), nvals1 = type==2 ? 3 : 4;
     if ( tok->str_value.m <= nvals1*nsmpl )
     {
@@ -1072,7 +1102,7 @@ static void filters_set_nmissing(filter_t *flt, bcf1_t *line, token_t *tok)
         tok->nvalues = 0;
         return;
     }
-    
+
     int j,nmissing = 0;
     #define BRANCH(type_t, is_vector_end) { \
         for (i=0; i<line->n_sample; i++) \
@@ -1157,7 +1187,7 @@ static void filters_set_ac(filter_t *flt, bcf1_t *line, token_t *tok)
 static void filters_set_an(filter_t *flt, bcf1_t *line, token_t *tok)
 {
     filters_set_ac(flt,line,tok);
-    tok->values[0] = tok->nvalues ? flt->tmpi[0] : 0; 
+    tok->values[0] = tok->nvalues ? flt->tmpi[0] : 0;
     tok->nvalues = 1;
 }
 static void filters_set_mac(filter_t *flt, bcf1_t *line, token_t *tok)
@@ -1729,7 +1759,6 @@ static inline double calc_binom(int na, int nb)
 
     double pval = na < nb ? kf_betai(nb, na + 1, 0.5) : kf_betai(na, nb + 1, 0.5);
     pval *= 2;
-    assert( pval-1 < 1e-10 );
     if ( pval>1 ) pval = 1;     // this can happen, machine precision error, eg. kf_betai(1,0,0.5)
 
     return pval;
@@ -1928,7 +1957,7 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
     if ( (atok->nsamples || btok->nsamples) && !rtok->nsamples )
     {
         rtok->nsamples = atok->nsamples ? atok->nsamples : btok->nsamples;
-        rtok->usmpl = (uint8_t*) calloc(rtok->nsamples,1); 
+        rtok->usmpl = (uint8_t*) calloc(rtok->nsamples,1);
         int i;
         for (i=0; i<atok->nsamples; i++) rtok->usmpl[i] |= atok->usmpl[i];
         for (i=0; i<btok->nsamples; i++) rtok->usmpl[i] |= btok->usmpl[i];
@@ -1937,7 +1966,7 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
         memset(rtok->pass_samples, 0, rtok->nsamples);
 }
 
-#define VECTOR_ARITHMETICS(atok,btok,_rtok,AOP) \
+#define VECTOR_ARITHMETICS(atok,btok,_rtok,AOP,TYPE) \
 { \
     token_t *rtok = _rtok; \
     int i, has_values = 0; \
@@ -1956,7 +1985,7 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
                     continue; \
                 } \
                 has_values = 1; \
-                rtok->values[i] = atok->values[i] AOP btok->values[i]; \
+                rtok->values[i] = TYPE atok->values[i] AOP TYPE btok->values[i]; \
             } \
         } \
         else if ( atok->nsamples ) \
@@ -1972,7 +2001,7 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
                         continue; \
                     } \
                     has_values = 1; \
-                    rtok->values[i] = atok->values[i] AOP btok->values[0]; \
+                    rtok->values[i] = TYPE atok->values[i] AOP TYPE btok->values[0]; \
                 } \
             } \
         } \
@@ -1989,7 +2018,7 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
                         continue; \
                     } \
                     has_values = 1; \
-                    rtok->values[i] = atok->values[0] AOP btok->values[i]; \
+                    rtok->values[i] = TYPE atok->values[0] AOP TYPE btok->values[i]; \
                 } \
             } \
         } \
@@ -2077,7 +2106,7 @@ static int vector_logic_and(filter_t *filter, bcf1_t *line, token_t *rtok, token
         for (i=0; i<rtok->nsamples; i++)
         {
             if ( !rtok->usmpl[i] ) continue;
-            rtok->pass_samples[i] = tok->pass_samples[i];  
+            rtok->pass_samples[i] = tok->pass_samples[i];
         }
         rtok->pass_site = 1;
         return 2;
@@ -2355,7 +2384,7 @@ static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok)
             return;
         }
         if ( !regex )
-            rtok->pass_site = _match_vector_strings(atok->str_value.s, atok->str_value.l, btok->str_value.s, btok->str_value.l, logic, missing_logic); 
+            rtok->pass_site = _match_vector_strings(atok->str_value.s, atok->str_value.l, btok->str_value.s, btok->str_value.l, logic, missing_logic);
         else
         {
             token_t *tok = atok->regex ? btok : atok;
@@ -2370,7 +2399,7 @@ static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok)
     {
         if ( missing_logic[2] )
         {
-            for (i=0; i<rtok->nsamples; i++) 
+            for (i=0; i<rtok->nsamples; i++)
                 if ( rtok->usmpl[i] ) { rtok->pass_samples[i] = missing_logic[2]; rtok->pass_site = 1; }
         }
         return;
@@ -2395,7 +2424,7 @@ static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok)
         return;
     }
 
-    // The case of (!atok->nsamples || !btok->nsamples) && (atok->nvalues && btok->nvalues) 
+    // The case of (!atok->nsamples || !btok->nsamples) && (atok->nvalues && btok->nvalues)
     token_t *xtok = atok->nsamples ? atok : btok;
     token_t *ytok = atok->nsamples ? btok : atok;
     assert( regex==ytok->regex );
@@ -2499,7 +2528,7 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
         if ( !list ) error("Could not read: %s\n", fname);
         free(fname);
         tok->nsamples = bcf_hdr_nsamples(hdr);
-        tok->usmpl = (uint8_t*) calloc(tok->nsamples,1); 
+        tok->usmpl = (uint8_t*) calloc(tok->nsamples,1);
         for (i=0; i<nsmpl; i++)
         {
             int ismpl = bcf_hdr_id2int(hdr,BCF_DT_SAMPLE,list[i]);
@@ -2547,7 +2576,7 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
         }
         else
         {
-            tok->idxs  = idxs1; 
+            tok->idxs  = idxs1;
             tok->nidxs = nidxs1;
             tok->idx   = idx1;
         }
@@ -2556,7 +2585,7 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
     if ( set_samples )
     {
         tok->nsamples = bcf_hdr_nsamples(hdr);
-        tok->usmpl = (uint8_t*) calloc(tok->nsamples,1); 
+        tok->usmpl = (uint8_t*) calloc(tok->nsamples,1);
         if ( idx1>=0 )
         {
             if ( idx1 >= bcf_hdr_nsamples(hdr) ) error("The sample index is too large: %s\n", ori);
@@ -2720,6 +2749,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         {
             tok->tok_type = TOK_VAL;
             tok->threshold = bcf_hdr_nsamples(filter->hdr);
+            tok->is_constant = 1;
             return 0;
         }
         else if ( !strncasecmp(str,"N_MISSING",len) )
@@ -2760,13 +2790,13 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         }
         if ( is_fmt==-1 ) is_fmt = 0;
     }
-    if ( is_array ) 
+    if ( is_array )
         parse_tag_idx(filter->hdr, is_fmt, tmp.s, tmp.s+is_array, tok);
-    else if ( is_fmt && !tok->nsamples ) 
+    else if ( is_fmt && !tok->nsamples )
     {
         int i;
         tok->nsamples = bcf_hdr_nsamples(filter->hdr);
-        tok->usmpl = (uint8_t*) malloc(tok->nsamples); 
+        tok->usmpl = (uint8_t*) malloc(tok->nsamples);
         for (i=0; i<tok->nsamples; i++) tok->usmpl[i] = 1;
     }
 
@@ -2817,7 +2847,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
                         case BCF_HT_STR:  tok->setter = &filters_set_info_string; tok->is_str = 1; break;
                         default: error("[%s:%d %s] FIXME\n", __FILE__,__LINE__,__FUNCTION__);
                     }
-                    if (!is_array) 
+                    if (!is_array)
                     {
                         tok->idx = -2;
                         tok->idxs = (int*) malloc(sizeof(int));
@@ -3015,7 +3045,7 @@ static void perl_init(filter_t *filter, char **str)
         char **env  = NULL;
         PERL_SYS_INIT3(&argc, &argv, &env);
     }
-    
+
     filter->perl = perl_alloc();
     PerlInterpreter *perl = filter->perl;
 
@@ -3114,6 +3144,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
                 tok->hdr_id    = -1;
                 tok->pass_site = -1;
                 tok->threshold = -1.0;
+                tok->is_constant = 1;
                 ret = TOK_MULT;
             }
             else if ( ret == -TOK_FUNC )
@@ -3328,6 +3359,7 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
             else if ( !strcasecmp(out[ival].key,"overlap") ) { out[ival].threshold = VCF_OVERLAP<<1; out[ival].is_str = 0; }
             else if ( !strcasecmp(out[ival].key,"ref") ) { out[ival].threshold = 1; out[ival].is_str = 0; }
             else error("The type \"%s\" not recognised: %s\n", out[ival].key, filter->str);
+            out[ival].is_constant = 1;
             if ( out[itok].tok_type==TOK_LIKE || out[itok].tok_type==TOK_NLIKE ) out[itok].comparator = filters_cmp_bit_and;
             out[ival].tag = out[ival].key; out[ival].key = NULL;
             i = itok;
@@ -3373,16 +3405,34 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
             else error("[%s:%d %s] Could not parse the expression: %s\n",  __FILE__,__LINE__,__FUNCTION__, filter->str);
             if ( out[ival].tok_type!=TOK_VAL || !out[ival].key )
                 error("[%s:%d %s] Could not parse the expression, an unquoted string value perhaps? %s\n", __FILE__,__LINE__,__FUNCTION__, filter->str);
-            if ( strcmp(".",out[ival].key) )
+            token_t *tok = &out[ival];
+            char *bp = tok->key;
+            tok->nvalues = 0;
+            int has_missing = 0;
+            while ( *bp )
             {
-                out[ival].hdr_id = bcf_hdr_id2int(filter->hdr, BCF_DT_ID, out[ival].key);
-                if ( !bcf_hdr_idinfo_exists(filter->hdr,BCF_HL_FLT,out[ival].hdr_id) )
-                    error("The filter \"%s\" not present in the VCF header\n", out[ival].key);
+                char tmp, *ep = bp;
+                while ( *ep && *ep!=';' ) ep++;
+                tmp = *ep;
+                *ep = 0;
+                if ( !strcmp(".",bp) ) has_missing = 1;
+                else
+                {
+                    tok->nvalues++;
+                    hts_expand(double,tok->nvalues,tok->mvalues,tok->values);
+                    int id = bcf_hdr_id2int(filter->hdr, BCF_DT_ID, bp);
+                    if ( !bcf_hdr_idinfo_exists(filter->hdr,BCF_HL_FLT,id) )
+                        error("The filter \"%s\" not present in the VCF header\n", bp);
+                    tok->values[tok->nvalues-1] = id;
+                }
+                *ep = tmp;
+                if ( !tmp ) break;
+                bp = ep + 1;
             }
-            else
-                out[ival].hdr_id = -1;
-            out[ival].tag = out[ival].key; out[ival].key = NULL;
-            out[itok].hdr_id = out[ival].hdr_id;
+            if ( has_missing && tok->nvalues ) error("The FILTER expression cannot contain missing value AND filters: \"%s\" (%d)\n",tok->key,tok->nvalues);
+            out[ival].tag = tok->key;
+            tok->key = NULL;
+            out[itok].hdr_id = tok->hdr_id;
             continue;
         }
     }
@@ -3473,7 +3523,7 @@ int filter_test(filter_t *filter, bcf1_t *line, const uint8_t **samples)
                 kputs(filter->filters[i].key, &filter->filters[i].str_value);
                 filter->filters[i].nvalues = filter->filters[i].str_value.l;
             }
-            else    // numeric constant
+            else if ( filter->filters[i].is_constant )   // numeric constant
             {
                 filter->filters[i].values[0] = filter->filters[i].threshold;
                 filter->filters[i].nvalues   = 1;
@@ -3495,28 +3545,35 @@ int filter_test(filter_t *filter, bcf1_t *line, const uint8_t **samples)
 
         if ( filter->filters[i].tok_type == TOK_ADD )
         {
-            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],+);
+            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],+,(double));
             filter->flt_stack[nstack-2] = &filter->filters[i];
             nstack--;
             continue;
         }
         else if ( filter->filters[i].tok_type == TOK_SUB )
         {
-            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],-);
+            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],-,(double));
             filter->flt_stack[nstack-2] = &filter->filters[i];
             nstack--;
             continue;
         }
         else if ( filter->filters[i].tok_type == TOK_MULT )
         {
-            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],*);
+            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],*,(double));
             filter->flt_stack[nstack-2] = &filter->filters[i];
             nstack--;
             continue;
         }
         else if ( filter->filters[i].tok_type == TOK_DIV )
         {
-            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],/);
+            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],/,(double));
+            filter->flt_stack[nstack-2] = &filter->filters[i];
+            nstack--;
+            continue;
+        }
+        else if ( filter->filters[i].tok_type == TOK_MODULO )
+        {
+            VECTOR_ARITHMETICS(filter->flt_stack[nstack-2],filter->flt_stack[nstack-1],&filter->filters[i],%,(int));
             filter->flt_stack[nstack-2] = &filter->filters[i];
             nstack--;
             continue;

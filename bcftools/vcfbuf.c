@@ -1,19 +1,19 @@
 /* The MIT License
 
-   Copyright (c) 2016-2021 Genome Research Ltd.
+   Copyright (c) 2016-2022 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
-   
+
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
    in the Software without restriction, including without limitation the rights
    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
    copies of the Software, and to permit persons to whom the Software is
    furnished to do so, subject to the following conditions:
-   
+
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
-   
+
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -75,7 +75,7 @@ overlap_t;
 
 struct _vcfbuf_t
 {
-    int win;
+    int win, dummy;
     bcf_hdr_t *hdr;
     vcfrec_t *vcf;
     rbuf_t rbuf;
@@ -118,6 +118,7 @@ void vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, void *value)
     if ( key==LD_MAX_LD ) { buf->ld.max[VCFBUF_LD_IDX_LD] = *((double*)value); return; }
     if ( key==LD_MAX_HD ) { buf->ld.max[VCFBUF_LD_IDX_HD] = *((double*)value); return; }
 
+    if ( key==VCFBUF_DUMMY ) { buf->dummy = *((int*)value); return; }
     if ( key==VCFBUF_NSITES )
     {
         buf->prune.max_sites = *((int*)value);
@@ -135,6 +136,7 @@ void vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, void *value)
         else if ( !strcasecmp(mode,"1st") ) buf->prune.mode = PRUNE_MODE_1ST;
         else if ( !strcasecmp(mode,"rand") ) buf->prune.mode = PRUNE_MODE_RAND;
         else error("The mode \"%s\" is not recognised\n",mode);
+        return;
     }
 }
 
@@ -149,7 +151,7 @@ bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec)
 
     int i = rbuf_append(&buf->rbuf);
     if ( !buf->vcf[i].rec ) buf->vcf[i].rec = bcf_init1();
-    
+
     bcf1_t *ret = buf->vcf[i].rec;
     buf->vcf[i].rec = rec;
     buf->vcf[i].af_set = 0;
@@ -226,7 +228,7 @@ static void _prune_sites(vcfbuf_t *buf, int flush_all)
     for (i=-1; rbuf_next(&buf->rbuf,&i) && irec<nbuf; )
     {
         bcf1_t *line = buf->vcf[i].rec;
-        if ( line->n_allele > buf->prune.mac ) 
+        if ( line->n_allele > buf->prune.mac )
         {
             buf->prune.ac = (int*) realloc(buf->prune.ac, line->n_allele*sizeof(*buf->prune.ac));
             buf->prune.mac = line->n_allele;
@@ -240,7 +242,7 @@ static void _prune_sites(vcfbuf_t *buf, int flush_all)
             }
             else if ( bcf_calc_ac(buf->hdr, line, buf->prune.ac, BCF_UN_INFO|BCF_UN_FMT) )
             {
-                int ntot = buf->prune.ac[0], nalt = 0; 
+                int ntot = buf->prune.ac[0], nalt = 0;
                 for (k=1; k<line->n_allele; k++) nalt += buf->prune.ac[k];
                 buf->vcf[i].af = ntot ? (float)nalt/ntot : 0;
             }
@@ -315,7 +317,7 @@ static int _overlap_can_flush(vcfbuf_t *buf, int flush_all)
     {
         buf->overlap.rid = last->rec->rid;
         buf->overlap.end = end_pos;
-        return 0; 
+        return 0;
     }
     if ( beg_pos <= buf->overlap.end )
     {
@@ -330,7 +332,7 @@ bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all)
     int i,j;
 
     if ( buf->rbuf.n==0 ) return NULL;
-    if ( flush_all ) goto ret;
+    if ( flush_all || buf->dummy ) goto ret;
 
     i = rbuf_kth(&buf->rbuf, 0);    // first
     j = rbuf_last(&buf->rbuf);      // last
@@ -347,9 +349,11 @@ bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all)
     else if ( buf->win < 0 )
     {
         if ( buf->vcf[i].rec->pos - buf->vcf[j].rec->pos > buf->win ) return NULL;
+        goto ret;
     }
-    else return NULL;
-    
+    else
+        return NULL;
+
 ret:
     if ( buf->prune.max_sites && buf->prune.max_sites < buf->rbuf.n ) _prune_sites(buf, flush_all);
 
@@ -380,7 +384,7 @@ static double _estimate_af(int8_t *ptr, int size, int nvals, int nsamples)
         D =~ (GT correlation) * sqrt(Pa*(1-Pa)*Pb*(1-Pb))
 
     and `hd` as proposed in Ragsdale, A. P., & Gravel, S. (2019). Unbiased estimation of linkage
-    disequilibrium from unphased data.  Molecular Biology and Evolution. doi:10.1093/molbev/msz265 
+    disequilibrium from unphased data.  Molecular Biology and Evolution. doi:10.1093/molbev/msz265
 
         \hat{D} = 1/[n*(n+1)]*[
                              (n1 + n2/2 + n4/2 + n5/4)*(n5/4 + n6/2 + n8/2 + n9)
@@ -423,7 +427,7 @@ static int _calc_r2_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec, vcfbuf_ld_t *l
     double nhd[] = {0,0,0,0,0,0,0,0,0};
     double ab = 0, aa = 0, bb = 0, a = 0, b = 0;
     int nab = 0, ndiff = 0;
-    int an_tot = 0, bn_tot = 0; 
+    int an_tot = 0, bn_tot = 0;
     for (i=0; i<arec->n_sample; i++)
     {
         int8_t *aptr = (int8_t*) (afmt->p + i*afmt->size);
@@ -508,7 +512,7 @@ static int _calc_r2_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec, vcfbuf_ld_t *l
         ld->val[VCFBUF_LD_IDX_LD] = fabs(ld->val[VCFBUF_LD_IDX_LD]);    // avoid "-0" on output
 
     ld->val[VCFBUF_LD_IDX_HD] =
-        (nhd[0] + nhd[1]/2. + nhd[3]/2. + nhd[4]/4.)*(nhd[4]/4. + nhd[5]/2. + nhd[7]/2. + nhd[8]) 
+        (nhd[0] + nhd[1]/2. + nhd[3]/2. + nhd[4]/4.)*(nhd[4]/4. + nhd[5]/2. + nhd[7]/2. + nhd[8])
         - (nhd[1]/2. + nhd[2] + nhd[4]/4. + nhd[5]/2.)*(nhd[3]/2. + nhd[4]/4. + nhd[6] + nhd[7]/2.);
     ld->val[VCFBUF_LD_IDX_HD] /= nab;
     ld->val[VCFBUF_LD_IDX_HD] /= nab+1;
@@ -535,7 +539,7 @@ int vcfbuf_ld(vcfbuf_t *buf, bcf1_t *rec, vcfbuf_ld_t *ld)
     }
 
     for (i=-1; rbuf_next(&buf->rbuf,&i); )
-    {   
+    {
         if ( buf->vcf[i].filter ) continue;
         if ( _calc_r2_ld(buf, buf->vcf[i].rec, rec, &tmp) < 0 ) continue;   // missing genotypes
 

@@ -70,19 +70,19 @@ int var_put_u64_safe(uint8_t *cp, const uint8_t *endp, uint64_t i) {
 
     // safe method when we're near end of buffer
     do {
-	s += 7;
-	X >>= 7;
+        s += 7;
+        X >>= 7;
     } while (X);
 
     if (endp && (endp-cp)*7 < s)
-	return 0;
+        return 0;
 
     int n;
     for (n = 0; n < 10; n++) {
-	s -= 7;
-	*cp++ = ((i>>s) & 0x7f) + (s?128:0);
-	if (!s)
-	    break;
+        s -= 7;
+        *cp++ = ((i>>s) & 0x7f) + (s?128:0);
+        if (!s)
+            break;
     }
 
     return cp-op;
@@ -94,83 +94,83 @@ int var_put_u64_safe(uint8_t *cp, const uint8_t *endp, uint64_t i) {
 static inline
 int var_put_u64(uint8_t *cp, const uint8_t *endp, uint64_t i) {
     if (endp && (endp-cp) < 10)
-	return var_put_u64_safe(cp, endp, i);
+        return var_put_u64_safe(cp, endp, i);
 
     // maximum of 10 bytes written
     if (i < (1<<7)) {
-	*cp = i;
-	return 1;
+        *cp = i;
+        return 1;
     } else if (i < (1<<14)) {
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 2;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 2;
     } else if (i < (1<<21)) {
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 3;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 3;
     } else if (i < (1<<28)) {
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 4;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 4;
     } else if (i < (1LL<<35)) {
-	*cp++ = ((i>>28) & 0x7f) | 128;
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 5;
+        *cp++ = ((i>>28) & 0x7f) | 128;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 5;
     } else if (i < (1LL<<42)) {
-	*cp++ = ((i>>35) & 0x7f) | 128;
-	*cp++ = ((i>>28) & 0x7f) | 128;
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 6;
+        *cp++ = ((i>>35) & 0x7f) | 128;
+        *cp++ = ((i>>28) & 0x7f) | 128;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 6;
     } else if (i < (1LL<<49)) {
-	*cp++ = ((i>>42) & 0x7f) | 128;
-	*cp++ = ((i>>35) & 0x7f) | 128;
-	*cp++ = ((i>>28) & 0x7f) | 128;
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 7;
+        *cp++ = ((i>>42) & 0x7f) | 128;
+        *cp++ = ((i>>35) & 0x7f) | 128;
+        *cp++ = ((i>>28) & 0x7f) | 128;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 7;
     } else if (i < (1LL<<56)) {
-	*cp++ = ((i>>49) & 0x7f) | 128;
-	*cp++ = ((i>>42) & 0x7f) | 128;
-	*cp++ = ((i>>35) & 0x7f) | 128;
-	*cp++ = ((i>>28) & 0x7f) | 128;
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 8;
+        *cp++ = ((i>>49) & 0x7f) | 128;
+        *cp++ = ((i>>42) & 0x7f) | 128;
+        *cp++ = ((i>>35) & 0x7f) | 128;
+        *cp++ = ((i>>28) & 0x7f) | 128;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 8;
     } else if (i < (1LL<<63)) {
-	*cp++ = ((i>>56) & 0x7f) | 128;
-	*cp++ = ((i>>49) & 0x7f) | 128;
-	*cp++ = ((i>>42) & 0x7f) | 128;
-	*cp++ = ((i>>35) & 0x7f) | 128;
-	*cp++ = ((i>>28) & 0x7f) | 128;
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 9;
+        *cp++ = ((i>>56) & 0x7f) | 128;
+        *cp++ = ((i>>49) & 0x7f) | 128;
+        *cp++ = ((i>>42) & 0x7f) | 128;
+        *cp++ = ((i>>35) & 0x7f) | 128;
+        *cp++ = ((i>>28) & 0x7f) | 128;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 9;
     } else {
-	*cp++ = ((i>>63) & 0x7f) | 128;
-	*cp++ = ((i>>56) & 0x7f) | 128;
-	*cp++ = ((i>>49) & 0x7f) | 128;
-	*cp++ = ((i>>42) & 0x7f) | 128;
-	*cp++ = ((i>>35) & 0x7f) | 128;
-	*cp++ = ((i>>28) & 0x7f) | 128;
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
+        *cp++ = ((i>>63) & 0x7f) | 128;
+        *cp++ = ((i>>56) & 0x7f) | 128;
+        *cp++ = ((i>>49) & 0x7f) | 128;
+        *cp++ = ((i>>42) & 0x7f) | 128;
+        *cp++ = ((i>>35) & 0x7f) | 128;
+        *cp++ = ((i>>28) & 0x7f) | 128;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
     }
 
     return 10;
@@ -184,19 +184,19 @@ int var_put_u32_safe(uint8_t *cp, const uint8_t *endp, uint32_t i) {
 
     // safe method when we're near end of buffer
     do {
-	s += 7;
-	X >>= 7;
+        s += 7;
+        X >>= 7;
     } while (X);
 
     if (endp && (endp-cp)*7 < s)
-	return 0;
+        return 0;
 
     int n;
     for (n = 0; n < 5; n++) {
-	s -= 7;
-	*cp++ = ((i>>s) & 0x7f) + (s?128:0);
-	if (!s)
-	    break;
+        s -= 7;
+        *cp++ = ((i>>s) & 0x7f) + (s?128:0);
+        if (!s)
+            break;
     }
 
     return cp-op;
@@ -205,32 +205,32 @@ int var_put_u32_safe(uint8_t *cp, const uint8_t *endp, uint32_t i) {
 static inline
 int var_put_u32(uint8_t *cp, const uint8_t *endp, uint32_t i) {
     if (endp && (endp-cp) < 5)
-	return var_put_u32_safe(cp, endp, i);
+        return var_put_u32_safe(cp, endp, i);
 
     if (i < (1<<7)) {
-	*cp = i;
-	return 1;
+        *cp = i;
+        return 1;
     } else if (i < (1<<14)) {
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 2;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 2;
     } else if (i < (1<<21)) {
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 3;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 3;
     } else if (i < (1<<28)) {
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
-	return 4;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
+        return 4;
     } else {
-	*cp++ = ((i>>28) & 0x7f) | 128;
-	*cp++ = ((i>>21) & 0x7f) | 128;
-	*cp++ = ((i>>14) & 0x7f) | 128;
-	*cp++ = ((i>> 7) & 0x7f) | 128;
-	*cp++ =   i      & 0x7f;
+        *cp++ = ((i>>28) & 0x7f) | 128;
+        *cp++ = ((i>>21) & 0x7f) | 128;
+        *cp++ = ((i>>14) & 0x7f) | 128;
+        *cp++ = ((i>> 7) & 0x7f) | 128;
+        *cp++ =   i      & 0x7f;
     }
 
     return 5;
@@ -242,21 +242,21 @@ int var_get_u64(uint8_t *cp, const uint8_t *endp, uint64_t *i) {
     uint64_t j = 0;
 
     if (!endp || endp - cp >= 10) {
-	int n = 10;
-	do {
-	    c = *cp++;
-	    j = (j<<7) | (c & 0x7f);
-	} while ((c & 0x80) && n-- > 0);
+        int n = 10;
+        do {
+            c = *cp++;
+            j = (j<<7) | (c & 0x7f);
+        } while ((c & 0x80) && n-- > 0);
     } else {
-	if (cp >= endp) {
-	    *i = 0;
-	    return 0;
-	}
+        if (cp >= endp) {
+            *i = 0;
+            return 0;
+        }
 
-	do {
-	    c = *cp++;
-	    j = (j<<7) | (c & 0x7f);
-	} while ((c & 0x80) && cp < endp);
+        do {
+            c = *cp++;
+            j = (j<<7) | (c & 0x7f);
+        } while ((c & 0x80) && cp < endp);
     }
 
     *i = j;
@@ -269,29 +269,29 @@ int var_get_u32(uint8_t *cp, const uint8_t *endp, uint32_t *i) {
     uint32_t j = 0;
 
     if (!endp || endp - cp >= 6) {
-	// Known maximum loop count helps optimiser.
-	// NB: this helps considerably at -O3 level, but may harm -O2.
-	// (However we optimise for those that want optimal code.)
-	int n = 5;
-	do {
-	    c = *cp++;
-	    j = (j<<7) | (c & 0x7f);
-	} while ((c & 0x80) && n-- > 0);
+        // Known maximum loop count helps optimiser.
+        // NB: this helps considerably at -O3 level, but may harm -O2.
+        // (However we optimise for those that want optimal code.)
+        int n = 5;
+        do {
+            c = *cp++;
+            j = (j<<7) | (c & 0x7f);
+        } while ((c & 0x80) && n-- > 0);
     } else {
-	if (cp >= endp) {
-	    *i = 0;
-	    return 0;
-	}
+        if (cp >= endp) {
+            *i = 0;
+            return 0;
+        }
 
-	if (*cp < 128) {
-	    *i = *cp;
-	    return 1;
-	}
+        if (*cp < 128) {
+            *i = *cp;
+            return 1;
+        }
 
-	do {
-	    c = *cp++;
-	    j = (j<<7) | (c & 0x7f);
-	} while ((c & 0x80) && cp < endp);
+        do {
+            c = *cp++;
+            j = (j<<7) | (c & 0x7f);
+        } while ((c & 0x80) && cp < endp);
     }
 
     *i = j;
@@ -309,17 +309,17 @@ static inline int var_put_u64(uint8_t *cp, const uint8_t *endp, uint64_t i) {
     uint8_t *op = cp;
 
     if (!endp || (endp-cp)*7 >= 10) {
-	// Unsafe or big-enough anyway
-	do {
-	    *cp++ = (i&0x7f) + ((i>=0x80)<<7);
-	    i >>= 7;
-	} while (i);
+        // Unsafe or big-enough anyway
+        do {
+            *cp++ = (i&0x7f) + ((i>=0x80)<<7);
+            i >>= 7;
+        } while (i);
     } else if (cp < endp) {
-	// End checked variant
-	do {
-	    *cp++ = (i&0x7f) + ((i>=0x80)<<7);
-	    i >>= 7;
-	} while (i && cp < endp);
+        // End checked variant
+        do {
+            *cp++ = (i&0x7f) + ((i>=0x80)<<7);
+            i >>= 7;
+        } while (i && cp < endp);
     }
 
     return cp-op;
@@ -329,17 +329,17 @@ static inline int var_put_u32(uint8_t *cp, const uint8_t *endp, uint32_t i) {
     uint8_t *op = cp;
 
     if (!endp || (endp-cp)*7 >= 5) {
-	// Unsafe or big-enough anyway
-	do {
-	    *cp++ = (i&0x7f) + ((i>=0x80)<<7);
-	    i >>= 7;
-	} while (i);
+        // Unsafe or big-enough anyway
+        do {
+            *cp++ = (i&0x7f) + ((i>=0x80)<<7);
+            i >>= 7;
+        } while (i);
     } else if (cp < endp) {
-	// End checked variant
-	do {
-	    *cp++ = (i&0x7f) + ((i>=0x80)<<7);
-	    i >>= 7;
-	} while (i && cp < endp);
+        // End checked variant
+        do {
+            *cp++ = (i&0x7f) + ((i>=0x80)<<7);
+            i >>= 7;
+        } while (i && cp < endp);
     }
 
     return cp-op;
@@ -350,24 +350,24 @@ static inline int var_get_u64(uint8_t *cp, const uint8_t *endp, uint64_t *i) {
     uint64_t j = 0, s = 0;
 
     if (endp) {
-	// Safe variant
-	if (cp >= endp) {
-	    *i = 0;
-	    return 0;
-	}
+        // Safe variant
+        if (cp >= endp) {
+            *i = 0;
+            return 0;
+        }
 
-	do {
-	    c = *cp++;
-	    j |= (c & 0x7f) << s;
-	    s += 7;
-	} while ((c & 0x80) && cp < endp);
+        do {
+            c = *cp++;
+            j |= (c & 0x7f) << s;
+            s += 7;
+        } while ((c & 0x80) && cp < endp);
     } else {
-	// Unsafe variant
-	do {
-	    c = *cp++;
-	    j |= (c & 0x7f) << s;
-	    s += 7;
-	} while ((c & 0x80));
+        // Unsafe variant
+        do {
+            c = *cp++;
+            j |= (c & 0x7f) << s;
+            s += 7;
+        } while ((c & 0x80));
     }
 
     *i = j;
@@ -379,24 +379,24 @@ static inline int var_get_u32(uint8_t *cp, const uint8_t *endp, uint32_t *i) {
     uint32_t j = 0, s = 0;
 
     if (endp) {
-	// Safe variant
-	if (cp >= endp) {
-	    *i = 0;
-	    return 0;
-	}
+        // Safe variant
+        if (cp >= endp) {
+            *i = 0;
+            return 0;
+        }
 
-	do {
-	    c = *cp++;
-	    j |= (c & 0x7f) << s;
-	    s += 7;
-	} while ((c & 0x80) && cp < endp);
+        do {
+            c = *cp++;
+            j |= (c & 0x7f) << s;
+            s += 7;
+        } while ((c & 0x80) && cp < endp);
     } else {
-	// Unsafe variant
-	do {
-	    c = *cp++;
-	    j |= (c & 0x7f) << s;
-	    s += 7;
-	} while ((c & 0x80));
+        // Unsafe variant
+        do {
+            c = *cp++;
+            j |= (c & 0x7f) << s;
+            s += 7;
+        } while ((c & 0x80));
     }
 
     *i = j;
@@ -429,8 +429,8 @@ static inline int var_get_s64(uint8_t *cp, const uint8_t *endp, int64_t *i) {
 static inline int var_size_u64(uint64_t v) {
     int i = 0;
     do {
-	i++;
-	v >>= 7;
+        i++;
+        v >>= 7;
     } while (v);
     return i;
 }

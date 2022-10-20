@@ -1,6 +1,6 @@
 /*  convert.c -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -955,12 +955,12 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
         }
         else if ( bcf_gt_is_missing(ptr[0]) )
         {
-            if ( ptr[1]==bcf_int8_vector_end ) 
+            if ( ptr[1]==bcf_int8_vector_end )
             {
                 str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
             }
-            else 
-            { 
+            else
+            {
                 str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
             }
         }
@@ -1192,11 +1192,10 @@ static void process_pbinom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isa
     }
 
     if ( n[0]==n[1] ) kputc(n[0]==0 ? '.':'0', str);
-    else 
+    else
     {
         double pval = n[0] < n[1] ? kf_betai(n[1], n[0] + 1, 0.5) : kf_betai(n[0], n[1] + 1, 0.5);
         pval *= 2;
-        assert( pval-1 < 1e-10 );
         if ( pval>=1 ) pval = 0;     // this can happen, machine precision error, eg. kf_betai(1,0,0.5)
         else
             pval = -4.34294481903*log(pval);
@@ -1356,12 +1355,12 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
         if ( !strcmp(str.s, "SAMPLE") ) register_tag(convert, "SAMPLE", is_gtf, T_SAMPLE);
         else if ( !strcmp(str.s, "GT") ) register_tag(convert, "GT", is_gtf, T_GT);
         else if ( !strcmp(str.s, "TGT") ) register_tag(convert, "GT", is_gtf, T_TGT);
-        else if ( !strcmp(str.s, "TBCSQ") ) 
+        else if ( !strcmp(str.s, "TBCSQ") )
         {
             fmt_t *fmt = register_tag(convert, "BCSQ", is_gtf, T_TBCSQ);
             fmt->subscript = parse_subscript(&q);
             if ( fmt->subscript==-1 )
-            { 
+            {
                 if ( !strncmp(q,"{*}",3) ) { fmt->subscript = 0; q += 3; }
             }
             else fmt->subscript++;
@@ -1408,7 +1407,7 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
     else
     {
         _SET_NON_FORMAT_TAGS(register_tag, str.s, convert, str.s, is_gtf)
-        else if ( !strcmp(str.s, "ALT") ) 
+        else if ( !strcmp(str.s, "ALT") )
         {
             fmt_t *fmt = register_tag(convert, str.s, is_gtf, T_ALT);
             fmt->subscript = parse_subscript(&q);
@@ -1619,7 +1618,7 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
     str->l = 0;
     for (i=0; i<convert->nfmt; i++)
     {
-        // Genotype fields. 
+        // Genotype fields.
         if ( convert->fmt[i].is_gt_field )
         {
             int j = i, js, k;
@@ -1640,7 +1639,7 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
                 // anything to the string, we trim all genotype fields enclosed in square
                 // brackets here. This may be changed in future, time will show...
                 size_t l_start = str->l;
-            
+
                 for (k=i; k<j; k++)
                 {
                     if ( convert->fmt[k].type == T_MASK )
@@ -1678,7 +1677,7 @@ int convert_set_option(convert_t *convert, enum convert_option opt, ...)
     va_list args;
 
     va_start(args, opt);
-    switch (opt) 
+    switch (opt)
     {
         case allow_undef_tags:
             convert->allow_undef_tags = va_arg(args, int);

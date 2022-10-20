@@ -471,6 +471,19 @@ else:
         "-Wno-sign-compare",
         "-Wno-error=declaration-after-statement"]
 
+    # for extra_option_name in ["HTS_CFLAGS_AVX2", "HTS_CFLAGS_AVX512", "HTS_CFLAGS_SSE4"]:
+    #     extra_option_value = htslib_make_options.get(extra_option_name, "")
+    #     if extra_option_value:
+    #         extra_compile_args.extend(extra_option_value.split(" "))
+
+    os.rename("htslib/config.h", "htslib/config.h.orig")
+    os.system("grep -v -e HAVE_AVX -e HAVE_SS < htslib/config.h.orig > htslib/config.h")
+    
+    # shared_htslib_sources = [x for x in shared_htslib_sources if
+    #                          os.path.basename(x) not in ("rANS_static32x16pr_avx2.c",
+    #                                                      "rANS_static32x16pr_avx512.c",
+    #                                                      "rANS_static32x16pr_sse4.c")]
+    
 define_macros = []
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')

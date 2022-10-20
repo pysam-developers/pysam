@@ -42,7 +42,8 @@ DEALINGS IN THE SOFTWARE.  */
 
 enum {
     per_contig = 1,
-    total = 2
+    all_contigs = 2,
+    total = 4
 };
 
 static void usage(void)
@@ -60,6 +61,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "        --threads INT        use multithreading with INT worker threads [0]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Stats options:\n");
+    fprintf(bcftools_stderr, "    -a, --all            with --stats, print stats for all contigs even when zero\n");
     fprintf(bcftools_stderr, "    -n, --nrecords       print number of records based on existing index file\n");
     fprintf(bcftools_stderr, "    -s, --stats          print per contig stats based on existing index file\n");
     fprintf(bcftools_stderr, "\n");
@@ -183,13 +185,15 @@ int vcf_index_stats(char *fname, int stats)
     for (tid=0; tid<nseq; tid++)
     {
         uint64_t records, v;
-        hts_idx_get_stat(tbx ? tbx->idx : idx, tid, &records, &v);
+        int ret = hts_idx_get_stat(tbx ? tbx->idx : idx, tid, &records, &v);
         sum += records;
-        if ( (stats&total) || !records ) continue;
+        if ( (stats&total) || (records == 0 && !(stats&all_contigs)) ) continue;
         const char *ctg_name = tbx ? seq[tid] : hdr ? bcf_hdr_id2name(hdr, tid) : "n/a";
         bcf_hrec_t *hrec = hdr ? bcf_hdr_get_hrec(hdr, BCF_HL_CTG, "ID", ctg_name, NULL) : NULL;
         int hkey = hrec ? bcf_hrec_find_key(hrec, "length") : -1;
-        fprintf(bcftools_stdout, "%s\t%s\t%" PRIu64 "\n", ctg_name, hkey<0?".":hrec->vals[hkey], records);
+        fprintf(bcftools_stdout, "%s\t%s\t", ctg_name, hkey<0?".":hrec->vals[hkey]);
+        if (ret >= 0) fprintf(bcftools_stdout, "%" PRIu64 "\n", records);
+        else fprintf(bcftools_stdout, ".\n");
     }
     if ( !sum )
     {
@@ -226,6 +230,7 @@ int main_vcfindex(int argc, char *argv[])
 
     static struct option loptions[] =
     {
+        {"all",no_argument,NULL,'a'},
         {"csi",no_argument,NULL,'c'},
         {"tbi",no_argument,NULL,'t'},
         {"force",no_argument,NULL,'f'},
@@ -239,7 +244,7 @@ int main_vcfindex(int argc, char *argv[])
     };
 
     char *tmp;
-    while ((c = getopt_long(argc, argv, "ctfm:sno:", loptions, NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "ctfm:snao:", loptions, NULL)) >= 0)
     {
         switch (c)
         {
@@ -252,6 +257,7 @@ int main_vcfindex(int argc, char *argv[])
                 break;
             case 's': stats |= per_contig; break;
             case 'n': stats |= total; break;
+            case 'a': stats |= all_contigs; break;
             case 9:
                 n_threads = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --threads %s\n", optarg);

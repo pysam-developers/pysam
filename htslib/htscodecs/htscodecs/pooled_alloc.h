@@ -64,12 +64,12 @@ static pool_alloc_t *pool_create(size_t dsize) {
     pool_alloc_t *p;
 
     if (NULL == (p = (pool_alloc_t *)malloc(sizeof(*p))))
-	return NULL;
+        return NULL;
 
     /* Minimum size is a pointer, for free list */
     dsize = (dsize + sizeof(void *) - 1) & ~(sizeof(void *)-1);
     if (dsize < sizeof(void *))
-	dsize = sizeof(void *);
+        dsize = sizeof(void *);
     p->dsize = dsize;
 
     p->npools = 0;
@@ -115,18 +115,18 @@ static void *pool_alloc(pool_alloc_t *p) {
     /* Look on free list */
     if (NULL != p->free) {
         ret = p->free;
-	p->free = *((void **)p->free);
-	return ret;
+        p->free = *((void **)p->free);
+        return ret;
     }
 
     /* Look for space in the last pool */
     if (p->npools) {
         pool = &p->pools[p->npools - 1];
         if (pool->used + p->dsize < PSIZE) {
-	    ret = ((char *) pool->pool) + pool->used;
-	    pool->used += p->dsize;
-	    return ret;
-	}
+            ret = ((char *) pool->pool) + pool->used;
+            pool->used += p->dsize;
+            return ret;
+        }
     }
 
     /* Need a new pool */
