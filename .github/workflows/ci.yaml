@@ -8,9 +8,9 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos]
-        python-version: ['2.7', '3.6', '3.7', '3.8', '3.9', '3.10']
+        python-version: ['3.6', '3.7', '3.8', '3.9', '3.10']
         exclude:
-          # Run only the latest 2.x and 3.x on macOS
+          # Run only the latest 3.x on macOS
           - os: macos
             python-version: 3.6
           - os: macos
