@@ -69,17 +69,13 @@ from libc.string cimport strcmp, strpbrk, strerror
 from libc.stdint cimport INT32_MAX
 
 from cpython cimport array as c_array
-from cpython.version cimport PY_MAJOR_VERSION
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
 from pysam.libchtslib cimport HTSFile, hisremote
 
-if PY_MAJOR_VERSION >= 3:
-    from io import StringIO
-else:
-    from StringIO import StringIO
+from io import StringIO
 
 cimport cython
 

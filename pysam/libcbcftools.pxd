@@ -1,3 +1,4 @@
+# cython: language_level=3
 cdef extern from "bcftools.pysam.h":
 
     int bcftools_dispatch(int argc, char *argv[])

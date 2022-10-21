@@ -60,8 +60,6 @@ from cpython cimport PyErr_SetString, \
     PyUnicode_Check, \
     PyBytes_FromStringAndSize
 
-from cpython.version cimport PY_MAJOR_VERSION
-
 from pysam.libchtslib cimport \
     faidx_nseq, fai_load, fai_load3, fai_destroy, fai_fetch, \
     faidx_seq_len, faidx_iseq, faidx_seq_len, \

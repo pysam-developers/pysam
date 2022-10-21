@@ -1,3 +1,4 @@
+# cython: language_level=3
 cdef extern from "samtools.pysam.h":
 
     int samtools_dispatch(int argc, char *argv[])

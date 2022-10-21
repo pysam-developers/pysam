@@ -147,11 +147,11 @@ class TestParser(unittest.TestCase):
         os.unlink(tmpfilename)
 
     def testCopy(self):
-        a = self.tabix.fetch(parser=pysam.asTuple()).next()
+        a = next(self.tabix.fetch(parser=pysam.asTuple()))
         b = copy.copy(a)
         self.assertEqual(a, b)
 
-        a = self.tabix.fetch(parser=pysam.asGTF()).next()
+        a = next(self.tabix.fetch(parser=pysam.asGTF()))
         b = copy.copy(a)
         self.assertEqual(a, b)
 
@@ -183,7 +183,7 @@ class TestGTF(TestParser):
 
     def test_setting_fields(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
 
         r.contig = r.contig + "_test_contig"
         r.source = r.source + "_test_source"
@@ -204,14 +204,14 @@ class TestGTF(TestParser):
 
     def test_setAttribute_makes_changes(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.setAttribute("transcript_id", "abcd")
         sr = str(r)
         self.assertEqual(r.transcript_id, "abcd")
         self.assertTrue("transcript_id \"abcd\"" in sr)
 
     def test_added_attribute_is_output(self):
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
 
         r.new_int_attribute = 12
         self.assertTrue("new_int_attribute 12" in str(r).split("\t")[8])
@@ -224,77 +224,77 @@ class TestGTF(TestParser):
 
     def test_setting_start_is_one_based(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.start = 1800
         self.assertEqual(r.start, 1800)
         self.assertEqual(str(r).split("\t")[3], "1801")
 
     def test_setting_end_is_one_based(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.end = 2100
         self.assertEqual(r.end, 2100)
         self.assertEqual(str(r).split("\t")[4], "2100")
 
     def test_setting_frame_to_none_produces_dot(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.frame = None
         self.assertEqual(str(r).split("\t")[7], ".")
 
         r.frame = 2
         self.assertEqual(str(r).split("\t")[7], "2")
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.frame = "."
         self.assertEqual(r.frame, None)
         self.assertEqual(str(r).split("\t")[7], ".")
 
     def test_setting_source_to_none_produces_dot(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.source = None
         self.assertEqual(str(r).split("\t")[1], ".")
 
         r.source = "source"
         self.assertEqual(str(r).split("\t")[1], "source")
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.source = "."
         self.assertEqual(r.source, None)
         self.assertEqual(str(r).split("\t")[1], ".")
 
     def test_setting_feature_to_none_produces_dot(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.feature = None
         self.assertEqual(str(r).split("\t")[2], ".")
 
         r.feature = "feature"
         self.assertEqual(str(r).split("\t")[2], "feature")
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.feature = "."
         self.assertEqual(r.feature, None)
         self.assertEqual(str(r).split("\t")[2], ".")
 
     def test_setting_strand_to_none_produces_dot(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.strand = None
         self.assertEqual(str(r).split("\t")[6], ".")
 
         r.strand = "-"
         self.assertEqual(str(r).split("\t")[6], "-")
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.strand = "."
         self.assertEqual(r.strand, None)
         self.assertEqual(str(r).split("\t")[6], ".")
 
     def test_setting_score_to_none_produces_dot(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.score = None
         self.assertEqual(str(r).split("\t")[5], ".")
 
@@ -304,7 +304,7 @@ class TestGTF(TestParser):
         r.score = -12.0
         self.assertEqual(str(r).split("\t")[5], "-12.0")
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.score = "."
         self.assertEqual(r.score, None)
         self.assertEqual(str(r).split("\t")[5], ".")
@@ -316,14 +316,14 @@ class TestGTF(TestParser):
         self.assertEqual(str(r).split("\t")[5], "-12")
 
     def test_asdict_contains_attributes(self):
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         d = r.to_dict()
         c = self.compare[0]
         s = self.build_attribute_string(d)
         self.assertEqual(s, c[8])
 
     def test_asdict_can_be_modified(self):
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         d = r.to_dict()
         d["gene_id"] = "new_gene_id"
         self.assertTrue("gene_id \"new_gene_id\"", str(r))
@@ -375,14 +375,14 @@ class TestGFF3(TestGTF):
 
     def test_setAttribute_makes_changes(self):
 
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
         r.setAttribute("transcript_id", "abcd")
         sr = str(r)
         self.assertEqual(r.transcript_id, "abcd")
         self.assertTrue("transcript_id=abcd" in sr)
 
     def test_added_attribute_is_output(self):
-        r = self.tabix.fetch(parser=self.parser()).next()
+        r = next(self.tabix.fetch(parser=self.parser()))
 
         r.new_int_attribute = 12
         self.assertTrue("new_int_attribute=12" in str(r).split("\t")[8])

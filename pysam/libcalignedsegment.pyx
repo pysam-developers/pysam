@@ -1,3 +1,4 @@
+# cython: language_level=3
 # cython: embedsignature=True
 # cython: profile=True
 ###############################################################################
@@ -62,7 +63,6 @@ import struct
 
 cimport cython
 from cpython cimport array as c_array
-from cpython.version cimport PY_MAJOR_VERSION
 from cpython cimport PyBytes_FromStringAndSize
 from libc.string cimport memset, strchr
 from cpython cimport array as c_array
@@ -80,21 +80,14 @@ from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array,
 cdef char * htslib_types = 'cCsSiIf'
 cdef char * parray_types = 'bBhHiIf'
 
-cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-
 # translation tables
 
 # cigar code to character and vice versa
 cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
 
-if IS_PYTHON3:
-    CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
-    maketrans = str.maketrans
-else:
-    CIGAR2CODE = dict([ord(y), x] for x, y in enumerate(CODE2CIGAR))
-    maketrans = string.maketrans
-
+CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
+maketrans = str.maketrans
 CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
 
 # names for keys in dictionary representation of an AlignedSegment
@@ -122,11 +115,11 @@ cdef inline uint8_t toupper(uint8_t ch):
 
 
 cdef inline uint8_t strand_mark_char(uint8_t ch, bam1_t *b):
-    if ch == '=':
+    if ch == b'=':
         if bam_is_rev(b):
-            return ','
+            return b','
         else:
-            return '.'
+            return b'.'
     else:
         if bam_is_rev(b):
             return tolower(ch)
@@ -228,29 +221,29 @@ cdef inline uint8_t get_tag_typecode(value, value_type=None):
         if isinstance(value, int):
             if value < 0:
                 if value >= INT8_MIN:
-                    typecode = 'c'
+                    typecode = b'c'
                 elif value >= INT16_MIN:
-                    typecode = 's'
+                    typecode = b's'
                 elif value >= INT32_MIN:
-                    typecode = 'i'
+                    typecode = b'i'
             # unsigned ints
             else:
                 if value <= UINT8_MAX:
-                    typecode = 'C'
+                    typecode = b'C'
                 elif value <= UINT16_MAX:
-                    typecode = 'S'
+                    typecode = b'S'
                 elif value <= UINT32_MAX:
-                    typecode = 'I'
+                    typecode = b'I'
         elif isinstance(value, float):
-            typecode = 'f'
+            typecode = b'f'
         elif isinstance(value, str):
-            typecode = 'Z'
+            typecode = b'Z'
         elif isinstance(value, bytes):
-            typecode = 'Z'
+            typecode = b'Z'
         elif isinstance(value, array.array) or \
                 isinstance(value, list) or \
                 isinstance(value, tuple):
-            typecode = 'B'
+            typecode = b'B'
     else:
         if value_type in 'aAsSIcCZidfH':
             typecode = force_bytes(value_type)[0]
@@ -275,7 +268,7 @@ cdef inline uint8_t get_btag_typecode(value, min_value=None, max_value=None):
     t = type(value)
 
     if t is float:
-        typecode = 'f'
+        typecode = b'f'
     elif t is int:
         if max_value is None:
             max_value = value
@@ -284,11 +277,11 @@ cdef inline uint8_t get_btag_typecode(value, min_value=None, max_value=None):
         # signed ints
         if min_value < 0:
             if min_value >= INT8_MIN and max_value <= INT8_MAX:
-                typecode = 'c'
+                typecode = b'c'
             elif min_value >= INT16_MIN and max_value <= INT16_MAX:
-                typecode = 's'
+                typecode = b's'
             elif min_value >= INT32_MIN or max_value <= INT32_MAX:
-                typecode = 'i'
+                typecode = b'i'
             else:
                 raise ValueError(
                     "at least one signed integer out of range of "
@@ -296,11 +289,11 @@ cdef inline uint8_t get_btag_typecode(value, min_value=None, max_value=None):
         # unsigned ints
         else:
             if max_value <= UINT8_MAX:
-                typecode = 'C'
+                typecode = b'C'
             elif max_value <= UINT16_MAX:
-                typecode = 'S'
+                typecode = b'S'
             elif max_value <= UINT32_MAX:
-                typecode = 'I'
+                typecode = b'I'
             else:
                 raise ValueError(
                     "at least one integer out of range of BAM/SAM specification")
@@ -309,9 +302,9 @@ cdef inline uint8_t get_btag_typecode(value, min_value=None, max_value=None):
         if t is not bytes:
             value = value.encode('ascii')
         if len(value) == 1:
-            typecode = 'A'
+            typecode = b'A'
         else:
-            typecode = 'Z'
+            typecode = b'Z'
 
     return typecode
 
@@ -357,10 +350,7 @@ cdef inline pack_tags(tags):
             typecode = 0
         else:
             # only first character in valuecode matters
-            if IS_PYTHON3:
-                typecode = force_bytes(valuetype)[0]
-            else:
-                typecode = ord(valuetype[0])
+            typecode = force_bytes(valuetype)[0]
 
         pytag = force_bytes(pytag)
         pytype = type(value)
@@ -398,18 +388,11 @@ cdef inline pack_tags(tags):
             # use array.tostring() to retrieve byte representation and
             # save as bytes
             datafmt = "2sBBI%is" % (len(value) * DATATYPE2FORMAT[typecode][1])
-            if IS_PYTHON3:
-                args.extend([pytag[:2],
-                             ord("B"),
-                             typecode,
-                             len(value),
-                             value.tobytes()])
-            else:
-                args.extend([pytag[:2],
-                             ord("B"),
-                             typecode,
-                             len(value),
-                             force_bytes(value.tostring())])
+            args.extend([pytag[:2],
+                         ord("B"),
+                         typecode,
+                         len(value),
+                         value.tobytes()])
 
         else:
             if typecode == 0:
@@ -417,13 +400,13 @@ cdef inline pack_tags(tags):
                 if typecode == 0:
                     raise ValueError("could not deduce typecode for value {}".format(value))
 
-            if typecode == 'a' or typecode == 'A' or typecode == 'Z' or typecode == 'H':
+            if typecode == b'a' or typecode == b'A' or typecode == b'Z' or typecode == b'H':
                 value = force_bytes(value)
 
-            if typecode == "a":
-                typecode = 'A'
+            if typecode == b"a":
+                typecode = b'A'
 
-            if typecode == 'Z' or typecode == 'H':
+            if typecode == b'Z' or typecode == b'H':
                 datafmt = "2sB%is" % (len(value)+1)
             else:
                 datafmt = "2sB%s" % DATATYPE2FORMAT[typecode][0]
@@ -567,7 +550,7 @@ cdef inline bytes getSequenceInRange(bam1_t *src,
     for k from start <= k < end:
         # equivalent to seq_nt16_str[bam1_seqi(s, i)] (see bam.c)
         # note: do not use string literal as it will be a python string
-        s[k-start] = seq_nt16_str[p[k/2] >> 4 * (1 - k%2) & 0xf]
+        s[k-start] = seq_nt16_str[p[k//2] >> 4 * (1 - k%2) & 0xf]
 
     return charptr_to_bytes(seq)
 
@@ -683,7 +666,7 @@ cdef inline uint32_t get_md_reference_length(char * md_tag):
         else:
             l += nmatches
             nmatches = 0
-            if md_tag[md_idx] == '^':
+            if md_tag[md_idx] == b'^':
                 md_idx += 1
                 while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
                     md_idx += 1
@@ -760,7 +743,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
                 s_idx += 1
         elif op == BAM_CDEL:
             for i from 0 <= i < l:
-                s[s_idx] = '-'
+                s[s_idx] = b'-'
                 s_idx += 1
         elif op == BAM_CREF_SKIP:
             pass
@@ -786,7 +769,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef int insertions = 0
 
     while s[s_idx] != 0:
-        if s[s_idx] >= 'a':
+        if s[s_idx] >= b'a':
             insertions += 1
         s_idx += 1
     s_idx = 0
@@ -808,15 +791,15 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         else:
             # save matches up to this point, skipping insertions
             for x from 0 <= x < nmatches:
-                while s[s_idx] >= 'a':
+                while s[s_idx] >= b'a':
                     s_idx += 1
                 s_idx += 1
-            while s[s_idx] >= 'a':
+            while s[s_idx] >= b'a':
                 s_idx += 1
 
             r_idx += nmatches
             nmatches = 0
-            if md_tag[md_idx] == '^':
+            if md_tag[md_idx] == b'^':
                 md_idx += 1
                 while md_tag[md_idx] >= 65 and md_tag[md_idx] <= 90:
                     # assert s[s_idx] == '-'
@@ -836,10 +819,10 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
 
     # save matches up to this point, skipping insertions
     for x from 0 <= x < nmatches:
-        while s[s_idx] >= 'a':
+        while s[s_idx] >= b'a':
             s_idx += 1
         s_idx += 1
-    while s[s_idx] >= 'a':
+    while s[s_idx] >= b'a':
         s_idx += 1
 
     seq = PyBytes_FromStringAndSize(s, s_idx)
@@ -1198,7 +1181,7 @@ cdef class AlignedSegment:
             cdef uint16_t x = 0
 
             for x from l <= x < l + l_extranul:
-                p[x] = '\0'
+                p[x] = b'\0'
 
     property flag:
         """properties flag"""
@@ -1423,8 +1406,8 @@ cdef class AlignedSegment:
 
             # as the sequence is stored in half-bytes, the total length (sequence
             # plus quality scores) is (l+1)/2 + l
-            nbytes_new = (l + 1) / 2 + l
-            nbytes_old = (src.core.l_qseq + 1) / 2 + src.core.l_qseq
+            nbytes_new = (l + 1) // 2 + l
+            nbytes_old = (src.core.l_qseq + 1) // 2 + src.core.l_qseq
 
             # acquire pointer to location in memory
             p = pysam_bam_get_seq(src)
@@ -1448,7 +1431,7 @@ cdef class AlignedSegment:
                 # convert to C string
                 s = seq
                 for k from 0 <= k < l:
-                    p[k/2] |= seq_nt16_table[<unsigned char>s[k]] << 4 * (1 - k % 2)
+                    p[k // 2] |= seq_nt16_table[<unsigned char>s[k]] << 4 * (1 - k % 2)
 
                 # erase qualities
                 p = pysam_bam_get_qual(src)
@@ -2414,54 +2397,54 @@ cdef class AlignedSegment:
                 value, value_type))
 
         # sam_format1 for typecasting
-        if typecode == 'Z':
+        if typecode == b'Z':
             value = force_bytes(value)
             value_ptr = <uint8_t*><char*>value
             value_size = len(value)+1
-        elif typecode == 'H':
+        elif typecode == b'H':
             # Note that hex tags are stored the very same
             # way as Z string.s
             value = force_bytes(value)
             value_ptr = <uint8_t*><char*>value
             value_size = len(value)+1
-        elif typecode == 'A' or typecode == 'a':
+        elif typecode == b'A' or typecode == b'a':
             value = force_bytes(value)
             value_ptr = <uint8_t*><char*>value
             value_size = sizeof(char)
-            typecode = 'A'
-        elif typecode == 'i':
+            typecode = b'A'
+        elif typecode == b'i':
             int32_t_value = value
             value_ptr = <uint8_t*>&int32_t_value
             value_size = sizeof(int32_t)
-        elif typecode == 'I':
+        elif typecode == b'I':
             uint32_t_value = value
             value_ptr = <uint8_t*>&uint32_t_value
             value_size = sizeof(uint32_t)
-        elif typecode == 's':
+        elif typecode == b's':
             int16_t_value = value
             value_ptr = <uint8_t*>&int16_t_value
             value_size = sizeof(int16_t)
-        elif typecode == 'S':
+        elif typecode == b'S':
             uint16_t_value = value
             value_ptr = <uint8_t*>&uint16_t_value
             value_size = sizeof(uint16_t)
-        elif typecode == 'c':
+        elif typecode == b'c':
             int8_t_value = value
             value_ptr = <uint8_t*>&int8_t_value
             value_size = sizeof(int8_t)
-        elif typecode == 'C':
+        elif typecode == b'C':
             uint8_t_value = value
             value_ptr = <uint8_t*>&uint8_t_value
             value_size = sizeof(uint8_t)
-        elif typecode == 'd':
+        elif typecode == b'd':
             double_value = value
             value_ptr = <uint8_t*>&double_value
             value_size = sizeof(double)
-        elif typecode == 'f':
+        elif typecode == b'f':
             float_value  = value
             value_ptr = <uint8_t*>&float_value
             value_size = sizeof(float)
-        elif typecode == 'B':
+        elif typecode == b'B':
             # the following goes through python, needs to be cleaned up
             # pack array using struct
             fmt, args = pack_tags([(tag, value, value_type)])
@@ -2553,7 +2536,7 @@ cdef class AlignedSegment:
             value = bam_aux2f(v)
         elif auxtype == 'A' or auxtype == 'a':
             # force A to a
-            v[0] = 'A'
+            v[0] = b'A'
             # there might a more efficient way
             # to convert a char into a string
             value = '%c' % <char>bam_aux2A(v)
@@ -2609,29 +2592,29 @@ cdef class AlignedSegment:
             auxtag[1] = s[1]
             s += 2
             auxtype = s[0]
-            if auxtype in ('c', 'C'):
+            if auxtype in (b'c', b'C'):
                 value = <int>bam_aux2i(s)
                 s += 1
-            elif auxtype in ('s', 'S'):
+            elif auxtype in (b's', b'S'):
                 value = <int>bam_aux2i(s)
                 s += 2
-            elif auxtype in ('i', 'I'):
+            elif auxtype in (b'i', b'I'):
                 value = <int32_t>bam_aux2i(s)
                 s += 4
-            elif auxtype == 'f':
+            elif auxtype == b'f':
                 value = <float>bam_aux2f(s)
                 s += 4
-            elif auxtype == 'd':
+            elif auxtype == b'd':
                 value = <double>bam_aux2f(s)
                 s += 8
-            elif auxtype in ('A', 'a'):
+            elif auxtype in (b'A', b'a'):
                 value = "%c" % <char>bam_aux2A(s)
                 s += 1
-            elif auxtype in ('Z', 'H'):
+            elif auxtype in (b'Z', b'H'):
                 value = charptr_to_str(<char*>bam_aux2Z(s))
                 # +1 for NULL terminated string
                 s += len(value) + 1
-            elif auxtype == 'B':
+            elif auxtype == b'B':
                 s += 1
                 byte_size, nvalues, value = convert_binary_tag(s)
                 # 5 for 1 char and 1 int
@@ -3094,7 +3077,7 @@ cdef class PileupColumn:
                 continue
             # see samtools pileup_seq
             if mark_ends and p.is_head:
-                kputc('^', buf)
+                kputc(b'^', buf)
 
                 if p.b.core.qual > 93:
                     kputc(126, buf)
@@ -3104,42 +3087,42 @@ cdef class PileupColumn:
                 if p.qpos < p.b.core.l_qseq:
                     cc = <uint8_t>seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos)]
                 else:
-                    cc = 'N'
+                    cc = b'N'
 
                 if mark_matches and self.reference_sequence != NULL:
                     rb = self.reference_sequence[self.reference_pos]
                     if seq_nt16_table[cc] == seq_nt16_table[rb]:
-                        cc = "="
+                        cc = b'='
                 kputc(strand_mark_char(cc, p.b), buf)
             elif add_indels:
                 if p.is_refskip:
                     if bam_is_rev(p.b):
-                        kputc('<', buf)
+                        kputc(b'<', buf)
                     else:
-                        kputc('>', buf)
+                        kputc(b'>', buf)
                 else:
-                    kputc('*', buf)
+                    kputc(b'*', buf)
             if add_indels:
                 if p.indel > 0:
-                    kputc('+', buf)
+                    kputc(b'+', buf)
                     kputw(p.indel, buf)
                     for j from 1 <= j <= p.indel:
                         cc = seq_nt16_str[bam_seqi(bam_get_seq(p.b), p.qpos + j)]
                         kputc(strand_mark_char(cc, p.b), buf)
                 elif p.indel < 0:
-                    kputc('-', buf)
+                    kputc(b'-', buf)
                     kputw(-p.indel, buf)
                     for j from 1 <= j <= -p.indel:
                         # TODO: out-of-range check here?
                         if self.reference_sequence == NULL:
-                            cc = 'N'
+                            cc = b'N'
                         else:
                             cc = self.reference_sequence[self.reference_pos + j]
                         kputc(strand_mark_char(cc, p.b), buf)
             if mark_ends and p.is_tail:
-                kputc('$', buf)
+                kputc(b'$', buf)
 
-            kputc(':', buf)
+            kputc(b':', buf)
 
         if buf.l == 0:
             # could be zero if all qualities are too low

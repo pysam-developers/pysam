@@ -128,8 +128,8 @@ cdef class TupleProxy:
 
         if reset:
             for x from 0 <= x < nbytes:
-                if self.data[x] == '\0':
-                    self.data[x] = '\t'
+                if self.data[x] == b'\0':
+                    self.data[x] = b'\t'
 
         self.update(self.data, nbytes)
 
@@ -175,8 +175,8 @@ cdef class TupleProxy:
         #################################
         # remove line breaks and feeds and update number of bytes
         x = nbytes - 1
-        while x > 0 and (buffer[x] == '\n' or buffer[x] == '\r'): 
-            buffer[x] = '\0'
+        while x > 0 and (buffer[x] == b'\n' or buffer[x] == b'\r'): 
+            buffer[x] = b'\0'
             x -= 1
         self.nbytes = x + 1
 
@@ -198,7 +198,7 @@ cdef class TupleProxy:
         # to guess or dynamically grow
         if max_fields == 0:
             for x from 0 <= x < nbytes:
-                if buffer[x] == '\t':
+                if buffer[x] == b'\t':
                     max_fields += 1
             max_fields += 1
 
@@ -214,7 +214,7 @@ cdef class TupleProxy:
         old_pos = pos
         while 1:
             
-            pos = <char*>memchr(pos, '\t', nbytes)
+            pos = <char*>memchr(pos, b'\t', nbytes)
             if pos == NULL:
                 break
             if field >= max_fields:
@@ -222,7 +222,7 @@ cdef class TupleProxy:
                     "parsing error: more than %i fields in line: %s" %
                     (max_fields, buffer))
 
-            pos[0] = '\0'
+            pos[0] = b'\0'
             pos += 1
             self.fields[field] = pos
             field += 1
@@ -318,8 +318,8 @@ cdef class TupleProxy:
                 raise ValueError("out of memory")
             memcpy(cpy, self.data, self.nbytes+1)
             for x from 0 <= x < self.nbytes:
-                if cpy[x] == '\0':
-                    cpy[x] = '\t'
+                if cpy[x] == b'\0':
+                    cpy[x] = b'\t'
             result = cpy[:self.nbytes]
             free(cpy)
             r = result.decode(self.encoding)

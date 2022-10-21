@@ -17,8 +17,6 @@ from cpython cimport PyErr_SetString, \
     PyUnicode_Check, \
     PyBytes_FromStringAndSize
 
-from cpython.version cimport PY_MAJOR_VERSION
-
 from pysam.libcalignmentfile cimport AlignmentFile, AlignedSegment
 
 
