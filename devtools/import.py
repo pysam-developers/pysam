@@ -33,9 +33,11 @@ EXCLUDE = {
     "bcftools": (
         "test", "plugins", "peakfit.c",
         "peakfit.h",
+        'regidx.c',  # duplicated from htslib
         "polysomy.c"),
     "htslib": (
-        'htslib/tabix.c', 'htslib/bgzip.c',
+        'htslib/tabix.c',
+        'htslib/bgzip.c',
         'htslib/htsfile.c',
         "test", "tests"),
 }
