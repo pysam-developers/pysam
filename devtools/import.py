@@ -152,10 +152,10 @@ if len(sys.argv) >= 1:
                              locate("version.sh", srcdir, exclude_htslib=True))
 
     if dest == "htslib":
-        # Add build files, including *.ac *.in *.mk *.m4
+        # Add build files, including *.ac *.in *.mk *.m4 *.sh
         mfiles = itertools.chain(mfiles, locate("Makefile", srcdir),
                                  locate("configure", srcdir),
-                                 locate("*.[aim][cnk4]", srcdir))
+                                 locate("*.[aims][cnk4h]", srcdir, exclude))
 
     ncopied = 0
 
