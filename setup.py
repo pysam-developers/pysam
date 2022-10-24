@@ -70,6 +70,20 @@ def run_configure(option):
         return False
 
 
+def run_make(dname, option):
+    sys.stdout.flush()
+    try:
+        retcode = subprocess.call(
+            " ".join(("make -C", dname, option)),
+            shell=True)
+        if retcode != 0:
+            return False
+        else:
+            return True
+    except OSError as e:
+        return False
+
+
 def run_make_print_config():
     stdout = subprocess.check_output(["make", "-s", "print-config"])
     if IS_PYTHON3:
@@ -382,10 +396,8 @@ if HTSLIB_MODE in ['shared', 'separate']:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
 
-    shared_htslib_sources = [re.sub("\.o", ".c", os.path.join("htslib", x))
-                             for x in
-                             htslib_make_options["LIBHTS_OBJS"].split(" ")]
-
+    run_make("htslib", "lib-shared")
+    shared_htslib_sources = []
     htslib_sources = []
 
 if HTSLIB_LIBRARY_DIR:
@@ -519,7 +531,8 @@ modules = [
     dict(name="pysam.libchtslib",
          prebuild_func=prebuild_libchtslib,
          sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + shared_htslib_sources + os_c_files,
-         libraries=external_htslib_libraries),
+         libraries=external_htslib_libraries,
+         extra_objects=[os.path.join("htslib", x) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]),
     dict(name="pysam.libcsamtools",
          prebuild_func=prebuild_libcsamtools,
          sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
@@ -566,8 +579,9 @@ common_options = dict(
     define_macros=define_macros,
     # for out-of-tree compilation, use absolute paths
     library_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_library_dirs],
-    include_dirs=[os.path.abspath(x) for x in htslib_include_dirs + \
-                  ["samtools", "samtools/lz4", "bcftools", "pysam", "."] + include_os])
+    # ensure pysam/version.h is included first.
+    include_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_include_dirs + \
+                  ["samtools", "samtools/lz4", "bcftools", "."] + include_os])
 
 # add common options (in python >3.5, could use n = {**a, **b}
 for module in modules:
