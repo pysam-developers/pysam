@@ -56,6 +56,20 @@ def changedir(path):
         os.chdir(save_dir)
 
 
+def run_make(dname, option):
+    sys.stdout.flush()
+    try:
+        retcode = subprocess.call(
+            " ".join(("make -C", dname, option)),
+            shell=True)
+        if retcode != 0:
+            return False
+        else:
+            return True
+    except OSError as e:
+        return False
+
+
 def run_configure(option):
     sys.stdout.flush()
     try:
@@ -203,6 +217,10 @@ def configure_library(library_dir, env_options=None, options=[]):
     return None
 
 
+def build_static_library(dname, option):
+    run_make(dname, option)
+
+
 def distutils_dir_name(dname):
     """Returns the name of a distutils build directory
     see: http://stackoverflow.com/questions/14320220/
@@ -294,14 +312,10 @@ class clean_ext(Command):
 
 
 # How to link against HTSLIB
-# shared:   build shared chtslib from builtin htslib code.
+# shared:   build a static hts.a from builtin htslib code, which
+#           is added to every shared pysam library.
 # external: use shared libhts.so compiled outside of
 #           pysam
-# separate: use included htslib and include in each extension
-#           module. No dependencies between modules and works with
-#           setup.py install, but wasteful in terms of memory and
-#           compilation time. Fallback if shared module compilation
-#           fails.
 
 HTSLIB_MODE = os.environ.get("HTSLIB_MODE", "shared")
 HTSLIB_LIBRARY_DIR = os.environ.get("HTSLIB_LIBRARY_DIR", None)
@@ -347,7 +361,7 @@ print("# pysam: HTSLIB_CONFIGURE_OPTIONS={}".format(
     HTSLIB_CONFIGURE_OPTIONS))
 htslib_configure_options = None
 
-if HTSLIB_MODE in ['shared', 'separate']:
+if HTSLIB_MODE in ['shared']:
     package_list += ['pysam.include.htslib',
                      'pysam.include.htslib.htslib']
     package_dirs.update({'pysam.include.htslib':'htslib'})
@@ -382,10 +396,9 @@ if HTSLIB_MODE in ['shared', 'separate']:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
 
-    shared_htslib_sources = [re.sub("\.o", ".c", os.path.join("htslib", x))
-                             for x in
-                             htslib_make_options["LIBHTS_OBJS"].split(" ")]
+    build_static_library("htslib", "lib-static")
 
+    shared_htslib_sources = []
     htslib_sources = []
 
 if HTSLIB_LIBRARY_DIR:
@@ -397,13 +410,6 @@ if HTSLIB_LIBRARY_DIR:
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
     external_htslib_libraries = ['z', 'hts']
-elif HTSLIB_MODE == 'separate':
-    # add to each pysam component a separately compiled
-    # htslib
-    htslib_sources = shared_htslib_sources
-    shared_htslib_sources = htslib_sources
-    htslib_library_dirs = []
-    htslib_include_dirs = ['htslib']
 elif HTSLIB_MODE == 'shared':
     # link each pysam component against the same
     # htslib built from sources included in the pysam
@@ -412,7 +418,6 @@ elif HTSLIB_MODE == 'shared':
         "pysam",  # when using setup.py develop?
         ".",  # when using setup.py develop?
         os.path.join("build", distutils_dir_name("lib"), "pysam")]
-
     htslib_include_dirs = ['htslib']
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
@@ -509,7 +514,7 @@ libraries_for_pysam_module = external_htslib_libraries + internal_htslib_librari
 # reasons of simplicity.
 
 def prebuild_libchtslib(ext, force):
-    if HTSLIB_MODE not in ['shared', 'separate']: return
+    if HTSLIB_MODE not in ['shared']: return
     write_configvars_header("htslib/config_vars.h", ext, "HTS")
 
 def prebuild_libcsamtools(ext, force):
@@ -566,8 +571,10 @@ common_options = dict(
     define_macros=define_macros,
     # for out-of-tree compilation, use absolute paths
     library_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_library_dirs],
-    include_dirs=[os.path.abspath(x) for x in htslib_include_dirs + \
-                  ["samtools", "samtools/lz4", "bcftools", "pysam", "."] + include_os])
+    # ensure pysam/version.h is included first.
+    include_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_include_dirs + \
+                  ["samtools", "samtools/lz4", "bcftools", "."] + include_os],
+    extra_objects=["htslib/libhts.a"])
 
 # add common options (in python >3.5, could use n = {**a, **b}
 for module in modules:
