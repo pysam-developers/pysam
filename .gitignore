@@ -42,9 +42,7 @@ __pycache__/
 *.py[cod]
 
 # C extensions
-*.a
 *.so
-*.o
 
 # Distribution / packaging
 .Python
