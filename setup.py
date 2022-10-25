@@ -44,7 +44,7 @@ except ImportError:
 
 IS_PYTHON3 = sys.version_info.major >= 3
 IS_DARWIN = platform.system() == 'Darwin'
-
+IS_WINDOWS = platform.system() == 'Windows'
 
 @contextmanager
 def changedir(path):
@@ -464,9 +464,15 @@ for fn in config_headers:
             outf.write(
                 "/* conservative compilation options */\n")
 
+
+htslib_extra_objects = [os.path.join("htslib", x) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]            
+if not IS_DARWIN and not IS_WINDOWS:
+    htslib_extra_objects = [re.sub(".o$", ".pico", x) for x in htslib_extra_objects]
+                            
+            
 #######################################################
 # Windows compatibility - untested
-if platform.system() == 'Windows':
+if IS_WINDOWS:
     include_os = ['win32']
     os_c_files = ['win32/getopt.c']
     extra_compile_args = []
@@ -483,9 +489,6 @@ else:
         "-Wno-sign-compare",
         "-Wno-error=declaration-after-statement"]
 
-    # shared_htslib_sources = [x for x in shared_htslib_sources if
-    #                          os.path.basename(x) not in ("regidx.c", )]
-    
 define_macros = []
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')
@@ -526,7 +529,7 @@ modules = [
          prebuild_func=prebuild_libchtslib,
          sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + shared_htslib_sources + os_c_files,
          libraries=external_htslib_libraries,
-         extra_objects=[os.path.join("htslib", x) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]),
+         extra_objects=htslib_extra_objects),
     dict(name="pysam.libcsamtools",
          prebuild_func=prebuild_libcsamtools,
          sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
