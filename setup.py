@@ -396,7 +396,12 @@ if HTSLIB_MODE in ['shared', 'separate']:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
 
-    run_make("htslib", "lib-static")
+    run_make("htslib", "lib-shared")
+    htslib_extra_objects = [os.path.join("htslib", x) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]            
+    
+    if not IS_DARWIN and not IS_WINDOWS:
+        htslib_extra_objects = [re.sub(".o$", ".pico", x) for x in htslib_extra_objects]
+    
     shared_htslib_sources = []
     htslib_sources = []
 
@@ -409,6 +414,7 @@ if HTSLIB_LIBRARY_DIR:
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
     external_htslib_libraries = ['z', 'hts']
+    htslib_extra_objects = []
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
     # htslib
@@ -465,11 +471,6 @@ for fn in config_headers:
                 "/* conservative compilation options */\n")
 
 
-htslib_extra_objects = [os.path.join("htslib", x) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]            
-if not IS_DARWIN and not IS_WINDOWS:
-    htslib_extra_objects = [re.sub(".o$", ".pico", x) for x in htslib_extra_objects]
-                            
-            
 #######################################################
 # Windows compatibility - untested
 if IS_WINDOWS:
