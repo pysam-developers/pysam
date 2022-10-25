@@ -396,7 +396,7 @@ if HTSLIB_MODE in ['shared', 'separate']:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
 
-    run_make("htslib", "lib-shared")
+    run_make("htslib", "lib-static")
     shared_htslib_sources = []
     htslib_sources = []
 
@@ -526,7 +526,7 @@ modules = [
          prebuild_func=prebuild_libchtslib,
          sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + shared_htslib_sources + os_c_files,
          libraries=external_htslib_libraries,
-         extra_objects=[re.sub(".o$", ".pico", os.path.join("htslib", x)) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]),
+         extra_objects=[os.path.join("htslib", x) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]),
     dict(name="pysam.libcsamtools",
          prebuild_func=prebuild_libcsamtools,
          sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
