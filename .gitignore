@@ -43,7 +43,10 @@ __pycache__/
 
 # C extensions
 *.so
-
+*.o
+*.pico
+*.a
+*.so.*
 # Distribution / packaging
 .Python
 env/

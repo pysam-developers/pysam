@@ -483,12 +483,6 @@ else:
         "-Wno-sign-compare",
         "-Wno-error=declaration-after-statement"]
 
-    with open("htslib/config.h") as inf:
-        lines = inf.readlines()
-    lines = [x for x in lines if "HAVE_AVX" not in x and "HAVE_SS" not in x]
-    with open("htslib/config.h", "w") as outf:
-        outf.write("".join(lines))
-    
     # shared_htslib_sources = [x for x in shared_htslib_sources if
     #                          os.path.basename(x) not in ("regidx.c", )]
     
@@ -532,7 +526,7 @@ modules = [
          prebuild_func=prebuild_libchtslib,
          sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + shared_htslib_sources + os_c_files,
          libraries=external_htslib_libraries,
-         extra_objects=[os.path.join("htslib", x) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]),
+         extra_objects=[os.path.abspath(os.path.join("htslib", x)) for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]),
     dict(name="pysam.libcsamtools",
          prebuild_func=prebuild_libcsamtools,
          sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
