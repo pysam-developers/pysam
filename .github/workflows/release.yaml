@@ -38,10 +38,10 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.8'
 
@@ -75,7 +75,7 @@ jobs:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: ./wheelhouse/*.whl
 
@@ -89,10 +89,10 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -108,7 +108,7 @@ jobs:
       - name: Create source distribution
         run:  python setup.py sdist
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: dist/*.tar.gz
 
@@ -119,7 +119,7 @@ jobs:
 
     steps:
       - name: Get Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: artifact
           path: dist
