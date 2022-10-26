@@ -132,7 +132,8 @@ def build_config_dict(ext):
                         optionise('-D', kvtuples(ext.define_macros)) +
                         optionise('-U', ext.undef_macros))
 
-    cflags = " ".join(sc('CFLAGS') + env('CFLAGS') + ext.extra_compile_args)
+    cflags = " ".join(sc('CFLAGS') + env('CFLAGS') + sc('CCSHARED') +
+                      ext.extra_compile_args)
 
     # distutils actually includes $CPPFLAGS here too, but that's weird and
     # unnecessary for us as we know the output LDFLAGS will be used correctly
@@ -167,6 +168,8 @@ def set_compiler_envvars():
             print("# pysam: (env) {}={}".format(var, os.environ[var]))
         elif var in sysconfig.get_config_vars():
             value = sysconfig.get_config_var(var)
+            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
+                value += ' ' + sysconfig.get_config_var('CCSHARED')
             print("# pysam: (sysconfig) {}={}".format(var, value))
             os.environ[var] = value
             tmp_vars += [var]
