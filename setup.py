@@ -211,17 +211,6 @@ def configure_library(library_dir, env_options=None, options=[]):
     return None
 
 
-def distutils_dir_name(dname):
-    """Returns the name of a distutils build directory
-    see: http://stackoverflow.com/questions/14320220/
-               testing-python-c-libraries-get-build-path
-    """
-    f = "{dirname}.{platform}-{version[0]}.{version[1]}"
-    return f.format(dirname=dname,
-                    platform=sysconfig.get_platform(),
-                    version=sys.version_info)
-
-
 def get_pysam_version():
     sys.path.insert(0, "pysam")
     import version
@@ -426,11 +415,7 @@ elif HTSLIB_MODE == 'shared':
                       for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]
     separate_htslib_objects = []
 
-    htslib_library_dirs = [
-        "pysam",  # when using setup.py develop?
-        ".",  # when using setup.py develop?
-        os.path.join("build", distutils_dir_name("lib"), "pysam")]
-
+    htslib_library_dirs = ["."] # when using setup.py develop?
     htslib_include_dirs = ['htslib']
 else:
     raise ValueError("unknown HTSLIB value '%s'" % HTSLIB_MODE)
