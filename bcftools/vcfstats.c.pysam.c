@@ -2,7 +2,7 @@
 
 /*  vcfstats.c -- Produces stats which can be plotted using plot-vcfstats.
 
-    Copyright (C) 2012-2021 Genome Research Ltd.
+    Copyright (C) 2012-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -708,8 +708,10 @@ static void do_indel_stats(args_t *args, stats_t *stats, bcf_sr_t *reader)
     for (i=1; i<line->n_allele; i++)
     {
         if ( args->first_allele_only && i>1 ) break;
-        if ( bcf_get_variant_type(line,i)!=VCF_INDEL ) continue;
-        int len = line->d.var[i].n;
+        int is_indel = bcf_has_variant_type(line,i,VCF_INDEL);
+        if (is_indel < 0) error("bcf_has_variant_type() failed.");
+        if ( !is_indel ) continue;
+        int len = bcf_variant_length(line, i);
 
         #if IRC_STATS
         // Indel repeat consistency

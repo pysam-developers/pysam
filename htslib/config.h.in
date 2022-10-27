@@ -19,6 +19,12 @@
 /* Define if HTSlib should enable S3 support. */
 #undef ENABLE_S3
 
+/* Defined to 1 if the compiler can issue AVX2 instructions. */
+#undef HAVE_AVX2
+
+/* Defined to 1 if the compiler can issue AVX512 instructions. */
+#undef HAVE_AVX512
+
 /* Define if you have the Common Crypto library. */
 #undef HAVE_COMMONCRYPTO
 
@@ -70,8 +76,17 @@
 /* Define to 1 if you have a working `mmap' system call. */
 #undef HAVE_MMAP
 
+/* Defined to 1 if the compiler can issue popcnt instructions. */
+#undef HAVE_POPCNT
+
 /* Define to 1 if you have the `srand48_deterministic' function. */
 #undef HAVE_SRAND48_DETERMINISTIC
+
+/* Defined to 1 if the compiler can issue SSE4.1 instructions. */
+#undef HAVE_SSE4_1
+
+/* Defined to 1 if the compiler can issue SSSE3 instructions. */
+#undef HAVE_SSSE3
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
@@ -120,6 +135,13 @@
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
+
+
+/* Prevent unaligned access in htscodecs SSE4 rANS codec */
+#if defined(HTS_ALLOW_UNALIGNED) && HTS_ALLOW_UNALIGNED == 0
+#undef UBSAN
+#endif
+  
 
 /* Enable large inode numbers on Mac OS X 10.5.  */
 #ifndef _DARWIN_USE_64_BIT_INODE

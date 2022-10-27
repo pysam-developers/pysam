@@ -17,8 +17,8 @@
 #ifndef C_RANGER_CODER_H
 #define C_RANGER_CODER_H
 
-#define  DO(n)	   int _;for (_=0; _<n; _++)
-#define  TOP	   (1<<24)
+#define  DO(n)     int _;for (_=0; _<n; _++)
+#define  TOP       (1<<24)
 #define  Thres (unsigned)255*TOP
 
 typedef unsigned char uc;
@@ -70,20 +70,20 @@ static inline void RC_StartDecode(RangeCoder *rc)
 
 static inline void RC_ShiftLow(RangeCoder *rc) {
     if (rc->low < Thres || rc->Carry) {
-	*rc->out_buf++ = rc->Cache + rc->Carry;
+        *rc->out_buf++ = rc->Cache + rc->Carry;
 
-	// Flush any stored FFs
-	while (rc->FFNum) {
-	    *rc->out_buf++ = rc->Carry-1; // (Carry-1)&255;
-	    rc->FFNum--;
-	}
+        // Flush any stored FFs
+        while (rc->FFNum) {
+            *rc->out_buf++ = rc->Carry-1; // (Carry-1)&255;
+            rc->FFNum--;
+        }
 
-	// Take copy of top byte ready for next flush
-	rc->Cache = rc->low >> 24;
-	rc->Carry = 0;
+        // Take copy of top byte ready for next flush
+        rc->Cache = rc->low >> 24;
+        rc->Carry = 0;
     } else {
-	// Low if FFxx xxxx.  Bump FF count and shift in as before
-	rc->FFNum++;
+        // Low if FFxx xxxx.  Bump FF count and shift in as before
+        rc->FFNum++;
     }
     rc->low = rc->low<<8;
 }
@@ -104,8 +104,8 @@ static inline void RC_Encode (RangeCoder *rc, uint32_t cumFreq, uint32_t freq, u
     rc->Carry += rc->low<tmp; // Overflow
 
     while (rc->range < TOP) {
-	rc->range <<= 8;
-	RC_ShiftLow(rc);
+        rc->range <<= 8;
+        RC_ShiftLow(rc);
     }
 }
 
@@ -121,8 +121,8 @@ static inline void RC_Decode (RangeCoder *rc, uint32_t cumFreq, uint32_t freq, u
     while (rc->range < TOP) {
         if (rc->in_buf >= rc->in_end)
             return; // FIXME: could signal error, instead of caller just generating nonsense
-	rc->code = (rc->code<<8) + *rc->in_buf++;
-	rc->range <<= 8;
+        rc->code = (rc->code<<8) + *rc->in_buf++;
+        rc->range <<= 8;
     }
 }
 

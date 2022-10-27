@@ -20,6 +20,7 @@ SAMTOOLS_DISPATCH = {
     "merge": ("merge", None),
     "markdup": ("markdup", None),
     "rmdup": ("rmdup", None),
+    "reference": ("reference", None),
     "reheader": ("reheader", None),
     "cat": ("cat", None),
     "targetcut": ("targetcut", None),

@@ -50,7 +50,7 @@ extern "C" {
  *         NULL of failure
  */
 uint8_t *hts_pack(uint8_t *data, int64_t len,
-		  uint8_t *out_meta, int *out_meta_len, uint64_t *out_len);
+                  uint8_t *out_meta, int *out_meta_len, uint64_t *out_len);
 
 /*
  * Unpacks the meta-data portions of the hts_pack algorithm.
@@ -64,7 +64,7 @@ uint8_t *hts_pack(uint8_t *data, int64_t len,
  *         zero on failure.
  */
 uint8_t hts_unpack_meta(uint8_t *data, uint32_t data_len,
-			uint64_t udata_len, uint8_t *map, int *nsym);
+                        uint64_t udata_len, uint8_t *map, int *nsym);
 
 /*
  * Unpacks a packed data steam (given the unpacked meta-data).

@@ -321,7 +321,7 @@ static void init_data(args_t *args)
     {
         if ( !args->write ) args->write = (int*) calloc(args->files->nreaders,sizeof(int));
         if ( sscanf(p,"%d",&i)!=1 ) error("Could not parse --write %s\n", args->write_files);
-        if ( i<0 || i>args->files->nreaders ) error("The index is out of range: %d (%s)\n", i, args->write_files);
+        if ( i<=0 || i>args->files->nreaders ) error("The index is out of range: %d (-w %s)\n", i, args->write_files);
         args->write[i-1] = 1;
         args->iwrite = i-1;
         args->nwrite++;
@@ -631,10 +631,10 @@ int main_vcfisec(int argc, char *argv[])
         args->isec_op = OP_VENN;
         if ( !args->prefix ) error("Expected the -p option\n");
     }
-    if ( !args->targets_list )
+    if ( !args->isec_op )
     {
-        if ( argc-optind<2  ) error("Expected multiple files or the --targets option\n");
-        if ( !args->isec_op ) error("One of the options --complement, --nfiles or --targets must be given with more than two files\n");
+        args->isec_op = OP_PLUS;
+        args->isec_n  = 1;
     }
     args->files->require_index = 1;
     while (optind<argc)
