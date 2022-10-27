@@ -260,7 +260,8 @@ class extra_build(build):
     def run(self):
         build.run(self)
         try:
-            self.check_ext_symbol_conflicts()
+            if HTSLIB_MODE != 'separate':
+                self.check_ext_symbol_conflicts()
         except OSError as e:
             log.warn("skipping symbol collision check (invoking nm failed: %s)", e)
         except subprocess.CalledProcessError:
