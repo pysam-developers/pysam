@@ -6,12 +6,14 @@ Release notes
 =============
 
 Release 0.20.0
-=============
+==============
 
-This release wraps htslib/bcftools version 1.16.0 and samtools version
-0.16.1.
+This release wraps htslib/bcftools version 1.16 and samtools version 1.16.1.
 
+* [#1113] Full compatibility with setuptools v62.1.0's build directory name changes
+* [#1121] Build-time symbol check portability improved
 * [#1122] Fix setting sample genotype using .alleles property
+* [#1128] Fix test suite failure when using a libdeflate-enabled samtools
 
 Many additional type hints have been provided by the community,
 thanks!
