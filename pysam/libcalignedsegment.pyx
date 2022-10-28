@@ -87,7 +87,6 @@ cdef char* CODE2CIGAR= "MIDNSHP=XB"
 cdef int NCIGAR_CODES = 10
 
 CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
-maketrans = str.maketrans
 CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
 
 # names for keys in dictionary representation of an AlignedSegment
@@ -1939,7 +1938,7 @@ cdef class AlignedSegment:
             return None
         s = force_str(self.query_sequence)
         if self.is_reverse:
-            s = s.translate(maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
+            s = s.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
         return s
 
     def get_forward_qualities(self):

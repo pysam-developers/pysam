@@ -117,15 +117,7 @@ cdef bytes encode_filename(object filename):
     """Make sure a filename is 8-bit encoded (or None)."""
     if filename is None:
         return None
-    elif PY_MAJOR_VERSION >= 3 and PY_MINOR_VERSION >= 2:
-        # Added to support path-like objects
-        return os.fsencode(filename)
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(FILENAME_ENCODING)
-    else:
-        raise TypeError("Argument must be string or unicode.")
+    return os.fsencode(filename)
 
 
 cdef bytes force_bytes(object s, encoding=None, errors=None):
