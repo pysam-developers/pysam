@@ -1,7 +1,7 @@
 /*  bam2bcf.c -- variant calling.
 
     Copyright (C) 2010-2012 Broad Institute.
-    Copyright (C) 2012-2021 Genome Research Ltd.
+    Copyright (C) 2012-2022 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -89,6 +89,39 @@ void bcf_call_destroy(bcf_callaux_t *bca)
     free(bca->bases); free(bca->inscns); free(bca);
 }
 
+static int get_aux_nm(bam1_t *rec, int32_t qpos, int is_ref)
+{
+    uint8_t *nm_tag = bam_aux_get(rec, "NM");
+    if ( !nm_tag ) return -1;
+    int64_t nm = bam_aux2i(nm_tag);
+
+    // Count indels as single events, not as the number of inserted/deleted
+    // bases (which is what NM does). Add soft clips as mismatches.
+    int i;
+    for (i=0; i < rec->core.n_cigar; i++)
+    {
+        int val = bam_get_cigar(rec)[i] & BAM_CIGAR_MASK;
+        if ( val==BAM_CSOFT_CLIP )
+        {
+            nm += bam_get_cigar(rec)[i] >> BAM_CIGAR_SHIFT;
+        }
+        else if ( val==BAM_CINS || val==BAM_CDEL )
+        {
+            val = bam_get_cigar(rec)[i] >> BAM_CIGAR_SHIFT;
+            if ( val > 1 ) nm -= val - 1;
+        }
+    }
+
+    // Take into account MNPs, 2% of de novo SNVs appear within 20bp of another de novo SNV
+    //      http://www.genome.org/cgi/doi/10.1101/gr.239756.118
+    nm -= is_ref ? 1 : 2;
+
+    if ( nm < 0 ) nm = 0;
+    if ( nm >= B2B_N_NM ) nm = B2B_N_NM - 1;
+
+    return nm;
+}
+
 // position in the sequence with respect to the aligned part of the read
 static int get_position(const bam_pileup1_t *p, int *len,
                         int *sc_len, int *sc_dist) {
@@ -158,6 +191,17 @@ void bcf_callaux_clean(bcf_callaux_t *bca, bcf_call_t *call)
     if ( call->ADF ) memset(call->ADF,0,sizeof(int32_t)*(call->n+1)*B2B_MAX_ALLELES);
     if ( call->ADR ) memset(call->ADR,0,sizeof(int32_t)*(call->n+1)*B2B_MAX_ALLELES);
     if ( call->SCR ) memset(call->SCR,0,sizeof(*call->SCR)*(call->n+1));
+    if ( call->SCR ) memset(call->SCR,0,sizeof(*call->SCR)*(call->n+1));
+    if ( bca->fmt_flag&B2B_FMT_NMBZ )
+    {
+        memset(call->ref_nm,0,sizeof(*call->ref_nm)*(call->n+1)*B2B_N_NM);
+        memset(call->alt_nm,0,sizeof(*call->alt_nm)*(call->n+1)*B2B_N_NM);
+    }
+    else
+    {
+        memset(call->ref_nm,0,sizeof(*call->ref_nm)*B2B_N_NM);
+        memset(call->alt_nm,0,sizeof(*call->alt_nm)*B2B_N_NM);
+    }
     memset(call->QS,0,sizeof(*call->QS)*call->n*B2B_MAX_ALLELES);
     memset(bca->ref_scl,  0, 100*sizeof(int));
     memset(bca->alt_scl,  0, 100*sizeof(int));
@@ -309,21 +353,26 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
                 if (sc_len > 99) sc_len = 99;
             }
         }
-
         int imq  = mapQ * nqual_over_60;
         int ibq  = baseQ * nqual_over_60;
+        int inm  = get_aux_nm(p->b,p->qpos,is_diff?0:1);
 
         if ( bam_is_rev(p->b) )
             bca->rev_mqs[imq]++;
         else
             bca->fwd_mqs[imq]++;
 
-        if ( bam_seqi(bam_get_seq(p->b),p->qpos) == ref_base )
+        if ( !is_diff )
         {
             bca->ref_pos[epos]++;
             bca->ref_bq[ibq]++;
             bca->ref_mq[imq]++;
             bca->ref_scl[sc_len]++;
+            if ( inm>=0 )
+            {
+                bca->ref_nm[inm]++;
+                if ( r->ref_nm ) r->ref_nm[inm]++;
+            }
         }
         else
         {
@@ -331,6 +380,11 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
             bca->alt_bq[ibq]++;
             bca->alt_mq[imq]++;
             bca->alt_scl[sc_len]++;
+            if ( inm>=0 )
+            {
+                bca->alt_nm[inm]++;
+                if ( r->alt_nm ) r->alt_nm[inm]++;
+            }
         }
     }
 
@@ -798,6 +852,7 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
         call->n_alleles = j;
         if (call->n_alleles == 1) return -1; // no reliable supporting read. stop doing anything
     }
+    int has_alt = (call->n_alleles==2 && call->unseen!=-1) ? 0 : 1;
     /*
      * Set the phread likelihood array (call->PL) This array is 15 entries long
      * for each sample because that is size of an upper or lower triangle of a
@@ -914,6 +969,9 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
         for (j = 0; j < 16; ++j) call->anno[j] += calls[i].anno[j];
     }
 
+    // No need to calculate MWU tests when there is no ALT allele, this should speed up things slightly
+    if ( !has_alt ) return 0;
+
     calc_SegBias(calls, call);
 
     // calc_chisq_bias("XPOS", call->bcf_hdr->id[BCF_DT_CTG][call->tid].key, call->pos, bca->ref_pos, bca->alt_pos, bca->npos);
@@ -922,7 +980,7 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
 
     if (bca->fmt_flag & B2B_INFO_ZSCORE) {
         // U z-normalised as +/- number of standard deviations from mean.
-        if (call->ori_ref < 0) {
+        if (call->ori_ref < 0) {    // indel
             if (bca->fmt_flag & B2B_INFO_RPB)
                 call->mwu_pos = calc_mwu_biasZ(bca->iref_pos, bca->ialt_pos,
                                                bca->npos, 0, 1);
@@ -944,6 +1002,15 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
             if ( bca->fmt_flag & B2B_INFO_SCB )
                 call->mwu_sc  = calc_mwu_biasZ(bca->ref_scl, bca->alt_scl,
                                                100, 0,1);
+        }
+        call->mwu_nm[0] = calc_mwu_biasZ(bca->ref_nm, bca->alt_nm, B2B_N_NM,0,1);
+        if ( bca->fmt_flag & B2B_FMT_NMBZ )
+        {
+            for (i=0; i<n; i++)
+            {
+                float val = calc_mwu_biasZ(calls[i].ref_nm, calls[i].alt_nm, B2B_N_NM,0,1);
+                call->mwu_nm[i+1] = val!=HUGE_VAL ? val : 0;
+            }
         }
     } else {
         // Old method; U as probability between 0 and 1
@@ -976,7 +1043,7 @@ int bcf_call_combine(int n, const bcf_callret1_t *calls, bcf_callaux_t *bca, int
 int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag, const bcf_callaux_t *bca, const char *ref)
 {
     extern double kt_fisher_exact(int n11, int n12, int n21, int n22, double *_left, double *_right, double *two);
-    int i, j, nals = 1;
+    int i, j, nals = 1, has_alt = 0;
 
     bcf_hdr_t *hdr = bc->bcf_hdr;
     rec->rid  = bc->tid;
@@ -1006,6 +1073,7 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
                 for (j = 0; j < bca->indelreg; ++j) kputc(ref[bc->pos+1+j], &bc->tmp);
             }
             nals++;
+            has_alt = 1;
         }
     }
     else    // SNP
@@ -1016,7 +1084,11 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
             if (bc->a[i] < 0) break;
             kputc(',', &bc->tmp);
             if ( bc->unseen==i ) kputs("<*>", &bc->tmp);
-            else kputc("ACGT"[bc->a[i]], &bc->tmp);
+            else
+            {
+                kputc("ACGT"[bc->a[i]], &bc->tmp);
+                has_alt = 1;
+            }
             nals++;
         }
     }
@@ -1052,40 +1124,46 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
     bcf_update_info_float(hdr, rec, "I16", tmpf, 16);
     bcf_update_info_float(hdr, rec, "QS", bc->qsum, nals);
 
-    if ( bc->vdb != HUGE_VAL )      bcf_update_info_float(hdr, rec, "VDB", &bc->vdb, 1);
-    if ( bc->seg_bias != HUGE_VAL ) bcf_update_info_float(hdr, rec, "SGB", &bc->seg_bias, 1);
+    if ( has_alt )
+    {
+        if ( bc->vdb != HUGE_VAL )      bcf_update_info_float(hdr, rec, "VDB", &bc->vdb, 1);
+        if ( bc->seg_bias != HUGE_VAL ) bcf_update_info_float(hdr, rec, "SGB", &bc->seg_bias, 1);
 
-    if (bca->fmt_flag & B2B_INFO_ZSCORE) {
-        if ( bc->mwu_pos != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "RPBZ", &bc->mwu_pos, 1);
-        if ( bc->mwu_mq != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "MQBZ", &bc->mwu_mq, 1);
-        if ( bc->mwu_mqs != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "MQSBZ", &bc->mwu_mqs, 1);
-        if ( bc->mwu_bq != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "BQBZ", &bc->mwu_bq, 1);
-        if ( bc->mwu_sc != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "SCBZ", &bc->mwu_sc, 1);
-    } else {
-        if ( bc->mwu_pos != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "RPB", &bc->mwu_pos, 1);
-        if ( bc->mwu_mq != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "MQB", &bc->mwu_mq, 1);
-        if ( bc->mwu_mqs != HUGE_VAL )
-             bcf_update_info_float(hdr, rec, "MQSB", &bc->mwu_mqs, 1);
-        if ( bc->mwu_bq != HUGE_VAL )
-            bcf_update_info_float(hdr, rec, "BQB", &bc->mwu_bq, 1);
-    }
+        if (bca->fmt_flag & B2B_INFO_ZSCORE) {
+            if ( bc->mwu_pos != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "RPBZ", &bc->mwu_pos, 1);
+            if ( bc->mwu_mq != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "MQBZ", &bc->mwu_mq, 1);
+            if ( bc->mwu_mqs != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "MQSBZ", &bc->mwu_mqs, 1);
+            if ( bc->mwu_bq != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "BQBZ", &bc->mwu_bq, 1);
+            if ( bc->mwu_nm[0] != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "NMBZ", bc->mwu_nm, 1);
+            if ( bc->mwu_sc != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "SCBZ", &bc->mwu_sc, 1);
+        } else {
+            if ( bc->mwu_pos != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "RPB", &bc->mwu_pos, 1);
+            if ( bc->mwu_mq != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "MQB", &bc->mwu_mq, 1);
+            if ( bc->mwu_mqs != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "MQSB", &bc->mwu_mqs, 1);
+            if ( bc->mwu_bq != HUGE_VAL )
+                bcf_update_info_float(hdr, rec, "BQB", &bc->mwu_bq, 1);
+        }
 
-    if ( bc->strand_bias != HUGE_VAL )
-        bcf_update_info_float(hdr, rec, "FS", &bc->strand_bias, 1);
+        if ( bc->strand_bias != HUGE_VAL )
+            bcf_update_info_float(hdr, rec, "FS", &bc->strand_bias, 1);
 
 #if CDF_MWU_TESTS
-    if ( bc->mwu_pos_cdf != HUGE_VAL )  bcf_update_info_float(hdr, rec, "RPB2", &bc->mwu_pos_cdf, 1);
-    if ( bc->mwu_mq_cdf != HUGE_VAL )   bcf_update_info_float(hdr, rec, "MQB2", &bc->mwu_mq_cdf, 1);
-    if ( bc->mwu_mqs_cdf != HUGE_VAL )  bcf_update_info_float(hdr, rec, "MQSB2", &bc->mwu_mqs_cdf, 1);
-    if ( bc->mwu_bq_cdf != HUGE_VAL )   bcf_update_info_float(hdr, rec, "BQB2", &bc->mwu_bq_cdf, 1);
+        if ( bc->mwu_pos_cdf != HUGE_VAL )  bcf_update_info_float(hdr, rec, "RPB2", &bc->mwu_pos_cdf, 1);
+        if ( bc->mwu_mq_cdf != HUGE_VAL )   bcf_update_info_float(hdr, rec, "MQB2", &bc->mwu_mq_cdf, 1);
+        if ( bc->mwu_mqs_cdf != HUGE_VAL )  bcf_update_info_float(hdr, rec, "MQSB2", &bc->mwu_mqs_cdf, 1);
+        if ( bc->mwu_bq_cdf != HUGE_VAL )   bcf_update_info_float(hdr, rec, "BQB2", &bc->mwu_bq_cdf, 1);
 #endif
+    }
+
     tmpf[0] = bc->ori_depth ? (float)bc->mq0/bc->ori_depth : 0;
     bcf_update_info_float(hdr, rec, "MQ0F", tmpf, 1);
 
@@ -1143,6 +1221,12 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
         bcf_update_format_int32(hdr, rec, "SCR", bc->SCR+1, rec->n_sample);
     if ( fmt_flag&B2B_FMT_QS )
         bcf_update_format_int32(hdr, rec, "QS", bc->QS, rec->n_sample*rec->n_allele);
+
+    if ( has_alt )
+    {
+        if ( fmt_flag&B2B_FMT_NMBZ )
+            bcf_update_format_float(hdr, rec, "NMBZ", bc->mwu_nm+1, rec->n_sample);
+    }
 
     return 0;
 }

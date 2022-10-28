@@ -99,7 +99,7 @@
 //     static char buf[1000];
 //     int i, o = 0;
 //     for (i = 0; i < n; i++)
-// 	o += sprintf(&buf[o], " %d", cp[i]);
+//      o += sprintf(&buf[o], " %d", cp[i]);
 //     return buf;
 // }
 
@@ -107,69 +107,69 @@ static inline int var_put_u64(uint8_t *cp, const uint8_t *endp, uint64_t x) {
     uint8_t *op = cp;
 
     if (x < 177) {
-	if (endp && endp - cp < 1) return 0;
-	// 0 to 176 in single byte as-is
-	*cp++ = x;
+        if (endp && endp - cp < 1) return 0;
+        // 0 to 176 in single byte as-is
+        *cp++ = x;
     } else if (x < 16561) {
-	if (endp && endp - cp < 2) return 0;
-	*cp++ = ((x-177)>>8)+177;
-	*cp++ = x-177;
+        if (endp && endp - cp < 2) return 0;
+        *cp++ = ((x-177)>>8)+177;
+        *cp++ = x-177;
     } else if (x < 540849) {
-	if (endp && endp - cp < 3) return 0;
-	*cp++ = ((x-16561)>>16)+241;
-	*cp++ = (x-16561)>>8;
-	*cp++ = x-16561;
+        if (endp && endp - cp < 3) return 0;
+        *cp++ = ((x-16561)>>16)+241;
+        *cp++ = (x-16561)>>8;
+        *cp++ = x-16561;
     } else if (x < (1<<24)) {
-	if (endp && endp - cp < 4) return 0;
-	*cp++ = 249;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 4) return 0;
+        *cp++ = 249;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     } else if (x < (1LL<<32)) {
-	if (endp && endp - cp < 5) return 0;
-	*cp++ = 250;
-	*cp++ = x>>24;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 5) return 0;
+        *cp++ = 250;
+        *cp++ = x>>24;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     } else if (x < (1LL<<40)) {
-	if (endp && endp - cp < 6) return 0;
-	*cp++ = 251;
-	*cp++ = x>>32;
-	*cp++ = x>>24;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 6) return 0;
+        *cp++ = 251;
+        *cp++ = x>>32;
+        *cp++ = x>>24;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     } else if (x < (1LL<<48)) {
-	if (endp && endp - cp < 7) return 0;
-	*cp++ = 252;
-	*cp++ = x>>40;
-	*cp++ = x>>32;
-	*cp++ = x>>24;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 7) return 0;
+        *cp++ = 252;
+        *cp++ = x>>40;
+        *cp++ = x>>32;
+        *cp++ = x>>24;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     } else if (x < (1LL<<56)) {
-	if (endp && endp - cp < 8) return 0;
-	*cp++ = 253;
-	*cp++ = x>>48;
-	*cp++ = x>>40;
-	*cp++ = x>>32;
-	*cp++ = x>>24;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 8) return 0;
+        *cp++ = 253;
+        *cp++ = x>>48;
+        *cp++ = x>>40;
+        *cp++ = x>>32;
+        *cp++ = x>>24;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     } else {
-	if (endp && endp - cp < 9) return 0;
-	*cp++ = 254;
-	*cp++ = x>>56;
-	*cp++ = x>>48;
-	*cp++ = x>>40;
-	*cp++ = x>>32;
-	*cp++ = x>>24;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 9) return 0;
+        *cp++ = 254;
+        *cp++ = x>>56;
+        *cp++ = x>>48;
+        *cp++ = x>>40;
+        *cp++ = x>>32;
+        *cp++ = x>>24;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     }
 
 //    fprintf(stderr, "Put64 %d (%s)\n", x, var_dump(op, cp-op));
@@ -181,31 +181,31 @@ static inline int var_put_u32(uint8_t *cp, const uint8_t *endp, uint32_t x) {
     uint8_t *op = cp;
 
     if (x < 177) {
-	if (endp && endp - cp < 1) abort();//return 0;
-	// 0 to 176 in single byte as-is
-	*cp++ = x;
+        if (endp && endp - cp < 1) abort();//return 0;
+        // 0 to 176 in single byte as-is
+        *cp++ = x;
     } else if (x < 16561) {
-	if (endp && endp - cp < 2) abort();//return 0;
-	*cp++ = ((x-177)>>8)+177;
-	*cp++ = x-177;
+        if (endp && endp - cp < 2) abort();//return 0;
+        *cp++ = ((x-177)>>8)+177;
+        *cp++ = x-177;
     } else if (x < 540849) {
-	if (endp && endp - cp < 3) abort();//return 0;
-	*cp++ = ((x-16561)>>16)+241;
-	*cp++ = (x-16561)>>8;
-	*cp++ = x-16561;
+        if (endp && endp - cp < 3) abort();//return 0;
+        *cp++ = ((x-16561)>>16)+241;
+        *cp++ = (x-16561)>>8;
+        *cp++ = x-16561;
     } else if (x < (1<<24)) {
-	if (endp && endp - cp < 4) abort();//return 0;
-	*cp++ = 249;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 4) abort();//return 0;
+        *cp++ = 249;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     } else {
-	if (endp && endp - cp < 5) abort();//return 0;
-	*cp++ = 250;
-	*cp++ = x>>24;
-	*cp++ = x>>16;
-	*cp++ = x>>8;
-	*cp++ = x;
+        if (endp && endp - cp < 5) abort();//return 0;
+        *cp++ = 250;
+        *cp++ = x>>24;
+        *cp++ = x>>16;
+        *cp++ = x>>8;
+        *cp++ = x;
     }
 
 //    fprintf(stderr, "Put32 %d (%s)\n", x, var_dump(op, cp-op));
@@ -218,21 +218,21 @@ static inline int var_get_u64(uint8_t *cp, const uint8_t *endp, uint64_t *i) {
     uint64_t j = 0;
 
     if (endp && cp >= endp) {
-	*i = 0;
-	return 0;
+        *i = 0;
+        return 0;
     }
     if (*cp < 177) {
-	j = *cp++;
+        j = *cp++;
     } else if (*cp < 241) {
-	j = ((cp[0] - 177)<<8) + cp[1] + 177;
-	cp += 2;
+        j = ((cp[0] - 177)<<8) + cp[1] + 177;
+        cp += 2;
     } else if (*cp < 249) {
-	j = ((cp[0] - 241)<<16) + (cp[1]<<8) + cp[2] + 16561;
-	cp += 3;
+        j = ((cp[0] - 241)<<16) + (cp[1]<<8) + cp[2] + 16561;
+        cp += 3;
     } else {
-	int n = *cp++ - 249 + 3;
-	while (n--)
-	    j = (j<<8) + *cp++;
+        int n = *cp++ - 249 + 3;
+        while (n--)
+            j = (j<<8) + *cp++;
     }
 
 //    fprintf(stderr, "Get64 %ld (%s)\n", j, var_dump(op, cp-op));
@@ -246,21 +246,21 @@ static inline int var_get_u32(uint8_t *cp, const uint8_t *endp, uint32_t *i) {
     uint32_t j = 0;
 
     if (endp && cp >= endp) {
-	*i = 0;
-	return 0;
+        *i = 0;
+        return 0;
     }
     if (*cp < 177) {
-	j = *cp++;
+        j = *cp++;
     } else if (*cp < 241) {
-	j = ((cp[0] - 177)<<8) + cp[1] + 177;
-	cp += 2;
+        j = ((cp[0] - 177)<<8) + cp[1] + 177;
+        cp += 2;
     } else if (*cp < 249) {
-	j = ((cp[0] - 241)<<16) + (cp[1]<<8) + cp[2] + 16561;
-	cp += 3;
+        j = ((cp[0] - 241)<<16) + (cp[1]<<8) + cp[2] + 16561;
+        cp += 3;
     } else {
-	int n = *cp++ - 249 + 3;
-	while (n--)
-	    j = (j<<8) + *cp++;
+        int n = *cp++ - 249 + 3;
+        while (n--)
+            j = (j<<8) + *cp++;
     }
 
 //    fprintf(stderr, "Get32 %d (%s)\n", j, var_dump(op, cp-op));
@@ -292,16 +292,16 @@ static inline int var_get_s64(uint8_t *cp, const uint8_t *endp, int64_t *i) {
 
 static inline int var_size_u64(uint64_t v) {
     if (v < 177)
-	return 1;
+        return 1;
     else if (v < 16561)
-	return 2;
+        return 2;
     else if (v < 540849)
-	return 3;
+        return 3;
 
     int i = 0;
     do {
-	v >>= 8;
-	i++;
+        v >>= 8;
+        i++;
     } while (v);
 
 //    fprintf(stderr, "Size %ld (%d)\n", v, i+1);

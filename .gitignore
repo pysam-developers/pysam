@@ -27,6 +27,7 @@ htslib/config_vars.h
 htslib/htscodecs.mk
 htslib/htslib.pc.tmp
 htslib/htslib-uninstalled.pc
+htslib/version.h
 pysam/config.py
 
 # linking tests
@@ -41,6 +42,8 @@ __pycache__/
 *.py[cod]
 
 # C extensions
+lib*.a
+*.o
 *.so
 
 # Distribution / packaging

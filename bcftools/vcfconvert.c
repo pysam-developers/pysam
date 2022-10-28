@@ -426,7 +426,7 @@ static void gensample_to_vcf(args_t *args)
     if ( args->gen_3N6 )
     {
         tsv = tsv_init("CHROM,CHROM_POS_REF_ALT,ID,POS,REF_ALT,GT_GP");
-        tsv_register(tsv, "CHROM", tsv_setter_chrom, args);
+        tsv_register(tsv, "CHROM", tsv_setter_chrom, args->header);
     }
     else
         tsv = tsv_init("CHROM_POS_REF_ALT,ID,POS,REF_ALT,GT_GP");
