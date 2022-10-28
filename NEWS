@@ -5,6 +5,17 @@ http://pysam.readthedocs.io/en/latest/release.html
 Release notes
 =============
 
+Release 0.20.0
+=============
+
+This release wraps htslib/bcftools version 1.16.0 and samtools version
+0.16.1.
+
+* [#1122] Fix setting sample genotype using .alleles property
+
+Many additional type hints have been provided by the community,
+thanks!
+
 Release 0.19.1
 ==============
 
