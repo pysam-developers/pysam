@@ -443,7 +443,7 @@ class TestIterators(unittest.TestCase):
         infile = self.open()
 
         i = self.iterator(infile, self.parser())
-        x = i.next()
+        x = next(i)
         infile.close()
         # Not implemented
         # self.assertRaises(ValueError, i.next)
@@ -478,7 +478,7 @@ class TestIterationMalformattedGTFFiles(unittest.TestCase):
             iterator = self.iterator(
                 infile,
                 parser=self.parser())
-            self.assertRaises(ValueError, iterator.next)
+            self.assertRaises(ValueError, iterator.__next__)
 
     def testGTFTooFewFields(self):
 
@@ -488,7 +488,7 @@ class TestIterationMalformattedGTFFiles(unittest.TestCase):
             iterator = self.iterator(
                 infile,
                 parser=self.parser())
-            self.assertRaises(ValueError, iterator.next)
+            self.assertRaises(ValueError, iterator.__next__)
 
 
 class TestBed(unittest.TestCase):
@@ -1181,8 +1181,8 @@ class TestMultipleIterators(unittest.TestCase):
 
         # two iterators working on the same file
         with pysam.TabixFile(self.filename) as tabix:
-            a = tabix.fetch(parser=pysam.asGTF()).next()
-            b = tabix.fetch(parser=pysam.asGTF()).next()
+            a = next(tabix.fetch(parser=pysam.asGTF()))
+            b = next(tabix.fetch(parser=pysam.asGTF()))
             # the first two lines differ only by the feature field
             self.assertEqual(a.feature, "UTR")
             self.assertEqual(b.feature, "exon")
@@ -1192,10 +1192,8 @@ class TestMultipleIterators(unittest.TestCase):
     def testDisjointIterators(self):
         # two iterators working on the same file
         with pysam.TabixFile(self.filename) as tabix:
-            a = tabix.fetch(parser=pysam.asGTF(),
-                            multiple_iterators=True).next()
-            b = tabix.fetch(parser=pysam.asGTF(),
-                            multiple_iterators=True).next()
+            a = next(tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True))
+            b = next(tabix.fetch(parser=pysam.asGTF(), multiple_iterators=True))
             # both iterators are at top of file
             self.assertEqual(str(a), str(b))
 
@@ -1203,10 +1201,10 @@ class TestMultipleIterators(unittest.TestCase):
         # technically it does not really test if the scope is correct
         i = _TestMultipleIteratorsHelper(self.filename,
                                          multiple_iterators=True)
-        self.assertTrue(i.next())
+        self.assertTrue(next(i))
         i = _TestMultipleIteratorsHelper(self.filename,
                                          multiple_iterators=False)
-        self.assertRaises(IOError, i.next)
+        self.assertRaises(IOError, i.__next__)
 
     def testDoubleFetch(self):
 

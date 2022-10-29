@@ -1,3 +1,4 @@
+# cython: language_level=3
 import types
 import sys
 import string
@@ -50,10 +51,7 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
 
     for x from 0 <= x < len(qualities):
         result[x] = qualities[x] + offset
-    if IS_PYTHON3:
-        return force_str(result.tobytes())
-    else:
-        return result.tostring()
+    return force_str(result.tobytes())
 
 
 cpdef qualities_to_qualitystring(qualities, int offset=33):
@@ -108,14 +106,8 @@ cpdef set_encoding_error_handler(name):
 ## Python 3 compatibility functions
 ########################################################################
 
-cdef bint IS_PYTHON3 = PY_MAJOR_VERSION >= 3
-
 cdef from_string_and_size(const char* s, size_t length):
-    if IS_PYTHON3:
-        return s[:length].decode('utf-8', ERROR_HANDLER)
-    else:
-        return s[:length]
-
+    return s[:length].decode('utf-8', ERROR_HANDLER)
 
 # filename encoding (adapted from lxml.etree.pyx)
 cdef str FILENAME_ENCODING = sys.getfilesystemencoding() or sys.getdefaultencoding() or 'ascii'
@@ -125,15 +117,7 @@ cdef bytes encode_filename(object filename):
     """Make sure a filename is 8-bit encoded (or None)."""
     if filename is None:
         return None
-    elif PY_MAJOR_VERSION >= 3 and PY_MINOR_VERSION >= 2:
-        # Added to support path-like objects
-        return os.fsencode(filename)
-    elif PyBytes_Check(filename):
-        return filename
-    elif PyUnicode_Check(filename):
-        return filename.encode(FILENAME_ENCODING)
-    else:
-        raise TypeError("Argument must be string or unicode.")
+    return os.fsencode(filename)
 
 
 cdef bytes force_bytes(object s, encoding=None, errors=None):
@@ -153,19 +137,13 @@ cdef bytes force_bytes(object s, encoding=None, errors=None):
 cdef charptr_to_str(const char* s, encoding=None, errors=None):
     if s == NULL:
         return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    else:
-        return s.decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
+    return s.decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
 
 
 cdef charptr_to_str_w_len(const char* s, size_t n, encoding=None, errors=None):
     if s == NULL:
         return None
-    if PY_MAJOR_VERSION < 3:
-        return s[:n]
-    else:
-        return s[:n].decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
+    return s[:n].decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
 
 
 cdef bytes charptr_to_bytes(const char* s, encoding=None, errors=None):
@@ -180,13 +158,10 @@ cdef force_str(object s, encoding=None, errors=None):
     (bytes in Py2, unicode in Py3)"""
     if s is None:
         return None
-    if PY_MAJOR_VERSION < 3:
-        return s
-    elif PyBytes_Check(s):
+    if PyBytes_Check(s):
         return s.decode(encoding or TEXT_ENCODING, errors or ERROR_HANDLER)
-    else:
-        # assume unicode
-        return s
+    # assume unicode
+    return s
 
 
 cdef decode_bytes(bytes s, encoding=None, errors=None):

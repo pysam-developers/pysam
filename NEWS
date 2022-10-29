@@ -5,6 +5,13 @@ http://pysam.readthedocs.io/en/latest/release.html
 Release notes
 =============
 
+Release 1.0.0?
+==============
+
+* python 2.7 support has been removed. The minimum python version is now 3.2 with
+  versions 3.6-3.11 tested.
+
+
 Release 0.20.0
 ==============
 

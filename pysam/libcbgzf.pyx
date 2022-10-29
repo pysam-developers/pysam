@@ -1,3 +1,4 @@
+# cython: language_level=3
 """Functions that read and write block gzipped files.
 
 The user of the file doesn't have to worry about the compression
@@ -213,7 +214,7 @@ cdef class BGZFile(object):
         line.l = line.m = 0
         line.s = NULL
 
-        cdef int ret = bgzf_getline(self.bgzf, '\n', &line)
+        cdef int ret = bgzf_getline(self.bgzf, b'\n', &line)
         if ret == -1:
             s = b''
         elif ret == -2:

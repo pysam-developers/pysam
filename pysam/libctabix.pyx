@@ -1,3 +1,4 @@
+# cython: language_level=3
 # cython: embedsignature=True
 # cython: profile=True
 ###############################################################################
@@ -64,8 +65,6 @@ from posix.unistd cimport dup
 from cpython cimport PyErr_SetString, PyBytes_Check, \
     PyUnicode_Check, PyBytes_FromStringAndSize, \
     PyObject_AsFileDescriptor
-
-from cpython.version cimport PY_MAJOR_VERSION
 
 cimport pysam.libctabixproxies as ctabixproxies
 
@@ -654,7 +653,7 @@ cdef class TabixIterator:
             if retval < 0:
                 break
 
-            if self.buffer.s[0] != '#':
+            if self.buffer.s[0] != b'#':
                 break
 
         return retval
@@ -673,9 +672,6 @@ cdef class TabixIterator:
 
         return charptr_to_str(self.buffer.s, self.encoding)
 
-    def next(self):
-        return self.__next__()
-
     def __dealloc__(self):
         if <void*>self.iterator != NULL:
             tbx_itr_destroy(self.iterator)
@@ -688,9 +684,6 @@ class EmptyIterator:
 
     def __iter__(self):
         return self
-
-    def next(self):
-        raise StopIteration()
 
     def __next__(self):
         raise StopIteration()
@@ -764,7 +757,7 @@ cdef class GZIterator:
         cdef int retval = 0
         while 1:
             with nogil:
-                retval = ks_getuntil(self.kstream, '\n', &self.buffer, &dret)
+                retval = ks_getuntil(self.kstream, b'\n', &self.buffer, &dret)
             
             if retval < 0: 
                 break
@@ -792,7 +785,7 @@ cdef class GZIteratorHead(GZIterator):
         cdef int retval = self.__cnext__()
         if retval < 0:
             raise StopIteration
-        if self.buffer.s[0] == '#':
+        if self.buffer.s[0] == b'#':
             return self.buffer.s
         else:
             raise StopIteration
@@ -1152,7 +1145,7 @@ cdef class tabix_file_iterator:
         cdef int retval = 0
         while 1:
             with nogil:
-                retval = ks_getuntil(self.kstream, '\n', &self.buffer, &dret)
+                retval = ks_getuntil(self.kstream, b'\n', &self.buffer, &dret)
             
             if retval < 0: 
                 break
@@ -1161,11 +1154,11 @@ cdef class tabix_file_iterator:
             b = self.buffer.s
             
             # skip comments
-            if (b[0] == '#'):
+            if (b[0] == b'#'):
                 continue
 
             # skip empty lines
-            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r':
+            if b[0] == b'\0' or b[0] == b'\n' or b[0] == b'\r':
                 continue
 
             # gzgets terminates at \n, no need to test
@@ -1183,9 +1176,6 @@ cdef class tabix_file_iterator:
     def __next__(self):
         return self.__cnext__()
 
-    def next(self):
-        return self.__cnext__()
-    
 
 class tabix_generic_iterator:
     '''iterate over ``infile``.
@@ -1225,18 +1215,18 @@ class tabix_generic_iterator:
             s = force_bytes(line, encoding)
             b = s
             nbytes = len(line)
-            assert b[nbytes] == '\0'
+            assert b[nbytes] == b'\0'
 
             # skip comments
-            if b[0] == '#':
+            if b[0] == b'#':
                 continue
 
             # skip empty lines
-            if b[0] == '\0' or b[0] == '\n' or b[0] == '\r':
+            if b[0] == b'\0' or b[0] == b'\n' or b[0] == b'\r':
                 continue
             
             # make sure that entry is complete
-            if b[nbytes-1] != '\n' and b[nbytes-1] != '\r':
+            if b[nbytes-1] != b'\n' and b[nbytes-1] != b'\r':
                 raise ValueError("incomplete line at %s" % line)
             
             bytes_cpy = <bytes> b
@@ -1246,10 +1236,6 @@ class tabix_generic_iterator:
 
         raise StopIteration
 
-    # python version - required for python 2.7
-    def next(self):
-        return self.__next__()
-    
 
 def tabix_iterator(infile, parser):
     """return an iterator over all entries in a file.
@@ -1261,23 +1247,8 @@ def tabix_iterator(infile, parser):
     :class:`~pysam.asGTF`).
 
     """
-    if PY_MAJOR_VERSION >= 3:
-        return tabix_generic_iterator(infile, parser)
-    else:
-        return tabix_file_iterator(infile, parser)
+    return tabix_generic_iterator(infile, parser)
         
-    # file objects can use C stdio
-    # used to be: isinstance( infile, file):
-    # if PY_MAJOR_VERSION >= 3:
-    #     if isinstance( infile, io.IOBase ):
-    #         return tabix_copy_iterator( infile, parser )
-    #     else:
-    #         return tabix_generic_iterator( infile, parser )
-    # else:
-#        if isinstance( infile, file ):
-#            return tabix_copy_iterator( infile, parser )
-#        else:
-#            return tabix_generic_iterator( infile, parser )
     
 cdef class Tabixfile(TabixFile):
     """Tabixfile is deprecated: use TabixFile instead"""

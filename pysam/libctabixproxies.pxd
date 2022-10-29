@@ -1,5 +1,4 @@
-#cdef extern from "Python.h":
-#    ctypedef struct FILE
+# cython: language_level=3
 
 from libc.stdint cimport uint8_t, int32_t, uint32_t, int64_t, uint64_t
 
