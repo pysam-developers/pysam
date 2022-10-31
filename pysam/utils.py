@@ -1,3 +1,11 @@
+from typing import (
+    Callable,
+    List,
+    Tuple,
+    Iterable,
+    Union,
+)
+
 from pysam.libcutils import _pysam_dispatch
 
 
@@ -36,14 +44,20 @@ class PysamDispatcher(object):
     parsers = None
     collection = None
 
-    def __init__(self, collection, dispatch, parsers):
+    def __init__(
+        self,
+        collection: str,
+        dispatch: str,
+        parsers: Iterable[Tuple[str, Callable[[Union[str, List[str]]], Union[str, List[str]]]]],
+    ):
         self.collection = collection
         self.dispatch = dispatch
         self.parsers = parsers
         self.stderr = []
 
-    def __call__(self, *args, **kwargs):
-        '''execute a samtools command.
+    def __call__(self, *args: str, **kwargs):
+        '''
+        execute a samtools command.
 
         Keyword arguments:
         catch_stdout -- redirect stdout from the samtools command and
