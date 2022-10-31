@@ -55,7 +55,7 @@ class PysamDispatcher(object):
         self.parsers = parsers
         self.stderr = []
 
-    def __call__(self, *args: str, **kwargs):
+    def __call__(self, *args: str, **kwargs) -> Union[str, List[str]]:
         '''
         execute a samtools command.
 
