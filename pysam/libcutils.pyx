@@ -280,19 +280,18 @@ def _pysam_dispatch(collection,
     '''
 
     if method == "index" and args:
-        # We make sure that at least 1 input file exists,
+        # We make sure that at least the first specified input file exists,
         # and if it doesn't we raise an IOError.
-        SIMPLE_FLAGS = ['-c', '--csi', '-f', '--force', '-t', '--tbi', '-n', '--nstats', '-s', '--stats']
-        ARGUMENTS = ['-m', '--min-shift', '-o', '--output-file', '--threads', '-@']
+        ARGUMENTS = ['-m', '--min-shift', '-o', '--output', '--output-file', '-@', '--threads']
         skip_next = False
         for arg in args:
             if skip_next:
                 skip_next = False
                 continue
-            if arg in SIMPLE_FLAGS or (len(arg) > 2 and force_bytes(arg).startswith(b'-@')):
-                continue
-            if arg in ARGUMENTS:
-                skip_next = True
+            if arg.startswith('-'):
+                # Skip next argument for e.g. '--min-shift' '12' or '-m' '12' but not '-m12'
+                if arg in ARGUMENTS:
+                    skip_next = True
                 continue
             if not os.path.exists(arg):
                 raise IOError("No such file or directory: '%s'" % arg)
