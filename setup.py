@@ -476,9 +476,7 @@ else:
 
 define_macros = []
 
-suffix = sysconfig.get_config_var('EXT_SUFFIX')
-if not suffix:
-    suffix = sysconfig.get_config_var('SO')
+suffix = sysconfig.get_config_var('EXT_SUFFIX') or sysconfig.get_config_var('SO')
 
 internal_htslib_libraries = [
     os.path.splitext("chtslib{}".format(suffix))[0]]

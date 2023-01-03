@@ -8,7 +8,7 @@ except ImportError:
     from setuptools.command.build_ext import build_ext
 
 from distutils.extension import Extension
-from distutils.sysconfig import get_config_vars, get_python_version
+from distutils.sysconfig import get_config_var, get_config_vars, get_python_version
 from pkg_resources import Distribution
 
 
@@ -66,7 +66,7 @@ class cy_build_ext(build_ext):
             # @loader_path. This will allow Python packages to find the library
             # in the expected place, while still giving enough flexibility to
             # external applications to link against the library.
-            relative_module_path = ext.name.replace(".", os.sep) + get_config_vars()["SO"]
+            relative_module_path = ext.name.replace(".", os.sep) + (get_config_var('EXT_SUFFIX') or get_config_var('SO'))
             library_path = os.path.join(
                 "@rpath", os.path.basename(relative_module_path)
             )
