@@ -2008,8 +2008,8 @@ class TestFindIntrons(unittest.TestCase):
     def test_total(self):
         all_read_counts = self.samfile.count()
         splice_sites = self.samfile.find_introns(self.samfile.fetch())
-        # there is a single unspliced read in there
-        self.assertEqual(sum(splice_sites.values()), all_read_counts - 1)
+        # there is a single unspliced read and a single unmapped read in there
+        self.assertEqual(sum(splice_sites.values()), all_read_counts - 2)
 
     def test_first(self):
         reads = list(self.samfile.fetch())[:10]

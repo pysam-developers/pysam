@@ -1645,8 +1645,11 @@ cdef class AlignmentFile(HTSFile):
         match_or_deletion = {0, 2, 7, 8} # only M/=/X (0/7/8) and D (2) are related to genome position
         for r in read_iterator:
             base_position = r.pos
+            cigar = r.cigartuples
+            if cigar is None:
+                continue
 
-            for op, nt in r.cigartuples:
+            for op, nt in cigar:
                 if op in match_or_deletion:
                     base_position += nt
                 elif op == BAM_CREF_SKIP:
