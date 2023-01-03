@@ -170,6 +170,8 @@ def set_compiler_envvars():
     tmp_vars = []
     for var in ['CC', 'CFLAGS', 'LDFLAGS']:
         if var in os.environ:
+            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
+                os.environ[var] += ' ' + sysconfig.get_config_var('CCSHARED')
             print("# pysam: (env) {}={}".format(var, os.environ[var]))
         elif var in sysconfig.get_config_vars():
             value = sysconfig.get_config_var(var)
