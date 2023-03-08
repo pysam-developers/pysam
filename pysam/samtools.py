@@ -71,7 +71,6 @@ def _wrap_command(
     return PysamDispatcher("samtools", dispatch, parsers)
 
 
-# python 3.8 and beyond
 if not HAVE_FINAL:
     # python 3.7
     for key, options in _SAMTOOLS_DISPATCH.items():
@@ -80,7 +79,7 @@ if not HAVE_FINAL:
 
     __all__ = list(_SAMTOOLS_DISPATCH)
 else:
-
+    # python >=3.8
     view: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["view"][0], _SAMTOOLS_DISPATCH["view"][1])
 
     head: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["head"][0], _SAMTOOLS_DISPATCH["head"][1])
