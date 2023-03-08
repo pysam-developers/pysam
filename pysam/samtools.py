@@ -1,13 +1,19 @@
+import platform
 from typing import (
-    Final,
     Callable,
     List,
     Tuple,
     Iterable,
     Union,
 )
+try:
+    from typing import Final
+    HAVE_FINAL = True
+except ImportError:
+    HAVE_FINAL = False
 
 from pysam.utils import PysamDispatcher
+
 
 # samtools command line options to export in python
 _SAMTOOLS_DISPATCH = {
@@ -65,112 +71,122 @@ def _wrap_command(
     return PysamDispatcher("samtools", dispatch, parsers)
 
 
-view: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["view"][0], _SAMTOOLS_DISPATCH["view"][1])
+# python 3.8 and beyond
+if not HAVE_FINAL:
+    # python 3.7
+    for key, options in SAMTOOLS_DISPATCH.items():
+        cmd, parser = options
+        globals()[key] = PysamDispatcher("samtools", cmd, parser)
 
-head: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["head"][0], _SAMTOOLS_DISPATCH["head"][1])
+    __all__ = list(SAMTOOLS_DISPATCH)
+else:
 
-sort: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["sort"][0], _SAMTOOLS_DISPATCH["sort"][1])
+    view: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["view"][0], _SAMTOOLS_DISPATCH["view"][1])
 
-mpileup: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["mpileup"][0], _SAMTOOLS_DISPATCH["mpileup"][1])
+    head: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["head"][0], _SAMTOOLS_DISPATCH["head"][1])
 
-consensus: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["consensus"][0],
-    _SAMTOOLS_DISPATCH["consensus"][1],
-)
+    sort: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["sort"][0], _SAMTOOLS_DISPATCH["sort"][1])
 
-depth: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["depth"][0], _SAMTOOLS_DISPATCH["depth"][1])
+    mpileup: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["mpileup"][0], _SAMTOOLS_DISPATCH["mpileup"][1])
 
-faidx: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["faidx"][0], _SAMTOOLS_DISPATCH["faidx"][1])
+    consensus: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["consensus"][0],
+        _SAMTOOLS_DISPATCH["consensus"][1],
+    )
 
-fqidx: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fqidx"][0], _SAMTOOLS_DISPATCH["fqidx"][1])
+    depth: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["depth"][0], _SAMTOOLS_DISPATCH["depth"][1])
 
-tview: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["tview"][0], _SAMTOOLS_DISPATCH["tview"][1])
+    faidx: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["faidx"][0], _SAMTOOLS_DISPATCH["faidx"][1])
 
-index: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["index"][0], _SAMTOOLS_DISPATCH["index"][1])
+    fqidx: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fqidx"][0], _SAMTOOLS_DISPATCH["fqidx"][1])
 
-idxstats: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["idxstats"][0], _SAMTOOLS_DISPATCH["idxstats"][1])
+    tview: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["tview"][0], _SAMTOOLS_DISPATCH["tview"][1])
 
-fixmate: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fixmate"][0], _SAMTOOLS_DISPATCH["fixmate"][1])
+    index: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["index"][0], _SAMTOOLS_DISPATCH["index"][1])
 
-flagstat: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["flagstat"][0], _SAMTOOLS_DISPATCH["flagstat"][1])
+    idxstats: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["idxstats"][0], _SAMTOOLS_DISPATCH["idxstats"][1])
 
-calmd: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["calmd"][0], _SAMTOOLS_DISPATCH["calmd"][1])
+    fixmate: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fixmate"][0], _SAMTOOLS_DISPATCH["fixmate"][1])
 
-merge: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["merge"][0], _SAMTOOLS_DISPATCH["merge"][1])
+    flagstat: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["flagstat"][0], _SAMTOOLS_DISPATCH["flagstat"][1])
 
-markdup: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["markdup"][0], _SAMTOOLS_DISPATCH["markdup"][1])
+    calmd: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["calmd"][0], _SAMTOOLS_DISPATCH["calmd"][1])
 
-rmdup: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["rmdup"][0], _SAMTOOLS_DISPATCH["rmdup"][1])
+    merge: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["merge"][0], _SAMTOOLS_DISPATCH["merge"][1])
 
-reference: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["reference"][0],
-    _SAMTOOLS_DISPATCH["reference"][1],
-)
+    markdup: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["markdup"][0], _SAMTOOLS_DISPATCH["markdup"][1])
 
-reheader: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["reheader"][0], _SAMTOOLS_DISPATCH["reheader"][1])
+    rmdup: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["rmdup"][0], _SAMTOOLS_DISPATCH["rmdup"][1])
 
-cat: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["cat"][0], _SAMTOOLS_DISPATCH["cat"][1])
+    reference: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["reference"][0],
+        _SAMTOOLS_DISPATCH["reference"][1],
+    )
 
-targetcut: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["targetcut"][0],
-    _SAMTOOLS_DISPATCH["targetcut"][1],
-)
+    reheader: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["reheader"][0], _SAMTOOLS_DISPATCH["reheader"][1])
 
-phase: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["phase"][0], _SAMTOOLS_DISPATCH["phase"][1])
+    cat: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["cat"][0], _SAMTOOLS_DISPATCH["cat"][1])
 
-bam2fq: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["bam2fq"][0], _SAMTOOLS_DISPATCH["bam2fq"][1])
+    targetcut: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["targetcut"][0],
+        _SAMTOOLS_DISPATCH["targetcut"][1],
+    )
 
-dict: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["dict"][0], _SAMTOOLS_DISPATCH["dict"][1])
+    phase: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["phase"][0], _SAMTOOLS_DISPATCH["phase"][1])
 
-addreplacerg: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["addreplacerg"][0],
-    _SAMTOOLS_DISPATCH["addreplacerg"][1],
-)
+    bam2fq: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["bam2fq"][0], _SAMTOOLS_DISPATCH["bam2fq"][1])
 
-pad2unpad: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["pad2unpad"][0],
-    _SAMTOOLS_DISPATCH["pad2unpad"][1],
-)
+    dict: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["dict"][0], _SAMTOOLS_DISPATCH["dict"][1])
 
-depad: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["depad"][0], _SAMTOOLS_DISPATCH["depad"][1])
+    addreplacerg: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["addreplacerg"][0],
+        _SAMTOOLS_DISPATCH["addreplacerg"][1],
+    )
 
-bedcov: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["bedcov"][0], _SAMTOOLS_DISPATCH["bedcov"][1])
+    pad2unpad: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["pad2unpad"][0],
+        _SAMTOOLS_DISPATCH["pad2unpad"][1],
+    )
 
-coverage: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["coverage"][0], _SAMTOOLS_DISPATCH["coverage"][1])
+    depad: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["depad"][0], _SAMTOOLS_DISPATCH["depad"][1])
 
-bamshuf: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["bamshuf"][0], _SAMTOOLS_DISPATCH["bamshuf"][1])
+    bedcov: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["bedcov"][0], _SAMTOOLS_DISPATCH["bedcov"][1])
 
-collate: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["collate"][0], _SAMTOOLS_DISPATCH["collate"][1])
+    coverage: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["coverage"][0], _SAMTOOLS_DISPATCH["coverage"][1])
 
-stats: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["stats"][0], _SAMTOOLS_DISPATCH["stats"][1])
+    bamshuf: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["bamshuf"][0], _SAMTOOLS_DISPATCH["bamshuf"][1])
 
-fasta: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fasta"][0], _SAMTOOLS_DISPATCH["fasta"][1])
+    collate: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["collate"][0], _SAMTOOLS_DISPATCH["collate"][1])
 
-fastq: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fastq"][0], _SAMTOOLS_DISPATCH["fastq"][1])
+    stats: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["stats"][0], _SAMTOOLS_DISPATCH["stats"][1])
 
-quickcheck: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["quickcheck"][0],
-    _SAMTOOLS_DISPATCH["quickcheck"][1],
-)
+    fasta: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fasta"][0], _SAMTOOLS_DISPATCH["fasta"][1])
 
-split: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["split"][0], _SAMTOOLS_DISPATCH["split"][1])
+    fastq: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fastq"][0], _SAMTOOLS_DISPATCH["fastq"][1])
 
-flags: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["flags"][0], _SAMTOOLS_DISPATCH["flags"][1])
+    quickcheck: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["quickcheck"][0],
+        _SAMTOOLS_DISPATCH["quickcheck"][1],
+    )
 
-ampliconclip: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["ampliconclip"][0],
-    _SAMTOOLS_DISPATCH["ampliconclip"][1],
-)
+    split: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["split"][0], _SAMTOOLS_DISPATCH["split"][1])
 
-ampliconstats: Final[PysamDispatcher] = _wrap_command(
-    _SAMTOOLS_DISPATCH["ampliconstats"][0],
-    _SAMTOOLS_DISPATCH["ampliconstats"][1],
-)
+    flags: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["flags"][0], _SAMTOOLS_DISPATCH["flags"][1])
 
-version: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["version"][0], _SAMTOOLS_DISPATCH["version"][1])
+    ampliconclip: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["ampliconclip"][0],
+        _SAMTOOLS_DISPATCH["ampliconclip"][1],
+    )
 
-fqimport: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fqimport"][0], _SAMTOOLS_DISPATCH["fqimport"][1])
+    ampliconstats: Final[PysamDispatcher] = _wrap_command(
+        _SAMTOOLS_DISPATCH["ampliconstats"][0],
+        _SAMTOOLS_DISPATCH["ampliconstats"][1],
+    )
 
-import_: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["import_"][0], _SAMTOOLS_DISPATCH["import_"][1])
+    version: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["version"][0], _SAMTOOLS_DISPATCH["version"][1])
 
-samples: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["samples"][0], _SAMTOOLS_DISPATCH["samples"][1])
+    fqimport: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fqimport"][0], _SAMTOOLS_DISPATCH["fqimport"][1])
+
+    import_: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["import_"][0], _SAMTOOLS_DISPATCH["import_"][1])
+
+    samples: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["samples"][0], _SAMTOOLS_DISPATCH["samples"][1])
