@@ -74,11 +74,11 @@ def _wrap_command(
 # python 3.8 and beyond
 if not HAVE_FINAL:
     # python 3.7
-    for key, options in SAMTOOLS_DISPATCH.items():
+    for key, options in _SAMTOOLS_DISPATCH.items():
         cmd, parser = options
         globals()[key] = PysamDispatcher("samtools", cmd, parser)
 
-    __all__ = list(SAMTOOLS_DISPATCH)
+    __all__ = list(_SAMTOOLS_DISPATCH)
 else:
 
     view: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["view"][0], _SAMTOOLS_DISPATCH["view"][1])
