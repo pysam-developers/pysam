@@ -1,6 +1,6 @@
 /*  vcfstats.c -- Produces stats which can be plotted using plot-vcfstats.
 
-    Copyright (C) 2012-2022 Genome Research Ltd.
+    Copyright (C) 2012-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1881,6 +1881,7 @@ int main_vcfstats(int argc, char *argv[])
         if ( args->split_by_id ) error("Only one file can be given with -i.\n");
     }
     if ( !args->samples_list ) args->files->max_unpack = BCF_UN_INFO;
+    else args->files->max_unpack = BCF_UN_FMT;
     if ( args->targets_list )
     {
         bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,targets_overlap);

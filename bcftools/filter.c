@@ -1,6 +1,6 @@
 /*  filter.c -- filter expressions.
 
-    Copyright (C) 2013-2022 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -69,6 +69,7 @@ typedef struct _token_t
     int hdr_id, tag_type;   // BCF header lookup ID and one of BCF_HL_* types
     int idx;            // 0-based index to VCF vectors,
                         //  -2: list (e.g. [0,1,2] or [1..3] or [1..] or any field[*], which is equivalent to [0..])
+                        //  -3: select indices on the fly based on values in GT
     int *idxs;          // set indexes to 0 to exclude, to 1 to include, and last element negative if unlimited; used by VCF retrievers only
     int nidxs, nuidxs;  // size of idxs array and the number of elements set to 1
     uint8_t *usmpl;     // bitmask of used samples as set by idx, set for FORMAT fields, NULL otherwise
@@ -100,9 +101,17 @@ struct _filter_t
     float   *tmpf;
     kstring_t tmps;
     int max_unpack, mtmpi, mtmpf, nsamples;
+    struct {
+        bcf1_t *line;
+        int32_t *buf, nbuf, mbuf;   // GTs as obtained by bcf_get_genotypes()
+        uint64_t *mask;             // GTs as mask, e.g 0/0 is 1; 0/1 is 3, max 63 unique alleles
+    } cached_GT;
 #if ENABLE_PERL_FILTERS
     PerlInterpreter *perl;
 #endif
+    char **undef_tag;
+    int nundef_tag;
+    int status, exit_on_error;
 };
 
 
@@ -298,6 +307,28 @@ static int filters_next_token(char **str, int *len)
     return TOK_VAL;
 }
 
+#define FILTER_OK 0
+#define FILTER_ERR_UNKN_TAGS 1
+#define FILTER_ERR_OTHER 2
+
+static void filter_add_undef_tag(filter_t *filter, char *str)
+{
+    int i;
+    for (i=0; i<filter->nundef_tag; i++)
+        if ( !strcmp(str,filter->undef_tag[i]) ) break;
+    if ( i<filter->nundef_tag ) return;
+    filter->nundef_tag++;
+    filter->undef_tag = (char**)realloc(filter->undef_tag,sizeof(*filter->undef_tag)*filter->nundef_tag);
+    if ( !filter->undef_tag ) error("Could not allocate memory\n");
+    filter->undef_tag[filter->nundef_tag-1] = strdup(str);
+    if ( !filter->undef_tag[filter->nundef_tag-1] ) error("Could not allocate memory\n");
+}
+const char **filter_list_undef_tags(filter_t *filter, int *ntags)
+{
+    *ntags = filter->nundef_tag;
+    return (const char**)filter->undef_tag;
+}
+
 
 /*
     Simple path expansion, expands ~/, ~user, $var. The result must be freed by the caller.
@@ -349,6 +380,44 @@ char *expand_path(char *path)
     }
 
     return strdup(path);
+}
+static int filters_cache_genotypes(filter_t *flt, bcf1_t *line)
+{
+    if ( flt->cached_GT.line==line ) return flt->cached_GT.nbuf > 0 ? 0 : -1;
+    flt->cached_GT.line = line;
+    flt->cached_GT.nbuf = bcf_get_genotypes(flt->hdr, line, &flt->cached_GT.buf, &flt->cached_GT.mbuf);
+    if ( flt->cached_GT.nbuf<=0 ) return -1;
+    if ( !flt->cached_GT.mask )
+    {
+        flt->cached_GT.mask = (uint64_t*) malloc(sizeof(*flt->cached_GT.mask)*flt->nsamples);
+        if ( !flt->cached_GT.mask ) error("Could not alloc %zu bytes\n",sizeof(*flt->cached_GT.mask)*flt->nsamples);
+    }
+    int i,j, ngt1 = flt->cached_GT.nbuf / line->n_sample;
+    for (i=0; i<line->n_sample; i++)
+    {
+        int32_t *ptr = flt->cached_GT.buf + i*ngt1;
+        flt->cached_GT.mask[i] = 0;
+        for (j=0; j<ngt1; j++)
+        {
+            if ( bcf_gt_is_missing(ptr[j]) ) continue;
+            if ( ptr[j]==bcf_int32_vector_end ) break;
+            int allele = bcf_gt_allele(ptr[j]);
+            if ( allele > 63 )
+            {
+                static int warned = 0;
+                if ( !warned )
+                {
+                    fprintf(stderr,"Too many alleles, skipping GT filtering at this site %s:%"PRId64". "
+                                   "(This warning is printed only once.)\n", bcf_seqname(flt->hdr,line),line->pos+1);
+                    warned = 1;
+                }
+                flt->cached_GT.nbuf = 0;
+                return -1;
+            }
+            flt->cached_GT.mask[i] |= 1<<allele;
+        }
+    }
+    return 0;
 }
 
 static void filters_set_qual(filter_t *flt, bcf1_t *line, token_t *tok)
@@ -762,6 +831,27 @@ static void filters_set_format_int(filter_t *flt, bcf1_t *line, token_t *tok)
                 tok->values[i] = ptr[tok->idx];
         }
     }
+    else if ( tok->idx==-3 )
+    {
+        if ( filters_cache_genotypes(flt,line)!=0 )
+        {
+            tok->nvalues = 0;
+            return;
+        }
+        for (i=0; i<tok->nsamples; i++)
+        {
+            if ( !tok->usmpl[i] ) continue;
+            int32_t *src = flt->tmpi + i*nsrc1;
+            double  *dst = tok->values + i*tok->nval1;
+            int k, j = 0;
+            for (k=0; k<nsrc1; k++) // source values are AD[0..nsrc1]
+            {
+                if ( !(flt->cached_GT.mask[i] & (1<<k)) ) continue;
+                dst[j++] = src[k];
+            }
+            for (; j<tok->nval1; j++) bcf_double_set_vector_end(dst[j]);
+        }
+    }
     else
     {
         int kend = tok->idxs[tok->nidxs-1] < 0 ? tok->nval1 : tok->nidxs;
@@ -823,6 +913,33 @@ static void filters_set_format_float(filter_t *flt, bcf1_t *line, token_t *tok)
                 bcf_double_set_vector_end(tok->values[i]);
             else
                 tok->values[i] = ptr[tok->idx];
+        }
+    }
+    else if ( tok->idx==-3 )
+    {
+        if ( filters_cache_genotypes(flt,line)!=0 )
+        {
+            tok->nvalues = 0;
+            return;
+        }
+        for (i=0; i<tok->nsamples; i++)
+        {
+            if ( !tok->usmpl[i] ) continue;
+            float  *src = flt->tmpf + i*nsrc1;
+            double *dst = tok->values + i*tok->nval1;
+            int k, j = 0;
+            for (k=0; k<nsrc1; k++) // source values are AF[0..nsrc1]
+            {
+                if ( !(flt->cached_GT.mask[i] & (1<<k)) ) continue;
+                if ( bcf_float_is_missing(src[k]) )
+                    bcf_double_set_missing(dst[j]);
+                else if ( bcf_float_is_vector_end(src[k]) )
+                    bcf_double_set_vector_end(dst[j]);
+                else
+                    dst[j] = src[k];
+                j++;
+            }
+            for (; j<tok->nval1; j++) bcf_double_set_vector_end(dst[j]);
         }
     }
     else
@@ -989,9 +1106,9 @@ static void _filters_set_genotype(filter_t *flt, bcf1_t *line, token_t *tok, int
     tok->str_value.s[tok->str_value.l] = 0;
     tok->nval1 = nvals1;
 }
-static void filters_set_genotype2(filter_t *flt, bcf1_t *line, token_t *tok) { _filters_set_genotype(flt, line, tok, 2); }
-static void filters_set_genotype3(filter_t *flt, bcf1_t *line, token_t *tok) { _filters_set_genotype(flt, line, tok, 3); }
-static void filters_set_genotype4(filter_t *flt, bcf1_t *line, token_t *tok) { _filters_set_genotype(flt, line, tok, 4); }
+static void filters_set_genotype2(filter_t *flt, bcf1_t *line, token_t *tok) { _filters_set_genotype(flt, line, tok, 2); }  // rr, ra, aa, aA etc
+static void filters_set_genotype3(filter_t *flt, bcf1_t *line, token_t *tok) { _filters_set_genotype(flt, line, tok, 3); }  // hap, hom, het
+static void filters_set_genotype4(filter_t *flt, bcf1_t *line, token_t *tok) { _filters_set_genotype(flt, line, tok, 4); }  // mis, alt, ref
 
 static void filters_set_genotype_string(filter_t *flt, bcf1_t *line, token_t *tok)
 {
@@ -1974,18 +2091,47 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
     { \
         tok_init_values(atok, btok, rtok); \
         tok_init_samples(atok, btok, rtok); \
-        if ( (atok->nsamples && btok->nsamples) || (!atok->nsamples && !btok->nsamples)) \
+        if ( !atok->nsamples && !btok->nsamples ) \
         { \
-            assert( atok->nsamples==btok->nsamples ); \
-            for (i=0; i<atok->nvalues; i++) \
+            if ( atok->nvalues!=btok->nvalues && atok->nvalues!=1 && btok->nvalues!=1 ) \
+                error("Cannot run numeric operator in -i/-e filtering on vectors of different lengths: %d vs %d\n",atok->nvalues,btok->nvalues); \
+            int ir,ia = 0, ib = 0; \
+            for (ir=0; ir<rtok->nvalues; ir++) \
             { \
-                if ( bcf_double_is_missing_or_vector_end(atok->values[i]) || bcf_double_is_missing_or_vector_end(btok->values[i]) ) \
+                if ( atok->nvalues > 1 ) ia = ir; \
+                if ( btok->nvalues > 1 ) ib = ir; \
+                if ( bcf_double_is_missing_or_vector_end(atok->values[ia]) || bcf_double_is_missing_or_vector_end(btok->values[ib]) ) \
                 { \
-                    bcf_double_set_missing(rtok->values[i]); \
+                    bcf_double_set_missing(rtok->values[ir]); \
                     continue; \
                 } \
                 has_values = 1; \
-                rtok->values[i] = TYPE atok->values[i] AOP TYPE btok->values[i]; \
+                rtok->values[ir] = TYPE atok->values[ia] AOP TYPE btok->values[ib]; \
+            } \
+        } \
+        else if ( atok->nsamples && btok->nsamples ) \
+        { \
+            assert( atok->nsamples==btok->nsamples ); \
+            if ( atok->nval1!=btok->nval1 && atok->nval1!=1 && btok->nval1!=1 ) \
+                error("Cannot run numeric operator in -i/-e filtering on vectors of different lengths: %d vs %d\n",atok->nval1,btok->nval1); \
+            for (i=0; i<rtok->nsamples; i++) \
+            { \
+                double *rval = rtok->values + i*rtok->nval1; \
+                double *aval = atok->values + i*atok->nval1; \
+                double *bval = btok->values + i*btok->nval1; \
+                int ir,ia = 0, ib = 0; \
+                for (ir=0; ir<rtok->nval1; ir++) \
+                { \
+                    if ( atok->nval1 > 1 ) ia = ir; \
+                    if ( btok->nval1 > 1 ) ib = ir; \
+                    if ( bcf_double_is_missing_or_vector_end(aval[ia]) || bcf_double_is_missing_or_vector_end(bval[ib]) ) \
+                    { \
+                        bcf_double_set_missing(rval[ir]); \
+                        continue; \
+                    } \
+                    has_values = 1; \
+                    rval[ir] = TYPE aval[ia] AOP TYPE bval[ib]; \
+                } \
             } \
         } \
         else if ( atok->nsamples ) \
@@ -2451,6 +2597,14 @@ static int parse_idxs(char *tag_idx, int **idxs, int *nidxs, int *idx)
         *idx       = -2;
         return 0;
     }
+    if ( !strcmp("GT", tag_idx) )
+    {
+        *idxs = (int*) malloc(sizeof(int));
+        (*idxs)[0] = -1;
+        *nidxs     = 1;
+        *idx = -3;
+        return 0;
+    }
 
     // TAG[integer] .. one field; idx positive
     char *end, *beg = tag_idx;
@@ -2566,7 +2720,7 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
                 tok->idxs = (int*) malloc(sizeof(int));
                 tok->idxs[0] = -1;
                 tok->nidxs   = 1;
-                tok->idx     = -2;
+                tok->idx     = idx1;
             }
             else if ( bcf_hdr_id2number(hdr,BCF_HL_FMT,tok->hdr_id)!=1 )
                 error("The FORMAT tag %s can have multiple subfields, run as %s[sample:subfield]\n", tag,tag);
@@ -2591,7 +2745,7 @@ static void parse_tag_idx(bcf_hdr_t *hdr, int is_fmt, char *tag, char *tag_idx, 
             if ( idx1 >= bcf_hdr_nsamples(hdr) ) error("The sample index is too large: %s\n", ori);
             tok->usmpl[idx1] = 1;
         }
-        else if ( idx1==-2 )
+        else if ( idx1==-2 || idx1==-3 )
         {
             for (i=0; i<nidxs1; i++)
             {
@@ -2791,7 +2945,11 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         if ( is_fmt==-1 ) is_fmt = 0;
     }
     if ( is_array )
+    {
         parse_tag_idx(filter->hdr, is_fmt, tmp.s, tmp.s+is_array, tok);
+        if ( tok->idx==-3 && bcf_hdr_id2length(filter->hdr,BCF_HL_FMT,tok->hdr_id)!=BCF_VL_R )
+            error("Error: GT subscripts can be used only with Number=R tags\n");
+    }
     else if ( is_fmt && !tok->nsamples )
     {
         int i;
@@ -2930,14 +3088,19 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
     {
         errno = 0;
         tok->threshold = strtod(tmp.s, &end);   // float?
-        if ( errno!=0 || end!=tmp.s+len ) error("[%s:%d %s] Error: the tag \"%s\" is not defined in the VCF header\n", __FILE__,__LINE__,__FUNCTION__,tmp.s);
+        if ( errno!=0 || end!=tmp.s+len )
+        {
+            if ( filter->exit_on_error )
+                error("[%s:%d %s] Error: the tag \"%s\" is not defined in the VCF header\n", __FILE__,__LINE__,__FUNCTION__,tmp.s);
+            filter->status |= FILTER_ERR_UNKN_TAGS;
+            filter_add_undef_tag(filter,tmp.s);
+        }
     }
     tok->is_constant = 1;
 
     if ( tmp.s ) free(tmp.s);
     return 0;
 }
-
 
 static void filter_debug_print(token_t *toks, token_t **tok_ptrs, int ntoks)
 {
@@ -3088,12 +3251,13 @@ static void perl_destroy(filter_t *filter)
 
 
 // Parse filter expression and convert to reverse polish notation. Dijkstra's shunting-yard algorithm
-filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
+static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error)
 {
     filter_t *filter = (filter_t *) calloc(1,sizeof(filter_t));
     filter->str = strdup(str);
     filter->hdr = hdr;
     filter->max_unpack |= BCF_UN_STR;
+    filter->exit_on_error = exit_on_error;
 
     int nops = 0, mops = 0;    // operators stack
     int nout = 0, mout = 0;    // filter tokens, RPN
@@ -3475,6 +3639,14 @@ filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
     filter->flt_stack = (token_t **)malloc(sizeof(token_t*)*nout);
     return filter;
 }
+filter_t *filter_parse(bcf_hdr_t *hdr, const char *str)
+{
+    return filter_init_(hdr, str, 0);
+}
+filter_t *filter_init(bcf_hdr_t *hdr, const char *str)
+{
+    return filter_init_(hdr, str, 1);
+}
 
 void filter_destroy(filter_t *filter)
 {
@@ -3496,6 +3668,10 @@ void filter_destroy(filter_t *filter)
             free(filter->filters[i].regex);
         }
     }
+    for (i=0; i<filter->nundef_tag; i++) free(filter->undef_tag[i]);
+    free(filter->undef_tag);
+    free(filter->cached_GT.buf);
+    free(filter->cached_GT.mask);
     free(filter->filters);
     free(filter->flt_stack);
     free(filter->str);
@@ -3507,6 +3683,7 @@ void filter_destroy(filter_t *filter)
 
 int filter_test(filter_t *filter, bcf1_t *line, const uint8_t **samples)
 {
+    if ( filter->status != FILTER_OK ) error("Error: the caller did not check the filter status\n");
     bcf_unpack(line, filter->max_unpack);
 
     int i, nstack = 0;
@@ -3667,5 +3844,10 @@ void filter_set_samples(filter_t *filter, const uint8_t *samples)
         if ( !filter->filters[i].nsamples ) continue;
         for (j=0; j<filter->filters[i].nsamples; j++) filter->filters[i].usmpl[j] = samples[j];
     }
+}
+
+int filter_status(filter_t *filter)
+{
+    return filter->status;
 }
 

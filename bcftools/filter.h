@@ -1,6 +1,6 @@
 /*  filter.h -- filter expressions.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -32,6 +32,8 @@ typedef struct _filter_t filter_t;
 /**
   *  @hdr:  BCF header file
   *  @str:  see the bcftools filter command help for description
+  *
+  *  Same as filter_parse() but exits on errors
   */
 filter_t *filter_init(bcf_hdr_t *hdr, const char *str);
 
@@ -60,5 +62,22 @@ const double *filter_get_doubles(filter_t *filter, int *nval, int *nval1);
 
 void filter_expression_info(FILE *fp);
 int filter_max_unpack(filter_t *filter);
+
+/**
+  *  Same as filter_init() but may not exit on some type of errors. The caller
+  *  must check if the returned value is not NULL and if the consequent call
+  *  of filter_status() returns FILTER_OK before the filter_pass() can be called.
+  */
+filter_t *filter_parse(bcf_hdr_t *hdr, const char *str);
+
+#define FILTER_OK 0
+#define FILTER_ERR_UNKN_TAGS 1
+#define FILTER_ERR_OTHER 2
+
+/**
+  *  Check if filter_parse() was successful
+  */
+int filter_status(filter_t *filter);
+const char **filter_list_undef_tags(filter_t *filter, int *nundef);
 
 #endif

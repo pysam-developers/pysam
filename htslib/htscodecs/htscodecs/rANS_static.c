@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2020 Genome Research Ltd.
+ * Copyright (c) 2014-2022 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -92,7 +92,10 @@ unsigned char *rans_compress_O0(unsigned char *in, unsigned int in_size,
     ptr = out_end = out_buf + (uint32_t)(1.05*in_size) + 257*257*3 + 9;
 
     // Compute statistics
-    hist8(in, in_size, (uint32_t *)F);
+    if (hist8(in, in_size, (uint32_t *)F) < 0) {
+        free(out_buf);
+        return NULL;
+    }
     tr = ((uint64_t)TOTFREQ<<31)/in_size + (1<<30)/in_size;
 
  normalise_harder:
@@ -404,7 +407,11 @@ unsigned char *rans_compress_O1(unsigned char *in, unsigned int in_size,
     out_end = out_buf + (uint32_t)(1.05*in_size) + 257*257*3 + 9;
     cp = out_buf+9;
 
-    hist1_4(in, in_size, (uint32_t (*)[256])F, (uint32_t *)T);
+    if (hist1_4(in, in_size, (uint32_t (*)[256])F, (uint32_t *)T) < 0) {
+        free(out_buf);
+        out_buf = NULL;
+        goto cleanup;
+    }
 
     F[0][in[1*(in_size>>2)]]++;
     F[0][in[2*(in_size>>2)]]++;

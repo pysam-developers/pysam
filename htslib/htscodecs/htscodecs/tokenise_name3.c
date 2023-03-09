@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2021 Genome Research Ltd.
+ * Copyright (c) 2016-2022 Genome Research Ltd.
  * Author(s): James Bonfield
  * 
  * Redistribution and use in source and binary forms, with or without 
@@ -1241,60 +1241,155 @@ static int64_t rans_decode(uint8_t *in, uint64_t in_len, uint8_t *out, uint64_t 
     return clen+nb;
 }
 
-static int compress(uint8_t *in, uint64_t in_len, int level, int use_arith,
+static int compress(uint8_t *in, uint64_t in_len, enum name_type type,
+                    int level, int use_arith,
                     uint8_t *out, uint64_t *out_len) {
     uint64_t best_sz = UINT64_MAX;
-    int best = 0;
     uint64_t olen = *out_len;
+    int ret = -1;
 
-    //fprintf(stderr, "=== try %d ===\n", (int)in_len);
-
-    int m, rmethods[5][12] = {
-        {2,   0,      128},                                   // 1
-        {2,   0,                         192+8},              // 3
-        {3,   0,  128,                   193+8},              // 5
-        {6,   0,1,    129,   65,    193, 193+8},              // 7
-        {9,   0,1,128,129,64,65,192,193, 193+8},              // 9
-    };
-
-    // 1-9 to 0-4
+    // Map levels 1-9 to 0-4, for parameter lookup in R[] below
     level = (level-1)/2;
     if (level<0) level=0;
     if (level>4) level=4;
 
-    for (m = 1; m <= rmethods[level][0]; m++) {
+    // rANS4x16pr and arith_dynamic parameters to explore.
+    // We brute force these, so fast levels test 1 setting and slow test more
+    int R[5][N_ALL][7] = {
+        {   // -1
+            /* TYPE     */ {1, 128},
+            /* ALPHA    */ {1, 129},
+            /* CHAR     */ {1, 0},
+            /* DIGITS0  */ {1, 8},
+            /* DZLEN    */ {1, 0},
+            /* DUP      */ {1, 8},
+            /* DIFF     */ {1, 8},
+            /* DIGITS   */ {1, 8},
+            /* DDELTA   */ {1, 0},
+            /* DDELTA0  */ {1, 128},
+            /* MATCH    */ {1, 0},
+            /* NOP      */ {1, 0},
+            /* END      */ {1, 0}
+        },
+
+        {   // -3
+            /* TYPE     */ {2, 192,0},
+            /* ALPHA    */ {2, 129,1},
+            /* CHAR     */ {1, 0},
+            /* DIGITS0  */ {2, 128+8,0}, // size%4==0
+            /* DZLEN    */ {1, 0},
+            /* DUP      */ {1, 192+8},   // size%4==0
+            /* DIFF     */ {1, 128+8},   // size%4==0
+            /* DIGITS   */ {1, 192+8},   // size%4==0
+            /* DDELTA   */ {1, 0},
+            /* DDELTA0  */ {1, 128},
+            /* MATCH    */ {1, 0},
+            /* NOP      */ {1, 0},
+            /* END      */ {1, 0}
+        },
+
+        {   // -5
+            /* TYPE     */ {2, 192,0},
+            /* ALPHA    */ {4, 1,128,0,129},
+            /* CHAR     */ {1, 0},
+            /* DIGITS0  */ {2, 200,0},
+            /* DZLEN    */ {1, 0},
+            /* DUP      */ {1, 200},
+            /* DIFF     */ {2, 192,200},
+            /* DIGITS   */ {2, 132,201},
+            /* DDELTA   */ {1, 0},
+            /* DDELTA0  */ {1, 128},
+            /* MATCH    */ {1, 0},
+            /* NOP      */ {1, 0},
+            /* END      */ {1, 0}
+        },
+
+        {   // -7
+            /* TYPE     */ {3, 193,0,1},
+            /* ALPHA    */ {5, 128, 1,128,0,129},
+            /* CHAR     */ {2, 1,0},
+            /* DIGITS0  */ {2, 200,0},    // or 201,0
+            /* DZLEN    */ {1, 0},
+            /* DUP      */ {1, 201},
+            /* DIFF     */ {2, 192,200},  // or 192,201
+            /* DIGITS   */ {2, 132, 201}, // +bz2 here and -9
+            /* DDELTA   */ {1, 0},
+            /* DDELTA0  */ {1, 128},
+            /* MATCH    */ {1, 0},
+            /* NOP      */ {1, 0},
+            /* END      */ {1, 0}
+        },
+
+        {   // -9
+            /* TYPE     */ {6, 192,0,1,  65,  193,132},
+            /* ALPHA    */ {4, 132, 1, 0,129},
+            /* CHAR     */ {3, 1,0,192},
+            /* DIGITS0  */ {4, 201,0, 192,64},
+            /* DZLEN    */ {3, 0,128,1},
+            /* DUP      */ {1, 201},
+            /* DIFF     */ {3, 192,  201,65},
+            /* DIGITS   */ {6, 132, 201,1,  192,129,  193},
+            /* DDELTA   */ {3, 1,0,  192},
+            /* DDELTA0  */ {3, 192,1,  0},
+            /* MATCH    */ {1, 0},
+            /* NOP      */ {1, 0},
+            /* END      */ {1, 0}
+        },
+    };
+    // Minor tweak to level 3 DIGITS if arithmetic, to use O(201) instead.
+    if (use_arith) R[1][N_DIGITS][1]=201;
+
+    int *meth = R[level][type];
+
+    int last = 0, m;
+    uint8_t best_static[8192];
+    uint8_t *best_dat = best_static;
+    for (m = 1; m <= meth[0]; m++) {
         *out_len = olen;
 
-        if (in_len % 4 != 0 && (rmethods[level][m] & 8))
+        if (!use_arith && (meth[m] & 4))
+            meth[m] &= ~4;
+
+        if (in_len % 4 != 0 && (meth[m] & 8))
             continue;
 
+        last = 0;
         if (use_arith) {
-            if (arith_encode(in, in_len, out, out_len, rmethods[level][m]) < 0)
-                return -1;
+            if (arith_encode(in, in_len, out, out_len, meth[m]) <0)
+                goto err;
         } else {
-            if (rans_encode(in, in_len, out, out_len, rmethods[level][m]) < 0)
-                return -1;
+            if (rans_encode(in, in_len, out, out_len, meth[m]) < 0)
+                goto err;
         }
 
         if (best_sz > *out_len) {
             best_sz = *out_len;
-            best = rmethods[level][m];
+            last = 1;
+
+            if (m+1 > meth[0])
+                // no need to memcpy if we're not going to overwrite out
+                break;
+
+            if (best_sz > 8192 && best_dat == best_static) {
+                // No need to realloc as best_sz only ever decreases
+                best_dat = malloc(best_sz);
+                if (!best_dat)
+                    return -1;
+            }
+            memcpy(best_dat, out, best_sz);
         }
     }
 
-    *out_len = olen;
-    if (use_arith) {
-        if (arith_encode(in, in_len, out, out_len, best) < 0)
-            return -1;
-    } else {
-        if (rans_encode(in, in_len, out, out_len, best) < 0)
-            return -1;
-    }
+    if (!last)
+        memcpy(out, best_dat, best_sz);
+    *out_len = best_sz;
+    ret = 0;
 
-//    uint64_t tmp;
-//    fprintf(stderr, "%d -> %d via method %x, %x\n", (int)in_len, (int)best_sz, best, out[i7get(out,&tmp)]);
+ err:
+    if (best_dat != best_static)
+        free(best_dat);
 
-    return 0;
+    return ret;
 }
 
 static uint64_t uncompressed_size(uint8_t *in, uint64_t in_len) {
@@ -1433,11 +1528,8 @@ uint8_t *tok3_encode_names(char *blk, int len, int level, int use_arith,
 
     // Serialise descriptors
     uint32_t tot_size = 9;
-    int ndesc = 0;
     for (i = 0; i < ctx->max_tok*16; i++) {
         if (!ctx->desc[i].buf_l) continue;
-
-        ndesc++;
 
         int tnum = i>>4;
         int ttype = i&15;
@@ -1449,8 +1541,8 @@ uint8_t *tok3_encode_names(char *blk, int len, int level, int use_arith,
             return NULL;
         }
 
-        if (compress(ctx->desc[i].buf, ctx->desc[i].buf_l, level, use_arith,
-                     out, &out_len) < 0) {
+        if (compress(ctx->desc[i].buf, ctx->desc[i].buf_l, i&0xf, level,
+                     use_arith, out, &out_len) < 0) {
             free_context(ctx);
             return NULL;
         }

@@ -58,11 +58,21 @@ DEALINGS IN THE SOFTWARE.  */
 #define B2B_INFO_SCR    (1<<12)
 #define B2B_FMT_SCR     (1<<13)
 #define B2B_INFO_VDB    (1<<14)
-#define B2B_INFO_RPB    (1<<15)
-#define B2B_FMT_QS      (1<<16)
-#define B2B_INFO_SCB    (1<<17)
-#define B2B_FMT_NMBZ    (1<<18) // per-sample NMBZ
-#define B2B_INFO_ZSCORE (1<<30) // MWU as-is or Z-normalised
+#define B2B_FMT_QS      (1<<15)
+#define B2B_FMT_NMBZ    (1<<16) // per-sample NMBZ
+#define B2B_INFO_NMBZ   (1<<17)
+#define B2B_INFO_BQBZ   (1<<18)
+#define B2B_INFO_MQBZ   (1<<19)
+#define B2B_INFO_MQSBZ  (1<<20)
+#define B2B_INFO_RPBZ   (1<<21)
+#define B2B_INFO_SCBZ   (1<<22)
+#define B2B_INFO_SGB    (1<<23)
+#define B2B_INFO_MIN_PL_SUM (1<<24)
+#define B2B_INFO_NM     (1<<25)
+#define B2B_INFO_MQ0F   (1<<26)
+#define B2B_INFO_IDV    (1<<27)
+#define B2B_INFO_IMF    (1<<28)
+#define B2B_INFO_FS     (1<<29)
 
 #define B2B_MAX_ALLELES 5
 #define B2B_N_NM 32             // number of NMBZ bins, i.e. max number of mismatches
@@ -72,13 +82,30 @@ DEALINGS IN THE SOFTWARE.  */
 #define B2B_INC_AD    1
 #define B2B_INC_AD0   2
 
-#define PLP_HAS_SOFT_CLIP(i) ((i)&1)
-#define PLP_HAS_INDEL(i)     ((i)&2)
-#define PLP_SAMPLE_ID(i)     ((i)>>2)
 
-#define PLP_SET_SOFT_CLIP(i)     ((i)|=1)
-#define PLP_SET_INDEL(i)         ((i)|=2)
-#define PLP_SET_SAMPLE_ID(i,n)   ((i)|=(n)<<2)
+// Pileup "client data" for each read to cache per-read information
+#define PLP_CD(x) ((plp_cd_t*)((x)->p))
+#define PLP_HAS_SOFT_CLIP(cd) (PLP_CD(cd)->i & 1)
+#define PLP_HAS_INDEL(cd)     (PLP_CD(cd)->i & 2)
+#define PLP_IS_REALN(cd)      (PLP_CD(cd)->i & 4)
+#define PLP_SAMPLE_ID(cd)     (PLP_CD(cd)->i >> 3)
+#define PLP_QLEN(cd)          (PLP_CD(cd)->qlen)
+#define PLP_NM(cd)            (PLP_CD(cd)->nm)
+#define PLP_NM_UNSET          -2
+
+#define PLP_SET_SOFT_CLIP(cd)     (PLP_CD(cd)->i |= 1)
+#define PLP_SET_INDEL(cd)         (PLP_CD(cd)->i |= 2)
+#define PLP_SET_REALN(cd)         (PLP_CD(cd)->i |= 4)
+#define PLP_SET_SAMPLE_ID(cd,n)   (PLP_CD(cd)->i |= (n)<<3)
+
+typedef struct
+{
+    int64_t i;      // used to store sample id and flags for presence of soft-clip and indel
+    uint32_t qlen;  // cached output of bam_cigar2qlen(), 0 if unset
+    int nm;         // -2 PLP_NM_UNSET; -1 not available; >=0 NM value computed by get_aux_nm()
+}
+plp_cd_t;
+
 
 typedef struct __bcf_callaux_t {
     int fmt_flag, ambig_reads;
@@ -95,7 +122,7 @@ typedef struct __bcf_callaux_t {
     // for internal uses
     int max_bases;
     int indel_types[4];     // indel lengths
-    int indel_win_size;
+    int indel_win_size, indels_v20;
     int maxins, indelreg;
     int read_len;
     char *inscns;
@@ -104,6 +131,10 @@ typedef struct __bcf_callaux_t {
     void *rghash;
     float indel_bias;  // adjusts indel score threshold; lower => call more.
     int32_t *ref_nm, *alt_nm;   // pointers to bcf_call_t.{ref_nm,alt_nm}
+    unsigned int nnm[2];        // number of nm observations
+    float nm[2];                // cumulative count of mismatches in ref and alt reads
+    void *iaux;                 // auxiliary structure for --indels-2.0 calling
+    char *chr;                  // current chromosome
 } bcf_callaux_t;
 
 // per-sample values
@@ -134,21 +165,20 @@ typedef struct {
     bcf_hdr_t *bcf_hdr;
     int a[5]; // alleles: ref, alt, alt2, alt3
     float qsum[B2B_MAX_ALLELES];  // INFO/QS tag
-    int n, n_alleles, shift, ori_ref, unseen;
+    int n, n_alleles, ori_ref, unseen;
+    int32_t shift;  // shift is the sum of min_PL before normalization to 0 across all samples
     int n_supp; // number of supporting non-reference reads
     double anno[16];
     unsigned int depth, ori_depth, mq0;
     int32_t *PL, *DP4, *ADR, *ADF, *SCR, *QS, *ref_nm, *alt_nm;
     uint8_t *fmt_arr;
     float vdb; // variant distance bias
-    float mwu_pos, mwu_mq, mwu_bq, mwu_mqs, mwu_sc, *mwu_nm;
-#if CDF_MWU_TESTS
-    float mwu_pos_cdf, mwu_mq_cdf, mwu_bq_cdf, mwu_mqs_cdf;
-#endif
+    float mwu_pos, mwu_mq, mwu_bq, mwu_mqs, mwu_sc, *mwu_nm, nm[2];
     float seg_bias;
     float strand_bias; // phred-scaled fisher-exact test
     kstring_t tmp;
 } bcf_call_t;
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -162,7 +192,11 @@ extern "C" {
     int bcf_call2bcf(bcf_call_t *bc, bcf1_t *b, bcf_callret1_t *bcr, int fmt_flag,
                      const bcf_callaux_t *bca, const char *ref);
     int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_callaux_t *bca, const char *ref);
+    int bcf_iaux_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_callaux_t *bca, const char *ref);
     void bcf_callaux_clean(bcf_callaux_t *bca, bcf_call_t *call);
+
+    int bcf_cgp_l_run(const char *ref, int pos);
+    int est_indelreg(int pos, const char *ref, int l, char *ins4);
 
 #ifdef __cplusplus
 }

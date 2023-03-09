@@ -497,7 +497,7 @@ static int info_rules_add_values(args_t *args, bcf_hdr_t *hdr, bcf1_t *line, inf
     else if ( var_len==BCF_VL_G )
     {
         args->maux->nagr_map = bcf_alleles2gt(line->n_allele-1,line->n_allele-1)+1;
-        assert( ret==line->n_allele || ret==args->maux->nagr_map );
+        if ( ret!=line->n_allele && ret!=args->maux->nagr_map ) error("Wrong number of %s fields at %s:%"PRId64"\n",rule->hdr_tag,bcf_seqname(hdr,line),(int64_t) line->pos+1);
         if ( ret==line->n_allele ) // haploid
         {
             args->maux->nagr_map = line->n_allele;
@@ -976,7 +976,7 @@ void merge_chrom2qual(args_t *args, bcf1_t *out)
     int k = 0;
     for (i=0; i<ma->nals; i++)
         if ( i==0 || al_idxs[i] ) ma->out_als[k++] = strdup(ma->als[i]);
-    assert( k==ma->nout_als );
+    if ( k!=ma->nout_als ) error("Error: could not merge alleles at %s:%"PRId64", sanity check failed: %d!=%d\n",bcf_seqname(out_hdr,out),out->pos+1,k,ma->nout_als);
     normalize_alleles(ma->out_als, ma->nout_als);
     bcf_update_alleles(out_hdr, out, (const char**) ma->out_als, ma->nout_als);
     free(al_idxs);

@@ -1018,8 +1018,8 @@ int main_vcfconcat(int argc, char *argv[])
                 if ( args->regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case 'v':
-                      args->verbose = strtol(optarg, 0, 0);
-                      error("Error: currently only --verbose 0 or --verbose 1 is supported\n");
+                      args->verbose = strtol(optarg, &tmp, 0);
+                      if ( *tmp || args->verbose<0 || args->verbose>1 ) error("Error: currently only --verbose 0 or --verbose 1 is supported\n");
                       break;
             case 'h':
             case '?': usage(args); break;

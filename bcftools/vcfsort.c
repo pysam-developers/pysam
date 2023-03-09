@@ -1,19 +1,19 @@
 /*  vcfsort.c -- sort subcommand
 
-   Copyright (C) 2017-2021 Genome Research Ltd.
+   Copyright (C) 2017-2022 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
-   
+
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
    in the Software without restriction, including without limitation the rights
    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
    copies of the Software, and to permit persons to whom the Software is
    furnished to do so, subject to the following conditions:
-   
+
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
-   
+
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -77,7 +77,7 @@ void clean_files(args_t *args)
             unlink(blk->fname);
             free(blk->fname);
         }
-        if ( blk->rec ) 
+        if ( blk->rec )
             bcf_destroy(blk->rec);
     }
     rmdir(args->tmp_dir);
@@ -107,7 +107,7 @@ int cmp_bcf_pos(const void *aptr, const void *bptr)
 
     int i;
     for (i=0; i<a->n_allele; i++)
-    { 
+    {
         if ( i >= b->n_allele ) return 1;
         int ret = strcasecmp(a->d.allele[i],b->d.allele[i]);
         if ( ret ) return ret;
@@ -124,6 +124,7 @@ void buf_flush(args_t *args)
 
     args->nblk++;
     args->blk = (blk_t*) realloc(args->blk, sizeof(blk_t)*args->nblk);
+    if ( !args->blk ) error("Error: could not allocate %zu bytes of memory, try reducing --max-mem\n",sizeof(blk_t)*args->nblk);
     blk_t *blk = args->blk + args->nblk - 1;
 
     kstring_t str = {0,0,0};
@@ -135,7 +136,7 @@ void buf_flush(args_t *args)
     htsFile *fh = hts_open(blk->fname, "wbu");
     if ( fh == NULL ) clean_files_and_throw(args, "Cannot write %s: %s\n", blk->fname, strerror(errno));
     if ( bcf_hdr_write(fh, args->hdr)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,blk->fname);
-    
+
     int i;
     for (i=0; i<args->nbuf; i++)
     {
@@ -226,7 +227,7 @@ void buf_push(args_t *args, bcf1_t *rec)
     bcf_destroy(rec);
 }
 
-void sort_blocks(args_t *args) 
+void sort_blocks(args_t *args)
 {
     htsFile *in = hts_open(args->fname, "r");
     if ( !in ) clean_files_and_throw(args, "Could not read %s\n", args->fname);
@@ -278,7 +279,7 @@ void blk_read(args_t *args, khp_blk_t *bhp, bcf_hdr_t *hdr, blk_t *blk)
     khp_insert(blk, bhp, &blk);
 }
 
-void merge_blocks(args_t *args) 
+void merge_blocks(args_t *args)
 {
     fprintf(stderr,"Merging %d temporary files\n", (int)args->nblk);
     khp_blk_t *bhp = khp_init(blk);
@@ -336,7 +337,7 @@ static void usage(args_t *args)
     exit(1);
 }
 
-size_t parse_mem_string(const char *str) 
+size_t parse_mem_string(const char *str)
 {
     char *tmp;
     double mem = strtod(str, &tmp);
@@ -352,6 +353,7 @@ static void init(args_t *args)
 {
     args->max_mem *= 0.9;
     args->mem_block = malloc(args->max_mem);
+    if ( !args->mem_block ) error("Error: could not allocate %zu bytes of memory, try reducing --max-mem\n",args->max_mem);
     args->mem = 0;
 
     args->tmp_dir = init_tmp_prefix(args->tmp_dir);

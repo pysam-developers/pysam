@@ -1,6 +1,6 @@
 /*  vcfnorm.c -- Left-align and normalize indels.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -102,7 +102,7 @@ typedef struct
     int record_cmd_line, force, force_warned, keep_sum_ad;
     abuf_t *abuf;
     abuf_opt_t atomize;
-    int use_star_allele;
+    int use_star_allele, ma_use_ref_allele;
     char *old_rec_tag;
     htsFile *out;
 }
@@ -711,11 +711,14 @@ static void split_format_genotype(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int
         for (j=0; j<ngts; j++)
         {
             if ( gt[j]==bcf_int32_vector_end ) break;
-            if ( bcf_gt_is_missing(gt[j]) || bcf_gt_allele(gt[j])==0 ) continue; // missing allele or ref: leave as is
+            if ( bcf_gt_is_missing(gt[j]) ) continue; // missing allele: leave as is
+            if ( (ialt==0 || args->ma_use_ref_allele) && bcf_gt_allele(gt[j])==0 ) continue; // ref && `--multi-overlaps 0`: leave as is
             if ( bcf_gt_allele(gt[j])==ialt+1 )
                 gt[j] = bcf_gt_unphased(1) | bcf_gt_is_phased(gt[j]); // set to first ALT
-            else
+            else if ( args->ma_use_ref_allele )
                 gt[j] = bcf_gt_unphased(0) | bcf_gt_is_phased(gt[j]); // set to REF
+            else
+                gt[j] = bcf_gt_missing | bcf_gt_is_phased(gt[j]);     // set to missing
         }
         gt += ngts;
     }
@@ -723,7 +726,7 @@ static void split_format_genotype(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int
 }
 static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int ialt, bcf1_t *dst)
 {
-    #define BRANCH_NUMERIC(type,type_t,is_vector_end,is_missing,set_vector_end) \
+    #define BRANCH_NUMERIC(type,type_t,is_vector_end,is_missing,set_vector_end,set_missing) \
     { \
         const char *tag = bcf_hdr_int2id(args->hdr,BCF_DT_ID,fmt->id); \
         int ntmp = args->ntmp_arr1 / sizeof(type_t); \
@@ -762,7 +765,10 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
             type_t *src_vals = vals, *dst_vals = vals; \
             for (i=0; i<nsmpl; i++) \
             { \
-                dst_vals[0] = src_vals[ialt]; \
+                int idst = 0; \
+                int isrc = ialt; \
+                if ( is_missing || is_vector_end ) set_missing; \
+                else dst_vals[idst] = src_vals[isrc]; \
                 dst_vals += 1; \
                 src_vals += nvals; \
             } \
@@ -796,8 +802,14 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
                 { \
                     dst_vals[0] = src_vals[0]; \
                     for (j=1; j<nvals; j++) \
+                    { \
+                        int isrc = j; \
                         if ( j!=ialt+1 && !(is_missing) && !(is_vector_end) ) dst_vals[0] += src_vals[j]; \
-                    dst_vals[1] = src_vals[ialt+1]; \
+                    } \
+                    int isrc = ialt + 1; \
+                    int idst = 1; \
+                    if ( is_vector_end ) set_missing; \
+                    else dst_vals[idst] = src_vals[isrc]; \
                     dst_vals += 2; \
                     src_vals += nvals; \
                 } \
@@ -807,7 +819,10 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
                 for (i=0; i<nsmpl; i++) \
                 { \
                     dst_vals[0] = src_vals[0]; \
-                    dst_vals[1] = src_vals[ialt+1]; \
+                    int isrc = ialt + 1; \
+                    int idst = 1; \
+                    if ( is_vector_end ) set_missing; \
+                    else dst_vals[idst] = src_vals[isrc]; \
                     dst_vals += 2; \
                     src_vals += nvals; \
                 } \
@@ -842,14 +857,18 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
                 if ( !haploid ) \
                 { \
                     int j; \
-                    for (j=0; j<nvals; j++) if ( is_vector_end ) break; \
+                    for (j=0; j<nvals; j++) \
+                    { \
+                        int isrc = j; \
+                        if ( is_vector_end ) break; \
+                    } \
                     if ( j!=nvals ) haploid = 1; \
                 } \
                 dst_vals[0] = src_vals[0]; \
                 if ( haploid ) \
                 { \
                     dst_vals[1] = src_vals[ialt+1]; \
-                    if ( !all_haploid ) set_vector_end; \
+                    if ( !all_haploid ) { int idst = 2; set_vector_end; } \
                 } \
                 else \
                 { \
@@ -866,8 +885,8 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
     }
     switch (bcf_hdr_id2type(args->hdr,BCF_HL_FMT,fmt->id))
     {
-        case BCF_HT_INT:  BRANCH_NUMERIC(int32, int32_t, src_vals[j]==bcf_int32_vector_end, src_vals[j]==bcf_int32_missing, dst_vals[2]=bcf_int32_vector_end); break;
-        case BCF_HT_REAL: BRANCH_NUMERIC(float, float, bcf_float_is_vector_end(src_vals[j]), bcf_float_is_missing(src_vals[j]), bcf_float_set_vector_end(dst_vals[2])); break;
+        case BCF_HT_INT:  BRANCH_NUMERIC(int32, int32_t, src_vals[isrc]==bcf_int32_vector_end, src_vals[isrc]==bcf_int32_missing, dst_vals[idst]=bcf_int32_vector_end, dst_vals[idst]=bcf_int32_missing); break;
+        case BCF_HT_REAL: BRANCH_NUMERIC(float, float, bcf_float_is_vector_end(src_vals[isrc]), bcf_float_is_missing(src_vals[isrc]), bcf_float_set_vector_end(dst_vals[idst]), bcf_float_set_missing(src_vals[idst])); break;
     }
     #undef BRANCH_NUMERIC
 }
@@ -2087,6 +2106,7 @@ static void usage(void)
     fprintf(stderr, "        --force                     Try to proceed even if malformed tags are encountered. Experimental, use at your own risk\n");
     fprintf(stderr, "        --keep-sum TAG,..           Keep vector sum constant when splitting multiallelics (see github issue #360)\n");
     fprintf(stderr, "    -m, --multiallelics -|+TYPE     Split multiallelics (-) or join biallelics (+), type: snps|indels|both|any [both]\n");
+    fprintf(stderr, "        --multi-overlaps 0|.        Fill in the reference (0) or missing (.) allele when splitting multiallelics [0]\n");
     fprintf(stderr, "        --no-version                Do not append version and command line to the header\n");
     fprintf(stderr, "    -N, --do-not-normalize          Do not normalize indels (with -m or -c s)\n");
     fprintf(stderr, "        --old-rec-tag STR           Annotate modified records with INFO/STR indicating the original variant\n");
@@ -2126,6 +2146,7 @@ int main_vcfnorm(int argc, char *argv[])
     args->buf_win = 1000;
     args->mrows_collapse = COLLAPSE_BOTH;
     args->do_indels = 1;
+    args->ma_use_ref_allele = 1;
     args->clevel = -1;
     int region_is_file  = 0;
     int targets_is_file = 0;
@@ -2144,6 +2165,7 @@ int main_vcfnorm(int argc, char *argv[])
         {"fasta-ref",required_argument,NULL,'f'},
         {"do-not-normalize",no_argument,NULL,'N'},
         {"multiallelics",required_argument,NULL,'m'},
+        {"multi-overlaps",required_argument,NULL,13},
         {"regions",required_argument,NULL,'r'},
         {"regions-file",required_argument,NULL,'R'},
         {"regions-overlap",required_argument,NULL,1},
@@ -2177,6 +2199,11 @@ int main_vcfnorm(int argc, char *argv[])
                 else error("Invalid argument to --atom-overlaps. Perhaps you wanted: \"--atom-overlaps '*'\"?\n");
                 break;
             case 12 : args->old_rec_tag = optarg; break;
+            case 13 :
+                if ( optarg[0]=='0' ) args->ma_use_ref_allele = 1;
+                else if ( optarg[0]=='.' ) args->ma_use_ref_allele = 0;
+                else error("Invalid argument to --multi-overlaps\n");
+                break;
             case 'N': args->do_indels = 0; break;
             case 'd':
                 if ( !strcmp("snps",optarg) ) args->rmdup = BCF_SR_PAIR_SNPS;

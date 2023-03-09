@@ -1,6 +1,6 @@
 /*  vcfview.c -- VCF/BCF conversion, view, subset and filter VCF/BCF files.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2022 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -512,7 +512,9 @@ static void usage(args_t *args)
     fprintf(stderr, "Subset options:\n");
     fprintf(stderr, "    -a, --trim-alt-alleles            Trim ALT alleles not seen in the genotype fields (or their subset with -s/-S)\n");
     fprintf(stderr, "    -I, --no-update                   Do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
-    fprintf(stderr, "    -s, --samples [^]LIST             Comma separated list of samples to include (or exclude with \"^\" prefix)\n");
+    fprintf(stderr, "    -s, --samples [^]LIST             Comma separated list of samples to include (or exclude with \"^\" prefix). Be careful\n");
+    fprintf(stderr, "                                        when combining filtering with sample subsetting as filtering comes (usually) first.\n");
+    fprintf(stderr, "                                        If unsure, split sample subsetting and filtering in two commands, using -Ou when piping.\n");
     fprintf(stderr, "    -S, --samples-file [^]FILE        File of samples to include (or exclude with \"^\" prefix)\n");
     fprintf(stderr, "        --force-samples               Only warn about unknown subset samples\n");
     fprintf(stderr, "\n");
@@ -623,7 +625,7 @@ int main_vcfview(int argc, char *argv[])
             case 'l':
                 args->clevel = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --compression-level %s\n", optarg);
-                args->output_type |= FT_GZ; 
+                args->output_type |= FT_GZ;
                 break;
             case 'o': args->fn_out = optarg; break;
             case 'H': args->print_header = 0; break;
@@ -649,7 +651,7 @@ int main_vcfview(int argc, char *argv[])
                 args->min_alleles = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --min-alleles %s\n", optarg);
                 break;
-            case 'M': 
+            case 'M':
                 args->max_alleles = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --max-alleles %s\n", optarg);
                 break;

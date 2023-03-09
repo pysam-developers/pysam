@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2021-2022 Genome Research Ltd.
+   Copyright (c) 2021-2023 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -154,8 +154,19 @@ static void _atomize_allele(abuf_t *buf, bcf1_t *rec, int ial)
                 assert(atom);
                 if ( altb!='-' ) kputc(altb, &atom->alt);
                 if ( refb!='-' ) { kputc(refb, &atom->ref); atom->end++; }
+                continue;
             }
-            else
+            buf->natoms++;
+            hts_expand0(atom_t,buf->natoms,buf->matoms,buf->atoms);
+            atom = &buf->atoms[buf->natoms-1];
+            atom->ref.l = 0;
+            atom->alt.l = 0;
+            kputc(refb, &atom->ref);
+            kputc(altb, &atom->alt);
+            atom->beg = atom->end = i;
+            atom->ial = ial;
+
+            if ( rlen!=alen && (i+1>=rlen || i+1>=alen) )   // the next base is an indel combined with SNV, e.g. C>GGG?
             {
                 buf->natoms++;
                 hts_expand0(atom_t,buf->natoms,buf->matoms,buf->atoms);
@@ -163,13 +174,13 @@ static void _atomize_allele(abuf_t *buf, bcf1_t *rec, int ial)
                 atom->ref.l = 0;
                 atom->alt.l = 0;
                 kputc(refb, &atom->ref);
-                kputc(altb, &atom->alt);
+                kputc(refb, &atom->alt);
                 atom->beg = atom->end = i;
                 atom->ial = ial;
             }
             continue;
         }
-        if ( i+1>=rlen || i+1>=alen )   // is the next base a deletion?
+        if ( i+1>=rlen || i+1>=alen )   // is the next base an indel?
         {
             buf->natoms++;
             hts_expand0(atom_t,buf->natoms,buf->matoms,buf->atoms);
@@ -742,6 +753,8 @@ void _abuf_split(abuf_t *buf, bcf1_t *rec)
             _split_table_overlap(buf, j, atom);
         }
     }
+    // _split_table_print(buf);
+    // _split_table_print_atoms(buf);
     assert( !buf->rbuf.n ); // all records should be flushed first in the SPLIT mode
 
     // Create the output records, transferring all annotations:

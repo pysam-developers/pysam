@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Genome Research Ltd.
+ * Copyright (c) 2021-2023 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,7 +43,7 @@
  * Note currently this needs manually editing as it isn't automatically
  * updated by autoconf.
  */
-#define HTSCODECS_VERSION 100300
+#define HTSCODECS_VERSION 100400
 
 /*
  * A const string form of the HTSCODECS_VERSION define.

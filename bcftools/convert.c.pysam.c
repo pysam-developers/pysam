@@ -2,7 +2,7 @@
 
 /*  convert.c -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2022 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1119,14 +1119,21 @@ static void process_rsid_hex(convert_t *convert, bcf1_t *line, fmt_t *fmt, int i
 
 static void process_variantkey_hex(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
+    const char *alt = NULL;
+    size_t sizealt = 0;
+    if ( line->n_allele>1 )
+    {
+        alt = line->d.allele[1];
+        sizealt = strlen(line->d.allele[1]);
+    }
     uint64_t vk = variantkey(
         convert->header->id[BCF_DT_CTG][line->rid].key,
         strlen(convert->header->id[BCF_DT_CTG][line->rid].key),
         line->pos,
         line->d.allele[0],
         strlen(line->d.allele[0]),
-        line->d.allele[1],
-        strlen(line->d.allele[1]));
+        alt,
+        sizealt);
     ksprintf(str, "%016" PRIx64 "", vk);
 }
 
@@ -1563,7 +1570,7 @@ int convert_header(convert_t *convert, kstring_t *str)
     if ( i!=convert->nfmt )
         return str->l - l_ori;
 
-    kputs("# ", str);
+    kputc('#', str);
     for (i=0; i<convert->nfmt; i++)
     {
         // Genotype fields
