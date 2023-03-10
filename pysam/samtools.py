@@ -37,6 +37,7 @@ _SAMTOOLS_DISPATCH = {
     "rmdup": ("rmdup", ()),
     "reference": ("reference", ()),
     "reheader": ("reheader", ()),
+    "reset": ("reset", ()),
     "cat": ("cat", ()),
     "targetcut": ("targetcut", ()),
     "phase": ("phase", ()),
@@ -52,6 +53,7 @@ _SAMTOOLS_DISPATCH = {
     "stats": ("stats", ()),
     "fasta": ("fasta", ()),
     "fastq": ("fastq", ()),
+    "cram_size": ("cram-size", ()),
     "quickcheck": ("quickcheck", ()),
     "split": ("split", ()),
     "flags": ("flags", ()),
@@ -124,6 +126,8 @@ else:
 
     reheader: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["reheader"][0], _SAMTOOLS_DISPATCH["reheader"][1])
 
+    reset: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["reset"][0], _SAMTOOLS_DISPATCH["reset"][1])
+
     cat: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["cat"][0], _SAMTOOLS_DISPATCH["cat"][1])
 
     targetcut: Final[PysamDispatcher] = _wrap_command(
@@ -162,6 +166,8 @@ else:
     fasta: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fasta"][0], _SAMTOOLS_DISPATCH["fasta"][1])
 
     fastq: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["fastq"][0], _SAMTOOLS_DISPATCH["fastq"][1])
+
+    cram_size: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["cram_size"][0], _SAMTOOLS_DISPATCH["cram_size"][1])
 
     quickcheck: Final[PysamDispatcher] = _wrap_command(
         _SAMTOOLS_DISPATCH["quickcheck"][0],
