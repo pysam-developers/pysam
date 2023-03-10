@@ -1,11 +1,17 @@
 [project]
 name = "pysam"
 description = "pysam - a python module for reading, manipulating and writing genomic data sets."
+license = { text = "MIT License" }
 version = "0.20.0"
 authors = [
  { name = "Andreas Heger", email = "andreas.heger@gmail.com"}
 ]
 requires-python = ">=3.8"
+
+dynamic = [
+    "classifiers",
+    "readme",
+]
 
 dependencies = [
     "cython",

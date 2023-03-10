@@ -264,7 +264,7 @@ class TestAlignedSegment(ReadTest):
         a.template_length = 167
         a.query_qualities = pysam.qualitystring_to_array("1234") * 200
 
-        return a
+        self.assertTrue(a)
 
     def testUpdateTlen(self):
         """check if updating tlen works"""
