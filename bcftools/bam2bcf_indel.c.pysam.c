@@ -86,7 +86,7 @@ static inline int est_seqQ(const bcf_callaux_t *bca, int l, int l_run)
     return q < qh? q : qh;
 }
 
-static inline int est_indelreg(int pos, const char *ref, int l, char *ins4)
+inline int est_indelreg(int pos, const char *ref, int l, char *ins4)
 {
     int i, j, max = 0, max_i = pos, score = 0;
     l = abs(l);
@@ -410,7 +410,7 @@ static char **bcf_cgp_ref_sample(int n, int *n_plp, bam_pileup1_t **plp,
 }
 
 // The length of the homopolymer run around the current position
-static int bcf_cgp_l_run(const char *ref, int pos) {
+int bcf_cgp_l_run(const char *ref, int pos) {
     int i, l_run;
 
     int c = seq_nt16_table[(int)ref[pos + 1]];
@@ -924,7 +924,7 @@ int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos,
                 fprintf(bcftools_stderr, "pos=%d type=%d read=%d:%d name=%s "
                         "qbeg=%d tbeg=%d score=%d\n",
                         pos, types[t], s, i, bam_get_qname(p->b),
-                        qbeg, tbeg, sc);
+                        qbeg, tbeg, score[K*n_types + t]);
 #endif
             }
         }

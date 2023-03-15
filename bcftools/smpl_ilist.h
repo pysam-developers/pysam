@@ -1,4 +1,4 @@
-/* 
+/*
     Copyright (C) 2016-2021 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
@@ -9,10 +9,10 @@
     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
     copies of the Software, and to permit persons to whom the Software is
     furnished to do so, subject to the following conditions:
-    
+
     The above copyright notice and this permission notice shall be included in
     all copies or substantial portions of the Software.
-    
+
     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -35,7 +35,7 @@
 #define SMPL_SINGLE   2   // single sample expected
 #define SMPL_PAIR1    4   // two samples expected, the first is from the bcf hdr
 #define SMPL_PAIR2    8   // two samples expected, the second is from the bcf hdr
-#define SMPL_VERBOSE 16   // print warnings 
+#define SMPL_VERBOSE 16   // print warnings
 #define SMPL_REORDER 32   // reorder samples as asked, sample_list[i] points to the VCF header index
 
 typedef struct
@@ -46,6 +46,7 @@ typedef struct
 }
 smpl_ilist_t;
 
+// Pass NULL for sample_list to get all samples
 smpl_ilist_t *smpl_ilist_init(bcf_hdr_t *hdr, char *sample_list, int is_file, int flags);
 smpl_ilist_t *smpl_ilist_map(bcf_hdr_t *hdr_a, bcf_hdr_t *hdr_b, int flags);
 void smpl_ilist_destroy(smpl_ilist_t *smpl);

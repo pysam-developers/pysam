@@ -2,7 +2,7 @@
 
 /* The MIT License
 
-   Copyright (c) 2014-2022 Genome Research Ltd.
+   Copyright (c) 2014-2023 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -44,6 +44,7 @@
 #include "bcftools.h"
 #include "rbuf.h"
 #include "filter.h"
+#include "smpl_ilist.h"
 
 // Logic of the filters: include or exclude sites which match the filters?
 #define FLT_INCLUDE 1
@@ -117,11 +118,12 @@ typedef struct
     FILE *fp_out;
     FILE *fp_chain;
     char **argv;
-    int argc, output_iupac, haplotype, allele, isample, napplied;
-    uint8_t *iupac_bitmask;
-    int miupac_bitmask;
-    char *fname, *ref_fname, *sample, *output_fname, *mask_fname, *chain_fname, missing_allele, absent_allele;
+    int argc, output_iupac, iupac_GTs, haplotype, allele, isample, napplied;
+    uint8_t *iupac_bitmask, *iupac_als;
+    int miupac_bitmask, miupac_als;
+    char *fname, *ref_fname, *sample, *sample_fname, *output_fname, *mask_fname, *chain_fname, missing_allele, absent_allele;
     char mark_del, mark_ins, mark_snv;
+    smpl_ilist_t *smpl;
 }
 args_t;
 
@@ -228,15 +230,27 @@ static void init_data(args_t *args)
     if ( !bcf_sr_add_reader(args->files,args->fname) ) error("Failed to read from %s: %s\n", !strcmp("-",args->fname)?"standard input":args->fname, bcf_sr_strerror(args->files->errnum));
     args->hdr = args->files->readers[0].header;
     args->isample = -1;
-    if ( args->sample )
+    if ( !args->sample )
+        args->smpl = smpl_ilist_init(args->hdr,NULL,0,SMPL_NONE|SMPL_VERBOSE);
+    else if ( args->sample && strcmp("-",args->sample) )
     {
-        args->isample = bcf_hdr_id2int(args->hdr,BCF_DT_SAMPLE,args->sample);
-        if ( args->isample<0 ) error("No such sample: %s\n", args->sample);
+        args->smpl = smpl_ilist_init(args->hdr,args->sample,0,SMPL_NONE|SMPL_VERBOSE);
+        if ( args->smpl && !args->smpl->n ) error("No matching sample found\n");
     }
-    if ( (args->haplotype || args->allele) && args->isample<0 )
+    else if ( args->sample_fname )
     {
-        if ( bcf_hdr_nsamples(args->hdr) > 1 ) error("The --sample option is expected with --haplotype\n");
-        args->isample = 0;
+        args->smpl = smpl_ilist_init(args->hdr,args->sample_fname,1,SMPL_NONE|SMPL_VERBOSE);
+        if ( args->smpl && !args->smpl->n ) error("No matching sample found\n");
+    }
+    if ( args->smpl )
+    {
+        if ( args->haplotype || args->allele )
+        {
+            if ( args->smpl->n > 1 ) error("Too many samples, only one can be used with -H\n");
+            args->isample = args->smpl->idx[0];
+        }
+        else
+            args->iupac_GTs = 1;
     }
     int i;
     for (i=0; i<args->nmask; i++)
@@ -260,7 +274,7 @@ static void init_data(args_t *args)
         if ( ! args->fp_out ) error("Failed to create %s: %s\n", args->output_fname, strerror(errno));
     }
     else args->fp_out = bcftools_stdout;
-    if ( args->isample<0 ) fprintf(bcftools_stderr,"Note: the --sample option not given, applying all records regardless of the genotype\n");
+    if ( args->isample<0 && !args->iupac_GTs ) fprintf(bcftools_stderr,"Note: the --samples option not given, applying all records regardless of the genotype\n");
     if ( args->filter_str )
         args->filter = filter_init(args->hdr, args->filter_str);
     args->rid = -1;
@@ -284,8 +298,10 @@ static void add_mask_with(args_t *args, char *with)
 }
 static void destroy_data(args_t *args)
 {
+    free(args->iupac_als);
     free(args->iupac_bitmask);
     if (args->filter) filter_destroy(args->filter);
+    if ( args->smpl ) smpl_ilist_destroy(args->smpl);
     bcf_sr_destroy(args->files);
     int i;
     for (i=0; i<args->vcf_rbuf.m; i++)
@@ -472,6 +488,59 @@ static void mark_snv(char *ref, char *alt, char mark)
             if ( tolower(ref[i])!=tolower(alt[i]) ) alt[i] = toupper(alt[i]);
     }
 }
+static void iupac_init(args_t *args, bcf1_t *rec)
+{
+    int i;
+    hts_resize(uint8_t, rec->n_allele, &args->miupac_als, &args->iupac_als, 0);
+    for (i=0; i<args->miupac_als; i++) args->iupac_als[i] = 0;
+}
+static int iupac_add_gt(args_t *args, bcf1_t *rec, uint8_t *gt, int ngt)
+{
+    int i, is_set = 0;
+    for (i=0; i<ngt; i++)
+    {
+        if ( bcf_gt_is_missing(gt[i]) ) continue;
+        if ( gt[i]==(uint8_t)bcf_int8_vector_end ) break;
+        int ial = bcf_gt_allele(gt[i]);
+        if ( ial >= rec->n_allele ) error("Invalid VCF, too few ALT alleles at %s:%"PRId64"\n", bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
+        args->iupac_als[ial] = 1;
+        is_set = 1;
+    }
+    return is_set;
+}
+static int iupac_set_allele(args_t *args, bcf1_t *rec)
+{
+    int i,j, max_len = 0, alt_len = 0, ialt = -1, fallback_alt = -1;
+    for (i=0; i<rec->n_allele; i++)
+    {
+        if ( !args->iupac_als[i] ) continue;
+        if ( fallback_alt <=0 ) fallback_alt = i;
+        int l = strlen(rec->d.allele[i]);
+        for (j=0; j<l; j++)
+            if ( iupac2bitmask(rec->d.allele[i][j]) < 0 ) break;
+        if ( j<l ) continue; // symbolic allele, breakpoint or invalid character in the allele
+        if ( l>max_len )
+        {
+            hts_resize(uint8_t, l, &args->miupac_bitmask, &args->iupac_bitmask, HTS_RESIZE_CLEAR);
+            for (j=max_len; j<l; j++) args->iupac_bitmask[j] = 0;
+            max_len = l;
+        }
+        if ( i>0 && l>alt_len )
+        {
+            alt_len = l;
+            ialt = i;
+        }
+        for (j=0; j<l; j++)
+            args->iupac_bitmask[j] |= iupac2bitmask(rec->d.allele[i][j]);
+    }
+    if ( alt_len > 0 )
+    {
+        for (j=0; j<alt_len; j++) rec->d.allele[ialt][j] = bitmask2iupac(args->iupac_bitmask[j]);
+        return ialt;
+    }
+    if ( fallback_alt >= 0 ) return fallback_alt;
+    return ialt;
+}
 static void apply_variant(args_t *args, bcf1_t *rec)
 {
     static int warned_haplotype = 0;
@@ -493,7 +562,25 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     }
 
     int ialt = 1;    // the alternate allele
-    if ( args->isample >= 0 )
+    if ( args->iupac_GTs )
+    {
+        bcf_unpack(rec, BCF_UN_FMT);
+        bcf_fmt_t *fmt = bcf_get_fmt(args->hdr, rec, "GT");
+        if ( !fmt ) return;
+        if ( fmt->type!=BCF_BT_INT8 )
+            error("Todo: GT field represented with BCF_BT_INT8, too many alleles at %s:%"PRId64"?\n",bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
+        ialt = -1;
+        int is_set = 0;
+        iupac_init(args,rec);
+        for (i=0; i<args->smpl->n; i++)
+        {
+            uint8_t *ptr = fmt->p + fmt->size*args->smpl->idx[i];
+            is_set += iupac_add_gt(args, rec, ptr, fmt->n);
+        }
+        if ( !is_set && !args->missing_allele ) return;
+        if ( is_set ) ialt = iupac_set_allele(args, rec);
+    }
+    else if ( args->isample >= 0 )
     {
         bcf_unpack(rec, BCF_UN_FMT);
         bcf_fmt_t *fmt = bcf_get_fmt(args->hdr, rec, "GT");
@@ -546,39 +633,10 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         else if ( action==use_iupac )
         {
             ialt = -1;
-            int is_missing = 0, alen = 0, mlen = 0, fallback_alt = -1;
-            for (i=0; i<fmt->n; i++)
-            {
-                if ( bcf_gt_is_missing(ptr[i]) ) { is_missing = 1; continue; }
-                if ( ptr[i]==(uint8_t)bcf_int8_vector_end ) break;
-                int jalt = bcf_gt_allele(ptr[i]);
-                if ( jalt >= rec->n_allele ) error("Invalid VCF, too few ALT alleles at %s:%"PRId64"\n", bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
-                if ( fallback_alt <= 0 ) fallback_alt = jalt;
-
-                int l = strlen(rec->d.allele[jalt]);
-                for (j=0; j<l; j++)
-                    if ( iupac2bitmask(rec->d.allele[jalt][j]) < 0 ) break;
-                if ( j<l ) continue; // symbolic allele, breakpoint or invalid character in the allele
-
-                if ( l > mlen )
-                {
-                    hts_expand(uint8_t,l,args->miupac_bitmask,args->iupac_bitmask);
-                    for (j=mlen; j<l; j++) args->iupac_bitmask[j] = 0;
-                    mlen = l;
-                }
-                if ( jalt>0 && l>alen )
-                {
-                    alen = l;
-                    ialt = jalt;
-                }
-                for (j=0; j<l; j++)
-                    args->iupac_bitmask[j] |= iupac2bitmask(rec->d.allele[jalt][j]);
-            }
-            if ( alen > 0 )
-                for (j=0; j<alen; j++) rec->d.allele[ialt][j] = bitmask2iupac(args->iupac_bitmask[j]);
-            else if ( fallback_alt >= 0 )
-                ialt = fallback_alt;
-            else if ( is_missing && !args->missing_allele ) return;
+            iupac_init(args,rec);
+            int is_set = iupac_add_gt(args, rec, ptr, fmt->n);
+            if ( !is_set && !args->missing_allele ) return;
+            if ( is_set ) ialt = iupac_set_allele(args, rec);
         }
         else
         {
@@ -1032,16 +1090,16 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "About: Create consensus sequence by applying VCF variants to a reference fasta\n");
     fprintf(bcftools_stderr, "       file. By default, the program will apply all ALT variants. Using the\n");
-    fprintf(bcftools_stderr, "       --sample (and, optionally, --haplotype) option will apply genotype\n");
+    fprintf(bcftools_stderr, "       --samples (and, optionally, --haplotype) option will apply genotype\n");
     fprintf(bcftools_stderr, "       (or haplotype) calls from FORMAT/GT. The program ignores allelic depth\n");
     fprintf(bcftools_stderr, "       information, such as INFO/AD or FORMAT/AD.\n");
     fprintf(bcftools_stderr, "Usage: bcftools consensus [OPTIONS] <file.vcf.gz>\n");
     fprintf(bcftools_stderr, "Options:\n");
-    fprintf(bcftools_stderr, "    -c, --chain FILE               write a chain file for liftover\n");
-    fprintf(bcftools_stderr, "    -a, --absent CHAR              replace positions absent from VCF with CHAR\n");
-    fprintf(bcftools_stderr, "    -e, --exclude EXPR             exclude sites for which the expression is true (see man page for details)\n");
-    fprintf(bcftools_stderr, "    -f, --fasta-ref FILE           reference sequence in fasta format\n");
-    fprintf(bcftools_stderr, "    -H, --haplotype WHICH          choose which allele to use from the FORMAT/GT field, note\n");
+    fprintf(bcftools_stderr, "    -c, --chain FILE               Write a chain file for liftover\n");
+    fprintf(bcftools_stderr, "    -a, --absent CHAR              Replace positions absent from VCF with CHAR\n");
+    fprintf(bcftools_stderr, "    -e, --exclude EXPR             Exclude sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -f, --fasta-ref FILE           Reference sequence in fasta format\n");
+    fprintf(bcftools_stderr, "    -H, --haplotype WHICH          Choose which allele to use from the FORMAT/GT field, note\n");
     fprintf(bcftools_stderr, "                                   the codes are case-insensitive:\n");
     fprintf(bcftools_stderr, "                                       1: first allele from GT, regardless of phasing\n");
     fprintf(bcftools_stderr, "                                       2: second allele from GT, regardless of phasing\n");
@@ -1051,17 +1109,18 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "                                       LR,LA: longer allele and REF/ALT if equal length\n");
     fprintf(bcftools_stderr, "                                       SR,SA: shorter allele and REF/ALT if equal length\n");
     fprintf(bcftools_stderr, "                                       1pIu,2pIu: first/second allele for phased and IUPAC code for unphased GTs\n");
-    fprintf(bcftools_stderr, "    -i, --include EXPR             select sites for which the expression is true (see man page for details)\n");
-    fprintf(bcftools_stderr, "    -I, --iupac-codes              output variants in the form of IUPAC ambiguity codes\n");
-    fprintf(bcftools_stderr, "        --mark-del CHAR            instead of removing sequence, insert CHAR for deletions\n");
-    fprintf(bcftools_stderr, "        --mark-ins uc|lc           highlight insertions in uppercase (uc) or lowercase (lc), leaving the rest as is\n");
-    fprintf(bcftools_stderr, "        --mark-snv uc|lc           highlight substitutions in uppercase (uc) or lowercase (lc), leaving the rest as is\n");
-    fprintf(bcftools_stderr, "    -m, --mask FILE                replace regions according to the next --mask-with option. The default is --mask-with N\n");
-    fprintf(bcftools_stderr, "        --mask-with CHAR|uc|lc     replace with CHAR (skips overlapping variants); change to uppercase (uc) or lowercase (lc)\n");
-    fprintf(bcftools_stderr, "    -M, --missing CHAR             output CHAR instead of skipping a missing genotype \"./.\"\n");
-    fprintf(bcftools_stderr, "    -o, --output FILE              write output to a file [standard output]\n");
-    fprintf(bcftools_stderr, "    -p, --prefix STRING            prefix to add to output sequence names\n");
-    fprintf(bcftools_stderr, "    -s, --sample NAME              apply variants of the given sample\n");
+    fprintf(bcftools_stderr, "    -i, --include EXPR             Select sites for which the expression is true (see man page for details)\n");
+    fprintf(bcftools_stderr, "    -I, --iupac-codes              Output IUPAC codes based on FORMAT/GT, use -s/-S to subset samples\n");
+    fprintf(bcftools_stderr, "        --mark-del CHAR            Instead of removing sequence, insert CHAR for deletions\n");
+    fprintf(bcftools_stderr, "        --mark-ins uc|lc           Highlight insertions in uppercase (uc) or lowercase (lc), leaving the rest as is\n");
+    fprintf(bcftools_stderr, "        --mark-snv uc|lc           Highlight substitutions in uppercase (uc) or lowercase (lc), leaving the rest as is\n");
+    fprintf(bcftools_stderr, "    -m, --mask FILE                Replace regions according to the next --mask-with option. The default is --mask-with N\n");
+    fprintf(bcftools_stderr, "        --mask-with CHAR|uc|lc     Replace with CHAR (skips overlapping variants); change to uppercase (uc) or lowercase (lc)\n");
+    fprintf(bcftools_stderr, "    -M, --missing CHAR             Output CHAR instead of skipping a missing genotype \"./.\"\n");
+    fprintf(bcftools_stderr, "    -o, --output FILE              Write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "    -p, --prefix STRING            Prefix to add to output sequence names\n");
+    fprintf(bcftools_stderr, "    -s, --samples LIST             Comma-separated list of samples to include, \"-\" to ignore samples and use REF,ALT\n");
+    fprintf(bcftools_stderr, "    -S, --samples-file FILE        File of samples to include\n");
     fprintf(bcftools_stderr, "Examples:\n");
     fprintf(bcftools_stderr, "   # Get the consensus for one region. The fasta header lines are then expected\n");
     fprintf(bcftools_stderr, "   # in the form \">chr:from-to\".\n");
@@ -1086,6 +1145,8 @@ int main_consensus(int argc, char *argv[])
         {"exclude",required_argument,NULL,'e'},
         {"include",required_argument,NULL,'i'},
         {"sample",1,0,'s'},
+        {"samples",1,0,'s'},
+        {"samples-file",1,0,'S'},
         {"iupac-codes",0,0,'I'},
         {"haplotype",1,0,'H'},
         {"output",1,0,'o'},
@@ -1098,7 +1159,7 @@ int main_consensus(int argc, char *argv[])
         {0,0,0,0}
     };
     int c;
-    while ((c = getopt_long(argc, argv, "h?s:1Ii:e:H:f:o:m:c:M:p:a:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h?s:S:1Ii:e:H:f:o:m:c:M:p:a:",loptions,NULL)) >= 0)
     {
         switch (c)
         {
@@ -1115,6 +1176,7 @@ int main_consensus(int argc, char *argv[])
                 break;
             case 'p': args->chr_prefix = optarg; break;
             case 's': args->sample = optarg; break;
+            case 'S': args->sample_fname = optarg; break;
             case 'o': args->output_fname = optarg; break;
             case 'I': args->output_iupac = 1; break;
             case 'e':

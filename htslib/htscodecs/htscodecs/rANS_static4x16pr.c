@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Genome Research Ltd.
+ * Copyright (c) 2017-2023 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -136,7 +136,8 @@ unsigned char *rans_compress_O0_4x16(unsigned char *in, unsigned int in_size,
         goto empty;
 
     // Compute statistics
-    hist8(in, in_size, F);
+    if (hist8(in, in_size, F) < 0)
+        return NULL;
 
     // Normalise so frequences sum to power of 2
     uint32_t fsum = in_size;
@@ -569,7 +570,7 @@ unsigned char *rans_uncompress_O1_4x16(unsigned char *in, unsigned int in_size,
         uint32_t u_freq_sz, c_freq_sz;
         cp += var_get_u32(cp, cp_end, &u_freq_sz);
         cp += var_get_u32(cp, cp_end, &c_freq_sz);
-        if (c_freq_sz >= cp_end - cp - 16)
+        if (c_freq_sz > cp_end - cp)
             goto err;
         tab_end = cp + c_freq_sz;
         if (!(c_freq = rans_uncompress_O0_4x16(cp, c_freq_sz, NULL, u_freq_sz)))
@@ -1006,6 +1007,35 @@ unsigned char *(*rans_dec_func(int do_simd, int order))
 }
 
 #elif defined(__ARM_NEON)
+
+#if defined(__linux__) || defined(__FreeBSD__)
+#include <sys/auxv.h>
+#elif defined(_WIN32)
+#include <processthreadsapi.h>
+#endif
+
+static inline int have_neon() {
+#if defined(__linux__) && defined(__arm__)
+    return (getauxval(AT_HWCAP) & HWCAP_NEON) != 0;
+#elif defined(__linux__) && defined(__aarch64__)
+    return (getauxval(AT_HWCAP) & HWCAP_ASIMD) != 0;
+#elif defined(__APPLE__)
+    return 1;
+#elif defined(__FreeBSD__) && defined(__arm__)
+    u_long cap;
+    if (elf_aux_info(AT_HWCAP, &cap, sizeof cap) != 0) return 0;
+    return (cap & HWCAP_NEON) != 0;
+#elif defined(__FreeBSD__) && defined(__aarch64__)
+    u_long cap;
+    if (elf_aux_info(AT_HWCAP, &cap, sizeof cap) != 0) return 0;
+    return (cap & HWCAP_ASIMD) != 0;
+#elif defined(_WIN32)
+    return IsProcessorFeaturePresent(PF_ARM_V8_INSTRUCTIONS_AVAILABLE) != 0;
+#else
+    return 0;
+#endif
+}
+
 static inline
 unsigned char *(*rans_enc_func(int do_simd, int order))
     (unsigned char *in,
@@ -1014,7 +1044,7 @@ unsigned char *(*rans_enc_func(int do_simd, int order))
      unsigned int *out_size) {
 
     if (do_simd) {
-        if (rans_cpu & RANS_CPU_ENC_NEON)
+        if ((rans_cpu & RANS_CPU_ENC_NEON) && have_neon())
             return order & 1
                 ? rans_compress_O1_32x16_neon
                 : rans_compress_O0_32x16_neon;
@@ -1037,7 +1067,7 @@ unsigned char *(*rans_dec_func(int do_simd, int order))
      unsigned int out_size) {
 
     if (do_simd) {
-        if (rans_cpu & RANS_CPU_DEC_NEON)
+        if ((rans_cpu & RANS_CPU_DEC_NEON) && have_neon())
             return order & 1
                 ? rans_uncompress_O1_32x16_neon
                 : rans_uncompress_O0_32x16_neon;
@@ -1264,7 +1294,7 @@ unsigned char *rans_compress_to_4x16(unsigned char *in, unsigned int in_size,
         int pmeta_len;
         uint64_t packed_len;
         packed = hts_pack(in, in_size, out+c_meta_len, &pmeta_len, &packed_len);
-        if (!packed || (pmeta_len == 1 && out[c_meta_len] > 16)) {
+        if (!packed) {
             out[0] &= ~RANS_ORDER_PACK;
             do_pack = 0;
             free(packed);

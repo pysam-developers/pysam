@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Genome Research Ltd.
+ * Copyright (c) 2019-2020, 2022 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,9 +57,6 @@ uint8_t *hts_pack(uint8_t *data, int64_t len,
                   uint8_t *out_meta, int *out_meta_len, uint64_t *out_len) {
     int p[256] = {0}, n;
     uint64_t i, j;
-    uint8_t *out = malloc(len+1);
-    if (!out)
-        return NULL;
 
     // count syms
     for (i = 0; i < len; i++)
@@ -75,13 +72,12 @@ uint8_t *hts_pack(uint8_t *data, int64_t len,
     j = n+1;
 
     // 1 value per byte
-    if (n > 16) {
-        *out_meta_len = 1;
-        // FIXME shortcut this by returning data and checking later.
-        memcpy(out, data, len);
-        *out_len = len;
-        return out;
-    }
+    if (n > 16)
+        return NULL;
+
+    uint8_t *out = malloc(len+1);
+    if (!out)
+        return NULL;
 
     // Work out how many values per byte to encode.
     int val_per_byte;

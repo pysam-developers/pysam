@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Genome Research Ltd.
+ * Copyright (c) 2017-2023 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -85,7 +85,8 @@ unsigned char *rans_compress_O0_32x16_avx512(unsigned char *in,
         goto empty;
 
     // Compute statistics
-    hist8(in, in_size, F);
+    if (hist8(in, in_size, F) < 0)
+        return NULL;
 
     // Normalise so frequences sum to power of 2
     uint32_t fsum = in_size;
@@ -689,7 +690,7 @@ unsigned char *rans_uncompress_O1_32x16_avx512(unsigned char *in,
         uint32_t u_freq_sz, c_freq_sz;
         cp += var_get_u32(cp, cp_end, &u_freq_sz);
         cp += var_get_u32(cp, cp_end, &c_freq_sz);
-        if (c_freq_sz >= cp_end - cp - 16)
+        if (c_freq_sz > cp_end - cp)
             goto err;
         tab_end = cp + c_freq_sz;
         if (!(c_freq = rans_uncompress_O0_4x16(cp, c_freq_sz, NULL,
@@ -735,7 +736,7 @@ unsigned char *rans_uncompress_O1_32x16_avx512(unsigned char *in,
     union {
         unsigned char tbuf[32][32];
         uint64_t tbuf64[32][4];
-    } u;
+    } u __attribute__((aligned(32)));
 #else
     uint32_t tbuf[32][32];
 #endif

@@ -35,6 +35,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <inttypes.h>
 
 #include "utils.h"
@@ -118,7 +119,12 @@ static void htscodecs_tls_init(void) {
 void *htscodecs_tls_alloc(size_t size) {
     int i;
 
-    pthread_once(&rans_once, htscodecs_tls_init);
+    int err = pthread_once(&rans_once, htscodecs_tls_init);
+    if (err != 0) {
+        fprintf(stderr, "Initialising TLS data failed: pthread_once: %s\n",
+                strerror(err));
+        return NULL;
+    }
 
     // Initialise tls_pool on first usage
     tls_pool *tls = pthread_getspecific(rans_key);

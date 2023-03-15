@@ -1,6 +1,6 @@
 /*  mcall.c -- multiallelic and rare variant calling.
 
-    Copyright (C) 2012-2021 Genome Research Ltd.
+    Copyright (C) 2012-2022 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -314,7 +314,7 @@ static void init_sample_groups(call_t *call)
             while ( *ptr && isspace(*ptr) ) ptr++;
             if ( !*ptr ) error("Could not parse the line in %s, expected a sample name followed by tab and a population name: %s\n",call->sample_groups,lines[i]);
             *tmp = 0;
-            int ismpl = bcf_hdr_id2int(call->hdr, BCF_DT_SAMPLE, lines[i]); 
+            int ismpl = bcf_hdr_id2int(call->hdr, BCF_DT_SAMPLE, lines[i]);
             if ( ismpl<0 ) continue;
             if ( smpl2grp[ismpl] ) error("Error: the sample \"%s\" is listed twice in %s\n", lines[i],call->sample_groups);
             if ( !khash_str2int_has_key(grp2idx,ptr+1) )
@@ -336,7 +336,7 @@ static void init_sample_groups(call_t *call)
         {
             if ( !smpl2grp[i] ) error("Error: The sample \"%s\" is not listed in %s\n",call->hdr->samples[i],call->sample_groups);
             int igrp = smpl2grp[i] - 1;
-            if ( !call->smpl_grp[igrp].nsmpl ) 
+            if ( !call->smpl_grp[igrp].nsmpl )
                 call->smpl_grp[igrp].smpl = (uint32_t*)calloc(grp2n[igrp],sizeof(uint32_t));
             call->smpl_grp[igrp].smpl[call->smpl_grp[igrp].nsmpl] = i;
             call->smpl_grp[igrp].nsmpl++;
@@ -745,7 +745,7 @@ static void mcall_set_ref_genotypes(call_t *call, int nals_ori)
 static void mcall_call_genotypes(call_t *call, int nals_ori, smpl_grp_t *grp)
 {
     int ia, ib, i;
-    int ngts_ori = nals_ori*(nals_ori+1)/2; 
+    int ngts_ori = nals_ori*(nals_ori+1)/2;
     int ngts_new = call->nals_new*(call->nals_new+1)/2;
     int nsmpl = grp->nsmpl;
 
@@ -1271,8 +1271,9 @@ void mcall_trim_and_update_numberR(call_t *call, bcf1_t *rec, int nals_ori, int 
 static int mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
 {
     assert( call->tgt_als->n );
-    if ( call->tgt_als->n>5 ) error("Maximum accepted number of alleles is 5, got %d\n", call->tgt_als->n);
     hts_expand(char*,call->tgt_als->n+1,call->nals,call->als);
+    hts_expand(int,call->tgt_als->n+1,call->nals_map,call->als_map);
+    hts_expand(int,(call->tgt_als->n+1)*(call->tgt_als->n+2)/2,call->npl_map,call->pl_map);
 
     int has_new = 0;
 
@@ -1290,18 +1291,6 @@ static int mcall_constrain_alleles(call_t *call, bcf1_t *rec, int *unseen)
     {
         call->als[nals] = call->tgt_als->allele[i];
         j = vcmp_find_allele(call->vcmp, rec->d.allele+1, rec->n_allele - 1, call->tgt_als->allele[i]);
-
-        // if ( j+1==*unseen )
-        // { 
-        //     fprintf(stderr,"Fixme? Cannot constrain to %d-th allele (%s); j=%d,unseen=%d. VCF=",i,call->tgt_als->allele[i],j,*unseen);
-        //     int k;
-        //     for (k=0; k<rec->n_allele; k++) fprintf(stderr,"%s%s",k==0?"":",",rec->d.allele[k]);
-        //     fprintf(stderr,"\tTAB=");
-        //     for (k=0; k<call->tgt_als->n; k++) fprintf(stderr,"%s%s",k==0?"":",",call->tgt_als->allele[k]);
-        //     fprintf(stderr,"\n");
-        //     return -1;
-        // }
-        
         if ( j>=0 )
         {
             // existing allele
@@ -1537,9 +1526,9 @@ int mcall(call_t *call, bcf1_t *rec)
     bcf_update_info_int32(call->hdr, rec, "QS", NULL, 0);      // remove QS tag
 
     if ( nals_ori > 8*sizeof(call->als_new) )
-    { 
+    {
         fprintf(stderr,"Too many alleles at %s:%"PRId64", skipping.\n", bcf_seqname(call->hdr,rec),(int64_t) rec->pos+1);
-        return 0; 
+        return 0;
     }
 
     // For each group find the best combination of alleles
@@ -1596,9 +1585,9 @@ int mcall(call_t *call, bcf1_t *rec)
         for (i=0; i<call->nals_new; i++) call->ac[i] = 0;
 
         if ( call->flag & CALL_CONSTR_TRIO && call->nals_new>4 )
-        { 
+        {
             fprintf(stderr,"Too many alleles at %s:%"PRId64", skipping.\n", bcf_seqname(call->hdr,rec),(int64_t) rec->pos+1);
-            return 0; 
+            return 0;
         }
         if ( call->output_tags & (CALL_FMT_GQ|CALL_FMT_GP) )
         {
@@ -1670,7 +1659,7 @@ int mcall(call_t *call, bcf1_t *rec)
             anno16_t a;
             float tmpf[4];
             int is_tested = test16(call->anno16, &a) >= 0 && a.is_tested ? 1 : 0;
-            if ( is_tested ) 
+            if ( is_tested )
             {
                 for (i=0; i<4; i++) tmpf[i] = a.p[i];
                 bcf_update_info_float(call->hdr, rec, "PV4", tmpf, 4);

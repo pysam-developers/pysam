@@ -57,8 +57,6 @@ char *init_tmp_prefix(const char *prefix);
 int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq);
 int parse_overlap_option(const char *arg);
 
-void *smalloc(size_t size);     // safe malloc
-
 static inline int iupac2bitmask(char iupac)
 {
     const int A = 1;
@@ -99,7 +97,7 @@ static inline int iupac_consistent(char iupac, char nt)
         13,0,0,4,11,0,0,12,0,3,15,0,0,0,5,6,8,0,7,9,0,10
     };
     if ( iupac > 89 ) return 0;
-    if ( nt > 90 ) nt -=  32;  // lowercase 
+    if ( nt > 90 ) nt -=  32;  // lowercase
     if ( nt=='A' ) nt = 1;
     else if ( nt=='C' ) nt = 2;
     else if ( nt=='G' ) nt = 4;

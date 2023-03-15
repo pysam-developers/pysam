@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Genome Research Ltd.
+ * Copyright (c) 2017-2023 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -235,8 +235,8 @@ unsigned char *rans_compress_O0_32x16_sse4(unsigned char *in,
         goto empty;
 
     // Compute statistics
-    hist8(in, in_size, F);
-    //hist8(in, in_size, F); int low_ent = 0;
+    if (hist8(in, in_size, F) < 0)
+        return NULL;
 
     // Normalise so frequences sum to power of 2
     uint32_t fsum = in_size;
@@ -1014,7 +1014,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
         uint32_t u_freq_sz, c_freq_sz;
         cp += var_get_u32(cp, cp_end, &u_freq_sz);
         cp += var_get_u32(cp, cp_end, &c_freq_sz);
-        if (c_freq_sz >= cp_end - cp - 16)
+        if (c_freq_sz > cp_end - cp)
             goto err;
         tab_end = cp + c_freq_sz;
         if (!(c_freq = rans_uncompress_O0_4x16(cp, c_freq_sz, NULL,u_freq_sz)))
@@ -1423,7 +1423,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
         uint16_t *sp = (uint16_t *)ptr;
         const uint32_t mask = ((1u << TF_SHIFT_O1_FAST)-1);
         __m128i maskv  = _mm_set1_epi32(mask); // set mask in all lanes
-        uint8_t tbuf[32][32];
+        uint8_t tbuf[32][32] __attribute__((aligned(32)));
         int tidx = 0;
         LOAD128(Rv, R);
         LOAD128(Lv, l);

@@ -3,7 +3,7 @@
 /*  bam_ampliconclip.c -- loads amplicon primers from a BED file and cuts reads
                           from the 5' end.
 
-    Copyright (C) 2020-2021 Genome Research Ltd.
+    Copyright (C) 2020-2022 Genome Research Ltd.
 
     Authors: Andrew Whitwham <aw7@sanger.ac.uk>
              Rob Davies <rmd+git@sanger.ac.uk>
@@ -310,18 +310,6 @@ static int bam_trim_left(bam1_t *rec, bam1_t *rec_out, uint32_t bases,
     memcpy(&rec_out->core, &rec->core, sizeof(rec->core));
     memcpy(rec_out->data, rec->data, rec->core.l_qname);
 
-    if (clipping == hard_clip && bases >= rec->core.l_qseq) {
-        rec_out->core.l_qseq = 0;
-        rec_out->core.n_cigar = 0;
-
-        if (orig_l_aux)
-            memcpy(bam_get_aux(rec_out), orig_aux, orig_l_aux);
-
-        rec_out->l_data = bam_get_aux(rec_out) - rec_out->data + orig_l_aux;
-
-        return 0;
-    }
-
     // Modify CIGAR
     new_cigar = bam_get_cigar(rec_out);
 
@@ -357,6 +345,19 @@ static int bam_trim_left(bam1_t *rec, bam1_t *rec_out, uint32_t bases,
             qry_removed += ref_remove;
         }
     } else {
+        if (clipping == hard_clip) {
+
+            rec_out->core.l_qseq = 0;
+            rec_out->core.n_cigar = 0;
+
+            if (orig_l_aux)
+                memcpy(bam_get_aux(rec_out), orig_aux, orig_l_aux);
+
+            rec_out->l_data = bam_get_aux(rec_out) - rec_out->data + orig_l_aux;
+
+            return 0;
+        }
+
         qry_removed = rec->core.l_qseq;
     }
 
@@ -459,17 +460,6 @@ static int bam_trim_right(bam1_t *rec, bam1_t *rec_out, uint32_t bases,
     memcpy(&rec_out->core, &rec->core, sizeof(rec->core));
     memcpy(rec_out->data, rec->data, rec->core.l_qname);
 
-    if (clipping == hard_clip && bases >= rec->core.l_qseq) {
-        rec_out->core.l_qseq = 0;
-        rec_out->core.n_cigar = 0;
-
-        if (orig_l_aux)
-            memcpy(bam_get_aux(rec_out), orig_aux, orig_l_aux);
-
-        rec_out->l_data = bam_get_aux(rec_out) - rec_out->data + orig_l_aux;
-        return 0;
-    }
-
     // Modify CIGAR here
     new_cigar = bam_get_cigar(rec_out);
 
@@ -502,6 +492,19 @@ static int bam_trim_right(bam1_t *rec, bam1_t *rec_out, uint32_t bases,
         if (qry_removed > 0) j++;
         if (hardclip > 0 && (clipping == soft_clip || qry_removed == 0)) j++;
     } else {
+        if (clipping == hard_clip) {
+
+            rec_out->core.l_qseq = 0;
+            rec_out->core.n_cigar = 0;
+
+            if (orig_l_aux)
+                memcpy(bam_get_aux(rec_out), orig_aux, orig_l_aux);
+
+            rec_out->l_data = bam_get_aux(rec_out) - rec_out->data + orig_l_aux;
+
+            return 0;
+        }
+
         qry_removed = rec->core.l_qseq;
         j = 0;
         if (hardclip > 0 && clipping == soft_clip) j++;

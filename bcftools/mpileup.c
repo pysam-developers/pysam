@@ -68,7 +68,8 @@ typedef struct _mplp_pileup_t mplp_pileup_t;
 // Data shared by all bam files
 typedef struct {
     int min_mq, flag, min_baseQ, max_baseQ, delta_baseQ, capQ_thres, max_depth,
-        max_indel_depth, max_read_len, fmt_flag, ambig_reads;
+        max_indel_depth, max_read_len, ambig_reads;
+    uint32_t fmt_flag;
     int rflag_skip_any_unset, rflag_skip_all_unset, rflag_skip_any_set, rflag_skip_all_set, output_type;
     int openQ, extQ, tandemQ, min_support, indel_win_size; // for indels
     double min_frac; // for indels
@@ -97,6 +98,7 @@ typedef struct {
     bcf1_t *bcf_rec;
     htsFile *bcf_fp;
     bcf_hdr_t *bcf_hdr;
+    int indels_v20;
     int argc;
     char **argv;
 } mplp_conf_t;
@@ -294,24 +296,23 @@ static int mplp_func(void *data, bam1_t *b)
 // We cache sample information here so we don't have to keep recomputing this
 // on each and every pileup column. If FMT/SCR annotation is requested, a flag
 // is set to indicate the presence of a soft clip.
-//
-// Cd is an arbitrary block of data we can write into, which ends up in
-// the pileup structures. We stash the sample ID there:
-//      has_soft_clip .. cd->i & 1
-//      sample_id     .. cd->i >> 1
 static int pileup_constructor(void *data, const bam1_t *b, bam_pileup_cd *cd)
 {
+    cd->p = calloc(1,sizeof(plp_cd_t));
+
+    PLP_NM(cd) = PLP_NM_UNSET;
+
     mplp_aux_t *ma = (mplp_aux_t *)data;
     int n = bam_smpl_get_sample_id(ma->conf->bsmpl, ma->bam_id, (bam1_t *)b);
-    cd->i = 0;
-    PLP_SET_SAMPLE_ID(cd->i, n);
+    PLP_SET_SAMPLE_ID(cd, n);
+
     // Whether read has a soft-clip is used in mplp_realn's heuristics.
     // TODO: consider whether clip length is beneficial to use?
     int i;
     for (i=0; i<b->core.n_cigar; i++) {
         int cig = bam_get_cigar(b)[i] & BAM_CIGAR_MASK;
         if (cig == BAM_CSOFT_CLIP) {
-            PLP_SET_SOFT_CLIP(cd->i);
+            PLP_SET_SOFT_CLIP(cd);
             break;
         }
     }
@@ -330,7 +331,7 @@ static int pileup_constructor(void *data, const bam1_t *b, bam_pileup_cd *cd)
                 // Possible further optimsation, check tot_ins==1 later
                 // (and remove break) so we can detect single bp indels.
                 // We may want to focus BAQ on more complex regions only.
-                PLP_SET_INDEL(cd->i);
+                PLP_SET_INDEL(cd);
                 break;
             }
 
@@ -345,6 +346,11 @@ static int pileup_constructor(void *data, const bam1_t *b, bam_pileup_cd *cd)
 
     return 0;
 }
+static int pileup_destructor(void *data, const bam1_t *b, bam_pileup_cd *cd)
+{
+    free(cd->p);
+    return 0;
+}
 
 static void group_smpl(mplp_pileup_t *m, bam_smpl_t *bsmpl, int n, int *n_plp, const bam_pileup1_t **plp)
 {
@@ -355,7 +361,7 @@ static void group_smpl(mplp_pileup_t *m, bam_smpl_t *bsmpl, int n, int *n_plp, c
         for (j = 0; j < n_plp[i]; ++j)  // iterate over all reads available at this position
         {
             const bam_pileup1_t *p = plp[i] + j;
-            int id = PLP_SAMPLE_ID(p->cd.i);
+            int id = PLP_SAMPLE_ID(&(p->cd));
             if (m->n_plp[id] == m->m_plp[id])
             {
                 m->m_plp[id] = m->m_plp[id]? m->m_plp[id]<<1 : 8;
@@ -418,11 +424,11 @@ static void mplp_realn(int n, int *n_plp, const bam_pileup1_t **plp,
         nt += n_plp[i];
         for (j = 0; j < n_plp[i]; j++) { // iterate over reads
             bam_pileup1_t *p = (bam_pileup1_t *)plp[i] + j;
-            has_indel += (PLP_HAS_INDEL(p->cd.i) || p->indel) ? 1 : 0;
+            has_indel += (PLP_HAS_INDEL(&p->cd) || p->indel) ? 1 : 0;
             // Has_clip is almost always true for very long reads
             // (eg PacBio CCS), but these rarely matter as the clip
             // is likely a long way from this indel.
-            has_clip  += (PLP_HAS_SOFT_CLIP(p->cd.i))         ? 1 : 0;
+            has_clip  += (PLP_HAS_SOFT_CLIP(&p->cd))         ? 1 : 0;
             if (max_indel < p->indel)
                 max_indel = p->indel;
             if (min_indel > p->indel)
@@ -453,9 +459,8 @@ static void mplp_realn(int n, int *n_plp, const bam_pileup1_t **plp,
             // We could use our own structure (p->cd.p), allocated during
             // the constructor, but for simplicity we play dirty and
             // abuse an unused flag bit instead.
-            if (b->core.flag & 32768)
-                continue;
-            b->core.flag |= 32768;
+            if ( PLP_IS_REALN(&(p->cd)) ) continue;
+            PLP_SET_REALN(&(p->cd));
 
             if (b->core.l_qseq > max_read_len)
                 continue;
@@ -553,8 +558,7 @@ static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
         }
         int has_ref = mplp_get_ref(conf->mplp_data[0], tid, &ref, &ref_len);
         if (has_ref && (conf->flag & MPLP_REALN))
-            mplp_realn(conf->nfiles, conf->n_plp, conf->plp, conf->flag,
-                       conf->max_read_len, ref, ref_len, pos);
+            mplp_realn(conf->nfiles, conf->n_plp, conf->plp, conf->flag, conf->max_read_len, ref, ref_len, pos);
 
         int total_depth, _ref0, ref16;
         for (i = total_depth = 0; i < conf->nfiles; ++i) total_depth += conf->n_plp[i];
@@ -567,23 +571,30 @@ static int mpileup_reg(mplp_conf_t *conf, uint32_t beg, uint32_t end)
         conf->bc.tid = tid; conf->bc.pos = pos;
         bcf_call_combine(conf->gplp->n, conf->bcr, conf->bca, ref16, &conf->bc);
         bcf_clear1(conf->bcf_rec);
-        bcf_call2bcf(&conf->bc, conf->bcf_rec, conf->bcr, conf->fmt_flag,
-                     conf->bca, 0);
+        bcf_call2bcf(&conf->bc, conf->bcf_rec, conf->bcr, conf->fmt_flag, conf->bca, 0);
         flush_bcf_records(conf, conf->bcf_fp, conf->bcf_hdr, conf->bcf_rec);
 
         // call indels; todo: subsampling with total_depth>max_indel_depth instead of ignoring?
         // check me: rghash in bcf_call_gap_prep() should have no effect, reads mplp_func already excludes them
-        if (!(conf->flag&MPLP_NO_INDEL) && total_depth < conf->max_indel_depth
-            && (bcf_callaux_clean(conf->bca, &conf->bc),
-                bcf_call_gap_prep(conf->gplp->n, conf->gplp->n_plp, conf->gplp->plp, pos, conf->bca, ref) >= 0))
+        if ( !(conf->flag&MPLP_NO_INDEL) && total_depth < conf->max_indel_depth )
         {
-            for (i = 0; i < conf->gplp->n; ++i)
-                bcf_call_glfgen(conf->gplp->n_plp[i], conf->gplp->plp[i], -1, conf->bca, conf->bcr + i);
-            if (bcf_call_combine(conf->gplp->n, conf->bcr, conf->bca, -1, &conf->bc) >= 0)
+            bcf_callaux_clean(conf->bca, &conf->bc);
+            conf->bca->chr = tid>=0 ? hdr->target_name[tid] : NULL;
+            int iret;
+            if ( conf->indels_v20 )
+                iret = bcf_iaux_gap_prep(conf->gplp->n, conf->gplp->n_plp, conf->gplp->plp, pos, conf->bca, ref);
+            else
+                iret = bcf_call_gap_prep(conf->gplp->n, conf->gplp->n_plp, conf->gplp->plp, pos, conf->bca, ref);
+            if ( iret>=0 )
             {
-                bcf_clear1(conf->bcf_rec);
-                bcf_call2bcf(&conf->bc, conf->bcf_rec, conf->bcr, conf->fmt_flag, conf->bca, ref);
-                flush_bcf_records(conf, conf->bcf_fp, conf->bcf_hdr, conf->bcf_rec);
+                for (i = 0; i < conf->gplp->n; ++i)
+                    bcf_call_glfgen(conf->gplp->n_plp[i], conf->gplp->plp[i], -1, conf->bca, conf->bcr + i);
+                if (bcf_call_combine(conf->gplp->n, conf->bcr, conf->bca, -1, &conf->bc) >= 0)
+                {
+                    bcf_clear1(conf->bcf_rec);
+                    bcf_call2bcf(&conf->bc, conf->bcf_rec, conf->bcr, conf->fmt_flag, conf->bca, ref);
+                    flush_bcf_records(conf, conf->bcf_fp, conf->bcf_hdr, conf->bcf_rec);
+                }
             }
         }
     }
@@ -765,40 +776,38 @@ static int mpileup(mplp_conf_t *conf)
 
     bcf_hdr_append(conf->bcf_hdr,"##ALT=<ID=*,Description=\"Represents allele(s) other than observed.\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=INDEL,Number=0,Type=Flag,Description=\"Indicates that the variant is an INDEL.\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IDV,Number=1,Type=Integer,Description=\"Maximum number of raw reads supporting an indel\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IMF,Number=1,Type=Float,Description=\"Maximum fraction of raw reads supporting an indel\">");
+    if ( conf->fmt_flag&B2B_INFO_IDV )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IDV,Number=1,Type=Integer,Description=\"Maximum number of raw reads supporting an indel\">");
+    if ( conf->fmt_flag&B2B_INFO_IMF )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=IMF,Number=1,Type=Float,Description=\"Maximum fraction of raw reads supporting an indel\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Raw read depth\">");
     if ( conf->fmt_flag&B2B_INFO_VDB )
         bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=VDB,Number=1,Type=Float,Description=\"Variant Distance Bias for filtering splice-site artefacts in RNA-seq data (bigger is better)\",Version=\"3\">");
 
-    if (conf->fmt_flag & B2B_INFO_ZSCORE) {
-        if ( conf->fmt_flag&B2B_INFO_RPB )
-            bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Read Position Bias (closer to 0 is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_RPBZ )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Read Position Bias (closer to 0 is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_MQBZ )
         bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Mapping Quality Bias (closer to 0 is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_BQBZ )
         bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=BQBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Base Quality Bias (closer to 0 is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_MQSBZ )
         bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQSBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Mapping Quality vs Strand Bias (closer to 0 is better)\">");
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=NMBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Number of Mismatches within supporting reads (closer to 0 is better)\">");
-        if ( conf->fmt_flag&B2B_FMT_NMBZ )
-            bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=NMBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Number of Mismatches within supporting reads (closer to 0 is better)\">");
-        if ( conf->fmt_flag&B2B_INFO_SCB )
-            bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=SCBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Soft-Clip Length Bias (closer to 0 is better)\">");
-    } else {
-        if ( conf->fmt_flag&B2B_INFO_RPB )
-            bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Read Position Bias (bigger is better)\">");
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality Bias (bigger is better)\">");
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=BQB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Base Quality Bias (bigger is better)\">");
-        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQSB,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality vs Strand Bias (bigger is better)\">");
-    }
-
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=FS,Number=1,Type=Float,Description=\"Phred-scaled p-value using Fisher's exact test to detect strand bias\">");
-#if CDF_MWU_TESTS
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=RPB2,Number=1,Type=Float,Description=\"Mann-Whitney U test of Read Position Bias [CDF] (bigger is better)\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQB2,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality Bias [CDF] (bigger is better)\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=BQB2,Number=1,Type=Float,Description=\"Mann-Whitney U test of Base Quality Bias [CDF] (bigger is better)\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQSB2,Number=1,Type=Float,Description=\"Mann-Whitney U test of Mapping Quality vs Strand Bias [CDF] (bigger is better)\">");
-#endif
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=SGB,Number=1,Type=Float,Description=\"Segregation based metric.\">");
-    bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQ0F,Number=1,Type=Float,Description=\"Fraction of MQ0 reads (smaller is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_MIN_PL_SUM )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MIN_PL_SUM,Number=1,Type=Integer,Description=\"Sum of min PLs across all samples before normalization (experimental)\">");
+    if ( conf->fmt_flag&B2B_INFO_NM )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=NM,Number=2,Type=Float,Description=\"Average number of mismatches in ref and alt reads (approximate, experimental, make me localized?)\">");
+    if ( conf->fmt_flag&B2B_INFO_NMBZ )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=NMBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Number of Mismatches within supporting reads (closer to 0 is better; approximate, experimental, make me localized?)\">");
+    if ( conf->fmt_flag&B2B_FMT_NMBZ )
+        bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=NMBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Number of Mismatches within supporting reads (closer to 0 is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_SCBZ )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=SCBZ,Number=1,Type=Float,Description=\"Mann-Whitney U-z test of Soft-Clip Length Bias (closer to 0 is better)\">");
+    if ( conf->fmt_flag&B2B_INFO_FS )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=FS,Number=1,Type=Float,Description=\"Fisher's exact test P-value to detect strand bias\">");
+    if ( conf->fmt_flag&B2B_INFO_SGB )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=SGB,Number=1,Type=Float,Description=\"Segregation based metric, http://samtools.github.io/bcftools/rd-SegBias.pdf\">");
+    if ( conf->fmt_flag&B2B_INFO_MQ0F )
+        bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=MQ0F,Number=1,Type=Float,Description=\"Fraction of MQ0 reads (smaller is better)\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=I16,Number=16,Type=Float,Description=\"Auxiliary tag used for calling, see description of bcf_callret1_t in bam2bcf.h\">");
     bcf_hdr_append(conf->bcf_hdr,"##INFO=<ID=QS,Number=R,Type=Float,Description=\"Auxiliary tag used for calling\">");
     bcf_hdr_append(conf->bcf_hdr,"##FORMAT=<ID=PL,Number=G,Type=Integer,Description=\"List of Phred-scaled genotype likelihoods\">");
@@ -852,6 +861,7 @@ static int mpileup(mplp_conf_t *conf)
     conf->bca->fmt_flag = conf->fmt_flag;
     conf->bca->ambig_reads = conf->ambig_reads;
     conf->bca->indel_win_size = conf->indel_win_size;
+    conf->bca->indels_v20 = conf->indels_v20;
 
     conf->bc.bcf_hdr = conf->bcf_hdr;
     conf->bc.n  = nsmpl;
@@ -902,6 +912,8 @@ static int mpileup(mplp_conf_t *conf)
     conf->max_indel_depth = conf->max_indel_depth * nsmpl;
     conf->bcf_rec = bcf_init1();
     bam_mplp_constructor(conf->iter, pileup_constructor);
+    bam_mplp_destructor(conf->iter, pileup_destructor);
+
 
     // Run mpileup for multiple regions
     if ( nregs )
@@ -1045,38 +1057,68 @@ int read_file_list(const char *file_list,int *n,char **argv[])
 }
 #undef MAX_PATH_LEN
 
-int parse_format_flag(const char *str)
+#define SET_FMT_FLAG(str,bit,msg) \
+    if (!strcasecmp(tag,str) || !strcasecmp(tag,"FMT/"str) || !strcasecmp(tag,"FORMAT/"str)) \
+    { \
+        if ( *msg ) fprintf(stderr,"%s",msg); \
+        if ( exclude ) \
+            *flag &= ~bit; \
+        else \
+            *flag |= bit; \
+        free(tags[i]); \
+        continue; \
+    }
+#define SET_INFO_FLAG(str,bit,msg) if (!strcasecmp(tag,"INFO/"str)) \
+    { \
+        if ( exclude ) \
+            *flag &= ~bit; \
+        else \
+            *flag |= bit; \
+        free(tags[i]); \
+        continue; \
+    }
+
+void parse_format_flag(uint32_t *flag, const char *str)
 {
-    int i, flag = 0, n_tags;
+    int i, n_tags;
     char **tags = hts_readlist(str, 0, &n_tags);
     for(i=0; i<n_tags; i++)
     {
-        if ( !strcasecmp(tags[i],"DP") || !strcasecmp(tags[i],"FORMAT/DP") || !strcasecmp(tags[i],"FMT/DP") ) flag |= B2B_FMT_DP;
-        else if ( !strcasecmp(tags[i],"DV") || !strcasecmp(tags[i],"FORMAT/DV") || !strcasecmp(tags[i],"FMT/DV") ) { flag |= B2B_FMT_DV; fprintf(stderr, "[warning] tag DV functional, but deprecated. Please switch to `AD` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"SP") || !strcasecmp(tags[i],"FORMAT/SP") || !strcasecmp(tags[i],"FMT/SP") ) flag |= B2B_FMT_SP;
-        else if ( !strcasecmp(tags[i],"DP4") || !strcasecmp(tags[i],"FORMAT/DP4") || !strcasecmp(tags[i],"FMT/DP4") ) { flag |= B2B_FMT_DP4; fprintf(stderr, "[warning] tag DP4 functional, but deprecated. Please switch to `ADF` and `ADR` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"DPR") || !strcasecmp(tags[i],"FORMAT/DPR") || !strcasecmp(tags[i],"FMT/DPR") ) { flag |= B2B_FMT_DPR; fprintf(stderr, "[warning] tag DPR functional, but deprecated. Please switch to `AD` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"INFO/DPR") ) { flag |= B2B_INFO_DPR; fprintf(stderr, "[warning] tag INFO/DPR functional, but deprecated. Please switch to `INFO/AD` in future.\n"); }
-        else if ( !strcasecmp(tags[i],"AD") || !strcasecmp(tags[i],"FORMAT/AD") || !strcasecmp(tags[i],"FMT/AD") ) flag |= B2B_FMT_AD;
-        else if ( !strcasecmp(tags[i],"ADF") || !strcasecmp(tags[i],"FORMAT/ADF") || !strcasecmp(tags[i],"FMT/ADF") ) flag |= B2B_FMT_ADF;
-        else if ( !strcasecmp(tags[i],"ADR") || !strcasecmp(tags[i],"FORMAT/ADR") || !strcasecmp(tags[i],"FMT/ADR") ) flag |= B2B_FMT_ADR;
-        else if ( !strcasecmp(tags[i],"SCR") || !strcasecmp(tags[i],"FORMAT/SCR") || !strcasecmp(tags[i],"FMT/SCR") ) flag |= B2B_FMT_SCR;
-        else if ( !strcasecmp(tags[i],"QS") || !strcasecmp(tags[i],"FORMAT/QS") || !strcasecmp(tags[i],"FMT/QS") ) flag |= B2B_FMT_QS;
-        else if ( !strcasecmp(tags[i],"NMBZ") || !strcasecmp(tags[i],"FORMAT/NMBZ") || !strcasecmp(tags[i],"FMT/NMBZ") ) flag |= B2B_FMT_NMBZ;
-        else if ( !strcasecmp(tags[i],"INFO/SCR") ) flag |= B2B_INFO_SCR;
-        else if ( !strcasecmp(tags[i],"INFO/AD") ) flag |= B2B_INFO_AD;
-        else if ( !strcasecmp(tags[i],"INFO/ADF") ) flag |= B2B_INFO_ADF;
-        else if ( !strcasecmp(tags[i],"INFO/ADR") ) flag |= B2B_INFO_ADR;
-        else if ( !strcasecmp(tags[i],"SCB") || !strcasecmp(tags[i],"INFO/SCB")) flag |= B2B_INFO_SCB;
-        else
-        {
-            fprintf(stderr,"Could not parse tag \"%s\" in \"%s\"\n", tags[i], str);
-            exit(EXIT_FAILURE);
-        }
-        free(tags[i]);
+        int exclude = tags[i][0]=='-' ? 1 : 0;
+        char *tag = exclude ? tags[i]+1 : tags[i];
+        SET_FMT_FLAG("AD", B2B_FMT_AD, "");
+        SET_FMT_FLAG("ADF", B2B_FMT_ADF, "");
+        SET_FMT_FLAG("ADR", B2B_FMT_ADR, "");
+        SET_FMT_FLAG("DP", B2B_FMT_DP, "");
+        SET_FMT_FLAG("DP4", B2B_FMT_DP4, "[warning] tag DP4 functional, but deprecated. Please switch to `ADF` and `ADR` in future.\n");
+        SET_FMT_FLAG("DPR", B2B_FMT_DPR, "[warning] tag DPR functional, but deprecated. Please switch to `AD` in future.\n");
+        SET_FMT_FLAG("DV", B2B_FMT_DV, "[warning] tag DV functional, but deprecated. Please switch to `AD` in future.\n");
+        SET_FMT_FLAG("NMBZ", B2B_FMT_NMBZ, "");
+        SET_FMT_FLAG("QS", B2B_FMT_QS, "");
+        SET_FMT_FLAG("SP", B2B_FMT_SP, "");
+        SET_FMT_FLAG("SCR", B2B_FMT_SCR, "");
+        SET_INFO_FLAG("DPR", B2B_INFO_DPR, "[warning] tag INFO/DPR functional, but deprecated. Please switch to `INFO/AD` in future.\n");
+        SET_INFO_FLAG("AD", B2B_INFO_AD, "");
+        SET_INFO_FLAG("ADF", B2B_INFO_ADF, "");
+        SET_INFO_FLAG("ADR", B2B_INFO_ADR, "");
+        SET_INFO_FLAG("BQBZ", B2B_INFO_BQBZ, "");
+        SET_INFO_FLAG("FS", B2B_INFO_FS, "");
+        SET_INFO_FLAG("IDV", B2B_INFO_IDV, "");
+        SET_INFO_FLAG("IMF", B2B_INFO_IMF, "");
+        SET_INFO_FLAG("MIN_PL_SUM", B2B_INFO_MIN_PL_SUM, "");
+        SET_INFO_FLAG("MQ0F", B2B_INFO_MQ0F, "");
+        SET_INFO_FLAG("MQBZ", B2B_INFO_MQBZ, "");
+        SET_INFO_FLAG("NM", B2B_INFO_NM, "");
+        SET_INFO_FLAG("NMBZ", B2B_INFO_NMBZ, "");
+        SET_INFO_FLAG("RPBZ", B2B_INFO_RPBZ, "");
+        SET_INFO_FLAG("SCBZ", B2B_INFO_SCBZ, "");
+        SET_INFO_FLAG("SCR", B2B_INFO_SCR, "");
+        SET_INFO_FLAG("SGB", B2B_INFO_SGB, "");
+        SET_INFO_FLAG("VDB", B2B_INFO_VDB, "");
+        fprintf(stderr,"Could not parse tag \"%s\" in \"%s\"\n", tag, str);
+        exit(EXIT_FAILURE);
     }
     if (n_tags) free(tags);
-    return flag;
 }
 
 // todo: make it possible to turn off some annotations or change the defaults,
@@ -1085,25 +1127,42 @@ int parse_format_flag(const char *str)
 static void list_annotations(FILE *fp)
 {
     fprintf(fp,
-"\n"
-"FORMAT annotation tags available (\"FORMAT/\" prefix is optional):\n"
-"\n"
-"  FORMAT/AD   .. Allelic depth (Number=R,Type=Integer)\n"
-"  FORMAT/ADF  .. Allelic depths on the forward strand (Number=R,Type=Integer)\n"
-"  FORMAT/ADR  .. Allelic depths on the reverse strand (Number=R,Type=Integer)\n"
-"  FORMAT/DP   .. Number of high-quality bases (Number=1,Type=Integer)\n"
-"  FORMAT/NMBZ .. Mann-Whitney U-z test of Number of Mismatches within supporting reads (Number=1,Type=Float)\n"
-"  FORMAT/QS   .. Allele phred-score quality sum for use with `call -mG` and +trio-dnm (Number=R,Type=Integer)\n"
-"  FORMAT/SP   .. Phred-scaled strand bias P-value (Number=1,Type=Integer)\n"
-"  FORMAT/SCR  .. Number of soft-clipped reads (Number=1,Type=Integer)\n"
-"\n"
-"INFO annotation tags available:\n"
-"\n"
-"  INFO/AD  .. Total allelic depth (Number=R,Type=Integer)\n"
-"  INFO/ADF .. Total allelic depths on the forward strand (Number=R,Type=Integer)\n"
-"  INFO/ADR .. Total allelic depths on the reverse strand (Number=R,Type=Integer)\n"
-"  INFO/SCR .. Number of soft-clipped reads (Number=1,Type=Integer)\n"
-"\n");
+        "Annotations added by default are in this list prefixed with \"*\". To suppress their output, run with\n"
+        "e.g. \"-a -FORMAT/AD\".\n"
+        "\n"
+        "FORMAT annotation tags available (\"FORMAT/\" prefix is optional):\n"
+        "\n"
+        "  FORMAT/AD   .. Allelic depth (Number=R,Type=Integer)\n"
+        "  FORMAT/ADF  .. Allelic depths on the forward strand (Number=R,Type=Integer)\n"
+        "  FORMAT/ADR  .. Allelic depths on the reverse strand (Number=R,Type=Integer)\n"
+        "  FORMAT/DP   .. Number of high-quality bases (Number=1,Type=Integer)\n"
+        "  FORMAT/NMBZ .. Mann-Whitney U-z test of Number of Mismatches within supporting reads (Number=1,Type=Float)\n"
+        "  FORMAT/QS   .. Allele phred-score quality sum for use with `call -mG` and +trio-dnm (Number=R,Type=Integer)\n"
+        "  FORMAT/SP   .. Phred-scaled strand bias P-value (Number=1,Type=Integer)\n"
+        "  FORMAT/SCR  .. Number of soft-clipped reads (Number=1,Type=Integer)\n"
+        "\n"
+        "INFO annotation tags available:\n"
+        "\n"
+        "  INFO/AD    .. Total allelic depth (Number=R,Type=Integer)\n"
+        "  INFO/ADF   .. Total allelic depths on the forward strand (Number=R,Type=Integer)\n"
+        "  INFO/ADR   .. Total allelic depths on the reverse strand (Number=R,Type=Integer)\n"
+        "* INFO/BQBZ  .. Mann-Whitney U test of Base Quality Bias (Number=1,Type=Float)\n"
+        "  INFO/FS    .. Fisher's exact test P-value to detect strand bias (Number=1,Type=Float)\n"
+        "* INFO/IDV   .. Maximum number of raw reads supporting an indel (Number=1,Type=Integer)\n"
+        "* INFO/IMF   .. Maximum fraction of raw reads supporting an indel (Number=1,Type=Float)\n"
+        "  INFO/MIN_PL_SUM\n"
+        "             .. Sum of min PL across all samples before normalization, experimental (Number=1,Type=Integer)\n"
+        "* INFO/MQ0F  .. Fraction of reads with zero mapping quality (Number=1,Type=Float)\n"
+        "* INFO/MQBZ  .. Mann-Whitney U test of Mapping Quality Bias (Number=1,Type=Float)\n"
+        "* INFO/MQSBZ .. Mann-Whitney U-z test of Mapping Quality vs Strand Bias (Number=1,Type=Float)\n"
+        "  INFO/NM    .. Approximate average number of mismatches in ref and alt reads, experimental (Number=2,Type=Float)\n"
+        "  INFO/NMBZ  .. Mann-Whitney U-z test of Number of Mismatches within supporting reads (Number=1,Type=Float)\n"
+        "* INFO/RPBZ  .. Mann-Whitney U test of Read Position Bias (Number=1,Type=Float)\n"
+        "* INFO/SCBZ  .. Mann-Whitney U-z test of Soft-Clip Length Bias (Number=1,Type=Float)\n"
+        "  INFO/SCR   .. Number of soft-clipped reads (Number=1,Type=Integer)\n"
+        "* INFO/SGB   .. Segregation based metric, http://samtools.github.io/bcftools/rd-SegBias.pdf (Number=1,Type=Float)\n"
+        "* INFO/VDB   .. Variant Distance Bias for filtering splice-site artefacts in RNA-seq data (Number=1,Type=Float)\n"
+        "\n");
 }
 
 static void print_usage(FILE *fp, const mplp_conf_t *mplp)
@@ -1167,7 +1226,6 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
         "  -o, --output FILE       Write output to FILE [standard output]\n"
         "  -O, --output-type TYPE  'b' compressed BCF; 'u' uncompressed BCF;\n"
         "                          'z' compressed VCF; 'v' uncompressed VCF; 0-9 compression level [v]\n"
-        "  -U, --mwu-u             Use older probability scale for Mann-Whitney U test\n"
         "      --threads INT       Use multithreading with INT worker threads [0]\n"
         "\n"
         "SNP/INDEL genotype likelihoods options:\n"
@@ -1194,6 +1252,8 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
         "      --indel-bias FLOAT  Raise to favour recall over precision [%.2f]\n", mplp->indel_bias);
     fprintf(fp,
         "      --indel-size INT    Approximate maximum indel size considered [%d]\n", mplp->indel_win_size);
+    fprintf(fp,
+        "      --indels-2.0        New EXPERIMENTAL indel calling model (diploid reference consensus)\n");
     fprintf(fp,"\n");
     fprintf(fp,
         "Configuration profiles activated with -X, --config:\n"
@@ -1240,7 +1300,7 @@ int main_mpileup(int argc, char *argv[])
     mplp.n_threads = 0;
     mplp.bsmpl = bam_smpl_init();
     // the default to be changed in future, see also parse_format_flag()
-    mplp.fmt_flag = B2B_INFO_VDB|B2B_INFO_RPB|B2B_INFO_SCB|B2B_INFO_ZSCORE;
+    mplp.fmt_flag = B2B_INFO_BQBZ|B2B_INFO_IDV|B2B_INFO_IMF|B2B_INFO_MQ0F|B2B_INFO_MQBZ|B2B_INFO_MQSBZ|B2B_INFO_RPBZ|B2B_INFO_SCBZ|B2B_INFO_SGB|B2B_INFO_VDB;
     mplp.max_read_len = 500;
     mplp.ambig_reads = B2B_DROP;
     mplp.indel_win_size = 110;
@@ -1302,6 +1362,7 @@ int main_mpileup(int argc, char *argv[])
         {"gap-frac", required_argument, NULL, 'F'},
         {"indel-bias", required_argument, NULL, 10},
         {"indel-size", required_argument, NULL, 15},
+        {"indels-2.0", no_argument, NULL, 20},
         {"tandem-qual", required_argument, NULL, 'h'},
         {"skip-indels", no_argument, NULL, 'I'},
         {"max-idepth", required_argument, NULL, 'L'},
@@ -1311,7 +1372,6 @@ int main_mpileup(int argc, char *argv[])
         {"platforms", required_argument, NULL, 'P'},
         {"max-read-len", required_argument, NULL, 'M'},
         {"config", required_argument, NULL, 'X'},
-        {"mwu-u", no_argument, NULL, 'U'},
         {"seed", required_argument, NULL, 13},
         {"ambig-reads", required_argument, NULL, 14},
         {"ar", required_argument, NULL, 14},
@@ -1436,6 +1496,7 @@ int main_mpileup(int argc, char *argv[])
                 }
             }
             break;
+        case  20: mplp.indels_v20 = 1; break;
         case 'A': use_orphan = 1; break;
         case 'F': mplp.min_frac = atof(optarg); break;
         case 'm': mplp.min_support = atoi(optarg); break;
@@ -1446,10 +1507,9 @@ int main_mpileup(int argc, char *argv[])
                 list_annotations(stderr);
                 return 1;
             }
-            mplp.fmt_flag |= parse_format_flag(optarg);
+            parse_format_flag(&mplp.fmt_flag,optarg);
         break;
         case 'M': mplp.max_read_len = atoi(optarg); break;
-        case 'U': mplp.fmt_flag &= ~B2B_INFO_ZSCORE; break;
         case 'X':
             if (strcasecmp(optarg, "pacbio-ccs") == 0) {
                 mplp.min_frac = 0.1;

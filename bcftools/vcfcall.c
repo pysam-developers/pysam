@@ -568,9 +568,9 @@ bcf1_t *next_line(args_t *args)
     memset(&rec_tgt,0,sizeof(rec_tgt));
     regidx_overlap(args->tgt_idx, bcf_seqname(args->aux.hdr,rec0),rec0->pos,rec0->pos,args->tgt_itr);
     regitr_t *tmp_itr = regitr_init(args->tgt_idx);
-    regitr_copy(tmp_itr, args->tgt_itr);
     for (i=0; i<n; i++)
     {
+        regitr_copy(tmp_itr, args->tgt_itr);
         rec = vcfbuf_peek(args->vcfbuf, i);
         int rec_indel = is_indel(rec->n_allele, rec->d.allele) ? 1 : -1;
         while ( regitr_overlap(tmp_itr) )

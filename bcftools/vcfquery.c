@@ -125,6 +125,7 @@ static void query_vcf(args_t *args)
     }
 
     int i,max_convert_unpack = convert_max_unpack(args->convert);
+    int max_filter_unpack = args->filter ? filter_max_unpack(args->filter) : 0;
     while ( bcf_sr_next_line(args->files) )
     {
         if ( !bcf_sr_has_line(args->files,0) ) continue;
@@ -143,7 +144,7 @@ static void query_vcf(args_t *args)
                 if ( pass )
                 {
                     if ( !args->smpl_pass ) continue;
-                    if ( !(max_convert_unpack & BCF_UN_FMT) ) continue;
+                    if ( !(max_convert_unpack & BCF_UN_FMT) && !(max_filter_unpack & BCF_UN_FMT) ) continue;
 
                     pass = 0;
                     for (i=0; i<line->n_sample; i++)
@@ -292,7 +293,7 @@ int main_vcfquery(int argc, char *argv[])
             case 'f': args->format_str = strdup(optarg); break;
             case 'H': args->print_header = 1; break;
             case 'v': args->vcf_list = optarg; break;
-            case 'c': 
+            case 'c':
                 error("The --collapse option is obsolete, pipe through `bcftools norm -c` instead.\n");
                 break;
             case 'a':

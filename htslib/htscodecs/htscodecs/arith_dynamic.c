@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2021 Genome Research Ltd.
+ * Copyright (c) 2019-2022 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -842,7 +842,7 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
         int pmeta_len;
         uint64_t packed_len;
         packed = hts_pack(in, in_size, out+c_meta_len, &pmeta_len, &packed_len);
-        if (!packed || (pmeta_len == 1 && out[c_meta_len] > 16)) {
+        if (!packed) {
             out[0] &= ~X_PACK;
             do_pack = 0;
             free(packed);
