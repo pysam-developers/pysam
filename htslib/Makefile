@@ -126,6 +126,9 @@ srcdir = .
 srcprefix =
 HTSPREFIX =
 
+CFLAGS_ARM = $(CFLAGS)
+CFLAGS_X86 = $(CFLAGS)
+
 HTS_CFLAGS_AVX2 =
 HTS_CFLAGS_AVX512 =
 HTS_CFLAGS_SSE4 =
@@ -180,11 +183,13 @@ config_vars.h:
 
 .SUFFIXES: .bundle .c .cygdll .dll .o .pico .so
 
+COMMON_CFLAGS = $(CFLAGS)
+
 .c.o:
-	$(CC) $(CFLAGS) $(TARGET_CFLAGS) $(ALL_CPPFLAGS) -c -o $@ $<
+	$(CC) $(COMMON_CFLAGS) $(TARGET_CFLAGS) $(ALL_CPPFLAGS) -c -o $@ $<
 
 .c.pico:
-	$(CC) $(CFLAGS) $(TARGET_CFLAGS) $(ALL_CPPFLAGS) $(EXTRA_CFLAGS_PIC) -c -o $@ $<
+	$(CC) $(COMMON_CFLAGS) $(TARGET_CFLAGS) $(ALL_CPPFLAGS) $(EXTRA_CFLAGS_PIC) -c -o $@ $<
 
 
 LIBHTS_OBJS = \
@@ -495,6 +500,10 @@ htscodecs/htscodecs/utils.o htscodecs/htscodecs/utils.pico: htscodecs/htscodecs/
 htscodecs/htscodecs/rANS_static32x16pr_avx2.o htscodecs/htscodecs/rANS_static32x16pr_avx2.pico: TARGET_CFLAGS = $(HTS_CFLAGS_AVX2)
 htscodecs/htscodecs/rANS_static32x16pr_avx512.o htscodecs/htscodecs/rANS_static32x16pr_avx512.pico: TARGET_CFLAGS = $(HTS_CFLAGS_AVX512)
 htscodecs/htscodecs/rANS_static32x16pr_sse4.o htscodecs/htscodecs/rANS_static32x16pr_sse4.pico: TARGET_CFLAGS = $(HTS_CFLAGS_SSE4)
+
+htscodecs/htscodecs/rANS_static32x16pr_avx2.o htscodecs/htscodecs/rANS_static32x16pr_avx2.pico htscodecs/htscodecs/rANS_static32x16pr_avx512.o htscodecs/htscodecs/rANS_static32x16pr_avx512.pico htscodecs/htscodecs/rANS_static32x16pr_sse4.o htscodecs/htscodecs/rANS_static32x16pr_sse4.pico: COMMON_CFLAGS = $(CFLAGS_X86)
+
+htscodecs/htscodecs/rANS_static32x16pr_neon.o htscodecs/htscodecs/rANS_static32x16pr_neon.pico: COMMON_CFLAGS = $(CFLAGS_ARM)
 
 bgzip: bgzip.o libhts.a
 	$(CC) $(LDFLAGS) -o $@ bgzip.o libhts.a $(LIBS) -lpthread

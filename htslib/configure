@@ -655,6 +655,8 @@ hts_have_neon
 hts_cflags_avx512
 hts_cflags_avx2
 hts_cflags_sse4
+CFLAGS_X86
+CFLAGS_ARM
 GREP
 RANLIB
 OBJEXT
@@ -3393,6 +3395,30 @@ fi
 fi
 
 
+case "$(uname -s)" in
+darwin* | Darwin*)
+    CFLAGS_ARM="$(echo $CFLAGS | sed 's/-arch *x86_64//')"
+    CFLAGS_X86="$(echo $CFLAGS | sed 's/-arch *arm64//')"
+    { $as_echo "$as_me:${as_lineno-$LINENO}: Darwin CFLAGS_ARM: $CFLAGS_ARM" >&5
+$as_echo "$as_me: Darwin CFLAGS_ARM: $CFLAGS_ARM" >&6;}
+    { $as_echo "$as_me:${as_lineno-$LINENO}: Darwin CFLAGS_X86: $CFLAGS_X86" >&5
+$as_echo "$as_me: Darwin CFLAGS_X86: $CFLAGS_X86" >&6;}
+    ;;
+*)
+    CFLAGS_ARM="$CFLAGS"
+    CFLAGS_X86="$CFLAGS"
+    { $as_echo "$as_me:${as_lineno-$LINENO}: Default CFLAGS_ARM/X86: $CFLAGS" >&5
+$as_echo "$as_me: Default CFLAGS_ARM/X86: $CFLAGS" >&6;}
+    ;;
+esac
+
+
+
+hts_save_CFLAGS=$CFLAGS
+CFLAGS=$CFLAGS_X86
+hts_save_LDFLAGS=$LDFLAGS
+LDFLAGS=
+
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -mssse3 -mpopcnt -msse4.1" >&5
 $as_echo_n "checking whether C compiler accepts -mssse3 -mpopcnt -msse4.1... " >&6; }
@@ -3553,6 +3579,8 @@ else
 fi
 
 
+CFLAGS=$CFLAGS_ARM
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler supports ARM Neon" >&5
 $as_echo_n "checking whether C compiler supports ARM Neon... " >&6; }
 if ${hts_cv_have_neon+:} false; then :
@@ -3591,6 +3619,8 @@ if test "$hts_cv_have_neon" = yes; then
 
 fi
 
+CFLAGS=$hts_save_CFLAGS
+LDFLAGS=$hts_save_LDFLAGS
 
 
 

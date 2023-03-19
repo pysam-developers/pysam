@@ -70,6 +70,27 @@ dnl Flags to treat warnings as errors.  These need to be applied to CFLAGS
 dnl later as they can interfere with some of the tests (notably AC_SEARCH_LIBS)
 HTS_PROG_CC_WERROR(hts_late_cflags)
 
+case "$(uname -s)" in
+darwin* | Darwin*)
+    CFLAGS_ARM="$(echo $CFLAGS | sed 's/-arch *x86_64//')"
+    CFLAGS_X86="$(echo $CFLAGS | sed 's/-arch *arm64//')"
+    AC_MSG_NOTICE([Darwin CFLAGS_ARM: $CFLAGS_ARM])
+    AC_MSG_NOTICE([Darwin CFLAGS_X86: $CFLAGS_X86])
+    ;;
+*)
+    CFLAGS_ARM="$CFLAGS"
+    CFLAGS_X86="$CFLAGS"
+    AC_MSG_NOTICE([Default CFLAGS_ARM/X86: $CFLAGS])
+    ;;
+esac
+AC_SUBST([CFLAGS_ARM])
+AC_SUBST([CFLAGS_X86])
+
+hts_save_CFLAGS=$CFLAGS
+CFLAGS=$CFLAGS_X86
+hts_save_LDFLAGS=$LDFLAGS
+LDFLAGS=
+
 dnl Check for various compiler flags to enable SIMD features
 dnl Options for rANS32x16 sse4.1 version
 AX_CHECK_COMPILE_FLAG([-mssse3 -mpopcnt -msse4.1], [
@@ -128,6 +149,8 @@ AX_CHECK_COMPILE_FLAG([-mavx512f], [
     return *((char *) &b);
   ]])])
 
+CFLAGS=$CFLAGS_ARM
+
 dnl Detect ARM Neon availability
 AC_CACHE_CHECK([whether C compiler supports ARM Neon], [hts_cv_have_neon], [
   AC_COMPILE_IFELSE([
@@ -143,6 +166,8 @@ if test "$hts_cv_have_neon" = yes; then
   AC_SUBST([hts_have_neon])
 fi
 
+CFLAGS=$hts_save_CFLAGS
+LDFLAGS=$hts_save_LDFLAGS
 
 dnl Avoid chicken-and-egg problem where pkg-config supplies the
 dnl PKG_PROG_PKG_CONFIG macro, but we want to use it to check
