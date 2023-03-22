@@ -2091,13 +2091,14 @@ cdef class VariantHeader(object):
 
         if contig is not None:
             rec.contig  = contig
-        if alleles is not None:
-            rec.alleles = alleles
 
         rec.start = start
         rec.stop  = stop
         rec.id    = id
         rec.qual  = qual
+
+        if alleles is not None:
+            rec.alleles = alleles
 
         if filter is not None:
             if isinstance(filter, (list, tuple, VariantRecordFilter)):
