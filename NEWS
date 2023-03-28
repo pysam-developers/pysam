@@ -21,6 +21,10 @@ support. Pysam is tested with python versions 3.7 to 3.11.
 * [#1158] Fix type hints and add FastqProxy type hints.
 * [#1147] Py3.11 compatibility, get shared object suffix from EXT_SUFFIX.
 * [#1143] Add mypy symbols for samtools and bcftools.
+* [#1155] Fix pysam.index() when using recent `samtools index` options.
+* [#1151] Test suite py3.11 compatibility, work around failing test case.
+* [#1149] MacOS universal build compatibility.
+* [#1146] Fix build when CFLAGS/etc environment variables are set.
 
 Release 0.20.0
 ==============
