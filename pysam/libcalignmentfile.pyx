@@ -1665,12 +1665,12 @@ cdef class AlignmentFile(HTSFile):
         if self.htsfile == NULL:
             return
 
-        cdef int ret = hts_close(self.htsfile)
-        self.htsfile = NULL
-
         if self.index != NULL:
             hts_idx_destroy(self.index)
             self.index = NULL
+
+        cdef int ret = hts_close(self.htsfile)
+        self.htsfile = NULL
 
         self.header = None
 
@@ -1684,13 +1684,13 @@ cdef class AlignmentFile(HTSFile):
     def __dealloc__(self):
         cdef int ret = 0
 
-        if self.htsfile != NULL:
-            ret = hts_close(self.htsfile)
-            self.htsfile = NULL
-
         if self.index != NULL:
             hts_idx_destroy(self.index)
             self.index = NULL
+
+        if self.htsfile != NULL:
+            ret = hts_close(self.htsfile)
+            self.htsfile = NULL
 
         self.header = None
 
@@ -2046,8 +2046,8 @@ cdef class IteratorRow:
     def __dealloc__(self):
         bam_destroy1(self.b)
         if self.owns_samfile:
-            hts_close(self.htsfile)
             hts_idx_destroy(self.index)
+            hts_close(self.htsfile)
 
 
 cdef class IteratorRowRegion(IteratorRow):
