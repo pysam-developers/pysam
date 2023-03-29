@@ -17,6 +17,7 @@ support. Pysam is tested with python versions 3.7 to 3.11.
 * [#1173] Add multiple build improvements in htscodecs on multi-arch macOS
 * [#1148] Ignore CIGAR-less reads in find_introns.
 * [#1172] Add new `samtools cram-size` and `samtools reset` commands
+* [#1169] Fix CRAM index-related crash when using the musl C standard library.
 * [#1168] Add a minimal pyproject.toml for PEP517.
 * [#1158] Fix type hints and add FastqProxy type hints.
 * [#1147] Py3.11 compatibility, get shared object suffix from EXT_SUFFIX.
