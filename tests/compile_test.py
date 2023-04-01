@@ -42,7 +42,7 @@ def test_bam():
     assert nread == 3270
 
 
-@pytest.mark.skipif(NO_PYXIMPORT, "no pyximport")
+@pytest.mark.skipif(NO_PYXIMPORT, reason="no pyximport")
 def test_gtf():
 
     input_filename = os.path.join(TABIX_DATADIR, reason="example.gtf.gz")
