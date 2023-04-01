@@ -8,7 +8,7 @@ pysam and tabix works.
 
 # clean up previous compilation
 import os
-import unittest
+import pytest
 import pysam
 from TestUtils import make_data_files, BAM_DATADIR, TABIX_DATADIR
 
@@ -24,31 +24,29 @@ try:
 except OSError:
     pass
 
-import pyximport
-pyximport.install(build_in_temp=False)
-import _compile_test
+NO_PYXIMPORT = False
+try:
+    import pyximport
+    pyximport.install(build_in_temp=False)
+    import _compile_test
+except:
+    NO_PYXIMPORT = True
 
 
-class BAMTest(unittest.TestCase):
+@pytest.mark.skipif(NO_PYXIMPORT, reason="no pyximport")
+def test_bam():
 
     input_filename = os.path.join(BAM_DATADIR, "ex1.bam")
-
-    def testCount(self):
-
-        nread = _compile_test.testCountBAM(
-            pysam.Samfile(self.input_filename))
-        self.assertEqual(nread, 3270)
+    nread = _compile_test.testCountBAM(
+        pysam.Samfile(input_filename))
+    assert nread == 3270
 
 
-class GTFTest(unittest.TestCase):
+@pytest.mark.skipif(NO_PYXIMPORT, reason="no pyximport")
+def test_gtf():
 
     input_filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
-    def testCount(self):
-        nread = _compile_test.testCountGTF(
-            pysam.Tabixfile(self.input_filename))
-        self.assertEqual(nread, 237)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    nread = _compile_test.testCountGTF(
+        pysam.Tabixfile(input_filename))
+    assert nread == 237
