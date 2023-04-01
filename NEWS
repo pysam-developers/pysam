@@ -11,7 +11,7 @@ Release 0.21.0
 This release wraps htslib/samtools/bcftools version 1.17.
 
 Pysam is now compatible with Python 3.11. We have removed python 2.x
-support. Pysam is tested with python versions 3.7 to 3.11.
+support. Pysam is tested with python versions 3.6 to 3.11.
 
 * [#1175] VariantHeader.new_record: set start/stop before alleles
 * [#1173] Add multiple build improvements in htscodecs on multi-arch macOS
