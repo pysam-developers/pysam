@@ -45,7 +45,7 @@ def test_bam():
 @pytest.mark.skipif(NO_PYXIMPORT, reason="no pyximport")
 def test_gtf():
 
-    input_filename = os.path.join(TABIX_DATADIR, reason="example.gtf.gz")
+    input_filename = os.path.join(TABIX_DATADIR, "example.gtf.gz")
 
     nread = _compile_test.testCountGTF(
         pysam.Tabixfile(input_filename))
