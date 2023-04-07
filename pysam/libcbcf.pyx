@@ -3479,7 +3479,7 @@ cdef class VariantRecordSample(object):
         return bcf_format_get_alleles(self)
 
     @alleles.setter
-    def alleles(self, value: tuple):
+    def alleles(self, value):
         # Sets the genotype, supply a tuple of alleles to set.
         # The supplied alleles need to be defined in the correspoding pysam.libcbcf.VariantRecord
         # The genotype is reset when an empty tuple, None or (None,) is supplied
