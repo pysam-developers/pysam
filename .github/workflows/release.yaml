@@ -58,7 +58,7 @@ jobs:
 
       - name: Build wheels for linux
         if:   runner.os == 'Linux'
-        uses: pypa/cibuildwheel@v2.4.0
+        uses: pypa/cibuildwheel@v2.12.1
         env:
           CIBW_BUILD: ${{ matrix.cibw_build }}
           CIBW_SKIP: "*musllinux*"
