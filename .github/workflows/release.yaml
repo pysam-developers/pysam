@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v[0-9]+.*
+      - publish-v[0-9]+.*
     tags:
       - v[0-9]+.*
   release:
@@ -135,7 +136,10 @@ jobs:
           repository_url: https://test.pypi.org/legacy/
 
       - name: Publish distribution to PyPI
-        if: github.event_name == 'release' && github.event.action == 'published'
+        # publish to pypi either on release event or if push on branch
+        # with prefix publish-v. The latter is useful if there was a
+        # hiccup during a release event.
+        if: (github.event_name == 'release' && github.event.action == 'published') || (github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/publish-v')
         uses: pypa/gh-action-pypi-publish@master
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
