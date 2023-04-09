@@ -3,9 +3,9 @@ name: Publish pysam wheels to PyPI and TestPyPI
 on:
   push:
     branches:
-      - v[0-9]+.[0-9]+.[0-9].x
+      - v[0-9]+.*
     tags:
-      - v*
+      - v[0-9]+.*
   release:
     types:
       - published
@@ -58,7 +58,7 @@ jobs:
 
       - name: Build wheels for linux
         if:   runner.os == 'Linux'
-        uses: pypa/cibuildwheel@v2.4.0
+        uses: pypa/cibuildwheel@v2.12.1
         env:
           CIBW_BUILD: ${{ matrix.cibw_build }}
           CIBW_SKIP: "*musllinux*"
