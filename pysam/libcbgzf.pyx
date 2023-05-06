@@ -34,9 +34,6 @@ cdef class BGZFile(object):
     This class only supports opening files in binary mode. If you need to open a
     compressed file in text mode, use the gzip.open() function.
     """
-    cdef BGZF* bgzf
-    cdef readonly object name, index
-
     def __init__(self, filename, mode=None, index=None):
         """Constructor for the BGZFile class.
 
