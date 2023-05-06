@@ -746,11 +746,6 @@ cdef class AlignmentFile(HTSFile):
 
         self._open(*args, **kwargs)
 
-        # allocate memory for iterator
-        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
-        if self.b == NULL:
-            raise MemoryError("could not allocate memory of size {}".format(sizeof(bam1_t)))
-
     def has_index(self):
         """return true if htsfile has an existing (and opened) index.
         """
@@ -1694,10 +1689,6 @@ cdef class AlignmentFile(HTSFile):
 
         self.header = None
 
-        if self.b:
-            bam_destroy1(self.b)
-            self.b = NULL
-
         if ret < 0:
             global errno
             if errno == EPIPE:
@@ -1848,31 +1839,7 @@ cdef class AlignmentFile(HTSFile):
         if not self.is_bam and self.header.nreferences == 0:
             raise NotImplementedError(
                 "can not iterate over samfile without header")
-        return self
-
-    cdef bam1_t * getCurrent(self):
-        return self.b
-
-    cdef int cnext(self):
-        '''
-        cversion of iterator. Used by :class:`pysam.AlignmentFile.IteratorColumn`.
-        '''
-        cdef int ret
-        cdef bam_hdr_t * hdr = self.header.ptr
-        with nogil:
-            ret = sam_read1(self.htsfile,
-                            hdr,
-                            self.b)
-        return ret
-
-    def __next__(self):
-        cdef int ret = self.cnext()
-        if ret >= 0:
-            return makeAlignedSegment(self.b, self.header)
-        elif ret == -1:
-            raise StopIteration
-        else:
-            raise IOError(read_failure_reason(ret))
+        return AlignmentFileIterator(self)
 
     ###########################################
     # methods/properties referencing the header
@@ -1960,6 +1927,41 @@ cdef class AlignmentFile(HTSFile):
     def getrname(self, tid):
         """deprecated, use :meth:`get_reference_name` instead"""
         return self.get_reference_name(tid)
+
+
+cdef class AlignmentFileIterator:
+    def __init__(self, samfile):
+        self.samfile = samfile
+        self.b = <bam1_t*>calloc(1, sizeof(bam1_t))
+        if self.b == NULL:
+            raise MemoryError("could not allocate memory of size {}".format(sizeof(bam1_t)))
+
+    def __dealloc__(self):
+        bam_destroy1(self.b)
+
+    def __iter__(self):
+        return self
+
+    cdef bam1_t * getCurrent(self):
+        return self.b
+
+    cdef int cnext(self):
+        cdef int ret
+        cdef bam_hdr_t * hdr = self.samfile.header.ptr
+        with nogil:
+            ret = sam_read1(self.samfile.htsfile,
+                            hdr,
+                            self.b)
+        return ret
+
+    def __next__(self):
+        cdef int ret = self.cnext()
+        if ret >= 0:
+            return makeAlignedSegment(self.b, self.samfile.header)
+        elif ret == -1:
+            raise StopIteration
+        else:
+            raise IOError(read_failure_reason(ret))
 
 
 cdef class IteratorRow:

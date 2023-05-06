@@ -49,14 +49,15 @@ cdef class AlignmentFile(HTSFile):
     # pointer to index
     cdef hts_idx_t *index
 
-    # current read within iteration
-    cdef bam1_t * b
-
-    cdef bam1_t * getCurrent(self)
-    cdef int cnext(self)
-
     # write an aligned read
     cpdef int write(self, AlignedSegment read) except -1
+
+
+cdef class AlignmentFileIterator:
+    cdef AlignmentFile samfile
+    cdef bam1_t * b
+    cdef bam1_t * getCurrent(self)
+    cdef int cnext(self)
 
 
 cdef class IteratorRow:
