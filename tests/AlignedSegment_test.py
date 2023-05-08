@@ -1487,7 +1487,7 @@ class TestTags(ReadTest):
             ) as outf:
                 outf.write(r)
             with pysam.AlignmentFile(fn) as inf:
-                r = next(inf)
+                r = next(iter(inf))
             self.assertEqual(r.tags, [("XD", x)])
 
 

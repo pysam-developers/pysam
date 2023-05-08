@@ -722,7 +722,7 @@ class TestIO(unittest.TestCase):
         
         def load_bam():
             with pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"), "rb") as inf:
-                read = next(inf)
+                read = next(iter(inf))
             return read
 
         read = load_bam()
@@ -2390,7 +2390,7 @@ class TestLargeCigar(unittest.TestCase):
                                  reference_filename=fn_reference) as outf:
             outf.write(read)
         with pysam.AlignmentFile(fn) as inf:
-            ref_read = next(inf)
+            ref_read = next(iter(inf))
 
         if mode == "cram":
             # in CRAM, the tag field is kept, while it is emptied by the BAM/SAM reader
