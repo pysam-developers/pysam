@@ -15,14 +15,11 @@ jobs:
     runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
-        os: [ubuntu]
-        build: ["cp36-* cp37-*", "cp38-* cp39-*", "cp310-* cp311-*", "cp312-*"]
+        os: [ubuntu, macos]
+        build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-*"]
         x64image: [manylinux_2_28]
 
         include:
-          - os: macos
-            build: "cp36-* cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*"
-
           - os: ubuntu
             build: "cp38-manylinux_x86_64"
             x64image: manylinux2014
@@ -31,31 +28,23 @@ jobs:
       - name: Checkout pysam
         uses: actions/checkout@v3
 
-      - name: Set up QEMU
-        if:   runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: arm64
-
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.16.1
+        uses: pypa/cibuildwheel@v2.16.2
         env:
           CIBW_BUILD: ${{ matrix.build }}
           CIBW_SKIP: "*musllinux*"
 
-          CIBW_ARCHS_LINUX: auto aarch64
-          CIBW_ARCHS_MACOS: x86_64 arm64
+          CIBW_ARCHS_LINUX: x86_64
+          CIBW_ARCHS_MACOS: x86_64
 
           CIBW_MANYLINUX_X86_64_IMAGE:  ${{ matrix.x64image }}
           CIBW_MANYLINUX_I686_IMAGE:    manylinux2014
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 
-          CIBW_TEST_SKIP: "*-*linux_i686 *-*linux_aarch64 *-macosx_arm64"
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          path: ./wheelhouse/*.whl
+          path: wheelhouse/*.whl
 
   build_sdist:
     runs-on: ${{ matrix.os }}-latest
