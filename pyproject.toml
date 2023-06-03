@@ -13,7 +13,6 @@ dynamic = [
     "readme",
 ]
 
-
 [build-system]
 requires = ["setuptools>=59.0", "wheel", "Cython>=0.29.30,<3.0"]
 build-backend = "setuptools.build_meta:__legacy__"
