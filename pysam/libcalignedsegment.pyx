@@ -1083,7 +1083,10 @@ cdef class AlignedSegment:
         _sam = force_bytes(sam)
         line.s = _sam
 
-        sam_parse1(&line, dest.header.ptr, dest._delegate)
+        cdef int ret
+        ret = sam_parse1(&line, dest.header.ptr, dest._delegate)
+        if ret < 0:
+            raise ValueError("parsing SAM record string failed (error code {})".format(ret))
 
         return dest
 
