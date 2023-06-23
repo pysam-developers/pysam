@@ -1016,7 +1016,7 @@ int amplicon_clip_main(int argc, char **argv) {
 
     if (param.tol < 0) {
         fprintf(samtools_stderr, "[ampliconclip] warning: invalid tolerance of %d,"
-                        " reseting tolerance to default of 5.\n", param.tol);
+                        " resetting tolerance to default of 5.\n", param.tol);
         param.tol = 5;
     }
 
