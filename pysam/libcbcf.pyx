@@ -1199,7 +1199,7 @@ cdef inline bcf_sync_end(VariantRecord record):
                     raise ValueError('Unable to delete END')
     else:
         # Update to reflect stop position
-        bcf_info_set_value(record, b'END', record.stop)
+        bcf_info_set_value(record, b'END', record.ptr.pos + record.ptr.rlen)
 
 
 cdef inline int has_symbolic_allele(VariantRecord record):
