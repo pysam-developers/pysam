@@ -1188,9 +1188,9 @@ cdef inline bcf_sync_end(VariantRecord record):
     else:
         ref_len = 0
 
-    # Delete INFO/END if no alleles are present or if rlen is equal to len(ref)
+    # Delete INFO/END if no alleles are present or if not present in header
     # Always keep END for symbolic alleles
-    if not has_symbolic_allele(record) and (not record.ptr.n_allele or record.ptr.rlen == ref_len):
+    if not has_symbolic_allele(record) and (not record.ptr.n_allele) or end_id < 0:
         # If INFO/END is not defined in the header, it doesn't exist in the record
         if end_id >= 0:
             info = bcf_get_info(hdr, record.ptr, b'END')
@@ -1198,12 +1198,8 @@ cdef inline bcf_sync_end(VariantRecord record):
                 if bcf_update_info(hdr, record.ptr, b'END', NULL, 0, info.type) < 0:
                     raise ValueError('Unable to delete END')
     else:
-        # Create END header, if not present
-        if end_id < 0:
-            record.header.info.add('END', number=1, type='Integer', description='Stop position of the interval')
-
         # Update to reflect stop position
-        bcf_info_set_value(record, b'END', record.ptr.pos + record.ptr.rlen)
+        bcf_info_set_value(record, b'END', record.stop)
 
 
 cdef inline int has_symbolic_allele(VariantRecord record):
