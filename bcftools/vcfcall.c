@@ -1,6 +1,6 @@
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
-    Copyright (C) 2013-2022 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -97,6 +97,8 @@ typedef struct
 
     int argc;
     char **argv;
+    char *index_fn;
+    int write_index;
 
     //  int flag, prior_type, n1, n_sub, *sublist, n_perm;
     //  uint32_t *trio_aux;
@@ -715,6 +717,7 @@ static void init_data(args_t *args)
 
     if (args->record_cmd_line) bcf_hdr_append_version(args->aux.hdr, args->argc, args->argv, "bcftools_call");
     if ( bcf_hdr_write(args->out_fh, args->aux.hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname);
+    if ( args->write_index && init_index(args->out_fh,args->aux.hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
 
     if ( args->flag&CF_INS_MISSED ) init_missed_line(args);
 }
@@ -753,6 +756,15 @@ static void destroy_data(args_t *args)
     free(args->str.s);
     if ( args->gvcf ) gvcf_destroy(args->gvcf);
     bcf_hdr_destroy(args->aux.hdr);
+    if ( args->write_index )
+    {
+        if ( bcf_idx_save(args->out_fh)<0 )
+        {
+            if ( hts_close(args->out_fh)!=0 ) error("Error: close failed .. %s\n", args->output_fname?args->output_fname:"stdout");
+            error("Error: cannot write to index %s\n", args->index_fn);
+        }
+        free(args->index_fn);
+    }
     if ( hts_close(args->out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
     bcf_sr_destroy(args->aux.srs);
 }
@@ -908,6 +920,7 @@ static void usage(args_t *args)
     fprintf(stderr, "   -M, --keep-masked-ref           Keep sites with masked reference allele (REF=N)\n");
     fprintf(stderr, "   -V, --skip-variants TYPE        Skip indels/snps\n");
     fprintf(stderr, "   -v, --variants-only             Output variant sites only\n");
+    fprintf(stderr, "       --write-index               Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Consensus/variant calling options:\n");
     fprintf(stderr, "   -c, --consensus-caller          The original calling method (conflicts with -m)\n");
@@ -990,6 +1003,7 @@ int main_vcfcall(int argc, char *argv[])
         {"chromosome-X",no_argument,NULL,'X'},
         {"chromosome-Y",no_argument,NULL,'Y'},
         {"no-version",no_argument,NULL,8},
+        {"write-index",no_argument,NULL,10},
         {NULL,0,NULL,0}
     };
 
@@ -1076,6 +1090,7 @@ int main_vcfcall(int argc, char *argv[])
                 args.regions_overlap = parse_overlap_option(optarg);
                 if ( args.regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
+            case  10: args.write_index = 1; break;
             default: usage(&args);
         }
     }

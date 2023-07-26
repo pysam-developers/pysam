@@ -1,6 +1,6 @@
 /*  vcfquery.c -- Extracts fields from VCF/BCF file.
 
-    Copyright (C) 2013-2022 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -94,6 +94,7 @@ static void init_data(args_t *args)
         smpl_ilist_destroy(ilist);
     }
     args->convert = convert_init(args->header, samples, nsamples, args->format_str);
+    convert_set_option(args->convert, force_newline, 1);
     convert_set_option(args->convert, subset_samples, &args->smpl_pass);
     if ( args->allow_undef_tags ) convert_set_option(args->convert, allow_undef_tags, 1);
     free(samples);

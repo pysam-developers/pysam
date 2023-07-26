@@ -1,6 +1,6 @@
 /*  vcfplugin.c -- plugin modules for operating on VCF/BCF files.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -149,6 +149,8 @@ typedef struct _args_t
 
     char **argv, *output_fname, *regions_list, *targets_list;
     int argc, drop_header, verbose, record_cmd_line, plist_only;
+    char *index_fn;
+    int write_index;
 }
 args_t;
 
@@ -548,6 +550,7 @@ static void init_data(args_t *args)
         if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
         if ( args->n_threads ) hts_set_threads(args->out_fh, args->n_threads);
         if ( bcf_hdr_write(args->out_fh, args->hdr_out)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
+        if ( args->write_index && init_index(args->out_fh,args->hdr_out,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
     }
 }
 
@@ -569,7 +572,19 @@ static void destroy_data(args_t *args)
     }
     if ( args->filter )
         filter_destroy(args->filter);
-    if (args->out_fh && hts_close(args->out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
+    if (args->out_fh )
+    {
+        if ( args->write_index )
+        {
+            if ( bcf_idx_save(args->out_fh)<0 )
+            {
+                if ( hts_close(args->out_fh)!=0 ) error("Error: close failed .. %s\n", args->output_fname?args->output_fname:"stdout");
+                error("Error: cannot write to index %s\n", args->index_fn);
+            }
+            free(args->index_fn);
+        }
+        if ( hts_close(args->out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
+    }
 }
 
 static void usage(args_t *args)
@@ -598,6 +613,7 @@ static void usage(args_t *args)
     fprintf(stderr, "   -l, --list-plugins             List available plugins. See BCFTOOLS_PLUGINS environment variable and man page for details\n");
     fprintf(stderr, "   -v, --verbose                  Print verbose information, -vv increases verbosity\n");
     fprintf(stderr, "   -V, --version                  Print version string and exit\n");
+    fprintf(stderr, "       --write-index              Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -643,9 +659,9 @@ int main_plugin(int argc, char *argv[])
     if ( argv[1][0]!='-' )
     {
         args->verbose = is_verbose(argc, argv);
-        plugin_name = argv[1]; 
-        argc--; 
-        argv++; 
+        plugin_name = argv[1];
+        argc--;
+        argv++;
         load_plugin(args, plugin_name, 1, &args->plugin);
         if ( args->plugin.run )
         {
@@ -675,6 +691,7 @@ int main_plugin(int argc, char *argv[])
         {"targets-file",required_argument,NULL,'T'},
         {"targets-overlap",required_argument,NULL,2},
         {"no-version",no_argument,NULL,8},
+        {"write-index",no_argument,NULL,10},
         {NULL,0,NULL,0}
     };
     char *tmp;
@@ -723,6 +740,7 @@ int main_plugin(int argc, char *argv[])
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
+            case 10 : args->write_index = 1; break;
             case '?':
             case 'h': usage_only = 1; break;
             default: error("Unknown argument: %s\n", optarg);

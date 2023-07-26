@@ -19,10 +19,10 @@
 /* Define if HTSlib should enable S3 support. */
 #undef ENABLE_S3
 
-/* Defined to 1 if the compiler can issue AVX2 instructions. */
+/* Defined to 1 if rANS source using AVX2 can be compiled. */
 #undef HAVE_AVX2
 
-/* Defined to 1 if the compiler can issue AVX512 instructions. */
+/* Defined to 1 if rANS source using AVX512F can be compiled. */
 #undef HAVE_AVX512
 
 /* Define if you have the Common Crypto library. */
@@ -76,16 +76,16 @@
 /* Define to 1 if you have a working `mmap' system call. */
 #undef HAVE_MMAP
 
-/* Defined to 1 if the compiler can issue popcnt instructions. */
+/* Defined to 1 if rANS source using popcnt can be compiled. */
 #undef HAVE_POPCNT
 
 /* Define to 1 if you have the `srand48_deterministic' function. */
 #undef HAVE_SRAND48_DETERMINISTIC
 
-/* Defined to 1 if the compiler can issue SSE4.1 instructions. */
+/* Defined to 1 if rANS source using SSE4.1 can be compiled. */
 #undef HAVE_SSE4_1
 
-/* Defined to 1 if the compiler can issue SSSE3 instructions. */
+/* Defined to 1 if rANS source using SSSE3 can be compiled. */
 #undef HAVE_SSSE3
 
 /* Define to 1 if you have the <stdint.h> header file. */
@@ -141,7 +141,6 @@
 #if defined(HTS_ALLOW_UNALIGNED) && HTS_ALLOW_UNALIGNED == 0
 #undef UBSAN
 #endif
-  
 
 /* Enable large inode numbers on Mac OS X 10.5.  */
 #ifndef _DARWIN_USE_64_BIT_INODE
@@ -154,5 +153,5 @@
 /* Define for large files, on AIX-style hosts. */
 #undef _LARGE_FILES
 
-/* Needed for PTHREAD_MUTEX_RECURSIVE */
+/* Specify X/Open requirements */
 #undef _XOPEN_SOURCE

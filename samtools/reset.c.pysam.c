@@ -27,6 +27,8 @@ DEALINGS IN THE SOFTWARE
 
 */
 
+#include <config.h>
+
 #include "samtools.h"
 #include "htslib/sam.h"
 #include "sam_opts.h"

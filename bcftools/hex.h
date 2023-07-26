@@ -3,10 +3,10 @@
 // hex.h
 //
 // @category   Libraries
-// @author     Nicola Asuni <nicola.asuni@genomicsplc.com>
+// @author     Nicola Asuni <info@tecnick.com>
+// @link       https://github.com/tecnickcom/variantkey
+// @license    MIT [LICENSE](https://raw.githubusercontent.com/tecnickcom/variantkey/main/LICENSE)
 // @copyright  2017-2018 GENOMICS plc
-// @license    MIT (see LICENSE)
-// @link       https://github.com/genomicsplc/variantkey
 //
 // LICENSE
 //

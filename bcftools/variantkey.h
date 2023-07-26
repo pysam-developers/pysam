@@ -3,14 +3,15 @@
 // variantkey.h
 //
 // @category   Libraries
-// @author     Nicola Asuni <nicola.asuni@genomicsplc.com>
-// @copyright  2017-2018 GENOMICS plc
-// @license    MIT (see LICENSE)
-// @link       https://github.com/genomicsplc/variantkey
+// @author     Nicola Asuni <info@tecnick.com>
+// @link       https://github.com/tecnickcom/variantkey
+// @license    MIT [LICENSE](https://raw.githubusercontent.com/tecnickcom/variantkey/main/LICENSE)
+// @copyright  2017-2018 GENOMICS plc, 2018-2023 Nicola Asuni - Tecnick.com
 //
 // LICENSE
 //
 // Copyright (c) 2017-2018 GENOMICS plc
+// Copyright (c) 2018-2023 Nicola Asuni - Tecnick.com
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -54,6 +55,7 @@
 #define VKMASK_REFALT   0x000000007FFFFFFF  //!< VariantKey binary mask for REF+ALT   [ 00000000 00000000 00000000 00000000 01111111 11111111 11111111 11111111 ]
 #define VKSHIFT_CHROM   59 //!< CHROM LSB position from the VariantKey LSB
 #define VKSHIFT_POS     31 //!< POS LSB position from the VariantKey LSB
+#define MAXUINT32       0xFFFFFFFF //!< Maximum value for uint32_t
 
 /**
  * VariantKey struct.
@@ -75,16 +77,54 @@ typedef struct vkrange_t
     uint64_t max; //!< Maximum VariantKey value for any given REF+ALT encoding
 } vkrange_t;
 
-/** @brief Returns chromosome numerical encoding.
+/** @brief Returns the encoding for a numerical chromosome input.
  *
  * @param chrom  Chromosome. An identifier from the reference genome, no white-space permitted.
  * @param size   Length of the chrom string, excluding the terminating null byte.
  *
  * @return CHROM code
  */
+static inline uint8_t encode_numeric_chrom(const char *chrom, size_t size)
+{
+    size_t i;
+    uint8_t v = (chrom[0] - '0');
+    for (i = 1; i < size; i++)
+    {
+        if ((chrom[i] > '9') || (chrom[i] < '0'))
+        {
+            return 0; // NA: a character that is not a numebr was found.
+        }
+        v = ((v * 10) + (chrom[i] - '0'));
+    }
+    return v;
+}
+
+
+/** @brief Returns a true value (1) if the input chrom has 'chr' prefix (case insensitive).
+ *
+ * @param chrom  Chromosome. An identifier from the reference genome, no white-space permitted.
+ * @param size   Length of the chrom string, excluding the terminating null byte.
+ *
+ * @return True (1) if the chr prefix is present.
+ */
+static inline int has_chrom_chr_prefix(const char *chrom, size_t size)
+{
+    return ((size > 3)
+            && ((chrom[0] == 'c') || (chrom[0] == 'C'))
+            && ((chrom[1] == 'h') || (chrom[1] == 'H'))
+            && ((chrom[2] == 'r') || (chrom[2] == 'R')));
+}
+
+/** @brief Returns chromosome numerical encoding.
+ *
+ * @param chrom  Chromosome. An identifier from the reference genome, no white-space permitted.
+ * @param size   Length of the chrom string, excluding the terminating null byte.
+ *
+ * @return CHROM code or 0 in case of invalid input.
+ */
 static inline uint8_t encode_chrom(const char *chrom, size_t size)
 {
-    // X > 23 ; Y > 24 ; M > 25
+    // X = 23; Y = 24; M = 25; any other letter is mapped to 0:
     static const uint8_t onecharmap[] =
     {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -98,12 +138,9 @@ static inline uint8_t encode_chrom(const char *chrom, size_t size)
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     };
-    // remove "chr" prefix
-    if ((size > 3)
-            && ((chrom[0] == 'c') || (chrom[0] == 'C'))
-            && ((chrom[1] == 'h') || (chrom[1] == 'H'))
-            && ((chrom[2] == 'r') || (chrom[2] == 'R')))
+    if (has_chrom_chr_prefix(chrom, size))
     {
+        // remove "chr" prefix
         chrom += 3;
         size -= 3;
     }
@@ -111,19 +148,9 @@ static inline uint8_t encode_chrom(const char *chrom, size_t size)
     {
         return 0;
     }
-    if ((chrom[0] <= '9') && (chrom[0] >= '0')) // Number
+    if ((chrom[0] <= '9') && (chrom[0] >= '0'))
     {
-        size_t i;
-        uint8_t v = (chrom[0] - '0');
-        for (i = 1; i < size; i++)
-        {
-            if ((chrom[i] > '9') || (chrom[i] < '0'))
-            {
-                return 0; // NA
-            }
-            v = ((v * 10) + (chrom[i] - '0'));
-        }
-        return v;
+        return encode_numeric_chrom(chrom, size);
     }
     if ((size == 1) || ((size == 2) && ((chrom[1] == 'T') || (chrom[1] == 't'))))
     {
@@ -159,10 +186,10 @@ static inline uint32_t encode_base(const uint8_t c)
 {
     /*
       Encode base:
-      A > 0
-      C > 1
-      G > 2
-      T > 3
+      A = 0
+      C = 1
+      G = 2
+      T = 3
     */
     static const uint32_t map[] =
     {
@@ -205,7 +232,7 @@ static inline uint32_t encode_refalt_rev(const char *ref, size_t sizeref, const 
     uint8_t bitpos = 23;
     if ((encode_allele(&h, &bitpos, ref, sizeref) < 0) || (encode_allele(&h, &bitpos, alt, sizealt) < 0))
     {
-        return 0; // error code
+        return MAXUINT32; // error code
     }
     return h;
 }
@@ -318,7 +345,7 @@ static inline uint32_t encode_refalt(const char *ref, size_t sizeref, const char
     if ((sizeref + sizealt) <= 11)
     {
         uint32_t h = encode_refalt_rev(ref, sizeref, alt, sizealt);
-        if (h != 0)
+        if (h != MAXUINT32)
         {
             return h;
         }
@@ -486,7 +513,9 @@ static inline void decode_variantkey(uint64_t code, variantkey_t *vk)
     vk->refalt = extract_variantkey_refalt(code);
 }
 
-/** @brief Returns a 64 bit variant key based on CHROM, POS (0-based), REF, ALT.
+/**
+ * Returns a 64 bit variant key based on CHROM, POS (0-based), REF, ALT.
+ * The variant should be already normalized (see normalize_variant or use normalized_variantkey).
  *
  * @param chrom      Chromosome. An identifier from the reference genome, no white-space or leading zeros permitted.
  * @param sizechrom  Length of the chrom string, excluding the terminating null byte.

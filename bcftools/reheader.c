@@ -68,7 +68,8 @@ static char *copy_and_update_contig_line(faidx_t *fai, char *line, void *chr_see
     kstring_t key = {0,0,0}, val = {0,0,0}, tmp = {0,0,0};
     char *chr_name = NULL, *p, *q = line + 9;   // skip ##contig=
     char *end = q;
-    int nopen = 1, chr_len = 0;
+    int nopen = 1;
+    hts_pos_t chr_len = 0;
     while ( *end && *end!='\n' ) end++;
     while ( *q && *q!='\n' && nopen>0 )
     {
@@ -118,7 +119,7 @@ static char *copy_and_update_contig_line(faidx_t *fai, char *line, void *chr_see
         if ( !strcmp("ID",key.s) )
         {
             if ( khash_str2int_has_key(chr_seen,val.s) ) continue;
-            chr_len = faidx_seq_len(fai, val.s);
+            chr_len = faidx_seq_len64(fai, val.s);
             if ( chr_len==-1 )
             {
                 free(val.s); free(key.s); free(tmp.s);
@@ -136,7 +137,7 @@ static char *copy_and_update_contig_line(faidx_t *fai, char *line, void *chr_see
         if ( quoted ) kputc('"',&tmp);
     }
     if ( !chr_name ) return end;
-    ksprintf(dst,"##contig=<ID=%s,length=%d%s>",chr_name,chr_len,tmp.l ? tmp.s : "");
+    ksprintf(dst,"##contig=<ID=%s,length=%"PRIhts_pos"%s>",chr_name,chr_len,tmp.l ? tmp.s : "");
     free(key.s); free(val.s); free(tmp.s);
     return q;
 }
@@ -211,7 +212,7 @@ static void update_from_fai(args_t *args)
     for (i=0; i<n; i++)
     {
         if ( khash_str2int_has_key(chr_seen,faidx_iseq(fai,i)) ) continue;
-        ksprintf(&hdr_txt_new,"##contig=<ID=%s,length=%d>\n",faidx_iseq(fai,i),faidx_seq_len(fai,faidx_iseq(fai,i)));
+        ksprintf(&hdr_txt_new,"##contig=<ID=%s,length=%"PRIhts_pos">\n",faidx_iseq(fai,i),faidx_seq_len64(fai,faidx_iseq(fai,i)));
     }
     kputs(tmp+1,&hdr_txt_new);
 
@@ -699,7 +700,7 @@ int main_reheader(int argc, char *argv[])
     int c;
     args_t *args  = (args_t*) calloc(1,sizeof(args_t));
     args->argc    = argc; args->argv = argv;
-    
+
     static struct option loptions[] =
     {
         {"temp-prefix",1,0,'T'},

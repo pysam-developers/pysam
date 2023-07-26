@@ -109,8 +109,8 @@ struct _filter_t
 #if ENABLE_PERL_FILTERS
     PerlInterpreter *perl;
 #endif
-    char **undef_tag;
-    int nundef_tag;
+    char **undef_tag, **used_tag;
+    int nundef_tag, nused_tag;
     int status, exit_on_error;
 };
 
@@ -328,6 +328,32 @@ const char **filter_list_undef_tags(filter_t *filter, int *ntags)
     *ntags = filter->nundef_tag;
     return (const char**)filter->undef_tag;
 }
+static void filter_add_used_tag(filter_t *filter, const char *prefix, char *str)
+{
+    int i;
+    kstring_t tmp = {0,0,0};
+    if ( prefix ) kputs(prefix,&tmp);
+    kputs(str,&tmp);
+    for (i=0; i<filter->nused_tag; i++)
+        if ( !strcmp(tmp.s,filter->used_tag[i]) ) break;
+    if ( i<filter->nused_tag )
+    {
+        free(tmp.s);
+        return;
+    }
+
+    filter->nused_tag++;
+    filter->used_tag = (char**)realloc(filter->used_tag,sizeof(*filter->used_tag)*filter->nused_tag);
+    if ( !filter->used_tag ) error("Could not allocate memory\n");
+    filter->used_tag[filter->nused_tag-1] = tmp.s;
+    if ( !filter->used_tag[filter->nused_tag-1] ) error("Could not allocate memory\n");
+}
+const char **filter_list_used_tags(filter_t *filter, int *ntags)
+{
+    *ntags = filter->nused_tag;
+    return (const char**)filter->used_tag;
+}
+
 
 
 /*
@@ -2841,6 +2867,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         {
             tok->setter = filters_set_qual;
             tok->tag = strdup("QUAL");
+            filter_add_used_tag(filter,NULL,tok->tag);
             return 0;
         }
         else if ( !strncasecmp(str,"TYPE",len) || !strncmp(str,"%TYPE",len) /* for backward compatibility */ )
@@ -2855,24 +2882,28 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
             tok->tag = strdup("FILTER");
             filter->max_unpack |= BCF_UN_FLT;
             tok->tag_type = BCF_HL_FLT;
+            filter_add_used_tag(filter,NULL,tok->tag);
             return 0;
         }
         else if ( !strncasecmp(str,"ID",len) || !strncasecmp(str,"%ID",len) /* for backward compatibility */ )
         {
             tok->comparator = filters_cmp_id;
             tok->tag = strdup("ID");
+            filter_add_used_tag(filter,NULL,tok->tag);
             return 0;
         }
         else if ( !strncasecmp(str,"CHROM",len) )
         {
             tok->setter = &filters_set_chrom;
             tok->tag = strdup("CHROM");
+            filter_add_used_tag(filter,NULL,tok->tag);
             return 0;
         }
         else if ( !strncasecmp(str,"POS",len) )
         {
             tok->setter = &filters_set_pos;
             tok->tag = strdup("POS");
+            filter_add_used_tag(filter,NULL,tok->tag);
             return 0;
         }
         else if ( !strncasecmp(str,"REF",len) )
@@ -2880,6 +2911,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
             tok->setter = &filters_set_ref_string;
             tok->is_str = 1;
             tok->tag = strdup("REF");
+            filter_add_used_tag(filter,NULL,tok->tag);
             return 0;
         }
         else if ( !strncasecmp(str,"ALT",len) )
@@ -2891,6 +2923,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
             tok->idxs[0] = -1;
             tok->nidxs   = 1;
             tok->idx     = -2;
+            filter_add_used_tag(filter,NULL,tok->tag);
             return 0;
         }
         else if ( !strncasecmp(str,"N_ALT",len) )
@@ -3018,6 +3051,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         }
         tok->tag = strdup(tmp.s);
         if ( tmp.s ) free(tmp.s);
+        filter_add_used_tag(filter,is_fmt ? "FORMAT/" : "INFO/",tok->tag);
         return 0;
     }
     else if ( !strcasecmp(tmp.s,"ALT") )
@@ -3026,6 +3060,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         tok->is_str = 1;
         tok->tag = strdup(tmp.s);
         free(tmp.s);
+        filter_add_used_tag(filter,NULL,tok->tag);
         return 0;
     }
     else if ( !strcasecmp(tmp.s,"AN") )
@@ -3669,7 +3704,9 @@ void filter_destroy(filter_t *filter)
         }
     }
     for (i=0; i<filter->nundef_tag; i++) free(filter->undef_tag[i]);
+    for (i=0; i<filter->nused_tag; i++) free(filter->used_tag[i]);
     free(filter->undef_tag);
+    free(filter->used_tag);
     free(filter->cached_GT.buf);
     free(filter->cached_GT.mask);
     free(filter->filters);

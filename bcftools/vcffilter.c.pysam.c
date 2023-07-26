@@ -2,7 +2,7 @@
 
 /*  vcffilter.c -- Apply fixed-threshold filters.
 
-    Copyright (C) 2013-2022 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -79,6 +79,8 @@ typedef struct _args_t
     char **argv, *output_fname, *targets_list, *regions_list, *mask_list;
     int argc, record_cmd_line, mask_is_file, mask_overlap, mask_negate;
     regidx_t *mask;
+    char *index_fn;
+    int write_index;
 }
 args_t;
 
@@ -493,6 +495,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -T, --targets-file FILE        Similar to -R but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "        --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "        --threads INT              Use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "        --write-index              Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -535,13 +538,14 @@ int main_vcffilter(int argc, char *argv[])
         {"SnpGap",required_argument,NULL,'g'},
         {"IndelGap",required_argument,NULL,'G'},
         {"no-version",no_argument,NULL,8},
+        {"write-index",no_argument,NULL,12},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "e:i:t:T:r:R:h?s:m:o:O:g:G:S:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "e:i:t:T:r:R:h?s:m:M:o:O:g:G:S:",loptions,NULL)) >= 0) {
         switch (c) {
             case 'g':
-                args->snp_gap = strtol(optarg,&tmp,10); 
+                args->snp_gap = strtol(optarg,&tmp,10);
                 if ( *tmp && *tmp!=':' ) error("Could not parse argument: --SnpGap %s\n", optarg);
                 if ( *tmp==':' )
                 {
@@ -627,6 +631,7 @@ int main_vcffilter(int argc, char *argv[])
                 else if ( !strcasecmp(optarg,"2") ) args->mask_overlap = 2;
                 else error("Could not parse: --mask-overlap %s\n",optarg);
                 break;
+            case  12 : args->write_index = 1; break;
             case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
@@ -674,6 +679,7 @@ int main_vcffilter(int argc, char *argv[])
 
     init_data(args);
     if ( bcf_hdr_write(args->out_fh, args->hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname);
+    if ( args->write_index && init_index(args->out_fh,args->hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
     while ( bcf_sr_next_line(args->files) )
     {
         bcf1_t *line = bcf_sr_get_line(args->files, 0);
@@ -715,7 +721,15 @@ int main_vcffilter(int argc, char *argv[])
         }
     }
     buffered_filters(args, NULL);
-
+    if ( args->write_index )
+    {
+        if ( bcf_idx_save(args->out_fh)<0 )
+        {
+            if ( hts_close(args->out_fh)!=0 ) error("Error: close failed .. %s\n", args->output_fname?args->output_fname:"bcftools_stdout");
+            error("Error: cannot write to index %s\n", args->index_fn);
+        }
+        free(args->index_fn);
+    }
     if ( hts_close(args->out_fh)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
     destroy_data(args);
     bcf_sr_destroy(args->files);

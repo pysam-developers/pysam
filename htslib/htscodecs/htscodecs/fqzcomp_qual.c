@@ -202,21 +202,28 @@ static int strat_opts[][12] = {
 };
 static int nstrats = sizeof(strat_opts) / sizeof(*strat_opts);
 
-#ifdef __SSE__
-#   include <xmmintrin.h>
+#ifdef HAVE_BUILTIN_PREFETCH
+static inline void mm_prefetch(void *x) {
+    __builtin_prefetch(x);
+}
 #else
-#   define _mm_prefetch(a,b)
+static inline void mm_prefetch(void *x) {
+    // Fetch and discard is quite close to a genuine prefetch
+    *(volatile int *)x;
+}
 #endif
 
 typedef struct {
     unsigned int qctx;  // quality sub-context
     unsigned int p;     // pos (bytes remaining)
-    unsigned int add_d; // whether to update delta (skip first cycle)
     unsigned int delta; // delta running total
     unsigned int prevq; // previous quality
     unsigned int s;     // selector
     unsigned int qtot, qlen;
     unsigned int first_len;
+    unsigned int last_len;
+    ssize_t rec;
+    unsigned int ctx;
 } fqz_state;
 
 static void dump_table(unsigned int *tab, int size, char *name) {
@@ -370,8 +377,6 @@ static inline unsigned int fqz_update_ctx(fqz_param *pm, fqz_state *state, int q
     //}
 
     // Only update delta after 1st base.
-    //state->delta += state->add_d * (state->prevq != q);
-    //state->add_d = 1;
     state->delta += (state->prevq != q);
     state->prevq = q;
 
@@ -379,7 +384,6 @@ static inline unsigned int fqz_update_ctx(fqz_param *pm, fqz_state *state, int q
 
     return last & (CTX_SIZE-1);
 }
-
 
 // Build quality stats for qhist and set nsym, do_dedup and do_sel params.
 // One_param is -1 to gather stats on all data, or >= 0 to gather data
@@ -390,7 +394,7 @@ void fqz_qual_stats(fqz_slice *s,
                     fqz_param *pm,
                     uint32_t qhist[256],
                     int one_param) {
-#define NP 128
+#define NP 32
     uint32_t qhistb[NP][256] = {{0}};  // both
     uint32_t qhist1[NP][256] = {{0}};  // READ1 only
     uint32_t qhist2[NP][256] = {{0}};  // READ2 only
@@ -530,6 +534,11 @@ void fqz_qual_stats(fqz_slice *s,
                 i += s->len[rec++];
                 continue;
             }
+            if ((rec & 7) && rec < s->num_records) {
+                // subsample for speed
+                i += s->len[rec++];
+                continue;
+            }
             if (rec < s->num_records)
                 j = s->len[rec];
             else
@@ -552,19 +561,19 @@ void fqz_qual_stats(fqz_slice *s,
         double e1 = 0, e2 = 0, e4 = 0;
         for (j = 0; j < NP; j++) {
             for (i = 0; i < 256; i++) {
-                if (qbin1   [j][i]) e1 += qbin1   [j][i] * log(qbin1   [j][i] / (double)qcnt1   [j]);
-                if (qbin2[0][j][i]) e2 += qbin2[0][j][i] * log(qbin2[0][j][i] / (double)qcnt2[0][j]);
-                if (qbin2[1][j][i]) e2 += qbin2[1][j][i] * log(qbin2[1][j][i] / (double)qcnt2[1][j]);
-                if (qbin4[0][j][i]) e4 += qbin4[0][j][i] * log(qbin4[0][j][i] / (double)qcnt4[0][j]);
-                if (qbin4[1][j][i]) e4 += qbin4[1][j][i] * log(qbin4[1][j][i] / (double)qcnt4[1][j]);
-                if (qbin4[2][j][i]) e4 += qbin4[2][j][i] * log(qbin4[2][j][i] / (double)qcnt4[2][j]);
-                if (qbin4[3][j][i]) e4 += qbin4[3][j][i] * log(qbin4[3][j][i] / (double)qcnt4[3][j]);
+                if (qbin1   [j][i]) e1 += qbin1   [j][i] * fast_log(qbin1   [j][i] / (double)qcnt1   [j]);
+                if (qbin2[0][j][i]) e2 += qbin2[0][j][i] * fast_log(qbin2[0][j][i] / (double)qcnt2[0][j]);
+                if (qbin2[1][j][i]) e2 += qbin2[1][j][i] * fast_log(qbin2[1][j][i] / (double)qcnt2[1][j]);
+                if (qbin4[0][j][i]) e4 += qbin4[0][j][i] * fast_log(qbin4[0][j][i] / (double)qcnt4[0][j]);
+                if (qbin4[1][j][i]) e4 += qbin4[1][j][i] * fast_log(qbin4[1][j][i] / (double)qcnt4[1][j]);
+                if (qbin4[2][j][i]) e4 += qbin4[2][j][i] * fast_log(qbin4[2][j][i] / (double)qcnt4[2][j]);
+                if (qbin4[3][j][i]) e4 += qbin4[3][j][i] * fast_log(qbin4[3][j][i] / (double)qcnt4[3][j]);
             }
         }
         e1 /= -log(2)/8;
         e2 /= -log(2)/8;
         e4 /= -log(2)/8;
-        //fprintf(stderr, "E1=%f E2=%f E4=%f\n", e1, e2+s->num_records/8, e4+s->num_records/4);
+        //fprintf(stderr, "E1=%f E2=%f E4=%f %f\n", e1, e2+s->num_records/8, e4+s->num_records/4, (e4+s->num_records/4)/(e2+s->num_records/8));
 
         // Note by using the selector we're robbing bits from elsewhere in
         // the context, which may reduce compression better.
@@ -918,6 +927,79 @@ static void fqz_free_parameters(fqz_gparams *gp) {
     if (gp && gp->p) free(gp->p);
 }
 
+static int compress_new_read(fqz_slice *s,
+                             fqz_state *state,
+                             fqz_gparams *gp,
+                             fqz_param *pm,
+                             fqz_model *model,
+                             RangeCoder *rc,
+                             unsigned char *in,
+                             size_t *in_i, // in[in_i],
+                             unsigned int *last) {
+    ssize_t rec = state->rec;
+    size_t i = *in_i;
+    if (pm->do_sel || (gp->gflags & GFLAG_MULTI_PARAM)) {
+        state->s = rec < s->num_records
+            ? s->flags[rec] >> 16 // reuse spare bits
+            : 0;
+        SIMPLE_MODEL(256,_encodeSymbol)(&model->sel, rc, state->s);
+    } else {
+        state->s = 0;
+    }
+    int x = (gp->gflags & GFLAG_HAVE_STAB) ? gp->stab[state->s] : state->s;
+    pm = &gp->p[x];
+
+    int len = s->len[rec];
+    if (!pm->fixed_len || state->first_len) {
+        SIMPLE_MODEL(256,_encodeSymbol)(&model->len[0], rc, (len>> 0) & 0xff);
+        SIMPLE_MODEL(256,_encodeSymbol)(&model->len[1], rc, (len>> 8) & 0xff);
+        SIMPLE_MODEL(256,_encodeSymbol)(&model->len[2], rc, (len>>16) & 0xff);
+        SIMPLE_MODEL(256,_encodeSymbol)(&model->len[3], rc, (len>>24) & 0xff);
+        state->first_len = 0;
+    }
+
+    if (gp->gflags & GFLAG_DO_REV) {
+        // no need to reverse complement for V4.0 as the core format
+        // already has this feature.
+        if (s->flags[rec] & FQZ_FREVERSE)
+            SIMPLE_MODEL(2,_encodeSymbol)(&model->revcomp, rc, 1);
+        else
+            SIMPLE_MODEL(2,_encodeSymbol)(&model->revcomp, rc, 0);
+    }
+
+    state->rec++;
+
+    state->qtot = 0;
+    state->qlen = 0;
+
+    state->p = len;
+    state->delta = 0;
+    state->qctx = 0;
+    state->prevq = 0;
+
+    *last = pm->context;
+
+    if (pm->do_dedup) {
+        // Possible dup of previous read?
+        if (i && len == state->last_len &&
+            !memcmp(in+i-state->last_len, in+i, len)) {
+            SIMPLE_MODEL(2,_encodeSymbol)(&model->dup, rc, 1);
+            i += len-1;
+            state->p = 0;
+            *in_i = i;
+            return 1; // is a dup
+        } else {
+            SIMPLE_MODEL(2,_encodeSymbol)(&model->dup, rc, 0);
+        }
+
+        state->last_len = len;
+    }
+
+    *in_i = i;
+
+    return 0; // not dup
+}
+
 static
 unsigned char *compress_block_fqz2f(int vers,
                                     int strat,
@@ -933,7 +1015,6 @@ unsigned char *compress_block_fqz2f(int vers,
     size_t i, j;
     ssize_t rec = 0;
 
-    int last_len = 0;
     int comp_idx = 0;
     RangeCoder rc;
 
@@ -1005,86 +1086,75 @@ unsigned char *compress_block_fqz2f(int vers,
     pm = &gp->p[0];
     state.p = 0;
     state.first_len = 1;
-    int x;
+    state.last_len = 0;
+    state.rec = rec;
 
     for (i = 0; i < in_size; i++) {
         if (state.p == 0) {
-            if (pm->do_sel || (gp->gflags & GFLAG_MULTI_PARAM)) {
-                state.s = rec < s->num_records
-                    ? s->flags[rec] >> 16 // reuse spare bits
-                    : 0;
-                SIMPLE_MODEL(256,_encodeSymbol)(&model.sel, &rc, state.s);
-                //fprintf(stderr, "State %d\n", state.s);
-            } else {
-                state.s = 0;
-            }
-            x = (gp->gflags & GFLAG_HAVE_STAB) ? gp->stab[state.s] : state.s;
-            pm = &gp->p[x];
-
-            //fprintf(stderr, "sel %d param %d\n", state.s, x);
-
-            int len = s->len[rec];
-            if (!pm->fixed_len || state.first_len) {
-                SIMPLE_MODEL(256,_encodeSymbol)(&model.len[0], &rc, (len>> 0) & 0xff);
-                SIMPLE_MODEL(256,_encodeSymbol)(&model.len[1], &rc, (len>> 8) & 0xff);
-                SIMPLE_MODEL(256,_encodeSymbol)(&model.len[2], &rc, (len>>16) & 0xff);
-                SIMPLE_MODEL(256,_encodeSymbol)(&model.len[3], &rc, (len>>24) & 0xff);
-                //fprintf(stderr, "Len %d\n", len);
-                state.first_len = 0;
-            }
-
-            if (gp->gflags & GFLAG_DO_REV) {
-                // no need to reverse complement for V4.0 as the core format
-                // already has this feature.
-                if (s->flags[rec] & FQZ_FREVERSE)
-                    SIMPLE_MODEL(2,_encodeSymbol)(&model.revcomp, &rc, 1);
-                else
-                    SIMPLE_MODEL(2,_encodeSymbol)(&model.revcomp, &rc, 0);
-                //fprintf(stderr, "Rev %d\n", (s->flags[rec] & FQZ_FREVERSE) ? 1 : 0);
-            }
-
-            rec++;
-
-            state.qtot = 0;
-            state.qlen = 0;
-
-            state.p = len;
-            state.add_d = 0;
-            state.delta = 0;
-            state.qctx = 0;
-            state.prevq = 0;
-
-            last = pm->context;
-
-            if (pm->do_dedup) {
-                // Possible dup of previous read?
-                if (i && len == last_len && !memcmp(in+i-last_len, in+i, len)) {
-                    SIMPLE_MODEL(2,_encodeSymbol)(&model.dup, &rc, 1);
-                    i += len-1;
-                    state.p = 0;
-                    //fprintf(stderr, "Dup 1\n");
-                    continue;
-                } else {
-                    SIMPLE_MODEL(2,_encodeSymbol)(&model.dup, &rc, 0);
-                    //fprintf(stderr, "Dup 0\n");
-                }
-
-                last_len = len;
-            }
+            if (compress_new_read(s, &state, gp, pm, &model, &rc,
+                                  in, &i, /*&rec,*/ &last))
+                continue;
         }
 
+#if 0
+        //                        fqz_qual_stats imp.
+        // q40 6.876  6.852       5.96
+        // q4  6.566              5.07
+        // _Q  1.383              1.11
         unsigned char q = in[i];
         unsigned char qm = pm->qmap[q];
 
         SIMPLE_MODEL(QMAX,_encodeSymbol)(&model.qual[last], &rc, qm);
-        //fprintf(stderr, "Sym %d with ctx %04x delta %d prevq %d q %d\n", qm, last, state.delta, state.prevq, qm);
-        //fprintf(stderr, "pos=%d, delta=%d\n", state.p, state.delta);
         last = fqz_update_ctx(pm, &state, qm);
+#else
+        //     gcc    clang            gcc+fqz_qual_stats imp.
+        // q40 5.033  5.026     -27%   4.137 -38%
+        // q4  5.595            -15%   4.011 -36%
+        // _Q  1.225            -11%   0.956
+        int j = -1;
+
+        while (state.p >= 4 && i+j+4 < in_size) {
+            int l1 = last, l2, l3, l4;
+            // Model has symbols sorted by frequency, so most common are at
+            // start.  So while model is approx 1Kb, the first cache line is
+            // a big win.
+            mm_prefetch(&model.qual[l1]);
+            unsigned char qm1 = pm->qmap[in[i + ++j]];
+            last = fqz_update_ctx(pm, &state, qm1); l2 = last;
+
+            mm_prefetch(&model.qual[l2]);
+            unsigned char qm2 = pm->qmap[in[i + ++j]];
+            last = fqz_update_ctx(pm, &state, qm2); l3 = last;
+
+            mm_prefetch(&model.qual[l3]);
+            unsigned char qm3 = pm->qmap[in[i + ++j]];
+            last = fqz_update_ctx(pm, &state, qm3); l4 = last;
+
+            mm_prefetch(&model.qual[l4]);
+            unsigned char qm4 = pm->qmap[in[i + ++j]];
+            last = fqz_update_ctx(pm, &state, qm4);
+
+            SIMPLE_MODEL(QMAX,_encodeSymbol)(&model.qual[l1], &rc, qm1);
+            SIMPLE_MODEL(QMAX,_encodeSymbol)(&model.qual[l2], &rc, qm2);
+            SIMPLE_MODEL(QMAX,_encodeSymbol)(&model.qual[l3], &rc, qm3);
+            SIMPLE_MODEL(QMAX,_encodeSymbol)(&model.qual[l4], &rc, qm4);
+        }
+
+        while (state.p > 0) {
+            int l2 = last;
+            mm_prefetch(&model.qual[last]);
+            unsigned char qm = pm->qmap[in[i + ++j]];
+            last = fqz_update_ctx(pm, &state, qm);
+            SIMPLE_MODEL(QMAX,_encodeSymbol)(&model.qual[l2], &rc, qm);
+        }
+        i += j;
+#endif
     }
 
     RC_FinishEncode(&rc);
 
     // For CRAM3.1, undo our earlier reversal step
+    rec = state.rec;
     if (gp->gflags & GFLAG_DO_REV) {
         i = rec = j = 0;
         while (i < in_size) {
@@ -1269,6 +1339,81 @@ int fqz_read_parameters(fqz_gparams *gp, unsigned char *in, size_t in_size) {
     return -1;
 }
 
+// Handles the state.p==0 section of uncompress_block_fqz2f
+static int decompress_new_read(fqz_slice *s,
+                               fqz_state *state,
+                               fqz_gparams *gp,
+                               fqz_param *pm,
+                               fqz_model *model,
+                               RangeCoder *rc,
+                               unsigned char *in, ssize_t *in_i, // in[in_i],
+                               unsigned char *uncomp, size_t *out_size,
+                               int *rev, char *rev_a, int *len_a,
+                               int *lengths, int nlengths) {
+    size_t i = *in_i;
+    ssize_t rec = state->rec;
+
+    if (pm->do_sel) {
+        state->s = SIMPLE_MODEL(256,_decodeSymbol)(&model->sel, rc);
+    } else {
+        state->s = 0;
+    }
+
+    int x = (gp->gflags & GFLAG_HAVE_STAB)
+        ? gp->stab[MIN(255, state->s)]
+        : state->s;
+    if (x >= gp->nparam)
+        return -1;
+    pm = &gp->p[x];
+
+    unsigned int len = state->last_len;
+    if (!pm->fixed_len || state->first_len) {
+        len  = SIMPLE_MODEL(256,_decodeSymbol)(&model->len[0], rc);
+        len |= SIMPLE_MODEL(256,_decodeSymbol)(&model->len[1], rc)<<8;
+        len |= SIMPLE_MODEL(256,_decodeSymbol)(&model->len[2], rc)<<16;
+        len |= ((unsigned)SIMPLE_MODEL(256,_decodeSymbol)(&model->len[3], rc))<<24;
+        state->first_len = 0;
+        state->last_len = len;
+    }
+    if (len > *out_size-i || len <= 0)
+        return -1;
+
+    if (lengths && rec < nlengths)
+        lengths[rec] = len;
+
+    if (gp->gflags & GFLAG_DO_REV) {
+        *rev = SIMPLE_MODEL(2,_decodeSymbol)(&model->revcomp, rc);
+        rev_a[rec] = *rev;
+        len_a[rec] = len;
+    }
+
+    if (pm->do_dedup) {
+        if (SIMPLE_MODEL(2,_decodeSymbol)(&model->dup, rc)) {
+            // Dup of last line
+            if (len > i)
+                return -1;
+            memcpy(uncomp+i, uncomp+i-len, len);
+            i += len;
+            state->p = 0;
+            state->rec++;
+            *in_i = i;
+            return 1; // dup => continue
+        }
+    }
+
+    state->rec++;
+    state->p = len;
+    state->delta = 0;
+    state->prevq = 0;
+    state->qctx = 0;
+    state->ctx = pm->context;
+
+    *in_i = i;
+
+    return 0;
+}
+
+
 static
 unsigned char *uncompress_block_fqz2f(fqz_slice *s,
                                       unsigned char *in,
@@ -1340,13 +1485,15 @@ unsigned char *uncompress_block_fqz2f(fqz_slice *s,
     state.p = 0;
     state.s = 0;
     state.first_len = 1;
+    state.last_len = 0;
+    state.rec = 0;
+    state.ctx = last;
 
     int rev = 0;
-    int last_len = 0;
     int x = 0;
     pm = &gp.p[x];
-    for (rec = i = 0; i < len; i++) {
-        if (rec >= nrec) {
+    for (i = 0; i < len; ) {
+        if (state.rec >= nrec) {
             nrec *= 2;
             rev_a = realloc(rev_a, nrec);
             len_a = realloc(len_a, nrec*sizeof(int));
@@ -1355,78 +1502,28 @@ unsigned char *uncompress_block_fqz2f(fqz_slice *s,
         }
 
         if (state.p == 0) {
-            // New record
-            if (pm->do_sel) {
-                state.s = SIMPLE_MODEL(256,_decodeSymbol)(&model.sel, &rc);
-                //fprintf(stderr, "State %d\n", state.s);
-            } else {
-                state.s = 0;
-            }
-            x = (gp.gflags & GFLAG_HAVE_STAB) ? gp.stab[MIN(255, state.s)] : state.s;
-            if (x >= gp.nparam)
+            int r = decompress_new_read(s, &state, &gp, pm, &model, &rc,
+                                        in, &i, uncomp, out_size,
+                                        &rev, rev_a, len_a,
+                                        lengths, nlengths);
+            if (r < 0)
                 goto err;
-            pm = &gp.p[x];
-
-            unsigned int len = last_len;
-            if (!pm->fixed_len || state.first_len) {
-                len  = SIMPLE_MODEL(256,_decodeSymbol)(&model.len[0], &rc);
-                len |= SIMPLE_MODEL(256,_decodeSymbol)(&model.len[1], &rc)<<8;
-                len |= SIMPLE_MODEL(256,_decodeSymbol)(&model.len[2], &rc)<<16;
-                len |= ((unsigned)SIMPLE_MODEL(256,_decodeSymbol)(&model.len[3], &rc))<<24;
-                //fprintf(stderr, "Len %d\n", len);
-                state.first_len = 0;
-                last_len = len;
-            }
-            if (len > *out_size-i || len <= 0)
-                goto err;
-
-            if (lengths && rec < nlengths)
-                lengths[rec] = len;
-
-            if (gp.gflags & GFLAG_DO_REV) {
-                rev = SIMPLE_MODEL(2,_decodeSymbol)(&model.revcomp, &rc);
-                //fprintf(stderr, "rev %d\n", rev);
-                rev_a[rec] = rev;
-                len_a[rec] = len;
-            }
-
-            if (pm->do_dedup) {
-                if (SIMPLE_MODEL(2,_decodeSymbol)(&model.dup, &rc)) {
-                    //fprintf(stderr, "Dup 1\n");
-                    // Dup of last line
-                    if (len > i)
-                        goto err;
-                    memcpy(uncomp+i, uncomp+i-len, len);
-                    i += len-1;
-                    state.p = 0;
-                    rec++;
-                    continue;
-                } else {
-                    //fprintf(stderr, "Dup 0\n");
-                }
-            }
-
-            rec++;
-
-            state.p = len;
-            state.add_d = 0;
-            state.delta = 0;
-            state.prevq = 0;
-            state.qctx = 0;
-
-            last = pm->context;
+            if (r > 0)
+                continue;
+            last = state.ctx;
         }
 
-        // Decode and output quality
-        unsigned char Q = SIMPLE_MODEL(QMAX,_decodeSymbol)(&model.qual[last], &rc);
-        unsigned char q = pm->qmap[Q];
-        //fprintf(stderr, "Sym %d with ctx %04x delta %d prevq %d q %d\n", Q, last, state.delta, state.prevq, Q);
-        uncomp[i] = q;
+        // Decode and update context
+        do {
+            unsigned char Q = SIMPLE_MODEL(QMAX,_decodeSymbol)
+                (&model.qual[last], &rc);
 
-        // Compute new quality context
-        last = fqz_update_ctx(pm, &state, Q);
+            last = fqz_update_ctx(pm, &state, Q);
+            uncomp[i++] = pm->qmap[Q];
+        } while (state.p != 0 && i < len);
     }
 
+    rec = state.rec;
     if (rec >= nrec) {
         nrec *= 2;
         rev_a = realloc(rev_a, nrec);
@@ -1455,7 +1552,6 @@ unsigned char *uncompress_block_fqz2f(fqz_slice *s,
 
     RC_FinishDecode(&rc);
     fqz_destroy_models(&model);
-    //free(model.qual);
     free(rev_a);
     free(len_a);
     fqz_free_parameters(&gp);
