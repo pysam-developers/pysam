@@ -37,7 +37,7 @@ EXCLUDE = {
     "htslib": (
         'htslib/tabix.c', 'htslib/bgzip.c',
         'htslib/htsfile.c',
-        "test", "tests"),
+        "samples", "test", "tests"),
 }
 
 
