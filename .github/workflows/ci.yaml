@@ -10,15 +10,13 @@ jobs:
         os: [ubuntu, macos]
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
         exclude:
-          # Run only the latest 3.x on macOS
+          # Run only the latest two 3.x versions on macOS
           - os: macos
             python-version: 3.7
           - os: macos
             python-version: 3.8
           - os: macos
             python-version: 3.9
-          - os: macos
-            python-version: 3.11
 
     steps:
       - name: Checkout pysam
@@ -32,11 +30,16 @@ jobs:
       - name: Install prerequisite Python libraries
         run:  pip install cython pytest pytest-pep8
 
-      - name: Install build prerequisites
+      - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
+
+      - name: Update macOS build prerequisites
+        if:   runner.os == 'macOS'
+        run: |
+          brew unlink xz || true  # Remove brewed liblzma as it is not multiarch
 
       - name: Build (directly from checkout)
         run:  python setup.py build
