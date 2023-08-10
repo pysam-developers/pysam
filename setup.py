@@ -22,6 +22,7 @@ http://pysam.readthedocs.org/en/stable
 
 import collections
 import glob
+import logging
 import os
 import platform
 import re
@@ -29,7 +30,6 @@ import subprocess
 import sys
 import sysconfig
 from contextlib import contextmanager
-from distutils import log
 from setuptools import setup, Command
 from distutils.command.build import build
 from setuptools.command.sdist import sdist
@@ -44,6 +44,8 @@ except ImportError:
 
 IS_PYTHON3 = sys.version_info.major >= 3
 IS_DARWIN = platform.system() == 'Darwin'
+
+log = logging.getLogger('pysam')
 
 
 @contextmanager
@@ -262,9 +264,9 @@ class extra_build(build):
             if HTSLIB_MODE != 'separate':
                 self.check_ext_symbol_conflicts()
         except OSError as e:
-            log.warn("skipping symbol collision check (invoking nm failed: %s)", e)
+            log.warning("skipping symbol collision check (invoking nm failed: %s)", e)
         except subprocess.CalledProcessError:
-            log.warn("skipping symbol collision check (invoking nm failed)")
+            log.warning("skipping symbol collision check (invoking nm failed)")
 
 
 class clean_ext(Command):
@@ -432,7 +434,7 @@ with open(os.path.join("pysam", "config.py"), "w") as outf:
             for line in inf:
                 if line.startswith("#define"):
                     key, value = re.match(
-                        "#define (\S+)\s+(\S+)", line).groups()
+                        r"#define (\S+)\s+(\S+)", line).groups()
                     config_values[key] = value
             for key in ["ENABLE_GCS",
                         "ENABLE_PLUGINS",
@@ -515,7 +517,7 @@ def prebuild_libchtslib(ext, force):
             args = " ".join(ext.extra_compile_args)
             run_make(["ALL_CPPFLAGS=-I. " + args + " $(CPPFLAGS)", "lib-static"])
     else:
-        log.warn("skipping 'libhts.a' (already built)")
+        log.warning("skipping 'libhts.a' (already built)")
 
 
 def prebuild_libcsamtools(ext, force):
