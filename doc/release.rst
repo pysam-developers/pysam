@@ -2,6 +2,41 @@
 Release notes
 =============
 
+Release 0.21.0
+==============
+
+This release wraps htslib/samtools/bcftools version 1.17.
+
+Pysam is now compatible with Python 3.11. We have removed Python 2.x
+support. Pysam is tested with Python versions 3.6 to 3.11.
+
+* [#1175] VariantHeader.new_record: set start/stop before alleles
+* [#1173] Add multiple build improvements in htscodecs on multi-arch macOS
+* [#1148] Ignore CIGAR-less reads in find_introns.
+* [#1172] Add new `samtools cram-size` and `samtools reset` commands
+* [#1169] Fix CRAM index-related crash when using the musl C standard library.
+* [#1168] Add a minimal pyproject.toml for PEP517.
+* [#1158] Fix type hints and add FastqProxy type hints.
+* [#1147] Py3.11 compatibility, get shared object suffix from EXT_SUFFIX.
+* [#1143] Add mypy symbols for samtools and bcftools.
+* [#1155] Fix pysam.index() when using recent `samtools index` options.
+* [#1151] Test suite py3.11 compatibility, work around failing test case.
+* [#1149] MacOS universal build compatibility.
+* [#1146] Fix build when CFLAGS/etc environment variables are set.
+
+Release 0.20.0
+==============
+
+This release wraps htslib/bcftools version 1.16 and samtools version 1.16.1.
+
+* [#1113] Full compatibility with setuptools v62.1.0's build directory name changes
+* [#1121] Build-time symbol check portability improved
+* [#1122] Fix setting sample genotype using .alleles property
+* [#1128] Fix test suite failure when using a libdeflate-enabled samtools
+
+Many additional type hints have been provided by the community,
+thanks!
+
 Release 0.19.1
 ==============
 
