@@ -18,6 +18,7 @@ from libc.stdint cimport INT32_MAX, int32_t
 from libc.stdio cimport fprintf, stderr, fflush
 from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY
+from posix.unistd cimport SEEK_SET, SEEK_CUR, SEEK_END
 
 from libcsamtools cimport samtools_dispatch, samtools_set_stdout, samtools_set_stderr, \
     samtools_close_stdout, samtools_close_stderr, samtools_set_stdout_fn
@@ -259,6 +260,16 @@ cpdef parse_region(contig=None,
         raise ValueError('stop out of range (%i)' % rstop)
 
     return contig, rstart, rstop
+
+
+cdef int libc_whence_from_io(int whence):
+    # io.SEEK_SET/_CUR/_END are by definition 0/1/2 but C/POSIX's equivalents
+    # have unspecified values. So we must translate, but checking for 0/1/2
+    # rather than io.SEEK_SET/etc suffices.
+    if whence == 0: return SEEK_SET
+    if whence == 1: return SEEK_CUR
+    if whence == 2: return SEEK_END
+    return whence  # Otherwise likely invalid, but let HTSlib or OS report it
 
 
 def _pysam_dispatch(collection,

@@ -14,7 +14,7 @@ from libc.stdint cimport INT32_MAX
 from cpython cimport PyBytes_FromStringAndSize
 from pysam.libchtslib cimport *
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
-from pysam.libcutils cimport encode_filename, from_string_and_size
+from pysam.libcutils cimport encode_filename, from_string_and_size, libc_whence_from_io
 
 
 ########################################################################
@@ -34,11 +34,6 @@ from warnings import warn
 ########################################################################
 
 __all__ = ['get_verbosity', 'set_verbosity', 'HFile', 'HTSFile']
-
-# defines imported from samtools
-DEF SEEK_SET = 0
-DEF SEEK_CUR = 1
-DEF SEEK_END = 2
 
 # maximum genomic coordinace
 cdef int MAX_POS = (1 << 31) - 1
@@ -108,7 +103,7 @@ cdef class HFile(object):
         self.fp = NULL
 
         if hclose(fp) != 0:
-            raise IOError(herrno(self.fp), 'failed to close HFile', self.name)
+            raise IOError(errno, 'failed to close HFile', self.name)
 
     def fileno(self):
         if self.fp == NULL:
@@ -246,11 +241,11 @@ cdef class HFile(object):
     def readlines(self):
         return list(self)
 
-    def seek(self, Py_ssize_t offset, int whence=SEEK_SET):
+    def seek(self, Py_ssize_t offset, int whence=io.SEEK_SET):
         if self.fp == NULL:
             raise IOError('operation on closed HFile')
 
-        cdef Py_ssize_t off = hseek(self.fp, offset, whence)
+        cdef Py_ssize_t off = hseek(self.fp, offset, libc_whence_from_io(whence))
 
         if off < 0:
             raise IOError(herrno(self.fp), 'seek failed on HFile', self.name)
@@ -479,19 +474,21 @@ cdef class HTSFile(object):
         """
         return self.seek(self.start_offset)
 
-    def seek(self, uint64_t offset):
+    def seek(self, uint64_t offset, int whence=io.SEEK_SET):
         """move file pointer to position *offset*, see :meth:`pysam.HTSFile.tell`."""
         if not self.is_open:
             raise ValueError('I/O operation on closed file')
         if self.is_stream:
             raise IOError('seek not available in streams')
 
+        whence = libc_whence_from_io(whence)
+
         cdef int64_t ret
         if self.htsfile.format.compression == bgzf:
             with nogil:
-                ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, SEEK_SET)
+                ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, whence)
         elif self.htsfile.format.compression == no_compression:
-            ret = 0 if (hseek(self.htsfile.fp.hfile, offset, SEEK_SET) >= 0) else -1
+            ret = 0 if (hseek(self.htsfile.fp.hfile, offset, whence) >= 0) else -1
         else:
             raise NotImplementedError("seek not implemented in files compressed by method {}".format(
                 self.htsfile.format.compression))

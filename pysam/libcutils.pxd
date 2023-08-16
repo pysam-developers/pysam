@@ -7,6 +7,8 @@ from cpython cimport array as c_array
 
 cpdef parse_region(contig=*, start=*, stop=*, region=*, reference=*, end=*)
 
+cdef int libc_whence_from_io(int whence)
+
 #########################################################################
 # Utility functions for quality string conversions
 
