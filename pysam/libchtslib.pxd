@@ -273,8 +273,6 @@ cdef extern from "htslib/bgzf.h" nogil:
     #  Write the data in the buffer to the file.
     int bgzf_flush(BGZF *fp)
 
-    int SEEK_SET
-
     #  Return a virtual file pointer to the current location in the file.
     #  No interpretation of the value should be made, other than a subsequent
     #  call to bgzf_seek can be used to position the file at the same point.
@@ -285,7 +283,7 @@ cdef extern from "htslib/bgzf.h" nogil:
     #
     #  @param fp     BGZF file handler
     #  @param pos    virtual file offset returned by bgzf_tell()
-    #  @param whence must be SEEK_SET
+    #  @param whence must be SEEK_SET (cimported from libc.stdio / posix.unistd)
     #  @return       0 on success and -1 on error
     # /
     int64_t bgzf_seek(BGZF *fp, int64_t pos, int whence)
@@ -362,7 +360,7 @@ cdef extern from "htslib/bgzf.h" nogil:
     #
     #   @param fp           BGZF file handler; must be opened for reading
     #   @param uoffset      file offset in the uncompressed data
-    #   @param where        SEEK_SET supported atm
+    #   @param where        SEEK_SET (cimported from libc.stdio) supported atm
     #
     #   Returns 0 on success and -1 on error.
     int bgzf_useek(BGZF *fp, long uoffset, int where)

@@ -10,6 +10,7 @@ import io
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
+from libc.stdio  cimport SEEK_SET
 from libc.stdlib cimport malloc, calloc, realloc, free
 
 from cpython.object cimport PyObject
@@ -18,7 +19,7 @@ from cpython.bytes  cimport PyBytes_FromStringAndSize, _PyBytes_Resize
 from pysam.libcutils   cimport force_bytes, encode_filename
 from pysam.libchtslib  cimport bgzf_open, bgzf_index_build_init, bgzf_write, bgzf_read, \
                                bgzf_flush, bgzf_index_dump, bgzf_close, bgzf_seek, \
-                               bgzf_tell, bgzf_getline, kstring_t, SEEK_SET, BGZF
+                               bgzf_tell, bgzf_getline, kstring_t, BGZF
 
 __all__ = ["BGZFile"]
 
