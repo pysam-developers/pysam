@@ -9,7 +9,6 @@ include NEWS
 include INSTALL
 include KNOWN_BUGS
 include THANKS
-include cy_build.py
 include requirements.txt
 include pysam/libc*.pxd
 include pysam/libc*.pyx
