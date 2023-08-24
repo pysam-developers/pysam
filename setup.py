@@ -31,7 +31,6 @@ import sys
 import sysconfig
 from contextlib import contextmanager
 from setuptools import setup, Command
-from distutils.command.build import build
 from setuptools.command.sdist import sdist
 from distutils.errors import LinkError
 
@@ -267,6 +266,34 @@ class CyExtension(Extension):
 
 
 class cy_build_ext(build_ext):
+    def check_ext_symbol_conflicts(self):
+        """Checks for symbols defined in multiple extension modules,
+        which can lead to crashes due to incorrect functions being invoked.
+        Avoid by adding an appropriate #define to import/pysam.h or in
+        unusual cases adding another rewrite rule to devtools/import.py.
+        """
+        symbols = dict()
+        for ext in self.distribution.ext_modules:
+            for sym in run_nm_defined_symbols(self.get_ext_fullpath(ext.name)):
+                symbols.setdefault(sym, []).append(ext.name.lstrip('pysam.'))
+
+        errors = 0
+        for (sym, objs) in symbols.items():
+            if (len(objs) > 1):
+                log.error("conflicting symbol (%s): %s", " ".join(objs), sym)
+                errors += 1
+
+        if errors > 0: raise LinkError("symbols defined in multiple extensions")
+
+    def run(self):
+        build_ext.run(self)
+        try:
+            if HTSLIB_MODE != 'separate':
+                self.check_ext_symbol_conflicts()
+        except OSError as e:
+            log.warning("skipping symbol collision check (invoking nm failed: %s)", e)
+        except subprocess.CalledProcessError:
+            log.warning("skipping symbol collision check (invoking nm failed)")
 
     def build_extension(self, ext):
 
@@ -304,40 +331,6 @@ class cy_build_ext(build_ext):
             ext._prebuild_func(ext, self.force)
 
         build_ext.build_extension(self, ext)
-
-
-# Override build command to add extra build steps.
-class extra_build(build):
-    def check_ext_symbol_conflicts(self):
-        """Checks for symbols defined in multiple extension modules,
-        which can lead to crashes due to incorrect functions being invoked.
-        Avoid by adding an appropriate #define to import/pysam.h or in
-        unusual cases adding another rewrite rule to devtools/import.py.
-        """
-        build_ext_obj = self.distribution.get_command_obj('build_ext')
-
-        symbols = dict()
-        for ext in self.distribution.ext_modules:
-            for sym in run_nm_defined_symbols(build_ext_obj.get_ext_fullpath(ext.name)):
-                symbols.setdefault(sym, []).append(ext.name.lstrip('pysam.'))
-
-        errors = 0
-        for (sym, objs) in symbols.items():
-            if (len(objs) > 1):
-                log.error("conflicting symbol (%s): %s", " ".join(objs), sym)
-                errors += 1
-
-        if errors > 0: raise LinkError("symbols defined in multiple extensions")
-
-    def run(self):
-        build.run(self)
-        try:
-            if HTSLIB_MODE != 'separate':
-                self.check_ext_symbol_conflicts()
-        except OSError as e:
-            log.warning("skipping symbol collision check (invoking nm failed: %s)", e)
-        except subprocess.CalledProcessError:
-            log.warning("skipping symbol collision check (invoking nm failed)")
 
 
 class clean_ext(Command):
@@ -693,7 +686,7 @@ metadata = {
     'packages': package_list,
     'requires': ['cython (>=0.29.12)'],
     'ext_modules': [CyExtension(**opts) for opts in modules],
-    'cmdclass': {'build': extra_build, 'build_ext': cy_build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
+    'cmdclass': {'build_ext': cy_build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
     'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h', 'py.typed', '*.pyi'], },
     # do not pack in order to permit linking to csamtools.so
