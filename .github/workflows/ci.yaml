@@ -8,9 +8,9 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos]
-        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12.0-rc.1']
         exclude:
-          # Run only the latest two 3.x versions on macOS
+          # Run only the latest few 3.x versions on macOS
           - os: macos
             python-version: 3.7
           - os: macos
@@ -28,7 +28,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest pytest-pep8
+        run:  pip install cython pytest pytest-pep8 setuptools
 
       - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'
