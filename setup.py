@@ -32,15 +32,17 @@ import sysconfig
 from contextlib import contextmanager
 from setuptools import setup, Command
 from setuptools.command.sdist import sdist
-from distutils.errors import LinkError
+from setuptools.extension import Extension
+
+try:
+    from setuptools.errors import LinkError
+except ImportError:
+    from distutils.errors import LinkError
 
 try:
     from Cython.Distutils import build_ext
 except ImportError:
     from setuptools.command.build_ext import build_ext
-
-from distutils.extension import Extension
-from distutils.sysconfig import get_config_var, get_config_vars
 
 try:
     import cython  # noqa
@@ -244,7 +246,7 @@ class cythonize_sdist(sdist):
 # Override Cythonised build_ext command to customise macOS shared libraries.
 
 if sys.platform == 'darwin':
-    config_vars = get_config_vars()
+    config_vars = sysconfig.get_config_vars()
     config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
     config_vars['SHLIB_EXT'] = '.so'
 
@@ -309,7 +311,7 @@ class cy_build_ext(build_ext):
             # @loader_path. This will allow Python packages to find the library
             # in the expected place, while still giving enough flexibility to
             # external applications to link against the library.
-            relative_module_path = ext.name.replace(".", os.sep) + (get_config_var('EXT_SUFFIX') or get_config_var('SO'))
+            relative_module_path = ext.name.replace(".", os.sep) + (sysconfig.get_config_var('EXT_SUFFIX') or sysconfig.get_config_var('SO'))
             library_path = os.path.join(
                 "@rpath", os.path.basename(relative_module_path)
             )
