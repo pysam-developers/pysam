@@ -31,11 +31,19 @@ import sys
 import sysconfig
 from contextlib import contextmanager
 from setuptools import setup, Command
-from distutils.command.build import build
 from setuptools.command.sdist import sdist
-from distutils.errors import LinkError
+from setuptools.extension import Extension
 
-from cy_build import CyExtension as Extension, cy_build_ext as build_ext
+try:
+    from setuptools.errors import LinkError
+except ImportError:
+    from distutils.errors import LinkError
+
+try:
+    from Cython.Distutils import build_ext
+except ImportError:
+    from setuptools.command.build_ext import build_ext
+
 try:
     import cython  # noqa
     HAVE_CYTHON = True
@@ -235,19 +243,40 @@ class cythonize_sdist(sdist):
         sdist.run(self)
 
 
-# Override build command to add extra build steps.
-class extra_build(build):
+# Override Cythonised build_ext command to customise macOS shared libraries.
+
+if sys.platform == 'darwin':
+    config_vars = sysconfig.get_config_vars()
+    config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
+    config_vars['SHLIB_EXT'] = '.so'
+
+
+class CyExtension(Extension):
+    def __init__(self, *args, **kwargs):
+        self._init_func = kwargs.pop("init_func", None)
+        self._prebuild_func = kwargs.pop("prebuild_func", None)
+        Extension.__init__(self, *args, **kwargs)
+
+    def extend_includes(self, includes):
+        self.include_dirs.extend(includes)
+
+    def extend_macros(self, macros):
+        self.define_macros.extend(macros)
+
+    def extend_extra_objects(self, objs):
+        self.extra_objects.extend(objs)
+
+
+class cy_build_ext(build_ext):
     def check_ext_symbol_conflicts(self):
         """Checks for symbols defined in multiple extension modules,
         which can lead to crashes due to incorrect functions being invoked.
         Avoid by adding an appropriate #define to import/pysam.h or in
         unusual cases adding another rewrite rule to devtools/import.py.
         """
-        build_ext_obj = self.distribution.get_command_obj('build_ext')
-
         symbols = dict()
         for ext in self.distribution.ext_modules:
-            for sym in run_nm_defined_symbols(build_ext_obj.get_ext_fullpath(ext.name)):
+            for sym in run_nm_defined_symbols(self.get_ext_fullpath(ext.name)):
                 symbols.setdefault(sym, []).append(ext.name.lstrip('pysam.'))
 
         errors = 0
@@ -259,7 +288,7 @@ class extra_build(build):
         if errors > 0: raise LinkError("symbols defined in multiple extensions")
 
     def run(self):
-        build.run(self)
+        build_ext.run(self)
         try:
             if HTSLIB_MODE != 'separate':
                 self.check_ext_symbol_conflicts()
@@ -267,6 +296,43 @@ class extra_build(build):
             log.warning("skipping symbol collision check (invoking nm failed: %s)", e)
         except subprocess.CalledProcessError:
             log.warning("skipping symbol collision check (invoking nm failed)")
+
+    def build_extension(self, ext):
+
+        if isinstance(ext, CyExtension) and ext._init_func:
+            ext._init_func(ext)
+
+        if not self.inplace:
+            ext.library_dirs.append(os.path.join(self.build_lib, "pysam"))
+
+        if sys.platform == 'darwin':
+            # The idea is to give shared libraries an install name of the form
+            # `@rpath/<library-name.so>`, and to set the rpath equal to
+            # @loader_path. This will allow Python packages to find the library
+            # in the expected place, while still giving enough flexibility to
+            # external applications to link against the library.
+            relative_module_path = ext.name.replace(".", os.sep) + (sysconfig.get_config_var('EXT_SUFFIX') or sysconfig.get_config_var('SO'))
+            library_path = os.path.join(
+                "@rpath", os.path.basename(relative_module_path)
+            )
+
+            if not ext.extra_link_args:
+                ext.extra_link_args = []
+            ext.extra_link_args += ['-dynamiclib',
+                                    '-rpath', '@loader_path',
+                                    '-Wl,-headerpad_max_install_names',
+                                    '-Wl,-install_name,%s' % library_path,
+                                    '-Wl,-x']
+        else:
+            if not ext.extra_link_args:
+                ext.extra_link_args = []
+
+            ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
+
+        if isinstance(ext, CyExtension) and ext._prebuild_func:
+            ext._prebuild_func(ext, self.force)
+
+        build_ext.build_extension(self, ext)
 
 
 class clean_ext(Command):
@@ -621,8 +687,8 @@ metadata = {
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
     'requires': ['cython (>=0.29.12)'],
-    'ext_modules': [Extension(**opts) for opts in modules],
-    'cmdclass': {'build': extra_build, 'build_ext': build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
+    'ext_modules': [CyExtension(**opts) for opts in modules],
+    'cmdclass': {'build_ext': cy_build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
     'package_dir': package_dirs,
     'package_data': {'': ['*.pxd', '*.h', 'py.typed', '*.pyi'], },
     # do not pack in order to permit linking to csamtools.so
