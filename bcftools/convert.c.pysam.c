@@ -108,6 +108,7 @@ struct _convert_t
     char **used_tags_list;
     int nused_tags;
     int allow_undef_tags;
+    int force_newline;
     uint8_t **subset_samples;
 };
 
@@ -650,6 +651,7 @@ static void process_type(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
 static void process_line(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
     vcf_format1(convert->header, line, str);
+    if ( str->s[str->l-1]=='\n' ) str->l--;
 }
 static void process_chrom_pos_id(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
@@ -1562,7 +1564,6 @@ void convert_destroy(convert_t *convert)
 int convert_header(convert_t *convert, kstring_t *str)
 {
     int i, icol = 0, l_ori = str->l;
-    bcf_hdr_t *hdr = convert->header;
 
     // Supress the header output if LINE is present
     for (i=0; i<convert->nfmt; i++)
@@ -1570,6 +1571,12 @@ int convert_header(convert_t *convert, kstring_t *str)
     if ( i!=convert->nfmt )
         return str->l - l_ori;
 
+    // Header formatting becomes problematic when the formatting expression contains a newline.
+    // Simple cases like
+    //      -f'[%CHROM %POS %SAMPLE\n]'
+    // can be handled quite easily with has_fmt_newline. Note this will not work if multiple newlines
+    // are present.
+    int has_fmt_newline = 0;
     kputc('#', str);
     for (i=0; i<convert->nfmt; i++)
     {
@@ -1580,18 +1587,25 @@ int convert_header(convert_t *convert, kstring_t *str)
             while ( convert->fmt[j].is_gt_field ) j++;
             for (js=0; js<convert->nsamples; js++)
             {
-                int ks = convert->samples[js];
                 for (k=i; k<j; k++)
                 {
                     if ( convert->fmt[k].type == T_SEP )
                     {
-                        if ( convert->fmt[k].key ) kputs(convert->fmt[k].key, str);
+                        if ( convert->fmt[k].key )
+                        {
+                            char *tmp = convert->fmt[k].key;
+                            while ( *tmp )
+                            {
+                                if ( *tmp=='\n' ) has_fmt_newline = 1;
+                                else kputc(*tmp,str);
+                                tmp++;
+                            }
+                        }
                     }
-                    else if ( convert->fmt[k].type == T_SAMPLE )
-                        ksprintf(str, "[%d]%s", ++icol, convert->fmt[k].key);
                     else
-                        ksprintf(str, "[%d]%s:%s", ++icol, hdr->samples[ks], convert->fmt[k].key);
+                        ksprintf(str, "[%d]%s", ++icol, convert->fmt[k].key);
                 }
+                if ( has_fmt_newline ) break;
             }
             i = j-1;
             continue;
@@ -1604,6 +1618,7 @@ int convert_header(convert_t *convert, kstring_t *str)
         }
         ksprintf(str, "[%d]%s", ++icol, convert->fmt[i].key);
     }
+    if ( has_fmt_newline ) kputc('\n',str);
     return str->l - l_ori;
 }
 
@@ -1680,6 +1695,47 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
     return str->l - l_ori;
 }
 
+static void force_newline_(convert_t *convert)
+{
+    int i, has_newline = 0;
+    for (i=0; i<convert->nfmt; i++)
+    {
+        if ( !convert->fmt[i].key ) continue;
+        char *tmp = convert->fmt[i].key;
+        while (*tmp)
+        {
+            if ( *tmp=='\n' ) { has_newline = 1; break; }
+            tmp++;
+        }
+        if ( has_newline ) break;
+    }
+    if ( has_newline ) return;
+
+    // A newline is not present, force it. But where to add it?
+    // Consider
+    //      -f'%CHROM[ %SAMPLE]\n'
+    // vs
+    //      -f'[%CHROM %SAMPLE\n]'
+    for (i=0; i<convert->nfmt; i++)
+        if ( !convert->fmt[i].is_gt_field && convert->fmt[i].key ) break;
+
+    if ( i < convert->nfmt )
+        register_tag(convert, "\n", 0, T_SEP);  // the first case
+    else
+    {
+        // the second case
+        i = convert->nfmt - 1;
+        if ( !convert->fmt[i].key )
+        {
+            convert->fmt[i].key = strdup("\n");
+            convert->fmt[i].is_gt_field = 1;
+            register_tag(convert, NULL, 0, T_SEP);
+        }
+        else
+            register_tag(convert, "\n", 1, T_SEP);
+    }
+}
+
 int convert_set_option(convert_t *convert, enum convert_option opt, ...)
 {
     int ret = 0;
@@ -1693,6 +1749,10 @@ int convert_set_option(convert_t *convert, enum convert_option opt, ...)
             break;
         case subset_samples:
             convert->subset_samples = va_arg(args, uint8_t**);
+            break;
+        case force_newline:
+            convert->force_newline = va_arg(args, int);
+            if ( convert->force_newline ) force_newline_(convert);
             break;
         default:
             ret = -1;

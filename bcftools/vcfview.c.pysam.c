@@ -2,7 +2,7 @@
 
 /*  vcfview.c -- VCF/BCF conversion, view, subset and filter VCF/BCF files.
 
-    Copyright (C) 2013-2022 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -78,6 +78,8 @@ typedef struct _args_t
     char *include_types, *exclude_types;
     int include, exclude;
     int record_cmd_line;
+    char *index_fn;
+    int write_index;
     htsFile *out;
 }
 args_t;
@@ -534,6 +536,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -u/U, --uncalled/--exclude-uncalled    Select/exclude sites without a called genotype\n");
     fprintf(bcftools_stderr, "    -v/V, --types/--exclude-types LIST     Select/exclude comma-separated list of variant types: snps,indels,mnps,ref,bnd,other [null]\n");
     fprintf(bcftools_stderr, "    -x/X, --private/--exclude-private      Select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
+    fprintf(bcftools_stderr, "          --write-index                    Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -550,6 +553,7 @@ int main_vcfview(int argc, char *argv[])
     args->output_type = FT_VCF;
     args->n_threads = 0;
     args->record_cmd_line = 1;
+    args->write_index = 0;
     args->min_ac = args->max_ac = args->min_af = args->max_af = -1;
     args->regions_overlap = 1;
     args->targets_overlap = 0;
@@ -598,6 +602,7 @@ int main_vcfview(int argc, char *argv[])
         {"phased",no_argument,NULL,'p'},
         {"exclude-phased",no_argument,NULL,'P'},
         {"no-version",no_argument,NULL,8},
+        {"write-index",no_argument,NULL,10},
         {NULL,0,NULL,0}
     };
     char *tmp;
@@ -729,6 +734,7 @@ int main_vcfview(int argc, char *argv[])
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
+            case 10 : args->write_index = 1; break;
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
@@ -785,6 +791,8 @@ int main_vcfview(int argc, char *argv[])
     else if ( args->output_type & FT_BCF )
         error("BCF output requires header, cannot proceed with -H\n");
 
+    if ( args->write_index && init_index(args->out,out_hdr,args->fn_out,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->fn_out);
+
     int ret = 0;
     if (!args->header_only)
     {
@@ -797,7 +805,18 @@ int main_vcfview(int argc, char *argv[])
         ret = args->files->errnum;
         if ( ret ) fprintf(bcftools_stderr,"Error: %s\n", bcf_sr_strerror(args->files->errnum));
     }
-    hts_close(args->out);
+
+    if (args->write_index)
+    {
+        if (bcf_idx_save(args->out) < 0)
+        {
+            if ( hts_close(args->out)!=0 ) error("Error: close failed %s\n", args->fn_out?args->fn_out:"bcftools_stdout");
+            error("Error: cannot write to index %s\n", args->index_fn);
+        }
+        free(args->index_fn);
+    }
+
+    if ( hts_close(args->out)!=0 ) error("Error: close failed %s\n", args->fn_out?args->fn_out:"bcftools_stdout");
     destroy_data(args);
     bcf_sr_destroy(args->files);
     free(args);

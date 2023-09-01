@@ -32,7 +32,7 @@
  */
 
 #include "config.h"
-#ifdef __ARM_NEON
+#if defined(__ARM_NEON) && defined(__aarch64__)
 #include <arm_neon.h>
 
 #include <limits.h>
@@ -1956,4 +1956,7 @@ unsigned char *rans_uncompress_O1_32x16_neon(unsigned char *in,
 }
 
 #undef MAGIC2
+#else  /* __ARM_NEON */
+// Prevent "empty translation unit" errors when building without NEON
+const char *rANS_static32x16pr_neon_disabled = "No NEON";
 #endif /* __ARM_NEON */

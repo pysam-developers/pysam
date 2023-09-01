@@ -2,7 +2,7 @@
 
 /*  vcfconcat.c -- Concatenate or combine VCF/BCF files.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -48,6 +48,8 @@ typedef struct _args_t
     int output_type, n_threads, record_cmd_line, clevel;
     bcf_hdr_t *out_hdr;
     int *seen_seq;
+    char *index_fn;
+    int write_index;
 
     // phasing
     int *start_pos, start_tid, ifname;
@@ -61,9 +63,20 @@ typedef struct _args_t
     int argc, nfnames, allow_overlaps, phased_concat, regions_is_file, regions_overlap;
     int compact_PS, phase_set_changed, naive_concat, naive_concat_trust_headers;
     int verbose, explicit_output_type, ligate_force, ligate_warn;
+    int sites_only;
     htsThreadPool *tpool;
 }
 args_t;
+
+static bcf_hdr_t *drop_hdr_genotypes(args_t *args, bcf_hdr_t *hdr)
+{
+    if ( !args->sites_only ) return hdr;
+    bcf_hdr_t *rmme = hdr;
+    hdr = bcf_hdr_subset(rmme, 0, 0, 0);
+    bcf_hdr_remove(hdr, BCF_HL_FMT, NULL);
+    bcf_hdr_destroy(rmme);
+    return hdr;
+}
 
 static void init_data(args_t *args)
 {
@@ -85,6 +98,8 @@ static void init_data(args_t *args)
     {
         htsFile *fp = hts_open(args->fnames[i], "r"); if ( !fp ) error("Failed to open: %s\n", args->fnames[i]);
         bcf_hdr_t *hdr = bcf_hdr_read(fp); if ( !hdr ) error("Failed to parse header: %s\n", args->fnames[i]);
+        hdr = drop_hdr_genotypes(args, hdr);
+
         args->out_hdr = bcf_hdr_merge(args->out_hdr,hdr);
         if ( bcf_hdr_nsamples(hdr) != bcf_hdr_nsamples(args->out_hdr) )
             error("Different number of samples in %s. Perhaps \"bcftools merge\" is what you are looking for?\n", args->fnames[i]);
@@ -144,6 +159,7 @@ static void init_data(args_t *args)
         hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->tpool);
     }
     if ( bcf_hdr_write(args->out_fh, args->out_hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname);
+    if ( args->write_index && init_index(args->out_fh,args->out_hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
 
     if ( args->allow_overlaps )
     {
@@ -205,7 +221,16 @@ static void destroy_data(args_t *args)
     int i;
     if ( args->out_fh )
     {
-        if ( hts_close(args->out_fh)!=0 ) error("hts_close error\n");
+        if ( args->write_index )
+        {
+            if ( bcf_idx_save(args->out_fh)<0 )
+            {
+                if ( hts_close(args->out_fh)!=0 ) error("Error: close failed .. %s\n", args->output_fname?args->output_fname:"bcftools_stdout");
+                error("Error: cannot write to index %s\n", args->index_fn);
+            }
+            free(args->index_fn);
+        }
+        if ( hts_close(args->out_fh)!=0 ) error("Error: close failed .. %s\n",args->output_fname?args->output_fname:"bcftools_stdout");
     }
     if ( args->tpool && !args->files )
     {
@@ -266,7 +291,7 @@ static void phased_flush(args_t *args)
         bcf1_t *brec = args->buf[i+1];
 
         int nGTs = bcf_get_genotypes(ahdr, arec, &args->GTa, &args->mGTa);
-        if ( nGTs < 0 ) 
+        if ( nGTs < 0 )
         {
             if ( !gt_absent_warned )
             {
@@ -361,7 +386,7 @@ static void phased_flush(args_t *args)
             bcf_update_format_int32(args->out_hdr,rec,"PQ",args->phase_qual,nsmpl);
             PQ_printed = 1;
             for (j=0; j<nsmpl; j++)
-                if ( args->phase_qual[j] < args->min_PQ ) 
+                if ( args->phase_qual[j] < args->min_PQ )
                 {
                     args->phase_set[j] = rec->pos+1;
                     args->phase_set_changed = 1;
@@ -584,13 +609,14 @@ static void concat(args_t *args)
             {
                 bcf1_t *line = bcf_sr_get_line(args->files,i);
                 if ( !line ) continue;
+                if ( args->sites_only ) bcf_subset(args->out_hdr, line, 0, 0);
                 bcf_translate(args->out_hdr, args->files->readers[i].header, line);
                 if ( bcf_write1(args->out_fh, args->out_hdr, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
                 if ( args->remove_dups ) break;
             }
         }
     }
-    else    // concatenating
+    else    // concatenate as is
     {
         struct timeval t0, t1;
         kstring_t tmp = {0,0,0};
@@ -606,6 +632,13 @@ static void concat(args_t *args)
             htsFile *fp = hts_open(args->fnames[i], "r"); if ( !fp ) error("\nFailed to open: %s\n", args->fnames[i]);
             if ( args->n_threads ) hts_set_opt(fp, HTS_OPT_THREAD_POOL, args->tpool);
             bcf_hdr_t *hdr = bcf_hdr_read(fp); if ( !hdr ) error("\nFailed to parse header: %s\n", args->fnames[i]);
+            if ( args->sites_only )
+            {
+                bcf_hdr_t *hdr_ori = hdr;
+                hdr = bcf_hdr_subset(hdr_ori, 0, 0, 0);
+                bcf_hdr_remove(hdr, BCF_HL_FMT, NULL);
+                bcf_hdr_destroy(hdr_ori);
+            }
             if ( !fp->is_bin && args->output_type&FT_VCF )
             {
                 line->max_unpack = BCF_UN_STR;
@@ -613,6 +646,22 @@ static void concat(args_t *args)
                 while ( hts_getline(fp, KS_SEP_LINE, &fp->line) >=0 )
                 {
                     char *str = fp->line.s;
+
+                    // remove genotypes
+                    if ( args->sites_only )
+                    {
+                        int ntab = 0;
+                        while ( *str )
+                        {
+                            if ( *str == '\t' && ++ntab==8 )
+                            {
+                                *str = 0;
+                                break;
+                            }
+                            str++;
+                        }
+                        str = fp->line.s;
+                    }
                     while ( *str && *str!='\t' ) str++;
                     tmp.l = 0;
                     kputsn(fp->line.s,str-fp->line.s,&tmp);
@@ -641,6 +690,7 @@ static void concat(args_t *args)
                 line->max_unpack = 0;
                 while ( bcf_read(fp, hdr, line)==0 )
                 {
+                    if ( args->sites_only ) bcf_subset(args->out_hdr, line, 0, 0);
                     bcf_translate(args->out_hdr, hdr, line);
 
                     if ( prev_chr_id!=line->rid )
@@ -919,6 +969,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -d, --rm-dups STRING           Output duplicate records present in multiple files only once: <snps|indels|both|all|exact>\n");
     fprintf(bcftools_stderr, "   -D, --remove-duplicates        Alias for -d exact\n");
     fprintf(bcftools_stderr, "   -f, --file-list FILE           Read the list of files from a file.\n");
+    fprintf(bcftools_stderr, "   -G, --drop-genotypes           Drop individual genotype information.\n");
     fprintf(bcftools_stderr, "   -l, --ligate                   Ligate phased VCFs by matching phase at overlapping haplotypes\n");
     fprintf(bcftools_stderr, "       --ligate-force             Ligate even non-overlapping chunks, keep all sites\n");
     fprintf(bcftools_stderr, "       --ligate-warn              Drop sites in imperfect overlaps\n");
@@ -933,6 +984,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "       --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(bcftools_stderr, "       --threads INT              Use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "   -v, --verbose 0|1              Set verbosity level [1]\n");
+    fprintf(bcftools_stderr, "       --write-index              Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -971,10 +1023,12 @@ int main_vcfconcat(int argc, char *argv[])
         {"file-list",required_argument,NULL,'f'},
         {"min-PQ",required_argument,NULL,'q'},
         {"no-version",no_argument,NULL,8},
+        {"write-index",no_argument,NULL,13},
+        {"drop-genotypes",no_argument,NULL,'G'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:r:R:cnv:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:Gr:R:cnv:",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'c': args->compact_PS = 1; break;
@@ -982,7 +1036,7 @@ int main_vcfconcat(int argc, char *argv[])
             case 'R': args->regions_list = optarg; args->regions_is_file = 1; break;
             case 'd': args->remove_dups = optarg; break;
             case 'D': args->remove_dups = "exact"; break;
-            case 'q': 
+            case 'q':
                 args->min_PQ = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --min-PQ %s\n", optarg);
                 break;
@@ -990,6 +1044,7 @@ int main_vcfconcat(int argc, char *argv[])
             case 'a': args->allow_overlaps = 1; break;
             case 'l': args->phased_concat = 1; break;
             case 'f': args->file_list = optarg; break;
+            case 'G': args->sites_only = 1; break;
             case 'o': args->output_fname = optarg; break;
             case 'O':
                 args->explicit_output_type = 1;
@@ -1023,6 +1078,7 @@ int main_vcfconcat(int argc, char *argv[])
                       args->verbose = strtol(optarg, &tmp, 0);
                       if ( *tmp || args->verbose<0 || args->verbose>1 ) error("Error: currently only --verbose 0 or --verbose 1 is supported\n");
                       break;
+            case 13 : args->write_index = 1; break;
             case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
@@ -1037,6 +1093,7 @@ int main_vcfconcat(int argc, char *argv[])
     }
     if ( args->ligate_force && args->ligate_warn ) error("The options cannot be combined: --ligate-force and --ligate-warn\n");
     if ( args->allow_overlaps && args->phased_concat ) error("The options -a and -l should not be combined. Please run with -l only.\n");
+    if ( args->sites_only && args->phased_concat ) error("The options --drop-genotypes and --ligate cannot be combined\n");
     if ( args->compact_PS && !args->phased_concat ) error("The -c option is intended only with -l\n");
     if ( args->file_list )
     {
@@ -1051,6 +1108,7 @@ int main_vcfconcat(int argc, char *argv[])
     {
         if ( args->allow_overlaps ) error("The option --naive cannot be combined with --allow-overlaps\n");
         if ( args->phased_concat ) error("The option --naive cannot be combined with --ligate\n");
+        if ( args->sites_only ) error("The option --naive cannot be combined with --drop-genotypes\n");
         naive_concat(args);
         destroy_data(args);
         free(args);

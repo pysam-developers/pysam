@@ -70,6 +70,13 @@ typedef struct
 }
 idist_t;
 
+// variant allele frequency (fraction of alt allele in pileup as determined from AD) collected into 0.05 bins
+typedef struct
+{
+    int snv[21], indel[21];
+}
+vaf_t;
+
 typedef struct
 {
     uint64_t n_snps, n_indels, n_mnps, n_others, n_mals, n_snp_mals, n_records, n_noalts;
@@ -93,7 +100,8 @@ typedef struct
     int *smpl_hets, *smpl_homRR, *smpl_homAA, *smpl_ts, *smpl_tv, *smpl_indels, *smpl_ndp, *smpl_sngl;
     int *smpl_hapRef, *smpl_hapAlt, *smpl_missing;
     int *smpl_ins_hets, *smpl_del_hets, *smpl_ins_homs, *smpl_del_homs;
-    int *smpl_frm_shifts; // not-applicable, in-frame, out-frame
+    int *smpl_frm_shifts;   // not-applicable, in-frame, out-frame
+    vaf_t vaf, *smpl_vaf;   // total (INFO/AD) and per-sample (FMT/VAF) VAF distributions
     unsigned long int *smpl_dp;
     idist_t dp, dp_sites;
     int nusr;
@@ -141,7 +149,9 @@ typedef struct
     gtcmp_t *af_gts_snps, *af_gts_indels; // first bin of af_* stats are singletons
     bin_t *af_bins;
     float *farr;
-    int mfarr;
+    int32_t *iarr;
+    int mfarr, miarr;
+    int nref_tot, nhet_tot, nalt_tot, n_nref, i_nref;
 
     // indel context
     indel_ctx_t *indel_ctx;
@@ -447,6 +457,8 @@ static void init_stats(args_t *args)
     if ( args->af_tag && !bcf_hdr_idinfo_exists(hdr,BCF_HL_INFO,bcf_hdr_id2int(hdr,BCF_DT_ID,args->af_tag)) )
         error("No such INFO tag: %s\n", args->af_tag);
 
+    int id, has_fmt_ad = ((id=bcf_hdr_id2int(hdr,BCF_DT_ID,"AD"))>=0 && bcf_hdr_idinfo_exists(hdr,BCF_HL_FMT,id)) ? 1 : 0;
+
     #if QUAL_STATS
         args->m_qual = 999;
     #endif
@@ -501,6 +513,8 @@ static void init_stats(args_t *args)
             stats->smpl_dp     = (unsigned long int *) calloc(args->files->n_smpl,sizeof(unsigned long int));
             stats->smpl_ndp    = (int *) calloc(args->files->n_smpl,sizeof(int));
             stats->smpl_sngl   = (int *) calloc(args->files->n_smpl,sizeof(int));
+            if ( has_fmt_ad )
+                stats->smpl_vaf = (vaf_t*) calloc(args->files->n_smpl,sizeof(vaf_t));
             #if HWE_STATS
                 stats->af_hwe  = (int*) calloc(args->m_af*args->naf_hwe,sizeof(int));
             #endif
@@ -586,6 +600,7 @@ static void destroy_stats(args_t *args)
         free(stats->smpl_dp);
         free(stats->smpl_ndp);
         free(stats->smpl_sngl);
+        free(stats->smpl_vaf);
         idist_destroy(&stats->dp);
         idist_destroy(&stats->dp_sites);
         for (j=0; j<stats->nusr; j++)
@@ -602,6 +617,7 @@ static void destroy_stats(args_t *args)
     for (j=0; j<args->nusr; j++) free(args->usr[j].tag);
     if ( args->af_bins ) bin_destroy(args->af_bins);
     free(args->farr);
+    free(args->iarr);
     free(args->usr);
     free(args->tmp_frm);
     free(args->tmp_iaf);
@@ -615,6 +631,8 @@ static void destroy_stats(args_t *args)
     if (args->filter[1]) filter_destroy(args->filter[1]);
 }
 
+// The arary tmp_iaf keeps the index of AF bin for each allele, the first bin is for singletons.
+// The number of bins, either m_af (101) or as given by the user in --af-bins
 static void init_iaf(args_t *args, bcf_sr_t *reader)
 {
     bcf1_t *line = reader->buffer[0];
@@ -869,205 +887,279 @@ static void do_snp_stats(args_t *args, stats_t *stats, bcf_sr_t *reader)
     }
 }
 
-static inline void update_dvaf(stats_t *stats, bcf1_t *line, bcf_fmt_t *fmt, int ismpl, int ial, int jal)
+// Returns the max non-ref AD value
+static inline int get_ad(bcf1_t *line, bcf_fmt_t *ad_fmt_ptr, int ismpl, int *ial)
 {
-    if ( !fmt ) return;
-
-    float dvaf;
+    int iv, ad = 0;
+    *ial = 0;
     #define BRANCH_INT(type_t,missing,vector_end) { \
-        type_t *p = (type_t *) (fmt->p + fmt->size*ismpl); \
-        if ( p[ial]==vector_end || p[jal]==vector_end ) return; \
-        if ( p[ial]==missing || p[jal]==missing ) return; \
-        if ( !p[ial] && !p[jal] ) return; \
-        dvaf = (float)p[ial]/(p[ial]+p[jal]); \
+        type_t *ptr = (type_t *) (ad_fmt_ptr->p + ad_fmt_ptr->size*ismpl); \
+        for (iv=1; iv<ad_fmt_ptr->n; iv++) \
+        { \
+            if ( ptr[iv]==vector_end ) break; \
+            if ( ptr[iv]==missing ) continue; \
+            if ( ad < ptr[iv] ) { ad = ptr[iv]; *ial = iv; }\
+        } \
     }
-    switch (fmt->type) {
+    switch (ad_fmt_ptr->type) {
         case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
         case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
         case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
-        default: fprintf(stderr, "[E::%s] todo: %d\n", __func__, fmt->type); exit(1); break;
+        default: fprintf(stderr, "[E::%s] todo: %d\n", __func__, ad_fmt_ptr->type); exit(1); break;
     }
     #undef BRANCH_INT
-
+    return ad;
+}
+static inline int get_iad(bcf1_t *line, bcf_fmt_t *ad_fmt_ptr, int ismpl, int ial)
+{
+    #define BRANCH_INT(type_t,missing,vector_end) { \
+        type_t *ptr = (type_t *) (ad_fmt_ptr->p + ad_fmt_ptr->size*ismpl); \
+        if ( ptr[ial]==vector_end ) return 0; \
+        if ( ptr[ial]==missing ) return 0; \
+        return ptr[ial]; \
+    }
+    switch (ad_fmt_ptr->type) {
+        case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
+        case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
+        case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
+        default: fprintf(stderr, "[E::%s] todo: %d\n", __func__, ad_fmt_ptr->type); exit(1); break;
+    }
+    #undef BRANCH_INT
+}
+static inline void update_dvaf(stats_t *stats, bcf1_t *line, int ial, float vaf)
+{
     int len = line->d.var[ial].n;
     if ( len < -stats->m_indel ) len = -stats->m_indel;
     else if ( len > stats->m_indel ) len = stats->m_indel;
     int bin = stats->m_indel + len;
     stats->nvaf[bin]++;
-    stats->dvaf[bin] += dvaf;
+    stats->dvaf[bin] += vaf;
+}
+#define vaf2bin(vaf) ((int)nearbyintf((vaf)/0.05))
+static inline void update_vaf(vaf_t *smpl_vaf, bcf1_t *line, int ial, float vaf)
+{
+    int idx = vaf2bin(vaf);
+    if ( bcf_get_variant_type(line,ial)==VCF_SNP ) smpl_vaf->snv[idx]++;
+    else smpl_vaf->indel[idx]++;
 }
 
+static inline int calc_sample_depth(args_t *args, int ismpl, bcf_fmt_t *ad_fmt_ptr, bcf_fmt_t *dp_fmt_ptr)
+{
+    if ( dp_fmt_ptr )
+    {
+        #define BRANCH_INT(type_t,missing,vector_end) { \
+            type_t *ptr = (type_t *) (dp_fmt_ptr->p + dp_fmt_ptr->size*ismpl); \
+            if ( *ptr==missing || *ptr==vector_end ) return -1; \
+            return *ptr; \
+        }
+        switch (dp_fmt_ptr->type) {
+            case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
+            case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
+            case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
+            default: fprintf(stderr, "[E::%s] todo: %d\n", __func__, dp_fmt_ptr->type); exit(1); break;
+        }
+        #undef BRANCH_INT
+    }
+    if ( ad_fmt_ptr )
+    {
+        int iv, dp = 0, has_value = 0;
+        #define BRANCH_INT(type_t,missing,vector_end) { \
+            type_t *ptr = (type_t *) (ad_fmt_ptr->p + ad_fmt_ptr->size*ismpl); \
+            for (iv=0; iv<ad_fmt_ptr->n; iv++) \
+            { \
+                if ( ptr[iv]==vector_end ) break; \
+                if ( ptr[iv]==missing ) continue; \
+                has_value = 1; \
+                dp += ptr[iv]; \
+            } \
+        }
+        switch (ad_fmt_ptr->type) {
+            case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
+            case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
+            case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
+            default: fprintf(stderr, "[E::%s] todo: %d\n", __func__, ad_fmt_ptr->type); exit(1); break;
+        }
+        #undef BRANCH_INT
+        if ( !has_value ) return -1;
+        return dp;
+    }
+    return -1;
+}
+static inline void sample_gt_stats(args_t *args, stats_t *stats, bcf1_t *line, int ismpl, int gt, int ial, int jal)
+{
+    if ( gt==GT_UNKN )
+    {
+        stats->smpl_missing[ismpl]++;
+        return;
+    }
+
+    int var_type = 0;
+    if ( ial>0 ) var_type |= bcf_get_variant_type(line,ial);
+    if ( jal>0 ) var_type |= bcf_get_variant_type(line,jal);
+    if ( gt==GT_HAPL_R || gt==GT_HAPL_A )
+    {
+        if ( var_type&VCF_INDEL && stats->smpl_frm_shifts )
+        {
+            assert( ial<line->n_allele );
+            stats->smpl_frm_shifts[ismpl*3 + args->tmp_frm[ial]]++;
+        }
+        if ( gt == GT_HAPL_R ) stats->smpl_hapRef[ismpl]++;
+        if ( gt == GT_HAPL_A ) stats->smpl_hapAlt[ismpl]++;
+        return;
+    }
+    if ( gt != GT_HOM_RR ) { args->n_nref++; args->i_nref = ismpl; }
+    #if HWE_STATS
+        switch (gt)
+        {
+            case GT_HOM_RR: args->nref_tot++; break;
+            case GT_HET_RA: args->nhet_tot++; break;
+            case GT_HET_AA:
+            case GT_HOM_AA: args->nalt_tot++; break;
+        }
+    #endif
+
+    if ( var_type&VCF_SNP || var_type==VCF_REF )  // count ALT=. as SNP
+    {
+        if ( gt == GT_HET_RA ) stats->smpl_hets[ismpl]++;
+        else if ( gt == GT_HET_AA ) stats->smpl_hets[ismpl]++;
+        else if ( gt == GT_HOM_RR ) stats->smpl_homRR[ismpl]++;
+        else if ( gt == GT_HOM_AA ) stats->smpl_homAA[ismpl]++;
+        if ( gt != GT_HOM_RR && line->d.var[ial].type&VCF_SNP ) // this is safe, bcf_get_variant_types has been already called
+        {
+            int ref = bcf_acgt2int(*line->d.allele[0]);
+            int alt = bcf_acgt2int(*line->d.allele[ial]);
+            if ( alt<0 ) return;
+            if ( abs(ref-alt)==2 )
+                stats->smpl_ts[ismpl]++;
+            else
+                stats->smpl_tv[ismpl]++;
+        }
+        if ( gt != GT_HOM_RR && line->d.var[jal].type&VCF_SNP && ial!=jal )
+        {
+            int ref = bcf_acgt2int(*line->d.allele[0]);
+            int alt = bcf_acgt2int(*line->d.allele[jal]);
+            if ( alt<0 ) return;
+            if ( abs(ref-alt)==2 )
+                stats->smpl_ts[ismpl]++;
+            else
+                stats->smpl_tv[ismpl]++;
+        }
+    }
+    if ( var_type&VCF_INDEL )
+    {
+        if ( gt != GT_HOM_RR )
+        {
+            stats->smpl_indels[ismpl]++;
+            if ( gt==GT_HET_RA || gt==GT_HET_AA )
+            {
+                int is_ins = 0, is_del = 0;
+                if ( bcf_get_variant_type(line,ial)&VCF_INDEL )
+                {
+                    if ( line->d.var[ial].n < 0 ) is_del = 1;
+                    else is_ins = 1;
+                }
+                if ( bcf_get_variant_type(line,jal)&VCF_INDEL )
+                {
+                    if ( line->d.var[jal].n < 0 ) is_del = 1;
+                    else is_ins = 1;
+                }
+                // Note that alt-het genotypes with both ins and del allele are counted twice!!
+                if ( is_del ) stats->smpl_del_hets[ismpl]++;
+                if ( is_ins ) stats->smpl_ins_hets[ismpl]++;
+            }
+            else if ( gt==GT_HOM_AA )
+            {
+                if ( line->d.var[ial].n < 0 ) stats->smpl_del_homs[ismpl]++;
+                else stats->smpl_ins_homs[ismpl]++;
+            }
+        }
+        if ( stats->smpl_frm_shifts )
+        {
+            assert( ial<line->n_allele && jal<line->n_allele );
+            stats->smpl_frm_shifts[ismpl*3 + args->tmp_frm[ial]]++;
+            stats->smpl_frm_shifts[ismpl*3 + args->tmp_frm[jal]]++;
+        }
+    }
+}
 static void do_sample_stats(args_t *args, stats_t *stats, bcf_sr_t *reader, int matched)
 {
     bcf_srs_t *files = args->files;
     bcf1_t *line = reader->buffer[0];
-    bcf_fmt_t *fmt_ptr;
-    int nref_tot = 0, nhet_tot = 0, nalt_tot = 0;
-    int line_type = bcf_get_variant_types(line);
 
-    if ( (fmt_ptr = bcf_get_fmt(reader->header,reader->buffer[0],"GT")) )
+    args->nref_tot = 0;
+    args->nhet_tot = 0;
+    args->nalt_tot = 0;
+    args->n_nref   = 0;
+    args->i_nref   = 0;
+
+    bcf_fmt_t *gt_fmt_ptr = bcf_get_fmt(reader->header,reader->buffer[0],"GT");
+    bcf_fmt_t *ad_fmt_ptr = bcf_get_fmt(reader->header,reader->buffer[0],"AD");
+    bcf_fmt_t *dp_fmt_ptr = bcf_get_fmt(reader->header,reader->buffer[0],"DP");
+
+    int is;
+    for (is=0; is<args->files->n_smpl; is++)
     {
-        bcf_fmt_t *ad_fmt_ptr = bcf_get_variant_types(line)&VCF_INDEL ? bcf_get_fmt(reader->header,reader->buffer[0],"AD") : NULL;
-
-        int ref = bcf_acgt2int(*line->d.allele[0]);
-        int is, n_nref = 0, i_nref = 0;
-        for (is=0; is<args->files->n_smpl; is++)
+        // Determine depth
+        int dp = calc_sample_depth(args,is,ad_fmt_ptr,dp_fmt_ptr);
+        if ( dp>0 )
         {
-            int ial, jal;
-            int gt = bcf_gt_type(fmt_ptr, reader->samples[is], &ial, &jal);
-            if ( gt==GT_UNKN )
-            {
-                stats->smpl_missing[is]++;
-                continue;
-            }
-            if ( gt==GT_HAPL_R || gt==GT_HAPL_A )
-            {
-                if ( line_type&VCF_INDEL && stats->smpl_frm_shifts )
-                {
-                    assert( ial<line->n_allele );
-                    stats->smpl_frm_shifts[is*3 + args->tmp_frm[ial]]++;
-                }
-                if ( gt == GT_HAPL_R ) stats->smpl_hapRef[is]++;
-                if ( gt == GT_HAPL_A ) stats->smpl_hapAlt[is]++;
-                continue;
-            }
-            if ( gt != GT_HOM_RR ) { n_nref++; i_nref = is; }
-            #if HWE_STATS
-                switch (gt)
-                {
-                    case GT_HOM_RR: nref_tot++; break;
-                    case GT_HET_RA: nhet_tot++; break;
-                    case GT_HET_AA:
-                    case GT_HOM_AA: nalt_tot++; break;
-                }
-            #endif
-            int var_type = 0;
-            if ( ial>0 ) var_type |= bcf_get_variant_type(line,ial);
-            if ( jal>0 ) var_type |= bcf_get_variant_type(line,jal);
-            if ( var_type&VCF_SNP || var_type==VCF_REF )  // count ALT=. as SNP
-            {
-                if ( gt == GT_HET_RA ) stats->smpl_hets[is]++;
-                else if ( gt == GT_HET_AA ) stats->smpl_hets[is]++;
-                else if ( gt == GT_HOM_RR ) stats->smpl_homRR[is]++;
-                else if ( gt == GT_HOM_AA ) stats->smpl_homAA[is]++;
-                if ( gt != GT_HOM_RR && line->d.var[ial].type&VCF_SNP ) // this is safe, bcf_get_variant_types has been already called
-                {
-                    int alt = bcf_acgt2int(*line->d.allele[ial]);
-                    if ( alt<0 ) continue;
-                    if ( abs(ref-alt)==2 )
-                        stats->smpl_ts[is]++;
-                    else
-                        stats->smpl_tv[is]++;
-                }
-            }
-            if ( var_type&VCF_INDEL )
-            {
-                if ( gt != GT_HOM_RR )
-                {
-                    stats->smpl_indels[is]++;
-
-                    if ( gt==GT_HET_RA || gt==GT_HET_AA )
-                    {
-                        int is_ins = 0, is_del = 0;
-                        if ( bcf_get_variant_type(line,ial)&VCF_INDEL )
-                        {
-                            if ( line->d.var[ial].n < 0 ) is_del = 1;
-                            else is_ins = 1;
-                            update_dvaf(stats,line,ad_fmt_ptr,is,ial,jal);
-                        }
-                        if ( bcf_get_variant_type(line,jal)&VCF_INDEL )
-                        {
-                            if ( line->d.var[jal].n < 0 ) is_del = 1;
-                            else is_ins = 1;
-                            update_dvaf(stats,line,ad_fmt_ptr,is,jal,ial);
-                        }
-                        // Note that alt-het genotypes with both ins and del allele are counted twice!!
-                        if ( is_del ) stats->smpl_del_hets[is]++;
-                        if ( is_ins ) stats->smpl_ins_hets[is]++;
-                    }
-                    else if ( gt==GT_HOM_AA )
-                    {
-                        if ( line->d.var[ial].n < 0 ) stats->smpl_del_homs[is]++;
-                        else stats->smpl_ins_homs[is]++;
-                    }
-                }
-                if ( stats->smpl_frm_shifts )
-                {
-                    assert( ial<line->n_allele && jal<line->n_allele );
-                    stats->smpl_frm_shifts[is*3 + args->tmp_frm[ial]]++;
-                    stats->smpl_frm_shifts[is*3 + args->tmp_frm[jal]]++;
-                }
-            }
+            (*idist(&stats->dp, dp))++;
+            stats->smpl_ndp[is]++;
+            stats->smpl_dp[is] += dp;
         }
-        if ( n_nref==1 ) stats->smpl_sngl[i_nref]++;
-    }
 
-    #if HWE_STATS
-        if ( nhet_tot + nref_tot + nalt_tot )
+        // Determine genotype
+        int ial, jal, gt=GT_UNKN;
+        if ( gt_fmt_ptr )
         {
-            float het_frac = (float)nhet_tot/(nhet_tot + nref_tot + nalt_tot);
-            int idx = het_frac*(args->naf_hwe - 1);
-//check me: what is this?
-            if ( line->n_allele>1 ) idx += args->naf_hwe*args->tmp_iaf[1];
-            stats->af_hwe[idx]++;
+            gt = bcf_gt_type(gt_fmt_ptr, reader->samples[is], &ial, &jal);
+            sample_gt_stats(args,stats,line,is,gt,ial,jal);
         }
-    #endif
 
-    if ( (fmt_ptr = bcf_get_fmt(reader->header,reader->buffer[0],"DP")) )
-    {
-        #define BRANCH_INT(type_t,missing,vector_end) { \
-            int is; \
-            for (is=0; is<args->files->n_smpl; is++) \
-            { \
-                type_t *p = (type_t *) (fmt_ptr->p + fmt_ptr->size*is); \
-                if ( *p==vector_end ) continue; \
-                if ( *p!=missing ) \
-                { \
-                    (*idist(&stats->dp, *p))++; \
-                    stats->smpl_ndp[is]++; \
-                    stats->smpl_dp[is] += *p; \
-                } \
-            } \
+        // Determine variant allele frequency
+        if ( dp>0 && ad_fmt_ptr )
+        {
+            float iad = 0, jad = 0;
+            if ( gt==GT_UNKN )    // GT not available
+            {
+                iad = get_ad(line,ad_fmt_ptr,is,&ial);
+            }
+            else if ( gt!=GT_UNKN )
+            {
+                iad = ial==0 ? 0 : get_iad(line,ad_fmt_ptr,is,ial);
+                jad = jal==0 ? 0 : get_iad(line,ad_fmt_ptr,is,jal);
+            }
+            if ( iad )
+            {
+                update_dvaf(stats,line,ial,(float)iad/dp);
+                update_vaf(&stats->smpl_vaf[is],line,ial,(float)iad/dp);
+            }
+            if ( jad && iad!=jad )
+            {
+                update_dvaf(stats,line,jal,(float)jad/dp);
+                update_vaf(&stats->smpl_vaf[is],line,jal,(float)jad/dp);
+            }
         }
-        switch (fmt_ptr->type) {
-            case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
-            case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
-            case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
-            default: fprintf(stderr, "[E::%s] todo: %d\n", __func__, fmt_ptr->type); exit(1); break;
-        }
-        #undef BRANCH_INT
     }
-    else if ( (fmt_ptr = bcf_get_fmt(reader->header,reader->buffer[0],"AD")) )
+    if ( args->n_nref==1 ) stats->smpl_sngl[args->i_nref]++;
+
+#if HWE_STATS
+    if ( gt_fmt_ptr && line->n_allele > 1 && (args->nref_tot || args->nhet_tot || args->nalt_tot) )
     {
-        #define BRANCH_INT(type_t,missing,vector_end) { \
-            int is,iv; \
-            for (is=0; is<args->files->n_smpl; is++) \
-            { \
-                type_t *p = (type_t *) (fmt_ptr->p + fmt_ptr->size*is); \
-                int dp = 0, has_value = 0; \
-                for (iv=0; iv<fmt_ptr->n; iv++) \
-                { \
-                    if ( p[iv]==vector_end ) break; \
-                    if ( p[iv]==missing ) continue; \
-                    has_value = 1; \
-                    dp += p[iv]; \
-                } \
-                if ( has_value ) \
-                { \
-                    (*idist(&stats->dp, dp))++; \
-                    stats->smpl_ndp[is]++; \
-                    stats->smpl_dp[is] += dp; \
-                } \
-            } \
-        }
-        switch (fmt_ptr->type) {
-            case BCF_BT_INT8:  BRANCH_INT(int8_t,  bcf_int8_missing, bcf_int8_vector_end); break;
-            case BCF_BT_INT16: BRANCH_INT(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
-            case BCF_BT_INT32: BRANCH_INT(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
-            default: fprintf(stderr, "[E::%s] todo: %d\n", __func__, fmt_ptr->type); exit(1); break;
-        }
-        #undef BRANCH_INT
+        // Number of heterozygous genotypes observed for any given allele frequency. This is used
+        // by plot-vcfstats to show the observed vs expected number of hets. There the expected number
+        // of hets is calculated from the probability P(het) = 2*AF*(1-AF).
+        // The array af_hwe is organized as follows
+        //      m_af     .. number of allele frequency bins
+        //      naf_hwe  .. the number of het genotype frequency bins
+        //      iallele_freq*naf_hwe + ihet_freq
+        //
+        float het_frac = (float)args->nhet_tot / (args->nref_tot + args->nhet_tot + args->nalt_tot);
+        int ihet_freq = het_frac * (args->naf_hwe - 1);
+        int idx = ihet_freq + args->tmp_iaf[1] * args->naf_hwe;
+        stats->af_hwe[idx]++;
     }
+#endif
 
     if ( matched==3 )
     {
@@ -1200,8 +1292,8 @@ static void do_vcf_stats(args_t *args)
         if ( files->n_smpl )
             do_sample_stats(args, stats, reader, ret);
 
-        if ( bcf_get_info_int32(reader->header,line,"DP",&args->tmp_iaf,&args->ntmp_iaf)==1 )
-            (*idist(&stats->dp_sites, args->tmp_iaf[0]))++;
+        if ( bcf_get_info_int32(reader->header,line,"DP",&args->iarr,&args->miarr)==1 )
+            (*idist(&stats->dp_sites, args->iarr[0]))++;
     }
 }
 
@@ -1735,6 +1827,24 @@ static void print_stats(args_t *args)
             }
         }
         #endif
+    }
+
+    if ( args->stats[0].smpl_vaf )
+    {
+        printf("# VAF, Variant Allele Frequency determined as fraction of alternate reads in FORMAT/AD\n");
+        printf("# VAF\t[2]id\t[3]sample\t[4]SNV VAF distribution\t[5]indel VAF distribution\n");
+        for (id=0; id<args->nstats; id++)
+        {
+            stats_t *stats = &args->stats[id];
+            for (i=0; i<args->files->n_smpl; i++)
+            {
+                printf("VAF\t%d\t%s\t", id,args->files->samples[i]);
+                for (j=0; j<21; j++) printf("%s%d",j?",":"",stats->smpl_vaf[i].snv[j]);
+                printf("\t");
+                for (j=0; j<21; j++) printf("%s%d",j?",":"",stats->smpl_vaf[i].indel[j]);
+                printf("\n");
+            }
+        }
     }
 }
 

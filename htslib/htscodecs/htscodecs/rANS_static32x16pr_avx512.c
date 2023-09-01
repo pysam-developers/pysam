@@ -39,7 +39,7 @@
 
 #include "config.h"
 
-#ifdef HAVE_AVX512
+#if defined(__x86_64__) && defined(HAVE_AVX512)
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -1066,5 +1066,7 @@ unsigned char *rans_uncompress_O1_32x16_avx512(unsigned char *in,
 
     return NULL;
 }
-
+#else  // HAVE_AVX512
+// Prevent "empty translation unit" errors when building without AVX512
+const char *rANS_static32x16pr_avx512_disabled = "No AVX512";
 #endif // HAVE_AVX512

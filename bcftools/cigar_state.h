@@ -107,6 +107,12 @@ static inline int cstate_seek_fwd(cigar_state_t *cs, hts_pos_t *pos_ptr, int tri
             cs->icig++;
             continue;
         }
+        if ( op==BAM_CHARD_CLIP || op==BAM_CPAD )
+        {
+            cs->icig++;
+            continue;
+        }
+        error("FIXME: not ready for CIGAR operator %d\n",op);
     }
     // the read starts after pos
     if ( trim_left )
@@ -175,6 +181,12 @@ static inline int cstate_seek_op_fwd(cigar_state_t *cs, hts_pos_t pos, int seek_
             cs->icig++;
             continue;
         }
+        if ( op==BAM_CHARD_CLIP || op==BAM_CPAD )
+        {
+            cs->icig++;
+            continue;
+        }
+        error("FIXME: not ready for CIGAR operator %d\n",op);
     }
     return cs->icig < cs->ncig ? -1 : -2;
 }

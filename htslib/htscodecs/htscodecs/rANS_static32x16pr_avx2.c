@@ -33,7 +33,7 @@
 
 #include "config.h"
 
-#ifdef HAVE_AVX2
+#if defined(__x86_64__) && defined(HAVE_AVX2)
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -1644,4 +1644,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
 
     return NULL;
 }
+#else  // HAVE_AVX2
+// Prevent "empty translation unit" errors when building without AVX2
+const char *rANS_static32x16pr_avx2_disabled = "No AVX2";
 #endif // HAVE_AVX2

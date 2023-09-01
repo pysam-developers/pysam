@@ -1,6 +1,6 @@
 /*  convert.h -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2014-2021 Genome Research Ltd.
+    Copyright (C) 2014-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -32,6 +32,7 @@ enum convert_option
 {
     allow_undef_tags,
     subset_samples,
+    force_newline,
 };
 
 convert_t *convert_init(bcf_hdr_t *hdr, int *samples, int nsamples, const char *str);

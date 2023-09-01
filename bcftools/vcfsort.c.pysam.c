@@ -2,7 +2,7 @@
 
 /*  vcfsort.c -- sort subcommand
 
-   Copyright (C) 2017-2022 Genome Research Ltd.
+   Copyright (C) 2017-2023 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -64,6 +64,8 @@ typedef struct _args_t
     uint8_t *mem_block;
     size_t nbuf, mbuf, nblk;
     blk_t *blk;
+    char *index_fn;
+    int write_index;
 }
 args_t;
 
@@ -302,12 +304,22 @@ void merge_blocks(args_t *args)
     set_wmode(wmode,args->output_type,args->output_fname,args->clevel);
     htsFile *out = hts_open(args->output_fname ? args->output_fname : "-", wmode);
     if ( bcf_hdr_write(out, args->hdr)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,args->output_fname);
+    if ( args->write_index && init_index(out,args->hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
     while ( bhp->ndat )
     {
         blk_t *blk = bhp->dat[0];
         if ( bcf_write(out, args->hdr, blk->rec)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,args->output_fname);
         khp_delete(blk, bhp);
         blk_read(args, bhp, args->hdr, blk);
+    }
+    if ( args->write_index )
+    {
+        if ( bcf_idx_save(out)<0 )
+        {
+            if ( hts_close(out)!=0 ) error("Error: close failed .. %s\n", args->output_fname?args->output_fname:"bcftools_stdout");
+            error("Error: cannot write to index %s\n", args->index_fn);
+        }
+        free(args->index_fn);
     }
     if ( hts_close(out)!=0 ) clean_files_and_throw(args, "Close failed: %s\n", args->output_fname);
 
@@ -335,6 +347,7 @@ static void usage(args_t *args)
 #else
     fprintf(bcftools_stderr, "    -T, --temp-dir DIR             temporary files [/tmp/bcftools.XXXXXX]\n");
 #endif
+    fprintf(bcftools_stderr, "        --write-index              Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -397,6 +410,7 @@ int main_sort(int argc, char *argv[])
         {"output-file",required_argument,NULL,'o'},
         {"output",required_argument,NULL,'o'},
         {"help",no_argument,NULL,'h'},
+        {"write-index",no_argument,NULL,1},
         {0,0,0,0}
     };
     char *tmp;
@@ -425,6 +439,7 @@ int main_sort(int argc, char *argv[])
                           if ( *tmp || args->clevel<0 || args->clevel>9 ) error("Could not parse argument: --compression-level %s\n", optarg+1);
                       }
                       break;
+            case  1 : args->write_index = 1; break;
             case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);

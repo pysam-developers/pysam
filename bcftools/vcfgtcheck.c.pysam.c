@@ -2,7 +2,7 @@
 
 /*  vcfgtcheck.c -- Check sample identity.
 
-    Copyright (C) 2013-2021 Genome Research Ltd.
+    Copyright (C) 2013-2023 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -61,6 +61,7 @@ typedef struct
     int argc, gt_samples_is_file, qry_samples_is_file, regions_is_file, targets_is_file, pair_samples_is_file;
     int regions_overlap, targets_overlap;
     int qry_use_GT,gt_use_GT, nqry_smpl,ngt_smpl, *qry_smpl,*gt_smpl;
+    int nused[2][2];
     double *pdiff, *qry_prob, *gt_prob;
     uint32_t *ndiff,*ncnt,ncmp, npairs;
     int32_t *qry_arr,*gt_arr, nqry_arr,ngt_arr;
@@ -311,7 +312,7 @@ static void init_data(args_t *args)
         init_samples(args->qry_samples, args->qry_samples_is_file, &args->qry_smpl, &args->nqry_smpl, args->qry_hdr, args->qry_fname);
     }
     if ( args->gt_samples )
-    {   
+    {
         init_samples(args->gt_samples, args->gt_samples_is_file, &args->gt_smpl, &args->ngt_smpl,
             args->gt_hdr ? args->gt_hdr : args->qry_hdr,
             args->gt_fname ? args->gt_fname : args->qry_fname);
@@ -379,7 +380,7 @@ static void init_data(args_t *args)
         args->gt_prob  = args->cross_check ? args->qry_prob : (double*) malloc(3*args->ngt_smpl*sizeof(*args->gt_prob));
 
         // dsg2prob: the first index is bitmask of 8 possible dsg combinations (only 1<<0,1<<2,1<<3 are set, accessing
-        // anything else indicated an error, this is just to reuse gt_to_dsg()); the second index are the corresponding 
+        // anything else indicated an error, this is just to reuse gt_to_dsg()); the second index are the corresponding
         // probabilities of 0/0, 0/1, and 1/1 genotypes
         for (i=0; i<8; i++)
             for (j=0; j<3; j++)
@@ -557,7 +558,9 @@ static void process_line(args_t *args)
         args->gt_arr = args->qry_arr;
     }
 
+    // stats: number of compared sites, and used tags
     args->ncmp++;
+    args->nused[qry_use_GT][gt_use_GT]++;
 
     double af,hwe_dsg[8];
     if ( args->calc_hwe_prob )
@@ -638,7 +641,7 @@ static void process_line(args_t *args)
                 gt_dsg = gt_use_GT ? gt_to_prob(args,ptr,gt_prob) : pl_to_prob(args,ptr,gt_prob);
                 if ( !gt_dsg ) continue;                        // missing value
                 if ( args->hom_only && !(gt_dsg&5) ) continue;  // not a hom
-               
+
                 ptr = args->qry_arr + args->pairs[i].iqry*nqry1;
                 qry_dsg = qry_use_GT ? gt_to_prob(args,ptr,qry_prob) : pl_to_prob(args,ptr,qry_prob);
                 if ( !qry_dsg ) continue;                       // missing value
@@ -799,11 +802,15 @@ static void report(args_t *args)
     fprintf(args->fp,"INFO\tsites-skipped-no-data\t%u\n",args->nskip_no_data);
     fprintf(args->fp,"INFO\tsites-skipped-GT-not-diploid\t%u\n",args->nskip_dip_GT);
     fprintf(args->fp,"INFO\tsites-skipped-PL-not-diploid\t%u\n",args->nskip_dip_PL);
+    fprintf(args->fp,"INFO\tsites-used-PL-vs-PL\t%u\n",args->nused[0][0]);
+    fprintf(args->fp,"INFO\tsites-used-PL-vs-GT\t%u\n",args->nused[0][1]);
+    fprintf(args->fp,"INFO\tsites-used-GT-vs-PL\t%u\n",args->nused[1][0]);
+    fprintf(args->fp,"INFO\tsites-used-GT-vs-GT\t%u\n",args->nused[1][1]);
     fprintf(args->fp,"# DC, discordance:\n");
     fprintf(args->fp,"#     - query sample\n");
     fprintf(args->fp,"#     - genotyped sample\n");
-    fprintf(args->fp,"#     - discordance (number of mismatches; smaller is better)\n");
-    fprintf(args->fp,"#     - negative log of HWE probability at matching sites (rare genotypes mataches are more informative, bigger is better)\n");
+    fprintf(args->fp,"#     - discordance (either an abstract score or number of mismatches, see -e/-u in the man page for details; smaller is better)\n");
+    fprintf(args->fp,"#     - negative log of HWE probability at matching sites (rare genotypes matches are more informative, bigger is better)\n");
     fprintf(args->fp,"#     - number of sites compared (bigger is better)\n");
     fprintf(args->fp,"#DC\t[2]Query Sample\t[3]Genotyped Sample\t[4]Discordance\t[5]-log P(HWE)\t[6]Number of sites compared\n");
 
@@ -1025,7 +1032,7 @@ static int is_input_okay(args_t *args, int nmatch)
     return 1;
 
 not_okay:
-    fprintf(bcftools_stderr,"INFO: skipping %s:%"PRIhts_pos", %s. (This is printed only once.)\n", 
+    fprintf(bcftools_stderr,"INFO: skipping %s:%"PRIhts_pos", %s. (This is printed only once.)\n",
         bcf_seqname(hdr,rec),rec->pos+1,msg);
     return 0;
 }
@@ -1099,7 +1106,7 @@ int main_vcfgtcheck(int argc, char *argv[])
     args->es_max_mem = strdup("500M");
 
     // In simulated sample swaps the minimum error was 0.3 and maximum intra-sample error was 0.23
-    //    - min_inter: pairs with smaller err value will be considered identical 
+    //    - min_inter: pairs with smaller err value will be considered identical
     //    - max_intra: pairs with err value bigger than abs(max_intra_err) will be considered
     //                  different. If negative, the cutoff may be heuristically lowered
     args->min_inter_err =  0.23;
@@ -1171,7 +1178,7 @@ int main_vcfgtcheck(int argc, char *argv[])
             case 3 : args->calc_hwe_prob = 0; break;
             case 4 : error("The option -S, --target-sample has been deprecated\n"); break;
             case 5 : args->dry_run = 1; break;
-            case 6 : 
+            case 6 :
                 args->distinctive_sites = strtod(optarg,&tmp);
                 if ( *tmp )
                 {
@@ -1204,7 +1211,7 @@ int main_vcfgtcheck(int argc, char *argv[])
                 else if ( !strncasecmp("qry:",optarg,4) ) args->qry_samples = optarg+4;
                 else error("Which one? Query samples (qry:%s) or genotype samples (gt:%s)?\n",optarg,optarg);
                 break;
-            case 'S': 
+            case 'S':
                 if ( !strncasecmp("gt:",optarg,3) ) args->gt_samples = optarg+3, args->gt_samples_is_file = 1;
                 else if ( !strncasecmp("qry:",optarg,4) ) args->qry_samples = optarg+4, args->qry_samples_is_file = 1;
                 else error("Which one? Query samples (qry:%s) or genotype samples (gt:%s)?\n",optarg,optarg);

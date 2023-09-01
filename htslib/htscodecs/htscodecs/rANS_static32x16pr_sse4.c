@@ -33,7 +33,8 @@
 
 #include "config.h"
 
-#if defined(HAVE_SSE4_1) && defined(HAVE_SSSE3) && defined(HAVE_POPCNT)
+#if defined(__x86_64__) && \
+    defined(HAVE_SSE4_1) && defined(HAVE_SSSE3) && defined(HAVE_POPCNT)
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -1767,5 +1768,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
 
     return NULL;
 }
-
+#else  // HAVE_SSE4_1 and HAVE_SSSE3
+// Prevent "empty translation unit" errors when building without SSE4 etc.
+const char *rANS_static32x16pr_sse4_disabled = "No SSE4";
 #endif // HAVE_SSE4_1 and HAVE_SSSE3
