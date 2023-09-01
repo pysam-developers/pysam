@@ -1,3 +1,5 @@
+# cython: language_level=3
+
 from pysam.libcalignmentfile cimport AlignmentFile, AlignedSegment
 from pysam.libcalignmentfile cimport BAM_FPROPER_PAIR, BAM_FPAIRED
 from pysam.libcalignedsegment cimport pysam_get_flag

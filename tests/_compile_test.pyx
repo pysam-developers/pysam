@@ -1,3 +1,5 @@
+# cython: language_level=3
+
 from pysam.libcalignmentfile cimport AlignmentFile, AlignedSegment
 from pysam.libctabix cimport Tabixfile
 
