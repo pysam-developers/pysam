@@ -39,6 +39,13 @@ try:
 except ImportError:
     from distutils.errors import LinkError
 
+# Alter LDSHARED to customise macOS shared libraries. (This hack alters
+# sysconfig and needs to occur before Cython.Distutils is imported.)
+if sys.platform == 'darwin':
+    config_vars = sysconfig.get_config_vars()
+    config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
+    config_vars['SHLIB_EXT'] = '.so'
+
 try:
     from Cython.Distutils import build_ext
 except ImportError:
@@ -244,12 +251,6 @@ class cythonize_sdist(sdist):
 
 
 # Override Cythonised build_ext command to customise macOS shared libraries.
-
-if sys.platform == 'darwin':
-    config_vars = sysconfig.get_config_vars()
-    config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
-    config_vars['SHLIB_EXT'] = '.so'
-
 
 class CyExtension(Extension):
     def __init__(self, *args, **kwargs):
