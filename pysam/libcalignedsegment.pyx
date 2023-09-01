@@ -1961,6 +1961,10 @@ cdef class AlignedSegment:
     def get_aligned_pairs(self, matches_only=False, with_seq=False):
         """a list of aligned read (query) and reference positions.
 
+        Each item in the returned list is a tuple consisting of
+        the 0-based offset from the start of the read sequence
+        followed by the 0-based reference position.
+
         For inserts, deletions, skipping either query or reference
         position may be None.
 
@@ -1971,7 +1975,7 @@ cdef class AlignedSegment:
         ----------
 
         matches_only : bool
-          If True, only matched bases are returned - no None on either
+          If True, only matched bases are returned --- no None on either
           side.
         with_seq : bool
           If True, return a third element in the tuple containing the
