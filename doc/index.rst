@@ -26,6 +26,11 @@ To install the latest release, type::
 
 See the :ref:`Installation notes <installation>` for details.
 
+This module is unrelated to NREL-PySAM_, which wraps the National Renewable
+Energy Laboratory's System Advisor Model.
+
+.. _NREL-PySAM: https://nrel-pysam.readthedocs.io/
+
 Contents
 --------
 
