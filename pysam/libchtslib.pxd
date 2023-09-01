@@ -686,6 +686,17 @@ cdef extern from "htslib/hts.h" nogil:
     #    @return  The index, or NULL if an error occurred.
     hts_idx_t *hts_idx_load2(const char *fn, const char *fnidx)
 
+    #### Load a specific index file
+    #    @param fn     Input BAM/BCF/etc filename
+    #     @param fnidx  The input index filename
+    #     @param fmt    One of the HTS_FMT_* index formats
+    #     @param flags  Flags to alter behaviour (see description)
+    #     @return  The index, or NULL if an error occurred.
+    hts_idx_t *hts_idx_load3(const char *fn, const char *fnidx, int fmt, int flags)
+
+    int HTS_IDX_SAVE_REMOTE
+    int HTS_IDX_SILENT_FAIL
+
     uint8_t *hts_idx_get_meta(hts_idx_t *idx, uint32_t *l_meta)
     void hts_idx_set_meta(hts_idx_t *idx, int l_meta, uint8_t *meta, int is_copy)
 
@@ -1090,6 +1101,14 @@ cdef extern from "htslib/sam.h" nogil:
     # @return  The index, or NULL if an error occurred.
     hts_idx_t *sam_index_load2(htsFile *fp, const char *fn, const char *fnidx)
 
+    # Load or stream a BAM (.csi or .bai) or CRAM (.crai) index file
+    # @param fp     File handle of the data file whose index is being opened
+    # @param fn     BAM/CRAM/etc data file filename
+    # @param fnidx  Index filename, or NULL to search alongside @a fn
+    # @param flags  Flags to alter behaviour
+    # @return  The index, or NULL if an error occurred.
+    hts_idx_t *sam_index_load3(htsFile *fp, const char *fn, const char *fnidx, int flags)
+
     # Generate and save an index file
     # @param fn        Input BAM/etc filename, to which .csi/etc will be added
     # @param min_shift Positive to generate CSI, or 0 to generate BAI
@@ -1464,6 +1483,7 @@ cdef extern from "htslib/tbx.h" nogil:
 
     tbx_t * tbx_index_load(char *fn)
     tbx_t *tbx_index_load2(const char *fn, const char *fnidx)
+    tbx_t *tbx_index_load3(const char *fn, const char *fnidx, int flags)
 
     # free the array but not the values
     char **tbx_seqnames(tbx_t *tbx, int *n)
@@ -2086,6 +2106,7 @@ cdef extern from "htslib/vcf.h" nogil:
     #************************************************************************
 
     hts_idx_t *bcf_index_load2(const char *fn, const char *fnidx)
+    hts_idx_t *bcf_index_load3(const char *fn, const char *fnidx, int flags)
     int bcf_index_build(const char *fn, int min_shift)
     int bcf_index_build2(const char *fn, const char *fnidx, int min_shift)
 

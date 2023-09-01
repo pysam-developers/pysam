@@ -73,7 +73,8 @@ from cpython cimport array as c_array
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
-from pysam.libchtslib cimport HTSFile, hisremote
+from pysam.libchtslib cimport HTSFile, hisremote, sam_index_load2, sam_index_load3, \
+                              HTS_IDX_SAVE_REMOTE, HTS_IDX_SILENT_FAIL
 
 from io import StringIO
 
@@ -1005,7 +1006,8 @@ cdef class AlignmentFile(HTSFile):
 
                 if cfilename or cindexname:
                     with nogil:
-                        self.index = sam_index_load2(self.htsfile, cfilename, cindexname)
+                        self.index = sam_index_load3(self.htsfile, cfilename, cindexname,
+                                                     HTS_IDX_SAVE_REMOTE|HTS_IDX_SILENT_FAIL)
 
                     if not self.index and (cindexname or require_index):
                         if errno:
