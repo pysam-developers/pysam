@@ -39,13 +39,6 @@ try:
 except ImportError:
     from distutils.errors import LinkError
 
-# Alter LDSHARED to customise macOS shared libraries. (This hack alters
-# sysconfig and needs to occur before Cython.Distutils is imported.)
-if sys.platform == 'darwin':
-    config_vars = sysconfig.get_config_vars()
-    config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
-    config_vars['SHLIB_EXT'] = '.so'
-
 try:
     from Cython.Distutils import build_ext
 except ImportError:
@@ -289,6 +282,10 @@ class cy_build_ext(build_ext):
         if errors > 0: raise LinkError("symbols defined in multiple extensions")
 
     def run(self):
+        if sys.platform == 'darwin':
+            ldshared = os.environ.get('LDSHARED', sysconfig.get_config_var('LDSHARED'))
+            os.environ['LDSHARED'] = ldshared.replace('-bundle', '')
+
         build_ext.run(self)
         try:
             if HTSLIB_MODE != 'separate':
