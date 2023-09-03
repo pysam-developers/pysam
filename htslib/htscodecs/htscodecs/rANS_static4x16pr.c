@@ -1018,7 +1018,7 @@ unsigned char *(*rans_dec_func(int do_simd, int order))
 static inline int have_neon() {
 #if defined(__linux__) && defined(__arm__)
     return (getauxval(AT_HWCAP) & HWCAP_NEON) != 0;
-#elif defined(__linux__) && defined(__aarch64__)
+#elif defined(__linux__) && defined(__aarch64__) && defined(HWCAP_ASIMD)
     return (getauxval(AT_HWCAP) & HWCAP_ASIMD) != 0;
 #elif defined(__APPLE__)
     return 1;
@@ -1026,7 +1026,7 @@ static inline int have_neon() {
     u_long cap;
     if (elf_aux_info(AT_HWCAP, &cap, sizeof cap) != 0) return 0;
     return (cap & HWCAP_NEON) != 0;
-#elif defined(__FreeBSD__) && defined(__aarch64__)
+#elif defined(__FreeBSD__) && defined(__aarch64__) && defined(HWCAP_ASIMD)
     u_long cap;
     if (elf_aux_info(AT_HWCAP, &cap, sizeof cap) != 0) return 0;
     return (cap & HWCAP_ASIMD) != 0;
