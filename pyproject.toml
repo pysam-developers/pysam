@@ -14,5 +14,5 @@ dynamic = [
 ]
 
 [build-system]
-requires = ["setuptools>=59.0", "Cython>=0.29.12"]
+requires = ["setuptools>=59.0", "Cython>=0.29.12,<4.0"]
 build-backend = "setuptools.build_meta:__legacy__"
