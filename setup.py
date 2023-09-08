@@ -33,11 +33,7 @@ from contextlib import contextmanager
 from setuptools import setup, Command
 from setuptools.command.sdist import sdist
 from setuptools.extension import Extension
-
-try:
-    from setuptools.errors import LinkError
-except ImportError:
-    from distutils.errors import LinkError
+from setuptools.errors import LinkError
 
 try:
     from Cython.Distutils import build_ext
@@ -684,7 +680,6 @@ metadata = {
     'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
-    'requires': ['cython (>=0.29.12)'],
     'ext_modules': [CyExtension(**opts) for opts in modules],
     'cmdclass': {'build_ext': cy_build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
     'package_dir': package_dirs,
