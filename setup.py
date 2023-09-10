@@ -33,7 +33,11 @@ from contextlib import contextmanager
 from setuptools import setup, Command
 from setuptools.command.sdist import sdist
 from setuptools.extension import Extension
-from setuptools.errors import LinkError
+
+try:
+    from setuptools.errors import LinkError
+except ImportError:
+    from distutils.errors import LinkError
 
 try:
     from Cython.Distutils import build_ext
