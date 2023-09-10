@@ -62,13 +62,13 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
-doc/_build
 
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
+.python-version
 .tox/
 .coverage
 .cache
@@ -91,4 +91,4 @@ coverage.xml
 *.pot
 
 # Sphinx documentation
-docs/_build/
+doc/_build/
