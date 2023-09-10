@@ -17,6 +17,12 @@ dynamic = [
 requires = ["setuptools>=59.0", "Cython>=0.29.12,<4"]
 build-backend = "setuptools.build_meta:__legacy__"
 
+[tool.cibuildwheel]
+before-all = "{project}/devtools/install-prerequisites.sh"
+
+test-requires = ["pytest"]
+test-command = "REF_PATH=: pytest {project}/tests"
+
 [tool.tox]
 legacy_tox_ini = """
     [tox]
