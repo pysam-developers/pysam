@@ -35,7 +35,11 @@ The typical installation will be through pypi_::
 
    pip install pysam
 
-This will compile the ``builtin`` htslib source code within pysam.
+Generally you will have the ``wheel`` package installed and
+this command will speedily install pysam from a pre-built wheel.
+Otherwise, or if you use pip's ``--no-binary`` option, this will
+compile the ``builtin`` htslib source code within pysam and allow
+the configuration facilities described below to be used.
 
 htslib_ can be configured at compilation to turn on additional
 features such support using encrypted configurations, enable plugins,
