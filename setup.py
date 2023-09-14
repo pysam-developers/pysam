@@ -684,7 +684,6 @@ metadata = {
     'classifiers': [_f for _f in classifiers.split("\n") if _f],
     'url': "https://github.com/pysam-developers/pysam",
     'packages': package_list,
-    'requires': ['cython (>=0.29.12)'],
     'ext_modules': [CyExtension(**opts) for opts in modules],
     'cmdclass': {'build_ext': cy_build_ext, 'clean_ext': clean_ext, 'sdist': cythonize_sdist},
     'package_dir': package_dirs,

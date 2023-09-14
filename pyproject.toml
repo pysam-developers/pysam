@@ -14,5 +14,16 @@ dynamic = [
 ]
 
 [build-system]
-requires = ["setuptools>=59.0", "Cython>=0.29.12"]
+requires = ["setuptools>=61.0", "Cython>=0.29.12,<4"]
 build-backend = "setuptools.build_meta:__legacy__"
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    envlist = py36, py311
+
+    [testenv]
+    deps = pytest
+    setenv = REF_PATH=:
+    commands = pytest tests
+"""
