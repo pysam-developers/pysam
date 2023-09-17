@@ -757,7 +757,18 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         elif op == BAM_CHARD_CLIP:
             pass # advances neither
 
-    cdef char * md_tag = <char*>bam_aux2Z(md_tag_ptr)
+    cdef char *md_tag, md_buffer[2];
+    cdef uint8_t md_typecode = md_tag_ptr[0]
+    if md_typecode == b'Z':
+        md_tag = bam_aux2Z(md_tag_ptr)
+    elif md_typecode == b'A':
+        # Work around HTSeq bug that writes 1-character strings as MD:A:v
+        md_buffer[0] = bam_aux2A(md_tag_ptr)
+        md_buffer[1] = b'\0'
+        md_tag = md_buffer
+    else:
+        raise TypeError('Tagged field MD:{}:<value> does not have expected type MD:Z'.format(chr(md_typecode)))
+
     cdef int md_idx = 0
     cdef char c
     s_idx = 0

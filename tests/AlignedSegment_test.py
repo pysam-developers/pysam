@@ -776,6 +776,32 @@ class TestAlignedSegment(ReadTest):
             ],
         )
 
+    def test_get_aligned_pairs_1character_md(self):
+        a = self.build_read()
+        a.query_sequence = "A" * 7
+        a.cigarstring = "7M"
+        a.set_tag("MD", "7", value_type="A")
+        self.assertEqual(
+            a.get_aligned_pairs(with_seq=True),
+            [
+                (0, 20, "A"),
+                (1, 21, "A"),
+                (2, 22, "A"),
+                (3, 23, "A"),
+                (4, 24, "A"),
+                (5, 25, "A"),
+                (6, 26, "A"),
+            ],
+        )
+
+    def test_get_aligned_pairs_bad_type_md(self):
+        a = self.build_read()
+        a.query_sequence = "A" * 7
+        a.cigarstring = "7M"
+        a.set_tag("MD", 7)
+        with self.assertRaises(TypeError):
+            a.get_aligned_pairs(with_seq=True)
+
     def testNoSequence(self):
         """issue 176: retrieving length without query sequence
         with soft-clipping.
