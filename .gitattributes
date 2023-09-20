@@ -1,0 +1,11 @@
+# Omit these files from GitHub's generated tarballs
+/.git*                      export-ignore
+/.readthedocs.yaml          export-ignore
+/.travis.disabled.yml       export-ignore
+
+# Omit imported C files from GitHub's language statistics
+htslib/**                   linguist-vendored
+samtools/**                 linguist-vendored
+samtools/samtools.pysam.*  -linguist-vendored
+bcftools/**                 linguist-vendored
+bcftools/bcftools.pysam.*  -linguist-vendored
