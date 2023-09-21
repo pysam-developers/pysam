@@ -10,8 +10,8 @@ Release 0.21.0
 
 This release wraps htslib/samtools/bcftools version 1.17.
 
-Pysam is now compatible with Python 3.11. We have removed python 2.x
-support. Pysam is tested with python versions 3.6 to 3.11.
+Pysam is now compatible with Python 3.11. We have removed Python 2.x
+support. Pysam is tested with Python versions 3.6 to 3.11.
 
 * [#1175] VariantHeader.new_record: set start/stop before alleles
 * [#1173] Add multiple build improvements in htscodecs on multi-arch macOS
@@ -162,6 +162,7 @@ version in order to fix pip install pysam with python 3.8.
 * [#846] Prevent segmentation fault on ID, when handling malformed records
 * [#829] Run configure with the correct CC/CFLAGS/LDFLAGS env vars
 
+
 Release 0.15.3
 ==============
 
@@ -205,7 +206,7 @@ Bugfix release.
 Release 0.15.0
 ==============
 
-This release wraps htslib (and friends) version 1.9.
+This release wraps htslib/samtools/bcftools version 1.9.
 
 * [#673] permit dash in chromosome name of region string
 * [#656] Support `text` when opening a SAM file for writing
@@ -224,6 +225,7 @@ upgraded to 1.7.0.
 * [#635] Speed-up of AlignedSegment.find_intro()
 * treat border case of all bases in pileup column below quality score
 * [#634] Fix access to pileup reference_sequence
+
 
 Release 0.14.0
 ==============
@@ -289,6 +291,7 @@ contains a series of bugfixes.
 * [#537] allow tabix index files to be created in a custom location.
 * [#530] add get_index_statistics() method
 
+
 Release 0.12.0.1
 ================
 
@@ -304,6 +307,7 @@ contains a series of bugfixes.
 * [#473] A new FastxRecord class that can be instantiated from class and
   modified in-place. Replaces PersistentFastqProxy.
 * [#521] In AligmentFile, Simplify file detection logic and allow remote index files
+
   * Removed attempts to guess data and index file names; this is magic left
     to htslib.
   * Removed file existence check prior to opening files with htslib
@@ -314,6 +318,7 @@ contains a series of bugfixes.
   * Allow remote indices (tested using S3 signed URLs).
   * Document filepath_index and make it an alias for index_filename.
   * Added a require_index parameter to AlignmentFile
+
 * [#526] handle unset ref when creating new records
 * [#513] fix bcf_translate to skip deleted FORMAT fields to avoid
   segfaults
@@ -554,12 +559,14 @@ Potential isses when upgrading from v0.8.3:
 
 * renamed several methods for pep8 compatibility, old names still retained for
   backwards compatibility, but should be considered deprecated.
+
    * gettid() is now get_tid()
    * getrname() is now get_reference_name()
    * parseRegion() is now parse_region()
 
 * some methods have changed for pep8 compatibility without the old
   names being present:
+
    * fromQualityString() is now qualitystring_to_array()
    * toQualityString() is now qualities_to_qualitystring()
 
@@ -678,6 +685,7 @@ Release 0.8.1
 * Pysam now wraps htslib and samtools versions 1.1.
 
 * Bugfixes, most notable:
+
   * issue #43: uncompressed BAM output
   * issue #42: skip tests requiring network if none available
   * issue #19: multiple iterators can now be made to work on the same tabix file
