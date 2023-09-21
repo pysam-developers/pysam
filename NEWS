@@ -1,9 +1,5 @@
-An online version of the installation instructions can be found here:
-http://pysam.readthedocs.io/en/latest/release.html
-
-=============
-Release notes
-=============
+.. An online version of the release history can be found here:
+.. http://pysam.readthedocs.io/en/latest/release.html
 
 Release 0.21.0
 ==============

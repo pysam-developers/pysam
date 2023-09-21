@@ -11,7 +11,7 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys, os, setuptools
+import sys, os, re, setuptools
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -29,6 +29,7 @@ if os.path.exists(_libdir):
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.autosummary',
+              'sphinx.ext.extlinks',
               'sphinx.ext.todo', 
               'sphinx.ext.ifconfig',
               'sphinx.ext.intersphinx',
@@ -120,6 +121,27 @@ pygments_style = 'sphinx'
 # A list of ignored prefixes for module index sorting.
 #modindex_common_prefix = []
 
+# -- Rewrite "PR #NNN" and "#NNN" in NEWS as URL links -------------------------
+
+extlinks = {
+    'issue': ('https://github.com/pysam-developers/pysam/issues/%s', '#%s'),
+    'pull':  ('https://github.com/pysam-developers/pysam/pull/%s', 'PR #%s'),
+    }
+
+def expand_github_references(text):
+    text = re.sub(r'PR\s*#(\d+)', r':pull:`\1`', text)
+    text = re.sub(r'#(\d+)', r':issue:`\1`', text)
+    return text
+
+def include_read(app, relative_path, parent_docname, source):
+    if relative_path.name == 'NEWS':
+        source[0] = expand_github_references(source[0])
+
+def setup(app):
+    try:
+        app.connect('include-read', include_read)
+    except:
+        pass  # Sphinx is too old to link issues/PRs
 
 # -- Options for HTML output ---------------------------------------------------
 
