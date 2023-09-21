@@ -42,10 +42,10 @@ Questions and comments are very welcome and should be sent to the
 .. _tabix: http://samtools.sourceforge.net/tabix.shtml
 .. _Li 2009: http://www.ncbi.nlm.nih.gov/pubmed/19505943
 
-.. |build-status| image:: https://travis-ci.org/pysam-developers/pysam.svg
+.. |build-status| image:: https://github.com/pysam-developers/pysam/actions/workflows/ci.yaml/badge.svg
     :alt: build status
     :scale: 100%
-    :target: https://travis-ci.org/pysam-developers/pysam
+    :target: https://github.com/pysam-developers/pysam/actions/workflows/ci.yaml
 
 .. |docs| image:: https://readthedocs.org/projects/pysam/badge/?version=latest
     :alt: Documentation Status
