@@ -1859,12 +1859,16 @@ cdef class AlignedSegment:
     def get_reference_positions(self, full_length=False):
         """a list of reference positions that this read aligns to.
 
-        By default, this method only returns positions in the
-        reference that are within the alignment. If *full_length* is
-        set, None values will be included for any soft-clipped or
-        unaligned positions within the read. The returned list will
-        thus be of the same length as the read.
+        By default, this method returns the (0-based) positions on the
+        reference that are within the read's alignment, leaving gaps
+        corresponding to deletions and other reference skips.
 
+        When *full_length* is True, the returned list is the same length
+        as the read and additionally includes None values corresponding
+        to insertions or soft-clipping, i.e., to bases of the read that
+        are not aligned to a reference position.
+        (See also :meth:`get_aligned_pairs` which additionally returns
+        the corresponding positions along the read.)
         """
         cdef uint32_t k, i, l, pos
         cdef int op
