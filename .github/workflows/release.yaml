@@ -1,4 +1,4 @@
-name: Publish pysam wheels to PyPI and TestPyPI
+name: Publish wheels
 
 on:
   push:
@@ -12,7 +12,6 @@ on:
 
 jobs:
   build_wheels:
-    name: Build wheels on ${{ matrix.os }} for ${{ matrix.build }}
     runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
@@ -39,7 +38,7 @@ jobs:
           platforms: arm64
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.15.0
+        uses: pypa/cibuildwheel@v2.16.1
         env:
           CIBW_BUILD: ${{ matrix.build }}
           CIBW_SKIP: "*musllinux*"
@@ -59,7 +58,6 @@ jobs:
           path: ./wheelhouse/*.whl
 
   build_sdist:
-
     runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
@@ -92,28 +90,26 @@ jobs:
           path: dist/*.tar.gz
 
   upload_pypi:
-
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'release' && 'pypi' || 'testpypi' }}
+
+    permissions:
+      id-token: write
 
     steps:
-      - name: Get Artifacts
+      - name: Get artifacts
         uses: actions/download-artifact@v3
         with:
           name: artifact
           path: dist
 
       - name: Publish distribution to Test PyPI
-        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
-        uses: pypa/gh-action-pypi-publish@master
+        if: github.event_name == 'push'
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
+          repository-url: https://test.pypi.org/legacy/
 
       - name: Publish distribution to PyPI
         if: github.event_name == 'release' && github.event.action == 'published'
-        uses: pypa/gh-action-pypi-publish@master
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-
+        uses: pypa/gh-action-pypi-publish@release/v1
