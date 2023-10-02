@@ -1,8 +1,7 @@
 [project]
 name = "pysam"
-description = "pysam - a python module for reading, manipulating and writing genomic data sets."
+description = "Package for reading, manipulating, and writing genomic data"
 license = { text = "MIT License" }
-version = "0.21.0"
 authors = [
  { name = "Andreas Heger", email = "andreas.heger@gmail.com"}
 ]
@@ -11,11 +10,22 @@ requires-python = ">=3.6"
 dynamic = [
     "classifiers",
     "readme",
+    "version",
 ]
+
+[project.urls]
+"Documentation" = "https://pysam.readthedocs.io/en/stable/"
+"Release notes" = "https://pysam.readthedocs.io/en/stable/release.html"
 
 [build-system]
 requires = ["setuptools>=59.0", "Cython>=0.29.12,<4"]
 build-backend = "setuptools.build_meta:__legacy__"
+
+[tool.cibuildwheel]
+before-all = "{project}/devtools/install-prerequisites.sh"
+
+test-requires = ["pytest"]
+test-command = "REF_PATH=: pytest {project}/tests"
 
 [tool.tox]
 legacy_tox_ini = """
