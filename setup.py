@@ -1,23 +1,16 @@
 #! /usr/bin/python
 
-'''pysam - a python module for reading, manipulating and writing
+'''pysam --- a Python package for reading, manipulating, and writing
 genomic data sets.
 
-pysam is a lightweight wrapper of the htslib C-API and provides
-facilities to read and write SAM/BAM/VCF/BCF/BED/GFF/GTF/FASTA/FASTQ
-files as well as access to the command line functionality of the
-samtools and bcftools packages. The module supports compression and
-random access through indexing.
+pysam is a lightweight wrapper of the HTSlib API and provides facilities
+to read and write SAM/BAM/CRAM/VCF/BCF/BED/GFF/GTF/FASTA/FASTQ files
+as well as access to the command-line functionality of samtools and bcftools.
+The module supports compression and random access through indexing.
 
-This module provides a low-level wrapper around the htslib C-API as
-using cython and a high-level API for convenient access to the data
-within standard genomic file formats.
-
-See:
-http://www.htslib.org
-https://github.com/pysam-developers/pysam
-http://pysam.readthedocs.org/en/stable
-
+This module provides a low-level wrapper around HTSlib's C API using Cython
+and a high-level API for convenient access to the data within standard genomic
+file formats.
 '''
 
 import collections
@@ -675,8 +668,9 @@ Operating System :: MacOS
 metadata = {
     'name': "pysam",
     'version': get_pysam_version(),
-    'description': "pysam",
+    'description': "Package for reading, manipulating, and writing genomic data",
     'long_description': __doc__,
+    'long_description_content_type': "text/x-rst",
     'author': "Andreas Heger",
     'author_email': "andreas.heger@gmail.com",
     'license': "MIT",
