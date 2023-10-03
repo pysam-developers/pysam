@@ -4,6 +4,8 @@
 Release 0.21.0
 ==============
 
+.. rubric:: 2 April 2023
+
 This release wraps htslib/samtools/bcftools version 1.17.
 
 Pysam is now compatible with Python 3.11. We have removed Python 2.x
@@ -23,8 +25,11 @@ support. Pysam is tested with Python versions 3.6 to 3.11.
 * [#1149] MacOS universal build compatibility.
 * [#1146] Fix build when CFLAGS/etc environment variables are set.
 
+
 Release 0.20.0
 ==============
+
+.. rubric:: 29 October 2022
 
 This release wraps htslib/bcftools version 1.16 and samtools version 1.16.1.
 
@@ -36,16 +41,22 @@ This release wraps htslib/bcftools version 1.16 and samtools version 1.16.1.
 Many additional type hints have been provided by the community,
 thanks!
 
+
 Release 0.19.1
 ==============
+
+.. rubric:: 27 May 2022
 
 This release wraps htslib/samtools/bcftools version 1.15.1.
 
 * [#1104] add an add_samples() method to quickly add multiple samples
   to VCF.
 
+
 Release 0.19.0
 ==============
+
+.. rubric:: 30 March 2022
 
 This release wraps htslib/samtools/bcftools version 1.15.
 
@@ -62,9 +73,12 @@ This release wraps htslib/samtools/bcftools version 1.15.
 * Fix BGZFile.read() behaviour near or at EOF
 
 * First API for the htslib modified bases interface
-  
+
+
 Release 0.18.0
 ==============
+
+.. rubric:: 17 November 2021
 
 This release wraps htslib/samtools/bcftools version 1.14.
 
@@ -73,8 +87,11 @@ This release wraps htslib/samtools/bcftools version 1.14.
 * Add new "samples" subcommand to pysam/samtools.py
 * Introduce TupleProxyIterator iterator object class
 
+
 Release 0.17.0
 ==============
+
+.. rubric:: 30 September 2021
 
 This release wraps htslib/samtools/bcftools version 1.13. Corresponding
 to new samtools commands, `pysam.samtools` now has additional functions
@@ -117,6 +134,8 @@ Documentation improvements:
 
 Release 0.16.0
 ==============
+
+.. rubric:: 8 June 2020
 
 This release wraps htslib/bcftools version 1.10.2 and samtools version
 1.10. The following bugs reported against pysam are fixed due to this:
