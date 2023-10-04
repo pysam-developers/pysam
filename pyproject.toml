@@ -14,7 +14,7 @@ dynamic = [
 ]
 
 [project.urls]
-"Documentation" = "https://pysam.readthedocs.io/en/stable/"
+"Documentation" = "https://pysam.readthedocs.io/"
 "Release notes" = "https://pysam.readthedocs.io/en/stable/release.html"
 
 [build-system]
@@ -23,6 +23,8 @@ build-backend = "setuptools.build_meta:__legacy__"
 
 [tool.cibuildwheel]
 before-all = "{project}/devtools/install-prerequisites.sh"
+# Necessary until we build libhts.a out-of-tree from within build_temp
+before-build = "make -C {project}/htslib distclean"
 
 test-requires = ["pytest"]
 test-command = "REF_PATH=: pytest {project}/tests"
