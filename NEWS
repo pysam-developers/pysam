@@ -1,6 +1,87 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.22.0
+==============
+
+.. rubric:: 5 October 2023
+
+This pysam release wraps htslib/samtools/bcftools 1.18 (PR #1208).
+
+It has been tested with Python versions 3.6 through 3.12, and wheels are
+available via pypi_ for all of those Python versions. Python versions 3.6
+and 3.7 are end-of-life; particularly if you use pysam with either of
+these versions, please vote in the version survey at issue #1230.
+
+The final pysam release that supported Python 2.7 was v0.20.0.
+
+Bugs fixed:
+
+* Remove Cython from runtime dependencies (PR #1186, thanks to Nicola Soranzo,
+  also reported by Arya Massarat in PR #1194)
+
+* Miscellaneous dependency improvements (PR #1216, #1217, PR #1218, PR #1219,
+  thanks to Martin Larralde and Arthur Vigil)
+
+* Suppress spurious "Could not retrieve index file" message when opening an
+  AlignmentFile (#939, #1214, reported by ChengYong Tham and Sebastian Röner)
+
+* Propagate SAM parsing errors encounted in :meth:`.AlignedSegment.fromstring`
+  (#1196, reported by DV Klopfenstein)
+
+* Accept invalid MD:A tagged fields produced by HTSeq instead of crashing
+  in :meth:`AlignedSegment.get_aligned_pairs(with_seq=True)
+  <.AlignedSegment.get_aligned_pairs>` (#1226, reported by Isaac Vock)
+
+* Fix multiarch macOS CI builds by removing brewed liblzma (#1205, reported
+  by Till Hartmann)
+
+* Fix :attr:`.VariantRecordSample.alleles` type hint (#1179, reported by
+  David Seifert)
+
+New functionality:
+
+* Add optional :meth:`HTSFile.seek(..., whence) <.HTSFile.seek>` parameter
+  and clarify which functions use libc.SEEK_SET vs io.SEEK_SET
+  (#1185, requested by luyulin)
+
+* File handling improvements in samtools & bcftools commands (should improve
+  #1193 and #1195, reported by Rob Bierman and Sam Chorlton)
+
+* Improve :class:`.FastxFile` performance (PR #1227, thanks to Fabian Klötzl
+  and Valentyn Bezshapkin)
+
+* Improve the accuracy of type hints for :class:`.AlignmentFile` iteration
+  (#1184, PR #1189, reported by @PikalaxALT)
+
+Documentation improvements:
+
+* Clarify that :meth:`.AlignedSegment.get_aligned_pairs` results are 0-based
+  (#1180, reported by Nick Semenkovich)
+
+* Clarify :meth:`.AlignedSegment.get_reference_positions` documentation
+  (#836, #838, reported by Liang Ou and Nick Stoler)
+
+* Clarify that installation via pip usually uses a wheel, and that configuring
+  the build via $HTSLIB_CONFIGURE_OPTIONS etc only applies when installing from
+  an sdist (#1086, reported by Layne Sadler)
+
+A message from pysam's founder, Andreas Heger:
+
+    As many of you will have noticed, John Marshall has been effectively
+    maintaining pysam and supporting users over the last few years.
+    I, Andreas, am very grateful for the countless hours he has contributed.
+    Unfortunately, I will not be able to contribute much in the near and
+    intermediate future. To keep pysam going, John has kindly agreed to
+    continue maintaining and supporting pysam as the principal developer
+    of pysam. I am very happy to know that pysam is in good hands and want
+    to thank again John and the wider pysam community for their suggestions,
+    bug reports, code contributions and general support.
+
+Thank you Andreas for all your work over the years and the solid foundations
+that pysam enjoys and the useful functionality it provides.
+
+
 Release 0.21.0
 ==============
 

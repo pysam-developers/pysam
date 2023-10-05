@@ -1,7 +1,7 @@
 pysam: htslib interface for python
 ==================================
 
-:Author: Andreas Heger, Kevin Jacobs and contributors
+:Author: Andreas Heger, John Marshall, Kevin Jacobs, and contributors
 :Date: |today|
 :Version: |version|
 

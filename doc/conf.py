@@ -51,7 +51,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'pysam'
-copyright = u'2009–2021, Andreas Heger, Kevin Jacobs, et al'
+copyright = '2009–2023 Andreas Heger, John Marshall, Kevin Jacobs, et al'
 
 # Included at the end of each rst file
 rst_epilog = '''
@@ -229,7 +229,7 @@ htmlhelp_basename = 'samtoolsdoc'
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
     ('index', 'pysam.tex', u'pysam documentation',
-     u'Andreas Heger, Kevin Jacobs, et al.', 'manual'),
+     'Andreas Heger, John Marshall, Kevin Jacobs, et al', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
