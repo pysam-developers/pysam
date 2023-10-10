@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.16.2
@@ -55,7 +55,7 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
