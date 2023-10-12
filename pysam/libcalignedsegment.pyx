@@ -382,7 +382,7 @@ cdef inline pack_tags(tags):
                     raise ValueError("unsupported type code '{}'".format(value.typecode))
 
             if typecode not in DATATYPE2FORMAT:
-                raise ValueError("invalid value type '{}' ({})".format(chr(typecode), array.typecode))
+                raise ValueError("invalid value type '{}' ({})".format(chr(typecode), typecode))
 
             # use array.tostring() to retrieve byte representation and
             # save as bytes
