@@ -114,7 +114,7 @@ VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
 KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
                        "SQ" : {"SN" : str, "LN" : int, "AS" : str,
                                "M5" : str, "SP" : str, "UR" : str,
-                               "AH" : str, "TP" : strm "DS" : str,
+                               "AH" : str, "TP" : str, "DS" : str,
 			       "AN" : str,},
                        "RG" : {"ID" : str, "CN" : str, "DS" : str,
                                "DT" : str, "FO" : str, "KS" : str,
