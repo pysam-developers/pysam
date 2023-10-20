@@ -111,29 +111,30 @@ VALID_HEADER_TYPES = {"HD" : Mapping,
 VALID_HEADERS = ("HD", "SQ", "RG", "PG", "CO")
 
 # default type conversions within SAM header records
-KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str},
+KNOWN_HEADER_FIELDS = {"HD" : {"VN" : str, "SO" : str, "GO" : str,
+                               "SS" : str,},
                        "SQ" : {"SN" : str, "LN" : int, "AS" : str,
                                "M5" : str, "SP" : str, "UR" : str,
                                "AH" : str, "TP" : str, "DS" : str,
-			       "AN" : str,},
+                               "AN" : str,},
                        "RG" : {"ID" : str, "CN" : str, "DS" : str,
                                "DT" : str, "FO" : str, "KS" : str,
                                "LB" : str, "PG" : str, "PI" : str,
                                "PL" : str, "PM" : str, "PU" : str,
-                               "SM" : str,},
+                               "SM" : str, "BC" : str,},
                        "PG" : {"ID" : str, "PN" : str, "CL" : str,
                                "PP" : str, "DS" : str, "VN" : str,},}
 
 # output order of fields within records. Ensure that CL is at
 # the end as parsing a CL will ignore any subsequent records.
-VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "GO"),
+VALID_HEADER_ORDER = {"HD" : ("VN", "SO", "SS", "GO"),
                       "SQ" : ("SN", "LN", "AS", "M5",
                               "UR", "SP", "AH", "TP",
-			      "DS", "AN"),
+                              "DS", "AN"),
                       "RG" : ("ID", "CN", "SM", "LB",
                               "PU", "PI", "DT", "DS",
                               "PL", "FO", "KS", "PG",
-                              "PM"),
+                              "PM", "BC"),
                       "PG" : ("PN", "ID", "VN", "PP",
                               "DS", "CL"),}
 
