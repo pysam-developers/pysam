@@ -24,7 +24,7 @@ class TestHeaderConstruction(unittest.TestCase):
 
     header_dict = odict(
         [('SQ', [odict([('LN', 1575), ('SN', 'chr1'), ('AH', 'chr1:5000000-5010000')]),
-                 odict([('LN', 1584), ('SN', 'chr2'), ('AH', '*')])]),
+                 odict([('LN', 1584), ('SN', 'chr2'), ('AH', '*'), ('TP', 'linear')])]),
          ('RG', [odict([('LB', 'SC_1'), ('ID', 'L1'), ('SM', 'NA12891'),
                         ('PU', 'SC_1_10'), ("CN", "name:with:colon")]),
                  odict([('LB', 'SC_2'), ('ID', 'L2'), ('SM', 'NA12891'),
@@ -37,7 +37,7 @@ class TestHeaderConstruction(unittest.TestCase):
 
     header_text = ("@HD\tVN:1.0\n"
                    "@SQ\tSN:chr1\tLN:1575\tAH:chr1:5000000-5010000\n"
-                   "@SQ\tSN:chr2\tLN:1584\tAH:*\n"
+                   "@SQ\tSN:chr2\tLN:1584\tAH:*\tTP:linear\n"
                    "@RG\tID:L1\tPU:SC_1_10\tLB:SC_1\tSM:NA12891\tCN:name:with:colon\n"
                    "@RG\tID:L2\tPU:SC_2_12\tLB:SC_2\tSM:NA12891\tCN:name:with:colon\n"
                    "@PG\tID:P1\tVN:1.0\n"
