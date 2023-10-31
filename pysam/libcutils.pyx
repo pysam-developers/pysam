@@ -12,12 +12,13 @@ from codecs import register_error
 from cpython.version cimport PY_MAJOR_VERSION, PY_MINOR_VERSION
 from cpython cimport PyBytes_Check, PyUnicode_Check
 from cpython cimport array as c_array
+from libc.errno cimport errno
 from libc.stdlib cimport calloc, free
 from libc.string cimport strncpy
 from libc.stdint cimport INT32_MAX, int32_t
 from libc.stdio cimport fprintf, stderr, fflush
 from libc.stdio cimport stdout as c_stdout
-from posix.fcntl cimport open as c_open, O_WRONLY
+from posix.fcntl cimport open as c_open, O_WRONLY, O_CREAT, O_TRUNC
 from posix.unistd cimport SEEK_SET, SEEK_CUR, SEEK_END
 
 from pysam.libcsamtools cimport samtools_dispatch, samtools_set_stdout, samtools_set_stderr, \
@@ -321,9 +322,9 @@ def _pysam_dispatch(collection,
     if save_stdout:
         stdout_f = save_stdout
         stdout_h = c_open(force_bytes(stdout_f),
-                          O_WRONLY)
+                          O_WRONLY|O_CREAT|O_TRUNC, 0666)
         if stdout_h == -1:
-            raise IOError("error while opening {} for writing".format(stdout_f))
+            raise OSError(errno, "error while opening file for writing", stdout_f)
 
         samtools_set_stdout_fn(force_bytes(stdout_f))
         bcftools_set_stdout_fn(force_bytes(stdout_f))
