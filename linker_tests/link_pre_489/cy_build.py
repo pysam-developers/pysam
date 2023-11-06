@@ -65,7 +65,7 @@ class cy_build_ext(build_ext):
             # @loader_path. This will allow Python packages to find the library
             # in the expected place, while still giving enough flexibility to
             # external applications to link against the library.
-            relative_module_path = ext.name.replace(".", os.sep) + (get_config_var('EXT_SUFFIX') or get_config_var('SO'))
+            relative_module_path = ext.name.replace(".", os.sep) + get_config_var('EXT_SUFFIX')
             library_path = os.path.join(
                 "@rpath", os.path.basename(relative_module_path)
             )

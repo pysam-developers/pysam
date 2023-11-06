@@ -96,5 +96,5 @@ def get_libraries():
     if pysam.config.HTSLIB == "builtin":
         pysam_libs.append('libchtslib')
 
-    so = sysconfig.get_config_var('EXT_SUFFIX') or sysconfig.get_config_var('SO')
+    so = sysconfig.get_config_var('EXT_SUFFIX')
     return [os.path.join(dirname, x + so) for x in pysam_libs]
