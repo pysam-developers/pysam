@@ -3,7 +3,6 @@ import pysam
 import unittest
 import json
 import collections
-import string
 import struct
 import copy
 import array
@@ -14,14 +13,7 @@ from TestUtils import (
     BAM_DATADIR,
     get_temp_filename,
     get_temp_context,
-    IS_PYTHON3,
 )
-
-
-if IS_PYTHON3:
-    maketrans = str.maketrans
-else:
-    maketrans = string.maketrans
 
 
 def setUpModule():
@@ -1161,7 +1153,7 @@ class TestBaseModifications(unittest.TestCase):
                 self.assertDictEqual(r.modified_bases, expect[r.query_name][0])
                 self.assertDictEqual(r.modified_bases_forward, expect[r.query_name][1])
                 for (B, s, _), mods in r.modified_bases.items():
-                    C = B.translate(maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))
+                    C = B.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))
                     for pos, _ in mods:
                         if r.is_reverse:
                             if s == 1:
@@ -1714,7 +1706,7 @@ class TestForwardStrandValues(ReadTest):
         a.is_reverse = False
         fwd_seq = a.query_sequence
 
-        rev_seq = fwd_seq.translate(maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
+        rev_seq = fwd_seq.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
         self.assertEqual(fwd_seq, a.get_forward_sequence())
         a.is_reverse = True
         self.assertEqual(fwd_seq, a.query_sequence)

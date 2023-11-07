@@ -5,7 +5,6 @@ Execute in the :file:`tests` directory as it requires the Makefile
 and data files located there.
 '''
 
-import sys
 import os
 import shutil
 import gzip
@@ -15,8 +14,6 @@ import glob
 import re
 from TestUtils import checkBinaryEqual, checkGZBinaryEqual, check_url, \
     load_and_convert, make_data_files, TABIX_DATADIR, get_temp_filename
-
-IS_PYTHON3 = sys.version_info[0] >= 3
 
 
 def setUpModule():
@@ -30,11 +27,8 @@ def myzip_open(infile, mode="r"):
         for l in f:
             yield l.decode("ascii")
 
-    if IS_PYTHON3:
-        if mode == "r":
-            return _convert(gzip.open(infile, "r"))
-    else:
-        return gzip.open(mode)
+    if mode == "r":
+        return _convert(gzip.open(infile, "r"))
 
 
 def splitToBytes(s):
@@ -550,46 +544,45 @@ class TestVCF(unittest.TestCase):
             os.unlink(self.tmpfilename + ".gz.tbi")
 
 
-if IS_PYTHON3:
-    class TestUnicode(unittest.TestCase):
+class TestUnicode(unittest.TestCase):
 
-        '''test reading from a file with non-ascii characters.'''
+    '''test reading from a file with non-ascii characters.'''
 
-        filename = os.path.join(TABIX_DATADIR, "example_unicode.vcf")
+    filename = os.path.join(TABIX_DATADIR, "example_unicode.vcf")
 
-        def setUp(self):
-            self.tmpfilename = get_temp_filename(suffix="vcf")
-            shutil.copyfile(self.filename, self.tmpfilename)
-            pysam.tabix_index(self.tmpfilename, preset="vcf")
+    def setUp(self):
+        self.tmpfilename = get_temp_filename(suffix="vcf")
+        shutil.copyfile(self.filename, self.tmpfilename)
+        pysam.tabix_index(self.tmpfilename, preset="vcf")
 
-        def tearDown(self):
-            os.unlink(self.tmpfilename + ".gz")
-            if os.path.exists(self.tmpfilename + ".gz.tbi"):
-                os.unlink(self.tmpfilename + ".gz.tbi")
+    def tearDown(self):
+        os.unlink(self.tmpfilename + ".gz")
+        if os.path.exists(self.tmpfilename + ".gz.tbi"):
+            os.unlink(self.tmpfilename + ".gz.tbi")
 
-        def testFromTabix(self):
+    def testFromTabix(self):
 
-            # use ascii encoding - should raise error
-            with pysam.TabixFile(
-                    self.tmpfilename + ".gz", encoding="ascii") as t:
-                results = list(t.fetch(parser=pysam.asVCF()))
-                self.assertRaises(UnicodeDecodeError,
-                                  getattr, results[1], "id")
+        # use ascii encoding - should raise error
+        with pysam.TabixFile(
+                self.tmpfilename + ".gz", encoding="ascii") as t:
+            results = list(t.fetch(parser=pysam.asVCF()))
+            self.assertRaises(UnicodeDecodeError,
+                              getattr, results[1], "id")
 
-            with pysam.TabixFile(
-                    self.tmpfilename + ".gz", encoding="utf-8") as t:
-                results = list(t.fetch(parser=pysam.asVCF()))
-                self.assertEqual(getattr(results[1], "id"), u"Rene\xe9")
+        with pysam.TabixFile(
+                self.tmpfilename + ".gz", encoding="utf-8") as t:
+            results = list(t.fetch(parser=pysam.asVCF()))
+            self.assertEqual(getattr(results[1], "id"), u"Rene\xe9")
 
-        def testFromVCF(self):
-            self.vcf = pysam.VCF()
-            self.assertRaises(
-                UnicodeDecodeError,
-                self.vcf.connect,
-                self.tmpfilename + ".gz",
-                "ascii")
-            self.vcf.connect(self.tmpfilename + ".gz", encoding="utf-8")
-            v = self.vcf.getsamples()[0]
+    def testFromVCF(self):
+        self.vcf = pysam.VCF()
+        self.assertRaises(
+            UnicodeDecodeError,
+            self.vcf.connect,
+            self.tmpfilename + ".gz",
+            "ascii")
+        self.vcf.connect(self.tmpfilename + ".gz", encoding="utf-8")
+        v = self.vcf.getsamples()[0]
 
 
 class TestVCFFromTabix(TestVCF):

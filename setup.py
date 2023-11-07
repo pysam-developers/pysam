@@ -43,7 +43,6 @@ try:
 except ImportError:
     HAVE_CYTHON = False
 
-IS_PYTHON3 = sys.version_info.major >= 3
 IS_DARWIN = platform.system() == 'Darwin'
 
 log = logging.getLogger('pysam')
@@ -79,9 +78,7 @@ def run_make(targets):
 
 
 def run_make_print_config():
-    stdout = subprocess.check_output(["make", "-s", "print-config"])
-    if IS_PYTHON3:
-        stdout = stdout.decode("ascii")
+    stdout = subprocess.check_output(["make", "-s", "print-config"], encoding="ascii")
 
     make_print_config = {}
     for line in stdout.splitlines():
@@ -94,9 +91,7 @@ def run_make_print_config():
 
 
 def run_nm_defined_symbols(objfile):
-    stdout = subprocess.check_output(["nm", "-g", "-P", objfile])
-    if IS_PYTHON3:
-        stdout = stdout.decode("ascii")
+    stdout = subprocess.check_output(["nm", "-g", "-P", objfile], encoding="ascii")
 
     symbols = set()
     for line in stdout.splitlines():

@@ -21,9 +21,6 @@ from TestUtils import checkBinaryEqual, check_lines_equal, \
     make_data_files, BAM_DATADIR
 
 
-IS_PYTHON3 = sys.version_info[0] >= 3
-
-
 def setUpModule():
     make_data_files(BAM_DATADIR)
 
@@ -44,10 +41,8 @@ def get_version(executable):
 
     with subprocess.Popen(executable, shell=True,
                           stderr=subprocess.PIPE).stderr as pipe:
-        lines = b"".join(pipe.readlines())
+        lines = b"".join(pipe.readlines()).decode("ascii")
 
-    if IS_PYTHON3:
-        lines = lines.decode('ascii')
     try:
         x = re.search(r"Version:\s+(\S+)", lines).groups()[0]
     except AttributeError:
@@ -90,8 +85,6 @@ class SamtoolsTest(unittest.TestCase):
         "idxstats ex1.bam > %(out)s_ex1.idxstats",
         "fixmate ex1.bam %(out)s_ex1.fixmate.bam",
         "flagstat ex1.bam > %(out)s_ex1.flagstat",
-        # Fails python 3.3 on linux, passes on OsX and when
-        # run locally
         "calmd ex1.bam ex1.fa > %(out)s_ex1.calmd.bam",
         # use -s option, otherwise the following error in samtools 1.2:
         # Samtools-htslib-API: bam_get_library() not yet implemented
@@ -252,12 +245,6 @@ class SamtoolsTest(unittest.TestCase):
             if command in ("bedcov", "stats", "dict", "bam2fq", "flagstat"):
                 continue
 
-            if (command == "calmd" and
-                    list(sys.version_info[:2]) == [3, 3]):
-                # skip calmd test, fails only on python 3.3.5
-                # in linux (empty output). Works in OsX and passes
-                # for 3.4 and 3.5, see issue #293
-                continue
             self.check_statement(statement)
 
     @unittest.skipUnless(sys.stdin.isatty(), "skipping usage tests, stdin is not a tty")
@@ -313,24 +300,15 @@ if sys.platform != "darwin":
 
         def testReturnValueString(self):
             retval = pysam.idxstats(os.path.join(BAM_DATADIR, "ex1.bam"))
-            if IS_PYTHON3:
-                self.assertFalse(isinstance(retval, bytes))
-                self.assertTrue(isinstance(retval, str))
-            else:
-                self.assertTrue(isinstance(retval, bytes))
-                self.assertTrue(isinstance(retval, basestring))
+            self.assertFalse(isinstance(retval, bytes))
+            self.assertTrue(isinstance(retval, str))
 
         def testReturnValueData(self):
             args = "-O BAM {}".format(os.path.join(BAM_DATADIR,
                                                    "ex1.bam")).split(" ")
             retval = pysam.view(*args)
-
-            if IS_PYTHON3:
-                self.assertTrue(isinstance(retval, bytes))
-                self.assertFalse(isinstance(retval, str))
-            else:
-                self.assertTrue(isinstance(retval, bytes))
-                self.assertTrue(isinstance(retval, basestring))
+            self.assertTrue(isinstance(retval, bytes))
+            self.assertFalse(isinstance(retval, str))
 
     class StdoutTest(unittest.TestCase):
         '''test if stdout can be redirected.'''

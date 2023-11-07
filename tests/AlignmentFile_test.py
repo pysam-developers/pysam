@@ -9,15 +9,11 @@ import unittest
 import pytest
 import os
 import shutil
-import sys
 import collections
 import subprocess
 import logging
 import array
-if sys.version_info.major >= 3:
-    from io import StringIO
-else:
-    from StringIO import StringIO
+from io import StringIO
 
 from functools import partial
 
@@ -361,12 +357,9 @@ class BasicTestSAMFromStringIO(BasicTestBAMFromFetch):
     def testRaises(self):
         statement = "samtools view -h {}".format(
             os.path.join(BAM_DATADIR, "ex3.bam"))
-        stdout = subprocess.check_output(statement.split(" "))
+        stdout = subprocess.check_output(statement.split(" "), encoding="ascii")
         bam = StringIO()
-        if sys.version_info.major >= 3:
-            bam.write(stdout.decode('ascii'))
-        else:
-            bam.write(stdout)
+        bam.write(stdout)
         bam.seek(0)
         self.assertRaises(NotImplementedError,
                           pysam.AlignmentFile, bam)
@@ -2132,9 +2125,7 @@ class TestAlignmentFileUtilityFunctions(unittest.TestCase):
         '''test mate access.'''
 
         with open(os.path.join(BAM_DATADIR, "ex1.sam"), "rb") as inf:
-            readnames = [x.split(b"\t")[0] for x in inf.readlines()]
-        if sys.version_info[0] >= 3:
-            readnames = [name.decode('ascii') for name in readnames]
+            readnames = [x.decode("ascii").split("\t")[0] for x in inf.readlines()]
 
         counts = collections.defaultdict(int)
         for x in readnames:

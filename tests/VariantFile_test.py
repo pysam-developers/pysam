@@ -2,16 +2,11 @@
 
 import os
 import glob
-import sys
 import unittest
 import pysam
 import shutil
 import gzip
-
-try:
-    from pathlib import Path
-except ImportError:
-    Path = None
+from pathlib import Path
 
 from TestUtils import get_temp_filename, check_lines_equal, load_and_convert, make_data_files, CBCF_DATADIR, get_temp_context
 
@@ -124,13 +119,11 @@ class TestOpening(unittest.TestCase):
                 pass
             self.assertRaises(ValueError, pysam.VariantFile, fn)
 
-    if Path and sys.version_info >= (3, 6):
-        def testEmptyFileVCFFromPath(self):
-            with get_temp_context("tmp_testEmptyFile.vcf") as fn:
-                with open(fn, "w"):
-                    pass
-                self.assertRaises(ValueError, pysam.VariantFile,
-                                  Path(fn))
+    def testEmptyFileVCFFromPath(self):
+        with get_temp_context("tmp_testEmptyFile.vcf") as fn:
+            with open(fn, "w"):
+                pass
+            self.assertRaises(ValueError, pysam.VariantFile, Path(fn))
 
     def testEmptyFileVCFGZWithIndex(self):
         with get_temp_context("tmp_testEmptyFile.vcf") as fn:
@@ -312,12 +305,11 @@ class TestParsing(unittest.TestCase):
         chrom = [rec.chrom for rec in v]
         self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
 
-    if Path and sys.version_info >= (3, 6):
-        def testChromFromPath(self):
-            fn = os.path.join(CBCF_DATADIR, self.filename)
-            v = pysam.VariantFile(Path(fn))
-            chrom = [rec.chrom for rec in v]
-            self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
+    def testChromFromPath(self):
+        fn = os.path.join(CBCF_DATADIR, self.filename)
+        v = pysam.VariantFile(Path(fn))
+        chrom = [rec.chrom for rec in v]
+        self.assertEqual(chrom, ['M', '17', '20', '20', '20'])
 
     def testPos(self):
         fn = os.path.join(CBCF_DATADIR, self.filename)

@@ -1,11 +1,6 @@
 import pysam
 import pytest
 
-try:
-    from pathlib import Path
-except ImportError:
-    Path = None
-
 from TestUtils import make_data_files, CBCF_DATADIR
 
 
