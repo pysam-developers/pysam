@@ -31,7 +31,7 @@ def is_pip_install():
 class CyExtension(Extension):
     def __init__(self, *args, **kwargs):
         self._init_func = kwargs.pop("init_func", None)
-        Extension.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def extend_includes(self, includes):
         self.include_dirs.extend(includes)
@@ -83,4 +83,4 @@ class cy_build_ext(build_ext):
 
             ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
                                     
-        build_ext.build_extension(self, ext)
+        super().build_extension(ext)

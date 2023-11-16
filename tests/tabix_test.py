@@ -230,8 +230,7 @@ class TestGZFile(IterationTest):
     with_comments = True
 
     def setUp(self):
-
-        IterationTest.setUp(self)
+        super().setUp()
         self.gzfile = pysam.GZIterator(self.filename)
 
     def testAll(self):
@@ -249,7 +248,7 @@ class TestIterationWithoutComments(IterationTest):
                             "example.gtf.gz")
 
     def setUp(self):
-        IterationTest.setUp(self)
+        super().setUp()
         self.tabix = pysam.TabixFile(self.filename)
 
     def tearDown(self):
@@ -373,9 +372,6 @@ class TestIterationWithComments(TestIterationWithoutComments):
     '''
 
     filename = os.path.join(TABIX_DATADIR, "example_comments.gtf.gz")
-
-    def setUp(self):
-        TestIterationWithoutComments.setUp(self)
 
 
 class TestIterators(unittest.TestCase):
@@ -592,15 +588,14 @@ class TestVCFFromTabix(TestVCF):
                "filter", "info", "format")
 
     def setUp(self):
-
-        TestVCF.setUp(self)
+        super().setUp()
 
         self.tabix = pysam.TabixFile(self.tmpfilename + ".gz")
         self.compare = load_and_convert(self.filename)
 
     def tearDown(self):
         self.tabix.close()
-        TestVCF.tearDown(self)
+        super().tearDown()
 
     def testRead(self):
 
@@ -701,14 +696,13 @@ class TestVCFFromVCF(TestVCF):
     missing_quality = -1
 
     def setUp(self):
-
-        TestVCF.setUp(self)
+        super().setUp()
 
         self.vcf = pysam.VCF()
         self.compare = load_and_convert(self.filename, encode=False)
 
     def tearDown(self):
-        TestVCF.tearDown(self)
+        super().tearDown()
         self.vcf.close()
 
     def open_vcf(self, fn):

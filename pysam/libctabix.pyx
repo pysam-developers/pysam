@@ -697,10 +697,8 @@ cdef class TabixIteratorParsed(TabixIterator):
     Returns parsed data.
     """
 
-    def __init__(self, 
-                 Parser parser):
-        
-        TabixIterator.__init__(self)
+    def __init__(self, Parser parser):
+        super().__init__()
         self.parser = parser
 
     def __next__(self): 

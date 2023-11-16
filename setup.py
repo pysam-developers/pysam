@@ -228,7 +228,7 @@ class cythonize_sdist(sdist):
     def run(self):
         from Cython.Build import cythonize
         cythonize(self.distribution.ext_modules)
-        sdist.run(self)
+        super().run()
 
 
 # Override Cythonised build_ext command to customise macOS shared libraries.
@@ -237,7 +237,7 @@ class CyExtension(Extension):
     def __init__(self, *args, **kwargs):
         self._init_func = kwargs.pop("init_func", None)
         self._prebuild_func = kwargs.pop("prebuild_func", None)
-        Extension.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def extend_includes(self, includes):
         self.include_dirs.extend(includes)
@@ -274,7 +274,7 @@ class cy_build_ext(build_ext):
             ldshared = os.environ.get('LDSHARED', sysconfig.get_config_var('LDSHARED'))
             os.environ['LDSHARED'] = ldshared.replace('-bundle', '')
 
-        build_ext.run(self)
+        super().run()
         try:
             if HTSLIB_MODE != 'separate':
                 self.check_ext_symbol_conflicts()
@@ -318,7 +318,7 @@ class cy_build_ext(build_ext):
         if isinstance(ext, CyExtension) and ext._prebuild_func:
             ext._prebuild_func(ext, self.force)
 
-        build_ext.build_extension(self, ext)
+        super().build_extension(ext)
 
 
 class clean_ext(Command):

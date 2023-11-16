@@ -2076,8 +2076,7 @@ cdef class IteratorRowRegion(IteratorRow):
         if not samfile.has_index():
             raise ValueError("no index available for iteration")
 
-        IteratorRow.__init__(self, samfile,
-                             multiple_iterators=multiple_iterators)
+        super().__init__(samfile, multiple_iterators=multiple_iterators)
         with nogil:
             self.iter = sam_itr_queryi(
                 self.index,
@@ -2133,9 +2132,7 @@ cdef class IteratorRowHead(IteratorRow):
                  AlignmentFile samfile,
                  int n,
                  int multiple_iterators=False):
-
-        IteratorRow.__init__(self, samfile,
-                             multiple_iterators=multiple_iterators)
+        super().__init__(samfile, multiple_iterators=multiple_iterators)
 
         self.max_rows = n
         self.current_row = 0
@@ -2183,11 +2180,8 @@ cdef class IteratorRowAll(IteratorRow):
 
     """
 
-    def __init__(self, AlignmentFile samfile,
-                 int multiple_iterators=False):
-
-        IteratorRow.__init__(self, samfile,
-                             multiple_iterators=multiple_iterators)
+    def __init__(self, AlignmentFile samfile, int multiple_iterators=False):
+        super().__init__(samfile, multiple_iterators=multiple_iterators)
 
     def __iter__(self):
         return self
@@ -2226,11 +2220,8 @@ cdef class IteratorRowAllRefs(IteratorRow):
 
     """
 
-    def __init__(self, AlignmentFile samfile,
-                 multiple_iterators=False):
-
-        IteratorRow.__init__(self, samfile,
-                             multiple_iterators=multiple_iterators)
+    def __init__(self, AlignmentFile samfile, multiple_iterators=False):
+        super().__init__(samfile, multiple_iterators=multiple_iterators)
 
         if not samfile.has_index():
             raise ValueError("no index available for fetch")
@@ -2291,8 +2282,7 @@ cdef class IteratorRowSelection(IteratorRow):
     """
 
     def __init__(self, AlignmentFile samfile, positions, int multiple_iterators=True):
-
-        IteratorRow.__init__(self, samfile, multiple_iterators=multiple_iterators)
+        super().__init__(samfile, multiple_iterators=multiple_iterators)
 
         self.positions = positions
         self.current_pos = 0

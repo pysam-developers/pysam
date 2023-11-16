@@ -494,7 +494,7 @@ cdef class GTFProxy(NamedTupleProxy):
                  toDot(self.frame),
                  self.attributes))
         else: 
-            return TupleProxy.__str__(self)
+            return super().__str__()
 
     def invert(self, int lcontig):
         '''invert coordinates to negative strand coordinates
@@ -732,7 +732,7 @@ cdef class BedProxy(NamedTupleProxy):
 
         nbytes does not include the terminal '\0'.
         '''
-        TupleProxy.update(self, buffer, nbytes)
+        NamedTupleProxy.update(self, buffer, nbytes)
 
         if self.nfields < 3:
             raise ValueError(
@@ -754,11 +754,10 @@ cdef class BedProxy(NamedTupleProxy):
     #    def __get__( self ): return self.end
 
     def __str__(self):
-
         cdef int save_fields = self.nfields
         # ensure fields to use correct format
         self.nfields = self.bedfields
-        retval = TupleProxy.__str__(self)
+        retval = super().__str__()
         self.nfields = save_fields
         return retval
 
@@ -801,7 +800,7 @@ cdef class VCFProxy(NamedTupleProxy):
         
         nbytes does not include the terminal '\0'.
         '''
-        TupleProxy.update(self, buffer, nbytes)
+        NamedTupleProxy.update(self, buffer, nbytes)
 
         self.contig = self.fields[0]
         # vcf counts from 1 - correct here
