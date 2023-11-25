@@ -200,6 +200,8 @@ FASTQ files
 .. autoclass:: pysam.FastxFile
    :members:
 
+.. autoclass:: pysam.FastxRecord
+   :members:
 
 .. autoclass:: pysam.FastqProxy
    :members:
