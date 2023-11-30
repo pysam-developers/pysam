@@ -41,7 +41,7 @@ recursive-include htslib *.[ch]
 exclude htslib/*config*.h
 
 include htslib/configure.ac htslib/m4/*.m4 htslib/*.in
-include htslib/configure htslib/version.sh
+include htslib/configure htslib/hts_probe_cc.sh htslib/version.sh
 include htslib/Makefile htslib/*.mk
 exclude htslib/config.mk htslib/htscodecs.mk
 
