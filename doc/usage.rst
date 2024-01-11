@@ -153,9 +153,9 @@ Argument errors raise a :class:`pysam.SamtoolsError`::
    pysam.SamtoolsError: 'Usage: samtools sort [-n] [-m <maxMem>] <in.bam> <out.prefix>\n'
 
 Messages from `samtools`_ on stderr are captured and are
-available using the :meth:`getMessages` method::
+available using the :meth:`~PysamDispatcher.get_messages` method::
 
-   pysam.sort.getMessage()
+   pysam.sort.get_messages()
 
 Note that only the output from the last invocation of a command is
 stored.
