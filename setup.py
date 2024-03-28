@@ -62,9 +62,18 @@ def changedir(path):
 
 def run_configure(option):
     sys.stdout.flush()
+    # Determine if the system is MSYS2
+    is_msys2 = os.environ.get('MSYSTEM') in ('MINGW32', 'MINGW64', 'UCRT64', 'CLANG64', 'CLANG32', 'CLANGARM64')
+    
+    # Adjust the command based on the system
+    if is_msys2:
+        command = "sh ./configure"
+    else:
+        command = "./configure"
+    
     try:
         retcode = subprocess.call(
-            " ".join(("./configure", option)),
+            " ".join((command, option)),
             shell=True)
         if retcode != 0:
             return False
@@ -94,23 +103,51 @@ def run_make_print_config():
     return make_print_config
 
 
+#def run_nm_defined_symbols(objfile):
+#    stdout = subprocess.check_output(["nm", "-g", "-P", objfile])
+#    if IS_PYTHON3:
+#        stdout = stdout.decode("ascii")
+
+#    symbols = set()
+#    for line in stdout.splitlines():
+#        (sym, symtype) = line.split()[:2]
+#        if symtype not in "UFNWw":
+#            if IS_DARWIN:
+#                # On macOS, all symbols have a leading underscore
+#                symbols.add(sym.lstrip('_'))
+#            else:
+#                # Ignore symbols such as _edata (present in all shared objects)
+#                if sym[0] not in "_$.@": symbols.add(sym)
+
+#    return symbols
+
 def run_nm_defined_symbols(objfile):
-    stdout = subprocess.check_output(["nm", "-g", "-P", objfile])
-    if IS_PYTHON3:
-        stdout = stdout.decode("ascii")
+    # Check if we're running under Windows but not under MSYS2 (which provides Unix-like tools)
+    is_windows = platform.system() == 'Windows' and 'MSYS' not in platform.release()
+    
+    # Define the command to use 'nm'
+    command = ["nm", "-g", "-P", objfile]
+    
+    # Execute the command
+    stdout = subprocess.check_output(command)
+    # Decode the output. MSYS2 and other Unix-like systems typically use UTF-8.
+    # Adjust the decoding as necessary based on your environment's configuration.
+    stdout = stdout.decode("utf-8")
 
     symbols = set()
     for line in stdout.splitlines():
         (sym, symtype) = line.split()[:2]
         if symtype not in "UFNWw":
-            if IS_DARWIN:
-                # On macOS, all symbols have a leading underscore
-                symbols.add(sym.lstrip('_'))
-            else:
-                # Ignore symbols such as _edata (present in all shared objects)
-                if sym[0] not in "_$.@": symbols.add(sym)
+            if not is_windows:  # This check is adjusted to correctly handle MSYS2 environment.
+                # On macOS (Darwin), all symbols have a leading underscore
+                if platform.system() == 'Darwin':
+                    symbols.add(sym.lstrip('_'))
+                else:
+                    # Ignore symbols such as _edata (present in all shared objects)
+                    if sym[0] not in "_$.@": symbols.add(sym)
 
     return symbols
+
 
 
 # This function emulates the way distutils combines settings from sysconfig,
@@ -171,17 +208,27 @@ def write_configvars_header(filename, ext, prefix):
 
 @contextmanager
 def set_compiler_envvars():
+#    tmp_vars = []
+#    for var in ['CC', 'CFLAGS', 'LDFLAGS']:
+#        if var in os.environ:
+#            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
+#                os.environ[var] += ' ' + sysconfig.get_config_var('CCSHARED')
+#            print("# pysam: (env) {}={}".format(var, os.environ[var]))
+#        elif var in sysconfig.get_config_vars():
+#            value = sysconfig.get_config_var(var)
+#            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
+#                value += ' ' + sysconfig.get_config_var('CCSHARED')
+#            print("# pysam: (sysconfig) {}={}".format(var, value))
+#            os.environ[var] = value
+#            tmp_vars += [var]
+
     tmp_vars = []
     for var in ['CC', 'CFLAGS', 'LDFLAGS']:
         if var in os.environ:
-            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
-                os.environ[var] += ' ' + sysconfig.get_config_var('CCSHARED')
-            print("# pysam: (env) {}={}".format(var, os.environ[var]))
+            print ("# pysam: (env) {}={}".format(var, os.environ[var]))
         elif var in sysconfig.get_config_vars():
             value = sysconfig.get_config_var(var)
-            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
-                value += ' ' + sysconfig.get_config_var('CCSHARED')
-            print("# pysam: (sysconfig) {}={}".format(var, value))
+            print ("# pysam: (sysconfig) {}={}".format(var, value))
             os.environ[var] = value
             tmp_vars += [var]
 
@@ -222,6 +269,21 @@ def get_pysam_version():
     import version
     return version.__version__
 
+if platform.system() == 'Windows':
+    def find_msys2_root():
+
+            try:
+                df_output = subprocess.check_output(['df', '-a'], text=True)
+            except Exception as e:
+                print(f"Failed to execute 'df -a': {e}")
+                return None
+
+            for line in df_output.splitlines():
+                if line.endswith(' /'):
+                    # Extract the filesystem, which should be the MSYS2 root
+                    filesystem = line.split()[0]
+                    return filesystem
+            return None
 
 # Override sdist command to ensure Cythonized *.c files are included.
 class cythonize_sdist(sdist):
@@ -317,7 +379,7 @@ class cy_build_ext(build_ext):
                                     '-Wl,-x']
         else:
             if not ext.extra_link_args:
-                ext.extra_link_args = []
+                ext.extra_link_args = ['-shared']
 
             ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
 
@@ -445,7 +507,10 @@ if HTSLIB_MODE in ['shared', 'separate']:
     for key, value in htslib_make_options.items():
         print("# pysam: htslib_config {}={}".format(key, value))
 
-    external_htslib_libraries = ['z', 'regex', 'intl', 'iconv', 'curl.dll']
+if platform.system() == 'Windows':
+    external_htslib_libraries = ['deflate.dll', 'z', 'bz2.dll', 'crypto.dll', 'lzma.dll', 'regex.dll', 'tre.dll', 'intl.dll', 'iconv.dll', 'ws2_32', 'curl.dll', 'crypt32']
+else:
+    external_htslib_libraries = ['z']
     if "LIBS" in htslib_make_options:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
@@ -458,7 +523,10 @@ if HTSLIB_LIBRARY_DIR:
     chtslib_sources = []
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
-    external_htslib_libraries = ['hts', 'regex.dll', 'z.dll', 'curl.dll', 'deflate.dll', 'crypto', 'lzma', 'bz2']
+    if platform.system() == 'Windows':
+        external_htslib_libraries = ['hts', 'regex.dll', 'z.dll', 'curl.dll', 'deflate.dll', 'crypto', 'lzma', 'bz2']
+    else:
+        external_htslib_libraries = ['z', 'hts']
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
     # htslib
@@ -518,43 +586,63 @@ for fn in config_headers:
                 "/* conservative compilation options */\n")
 
 #######################################################
-# Windows compatibility - untested
-if False:
-    include_os = ['win32']
-    os_c_files = ['win32/getopt.c']
-    extra_compile_args = []
-else:
-    include_os = []
-    os_c_files = []
-    # for python 3.4, see for example
-    # http://stackoverflow.com/questions/25587039/
-    # error-compiling-rpy2-on-python3-4-due-to-werror-
-    # declaration-after-statement
-    extra_compile_args = [
-        "-Wno-unused",
-        "-Wno-strict-prototypes",
-        "-Wno-sign-compare",
-        "-Wno-error=declaration-after-statement"]
+include_os = []
+os_c_files = []
+# for python 3.4, see for example
+# http://stackoverflow.com/questions/25587039/
+# error-compiling-rpy2-on-python3-4-due-to-werror-
+# declaration-after-statement
+extra_compile_args = [
+    "-Wno-unused",
+    "-Wno-strict-prototypes",
+    "-Wno-sign-compare",
+    "-Wno-error=declaration-after-statement"]
 
 define_macros = []
 
-suffix = sysconfig.get_config_var('EXT_SUFFIX') or sysconfig.get_config_var('SO')
+suffix = distutils.sysconfig.get_config_var('EXT_SUFFIX') or distutils.sysconfig.get_config_var('SO')
 
-internal_htslib_libraries = [
-    os.path.splitext("chtslib{}".format(suffix))[0]]
-internal_samtools_libraries = [
-    os.path.splitext("csamtools{}".format(suffix))[0],
-    os.path.splitext("cbcftools{}".format(suffix))[0],
-    ]
-internal_pysamutil_libraries = [
-    os.path.splitext("cutils{}".format(suffix))[0]]
+if platform.system() == 'Windows':
+    internal_htslib_libraries = [
+        ":libchtslib{}".format(suffix)]
+    internal_samtools_libraries = [
+        ":libcsamtools{}".format(suffix),
+        ":libcbcftools{}".format(suffix),
+        ]
+    internal_pysamutil_libraries = [
+        ":libcutils{}".format(suffix)]
+else:
+    internal_htslib_libraries = [
+        os.path.splitext("chtslib{}".format(suffix))[0]]
+    internal_samtools_libraries = [
+        os.path.splitext("csamtools{}".format(suffix))[0],
+        os.path.splitext("cbcftools{}".format(suffix))[0],
+        ]
+    internal_pysamutil_libraries = [
+        os.path.splitext("cutils{}".format(suffix))[0]]
 
-external_htslib_objects = []
-for lib in external_htslib_libraries:
-    if lib != "ws2_32":
-        external_htslib_objects.append("C:/msys64/mingw64/lib/lib{}.a".format(lib))
+if platform.system() == 'Windows':
+    msys2_root = find_msys2_root()
+    if msys2_root:
+        external_htslib_objects = []
+        external_htslib_objects.append('htslib/libhts.a')
+        msystem = subprocess.check_output(['echo', '%MSYSTEM%'], shell=True, text=True).strip()
 
-external_htslib_objects.append("C:/msys64/mingw64/lib/libws2_32.a".format(lib))
+        if msystem in ['MINGW32', 'MINGW64', 'UCRT64', 'CLANG64', 'CLANG32', 'CLANGARM64']:
+            base_path = f"{msys2_root}/{msystem.lower()}/lib"
+        else:
+            # Default to MINGW64 or handle error/exception as needed
+            base_path = f"{msys2_root}/mingw64/lib"
+
+        for lib in external_htslib_libraries:
+            if lib != "ws2_32":
+                external_htslib_objects.append(f"{base_path}/lib{lib}.a")
+        
+        # Append ws2_32 library path separately as an exception
+        external_htslib_objects.append(f"{base_path}/libws2_32.a")
+
+    else:
+        print("MSYS2 root not found.")
 
 libraries_for_pysam_module = internal_htslib_libraries + internal_pysamutil_libraries
 
@@ -588,67 +676,125 @@ def prebuild_libchtslib(ext, force):
 def prebuild_libcsamtools(ext, force):
     write_configvars_header("samtools/samtools_config_vars.h", ext, "SAMTOOLS")
 
-
-modules = [
-    dict(name="pysam.libchtslib",
-         prebuild_func=prebuild_libchtslib,
-         sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + os_c_files,
-         extra_objects=htslib_objects,
-         extra_link_args=["-Wl,--export-all-symbols"]),
-    dict(name="pysam.libcsamtools",
-         prebuild_func=prebuild_libcsamtools,
-         sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
-         [os.path.join("samtools", "lz4", "lz4.c")] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=internal_htslib_libraries,
-         extra_link_args=["-Wl,--export-all-symbols"]),
-    dict(name="pysam.libcbcftools",
-         sources=[source_pattern % "bcftools"] + glob.glob(os.path.join("bcftools", "*.pysam.c")) + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=internal_htslib_libraries,
-         extra_link_args=["-Wl,--export-all-symbols"]),
-    dict(name="pysam.libcutils",
-         sources=[source_pattern % "utils", "pysam/pysam_util.c"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         #libraries=external_htslib_libraries + internal_htslib_libraries + internal_samtools_libraries),
-         libraries=internal_htslib_libraries + internal_samtools_libraries),
-    dict(name="pysam.libcalignmentfile",
-         sources=[source_pattern % "alignmentfile"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libcsamfile",
-         sources=[source_pattern % "samfile"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libcalignedsegment",
-         sources=[source_pattern % "alignedsegment"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libctabix",
-         sources=[source_pattern % "tabix"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libcfaidx",
-         sources=[source_pattern % "faidx"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libcbcf",
-         sources=[source_pattern % "bcf"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libcbgzf",
-         sources=[source_pattern % "bgzf"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libctabixproxies",
-         sources=[source_pattern % "tabixproxies"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-    dict(name="pysam.libcvcf",
-         sources=[source_pattern % "vcf"] + os_c_files,
-         extra_objects=separate_htslib_objects,
-         libraries=libraries_for_pysam_module),
-]
+if platform.system() == 'Windows':
+    modules = [
+        dict(name="pysam.libchtslib",
+             prebuild_func=prebuild_libchtslib,
+             sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + os_c_files,
+             extra_objects=htslib_objects,
+             extra_link_args=["-Wl,--export-all-symbols"]),
+        dict(name="pysam.libcsamtools",
+             prebuild_func=prebuild_libcsamtools,
+             sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
+             [os.path.join("samtools", "lz4", "lz4.c")] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=internal_htslib_libraries,
+             extra_link_args=["-Wl,--export-all-symbols"]),
+        dict(name="pysam.libcbcftools",
+             sources=[source_pattern % "bcftools"] + glob.glob(os.path.join("bcftools", "*.pysam.c")) + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=internal_htslib_libraries,
+             extra_link_args=["-Wl,--export-all-symbols"]),
+        dict(name="pysam.libcutils",
+             sources=[source_pattern % "utils", "pysam/pysam_util.c"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             #libraries=external_htslib_libraries + internal_htslib_libraries + internal_samtools_libraries),
+             libraries=internal_htslib_libraries + internal_samtools_libraries),
+        dict(name="pysam.libcalignmentfile",
+             sources=[source_pattern % "alignmentfile"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcsamfile",
+             sources=[source_pattern % "samfile"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcalignedsegment",
+             sources=[source_pattern % "alignedsegment"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libctabix",
+             sources=[source_pattern % "tabix"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcfaidx",
+             sources=[source_pattern % "faidx"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcbcf",
+             sources=[source_pattern % "bcf"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcbgzf",
+             sources=[source_pattern % "bgzf"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libctabixproxies",
+             sources=[source_pattern % "tabixproxies"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcvcf",
+             sources=[source_pattern % "vcf"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+    ]
+else:
+    modules = [
+        dict(name="pysam.libchtslib",
+             prebuild_func=prebuild_libchtslib,
+             sources=[source_pattern % "htslib", "pysam/htslib_util.c"] + os_c_files,
+             extra_objects=htslib_objects,
+             libraries=external_htslib_libraries),
+        dict(name="pysam.libcsamtools",
+             prebuild_func=prebuild_libcsamtools,
+             sources=[source_pattern % "samtools"] + glob.glob(os.path.join("samtools", "*.pysam.c")) +
+             [os.path.join("samtools", "lz4", "lz4.c")] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=external_htslib_libraries + internal_htslib_libraries),
+        dict(name="pysam.libcbcftools",
+             sources=[source_pattern % "bcftools"] + glob.glob(os.path.join("bcftools", "*.pysam.c")) + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=external_htslib_libraries + internal_htslib_libraries),
+        dict(name="pysam.libcutils",
+             sources=[source_pattern % "utils", "pysam/pysam_util.c"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=external_htslib_libraries + internal_htslib_libraries + internal_samtools_libraries),
+        dict(name="pysam.libcalignmentfile",
+             sources=[source_pattern % "alignmentfile"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcsamfile",
+             sources=[source_pattern % "samfile"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcalignedsegment",
+             sources=[source_pattern % "alignedsegment"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libctabix",
+             sources=[source_pattern % "tabix"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcfaidx",
+             sources=[source_pattern % "faidx"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcbcf",
+             sources=[source_pattern % "bcf"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcbgzf",
+             sources=[source_pattern % "bgzf"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libctabixproxies",
+             sources=[source_pattern % "tabixproxies"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+        dict(name="pysam.libcvcf",
+             sources=[source_pattern % "vcf"] + os_c_files,
+             extra_objects=separate_htslib_objects,
+             libraries=libraries_for_pysam_module),
+    ]
 
 common_options = dict(
     language="c",
