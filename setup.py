@@ -61,6 +61,15 @@ def changedir(path):
 
 def run_configure(option):
     sys.stdout.flush()
+    # Determine if the system is MSYS2
+    is_msys2 = os.environ.get('MSYSTEM') in ('MINGW32', 'MINGW64', 'UCRT64', 'CLANG64', 'CLANG32', 'CLANGARM64')
+
+    # Adjust the command based on the system
+    if is_msys2:
+        command = "sh ./configure"
+    else:
+        command = "./configure"
+
     try:
         # Always disable ref-cache as its code is omitted from pysam's htslib/
         retcode = subprocess.call(
@@ -92,8 +101,28 @@ def run_make_print_config():
     return make_print_config
 
 
+#def run_nm_defined_symbols(objfile):
+#    stdout = subprocess.check_output(["nm", "-g", "-P", objfile])
+#    if IS_PYTHON3:
+#        stdout = stdout.decode("ascii")
+
+#    symbols = set()
+#    for line in stdout.splitlines():
+#        (sym, symtype) = line.split()[:2]
+#        if symtype not in "UFNWw":
+#            if IS_DARWIN:
+#                # On macOS, all symbols have a leading underscore
+#                symbols.add(sym.lstrip('_'))
+#            else:
+#                # Ignore symbols such as _edata (present in all shared objects)
+#                if sym[0] not in "_$.@": symbols.add(sym)
+
+#    return symbols
+
 def run_nm_defined_symbols(objfile):
     stdout = subprocess.check_output(["nm", "-g", "-P", objfile], encoding="ascii")
+    # Check if we're running under Windows but not under MSYS2 (which provides Unix-like tools)
+    is_windows = platform.system() == 'Windows' and 'MSYS' not in platform.release()
 
     def cython_internal(sym):
         offset = 1 if sym.startswith("___") else 0  # Skip extra underscore on macOS
@@ -103,6 +132,7 @@ def run_nm_defined_symbols(objfile):
     for line in stdout.splitlines():
         (sym, symtype) = line.split()[:2]
         if symtype not in "UFNWw" and not cython_internal(sym):
+          if not is_windows:  # This check is adjusted to correctly handle MSYS2 environment.
             if IS_DARWIN:
                 # On macOS, all symbols have a leading underscore
                 symbols.add(sym[1:] if sym.startswith("_") else sym)
@@ -111,6 +141,7 @@ def run_nm_defined_symbols(objfile):
                 if sym[0] not in "_$.@": symbols.add(sym)
 
     return symbols
+
 
 
 # This function emulates the way distutils combines settings from sysconfig,
@@ -171,6 +202,20 @@ def write_configvars_header(filename, ext, prefix):
 
 @contextmanager
 def set_compiler_envvars():
+#    tmp_vars = []
+#    for var in ['CC', 'CFLAGS', 'LDFLAGS']:
+#        if var in os.environ:
+#            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
+#                os.environ[var] += ' ' + sysconfig.get_config_var('CCSHARED')
+#            print("# pysam: (env) {}={}".format(var, os.environ[var]))
+#        elif var in sysconfig.get_config_vars():
+#            value = sysconfig.get_config_var(var)
+#            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
+#                value += ' ' + sysconfig.get_config_var('CCSHARED')
+#            print("# pysam: (sysconfig) {}={}".format(var, value))
+#            os.environ[var] = value
+#            tmp_vars += [var]
+
     tmp_vars = []
     for var in ['CC', 'CFLAGS', 'LDFLAGS']:
         if var in os.environ:
@@ -237,6 +282,21 @@ def get_pysam_version():
     import version
     return version.__version__
 
+if platform.system() == 'Windows':
+    def find_msys2_root():
+
+            try:
+                df_output = subprocess.check_output(['df', '-a'], text=True)
+            except Exception as e:
+                print(f"Failed to execute 'df -a': {e}")
+                return None
+
+            for line in df_output.splitlines():
+                if line.endswith(' /'):
+                    # Extract the filesystem, which should be the MSYS2 root
+                    filesystem = line.split()[0]
+                    return filesystem
+            return None
 
 # Override sdist command to ensure Cythonized *.c files are included.
 class cythonize_sdist(sdist):
@@ -365,7 +425,7 @@ class cy_build_ext(build_ext):
                                     '-Wl,-x']
         else:
             if not ext.extra_link_args:
-                ext.extra_link_args = []
+                ext.extra_link_args = ['-shared']
 
             ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
 
@@ -489,7 +549,10 @@ if HTSLIB_MODE in ['shared', 'separate']:
     for key, value in htslib_make_options.items():
         print(f"# pysam: htslib_config {key}={value}")
 
-    external_htslib_libraries = ['z', 'regex', 'intl', 'iconv', 'curl.dll']
+if platform.system() == 'Windows':
+    external_htslib_libraries = ['deflate.dll', 'z', 'bz2.dll', 'crypto.dll', 'lzma.dll', 'regex.dll', 'tre.dll', 'intl.dll', 'iconv.dll', 'ws2_32', 'curl.dll', 'crypt32']
+else:
+    external_htslib_libraries = ['z']
     if "LIBS" in htslib_make_options:
         external_htslib_libraries.extend(
             [re.sub("^-l", "", x) for x in htslib_make_options["LIBS"].split(" ") if x.strip()])
@@ -502,7 +565,10 @@ if HTSLIB_LIBRARY_DIR:
     chtslib_sources = []
     htslib_library_dirs = [HTSLIB_LIBRARY_DIR]
     htslib_include_dirs = [HTSLIB_INCLUDE_DIR]
-    external_htslib_libraries = ['hts', 'regex.dll', 'z.dll', 'curl.dll', 'deflate.dll', 'crypto', 'lzma', 'bz2']
+    if platform.system() == 'Windows':
+        external_htslib_libraries = ['hts', 'regex.dll', 'z.dll', 'curl.dll', 'deflate.dll', 'crypto', 'lzma', 'bz2']
+    else:
+        external_htslib_libraries = ['z', 'hts']
 elif HTSLIB_MODE == 'separate':
     # add to each pysam component a separately compiled
     # htslib
@@ -562,23 +628,17 @@ for fn in config_headers:
                 "/* conservative compilation options */\n")
 
 #######################################################
-# Windows compatibility - untested
-if False:
-    include_os = ['win32']
-    os_c_files = ['win32/getopt.c']
-    extra_compile_args = []
-else:
-    include_os = []
-    os_c_files = []
-    # for python 3.4, see for example
-    # http://stackoverflow.com/questions/25587039/
-    # error-compiling-rpy2-on-python3-4-due-to-werror-
-    # declaration-after-statement
-    extra_compile_args = [
-        "-Wno-unused",
-        "-Wno-strict-prototypes",
-        "-Wno-sign-compare",
-        "-Wno-error=declaration-after-statement"]
+include_os = []
+os_c_files = []
+# for python 3.4, see for example
+# http://stackoverflow.com/questions/25587039/
+# error-compiling-rpy2-on-python3-4-due-to-werror-
+# declaration-after-statement
+extra_compile_args = [
+    "-Wno-unused",
+    "-Wno-strict-prototypes",
+    "-Wno-sign-compare",
+    "-Wno-error=declaration-after-statement"]
 
 define_macros = []
 
@@ -587,23 +647,51 @@ if os.environ.get("CIBUILDWHEEL", "0") == "1":
 
 suffix = sysconfig.get_config_var('EXT_SUFFIX')
 
-internal_htslib_libraries = [
+if platform.system() == 'Windows':
+    internal_htslib_libraries = [
+        os.path.splitext(f"libchtslib{suffix}")[0],
+    ]
+    internal_samtools_libraries = [
+    os.path.splitext(f"libcsamtools{suffix}")[0],
+    os.path.splitext(f"libcbcftools{suffix}")[0],
+    ]
+    internal_pysamutil_libraries = [
+    os.path.splitext(f"libcutils{suffix}")[0],
+    ]
+else:
+    internal_htslib_libraries = [
     os.path.splitext(f"chtslib{suffix}")[0],
     ]
-internal_samtools_libraries = [
+    internal_samtools_libraries = [
     os.path.splitext(f"csamtools{suffix}")[0],
     os.path.splitext(f"cbcftools{suffix}")[0],
     ]
-internal_pysamutil_libraries = [
+    internal_pysamutil_libraries = [
     os.path.splitext(f"cutils{suffix}")[0],
     ]
 
-external_htslib_objects = []
-for lib in external_htslib_libraries:
-    if lib != "ws2_32":
-        external_htslib_objects.append("C:/msys64/mingw64/lib/lib{}.a".format(lib))
+if platform.system() == 'Windows':
+    msys2_root = find_msys2_root()
+    if msys2_root:
+        external_htslib_objects = []
+        external_htslib_objects.append('htslib/libhts.a')
+        msystem = subprocess.check_output(['echo', '%MSYSTEM%'], shell=True, text=True).strip()
 
-external_htslib_objects.append("C:/msys64/mingw64/lib/libws2_32.a".format(lib))
+        if msystem in ['MINGW32', 'MINGW64', 'UCRT64', 'CLANG64', 'CLANG32', 'CLANGARM64']:
+            base_path = f"{msys2_root}/{msystem.lower()}/lib"
+        else:
+            # Default to MINGW64 or handle error/exception as needed
+            base_path = f"{msys2_root}/mingw64/lib"
+
+        for lib in external_htslib_libraries:
+            if lib != "ws2_32":
+                external_htslib_objects.append(f"{base_path}/lib{lib}.a")
+
+        # Append ws2_32 library path separately as an exception
+        external_htslib_objects.append(f"{base_path}/libws2_32.a")
+
+    else:
+        print("MSYS2 root not found.")
 
 libraries_for_pysam_module = internal_htslib_libraries + internal_pysamutil_libraries
 
