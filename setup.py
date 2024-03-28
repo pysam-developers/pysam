@@ -61,10 +61,8 @@ def changedir(path):
 
 def run_configure(option):
     sys.stdout.flush()
-    # Determine if the system is MSYS2
     is_msys2 = os.environ.get('MSYSTEM') in ('MINGW32', 'MINGW64', 'UCRT64', 'CLANG64', 'CLANG32', 'CLANGARM64')
 
-    # Adjust the command based on the system
     if is_msys2:
         command = "sh ./configure"
     else:
@@ -100,25 +98,6 @@ def run_make_print_config():
                     {row[0].strip(): row[1].strip()})
     return make_print_config
 
-
-#def run_nm_defined_symbols(objfile):
-#    stdout = subprocess.check_output(["nm", "-g", "-P", objfile])
-#    if IS_PYTHON3:
-#        stdout = stdout.decode("ascii")
-
-#    symbols = set()
-#    for line in stdout.splitlines():
-#        (sym, symtype) = line.split()[:2]
-#        if symtype not in "UFNWw":
-#            if IS_DARWIN:
-#                # On macOS, all symbols have a leading underscore
-#                symbols.add(sym.lstrip('_'))
-#            else:
-#                # Ignore symbols such as _edata (present in all shared objects)
-#                if sym[0] not in "_$.@": symbols.add(sym)
-
-#    return symbols
-
 def run_nm_defined_symbols(objfile):
     stdout = subprocess.check_output(["nm", "-g", "-P", objfile], encoding="ascii")
     # Check if we're running under Windows but not under MSYS2 (which provides Unix-like tools)
@@ -141,8 +120,6 @@ def run_nm_defined_symbols(objfile):
                 if sym[0] not in "_$.@": symbols.add(sym)
 
     return symbols
-
-
 
 # This function emulates the way distutils combines settings from sysconfig,
 # environment variables, and the extension being built. It returns a dictionary
@@ -200,22 +177,7 @@ def write_configvars_header(filename, ext, prefix):
             outf.write(f'#define {prefix}_{var} "{value}"\n')
 
 
-@contextmanager
 def set_compiler_envvars():
-#    tmp_vars = []
-#    for var in ['CC', 'CFLAGS', 'LDFLAGS']:
-#        if var in os.environ:
-#            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
-#                os.environ[var] += ' ' + sysconfig.get_config_var('CCSHARED')
-#            print("# pysam: (env) {}={}".format(var, os.environ[var]))
-#        elif var in sysconfig.get_config_vars():
-#            value = sysconfig.get_config_var(var)
-#            if var == 'CFLAGS' and 'CCSHARED' in sysconfig.get_config_vars():
-#                value += ' ' + sysconfig.get_config_var('CCSHARED')
-#            print("# pysam: (sysconfig) {}={}".format(var, value))
-#            os.environ[var] = value
-#            tmp_vars += [var]
-
     tmp_vars = []
     for var in ['CC', 'CFLAGS', 'LDFLAGS']:
         if var in os.environ:
