@@ -387,7 +387,10 @@ class cy_build_ext(build_ext):
                                     '-Wl,-x']
         else:
             if not ext.extra_link_args:
-                ext.extra_link_args = ['-shared']
+            	if platform.system() == "Windows":
+                    ext.extra_link_args = ['-shared']
+            	else:
+                    ext.extra_link_args = []
 
             ext.extra_link_args += ['-Wl,-rpath,$ORIGIN']
 
@@ -607,7 +610,7 @@ define_macros = []
 if os.environ.get("CIBUILDWHEEL", "0") == "1":
     define_macros.append(("BUILDING_WHEEL", None))
 
-suffix = sysconfig.get_config_var('EXT_SUFFIX')
+suffix = sysconfig.get_config_var('EXT_SUFFIX') or sysconfig.get_config_var('SO')
 
 if platform.system() == 'Windows':
     internal_htslib_libraries = [
@@ -655,7 +658,10 @@ if platform.system() == 'Windows':
     else:
         print("MSYS2 root not found.")
 
-libraries_for_pysam_module = internal_htslib_libraries + internal_pysamutil_libraries
+if platform.system() == "Windows":
+    libraries_for_pysam_module = internal_htslib_libraries + internal_pysamutil_libraries
+else:
+    libraries_for_pysam_module = external_htslib_libraries + internal_htslib_libraries + internal_pysamutil_libraries
 
 # Order of modules matters in order to make sure that dependencies are resolved.
 # The structures of dependencies is as follows:
@@ -756,10 +762,11 @@ common_options = dict(
     define_macros=define_macros,
     # for out-of-tree compilation, use absolute paths
     library_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_library_dirs],
-
-    extra_objects=external_htslib_objects,
     include_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_include_dirs + \
                   ["samtools", "samtools/lz4", "bcftools", "."] + include_os])
+
+if platform.system() == "Windows":
+    common_options["extra_objects"] = external_htslib_objects
 
 # add common options (in python >3.5, could use n = {**a, **b}
 for module in modules:
