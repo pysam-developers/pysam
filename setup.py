@@ -178,7 +178,7 @@ def write_configvars_header(filename, ext, prefix):
         for var, value in config.items():
             outf.write('#define {}_{} "{}"\n'.format(prefix, var, value))
 
-
+@contextmanager
 def set_compiler_envvars():
     tmp_vars = []
     for var in ['CC', 'CFLAGS', 'LDFLAGS']:
@@ -582,6 +582,7 @@ else:
         ]
     internal_pysamutil_libraries = [
         os.path.splitext("cutils{}".format(suffix))[0]]
+    external_htslib_objects = []
 
 if platform.system() == 'Windows':
     msys2_root = find_msys2_root()
@@ -764,6 +765,7 @@ common_options = dict(
     define_macros=define_macros,
     # for out-of-tree compilation, use absolute paths
     library_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_library_dirs],
+    
     extra_objects=external_htslib_objects,
     include_dirs=[os.path.abspath(x) for x in ["pysam"] + htslib_include_dirs + \
                   ["samtools", "samtools/lz4", "bcftools", "."] + include_os])
