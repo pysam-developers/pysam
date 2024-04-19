@@ -88,8 +88,12 @@ class AlignedSegment:
     is_proper_pair: bool
     is_unmapped: bool
     mate_is_unmapped: bool
+    is_mapped: bool
+    mate_is_mapped: bool
     is_reverse: bool
     mate_is_reverse: bool
+    is_forward: bool
+    mate_is_forward: bool
     is_read1: bool
     is_read2: bool
     is_secondary: bool
@@ -120,6 +124,10 @@ class AlignedSegment:
     def query_alignment_start(self) -> int: ...
     @property
     def query_alignment_end(self) -> int: ...
+    @property
+    def modified_bases(self) -> Optional[Dict[Tuple[str, int, str], List[Tuple[int, int]]]]: ...
+    @property
+    def modified_bases_forward(self) -> Optional[Dict[Tuple[str, int, str], List[Tuple[int, int]]]]: ...
     @property
     def query_alignment_length(self) -> int: ...
     def infer_query_length(self) -> Optional[int]: ...
