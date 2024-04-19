@@ -501,6 +501,9 @@ class TestBed(unittest.TestCase):
             self.assertEqual(c[0], r.contig)
             self.assertEqual(int(c[1]), r.start)
             self.assertEqual(int(c[2]), r.end)
+            # Needs lambda so that the property getter isn't called too soon
+            self.assertRaises(KeyError, lambda: r.name)
+            self.assertRaises(KeyError, lambda: r.score)
             self.assertEqual(list(c), list(r))
             self.assertEqual("\t".join(map(str, c)),
                              str(r))
@@ -523,6 +526,12 @@ class TestBed(unittest.TestCase):
             r.end += 1
             self.assertEqual(int(c[2]) + 1, r.end)
             self.assertEqual(str(int(c[2]) + 1), r[2])
+
+            with self.assertRaises(IndexError):
+                r.name = "test"
+
+            with self.assertRaises(IndexError):
+                r.score = 1
 
 
 class TestVCF(unittest.TestCase):

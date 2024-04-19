@@ -365,14 +365,14 @@ cdef class NamedTupleProxy(TupleProxy):
         '''set attribute.'''
         cdef int idx
         idx, f = self.map_key2field[key]
-        if self.nfields < idx:
+        if idx >= self.nfields:
             raise KeyError("field %s not set" % key)
         TupleProxy.__setitem__(self, idx, str(value))
 
     def __getattr__(self, key):
         cdef int idx
         idx, f = self.map_key2field[key]
-        if self.nfields < idx:
+        if idx >= self.nfields:
             raise KeyError("field %s not set" % key)
         if f == str:
             return force_str(self.fields[idx],
