@@ -18,11 +18,13 @@ jobs:
         os: [ubuntu, macos]
         build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-*"]
         x64image: [manylinux_2_28]
+        nametag: [none]
 
         include:
           - os: ubuntu
             build: "cp38-manylinux_x86_64"
             x64image: manylinux2014
+            nametag: focal
 
     steps:
       - name: Checkout pysam
@@ -41,9 +43,15 @@ jobs:
           CIBW_MANYLINUX_I686_IMAGE:    manylinux2014
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 
+      - name: Check wheelhouse
+        run:  devtools/artifactname.py wheelhouse/*.whl >> $GITHUB_ENV
+        env:
+          NAMETAG: ${{ matrix.nametag }}
+
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
+          name: ${{ env.artifactname }}
           path: wheelhouse/*.whl
 
   build_sdist:
@@ -71,8 +79,9 @@ jobs:
       - name: Create source distribution
         run:  python setup.py sdist --owner=root --group=root
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
+          name: sdist
           path: dist/pysam-*.tar.gz
 
   upload_pypi:
@@ -85,9 +94,9 @@ jobs:
 
     steps:
       - name: Get artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: artifact
+          merge-multiple: true
           path: dist
 
       - name: Publish distribution to Test PyPI
