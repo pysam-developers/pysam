@@ -239,29 +239,57 @@ cdef inline int is_gt_fmt(bcf_hdr_t *hdr, int fmt_id):
 
 
 cdef inline int bcf_genotype_count(bcf_hdr_t *hdr, bcf1_t *rec, int sample) except -1:
-
     if sample < 0:
         raise ValueError('genotype is only valid as a format field')
 
-    cdef int32_t *gt_arr = NULL
-    cdef int ngt = 0
-    ngt = bcf_get_genotypes(hdr, rec, &gt_arr, &ngt)
+    cdef int ploidy = bcf_get_ploidy(hdr, rec, sample)
+    return bcf_geno_combinations(ploidy, rec.n_allele)
 
-    if ngt <= 0 or not gt_arr:
+cdef inline int bcf_get_ploidy(bcf_hdr_t *hdr, bcf1_t *rec, int sample) except -1:
+    # compute sample ploidy by counting number of values in GT field
+    cdef int32_t n = rec.n_sample
+
+    if bcf_unpack(rec, BCF_UN_ALL) < 0:
+        raise ValueError('Error unpacking VariantRecord')
+
+    if sample < 0 or sample >= n or not rec.n_fmt:
         return 0
 
-    assert ngt % rec.n_sample == 0
-    cdef int max_ploidy = ngt // rec.n_sample
-    cdef int32_t *gt = gt_arr + sample * max_ploidy
+    cdef bcf_fmt_t *fmt0 = rec.d.fmt
+    cdef int gt0 = is_gt_fmt(hdr, fmt0.id)
+
+    if not gt0 or not fmt0.n:
+        return 0
+
     cdef int ploidy = 0
+    cdef int8_t  *data8
+    cdef int16_t *data16
+    cdef int32_t *data32
+    cdef int32_t a, nalleles = rec.n_allele
 
-    while ploidy < max_ploidy and gt[0] != bcf_int32_vector_end:
-        gt += 1
-        ploidy += 1
+    if fmt0.type == BCF_BT_INT8:
+        data8 = <int8_t *>(fmt0.p + sample * fmt0.size)
+        for i in range(fmt0.n):
+            if data8[i] == bcf_int8_vector_end:
+                break
+            else:
+                ploidy += 1
+    elif fmt0.type == BCF_BT_INT16:
+        data16 = <int16_t *>(fmt0.p + sample * fmt0.size)
+        for i in range(fmt0.n):
+            if data16[i] == bcf_int16_vector_end:
+                break
+            else:
+                ploidy += 1
+    elif fmt0.type == BCF_BT_INT32:
+        data32 = <int32_t *>(fmt0.p + sample * fmt0.size)
+        for i in range(fmt0.n):
+            if data32[i] == bcf_int32_vector_end:
+                break
+            else:
+                ploidy += 1
 
-    free(<void*>gt_arr)
-
-    return bcf_geno_combinations(ploidy, rec.n_allele)
+    return ploidy
 
 
 cdef tuple char_array_to_tuple(const char **a, ssize_t n, int free_after=0):
