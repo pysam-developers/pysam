@@ -18,11 +18,13 @@ jobs:
         os: [ubuntu, macos]
         build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-*"]
         x64image: [manylinux_2_28]
+        nametag: [none]
 
         include:
           - os: ubuntu
             build: "cp38-manylinux_x86_64"
             x64image: manylinux2014
+            nametag: focal
 
     steps:
       - name: Checkout pysam
@@ -32,7 +34,8 @@ jobs:
         uses: pypa/cibuildwheel@v2.17.0
         env:
           CIBW_BUILD: ${{ matrix.build }}
-          CIBW_SKIP: "*musllinux*"
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_BUILD_VERBOSITY: 1
 
           CIBW_ARCHS_LINUX: x86_64
           CIBW_ARCHS_MACOS: x86_64
@@ -41,42 +44,46 @@ jobs:
           CIBW_MANYLINUX_I686_IMAGE:    manylinux2014
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 
+      - name: Check wheelhouse
+        run:  devtools/artifactname.py wheelhouse/*.whl >> $GITHUB_ENV
+        env:
+          NAMETAG: ${{ matrix.nametag }}
+
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
+          name: ${{ env.artifactname }}
           path: wheelhouse/*.whl
 
   build_sdist:
-    runs-on: ${{ matrix.os }}-latest
-    strategy:
-      matrix:
-        os: [ubuntu, macos]
-        python-version: [3.9]
+    runs-on: ubuntu-latest
+    env:
+      job_python_version: "3.10"
 
     steps:
       - name: Checkout pysam
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python ${{ env.job_python_version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ env.job_python_version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest pytest-pep8
+        run:  pip install cython
 
       - name: Install build prerequisites
-        if:   runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
 
       - name: Create source distribution
-        run:  python setup.py sdist
+        run:  python setup.py sdist --owner=root --group=root
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
-          path: dist/*.tar.gz
+          name: sdist
+          path: dist/pysam-*.tar.gz
 
   upload_pypi:
     needs: [build_wheels, build_sdist]
@@ -88,9 +95,9 @@ jobs:
 
     steps:
       - name: Get artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: artifact
+          merge-multiple: true
           path: dist
 
       - name: Publish distribution to Test PyPI

@@ -17,7 +17,7 @@ build_wheels_task:
 
     - name: Build ARM macOS wheels
       macos_instance:
-        image: ghcr.io/cirruslabs/macos-ventura-base:latest
+        image: ghcr.io/cirruslabs/macos-sonoma-base:latest
       env:
         CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
 
@@ -26,11 +26,17 @@ build_wheels_task:
   env:
     CIRRUS_CLONE_DEPTH: 1
 
+    VENV: $HOME/relenv
+    PATH: $VENV/bin:$PATH
+
     CIBW_SKIP: "*-musllinux_*"
+    CIBW_BUILD_VERBOSITY: 1
+
     CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 
   install_script: |
-    python3 -m pip install cibuildwheel==2.16.2
+    python3 -m venv $VENV
+    pip3 install cibuildwheel==2.17.0
 
   build_script: |
     cibuildwheel
