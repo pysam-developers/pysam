@@ -27,6 +27,8 @@ build_wheels_task:
     CIRRUS_CLONE_DEPTH: 1
 
     CIBW_SKIP: "*-musllinux_*"
+    CIBW_BUILD_VERBOSITY: 1
+
     CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
 
   install_script: |
