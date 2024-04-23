@@ -20,7 +20,7 @@ if sys.version_info < (3, 8):
 else:
     from typing import Literal
 
-from .libchtslib import HTSFile, _HasFileNo
+from pysam.libchtslib import HTSFile, _HasFileNo
 
 _D = TypeVar("_D")
 _K = TypeVar("_K", str, Union[int, str])

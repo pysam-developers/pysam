@@ -20,10 +20,10 @@ from libc.stdio cimport stdout as c_stdout
 from posix.fcntl cimport open as c_open, O_WRONLY
 from posix.unistd cimport SEEK_SET, SEEK_CUR, SEEK_END
 
-from .libcsamtools cimport samtools_dispatch, samtools_set_stdout, samtools_set_stderr, \
+from pysam.libcsamtools cimport samtools_dispatch, samtools_set_stdout, samtools_set_stderr, \
     samtools_close_stdout, samtools_close_stderr, samtools_set_stdout_fn
 
-from .libcbcftools cimport bcftools_dispatch, bcftools_set_stdout, bcftools_set_stderr, \
+from pysam.libcbcftools cimport bcftools_dispatch, bcftools_set_stdout, bcftools_set_stderr, \
     bcftools_close_stdout, bcftools_close_stderr, bcftools_set_stdout_fn
 
 #####################################################################
