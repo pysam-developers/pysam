@@ -1,6 +1,36 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.22.1
+==============
+
+.. rubric:: 24 April 2024
+
+Bugfix release, which still wraps htslib/samtools/bcftools 1.18.
+
+Bugs fixed:
+
+* Preserve all header field tags defined in the SAM specification (notably TP)
+  in :meth:`.AlignmentHeader.from_dict` and :meth:`.AlignmentHeader.to_dict`
+  (#1237, PR #1238, thanks to Tim Fennell and Nils Homer)
+
+* Adjust HTSlib's Makefile so that ``make distclean`` no longer tries to
+  rebuild the htscodecs configury (PR #1247, reported by Nicola Soranzo)
+
+* Reinstate S3 support in pre-built Linux wheels: support for this protocol
+  was inadvertently omitted from the pre-built 0.22.0 wheels on Linux
+  (#1249, #1277, etc varying circumstances; likely it is this that was
+  reported by Mathew Baines, Benjamin Sargsyan, et al)
+
+* Add missing :attr:`.AlignedSegment.is_mapped` etc properties to type stubs
+  (PR #1273, thanks to Matt Stone)
+
+* Fix off-by-one NamedTupleProxy, :class:`.asBed`, etc array bounds check
+  (#1279, reported by Dan Bolser)
+
+* Make pysam's klib headers compatible with C++ (reported by Martin Grigorov)
+
+
 Release 0.22.0
 ==============
 
