@@ -23,7 +23,7 @@ def genomes_data():
     fn_small = "small.vcf.gz"
     if not os.path.exists(fn_small):
         os.system("bcftools view {} | head -n 10000 | bgzip > {}".format(fn, fn_small))
-        os.system("tabix -p vcf {}".format(fn_small))
+        os.system("tabix -f -p vcf {}".format(fn_small))
         
     return fn_small
 

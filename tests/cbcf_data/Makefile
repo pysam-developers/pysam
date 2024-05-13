@@ -11,12 +11,12 @@ all.stamp: $(VCFGZ) $(BCF)
 
 %.vcf.gz: %.vcf
 	bgzip < $< > $@
-	tabix -p vcf $@    # create tbi index
-	bcftools index $@  # create csi index
+	tabix -f -p vcf $@    # create tbi index
+	bcftools index -f $@  # create csi index
 
 %.bcf: %.vcf.gz
 	bcftools view -O b $< -o $@
-	bcftools index $@
+	bcftools index -f $@
 
 example_empty.bcf: example_empty.vcf.gz
 	touch $@

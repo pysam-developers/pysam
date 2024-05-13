@@ -25,16 +25,16 @@ all.stamp: $(DERIVED_FILES)
 	bgzip -c $< > $@
 
 %.gff2.gz.tbi: %.gff2.gz
-	tabix -p gff $<
+	tabix -f -p gff $<
 
 %.gff3.gz.tbi: %.gff3.gz
-	tabix -p gff $<
+	tabix -f -p gff $<
 
 %.gtf.gz.tbi: %.gtf.gz
-	tabix -p gff $<
+	tabix -f -p gff $<
 
 %.gz.tbi: %.gz
-	tabix -p $(subst .,,$(suffix $*)) $<
+	tabix -f -p $(subst .,,$(suffix $*)) $<
 
 clean:
 	-rm -f all.stamp $(DERIVED_FILES)
