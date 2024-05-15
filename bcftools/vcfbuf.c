@@ -44,7 +44,7 @@ typedef struct
 {
     bcf1_t *rec;
     double af;
-    int af_set:1, filter:1, idx:30;
+    unsigned int af_set:1, filter:1, idx:30;
 }
 vcfrec_t;
 

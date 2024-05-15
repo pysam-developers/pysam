@@ -2,7 +2,7 @@
 
 /*  vcfnorm.c -- Left-align and normalize indels.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2024 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -81,8 +81,8 @@ typedef struct
 {
     char *tseq, *seq;
     int mseq;
-    bcf1_t **lines, **tmp_lines, **alines, **blines, *mrow_out;
-    int ntmp_lines, mtmp_lines, nalines, malines, nblines, mblines;
+    bcf1_t **lines, **tmp_lines, **mrows, *mrow_out;
+    int ntmp_lines, mtmp_lines, nmrows, mmrows, mrows_first;
     map_t *maps;     // mrow map for each buffered record
     char **als;
     int mmaps, nals, mals;
@@ -102,7 +102,7 @@ typedef struct
     struct { int tot, set, swap; } nref;
     char **argv, *output_fname, *ref_fname, *vcf_fname, *region, *targets;
     int argc, rmdup, output_type, n_threads, check_ref, strict_filter, do_indels, clevel;
-    int nchanged, nskipped, nsplit, ntotal, mrows_op, mrows_collapse, parsimonious;
+    int nchanged, nskipped, nsplit, njoined, ntotal, mrows_op, mrows_collapse, parsimonious;
     int record_cmd_line, force, force_warned, keep_sum_ad;
     abuf_t *abuf;
     abuf_opt_t atomize;
@@ -561,6 +561,7 @@ static int realign(args_t *args, bcf1_t *line)
     hts_expand0(kstring_t,line->n_allele,args->ntmp_del,args->tmp_del);
     kstring_t *als = args->tmp_als;
     kstring_t *del = args->tmp_del;
+    int symbolic_alts = 1;
     for (i=0; i<line->n_allele; i++)
     {
         del[i].l = 0;
@@ -578,12 +579,13 @@ static int realign(args_t *args, bcf1_t *line)
                 replace_iupac_codes(ref,nref);  // any non-ACGT character in fasta ref is replaced with N
                 als[0].l = 0;
                 kputs(ref, &als[0]);
-                als[i].l = 0;
-                kputsn(ref,1,&als[i]);
-                kputs(line->d.allele[i],&del[i]);
-                continue;
             }
+            als[i].l = 0;
+            kputsn(als[0].s,1,&als[i]);
+            kputs(line->d.allele[i],&del[i]);
+            continue;
         }
+        if ( i>0 ) symbolic_alts = 0;
         if ( line->d.allele[i][0]=='*' ) return ERR_SPANNING_DELETION;  // spanning deletion
         if ( has_non_acgtn(line->d.allele[i],line->shared.l) )
         {
@@ -612,8 +614,15 @@ static int realign(args_t *args, bcf1_t *line)
     else
         new_pos = realign_right(args, line);
 
-    // Have the alleles changed?
-    als[0].s[ als[0].l ] = 0;  // in order for strcmp to work
+    // Have the alleles changed? Consider <DEL> could have expanded the REF allele. In that
+    // case it must be trimmed, however the new REF length must reflect the entire length.
+    als[0].s[ als[0].l ] = 0;   // for strcmp to work
+    int new_reflen = strlen(als[0].s);
+    if ( symbolic_alts )
+    {
+        als[0].l = 1;
+        als[0].s[ als[0].l ] = 0;
+    }
     if ( new_pos==line->pos && !strcasecmp(line->d.allele[0],als[0].s) ) return ERR_OK;
 
     set_old_rec_tag(args, line, line, 0);
@@ -631,7 +640,6 @@ static int realign(args_t *args, bcf1_t *line)
     args->nchanged++;
 
     // Update INFO/END if necessary
-    int new_reflen = strlen(line->d.allele[0]);
     if ( (new_pos!=line->pos || reflen!=new_reflen) && bcf_get_info_int32(args->hdr, line, "END", &args->int32_arr, &args->nint32_arr)==1 )
     {
         // bcf_update_alleles_str() messed up rlen because line->pos changed. This will be fixed by bcf_update_info_int32()
@@ -672,7 +680,7 @@ static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int 
                     bcf_update_info_##type(args->out_hdr,dst,tag,NULL,0); \
                     return; \
                 } \
-                error("Error: wrong number of fields in INFO/%s at %s:%"PRId64", expected %d, found %d\n", \
+                error("Error: wrong number of fields in INFO/%s at %s:%"PRId64", expected %d, found %d. Use --force to proceed anyway.\n", \
                         tag,bcf_seqname(args->hdr,src),(int64_t) src->pos+1,src->n_allele-1,ret); \
             } \
             bcf_update_info_##type(args->out_hdr,dst,tag,vals+ialt,1); \
@@ -694,7 +702,7 @@ static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int 
                     bcf_update_info_##type(args->out_hdr,dst,tag,NULL,0); \
                     return; \
                 } \
-                error("Error: wrong number of fields in INFO/%s at %s:%"PRId64", expected %d, found %d\n", \
+                error("Error: wrong number of fields in INFO/%s at %s:%"PRId64", expected %d, found %d. Use --force to proceed anyway.\n", \
                         tag,bcf_seqname(args->hdr,src),(int64_t) src->pos+1,src->n_allele,ret); \
             } \
             if ( args->keep_sum_ad >= 0 && args->keep_sum_ad==info->key ) \
@@ -727,7 +735,7 @@ static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int 
                     bcf_update_info_##type(args->out_hdr,dst,tag,NULL,0); \
                     return; \
                 } \
-                error("Error: wrong number of fields in INFO/%s at %s:%"PRId64", expected %d, found %d\n", \
+                error("Error: wrong number of fields in INFO/%s at %s:%"PRId64", expected %d, found %d. Use --force to proceed anyway.\n", \
                         tag,bcf_seqname(args->hdr,src),(int64_t) src->pos+1,src->n_allele*(src->n_allele+1)/2,ret); \
             } \
             if ( ialt!=0 ) \
@@ -747,31 +755,36 @@ static void split_info_numeric(args_t *args, bcf1_t *src, bcf_info_t *info, int 
     }
     #undef BRANCH_NUMERIC
 }
-// Find n-th field in a comma-separated list and move it to dst.
-// The memory areas may overlap.
-#define STR_MOVE_NTH(dst,src,end,nth,len) \
-{ \
-    char *ss = src, *se = src; \
-    int j = 0; \
-    while ( *se && se<(end) ) \
-    { \
-        if ( *se==',' ) \
-        { \
-            if ( j==nth ) break; \
-            j++; \
-            ss = se+1; \
-        } \
-        se++; \
-    } \
-    if ( j==nth ) \
-    { \
-        int n = se - ss; \
-        memmove((dst),ss,n); \
-        src = se; \
-        len += n; \
-    } \
-    else len = -1; \
+// Find nth field in a comma-separated list in src and move it to dst.
+// The dst and src memory areas may overlap, end points just after the last valid src
+// character.
+// On success returns pointer to the end of the parsed field and increments ndst by the
+// number of memmoved characters. Returns NULL if the field was not found.
+static inline char *string_move_nth(char *dst, char *src, char *end, int nth, size_t *ndst)
+{
+    if ( src>=end ) return NULL;
+    char *ss = src, *se = src;
+    int j = 0;
+    while ( *se && se<(end) )
+    {
+        if ( *se==',' )
+        {
+            if ( j==nth ) break;
+            j++;
+            ss = se+1;
+        }
+        se++;
+    }
+    if ( j!=nth ) return NULL;
+    if ( ss>=end ) return NULL;
+    if ( !*ss ) return NULL;
+
+    int n = se - ss;
+    memmove((dst),ss,n);
+    *ndst += n;
+    return se;
 }
+
 static void split_info_string(args_t *args, bcf1_t *src, bcf_info_t *info, int ialt, bcf1_t *dst)
 {
     const char *tag = bcf_hdr_int2id(args->hdr,BCF_DT_ID,info->key);
@@ -786,41 +799,57 @@ static void split_info_string(args_t *args, bcf1_t *src, bcf_info_t *info, int i
     int len = bcf_hdr_id2length(args->hdr,BCF_HL_INFO,info->key);
     if ( len==BCF_VL_A )
     {
+        char *end = str.s + str.l;
         char *tmp = str.s;
-        int len = 0;
-        STR_MOVE_NTH(str.s,tmp,str.s+str.l,ialt,len);
-        if ( len<0 ) return;   // wrong number of fields: skip
-        str.s[len] = 0;
+        str.l = 0;
+        tmp = string_move_nth(str.s,tmp,end,ialt,&str.l);
+        if ( !tmp ) str.l = 1, str.s[0] = '.';
+        kputc_(0,&str);
         bcf_update_info_string(args->out_hdr,dst,tag,str.s);
     }
     else if ( len==BCF_VL_R )
     {
+        char *end = str.s + str.l;
         char *tmp = str.s;
-        int len = 0;
-        STR_MOVE_NTH(str.s,tmp,str.s+str.l,0,len);
-        str.s[len]=','; tmp++; len++;
-        STR_MOVE_NTH(&str.s[len],tmp,str.s+str.l,ialt,len);
-        if ( len<0 ) return;   // wrong number of fields: skip
-        str.s[len] = 0;
+        str.l = 0;
+        tmp = string_move_nth(str.s,tmp,end,0,&str.l);
+        if ( tmp )
+        {
+            kputc_(',',&str);
+            tmp = string_move_nth(str.s+str.l,tmp+1,end,ialt,&str.l); // ialt is 0-based index to ALT
+        }
+        if ( !tmp ) str.l = 1, str.s[0] = '.';
+        kputc_(0,&str);
         bcf_update_info_string(args->out_hdr,dst,tag,str.s);
     }
     else if ( len==BCF_VL_G )
     {
         int i0a = bcf_alleles2gt(0,ialt+1), iaa = bcf_alleles2gt(ialt+1,ialt+1);
+        char *end = str.s + str.l;
         char *tmp = str.s;
-        int len = 0;
-        STR_MOVE_NTH(str.s,tmp,str.s+str.l,0,len);
-        str.s[len]=','; tmp++; len++;
-        STR_MOVE_NTH(&str.s[len],tmp,str.s+str.l,i0a-1,len);
-        if ( len<0 ) return;   // wrong number of fields: skip
-        str.s[len]=','; tmp++; len++;
-        STR_MOVE_NTH(&str.s[len],tmp,str.s+str.l,iaa-i0a-1,len);
-        if ( len<0 ) return;   // wrong number of fields: skip
-        str.s[len] = 0;
+        str.l = 0;
+        tmp = string_move_nth(str.s,tmp,end,0,&str.l);
+        if ( tmp )
+        {
+            kputc_(',',&str);
+            tmp = string_move_nth(str.s+str.l,tmp+1,end,i0a-1,&str.l);
+        }
+        if ( tmp )
+        {
+            kputc_(',',&str);
+            tmp = string_move_nth(str.s+str.l,tmp+1,end,iaa-i0a-1,&str.l);
+        }
+        if ( !tmp ) str.l = 1, str.s[0] = '.';
+        kputc_(0,&str);
         bcf_update_info_string(args->out_hdr,dst,tag,str.s);
     }
     else
         bcf_update_info_string(args->out_hdr,dst,tag,str.s);
+    if ( args->ntmp_arr1 < str.m )
+    {
+        args->ntmp_arr1 = str.m;
+        args->tmp_arr1 = (uint8_t*)str.s;
+    }
 }
 static void split_info_flag(args_t *args, bcf1_t *src, bcf_info_t *info, int ialt, bcf1_t *dst)
 {
@@ -891,7 +920,7 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
                     bcf_update_format_##type(args->out_hdr,dst,tag,NULL,0); \
                     return; \
                 } \
-                error("Error: wrong number of fields in FMT/%s at %s:%"PRId64", expected %d, found %d\n", \
+                error("Error: wrong number of fields in FMT/%s at %s:%"PRId64", expected %d, found %d. Use --force to proceed anyway.\n", \
                     tag,bcf_seqname(args->hdr,src),(int64_t) src->pos+1,(src->n_allele-1)*nsmpl,nvals); \
             } \
             nvals /= nsmpl; \
@@ -924,7 +953,7 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
                     bcf_update_format_##type(args->out_hdr,dst,tag,NULL,0); \
                     return; \
                 } \
-                error("Error: wrong number of fields in FMT/%s at %s:%"PRId64", expected %d, found %d\n", \
+                error("Error: wrong number of fields in FMT/%s at %s:%"PRId64", expected %d, found %d. Use --force to proceed anyway.\n", \
                     tag,bcf_seqname(args->hdr,src),(int64_t) src->pos+1,src->n_allele*nsmpl,nvals); \
             } \
             nvals /= nsmpl; \
@@ -979,7 +1008,8 @@ static void split_format_numeric(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int 
                     bcf_update_format_##type(args->out_hdr,dst,tag,NULL,0); \
                     return; \
                 } \
-                error("Error at %s:%"PRId64", the tag %s has wrong number of fields\n", bcf_seqname(args->hdr,src),(int64_t) src->pos+1,bcf_hdr_int2id(args->hdr,BCF_DT_ID,fmt->id)); \
+                error("Error at %s:%"PRId64", the tag %s has wrong number of fields. Use --force to proceed anyway.\n", \
+                    bcf_seqname(args->hdr,src),(int64_t) src->pos+1,bcf_hdr_int2id(args->hdr,BCF_DT_ID,fmt->id)); \
             } \
             nvals /= nsmpl; \
             int all_haploid = nvals==src->n_allele ? 1 : 0; \
@@ -1033,6 +1063,7 @@ static void squeeze_format_char(char *str, int src_blen, int dst_blen, int n)
         isrc += src_blen;
     }
 }
+// ialt is 0-based index to ALT
 static void split_format_string(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int ialt, bcf1_t *dst)
 {
     const char *tag = bcf_hdr_int2id(args->hdr,BCF_DT_ID,fmt->id);
@@ -1040,50 +1071,60 @@ static void split_format_string(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int i
     if ( !ret ) return; // all values can be empty, leave out the tag, no need to panic
     assert( ret>0 );
 
+    int nsmpl = bcf_hdr_nsamples(args->hdr);
+    int blen = ret/nsmpl;   // per-sample field length
+    assert( blen>0 );
+
     kstring_t str;
     str.m = args->ntmp_arr1;
-    str.l = ret;
     str.s = (char*) args->tmp_arr1;
+    str.l = ret;
 
-    int nsmpl = bcf_hdr_nsamples(args->hdr);
-    int len = bcf_hdr_id2length(args->hdr,BCF_HL_FMT,fmt->id);
-    if ( len==BCF_VL_A )
+    int tag_len = bcf_hdr_id2length(args->hdr,BCF_HL_FMT,fmt->id);
+    if ( tag_len==BCF_VL_A )
     {
-        int i, blen = ret/nsmpl, maxlen = 0;
+        int i, maxlen = 0;
         char *ptr = str.s;
         for (i=0; i<nsmpl; i++)
         {
             char *tmp = ptr;
-            int len = 0;
-            STR_MOVE_NTH(tmp,tmp,ptr+blen,ialt,len);
-            if ( len<0 ) return;   // wrong number of fields: skip
+            char *end = ptr + blen;
+            size_t len = 0;
+            tmp = string_move_nth(ptr,tmp,end,ialt,&len);
+            if ( !tmp ) ptr[0] = '.', len = 1;
             if ( maxlen < len ) maxlen = len;
+            while (len<blen) ptr[len++] = 0;
             ptr += blen;
         }
         if ( maxlen<blen ) squeeze_format_char(str.s,blen,maxlen,nsmpl);
         bcf_update_format_char(args->out_hdr,dst,tag,str.s,nsmpl*maxlen);
     }
-    else if ( len==BCF_VL_R )
+    else if ( tag_len==BCF_VL_R )
     {
-        int i, blen = ret/nsmpl, maxlen = 0;
+        int i, maxlen = 0;
         char *ptr = str.s;
         for (i=0; i<nsmpl; i++)
         {
             char *tmp = ptr;
-            int len = 0;
-            STR_MOVE_NTH(ptr,tmp,ptr+blen,0,len);
-            ptr[len]=','; tmp++; len++;
-            STR_MOVE_NTH(&ptr[len],tmp,ptr+blen,ialt,len);
-            if ( len<0 ) return;   // wrong number of fields: skip
+            char *end = ptr + blen;
+            size_t len = 0;
+            tmp = string_move_nth(ptr,tmp,end,0,&len);
+            if ( tmp )
+            {
+                ptr[len++] = ',';
+                tmp = string_move_nth(ptr+len,tmp+1,end,ialt,&len);
+            }
+            if ( !tmp ) ptr[0] = '.', len = 1;
             if ( maxlen < len ) maxlen = len;
+            while (len<blen) ptr[len++] = 0;
             ptr += blen;
         }
         if ( maxlen<blen ) squeeze_format_char(str.s,blen,maxlen,nsmpl);
         bcf_update_format_char(args->out_hdr,dst,tag,str.s,nsmpl*maxlen);
     }
-    else if ( len==BCF_VL_G )
+    else if ( tag_len==BCF_VL_G )
     {
-        int i, blen = ret/nsmpl, maxlen = 0, i0a = bcf_alleles2gt(0,ialt+1), iaa = bcf_alleles2gt(ialt+1,ialt+1);
+        int i, maxlen = 0, i0a = bcf_alleles2gt(0,ialt+1), iaa = bcf_alleles2gt(ialt+1,ialt+1);
         char *ptr = str.s;
         for (i=0; i<nsmpl; i++)
         {
@@ -1110,31 +1151,38 @@ static void split_format_string(args_t *args, bcf1_t *src, bcf_fmt_t *fmt, int i
                     bcf_update_format_char(args->out_hdr,dst,tag,NULL,0);
                     return;
                 }
-                error("Error: wrong number of fields in FMT/%s at %s:%"PRId64", expected %d or %d, found %d\n",
+                error("Error: wrong number of fields in FMT/%s at %s:%"PRId64", expected %d or %d, found %d. Use --force to proceed anyway.\n",
                         tag,bcf_seqname(args->hdr,src),(int64_t) src->pos+1,src->n_allele*(src->n_allele+1)/2,src->n_allele,nfields);
             }
 
-            int len = 0;
+            char *tmp = ptr;
+            char *end = ptr + blen;
+            size_t len = 0;
+            tmp = string_move_nth(ptr,tmp,end,0,&len);
             if ( nfields==src->n_allele )   // haploid
             {
-                char *tmp = ptr;
-                STR_MOVE_NTH(&ptr[len],tmp,ptr+blen,0,len);
-                ptr[len]=','; tmp++; len++;
-                STR_MOVE_NTH(&ptr[len],tmp,ptr+blen,ialt,len);
-                if ( len<0 ) return;   // wrong number of fields: skip
+                if ( tmp )
+                {
+                    ptr[len++] = ',';
+                    tmp = string_move_nth(ptr+len,tmp+1,end,ialt,&len);
+                }
             }
             else    // diploid
             {
-                char *tmp = ptr;
-                STR_MOVE_NTH(&ptr[len],tmp,ptr+blen,0,len);
-                ptr[len]=','; tmp++; len++;
-                STR_MOVE_NTH(&ptr[len],tmp,ptr+blen,i0a-1,len);
-                if ( len<0 ) return;   // wrong number of fields: skip
-                ptr[len]=','; tmp++; len++;
-                STR_MOVE_NTH(&ptr[len],tmp,ptr+blen,iaa-i0a-1,len);
-                if ( len<0 ) return;   // wrong number of fields: skip
+                if ( tmp )
+                {
+                    ptr[len++] = ',';
+                    tmp = string_move_nth(ptr+len,tmp+1,end,i0a-1,&len);
+                }
+                if ( tmp )
+                {
+                    ptr[len++] = ',';
+                    tmp = string_move_nth(ptr+len,tmp+1,end,iaa-i0a-1,&len);
+                }
             }
+            if ( !tmp ) ptr[0] = '.', len = 1;
             if ( maxlen < len ) maxlen = len;
+            while (len<blen) ptr[len++] = 0;
             ptr += blen;
         }
         if ( maxlen<blen ) squeeze_format_char(str.s,blen,maxlen,nsmpl);
@@ -1824,75 +1872,102 @@ static void merge_biallelics_to_multiallelic(args_t *args, bcf1_t *dst, bcf1_t *
         else if ( type==BCF_HT_INT || type==BCF_HT_REAL ) merge_format_numeric(args, lines, nlines, fmt, dst);
         else merge_format_string(args, lines, nlines, fmt, dst);
     }
+    args->njoined++;
 }
 
 #define SWAP(type_t, a, b) { type_t t = a; a = b; b = t; }
-static void mrows_schedule(args_t *args, bcf1_t **line)
+static void mrows_push(args_t *args, bcf1_t **line)
 {
     int i,m;
-    if ( args->mrows_collapse==COLLAPSE_ANY         // merge all record types together
-        || bcf_get_variant_types(*line)&VCF_SNP     // SNP, put into alines
-        || bcf_get_variant_types(*line)==VCF_REF )  // ref
+    if ( !args->nmrows ) args->mrows_first = 0;
+    args->nmrows++;
+    m = args->mmrows;
+    hts_expand(bcf1_t*,args->nmrows,args->mmrows,args->mrows);
+    for (i=m; i<args->mmrows; i++) args->mrows[i] = bcf_init1();
+    SWAP(bcf1_t*, args->mrows[args->nmrows-1], *line);
+
+    if ( args->mrows_collapse==COLLAPSE_ANY ) return;
+
+    // move the line up the sorted list so that the same variant types end up together
+    int cur_type = bcf_get_variant_types(args->mrows[args->nmrows-1]);
+    i = args->mrows_first + args->nmrows - 1;
+    while (i>0)
     {
-        args->nalines++;
-        m = args->malines;
-        hts_expand(bcf1_t*,args->nalines,args->malines,args->alines);
-        for (i=m; i<args->malines; i++) args->alines[i] = bcf_init1();
-        SWAP(bcf1_t*, args->alines[args->nalines-1], *line);
-    }
-    else
-    {
-        args->nblines++;
-        m = args->mblines;
-        hts_expand(bcf1_t*,args->nblines,args->mblines,args->blines);
-        for (i=m; i<args->mblines; i++) args->blines[i] = bcf_init1();
-        SWAP(bcf1_t*, args->blines[args->nblines-1], *line);
+        int prev_type = bcf_get_variant_types(args->mrows[i-1]);
+        if ( prev_type <= cur_type ) break;
+        bcf1_t *tmp = args->mrows[i-1];
+        args->mrows[i-1] = args->mrows[i];
+        args->mrows[i] = tmp;
+        i--;
     }
 }
-static int mrows_ready_to_flush(args_t *args, bcf1_t *line)
+static int mrows_can_flush(args_t *args, bcf1_t *line)
 {
-    if ( args->nalines && (args->alines[0]->rid!=line->rid || args->alines[0]->pos!=line->pos) ) return 1;
-    if ( args->nblines && (args->blines[0]->rid!=line->rid || args->blines[0]->pos!=line->pos) ) return 1;
+    if ( !args->nmrows ) return 0;
+    int ibeg = args->mrows_first;
+    if ( args->mrows[ibeg]->rid != line->rid ) return 1;
+    if ( args->mrows[ibeg]->pos != line->pos ) return 1;
     return 0;
 }
 static bcf1_t *mrows_flush(args_t *args)
 {
-    if ( args->nblines && args->nalines==1 && bcf_get_variant_types(args->alines[0])==VCF_REF )
+    if ( !args->nmrows ) return NULL;
+
+    int ibeg = args->mrows_first;
+
+    //fprintf(bcftools_stderr,"flush: ibeg=%d n=%d\n",ibeg,args->nmrows);
+    //int i;
+    //for (i=ibeg; i<ibeg+args->nmrows; i++)
+    //  fprintf(bcftools_stderr,"\ti=%d type=%d %s %s\n",i,bcf_get_variant_types(args->mrows[i]),args->mrows[i]->d.allele[0],args->mrows[i]->d.allele[1]);
+
+    if ( args->nmrows==1 )
     {
-        // By default, REF lines are merged with SNPs if SNPs and indels are to be kept separately.
-        // However, if there are indels only and a single REF line, merge it with indels.
-        args->nblines++;
-        int i,m = args->mblines;
-        hts_expand(bcf1_t*,args->nblines,args->mblines,args->blines);
-        for (i=m; i<args->mblines; i++) args->blines[i] = bcf_init1();
-        SWAP(bcf1_t*, args->blines[args->nblines-1], args->alines[0]);
-        args->nalines--;
+        args->nmrows = 0;
+        return args->mrows[ibeg];
     }
-    if ( args->nalines )
+
+    if ( args->mrows_collapse==COLLAPSE_ANY )
     {
-        if ( args->nalines==1 )
-        {
-            args->nalines = 0;
-            return args->alines[0];
-        }
+        // merge everything with anything
         bcf_clear(args->mrow_out);
-        merge_biallelics_to_multiallelic(args, args->mrow_out, args->alines, args->nalines);
-        args->nalines = 0;
+        merge_biallelics_to_multiallelic(args, args->mrow_out, &args->mrows[ibeg], args->nmrows - ibeg);
+        args->nmrows = 0;
         return args->mrow_out;
     }
-    else if ( args->nblines )
+
+    int j;
+    int types[] = { VCF_SNP, VCF_MNP, VCF_INDEL, VCF_OTHER, -1 };       // merge everything within the same category
+    if ( args->mrows_collapse==COLLAPSE_SNPS ) types[1] = -1;           // merge SNPs only
+    else if ( args->mrows_collapse==COLLAPSE_INDELS ) types[0] = VCF_INDEL, types[1] = -1;    // merge indels only
+    for (j=0; types[j]!=-1; j++)
     {
-        if ( args->nblines==1 )
+        int i, type = types[j]; // to keep the compiler happy
+        for (i=ibeg; i<ibeg+args->nmrows; i++)
         {
-            args->nblines = 0;
-            return args->blines[0];
+            type = bcf_get_variant_types(args->mrows[i]);
+            if ( type!=types[j] && type!=VCF_REF ) break;
         }
-        bcf_clear(args->mrow_out);
-        merge_biallelics_to_multiallelic(args, args->mrow_out, args->blines, args->nblines);
-        args->nblines = 0;
-        return args->mrow_out;
+        if ( i==ibeg+1 && type!=VCF_REF )
+        {
+            // just one line of this type, no merging, but multiple lines of different type follow
+            args->nmrows--;
+            args->mrows_first++;
+            return args->mrows[ibeg];
+        }
+        if ( i>ibeg )
+        {
+            // more than one line, merging is needed
+            int nflush = i - ibeg;
+            bcf_clear(args->mrow_out);
+            merge_biallelics_to_multiallelic(args, args->mrow_out, &args->mrows[ibeg], nflush);
+            args->nmrows -= nflush;
+            args->mrows_first += nflush;
+            return args->mrow_out;
+        }
     }
-    return NULL;
+    args->nmrows--;
+    args->mrows_first++;
+    return args->mrows[ibeg];
 }
 static void cmpals_add(cmpals_t *ca, bcf1_t *rec)
 {
@@ -1966,21 +2041,13 @@ static void flush_buffer(args_t *args, htsFile *file, int n)
         k = rbuf_shift(&args->rbuf);
         if ( args->mrows_op==MROWS_MERGE )
         {
-            if ( mrows_ready_to_flush(args, args->lines[k]) )
+            if ( mrows_can_flush(args, args->lines[k]) )
             {
                 while ( (line=mrows_flush(args)) )
                     if ( bcf_write1(file, args->out_hdr, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
             }
-            int merge = 1;
-            if ( args->mrows_collapse!=COLLAPSE_BOTH && args->mrows_collapse!=COLLAPSE_ANY )
-            {
-                if ( !(bcf_get_variant_types(args->lines[k]) & args->mrows_collapse) ) merge = 0;
-            }
-            if ( merge )
-            {
-                mrows_schedule(args, &args->lines[k]);
-                continue;
-            }
+            mrows_push(args, &args->lines[k]);
+            continue;
         }
         else if ( args->rmdup )
         {
@@ -2022,7 +2089,7 @@ static void init_data(args_t *args)
     else
         args->keep_sum_ad = -1;
 
-    args->out_hdr = bcf_hdr_dup(args->hdr);
+    args->out_hdr = args->hdr;
     if ( args->old_rec_tag )
         bcf_hdr_printf(args->out_hdr,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Original variant. Format: CHR|POS|REF|ALT|USED_ALT_IDX\">",args->old_rec_tag);
 
@@ -2044,7 +2111,10 @@ static void init_data(args_t *args)
         args->abuf = abuf_init(args->hdr, SPLIT);
         abuf_set_opt(args->abuf, bcf_hdr_t*, BCF_HDR, args->out_hdr);
         if ( args->old_rec_tag )
+        {
             abuf_set_opt(args->abuf, const char*, INFO_TAG, args->old_rec_tag);
+            if ( bcf_hdr_sync(args->out_hdr)!=0 ) error("bcf_hdr_sync failed\n");
+        }
         abuf_set_opt(args->abuf, int, STAR_ALLELE, args->use_star_allele);
     }
     if ( args->gff_fname )
@@ -2056,6 +2126,7 @@ static void init_data(args_t *args)
         args->idx_tscript = gff_get(args->gff,idx_tscript);
         args->itr_tscript = regitr_init(NULL);
     }
+    args->out_hdr = bcf_hdr_dup(args->out_hdr);
 }
 
 static void destroy_data(args_t *args)
@@ -2074,12 +2145,9 @@ static void destroy_data(args_t *args)
     for (i=0; i<args->mtmp_lines; i++)
         if ( args->tmp_lines[i] ) bcf_destroy1(args->tmp_lines[i]);
     free(args->tmp_lines);
-    for (i=0; i<args->malines; i++)
-        bcf_destroy1(args->alines[i]);
-    free(args->alines);
-    for (i=0; i<args->mblines; i++)
-        bcf_destroy1(args->blines[i]);
-    free(args->blines);
+    for (i=0; i<args->mmrows; i++)
+        bcf_destroy1(args->mrows[i]);
+    free(args->mrows);
     for (i=0; i<args->mmaps; i++)
         free(args->maps[i].map);
     for (i=0; i<args->ntmp_als; i++)
@@ -2135,37 +2203,66 @@ static void normalize_line(args_t *args, bcf1_t *line)
         }
     }
 
-    // insert into sorted buffer
-    rbuf_expand0(&args->rbuf,bcf1_t*,args->rbuf.n+1,args->lines);
-    int i,j;
-    i = j = rbuf_append(&args->rbuf);
-    if ( args->lines[i] ) bcf_destroy(args->lines[i]);
-    args->lines[i] = bcf_dup(line);
-    while ( rbuf_prev(&args->rbuf,&i) )
+    if ( args->atomize==SPLIT ) abuf_push(args->abuf,line);
+    while (1)
     {
-        if ( args->lines[i]->pos > args->lines[j]->pos ) SWAP(bcf1_t*, args->lines[i], args->lines[j]);
-        j = i;
+        if ( args->atomize==SPLIT )
+        {
+            line = abuf_flush(args->abuf, 0);
+            if ( !line ) break;
+        }
+
+        // insert into sorted buffer
+        rbuf_expand0(&args->rbuf,bcf1_t*,args->rbuf.n+1,args->lines);
+        int i,j;
+        i = j = rbuf_append(&args->rbuf);
+        if ( args->lines[i] ) bcf_destroy(args->lines[i]);
+        args->lines[i] = bcf_dup(line);
+        while ( rbuf_prev(&args->rbuf,&i) )
+        {
+            if ( args->lines[i]->rid==args->lines[j]->rid && args->lines[i]->pos > args->lines[j]->pos ) SWAP(bcf1_t*, args->lines[i], args->lines[j]);
+            j = i;
+        }
+        if ( args->atomize!=SPLIT ) break;
     }
 }
 
-static bcf1_t *next_atomized_line(args_t *args)
+// return 0 on success, 1 when done
+static int split_and_normalize(args_t *args)
 {
-    bcf1_t *rec = NULL;
-    if ( args->atomize==SPLIT )
+    if ( !bcf_sr_next_line(args->files) ) return 1;
+
+    bcf1_t *line = bcf_sr_get_line(args->files,0);
+    args->ntotal++;
+
+    if ( args->mrows_op!=MROWS_SPLIT || line->n_allele<=2 )
     {
-        rec = abuf_flush(args->abuf, 0);
-        if ( rec ) return rec;
+        // normal operation, no splitting
+        normalize_line(args, line);
+        return 0;
     }
 
-    if ( !bcf_sr_next_line(args->files) ) return NULL;
-
-    if ( args->atomize==SPLIT )
+    // any restrictions on variant types to split?
+    if ( args->mrows_collapse!=COLLAPSE_BOTH && args->mrows_collapse!=COLLAPSE_ANY )
     {
-        abuf_push(args->abuf,bcf_sr_get_line(args->files,0));
-        return abuf_flush(args->abuf, 0);
+        int type = args->mrows_collapse==COLLAPSE_SNPS ? VCF_SNP : VCF_INDEL;
+        if ( !(bcf_get_variant_types(line) & type) )
+        {
+            normalize_line(args, line);
+            return 0;
+        }
     }
-    return bcf_sr_get_line(args->files,0);
+
+    args->nsplit++;
+    split_multiallelic_to_biallelics(args, line);
+
+    int j;
+    for (j=0; j<args->ntmp_lines; j++)
+        normalize_line(args, args->tmp_lines[j]);
+
+    return 0;
 }
+
 static void normalize_vcf(args_t *args)
 {
     char wmode[8];
@@ -2176,64 +2273,40 @@ static void normalize_vcf(args_t *args)
         hts_set_opt(args->out, HTS_OPT_THREAD_POOL, args->files->p);
     if (args->record_cmd_line) bcf_hdr_append_version(args->out_hdr, args->argc, args->argv, "bcftools_norm");
     if ( bcf_hdr_write(args->out, args->out_hdr)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
-    if ( args->write_index && init_index(args->out,args->out_hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
+    if ( init_index2(args->out,args->out_hdr,args->output_fname,
+                     &args->index_fn, args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->output_fname);
 
-    bcf1_t *line;
-    int prev_rid = -1, prev_pos = -1, prev_type = 0;
-    while ( (line = next_atomized_line(args)) )
+    while (1)
     {
-        args->ntotal++;
-        if ( args->rmdup )
+        // buffer lines until a different position is reached
+        int done = 0;
+        while (1)
         {
-            int line_type = bcf_get_variant_types(line);
-            if ( prev_rid>=0 && prev_rid==line->rid && prev_pos==line->pos )
-            {
-                if ( args->rmdup & BCF_SR_PAIR_ANY ) continue;    // rmdup by position only
-                if ( args->rmdup & BCF_SR_PAIR_SNPS && line_type&(VCF_SNP|VCF_MNP) && prev_type&(VCF_SNP|VCF_MNP) ) continue;
-                if ( args->rmdup & BCF_SR_PAIR_INDELS && line_type&(VCF_INDEL) && prev_type&(VCF_INDEL) ) continue;
-                if ( args->rmdup & BCF_SR_PAIR_EXACT && cmpals_match(&args->cmpals_in, line) ) continue;
-            }
-            else
-            {
-                prev_rid  = line->rid;
-                prev_pos  = line->pos;
-                prev_type = 0;
-                if ( args->rmdup & BCF_SR_PAIR_EXACT ) cmpals_reset(&args->cmpals_in);
-            }
-            prev_type |= line_type;
-            if ( args->rmdup & BCF_SR_PAIR_EXACT ) cmpals_add(&args->cmpals_in, line);
+            done = split_and_normalize(args);
+            if ( done ) break;      // no more lines available
+            int i = args->rbuf.f;
+            int j = rbuf_last(&args->rbuf);
+            if ( args->lines[i]->rid != args->lines[j]->rid ) break;
+            if ( args->lines[i]->pos != args->lines[j]->pos ) break;
         }
-
-        // still on the same chromosome?
-        int i,j,ilast = rbuf_last(&args->rbuf);
-        if ( ilast>=0 && line->rid != args->lines[ilast]->rid ) flush_buffer(args, args->out, args->rbuf.n); // new chromosome
-
-        int split = 0;
-        if ( args->mrows_op==MROWS_SPLIT )
-        {
-            split = 1;
-            if ( args->mrows_collapse!=COLLAPSE_BOTH && args->mrows_collapse!=COLLAPSE_ANY )
-            {
-                if ( !(bcf_get_variant_types(line) & args->mrows_collapse) ) split = 0;
-            }
-            if ( split && line->n_allele>2 )
-            {
-                args->nsplit++;
-                split_multiallelic_to_biallelics(args, line);
-                for (j=0; j<args->ntmp_lines; j++)
-                    normalize_line(args, args->tmp_lines[j]);
-            }
-            else
-                split = 0;
-        }
-        if ( !split )
-            normalize_line(args, line);
+        if ( done ) break;
 
         // find out how many sites to flush
-        ilast = rbuf_last(&args->rbuf);
-        j = 0;
+        int ifst  = args->rbuf.f;
+        int ilast = rbuf_last(&args->rbuf);
+        int i, j = 0;
         for (i=-1; rbuf_next(&args->rbuf,&i); )
         {
+            if ( args->lines[ifst]->rid != args->lines[ilast]->rid )
+            {
+                // there are two chromosomes in the buffer, count how many are on the first chromosome
+                if ( args->lines[ifst]->rid != args->lines[i]->rid ) break;
+                j++;
+                continue;
+            }
+            // there is just one chromosome, flush only lines that are unlikely to change order on
+            // realigning (the buf_win constant)
             if ( args->lines[ilast]->pos - args->lines[i]->pos < args->buf_win ) break;
             j++;
         }
@@ -2251,7 +2324,7 @@ static void normalize_vcf(args_t *args)
     }
     if ( hts_close(args->out)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
 
-    fprintf(bcftools_stderr,"Lines   total/split/realigned/skipped:\t%d/%d/%d/%d\n", args->ntotal,args->nsplit,args->nchanged,args->nskipped);
+    fprintf(bcftools_stderr,"Lines   total/split/joined/realigned/skipped:\t%d/%d/%d/%d/%d\n", args->ntotal,args->nsplit,args->njoined,args->nchanged,args->nskipped);
     if ( args->check_ref & CHECK_REF_FIX )
         fprintf(bcftools_stderr,"REF/ALT total/modified/added:  \t%d/%d/%d\n", args->nref.tot,args->nref.swap,args->nref.set);
 }
@@ -2288,9 +2361,9 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -t, --targets REGION            Similar to -r but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "    -T, --targets-file FILE         Similar to -R but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "        --targets-overlap 0|1|2     Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
-    fprintf(bcftools_stderr, "        --threads INT               Use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "        --threads INT               Use multithreading with INT worker threads [0]\n");
     fprintf(bcftools_stderr, "    -w, --site-win INT              Buffer for sorting lines which changed position during realignment [1000]\n");
-    fprintf(bcftools_stderr, "        --write-index               Automatically index the output files [off]\n");
+    fprintf(bcftools_stderr, "    -W, --write-index[=FMT]         Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Examples:\n");
     fprintf(bcftools_stderr, "   # normalize and left-align indels\n");
@@ -2353,11 +2426,11 @@ int main_vcfnorm(int argc, char *argv[])
         {"check-ref",required_argument,NULL,'c'},
         {"strict-filter",no_argument,NULL,'s'},
         {"no-version",no_argument,NULL,8},
-        {"write-index",no_argument,NULL,14},
+        {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "hr:R:f:w:Dd:o:O:c:m:t:T:sNag:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "hr:R:f:w:Dd:o:O:c:m:t:T:sNag:W::",loptions,NULL)) >= 0) {
         switch (c) {
             case  10:
                 // possibly generalize this also to INFO/AD and other tags
@@ -2378,7 +2451,10 @@ int main_vcfnorm(int argc, char *argv[])
                 else if ( optarg[0]=='.' ) args->ma_use_ref_allele = 0;
                 else error("Invalid argument to --multi-overlaps\n");
                 break;
-            case 14 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case 15 : args->right_align = 1; break;
             case 'N': args->do_indels = 0; break;
             case 'd':
@@ -2487,7 +2563,6 @@ int main_vcfnorm(int argc, char *argv[])
 
     if ( bcf_sr_set_threads(args->files, args->n_threads)<0 ) error("Failed to create threads\n");
     if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
-    if ( args->mrows_op&MROWS_SPLIT && args->rmdup ) error("Cannot combine -D and -m-\n");
     init_data(args);
     normalize_vcf(args);
     destroy_data(args);

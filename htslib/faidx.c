@@ -190,7 +190,7 @@ static faidx_t *fai_build_core(BGZF *bgzf) {
                 kputsn("", 0, &name);
 
                 if (c < 0) {
-                    hts_log_error("The last entry '%s' has no sequence", name.s);
+                    hts_log_error("The last entry '%s' has no sequence at line %d", name.s, line_num);
                     goto fail;
                 }
 
@@ -247,7 +247,7 @@ static faidx_t *fai_build_core(BGZF *bgzf) {
                         state = SEQ_END;
 
                 } else if (line_len < ll) {
-                    hts_log_error("Different line length in sequence '%s'", name.s);
+                    hts_log_error("Different line length in sequence '%s' at line %d", name.s, line_num);
                     goto fail;
                 }
 
@@ -269,7 +269,7 @@ static faidx_t *fai_build_core(BGZF *bgzf) {
             case IN_QUAL:
                 if (c == '\n') {
                     if (!read_done) {
-                        hts_log_error("Inlined empty line is not allowed in quality of sequence '%s'", name.s);
+                        hts_log_error("Inlined empty line is not allowed in quality of sequence '%s' at line %d", name.s, line_num);
                         goto fail;
                     }
 
@@ -312,6 +312,7 @@ static faidx_t *fai_build_core(BGZF *bgzf) {
         if (fai_insert_index(idx, name.s, seq_len, line_len, char_len, seq_offset, qual_offset) != 0)
             goto fail;
     } else {
+        hts_log_error("File truncated at line %d", line_num);
         goto fail;
     }
 
@@ -446,7 +447,7 @@ static int fai_build3_core(const char *fn, const char *fnfai, const char *fngzi)
     bgzf = bgzf_open(fn, "r");
 
     if ( !bgzf ) {
-        hts_log_error("Failed to open the file %s", fn);
+        hts_log_error("Failed to open the file %s : %s", fn, strerror(errno));
         goto fail;
     }
 

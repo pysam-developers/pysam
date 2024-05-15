@@ -277,7 +277,7 @@ int rcns_set_reads(read_cns_t *rcns, bam_pileup1_t *plp, int nplp)
                 }
                 y += len;
             }
-            else if ( op==BAM_CDEL )
+            else if ( op==BAM_CDEL || op==BAM_CREF_SKIP )   /* note: unsure about BAM_CREF_SKIP, don't have data to test */
             {
                 if ( x>rcns->beg && x+len-1<=rcns->end )
                 {

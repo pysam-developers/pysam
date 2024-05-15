@@ -267,7 +267,7 @@ int bcftools_main(int argc, char *argv[])
     if (argc < 2) { usage(bcftools_stderr); return 1; }
 
     if (strcmp(argv[1], "version") == 0 || strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
-        fprintf(bcftools_stdout, "bcftools %s\nUsing htslib %s\nCopyright (C) 2023 Genome Research Ltd.\n", bcftools_version(), hts_version());
+        fprintf(bcftools_stdout, "bcftools %s\nUsing htslib %s\nCopyright (C) 2024 Genome Research Ltd.\n", bcftools_version(), hts_version());
 #if USE_GPL
         fprintf(bcftools_stdout, "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n");
 #else

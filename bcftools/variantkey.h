@@ -35,7 +35,7 @@
  * @file variantkey.h
  * @brief VariantKey main functions.
  *
- * The functions provided here allows to generate and process a 64 bit Unsigned Integer Keys for Human Genetic Variants.
+ * The functions provided here allow the generation and processing of a 64 bit Unsigned Integer Keys for Human Genetic Variants.
  * The VariantKey is sortable for chromosome and position,
  * and it is also fully reversible for variants with up to 11 bases between Reference and Alternate alleles.
  * It can be used to sort, search and match variant-based data easily and very quickly.

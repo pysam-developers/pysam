@@ -170,6 +170,7 @@ typedef struct _args_t
     int argc, drop_header, record_cmd_line, tgts_is_vcf, mark_sites_logic, force, single_overlaps;
     int columns_is_file, has_append_mode, pair_logic;
     dbuf_t *header_lines;
+    bcf1_t *current_rec;    // current record for local setters
 }
 args_t;
 
@@ -510,17 +511,21 @@ static int vcf_getter_info_str2str(args_t *args, bcf1_t *rec, annot_col_t *col, 
 static int vcf_getter_id2str(args_t *args, bcf1_t *rec, annot_col_t *col, void **ptr, int *mptr)
 {
     char *str = *((char**)ptr);
-    int len = strlen(rec->d.id);
+    int i, len = strlen(rec->d.id);
     if ( len >= *mptr ) str = realloc(str, len+1);
-    strcpy(str, rec->d.id);
+    for (i=0; i<len; i++)
+        str[i] = rec->d.id[i]==';' ? ',' : rec->d.id[i];
+    str[len] = 0;
     *((char**)ptr) = str;
     *mptr = len+1;
     return len;
 }
-static int vcf_getter_filter2str(args_t *args, bcf1_t *rec, annot_col_t *col, void **ptr, int *mptr)
+inline static int vcf_getter_filter2str_core(bcf_hdr_t *hdr, bcf1_t *rec, char **ptr, int *mptr)
 {
+    if ( !(rec->unpacked & BCF_UN_FLT) ) bcf_unpack(rec, BCF_UN_FLT);
+
     kstring_t str;
-    str.s = *((char**)ptr);
+    str.s = *ptr;
     str.m = *mptr;
     str.l = 0;
 
@@ -529,15 +534,23 @@ static int vcf_getter_filter2str(args_t *args, bcf1_t *rec, annot_col_t *col, vo
     {
         for (i=0; i<rec->d.n_flt; i++)
         {
-            if (i) kputc(';', &str);
-            kputs(bcf_hdr_int2id(args->tgts_hdr,BCF_DT_ID,rec->d.flt[i]), &str);
+            if (i) kputc(',', &str);
+            kputs(bcf_hdr_int2id(hdr,BCF_DT_ID,rec->d.flt[i]), &str);
         }
     }
     else kputc('.', &str);
 
-    *((char**)ptr) = str.s;
+    *ptr  = str.s;
     *mptr = str.m;
     return str.l;
+}
+static int vcf_getter_filter2str_local(args_t *args, bcf1_t *rec, annot_col_t *col, void **ptr, int *mptr)
+{
+    return vcf_getter_filter2str_core(args->hdr_out, args->current_rec, (char**)ptr, mptr);
+}
+static int vcf_getter_filter2str(args_t *args, bcf1_t *rec, annot_col_t *col, void **ptr, int *mptr)
+{
+    return vcf_getter_filter2str_core(args->tgts_hdr, rec, (char**)ptr, mptr);
 }
 static int setter_filter(args_t *args, bcf1_t *line, annot_col_t *col, void *data)
 {
@@ -2290,10 +2303,30 @@ static void init_columns(args_t *args)
             if ( bcf_hdr_id2type(args->tgts_hdr,BCF_HL_INFO,hdr_id)!=BCF_HT_STR )
                 error("Only Type=String tags can be used to annotate the ID column\n");
         }
-        else if ( (ptr=strstr(str.s,":=")) && !args->targets_fname )
+        else if ( (ptr=strstr(str.s,":=")) && (!args->targets_fname || !strncasecmp(ptr+2,"./",2)) )
         {
             *ptr = 0;
-            rename_annots_push(args,ptr+2,str.s);
+            if ( !strncasecmp(str.s,"INFO/",5) && (!strcasecmp(ptr+2,"FILTER") || !strcasecmp(ptr+2,"./FILTER")) )
+            {
+                // -a not present and transferring filter, needs to be a local transfer
+                args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
+                annot_col_t *col = &args->cols[args->ncols-1];
+                memset(col,0,sizeof(*col));
+                col->icol = icol;
+                col->replace = replace;
+                col->setter = vcf_setter_info_str;
+                col->getter = vcf_getter_filter2str_local;
+                col->hdr_key_src = strdup(ptr+2);
+                col->hdr_key_dst = strdup(str.s+5);
+                tmp.l = 0;
+                ksprintf(&tmp,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Transferred FILTER column\">",col->hdr_key_dst);
+                bcf_hdr_append(args->hdr_out, tmp.s);
+                if (bcf_hdr_sync(args->hdr_out) < 0) error_errno("[%s] Failed to update header", __func__);
+                int hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, col->hdr_key_dst);
+                col->number = bcf_hdr_id2length(args->hdr_out,BCF_HL_INFO,hdr_id);
+            }
+            else
+                rename_annots_push(args,ptr+2,str.s);
             *ptr = ':';
         }
         else if ( !strcasecmp("FILTER",str.s) )
@@ -2487,6 +2520,13 @@ static void init_columns(args_t *args)
                           "       (the annotation type is modified to \"Number=.\" and allele ordering is disregarded)\n");
                 fprintf(stderr,"Warning: the =INFO/TAG feature modifies the annotation to \"Number=.\" and disregards allele ordering\n");
             }
+
+            args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
+            annot_col_t *col = &args->cols[args->ncols-1];
+            memset(col,0,sizeof(*col));
+            col->icol = icol;
+            col->replace = replace;
+
             int explicit_src_info = 0;
             int explicit_dst_info = 0;
             char *key_dst;
@@ -2517,15 +2557,14 @@ static void init_columns(args_t *args)
                     key_src[-2] = ':';
                     error("Did you mean \"FMT/%s\" rather than \"%s\"?\n",str.s,str.s);
                 }
+                else if ( !strcasecmp("FILTER",key_src) && args->tgts_is_vcf )
+                {
+                    col->getter = vcf_getter_filter2str;
+                }
             }
             else
                 key_src = key_dst;
 
-            args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
-            annot_col_t *col = &args->cols[args->ncols-1];
-            memset(col,0,sizeof(*col));
-            col->icol = icol;
-            col->replace = replace;
             col->hdr_key_src = strdup(key_src);
             col->hdr_key_dst = strdup(key_dst);
 
@@ -2782,7 +2821,7 @@ static void rename_annots(args_t *args)
         while ( *ptr && isspace(*ptr) ) ptr++;
         if ( !*ptr ) { *rmme = ' '; error("Could not parse: %s\n", args->rename_annots_map[i]); }
         if ( rename_annots_core(args, args->rename_annots_map[i], ptr) < 0 )
-            error("Could not parse \"%s %s\", expected INFO, FORMAT, or FILTER prefix\n",args->rename_annots_map[i],ptr);
+            error("Cannot rename \"%s\" to \"%s\"\n",args->rename_annots_map[i],ptr);
     }
 }
 static void rename_annots_push(args_t *args, char *src, char *dst)
@@ -2890,7 +2929,9 @@ static void init_data(args_t *args)
         if ( args->n_threads )
             hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->files->p);
         if ( bcf_hdr_write(args->out_fh, args->hdr_out)!=0 ) error("[%s] Error: failed to write the header to %s\n", __func__,args->output_fname);
-        if ( args->write_index && init_index(args->out_fh,args->hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
+        if ( init_index2(args->out_fh,args->hdr,args->output_fname,
+                         &args->index_fn, args->write_index) < 0 )
+            error("Error: failed to initialise index for %s\n",args->output_fname);
     }
 }
 
@@ -3084,6 +3125,8 @@ static int strstr_match(char *a, char *b)
 }
 static void annotate(args_t *args, bcf1_t *line)
 {
+    args->current_rec = line;
+
     int i, j;
     for (i=0; i<args->nrm; i++)
         args->rm[i].handler(args, line, &args->rm[i]);
@@ -3111,6 +3154,12 @@ static void annotate(args_t *args, bcf1_t *line)
                 if ( args->min_overlap_vcf && args->min_overlap_vcf > (float)isec/len_vcf ) continue;
 
                 parse_annot_line(args, regitr_payload(args->tgt_itr,char*), tmp);
+
+                // If a plain BED file is provided and we are asked to just mark overlapping sites, there are
+                // no additional columns. Not sure if there can be any side effects for ill-formatted BED files
+                // with variable number of columns
+                if ( !args->ncols && args->mark_sites ) has_overlap = 1;
+
                 for (j=0; j<args->ncols; j++)
                 {
                     if ( args->cols[j].done==1 ) continue;
@@ -3280,6 +3329,15 @@ static void annotate(args_t *args, bcf1_t *line)
             has_overlap = 1;
         }
     }
+    else if ( args->ncols )
+    {
+        for (j=0; j<args->ncols; j++)
+        {
+            if ( !args->cols[j].setter ) continue;
+            if ( args->cols[j].setter(args,line,&args->cols[j],NULL) )
+                error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+        }
+    }
     if ( args->set_ids )
     {
         args->tmpks.l = 0;
@@ -3340,7 +3398,7 @@ static void usage(args_t *args)
     fprintf(stderr, "       --single-overlaps           Keep memory low by avoiding complexities arising from handling multiple overlapping intervals\n");
     fprintf(stderr, "   -x, --remove LIST               List of annotations (e.g. ID,INFO/DP,FORMAT/DP,FILTER) to remove (or keep with \"^\" prefix). See man page for details\n");
     fprintf(stderr, "       --threads INT               Number of extra output compression threads [0]\n");
-    fprintf(stderr, "       --write-index               Automatically index the output files [off]\n");
+    fprintf(stderr, "   -W, --write-index[=FMT]         Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "   http://samtools.github.io/bcftools/howtos/annotate.html\n");
@@ -3397,11 +3455,11 @@ int main_vcfannotate(int argc, char *argv[])
         {"min-overlap",required_argument,NULL,12},
         {"no-version",no_argument,NULL,8},
         {"force",no_argument,NULL,'f'},
-        {"write-index",no_argument,NULL,13},
+        {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h:H:?o:O:r:R:a:x:c:C:i:e:S:s:I:m:kl:f",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:H:?o:O:r:R:a:x:c:C:i:e:S:s:I:m:kl:fW::",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'f': args->force = 1; break;
@@ -3474,7 +3532,10 @@ int main_vcfannotate(int argc, char *argv[])
             case 10 : args->single_overlaps = 1; break;
             case 11 : args->rename_annots = optarg; break;
             case 12 : args->min_overlap_str = optarg; break;
-            case 13 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }

@@ -1,6 +1,6 @@
 /*  sam.c -- SAM and BAM file I/O and manipulation.
 
-    Copyright (C) 2008-2010, 2012-2023 Genome Research Ltd.
+    Copyright (C) 2008-2010, 2012-2024 Genome Research Ltd.
     Copyright (C) 2010, 2012, 2013 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -36,6 +36,10 @@ DEALINGS IN THE SOFTWARE.  */
 #include <signal.h>
 #include <inttypes.h>
 #include <unistd.h>
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#include "fuzz_settings.h"
+#endif
 
 // Suppress deprecation message for cigar_tab, which we initialise
 #include "htslib/hts_defs.h"
@@ -251,6 +255,9 @@ sam_hdr_t *bam_hdr_read(BGZF *fp)
 
     bufsize = h->l_text + 1;
     if (bufsize < h->l_text) goto nomem; // so large that adding 1 overflowed
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    if (bufsize > FUZZ_ALLOC_LIMIT) goto nomem;
+#endif
     h->text = (char*)malloc(bufsize);
     if (!h->text) goto nomem;
     h->text[h->l_text] = 0; // make sure it is NULL terminated
@@ -264,6 +271,10 @@ sam_hdr_t *bam_hdr_read(BGZF *fp)
     if (h->n_targets < 0) goto invalid;
 
     // read reference sequence names and lengths
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    if (h->n_targets > (FUZZ_ALLOC_LIMIT - bufsize)/(sizeof(char*)+sizeof(uint32_t)))
+        goto nomem;
+#endif
     if (h->n_targets > 0) {
         h->target_name = (char**)calloc(h->n_targets, sizeof(char*));
         if (!h->target_name) goto nomem;
@@ -425,6 +436,12 @@ int sam_realloc_bam_data(bam1_t *b, size_t desired)
         errno = ENOMEM; // Not strictly true but we can't store the size
         return -1;
     }
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    if (new_m_data > FUZZ_ALLOC_LIMIT) {
+        errno = ENOMEM;
+        return -1;
+    }
+#endif
     if ((bam_get_mempolicy(b) & BAM_USER_OWNS_DATA) == 0) {
         new_data = realloc(b->data, new_m_data);
     } else {
@@ -691,7 +708,7 @@ static int bam_tag2cigar(bam1_t *b, int recal_bin, int give_warning) // return 0
     if (recal_bin)
         b->core.bin = hts_reg2bin(b->core.pos, bam_endpos(b), 14, 5);
     if (give_warning)
-        hts_log_error("%s encodes a CIGAR with %d operators at the CG tag", bam_get_qname(b), c->n_cigar);
+        hts_log_warning("%s encodes a CIGAR with %d operators at the CG tag", bam_get_qname(b), c->n_cigar);
     return 1;
 }
 
@@ -887,8 +904,6 @@ static int bam_write_idx1(htsFile *fp, const sam_hdr_t *h, const bam1_t *b) {
         return -1;
     if (!bfp->mt)
         hts_idx_amend_last(fp->idx, bgzf_tell(bfp));
-    else
-        bgzf_idx_amend_last(bfp, fp->idx, bgzf_tell(bfp));
 
     int ret = bam_write1(bfp, b);
     if (ret < 0)
@@ -1084,7 +1099,7 @@ int sam_idx_save(htsFile *fp) {
         if (hts_idx_finish(fp->idx, bgzf_tell(fp->fp.bgzf)) < 0)
             return -1;
 
-        return hts_idx_save_as(fp->idx, NULL, fp->fnidx, hts_idx_fmt(fp->idx));
+        return hts_idx_save_but_not_close(fp->idx, fp->fnidx, hts_idx_fmt(fp->idx));
 
     } else if (fp->format.format == cram) {
         // flushed and closed by cram_close
@@ -1252,6 +1267,26 @@ static int bam_sym_lookup(void *data, char *str, char **end,
                     return -1;
                 }
             }
+        }
+        break;
+
+    case 'h':
+        if (memcmp(str, "hclen", 5) == 0) {
+            int hclen = 0;
+            uint32_t *cigar = bam_get_cigar(b);
+            uint32_t ncigar = b->core.n_cigar;
+
+            // left
+            if (ncigar > 0 && bam_cigar_op(cigar[0]) == BAM_CHARD_CLIP)
+                hclen = bam_cigar_oplen(cigar[0]);
+
+            // right
+            if (ncigar > 1 && bam_cigar_op(cigar[ncigar-1]) == BAM_CHARD_CLIP)
+                hclen += bam_cigar_oplen(cigar[ncigar-1]);
+
+            *end = str+5;
+            res->d = hclen;
+            return 0;
         }
         break;
 
@@ -2348,9 +2383,175 @@ int sam_hdr_change_HD(sam_hdr_t *h, const char *key, const char *val)
  *** SAM record I/O ***
  **********************/
 
-static int sam_parse_B_vals(char type, uint32_t n, char *in, char **end,
-                            char *r, bam1_t *b)
-{
+// The speed of this code can vary considerably depending on minor code
+// changes elsewhere as some of the tight loops are particularly prone to
+// speed changes when the instruction blocks are split over a 32-byte
+// boundary.  To protect against this, we explicitly specify an alignment
+// for this function.  If this is insufficient, we may also wish to
+// consider alignment of blocks within this function via
+// __attribute__((optimize("align-loops=5"))) (gcc) or clang equivalents.
+// However it's not very portable.
+// Instead we break into separate functions so we can explicitly specify
+// use __attribute__((aligned(32))) instead and force consistent loop
+// alignment.
+static inline int64_t grow_B_array(bam1_t *b, uint32_t *n, size_t size) {
+    // Avoid overflow on 32-bit platforms, but it breaks BAM anyway
+    if (*n > INT32_MAX*0.666) {
+        errno = ENOMEM;
+        return -1;
+    }
+
+    size_t bytes = (size_t)size * (size_t)(*n>>1);
+    if (possibly_expand_bam_data(b, bytes) < 0) {
+        hts_log_error("Out of memory");
+        return -1;
+    }
+
+    (*n)+=*n>>1;
+    return 0;
+}
+
+
+// This ensures that q always ends up at the next comma after
+// reading a number even if it's followed by junk.  It
+// prevents the possibility of trying to read more than n items.
+#define skip_to_comma_(q) do { while (*(q) > '\t' && *(q) != ',') (q)++; } while (0)
+
+HTS_ALIGN32
+static char *sam_parse_Bc_vals(bam1_t *b, char *q, uint32_t *nused,
+                               uint32_t *nalloc, int *overflow) {
+    while (*q == ',') {
+        if ((*nused)++ >= (*nalloc)) {
+            if (grow_B_array(b, nalloc, 1) < 0)
+                return NULL;
+        }
+        *(b->data + b->l_data) = hts_str2int(q + 1, &q, 8, overflow);
+        b->l_data++;
+    }
+    return q;
+}
+
+HTS_ALIGN32
+static char *sam_parse_BC_vals(bam1_t *b, char *q, uint32_t *nused,
+                               uint32_t *nalloc, int *overflow) {
+    while (*q == ',') {
+        if ((*nused)++ >= (*nalloc)) {
+            if (grow_B_array(b, nalloc, 1) < 0)
+                return NULL;
+        }
+        if (q[1] != '-') {
+            *(b->data + b->l_data) = hts_str2uint(q + 1, &q, 8, overflow);
+            b->l_data++;
+        } else {
+            *overflow = 1;
+            q++;
+            skip_to_comma_(q);
+        }
+    }
+    return q;
+}
+
+HTS_ALIGN32
+static char *sam_parse_Bs_vals(bam1_t *b, char *q, uint32_t *nused,
+                               uint32_t *nalloc, int *overflow) {
+    while (*q == ',') {
+        if ((*nused)++ >= (*nalloc)) {
+            if (grow_B_array(b, nalloc, 2) < 0)
+                return NULL;
+        }
+        i16_to_le(hts_str2int(q + 1, &q, 16, overflow),
+                  b->data + b->l_data);
+        b->l_data += 2;
+    }
+    return q;
+}
+
+HTS_ALIGN32
+static char *sam_parse_BS_vals(bam1_t *b, char *q, uint32_t *nused,
+                               uint32_t *nalloc, int *overflow) {
+    while (*q == ',') {
+        if ((*nused)++ >= (*nalloc)) {
+            if (grow_B_array(b, nalloc, 2) < 0)
+                return NULL;
+        }
+        if (q[1] != '-') {
+            u16_to_le(hts_str2uint(q + 1, &q, 16, overflow),
+                      b->data + b->l_data);
+            b->l_data += 2;
+        } else {
+            *overflow = 1;
+            q++;
+            skip_to_comma_(q);
+        }
+    }
+    return q;
+}
+
+HTS_ALIGN32
+static char *sam_parse_Bi_vals(bam1_t *b, char *q, uint32_t *nused,
+                               uint32_t *nalloc, int *overflow) {
+    while (*q == ',') {
+        if ((*nused)++ >= (*nalloc)) {
+            if (grow_B_array(b, nalloc, 4) < 0)
+                return NULL;
+        }
+        i32_to_le(hts_str2int(q + 1, &q, 32, overflow),
+                  b->data + b->l_data);
+        b->l_data += 4;
+    }
+    return q;
+}
+
+HTS_ALIGN32
+static char *sam_parse_BI_vals(bam1_t *b, char *q, uint32_t *nused,
+                               uint32_t *nalloc, int *overflow) {
+    while (*q == ',') {
+        if ((*nused)++ >= (*nalloc)) {
+            if (grow_B_array(b, nalloc, 4) < 0)
+                return NULL;
+        }
+        if (q[1] != '-') {
+            u32_to_le(hts_str2uint(q + 1, &q, 32, overflow),
+                      b->data + b->l_data);
+            b->l_data += 4;
+        } else {
+            *overflow = 1;
+            q++;
+            skip_to_comma_(q);
+        }
+    }
+    return q;
+}
+
+HTS_ALIGN32
+static char *sam_parse_Bf_vals(bam1_t *b, char *q, uint32_t *nused,
+                               uint32_t *nalloc, int *overflow) {
+    while (*q == ',') {
+        if ((*nused)++ >= (*nalloc)) {
+            if (grow_B_array(b, nalloc, 4) < 0)
+                return NULL;
+        }
+        float_to_le(strtod(q + 1, &q), b->data + b->l_data);
+        b->l_data += 4;
+    }
+    return q;
+}
+
+HTS_ALIGN32
+static int sam_parse_B_vals_r(char type, uint32_t nalloc, char *in,
+                              char **end, bam1_t *b,
+                              int *ctr) {
+    // Protect against infinite recursion when dealing with invalid input.
+    // An example string is "XX:B:C,-".  The lack of a number means min=0,
+    // but it overflowed due to "-" and so we repeat ad-infinitum.
+    //
+    // Loop detection is the safest solution incase there are other
+    // strange corner cases with malformed inputs.
+    if (++(*ctr) > 2) {
+        hts_log_error("Malformed data in B:%c array", type);
+        return -1;
+    }
+
     int orig_l = b->l_data;
     char *q = in;
     int32_t size;
@@ -2363,80 +2564,60 @@ static int sam_parse_B_vals(char type, uint32_t n, char *in, char **end,
         return -1;
     }
 
-    // Ensure space for type + values
-    bytes = (size_t) n * (size_t) size;
-    if (bytes / size != n
+    // Ensure space for type + values.
+    // The first pass through here we don't know the number of entries and
+    // nalloc == 0.  We start with a small working set and then parse the
+    // data, growing as needed.
+    //
+    // If we have a second pass through we do know the number of entries
+    // and nalloc is already known.  We have no need to expand the bam data.
+    if (!nalloc)
+         nalloc=7;
+
+    // Ensure allocated memory is big enough (for current nalloc estimate)
+    bytes = (size_t) nalloc * (size_t) size;
+    if (bytes / size != nalloc
         || possibly_expand_bam_data(b, bytes + 2 + sizeof(uint32_t))) {
         hts_log_error("Out of memory");
         return -1;
     }
 
+    uint32_t nused = 0;
+
     b->data[b->l_data++] = 'B';
     b->data[b->l_data++] = type;
-    i32_to_le(n, b->data + b->l_data);
+    // 32-bit B-array length is inserted later once we know it.
+    int b_len_idx = b->l_data;
     b->l_data += sizeof(uint32_t);
-    // This ensures that q always ends up at the next comma after
-    // reading a number even if it's followed by junk.  It
-    // prevents the possibility of trying to read more than n items.
-#define skip_to_comma_(q) do { while (*(q) > '\t' && *(q) != ',') (q)++; } while (0)
+
     if (type == 'c') {
-        while (q < r) {
-            *(b->data + b->l_data) = hts_str2int(q + 1, &q, 8, &overflow);
-            b->l_data++;
-            skip_to_comma_(q);
-        }
+        if (!(q = sam_parse_Bc_vals(b, q, &nused, &nalloc, &overflow)))
+            return -1;
     } else if (type == 'C') {
-        while (q < r) {
-            if (*q != '-') {
-                *(b->data + b->l_data) = hts_str2uint(q + 1, &q, 8, &overflow);
-                b->l_data++;
-            } else {
-                overflow = 1;
-            }
-            skip_to_comma_(q);
-        }
+        if (!(q = sam_parse_BC_vals(b, q, &nused, &nalloc, &overflow)))
+            return -1;
     } else if (type == 's') {
-        while (q < r) {
-            i16_to_le(hts_str2int(q + 1, &q, 16, &overflow), b->data + b->l_data);
-            b->l_data += 2;
-            skip_to_comma_(q);
-        }
+        if (!(q = sam_parse_Bs_vals(b, q, &nused, &nalloc, &overflow)))
+            return -1;
     } else if (type == 'S') {
-        while (q < r) {
-            if (*q != '-') {
-                u16_to_le(hts_str2uint(q + 1, &q, 16, &overflow), b->data + b->l_data);
-                b->l_data += 2;
-            } else {
-                overflow = 1;
-            }
-            skip_to_comma_(q);
-        }
+        if (!(q = sam_parse_BS_vals(b, q, &nused, &nalloc, &overflow)))
+            return -1;
     } else if (type == 'i') {
-        while (q < r) {
-            i32_to_le(hts_str2int(q + 1, &q, 32, &overflow), b->data + b->l_data);
-            b->l_data += 4;
-            skip_to_comma_(q);
-        }
+        if (!(q = sam_parse_Bi_vals(b, q, &nused, &nalloc, &overflow)))
+            return -1;
     } else if (type == 'I') {
-        while (q < r) {
-            if (*q != '-') {
-                u32_to_le(hts_str2uint(q + 1, &q, 32, &overflow), b->data + b->l_data);
-                b->l_data += 4;
-            } else {
-                overflow = 1;
-            }
-            skip_to_comma_(q);
-        }
+        if (!(q = sam_parse_BI_vals(b, q, &nused, &nalloc, &overflow)))
+            return -1;
     } else if (type == 'f') {
-        while (q < r) {
-            float_to_le(strtod(q + 1, &q), b->data + b->l_data);
-            b->l_data += 4;
-            skip_to_comma_(q);
-        }
-    } else {
-        hts_log_error("Unrecognized type B:%c", type);
+        if (!(q = sam_parse_Bf_vals(b, q, &nused, &nalloc, &overflow)))
+            return -1;
+    }
+    if (*q != '\t' && *q != '\0') {
+        // Unknown B array type or junk in the numbers
+        hts_log_error("Malformed B:%c", type);
         return -1;
     }
+    i32_to_le(nused, b->data + b_len_idx);
 
     if (!overflow) {
         *end = q;
@@ -2444,6 +2625,7 @@ static int sam_parse_B_vals(char type, uint32_t n, char *in, char **end,
     } else {
         int64_t max = 0, min = 0, val;
         // Given type was incorrect.  Try to rescue the situation.
+        char *r = q;
         q = in;
         overflow = 0;
         b->l_data = orig_l;
@@ -2458,19 +2640,19 @@ static int sam_parse_B_vals(char type, uint32_t n, char *in, char **end,
         if (!overflow) {
             if (min < 0) {
                 if (min >= INT8_MIN && max <= INT8_MAX) {
-                    return sam_parse_B_vals('c', n, in, end, r, b);
+                    return sam_parse_B_vals_r('c', nalloc, in, end, b, ctr);
                 } else if (min >= INT16_MIN && max <= INT16_MAX) {
-                    return sam_parse_B_vals('s', n, in, end, r, b);
+                    return sam_parse_B_vals_r('s', nalloc, in, end, b, ctr);
                 } else if (min >= INT32_MIN && max <= INT32_MAX) {
-                    return sam_parse_B_vals('i', n, in, end, r, b);
+                    return sam_parse_B_vals_r('i', nalloc, in, end, b, ctr);
                 }
             } else {
                 if (max < UINT8_MAX) {
-                    return sam_parse_B_vals('C', n, in, end, r, b);
+                    return sam_parse_B_vals_r('C', nalloc, in, end, b, ctr);
                 } else if (max <= UINT16_MAX) {
-                    return sam_parse_B_vals('S', n, in, end, r, b);
+                    return sam_parse_B_vals_r('S', nalloc, in, end, b, ctr);
                 } else if (max <= UINT32_MAX) {
-                    return sam_parse_B_vals('I', n, in, end, r, b);
+                    return sam_parse_B_vals_r('I', nalloc, in, end, b, ctr);
                 }
             }
         }
@@ -2479,6 +2661,14 @@ static int sam_parse_B_vals(char type, uint32_t n, char *in, char **end,
         return -1;
     }
 #undef skip_to_comma_
+}
+
+HTS_ALIGN32
+static int sam_parse_B_vals(char type, char *in, char **end, bam1_t *b)
+{
+    int ctr = 0;
+    uint32_t nalloc = 0;
+    return sam_parse_B_vals_r(type, nalloc, in, end, b, &ctr);
 }
 
 static inline unsigned int parse_sam_flag(char *v, char **rv, int *overflow) {
@@ -2624,16 +2814,11 @@ static inline int aux_parse(char *start, char *end, bam1_t *b, int lenient,
             b->data[b->l_data++] = '\0';
             q = end;
         } else if (type == 'B') {
-            uint32_t n;
-            char *r;
             type = *q++; // q points to the first ',' following the typing byte
             _parse_err(*q && *q != ',' && *q != '\t',
                        "B aux field type not followed by ','");
 
-            for (r = q, n = 0; *r > '\t'; ++r)
-                if (*r == ',') ++n;
-
-            if (sam_parse_B_vals(type, n, q, &q, r, b) < 0)
+            if (sam_parse_B_vals(type, q, &q, b) < 0)
                 goto err_ret;
         } else _parse_err(1, "unrecognized type %s", hts_strprint(logbuf, sizeof logbuf, '\'', &type, 1));
 
@@ -2750,7 +2935,6 @@ int sam_parse1(kstring_t *s, sam_hdr_t *h, bam1_t *b)
         int n_cigar = bam_parse_cigar(p, &p, b);
         if (n_cigar < 1 || *p++ != '\t') goto err_ret;
         cigar = (uint32_t *)(b->data + old_l_data);
-        c->n_cigar = n_cigar;
 
         // can't use bam_endpos() directly as some fields not yet set up
         cigreflen = (!(c->flag&BAM_FUNMAP))? bam_cigar2rlen(c->n_cigar, cigar) : 1;
@@ -2926,20 +3110,36 @@ ssize_t bam_parse_cigar(const char *in, char **end, bam1_t *b) {
     }
     if (end) *end = (char *)in;
 
-    if (*in == '*') {
-        if (end) (*end)++;
+    n_cigar = (*in == '*') ? 0 : read_ncigar(in);
+    if (!n_cigar && b->core.n_cigar == 0) {
+        if (end) *end = (char *)in+1;
         return 0;
     }
-    n_cigar = read_ncigar(in);
-    if (!n_cigar) return 0;
-    if (possibly_expand_bam_data(b, n_cigar * sizeof(uint32_t)) < 0) {
+
+    ssize_t cig_diff = n_cigar - b->core.n_cigar;
+    if (cig_diff > 0 &&
+        possibly_expand_bam_data(b, cig_diff * sizeof(uint32_t)) < 0) {
         hts_log_error("Memory allocation error");
         return -1;
     }
 
-    if (!(diff = parse_cigar(in, (uint32_t *)(b->data + b->l_data), n_cigar))) return -1;
-    b->l_data += (n_cigar * sizeof(uint32_t));
-    if (end) *end = (char *)in+diff;
+    uint32_t *cig = bam_get_cigar(b);
+    if ((uint8_t *)cig != b->data + b->l_data) {
+        // Modifying an BAM existing BAM record
+        uint8_t  *seq = bam_get_seq(b);
+        memmove(cig + n_cigar, seq, (b->data + b->l_data) - seq);
+    }
+
+    if (n_cigar) {
+        if (!(diff = parse_cigar(in, cig, n_cigar)))
+            return -1;
+    } else {
+        diff = 1; // handle "*"
+    }
+
+    b->l_data += cig_diff * sizeof(uint32_t);
+    b->core.n_cigar = n_cigar;
+    if (end) *end = (char *)in + diff;
 
     return n_cigar;
 }
@@ -4167,6 +4367,15 @@ int sam_read1(htsFile *fp, sam_hdr_t *h, bam1_t *b)
     return pass_filter < 0 ? -2 : ret;
 }
 
+// With gcc, -O3 or -ftree-loop-vectorize is really key here as otherwise
+// this code isn't vectorised and runs far slower than is necessary (even
+// with the restrict keyword being used).
+static inline void HTS_OPT3
+add33(uint8_t *a, const uint8_t * b, int32_t len) {
+    uint32_t i;
+    for (i = 0; i < len; i++)
+        a[i] = b[i]+33;
+}
 
 static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *str)
 {
@@ -4217,10 +4426,8 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
         if (s[0] == 0xff) {
             cp[i++] = '*';
         } else {
-            // local copy of c->l_qseq to aid unrolling
-            uint32_t lqseq = c->l_qseq;
-            for (i = 0; i < lqseq; ++i)
-                cp[i]=s[i]+33;
+            add33((uint8_t *)cp, s, c->l_qseq); // cp[i] = s[i]+33;
+            i = c->l_qseq;
         }
         cp[i] = 0;
         cp += i;
@@ -4241,8 +4448,8 @@ static int sam_format1_append(const bam_hdr_t *h, const bam1_t *b, kstring_t *st
     return str->l;
 
  bad_aux:
-    hts_log_error("Corrupted aux data for read %.*s",
-                  b->core.l_qname, bam_get_qname(b));
+    hts_log_error("Corrupted aux data for read %.*s flag %d",
+                  b->core.l_qname, bam_get_qname(b), b->core.flag);
     errno = EINVAL;
     return -1;
 
@@ -4636,7 +4843,7 @@ uint8_t *bam_aux_first(const bam1_t *b)
 {
     uint8_t *s = bam_get_aux(b);
     uint8_t *end = b->data + b->l_data;
-    if (s >= end) { errno = ENOENT; return NULL; }
+    if (end - s <= 2) { errno = ENOENT; return NULL; }
     return s+2;
 }
 
@@ -4645,11 +4852,12 @@ uint8_t *bam_aux_next(const bam1_t *b, const uint8_t *s)
     uint8_t *end = b->data + b->l_data;
     uint8_t *next = s? skip_aux((uint8_t *) s, end) : end;
     if (next == NULL) goto bad_aux;
-    if (next >= end) { errno = ENOENT; return NULL; }
+    if (end - next <= 2) { errno = ENOENT; return NULL; }
     return next+2;
 
  bad_aux:
-    hts_log_error("Corrupted aux data for read %s", bam_get_qname(b));
+    hts_log_error("Corrupted aux data for read %s flag %d",
+                  bam_get_qname(b), b->core.flag);
     errno = EINVAL;
     return NULL;
 }
@@ -4671,7 +4879,8 @@ uint8_t *bam_aux_get(const bam1_t *b, const char tag[2])
     return NULL;
 
  bad_aux:
-    hts_log_error("Corrupted aux data for read %s", bam_get_qname(b));
+    hts_log_error("Corrupted aux data for read %s flag %d",
+                  bam_get_qname(b), b->core.flag);
     errno = EINVAL;
     return NULL;
 }
@@ -4695,7 +4904,8 @@ uint8_t *bam_aux_remove(bam1_t *b, uint8_t *s)
     return s;
 
  bad_aux:
-    hts_log_error("Corrupted aux data for read %s", bam_get_qname(b));
+    hts_log_error("Corrupted aux data for read %s flag %d",
+                  bam_get_qname(b), b->core.flag);
     errno = EINVAL;
     return NULL;
 }
@@ -5500,6 +5710,8 @@ void bam_plp_destroy(bam_plp_t iter)
     lbnode_t *p, *pnext;
     if ( iter->overlaps ) kh_destroy(olap_hash, iter->overlaps);
     for (p = iter->head; p != NULL; p = pnext) {
+        if (iter->plp_destruct && p != iter->tail)
+            iter->plp_destruct(iter->data, &p->b, &p->cd);
         pnext = p->next;
         mp_free(iter->mp, p);
     }
@@ -5649,8 +5861,7 @@ static int tweak_overlap_quality(bam1_t *a, bam1_t *b)
     // Loop over the overlapping region nulling qualities in either
     // seq a or b.
     int err = 0;
-    while ( 1 )
-    {
+    while ( 1 ) {
         // Step to next matching reference position in a and b
         while ( a_ret >= 0 && a_iref>=0 && a_iref < iref - a->core.pos )
             a_ret = cigar_iref2iseq_next(&a_cigar, a_cigar_max,
@@ -5659,8 +5870,6 @@ static int tweak_overlap_quality(bam1_t *a, bam1_t *b)
             err = a_ret<-1?-1:0;
             break;
         }
-        if ( iref < a_iref + a->core.pos )
-            iref = a_iref + a->core.pos;
 
         while ( b_ret >= 0 && b_iref>=0 && b_iref < iref - b->core.pos )
             b_ret = cigar_iref2iseq_next(&b_cigar, b_cigar_max, &b_icig,
@@ -5669,14 +5878,55 @@ static int tweak_overlap_quality(bam1_t *a, bam1_t *b)
             err = b_ret<-1?-1:0;
             break;
         }
+
+        if ( iref < a_iref + a->core.pos )
+            iref = a_iref + a->core.pos;
+
         if ( iref < b_iref + b->core.pos )
             iref = b_iref + b->core.pos;
 
         iref++;
 
-        if ( a_iref+a->core.pos != b_iref+b->core.pos )
-            // only CMATCH positions, don't know what to do with indels
-            continue;
+        // If A or B has a deletion then we catch up the other to this point.
+        // We also amend quality values using the same rules for mismatch.
+        if (a_iref+a->core.pos != b_iref+b->core.pos) {
+            if (a_iref+a->core.pos < b_iref+b->core.pos
+                && b_cigar > bam_get_cigar(b)
+                && bam_cigar_op(b_cigar[-1]) == BAM_CDEL) {
+                // Del in B means it's moved on further than A
+                do {
+                    a_qual[a_iseq] = amul
+                        ? a_qual[a_iseq]*0.8
+                        : 0;
+                    a_ret = cigar_iref2iseq_next(&a_cigar, a_cigar_max,
+                                                 &a_icig, &a_iseq, &a_iref);
+                    if (a_ret < 0)
+                        return -(a_ret<-1); // 0 or -1
+                } while (a_iref + a->core.pos < b_iref+b->core.pos);
+            } else if (a_cigar > bam_get_cigar(a)
+                       && bam_cigar_op(a_cigar[-1]) == BAM_CDEL) {
+                // Del in A means it's moved on further than B
+                do {
+                    b_qual[b_iseq] = bmul
+                        ? b_qual[b_iseq]*0.8
+                        : 0;
+                    b_ret = cigar_iref2iseq_next(&b_cigar, b_cigar_max,
+                                                 &b_icig, &b_iseq, &b_iref);
+                    if (b_ret < 0)
+                        return -(b_ret<-1); // 0 or -1
+                } while (b_iref + b->core.pos < a_iref+a->core.pos);
+            } else {
+                // Anything else, eg ref-skip, we don't support here
+                continue;
+            }
+        }
+
+        // fprintf(stderr, "a_cig=%ld,%ld b_cig=%ld,%ld iref=%ld "
+        //         "a_iref=%ld b_iref=%ld a_iseq=%ld b_iseq=%ld\n",
+        //         a_cigar-bam_get_cigar(a), a_icig,
+        //         b_cigar-bam_get_cigar(b), b_icig,
+        //         iref, a_iref+a->core.pos+1, b_iref+b->core.pos+1,
+        //         a_iseq, b_iseq);
 
         if (a_iseq > a->core.l_qseq || b_iseq > b->core.l_qseq)
             // Fell off end of sequence, bad CIGAR?

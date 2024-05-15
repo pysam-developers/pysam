@@ -31,6 +31,7 @@ THE SOFTWARE.  */
 #include <assert.h>
 #include <errno.h>
 #include <math.h>
+#include <stdint.h>
 #include <inttypes.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
@@ -38,6 +39,7 @@ THE SOFTWARE.  */
 #include <htslib/bgzf.h>
 #include <htslib/tbx.h> // for hts_get_bgzfp()
 #include <htslib/thread_pool.h>
+#include <htslib/hts_endian.h>
 #include <sys/time.h>
 #include "bcftools.h"
 
@@ -159,7 +161,9 @@ static void init_data(args_t *args)
         hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->tpool);
     }
     if ( bcf_hdr_write(args->out_fh, args->out_hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname);
-    if ( args->write_index && init_index(args->out_fh,args->out_hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
+    if ( init_index2(args->out_fh,args->out_hdr,args->output_fname,
+                     &args->index_fn, args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->output_fname);
 
     if ( args->allow_overlaps )
     {
@@ -889,19 +893,20 @@ static void naive_concat(args_t *args)
         int nskip;
         if ( type.format==bcf )
         {
-            uint8_t magic[5];
-            if ( bgzf_read(fp, magic, 5) != 5 ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
+            const size_t magic_len = 5 + 4; // "Magic" string + header length
+            uint8_t magic[magic_len];
+            if ( bgzf_read(fp, magic, magic_len) != magic_len ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
+            // First five bytes are the "Magic" string
             if (strncmp((char*)magic, "BCF\2\2", 5) != 0) error("\nInvalid BCF magic string in %s\n", args->fnames[i]);
-
-            if ( bgzf_read(fp, &tmp.l, 4) != 4 ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
+            // Next four are the header length (little-endian)
+            tmp.l = le_to_u32(magic + 5);
             hts_expand(char,tmp.l,tmp.m,tmp.s);
             if ( bgzf_read(fp, tmp.s, tmp.l) != tmp.l ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
 
             // write only the first header
             if ( i==0 )
             {
-                if ( bgzf_write(bgzf_out, "BCF\2\2", 5) !=5 ) error("\nFailed to write %d bytes to %s\n", 5,args->output_fname);
-                if ( bgzf_write(bgzf_out, &tmp.l, 4) !=4 ) error("\nFailed to write %d bytes to %s\n", 4,args->output_fname);
+                if ( bgzf_write(bgzf_out, magic, magic_len) != magic_len ) error("\nFailed to write %zu bytes to %s\n", magic_len,args->output_fname);
                 if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("\nFailed to write %"PRId64" bytes to %s\n", (uint64_t)tmp.l,args->output_fname);
             }
             nskip = fp->block_offset;
@@ -984,7 +989,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "       --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(bcftools_stderr, "       --threads INT              Use multithreading with <int> worker threads [0]\n");
     fprintf(bcftools_stderr, "   -v, --verbose 0|1              Set verbosity level [1]\n");
-    fprintf(bcftools_stderr, "       --write-index              Automatically index the output files [off]\n");
+    fprintf(bcftools_stderr, "   -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -1023,12 +1028,12 @@ int main_vcfconcat(int argc, char *argv[])
         {"file-list",required_argument,NULL,'f'},
         {"min-PQ",required_argument,NULL,'q'},
         {"no-version",no_argument,NULL,8},
-        {"write-index",no_argument,NULL,13},
+        {"write-index",optional_argument,NULL,'W'},
         {"drop-genotypes",no_argument,NULL,'G'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:Gr:R:cnv:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:?o:O:f:alq:Dd:Gr:R:cnv:W::",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'c': args->compact_PS = 1; break;
@@ -1078,7 +1083,10 @@ int main_vcfconcat(int argc, char *argv[])
                       args->verbose = strtol(optarg, &tmp, 0);
                       if ( *tmp || args->verbose<0 || args->verbose>1 ) error("Error: currently only --verbose 0 or --verbose 1 is supported\n");
                       break;
-            case 13 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
@@ -1106,6 +1114,7 @@ int main_vcfconcat(int argc, char *argv[])
     if ( args->regions_list && !args->allow_overlaps ) error("The -r/-R option is supported only with -a\n");
     if ( args->naive_concat )
     {
+        if ( args->write_index ) error("Error: cannot --write-index in the %s mode\n",args->naive_concat_trust_headers?"--naive-force":"--naive");
         if ( args->allow_overlaps ) error("The option --naive cannot be combined with --allow-overlaps\n");
         if ( args->phased_concat ) error("The option --naive cannot be combined with --ligate\n");
         if ( args->sites_only ) error("The option --naive cannot be combined with --drop-genotypes\n");

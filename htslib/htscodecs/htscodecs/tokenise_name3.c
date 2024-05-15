@@ -489,11 +489,11 @@ int build_trie(name_context *ctx, char *data, size_t len, int n) {
     for (nlines = i = 0; i < len; i++, nlines++) {
         t = ctx->t_head;
         t->count++;
-        while (i < len && data[i] > '\n') {
+        while (i < len && (unsigned char)data[i] > '\n') {
             unsigned char c = data[i++];
             if (c & 0x80)
                 //fprintf(stderr, "8-bit ASCII is unsupported\n");
-                abort();
+                return -1;
             c &= 127;
 
 
@@ -653,7 +653,7 @@ int search_trie(name_context *ctx, char *data, size_t len, int n, int *exact, in
             unsigned char c = data[i++];
             if (c & 0x80)
                 //fprintf(stderr, "8-bit ASCII is unsupported\n");
-                abort();
+                return -1;
             c &= 127;
 
             trie_t *x = t->next;
@@ -756,6 +756,8 @@ static int encode_name(name_context *ctx, char *name, int len, int mode) {
 
     for (; i < len; i++) {
         if (ntok >= ctx->max_tok) {
+            if (ctx->max_tok >= MAX_TOKENS)
+                return -1;
             memset(&ctx->desc[ctx->max_tok << 4], 0, 16*sizeof(ctx->desc[0]));
             memset(&ctx->token_dcount[ctx->max_tok], 0, sizeof(int));
             memset(&ctx->token_icount[ctx->max_tok], 0, sizeof(int));
@@ -837,14 +839,14 @@ static int encode_name(name_context *ctx, char *name, int len, int mode) {
                     //ctx->lc[pnum].last[ntok].token_delta=0;
                 } else if (mode == 1 && d < 256 && d >= 0 && ctx->lc[pnum].last[ntok].token_str == s-i) {
 #ifdef ENC_DEBUG
-                    fprintf(stderr, "Tok %d (dig-delta, %d / %d)\n", N_DDELTA, ctx->lc[pnum].last[ntok].token_int, v);
+                    fprintf(stderr, "Tok %d (dig0-delta, %d / %d)\n", N_DDELTA0, ctx->lc[pnum].last[ntok].token_int, v);
 #endif
                     //if (encode_token_int1_(ctx, ntok, N_DZLEN, s-i) < 0) return -1;
                     if (encode_token_int1(ctx, ntok, N_DDELTA0, d) < 0) return -1;
                     //ctx->lc[pnum].last[ntok].token_delta=1;
                 } else {
 #ifdef ENC_DEBUG
-                    fprintf(stderr, "Tok %d (dig, %d / %d)\n", N_DIGITS, ctx->lc[pnum].last[ntok].token_int, v);
+                    fprintf(stderr, "Tok %d (dig0, %d / %d len %d)\n", N_DIGITS0, ctx->lc[pnum].last[ntok].token_int, v, s-i);
 #endif
                     if (encode_token_int1_(ctx, ntok, N_DZLEN, s-i) < 0) return -1;
                     if (encode_token_int(ctx, ntok, N_DIGITS0, v) < 0) return -1;
@@ -852,7 +854,7 @@ static int encode_name(name_context *ctx, char *name, int len, int mode) {
                 }
             } else {
 #ifdef ENC_DEBUG
-                fprintf(stderr, "Tok %d (new dig, %d)\n", N_DIGITS, v);
+                fprintf(stderr, "Tok %d (new dig0, %d len %d)\n", N_DIGITS0, v, s-i);
 #endif
                 if (encode_token_int1_(ctx, ntok, N_DZLEN, s-i) < 0) return -1;
                 if (encode_token_int(ctx, ntok, N_DIGITS0, v) < 0) return -1;
@@ -968,6 +970,8 @@ static int encode_name(name_context *ctx, char *name, int len, int mode) {
     fprintf(stderr, "Tok %d (end)\n", N_END);
 #endif
     if (ntok >= ctx->max_tok) {
+        if (ctx->max_tok >= MAX_TOKENS)
+            return -1;
         memset(&ctx->desc[ctx->max_tok << 4], 0, 16*sizeof(ctx->desc[0]));
         memset(&ctx->token_dcount[ctx->max_tok], 0, sizeof(int));
         memset(&ctx->token_icount[ctx->max_tok], 0, sizeof(int));
@@ -1464,10 +1468,16 @@ uint8_t *tok3_encode_names(char *blk, int len, int level, int use_arith,
 
     // Encode name
     for (i = j = 0; i < len; j=++i) {
-        while (i < len && blk[i] > '\n')
+        while (i < len && (signed char)blk[i] >= ' ') // non-ASCII check
             i++;
         if (i >= len)
             break;
+
+        if (blk[i] != '\0' && blk[i] != '\n') {
+            // Names must be 7-bit ASCII printable
+            free_context(ctx);
+            return NULL;
+        }
 
         blk[i] = '\0';
         // try both 0 and 1 and pick best?
@@ -1567,7 +1577,7 @@ uint8_t *tok3_encode_names(char *blk, int len, int level, int use_arith,
             ctx->desc[i].dup_from = j;
             tot_size += 3; // flag, dup_from, ttype
         } else {
-            ctx->desc[i].dup_from = 0;
+            ctx->desc[i].dup_from = -1;
             tot_size += out_len + 1; // ttype
         }
     }
@@ -1575,7 +1585,7 @@ uint8_t *tok3_encode_names(char *blk, int len, int level, int use_arith,
 #if 0
     for (i = 0; i < ctx->max_tok*16; i++) {
         char fn[1024];
-        if (!ctx->desc[i].buf_l && !ctx->desc[i].dup_from) continue;
+        if (!ctx->desc[i].buf_l && ctx->desc[i].dup_from == -1) continue;
         sprintf(fn, "_tok.%02d_%02d.%d.comp", i>>4,i&15,i);
         FILE *fp = fopen(fn, "w");
         fwrite(ctx->desc[i].buf, 1, ctx->desc[i].buf_l, fp);
@@ -1613,7 +1623,7 @@ uint8_t *tok3_encode_names(char *blk, int len, int level, int use_arith,
             ttype8 |= 128;
             last_tnum = ctx->desc[i].tnum;
         }
-        if (ctx->desc[i].dup_from) {
+        if (ctx->desc[i].dup_from >= 0) {
             //fprintf(stderr, "Dup %d from %d, sz %d\n", i, ctx->desc[i].dup_from, ctx->desc[i].buf_l);
             *cp++ = ttype8 | 64;
             *cp++ = ctx->desc[i].dup_from >> 4;
@@ -1675,7 +1685,7 @@ uint8_t *tok3_decode_names(uint8_t *in, uint32_t sz, uint32_t *out_len) {
     while (o < sz) {
         uint8_t ttype = in[o++];
         if (ttype & 64) {
-            if (o+2 >= sz) goto err;
+            if (o+2 > sz) goto err;
             int j = in[o++]<<4;
             j += in[o++];
             if (ttype & 128) {

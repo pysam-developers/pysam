@@ -1558,6 +1558,11 @@ int mcall(call_t *call, bcf1_t *rec)
     call->nals_new = 0;
     for (i=0; i<nals_ori; i++)
     {
+        if ( (call->flag&CALL_KEEP_UNSEEN) && i==unseen && call->nals_new==1 )
+        {
+            call->nals_new++;
+            call->als_new |= 1<<i;
+        }
         if ( i>0 && i==unseen ) continue;
         if ( call->flag & CALL_KEEPALT ) call->als_new |= 1<<i;
         if ( call->als_new & (1<<i) ) call->nals_new++;
@@ -1669,6 +1674,6 @@ int mcall(call_t *call, bcf1_t *rec)
 
     bcf_update_info_int32(call->hdr, rec, "I16", NULL, 0);     // remove I16 tag
 
-    return call->nals_new;
+    return is_variant ? call->nals_new : 1;
 }
 

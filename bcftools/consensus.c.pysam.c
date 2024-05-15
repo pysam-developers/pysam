@@ -2,7 +2,7 @@
 
 /* The MIT License
 
-   Copyright (c) 2014-2023 Genome Research Ltd.
+   Copyright (c) 2014-2024 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -120,7 +120,7 @@ typedef struct
     char **argv;
     int argc, output_iupac, iupac_GTs, haplotype, allele, isample, napplied;
     uint8_t *iupac_bitmask, *iupac_als;
-    int miupac_bitmask, miupac_als;
+    int miupac_bitmask, miupac_als, regions_overlap;
     char *fname, *ref_fname, *sample, *sample_fname, *output_fname, *mask_fname, *chain_fname, missing_allele, absent_allele;
     char mark_del, mark_ins, mark_snv;
     smpl_ilist_t *smpl;
@@ -350,20 +350,28 @@ static void init_region(args_t *args, char *line)
     args->prev_base_pos = -1;
     args->fa_buf.l  = 0;
     args->fa_length = 0;
-    args->fa_end_pos = to;
-    args->fa_ori_pos = from;
-    args->fa_src_pos = from;
+    args->fa_end_pos = to;      // 0-based
+    args->fa_ori_pos = from;    // 0-based
+    args->fa_src_pos = from;    // 0-based
     args->fa_mod_off = 0;
     args->fa_frz_pos = -1;
     args->fa_frz_mod = -1;
     args->fa_case    = -1;
     args->vcf_rbuf.n = 0;
 
+
+    // bcf_sr_set_regions accepts 1-based coordinates
     kstring_t str = {0,0,0};
-    if ( from==0 ) from = 1;
-    if ( to==0 ) to = HTS_POS_MAX;
+    if ( !from ) from = 1;
+    else from++;
+#ifndef MAX_CSI_COOR
+#define MAX_CSI_COOR ((1LL << (14 + 30)) - 1)
+#endif
+    if ( to==0 ) to = MAX_CSI_COOR - 1;
+    else to++;
     ksprintf(&str,"%s:%"PRIhts_pos"-%"PRIhts_pos,line,from,to);
-    bcf_sr_set_regions(args->files,line,0);
+    bcf_sr_set_opt(args->files,BCF_SR_REGIONS_OVERLAP,args->regions_overlap);
+    bcf_sr_set_regions(args->files,str.s,0);
     free(str.s);
 
     if ( tmp_ptr ) *tmp_ptr = tmp;
@@ -792,15 +800,42 @@ static void apply_variant(args_t *args, bcf1_t *rec)
 
     }
 
+    char *ref_allele = rec->d.allele[0];
     char *alt_allele = rec->d.allele[ialt];
     int rmme_alt = 0;
 
     int len_diff = 0, alen = 0;
-    int idx = rec->pos - args->fa_ori_pos + args->fa_mod_off;
+    int idx = rec->pos - args->fa_ori_pos + args->fa_mod_off;   // position of the variant within the modified fasta sequence
     if ( idx<0 )
     {
-        fprintf(bcftools_stderr,"Warning: ignoring overlapping variant starting at %s:%"PRId64"\n", bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
-        return;
+        if ( alt_allele[0]=='<' )   // symbolic allele
+        {
+            rec->pos  -= idx + 1;
+            rec->rlen += idx + 1;
+            idx = -1;
+        }
+        else if ( strlen(ref_allele) < -idx )   // the ref allele is shorter but overlaps the fa sequence? This should never happen
+        {
+            assert(0);
+            fprintf(bcftools_stderr,"Warning: ignoring overlapping variant starting at %s:%"PRId64"\n", bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1);
+            return;
+        }
+        else if ( strlen(alt_allele) > -idx )  // the ref allele overlaps the fa and so does the alt allele
+        {
+            rec->pos   -= idx;
+            rec->rlen  += idx;
+            ref_allele -= idx;
+            alt_allele -= idx;
+            idx = 0;
+        }
+        else    // the ref allele overlaps the fa but alt allele does not: trim to leave one base before
+        {
+            rec->pos   -= idx + 1;
+            rec->rlen  += idx + 1;
+            ref_allele -= idx + 1;
+            alt_allele += strlen(alt_allele) - 1;
+            idx = -1;
+        }
     }
     if ( rec->rlen > args->fa_buf.l - idx )
     {
@@ -815,7 +850,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
             }
         }
     }
-    if ( idx>=args->fa_buf.l )
+    if ( idx>0 && idx>=args->fa_buf.l )
         error("FIXME: %s:%"PRId64" .. idx=%d, ori_pos=%d, len=%"PRIu64", off=%d\n",bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1,idx,args->fa_ori_pos,(uint64_t)args->fa_buf.l,args->fa_mod_off);
 
     // sanity check the reference base
@@ -830,7 +865,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         if ( !strcasecmp(alt_allele,"<DEL>") )
         {
             static int multibase_ref_del_warned = 0;
-            if ( rec->d.allele[0][1]!=0 && !multibase_ref_del_warned )
+            if ( ref_allele[1]!=0 && !multibase_ref_del_warned )
             {
                 fprintf(bcftools_stderr,
                     "Warning: one REF base is expected with <DEL>, assuming the actual deletion starts at POS+1 at %s:%"PRId64".\n"
@@ -839,7 +874,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
             }
             if ( args->mark_del )   // insert dashes instead of delete sequence
             {
-                alt_allele = mark_del(rec->d.allele[0], rec->rlen, NULL, args->mark_del);
+                alt_allele = mark_del(ref_allele, rec->rlen, NULL, args->mark_del);
                 alen = rec->rlen;
                 len_diff = 0;
                 rmme_alt = 1;
@@ -847,7 +882,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
             else
             {
                 len_diff = 1-rec->rlen;
-                alt_allele = rec->d.allele[0];     // according to VCF spec, the first REF base must precede the event
+                alt_allele = ref_allele;     // according to VCF spec, the first REF base must precede the event
                 alen = 1;
             }
         }
@@ -858,7 +893,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
             return;
         }
     }
-    else if ( strncasecmp(rec->d.allele[0],args->fa_buf.s+idx,rec->rlen) )
+    else if ( idx>=0 && strncasecmp(ref_allele,args->fa_buf.s+idx,rec->rlen) )
     {
         // This is hacky, handle a special case: if SNP or an insert follows a deletion (AAC>A, C>CAA),
         // the reference base in fa_buf is lost and the check fails. We do not keep a buffer
@@ -866,10 +901,10 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         // one base overlap
 
         int fail = 1;
-        if ( args->prev_base_pos==rec->pos && toupper(rec->d.allele[0][0])==toupper(args->prev_base) )
+        if ( args->prev_base_pos==rec->pos && toupper(ref_allele[0])==toupper(args->prev_base) )
         {
             if ( rec->rlen==1 ) fail = 0;
-            else if ( !strncasecmp(rec->d.allele[0]+1,args->fa_buf.s+idx+1,rec->rlen-1) ) fail = 0;
+            else if ( !strncasecmp(ref_allele+1,args->fa_buf.s+idx+1,rec->rlen-1) ) fail = 0;
         }
 
         if ( fail )
@@ -885,7 +920,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
                     "   REF .vcf: [%s]\n"
                     "   ALT .vcf: [%s]\n"
                     "   REF .fa : [%s]%c%s\n",
-                    bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1, rec->d.allele[0], alt_allele, args->fa_buf.s+idx,
+                    bcf_seqname(args->hdr,rec),(int64_t) rec->pos+1, ref_allele, alt_allele, args->fa_buf.s+idx,
                     tmp?tmp:' ',tmp?args->fa_buf.s+idx+rec->rlen+1:""
                  );
         }
@@ -894,7 +929,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
 
         if ( args->mark_del && len_diff<0 )
         {
-            alt_allele = mark_del(rec->d.allele[0], rec->rlen, alt_allele, args->mark_del);
+            alt_allele = mark_del(ref_allele, rec->rlen, alt_allele, args->mark_del);
             alen = rec->rlen;
             len_diff = 0;
             rmme_alt = 1;
@@ -907,23 +942,24 @@ static void apply_variant(args_t *args, bcf1_t *rec)
 
         if ( args->mark_del && len_diff<0 )
         {
-            alt_allele = mark_del(rec->d.allele[0], rec->rlen, alt_allele, args->mark_del);
+            alt_allele = mark_del(ref_allele, rec->rlen, alt_allele, args->mark_del);
             alen = rec->rlen;
             len_diff = 0;
             rmme_alt = 1;
         }
     }
 
-    args->fa_case = toupper(args->fa_buf.s[idx])==args->fa_buf.s[idx] ? TO_UPPER : TO_LOWER;
+    int safe_idx = idx<0 ? 0 : idx; // idx can be negative in case of overlapping deletion
+    args->fa_case = toupper(args->fa_buf.s[safe_idx])==args->fa_buf.s[safe_idx] ? TO_UPPER : TO_LOWER;
     if ( args->fa_case==TO_UPPER )
         for (i=0; i<alen; i++) alt_allele[i] = toupper(alt_allele[i]);
     else
         for (i=0; i<alen; i++) alt_allele[i] = tolower(alt_allele[i]);
 
     if ( args->mark_ins && len_diff>0 )
-        mark_ins(rec->d.allele[0], alt_allele, args->mark_ins);
+        mark_ins(ref_allele, alt_allele, args->mark_ins);
     if ( args->mark_snv )
-        mark_snv(rec->d.allele[0], alt_allele, args->mark_snv);
+        mark_snv(ref_allele, alt_allele, args->mark_snv);
 
     if ( len_diff <= 0 )
     {
@@ -955,7 +991,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         //      1   C   T
         //      1   C   CAA
         int ibeg = 0;
-        while ( ibeg<alen && rec->d.allele[0][ibeg]==alt_allele[ibeg] && rec->pos + ibeg <= args->prev_base_pos  ) ibeg++;
+        while ( ibeg<alen && ref_allele[ibeg]==alt_allele[ibeg] && rec->pos + ibeg <= args->prev_base_pos  ) ibeg++;
         for (i=ibeg; i<alen; i++)
             args->fa_buf.s[idx+i] = alt_allele[i];
 
@@ -964,7 +1000,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     if (args->chain && len_diff != 0)
     {
         // If first nucleotide of both REF and ALT are the same... (indels typically include the nucleotide before the variant)
-        if ( strncasecmp(rec->d.allele[0],alt_allele,1) == 0)
+        if ( strncasecmp(ref_allele,alt_allele,1) == 0)
         {
             // ...extend the block by 1 bp: start is 1 bp further and alleles are 1 bp shorter
             push_chain_gap(args->chain, rec->pos + 1, rec->rlen - 1, rec->pos + 1 + args->fa_mod_off, alen - 1);
@@ -1137,6 +1173,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -M, --missing CHAR             Output CHAR instead of skipping a missing genotype \"./.\"\n");
     fprintf(bcftools_stderr, "    -o, --output FILE              Write output to a file [standard output]\n");
     fprintf(bcftools_stderr, "    -p, --prefix STRING            Prefix to add to output sequence names\n");
+    fprintf(bcftools_stderr, "        --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(bcftools_stderr, "    -s, --samples LIST             Comma-separated list of samples to include, \"-\" to ignore samples and use REF,ALT\n");
     fprintf(bcftools_stderr, "    -S, --samples-file FILE        File of samples to include\n");
     fprintf(bcftools_stderr, "Examples:\n");
@@ -1153,6 +1190,7 @@ int main_consensus(int argc, char *argv[])
 {
     args_t *args = (args_t*) calloc(1,sizeof(args_t));
     args->argc   = argc; args->argv = argv;
+    args->regions_overlap = 1;
 
     static struct option loptions[] =
     {
@@ -1174,6 +1212,7 @@ int main_consensus(int argc, char *argv[])
         {"absent",1,0,'a'},
         {"chain",1,0,'c'},
         {"prefix",required_argument,0,'p'},
+        {"regions-overlap",required_argument,0,5},
         {0,0,0,0}
     };
     int c;
@@ -1193,6 +1232,10 @@ int main_consensus(int argc, char *argv[])
                 else if ( !strcasecmp(optarg,"lc") ) args->mark_snv = TO_LOWER;
                 else if ( !optarg[1] && optarg[0]>32 && optarg[0]<127 ) args->mark_snv = optarg[0];
                 else error("The argument is not recognised: --mark-snv %s\n",optarg);
+                break;
+            case  5 :
+                args->regions_overlap = parse_overlap_option(optarg);
+                if ( args->regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
             case 'p': args->chr_prefix = optarg; break;
             case 's': args->sample = optarg; break;

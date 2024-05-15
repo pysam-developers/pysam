@@ -58,7 +58,7 @@ typedef struct
     FILE *fh_log, *fh_sites;
     htsFile **fh_out;
     char **argv, *prefix, *output_fname, **fnames, *write_files, *targets_list, *regions_list;
-    char *isec_exact;
+    char *isec_exact, *file_list;
     int argc, record_cmd_line;
     char *index_fn;
     int write_index;
@@ -150,8 +150,11 @@ void isec_vcf(args_t *args)
         if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
         if (args->record_cmd_line) bcf_hdr_append_version(files->readers[args->iwrite].header,args->argc,args->argv,"bcftools_isec");
         if ( bcf_hdr_write(out_fh, files->readers[args->iwrite].header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname?args->output_fname:"standard output");
-        if ( args->write_index && init_index(out_fh,files->readers[args->iwrite].header,args->output_fname,&args->index_fn)<0 )
-            error("Error: failed to initialise index for %s\n",args->output_fname?args->output_fname:"standard output");
+        if ( init_index2(out_fh,files->readers[args->iwrite].header,
+                         args->output_fname,&args->index_fn,
+                         args->write_index)<0 )
+            error("Error: failed to initialise index for %s\n",
+                  args->output_fname?args->output_fname:"standard output");
     }
     if ( !args->nwrite && !out_std && !args->prefix )
         fprintf(stderr,"Note: -w option not given, printing list of sites...\n");
@@ -454,12 +457,14 @@ static void destroy_data(args_t *args)
         {
             if ( !args->fnames[i] ) continue;
             if ( hts_close(args->fh_out[i])!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->fnames[i]);
-            if ( args->output_type==FT_VCF_GZ )
+            int is_tbi = !args->write_index 
+                      || (args->write_index&127) == HTS_FMT_TBI;
+            if ( args->output_type==FT_VCF_GZ && is_tbi )
             {
                 tbx_conf_t conf = tbx_conf_vcf;
                 tbx_index_build(args->fnames[i], -1, &conf);
             }
-            else if ( args->output_type==FT_BCF_GZ )
+            else if ( args->output_type==FT_BCF_GZ || !is_tbi )
             {
                 if ( bcf_index_build(args->fnames[i],14) ) error("Could not index %s\n", args->fnames[i]);
             }
@@ -484,6 +489,7 @@ static void usage(void)
     fprintf(stderr, "    -e, --exclude EXPR             Exclude sites for which the expression is true\n");
     fprintf(stderr, "    -f, --apply-filters LIST       Require at least one of the listed FILTER strings (e.g. \"PASS,.\")\n");
     fprintf(stderr, "    -i, --include EXPR             Include only sites for which the expression is true\n");
+    fprintf(stderr, "    -l, --file-list FILE           Read the input file names from the file\n");
     fprintf(stderr, "        --no-version               Do not append version and command line to the header\n");
     fprintf(stderr, "    -n, --nfiles [+-=~]INT         Output positions present in this many (=), this many or more (+), this many or fewer (-), the exact (~) files\n");
     fprintf(stderr, "    -o, --output FILE              Write output to a file [standard output]\n");
@@ -497,7 +503,7 @@ static void usage(void)
     fprintf(stderr, "        --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(stderr, "        --threads INT              Use multithreading with <int> worker threads [0]\n");
     fprintf(stderr, "    -w, --write LIST               List of files to write with -p given as 1-based indexes. By default, all files are written\n");
-    fprintf(stderr, "        --write-index              Automatically index the output files [off]\n");
+    fprintf(stderr, "    -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "   # Create intersection and complements of two sets saving the output in dir/*\n");
@@ -541,6 +547,7 @@ int main_vcfisec(int argc, char *argv[])
         {"collapse",required_argument,NULL,'c'},
         {"complement",no_argument,NULL,'C'},
         {"apply-filters",required_argument,NULL,'f'},
+        {"file-list",required_argument,NULL,'l'},
         {"nfiles",required_argument,NULL,'n'},
         {"prefix",required_argument,NULL,'p'},
         {"write",required_argument,NULL,'w'},
@@ -554,11 +561,11 @@ int main_vcfisec(int argc, char *argv[])
         {"output-type",required_argument,NULL,'O'},
         {"threads",required_argument,NULL,9},
         {"no-version",no_argument,NULL,8},
-        {"write-index",no_argument,NULL,10},
+        {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "hc:r:R:p:n:w:t:T:Cf:o:O:i:e:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "hc:r:R:p:n:w:t:T:Cf:o:O:i:e:l:W::",loptions,NULL)) >= 0) {
         switch (c) {
             case 'o': args->output_fname = optarg; break;
             case 'O':
@@ -593,12 +600,16 @@ int main_vcfisec(int argc, char *argv[])
             case 'C':
                 if ( args->isec_op!=0 && args->isec_op!=OP_COMPLEMENT ) error("Error: either -C or -n should be given, not both.\n");
                 args->isec_op = OP_COMPLEMENT; break;
+            case 'l': args->file_list = optarg; break;
             case 'r': args->regions_list = optarg; break;
             case 'R': args->regions_list = optarg; regions_is_file = 1; break;
             case 't': args->targets_list = optarg; break;
             case 'T': args->targets_list = optarg; targets_is_file = 1; break;
             case 'p': args->prefix = optarg; break;
-            case 'w': args->write_files = optarg; break;
+            case 'w':
+                if ( args->write_files ) error("The option -w accepts a list of indices and can be given only once\n");
+                args->write_files = optarg;
+                break;
             case 'i': add_filter(args, optarg, FLT_INCLUDE); break;
             case 'e': add_filter(args, optarg, FLT_EXCLUDE); break;
             case 'n':
@@ -626,13 +637,33 @@ int main_vcfisec(int argc, char *argv[])
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
-            case 10 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case 'h':
             case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);
         }
     }
-    if ( argc-optind<1 ) usage();   // no file given
+    if ( argc-optind<1 && !args->file_list ) usage();   // no file given
+
+    int nfiles = 0,i;
+    char **files = NULL;
+    if ( args->file_list )
+    {
+        files = hts_readlines(args->file_list, &nfiles);
+        if ( !files ) error("Failed to read from %s\n", args->file_list);
+    }
+    if ( optind<argc )
+    {
+        int n = argc - optind;
+        files = (char**)realloc(files,sizeof(*files)*(n+nfiles));
+        for (i=nfiles; i>0; i--) files[n+i-1] = files[n+i-2];
+        for (i=0; i<n; i++) files[i] = strdup(argv[optind+i]);
+        nfiles += n;
+    }
+
     if ( args->targets_list )
     {
         bcf_sr_set_opt(args->files,BCF_SR_TARGETS_OVERLAP,targets_overlap);
@@ -645,7 +676,7 @@ int main_vcfisec(int argc, char *argv[])
         if ( bcf_sr_set_regions(args->files, args->regions_list, regions_is_file)<0 )
             error("Failed to read the regions: %s\n", args->regions_list);
     }
-    if ( argc-optind==2 && !args->isec_op )
+    if ( nfiles==2 && !args->isec_op )
     {
         args->isec_op = OP_VENN;
         if ( !args->prefix ) error("Expected the -p option\n");
@@ -656,11 +687,13 @@ int main_vcfisec(int argc, char *argv[])
         args->isec_n  = 1;
     }
     args->files->require_index = 1;
-    while (optind<argc)
+    for (i=0; i<nfiles; i++)
     {
-        if ( !bcf_sr_add_reader(args->files, argv[optind]) ) error("Failed to open %s: %s\n", argv[optind],bcf_sr_strerror(args->files->errnum));
-        optind++;
+        if ( !bcf_sr_add_reader(args->files, files[i]) ) error("Failed to open %s: %s\n", files[i],bcf_sr_strerror(args->files->errnum));
+        free(files[i]);
     }
+    free(files);
+
     init_data(args);
     isec_vcf(args);
     destroy_data(args);
