@@ -45,7 +45,9 @@ void samtools_set_stdout_fn(const char *fn)
 
 void samtools_close_stdout(void)
 {
-  fclose(samtools_stdout);
+  long pos = ftell(samtools_stdout);
+  if (pos >= 0)
+    fclose(samtools_stdout);
   samtools_stdout = NULL;
 }
 

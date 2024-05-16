@@ -45,7 +45,9 @@ void @pysam@_set_stdout_fn(const char *fn)
 
 void @pysam@_close_stdout(void)
 {
-  fclose(@pysam@_stdout);
+  long pos = ftell(@pysam@_stdout);
+  if (pos >= 0)
+    fclose(@pysam@_stdout);
   @pysam@_stdout = NULL;
 }
 
