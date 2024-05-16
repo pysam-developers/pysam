@@ -1,12 +1,12 @@
-Many people have contributed to pysam. The list of github contributors
+Many people have contributed to pysam. The list of GitHub contributors
 is the best place to get a full list of authors and their contributions.
 The list and summary below is a out-of-date and represents the earlier
 stages of the project.
 
 List of contributors:
 
-Andreas Heger, Tildon Grant Belgard, Florian Finkernagel, Leo
-Goodstadt, Martin Goodson all contributed code to pysam.
+Andreas Heger, Tildon Grant Belgard, Florian Finkernagel,
+Leo Goodstadt, Martin Goodson all contributed code to pysam.
 
 John Marshall has been looking after pysam and its community for
 several years, as well as making many code contributions and improving
@@ -17,7 +17,7 @@ reader/writer in htslib.
 
 Gerton Lunter provided a validating VCF parser.
 
-Marcel Martin implemented python 3 compatibility.
+Marcel Martin implemented Python 3 compatibility and added type hints.
 Ben Schiller contributed a Windows compatible clone.
 
 The sources in the directory samtools are from the samtools project:
@@ -31,13 +31,3 @@ Bob Handsaker from the Broad Institute is a major contributor to the
 SAM/BAM specification. He designed and implemented the BGZF format, the
 underlying indexable compression format for the BAM format. BGZF does
 not support arithmetic between file offsets.
-
-Jue Ruan for the Beijing Genome Institute designed and implemented the
-RAZF format, an alternative indexable compression format. RAZF supports
-arithmetic between file offsets, at the cost of increased index file
-size and the full compatibility with gzip. RAZF is optional and only
-used in `faidx' for indexing RAZF compressed fasta files.
-
-Colin Hercus updated novo2sam.pl to support gapped alignment by
-novoalign.
-
