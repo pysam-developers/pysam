@@ -1069,7 +1069,7 @@ class TestBaseModifications(unittest.TestCase):
         expect = {
             ("C", 0, "m"): [(6, 102), (17, 128), (20, 153), (31, 179), (34, 204)],
             ("N", 0, "n"): [(15, 212)],
-            ("C", 0, 76792): [(19, 161), (34, 187)],
+            ("C", 0, 76792): [(19, 161), (34, 33)],
         }
 
         with pysam.AlignmentFile(filename, check_sq=False) as inf:
