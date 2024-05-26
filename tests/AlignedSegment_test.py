@@ -1090,6 +1090,21 @@ class TestBaseModifications(unittest.TestCase):
             r = next(iter(inf))
             self.assertDictEqual(r.modified_bases, expect)
 
+    def testExplicit(self):
+        """reference bases should always be the same nucleotide
+        """
+        filename = os.path.join(BAM_DATADIR, "MM-explicit.bam")
+        expected_output = [
+            {("C", 0, "m"): [(9, 200), (10, 50), (14, 160)], ("C", 0, "h"): [(9, 10), (10, 170), (14, 20)]},
+            {("C", 0, "m"): [(9, 200), (10, 50), (13, 10), (14, 160), (16, 10)],
+             ("C", 0, "h"): [(9, 10), (10, 170), (13, 5), (14, 20), (16, 5)]},
+            {("C", 0, "m"): [(9, 200), (14, 160)], ("C", 0, "h"): [(9, 10), (10, 170), (13, 5), (14, 20), (16, 5)]},
+        ]
+
+        with pysam.AlignmentFile(filename, check_sq=False) as inf:
+            for r, expected in zip(inf, expected_output):
+                self.assertDictEqual(r.modified_bases, expected)
+
     def testMulti(self):
         """reference bases should always be the same nucleotide
         """
