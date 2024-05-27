@@ -1299,7 +1299,7 @@ int main_vcfcnv(int argc, char *argv[])
         {0,0,0,0}
     };
     char *tmp = NULL;
-    while ((c = getopt_long(argc, argv, "h?r:R:t:T:s:o:p:l:T:c:b:P:x:e:O:W:f:a:L:d:k:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "h?r:R:t:T:s:o:p:l:T:c:b:P:x:e:O:W::f:a:L:d:k:",loptions,NULL)) >= 0) {
         switch (c) {
             case 'L': 
                 args->lrr_smooth_win = strtol(optarg,&tmp,10);

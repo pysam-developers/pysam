@@ -894,7 +894,7 @@ static inline int get_ad(bcf1_t *line, bcf_fmt_t *ad_fmt_ptr, int ismpl, int *ia
     *ial = 0;
     #define BRANCH_INT(type_t,missing,vector_end) { \
         type_t *ptr = (type_t *) (ad_fmt_ptr->p + ad_fmt_ptr->size*ismpl); \
-        for (iv=1; iv<ad_fmt_ptr->n; iv++) \
+        for (iv=1; iv<ad_fmt_ptr->n && iv<line->n_allele; iv++) \
         { \
             if ( ptr[iv]==vector_end ) break; \
             if ( ptr[iv]==missing ) continue; \
@@ -938,9 +938,12 @@ static inline void update_dvaf(stats_t *stats, bcf1_t *line, int ial, float vaf)
 #define vaf2bin(vaf) ((int)nearbyintf((vaf)/0.05))
 static inline void update_vaf(vaf_t *smpl_vaf, bcf1_t *line, int ial, float vaf)
 {
-    int idx = vaf2bin(vaf);
-    if ( bcf_get_variant_type(line,ial)==VCF_SNP ) smpl_vaf->snv[idx]++;
-    else smpl_vaf->indel[idx]++;
+    if ( vaf>=0 && vaf<=1 )
+    {
+        int idx = vaf2bin(vaf);
+        if ( bcf_get_variant_type(line,ial)==VCF_SNP ) smpl_vaf->snv[idx]++;
+        else smpl_vaf->indel[idx]++;
+    }
 }
 
 static inline int calc_sample_depth(args_t *args, int ismpl, bcf_fmt_t *ad_fmt_ptr, bcf_fmt_t *dp_fmt_ptr)

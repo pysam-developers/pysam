@@ -294,8 +294,6 @@ static inline int encode_freq_d(uint8_t *cp, uint32_t *F0, uint32_t *F) {
                 dz++;
                 *cp++ = 0;
             }
-        } else {
-            assert(F[j] == 0);
         }
     }
     
@@ -313,7 +311,7 @@ static inline int encode_freq_d(uint8_t *cp, uint32_t *F0, uint32_t *F) {
 // Returns the desired TF_SHIFT; 10 or 12 bit, or -1 on error.
 static inline int encode_freq1(uint8_t *in, uint32_t in_size, int Nway,
                                RansEncSymbol syms[256][256], uint8_t **cp_p) {
-    int tab_size = 0, i, j, z;
+    int i, j, z;
     uint8_t *out = *cp_p, *cp = out;
 
     // Compute O1 frequency statistics
@@ -412,9 +410,6 @@ static inline int encode_freq1(uint8_t *in, uint32_t in_size, int Nway,
         }
         free(c_freq);
     }
-
-    tab_size = cp - out;
-    assert(tab_size < 257*257*3);
 
     *cp_p = cp;
     htscodecs_tls_free(F);
@@ -542,15 +537,13 @@ static inline int decode_freq1(uint8_t *cp, uint8_t *cp_end, int shift,
 
 // Build s3 symbol lookup table.
 // This is 12 bit freq, 12 bit bias and 8 bit symbol.
-static inline int rans_F_to_s3(uint32_t *F, int shift, uint32_t *s3) {
-    int j, x, y;
+static inline int rans_F_to_s3(const uint32_t *F, int shift, uint32_t *s3) {
+    int j, x;
     for (j = x = 0; j < 256; j++) {
-        if (F[j]) {
-            if (F[j] > (1<<shift) - x)
-                return 1;
-            for (y = 0; y < F[j]; y++)
-                s3[y+x] = (((uint32_t)F[j])<<(shift+8))|(y<<8)|j;
-            x += F[j];
+        if (F[j] && F[j] <= (1<<shift) - x) {
+            uint32_t base = (((uint32_t)F[j])<<(shift+8))|j, y;
+            for (y = 0; y < F[j]; y++, x++)
+                s3[x] = base + (y<<8);
         }
     }
 

@@ -1,6 +1,6 @@
 /*  hts.c -- format-neutral I/O, indexing, and iterator API functions.
 
-    Copyright (C) 2008, 2009, 2012-2023 Genome Research Ltd.
+    Copyright (C) 2008, 2009, 2012-2024 Genome Research Ltd.
     Copyright (C) 2012, 2013 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -794,6 +794,7 @@ char *hts_format_description(const htsFormat *format)
     case zstd_compression:   kputs(" Zstandard-compressed", &str); break;
     case custom: kputs(" compressed", &str); break;
     case gzip:   kputs(" gzip-compressed", &str); break;
+
     case bgzf:
         switch (format->format) {
         case bam:
@@ -808,6 +809,22 @@ char *hts_format_description(const htsFormat *format)
             break;
         }
         break;
+
+    case no_compression:
+        switch (format->format) {
+        case bam:
+        case bcf:
+        case cram:
+        case csi:
+        case tbi:
+            // These are normally compressed, so emphasise that this one isn't
+            kputs(" uncompressed", &str);
+            break;
+        default:
+            break;
+        }
+        break;
+
     default: break;
     }
 
@@ -921,10 +938,18 @@ htsFile *hts_open_format(const char *fn, const char *mode, const htsFormat *fmt)
          fmt->format == fastq_format))
         fp->format.format = fmt->format;
 
-    if (fmt && fmt->specific)
-        if (hts_opt_apply(fp, fmt->specific) != 0)
+    if (fmt && fmt->specific) {
+        if (hts_opt_apply(fp, fmt->specific) != 0) {
+            if (((hts_opt*)fmt->specific)->opt == CRAM_OPT_REFERENCE &&
+                (errno == ENOENT || errno == EIO || errno == EBADF ||
+                  errno == EACCES || errno == EISDIR)) {
+                /* error during reference file operation
+                 for these specific errors, set the error as EINVAL */
+                errno = EINVAL;
+            }
             goto error;
-
+        }
+    }
     if ( rmme ) free(rmme);
     return fp;
 
@@ -1404,6 +1429,7 @@ static int hts_crypt4gh_redirect(const char *fn, const char *mode,
 htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
 {
     hFILE *hfile_orig = hfile;
+    hFILE *hfile_cleanup = hfile;
     htsFile *fp = (htsFile*)calloc(1, sizeof(htsFile));
     char simple_mode[101], *cp, *opts;
     simple_mode[100] = '\0';
@@ -1431,6 +1457,7 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
         // Deal with formats that re-direct an underlying file via a plug-in.
         // Loops as we may have crypt4gh served via htsget, or
         // crypt4gh-in-crypt4gh.
+
         while (fp->format.format == htsget ||
                fp->format.format == hts_crypt4gh_format) {
             // Ensure we don't get stuck in an endless redirect loop
@@ -1443,11 +1470,30 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
                 hFILE *hfile2 = hopen_htsget_redirect(hfile, simple_mode);
                 if (hfile2 == NULL) goto error;
 
+                if (hfile != hfile_cleanup) {
+                    // Close the result of an earlier redirection
+                    hclose_abruptly(hfile);
+                }
+
                 hfile = hfile2;
             }
             else if (fp->format.format == hts_crypt4gh_format) {
+                int should_preserve = (hfile == hfile_orig);
+                int update_cleanup = (hfile == hfile_cleanup);
                 if (hts_crypt4gh_redirect(fn, simple_mode, &hfile, fp) < 0)
                     goto error;
+                if (should_preserve) {
+                    // The original hFILE is now contained in a crypt4gh
+                    // wrapper.  Should we need to close the wrapper due
+                    // to a later error, we need to prevent the wrapped
+                    // handle from being closed as the caller will see
+                    // this function return NULL and try to clean up itself.
+                    hfile_orig->preserve = 1;
+                }
+                if (update_cleanup) {
+                    // Update handle to close at the end if redirected by htsget
+                    hfile_cleanup = hfile;
+                }
             }
 
             // Re-detect format against the result of the redirection
@@ -1529,9 +1575,13 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
     if (opts)
         hts_process_opts(fp, opts);
 
-    // If redirecting, close the original hFILE now (pedantically we would
-    // instead close it in hts_close(), but this a simplifying optimisation)
-    if (hfile != hfile_orig) hclose_abruptly(hfile_orig);
+    // Allow original file to close if it was preserved earlier by crypt4gh
+    hfile_orig->preserve = 0;
+
+    // If redirecting via htsget, close the original hFILE now (pedantically
+    // we would instead close it in hts_close(), but this a simplifying
+    // optimisation)
+    if (hfile != hfile_cleanup) hclose_abruptly(hfile_cleanup);
 
     return fp;
 
@@ -1540,6 +1590,7 @@ error:
 
     // If redirecting, close the failed redirection hFILE that we have opened
     if (hfile != hfile_orig) hclose_abruptly(hfile);
+    hfile_orig->preserve = 0; // Allow caller to close the original hfile
 
     if (fp) {
         free(fp->fn);
@@ -1549,9 +1600,15 @@ error:
     return NULL;
 }
 
+static int hts_idx_close_otf_fp(hts_idx_t *idx);
+
 int hts_close(htsFile *fp)
 {
     int ret = 0, save;
+    if (!fp) {
+        errno = EINVAL;
+        return -1;
+    }
 
     switch (fp->format.format) {
     case binary_format:
@@ -1596,6 +1653,14 @@ int hts_close(htsFile *fp)
     default:
         ret = -1;
         break;
+    }
+
+    if (fp->idx) {
+        // Close deferred index file handle, if present.
+        // Unfortunately this means errors on the index will get mixed with
+        // those on the main file, but as we only have the EOF block left to
+        // write it hopefully won't happen that often.
+        ret |= hts_idx_close_otf_fp(fp->idx);
     }
 
     save = errno;
@@ -2148,6 +2213,7 @@ struct hts_idx_t {
         uint64_t off_beg, off_end;
         uint64_t n_mapped, n_unmapped;
     } z; // keep internal states
+    BGZF *otf_fp;  // Index on-the-fly output file
 };
 
 static char * idx_format_name(int fmt) {
@@ -2274,6 +2340,7 @@ hts_idx_t *hts_idx_init(int n, int fmt, uint64_t offset0, int min_shift, int n_l
     }
     idx->tbi_n = -1;
     idx->last_tbi_tid = -1;
+    idx->otf_fp = NULL;
     return idx;
 }
 
@@ -2589,6 +2656,17 @@ static inline void swap_bins(bins_t *p)
     }
 }
 
+static int need_idx_ugly_delay_hack(const hts_idx_t *idx)
+{
+    // Ugly hack for on-the-fly BAI indexes.  As these are uncompressed,
+    // we need to delay writing a few bytes of data until file close
+    // so that we have something to force a modification time update.
+    //
+    // (For compressed indexes like CSI, the BGZF EOF block serves the same
+    // purpose).
+    return idx->otf_fp && !idx->otf_fp->is_compressed;
+}
+
 static int idx_save_core(const hts_idx_t *idx, BGZF *fp, int fmt)
 {
     int32_t i, j;
@@ -2641,7 +2719,12 @@ static int idx_save_core(const hts_idx_t *idx, BGZF *fp, int fmt)
         }
     }
 
-    check(idx_write_uint64(fp, idx->n_no_coor));
+    if (!need_idx_ugly_delay_hack(idx)) {
+        // Write this for compressed (CSI) indexes, but for BAI we
+        // need to save a bit for later.  See hts_idx_close_otf_fp()
+        check(idx_write_uint64(fp, idx->n_no_coor));
+    }
+
 #ifdef DEBUG_INDEX
     idx_dump(idx);
 #endif
@@ -2672,16 +2755,9 @@ int hts_idx_save(const hts_idx_t *idx, const char *fn, int fmt)
     return ret;
 }
 
-int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int fmt)
+static int hts_idx_write_out(const hts_idx_t *idx, BGZF *fp, int fmt)
 {
-    BGZF *fp;
-
-    #define check(ret) if ((ret) < 0) goto fail
-
-    if (fnidx == NULL) return hts_idx_save(idx, fn, fmt);
-
-    fp = bgzf_open(fnidx, (fmt == HTS_FMT_BAI)? "wu" : "w");
-    if (fp == NULL) return -1;
+    #define check(ret) if ((ret) < 0) return -1
 
     if (fmt == HTS_FMT_CSI) {
         check(bgzf_write(fp, "CSI\1", 4));
@@ -2697,12 +2773,64 @@ int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int
 
     check(idx_save_core(idx, fp, fmt));
 
-    return bgzf_close(fp);
     #undef check
+    return 0;
+}
 
-fail:
-    bgzf_close(fp);
-    return -1;
+int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int fmt)
+{
+    BGZF *fp;
+
+    if (fnidx == NULL)
+        return hts_idx_save(idx, fn, fmt);
+
+    fp = bgzf_open(fnidx, (fmt == HTS_FMT_BAI)? "wu" : "w");
+    if (fp == NULL) return -1;
+
+    if (hts_idx_write_out(idx, fp, fmt) < 0) {
+        int save_errno = errno;
+        bgzf_close(fp);
+        errno = save_errno;
+        return -1;
+    }
+
+    return bgzf_close(fp);
+}
+
+// idx_save for on-the-fly indexes.  Mostly duplicated from above, except
+// idx is not const because we want to store the file handle in it, and
+// the index file handle is not closed.  This allows the index file to be
+// closed after the EOF block on the indexed file has been written out,
+// so the modification times on the two files will be in the correct order.
+int hts_idx_save_but_not_close(hts_idx_t *idx, const char *fnidx, int fmt)
+{
+    idx->otf_fp = bgzf_open(fnidx, (fmt == HTS_FMT_BAI)? "wu" : "w");
+    if (idx->otf_fp == NULL) return -1;
+
+    if (hts_idx_write_out(idx, idx->otf_fp, fmt) < 0) {
+        int save_errno = errno;
+        bgzf_close(idx->otf_fp);
+        idx->otf_fp = NULL;
+        errno = save_errno;
+        return -1;
+    }
+
+    return bgzf_flush(idx->otf_fp);
+}
+
+static int hts_idx_close_otf_fp(hts_idx_t *idx)
+{
+    if (idx && idx->otf_fp) {
+        int ret = 0;
+        if (need_idx_ugly_delay_hack(idx)) {
+            // BAI index - write out the bytes we deferred earlier
+            ret = idx_write_uint64(idx->otf_fp, idx->n_no_coor) < 0;
+        }
+        ret |= bgzf_close(idx->otf_fp) < 0;
+        idx->otf_fp = NULL;
+        return ret == 0 ? 0 : -1;
+    }
+    return 0;
 }
 
 static int idx_read_core(hts_idx_t *idx, BGZF *fp, int fmt)
@@ -4511,9 +4639,19 @@ static int idx_test_and_fetch(const char *fn, const char **local_fn, int *local_
 }
 
 /*
- * Check the existence of a local index file using part of the alignment file name.
- * The order is alignment.bam.csi, alignment.csi, alignment.bam.bai, alignment.bai
+ * Check the existence of a local index file using part of the alignment
+ * file name.
+ *
+ * For a filename fn of fn.fmt (eg fn.bam or fn.cram) the order of checks is
+ * fn.fmt.csi,  fn.csi,
+ * fn.fmt.bai,  fn.bai  - if fmt is HTS_FMT_BAI
+ * fn.fmt.tbi,  fn.tbi  - if fmt is HTS_FMT_TBI
+ * fn.fmt.crai, fn.crai - if fmt is HTS_FMT_CRAI
+ * fn.fmt.fai           - if fmt is HTS_FMT_FAI
+ *   also .gzi if fmt is ".gz"
+ *
  * @param fn    - pointer to the file name
+ * @param fmt   - one of the HTS_FMT index formats
  * @param fnidx - pointer to the index file name placeholder
  * @return        1 for success, 0 for failure
  */
@@ -4521,11 +4659,12 @@ int hts_idx_check_local(const char *fn, int fmt, char **fnidx) {
     int i, l_fn, l_ext;
     const char *fn_tmp = NULL;
     char *fnidx_tmp;
-    char *csi_ext = ".csi";
-    char *bai_ext = ".bai";
-    char *tbi_ext = ".tbi";
-    char *crai_ext = ".crai";
-    char *fai_ext = ".fai";
+    const char *csi_ext = ".csi";
+    const char *bai_ext = ".bai";
+    const char *tbi_ext = ".tbi";
+    const char *crai_ext = ".crai";
+    const char *fai_ext = ".fai";
+    const char *gzi_ext = ".gzi";
 
     if (!fn)
         return 0;
@@ -4622,10 +4761,21 @@ int hts_idx_check_local(const char *fn, int fmt, char **fnidx) {
                 }
         }
     } else if (fmt == HTS_FMT_FAI) { // Or .fai
-        strcpy(fnidx_tmp, fn_tmp); strcpy(fnidx_tmp + l_fn, fai_ext);
+        // Check .gzi if we have a .gz file
+        strcpy(fnidx_tmp, fn_tmp);
+        int gzi_ok = 1;
+        if ((l_fn > 3 && strcmp(fn_tmp+l_fn-3, ".gz") == 0) ||
+            (l_fn > 5 && strcmp(fn_tmp+l_fn-5, ".bgzf") == 0)) {
+            strcpy(fnidx_tmp + l_fn, gzi_ext);
+            gzi_ok = stat(fnidx_tmp, &sbuf)==0;
+        }
+
+        // Now check for .fai.  Occurs second as we're returning this
+        // in *fnidx irrespective of whether we did gzi check.
+        strcpy(fnidx_tmp + l_fn, fai_ext);
         *fnidx = fnidx_tmp;
-        if(stat(fnidx_tmp, &sbuf) == 0)
-            return 1;
+        if (stat(fnidx_tmp, &sbuf) == 0)
+            return gzi_ok;
         else
             return 0;
     }

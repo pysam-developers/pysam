@@ -31,6 +31,7 @@ THE SOFTWARE.  */
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <stdint.h>
 #include <inttypes.h>
 #include <htslib/faidx.h>
 #include <htslib/vcf.h>
@@ -38,6 +39,7 @@ THE SOFTWARE.  */
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
 #include <htslib/kseq.h>
+#include <htslib/hts_endian.h>
 #include "bcftools.h"
 #include "filter.h"
 #include "convert.h"
@@ -209,7 +211,10 @@ static int _set_chrom_pos_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
     {
         long end = strtol(se+1,&ss,10);
         if ( ss==se+1 ) return -1;
-        bcf_update_info_int32(args->header, rec, "END", &end, 1);
+        if (end < 1 || end > INT32_MAX)
+            return -1;
+        int32_t e = end; // bcf_update_info_int32 needs an int32_t pointer
+        bcf_update_info_int32(args->header, rec, "END", &e, 1);
     }
 
     rec->rid = rid;
@@ -490,7 +495,9 @@ static void gensample_to_vcf(args_t *args)
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
-    if ( args->write_index && init_index(out_fh,args->header,args->outfname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->outfname);
+    if ( init_index2(out_fh,args->header,args->outfname,&args->index_fn,
+                     args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->outfname);
     bcf1_t *rec = bcf_init();
 
     nsamples -= 2;
@@ -634,7 +641,9 @@ static void haplegendsample_to_vcf(args_t *args)
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->outfname);
-    if ( args->write_index && init_index(out_fh,args->header,args->outfname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->outfname);
+    if ( init_index2(out_fh,args->header,args->outfname,&args->index_fn,
+                     args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->outfname);
     bcf1_t *rec = bcf_init();
 
     args->gts = (int32_t *) malloc(sizeof(int32_t)*nsamples*2);
@@ -786,7 +795,9 @@ static void hapsample_to_vcf(args_t *args)
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
-    if ( args->write_index && init_index(out_fh,args->header,args->outfname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->outfname);
+    if ( init_index2(out_fh,args->header,args->outfname,&args->index_fn,
+                     args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->outfname);
     bcf1_t *rec = bcf_init();
 
     nsamples -= 2;
@@ -1389,7 +1400,9 @@ static void tsv_to_vcf(args_t *args)
     if ( out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->outfname, strerror(errno));
     if ( args->n_threads ) hts_set_threads(out_fh, args->n_threads);
     if ( bcf_hdr_write(out_fh,args->header)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
-    if ( args->write_index && init_index(out_fh,args->header,args->outfname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->outfname);
+    if ( init_index2(out_fh,args->header,args->outfname,&args->index_fn,
+                     args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->outfname);
 
     tsv_t *tsv = tsv_init(args->columns ? args->columns : "ID,CHROM,POS,AA");
     if ( tsv_register(tsv, "CHROM", tsv_setter_chrom, args->header) < 0 ) error("Expected CHROM column\n");
@@ -1468,7 +1481,9 @@ static void vcf_to_vcf(args_t *args)
 
     bcf_hdr_t *hdr = bcf_sr_get_header(args->files,0);
     if ( bcf_hdr_write(out_fh,hdr)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
-    if ( args->write_index && init_index(out_fh,args->header,args->outfname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->outfname);
+    if ( init_index2(out_fh,args->header,args->outfname,&args->index_fn,
+                     args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->outfname);
 
     while ( bcf_sr_next_line(args->files) )
     {
@@ -1510,7 +1525,9 @@ static void gvcf_to_vcf(args_t *args)
     bcf_hdr_t *hdr = bcf_sr_get_header(args->files,0);
     if (args->record_cmd_line) bcf_hdr_append_version(hdr, args->argc, args->argv, "bcftools_convert");
     if ( bcf_hdr_write(out_fh,hdr)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
-    if ( args->write_index && init_index(out_fh,hdr,args->outfname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->outfname);
+    if ( init_index2(out_fh,hdr,args->outfname,&args->index_fn,
+                     args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->outfname);
 
     int32_t *itmp = NULL, nitmp = 0;
 
@@ -1608,7 +1625,7 @@ static void usage(void)
     fprintf(stderr, "   -o, --output FILE              Output file name [stdout]\n");
     fprintf(stderr, "   -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
     fprintf(stderr, "       --threads INT              Use multithreading with INT worker threads [0]\n");
-    fprintf(stderr, "       --write-index              Automatically index the output files [off]\n");
+    fprintf(stderr, "   -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
     fprintf(stderr, "   -G, --gensample2vcf ...        <PREFIX>|<GEN-FILE>,<SAMPLE-FILE>\n");
@@ -1702,11 +1719,11 @@ int main_vcfconvert(int argc, char *argv[])
         {"fasta-ref",required_argument,NULL,'f'},
         {"no-version",no_argument,NULL,10},
         {"keep-duplicates",no_argument,NULL,12},
-        {"write-index",no_argument,NULL,16},
+        {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "?h:r:R:s:S:t:T:i:e:g:G:o:O:c:f:H:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "?h:r:R:s:S:t:T:i:e:g:G:o:O:c:f:H:W::",loptions,NULL)) >= 0) {
         switch (c) {
             case 'e':
                 if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
@@ -1731,7 +1748,10 @@ int main_vcfconvert(int argc, char *argv[])
             case  7 : args->convert_func = vcf_to_hapsample; args->outfname = optarg; break;
             case  8 : error("The --chrom option has been deprecated, please use --3N6 instead\n"); break;
             case 15 : args->gen_3N6 = 1; break;
-            case 16 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case 'H': args->convert_func = haplegendsample_to_vcf; args->infname = optarg; break;
             case 'f': args->ref_fname = optarg; break;
             case 'c': args->columns = optarg; break;

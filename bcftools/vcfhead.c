@@ -1,6 +1,7 @@
 /*  vcfhead.c -- view VCF/BCF file headers.
 
     Copyright (C) 2021 University of Glasgow.
+    Copyright (C) 2023 Genome Research Ltd.
 
     Author: John Marshall <jmarshall@hey.com>
 
@@ -41,29 +42,35 @@ int main_vcfhead(int argc, char *argv[])
 "Usage: bcftools head [OPTION]... [FILE]\n"
 "\n"
 "Options:\n"
-"  -h, --headers INT   Display INT header lines [all]\n"
-"  -n, --records INT   Display INT variant record lines [none]\n"
+"  -h, --headers INT    Display INT header lines [all]\n"
+"  -n, --records INT    Display INT variant record lines [none]\n"
+"  -s, --samples INT    Display INT records starting with the #CHROM header line [none]\n"
 "\n";
 
     static const struct option loptions[] = {
         { "headers", required_argument, NULL, 'h' },
         { "records", required_argument, NULL, 'n' },
+        { "samples", required_argument, NULL, 's' },
         { NULL, 0, NULL, 0 }
     };
 
     int all_headers = 1;
+    int samples = 0;
     uint64_t nheaders = 0;
     uint64_t nrecords = 0;
 
     int c, nargs;
-    while ((c = getopt_long(argc, argv, "h:n:", loptions, NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:n:s:", loptions, NULL)) >= 0)
         switch (c) {
         case 'h': all_headers = 0; nheaders = strtoull(optarg, NULL, 0); break;
         case 'n': nrecords = strtoull(optarg, NULL, 0); break;
+        case 's': nrecords = strtoull(optarg, NULL, 0); samples = 1; break;
         default:
             fputs(usage, stderr);
             return EXIT_FAILURE;
         }
+
+    if ( samples && all_headers ) all_headers = 0;
 
     nargs = argc - optind;
     if (nargs == 0 && isatty(STDIN_FILENO)) {
@@ -99,17 +106,34 @@ int main_vcfhead(int argc, char *argv[])
         bcf_hdr_format(hdr, 0, &str);
         fputs(ks_str(&str), stdout);
     }
-    else if (nheaders > 0) {
+    else if (nheaders > 0 || samples ) {
         bcf_hdr_format(hdr, 0, &str);
         char *lim = str.s;
         uint64_t n;
+        int samples_printed = 0;
         for (n = 0; n < nheaders; n++) {
+            if ( samples && !strncmp(lim,"#CHROM\t",7) ) samples_printed = 1;
             lim = strchr(lim, '\n');
             if (lim) lim++;
             else break;
         }
-        if (lim) *lim = '\0';
-        fputs(ks_str(&str), stdout);
+        if ( nheaders )
+        {
+            char tmp;
+            if (lim) { tmp = *lim; *lim = '\0'; }
+            fputs(ks_str(&str), stdout);
+            if (lim) *lim = tmp;
+        }
+        if ( lim && samples && !samples_printed )
+        {
+            while ( lim && *lim )
+            {
+                if ( !strncmp(lim,"#CHROM\t",7) ) { fputs(lim, stdout); break; }
+                lim = strchr(lim, '\n');
+                if (lim) lim++;
+                else break;
+            }
+        }
     }
 
     if (nrecords > 0) {

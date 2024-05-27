@@ -3,7 +3,7 @@
 /*  bam2bcf.c -- variant calling.
 
     Copyright (C) 2010-2012 Broad Institute.
-    Copyright (C) 2012-2022 Genome Research Ltd.
+    Copyright (C) 2012-2024 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -251,6 +251,10 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
 {
     int i, n, ref4, is_indel, ori_depth = 0;
 
+#ifdef GLF_DEBUG
+    fprintf(bcftools_stderr, "Call GLFGEN\n");
+#endif
+
     // clean from previous run
     r->ori_depth = 0;
     r->mq0 = 0;
@@ -268,6 +272,15 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         bca->max_bases = _n;
         kroundup32(bca->max_bases);
         bca->bases = (uint16_t*)realloc(bca->bases, 2 * bca->max_bases);
+    }
+
+    // Detect if indel occurs anywhere in this sample
+    int indel_in_sample = 0;
+    if (bca->edlib) {
+        for (i = n = 0; i < _n; ++i) {
+            const bam_pileup1_t *p = pl + i;
+            if (p->indel) indel_in_sample = 1;
+        }
     }
 
     // fill the bases array
@@ -300,7 +313,19 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
             b = p->aux>>16&0x3f;        // indel type
             seqQ = q = (p->aux & 0xff); // mp2 + builtin indel-bias
 
-            if ( !bca->indels_v20 )
+            if (bca->edlib) {
+                if (indel_in_sample) {
+                    seqQ = q = (p->aux & 0xff); // mp2 + builtin indel-bias
+                } else if (p->aux & 0xff) {
+                    // An indel in another sample, but not this.  So just use
+                    // basic sequence confidences.
+                    q = bam_get_qual(p->b)[p->qpos];
+                    if (q > bca->max_baseQ) q = bca->max_baseQ;
+                    seqQ = 99;
+                }
+            }
+
+            if ( !bca->indels_v20 && !bca->edlib )
             {
                 /*
                     This heuristics was introduced by e4e161068 and claims to fix #1446. However, we obtain
@@ -332,6 +357,10 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
                 }
             }
 
+#ifdef GLF_DEBUG
+            fprintf(bcftools_stderr, "GLF %s\t%d\t%d\n", bam_get_qname(p->b),
+                    bca->indel_types[b], q);
+#endif
             if (q < bca->min_baseQ)
             {
                 if (!p->indel && b < 4) // not an indel read
@@ -343,6 +372,50 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
                 }
                 continue;
             }
+
+#ifndef MIN
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
+
+#ifndef MAX
+#define MAX(a,b) ((a)>(b)?(a):(b))
+#endif
+
+#if 1 // TEST 6
+            if (bca->edlib) {
+                // Deeper data should rely more heavily on counts of data
+                // than quality, as quality can be unreliable and prone to
+                // miscalculations through BAQ, STR analysis, etc.
+                // So we put a cap on how good seqQ can be.
+                //
+                // Is it simply the equivalent of increasing -F filter?
+                // Not quite, as the latter removes many real variants upfront.
+                // This calls them and then post-adjusts quality, potentially
+                // dropping it later or changing genotype. So we still get
+                // calls, but lower qual.
+                seqQ = MIN(seqQ, bca->seqQ_offset-(MIN(20,_n)*5));
+
+                if (indel_in_sample && p->indel == 0 && b != 0) {
+                    // This read doesn't contain an indel in CIGAR, but it
+                    // is assigned to an indel now (b != 0),  These are
+                    // reads we've corrected with realignment, but they're
+                    // also enriched for FPs so at high depth we reduce their
+                    // confidence and let the depth do the talking.  If it's
+                    // real and deep, then we don't need every read aligning.
+                    // We also reduce base quality too to reflect the
+                    // chance of our realignment being incorrect.
+
+                    seqQ = MIN(seqQ, seqQ/2 + 5); // q2p5
+
+                    // Finally reduce indel quality.
+                    // This is a blend of indelQ and base QUAL.
+                    q = MIN((int)bam_get_qual(p->b)[p->qpos]/4+10, q/4+1);
+                }
+            }
+#endif
+
+            // Note baseQ changes some output fields such as I16, but has no
+            // significant affect on "call".
             baseQ  = p->aux>>8&0xff;
         }
         else
@@ -377,6 +450,11 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
         }
         mapQ  = p->b->core.qual < 255? p->b->core.qual : DEF_MAPQ; // special case for mapQ==255
         if ( !mapQ ) r->mq0++;
+#ifdef GLF_DEBUG
+        fprintf(bcftools_stderr, "GLF2 %s\t%d\t%d\t%d,%d\n",
+                bam_get_qname(p->b), b, q,
+                seqQ, mapQ);
+#endif
         if (q > seqQ) q = seqQ;
         mapQ = mapQ < bca->capQ? mapQ : bca->capQ;
         if (q > mapQ) q = mapQ;
@@ -480,9 +558,19 @@ int bcf_call_glfgen(int _n, const bam_pileup1_t *pl, int ref_base, bcf_callaux_t
             for (i=0; i<4; i++) r->ADF[i] += lroundf((float)dp_ambig * r->ADF[i]/dp);
     }
 
+    // Else consider downgrading bca->bases[] scores by AD vs AD_ref_missed
+    // ratios.  This is detrimental on Illumina, but beneficial on PacBio CCS.
+    // It's possibly related to the homopolyer error likelihoods or overall
+    // Indel accuracy.  Maybe tie this in to the -h option?
+
     r->ori_depth = ori_depth;
     // glfgen
     errmod_cal(bca->e, n, 5, bca->bases, r->p); // calculate PL of each genotype
+
+    // TODO: account for the number of unassigned reads.  If depth is 50,
+    // but AD is 5,7 then it may look like a variant but it probably
+    // should be low quality.
+
     return n;
 }
 
@@ -1149,10 +1237,30 @@ int bcf_call2bcf(bcf_call_t *bc, bcf1_t *rec, bcf_callret1_t *bcr, int fmt_flag,
     if ( bc->ori_ref < 0 )
     {
         bcf_update_info_flag(hdr, rec, "INDEL", NULL, 1);
-        if ( fmt_flag&B2B_INFO_IDV )
-            bcf_update_info_int32(hdr, rec, "IDV", &bca->max_support, 1);
-        if ( fmt_flag&B2B_INFO_IMF )
-            bcf_update_info_float(hdr, rec, "IMF", &bca->max_frac, 1);
+        uint32_t idv = bca->max_support;
+        if ( fmt_flag&B2B_INFO_IMF) {
+            float max_frac;
+            // Recompute IDV and IMF based on alignment results for more
+            // accurate counts, but only when in new "--indels-cns" mode.
+            if (bc->ADF && bc->ADR && bca->edlib) {
+                int max_ad = 0;
+                for (int k = 1; k < rec->n_allele; k++) {
+                    if (max_ad < bc->ADF[k] + bc->ADR[k])
+                        max_ad = bc->ADF[k] + bc->ADR[k];
+                }
+                max_frac = (double)(max_ad) / bc->ori_depth;
+                idv = max_ad;
+            } else {
+                max_frac = bca->max_frac;
+            }
+            // Copied here to maintain order for consistency of "make check"
+            if ( fmt_flag&B2B_INFO_IDV )
+                bcf_update_info_int32(hdr, rec, "IDV", &idv, 1);
+            bcf_update_info_float(hdr, rec, "IMF", &max_frac, 1);
+        } else {
+            if ( fmt_flag&B2B_INFO_IDV )
+                bcf_update_info_int32(hdr, rec, "IDV", &idv, 1);
+        }
     }
     bcf_update_info_int32(hdr, rec, "DP", &bc->ori_depth, 1);
     if ( fmt_flag&B2B_INFO_ADF )

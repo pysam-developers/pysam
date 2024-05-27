@@ -55,7 +55,8 @@ typedef struct
     bcf_hdr_t *header;
     int sample_is_file;
     char **argv, *format_str, *sample_list, *targets_list, *regions_list, *vcf_list, *fn_out;
-    int argc, list_columns, print_header, allow_undef_tags, force_samples;
+    char *print_filtered;
+    int argc, list_columns, print_header, allow_undef_tags, force_samples, force_newline;
     FILE *out;
 }
 args_t;
@@ -94,7 +95,7 @@ static void init_data(args_t *args)
         smpl_ilist_destroy(ilist);
     }
     args->convert = convert_init(args->header, samples, nsamples, args->format_str);
-    convert_set_option(args->convert, force_newline, 1);
+    if ( args->force_newline ) convert_set_option(args->convert, force_newline, 1);
     convert_set_option(args->convert, subset_samples, &args->smpl_pass);
     if ( args->allow_undef_tags ) convert_set_option(args->convert, allow_undef_tags, 1);
     free(samples);
@@ -106,6 +107,9 @@ static void init_data(args_t *args)
         max_unpack |= filter_max_unpack(args->filter);
     }
     args->files->max_unpack = max_unpack;
+    if ( !args->filter || args->print_filtered || !(filter_max_unpack(args->filter) & BCF_UN_FMT) )
+        convert_set_option(args->convert, header_samples, 1);
+    if ( args->print_filtered ) convert_set_option(args->convert, print_filtered, args->print_filtered);
 }
 
 static void destroy_data(args_t *args)
@@ -232,10 +236,12 @@ static void usage(void)
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    -e, --exclude EXPR                Exclude sites for which the expression is true (see man page for details)\n");
     fprintf(stderr, "        --force-samples               Only warn about unknown subset samples\n");
+    fprintf(stderr, "    -F, --print-filtered STR          Output STR for samples failing the -i/-e filtering expression\n");
     fprintf(stderr, "    -f, --format STRING               See man page for details\n");
     fprintf(stderr, "    -H, --print-header                Print header\n");
     fprintf(stderr, "    -i, --include EXPR                Select sites for which the expression is true (see man page for details)\n");
     fprintf(stderr, "    -l, --list-samples                Print the list of samples and exit\n");
+    fprintf(stderr, "    -N, --disable-automatic-newline   Disable automatic addition of newline character when not present\n");
     fprintf(stderr, "    -o, --output FILE                 Output file name [stdout]\n");
     fprintf(stderr, "    -r, --regions REGION              Restrict to comma-separated list of regions\n");
     fprintf(stderr, "    -R, --regions-file FILE           Restrict to regions listed in a file\n");
@@ -250,6 +256,7 @@ static void usage(void)
     fprintf(stderr, "\n");
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "\tbcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%SAMPLE=%%GT]\\n' file.vcf.gz\n");
+    fprintf(stderr, "\t# For more examples see http://samtools.github.io/bcftools/bcftools.html#query\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -259,6 +266,7 @@ int main_vcfquery(int argc, char *argv[])
     int c, collapse = 0;
     args_t *args = (args_t*) calloc(1,sizeof(args_t));
     args->argc   = argc; args->argv = argv;
+    args->force_newline = 1;
     int regions_is_file = 0, targets_is_file = 0;
     int regions_overlap = 1;
     int targets_overlap = 0;
@@ -267,8 +275,10 @@ int main_vcfquery(int argc, char *argv[])
     {
         {"help",0,0,'h'},
         {"list-samples",0,0,'l'},
+        {"disable-automatic-newline",required_argument,NULL,'N'},
         {"include",1,0,'i'},
         {"exclude",1,0,'e'},
+        {"print-filtered",1,0,'F'},
         {"format",1,0,'f'},
         {"force-samples",0,0,3},
         {"output-file",1,0,'o'},
@@ -288,10 +298,12 @@ int main_vcfquery(int argc, char *argv[])
         {"allow-undef-tags",0,0,'u'},
         {0,0,0,0}
     };
-    while ((c = getopt_long(argc, argv, "hlr:R:f:a:s:S:Ht:T:c:v:i:e:o:u",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "hlr:R:F:f:a:s:S:Ht:T:c:v:i:e:o:uN",loptions,NULL)) >= 0) {
         switch (c) {
             case 'o': args->fn_out = optarg; break;
+            case 'F': args->print_filtered = optarg; break;
             case 'f': args->format_str = strdup(optarg); break;
+            case 'N': args->force_newline = 0; break;
             case 'H': args->print_header = 1; break;
             case 'v': args->vcf_list = optarg; break;
             case 'c':

@@ -115,14 +115,14 @@ int var_put_u64(uint8_t *cp, const uint8_t *endp, uint64_t i) {
         *cp++ = ((i>> 7) & 0x7f) | 128;
         *cp++ =   i      & 0x7f;
         return 4;
-    } else if (i < (1LL<<35)) {
+    } else if (i < (1ULL<<35)) {
         *cp++ = ((i>>28) & 0x7f) | 128;
         *cp++ = ((i>>21) & 0x7f) | 128;
         *cp++ = ((i>>14) & 0x7f) | 128;
         *cp++ = ((i>> 7) & 0x7f) | 128;
         *cp++ =   i      & 0x7f;
         return 5;
-    } else if (i < (1LL<<42)) {
+    } else if (i < (1ULL<<42)) {
         *cp++ = ((i>>35) & 0x7f) | 128;
         *cp++ = ((i>>28) & 0x7f) | 128;
         *cp++ = ((i>>21) & 0x7f) | 128;
@@ -130,7 +130,7 @@ int var_put_u64(uint8_t *cp, const uint8_t *endp, uint64_t i) {
         *cp++ = ((i>> 7) & 0x7f) | 128;
         *cp++ =   i      & 0x7f;
         return 6;
-    } else if (i < (1LL<<49)) {
+    } else if (i < (1ULL<<49)) {
         *cp++ = ((i>>42) & 0x7f) | 128;
         *cp++ = ((i>>35) & 0x7f) | 128;
         *cp++ = ((i>>28) & 0x7f) | 128;
@@ -139,7 +139,7 @@ int var_put_u64(uint8_t *cp, const uint8_t *endp, uint64_t i) {
         *cp++ = ((i>> 7) & 0x7f) | 128;
         *cp++ =   i      & 0x7f;
         return 7;
-    } else if (i < (1LL<<56)) {
+    } else if (i < (1ULL<<56)) {
         *cp++ = ((i>>49) & 0x7f) | 128;
         *cp++ = ((i>>42) & 0x7f) | 128;
         *cp++ = ((i>>35) & 0x7f) | 128;
@@ -149,7 +149,7 @@ int var_put_u64(uint8_t *cp, const uint8_t *endp, uint64_t i) {
         *cp++ = ((i>> 7) & 0x7f) | 128;
         *cp++ =   i      & 0x7f;
         return 8;
-    } else if (i < (1LL<<63)) {
+    } else if (i < (1ULL<<63)) {
         *cp++ = ((i>>56) & 0x7f) | 128;
         *cp++ = ((i>>49) & 0x7f) | 128;
         *cp++ = ((i>>42) & 0x7f) | 128;
@@ -241,7 +241,7 @@ int var_get_u64(uint8_t *cp, const uint8_t *endp, uint64_t *i) {
     uint8_t *op = cp, c;
     uint64_t j = 0;
 
-    if (!endp || endp - cp >= 10) {
+    if (!endp || endp - cp >= 11) {
         int n = 10;
         do {
             c = *cp++;

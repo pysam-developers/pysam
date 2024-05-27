@@ -45,7 +45,9 @@ void bcftools_set_stdout_fn(const char *fn)
 
 void bcftools_close_stdout(void)
 {
-  fclose(bcftools_stdout);
+  long pos = ftell(bcftools_stdout);
+  if (pos >= 0)
+    fclose(bcftools_stdout);
   bcftools_stdout = NULL;
 }
 

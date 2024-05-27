@@ -68,7 +68,7 @@ typedef struct _plugin_t plugin_t;
  *      success or non-zero value on error.
  *
  *   int init(int argc, char **argv, bcf_hdr_t *in_hdr, bcf_hdr_t *out_hdr)
- *      - called once at startup, allows to initialize local variables.
+ *      - called once at startup, it initializes local variables.
  *      Return 1 to suppress normal VCF/BCF header output, -1 on critical
  *      errors, 0 otherwise.
  *
@@ -552,7 +552,9 @@ static void init_data(args_t *args)
         if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
         if ( args->n_threads ) hts_set_threads(args->out_fh, args->n_threads);
         if ( bcf_hdr_write(args->out_fh, args->hdr_out)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
-        if ( args->write_index && init_index(args->out_fh,args->hdr_out,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
+        if ( init_index2(args->out_fh,args->hdr_out,args->output_fname,
+                         &args->index_fn, args->write_index)<0 )
+            error("Error: failed to initialise index for %s\n",args->output_fname);
     }
 }
 
@@ -615,7 +617,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -l, --list-plugins             List available plugins. See BCFTOOLS_PLUGINS environment variable and man page for details\n");
     fprintf(bcftools_stderr, "   -v, --verbose                  Print verbose information, -vv increases verbosity\n");
     fprintf(bcftools_stderr, "   -V, --version                  Print version string and exit\n");
-    fprintf(bcftools_stderr, "       --write-index              Automatically index the output files [off]\n");
+    fprintf(bcftools_stderr, "   -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -693,11 +695,11 @@ int main_plugin(int argc, char *argv[])
         {"targets-file",required_argument,NULL,'T'},
         {"targets-overlap",required_argument,NULL,2},
         {"no-version",no_argument,NULL,8},
-        {"write-index",no_argument,NULL,10},
+        {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h?o:O:r:R:t:T:li:e:vV",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h?o:O:r:R:t:T:li:e:vVW::",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'V': version_only = 1; break;
@@ -742,7 +744,10 @@ int main_plugin(int argc, char *argv[])
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
-            case 10 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case '?':
             case 'h': usage_only = 1; break;
             default: error("Unknown argument: %s\n", optarg);

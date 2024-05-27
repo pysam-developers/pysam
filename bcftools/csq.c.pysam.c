@@ -556,7 +556,9 @@ void init_data(args_t *args)
         if ( args->hdr_nsmpl )
             bcf_hdr_printf(args->hdr,"##FORMAT=<ID=%s,Number=.,Type=Integer,Description=\"Bitmask of indexes to INFO/BCSQ, with interleaved first/second haplotype. Use \\\"bcftools query -f'[%%CHROM\\t%%POS\\t%%SAMPLE\\t%%TBCSQ\\n]'\\\" to translate.\">",args->bcsq_tag);
         if ( bcf_hdr_write(args->out_fh, args->hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname?args->output_fname:"standard output");
-        if ( args->write_index && init_index(args->out_fh,args->hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
+        if ( init_index2(args->out_fh,args->hdr,args->output_fname,
+                         &args->index_fn, args->write_index) < 0 )
+            error("Error: failed to initialise index for %s\n",args->output_fname);
     }
     if ( args->verbosity > 0 ) fprintf(bcftools_stderr,"Calling...\n");
 }
@@ -965,7 +967,7 @@ int shifted_del_synonymous(args_t *args, splice_t *splice, uint32_t ex_beg, uint
     if ( tr->strand==STRAND_FWD && splice->vcf.pos >= ex_beg + 3 ) return 0;
 
 #if XDBG
-    fprintf(bcftools_stderr,"shifted_del_synonymous: %d-%d  %s\n",ex_beg,ex_end, tr->strand==STRAND_FWD?"fwd":"rev");
+    fprintf(bcftools_stderr,"shifted_del_synonymous: %d-%d  %s\n",ex_beg,ex_end, tr->strand==STRAND_FWD?"fwd":(tr->strand==STRAND_REV?"rev":"unk"));
     fprintf(bcftools_stderr,"   %d  ..  %s > %s\n",splice->vcf.pos+1,splice->vcf.ref,splice->vcf.alt);
 #endif
 
@@ -998,7 +1000,7 @@ int shifted_del_synonymous(args_t *args, splice_t *splice, uint32_t ex_beg, uint
         while ( ptr_vcf[i] && ptr_vcf[i]==ptr_ref[i] ) i++;
         if ( ptr_vcf[i] ) return 0;       // the deleted sequence cannot be replaced
     }
-    else
+    else if ( tr->strand==STRAND_FWD )
     {
         // STRAND_FWD
         int32_t vcf_block_beg = splice->vcf.pos + ref_len - 2*ndel;        // the position of the first base of the ref block that could potentially replace the deletion
@@ -1271,13 +1273,13 @@ fprintf(bcftools_stderr,"mnp: %s>%s .. ex=%d,%d  beg,end=%d,%d  tbeg,tend=%d,%d 
     {
         if ( splice->check_region_beg ) splice->csq |= CSQ_SPLICE_REGION;
         if ( splice->tr->strand==STRAND_FWD ) { if ( splice->check_start ) splice->csq |= CSQ_START_LOST; }
-        else { if ( splice->check_stop ) splice->csq |= CSQ_STOP_LOST; }
+        else if ( splice->tr->strand==STRAND_REV ) { if ( splice->check_stop ) splice->csq |= CSQ_STOP_LOST; }
     }
     if ( splice->ref_end > ex_end - 3 )
     {
         if ( splice->check_region_end ) splice->csq |= CSQ_SPLICE_REGION;
         if ( splice->tr->strand==STRAND_REV ) { if ( splice->check_start ) splice->csq |= CSQ_START_LOST; }
-        else { if ( splice->check_stop ) splice->csq |= CSQ_STOP_LOST; }
+        else if ( splice->tr->strand==STRAND_FWD ) { if ( splice->check_stop ) splice->csq |= CSQ_STOP_LOST; }
     }
     if ( splice->set_refalt )
     {
@@ -1338,17 +1340,17 @@ int hap_init(args_t *args, hap_node_t *parent, hap_node_t *child, gf_cds_t *cds,
     if ( !(tr->trim & TRIM_5PRIME) )
     {
         if ( tr->strand==STRAND_FWD ) { if ( child->icds==0 ) splice.check_start = 1; }
-        else { if ( child->icds==tr->ncds-1 ) splice.check_start = 1; }
+        else if ( tr->strand==STRAND_REV ) { if ( child->icds==tr->ncds-1 ) splice.check_start = 1; }
     }
     if ( !(tr->trim & TRIM_3PRIME) )
     {
         if ( tr->strand==STRAND_FWD ) { if ( child->icds==tr->ncds-1 ) splice.check_stop = 1; }
-        else { if ( child->icds==0 ) splice.check_stop = 1; }
+        else if ( tr->strand==STRAND_REV ) { if ( child->icds==0 ) splice.check_stop = 1; }
     }
     if ( splice.check_start )   // do not check starts in incomplete CDS, defined as not starting with M
     {
         if ( tr->strand==STRAND_FWD ) { if ( dna2aa(TSCRIPT_AUX(tr)->ref+N_REF_PAD+cds->beg-tr->beg) != 'M' ) splice.check_start = 0; }
-        else { if ( cdna2aa(TSCRIPT_AUX(tr)->ref+N_REF_PAD+cds->beg-tr->beg+cds->len-3) != 'M' ) splice.check_start = 0; }
+        else if ( tr->strand==STRAND_REV ) { if ( cdna2aa(TSCRIPT_AUX(tr)->ref+N_REF_PAD+cds->beg-tr->beg+cds->len-3) != 'M' ) splice.check_start = 0; }
     }
     if ( child->icds!=0 ) splice.check_region_beg = 1;
     if ( child->icds!=tr->ncds-1 ) splice.check_region_end = 1;
@@ -1586,7 +1588,7 @@ fprintf(bcftools_stderr,"\ntranslate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,r
             }
         }
     }
-    else    // STRAND_REV
+    else if ( strand==STRAND_REV )
     {
         // right padding - number of bases to take from ref
         npad = (seq.m - (sbeg + seq.l)) % 3;
@@ -1673,6 +1675,7 @@ fprintf(bcftools_stderr,"\ntranslate: %d %d %d  fill=%d  seq.l=%d\n",sbeg,rbeg,r
             }
         }
     }
+    else error("Should not happen: %d\n", strand);
     kputc_(0,tseq); tseq->l--;
 #if DBG
  fprintf(bcftools_stderr,"    tseq: %s\n", tseq->s);
@@ -1858,7 +1861,7 @@ void kput_vcsq(args_t *args, vcsq_t *csq, kstring_t *str)
     kputs(gf_type2gff_string(csq->biotype), str);
 
     if ( CSQ_PRN_STRAND(csq->type) || csq->vstr.l )
-        kputs(csq->strand==STRAND_FWD ? "|+" : "|-", str);
+        kputs(csq->strand==STRAND_FWD ? "|+" : (csq->strand==STRAND_REV ? "|-" : "|."), str);
 
     if ( csq->vstr.l )
         kputs(csq->vstr.s, str);
@@ -1882,6 +1885,7 @@ void hap_add_csq(args_t *args, hap_t *hap, hap_node_t *node, int tlen, int ibeg,
 {
     int i;
     gf_tscript_t *tr = hap->tr;
+    assert( tr->strand==STRAND_FWD || tr->strand==STRAND_REV );
     int ref_node = tr->strand==STRAND_FWD ? ibeg : iend;
     int icsq = node->ncsq_list++;
     hts_expand0(csq_t,node->ncsq_list,node->mcsq_list,node->csq_list);
@@ -2177,7 +2181,7 @@ void hap_finalize(args_t *args, hap_t *hap)
                 indel = 0;
             }
         }
-        else
+        else if ( tr->strand==STRAND_REV )
         {
             i = istack + 1, ibeg = -1;
             while ( --i > 0 )
@@ -3330,7 +3334,7 @@ static const char *usage(void)
         "       --targets-overlap 0|1|2       Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n"
         "       --threads INT                 Use multithreading with <int> worker threads [0]\n"
         "   -v, --verbose INT                 Verbosity level 0-2 [1]\n"
-        "       --write-index                 Automatically index the output files [off]\n"
+        "   -W, --write-index[=FMT]           Automatically index the output files [off]\n"
         "\n"
         "Example:\n"
         "   bcftools csq -f hs37d5.fa -g Homo_sapiens.GRCh37.82.gff3.gz in.vcf\n"
@@ -3381,7 +3385,7 @@ int main_csq(int argc, char *argv[])
         {"targets-file",1,0,'T'},
         {"targets-overlap",required_argument,NULL,5},
         {"no-version",no_argument,NULL,3},
-        {"write-index",no_argument,NULL,6},
+        {"write-index",optional_argument,NULL,'W'},
         {"dump-gff",required_argument,NULL,7},
         {"unify-chr-names",required_argument,NULL,8},
         {0,0,0,0}
@@ -3390,7 +3394,7 @@ int main_csq(int argc, char *argv[])
     int regions_overlap = 1;
     int targets_overlap = 0;
     char *targets_list = NULL, *regions_list = NULL, *tmp;
-    while ((c = getopt_long(argc, argv, "?hr:R:t:T:i:e:f:o:O:g:s:S:p:qc:ln:bB:v:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "?hr:R:t:T:i:e:f:o:O:g:s:S:p:qc:ln:bB:v:W::",loptions,NULL)) >= 0)
     {
         switch (c)
         {
@@ -3472,7 +3476,10 @@ int main_csq(int argc, char *argv[])
                 targets_overlap = parse_overlap_option(optarg);
                 if ( targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
-            case  6 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case  7 : args->dump_gff = optarg; break;
             case  8 :
                 if ( !strcmp(optarg,"0") ) args->unify_chr_names = 0;
@@ -3492,7 +3499,7 @@ int main_csq(int argc, char *argv[])
     }
     else fname = argv[optind];
     if ( argc - optind>1 ) error("%s", usage());
-    if ( !args->fa_fname ) error("Missing the --fa-ref option\n");
+    if ( !args->fa_fname ) error("Missing the --fasta-ref option\n");
     if ( !args->gff_fname ) error("Missing the --gff option\n");
     args->sr = bcf_sr_init();
     if ( targets_list )

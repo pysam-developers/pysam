@@ -43,7 +43,7 @@
  * Note currently this needs manually editing as it isn't automatically
  * updated by autoconf.
  */
-#define HTSCODECS_VERSION 100501
+#define HTSCODECS_VERSION 100600
 
 /*
  * A const string form of the HTSCODECS_VERSION define.

@@ -96,7 +96,7 @@ unsigned char *rans_compress_O0(unsigned char *in, unsigned int in_size,
         free(out_buf);
         return NULL;
     }
-    tr = ((uint64_t)TOTFREQ<<31)/in_size + (1<<30)/in_size;
+    tr = in_size ? ((uint64_t)TOTFREQ<<31)/in_size + (1<<30)/in_size : 0;
 
  normalise_harder:
     // Normalise so T[i] == TOTFREQ

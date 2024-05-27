@@ -33,7 +33,7 @@ THE SOFTWARE.  */
 #define CALL_VARONLY        (1<<1)
 #define CALL_CONSTR_TRIO    (1<<2)
 #define CALL_CONSTR_ALLELES (1<<3)
-//
+#define CALL_KEEP_UNSEEN    (1<<4)
 #define CALL_FMT_PV4        (1<<5)
 #define CALL_FMT_GQ         (1<<6)
 #define CALL_FMT_GP         (1<<7)
@@ -125,8 +125,7 @@ call_t;
 void error(const char *format, ...);
 
 /*
- *  call() - return -1 value on critical error; -2 to skip the site; or the number of non-reference
- *            alleles on success.
+ *  call() - return -1 value on critical error; -2 to skip the site; or the number of alleles on success
  */
 int mcall(call_t *call, bcf1_t *rec);    // multiallic and rare-variant calling model
 int ccall(call_t *call, bcf1_t *rec);    // the default consensus calling model

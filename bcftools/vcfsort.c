@@ -302,7 +302,9 @@ void merge_blocks(args_t *args)
     set_wmode(wmode,args->output_type,args->output_fname,args->clevel);
     htsFile *out = hts_open(args->output_fname ? args->output_fname : "-", wmode);
     if ( bcf_hdr_write(out, args->hdr)!=0 ) clean_files_and_throw(args, "[%s] Error: cannot write to %s\n", __func__,args->output_fname);
-    if ( args->write_index && init_index(out,args->hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
+    if ( init_index2(out,args->hdr,args->output_fname,&args->index_fn,
+                     args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->output_fname);
     while ( bhp->ndat )
     {
         blk_t *blk = bhp->dat[0];
@@ -337,7 +339,6 @@ static void usage(args_t *args)
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    -m, --max-mem FLOAT[kMG]       maximum memory to use [768M]\n");    // using metric units, 1M=1e6
     fprintf(stderr, "    -o, --output FILE              output file name [stdout]\n");
-    fprintf(stderr, "    -O, --output-type b|u|z|v      b: compressed BCF, u: uncompressed BCF, z: compressed VCF, v: uncompressed VCF [v]\n");
     fprintf(stderr, "    -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
 
 #ifdef _WIN32
@@ -345,7 +346,7 @@ static void usage(args_t *args)
 #else
     fprintf(stderr, "    -T, --temp-dir DIR             temporary files [/tmp/bcftools.XXXXXX]\n");
 #endif
-    fprintf(stderr, "        --write-index              Automatically index the output files [off]\n");
+    fprintf(stderr, "    -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -408,11 +409,11 @@ int main_sort(int argc, char *argv[])
         {"output-file",required_argument,NULL,'o'},
         {"output",required_argument,NULL,'o'},
         {"help",no_argument,NULL,'h'},
-        {"write-index",no_argument,NULL,1},
+        {"write-index",optional_argument,NULL,'W'},
         {0,0,0,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "m:T:O:o:h?",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "m:T:O:o:W::h?",loptions,NULL)) >= 0)
     {
         switch (c)
         {
@@ -437,7 +438,10 @@ int main_sort(int argc, char *argv[])
                           if ( *tmp || args->clevel<0 || args->clevel>9 ) error("Could not parse argument: --compression-level %s\n", optarg+1);
                       }
                       break;
-            case  1 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);

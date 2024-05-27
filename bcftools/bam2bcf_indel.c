@@ -45,7 +45,7 @@ KSORT_INIT_GENERIC(uint32_t)
 //
 // *_tpos is returned as tpos if query overlaps tpos, but for deletions
 // it'll be either the start (is_left) or end (!is_left) ref position.
-static int tpos2qpos(const bam1_core_t *c, const uint32_t *cigar, int32_t tpos, int is_left, int32_t *_tpos)
+int tpos2qpos(const bam1_core_t *c, const uint32_t *cigar, int32_t tpos, int is_left, int32_t *_tpos)
 {
     // x = pos in ref, y = pos in query seq
     int k, x = c->pos, y = 0, last_y = 0;
@@ -98,8 +98,8 @@ inline int est_indelreg(int pos, const char *ref, int l, char *ins4)
 }
 
 // Identify spft-clip length, position in seq, and clipped seq len
-static inline void get_pos(const bcf_callaux_t *bca, bam_pileup1_t *p,
-                           int *sc_len_r, int *slen_r, int *epos_r, int *end) {
+void get_pos(const bcf_callaux_t *bca, bam_pileup1_t *p,
+             int *sc_len_r, int *slen_r, int *epos_r, int *end) {
     bam1_t *b = p->b;
     int sc_len = 0, sc_dist = -1, at_left = 1;
     int epos = p->qpos, slen = b->core.l_qseq;
@@ -155,6 +155,7 @@ static inline void get_pos(const bcf_callaux_t *bca, bam_pileup1_t *p,
 //
 // Scans the pileup to identify all the different sizes of indels
 // present.
+// types[] returned is sorted by size, from smallest (maybe negative) to largest.
 //
 // Returns types and fills out n_types_r,  max_rd_len_r and ref_type_r,
 //         or NULL on error.
@@ -429,9 +430,9 @@ int bcf_cgp_l_run(const char *ref, int pos) {
 
 // Compute the consensus for this sample 's', minus indels which
 // get added later.
-static char *bcf_cgp_calc_cons(int n, int *n_plp, bam_pileup1_t **plp,
-                               int pos, int *types, int n_types,
-                               int max_ins, int s) {
+char *bcf_cgp_calc_cons(int n, int *n_plp, bam_pileup1_t **plp,
+                        int pos, int *types, int n_types,
+                        int max_ins, int s) {
     int i, j, t, k;
     int *inscns_aux = (int*)calloc(5 * n_types * max_ins, sizeof(int));
     if (!inscns_aux)

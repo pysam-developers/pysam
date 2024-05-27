@@ -122,14 +122,17 @@ typedef struct __bcf_callaux_t {
     // for internal uses
     int max_bases;
     int indel_types[4];     // indel lengths
-    int indel_win_size, indels_v20;
-    int maxins, indelreg;
+    int indel_win_size, indels_v20, edlib;
+    int seqQ_offset; // edlib mode, seqQ=MIN(seqQ, offset - MIN(20,depth)*5);
+    int maxins, indelreg, poly_mqual;
     int read_len;
     char *inscns;
     uint16_t *bases;        // 5bit: unused, 6:quality, 1:is_rev, 4:2-bit base or indel allele (index to bcf_callaux_t.indel_types)
     errmod_t *e;
     void *rghash;
     float indel_bias;  // adjusts indel score threshold; lower => call more.
+    float del_bias;    // (-.9 < x < .9) error profile; >0 => more del, <0 => more ins
+    float vs_ref;      // 0 to 1.  0: score vs next-best. 1: score vs ref
     int32_t *ref_nm, *alt_nm;   // pointers to bcf_call_t.{ref_nm,alt_nm}
     unsigned int nnm[2];        // number of nm observations
     float nm[2];                // cumulative count of mismatches in ref and alt reads
@@ -193,10 +196,34 @@ extern "C" {
                      const bcf_callaux_t *bca, const char *ref);
     int bcf_call_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_callaux_t *bca, const char *ref);
     int bcf_iaux_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos, bcf_callaux_t *bca, const char *ref);
+    int bcf_edlib_gap_prep(int n, int *n_plp, bam_pileup1_t **plp, int pos,
+                           bcf_callaux_t *bca, const char *ref, int ref_len);
+
     void bcf_callaux_clean(bcf_callaux_t *bca, bcf_call_t *call);
 
     int bcf_cgp_l_run(const char *ref, int pos);
     int est_indelreg(int pos, const char *ref, int l, char *ins4);
+
+/* ----------------------------------------------------------------------
+ * Shared between bam2bcf_indel.c and bam2bcf_edlib.c
+ */
+
+// Take a reference position tpos and convert to a query position (returned).
+// This uses the CIGAR string plus alignment c->pos to do the mapping.
+//
+// *_tpos is returned as tpos if query overlaps tpos, but for deletions
+// it'll be either the start (is_left) or end (!is_left) ref position.
+int tpos2qpos(const bam1_core_t *c, const uint32_t *cigar, int32_t tpos, int is_left, int32_t *_tpos);
+
+// Identify spft-clip length, position in seq, and clipped seq len
+void get_pos(const bcf_callaux_t *bca, bam_pileup1_t *p,
+             int *sc_len_r, int *slen_r, int *epos_r, int *end);
+
+// Compute the consensus for this sample 's', minus indels which
+// get added later.
+char *bcf_cgp_calc_cons(int n, int *n_plp, bam_pileup1_t **plp,
+                        int pos, int *types, int n_types,
+                        int max_ins, int s);
 
 #ifdef __cplusplus
 }

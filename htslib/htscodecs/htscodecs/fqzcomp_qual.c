@@ -911,7 +911,7 @@ int fqz_pick_parameters(fqz_gparams *gp,
         // NB: stab is already all zero
     }
 
-    if (gp->max_sel) {
+    if (gp->max_sel && s->num_records) {
         int max = 0;
         for (i = 0; i < s->num_records; i++) {
             if (max < (s->flags[i] >> 16))
@@ -1018,11 +1018,6 @@ unsigned char *compress_block_fqz2f(int vers,
     int comp_idx = 0;
     RangeCoder rc;
 
-    unsigned char *comp = (unsigned char *)malloc(in_size*1.1+100000);
-    unsigned char *compe = comp + (size_t)(in_size*1.1+100000);
-    if (!comp)
-        return NULL;
-
     // Pick and store params
     if (!gp) {
         gp = &local_gp;
@@ -1030,6 +1025,36 @@ unsigned char *compress_block_fqz2f(int vers,
             return NULL;
         free_params = 1;
     }
+
+    // Worst case scenario assuming random input data and no way to compress
+    // is NBytes*growth for some small growth factor (arith_dynamic uses 1.05),
+    // plus fixed overheads for the header / params.  Growth can be high
+    // here as we're modelling things and pathological cases may trigger a
+    // bad probability model.
+    //
+    // Per read is 4-byte len if not fixed length (but less if avg smaller)
+    //             up to 1 byte for selection state (log2(max_sel) bits)
+    //             1-bit for reverse flag
+    //             1-bit for dup-last flag (but then no quals)
+    // Per qual is 1-byte (assuming QMAX==256)
+    //
+    // Header size is total guess, as depends on params, but it's almost
+    // always tiny, so a few K extra should be sufficient.
+    //
+    // => Total of (s->num_records*4.25 + in_size)*growth + hdr
+    int sel_bits = 0, sel = gp->max_sel;
+    while (sel) {
+        sel_bits++;
+        sel >>= 1;
+    }
+    double len_sz = gp->p[0].fixed_len ? 0.25 : 4.25;
+    len_sz += sel_bits / 8.0;
+    size_t comp_sz = (s->num_records*len_sz + in_size)*1.1 + 10000;
+
+    unsigned char *comp = (unsigned char *)malloc(comp_sz);
+    unsigned char *compe = comp + (size_t)comp_sz;
+    if (!comp)
+        return NULL;
 
     //dump_params(gp);
     comp_idx = var_put_u32(comp, compe, in_size);
@@ -1054,6 +1079,7 @@ unsigned char *compress_block_fqz2f(int vers,
         return NULL;
 
     RC_SetOutput(&rc, (char *)comp+comp_idx);
+    RC_SetOutputEnd(&rc, (char *)comp+comp_sz);
     RC_StartEncode(&rc);
 
     // For CRAM3.1, reverse upfront if needed
@@ -1091,6 +1117,12 @@ unsigned char *compress_block_fqz2f(int vers,
 
     for (i = 0; i < in_size; i++) {
         if (state.p == 0) {
+            if (state.rec >= s->num_records || s->len[state.rec] <= 0) {
+                free(comp);
+                comp = NULL;
+                goto err;
+            }
+
             if (compress_new_read(s, &state, gp, pm, &model, &rc,
                                   in, &i, /*&rec,*/ &last))
                 continue;
@@ -1151,7 +1183,12 @@ unsigned char *compress_block_fqz2f(int vers,
 #endif
     }
 
-    RC_FinishEncode(&rc);
+    if (RC_FinishEncode(&rc) < 0) {
+        free(comp);
+        comp = NULL;
+        *out_size = 0;
+        goto err;
+    }
 
     // For CRAM3.1, undo our earlier reversal step
     rec = state.rec;
@@ -1186,6 +1223,7 @@ unsigned char *compress_block_fqz2f(int vers,
     *out_size = comp_idx + RC_OutSize(&rc);
     //fprintf(stderr, "%d -> %d\n", (int)in_size, (int)*out_size);
 
+ err:
     fqz_destroy_models(&model);
     if (free_params)
         fqz_free_parameters(gp);
@@ -1550,7 +1588,9 @@ unsigned char *uncompress_block_fqz2f(fqz_slice *s,
         }
     }
 
-    RC_FinishDecode(&rc);
+    if (RC_FinishDecode(&rc) < 0)
+        goto err;
+
     fqz_destroy_models(&model);
     free(rev_a);
     free(len_a);
