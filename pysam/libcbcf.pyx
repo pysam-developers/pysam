@@ -3033,6 +3033,7 @@ cdef class VariantRecord(object):
         return makeVariantRecord(self.header, bcf_dup(self.ptr))
 
     def translate(self, VariantHeader dst_header):
+        """Translate the record to a new header. Number of samples must match."""
         if dst_header is None:
             raise ValueError('dst_header must not be None')
 
@@ -4499,9 +4500,8 @@ cdef class VariantFile(HTSFile):
             with nogil:
                 bcf_hdr_write(self.htsfile, self.header.ptr)
 
-        #if record.header is not self.header:
-        #    record.translate(self.header)
-        #    raise ValueError('Writing records from a different VariantFile is not yet supported')
+        if record.header is not self.header:
+            record.translate(self.header)
 
         if record.ptr.n_sample != bcf_hdr_nsamples(self.header.ptr):
             msg = 'Invalid VariantRecord.  Number of samples does not match header ({} vs {})'
