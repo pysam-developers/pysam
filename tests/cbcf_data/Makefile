@@ -22,4 +22,4 @@ example_empty.bcf: example_empty.vcf.gz
 	touch $@
 
 clean:
-	-rm -f all.stamp *.gz *.tbi *.csi *.bcf
+	-rm -rf all.lock all.stamp *.gz *.tbi *.csi *.bcf

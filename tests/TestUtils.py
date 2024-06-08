@@ -5,6 +5,8 @@ import contextlib
 import inspect
 import subprocess
 import tempfile
+import time
+
 import pysam
 
 WORKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__),
@@ -239,15 +241,27 @@ def get_temp_context(suffix="", keep=False):
 
 
 def make_data_files(directory):
-    what = None
-    try:
-        if not os.path.exists(os.path.join(directory, "all.stamp")):
-            subprocess.check_output(["make", "-C", directory], stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        what = "Making test data in '%s' failed:\n%s" % (directory, force_str(e.output))
+    if os.path.exists(os.path.join(directory, 'all.stamp')):
+        return
 
-    if what is not None:
-        raise RuntimeError(what)
+    make = os.environ.get('MAKE', 'make')
+
+    for attempt in range(1, 6):
+        try:
+            os.mkdir(os.path.join(directory, 'all.lock'), 0o700)
+            break
+        except FileExistsError:
+            time.sleep(attempt)
+            continue
+    else:
+        raise RuntimeError(f'Directory {directory!r} already locked: try `{make} clean` there')
+
+    try:
+        subprocess.check_output([make, '-C', directory], stderr=subprocess.STDOUT, encoding='ascii')
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f'Making test data in {directory!r} failed:\n{e.output}') from None
+    finally:
+        os.rmdir(os.path.join(directory, 'all.lock'))
 
 
 def load_and_convert(filename, encode=True):

@@ -37,4 +37,4 @@ all.stamp: $(DERIVED_FILES)
 	tabix -f -p $(subst .,,$(suffix $*)) $<
 
 clean:
-	-rm -f all.stamp $(DERIVED_FILES)
+	-rm -rf all.lock all.stamp $(DERIVED_FILES)
