@@ -360,6 +360,54 @@ class TestAlignedSegment(ReadTest):
             ],
         )
 
+        # Insertions should not be affected  by skip_soft_clipping
+        self.assertEqual(
+            a.get_aligned_pairs(matches_only = False, skip_soft_clipping = True),
+            [
+                (0, 20),
+                (1, 21),
+                (2, 22),
+                (3, 23),
+                (4, 24),
+                (5, 25),
+                (6, 26),
+                (7, 27),
+                (8, 28),
+                (9, 29),
+                (None, 30),
+                (10, 31),
+                (11, 32),
+                (12, 33),
+                (13, 34),
+                (14, 35),
+                (15, 36),
+                (16, 37),
+                (17, 38),
+                (18, 39),
+                (19, None),
+                (20, 40),
+                (21, 41),
+                (22, 42),
+                (23, 43),
+                (24, 44),
+                (25, 45),
+                (26, 46),
+                (27, 47),
+                (28, 48),
+                (29, 49),
+                (30, 50),
+                (31, 51),
+                (32, 52),
+                (33, 53),
+                (34, 54),
+                (35, 55),
+                (36, 56),
+                (37, 57),
+                (38, 58),
+                (39, 59),
+            ],
+        )
+
         self.assertEqual(
             a.get_reference_positions(),
             [
@@ -453,6 +501,16 @@ class TestAlignedSegment(ReadTest):
             ]
             # [(37, None), (38, None), (39, None)]
         )
+        # Soft-clipping should be ignored with skip_soft_clipping
+        self.assertEqual(
+            a.get_aligned_pairs(matches_only=False, skip_soft_clipping=True),
+            # [(0, None), (1, None)] +
+            [
+                (qpos, refpos)
+                for (qpos, refpos) in zip(range(2, 2 + 35), range(20, 20 + 35))
+            ]
+            # [(37, None), (38, None), (39, None)]
+        )
 
     def test_get_aligned_pairs_hard_clipping(self):
         a = self.build_read()
@@ -524,6 +582,8 @@ class TestAlignedSegment(ReadTest):
         # See comment in test_get_aligned_pairs_padding_with_seq (below).
         self.assertEqual(a.get_aligned_pairs(),
                          [(0, 20), (1, None), (2, 21)])
+        self.assertEqual(a.get_aligned_pairs(matches_only=False, skip_soft_clipping=True),
+                         [(0, 20), (1, None), (2, 21)])
 
     def test_get_aligned_pairs_padding_with_seq(self):
         a = self.build_read()
@@ -551,6 +611,8 @@ class TestAlignedSegment(ReadTest):
         # modify the reference sequence to contain pads that make room for
         # sequences inserted relative to the reference."
         self.assertEqual(a.get_aligned_pairs(with_seq=True),
+                         [(0, 20, 'A'), (1, None, None), (2, 21, 'T')])
+        self.assertEqual(a.get_aligned_pairs(with_seq=True, matches_only=False, skip_soft_clipping=True),
                          [(0, 20, 'A'), (1, None, None), (2, 21, 'T')])
 
     def test_get_aligned_pairs(self):
