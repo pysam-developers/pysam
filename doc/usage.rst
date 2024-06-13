@@ -172,6 +172,25 @@ Note that this means that output from commands which produce output on
 stdout will not be available. The only solution is to run samtools
 commands through subprocess.
 
+=====================================
+Using bcftools commands within python
+=====================================
+
+Commands available in `bcftools <https://samtools.github.io/bcftools/>`_ are also available as simple
+function calls, but they are invoked slightly differently from `samtools <https://www.htslib.org>`_.
+Command line options are also provided as arguments. For
+example::
+
+   import pysam.bcftools as bcftools
+   bcftools.reheader("-s", "samples.txt", "-o", "out.vcf.gz", "in.vcf.gz", catch_stdout=False)
+
+corresponds to the command line::
+
+   bcftools reheader -s samples.txt -o out.vcf.gz in.vcf.gz
+
+If the ``catch_stdout=False`` option is not specified, then the output of the
+`bcftools <https://samtools.github.io/bcftools/>`_ command will be returned as a variable
+
 ================================
 Working with tabix-indexed files
 ================================
