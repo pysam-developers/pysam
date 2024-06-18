@@ -1978,8 +1978,7 @@ cdef class AlignedSegment:
         else:
             return self.query_qualities
 
-
-    def get_aligned_pairs(self, matches_only=False, with_seq=False):
+    def get_aligned_pairs(self, matches_only=False, with_seq=False, with_cigar=False):
         """a list of aligned read (query) and reference positions.
 
         Each item in the returned list is a tuple consisting of
@@ -2003,6 +2002,9 @@ cdef class AlignedSegment:
           reference sequence. For CIGAR 'P' (padding in the reference)
           operations, the third tuple element will be None. Substitutions
           are lower-case. This option requires an MD tag to be present.
+        with_cigar : bool
+          If True, return an extra element in the tuple containing the
+          CIGAR operator corresponding to this position tuple.
 
         Returns
         -------
@@ -2016,6 +2018,7 @@ cdef class AlignedSegment:
         cdef bam1_t * src = self._delegate
         cdef bint _matches_only = bool(matches_only)
         cdef bint _with_seq = bool(with_seq)
+        cdef bint _with_cigar = bool(with_cigar)
 
         # TODO: this method performs no checking and assumes that
         # read sequence, cigar and MD tag are consistent.
@@ -2040,10 +2043,19 @@ cdef class AlignedSegment:
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
             if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
-                if _with_seq:
+                if _with_seq and _with_cigar:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, i, ref_seq[r_idx], op))
+                        r_idx += 1
+                        qpos += 1
+                elif _with_seq:
                     for i from pos <= i < pos + l:
                         result.append((qpos, i, ref_seq[r_idx]))
                         r_idx += 1
+                        qpos += 1
+                elif _with_cigar:
+                    for i from pos <= i < pos + l:
+                        result.append((qpos, i, op))
                         qpos += 1
                 else:
                     for i from pos <= i < pos + l:
@@ -2053,9 +2065,17 @@ cdef class AlignedSegment:
 
             elif op == BAM_CINS or op == BAM_CSOFT_CLIP or op == BAM_CPAD:
                 if not _matches_only:
-                    if _with_seq:
+                    if _with_seq and _with_cigar:
+                        for i from pos <= i < pos + l:
+                            result.append((qpos, None, None, op))
+                            qpos += 1
+                    elif _with_seq:
                         for i from pos <= i < pos + l:
                             result.append((qpos, None, None))
+                            qpos += 1
+                    elif _with_cigar:
+                        for i from pos <= i < pos + l:
+                            result.append((qpos, None, op))
                             qpos += 1
                     else:
                         for i from pos <= i < pos + l:
@@ -2066,10 +2086,17 @@ cdef class AlignedSegment:
 
             elif op == BAM_CDEL:
                 if not _matches_only:
-                    if _with_seq:
+                    if _with_seq and _with_cigar:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, ref_seq[r_idx], op))
+                            r_idx += 1
+                    elif _with_seq:
                         for i from pos <= i < pos + l:
                             result.append((None, i, ref_seq[r_idx]))
                             r_idx += 1
+                    elif _with_cigar:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, op))
                     else:
                         for i from pos <= i < pos + l:
                             result.append((None, i))
@@ -2082,9 +2109,15 @@ cdef class AlignedSegment:
 
             elif op == BAM_CREF_SKIP:
                 if not _matches_only:
-                    if _with_seq:
+                    if _with_seq and _with_cigar:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, None, op))
+                    elif _with_seq:
                         for i from pos <= i < pos + l:
                             result.append((None, i, None))
+                    elif _with_cigar:
+                        for i from pos <= i < pos + l:
+                            result.append((None, i, op))
                     else:
                         for i from pos <= i < pos + l:
                             result.append((None, i))
