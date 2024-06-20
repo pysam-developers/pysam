@@ -977,6 +977,10 @@ cdef class AlignedSegment:
                                    self.query_qualities,
                                    self.tags)))
 
+    def __repr__(self):
+        return "<{}('{}', flags={}, ref={!r}, pos={}, mapq={}, cigar='{}', ...)>".format(
+            self.__class__.__name__, self.query_name, self.flag, self.reference_name, self.reference_start, self.mapping_quality, self.cigarstring)
+
     def __copy__(self):
         return makeAlignedSegment(self._delegate, self.header)
 
