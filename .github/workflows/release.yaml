@@ -3,25 +3,22 @@ name: Publish wheels
 on:
   push:
     branches:
-      - v[0-9]+.*
+      - release/*
     tags:
       - v[0-9]+.*
-  release:
-    types:
-      - published
 
 jobs:
   build_wheels:
-    runs-on: ${{ matrix.os }}-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu, macos]
-        build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-*"]
+        os: [ubuntu-latest, macos-13]
+        build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-* cp313-*"]
         x64image: [manylinux_2_28]
         nametag: [none]
 
         include:
-          - os: ubuntu
+          - os: ubuntu-latest
             build: "cp38-manylinux_x86_64"
             x64image: manylinux2014
             nametag: focal
@@ -30,12 +27,18 @@ jobs:
       - name: Checkout pysam
         uses: actions/checkout@v4
 
+      - name: Check platform ${{ matrix.os }} is the expected architecture
+        run:  devtools/check-platform.sh ${{ matrix.os }}
+
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.17.0
+        uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_BUILD: ${{ matrix.build }}
           CIBW_SKIP: "*-musllinux_*"
           CIBW_BUILD_VERBOSITY: 1
+
+          # Avoid linking with non-system library libdeflate.dylib
+          CIBW_ENVIRONMENT_MACOS: HTSLIB_CONFIGURE_OPTIONS="--without-libdeflate"
 
           CIBW_ARCHS_LINUX: x86_64
           CIBW_ARCHS_MACOS: x86_64
@@ -75,7 +78,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
+          sudo apt-get install -q --no-install-recommends --no-install-suggests libbz2-dev libcurl4-openssl-dev liblzma-dev
 
       - name: Create source distribution
         run:  python setup.py sdist --owner=root --group=root
@@ -88,7 +91,7 @@ jobs:
   upload_pypi:
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'release' && 'pypi' || 'testpypi' }}
+    environment: ${{ github.ref_type == 'tag' && 'pypi' || 'testpypi' }}
 
     permissions:
       id-token: write
@@ -101,11 +104,11 @@ jobs:
           path: dist
 
       - name: Publish distribution to Test PyPI
-        if: github.event_name == 'push'
+        if: github.ref_type == 'branch'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
 
       - name: Publish distribution to PyPI
-        if: github.event_name == 'release' && github.event.action == 'published'
+        if: github.ref_type == 'tag'
         uses: pypa/gh-action-pypi-publish@release/v1
