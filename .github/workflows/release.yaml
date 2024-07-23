@@ -3,12 +3,9 @@ name: Publish wheels
 on:
   push:
     branches:
-      - v[0-9]+.*
+      - release/*
     tags:
       - v[0-9]+.*
-  release:
-    types:
-      - published
 
 jobs:
   build_wheels:
@@ -88,7 +85,7 @@ jobs:
   upload_pypi:
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'release' && 'pypi' || 'testpypi' }}
+    environment: ${{ github.ref_type == 'tag' && 'pypi' || 'testpypi' }}
 
     permissions:
       id-token: write
@@ -101,11 +98,11 @@ jobs:
           path: dist
 
       - name: Publish distribution to Test PyPI
-        if: github.event_name == 'push'
+        if: github.ref_type == 'branch'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
 
       - name: Publish distribution to PyPI
-        if: github.event_name == 'release' && github.event.action == 'published'
+        if: github.ref_type == 'tag'
         uses: pypa/gh-action-pypi-publish@release/v1
