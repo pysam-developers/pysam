@@ -33,6 +33,24 @@ directories:
    :file:`import.py` about importing.
 
 
+Python language level
+=====================
+
+Pysam currently requires Python 3.6 as a minimum language level.
+For example, this means that the following comparatively recent
+language features and library functions are available for use:
+
+* f-strings
+* ``raise ... from None``
+* :meth:`str.startswith`, :meth:`str.endswith`, :meth:`str.rstrip`, etc
+
+However in particular the the following should not be used in
+pysam source code or infrastructure scripts:
+
+* :meth:`str.removeprefix`, :meth:`str.removesuffix` (new in 3.9)
+* walrus ``:=`` operator (new in 3.8)
+
+
 Importing new versions of htslib and samtools
 =============================================
 
