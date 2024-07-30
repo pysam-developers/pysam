@@ -186,6 +186,10 @@ def set_compiler_envvars():
             del os.environ[var]
 
 
+def format_macro_option(name, value):
+    return f"-D{name}={value}" if value is not None else f"-D{name}"
+
+
 def configure_library(library_dir, env_options=None, options=[]):
 
     configure_script = os.path.join(library_dir, "configure")
@@ -532,6 +536,9 @@ else:
 
 define_macros = []
 
+if os.environ.get("CIBUILDWHEEL", "0") == "1":
+    define_macros.append(("BUILDING_WHEEL", None))
+
 suffix = sysconfig.get_config_var('EXT_SUFFIX')
 
 internal_htslib_libraries = [
@@ -567,7 +574,8 @@ def prebuild_libchtslib(ext, force):
             # TODO Eventually by running configure here, we can set these
             # extra flags for configure instead of hacking on ALL_CPPFLAGS.
             args = " ".join(ext.extra_compile_args)
-            run_make(["ALL_CPPFLAGS=-I. " + args + " $(CPPFLAGS)", "lib-static"])
+            defines = " ".join([format_macro_option(*pair) for pair in ext.define_macros])
+            run_make(["ALL_CPPFLAGS=-I. " + args + " " + defines + " $(CPPFLAGS)", "lib-static"])
     else:
         log.warning("skipping 'libhts.a' (already built)")
 
