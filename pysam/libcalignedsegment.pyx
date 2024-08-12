@@ -894,6 +894,26 @@ cdef inline bytes build_reference_sequence(bam1_t * src):
     return seq
 
 
+# Tuple-building helper functions used by AlignedSegment.get_aligned_pairs()
+
+cdef _alignedpairs_positions(qpos, pos, ref_seq, uint32_t r_idx, int op):
+    return (qpos, pos)
+
+
+cdef _alignedpairs_with_seq(qpos, pos, ref_seq, uint32_t r_idx, int op):
+    ref_base = ref_seq[r_idx] if ref_seq is not None else None
+    return (qpos, pos, ref_base)
+
+
+cdef _alignedpairs_with_cigar(qpos, pos, ref_seq, uint32_t r_idx, int op):
+    return (qpos, pos, CIGAR_OPS(op))
+
+
+cdef _alignedpairs_with_seq_cigar(qpos, pos, ref_seq, uint32_t r_idx, int op):
+    ref_base = ref_seq[r_idx] if ref_seq is not None else None
+    return (qpos, pos, ref_base, CIGAR_OPS(op))
+
+
 cdef class AlignedSegment:
     '''Class representing an aligned segment.
 
@@ -2019,6 +2039,7 @@ cdef class AlignedSegment:
         cdef bint _matches_only = bool(matches_only)
         cdef bint _with_seq = bool(with_seq)
         cdef bint _with_cigar = bool(with_cigar)
+        cdef object (*make_tuple)(object, object, object, uint32_t, int)
 
         # TODO: this method performs no checking and assumes that
         # read sequence, cigar and MD tag are consistent.
@@ -2028,6 +2049,10 @@ cdef class AlignedSegment:
             ref_seq = force_str(build_reference_sequence(src))
             if ref_seq is None:
                 raise ValueError("MD tag not present")
+            make_tuple = _alignedpairs_with_seq_cigar if _with_cigar else _alignedpairs_with_seq
+        else:
+            ref_seq = None
+            make_tuple = _alignedpairs_with_cigar if _with_cigar else _alignedpairs_positions
 
         r_idx = 0
 
@@ -2043,63 +2068,25 @@ cdef class AlignedSegment:
             l = cigar_p[k] >> BAM_CIGAR_SHIFT
 
             if op == BAM_CMATCH or op == BAM_CEQUAL or op == BAM_CDIFF:
-                if _with_seq and _with_cigar:
-                    for i from pos <= i < pos + l:
-                        result.append((qpos, i, ref_seq[r_idx], op))
-                        r_idx += 1
-                        qpos += 1
-                elif _with_seq:
-                    for i from pos <= i < pos + l:
-                        result.append((qpos, i, ref_seq[r_idx]))
-                        r_idx += 1
-                        qpos += 1
-                elif _with_cigar:
-                    for i from pos <= i < pos + l:
-                        result.append((qpos, i, op))
-                        qpos += 1
-                else:
-                    for i from pos <= i < pos + l:
-                        result.append((qpos, i))
-                        qpos += 1
+                for i from pos <= i < pos + l:
+                    result.append(make_tuple(qpos, i, ref_seq, r_idx, op))
+                    r_idx += 1
+                    qpos += 1
                 pos += l
 
             elif op == BAM_CINS or op == BAM_CSOFT_CLIP or op == BAM_CPAD:
                 if not _matches_only:
-                    if _with_seq and _with_cigar:
-                        for i from pos <= i < pos + l:
-                            result.append((qpos, None, None, op))
-                            qpos += 1
-                    elif _with_seq:
-                        for i from pos <= i < pos + l:
-                            result.append((qpos, None, None))
-                            qpos += 1
-                    elif _with_cigar:
-                        for i from pos <= i < pos + l:
-                            result.append((qpos, None, op))
-                            qpos += 1
-                    else:
-                        for i from pos <= i < pos + l:
-                            result.append((qpos, None))
-                            qpos += 1
+                    for i from pos <= i < pos + l:
+                        result.append(make_tuple(qpos, None, None, 0, op))
+                        qpos += 1
                 else:
                     qpos += l
 
             elif op == BAM_CDEL:
                 if not _matches_only:
-                    if _with_seq and _with_cigar:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i, ref_seq[r_idx], op))
-                            r_idx += 1
-                    elif _with_seq:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i, ref_seq[r_idx]))
-                            r_idx += 1
-                    elif _with_cigar:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i, op))
-                    else:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i))
+                    for i from pos <= i < pos + l:
+                        result.append(make_tuple(None, i, ref_seq, r_idx, op))
+                        r_idx += 1
                 else:
                     r_idx += l
                 pos += l
@@ -2109,18 +2096,8 @@ cdef class AlignedSegment:
 
             elif op == BAM_CREF_SKIP:
                 if not _matches_only:
-                    if _with_seq and _with_cigar:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i, None, op))
-                    elif _with_seq:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i, None))
-                    elif _with_cigar:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i, op))
-                    else:
-                        for i from pos <= i < pos + l:
-                            result.append((None, i))
+                    for i from pos <= i < pos + l:
+                        result.append(make_tuple(None, i, None, 0, op))
 
                 pos += l
 
