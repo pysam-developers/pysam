@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos]
-        build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-*"]
+        build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-*", "cp313-*"]
         x64image: [manylinux_2_28]
         nametag: [none]
 
@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.17.0
+        uses: pypa/cibuildwheel@v2.21.3
         env:
           CIBW_BUILD: ${{ matrix.build }}
           CIBW_SKIP: "*-musllinux_*"
