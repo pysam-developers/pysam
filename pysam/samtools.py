@@ -65,6 +65,8 @@ _SAMTOOLS_DISPATCH = {
     "samples": ("samples", ()),
 }
 
+__all__ = list(_SAMTOOLS_DISPATCH.keys())
+
 
 def _wrap_command(
     dispatch: str,
