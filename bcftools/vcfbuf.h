@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2017-2022 Genome Research Ltd.
+   Copyright (c) 2017-2024 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -38,13 +38,27 @@ typedef struct _vcfbuf_t vcfbuf_t;
 // Modes of operation
 typedef enum
 {
-    VCFBUF_DUMMY,           // the caller maintains the buffer via push/peek/flush, nothing is removed by vcfbuf
+    VCFBUF_DUMMY,           // int {0,1}, the caller maintains the buffer via push/peek/flush, nothing is removed by vcfbuf
 
-    VCFBUF_OVERLAP_WIN,     // keep only overlapping variants in the window
-    VCFBUF_RMDUP,           // remove duplicate sites (completely)
-    VCFBUF_NSITES,          // leave at max this many sites in the window
-    VCFBUF_NSITES_MODE,     // one of: maxAF (keep sites with max AF), 1st (sites that come first), rand (pick randomly)
-    VCFBUF_AF_TAG,          // use this INFO tag with VCFBUF_NSITES
+    // pruning
+    PRUNE_NSITES,           // int, leave max this many sites in the window
+    PRUNE_NSITES_MODE,      // char *, maxAF (keep sites with max AF), 1st (sites that come first), rand (pick randomly)
+    PRUNE_AF_TAG,           // char *, use this INFO/AF tag with VCFBUF_NSITES
+
+    // duplicates and overlaps
+    MARK,                   // w: char *, resolve overlaps by preferentially removing sites according to EXPR:
+                            //      min(QUAL) .. remove sites with lowest QUAL until overlaps are resolved
+                            //      overlap   .. select all overlapping sites
+                            //      dup       .. select duplicate sites
+                            // r: use as
+                            //      while ( (rec=vcfbuf_flush(buf,flush_all)) )
+                            //      {
+                            //          int is_marked = vcfbuf_get_val(buf,int,MARK);
+                            //          if ( is_marked ) do_something(rec);
+                            //      }
+    MARK_MISSING_EXPR,      // char *, what to do when missing value are encountered with min(QUAL)
+                            //      0   .. set to 0 (the default)
+                            //      DP  .. scale max quality in the window proportionally to INFO/DP
 
     // LD related options
     LD_RAND_MISSING,        // randomize rather than ignore missing genotypes
@@ -55,8 +69,23 @@ typedef enum
 }
 vcfbuf_opt_t;
 
-#define vcfbuf_set_opt(buf,type,key,value) { type tmp = value; vcfbuf_set(buf, key, (void*)&tmp); }
-void vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, void *value);
+
+/**
+ *  vcfbuf_set() - set various options, see the vcfbuf_opt_t keys for the complete list
+ *
+ *  Returns 0 if the call succeeded, or negative number on error.
+ */
+int vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, ...);   // returns 0 on success
+
+/**
+ *  vcfbuf_get()     - get various options, see the vcfbuf_opt_t keys
+ *  vcfbuf_get_val() - wrapper for `vcfbuf_get()` to return typed value
+ *
+ *  The former returns pointer to the memory area populated by the requested setting,
+ *  its type can be inferred from the vcfbuf_opt_t documentation.
+ */
+void *vcfbuf_get(vcfbuf_t *buf, vcfbuf_opt_t key, ...);
+#define vcfbuf_get_val(buf,type,key) (*(type*)vcfbuf_get(buf, key))
 
 
 /*
@@ -67,7 +96,9 @@ vcfbuf_t *vcfbuf_init(bcf_hdr_t *hdr, int win);
 void vcfbuf_destroy(vcfbuf_t *buf);
 
 /*
- *  vcfbuf_push() - push a new site for analysis
+ *  vcfbuf_push() - push a new site for analysis.
+ *
+ *  Note that vcfbuf_flush() or vcfbuf_peek() must be called before next site is pushed.
  */
 bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec);
 
@@ -86,6 +117,8 @@ bcf1_t *vcfbuf_remove(vcfbuf_t *buf, int idx);
 /*
  *  vcfbuf_flush() - returns the next record or NULL, depending on the mode of operation and
  *      the content of the buffer
+ *
+ *  @flush_all: 1 if no more vcfbuf_push() calls will follow, 0 otherwise
  */
 bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all);
 

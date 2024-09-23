@@ -2,7 +2,7 @@
 
 /*  vcfindex.c -- Index bgzip compressed VCF/BCF files for random access.
 
-    Copyright (C) 2014-2021 Genome Research Ltd.
+    Copyright (C) 2014-2024 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -266,6 +266,7 @@ int main_vcfindex(int argc, char *argv[])
             default: usage();
         }
     }
+    if (!min_shift) tbi = 1;
     if (stats > total)
     {
         fprintf(bcftools_stderr, "[E::%s] expected only one of --stats or --nrecords options\n", __func__);

@@ -35,7 +35,7 @@
  * @file variantkey.h
  * @brief VariantKey main functions.
  *
- * The functions provided here allows to generate and process a 64 bit Unsigned Integer Keys for Human Genetic Variants.
+ * The functions provided here allow the generation and processing of a 64 bit Unsigned Integer Keys for Human Genetic Variants.
  * The VariantKey is sortable for chromosome and position,
  * and it is also fully reversible for variants with up to 11 bases between Reference and Alternate alleles.
  * It can be used to sort, search and match variant-based data easily and very quickly.
@@ -92,7 +92,7 @@ static inline uint8_t encode_numeric_chrom(const char *chrom, size_t size)
     {
         if ((chrom[i] > '9') || (chrom[i] < '0'))
         {
-            return 0; // NA: a character that is not a numebr was found.
+            return 0; // NA: a character that is not a number was found.
         }
         v = ((v * 10) + (chrom[i] - '0'));
     }

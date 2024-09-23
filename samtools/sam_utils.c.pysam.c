@@ -44,7 +44,8 @@ void release_autoflush(htsFile *fp) {
     if (samtools_stdout_internal == fp) samtools_stdout_internal = NULL;
 }
 
-static void vprint_error_core(const char *subcommand, const char *format, va_list args, const char *extra)
+static void HTS_FORMAT(HTS_PRINTF_FMT, 2, 0)
+vprint_error_core(const char *subcommand, const char *format, va_list args, const char *extra)
 {
     fflush(samtools_stdout);
     if (samtools_stdout_internal) hts_flush(samtools_stdout_internal);

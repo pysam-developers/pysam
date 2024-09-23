@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2016-2022 Genome Research Ltd.
+   Copyright (c) 2016-2024 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -29,6 +29,7 @@
 #include <htslib/vcf.h>
 #include <htslib/vcfutils.h>
 #include <htslib/hts_os.h>
+#include <htslib/kbitset.h>
 #include "bcftools.h"
 #include "vcfbuf.h"
 #include "rbuf.h"
@@ -44,7 +45,7 @@ typedef struct
 {
     bcf1_t *rec;
     double af;
-    int af_set:1, filter:1, idx:30;
+    unsigned int af_set:1, filter:1, idx:30;
 }
 vcfrec_t;
 
@@ -61,28 +62,61 @@ typedef struct
 }
 prune_t;
 
-typedef struct
-{
-    int active;
-}
-rmdup_t;
 
+#define MARK_OVERLAP 1
+#define MARK_DUP     2
+#define MARK_EXPR    3
+
+#define MARK_MISSING_SCALAR 0   // actual value to use
+#define MARK_MISSING_MAX_DP 1   // max overlap_t.value scaled by INFO/DP
+
+// temporary internal structure for iterative overlap removal by mark_t.expr
 typedef struct
 {
-    int active, rid, end;
+    double value;       // the sort value
+    int rmme, idx;      // mark for removal, index in vcfbuf_t.rbuf
+    int dp;             // with MARK_MISSING_MAX_DP, INFO/DP is used extrapolate missing QUAL
+    kbitset_t *bset;    // mark which records it overlaps with, given as 0-based indexes to vcfbuf_t.rbuf
+    bcf1_t *rec;
 }
 overlap_t;
+typedef struct
+{
+    // modes
+    int mode;
+    char *expr;
+
+    // sites marked according to expr, returned to the caller via vcfbuf_get()
+    rbuf_t rbuf;
+    uint8_t *mark;
+    int last;
+
+    // MARK_OVERLAP
+    int overlap_rid, overlap_end;
+
+    // MARK_EXPR
+    int nbuf;
+    overlap_t *buf, **buf_ptr;
+    int missing_expr;       // the value to use when min(QUAL) encounters a missing value
+    float missing_value;    // the default missing value
+    float max_qual;         // with MARK_MISSING_MAX_DP
+    int max_qual_dp;        //
+    int ntmpi;              // temporary int array and the allocated memory
+    int32_t *tmpi;
+}
+mark_t;
 
 struct _vcfbuf_t
 {
-    int win, dummy;
+    int win,            // maximum number of sites in the buffer, either number of sites (<0) or bp (<0)
+        dummy;          // the caller maintains the buffer via push/peek/flush
     bcf_hdr_t *hdr;
     vcfrec_t *vcf;
     rbuf_t rbuf;
     ld_t ld;
     prune_t prune;
-    overlap_t overlap;
-    rmdup_t rmdup;
+    mark_t mark;
+    enum { clean, dirty } status;
 };
 
 vcfbuf_t *vcfbuf_init(bcf_hdr_t *hdr, int win)
@@ -90,7 +124,8 @@ vcfbuf_t *vcfbuf_init(bcf_hdr_t *hdr, int win)
     vcfbuf_t *buf = (vcfbuf_t*) calloc(1,sizeof(vcfbuf_t));
     buf->hdr = hdr;
     buf->win = win;
-    buf->overlap.rid = -1;
+    buf->status = clean;
+    buf->mark.overlap_rid = -1;
     int i;
     for (i=0; i<VCFBUF_LD_N; i++) buf->ld.max[i] = HUGE_VAL;
     rbuf_init(&buf->rbuf, 0);
@@ -106,38 +141,119 @@ void vcfbuf_destroy(vcfbuf_t *buf)
     free(buf->prune.farr);
     free(buf->prune.vrec);
     free(buf->prune.ac);
+    free(buf->prune.af_tag);
     free(buf->prune.idx);
+    free(buf->mark.mark);
+    free(buf->mark.expr);
+    for (i=0; i<buf->mark.nbuf; i++) kbs_destroy(buf->mark.buf[i].bset);
+    free(buf->mark.buf);
+    free(buf->mark.buf_ptr);
+    free(buf->mark.tmpi);
     free(buf);
 }
 
-void vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, void *value)
+int vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, ...)
 {
-    if ( key==LD_FILTER1 ) { buf->ld.filter1 = *((int*)value); return; }
-    if ( key==LD_RAND_MISSING ) { buf->ld.rand_missing = *((int*)value); return; }
-    if ( key==LD_MAX_R2 ) { buf->ld.max[VCFBUF_LD_IDX_R2] = *((double*)value); return; }
-    if ( key==LD_MAX_LD ) { buf->ld.max[VCFBUF_LD_IDX_LD] = *((double*)value); return; }
-    if ( key==LD_MAX_HD ) { buf->ld.max[VCFBUF_LD_IDX_HD] = *((double*)value); return; }
-
-    if ( key==VCFBUF_DUMMY ) { buf->dummy = *((int*)value); return; }
-    if ( key==VCFBUF_NSITES )
+    va_list args;
+    switch (key)
     {
-        buf->prune.max_sites = *((int*)value);
-        if ( !buf->prune.mode ) buf->prune.mode = PRUNE_MODE_MAX_AF;
-        return;
-    }
-    if ( key==VCFBUF_AF_TAG ) { buf->prune.af_tag = *((char**)value); return; }
-    if ( key==VCFBUF_OVERLAP_WIN ) { buf->overlap.active = *((int*)value); return; }
-    if ( key==VCFBUF_RMDUP) { buf->rmdup.active = *((int*)value); return; }
+        case LD_FILTER1:
+            va_start(args, key);
+            buf->ld.filter1 = va_arg(args,int);
+            va_end(args);
+            return 0;
 
-    if ( key==VCFBUF_NSITES_MODE )
-    {
-        char *mode = *((char**)value);
-        if ( !strcasecmp(mode,"maxAF") ) buf->prune.mode = PRUNE_MODE_MAX_AF;
-        else if ( !strcasecmp(mode,"1st") ) buf->prune.mode = PRUNE_MODE_1ST;
-        else if ( !strcasecmp(mode,"rand") ) buf->prune.mode = PRUNE_MODE_RAND;
-        else error("The mode \"%s\" is not recognised\n",mode);
-        return;
+        case LD_RAND_MISSING:
+            va_start(args, key);
+            buf->ld.rand_missing = va_arg(args,int);
+            va_end(args);
+            return 0;
+
+        case LD_MAX_R2:
+            va_start(args, key);
+            buf->ld.max[VCFBUF_LD_IDX_R2] = va_arg(args,double);
+            va_end(args);
+            return 0;
+
+        case LD_MAX_LD:
+            va_start(args, key);
+            buf->ld.max[VCFBUF_LD_IDX_LD] = va_arg(args,double);
+            va_end(args);
+            return 0;
+
+        case LD_MAX_HD:
+            va_start(args, key);
+            buf->ld.max[VCFBUF_LD_IDX_HD] = va_arg(args,double);
+            va_end(args);
+            return 0;
+
+        case VCFBUF_DUMMY:
+            va_start(args, key);
+            buf->dummy = va_arg(args,int);
+            va_end(args);
+            return 0;
+
+        case PRUNE_NSITES:
+            va_start(args, key);
+            buf->prune.max_sites = va_arg(args,int);
+            if ( !buf->prune.mode ) buf->prune.mode = PRUNE_MODE_MAX_AF;
+            va_end(args);
+            return 0;
+
+        case PRUNE_NSITES_MODE:
+            va_start(args, key);
+            char *mode = va_arg(args,char*);
+            va_end(args);
+            if ( !strcasecmp(mode,"maxAF") ) buf->prune.mode = PRUNE_MODE_MAX_AF;
+            else if ( !strcasecmp(mode,"1st") ) buf->prune.mode = PRUNE_MODE_1ST;
+            else if ( !strcasecmp(mode,"rand") ) buf->prune.mode = PRUNE_MODE_RAND;
+            else error("The mode \"%s\" is not recognised\n",mode);
+            return 0;
+
+        case PRUNE_AF_TAG:
+            va_start(args, key);
+            buf->prune.af_tag = strdup(va_arg(args,char*));
+            va_end(args);
+            return 0;
+
+        case MARK:
+            va_start(args, key);
+            buf->mark.expr = strdup(va_arg(args,char*));
+            if ( !strcasecmp(buf->mark.expr,"overlap") ) buf->mark.mode = MARK_OVERLAP;
+            else if ( !strcasecmp(buf->mark.expr,"dup") ) buf->mark.mode = MARK_DUP;
+            else buf->mark.mode = MARK_EXPR;
+            va_end(args);
+            return 0;
+
+        case MARK_MISSING_EXPR:
+            va_start(args, key);
+            char *expr = va_arg(args,char*);
+            if ( !strcasecmp(expr,"0") )
+            {
+                buf->mark.missing_expr = MARK_MISSING_SCALAR;
+                buf->mark.missing_value = 0;
+            }
+            else if ( !strcasecmp(expr,"DP") )
+            {
+                if ( buf->mark.mode!=MARK_EXPR ) error("Only the combination of --mark 'min(QUAL)' with --missing DP is currently supported\n");
+                buf->mark.missing_expr = MARK_MISSING_MAX_DP;
+            }
+            else
+                error("todo: MARK_MISSING_EXPR=%s\n",expr);
+            va_end(args);
+            return 0;
     }
+    return 0;
+}
+
+void *vcfbuf_get(vcfbuf_t *buf, vcfbuf_opt_t key, ...)
+{
+    va_list args;
+    va_start(args, key);
+    if ( key==MARK )
+        return &buf->mark.last;
+    va_end(args);
+    return NULL;
 }
 
 int vcfbuf_nsites(vcfbuf_t *buf)
@@ -147,8 +263,12 @@ int vcfbuf_nsites(vcfbuf_t *buf)
 
 bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec)
 {
-    rbuf_expand0(&buf->rbuf, vcfrec_t, buf->rbuf.n+1, buf->vcf);
+    // make sure the caller is using the buffer correctly and calls vcfbuf_flush()
+    // before placing next vcfbuf_push() call
+    assert(buf->status!=dirty);
+    if ( !buf->dummy ) buf->status = dirty;
 
+    rbuf_expand0(&buf->rbuf, vcfrec_t, buf->rbuf.n+1, buf->vcf);
     int i = rbuf_append(&buf->rbuf);
     if ( !buf->vcf[i].rec ) buf->vcf[i].rec = bcf_init1();
 
@@ -163,6 +283,7 @@ bcf1_t *vcfbuf_push(vcfbuf_t *buf, bcf1_t *rec)
 
 bcf1_t *vcfbuf_peek(vcfbuf_t *buf, int idx)
 {
+    buf->status = clean;
     int i = rbuf_kth(&buf->rbuf, idx);
     return i<0 ? NULL : buf->vcf[i].rec;
 }
@@ -195,6 +316,7 @@ static int cmpint_desc(const void *_a, const void *_b)
 
 static void _prune_sites(vcfbuf_t *buf, int flush_all)
 {
+
     int nbuf = flush_all ? buf->rbuf.n : buf->rbuf.n - 1;
 
     int nprune = nbuf - buf->prune.max_sites;
@@ -266,37 +388,75 @@ static void _prune_sites(vcfbuf_t *buf, int flush_all)
         rbuf_remove_kth(&buf->rbuf, vcfrec_t, buf->prune.idx[i], buf->vcf);
 }
 
-static int _rmdup_can_flush(vcfbuf_t *buf, int flush_all)
+static int mark_dup_can_flush_(vcfbuf_t *buf, int flush_all)
 {
-    if ( flush_all ) return 1;
+    int flush = flush_all;
+    mark_t *mark = &buf->mark;
+    if  ( buf->status==dirty )
+    {
+        // a new site was just added by vcfbuf_push()
+        rbuf_expand0(&mark->rbuf, uint8_t, buf->rbuf.n, mark->mark);
+        int i = rbuf_append(&mark->rbuf);
+        mark->mark[i] = 0;
 
-    if ( buf->rbuf.n==1 ) return 0;
+        if ( buf->rbuf.n==1 ) goto flush;
 
-    int k1 = rbuf_kth(&buf->rbuf, -1);
-    int k2 = rbuf_kth(&buf->rbuf, -2);
+        // there is at least one previous site, check if it's a duplicate
+        int k1 = rbuf_kth(&buf->rbuf, -1);
+        int k2 = rbuf_kth(&buf->rbuf, -2);
+        vcfrec_t *rec1 = &buf->vcf[k1];
+        vcfrec_t *rec2 = &buf->vcf[k2];
 
-    vcfrec_t *rec1 = &buf->vcf[k1];
-    vcfrec_t *rec2 = &buf->vcf[k2];
+        int is_dup = 1;
+        if ( rec1->rec->rid!=rec2->rec->rid ) is_dup = 0;
+        else if ( rec1->rec->pos!=rec2->rec->pos ) is_dup = 0;
 
-    if ( rec1->rec->rid!=rec2->rec->rid ) return 1;
-    if ( rec1->rec->pos!=rec2->rec->pos ) return 1;
+        if ( is_dup )
+        {
+            // it is, mark the last two sites as duplicates
+            int k1 = rbuf_kth(&mark->rbuf, -1);
+            int k2 = rbuf_kth(&mark->rbuf, -2);
+            mark->mark[k1] = 1;
+            mark->mark[k2] = 1;
+            goto flush;
+        }
 
-    return 0;
+        // the last site is not a duplicate with the previous, all sites but the last one can be flushed
+        flush = 1;
+    }
+    else if ( buf->rbuf.n > 1 ) flush = 1;
+
+flush:
+    if ( !flush ) return 0;
+
+    int i = rbuf_shift(&mark->rbuf);
+    mark->last = mark->mark[i];
+    return 1;
 }
 
-static int _overlap_can_flush(vcfbuf_t *buf, int flush_all)
+static int mark_overlap_helper_(vcfbuf_t *buf, int flush_all)
 {
-    if ( flush_all ) { buf->overlap.rid = -1; return 1; }
+    if ( buf->status!=dirty ) return flush_all;
 
-    int i = rbuf_last(&buf->rbuf);
+    int flush = flush_all;
+    mark_t *mark = &buf->mark;
+
+    // a new site was just added by vcfbuf_push()
+    buf->status = clean;
+
+    rbuf_expand0(&mark->rbuf, uint8_t, buf->rbuf.n, mark->mark);
+    int i = rbuf_append(&mark->rbuf);
+    mark->mark[i] = 0;
+
+    // determine beg and end of the last record that was just added
+    i = rbuf_last(&buf->rbuf);
     vcfrec_t *last = &buf->vcf[i];
-    if ( buf->overlap.rid != last->rec->rid ) buf->overlap.end = 0;
-
+    if ( mark->overlap_rid != last->rec->rid ) mark->overlap_end = 0;
     int beg_pos = last->rec->pos;
     int end_pos = last->rec->pos + last->rec->rlen - 1;
 
     // Assuming left-aligned indels. In case it is a deletion, the real variant
-    // starts one base after. If an insertion, the overlap with previous zero length.
+    // starts one base after. If an insertion, the overlap with previous is zero
     int imin = last->rec->rlen;
     for (i=0; i<last->rec->n_allele; i++)
     {
@@ -306,24 +466,175 @@ static int _overlap_can_flush(vcfbuf_t *buf, int flush_all)
         while ( *ref && *alt && nt_to_upper(*ref)==nt_to_upper(*alt) ) { ref++; alt++; }
         if ( imin > ref - last->rec->d.allele[0] ) imin = ref - last->rec->d.allele[0];
     }
-
-    if ( beg_pos <= buf->overlap.end )
+    if ( beg_pos <= mark->overlap_end )
     {
+        // the new site overlaps with the previous
         beg_pos += imin;
         if ( beg_pos > end_pos ) end_pos = beg_pos;
     }
-
     if ( buf->rbuf.n==1 )
     {
-        buf->overlap.rid = last->rec->rid;
-        buf->overlap.end = end_pos;
-        return 0;
+        mark->overlap_rid = last->rec->rid;
+        mark->overlap_end = end_pos;
+        return flush;
     }
-    if ( beg_pos <= buf->overlap.end )
+    if ( beg_pos <= mark->overlap_end )
     {
-        if ( buf->overlap.end < end_pos ) buf->overlap.end = end_pos;
-        return 0;
+        if ( mark->overlap_end < end_pos ) mark->overlap_end = end_pos;
+        int k1 = rbuf_kth(&mark->rbuf, -1);
+        int k2 = rbuf_kth(&mark->rbuf, -2);
+        mark->mark[k1] = 1;
+        mark->mark[k2] = 1;
     }
+    else
+    {
+        if ( mark->overlap_end < end_pos ) mark->overlap_end = end_pos;
+        flush = 1;
+    }
+    return flush;
+}
+
+
+static int mark_overlap_can_flush_(vcfbuf_t *buf, int flush_all)
+{
+    int flush = flush_all;
+    if  ( buf->status==dirty ) flush = mark_overlap_helper_(buf,flush_all);
+    else if ( buf->rbuf.n > 1 ) flush = 1;
+    if ( !flush ) return 0;
+
+    mark_t *mark = &buf->mark;
+    int i = rbuf_shift(&mark->rbuf);
+    mark->last = mark->mark[i];
+    return 1;
+}
+
+
+static int records_overlap(bcf1_t *a, bcf1_t *b)
+{
+    if ( a->rid != b->rid ) return 0;
+    if ( a->pos + a->rlen - 1 < b->pos ) return 0;
+    return 1;
+}
+
+static int cmp_overlap_ptr_asc(const void *aptr, const void *bptr)
+{
+    overlap_t *a = *((overlap_t**)aptr);
+    overlap_t *b = *((overlap_t**)bptr);
+    if ( a->value < b->value ) return -1;
+    if ( a->value > b->value ) return 1;
+    return 0;
+}
+static void mark_expr_missing_reset_(vcfbuf_t *buf)
+{
+    buf->mark.max_qual = 0;
+    buf->mark.max_qual_dp = 0;
+}
+static void mark_expr_missing_prep_(vcfbuf_t *buf, overlap_t *olap)
+{
+    int nval = bcf_get_info_int32(buf->hdr,olap->rec,"DP",&buf->mark.tmpi,&buf->mark.ntmpi);
+    if ( nval!=1 ) return;
+
+    olap->dp = buf->mark.tmpi[0];
+    if ( bcf_float_is_missing(olap->rec->qual) ) return;
+    if ( buf->mark.max_qual < olap->rec->qual )
+    {
+        buf->mark.max_qual = olap->rec->qual;
+        buf->mark.max_qual_dp = olap->dp;
+    }
+}
+static void mark_expr_missing_set_(vcfbuf_t *buf, overlap_t *olap)
+{
+    if ( !bcf_float_is_missing(olap->rec->qual) ) return;
+    if ( !buf->mark.max_qual_dp ) return;
+
+    // scale QUAL of the most confident variant in the overlap proportionally to the coverage
+    // and use that to prioritize the records
+    olap->value = buf->mark.max_qual * olap->dp / buf->mark.max_qual_dp;
+}
+static int mark_expr_can_flush_(vcfbuf_t *buf, int flush_all)
+{
+    mark_t *mark = &buf->mark;
+    if ( strcasecmp("min(QUAL)",mark->expr) ) error("Todo; at this time only min(QUAL) is supported\n");
+
+    int flush = flush_all;
+    if  ( buf->status==dirty )
+    {
+        flush = mark_overlap_helper_(buf,flush_all);
+        if ( !flush ) return 0;
+
+        if ( mark->missing_expr==MARK_MISSING_MAX_DP ) mark_expr_missing_reset_(buf);
+
+        // init overlaps, each overlap_t structure keeps a list of overlapping records, symmetrical
+        size_t nori = mark->nbuf;
+        hts_resize(overlap_t,  buf->rbuf.n, &mark->nbuf, &mark->buf, HTS_RESIZE_CLEAR);
+        hts_resize(overlap_t*, buf->rbuf.n, &nori, &mark->buf_ptr, HTS_RESIZE_CLEAR);
+        int i;
+        for (i=0; i<buf->rbuf.n; i++)
+        {
+            overlap_t *oi = &mark->buf[i];
+            int j = rbuf_kth(&buf->rbuf, i);
+            assert(j>=0);
+            bcf1_t *rec = buf->vcf[j].rec;
+            assert(rec);
+            oi->rec = rec;
+
+            // todo: other than QUAL values
+            oi->value = bcf_float_is_missing(rec->qual) ? mark->missing_value : rec->qual;
+            if ( mark->missing_expr==MARK_MISSING_MAX_DP ) mark_expr_missing_prep_(buf,oi);
+            if ( oi->bset )
+            {
+                kbs_resize(&oi->bset,buf->rbuf.n);
+                kbs_clear(oi->bset);
+            }
+            else
+                oi->bset = kbs_init(buf->rbuf.n);
+            oi->idx  = i;
+            mark->buf_ptr[i] = oi;
+            mark->mark[oi->idx] = 0;
+        }
+        int nolap = 0;
+        for (i=0; i<buf->rbuf.n; i++)
+        {
+            overlap_t *oi = &mark->buf[i];
+            if ( mark->missing_expr==MARK_MISSING_MAX_DP ) mark_expr_missing_set_(buf,oi);
+            int j;
+            for (j=i+1; j<buf->rbuf.n; j++)
+            {
+                overlap_t *oj = &mark->buf[j];
+                if ( !records_overlap(oi->rec,oj->rec) ) continue;
+                kbs_insert(oi->bset,j);
+                kbs_insert(oj->bset,i);
+                nolap++;
+            }
+        }
+
+        // sort according to the requested criteria, currently only min(QUAL)
+        qsort(mark->buf_ptr,buf->rbuf.n,sizeof(*mark->buf_ptr),cmp_overlap_ptr_asc);   // todo: other than min()
+
+        // go through the list sorted by overlap_t.value, eg QUAL
+        for (i=0; nolap && i<buf->rbuf.n; i++)
+        {
+            kbitset_iter_t itr;
+            overlap_t *oi = mark->buf_ptr[i];
+            kbs_start(&itr);
+            int j;
+            while ((j=kbs_next(oi->bset, &itr)) >= 0)
+            {
+                kbs_delete(oi->bset,j);
+                assert(nolap);
+                assert(kbs_exists(mark->buf[j].bset,oi->idx));
+                kbs_delete(mark->buf[j].bset,oi->idx);
+                nolap--;
+            }
+            j = rbuf_kth(&mark->rbuf,oi->idx);
+            mark->mark[j] = 1;
+        }
+    }
+    else if ( buf->rbuf.n > 1 ) flush = 1;
+    if ( !flush ) return 0;
+
+    int i = rbuf_shift(&mark->rbuf);
+    mark->last = mark->mark[i];
     return 1;
 }
 
@@ -331,32 +642,56 @@ bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all)
 {
     int i,j;
 
+    // nothing to do, no lines in the buffer
     if ( buf->rbuf.n==0 ) return NULL;
-    if ( flush_all || buf->dummy ) goto ret;
 
-    i = rbuf_kth(&buf->rbuf, 0);    // first
-    j = rbuf_last(&buf->rbuf);      // last
+    // dummy mode, always flushing
+    if ( buf->dummy ) goto ret;
 
-    if ( buf->vcf[i].rec->rid != buf->vcf[j].rec->rid ) goto ret;
-    if ( buf->overlap.active && _overlap_can_flush(buf, flush_all) ) goto ret;
-    if ( buf->rmdup.active && _rmdup_can_flush(buf, flush_all) ) goto ret;
-
-    if ( buf->win > 0 )
+    // pruning mode
+    if ( buf->win )
     {
-        if ( buf->rbuf.n <= buf->win ) return NULL;
+        int can_flush = flush_all;
+        i = rbuf_kth(&buf->rbuf, 0);    // first
+        j = rbuf_last(&buf->rbuf);      // last
+        if ( buf->vcf[i].rec->rid != buf->vcf[j].rec->rid ) can_flush = 1;
+        else if ( buf->win > 0 )
+        {
+            if ( buf->rbuf.n > buf->win ) can_flush = 1;
+        }
+        else if ( buf->win < 0 )
+        {
+            if ( !(buf->vcf[i].rec->pos - buf->vcf[j].rec->pos > buf->win) ) can_flush = 1;
+        }
+        buf->status = clean;
+        if ( !can_flush ) return NULL;
+        if ( buf->prune.max_sites && buf->prune.max_sites < buf->rbuf.n ) _prune_sites(buf, flush_all);
         goto ret;
     }
-    else if ( buf->win < 0 )
+
+    // overlaps and duplicates
+    if ( buf->mark.mode )
     {
-        if ( buf->vcf[i].rec->pos - buf->vcf[j].rec->pos > buf->win ) return NULL;
+        int can_flush = 0;
+        if ( buf->mark.mode==MARK_OVERLAP )
+        {
+            if ( mark_overlap_can_flush_(buf,flush_all) ) can_flush = 1;
+        }
+        else if ( buf->mark.mode==MARK_DUP )
+        {
+            if ( mark_dup_can_flush_(buf,flush_all) ) can_flush = 1;
+        }
+        if ( buf->mark.mode==MARK_EXPR )
+        {
+            if ( mark_expr_can_flush_(buf,flush_all) ) can_flush = 1;
+        }
+        buf->status = clean;
+        if ( !can_flush ) return NULL;
         goto ret;
     }
-    else
-        return NULL;
 
 ret:
-    if ( buf->prune.max_sites && buf->prune.max_sites < buf->rbuf.n ) _prune_sites(buf, flush_all);
-
+    buf->status = clean;
     i = rbuf_shift(&buf->rbuf);
     return buf->vcf[i].rec;
 }

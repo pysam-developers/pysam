@@ -109,8 +109,8 @@ uint8_t *hts_pack(uint8_t *data, int64_t len,
         out[j] = 0;
         int s = len-i, x = 0;
         switch (s) {
-        case 3: out[j] |= p[data[i++]] << x; x+=2;
-        case 2: out[j] |= p[data[i++]] << x; x+=2;
+        case 3: out[j] |= p[data[i++]] << x; x+=2; // fall-through
+        case 2: out[j] |= p[data[i++]] << x; x+=2; // fall-through
         case 1: out[j] |= p[data[i++]] << x; x+=2;
             j++;
         }
@@ -125,12 +125,12 @@ uint8_t *hts_pack(uint8_t *data, int64_t len,
         out[j] = 0;
         int s = len-i, x = 0;
         switch (s) {
-        case 7: out[j] |= p[data[i++]] << x++;
-        case 6: out[j] |= p[data[i++]] << x++;
-        case 5: out[j] |= p[data[i++]] << x++;
-        case 4: out[j] |= p[data[i++]] << x++;
-        case 3: out[j] |= p[data[i++]] << x++;
-        case 2: out[j] |= p[data[i++]] << x++;
+        case 7: out[j] |= p[data[i++]] << x++; // fall-through
+        case 6: out[j] |= p[data[i++]] << x++; // fall-through
+        case 5: out[j] |= p[data[i++]] << x++; // fall-through
+        case 4: out[j] |= p[data[i++]] << x++; // fall-through
+        case 3: out[j] |= p[data[i++]] << x++; // fall-through
+        case 2: out[j] |= p[data[i++]] << x++; // fall-through
         case 1: out[j] |= p[data[i++]] << x++;
             j++;
         }

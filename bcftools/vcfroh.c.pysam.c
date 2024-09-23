@@ -256,7 +256,7 @@ static void init_data(args_t *args)
         {
             if ( *end!=',') error("Could not parse: --buffer-size %s\n", args->buffer_size);
             args->nbuf_olap = strtol(end+1,&end,10);
-            if ( *end || args->nbuf_olap<0 ) error("Could not parse: --bufer-size %s\n", args->buffer_size);
+            if ( *end || args->nbuf_olap<0 ) error("Could not parse: --buffer-size %s\n", args->buffer_size);
         }
         if ( tmp<0 )
             args->nbuf_max = fabs(tmp)*1e6/(4+8*2)/args->roh_smpl->n;

@@ -23,6 +23,21 @@
    THE SOFTWARE.
 */
 
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <inttypes.h>
+#include <string.h>
+#include <strings.h>
+#include <htslib/hts.h>
+#include <htslib/khash.h>
+#include <htslib/khash_str2int.h>
+#include <htslib/kseq.h>
+#include <htslib/bgzf.h>
+#include <errno.h>
+#include "bcftools.h"
+#include "regidx.h"
 #include "gff.h"
 
 /*
@@ -39,9 +54,9 @@ typedef struct
     uint32_t beg;
     uint32_t end;
     uint32_t trid;
-    uint32_t strand:1;  // STRAND_REV,STRAND_FWD
+    uint32_t strand:2;  // STRAND_{REV,FWD,UNK}
     uint32_t phase:2;   // 0, 1, 2, or 3 for unknown
-    uint32_t iseq:29;
+    uint32_t iseq:28;
 }
 ftr_t;
 
@@ -460,13 +475,13 @@ static void gff_parse_exon(gff_t *gff, const char *line, ftr_t *ftr)
     // associate with transcript id
     gff_id_register(&gff->tscript_ids, aux->parent, aux->parent_end, &ftr->trid);
 
-    if ( ftr->strand==-1 && gff->verbosity > 0 )
+    if ( ftr->strand==STRAND_UNK && gff->verbosity > 0 )
     {
         if ( !gff->warned.unknown_strand || gff->verbosity > 1 )
             fprintf(stderr,"Warning: Ignoring GFF feature with unknown strand .. %s\n",line);
         gff->warned.unknown_strand++;
     }
-    if ( ftr->phase==-1 && gff->verbosity > 0 )
+    if ( ftr->phase==CDS_PHASE_UNKN && gff->verbosity > 0 )
     {
         if ( !gff->warned.unknown_phase|| gff->verbosity > 1 )
             fprintf(stderr,"Warning: Ignoring GFF feature with unknown phase .. %s\n",line);
@@ -507,8 +522,8 @@ static void gff_parse_gene(gff_t *gff, const char *line, ftr_t *ftr)
         gene->name = strdup(aux->gene_ids.str[gene_id]); // Name=<GeneName> field is not present, use the gene ID instead
 }
 
-// Returns 0 for exons,CDS,UTRs to indiciate these need to be pruned later and regidx built on them,
-// or -1 to indiciate the structure needs not be saved (either because of an error or because saved
+// Returns 0 for exons,CDS,UTRs to indicate these need to be pruned later and regidx built on them,
+// or -1 to indicate the structure needs not be saved (either because of an error or because saved
 // as transcript or gene.)
 static int gff_parse_line(gff_t *gff, char *line, ftr_t *ftr)
 {
@@ -554,10 +569,11 @@ static int gff_parse_line(gff_t *gff, char *line, ftr_t *ftr)
     ftr->strand = -1;
     if ( *ss == '+' ) ftr->strand = STRAND_FWD;
     else if ( *ss == '-' ) ftr->strand = STRAND_REV;
+    else ftr->strand = STRAND_UNK;
     ss += 2;
 
     // 8th column: phase (codon offset)
-    ftr->phase = -1;
+    ftr->phase = CDS_PHASE_UNKN;
     if ( *ss == '0' ) ftr->phase = 0;
     else if ( *ss == '1' ) ftr->phase = 1;
     else if ( *ss == '2' ) ftr->phase = 2;
@@ -727,12 +743,12 @@ static void tscript_init_cds(gff_t *gff)
                 if ( phase!=len%3 )
                 {
                     if ( !gff->force )
-                        error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d). Use the --force option to proceed anyway (at your own risk).\n",
+                        error("Error: GFF3 assumption failed for transcript %s, CDS=%"PRIu32": phase!=len%%3 (phase=%d, len=%d). Use the --force option to proceed anyway (at your own risk).\n",
                                 gff->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                     if ( gff->verbosity > 0 )
                     {
                         if ( !gff->warned.wrong_phase || gff->verbosity > 1 )
-                            fprintf(stderr,"Warning: The GFF has inconsistent phase column in transcript %s, skipping. CDS pos=%d: phase!=len%%3 (phase=%d, len=%d)\n",
+                            fprintf(stderr,"Warning: The GFF has inconsistent phase column in transcript %s, skipping. CDS pos=%"PRIu32": phase!=len%%3 (phase=%d, len=%d)\n",
                                     gff->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                         gff->warned.wrong_phase++;
                     }
@@ -743,7 +759,7 @@ static void tscript_init_cds(gff_t *gff)
             }
             if ( !tscript_ok ) continue;    // skip this transcript
         }
-        else
+        else if ( tr->strand==STRAND_REV )
         {
             if ( tr->cds[tr->ncds-1]->phase != CDS_PHASE_UNKN )
             {
@@ -790,12 +806,12 @@ static void tscript_init_cds(gff_t *gff)
                 if ( phase!=len%3 )
                 {
                     if ( !gff->force )
-                        error("Error: GFF3 assumption failed for transcript %s, CDS=%d: phase!=len%%3 (phase=%d, len=%d). Use the --force option to proceed anyway (at your own risk).\n",
+                        error("Error: GFF3 assumption failed for transcript %s, CDS=%"PRIu32": phase!=len%%3 (phase=%d, len=%d). Use the --force option to proceed anyway (at your own risk).\n",
                                 gff->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                     if ( gff->verbosity > 0 )
                     {
                         if ( !gff->warned.wrong_phase || gff->verbosity > 1 )
-                            fprintf(stderr,"Warning: The GFF has inconsistent phase column in transcript %s, skipping. CDS pos=%d: phase!=len%%3 (phase=%d, len=%d)\n",
+                            fprintf(stderr,"Warning: The GFF has inconsistent phase column in transcript %s, skipping. CDS pos=%"PRIu32": phase!=len%%3 (phase=%d, len=%d)\n",
                                     gff->tscript_ids.str[tr->id],tr->cds[i]->beg+1,phase,len);
                         gff->warned.wrong_phase++;
                     }
@@ -806,6 +822,8 @@ static void tscript_init_cds(gff_t *gff)
             }
             if ( !tscript_ok ) continue;    // skip this transcript
         }
+        else
+            continue;   // unknown strand
 
         // set len. At the same check that CDS within a transcript do not overlap
         len = 0;
@@ -854,7 +872,7 @@ static void tscript_init_cds(gff_t *gff)
                     i--;
                 }
             }
-            else
+            else if ( tr->strand==STRAND_REV )
             {
                 i = 0;
                 while ( i<tr->ncds && len%3 )
@@ -896,7 +914,7 @@ static int gff_dump(gff_t *gff, const char *fname)
         gf_gene_t *gene = (gf_gene_t*) kh_val(gff->init.gid2gene, k);
         char *gene_id = gff->init.gene_ids.str[gene->id];
         str.l = 0;
-        ksprintf(&str,"%s\t.\tgene\t%d\t%d\t.\t%c\t.\tID=%s;Name=%s;used=%d\n",gff->init.seq[gene->iseq],gene->beg+1,gene->end+1,gene->strand==STRAND_FWD?'+':'-',gene_id,gene->name,gene->used);
+        ksprintf(&str,"%s\t.\tgene\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tID=%s;Name=%s;used=%d\n",gff->init.seq[gene->iseq],gene->beg+1,gene->end+1,gene->strand==STRAND_FWD?'+':(gene->strand==STRAND_REV?'-':'.'),gene_id,gene->name,gene->used);
         if ( bgzf_write(out, str.s, str.l) != str.l ) error("Error writing %s: %s\n", fname, strerror(errno));
     }
 
@@ -907,7 +925,7 @@ static int gff_dump(gff_t *gff, const char *fname)
         char *gene_id =  gff->init.gene_ids.str[tr->gene->id];
         const char *type = tr->type==GF_PROTEIN_CODING ? "mRNA" : gf_type2gff_string(tr->type);
         str.l = 0;
-        ksprintf(&str,"%s\t.\t%s\t%d\t%d\t.\t%c\t.\tID=%s;Parent=%s;biotype=%s;used=%d\n",itr->seq,type,itr->beg+1,itr->end+1,tr->strand==STRAND_FWD?'+':'-',gff->tscript_ids.str[tr->id],gene_id,gf_type2gff_string(tr->type),tr->used);
+        ksprintf(&str,"%s\t.\t%s\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tID=%s;Parent=%s;biotype=%s;used=%d\n",itr->seq,type,itr->beg+1,itr->end+1,tr->strand==STRAND_FWD?'+':(tr->strand==STRAND_REV?'-':'.'),gff->tscript_ids.str[tr->id],gene_id,gf_type2gff_string(tr->type),tr->used);
         if ( bgzf_write(out, str.s, str.l) != str.l ) error("Error writing %s: %s\n", fname, strerror(errno));
     }
     regitr_destroy(itr);
@@ -918,7 +936,7 @@ static int gff_dump(gff_t *gff, const char *fname)
         gf_cds_t *cds = regitr_payload(itr,gf_cds_t*);
         gf_tscript_t *tr = cds->tr;
         str.l = 0;
-        ksprintf(&str,"%s\t.\tCDS\t%d\t%d\t.\t%c\t%c\tParent=%s\n",itr->seq,cds->beg+1,cds->beg+cds->len,tr->strand==STRAND_FWD?'+':'-',cds->phase==3?'.':cds->phase+(int)'0',gff->tscript_ids.str[tr->id]);
+        ksprintf(&str,"%s\t.\tCDS\t%"PRIu32"\t%"PRIu32"\t.\t%c\t%c\tParent=%s\n",itr->seq,cds->beg+1,cds->beg+cds->len,tr->strand==STRAND_FWD?'+':(tr->strand==STRAND_REV?'-':'.'),cds->phase==3?'.':cds->phase+(int)'0',gff->tscript_ids.str[tr->id]);
         if ( bgzf_write(out, str.s, str.l) != str.l ) error("Error writing %s: %s\n", fname, strerror(errno));
     }
     regitr_destroy(itr);
@@ -929,7 +947,7 @@ static int gff_dump(gff_t *gff, const char *fname)
         gf_utr_t *utr = regitr_payload(itr,gf_utr_t*);
         gf_tscript_t *tr = utr->tr;
         str.l = 0;
-        ksprintf(&str,"%s\t.\t%s_prime_UTR\t%d\t%d\t.\t%c\t.\tParent=%s\n",itr->seq,utr->which==prime3?"three":"five",utr->beg+1,utr->end+1,tr->strand==STRAND_FWD?'+':'-',gff->tscript_ids.str[tr->id]);
+        ksprintf(&str,"%s\t.\t%s_prime_UTR\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tParent=%s\n",itr->seq,utr->which==prime3?"three":"five",utr->beg+1,utr->end+1,tr->strand==STRAND_FWD?'+':(tr->strand==STRAND_REV?'-':'.'),gff->tscript_ids.str[tr->id]);
         if ( bgzf_write(out, str.s, str.l) != str.l ) error("Error writing %s: %s\n", fname, strerror(errno));
     }
     regitr_destroy(itr);
@@ -940,7 +958,7 @@ static int gff_dump(gff_t *gff, const char *fname)
         gf_exon_t *exon = regitr_payload(itr,gf_exon_t*);
         gf_tscript_t *tr = exon->tr;
         str.l = 0;
-        ksprintf(&str,"%s\t.\texon\t%d\t%d\t.\t%c\t.\tParent=%s\n",itr->seq,exon->beg+1,exon->end+1,tr->strand==STRAND_FWD?'+':'-',gff->tscript_ids.str[tr->id]);
+        ksprintf(&str,"%s\t.\texon\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tParent=%s\n",itr->seq,exon->beg+1,exon->end+1,tr->strand==STRAND_FWD?'+':(tr->strand==STRAND_REV?'-':'.'),gff->tscript_ids.str[tr->id]);
         if ( bgzf_write(out, str.s, str.l) != str.l ) error("Error writing %s: %s\n", fname, strerror(errno));
     }
     regitr_destroy(itr);
@@ -1004,7 +1022,7 @@ int gff_parse(gff_t *gff)
         else if ( ftr->type==GF_UTR5 ) register_utr(gff, ftr);
         else if ( ftr->type==GF_UTR3 ) register_utr(gff, ftr);
         else
-            error("something: %s\t%d\t%d\t%s\t%s\n", aux->seq[ftr->iseq],ftr->beg+1,ftr->end+1,gff->tscript_ids.str[ftr->trid],gf_type2gff_string(ftr->type));
+            error("something: %s\t%"PRIu32"\t%"PRIu32"\t%s\t%s\n", aux->seq[ftr->iseq],ftr->beg+1,ftr->end+1,gff->tscript_ids.str[ftr->trid],gf_type2gff_string(ftr->type));
     }
     tscript_init_cds(gff);
 
@@ -1046,7 +1064,7 @@ int gff_parse(gff_t *gff)
         INC_NWARN(wrong_phase);
         INC_NWARN(overlapping_cds);
         if ( nwarn > 0 )
-            fprintf(stderr,"Warning: %d warnings were supressed, run with `--verbose 2` to see them all\n",nwarn);
+            fprintf(stderr,"Warning: %d warnings were suppressed, increase verbosity to see them all\n",nwarn);
     }
 
     if ( gff->dump_fname ) gff_dump(gff, gff->dump_fname);

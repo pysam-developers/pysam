@@ -127,7 +127,7 @@ double *hmm_get_fwd_bwd_prob(hmm_t *hmm);
  *   @sites:    list of positions
  *
  *   Same as hmm_run_fwd_bwd, in addition a pointer to a matrix with the new
- *   transition probabilities is returned. In this verison, emission
+ *   transition probabilities is returned. In this version, emission
  *   probabilities are not updated.
  */
 double *hmm_run_baum_welch(hmm_t *hmm, int nsites, double *eprob, uint32_t *sites);

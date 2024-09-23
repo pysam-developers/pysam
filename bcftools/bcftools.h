@@ -1,6 +1,6 @@
 /*  bcftools.h -- utility function declarations.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2024 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -29,6 +29,7 @@ THE SOFTWARE.  */
 #include <htslib/hts_defs.h>
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
+#include <htslib/kfunc.h>
 #include <math.h>
 
 #define FT_TAB_TEXT 0       // custom tab-delimited text file
@@ -50,7 +51,13 @@ void error(const char *format, ...) HTS_NORETURN HTS_FORMAT(HTS_PRINTF_FMT, 1, 2
 void error_errno(const char *format, ...) HTS_NORETURN HTS_FORMAT(HTS_PRINTF_FMT, 1, 2);
 
 // For on the fly index creation with --write-index
-int init_index(htsFile *fh, bcf_hdr_t *hdr, char *fname, char **idx_fname);
+int init_index2(htsFile *fh, bcf_hdr_t *hdr, const char *fname, char **idx_fname, int idx_fmt);
+int init_index(htsFile *fh, bcf_hdr_t *hdr, const char *fname, char **idx_fname);
+
+// Used to set args->write_index in CLI.
+// It will be true if set correctly.
+// Note due to HTS_FMT_CSI being zero we have to use an additional bit.
+int write_index_parse(char *arg);
 
 void bcf_hdr_append_version(bcf_hdr_t *hdr, int argc, char **argv, const char *cmd);
 const char *hts_bcf_wmode(int file_type);
@@ -59,6 +66,10 @@ void set_wmode(char dst[8], int file_type, const char *fname, int compression_le
 char *init_tmp_prefix(const char *prefix);
 int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq);
 int parse_overlap_option(const char *arg);
+
+// Default sort order: chr,pos,alleles
+int cmp_bcf_pos(const void *aptr, const void *bptr);
+int cmp_bcf_pos_ref_alt(const void *aptr, const void *bptr);
 
 static inline int iupac2bitmask(char iupac)
 {
@@ -121,6 +132,23 @@ static inline double phred_score(double prob)
     return prob>99 ? 99 : prob;
 }
 
+static inline double calc_binom_two_sided(int na, int nb, double aprob)
+{
+    if ( !na && !nb ) return -1;
+    if ( na==nb ) return 1;
+
+    // kfunc.h implements kf_betai, which is the regularized beta function  P(X<=k/N;p) = I_{1-p}(N-k,k+1)
+
+    double prob = na > nb ? 2 * kf_betai(na, nb+1, aprob) : 2 * kf_betai(nb, na+1, aprob);
+
+    if ( prob > 1 ) prob = 1;   // this can happen, machine precision error, eg. kf_betai(1,0,0.5)
+    return prob;
+}
+static inline double calc_binom_one_sided(int na, int nb, double aprob, int ge)
+{
+    return ge ? kf_betai(na, nb + 1, aprob) : kf_betai(nb, na + 1, 1 - aprob);
+}
+
 static const uint64_t bcf_double_missing    = 0x7ff0000000000001;
 static const uint64_t bcf_double_vector_end = 0x7ff0000000000002;
 static inline void bcf_double_set(double *ptr, uint64_t value)
@@ -140,5 +168,17 @@ static inline int bcf_double_test(double d, uint64_t value)
 #define bcf_double_is_vector_end(x)  bcf_double_test((x),bcf_double_vector_end)
 #define bcf_double_is_missing(x)     bcf_double_test((x),bcf_double_missing)
 #define bcf_double_is_missing_or_vector_end(x)     (bcf_double_test((x),bcf_double_missing) || bcf_double_test((x),bcf_double_vector_end))
+
+static inline int get_unseen_allele(bcf1_t *line)
+{
+    int i;
+    for (i=1; i<line->n_allele; i++)
+    {
+        if ( !strcmp(line->d.allele[i],"<*>") ) return i;
+        if ( !strcmp(line->d.allele[i],"<NON_REF>") ) return i;
+        if ( !strcmp(line->d.allele[i],"<X>") ) return i;
+    }
+    return 0;
+}
 
 #endif

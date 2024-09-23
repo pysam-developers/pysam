@@ -2,7 +2,7 @@
 
 /*  vcfstats.c -- Produces stats which can be plotted using plot-vcfstats.
 
-    Copyright (C) 2012-2023 Genome Research Ltd.
+    Copyright (C) 2012-2024 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -410,7 +410,8 @@ static void init_user_stats(args_t *args, bcf_hdr_t *hdr, stats_t *stats)
 {
     stats->nusr = args->nusr;
     stats->usr = (user_stats_t*)malloc(sizeof(user_stats_t)*args->nusr);
-    memcpy(stats->usr,args->usr,args->nusr*sizeof(user_stats_t));
+    if (args->nusr)
+        memcpy(stats->usr,args->usr,args->nusr*sizeof(user_stats_t));
     int i;
     for (i=0; i<stats->nusr; i++)
     {
@@ -896,7 +897,7 @@ static inline int get_ad(bcf1_t *line, bcf_fmt_t *ad_fmt_ptr, int ismpl, int *ia
     *ial = 0;
     #define BRANCH_INT(type_t,missing,vector_end) { \
         type_t *ptr = (type_t *) (ad_fmt_ptr->p + ad_fmt_ptr->size*ismpl); \
-        for (iv=1; iv<ad_fmt_ptr->n; iv++) \
+        for (iv=1; iv<ad_fmt_ptr->n && iv<line->n_allele; iv++) \
         { \
             if ( ptr[iv]==vector_end ) break; \
             if ( ptr[iv]==missing ) continue; \
@@ -940,9 +941,12 @@ static inline void update_dvaf(stats_t *stats, bcf1_t *line, int ial, float vaf)
 #define vaf2bin(vaf) ((int)nearbyintf((vaf)/0.05))
 static inline void update_vaf(vaf_t *smpl_vaf, bcf1_t *line, int ial, float vaf)
 {
-    int idx = vaf2bin(vaf);
-    if ( bcf_get_variant_type(line,ial)==VCF_SNP ) smpl_vaf->snv[idx]++;
-    else smpl_vaf->indel[idx]++;
+    if ( vaf>=0 && vaf<=1 )
+    {
+        int idx = vaf2bin(vaf);
+        if ( bcf_get_variant_type(line,ial)==VCF_SNP ) smpl_vaf->snv[idx]++;
+        else smpl_vaf->indel[idx]++;
+    }
 }
 
 static inline int calc_sample_depth(args_t *args, int ismpl, bcf_fmt_t *ad_fmt_ptr, bcf_fmt_t *dp_fmt_ptr)
@@ -1375,7 +1379,10 @@ static void print_stats(args_t *args)
         fprintf(bcftools_stdout, "SN\t%d\tnumber of multiallelic sites:\t%"PRIu64"\n", id, stats->n_mals);
         fprintf(bcftools_stdout, "SN\t%d\tnumber of multiallelic SNP sites:\t%"PRIu64"\n", id, stats->n_snp_mals);
     }
-    fprintf(bcftools_stdout, "# TSTV, transitions/transversions:\n# TSTV\t[2]id\t[3]ts\t[4]tv\t[5]ts/tv\t[6]ts (1st ALT)\t[7]tv (1st ALT)\t[8]ts/tv (1st ALT)\n");
+    fprintf(bcftools_stdout, "# TSTV, transitions/transversions\n"
+           "#   - transitions, see https://en.wikipedia.org/wiki/Transition_(genetics)\n"
+           "#   - transversions, see https://en.wikipedia.org/wiki/Transversion\n");
+    fprintf(bcftools_stdout, "# TSTV\t[2]id\t[3]ts\t[4]tv\t[5]ts/tv\t[6]ts (1st ALT)\t[7]tv (1st ALT)\t[8]ts/tv (1st ALT)\n");
     for (id=0; id<args->nstats; id++)
     {
         stats_t *stats = &args->stats[id];
@@ -1395,7 +1402,9 @@ static void print_stats(args_t *args)
     }
     if ( args->indel_ctx )
     {
-        fprintf(bcftools_stdout, "# ICS, Indel context summary:\n# ICS\t[2]id\t[3]repeat-consistent\t[4]repeat-inconsistent\t[5]not applicable\t[6]c/(c+i) ratio\n");
+        fprintf(bcftools_stdout, "# ICS, Indel context:\n"
+               "#   - repeat-consistent, inconsistent and n/a: experimental and useless stats [DEPRECATED]\n");
+        fprintf(bcftools_stdout, "# ICS\t[2]id\t[3]repeat-consistent\t[4]repeat-inconsistent\t[5]not applicable\t[6]c/(c+i) ratio\n");
         for (id=0; id<args->nstats; id++)
         {
             int nc = 0, ni = 0, na = args->stats[id].n_repeat_na;
@@ -1406,7 +1415,9 @@ static void print_stats(args_t *args)
             }
             fprintf(bcftools_stdout, "ICS\t%d\t%d\t%d\t%d\t%.4f\n", id, nc,ni,na,nc+ni ? (float)nc/(nc+ni) : 0.0);
         }
-        fprintf(bcftools_stdout, "# ICL, Indel context by length:\n# ICL\t[2]id\t[3]length of repeat element\t[4]repeat-consistent deletions)\t[5]repeat-inconsistent deletions\t[6]consistent insertions\t[7]inconsistent insertions\t[8]c/(c+i) ratio\n");
+        fprintf(bcftools_stdout, "# ICL, Indel context by length:\n"
+               "#   - repeat-consistent, inconsistent and n/a: experimental and useless stats [DEPRECATED]\n");
+        fprintf(bcftools_stdout, "# ICL\t[2]id\t[3]length of repeat element\t[4]repeat-consistent deletions)\t[5]repeat-inconsistent deletions\t[6]consistent insertions\t[7]inconsistent insertions\t[8]c/(c+i) ratio\n");
         for (id=0; id<args->nstats; id++)
         {
             for (i=1; i<IRC_RLEN; i++)
@@ -1418,7 +1429,12 @@ static void print_stats(args_t *args)
             }
         }
     }
-    fprintf(bcftools_stdout, "# SiS, Singleton stats:\n# SiS\t[2]id\t[3]allele count\t[4]number of SNPs\t[5]number of transitions\t[6]number of transversions\t[7]number of indels\t[8]repeat-consistent\t[9]repeat-inconsistent\t[10]not applicable\n");
+    fprintf(bcftools_stdout, "# SiS, Singleton stats:\n"
+           "#   - allele count, i.e. the number of singleton genotypes (AC=1)\n"
+           "#   - number of transitions, see above\n"
+           "#   - number of transversions, see above\n"
+           "#   - repeat-consistent, inconsistent and n/a: experimental and useless stats [DEPRECATED]\n");
+    fprintf(bcftools_stdout, "# SiS\t[2]id\t[3]allele count\t[4]number of SNPs\t[5]number of transitions\t[6]number of transversions\t[7]number of indels\t[8]repeat-consistent\t[9]repeat-inconsistent\t[10]not applicable\n");
     for (id=0; id<args->nstats; id++)
     {
         stats_t *stats = &args->stats[id];
@@ -1515,7 +1531,7 @@ static void print_stats(args_t *args)
             {
                 if ( usr->vals_ts[j]+usr->vals_tv[j] == 0 ) continue;   // skip empty bins
                 float val = usr->min + (usr->max - usr->min)*j/(usr->nbins-1);
-                const char *fmt = usr->type==BCF_HT_REAL ? "USR:%s/%d\t%d\t%e\t%"PRIu64"\t%"PRIu64"\t%"PRIu64"\n" : "USR:%s/%d\t%d\t%.0f\t%"PRIu64"\t%"PRIu64"\t%"PRIu64"\n";
+                const char * const fmt = usr->type==BCF_HT_REAL ? "USR:%s/%d\t%d\t%e\t%"PRIu64"\t%"PRIu64"\t%"PRIu64"\n" : "USR:%s/%d\t%d\t%.0f\t%"PRIu64"\t%"PRIu64"\t%"PRIu64"\n";
                 fprintf(bcftools_stdout, fmt,usr->tag,usr->idx,id,val,usr->vals_ts[j]+usr->vals_tv[j],usr->vals_ts[j],usr->vals_tv[j]);
             }
         }
@@ -1733,6 +1749,13 @@ static void print_stats(args_t *args)
         }
     }
 
+    fprintf(bcftools_stdout, "# DP, depth:\n"
+           "#   - set id, see above\n"
+           "#   - the depth bin, corresponds to the depth (unless --depth was given)\n"
+           "#   - number of genotypes with this depth (zero unless -s/-S was given)\n"
+           "#   - fraction of genotypes with this depth (zero unless -s/-S was given)\n"
+           "#   - number of sites with this depth\n"
+           "#   - fraction of sites with this depth\n");
     fprintf(bcftools_stdout, "# DP, Depth distribution\n# DP\t[2]id\t[3]bin\t[4]number of genotypes\t[5]fraction of genotypes (%%)\t[6]number of sites\t[7]fraction of sites (%%)\n");
     for (id=0; id<args->nstats; id++)
     {
