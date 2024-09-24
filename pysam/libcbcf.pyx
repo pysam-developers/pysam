@@ -2111,14 +2111,10 @@ cdef class VariantHeader(object):
             rec.info.update(info)
 
         if kwargs:
-            if 'GT' in kwargs:
-                rec.samples[0]['GT'] = kwargs.pop('GT')
             rec.samples[0].update(kwargs)
 
         if samples:
             for i, sample in enumerate(samples):
-                if 'GT' in sample:
-                    rec.samples[i]['GT'] = sample.pop('GT')
                 rec.samples[i].update(sample)
 
         return rec
