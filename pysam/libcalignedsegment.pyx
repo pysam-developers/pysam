@@ -757,7 +757,8 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         elif op == BAM_CHARD_CLIP:
             pass # advances neither
 
-    cdef char *md_tag, md_buffer[2];
+    cdef char md_buffer[2]
+    cdef char *md_tag
     cdef uint8_t md_typecode = md_tag_ptr[0]
     if md_typecode == b'Z':
         md_tag = bam_aux2Z(md_tag_ptr)
