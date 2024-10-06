@@ -44,6 +44,7 @@ __all__ = (
     libcalignmentfile.__all__ +  # type: ignore
     libcalignedsegment.__all__ +  # type: ignore
     libcsamfile.__all__ +  # type: ignore
+    samtools.__all__ +  # type: ignore
     ["SamtoolsError"] +
     ["Pileup"]
 )
