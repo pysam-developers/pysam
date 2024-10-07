@@ -1973,7 +1973,7 @@ cdef class AlignedSegment:
             return self.query_qualities
 
 
-    def get_aligned_pairs(self, matches_only=False, with_seq=False):
+    def get_aligned_pairs(self, matches_only=False, with_seq=False, skip_soft_clipping=False):
         """a list of aligned read (query) and reference positions.
 
         Each item in the returned list is a tuple consisting of
@@ -1997,6 +1997,8 @@ cdef class AlignedSegment:
           reference sequence. For CIGAR 'P' (padding in the reference)
           operations, the third tuple element will be None. Substitutions
           are lower-case. This option requires an MD tag to be present.
+        skip_soft_clipping: bool
+          If True, soft-clipped regions are not returned but ignored.
 
         Returns
         -------
@@ -2010,6 +2012,7 @@ cdef class AlignedSegment:
         cdef bam1_t * src = self._delegate
         cdef bint _matches_only = bool(matches_only)
         cdef bint _with_seq = bool(with_seq)
+        cdef bint _skip_soft_clipping = bool(skip_soft_clipping)
 
         # TODO: this method performs no checking and assumes that
         # read sequence, cigar and MD tag are consistent.
@@ -2046,7 +2049,7 @@ cdef class AlignedSegment:
                 pos += l
 
             elif op == BAM_CINS or op == BAM_CSOFT_CLIP or op == BAM_CPAD:
-                if not _matches_only:
+                if not (_matches_only or (_skip_soft_clipping and op == BAM_CSOFT_CLIP)):
                     if _with_seq:
                         for i from pos <= i < pos + l:
                             result.append((qpos, None, None))
