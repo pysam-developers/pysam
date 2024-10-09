@@ -398,7 +398,7 @@ static int iaux_set_consensus(indel_aux_t *iaux, int ismpl)
 // Finds the smallest index in the seq_pos array holding value equal to pos, or if there is no
 // such value, the largest index with value smaller than pos. Starts at initial guess ioff.
 // This could use a binary search but the assumption is that the initial guess is indel-size close
-// to the actuall coordinate.
+// to the actual coordinate.
 //
 // TODO: remove this function and seq_pos from cns creation as it seems unnecessary
 static int find_ref_offset(hts_pos_t pos, hts_pos_t *seq_pos, int nseq_pos, int ioff)

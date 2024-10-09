@@ -39,6 +39,6 @@
  * NB: This is obtained from the auto-generated version.h, so
  * we can include release number and git hash.
  */
-const char *htscodecs_version() {
+const char *htscodecs_version(void) {
     return HTSCODECS_VERSION_TEXT;
 }

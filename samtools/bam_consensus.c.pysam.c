@@ -3,7 +3,7 @@
 /*  bam_consensus.c -- consensus subcommand.
 
     Copyright (C) 1998-2001,2003 Medical Research Council (Gap4/5 source)
-    Copyright (C) 2003-2005,2007-2023 Genome Research Ltd.
+    Copyright (C) 2003-2005,2007-2024 Genome Research Ltd.
 
     Author: James Bonfield <jkb@sanger.ac.uk>
 
@@ -1919,8 +1919,8 @@ static int calculate_consensus_simple(const pileup_t *plp,
     // Ignore ambiguous bases in seq for now, so we don't treat R, Y, etc
     // as part of one base and part another.  Based on BAM seqi values.
     // We also use freq[16] as "*" for gap.
-    int freq[17] = {0};  // base frequency, aka depth
-    int score[17] = {0}; // summation of base qualities
+    int      freq[17]  = {0}; // base frequency, aka depth
+    uint64_t score[17] = {0}; // summation of base qualities
 
     // Accumulate
     for (; plp; plp = plp->next) {
@@ -1961,13 +1961,13 @@ static int calculate_consensus_simple(const pileup_t *plp,
     }
 
     // Total usable depth
-    int tscore = 0;
+    uint64_t tscore = 0;
     for (i = 0; i < 5; i++)
         tscore += score[1<<i];
 
     // Best and second best potential calls
-    int call1  = 15, call2 = 15;
-    int score1 = 0,  score2 = 0;
+    int      call1  = 15, call2  = 15;
+    uint64_t score1 = 0,  score2 = 0;
     for (i = 0; i < 5; i++) {
         int c = 1<<i; // A C G T *
         if (score1 < score[c]) {
@@ -1982,8 +1982,8 @@ static int calculate_consensus_simple(const pileup_t *plp,
     }
 
     // Work out which best and second best are usable as a call
-    int used_score = score1;
-    int used_base  = call1;
+    uint64_t used_score = score1;
+    int      used_base  = call1;
     if (score2 >= opts->het_fract * score1 && opts->ambig) {
         used_base  |= call2;
         used_score += score2;
@@ -2085,7 +2085,10 @@ static int basic_pileup(void *cd, samFile *fp, sam_hdr_t *h, pileup_t *p,
         calculate_consensus_gap5m(pos, opts->use_mqual ? CONS_MQUAL : 0,
                                   depth, p, opts, &cons, opts->default_qual,
                                   &cons_prob_recall, &cons_prob_precise);
-        if (cons.het_logodd > 0 && opts->ambig) {
+        if (cons.depth < opts->min_depth) {
+            cb = 'N';
+            cq = 0;
+        } else if (cons.het_logodd > 0 && opts->ambig) {
             cb = "AMRWa" // 5x5 matrix with ACGT* per row / col
                  "MCSYc"
                  "RSGKg"
@@ -2230,14 +2233,17 @@ static int basic_fasta(void *cd, samFile *fp, sam_hdr_t *h, pileup_t *p,
         calculate_consensus_gap5m(pos, opts->use_mqual ? CONS_MQUAL : 0,
                                   depth, p, opts, &cons, opts->default_qual,
                                   &cons_prob_recall, &cons_prob_precise);
-        if (cons.het_logodd > 0 && opts->ambig) {
+        if (cons.depth < opts->min_depth) {
+            cb = 'N';
+            cq = 0;
+        } else if (cons.het_logodd > 0 && opts->ambig) {
             cb = "AMRWa" // 5x5 matrix with ACGT* per row / col
                  "MCSYc"
                  "RSGKg"
                  "WYKTt"
                  "acgt*"[cons.het_call];
             cq = cons.het_logodd;
-        } else{
+        } else {
             cb = "ACGT*"[cons.call];
             cq = cons.phred;
         }
@@ -2321,10 +2327,10 @@ static void usage_exit(FILE *fp, int exit_status) {
     fprintf(fp, "  --show-ins yes/no     Whether to show insertions [yes]\n");
     fprintf(fp, "  --mark-ins            Add '+' before every inserted base/qual [off]\n");
     fprintf(fp, "  -A, --ambig           Enable IUPAC ambiguity codes [off]\n");
+    fprintf(fp, "  -d, --min-depth INT   Minimum depth of INT [1]\n");
     fprintf(fp, "\nFor simple consensus mode:\n");
     fprintf(fp, "  -q, --(no-)use-qual   Use quality values in calculation [off]\n");
     fprintf(fp, "  -c, --call-fract INT  At least INT portion of bases must agree [0.75]\n");
-    fprintf(fp, "  -d, --min-depth INT   Minimum depth of INT [2]\n");
     fprintf(fp, "  -H, --het-fract INT   Minimum fraction of 2nd-most to most common base [0.15]\n");
     fprintf(fp, "\nFor default \"Bayesian\" consensus mode:\n");
     fprintf(fp, "  -C, --cutoff C        Consensus cutoff quality C [10]\n");

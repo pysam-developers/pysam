@@ -1,7 +1,7 @@
 /*  str_finder.c -- Short Tandem Repeat finder.
     Originally from Crumble (https://github.com/jkbonfield/crumble)
 
-    Copyright (C) 2015-2016, 2021 Genome Research Ltd.
+    Copyright (C) 2015-2016, 2021, 2023 Genome Research Ltd.
 
     Author: James Bonfield <jkb@sanger.ac.uk>
 
@@ -47,6 +47,9 @@ typedef struct rep_ele {
  *         NULL on failure.
  */
 rep_ele *find_STR(char *cons, int len, int lower_only);
+
+/* As above, but use a longer hash with longer STR elements found */
+rep_ele *find_STR64(char *cons, int len, int lower_only);
 
 /*
  * Returns an array of STR vs no-STR values.

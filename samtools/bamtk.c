@@ -75,7 +75,7 @@ int main_reference(int argc, char *argv[]);
 int main_reset(int argc, char *argv[]);
 int main_cram_size(int argc, char *argv[]);
 
-const char *samtools_version()
+const char *samtools_version(void)
 {
     return SAMTOOLS_VERSION;
 }
@@ -103,7 +103,7 @@ const char *samtools_feature_string(void) {
 static void long_version(void) {
     printf("samtools %s\n"
            "Using htslib %s\n"
-           "Copyright (C) 2023 Genome Research Ltd.\n",
+           "Copyright (C) 2024 Genome Research Ltd.\n",
            samtools_version(), hts_version());
 
     printf("\nSamtools compilation details:\n");
@@ -303,5 +303,14 @@ int main(int argc, char *argv[])
         fprintf(stderr, "[main] unrecognized command '%s'\n", argv[1]);
         return 1;
     }
+
+    // For subcommands that may have produced substantial output on stdout,
+    // make a final check for delayed I/O errors. Ignore EBADF as other code
+    // may have already closed stdout.
+    if (fclose(stdout) != 0 && errno != EBADF) {
+        print_error_errno(argv[1], "closing standard output failed");
+        return 1;
+    }
+
     return ret;
 }

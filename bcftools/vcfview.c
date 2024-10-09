@@ -36,6 +36,7 @@ THE SOFTWARE.  */
 #include <htslib/vcf.h>
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
+#include <htslib/kbitset.h>
 #include "bcftools.h"
 #include "filter.h"
 #include "htslib/khash_str2int.h"
@@ -78,6 +79,7 @@ typedef struct _args_t
     int record_cmd_line;
     char *index_fn;
     int write_index;
+    int trim_star_allele;
     htsFile *out;
 }
 args_t;
@@ -456,6 +458,19 @@ int subset_vcf(args_t *args, bcf1_t *line)
         int ret = bcf_trim_alleles(args->hsub ? args->hsub : args->hdr, line);
         if ( ret<0 ) error("Error: Could not trim alleles at %s:%"PRId64"\n", bcf_seqname(args->hsub ? args->hsub : args->hdr, line), (int64_t) line->pos+1);
     }
+    if (args->trim_star_allele)
+    {
+        int iunseen;
+        if ( args->trim_star_allele && (line->n_allele > 2 || args->trim_star_allele > 1) && (iunseen=get_unseen_allele(line)) && iunseen>0 )
+        {
+            // the unobserved star allele should be trimmed, either it is variant site or trimming of all sites was requested
+            kbitset_t *rm_set = kbs_init(line->n_allele);
+            kbs_insert(rm_set, iunseen);
+            if ( bcf_remove_allele_set(args->hdr,line,rm_set) )
+                error("[%s] Error: failed to trim the unobserved allele at %s:%"PRIhts_pos"\n",__func__,bcf_seqname(args->hdr,line),line->pos+1);
+            kbs_destroy(rm_set);
+        }
+    }
     if (args->phased) {
         int phased = bcf_all_phased(args->hdr, line);
         if (args->phased == FLT_INCLUDE && !phased) { return 0; } // skip unphased
@@ -512,6 +527,7 @@ static void usage(args_t *args)
     fprintf(stderr, "        --threads INT                 Use multithreading with INT worker threads [0]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Subset options:\n");
+    fprintf(stderr, "    -A, --trim-unseen-allele          Remove '<*>' or '<NON_REF>' at variant (-A) or at all (-AA) sites\n");
     fprintf(stderr, "    -a, --trim-alt-alleles            Trim ALT alleles not seen in the genotype fields (or their subset with -s/-S)\n");
     fprintf(stderr, "    -I, --no-update                   Do not (re)calculate INFO fields for the subset (currently INFO/AC and INFO/AN)\n");
     fprintf(stderr, "    -s, --samples [^]LIST             Comma separated list of samples to include (or exclude with \"^\" prefix). Be careful\n");
@@ -534,7 +550,7 @@ static void usage(args_t *args)
     fprintf(stderr, "    -u/U, --uncalled/--exclude-uncalled    Select/exclude sites without a called genotype\n");
     fprintf(stderr, "    -v/V, --types/--exclude-types LIST     Select/exclude comma-separated list of variant types: snps,indels,mnps,ref,bnd,other [null]\n");
     fprintf(stderr, "    -x/X, --private/--exclude-private      Select/exclude sites where the non-reference alleles are exclusive (private) to the subset samples\n");
-    fprintf(stderr, "          --write-index                    Automatically index the output files [off]\n");
+    fprintf(stderr, "    -W,   --write-index[=FMT]              Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -568,6 +584,7 @@ int main_vcfview(int argc, char *argv[])
         {"exclude",required_argument,NULL,'e'},
         {"include",required_argument,NULL,'i'},
         {"trim-alt-alleles",no_argument,NULL,'a'},
+        {"trim-unseen-allele",no_argument,NULL,'A'},
         {"no-update",no_argument,NULL,'I'},
         {"drop-genotypes",no_argument,NULL,'G'},
         {"private",no_argument,NULL,'x'},
@@ -600,11 +617,11 @@ int main_vcfview(int argc, char *argv[])
         {"phased",no_argument,NULL,'p'},
         {"exclude-phased",no_argument,NULL,'P'},
         {"no-version",no_argument,NULL,8},
-        {"write-index",no_argument,NULL,10},
+        {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "l:t:T:r:R:o:O:s:S:Gf:knv:V:m:M:auUhHc:C:Ii:e:xXpPq:Q:g:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "l:t:T:r:R:o:O:s:S:Gf:knv:V:m:M:aAuUhHc:C:Ii:e:xXpPq:Q:g:W::",loptions,NULL)) >= 0)
     {
         char allele_type[9] = "nref";
         switch (c)
@@ -646,6 +663,7 @@ int main_vcfview(int argc, char *argv[])
             case 'S': args->sample_names = optarg; args->sample_is_file = 1; break;
             case  1 : args->force_samples = 1; break;
             case 'a': args->trim_alts = 1; args->calc_ac = 1; break;
+            case 'A': args->trim_star_allele++; break;
             case 'I': args->update_info = 0; break;
             case 'G': args->sites_only = 1; break;
 
@@ -732,7 +750,10 @@ int main_vcfview(int argc, char *argv[])
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
-            case 10 : args->write_index = 1; break;
+            case 'W':
+                if (!(args->write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
@@ -789,7 +810,9 @@ int main_vcfview(int argc, char *argv[])
     else if ( args->output_type & FT_BCF )
         error("BCF output requires header, cannot proceed with -H\n");
 
-    if ( args->write_index && init_index(args->out,out_hdr,args->fn_out,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->fn_out);
+    if ( init_index2(args->out,out_hdr,args->fn_out, &args->index_fn,
+                     args->write_index) < 0 )
+        error("Error: failed to initialise index for %s\n",args->fn_out);
 
     int ret = 0;
     if (!args->header_only)

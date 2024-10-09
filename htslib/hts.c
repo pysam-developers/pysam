@@ -1,6 +1,6 @@
 /*  hts.c -- format-neutral I/O, indexing, and iterator API functions.
 
-    Copyright (C) 2008, 2009, 2012-2023 Genome Research Ltd.
+    Copyright (C) 2008, 2009, 2012-2024 Genome Research Ltd.
     Copyright (C) 2012, 2013 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -81,7 +81,7 @@ KHASH_INIT2(s2i,, kh_cstr_t, int64_t, 1, kh_str_hash_func, kh_str_hash_equal)
 HTSLIB_EXPORT
 int hts_verbose = HTS_LOG_WARNING;
 
-const char *hts_version()
+const char *hts_version(void)
 {
     return HTS_VERSION_TEXT;
 }
@@ -429,6 +429,27 @@ static int is_text_only(const unsigned char *u, const unsigned char *ulim)
             return 0;
 
     return 1;
+}
+
+static inline int
+alternate_zeros(const unsigned char *u, const unsigned char *ulim)
+{
+    for (; u < ulim; u += 2)
+        if (*u != '\0') return 0;
+    return 1;
+}
+
+static int is_utf16_text(const unsigned char *u, const unsigned char *ulim)
+{
+    if (ulim - u >= 6 &&
+        ((u[0] == 0xfe && u[1] == 0xff && alternate_zeros(u+2, ulim)) ||
+         (u[0] == 0xff && u[1] == 0xfe && alternate_zeros(u+3, ulim))))
+        return 2;
+    else if (ulim - u >= 8 &&
+             (alternate_zeros(u, ulim) || alternate_zeros(u+1, ulim)))
+        return 1;
+    else
+        return 0;
 }
 
 static int is_fastaq(const unsigned char *u, const unsigned char *ulim)
@@ -794,6 +815,7 @@ char *hts_format_description(const htsFormat *format)
     case zstd_compression:   kputs(" Zstandard-compressed", &str); break;
     case custom: kputs(" compressed", &str); break;
     case gzip:   kputs(" gzip-compressed", &str); break;
+
     case bgzf:
         switch (format->format) {
         case bam:
@@ -808,6 +830,22 @@ char *hts_format_description(const htsFormat *format)
             break;
         }
         break;
+
+    case no_compression:
+        switch (format->format) {
+        case bam:
+        case bcf:
+        case cram:
+        case csi:
+        case tbi:
+            // These are normally compressed, so emphasise that this one isn't
+            kputs(" uncompressed", &str);
+            break;
+        default:
+            break;
+        }
+        break;
+
     default: break;
     }
 
@@ -921,10 +959,18 @@ htsFile *hts_open_format(const char *fn, const char *mode, const htsFormat *fmt)
          fmt->format == fastq_format))
         fp->format.format = fmt->format;
 
-    if (fmt && fmt->specific)
-        if (hts_opt_apply(fp, fmt->specific) != 0)
+    if (fmt && fmt->specific) {
+        if (hts_opt_apply(fp, fmt->specific) != 0) {
+            if (((hts_opt*)fmt->specific)->opt == CRAM_OPT_REFERENCE &&
+                (errno == ENOENT || errno == EIO || errno == EBADF ||
+                  errno == EACCES || errno == EISDIR)) {
+                /* error during reference file operation
+                 for these specific errors, set the error as EINVAL */
+                errno = EINVAL;
+            }
             goto error;
-
+        }
+    }
     if ( rmme ) free(rmme);
     return fp;
 
@@ -1276,7 +1322,7 @@ int hts_parse_opt_list(htsFormat *fmt, const char *str) {
  *        -1 on failure.
  */
 int hts_parse_format(htsFormat *format, const char *str) {
-    char fmt[8];
+    char fmt[9];
     const char *cp = scan_keyword(str, ',', fmt, sizeof fmt);
 
     format->version.minor = 0; // unknown
@@ -1404,6 +1450,7 @@ static int hts_crypt4gh_redirect(const char *fn, const char *mode,
 htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
 {
     hFILE *hfile_orig = hfile;
+    hFILE *hfile_cleanup = hfile;
     htsFile *fp = (htsFile*)calloc(1, sizeof(htsFile));
     char simple_mode[101], *cp, *opts;
     simple_mode[100] = '\0';
@@ -1431,6 +1478,7 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
         // Deal with formats that re-direct an underlying file via a plug-in.
         // Loops as we may have crypt4gh served via htsget, or
         // crypt4gh-in-crypt4gh.
+
         while (fp->format.format == htsget ||
                fp->format.format == hts_crypt4gh_format) {
             // Ensure we don't get stuck in an endless redirect loop
@@ -1443,11 +1491,30 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
                 hFILE *hfile2 = hopen_htsget_redirect(hfile, simple_mode);
                 if (hfile2 == NULL) goto error;
 
+                if (hfile != hfile_cleanup) {
+                    // Close the result of an earlier redirection
+                    hclose_abruptly(hfile);
+                }
+
                 hfile = hfile2;
             }
             else if (fp->format.format == hts_crypt4gh_format) {
+                int should_preserve = (hfile == hfile_orig);
+                int update_cleanup = (hfile == hfile_cleanup);
                 if (hts_crypt4gh_redirect(fn, simple_mode, &hfile, fp) < 0)
                     goto error;
+                if (should_preserve) {
+                    // The original hFILE is now contained in a crypt4gh
+                    // wrapper.  Should we need to close the wrapper due
+                    // to a later error, we need to prevent the wrapped
+                    // handle from being closed as the caller will see
+                    // this function return NULL and try to clean up itself.
+                    hfile_orig->preserve = 1;
+                }
+                if (update_cleanup) {
+                    // Update handle to close at the end if redirected by htsget
+                    hfile_cleanup = hfile;
+                }
             }
 
             // Re-detect format against the result of the redirection
@@ -1529,9 +1596,13 @@ htsFile *hts_hopen(hFILE *hfile, const char *fn, const char *mode)
     if (opts)
         hts_process_opts(fp, opts);
 
-    // If redirecting, close the original hFILE now (pedantically we would
-    // instead close it in hts_close(), but this a simplifying optimisation)
-    if (hfile != hfile_orig) hclose_abruptly(hfile_orig);
+    // Allow original file to close if it was preserved earlier by crypt4gh
+    hfile_orig->preserve = 0;
+
+    // If redirecting via htsget, close the original hFILE now (pedantically
+    // we would instead close it in hts_close(), but this a simplifying
+    // optimisation)
+    if (hfile != hfile_cleanup) hclose_abruptly(hfile_cleanup);
 
     return fp;
 
@@ -1540,6 +1611,7 @@ error:
 
     // If redirecting, close the failed redirection hFILE that we have opened
     if (hfile != hfile_orig) hclose_abruptly(hfile);
+    hfile_orig->preserve = 0; // Allow caller to close the original hfile
 
     if (fp) {
         free(fp->fn);
@@ -1549,9 +1621,15 @@ error:
     return NULL;
 }
 
+static int hts_idx_close_otf_fp(hts_idx_t *idx);
+
 int hts_close(htsFile *fp)
 {
     int ret = 0, save;
+    if (!fp) {
+        errno = EINVAL;
+        return -1;
+    }
 
     switch (fp->format.format) {
     case binary_format:
@@ -1596,6 +1674,14 @@ int hts_close(htsFile *fp)
     default:
         ret = -1;
         break;
+    }
+
+    if (fp->idx) {
+        // Close deferred index file handle, if present.
+        // Unfortunately this means errors on the index will get mixed with
+        // those on the main file, but as we only have the EOF block left to
+        // write it hopefully won't happen that often.
+        ret |= hts_idx_close_otf_fp(fp->idx);
     }
 
     save = errno;
@@ -1678,7 +1764,7 @@ static hFILE *hts_hfile(htsFile *fp) {
     case bcf:          // fall through
     case bam:          return bgzf_hfile(fp->fp.bgzf);
     case cram:         return cram_hfile(fp->fp.cram);
-    case text_format:  return fp->fp.hfile;
+    case text_format:  // fall through
     case vcf:          // fall through
     case fastq_format: // fall through
     case fasta_format: // fall through
@@ -1896,6 +1982,12 @@ hFILE *hts_open_tmpfile(const char *fname, const char *mode, kstring_t *tmpname)
     return fp;
 }
 
+int hts_is_utf16_text(const kstring_t *str)
+{
+    const unsigned char *u = (const unsigned char *) (str->s);
+    return (str->l > 0 && str->s)? is_utf16_text(u, u + str->l) : 0;
+}
+
 // For VCF/BCF backward sweeper. Not exposing these functions because their
 // future is uncertain. Things will probably have to change with hFILE...
 BGZF *hts_get_bgzfp(htsFile *fp)
@@ -1965,6 +2057,8 @@ char **hts_readlist(const char *string, int is_file, int *_n)
         while ((ret = bgzf_getline(fp, '\n', &str)) >= 0)
         {
             if (str.l == 0) continue;
+            if (n == 0 && hts_is_utf16_text(&str))
+                hts_log_warning("'%s' appears to be encoded as UTF-16", string);
             if (hts_resize(char*, n + 1, &m, &s, 0) < 0)
                 goto err;
             s[n] = strdup(str.s);
@@ -2024,6 +2118,8 @@ char **hts_readlines(const char *fn, int *_n)
         str.s = 0; str.l = str.m = 0;
         while ((ret = bgzf_getline(fp, '\n', &str)) >= 0) {
             if (str.l == 0) continue;
+            if (n == 0 && hts_is_utf16_text(&str))
+                hts_log_warning("'%s' appears to be encoded as UTF-16", fn);
             if (hts_resize(char *, n + 1, &m, &s, 0) < 0)
                 goto err;
             s[n] = strdup(str.s);
@@ -2148,6 +2244,7 @@ struct hts_idx_t {
         uint64_t off_beg, off_end;
         uint64_t n_mapped, n_unmapped;
     } z; // keep internal states
+    BGZF *otf_fp;  // Index on-the-fly output file
 };
 
 static char * idx_format_name(int fmt) {
@@ -2274,6 +2371,7 @@ hts_idx_t *hts_idx_init(int n, int fmt, uint64_t offset0, int min_shift, int n_l
     }
     idx->tbi_n = -1;
     idx->last_tbi_tid = -1;
+    idx->otf_fp = NULL;
     return idx;
 }
 
@@ -2379,9 +2477,14 @@ int hts_idx_finish(hts_idx_t *idx, uint64_t final_offset)
     return ret;
 }
 
+static inline hts_pos_t hts_idx_maxpos(const hts_idx_t *idx)
+{
+    return hts_bin_maxpos(idx->min_shift, idx->n_lvls);
+}
+
 int hts_idx_check_range(hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t end)
 {
-    int64_t maxpos = (int64_t) 1 << (idx->min_shift + idx->n_lvls * 3);
+    hts_pos_t maxpos = hts_idx_maxpos(idx);
     if (tid < 0 || (beg <= maxpos && end <= maxpos))
         return 0;
 
@@ -2589,6 +2692,17 @@ static inline void swap_bins(bins_t *p)
     }
 }
 
+static int need_idx_ugly_delay_hack(const hts_idx_t *idx)
+{
+    // Ugly hack for on-the-fly BAI indexes.  As these are uncompressed,
+    // we need to delay writing a few bytes of data until file close
+    // so that we have something to force a modification time update.
+    //
+    // (For compressed indexes like CSI, the BGZF EOF block serves the same
+    // purpose).
+    return idx->otf_fp && !idx->otf_fp->is_compressed;
+}
+
 static int idx_save_core(const hts_idx_t *idx, BGZF *fp, int fmt)
 {
     int32_t i, j;
@@ -2641,7 +2755,12 @@ static int idx_save_core(const hts_idx_t *idx, BGZF *fp, int fmt)
         }
     }
 
-    check(idx_write_uint64(fp, idx->n_no_coor));
+    if (!need_idx_ugly_delay_hack(idx)) {
+        // Write this for compressed (CSI) indexes, but for BAI we
+        // need to save a bit for later.  See hts_idx_close_otf_fp()
+        check(idx_write_uint64(fp, idx->n_no_coor));
+    }
+
 #ifdef DEBUG_INDEX
     idx_dump(idx);
 #endif
@@ -2672,16 +2791,9 @@ int hts_idx_save(const hts_idx_t *idx, const char *fn, int fmt)
     return ret;
 }
 
-int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int fmt)
+static int hts_idx_write_out(const hts_idx_t *idx, BGZF *fp, int fmt)
 {
-    BGZF *fp;
-
-    #define check(ret) if ((ret) < 0) goto fail
-
-    if (fnidx == NULL) return hts_idx_save(idx, fn, fmt);
-
-    fp = bgzf_open(fnidx, (fmt == HTS_FMT_BAI)? "wu" : "w");
-    if (fp == NULL) return -1;
+    #define check(ret) if ((ret) < 0) return -1
 
     if (fmt == HTS_FMT_CSI) {
         check(bgzf_write(fp, "CSI\1", 4));
@@ -2697,12 +2809,64 @@ int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int
 
     check(idx_save_core(idx, fp, fmt));
 
-    return bgzf_close(fp);
     #undef check
+    return 0;
+}
 
-fail:
-    bgzf_close(fp);
-    return -1;
+int hts_idx_save_as(const hts_idx_t *idx, const char *fn, const char *fnidx, int fmt)
+{
+    BGZF *fp;
+
+    if (fnidx == NULL)
+        return hts_idx_save(idx, fn, fmt);
+
+    fp = bgzf_open(fnidx, (fmt == HTS_FMT_BAI)? "wu" : "w");
+    if (fp == NULL) return -1;
+
+    if (hts_idx_write_out(idx, fp, fmt) < 0) {
+        int save_errno = errno;
+        bgzf_close(fp);
+        errno = save_errno;
+        return -1;
+    }
+
+    return bgzf_close(fp);
+}
+
+// idx_save for on-the-fly indexes.  Mostly duplicated from above, except
+// idx is not const because we want to store the file handle in it, and
+// the index file handle is not closed.  This allows the index file to be
+// closed after the EOF block on the indexed file has been written out,
+// so the modification times on the two files will be in the correct order.
+int hts_idx_save_but_not_close(hts_idx_t *idx, const char *fnidx, int fmt)
+{
+    idx->otf_fp = bgzf_open(fnidx, (fmt == HTS_FMT_BAI)? "wu" : "w");
+    if (idx->otf_fp == NULL) return -1;
+
+    if (hts_idx_write_out(idx, idx->otf_fp, fmt) < 0) {
+        int save_errno = errno;
+        bgzf_close(idx->otf_fp);
+        idx->otf_fp = NULL;
+        errno = save_errno;
+        return -1;
+    }
+
+    return bgzf_flush(idx->otf_fp);
+}
+
+static int hts_idx_close_otf_fp(hts_idx_t *idx)
+{
+    if (idx && idx->otf_fp) {
+        int ret = 0;
+        if (need_idx_ugly_delay_hack(idx)) {
+            // BAI index - write out the bytes we deferred earlier
+            ret = idx_write_uint64(idx->otf_fp, idx->n_no_coor) < 0;
+        }
+        ret |= bgzf_close(idx->otf_fp) < 0;
+        idx->otf_fp = NULL;
+        return ret == 0 ? 0 : -1;
+    }
+    return 0;
 }
 
 static int idx_read_core(hts_idx_t *idx, BGZF *fp, int fmt)
@@ -3094,7 +3258,7 @@ static inline int reg2intervals(hts_itr_t *iter, const hts_idx_t *idx, int tid, 
     size_t reg_bin_count = 0, hash_bin_count;
     int res;
 
-    if (!iter || !idx || (bidx = idx->bidx[tid]) == NULL || beg >= end)
+    if (!iter || !idx || (bidx = idx->bidx[tid]) == NULL || beg > end)
         return -1;
 
     hash_bin_count = kh_n_buckets(bidx);
@@ -3213,6 +3377,7 @@ hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t
     khint_t k;
     bidx_t *bidx;
     uint64_t min_off, max_off;
+    hts_pos_t idx_maxpos;
     hts_itr_t *iter;
     uint32_t unmapped = 0, rel_off;
 
@@ -3257,6 +3422,9 @@ hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t
 
             if ( !kh_size(bidx) ) { iter->finished = 1; return iter; }
 
+            idx_maxpos = hts_idx_maxpos(idx);
+            if (beg >= idx_maxpos) { iter->finished = 1; return iter; }
+
             rel_off = beg>>idx->min_shift;
             // compute min_off
             bin = hts_bin_first(idx->n_lvls) + rel_off;
@@ -3299,7 +3467,7 @@ hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, hts_pos_t beg, hts_pos_t
             // compute max_off: a virtual offset from a bin to the right of end
             // First check if end lies within the range of the index (it won't
             // if it's HTS_POS_MAX)
-            if (end < 1LL << (idx->min_shift + 3 * idx->n_lvls)) {
+            if (end <= idx_maxpos) {
                 bin = hts_bin_first(idx->n_lvls) + ((end-1) >> idx->min_shift) + 1;
                 if (bin >= idx->n_bins) bin = 0;
                 while (1) {
@@ -3385,7 +3553,7 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
     bidx_t *bidx;
     uint64_t min_off, max_off, t_off = (uint64_t)-1;
     int tid;
-    hts_pos_t beg, end;
+    hts_pos_t beg, end, idx_maxpos;
     hts_reglist_t *curr_reg;
     uint32_t unmapped = 0, rel_off;
 
@@ -3427,6 +3595,8 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
             else
                 unmapped = 1;
 
+            idx_maxpos = hts_idx_maxpos(idx);
+
             for(j=0; j<curr_reg->count; j++) {
                 hts_pair32_t *curr_intv = &curr_reg->intervals[j];
                 if (curr_intv->end < curr_intv->beg)
@@ -3434,6 +3604,8 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
 
                 beg = curr_intv->beg;
                 end = curr_intv->end;
+                if (beg >= idx_maxpos)
+                    continue;
                 rel_off = beg>>idx->min_shift;
 
                 /* Compute 'min_off' by searching the lowest level bin containing 'beg'.
@@ -3478,7 +3650,7 @@ int hts_itr_multi_bam(const hts_idx_t *idx, hts_itr_t *iter)
                 // compute max_off: a virtual offset from a bin to the right of end
                 // First check if end lies within the range of the index (it
                 // won't if it's HTS_POS_MAX)
-                if (end < 1LL << (idx->min_shift + 3 * idx->n_lvls)) {
+                if (end <= idx_maxpos) {
                     bin = hts_bin_first(idx->n_lvls) + ((end-1) >> idx->min_shift) + 1;
                     if (bin >= idx->n_bins) bin = 0;
                     while (1) {
@@ -3654,7 +3826,7 @@ void hts_itr_destroy(hts_itr_t *iter)
     }
 }
 
-static inline long long push_digit(long long i, char c)
+static inline unsigned long long push_digit(unsigned long long i, char c)
 {
     // ensure subtraction occurs first, avoiding overflow for >= MAX-48 or so
     int digit = c - '0';
@@ -3663,7 +3835,7 @@ static inline long long push_digit(long long i, char c)
 
 long long hts_parse_decimal(const char *str, char **strend, int flags)
 {
-    long long n = 0;
+    unsigned long long n = 0;
     int digits = 0, decimals = 0, e = 0, lost = 0;
     char sign = '+', esign = '+';
     const char *s, *str_orig = str;
@@ -4277,11 +4449,12 @@ int hts_itr_multi_next(htsFile *fd, hts_itr_t *iter, void *r)
                                     break;
 
                                 uint64_t max = iter->off[j].max;
-                                if ((max>>32) != tid)
+                                if ((max>>32) != tid) {
                                     tid = HTS_IDX_START; // => no range limit
-
-                                if (end < rl->intervals[max & 0xffffffff].end)
-                                    end = rl->intervals[max & 0xffffffff].end;
+                                } else {
+                                    if (end < rl->intervals[max & 0xffffffff].end)
+                                        end = rl->intervals[max & 0xffffffff].end;
+                                }
                                 if (v < iter->off[j].v)
                                     v = iter->off[j].v;
                                 j++;
@@ -4511,9 +4684,19 @@ static int idx_test_and_fetch(const char *fn, const char **local_fn, int *local_
 }
 
 /*
- * Check the existence of a local index file using part of the alignment file name.
- * The order is alignment.bam.csi, alignment.csi, alignment.bam.bai, alignment.bai
+ * Check the existence of a local index file using part of the alignment
+ * file name.
+ *
+ * For a filename fn of fn.fmt (eg fn.bam or fn.cram) the order of checks is
+ * fn.fmt.csi,  fn.csi,
+ * fn.fmt.bai,  fn.bai  - if fmt is HTS_FMT_BAI
+ * fn.fmt.tbi,  fn.tbi  - if fmt is HTS_FMT_TBI
+ * fn.fmt.crai, fn.crai - if fmt is HTS_FMT_CRAI
+ * fn.fmt.fai           - if fmt is HTS_FMT_FAI
+ *   also .gzi if fmt is ".gz"
+ *
  * @param fn    - pointer to the file name
+ * @param fmt   - one of the HTS_FMT index formats
  * @param fnidx - pointer to the index file name placeholder
  * @return        1 for success, 0 for failure
  */
@@ -4521,11 +4704,12 @@ int hts_idx_check_local(const char *fn, int fmt, char **fnidx) {
     int i, l_fn, l_ext;
     const char *fn_tmp = NULL;
     char *fnidx_tmp;
-    char *csi_ext = ".csi";
-    char *bai_ext = ".bai";
-    char *tbi_ext = ".tbi";
-    char *crai_ext = ".crai";
-    char *fai_ext = ".fai";
+    const char *csi_ext = ".csi";
+    const char *bai_ext = ".bai";
+    const char *tbi_ext = ".tbi";
+    const char *crai_ext = ".crai";
+    const char *fai_ext = ".fai";
+    const char *gzi_ext = ".gzi";
 
     if (!fn)
         return 0;
@@ -4622,10 +4806,21 @@ int hts_idx_check_local(const char *fn, int fmt, char **fnidx) {
                 }
         }
     } else if (fmt == HTS_FMT_FAI) { // Or .fai
-        strcpy(fnidx_tmp, fn_tmp); strcpy(fnidx_tmp + l_fn, fai_ext);
+        // Check .gzi if we have a .gz file
+        strcpy(fnidx_tmp, fn_tmp);
+        int gzi_ok = 1;
+        if ((l_fn > 3 && strcmp(fn_tmp+l_fn-3, ".gz") == 0) ||
+            (l_fn > 5 && strcmp(fn_tmp+l_fn-5, ".bgzf") == 0)) {
+            strcpy(fnidx_tmp + l_fn, gzi_ext);
+            gzi_ok = stat(fnidx_tmp, &sbuf)==0;
+        }
+
+        // Now check for .fai.  Occurs second as we're returning this
+        // in *fnidx irrespective of whether we did gzi check.
+        strcpy(fnidx_tmp + l_fn, fai_ext);
         *fnidx = fnidx_tmp;
-        if(stat(fnidx_tmp, &sbuf) == 0)
-            return 1;
+        if (stat(fnidx_tmp, &sbuf) == 0)
+            return gzi_ok;
         else
             return 0;
     }
@@ -4900,7 +5095,7 @@ int hts_resize_array_(size_t item_size, size_t num, size_t size_sz,
     return 0;
 }
 
-void hts_lib_shutdown()
+void hts_lib_shutdown(void)
 {
     hfile_shutdown(1);
 }
@@ -4914,7 +5109,7 @@ void hts_set_log_level(enum htsLogLevel level)
     hts_verbose = level;
 }
 
-enum htsLogLevel hts_get_log_level()
+enum htsLogLevel hts_get_log_level(void)
 {
     return hts_verbose;
 }

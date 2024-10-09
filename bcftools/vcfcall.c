@@ -1,6 +1,6 @@
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2024 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -397,15 +397,16 @@ static int tgt_parse(const char *line, char **chr_beg, char **chr_end, uint32_t 
     while ( *ss )
     {
         se = ss;
-        while ( *se && *se!=',' ) se++;
+        while ( *se && *se!=',' && !isspace(*se) ) se++;
         als->n++;
         als->allele = (char**)realloc(als->allele,als->n*sizeof(*als->allele));
         als->allele[als->n-1] = (char*)malloc(se-ss+1);
         memcpy(als->allele[als->n-1],ss,se-ss);
         als->allele[als->n-1][se-ss] = 0;
         ss = se+1;
-        if ( !*se ) break;
+        if ( !*se || isspace(*se) ) break;
     }
+    if ( als->n<2 ) error("Unable to parse the -T file; expected CHROM\\tPOS\\tREF,ALT with -C alleles but found instead:\n\t%s\n",line);
     return 0;
 }
 static void tgt_free(void *payload)
@@ -695,7 +696,10 @@ static void init_data(args_t *args)
     }
 
     if ( args->aux.flag & CALL_CONSTR_ALLELES )
+    {
         args->vcfbuf = vcfbuf_init(args->aux.hdr, 0);
+        vcfbuf_set(args->vcfbuf,VCFBUF_DUMMY,1);
+    }
 
     char wmode[8];
     set_wmode(wmode,args->output_type,args->output_fname,args->clevel);
@@ -717,7 +721,9 @@ static void init_data(args_t *args)
 
     if (args->record_cmd_line) bcf_hdr_append_version(args->aux.hdr, args->argc, args->argv, "bcftools_call");
     if ( bcf_hdr_write(args->out_fh, args->aux.hdr)!=0 ) error("[%s] Error: cannot write the header to %s\n", __func__,args->output_fname);
-    if ( args->write_index && init_index(args->out_fh,args->aux.hdr,args->output_fname,&args->index_fn)<0 ) error("Error: failed to initialise index for %s\n",args->output_fname);
+    if ( init_index2(args->out_fh,args->aux.hdr,args->output_fname,
+                     &args->index_fn, args->write_index)<0 )
+        error("Error: failed to initialise index for %s\n",args->output_fname);
 
     if ( args->flag&CF_INS_MISSED ) init_missed_line(args);
 }
@@ -910,6 +916,7 @@ static void usage(args_t *args)
     fprintf(stderr, "\n");
     fprintf(stderr, "Input/output options:\n");
     fprintf(stderr, "   -A, --keep-alts                 Keep all possible alternate alleles at variant sites\n");
+    fprintf(stderr, "   -*, --keep-unseen-allele        Keep the unobserved allele <*> or <NON_REF>\n");
     fprintf(stderr, "   -a, --annotate LIST             Optional tags to output (lowercase allowed); '?' to list available tags\n");
     fprintf(stderr, "   -F, --prior-freqs AN,AC         Use prior allele frequencies, determined from these pre-filled tags\n");
     fprintf(stderr, "   -G, --group-samples FILE|-      Group samples by population (file with \"sample\\tgroup\") or \"-\" for single-sample calling.\n");
@@ -920,7 +927,7 @@ static void usage(args_t *args)
     fprintf(stderr, "   -M, --keep-masked-ref           Keep sites with masked reference allele (REF=N)\n");
     fprintf(stderr, "   -V, --skip-variants TYPE        Skip indels/snps\n");
     fprintf(stderr, "   -v, --variants-only             Output variant sites only\n");
-    fprintf(stderr, "       --write-index               Automatically index the output files [off]\n");
+    fprintf(stderr, "   -W, --write-index[=FMT]         Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Consensus/variant calling options:\n");
     fprintf(stderr, "   -c, --consensus-caller          The original calling method (conflicts with -m)\n");
@@ -937,7 +944,7 @@ static void usage(args_t *args)
     // todo (and more)
     // fprintf(stderr, "\nContrast calling and association test options:\n");
     // fprintf(stderr, "       -1 INT    number of group-1 samples [0]\n");
-    // fprintf(stderr, "       -C FLOAT  posterior constrast for LRT<FLOAT and P(ref|D)<0.5 [%g]\n", args->aux.min_lrt);
+    // fprintf(stderr, "       -C FLOAT  posterior contrast for LRT<FLOAT and P(ref|D)<0.5 [%g]\n", args->aux.min_lrt);
     // fprintf(stderr, "       -U INT    number of permutations for association testing (effective with -1) [0]\n");
     // fprintf(stderr, "       -X FLOAT  only perform permutations for P(chi^2)<FLOAT [%g]\n", args->aux.min_perm_p);
     fprintf(stderr, "\n");
@@ -987,6 +994,7 @@ int main_vcfcall(int argc, char *argv[])
         {"targets-file",required_argument,NULL,'T'},
         {"threads",required_argument,NULL,9},
         {"keep-alts",no_argument,NULL,'A'},
+        {"keep-unseen-allele",no_argument,NULL,'*'},
         {"insert-missed",no_argument,NULL,'i'},
         {"skip-Ns",no_argument,NULL,'N'},            // now the new default
         {"keep-masked-refs",no_argument,NULL,'M'},
@@ -1003,12 +1011,12 @@ int main_vcfcall(int argc, char *argv[])
         {"chromosome-X",no_argument,NULL,'X'},
         {"chromosome-Y",no_argument,NULL,'Y'},
         {"no-version",no_argument,NULL,8},
-        {"write-index",no_argument,NULL,10},
+        {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
 
     char *tmp = NULL;
-    while ((c = getopt_long(argc, argv, "h?o:O:r:R:s:S:t:T:ANMV:vcmp:C:n:P:f:a:ig:XYF:G:", loptions, NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h?o:O:r:R:s:S:t:T:A*NMV:vcmp:C:n:P:f:a:ig:XYF:G:W::", loptions, NULL)) >= 0)
     {
         switch (c)
         {
@@ -1026,6 +1034,7 @@ int main_vcfcall(int argc, char *argv[])
             case 'M': args.flag &= ~CF_ACGT_ONLY; break;     // keep sites where REF is N
             case 'N': args.flag |= CF_ACGT_ONLY; break;      // omit sites where first base in REF is N (the new default)
             case 'A': args.aux.flag |= CALL_KEEPALT; break;
+            case '*': args.aux.flag |= CALL_KEEP_UNSEEN; break;
             case 'c': args.flag |= CF_CCALL; break;          // the original EM based calling method
             case 'i': args.flag |= CF_INS_MISSED; break;
             case 'v': args.aux.flag |= CALL_VARONLY; break;
@@ -1090,7 +1099,10 @@ int main_vcfcall(int argc, char *argv[])
                 args.regions_overlap = parse_overlap_option(optarg);
                 if ( args.regions_overlap < 0 ) error("Could not parse: --regions-overlap %s\n",optarg);
                 break;
-            case  10: args.write_index = 1; break;
+            case 'W':
+                if (!(args.write_index = write_index_parse(optarg)))
+                    error("Unsupported index format '%s'\n", optarg);
+                break;
             default: usage(&args);
         }
     }

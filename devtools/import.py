@@ -35,8 +35,8 @@ EXCLUDE = {
         "peakfit.h",
         "polysomy.c"),
     "htslib": (
-        'htslib/tabix.c', 'htslib/bgzip.c',
-        'htslib/htsfile.c',
+        'annot-tsv.c', 'bgzip.c', 'htsfile.c', 'tabix.c',
+        'hts_probe_cc.sh',
         "samples", "test", "tests"),
 }
 
@@ -119,6 +119,7 @@ def _update_pysam_files(cf, destdir):
                 if fn == "bamtk.c":
                     lines = re.sub(r'(#include "version.h")', r'\1\n#include "samtools_config_vars.h"', lines)
                     lines = re.sub(r'(else if.*"tview")', r'//\1', lines)
+                    lines = re.sub(r'(if[ (]*fclose)', r'if (0) { //\1', lines)
 
                 outfile.write(lines)
 
@@ -152,9 +153,10 @@ if len(sys.argv) >= 1:
                              locate("version.sh", srcdir, exclude_htslib=True))
 
     if dest == "htslib":
-        # Add build files, including *.ac *.in *.mk *.m4 *.sh
+        # Add build files, including *.ac config.{guess,sub} *.in *.mk *.m4 *.sh
         mfiles = itertools.chain(mfiles, locate("Makefile", srcdir),
                                  locate("configure", srcdir),
+                                 locate("config.*", srcdir),
                                  locate("*.[aims][cnk4h]", srcdir, exclude))
 
     ncopied = 0

@@ -98,10 +98,11 @@ static
 unsigned char *arith_compress_O0(unsigned char *in, unsigned int in_size,
                                  unsigned char *out, unsigned int *out_size) {
     int i, bound = arith_compress_bound(in_size,0)-5; // -5 for order/size
+    unsigned char *out_free = NULL;
 
     if (!out) {
         *out_size = bound;
-        out = malloc(*out_size);
+        out_free = out = malloc(*out_size);
     }
     if (!out || bound > *out_size)
         return NULL;
@@ -118,12 +119,16 @@ unsigned char *arith_compress_O0(unsigned char *in, unsigned int in_size,
 
     RangeCoder rc;
     RC_SetOutput(&rc, (char *)out+1);
+    RC_SetOutputEnd(&rc, (char *)out + *out_size);
     RC_StartEncode(&rc);
 
     for (i = 0; i < in_size; i++)
         SIMPLE_MODEL(256, _encodeSymbol)(&byte_model, &rc, in[i]);
 
-    RC_FinishEncode(&rc);
+    if (RC_FinishEncode(&rc) < 0) {
+        free(out_free);
+        return NULL;
+    }
 
     // Finalise block size and return it
     *out_size = RC_OutSize(&rc)+1;
@@ -141,8 +146,9 @@ unsigned char *arith_uncompress_O0(unsigned char *in, unsigned int in_size,
     SIMPLE_MODEL(256,_) byte_model;
     SIMPLE_MODEL(256,_init)(&byte_model, m);
 
+    unsigned char *out_free = NULL;
     if (!out)
-        out = malloc(out_sz);
+        out_free = out = malloc(out_sz);
     if (!out)
         return NULL;
 
@@ -152,7 +158,10 @@ unsigned char *arith_uncompress_O0(unsigned char *in, unsigned int in_size,
     for (i = 0; i < out_sz; i++)
         out[i] = SIMPLE_MODEL(256, _decodeSymbol)(&byte_model, &rc);
 
-    RC_FinishDecode(&rc);
+    if (RC_FinishDecode(&rc) < 0) {
+        free(out_free);
+        return NULL;
+    }
     
     return out;
 }
@@ -192,6 +201,7 @@ unsigned char *arith_compress_O1(unsigned char *in, unsigned int in_size,
 
     RangeCoder rc;
     RC_SetOutput(&rc, (char *)out+1);
+    RC_SetOutputEnd(&rc, (char *)out + *out_size);
     RC_StartEncode(&rc);
 
     uint8_t last = 0;
@@ -200,7 +210,11 @@ unsigned char *arith_compress_O1(unsigned char *in, unsigned int in_size,
         last = in[i];
     }
 
-    RC_FinishEncode(&rc);
+    if (RC_FinishEncode(&rc) < 0) {
+        free(out_free);
+        htscodecs_tls_free(byte_model);
+        return NULL;
+    }
 
     // Finalise block size and return it
     *out_size = RC_OutSize(&rc)+1;
@@ -241,7 +255,11 @@ unsigned char *arith_uncompress_O1(unsigned char *in, unsigned int in_size,
         last = out[i];
     }
 
-    RC_FinishDecode(&rc);
+    if (RC_FinishDecode(&rc) < 0) {
+        htscodecs_tls_free(byte_model);
+        free(out_free);
+        return NULL;
+    }
     
     htscodecs_tls_free(byte_model);
     return out;
@@ -259,10 +277,11 @@ unsigned char *arith_compress_O2(unsigned char *in, unsigned int in_size,
 
     int i, j;
     int bound = arith_compress_bound(in_size,0)-5; // -5 for order/size
+    unsigned char *out_free = NULL;
 
     if (!out) {
         *out_size = bound;
-        out = malloc(*out_size);
+        out_free = out = malloc(*out_size);
     }
     if (!out || bound > *out_size)
         return NULL;
@@ -285,6 +304,7 @@ unsigned char *arith_compress_O2(unsigned char *in, unsigned int in_size,
 
     RangeCoder rc;
     RC_SetOutput(&rc, (char *)out+1);
+    RC_SetOutputEnd(&rc, (char *)out + *out_size);
     RC_StartEncode(&rc);
 
     unsigned char last1 = 0, last2 = 0;
@@ -295,7 +315,10 @@ unsigned char *arith_compress_O2(unsigned char *in, unsigned int in_size,
     }
 
     free(byte_model);
-    RC_FinishEncode(&rc);
+    if (RC_FinishEncode(&rc) < 0) {
+        free(out_free);
+        return NULL;
+    }
 
     // Finalise block size and return it
     *out_size = RC_OutSize(&rc)+1;
@@ -310,9 +333,10 @@ unsigned char *arith_compress_O2(unsigned char *in, unsigned int in_size,
     int i, j;
     int bound = arith_compress_bound(in_size,0)-5; // -5 for order/size
 
+    unsigned char *out_free = NULL;
     if (!out) {
         *out_size = bound;
-        out = malloc(*out_size);
+        out_free = out = malloc(*out_size);
     }
     if (!out || bound > *out_size)
         return NULL;
@@ -338,6 +362,7 @@ unsigned char *arith_compress_O2(unsigned char *in, unsigned int in_size,
 
     RangeCoder rc;
     RC_SetOutput(&rc, (char *)out+1);
+    RC_SetOutputEnd(&rc, (char *)out + *out_size);
     RC_StartEncode(&rc);
 
     unsigned char last1 = 0, last2 = 0;
@@ -355,7 +380,10 @@ unsigned char *arith_compress_O2(unsigned char *in, unsigned int in_size,
     }
 
     free(byte_model);
-    RC_FinishEncode(&rc);
+    if (RC_FinishEncode(&rc) < 0) {
+        free(out_free);
+        return NULL;
+    }
 
     // Finalise block size and return it
     *out_size = RC_OutSize(&rc)+1;
@@ -375,8 +403,9 @@ unsigned char *arith_uncompress_O2(unsigned char *in, unsigned int in_size,
         for (j = 0; j < 256; j++)
             SIMPLE_MODEL(256,_init)(&byte_model[i*256+j], m);
     
+    unsigned char *out_free = NULL;
     if (!out)
-        out = malloc(out_sz);
+        out_free = out = malloc(out_sz);
     if (!out)
         return NULL;
 
@@ -391,7 +420,10 @@ unsigned char *arith_uncompress_O2(unsigned char *in, unsigned int in_size,
     }
 
     free(byte_model);
-    RC_FinishDecode(&rc);
+    if (RC_FinishDecode(&rc) < 0) {
+        free(out_free);
+        return NULL;
+    }
     
     return out;
 }
@@ -440,6 +472,7 @@ unsigned char *arith_compress_O0_RLE(unsigned char *in, unsigned int in_size,
 
     RangeCoder rc;
     RC_SetOutput(&rc, (char *)out+1);
+    RC_SetOutputEnd(&rc, (char *)out + *out_size);
     RC_StartEncode(&rc);
 
     unsigned char last = 0;
@@ -466,7 +499,11 @@ unsigned char *arith_compress_O0_RLE(unsigned char *in, unsigned int in_size,
         } while (run);
     }
 
-    RC_FinishEncode(&rc);
+    if (RC_FinishEncode(&rc) < 0) {
+        htscodecs_tls_free(run_model);
+        free(out_free);
+        return NULL;
+    }
 
     // Finalise block size and return it
     *out_size = RC_OutSize(&rc)+1;
@@ -524,7 +561,11 @@ unsigned char *arith_uncompress_O0_RLE(unsigned char *in, unsigned int in_size,
             out[++i] = last;
     }
 
-    RC_FinishDecode(&rc);
+    if (RC_FinishDecode(&rc) < 0) {
+        htscodecs_tls_free(run_model);
+        free(out_free);
+        return NULL;
+    }
 
     htscodecs_tls_free(run_model);
     return out;
@@ -571,6 +612,7 @@ unsigned char *arith_compress_O1_RLE(unsigned char *in, unsigned int in_size,
 
     RangeCoder rc;
     RC_SetOutput(&rc, (char *)out+1);
+    RC_SetOutputEnd(&rc, (char *)out + *out_size);
     RC_StartEncode(&rc);
 
     unsigned char last = 0;
@@ -597,7 +639,12 @@ unsigned char *arith_compress_O1_RLE(unsigned char *in, unsigned int in_size,
         } while (run);
     }
 
-    RC_FinishEncode(&rc);
+    if (RC_FinishEncode(&rc) < 0) {
+        htscodecs_tls_free(byte_model);
+        htscodecs_tls_free(run_model);
+        free(out_free);
+        return NULL;
+    }
 
     // Finalise block size and return it
     *out_size = RC_OutSize(&rc)+1;
@@ -663,7 +710,12 @@ unsigned char *arith_uncompress_O1_RLE(unsigned char *in, unsigned int in_size,
             out[++i] = last;
     }
 
-    RC_FinishDecode(&rc);
+    if (RC_FinishDecode(&rc) < 0) {
+        htscodecs_tls_free(byte_model);
+        htscodecs_tls_free(run_model);
+        free(out_free);
+        return NULL;
+    }
 
     htscodecs_tls_free(byte_model);
     htscodecs_tls_free(run_model);

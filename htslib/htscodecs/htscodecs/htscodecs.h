@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Genome Research Ltd.
+ * Copyright (c) 2021-2024 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,13 +43,13 @@
  * Note currently this needs manually editing as it isn't automatically
  * updated by autoconf.
  */
-#define HTSCODECS_VERSION 100501
+#define HTSCODECS_VERSION 100601
 
 /*
  * A const string form of the HTSCODECS_VERSION define.
  * NB: This is obtained from the auto-generated version.h, so
  * we can include release number and git hash.
  */
-const char *htscodecs_version();
+const char *htscodecs_version(void);
 
 #endif /* HTSCODECS_H */

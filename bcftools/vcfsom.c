@@ -37,6 +37,7 @@ THE SOFTWARE.  */
 #include <htslib/synced_bcf_reader.h>
 #include <htslib/vcfutils.h>
 #include <htslib/hts_os.h>
+#include <htslib/hts_defs.h>
 #include <inttypes.h>
 #include "bcftools.h"
 
@@ -83,10 +84,9 @@ typedef struct
 args_t;
 
 static void usage(void);
-FILE *open_file(char **fname, const char *mode, const char *fmt, ...);
-void mkdir_p(const char *fmt, ...);
+FILE *open_file(char **fname, const char *mode, const char *fmt, ...) HTS_FORMAT(HTS_PRINTF_FMT, 3, 4);
 
-char *msprintf(const char *fmt, ...)
+char * HTS_FORMAT(HTS_PRINTF_FMT, 1, 2) msprintf(const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);

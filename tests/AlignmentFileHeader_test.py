@@ -286,7 +286,6 @@ class TestHeaderWriteRead(unittest.TestCase):
     def check_read_write(self, flag_write, header):
 
         fn = get_temp_filename()
-        print(fn)
         with pysam.AlignmentFile(
                 fn,
                 flag_write,
@@ -294,12 +293,13 @@ class TestHeaderWriteRead(unittest.TestCase):
                 reference_filename=os.path.join(BAM_DATADIR, "ex1.fa")) as outf:
             a = pysam.AlignedSegment()
             a.query_name = "abc"
+            a.flag = pysam.FUNMAP
             outf.write(a)
 
         with pysam.AlignmentFile(fn) as inf:
             read_header = inf.header
 
-        # os.unlink(fn)
+        os.unlink(fn)
         self.compare_headers(header, read_header)
         expected_lengths = dict([(x["SN"], x["LN"]) for x in header["SQ"]])
         self.assertEqual(expected_lengths,

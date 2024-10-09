@@ -136,7 +136,7 @@ int regidx_parse_vcf(const char*,char**,char**,uint32_t*,uint32_t*,void*,void*);
  *
  *  @param fname:  input file name or NULL if regions will be added one-by-one via regidx_insert()
  *  @param parsef: regidx_parse_bed, regidx_parse_tab or see description of regidx_parse_f. If NULL,
- *                 the format will be autodected, currently either regidx_parse_tab (the default) or
+ *                 the format will be autodetected, currently either regidx_parse_tab (the default) or
  *                 regidx_parse_bed (file must be named 'bed' or 'bed.gz') will be used. Note that
  *                 the exact autodetection algorithm will change.
  *  @param freef:  NULL or see description of regidx_parse_f

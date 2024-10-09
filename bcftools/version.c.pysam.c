@@ -2,7 +2,7 @@
 
 /*  version.c -- report version numbers for plugins.
 
-    Copyright (C) 2014-2023 Genome Research Ltd.
+    Copyright (C) 2014-2024 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -90,7 +90,8 @@ void set_wmode(char dst[8], int file_type, const char *fname, int clevel)
     const char *end = fname ? strstr(fname, HTS_IDX_DELIM) : NULL;
     if ( !end ) end = fname ? fname + strlen(fname) : fname;
     int len = end - fname;
-    if ( len >= 4 && !strncasecmp(".bcf",fname+len-4,4) ) ret = hts_bcf_wmode(FT_BCF|FT_GZ);
+    if ( len >= 4 && !strncasecmp(".bcf",fname+len-4,4) )
+        ret = hts_bcf_wmode(file_type & FT_BCF ? file_type : FT_BCF|FT_GZ);
     else if ( len >= 4 && !strncasecmp(".vcf",fname+len-4,4) ) ret = hts_bcf_wmode(FT_VCF);
     else if ( len >= 7 && !strncasecmp(".vcf.gz",fname+len-7,7) ) ret = hts_bcf_wmode(FT_VCF|FT_GZ);
     else if ( len >= 8 && !strncasecmp(".vcf.bgz",fname+len-8,8) ) ret = hts_bcf_wmode(FT_VCF|FT_GZ);
@@ -114,27 +115,55 @@ int parse_overlap_option(const char *arg)
     else return -1;
 }
 
+// Used to set args->write_index in CLI.
+// It will be true if set correctly.
+// Note due to HTS_FMT_CSI being zero we have to use an additional bit.
+int write_index_parse(char *arg) {
+    int fmt = HTS_FMT_CSI;
+
+    if (arg) {
+        if (strcmp(arg, "csi") == 0 || strcmp(arg, "=csi") == 0)
+            fmt = HTS_FMT_CSI;
+        else if (strcmp(arg, "tbi") == 0 || strcmp(arg, "=tbi") == 0)
+            fmt = HTS_FMT_TBI;
+        else
+            return 0;
+    }
+
+    return 128 | fmt;
+}
+
 // See also samtools/sam_utils.c auto_index()
-int init_index(htsFile *fh, bcf_hdr_t *hdr, char *fname, char **idx_fname)
-{
-    int min_shift = 14; // CSI
+int init_index2(htsFile *fh, bcf_hdr_t *hdr, const char *fname,
+                char **idx_fname, int idx_fmt) {
+    // Nothing to do == success.  This simplifies the main code simpler.
+    if (!idx_fmt)
+        return 0;
+
+    int min_shift;
+    char *idx_suffix;
+
+    if (idx_fmt && (idx_fmt&127) == HTS_FMT_TBI && fh->format.format == vcf) {
+        min_shift = 0;  // TBI
+        idx_suffix = "tbi";
+    } else {
+        min_shift = 14; // CSI
+        idx_suffix = "csi";
+    }
 
     if ( !fname || !*fname || !strcmp(fname, "-") ) return -1;
 
     char *delim = strstr(fname, HTS_IDX_DELIM);
-    if (delim)
-    {
+    if (delim) {
         delim += strlen(HTS_IDX_DELIM);
         *idx_fname = strdup(delim);
         if ( !*idx_fname ) return -1;
 
         size_t l = strlen(*idx_fname);
         if ( l >= 4 && strcmp(*idx_fname + l - 4, ".tbi")==0 ) min_shift = 0;
-    }
-    else
-    {
+    } else {
         if ( !(*idx_fname = malloc(strlen(fname)+6)) ) return -1;
-        sprintf(*idx_fname, "%s.csi", fname);
+        sprintf(*idx_fname, "%s.%s", fname, idx_suffix);
     }
 
     if ( bcf_idx_init(fh, hdr, min_shift, *idx_fname) < 0 ) return -1;
@@ -142,4 +171,7 @@ int init_index(htsFile *fh, bcf_hdr_t *hdr, char *fname, char **idx_fname)
     return 0;
 }
 
-
+int init_index(htsFile *fh, bcf_hdr_t *hdr, const char *fname, char **idx_fname)
+{
+    return init_index2(fh,hdr, fname, idx_fname, HTS_FMT_CSI);
+}

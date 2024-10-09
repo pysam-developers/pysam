@@ -41,6 +41,7 @@
 #include <htslib/kstring.h>
 #include <htslib/kfunc.h>
 #include <htslib/khash_str2int.h>
+#include <htslib/hts_defs.h>
 #include "bcftools.h"
 #include "HMM.h"
 #include "rbuf.h"
@@ -105,7 +106,7 @@ typedef struct _args_t
 }
 args_t;
 
-FILE *open_file(char **fname, const char *mode, const char *fmt, ...);
+FILE *open_file(char **fname, const char *mode, const char *fmt, ...) HTS_FORMAT(HTS_PRINTF_FMT, 3, 4);
 
 static inline void hmm2cn_state(int nstates, int i, int *a, int *b)
 {
@@ -879,7 +880,7 @@ static int update_sample_args(args_t *args, sample_t *smpl, int ismpl)
 
     /*
         A noisy CN2 band is hard to distinguish from two CN3 bands which are
-        close to each other. Set a treshold on the minimum separation based
+        close to each other. Set a threshold on the minimum separation based
         on the BAF deviation at p=0.95
     */
     baf_dev2 /= norm_cn3;
@@ -1297,7 +1298,7 @@ int main_vcfcnv(int argc, char *argv[])
         {0,0,0,0}
     };
     char *tmp = NULL;
-    while ((c = getopt_long(argc, argv, "h?r:R:t:T:s:o:p:l:T:c:b:P:x:e:O:W:f:a:L:d:k:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "h?r:R:t:T:s:o:p:l:T:c:b:P:x:e:O:W::f:a:L:d:k:",loptions,NULL)) >= 0) {
         switch (c) {
             case 'L': 
                 args->lrr_smooth_win = strtol(optarg,&tmp,10);

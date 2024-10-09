@@ -96,7 +96,7 @@ unsigned char *rans_compress_O0(unsigned char *in, unsigned int in_size,
         free(out_buf);
         return NULL;
     }
-    tr = ((uint64_t)TOTFREQ<<31)/in_size + (1<<30)/in_size;
+    tr = in_size ? ((uint64_t)TOTFREQ<<31)/in_size + (1<<30)/in_size : 0;
 
  normalise_harder:
     // Normalise so T[i] == TOTFREQ
@@ -167,8 +167,11 @@ unsigned char *rans_compress_O0(unsigned char *in, unsigned int in_size,
 
     switch (i=(in_size&3)) {
     case 3: RansEncPutSymbol(&rans2, &ptr, &syms[in[in_size-(i-2)]]);
+        // fall-through
     case 2: RansEncPutSymbol(&rans1, &ptr, &syms[in[in_size-(i-1)]]);
+        // fall-through
     case 1: RansEncPutSymbol(&rans0, &ptr, &syms[in[in_size-(i-0)]]);
+        // fall-through
     case 0:
         break;
     }
@@ -361,10 +364,13 @@ unsigned char *rans_uncompress_O0(unsigned char *in, unsigned int in_size,
     switch(out_sz&3) {
     case 3:
         out_buf[out_end + 2] = ssym[R[2] & mask];
+        // fall-through
     case 2:
         out_buf[out_end + 1] = ssym[R[1] & mask];
+        // fall-through
     case 1:
         out_buf[out_end] = ssym[R[0] & mask];
+        // fall-through
     default:
         break;
     }

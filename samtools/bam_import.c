@@ -4,7 +4,7 @@
  *   samtools import a_1.fq a_2.fq
  *   samtools import a_interleaved.fq
  *
- * Copyright (C) 2020-2021, 2023 Genome Research Ltd.
+ * Copyright (C) 2020-2021, 2023-2024 Genome Research Ltd.
  *
  * Author: James Bonfield <jkb@sanger.ac.uk>
  */
@@ -63,6 +63,7 @@ static int usage(FILE *fp, int exit_status) {
     fprintf(fp, "  -u           Uncompressed output\n");
     fprintf(fp, "  --order TAG  Store Nth record count in TAG\n");
     fprintf(fp, "\n");
+    fprintf(fp, "      --no-PG  Do not add a PG line\n");
     sam_global_opt_help(fp, "-.O.-@--");
 
     fprintf(fp, "\nA single fastq file will be interpreted as -s, -0 or -1 depending on\n");
@@ -159,7 +160,7 @@ static int import_fastq(int argc, char **argv, opts_t *opts) {
     if (argc == 1)
         opts->fn[FQ_SINGLE] = argv[0];
     else
-        for (i = 0; i < 4; i++)
+        for (i = 0; i < 2; i++)
             if (argc > i)
                 opts->fn[FQ_R1+i] = argv[i];
 
@@ -259,6 +260,25 @@ static int import_fastq(int argc, char **argv, opts_t *opts) {
         goto err;
     }
 
+    if (!opts->no_pg) {
+        char *arg_list;
+        if (!(arg_list = stringify_argv(argc+1+optind, argv-1-optind))) {
+            print_error("view", "failed to create arg_list");
+            goto err;
+        }
+        if (sam_hdr_add_pg(hdr_out, "samtools",
+                           "VN", samtools_version(),
+                           arg_list ? "CL" : NULL,
+                           arg_list ? arg_list : NULL,
+                           NULL)) {
+            fprintf(stderr, "Failed to add PG line to the header");
+            free(arg_list);
+            goto err;
+        }
+
+        free(arg_list);
+    }
+
     // Read group
     if (opts->rg_line) {
         if (*opts->rg_line != '@')
@@ -290,7 +310,7 @@ static int import_fastq(int argc, char **argv, opts_t *opts) {
 
 
     // Interleave / combine from n files (ids[0..n-1]).
-    int res;
+    int res = 0;
     int eof = 0;
     do {
         idx_seq.l = idx_qual.l = 0;

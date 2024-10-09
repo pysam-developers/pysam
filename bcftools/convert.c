@@ -1,6 +1,6 @@
 /*  convert.c -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2024 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -31,6 +31,7 @@ THE SOFTWARE.  */
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <stdint.h>
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <math.h>
@@ -39,6 +40,7 @@ THE SOFTWARE.  */
 #include <htslib/vcfutils.h>
 #include <htslib/kfunc.h>
 #include <htslib/khash_str2int.h>
+#include <htslib/hts_endian.h>
 #include "bcftools.h"
 #include "variantkey.h"
 #include "convert.h"
@@ -104,9 +106,12 @@ struct _convert_t
     char *undef_info_tag;
     void *used_tags_hash;
     char **used_tags_list;
+    char *print_filtered;
     int nused_tags;
     int allow_undef_tags;
     int force_newline;
+    int header_samples;
+    int no_hdr_indices;
     uint8_t **subset_samples;
 };
 
@@ -172,23 +177,23 @@ static void process_filter(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isa
     }
     else kputc('.', str);
 }
-static inline int32_t bcf_array_ivalue(void *bcf_array, int type, int idx)
+static inline int32_t bcf_array_ivalue(uint8_t *bcf_array, int type, int idx)
 {
     if ( type==BCF_BT_INT8 )
     {
-        int8_t val = ((int8_t*)bcf_array)[idx];
+        int8_t val = le_to_i8(&bcf_array[idx * sizeof(val)]);
         if ( val==bcf_int8_missing ) return bcf_int32_missing;
         if ( val==bcf_int8_vector_end ) return bcf_int32_vector_end;
         return val;
     }
     if ( type==BCF_BT_INT16 )
     {
-        int16_t val = ((int16_t*)bcf_array)[idx];
+        int16_t val = le_to_i16(&bcf_array[idx * sizeof(val)]);
         if ( val==bcf_int16_missing ) return bcf_int32_missing;
         if ( val==bcf_int16_vector_end ) return bcf_int32_vector_end;
         return val;
     }
-    return ((int32_t*)bcf_array)[idx];
+    return le_to_i32(&bcf_array[idx * sizeof(int32_t)]);
 }
 static inline void _copy_field(char *src, uint32_t len, int idx, kstring_t *str)
 {
@@ -286,17 +291,17 @@ static void process_info(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isamp
             kputc('.', str);
             return;
         }
-        #define BRANCH(type_t, is_missing, is_vector_end, kprint) { \
-            type_t val = ((type_t *) info->vptr)[fmt->subscript]; \
+        #define BRANCH(type_t, convert, is_missing, is_vector_end, kprint) { \
+            type_t val = convert(&info->vptr[fmt->subscript * sizeof(type_t)]); \
             if ( is_missing || is_vector_end ) kputc('.',str); \
             else kprint; \
         }
         switch (info->type)
         {
-            case BCF_BT_INT8:  BRANCH(int8_t,  val==bcf_int8_missing,  val==bcf_int8_vector_end,  kputw(val, str)); break;
-            case BCF_BT_INT16: BRANCH(int16_t, val==bcf_int16_missing, val==bcf_int16_vector_end, kputw(val, str)); break;
-            case BCF_BT_INT32: BRANCH(int32_t, val==bcf_int32_missing, val==bcf_int32_vector_end, kputw(val, str)); break;
-            case BCF_BT_FLOAT: BRANCH(float,   bcf_float_is_missing(val), bcf_float_is_vector_end(val), kputd(val, str)); break;
+            case BCF_BT_INT8:  BRANCH(int8_t,  le_to_i8,  val==bcf_int8_missing,  val==bcf_int8_vector_end,  kputw(val, str)); break;
+            case BCF_BT_INT16: BRANCH(int16_t, le_to_i16, val==bcf_int16_missing, val==bcf_int16_vector_end, kputw(val, str)); break;
+            case BCF_BT_INT32: BRANCH(int32_t, le_to_i32, val==bcf_int32_missing, val==bcf_int32_vector_end, kputw(val, str)); break;
+            case BCF_BT_FLOAT: BRANCH(float,   le_to_float, bcf_float_is_missing(val), bcf_float_is_vector_end(val), kputd(val, str)); break;
             case BCF_BT_CHAR:  _copy_field((char*)info->vptr, info->vptr_len, fmt->subscript, str); break;
             default: fprintf(stderr,"todo: type %d\n", info->type); exit(1); break;
         }
@@ -384,11 +389,12 @@ static void process_format(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isa
         }
         if ( fmt->fmt->type == BCF_BT_FLOAT )
         {
-            float *ptr = (float*)(fmt->fmt->p + isample*fmt->fmt->size);
-            if ( bcf_float_is_missing(ptr[fmt->subscript]) || bcf_float_is_vector_end(ptr[fmt->subscript]) )
+            uint8_t *ptr = fmt->fmt->p + isample*fmt->fmt->size;
+            float val = le_to_float(&ptr[fmt->subscript * sizeof(float)]);
+            if ( bcf_float_is_missing(val) || bcf_float_is_vector_end(val) )
                 kputc('.', str);
             else
-                kputd(ptr[fmt->subscript], str);
+                kputd(val, str);
         }
         else if ( fmt->fmt->type != BCF_BT_CHAR )
         {
@@ -501,14 +507,14 @@ static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isam
 
     int mask = fmt->subscript==0 ? 3 : 1;   // merge both haplotypes if subscript==0
 
-    #define BRANCH(type_t, nbits) { \
-        type_t *x = (type_t*)(fmt->fmt->p + isample*fmt->fmt->size); \
+    #define BRANCH(type_t, convert, nbits) { \
+        uint8_t *x = fmt->fmt->p + isample*fmt->fmt->size; \
         int i,j; \
         if ( fmt->subscript<=0 || fmt->subscript==1 ) \
         { \
             for (j=0; j < fmt->fmt->n; j++) \
             { \
-                type_t val = x[j]; \
+                type_t val = convert(&x[j * sizeof(type_t)]); \
                 if ( !val ) continue; \
                 for (i=0; i<nbits; i+=2) \
                     if ( val & (mask<<i) ) { kputs(csq->str[(j*30+i)/2], &csq->hap1); kputc_(',', &csq->hap1); } \
@@ -518,7 +524,7 @@ static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isam
         { \
             for (j=0; j < fmt->fmt->n; j++) \
             { \
-                type_t val = x[j]; \
+                type_t val = convert(&x[j * sizeof(type_t)]); \
                 if ( !val ) continue; \
                 for (i=1; i<nbits; i+=2) \
                     if ( val & (1<<i) ) { kputs(csq->str[(j*30+i)/2], &csq->hap2); kputc_(',', &csq->hap2); } \
@@ -527,9 +533,9 @@ static void process_tbcsq(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isam
     }
     switch (fmt->fmt->type)
     {
-        case BCF_BT_INT8:  BRANCH(uint8_t, 8); break;
-        case BCF_BT_INT16: BRANCH(uint16_t,16); break;
-        case BCF_BT_INT32: BRANCH(uint32_t,30); break;  // 2 bytes unused to account for the reserved BCF values
+        case BCF_BT_INT8:  BRANCH(uint8_t,  le_to_u8,   8); break;
+        case BCF_BT_INT16: BRANCH(uint16_t, le_to_u16, 16); break;
+        case BCF_BT_INT32: BRANCH(uint32_t, le_to_u32, 30); break;  // 2 bits unused to account for the reserved BCF values
         default: error("Unexpected type: %d\n", fmt->fmt->type); exit(1); break;
     }
     #undef BRANCH
@@ -1185,16 +1191,16 @@ static void process_pbinom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isa
         int al = bcf_gt_allele(gt[i]);
         if ( al > line->n_allele || al >= fmt->fmt->n ) goto invalid;
 
-        #define BRANCH(type_t, missing, vector_end) { \
-            type_t val = ((type_t *) fmt->fmt->p)[al + isample*fmt->fmt->n]; \
+        #define BRANCH(type_t, convert, missing, vector_end) { \
+            type_t val = convert(&fmt->fmt->p[(al + isample*fmt->fmt->n)*sizeof(type_t)]); \
             if ( val==missing || val==vector_end ) goto invalid; \
             else n[i] = val; \
         }
         switch (fmt->fmt->type)
         {
-            case BCF_BT_INT8:  BRANCH(int8_t,  bcf_int8_missing,  bcf_int8_vector_end); break;
-            case BCF_BT_INT16: BRANCH(int16_t, bcf_int16_missing, bcf_int16_vector_end); break;
-            case BCF_BT_INT32: BRANCH(int32_t, bcf_int32_missing, bcf_int32_vector_end); break;
+            case BCF_BT_INT8:  BRANCH(int8_t,  le_to_i8,  bcf_int8_missing,  bcf_int8_vector_end); break;
+            case BCF_BT_INT16: BRANCH(int16_t, le_to_i16, bcf_int16_missing, bcf_int16_vector_end); break;
+            case BCF_BT_INT32: BRANCH(int32_t, le_to_i32, bcf_int32_missing, bcf_int32_vector_end); break;
             default: goto invalid; break;
         }
         #undef BRANCH
@@ -1203,11 +1209,11 @@ static void process_pbinom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isa
     if ( n[0]==n[1] ) kputc(n[0]==0 ? '.':'0', str);
     else
     {
-        double pval = n[0] < n[1] ? kf_betai(n[1], n[0] + 1, 0.5) : kf_betai(n[0], n[1] + 1, 0.5);
-        pval *= 2;
-        if ( pval>=1 ) pval = 0;     // this can happen, machine precision error, eg. kf_betai(1,0,0.5)
-        else
-            pval = -4.34294481903*log(pval);
+        double pval = calc_binom_two_sided(n[0],n[1],0.5);
+
+        // convrt to phred
+        if ( pval>=1 ) pval = 0;
+        else pval = -4.34294481903*log(pval);
         kputd(pval, str);
     }
     return;
@@ -1550,6 +1556,7 @@ void convert_destroy(convert_t *convert)
         free(convert->used_tags_list);
     }
     khash_str2int_destroy(convert->used_tags_hash);
+    free(convert->print_filtered);
     free(convert->fmt);
     free(convert->undef_info_tag);
     free(convert->dat);
@@ -1562,8 +1569,9 @@ void convert_destroy(convert_t *convert)
 int convert_header(convert_t *convert, kstring_t *str)
 {
     int i, icol = 0, l_ori = str->l;
+    bcf_hdr_t *hdr = convert->header;
 
-    // Supress the header output if LINE is present
+    // Suppress the header output if LINE is present
     for (i=0; i<convert->nfmt; i++)
         if ( convert->fmt[i].type == T_LINE ) break;
     if ( i!=convert->nfmt )
@@ -1585,6 +1593,7 @@ int convert_header(convert_t *convert, kstring_t *str)
             while ( convert->fmt[j].is_gt_field ) j++;
             for (js=0; js<convert->nsamples; js++)
             {
+                int ks = convert->samples[js];
                 for (k=i; k<j; k++)
                 {
                     if ( convert->fmt[k].type == T_SEP )
@@ -1600,10 +1609,29 @@ int convert_header(convert_t *convert, kstring_t *str)
                             }
                         }
                     }
+                    else if ( convert->header_samples )
+                    {
+                        icol++;
+                        if ( !convert->no_hdr_indices ) ksprintf(str,"[%d]",icol);
+                        ksprintf(str,"%s:%s", hdr->samples[ks], convert->fmt[k].key);
+                    }
                     else
-                        ksprintf(str, "[%d]%s", ++icol, convert->fmt[k].key);
+                    {
+                        icol++;
+                        if ( !convert->no_hdr_indices ) ksprintf(str,"[%d]",icol);
+                        ksprintf(str,"%s", convert->fmt[k].key);
+                    }
                 }
-                if ( has_fmt_newline ) break;
+                if ( has_fmt_newline )
+                {
+                    if ( !convert->header_samples ) break;
+
+                    // this is unfortunate: the formatting expression breaks the per-sample output into separate lines,
+                    // therefore including a sample name in the header makes no sense anymore
+                    convert->header_samples = 0;
+                    str->l = l_ori;
+                    return convert_header(convert, str);
+                }
             }
             i = j-1;
             continue;
@@ -1614,7 +1642,9 @@ int convert_header(convert_t *convert, kstring_t *str)
             if ( convert->fmt[i].key ) kputs(convert->fmt[i].key, str);
             continue;
         }
-        ksprintf(str, "[%d]%s", ++icol, convert->fmt[i].key);
+        icol++;
+        if ( !convert->no_hdr_indices ) ksprintf(str,"[%d]",icol);
+        ksprintf(str,"%s", convert->fmt[i].key);
     }
     if ( has_fmt_newline ) kputc('\n',str);
     return str->l - l_ori;
@@ -1653,7 +1683,17 @@ int convert_line(convert_t *convert, bcf1_t *line, kstring_t *str)
             {
                 // Skip samples when filtering was requested
                 int ks = convert->samples[js];
-                if ( convert->subset_samples && *convert->subset_samples && !(*convert->subset_samples)[ks] ) continue;
+                if ( convert->subset_samples && *convert->subset_samples && !(*convert->subset_samples)[ks] )
+                {
+                    if ( !convert->print_filtered ) continue;
+
+                    for (k=i; k<j; k++)
+                        if ( convert->fmt[k].type==T_SEP )
+                            convert->fmt[k].handler(convert, line, &convert->fmt[k], ks, str);
+                        else
+                            kputs(convert->print_filtered, str);
+                    continue;
+                }
 
                 // Here comes a hack designed for TBCSQ. When running on large files,
                 // such as 1000GP, there are too many empty fields in the output and
@@ -1709,29 +1749,18 @@ static void force_newline_(convert_t *convert)
     }
     if ( has_newline ) return;
 
-    // A newline is not present, force it. But where to add it?
-    // Consider
-    //      -f'%CHROM[ %SAMPLE]\n'
-    // vs
-    //      -f'[%CHROM %SAMPLE\n]'
-    for (i=0; i<convert->nfmt; i++)
-        if ( !convert->fmt[i].is_gt_field && convert->fmt[i].key ) break;
+    // A newline is not present, force it. But where to add it? Always at the end.
+    //
+    // Briefly, in 1.18, we considered the following automatic behavior, which for
+    // per-site output it would add it at the end of the expression and for per-sample
+    // output it would add it inside the square brackets:
+    //           -f'%CHROM[ %SAMPLE]\n'
+    //           -f'[%CHROM %SAMPLE\n]'
+    //
+    // However, this is an annoyance for users, as it is not entirely clear what
+    // will happen unless one understands the internals well (#1969)
 
-    if ( i < convert->nfmt )
-        register_tag(convert, "\n", 0, T_SEP);  // the first case
-    else
-    {
-        // the second case
-        i = convert->nfmt - 1;
-        if ( !convert->fmt[i].key )
-        {
-            convert->fmt[i].key = strdup("\n");
-            convert->fmt[i].is_gt_field = 1;
-            register_tag(convert, NULL, 0, T_SEP);
-        }
-        else
-            register_tag(convert, "\n", 1, T_SEP);
-    }
+    register_tag(convert, "\n", 0, T_SEP);
 }
 
 int convert_set_option(convert_t *convert, enum convert_option opt, ...)
@@ -1748,9 +1777,18 @@ int convert_set_option(convert_t *convert, enum convert_option opt, ...)
         case subset_samples:
             convert->subset_samples = va_arg(args, uint8_t**);
             break;
+        case header_samples:
+            convert->header_samples = va_arg(args, int);
+            break;
+        case print_filtered:
+            convert->print_filtered = strdup(va_arg(args, char*));
+            break;
         case force_newline:
             convert->force_newline = va_arg(args, int);
             if ( convert->force_newline ) force_newline_(convert);
+            break;
+        case no_hdr_indices:
+            convert->no_hdr_indices = va_arg(args, int);
             break;
         default:
             ret = -1;
