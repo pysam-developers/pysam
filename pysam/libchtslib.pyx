@@ -338,6 +338,12 @@ cdef class HTSFile(object):
             hts_close(self.htsfile)
             self.htsfile = NULL
 
+    def flush(self):
+        """Flush any buffered data to the underlying output stream."""
+        if self.htsfile:
+            if hts_flush(self.htsfile) < 0:
+                raise OSError(errno, f'Flushing {type(self).__name__} failed', force_str(self.filename))
+
     def check_truncation(self, ignore_truncation=False):
         """Check if file is truncated."""
         if not self.htsfile:

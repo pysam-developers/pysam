@@ -573,6 +573,12 @@ cdef extern from "htslib/hts.h" nogil:
     # @param mode     Open mode, as per hts_open()
     htsFile *hts_hopen(hFILE *fp, const char *fn, const char *mode)
 
+    # @abstract  For output streams, flush any buffered data
+    # @param fp  The file handle to be flushed
+    # @return    0 for success, or negative if an error occurred.
+    # @since     1.14
+    int hts_flush(htsFile *fp)
+
     # @abstract  Close a file handle, flushing buffered data for output streams
     # @param fp  The file handle to be closed
     # @return    0 for success, or negative if an error occurred.
