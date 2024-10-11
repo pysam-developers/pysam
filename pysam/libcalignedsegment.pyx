@@ -382,7 +382,7 @@ cdef inline pack_tags(tags):
                     raise ValueError("unsupported type code '{}'".format(value.typecode))
 
             if typecode not in DATATYPE2FORMAT:
-                raise ValueError("invalid value type '{}' ({})".format(chr(typecode), array.typecode))
+                raise ValueError("invalid value type '{}'".format(chr(typecode)))
 
             # use array.tostring() to retrieve byte representation and
             # save as bytes
@@ -407,8 +407,10 @@ cdef inline pack_tags(tags):
 
             if typecode == b'Z' or typecode == b'H':
                 datafmt = "2sB%is" % (len(value)+1)
-            else:
+            elif typecode in DATATYPE2FORMAT:
                 datafmt = "2sB%s" % DATATYPE2FORMAT[typecode][0]
+            else:
+                raise ValueError("invalid value type '{}'".format(chr(typecode)))
 
             args.extend([pytag[:2],
                          typecode,

@@ -1624,6 +1624,18 @@ class TestSetTagGetTag(ReadTest):
             alt_value_type="I",
         )
 
+    def test_set_tag_invalid_value_type(self):
+        with self.assertRaises(ValueError):
+            self.check_tag("TT", "abc", value_type="#")
+
+    def test_set_array_tag_invalid_value_type(self):
+        with self.assertRaises(ValueError):
+            self.check_tag("TT", array.array('I', range(4)), value_type='#')
+
+    def test_set_array_tag_invalid_typecode(self):
+        with self.assertRaises(ValueError):
+            self.check_tag("TT", array.array('L', range(4)), value_type=None)
+
 
 class TestSetTagsGetTag(TestSetTagGetTag):
     def check_tag(self, tag, value, value_type, alt_value_type=None):
