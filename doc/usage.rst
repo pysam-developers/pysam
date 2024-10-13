@@ -119,23 +119,33 @@ formatted file on stdout::
 
 Note that the file open mode needs to changed from ``r`` to ``rb``.
 
-=====================================
-Using samtools commands within python
-=====================================
+==================================================
+Using samtools and bcftools commands within Python
+==================================================
 
-Commands available in `samtools`_ are available as simple
-function calls. Command line options are provided as arguments. For
+Commands available in `samtools`_ and `bcftools`_ are available as simple
+function calls, with command line options provided as arguments. For
 example::
 
-   pysam.sort("-o", "output.bam", "ex1.bam")
+   import pysam.samtools
+   pysam.samtools.sort("-o", "output.bam", "ex1.bam", catch_stdout=False)
 
-corresponds to the command line::
+   import pysam.bcftools
+   pysam.bcftools.index("--csi", "ex2.vcf.gz")
+
+corresponds to the command lines::
 
    samtools sort -o output.bam ex1.bam
+   bcftools index --csi ex2.vcf.gz
 
-Or for example::
+Samtools commands are also imported into the main ``pysam`` namespace.
+For example::
 
-   pysam.sort("-m", "1000000", "-o", "output.bam", "ex1.bam")
+   pysam.sort("-m", "1000000", "-o", "output.bam", "ex1.bam", catch_stdout=False)
+
+To make them valid Python identifiers, the functions :func:`!cram_size`
+and :func:`!fqimport` are spelt thus, differently from their
+corresponding commands.
 
 In order to get usage information, try::
 
@@ -157,20 +167,59 @@ available using the :meth:`~PysamDispatcher.get_messages` method::
 
    pysam.sort.get_messages()
 
-Note that only the output from the last invocation of a command is
-stored.
+By default, pysam captures the samtools command's standard output and returns it
+as the function's return value. To redirect stdout to a file instead, either use
+the ``save_stdout`` keyword argument, or use ``"-o", "filename"`` in the arguments
+and also use ``catch_stdout=False`` to prevent pysam's capturing from overriding
+your redirection. Finally, ``catch_stdout=False`` by itself discards standard output,
+which may help resolve problems in environments such as IPython notebooks::
 
-In order for pysam to make the output of samtools commands accessible
-the stdout stream needs to be redirected. This is the default
-behaviour, but can cause problems in environments such as the ipython
-notebook. A solution is to pass the ``catch_stdout`` keyword
-argument::
+   # Return value
+   pileup_text = pysam.samtools.mpileup("in.bam")
 
-   pysam.sort(catch_stdout=False)
+   # Save to file
+   pysam.samtools.mpileup("in.bam", save_stdout=pileup_filename)
+   pysam.samtools.mpileup("-o", pileup_filename, "in.bam", catch_stdout=False)
 
-Note that this means that output from commands which produce output on
-stdout will not be available. The only solution is to run samtools
-commands through subprocess.
+   # Discard standard output
+   pysam.samtools.mpileup("in.bam", catch_stdout=False)  # Returns None
+
+For each :obj:`!command` available as a `samtools`_ subcommand,
+the following functions are provided:
+
+.. py:function:: pysam.samtools.command(args, *, catch_stdout=True, save_stdout=None, split_lines=False)
+
+   :param args: Arguments to be passed to the samtools subcommand.
+   :param bool catch_stdout: Whether to return stdout as the function's value.
+   :param str save_stdout: Filename to which stdout should be written.
+   :param bool split_lines: Whether to split the return value into a list of lines.
+   :returns: Standard output if it was caught, otherwise None.
+
+   If `save_stdout` is not None, the command's standard ouput is written to the
+   file specified and the function returns None.
+
+   Otherwise, if `catch_stdout` is true, the command's standard output is captured
+   and used as the function's return value --- either as a single :obj:`str` or as
+   :obj:`list[str] <list>` according to `split_lines`. If `catch_stdout` is false,
+   the command's standard output is discarded and the function returns None.
+
+   The command's standard error is always captured and made available via
+   :func:`~pysam.samtools.command.get_messages`.
+
+.. py:function:: pysam.samtools.command.get_messages()
+
+   Returns the standard error from the most recent invocation of the particular
+   :obj:`!command`, either as a single :obj:`str` or as :obj:`list[str] <list>`
+   according to `split_lines` as specified in that invocation.
+
+.. py:function:: pysam.samtools.command.usage()
+
+   Returns the command's usage/help message, as a single :obj:`str`.
+
+For each :obj:`!command` available as a `bcftools`_ subcommand, the
+:func:`!pysam.bcftools.command`, :func:`!pysam.bcftools.command.get_messages`,
+and :func:`!pysam.bcftools.command.usage` functions operate similarly.
+
 
 ================================
 Working with tabix-indexed files

@@ -57,8 +57,8 @@ copyright = '2009–2024 Andreas Heger, John Marshall, Kevin Jacobs, et al'
 rst_epilog = '''
 .. _CGAT Training Programme: http://www.cgat.org
 .. _pysam: https://github.com/pysam-developers/pysam
-.. _samtools: http://samtools.sourceforge.net/
-.. _bcftools: https://samtools.github.io/bcftools/bcftools.html
+.. _samtools: https://www.htslib.org/doc/1.21/samtools.html
+.. _bcftools: https://www.htslib.org/doc/1.21/bcftools.html
 .. _htslib: http://www.htslib.org/
 .. _tabix: http://www.htslib.org/doc/tabix.html
 .. _Galaxy: https://main.g2.bx.psu.edu/

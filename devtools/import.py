@@ -8,6 +8,7 @@
 
 import fnmatch
 import os
+from pathlib import Path
 import re
 import itertools
 import shutil
@@ -245,6 +246,9 @@ if len(sys.argv) >= 1:
     _update_version_file(C_VERSION[dest], version + " (pysam)", "pysam/version.h")
     _update_version_doc_file(dest, version, "README.rst")
     _update_version_doc_file(dest, version, "doc/index.rst")
+    if dest in MAIN:
+        path = Path("doc/conf.py")
+        path.write_text(re.sub(rf"doc/[\d.]*/{dest}", rf"doc/{version}/{dest}", path.read_text()))
 
     sys.exit(0)
 
