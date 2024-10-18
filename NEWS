@@ -1,6 +1,82 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.23.0
+==============
+
+.. rubric:: 5 February 2025
+
+This pysam release wraps htslib/samtools/bcftools 1.21 (PR #1310).
+
+It has been tested with Python versions 3.6 through 3.13, and wheels are
+available via PyPI_ for all of those Python versions. Python versions 3.6
+through 3.8 are end-of-life; particularly if you use pysam with one of
+these versions, please vote in the version survey at issue #1230.
+
+This is expected to be the last release supporting Python 3.6 and 3.7.
+
+Bugs fixed:
+
+* Fix :func:`pysam.samtools.command(save_stdout=filename) <.samtools.command>`
+  redirection of output to a file. (#677, reported by Haowen Zhang and analysed
+  by Youri Hoogstrate)
+
+* Reinstate HTTPS/S3/GCS support in pre-built Linux wheels when used on Debian
+  and Ubuntu: these wheels now work around the discrepancy between Red Hat and
+  Debian CA Certificate file locations. (#1257, #1268, reported by Daisie Huang
+  and Li Tai Fang)
+
+* Calling :meth:`.VariantHeader.new_record` repeatedly with the same
+  :obj:`samples` object now sets GT correctly every time. (#1308, reported
+  by Arthur Gymer)
+
+* Correct the exception produced when :meth:`.AlignedSegment.set_tags` is
+  used with an invalid value type. (#1233, PR #1235, reported by Weisheng Wu
+  and Marcus Stoiber)
+
+* Many type hinting corrections. (#1298, #1316, PR #1296, PR #1306, PR #1313,
+  PR #1315, thanks to Victor Epain, Arthur Gymer, @mshunjan, and Matt Stone)
+
+* The undocumented :func:`!pysam.samtools.import_` alias for invoking
+  ``samtools import`` has been removed;
+  use :func:`pysam.samtools.fqimport() <.samtools.command>` instead.
+
+* Corrections to several test data files to account for HTSlib 1.20 and later's
+  improved validity checking. (#1291, reported by David Seifert; etc)
+
+New functionality:
+
+* :meth:`.AlignedSegment.get_aligned_pairs` now optionally returns the
+  associated CIGAR operator in each position tuple. (#1292, PR #1294,
+  thanks to Lara Fuhrmann and Ivan Blagoev Topolsky)
+
+* New :meth:`AlignmentFile.flush() <.HTSFile.flush>` and
+  :meth:`VariantFile.flush() <.HTSFile.flush>` methods for flushing buffered
+  output to streams. (#1299, requested by @blex-max)
+
+* Improved :class:`str() <str>` for :class:`.AlignedSegment` now displays
+  reference sequence names when they are available and uses ``#N`` only when
+  necessary. (#1318, requested by Liu)
+
+* Implement :func:`repr` for :class:`.AlignedSegment` so that it displays the
+  most useful fields. (PR #1267, thanks to Marcel Martin)
+
+* Pysam's tests can now run in parallel. (#1284, reported by Yuri Victorovich)
+
+Documentation improvements:
+
+* More complete documentation of invoking SAMtools and BCFtools subcommands
+  via Pysam. (#1096, #1241, PR #1261, PR #1275, #1323, et al, reported by
+  Seung-been "Steven" Lee, Robert Baldwin, Michael Hall, Indraniel Das,
+  and @shokrofont)
+
+* Use the Pysam names for CIGAR operators rather than internal C names.
+  (#1255, reported by Ilya Shlyakhter)
+
+* Mention :meth:`AlignmentFile.fetch("*") <.AlignmentFile.fetch>` in the
+  FAQ entry on fetching unmapped reads. (#424, reported by Ben Weisburd)
+
+
 Release 0.22.1
 ==============
 
