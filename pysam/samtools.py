@@ -78,8 +78,6 @@ if not HAVE_FINAL:
     for key, options in _SAMTOOLS_DISPATCH.items():
         cmd, parser = options
         globals()[key] = PysamDispatcher("samtools", cmd, parser)
-
-    __all__ = list(_SAMTOOLS_DISPATCH)
 else:
     # python >=3.8
     view: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["view"][0], _SAMTOOLS_DISPATCH["view"][1])
@@ -195,3 +193,16 @@ else:
     import_: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["import_"][0], _SAMTOOLS_DISPATCH["import_"][1])
 
     samples: Final[PysamDispatcher] = _wrap_command(_SAMTOOLS_DISPATCH["samples"][0], _SAMTOOLS_DISPATCH["samples"][1])
+
+__all__ = [
+    'addreplacerg', 'ampliconclip', 'ampliconstats',
+    'bam2fq', 'bamshuf', 'bedcov', 'calmd', 'cat',
+    'collate', 'consensus', 'coverage', 'cram_size',
+    'depad', 'depth', 'dict', 'faidx', 'fasta',
+    'fastq', 'fixmate', 'flags', 'flagstat', 'fqidx',
+    'fqimport', 'head', 'idxstats', 'index',
+    'markdup', 'merge', 'mpileup', 'pad2unpad',
+    'phase', 'quickcheck', 'reference', 'reheader',
+    'reset', 'rmdup', 'samples', 'sort', 'split',
+    'stats', 'targetcut', 'tview', 'version', 'view',
+]
