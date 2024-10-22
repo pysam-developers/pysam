@@ -28,7 +28,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest pytest-pep8 setuptools
+        run:  pip install cython mypy pytest setuptools
 
       - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'
@@ -79,7 +79,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest pytest-pep8
+        run:  pip install cython pytest
 
       - name: Install build prerequisites
         if:   runner.os == 'Linux'
