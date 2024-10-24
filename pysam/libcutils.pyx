@@ -345,7 +345,7 @@ def _pysam_dispatch(collection,
         if collection == "bcftools":
             # in bcftools, most methods accept -o, the exceptions
             # are below:
-            if method not in ("index", "roh", "stats"):
+            if method not in ("head", "index", "roh", "stats"):
                 stdout_option = "-o {}"
         elif method in MAP_STDOUT_OPTIONS[collection]:
             # special case - samtools view -c outputs on stdout

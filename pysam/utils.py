@@ -1,6 +1,7 @@
 from typing import (
     Callable,
     List,
+    Optional,
     Tuple,
     Iterable,
     Union,
@@ -48,7 +49,7 @@ class PysamDispatcher(object):
         self,
         collection: str,
         dispatch: str,
-        parsers: Iterable[Tuple[str, Callable[[Union[str, List[str]]], Union[str, List[str]]]]],
+        parsers: Optional[Iterable[Tuple[str, Callable[[Union[str, List[str]]], Union[str, List[str]]]]]] = None,
     ):
         self.collection = collection
         self.dispatch = dispatch

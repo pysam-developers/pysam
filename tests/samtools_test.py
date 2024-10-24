@@ -179,8 +179,6 @@ class SamtoolsTest(unittest.TestCase):
 
         command = self.get_command(statement)
 
-        # self.assertTrue(command in pysam.SAMTOOLS_DISPATCH)
-
         targets = [x for x in parts if "%(out)s" in x]
         samtools_targets = [x % r_samtools for x in targets]
         pysam_targets = [x % r_pysam for x in targets]

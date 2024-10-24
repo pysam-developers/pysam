@@ -1,65 +1,32 @@
-try:
-    from typing import Final
-    HAVE_FINAL = True
-except ImportError:
-    HAVE_FINAL = False
+import pysam.utils
 
-from pysam.utils import PysamDispatcher
+annotate = pysam.utils.PysamDispatcher('bcftools', 'annotate')
+call = pysam.utils.PysamDispatcher('bcftools', 'call')
+cnv = pysam.utils.PysamDispatcher('bcftools', 'cnv')
+concat = pysam.utils.PysamDispatcher('bcftools', 'concat')
+consensus = pysam.utils.PysamDispatcher('bcftools', 'consensus')
+convert = pysam.utils.PysamDispatcher('bcftools', 'convert')
+csq = pysam.utils.PysamDispatcher('bcftools', 'csq')
+filter = pysam.utils.PysamDispatcher('bcftools', 'filter')
+gtcheck = pysam.utils.PysamDispatcher('bcftools', 'gtcheck')
+head = pysam.utils.PysamDispatcher('bcftools', 'head')
+index = pysam.utils.PysamDispatcher('bcftools', 'index')
+isec = pysam.utils.PysamDispatcher('bcftools', 'isec')
+merge = pysam.utils.PysamDispatcher('bcftools', 'merge')
+mpileup = pysam.utils.PysamDispatcher('bcftools', 'mpileup')
+norm = pysam.utils.PysamDispatcher('bcftools', 'norm')
+plugin = pysam.utils.PysamDispatcher('bcftools', 'plugin')
+query = pysam.utils.PysamDispatcher('bcftools', 'query')
+reheader = pysam.utils.PysamDispatcher('bcftools', 'reheader')
+roh = pysam.utils.PysamDispatcher('bcftools', 'roh')
+sort = pysam.utils.PysamDispatcher('bcftools', 'sort')
+stats = pysam.utils.PysamDispatcher('bcftools', 'stats')
+view = pysam.utils.PysamDispatcher('bcftools', 'view')
 
-_BCFTOOLS_DISPATCH = [
-    "index",
-    "annotate",
-    "concat",
-    "convert",
-    "isec",
-    "merge",
-    "norm",
-    "plugin",
-    "query",
-    "reheader",
-    "sort",
-    "view",
-    "head",
-    "call",
-    "consensus",
-    "cnv",
-    "csq",
-    "filter",
-    "gtcheck",
-    "mpileup",
-    "roh",
-    "stats"]
-
-
-def _wrap_command(dispatch: str) -> PysamDispatcher:
-    return PysamDispatcher("bcftools", dispatch, ())
-
-
-if not HAVE_FINAL:
-    # instantiate bcftools commands as python functions
-    for cmd in _BCFTOOLS_DISPATCH:
-        globals()[cmd] = PysamDispatcher("bcftools", cmd, None)
-else:
-    # python >=3.8
-    index: Final[PysamDispatcher] = _wrap_command("index")
-    annotate: Final[PysamDispatcher] = _wrap_command("annotate")
-    concat: Final[PysamDispatcher] = _wrap_command("concat")
-    convert: Final[PysamDispatcher] = _wrap_command("convert")
-    isec: Final[PysamDispatcher] = _wrap_command("isec")
-    merge: Final[PysamDispatcher] = _wrap_command("merge")
-    norm: Final[PysamDispatcher] = _wrap_command("norm")
-    plugin: Final[PysamDispatcher] = _wrap_command("plugin")
-    query: Final[PysamDispatcher] = _wrap_command("query")
-    reheader: Final[PysamDispatcher] = _wrap_command("reheader")
-    sort: Final[PysamDispatcher] = _wrap_command("sort")
-    view: Final[PysamDispatcher] = _wrap_command("view")
-    head: Final[PysamDispatcher] = _wrap_command("head")
-    call: Final[PysamDispatcher] = _wrap_command("call")
-    consensus: Final[PysamDispatcher] = _wrap_command("consensus")
-    cnv: Final[PysamDispatcher] = _wrap_command("cnv")
-    csq: Final[PysamDispatcher] = _wrap_command("csq")
-    filter: Final[PysamDispatcher] = _wrap_command("filter")
-    gtcheck: Final[PysamDispatcher] = _wrap_command("gtcheck")
-    mpileup: Final[PysamDispatcher] = _wrap_command("mpileup")
-    roh: Final[PysamDispatcher] = _wrap_command("roh")
-    stats: Final[PysamDispatcher] = _wrap_command("stats")
+__all__ = [
+    'annotate', 'call', 'cnv', 'concat', 'consensus',
+    'convert', 'csq', 'filter', 'gtcheck', 'head',
+    'index', 'isec', 'merge', 'mpileup', 'norm',
+    'plugin', 'query', 'reheader', 'roh', 'sort',
+    'stats', 'view',
+]

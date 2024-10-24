@@ -121,3 +121,15 @@ def test_pileup_iterator_column(bam_fname: str) -> None:
     assert types['p'].endswith('PileupColumn')
     assert types['pid'] == 'builtins.int'
     assert types['ppos'] == 'builtins.int'
+
+
+def test_samtools_subcommands() -> None:
+    p1_samtools_faidx = pysam.samtools.faidx
+    p2_faidx = pysam.faidx
+    p3_view = pysam.view
+    p4_bcftools_view = pysam.bcftools.view
+
+    if TYPE_CHECKING: reveal_locals()
+    types = typecheck()
+    for var, vartype in types.items():
+        assert vartype.endswith('PysamDispatcher'), f'{var!r} is not a dispatcher'
