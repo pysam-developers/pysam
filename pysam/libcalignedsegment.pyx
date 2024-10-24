@@ -2169,31 +2169,32 @@ cdef class AlignedSegment:
 
         The output order in the array is "MIDNSHP=X" followed by a
         field for the NM tag. If the NM tag is not present, this
-        field will always be 0.
+        field will always be 0. (Accessing this field via index -1
+        avoids changes if more CIGAR operators are added in future.)
 
-        +-----+--------------+-----+
-        |M    |BAM_CMATCH    |0    |
-        +-----+--------------+-----+
-        |I    |BAM_CINS      |1    |
-        +-----+--------------+-----+
-        |D    |BAM_CDEL      |2    |
-        +-----+--------------+-----+
-        |N    |BAM_CREF_SKIP |3    |
-        +-----+--------------+-----+
-        |S    |BAM_CSOFT_CLIP|4    |
-        +-----+--------------+-----+
-        |H    |BAM_CHARD_CLIP|5    |
-        +-----+--------------+-----+
-        |P    |BAM_CPAD      |6    |
-        +-----+--------------+-----+
-        |=    |BAM_CEQUAL    |7    |
-        +-----+--------------+-----+
-        |X    |BAM_CDIFF     |8    |
-        +-----+--------------+-----+
-        |B    |BAM_CBACK     |9    |
-        +-----+--------------+-----+
-        |NM   |NM tag        |10   |
-        +-----+--------------+-----+
+        +-----+----------------+--------+
+        |M    |pysam.CMATCH    |0       |
+        +-----+----------------+--------+
+        |I    |pysam.CINS      |1       |
+        +-----+----------------+--------+
+        |D    |pysam.CDEL      |2       |
+        +-----+----------------+--------+
+        |N    |pysam.CREF_SKIP |3       |
+        +-----+----------------+--------+
+        |S    |pysam.CSOFT_CLIP|4       |
+        +-----+----------------+--------+
+        |H    |pysam.CHARD_CLIP|5       |
+        +-----+----------------+--------+
+        |P    |pysam.CPAD      |6       |
+        +-----+----------------+--------+
+        |=    |pysam.CEQUAL    |7       |
+        +-----+----------------+--------+
+        |X    |pysam.CDIFF     |8       |
+        +-----+----------------+--------+
+        |B    |pysam.CBACK     |9       |
+        +-----+----------------+--------+
+        |NM   |NM tag          |10 or -1|
+        +-----+----------------+--------+
 
         If no cigar string is present, empty arrays will be returned.
 
@@ -2248,27 +2249,27 @@ cdef class AlignedSegment:
 
         The operations are:
 
-        +-----+--------------+-----+
-        |M    |BAM_CMATCH    |0    |
-        +-----+--------------+-----+
-        |I    |BAM_CINS      |1    |
-        +-----+--------------+-----+
-        |D    |BAM_CDEL      |2    |
-        +-----+--------------+-----+
-        |N    |BAM_CREF_SKIP |3    |
-        +-----+--------------+-----+
-        |S    |BAM_CSOFT_CLIP|4    |
-        +-----+--------------+-----+
-        |H    |BAM_CHARD_CLIP|5    |
-        +-----+--------------+-----+
-        |P    |BAM_CPAD      |6    |
-        +-----+--------------+-----+
-        |=    |BAM_CEQUAL    |7    |
-        +-----+--------------+-----+
-        |X    |BAM_CDIFF     |8    |
-        +-----+--------------+-----+
-        |B    |BAM_CBACK     |9    |
-        +-----+--------------+-----+
+        +-----+----------------+-----+
+        |M    |pysam.CMATCH    |0    |
+        +-----+----------------+-----+
+        |I    |pysam.CINS      |1    |
+        +-----+----------------+-----+
+        |D    |pysam.CDEL      |2    |
+        +-----+----------------+-----+
+        |N    |pysam.CREF_SKIP |3    |
+        +-----+----------------+-----+
+        |S    |pysam.CSOFT_CLIP|4    |
+        +-----+----------------+-----+
+        |H    |pysam.CHARD_CLIP|5    |
+        +-----+----------------+-----+
+        |P    |pysam.CPAD      |6    |
+        +-----+----------------+-----+
+        |=    |pysam.CEQUAL    |7    |
+        +-----+----------------+-----+
+        |X    |pysam.CDIFF     |8    |
+        +-----+----------------+-----+
+        |B    |pysam.CBACK     |9    |
+        +-----+----------------+-----+
 
         .. note::
             The output is a list of (operation, length) tuples, such as
