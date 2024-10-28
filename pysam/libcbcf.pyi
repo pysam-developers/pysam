@@ -152,7 +152,7 @@ class VariantHeader:
         stop: int = ...,
         alleles: Optional[Tuple[str, ...]] = ...,
         id: Optional[str] = ...,
-        qual: Optional[int] = ...,
+        qual: Optional[float] = ...,
         filter: Optional[Any] = ...,
         info: Optional[Mapping[str, _InfoValue]] = ...,
         samples: Optional[Iterable[Optional[Mapping[str, _FormatValue]]]] = ...,
@@ -218,7 +218,7 @@ class VariantRecord:
     start: int
     stop: int
     rlen: int
-    qual: Optional[int]
+    qual: Optional[float]
     id: Optional[str]
     ref: Optional[str]
     alleles: Optional[Tuple[str, ...]]
