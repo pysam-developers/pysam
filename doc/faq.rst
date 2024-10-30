@@ -121,20 +121,24 @@ Thus, ``multiple_iterators`` is set to ``False`` by default.
 AlignmentFile.fetch does not show unmapped reads
 ================================================
 
-:meth:`~pysam.AlignmentFile.fetch` will only iterate over alignments
-in the SAM/BAM file. The following thus always works::
+By default, :meth:`~pysam.AlignmentFile.fetch` will only iterate over
+placed alignments in the SAM/BAM/CRAM file. Thus the following always
+works::
 
-    bf = pysam.AlignmentFile(fname, "rb")
-    for r in bf.fetch():
-        assert not r.is_unmapped
+    f = pysam.AlignmentFile(fname, "r")
+    for r in f.fetch():
+        assert r.reference_name is not None
 
-If the SAM/BAM file contains unaligned reads, they can be included
+If the file contains unaligned reads, they can be included
 in the iteration by adding the ``until_eof=True`` flag::
 
-    bf = pysam.AlignmentFile(fname, "rb")
-    for r in bf.fetch(until_eof=True):
+    f = pysam.AlignmentFile(fname, "r")
+    for r in f.fetch(until_eof=True):
         if r.is_unmapped:
-	    print("read is unmapped")
+            print("read is unmapped")
+
+See also :meth:`fetch("*") <pysam.AlignmentFile.fetch>` which iterates
+only over the unplaced unmapped reads at the end of the file.
 
 I can't call AlignmentFile.fetch on a file without an index
 ===========================================================
