@@ -4,7 +4,7 @@
 Installing pysam
 ================
 
-Pysam can be installed through conda_, pypi_ and from the repository.
+Pysam can be installed through conda_, PyPI_ and from the repository.
 The recommended way to install pysam is through conda/bioconda.
 
 Conda installation
@@ -21,7 +21,7 @@ makes sure that dependencies are installed. Also, compilation flags
 will be set automatically, which will potentially save a lot of
 trouble on OS X.
 
-Pypi installation
+PyPI installation
 =================
 
 Pysam provides a python interface to the functionality contained
@@ -31,7 +31,7 @@ can be combined, ``builtin`` and ``external``.
 Builtin
 -------
 
-The typical installation will be through pypi_::
+The typical installation will be through PyPI_::
 
    pip install pysam
 
@@ -89,7 +89,7 @@ To install from repository, type::
 
     python setup.py install
 
-For compilation options, see the section on Pypi installation above.
+For compilation options, see the section on PyPI installation above.
 
 Requirements
 ============

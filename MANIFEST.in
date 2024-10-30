@@ -19,8 +19,7 @@ exclude pysam/config.py
 
 include win32/*.[ch]
 
-# exclude tests from pypi tar-ball - they
-# require additional data
+# exclude tests from sdist tarball as they require additional data
 prune tests/
 
 # samtools

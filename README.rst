@@ -27,8 +27,8 @@ lot of trouble.
 
 The current version of pysam wraps 3rd-party code from htslib-1.21, samtools-1.21, and bcftools-1.21.
 
-Pysam is available through `pypi
-<https://pypi.python.org/pypi/pysam>`_. To install, type::
+Pysam is available through `PyPI <https://pypi.org/project/pysam/>`_.
+To install, type::
 
    pip install pysam
 

@@ -64,7 +64,7 @@ rst_epilog = '''
 .. _Galaxy: https://main.g2.bx.psu.edu/
 .. _cython: https://cython.org/
 .. _python: https://www.python.org/
-.. _pypi: https://pypi.org/
+.. _PyPI: https://pypi.org/
 .. _pip: https://pip.pypa.io/
 .. _pyximport: https://github.com/cython/cython/tree/master/pyximport
 .. _conda: https://conda.io/docs/

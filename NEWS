@@ -39,7 +39,7 @@ Release 0.22.0
 This pysam release wraps htslib/samtools/bcftools 1.18 (PR #1208).
 
 It has been tested with Python versions 3.6 through 3.12, and wheels are
-available via pypi_ for all of those Python versions. Python versions 3.6
+available via PyPI_ for all of those Python versions. Python versions 3.6
 and 3.7 are end-of-life; particularly if you use pysam with either of
 these versions, please vote in the version survey at issue #1230.
 
