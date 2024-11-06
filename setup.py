@@ -506,9 +506,27 @@ elif HTSLIB_MODE == 'shared':
 
     # Link with the object files rather than the final htslib/libhts.a, to ensure that
     # all object files are pulled into the link, even those not used by htslib itself.
-    htslib_objects = [os.path.join("htslib", x)
-                      for x in htslib_make_options["LIBHTS_OBJS"].split(" ")]
+# Initialize htslib_make_options for Windows with suitable default values or as empty
+if sys.platform == "win32":
+    htslib_make_options = {
+        # 'LIBHTS_OBJS' might not be relevant for Windows if linking against a precompiled lib
+        # Define it or leave it out based on your specific setup
+        'LIBHTS_OBJS': ''
+    }
+    # Adjust paths to precompiled HTSlib objects or libraries as necessary
+    htslib_objects = ['htslib-msvc/libhts.lib']
     separate_htslib_objects = []
+else:
+    # Unix-like platform logic...
+    with changedir("htslib"):
+        htslib_make_options = run_make_print_config()
+
+    htslib_objects = [os.path.join("htslib", x)
+                      for x in htslib_make_options.get("LIBHTS_OBJS", "").split(" ")]
+    separate_htslib_objects = []
+
+# Example continues...
+
 
     htslib_library_dirs = ["."] # when using setup.py develop?
     htslib_include_dirs = ['htslib']

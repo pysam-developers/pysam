@@ -7,42 +7,81 @@ jobs:
     runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
-        os: [ubuntu, macos]
+        os: [ubuntu, macos, windows]
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12']
+        config:
+          - { arch: ucrt64 }  # Added configuration for MSYS2 architecture
         exclude:
           # Run only the latest few 3.x versions on macOS
           - os: macos
-            python-version: 3.7
+            python-version: '3.7'
           - os: macos
-            python-version: 3.8
+            python-version: '3.8'
           - os: macos
-            python-version: 3.9
+            python-version: '3.9'
+          # Windows exclusions
+          - os: windows
+            python-version: '3.7'
+          - os: windows
+            python-version: '3.8'
+          - os: windows
+            python-version: '3.9'
+          - os: windows
+            python-version: '3.10'
+          - os: windows
+            python-version: '3.11'
+          - os: windows
+            python-version: '3.12'
 
     steps:
       - name: Checkout pysam
         uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
+        if: runner.os != 'Windows'
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest pytest-pep8 setuptools
+        if: runner.os != 'Windows'
+        run: pip install cython pytest pytest-pep8 setuptools
 
       - name: Install Linux build prerequisites
-        if:   runner.os == 'Linux'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -q --no-install-recommends --no-install-suggests libcurl4-openssl-dev
 
       - name: Update macOS build prerequisites
-        if:   runner.os == 'macOS'
+        if: runner.os == 'macOS'
         run: |
-          brew unlink xz || true  # Remove brewed liblzma as it is not multiarch
+          brew unlink xz || true
+
+      - name: Install MSYS2 build prerequisites
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ucrt64
+          update: true
+          install: >-
+            mingw-w64-ucrt64-base-devel
+            mingw-w64-ucrt64-cython
+            mingw-w64-ucrt64-python
+            mingw-w64-ucrt64-pip
+            mingw-w64-ucrt64-setuptools
+            mingw-w64-ucrt64-curl
+            mingw-w64-ucrt64-libdeflate
+            mingw-w64-ucrt64-bzip2
+            mingw-w64-ucrt64-zlib
+            mingw-w64-ucrt64-python-pytest
+            mingw-w64-ucrt64-xz
+            mingw-w64-ucrt64-openssl
+            mingw-w64-ucrt64-libtre-git
+            mingw-w64-ucrt64-libiconv
 
       - name: Build (directly from checkout)
-        run:  python setup.py build
+        run: python setup.py build
 
       - name: Install test prerequisites
         run: |
@@ -52,6 +91,9 @@ jobs:
               ;;
           macOS)
               brew install -q samtools bcftools
+              ;;
+          Windows)
+              pacman -S --noconfirm mingw-w64-ucrt64-samtools mingw-w64-ucrt64-bcftools
               ;;
           esac
 
