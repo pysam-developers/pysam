@@ -9,8 +9,10 @@ jobs:
       matrix:
         os: [ubuntu, macos, windows]
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12']
-        config:
-          - { arch: ucrt64 }  # Added configuration for MSYS2 architecture
+        include:
+          # Add specific configuration for Windows
+          - os: windows
+            msystem: ucrt64
         exclude:
           # Run only the latest few 3.x versions on macOS
           - os: macos
@@ -19,19 +21,8 @@ jobs:
             python-version: '3.8'
           - os: macos
             python-version: '3.9'
-          # Windows exclusions
-          - os: windows
-            python-version: '3.7'
-          - os: windows
-            python-version: '3.8'
-          - os: windows
-            python-version: '3.9'
-          - os: windows
-            python-version: '3.10'
-          - os: windows
-            python-version: '3.11'
-          - os: windows
-            python-version: '3.12'
+          # We don't need actions/setup-python for Windows as MSYS2 provides Python
+          # but we shouldn't exclude Windows entirely
 
     steps:
       - name: Checkout pysam
@@ -81,9 +72,18 @@ jobs:
             mingw-w64-ucrt64-libiconv
 
       - name: Build (directly from checkout)
-        run: python setup.py build
+        shell: msys2 {0}
+        if: runner.os == 'Windows'
+        run: |
+          python setup.py build
+
+      - name: Build (directly from checkout)
+        if: runner.os != 'Windows'
+        run: |
+          python setup.py build
 
       - name: Install test prerequisites
+        shell: bash
         run: |
           case $RUNNER_OS in
           Linux)
@@ -98,6 +98,7 @@ jobs:
           esac
 
       - name: Run tests
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
         run: |
           export PYTHONPATH=$(echo $GITHUB_WORKSPACE/build/lib.*)
           export REF_PATH=':'
