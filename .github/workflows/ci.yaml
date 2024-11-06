@@ -21,6 +21,17 @@ jobs:
             python-version: '3.8'
           - os: macos
             python-version: '3.9'
+          # Exclude all Windows Python versions except 3.11
+          - os: windows
+            python-version: '3.7'
+          - os: windows
+            python-version: '3.8'
+          - os: windows
+            python-version: '3.9'
+          - os: windows
+            python-version: '3.10'
+          - os: windows
+            python-version: '3.12'
 
     steps:
       - name: Checkout pysam
