@@ -65,20 +65,20 @@ jobs:
           msystem: ucrt64
           update: true
           install: >-
-            mingw-w64-ucrt64-base-devel
-            mingw-w64-ucrt64-cython
-            mingw-w64-ucrt64-python
-            mingw-w64-ucrt64-pip
-            mingw-w64-ucrt64-setuptools
-            mingw-w64-ucrt64-curl
-            mingw-w64-ucrt64-libdeflate
-            mingw-w64-ucrt64-bzip2
-            mingw-w64-ucrt64-zlib
-            mingw-w64-ucrt64-python-pytest
-            mingw-w64-ucrt64-xz
-            mingw-w64-ucrt64-openssl
-            mingw-w64-ucrt64-libtre-git
-            mingw-w64-ucrt64-libiconv
+            mingw-w64-ucrt-x86_64-base-devel
+            mingw-w64-ucrt-x86_64-cython
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-pip
+            mingw-w64-ucrt-x86_64-setuptools
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-libdeflate
+            mingw-w64-ucrt-x86_64-bzip2
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-python-pytest
+            mingw-w64-ucrt-x86_64-xz
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-libtre-git
+            mingw-w64-ucrt-x86_64-libiconv
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
@@ -102,7 +102,7 @@ jobs:
               brew install -q samtools bcftools
               ;;
           Windows)
-              pacman -S --noconfirm mingw-w64-ucrt64-samtools mingw-w64-ucrt64-bcftools
+              pacman -S --noconfirm mingw-w64-ucrt-x86_64-samtools mingw-w64-ucrt-x86_64-bcftools
               ;;
           esac
 
