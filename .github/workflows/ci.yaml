@@ -66,6 +66,7 @@ jobs:
           update: true
           install: >-
             base-devel
+            mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-cython
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-python-pip
