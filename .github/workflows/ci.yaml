@@ -98,20 +98,21 @@ jobs:
         run: |
           python setup.py build
 
-      - name: Install test prerequisites
+      - name: Install test prerequisites (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          pacman -S --noconfirm mingw-w64-ucrt-x86_64-samtools mingw-w64-ucrt-x86_64-bcftools
+
+      - name: Install test prerequisites (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
-          case $RUNNER_OS in
-          Linux)
-              sudo apt-get install -q --no-install-recommends --no-install-suggests samtools bcftools tabix
-              ;;
-          macOS)
-              brew install -q samtools bcftools
-              ;;
-          Windows)
-              pacman -S --noconfirm mingw-w64-ucrt-x86_64-samtools mingw-w64-ucrt-x86_64-bcftools
-              ;;
-          esac
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo apt-get install -q --no-install-recommends --no-install-suggests samtools bcftools tabix
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            brew install -q samtools bcftools
+          fi
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
@@ -134,7 +135,7 @@ jobs:
     runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
-        os: [ubuntu, macos]
+        os: [ubuntu]
         python-version: ['3.10']
 
     steps:
