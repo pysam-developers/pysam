@@ -68,8 +68,8 @@ jobs:
             base-devel
             mingw-w64-ucrt-x86_64-cython
             mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-pip
-            mingw-w64-ucrt-x86_64-setuptools
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-python-setuptools
             mingw-w64-ucrt-x86_64-curl
             mingw-w64-ucrt-x86_64-libdeflate
             mingw-w64-ucrt-x86_64-bzip2
