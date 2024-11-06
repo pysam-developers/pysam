@@ -21,8 +21,6 @@ jobs:
             python-version: '3.8'
           - os: macos
             python-version: '3.9'
-          # We don't need actions/setup-python for Windows as MSYS2 provides Python
-          # but we shouldn't exclude Windows entirely
 
     steps:
       - name: Checkout pysam
@@ -71,13 +69,13 @@ jobs:
             mingw-w64-ucrt64-libtre-git
             mingw-w64-ucrt64-libiconv
 
-      - name: Build (directly from checkout)
-        shell: msys2 {0}
+      - name: Build (Windows)
         if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: |
           python setup.py build
 
-      - name: Build (directly from checkout)
+      - name: Build (Unix)
         if: runner.os != 'Windows'
         run: |
           python setup.py build
@@ -97,8 +95,17 @@ jobs:
               ;;
           esac
 
-      - name: Run tests
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export PYTHONPATH=$(echo $GITHUB_WORKSPACE/build/lib.*)
+          export REF_PATH=':'
+          pytest
+
+      - name: Run tests (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           export PYTHONPATH=$(echo $GITHUB_WORKSPACE/build/lib.*)
           export REF_PATH=':'
