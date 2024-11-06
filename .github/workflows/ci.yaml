@@ -65,7 +65,7 @@ jobs:
           msystem: ucrt64
           update: true
           install: >-
-            mingw-w64-ucrt-x86_64-base-devel
+            base-devel
             mingw-w64-ucrt-x86_64-cython
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-pip
