@@ -894,6 +894,12 @@ cdef inline bytes build_reference_sequence(bam1_t * src):
     return seq
 
 
+cdef inline str safe_reference_name(AlignmentHeader header, int tid):
+    if tid == -1: return "*"
+    elif header is not None: return header.get_reference_name(tid)
+    else: return f"#{tid}"
+
+
 cdef class AlignedSegment:
     '''Class representing an aligned segment.
 
@@ -960,7 +966,8 @@ cdef class AlignedSegment:
 
         The representation is an approximate :term:`SAM` format, because
         an aligned read might not be associated with a :term:`AlignmentFile`.
-        As a result :term:`tid` is shown instead of the reference name.
+        Hence when the read does not have an associated :class:`AlignedHeader`,
+        :term:`tid` is shown instead of the reference name.
         Similarly, the tags field is returned in its parsed state.
 
         To get a valid SAM record, use :meth:`to_string`.
@@ -969,11 +976,11 @@ cdef class AlignedSegment:
         # requires a valid header.
         return "\t".join(map(str, (self.query_name,
                                    self.flag,
-                                   "#%d" % self.reference_id if self.reference_id >= 0 else "*",
+                                   safe_reference_name(self.header, self.reference_id),
                                    self.reference_start + 1,
                                    self.mapping_quality,
                                    self.cigarstring,
-                                   "#%d" % self.next_reference_id if self.next_reference_id >= 0 else "*",
+                                   safe_reference_name(self.header, self.next_reference_id),
                                    self.next_reference_start + 1,
                                    self.template_length,
                                    self.query_sequence,
@@ -981,7 +988,8 @@ cdef class AlignedSegment:
                                    self.tags)))
 
     def __repr__(self):
-        return f'<{type(self).__name__}({self.query_name!r}, flags={self.flag}={self.flag:#x}, ref={self.reference_name!r}, zpos={self.reference_start}, mapq={self.mapping_quality}, cigar={self.cigarstring!r}, ...)>'
+        ref = self.reference_name if self.header is not None else self.reference_id
+        return f'<{type(self).__name__}({self.query_name!r}, flags={self.flag}={self.flag:#x}, ref={ref!r}, zpos={self.reference_start}, mapq={self.mapping_quality}, cigar={self.cigarstring!r}, ...)>'
 
     def __copy__(self):
         return makeAlignedSegment(self._delegate, self.header)
