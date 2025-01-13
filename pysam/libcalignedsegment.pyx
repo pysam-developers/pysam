@@ -1548,9 +1548,15 @@ cdef class AlignedSegment:
             # create a python array object filling it
             # with the quality scores
 
-            # NB: should avoid this copying if qual is
+            # Convert to a byte array if qual is a string
+            if isinstance(qual, str):
+                qual = qualitystring_to_array(qual)
+
+            # NB: avoid this copying if qual is
             # already of the correct type.
-            cdef c_array.array result = c_array.array('B', qual)
+            cdef c_array.array result = (
+                qual if qual.typecode == 'B' else c_array.array('B', qual)
+            )
 
             # copy data
             memcpy(p, result.data.as_voidptr, l)
