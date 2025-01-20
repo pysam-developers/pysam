@@ -2,5 +2,7 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - bzip2
   - cython
   - setuptools
+  - xz
