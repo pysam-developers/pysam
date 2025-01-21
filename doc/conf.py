@@ -55,13 +55,12 @@ copyright = '2009–2024 Andreas Heger, John Marshall, Kevin Jacobs, et al'
 
 # Included at the end of each rst file
 rst_epilog = '''
-.. _CGAT Training Programme: http://www.cgat.org
 .. _pysam: https://github.com/pysam-developers/pysam
 .. _samtools: https://www.htslib.org/doc/1.21/samtools.html
 .. _bcftools: https://www.htslib.org/doc/1.21/bcftools.html
-.. _htslib: http://www.htslib.org/
-.. _tabix: http://www.htslib.org/doc/tabix.html
-.. _Galaxy: https://main.g2.bx.psu.edu/
+.. _htslib: https://www.htslib.org/
+.. _tabix: https://www.htslib.org/doc/tabix.html
+.. _Galaxy: https://usegalaxy.org/
 .. _cython: https://cython.org/
 .. _python: https://www.python.org/
 .. _PyPI: https://pypi.org/
