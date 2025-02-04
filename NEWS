@@ -11,24 +11,24 @@ Bugfix release, which still wraps htslib/samtools/bcftools 1.18.
 Bugs fixed:
 
 * Preserve all header field tags defined in the SAM specification (notably TP)
-  in :meth:`.AlignmentHeader.from_dict` and :meth:`.AlignmentHeader.to_dict`
+  in :meth:`.AlignmentHeader.from_dict` and :meth:`.AlignmentHeader.to_dict`.
   (#1237, PR #1238, thanks to Tim Fennell and Nils Homer)
 
 * Adjust HTSlib's Makefile so that ``make distclean`` no longer tries to
-  rebuild the htscodecs configury (PR #1247, reported by Nicola Soranzo)
+  rebuild the htscodecs configury. (PR #1247, reported by Nicola Soranzo)
 
 * Reinstate S3 support in pre-built Linux wheels: support for this protocol
-  was inadvertently omitted from the pre-built 0.22.0 wheels on Linux
+  was inadvertently omitted from the pre-built 0.22.0 wheels on Linux.
   (#1249, #1277, etc varying circumstances; likely it is this that was
   reported by Mathew Baines, Benjamin Sargsyan, et al)
 
-* Add missing :attr:`.AlignedSegment.is_mapped` etc properties to type stubs
+* Add missing :attr:`.AlignedSegment.is_mapped` etc properties to type stubs.
   (PR #1273, thanks to Matt Stone)
 
-* Fix off-by-one NamedTupleProxy, :class:`.asBed`, etc array bounds check
+* Fix off-by-one NamedTupleProxy, :class:`.asBed`, etc array bounds check.
   (#1279, reported by Dan Bolser)
 
-* Make pysam's klib headers compatible with C++ (reported by Martin Grigorov)
+* Make pysam's klib headers compatible with C++. (reported by Martin Grigorov)
 
 
 Release 0.22.0
@@ -47,54 +47,54 @@ The final pysam release that supported Python 2.7 was v0.20.0.
 
 Bugs fixed:
 
-* Remove Cython from runtime dependencies (PR #1186, thanks to Nicola Soranzo,
+* Remove Cython from runtime dependencies. (PR #1186, thanks to Nicola Soranzo,
   also reported by Arya Massarat in PR #1194)
 
-* Miscellaneous dependency improvements (PR #1216, #1217, PR #1218, PR #1219,
+* Miscellaneous dependency improvements. (PR #1216, #1217, PR #1218, PR #1219,
   thanks to Martin Larralde and Arthur Vigil)
 
 * Suppress spurious "Could not retrieve index file" message when opening an
-  AlignmentFile (#939, #1214, reported by ChengYong Tham and Sebastian Röner)
+  AlignmentFile. (#939, #1214, reported by ChengYong Tham and Sebastian Röner)
 
-* Propagate SAM parsing errors encounted in :meth:`.AlignedSegment.fromstring`
+* Propagate SAM parsing errors encounted in :meth:`.AlignedSegment.fromstring`.
   (#1196, reported by DV Klopfenstein)
 
 * Accept invalid MD:A tagged fields produced by HTSeq instead of crashing
   in :meth:`AlignedSegment.get_aligned_pairs(with_seq=True)
-  <.AlignedSegment.get_aligned_pairs>` (#1226, reported by Isaac Vock)
+  <.AlignedSegment.get_aligned_pairs>`. (#1226, reported by Isaac Vock)
 
-* Fix multiarch macOS CI builds by removing brewed liblzma (#1205, reported
+* Fix multiarch macOS CI builds by removing brewed liblzma. (#1205, reported
   by Till Hartmann)
 
-* Fix :attr:`.VariantRecordSample.alleles` type hint (#1179, reported by
+* Fix :attr:`.VariantRecordSample.alleles` type hint. (#1179, reported by
   David Seifert)
 
 New functionality:
 
 * Add optional :meth:`HTSFile.seek(..., whence) <.HTSFile.seek>` parameter
-  and clarify which functions use libc.SEEK_SET vs io.SEEK_SET
+  and clarify which functions use libc.SEEK_SET vs io.SEEK_SET.
   (#1185, requested by luyulin)
 
-* File handling improvements in samtools & bcftools commands (should improve
+* File handling improvements in samtools & bcftools commands. (should improve
   #1193 and #1195, reported by Rob Bierman and Sam Chorlton)
 
-* Improve :class:`.FastxFile` performance (PR #1227, thanks to Fabian Klötzl
+* Improve :class:`.FastxFile` performance. (PR #1227, thanks to Fabian Klötzl
   and Valentyn Bezshapkin)
 
-* Improve the accuracy of type hints for :class:`.AlignmentFile` iteration
+* Improve the accuracy of type hints for :class:`.AlignmentFile` iteration.
   (#1184, PR #1189, reported by @PikalaxALT)
 
 Documentation improvements:
 
-* Clarify that :meth:`.AlignedSegment.get_aligned_pairs` results are 0-based
+* Clarify that :meth:`.AlignedSegment.get_aligned_pairs` results are 0-based.
   (#1180, reported by Nick Semenkovich)
 
-* Clarify :meth:`.AlignedSegment.get_reference_positions` documentation
+* Clarify :meth:`.AlignedSegment.get_reference_positions` documentation.
   (#836, #838, reported by Liang Ou and Nick Stoler)
 
 * Clarify that installation via pip usually uses a wheel, and that configuring
   the build via $HTSLIB_CONFIGURE_OPTIONS etc only applies when installing from
-  an sdist (#1086, reported by Layne Sadler)
+  an sdist. (#1086, reported by Layne Sadler)
 
 A message from pysam's founder, Andreas Heger:
 
