@@ -1,7 +1,7 @@
 # Omit these files from GitHub's generated tarballs
+/.cirrus.yml                export-ignore
 /.git*                      export-ignore
 /.readthedocs.yaml          export-ignore
-/.travis.disabled.yml       export-ignore
 
 # Omit imported C files from GitHub's language statistics
 htslib/**                   linguist-vendored
