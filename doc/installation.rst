@@ -12,8 +12,8 @@ Conda installation
 
 To install pysam in your current conda_ environment, type::
 
-   conda config --add channels r
    conda config --add channels bioconda
+   conda config --add channels conda-forge
    conda install pysam
 
 This will install pysam from the bioconda_ channel and automatically
