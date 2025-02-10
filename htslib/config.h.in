@@ -22,8 +22,8 @@
 /* Define if __attribute__((constructor)) is available. */
 #undef HAVE_ATTRIBUTE_CONSTRUCTOR
 
-/* Define if __attribute__((target(...))) is available. */
-#undef HAVE_ATTRIBUTE_TARGET
+/* Define if __attribute__((target("ssse3"))) works. */
+#undef HAVE_ATTRIBUTE_TARGET_SSSE3
 
 /* Defined to 1 if rANS source using AVX2 can be compiled. */
 #undef HAVE_AVX2
