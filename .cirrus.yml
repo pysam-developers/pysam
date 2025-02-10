@@ -1,5 +1,5 @@
 build_wheels_task:
-  only_if: $CIRRUS_BRANCH =~ "release/.*" || $CIRRUS_TAG =~ "v0\..*"
+  only_if: $CIRRUS_BRANCH =~ "release-dont/.*" || $CIRRUS_TAG =~ "v0\..*"
 
   matrix:
     - compute_engine_instance:

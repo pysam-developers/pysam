@@ -8,56 +8,6 @@ on:
       - v[0-9]+.*
 
 jobs:
-  build_wheels:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-13]
-        build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-* cp313-*"]
-        x64image: [manylinux_2_28]
-        nametag: [none]
-
-        include:
-          - os: ubuntu-latest
-            build: "cp38-manylinux_x86_64"
-            x64image: manylinux2014
-            nametag: focal
-
-    steps:
-      - name: Checkout pysam
-        uses: actions/checkout@v4
-
-      - name: Check platform ${{ matrix.os }} is the expected architecture
-        run:  devtools/check-platform.sh ${{ matrix.os }}
-
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v2.22.0
-        env:
-          CIBW_BUILD: ${{ matrix.build }}
-          CIBW_SKIP: "*-musllinux_*"
-          CIBW_BUILD_VERBOSITY: 1
-
-          # Avoid linking with non-system library libdeflate.dylib
-          CIBW_ENVIRONMENT_MACOS: HTSLIB_CONFIGURE_OPTIONS="--without-libdeflate"
-
-          CIBW_ARCHS_LINUX: x86_64
-          CIBW_ARCHS_MACOS: x86_64
-
-          CIBW_MANYLINUX_X86_64_IMAGE:  ${{ matrix.x64image }}
-          CIBW_MANYLINUX_I686_IMAGE:    manylinux2014
-          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
-
-      - name: Check wheelhouse
-        run:  devtools/artifactname.py wheelhouse/*.whl >> $GITHUB_ENV
-        env:
-          NAMETAG: ${{ matrix.nametag }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.artifactname }}
-          path: wheelhouse/*.whl
-
   build_sdist:
     runs-on: ubuntu-latest
     env:
@@ -89,7 +39,7 @@ jobs:
           path: dist/pysam-*.tar.gz
 
   upload_pypi:
-    needs: [build_wheels, build_sdist]
+    needs: [build_sdist]
     runs-on: ubuntu-latest
     environment: ${{ github.ref_type == 'tag' && 'pypi' || 'testpypi' }}
 
