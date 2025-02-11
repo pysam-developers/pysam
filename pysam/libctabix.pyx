@@ -658,6 +658,12 @@ cdef class TabixIterator:
 
         return retval
 
+    def _itr_error(self, err: int):
+        if err == -5:
+            return IOError("iteration on closed file")
+        else:
+            return ValueError(f"iteration failed (error code {err})")
+
     def __next__(self): 
         """python version of next().
 
@@ -665,10 +671,8 @@ cdef class TabixIterator:
         """
         
         cdef int retval = self.__cnext__()
-        if retval == -5:
-            raise IOError("iteration on closed file")
-        elif retval < 0:
-            raise StopIteration
+        if retval < 0:
+            raise StopIteration if retval == -1 else self._itr_error(retval)
 
         return charptr_to_str(self.buffer.s, self.encoding)
 
@@ -708,10 +712,8 @@ cdef class TabixIteratorParsed(TabixIterator):
         """
         
         cdef int retval = self.__cnext__()
-        if retval == -5:
-            raise IOError("iteration on closed file")
-        elif retval < 0:
-            raise StopIteration
+        if retval < 0:
+            raise StopIteration if retval == -1 else self._itr_error(retval)
 
         return self.parser.parse(self.buffer.s,
                                  self.buffer.l)
