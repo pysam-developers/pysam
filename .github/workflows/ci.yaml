@@ -84,7 +84,7 @@ jobs:
             mingw-w64-ucrt-x86_64-python-pytest
             mingw-w64-ucrt-x86_64-xz
             mingw-w64-ucrt-x86_64-openssl
-            mingw-w64-ucrt-x86_64-libtre-git
+            mingw-w64-ucrt-x86_64-libtre
             mingw-w64-ucrt-x86_64-libiconv
 
       - name: Build (Windows)
