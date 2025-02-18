@@ -14,6 +14,8 @@ jobs:
           - os: windows
             msystem: ucrt64
         exclude:
+          - os: ubuntu
+            python-version: '3.7'
           # Run only the latest few 3.x versions on macOS
           - os: macos
             python-version: '3.7'
@@ -186,40 +188,7 @@ jobs:
           retention-days: 14
 
 
-  conda:
-    timeout-minutes: 20
-    runs-on: ${{ matrix.os }}-latest
-    strategy:
-      matrix:
-        os: [ubuntu]
-        python-version: ['3.7']
-    defaults:
-      run:
-        shell: bash -l {0}  # needed for conda activation
-    env:
-      HTSLIB_CONFIGURE_OPTIONS: "--disable-libcurl"
-
-    steps:
-      - name: Checkout pysam
-        uses: actions/checkout@v4
-
-      - uses: conda-incubator/setup-miniconda@v2
-        with:
-          channel-priority: strict
-          activate-environment: testenv
-          auto-activate-base: false
-          use-only-tar-bz2: true
-
-      - name: Set up Conda and Python ${{ matrix.python-version }}
-        run: |
-          conda config --add channels bioconda --add channels conda-forge
-          conda install python=${{ matrix.python-version }} cython
-
-      - name: Build (directly from checkout)
-        run:  python setup.py install
-
-      - name: Install test prerequisites via Conda
-        run:  conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest
+  
 
       - name: Run tests
         run:  REF_PATH=':' pytest
