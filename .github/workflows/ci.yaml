@@ -38,6 +38,7 @@ jobs:
           brew unlink xz || true  # Remove brewed liblzma as it is not multiarch
 
       - name: Install MSYS2 build prerequisites
+        id: msys2
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
@@ -61,6 +62,12 @@ jobs:
             mingw-w64-ucrt-x86_64-libiconv
 
       - name: Build (directly from checkout)
+        if: runner.os != 'Windows'
+        run:  python setup.py build
+
+      - name: Build (directly from checkout)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run:  python setup.py build
 
       - name: Install test prerequisites
