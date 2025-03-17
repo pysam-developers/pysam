@@ -37,6 +37,29 @@ jobs:
         run: |
           brew unlink xz || true  # Remove brewed liblzma as it is not multiarch
 
+      - name: Install MSYS2 build prerequisites
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ucrt64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cython
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-python-setuptools
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-libdeflate
+            mingw-w64-ucrt-x86_64-bzip2
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-python-pytest
+            mingw-w64-ucrt-x86_64-xz
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-libtre
+            mingw-w64-ucrt-x86_64-libiconv
+
       - name: Build (directly from checkout)
         run:  python setup.py build
 
