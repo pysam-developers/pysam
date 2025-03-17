@@ -273,6 +273,55 @@ class TestAlignedSegment(ReadTest):
 
                     self.assertEqual(qual, b'\xff' * l_seq)
 
+    @unittest.expectedFailure  # Setting to None does not reset cached value
+    def testClearQual(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = pysam.qualitystring_to_array("qrst")
+        a.query_qualities = None
+        self.assertIsNone(a.query_qualities)
+
+    def testUpdateQualArrayB(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = array.array('B', [80, 81, 82, 83])
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.qual, "qrst")
+
+    @unittest.expectedFailure  # Cached value produces 16 character a.qual instead of 4 characters
+    def testUpdateQualArrayI(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = array.array('I', [80, 81, 82, 83])
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.qual, "qrst")
+
+    @unittest.expectedFailure  # Cached value modified by qual.pop()
+    def testUpdateQualList(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        qual = [80, 81, 82, 83]
+        a.query_qualities = qual
+        qual.pop()
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.qual, "qrst")
+
+    @unittest.expectedFailure  # Can't set query_qualities from a string
+    def testUpdateQualString(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = "qrst"  # TypeError: cannot use a str to initialize an array with typecode 'B'
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.qual, "qrst")
+
+    @unittest.expectedFailure  # Can't construct a.qual based on cached value (which is a tuple)
+    def testUpdateQualTuple(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = (80, 81, 82, 83)
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.qual, "qrst")
+
     def testLargeRead(self):
         """build an example read."""
 
