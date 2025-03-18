@@ -22,7 +22,6 @@ import re
 import subprocess
 import sys
 import sysconfig
-import distutils
 from contextlib import contextmanager
 from setuptools import setup, Command
 from setuptools.command.sdist import sdist
