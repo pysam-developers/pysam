@@ -71,7 +71,7 @@ jobs:
       - name: Build (directly from checkout)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run:  ${{ steps.setup-python.outputs.python-path }} setup.py build
+        run:  sh -c '$(cygpath "${{ steps.setup-python.outputs.python-path }}") setup.py build'
 
       - name: Install test prerequisites
         run: |
