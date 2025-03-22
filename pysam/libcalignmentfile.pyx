@@ -302,7 +302,7 @@ cdef class AlignmentHeader(object):
                 data = header_dict[record]
                 if not isinstance(data, VALID_HEADER_TYPES[record]):
                     raise ValueError(
-                        "invalid type for record %s: %s, expected %s".format(
+                        "invalid type for record {}: {}, expected {}".format(
                             record, type(data), VALID_HEADER_TYPES[record]))
                 if isinstance(data, Mapping):
                     lines.append(build_header_line(data, record))
