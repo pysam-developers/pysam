@@ -69,6 +69,12 @@ extern int @pysam@_main(int argc, char *argv[]);
 #define bam_smpl_destroy @pysam@_bam_smpl_destroy
 #define read_file_list @pysam@_read_file_list
 
+/*! A non-static error() function name is used in bcftools, which collides
+    with glibc's error() function and leads to the wrong function being called
+    on some platforms. #define this name with a prefix to avoid this collision.
+ */
+#define error @pysam@_error
+
 #endif
 
 #endif
