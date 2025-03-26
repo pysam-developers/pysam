@@ -291,6 +291,16 @@ class EmptyIndexTest(unittest.TestCase):
                           "exdoesntexist.bam")
 
 
+class ExerciseSubcommands(unittest.TestCase):
+    def testFailingSamtools(self):
+        with self.assertRaises(pysam.SamtoolsError):
+            pysam.samtools.view("nonexistent.bam")
+
+    def testFailingBCFtools(self):
+        with self.assertRaises(pysam.SamtoolsError):
+            pysam.bcftools.view("nonexistent.vcf")
+
+
 if sys.platform != "darwin":
     # fails with segfault with htslib 1.5 on Osx, an issue with flockfile
     # issue seems to be with repeated calls to interface
