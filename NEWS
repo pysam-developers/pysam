@@ -1,6 +1,61 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.23.1
+==============
+
+.. rubric:: 28 May 2025
+
+This is a bugfix release, still wrapping htslib/samtools/bcftools 1.21.
+
+It has been tested with Python versions 3.8 through 3.13, and wheels are
+available via PyPI_ for all of those Python versions. Wheels are built for
+macOS and Linux (manylinux_2_28 and musllinux_1_2) on both ARM and x86-64.
+
+The final pysam release that supported Python 3.6 and 3.7 was v0.23.0.
+
+Bugs fixed:
+
+* Worked around Cython 3.1.0 behaviour change so that ``pysam.CMATCH`` etc
+  remain as synonyms for ``pysam.CIGAR_OPS.CMATCH`` etc. Note that a future
+  release will remove these synonyms to comply with Cython's new convention.
+  (#1339, PR #1340, reported by Adam Taranto, Andy Bond, et al)
+
+* The Python interpreter no longer exits abruptly on x86-64 Linux
+  when ``pysam.bcftools.*()`` commands terminate with error messages.
+  (#1333, #1335, reported by Maximilian Blacher and Ben Habermeyer)
+
+* Fixed :meth:`.AlignedSegment.get_aligned_pairs` type hint, which now
+  has overloaded hints reflecting the different tuples returned.
+  (PR #1342, thanks to Gosuke Shibahara)
+
+* Corrected "invalid type for record" exception message.
+  (PR #1334, thanks to Gaik Tamazian)
+
+* Fixed :class:`.TabixIterator` error handling. (#1328, reported by @Fan-iX)
+
+* Fixed bugs in the caching of :attr:`.AlignedSegment.query_sequence` and
+  :attr:`.AlignedSegment.query_qualities` values.
+
+* Pysam once again builds on CentOS 7, as it now works around limitations
+  in that obsolete platform's obsolete GCC 4.8.x system compiler.
+  (#1327, reported by Mario Fasold)
+
+New functionality:
+
+* New :attr:`.AlignedSegment.query_qualities_str` property enables
+  accessing the QUAL field as an ASCII-encoded base quality string.
+  The existing :attr:`.AlignedSegment.query_qualities` property can
+  now take an array or such a string when setting the value.
+  (PR #1324, PR #1341, requested by Nils Homer)
+
+* Improved :attr:`.AlignedSegment.cigarstring` performance.
+  (PR #1295, thanks to @limwz01)
+
+* Wheels are now built for musllinux in addition to manylinux and macOS.
+  (Requested by Nils Homer)
+
+
 Release 0.23.0
 ==============
 
