@@ -1298,8 +1298,9 @@ cdef class AlignedSegment:
             cdef int ret
             cdef int pos = 0
             cdef int size = 16
-            cdef char buf[16]
-            cdef char *s = buf
+            cdef kstring_t buf
+            buf.l = buf.m = 0
+            buf.s = NULL
 
             src = self._delegate
             if pysam_get_n_cigar(src) == 0:
@@ -1310,22 +1311,18 @@ cdef class AlignedSegment:
                 for k from 0 <= k < pysam_get_n_cigar(src):
                     op = cigar_p[k] & BAM_CIGAR_MASK
                     l = cigar_p[k] >> BAM_CIGAR_SHIFT
-                    ret = snprintf(s + pos, size - pos, "%u%c", l, CODE2CIGAR[op])
-                    if ret >= size - pos:
-                        pos = 0
-                        size = size * 2
-                        if s != buf:
-                            free(s)
-                        s = <char *>malloc(size)
-                        break
-                    pos += ret
+                    kputl(l, &buf)
+                    kputc(<int>(CODE2CIGAR[op]), &buf)
                 else:
                     break
-            try:
-                return s[:pos].decode("utf8")
-            finally:
-                if s != buf:
-                    free(s)
+
+            ret = force_str(buf.s[:buf.l])
+
+            if buf.m:
+                free(buf.s)
+
+            return ret
+
         def __set__(self, cigar):
             if cigar is None or len(cigar) == 0 or cigar == "*":
                 self.cigartuples = []
