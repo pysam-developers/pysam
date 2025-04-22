@@ -1316,10 +1316,11 @@ cdef class AlignedSegment:
                 else:
                     break
 
-            ret = force_str(buf.s[:buf.l])
-
-            if buf.m:
-                free(buf.s)
+            try:
+                return buf.s[:buf.l].decode("utf8")
+            finally:
+                if buf.m:
+                    free(buf.s)
 
             return ret
 
