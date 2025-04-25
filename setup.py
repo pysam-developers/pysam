@@ -28,9 +28,9 @@ from setuptools.command.sdist import sdist
 from setuptools.extension import Extension
 
 try:
-    from setuptools.errors import LinkError
+    from setuptools.errors import CompileError, LinkError
 except ImportError:
-    from distutils.errors import LinkError
+    from distutils.errors import CompileError, LinkError
 
 try:
     from Cython.Distutils import build_ext
@@ -272,6 +272,22 @@ class cy_build_ext(build_ext):
 
         if errors > 0: raise LinkError("symbols defined in multiple extensions")
 
+    def c99_compile_args(self):
+        """Determines whether any compiler flags are needed to ensure C99 compilation."""
+        compiler = getattr(self.compiler, "compiler", "C compiler")
+        if isinstance(compiler, list): compiler = compiler[0]
+        log.info("checking for %s option to enable C99 features...", compiler)
+        for flags in [None, ["-std=c99"], ["-std=gnu99"]]:
+            try:
+                self.compiler.compile(["pysam/conftest_cstd.c"], output_dir=self.build_temp, extra_preargs=flags)
+                log.info("%s option to enable C99 features: %s", compiler, " ".join(flags) if flags else "none needed")
+                return flags
+            except CompileError:
+                log.info("(ignoring errors from test probes)")
+
+        log.error("%s cannot compile C99 source code", compiler)
+        return None
+
     def run(self):
         if sys.platform == 'darwin':
             ldshared = os.environ.get('LDSHARED', sysconfig.get_config_var('LDSHARED'))
@@ -285,6 +301,19 @@ class cy_build_ext(build_ext):
             log.warning("skipping symbol collision check (invoking nm failed: %s)", e)
         except subprocess.CalledProcessError:
             log.warning("skipping symbol collision check (invoking nm failed)")
+
+    def build_extensions(self):
+        c99_flags = self.c99_compile_args()
+        if c99_flags:
+            executables = {}
+            for executable in ["compiler", "compiler_so"]:
+                command = getattr(self.compiler, executable, None)
+                if command:
+                    if isinstance(command, list):  executables[executable] = command + c99_flags
+                    elif isinstance(command, str): executables[executable] = f"{command} {' '.join(c99_flags)}"
+            self.compiler.set_executables(**executables)
+
+        super().build_extensions()
 
     def build_extension(self, ext):
 
