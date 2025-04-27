@@ -101,6 +101,7 @@ cdef class IteratorRowSelection(IteratorRow):
 
 cdef class IteratorRowFilter(IteratorRow):
     cdef int flag_filter
+    cdef int flag_require
     cdef bam1_t * getCurrent(self)
     cdef int cnext(self)
 

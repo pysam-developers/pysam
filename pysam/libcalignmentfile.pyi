@@ -168,6 +168,7 @@ class AlignmentFile(HTSFile):
     def filter(
         self,
         flag_filter: int = ...,
+        flag_require: int = ...,
         multiple_iterators: bool = ...,
     ) -> IteratorRowFilter: ...
     def close(self) -> None: ...

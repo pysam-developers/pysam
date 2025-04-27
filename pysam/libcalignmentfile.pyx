@@ -1664,6 +1664,26 @@ cdef class AlignmentFile(HTSFile):
         return res
 
     def filter(self, **kwargs):
+        """iterate and filter segments in the file.
+
+        Parameters
+        ----------
+
+        flag_filter : int
+
+           ignore reads where any of the bits in the flag are set. The default 
+           is BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP.
+
+        flag_require : int
+
+           only use reads where certain flags are set. The default is 0.
+
+        Returns
+        -------
+
+        an iterator over filtered rows. : IteratorRowFilter
+
+        """
         if not self.is_open:
             raise ValueError("I/O operation on closed file")
         return IteratorRowFilter(self, **kwargs)
@@ -2328,7 +2348,7 @@ cdef class IteratorRowSelection(IteratorRow):
 
 
 cdef class IteratorRowFilter(IteratorRow):
-    """*(AlignmentFile samfile, int flag_filter = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP, bool multiple_iterators=False)*
+    """*(AlignmentFile samfile, int flag_filter = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP, int flag_require = 0, bool multiple_iterators=False)*
 
     iterates over reads that have none of the given flags set.
 
@@ -2340,11 +2360,13 @@ cdef class IteratorRowFilter(IteratorRow):
         self, 
         AlignmentFile samfile, 
         int flag_filter = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP, 
+        int flag_require = 0,
         bint multiple_iterators=True
     ):
         super().__init__(samfile, multiple_iterators=multiple_iterators)
 
         self.flag_filter = flag_filter
+        self.flag_require = flag_require
 
     def __iter__(self):
         return self
@@ -2362,6 +2384,8 @@ cdef class IteratorRowFilter(IteratorRow):
                 if ret < 0:
                     break
                 if self.b.core.flag & self.flag_filter:
+                    continue
+                elif self.flag_require and not (self.b.core.flag & self.flag_require):
                     continue
                 break
         return ret

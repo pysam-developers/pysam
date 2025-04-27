@@ -2425,7 +2425,7 @@ class TestAlignmentFileFilter(unittest.TestCase):
                 total += 1
         with pysam.AlignmentFile(self.filename, self.mode) as samfile2:
             n2 = 0
-            for read in samfile1.filter(0):
+            for read in samfile2.filter(flag_filter=0):
                 n2 += 1
         self.assertEqual(total, n2)
 
@@ -2436,13 +2436,26 @@ class TestAlignmentFileFilter(unittest.TestCase):
             for read in samfile1:
                 n1 += read.is_mapped
                 total += 1
-        self.assertLowerEqual(n1, total)
+        self.assertLessEqual(n1, total)
         with pysam.AlignmentFile(self.filename, self.mode) as samfile2:
             n2 = 0
-            for read in samfile1.filter(pysam.BAM_FUNMAP):
+            for read in samfile2.filter(flag_filter=pysam.FUNMAP):
                 n2 += 1
         self.assertEqual(n1, n2)
 
+    def testUnmapped(self):
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            n1 = 0
+            total = 0
+            for read in samfile1:
+                n1 += not read.is_mapped
+                total += 1
+        self.assertLessEqual(n1, total)
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile2:
+            n2 = 0
+            for read in samfile2.filter(flag_filter=0, flag_require=pysam.FUNMAP):
+                n2 += 1
+        self.assertEqual(n1, n2)
 
 # SAM writing fails, as query length is 0
 # class TestSanityCheckingSAM(TestSanityCheckingSAM):
