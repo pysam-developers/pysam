@@ -1321,7 +1321,7 @@ cdef class AlignedSegment:
                 return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
 
         def __set__(self, cigar):
-            if cigar is None or len(cigar) == 0:
+            if cigar is None or len(cigar) == 0 or cigar == "*":
                 self.cigartuples = []
             else:
                 parts = CIGAR_REGEX.findall(cigar)
@@ -1443,7 +1443,7 @@ cdef class AlignedSegment:
             cdef int l, k
             cdef Py_ssize_t nbytes_new, nbytes_old
 
-            if seq == None:
+            if seq is None or len(seq) == 0 or seq == "*":
                 l = 0
             else:
                 l = len(seq)

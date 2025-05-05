@@ -236,6 +236,23 @@ class TestAlignedSegment(ReadTest):
 
         self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), s[5:10])
 
+    def testClearSequence(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        self.assertEqual(a.query_sequence, "ATGC")
+        a.query_sequence = None
+        self.assertEqual(a.query_length, 0)
+
+        a.query_sequence = "ATGC"
+        self.assertEqual(a.query_sequence, "ATGC")
+        a.query_sequence = ""
+        self.assertEqual(a.query_length, 0)
+
+        a.query_sequence = "ATGC"
+        self.assertEqual(a.query_sequence, "ATGC")
+        a.query_sequence = "*"
+        self.assertEqual(a.query_length, 0)
+
     def testUpdateQual(self):
         """Ensure SEQ and QUAL updates leading to absent QUAL set all bytes to 0xff"""
 
@@ -1002,6 +1019,16 @@ class TestCigar(ReadTest):
         self.assertEqual(r.cigartuples, [(0, 20), (2, 10), (0, 20)])
         # unsetting cigar string
         r.cigarstring = None
+        self.assertEqual(r.cigarstring, None)
+
+        r.cigarstring = "40M"
+        self.assertEqual(r.cigartuples, [(0, 40)])
+        r.cigarstring = ""
+        self.assertEqual(r.cigarstring, None)
+
+        r.cigarstring = "40M"
+        self.assertEqual(r.cigartuples, [(0, 40)])
+        r.cigarstring = "*"
         self.assertEqual(r.cigarstring, None)
 
     def testCigar(self):
