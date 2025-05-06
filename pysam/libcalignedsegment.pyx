@@ -65,7 +65,6 @@ cimport cython
 from cpython cimport array as c_array
 from cpython cimport PyBytes_FromStringAndSize
 from libc.string cimport memset, strchr
-from cpython cimport array as c_array
 from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
@@ -556,28 +555,6 @@ cdef inline bytes getSequenceInRange(bam1_t *src,
     return charptr_to_bytes(seq)
 
 
-cdef inline object getQualitiesInRange(bam1_t *src,
-                                       uint32_t start,
-                                       uint32_t end):
-    """return python array of quality values from a bam1_t object"""
-
-    cdef uint8_t * p
-    cdef uint32_t k
-
-    p = pysam_bam_get_qual(src)
-    if p[0] == 0xff:
-        return None
-
-    # 'B': unsigned char
-    cdef c_array.array result = array.array('B', [0])
-    c_array.resize(result, end - start)
-
-    # copy data
-    memcpy(result.data.as_voidptr, <void*>&p[start], end - start)
-
-    return result
-
-
 #####################################################################
 ## factory methods for instantiating extension classes
 cdef class AlignedSegment
@@ -588,6 +565,7 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
     dest.header = header
+    dest._clear_cached_query_qualities()
     return dest
 
 
@@ -971,8 +949,7 @@ cdef class AlignedSegment:
         self._delegate.core.mpos = -1
 
         # caching for selected fields
-        self.cache_query_qualities = None
-        self.cache_query_alignment_qualities = None
+        self._clear_cached_query_qualities()
         self.cache_query_sequence = None
         self.cache_query_alignment_sequence = None
 
@@ -1122,6 +1099,7 @@ cdef class AlignedSegment:
         cdef AlignedSegment dest = cls.__new__(cls)
         dest._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         dest.header = header
+        dest._clear_cached_query_qualities()
 
         cdef kstring_t line
         line.l = line.m = len(sam)
@@ -1485,10 +1463,11 @@ cdef class AlignedSegment:
                 memset(p, 0xff, l)
 
             self.cache_query_sequence = force_str(seq)
+            self._clear_cached_query_qualities()
 
-            # clear cached values for quality values
-            self.cache_query_qualities = None
-            self.cache_query_alignment_qualities = None
+    cdef void _clear_cached_query_qualities(self):
+        self.cache_query_qualities = NotImplemented
+        self.cache_query_alignment_qualities = NotImplemented
 
     property query_qualities:
         """read sequence base qualities, including :term:`soft clipped` bases 
@@ -1508,55 +1487,49 @@ cdef class AlignedSegment:
 
         """
         def __get__(self):
-
-            if self.cache_query_qualities:
+            if self.cache_query_qualities is not NotImplemented:
                 return self.cache_query_qualities
 
-            cdef bam1_t * src
-            cdef char * q
+            cdef bam1_t *src = self._delegate
+            cdef int qual_len = src.core.l_qseq
+            cdef uint8_t *qual = pysam_bam_get_qual(src)
 
-            src = self._delegate
-
-            if src.core.l_qseq == 0:
+            if qual_len == 0 or qual[0] == 0xff:
+                self.cache_query_qualities = None
                 return None
 
-            self.cache_query_qualities = getQualitiesInRange(src, 0, src.core.l_qseq)
-            return self.cache_query_qualities
+            cdef c_array.array qual_array = array.array('B')
+            c_array.resize(qual_array, qual_len)
+            memcpy(qual_array.data.as_uchars, qual, qual_len)
+            self.cache_query_qualities = qual_array
+            return qual_array
 
-        def __set__(self, qual):
+        def __set__(self, new_qual):
+            cdef bam1_t *src = self._delegate
+            cdef int qual_len = src.core.l_qseq
+            cdef uint8_t *qual = pysam_bam_get_qual(src)
 
-            # note that memory is already allocated via setting the sequence
-            # hence length match of sequence and quality needs is checked.
-            cdef bam1_t * src
-            cdef uint8_t * p
-            cdef int l
-
-            src = self._delegate
-            p = pysam_bam_get_qual(src)
-            if qual is None or len(qual) == 0:
-                # if absent and there is a sequence: set to 0xff
-                memset(p, 0xff, src.core.l_qseq)
+            cdef int new_qual_len = len(new_qual) if new_qual is not None else 0
+            if new_qual_len == 0:
+                if qual_len != 0: memset(qual, 0xff, qual_len)
+                self._clear_cached_query_qualities()
                 return
 
-            # check for length match
-            l = len(qual)
-            if src.core.l_qseq != l:
-                raise ValueError(
-                    "quality and sequence mismatch: %i != %i" %
-                    (l, src.core.l_qseq))
+            if new_qual_len != qual_len:
+                raise ValueError(f"quality ({new_qual_len}) and sequence ({qual_len}) length mismatch")
 
-            # create a python array object filling it
-            # with the quality scores
+            if isinstance(new_qual, array.array) and new_qual.typecode == 'B':
+                memcpy(qual, (<c_array.array> new_qual).data.as_uchars, qual_len)
+                self._clear_cached_query_qualities()
+                return
 
-            # NB: should avoid this copying if qual is
-            # already of the correct type.
-            cdef c_array.array result = c_array.array('B', qual)
+            cdef uint8_t *s = qual
+            cdef uint8_t q
+            for q in new_qual:
+                s[0] = q
+                s += 1
 
-            # copy data
-            memcpy(p, result.data.as_voidptr, l)
-
-            # save in cache
-            self.cache_query_qualities = qual
+            self._clear_cached_query_qualities()
 
     property bin:
         """properties bin"""
@@ -1766,25 +1739,20 @@ cdef class AlignedSegment:
         needs to be subtracted.
 
         This property is read-only.
-
         """
         def __get__(self):
-
-            if self.cache_query_alignment_qualities:
+            if self.cache_query_alignment_qualities is not NotImplemented:
                 return self.cache_query_alignment_qualities
 
-            cdef bam1_t * src
-            cdef uint32_t start, end
-
-            src = self._delegate
-
-            if src.core.l_qseq == 0:
+            cdef object full_qual = self.query_qualities
+            if full_qual is None:
+                self.cache_query_alignment_qualities = None
                 return None
 
-            start = getQueryStart(src)
-            end   = getQueryEnd(src)
-            self.cache_query_alignment_qualities = \
-                getQualitiesInRange(src, start, end)
+            cdef bam1_t *src = self._delegate
+            cdef uint32_t start = getQueryStart(src)
+            cdef uint32_t end = getQueryEnd(src)
+            self.cache_query_alignment_qualities = full_qual[start:end]
             return self.cache_query_alignment_qualities
 
     property query_alignment_start:

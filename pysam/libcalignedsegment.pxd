@@ -43,6 +43,7 @@ cdef class AlignedSegment:
     # caching of array properties for quick access
     cdef object cache_query_qualities
     cdef object cache_query_alignment_qualities
+    cdef void _clear_cached_query_qualities(self)
     cdef object cache_query_sequence
     cdef object cache_query_alignment_sequence
 

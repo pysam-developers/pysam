@@ -290,7 +290,6 @@ class TestAlignedSegment(ReadTest):
 
                     self.assertEqual(qual, b'\xff' * l_seq)
 
-    @unittest.expectedFailure  # Setting to None does not reset cached value
     def testClearQual(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
@@ -305,7 +304,6 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(len(a.query_qualities), 4)
         self.assertEqual(a.qual, "qrst")
 
-    @unittest.expectedFailure  # Cached value produces 16 character a.qual instead of 4 characters
     def testUpdateQualArrayI(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
@@ -313,7 +311,6 @@ class TestAlignedSegment(ReadTest):
         self.assertEqual(len(a.query_qualities), 4)
         self.assertEqual(a.qual, "qrst")
 
-    @unittest.expectedFailure  # Cached value modified by qual.pop()
     def testUpdateQualList(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
@@ -327,11 +324,10 @@ class TestAlignedSegment(ReadTest):
     def testUpdateQualString(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
-        a.query_qualities = "qrst"  # TypeError: cannot use a str to initialize an array with typecode 'B'
+        a.query_qualities = "qrst"  # TypeError: an integer is required (in loop)
         self.assertEqual(len(a.query_qualities), 4)
         self.assertEqual(a.qual, "qrst")
 
-    @unittest.expectedFailure  # Can't construct a.qual based on cached value (which is a tuple)
     def testUpdateQualTuple(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
