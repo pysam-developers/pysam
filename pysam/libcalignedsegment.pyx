@@ -2822,34 +2822,24 @@ cdef class AlignedSegment:
         instead."""
         def __get__(self):
             return self.query_alignment_sequence
-        def __set__(self, v):
-            self.query_alignment_sequence = v
     property qqual:
         """deprecated, use :attr:`query_alignment_qualities` 
         instead."""
         def __get__(self):
             return array_to_qualitystring(self.query_alignment_qualities)
-        def __set__(self, v):
-            self.query_alignment_qualities = qualitystring_to_array(v)
     property qstart:
         """deprecated, use :attr:`query_alignment_start` instead."""
         def __get__(self):
             return self.query_alignment_start
-        def __set__(self, v):
-            self.query_alignment_start = v
     property qend:
         """deprecated, use :attr:`query_alignment_end` instead."""
         def __get__(self):
             return self.query_alignment_end
-        def __set__(self, v):
-            self.query_alignment_end = v
     property qlen:
         """deprecated, use :attr:`query_alignment_length` 
         instead."""
         def __get__(self):
             return self.query_alignment_length
-        def __set__(self, v):
-            self.query_alignment_length = v
     property mrnm:
         """deprecated, use :attr:`next_reference_id` instead."""
         def __get__(self):
