@@ -297,19 +297,40 @@ class TestAlignedSegment(ReadTest):
         a.query_qualities = None
         self.assertIsNone(a.query_qualities)
 
+    def testClearQualStr(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities_str = "qrst"
+        self.assertEqual(a.query_qualities, pysam.qualitystring_to_array("qrst"))
+        self.assertEqual(a.query_qualities_str, "qrst")
+
+        a.query_qualities_str = None
+        self.assertIsNone(a.query_qualities)
+        self.assertIsNone(a.query_qualities_str)
+
+        a.query_qualities_str = "qrst"
+        a.query_qualities_str = ""
+        self.assertIsNone(a.query_qualities)
+        self.assertIsNone(a.query_qualities_str)
+
+        a.query_qualities_str = "qrst"
+        a.query_qualities_str = "*"
+        self.assertIsNone(a.query_qualities)
+        self.assertIsNone(a.query_qualities_str)
+
     def testUpdateQualArrayB(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
         a.query_qualities = array.array('B', [80, 81, 82, 83])
         self.assertEqual(len(a.query_qualities), 4)
-        self.assertEqual(a.qual, "qrst")
+        self.assertEqual(a.query_qualities_str, "qrst")
 
     def testUpdateQualArrayI(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
         a.query_qualities = array.array('I', [80, 81, 82, 83])
         self.assertEqual(len(a.query_qualities), 4)
-        self.assertEqual(a.qual, "qrst")
+        self.assertEqual(a.query_qualities_str, "qrst")
 
     def testUpdateQualList(self):
         a = pysam.AlignedSegment()
@@ -318,14 +339,22 @@ class TestAlignedSegment(ReadTest):
         a.query_qualities = qual
         qual.pop()
         self.assertEqual(len(a.query_qualities), 4)
-        self.assertEqual(a.qual, "qrst")
+        self.assertEqual(a.query_qualities_str, "qrst")
 
-    @unittest.expectedFailure  # Can't set query_qualities from a string
     def testUpdateQualString(self):
         a = pysam.AlignedSegment()
         a.query_sequence = "ATGC"
-        a.query_qualities = "qrst"  # TypeError: an integer is required (in loop)
+        a.query_qualities = "qrst"
         self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
+        self.assertEqual(a.qual, "qrst")
+
+    def testUpdateQualString2(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities_str = "qrst"
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
         self.assertEqual(a.qual, "qrst")
 
     def testUpdateQualTuple(self):
@@ -333,7 +362,7 @@ class TestAlignedSegment(ReadTest):
         a.query_sequence = "ATGC"
         a.query_qualities = (80, 81, 82, 83)
         self.assertEqual(len(a.query_qualities), 4)
-        self.assertEqual(a.qual, "qrst")
+        self.assertEqual(a.query_qualities_str, "qrst")
 
     def testLargeRead(self):
         """build an example read."""
