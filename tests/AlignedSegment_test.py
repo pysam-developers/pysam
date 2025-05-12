@@ -253,7 +253,6 @@ class TestAlignedSegment(ReadTest):
         a.query_sequence = "*"
         self.assertEqual(a.query_length, 0)
 
-    @unittest.expectedFailure  # Updating query_sequence does not reset cached query_alignment_sequence
     def testUpdateSequenceEffects1(self):
         a = self.build_read()
         a.query_sequence = "ATGCATGC"
@@ -263,7 +262,6 @@ class TestAlignedSegment(ReadTest):
         a.query_sequence = "AATTGGCC"
         self.assertEqual(a.query_alignment_sequence, "ATTGG")
 
-    @unittest.expectedFailure  # Clearing query_sequence via "*" caches an incorrect query_sequence
     def testUpdateSequenceEffects2(self):
         a = self.build_read()
         a.query_sequence = "ATGCATGC"

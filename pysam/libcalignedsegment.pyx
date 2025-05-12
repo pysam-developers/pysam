@@ -563,6 +563,7 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
     dest.header = header
+    dest._clear_cached_query_sequences()
     dest._clear_cached_query_qualities()
     return dest
 
@@ -947,9 +948,8 @@ cdef class AlignedSegment:
         self._delegate.core.mpos = -1
 
         # caching for selected fields
+        self._clear_cached_query_sequences()
         self._clear_cached_query_qualities()
-        self.cache_query_sequence = None
-        self.cache_query_alignment_sequence = None
 
         self.header = header
 
@@ -1097,6 +1097,7 @@ cdef class AlignedSegment:
         cdef AlignedSegment dest = cls.__new__(cls)
         dest._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         dest.header = header
+        dest._clear_cached_query_sequences()
         dest._clear_cached_query_qualities()
 
         cdef kstring_t line
@@ -1379,6 +1380,10 @@ cdef class AlignedSegment:
         def __set__(self, isize):
             self._delegate.core.isize = isize
 
+    cdef void _clear_cached_query_sequences(self):
+        self.cache_query_sequence = NotImplemented
+        self.cache_query_alignment_sequence = NotImplemented
+
     property query_sequence:
         """read sequence bases, including :term:`soft clipped` bases
         (None if not present).
@@ -1396,7 +1401,7 @@ cdef class AlignedSegment:
         has aligned the read to the reverse strand.)
         """
         def __get__(self):
-            if self.cache_query_sequence:
+            if self.cache_query_sequence is not NotImplemented:
                 return self.cache_query_sequence
 
             cdef bam1_t * src
@@ -1404,6 +1409,7 @@ cdef class AlignedSegment:
             src = self._delegate
 
             if src.core.l_qseq == 0:
+                self.cache_query_sequence = None
                 return None
 
             self.cache_query_sequence = force_str(getSequenceInRange(
@@ -1460,7 +1466,7 @@ cdef class AlignedSegment:
                 p = pysam_bam_get_qual(src)
                 memset(p, 0xff, l)
 
-            self.cache_query_sequence = force_str(seq)
+            self._clear_cached_query_sequences()
             self._clear_cached_query_qualities()
 
     cdef void _clear_cached_query_qualities(self):
@@ -1765,7 +1771,7 @@ cdef class AlignedSegment:
         """
 
         def __get__(self):
-            if self.cache_query_alignment_sequence:
+            if self.cache_query_alignment_sequence is not NotImplemented:
                 return self.cache_query_alignment_sequence
 
             cdef bam1_t * src
@@ -1774,13 +1780,13 @@ cdef class AlignedSegment:
             src = self._delegate
 
             if src.core.l_qseq == 0:
+                self.cache_query_alignment_sequence = None
                 return None
 
             start = getQueryStart(src)
             end   = getQueryEnd(src)
 
-            self.cache_query_alignment_sequence = force_str(
-                getSequenceInRange(src, start, end))
+            self.cache_query_alignment_sequence = force_str(getSequenceInRange(src, start, end))
             return self.cache_query_alignment_sequence
 
     property query_alignment_qualities:
