@@ -253,6 +253,27 @@ class TestAlignedSegment(ReadTest):
         a.query_sequence = "*"
         self.assertEqual(a.query_length, 0)
 
+    @unittest.expectedFailure  # Updating query_sequence does not reset cached query_alignment_sequence
+    def testUpdateSequenceEffects1(self):
+        a = self.build_read()
+        a.query_sequence = "ATGCATGC"
+        a.cigarstring = "1S5M2S"
+        self.assertEqual(a.query_alignment_sequence, "TGCAT")
+
+        a.query_sequence = "AATTGGCC"
+        self.assertEqual(a.query_alignment_sequence, "ATTGG")
+
+    @unittest.expectedFailure  # Clearing query_sequence via "*" caches an incorrect query_sequence
+    def testUpdateSequenceEffects2(self):
+        a = self.build_read()
+        a.query_sequence = "ATGCATGC"
+        a.cigarstring = "1S5M2S"
+        self.assertEqual(a.query_alignment_sequence, "TGCAT")
+
+        a.query_sequence = "*"
+        self.assertIsNone(a.query_sequence)
+        self.assertIsNone(a.query_alignment_sequence)
+
     def testUpdateQual(self):
         """Ensure SEQ and QUAL updates leading to absent QUAL set all bytes to 0xff"""
 
