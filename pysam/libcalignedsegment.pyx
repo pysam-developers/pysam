@@ -3409,10 +3409,16 @@ cpdef enum SAM_FLAGS:
     FSUPPLEMENTARY = 2048
 
 
+# TODO Remove these and remove the enumerators from __all__
+globals().update(getattr(CIGAR_OPS, "__members__"))
+globals().update(getattr(SAM_FLAGS, "__members__"))
+
+
 __all__ = [
     "AlignedSegment",
     "PileupColumn",
     "PileupRead",
+    "CIGAR_OPS",
     "CMATCH",
     "CINS",
     "CDEL",
@@ -3423,6 +3429,7 @@ __all__ = [
     "CEQUAL",
     "CDIFF",
     "CBACK",
+    "SAM_FLAGS",
     "FPAIRED",
     "FPROPER_PAIR",
     "FUNMAP",
