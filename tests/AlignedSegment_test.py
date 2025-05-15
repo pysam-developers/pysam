@@ -236,6 +236,42 @@ class TestAlignedSegment(ReadTest):
 
         self.assertEqual(pysam.qualities_to_qualitystring(a.query_qualities), s[5:10])
 
+    def testClearSequence(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        self.assertEqual(a.query_sequence, "ATGC")
+        a.query_sequence = None
+        self.assertEqual(a.query_length, 0)
+
+        a.query_sequence = "ATGC"
+        self.assertEqual(a.query_sequence, "ATGC")
+        a.query_sequence = ""
+        self.assertEqual(a.query_length, 0)
+
+        a.query_sequence = "ATGC"
+        self.assertEqual(a.query_sequence, "ATGC")
+        a.query_sequence = "*"
+        self.assertEqual(a.query_length, 0)
+
+    def testUpdateSequenceEffects1(self):
+        a = self.build_read()
+        a.query_sequence = "ATGCATGC"
+        a.cigarstring = "1S5M2S"
+        self.assertEqual(a.query_alignment_sequence, "TGCAT")
+
+        a.query_sequence = "AATTGGCC"
+        self.assertEqual(a.query_alignment_sequence, "ATTGG")
+
+    def testUpdateSequenceEffects2(self):
+        a = self.build_read()
+        a.query_sequence = "ATGCATGC"
+        a.cigarstring = "1S5M2S"
+        self.assertEqual(a.query_alignment_sequence, "TGCAT")
+
+        a.query_sequence = "*"
+        self.assertIsNone(a.query_sequence)
+        self.assertIsNone(a.query_alignment_sequence)
+
     def testUpdateQual(self):
         """Ensure SEQ and QUAL updates leading to absent QUAL set all bytes to 0xff"""
 
@@ -272,6 +308,80 @@ class TestAlignedSegment(ReadTest):
                     qual = data[l_read_name + 4*n_cigar_op + ((l_seq+1) // 2):]
 
                     self.assertEqual(qual, b'\xff' * l_seq)
+
+    def testClearQual(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = pysam.qualitystring_to_array("qrst")
+        a.query_qualities = None
+        self.assertIsNone(a.query_qualities)
+
+    def testClearQualStr(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities_str = "qrst"
+        self.assertEqual(a.query_qualities, pysam.qualitystring_to_array("qrst"))
+        self.assertEqual(a.query_qualities_str, "qrst")
+
+        a.query_qualities_str = None
+        self.assertIsNone(a.query_qualities)
+        self.assertIsNone(a.query_qualities_str)
+
+        a.query_qualities_str = "qrst"
+        a.query_qualities_str = ""
+        self.assertIsNone(a.query_qualities)
+        self.assertIsNone(a.query_qualities_str)
+
+        a.query_qualities_str = "qrst"
+        a.query_qualities_str = "*"
+        self.assertIsNone(a.query_qualities)
+        self.assertIsNone(a.query_qualities_str)
+
+    def testUpdateQualArrayB(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = array.array('B', [80, 81, 82, 83])
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
+
+    def testUpdateQualArrayI(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = array.array('I', [80, 81, 82, 83])
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
+
+    def testUpdateQualList(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        qual = [80, 81, 82, 83]
+        a.query_qualities = qual
+        qual.pop()
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
+
+    def testUpdateQualString(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = "qrst"
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
+        self.assertEqual(a.qual, "qrst")
+
+    def testUpdateQualString2(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities_str = "qrst"
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
+        self.assertEqual(a.qual, "qrst")
+
+    def testUpdateQualTuple(self):
+        a = pysam.AlignedSegment()
+        a.query_sequence = "ATGC"
+        a.query_qualities = (80, 81, 82, 83)
+        self.assertEqual(len(a.query_qualities), 4)
+        self.assertEqual(a.query_qualities_str, "qrst")
 
     def testLargeRead(self):
         """build an example read."""
@@ -953,6 +1063,16 @@ class TestCigar(ReadTest):
         self.assertEqual(r.cigartuples, [(0, 20), (2, 10), (0, 20)])
         # unsetting cigar string
         r.cigarstring = None
+        self.assertEqual(r.cigarstring, None)
+
+        r.cigarstring = "40M"
+        self.assertEqual(r.cigartuples, [(0, 40)])
+        r.cigarstring = ""
+        self.assertEqual(r.cigarstring, None)
+
+        r.cigarstring = "40M"
+        self.assertEqual(r.cigartuples, [(0, 40)])
+        r.cigarstring = "*"
         self.assertEqual(r.cigarstring, None)
 
     def testCigar(self):

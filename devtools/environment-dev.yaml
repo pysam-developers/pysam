@@ -3,6 +3,6 @@ channels:
   - bioconda
 dependencies:
   - bzip2
-  - cython
+  - cython<3.1
   - setuptools
   - xz

@@ -28,7 +28,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython mypy pytest setuptools
+        run:  pip install 'cython<3.1' mypy pytest setuptools
 
       - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'
@@ -79,7 +79,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest
+        run:  pip install 'cython<3.1' pytest
 
       - name: Install build prerequisites
         if:   runner.os == 'Linux'

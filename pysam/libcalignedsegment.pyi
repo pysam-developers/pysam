@@ -83,6 +83,7 @@ class AlignedSegment:
     template_length: int
     query_sequence: Optional[str]
     query_qualities: Optional[array]
+    query_qualities_str: Optional[str]
     bin: int
     is_paired: bool
     is_proper_pair: bool
@@ -120,6 +121,8 @@ class AlignedSegment:
     def query_alignment_sequence(self) -> Optional[str]: ...
     @property
     def query_alignment_qualities(self) -> Optional[array]: ...
+    @property
+    def query_alignment_qualities_str(self) -> Optional[str]: ...
     @property
     def query_alignment_start(self) -> int: ...
     @property
