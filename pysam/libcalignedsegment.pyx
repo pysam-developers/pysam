@@ -75,6 +75,7 @@ from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 from pysam.libcutils cimport qualities_to_qualitystring, qualitystring_to_array, \
     array_to_qualitystring
+from libc.stdio cimport snprintf
 
 # Constants for binary tag conversion
 cdef char * htslib_types = 'cCsSiIf'
@@ -1313,12 +1314,38 @@ cdef class AlignedSegment:
         empty string.
         '''
         def __get__(self):
-            c = self.cigartuples
-            if c is None:
+            cdef uint32_t *cigar_p
+            cdef bam1_t *src
+            cdef uint32_t op, l
+            cdef int k
+            cdef int ret
+            cdef int pos = 0
+            cdef int size = 16
+            cdef kstring_t buf
+            buf.l = buf.m = 0
+            buf.s = NULL
+
+            src = self._delegate
+            if pysam_get_n_cigar(src) == 0:
                 return None
-            # reverse order
-            else:
-                return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
+
+            cigar_p = pysam_bam_get_cigar(src)
+            while True:
+                for k from 0 <= k < pysam_get_n_cigar(src):
+                    op = cigar_p[k] & BAM_CIGAR_MASK
+                    l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                    kputl(l, &buf)
+                    kputc(<int>(CODE2CIGAR[op]), &buf)
+                else:
+                    break
+
+            try:
+                return buf.s[:buf.l].decode("utf8")
+            finally:
+                if buf.m:
+                    free(buf.s)
+
+            return ret
 
         def __set__(self, cigar):
             if cigar is None or len(cigar) == 0:
