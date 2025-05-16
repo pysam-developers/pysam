@@ -8,12 +8,15 @@ build_wheels_task:
         architecture: arm64
         platform: linux
       matrix:
-        - name: Build ARM Linux py3.6-9 wheels
+        - name: Build ARM Linux py3.8-9 wheels
           env:
-            CIBW_BUILD: "cp36-* cp37-* cp38-* cp39-*"
-        - name: Build ARM Linux py3.10-13 wheels
+            CIBW_BUILD: "cp38-* cp39-*"
+        - name: Build ARM Linux py3.10-11 wheels
           env:
-            CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
+            CIBW_BUILD: "cp310-* cp311-*"
+        - name: Build ARM Linux py3.12-13 wheels
+          env:
+            CIBW_BUILD: "cp312-* cp313-*"
 
     - name: Build ARM macOS wheels
       macos_instance:

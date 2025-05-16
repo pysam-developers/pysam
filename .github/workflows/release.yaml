@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-13]
-        build: ["cp36-* cp37-* cp38-* cp39-*", "cp310-* cp311-* cp312-* cp313-*"]
+        build: ["cp38-* cp39-*", "cp310-* cp311-*", "cp312-* cp313-*"]
         x64image: [manylinux_2_28]
         nametag: [none]
 
