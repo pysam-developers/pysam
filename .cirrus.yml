@@ -32,17 +32,17 @@ build_wheels_task:
     VENV: $HOME/relenv
     PATH: $VENV/bin:$PATH
 
-    CIBW_SKIP: "*-musllinux_*"
     CIBW_BUILD_VERBOSITY: 1
 
     # Avoid linking with non-system library libdeflate.dylib
     CIBW_ENVIRONMENT_MACOS: HTSLIB_CONFIGURE_OPTIONS="--without-libdeflate"
 
     CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+    CIBW_MUSLLINUX_AARCH64_IMAGE: musllinux_1_2
 
   install_script: |
     python3 -m venv $VENV
-    pip3 install cibuildwheel==2.22.0
+    pip3 install cibuildwheel==2.23.3
 
   build_script: |
     cibuildwheel
