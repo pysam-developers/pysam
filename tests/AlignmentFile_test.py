@@ -2411,7 +2411,52 @@ class TestLargeCigar(unittest.TestCase):
         return
         read = self.build_read()
         self.check_read(read, mode="cram")
-        
+
+
+class TestAlignmentFileFilter(unittest.TestCase):
+
+    filename = os.path.join(BAM_DATADIR, 'ex1.bam')
+    mode = "rb"
+
+    def testNoFilter(self):
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            total = 0
+            for read in samfile1:
+                total += 1
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile2:
+            n2 = 0
+            for read in samfile2.filter(flag_filter=0):
+                n2 += 1
+        self.assertEqual(total, n2)
+
+    def testMapped(self):
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            n1 = 0
+            total = 0
+            for read in samfile1:
+                n1 += read.is_mapped
+                total += 1
+        self.assertLessEqual(n1, total)
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile2:
+            n2 = 0
+            for read in samfile2.filter(flag_filter=pysam.FUNMAP):
+                n2 += 1
+        self.assertEqual(n1, n2)
+
+    def testUnmapped(self):
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile1:
+            n1 = 0
+            total = 0
+            for read in samfile1:
+                n1 += not read.is_mapped
+                total += 1
+        self.assertLessEqual(n1, total)
+        with pysam.AlignmentFile(self.filename, self.mode) as samfile2:
+            n2 = 0
+            for read in samfile2.filter(flag_filter=0, flag_require=pysam.FUNMAP):
+                n2 += 1
+        self.assertEqual(n1, n2)
+
 # SAM writing fails, as query length is 0
 # class TestSanityCheckingSAM(TestSanityCheckingSAM):
 #     mode = "w"
