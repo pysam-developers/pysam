@@ -1290,12 +1290,27 @@ cdef class AlignedSegment:
         empty string.
         '''
         def __get__(self):
-            c = self.cigartuples
-            if c is None:
+            cdef bam1_t *src = self._delegate
+            if pysam_get_n_cigar(src) == 0:
                 return None
-            # reverse order
-            else:
-                return "".join([ "%i%c" % (y,CODE2CIGAR[x]) for x,y in c])
+
+            cdef kstring_t buf
+            buf.l = buf.m = 0
+            buf.s = NULL
+
+            cdef uint32_t *cigar_p = pysam_bam_get_cigar(src)
+            cdef uint32_t op, l
+            cdef int k
+            for k from 0 <= k < pysam_get_n_cigar(src):
+                op = cigar_p[k] & BAM_CIGAR_MASK
+                l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                kputl(l, &buf)
+                kputc(CODE2CIGAR[op], &buf)
+
+            try:
+                return buf.s[:buf.l].decode("ascii")
+            finally:
+                free(buf.s)
 
         def __set__(self, cigar):
             if cigar is None or len(cigar) == 0 or cigar == "*":

@@ -1112,6 +1112,16 @@ class TestCigarStats(ReadTest):
             expected[1][i] = 1
             self.assertEqual([list(x) for x in a.get_cigar_stats()], expected)
 
+        for i in range(1, 100):
+            cigarstring = "".join("10{}".format(x)
+                                  for x in iter("MIDNSHP=X")) * i
+            a.cigarstring = cigarstring
+            self.assertEqual(a.cigarstring, cigarstring)
+            expected = [[i * 10 for j in range(len("MIDNSHP=X"))] + [0, 0],
+                        [i for j in range(len("MIDNSHP=X"))] + [0, 0]]
+            obtained = [list(x) for x in a.get_cigar_stats()]
+            self.assertEqual(obtained, expected)
+
         a.cigarstring = "10M"
         a.set_tag("NM", 5)
         self.assertEqual(
