@@ -72,7 +72,6 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
 from pysam.libchtslib cimport HTS_IDX_NOCOOR
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
-from libc.stdio cimport snprintf
 
 # Constants for binary tag conversion
 cdef char * htslib_types = 'cCsSiIf'
@@ -1291,38 +1290,27 @@ cdef class AlignedSegment:
         empty string.
         '''
         def __get__(self):
-            cdef uint32_t *cigar_p
-            cdef bam1_t *src
-            cdef uint32_t op, l
-            cdef int k
-            cdef int ret
-            cdef int pos = 0
-            cdef int size = 16
+            cdef bam1_t *src = self._delegate
+            if pysam_get_n_cigar(src) == 0:
+                return None
+
             cdef kstring_t buf
             buf.l = buf.m = 0
             buf.s = NULL
 
-            src = self._delegate
-            if pysam_get_n_cigar(src) == 0:
-                return None
-
-            cigar_p = pysam_bam_get_cigar(src)
-            while True:
-                for k from 0 <= k < pysam_get_n_cigar(src):
-                    op = cigar_p[k] & BAM_CIGAR_MASK
-                    l = cigar_p[k] >> BAM_CIGAR_SHIFT
-                    kputl(l, &buf)
-                    kputc(<int>(CODE2CIGAR[op]), &buf)
-                else:
-                    break
+            cdef uint32_t *cigar_p = pysam_bam_get_cigar(src)
+            cdef uint32_t op, l
+            cdef int k
+            for k from 0 <= k < pysam_get_n_cigar(src):
+                op = cigar_p[k] & BAM_CIGAR_MASK
+                l = cigar_p[k] >> BAM_CIGAR_SHIFT
+                kputl(l, &buf)
+                kputc(CODE2CIGAR[op], &buf)
 
             try:
-                return buf.s[:buf.l].decode("utf8")
+                return buf.s[:buf.l].decode("ascii")
             finally:
-                if buf.m:
-                    free(buf.s)
-
-            return ret
+                free(buf.s)
 
         def __set__(self, cigar):
             if cigar is None or len(cigar) == 0 or cigar == "*":
