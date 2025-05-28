@@ -12,6 +12,7 @@ elif test -x /usr/bin/yum; then
     else
         echo Installing non-test prerequisites via yum...
         yum -y install zlib-devel bzip2-devel xz-devel curl-devel openssl-devel
+        emulate=yes
     fi
 
 elif test -d /etc/dpkg; then
@@ -23,6 +24,7 @@ elif test -x /sbin/apk; then
     echo Installing non-test prerequisites via apk...
     apk update
     apk add zlib-dev bzip2-dev xz-dev curl-dev openssl-dev
+    emulate=yes
 
 elif test -x ${HOMEBREW_PREFIX-/usr/local}/bin/brew; then
     echo Installing prerequisites via brew...
@@ -31,4 +33,15 @@ elif test -x ${HOMEBREW_PREFIX-/usr/local}/bin/brew; then
 
 else
     echo No package manager detected
+fi
+
+if test -n "$emulate" && test $# -ge 2; then
+    emulator=$1
+    bindir=$2
+    echo Creating symlinks to $emulator in $bindir...
+    mkdir -p $bindir
+    ln -s $emulator $bindir/samtools
+    ln -s $emulator $bindir/bcftools
+    ln -s $emulator $bindir/bgzip
+    ln -s $emulator $bindir/tabix
 fi
