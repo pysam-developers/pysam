@@ -9,6 +9,8 @@ cpdef parse_region(contig=*, start=*, stop=*, region=*, reference=*, end=*)
 
 cdef int libc_whence_from_io(int whence)
 
+cdef OSError_from_errno(message, filename=*)
+
 #########################################################################
 # Utility functions for quality string conversions
 
