@@ -1871,10 +1871,10 @@ cdef extern from "htslib/vcf.h" nogil:
     #
     bcf_hrec_t *bcf_hdr_get_hrec(const bcf_hdr_t *hdr, int type, const char *key, const char *value, const char *str_class)
     bcf_hrec_t *bcf_hrec_dup(bcf_hrec_t *hrec)
-    void bcf_hrec_add_key(bcf_hrec_t *hrec, const char *str, int len)
-    void bcf_hrec_set_val(bcf_hrec_t *hrec, int i, const char *str, int len, int is_quoted)
+    int bcf_hrec_add_key(bcf_hrec_t *hrec, const char *str, size_t len)
+    int bcf_hrec_set_val(bcf_hrec_t *hrec, int i, const char *str, size_t len, int is_quoted)
     int bcf_hrec_find_key(bcf_hrec_t *hrec, const char *key)
-    void hrec_add_idx(bcf_hrec_t *hrec, int idx)
+    int hrec_add_idx(bcf_hrec_t *hrec, int idx)
     void bcf_hrec_destroy(bcf_hrec_t *hrec)
 
     #************************************************************************

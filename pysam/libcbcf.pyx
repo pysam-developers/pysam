@@ -143,7 +143,7 @@ cdef tuple METADATA_LENGTHS = ('FIXED', 'VARIABLE', 'A', 'G', 'R')
 ########################################################################
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str, charptr_to_str_w_len
-from pysam.libcutils cimport encode_filename, from_string_and_size, decode_bytes
+from pysam.libcutils cimport OSError_from_errno, encode_filename, from_string_and_size, decode_bytes
 
 
 ########################################################################
@@ -2158,10 +2158,12 @@ cdef class VariantHeader(object):
                     quoted = not isinstance(value, unquoted_str) and key not in ("ID", "Number", "Type")
 
                     key = force_bytes(key)
-                    bcf_hrec_add_key(hrec, key, <int>len(key))
+                    if bcf_hrec_add_key(hrec, key, <int>len(key)) < 0:
+                        raise MemoryError("Could not allocate VCF header record")
 
                     value = force_bytes(str(value))
-                    bcf_hrec_set_val(hrec, hrec.nkeys-1, value, <int>len(value), quoted)
+                    if bcf_hrec_set_val(hrec, hrec.nkeys-1, value, <int>len(value), quoted) < 0:
+                        raise MemoryError("Could not allocate VCF header record")
         except:
             bcf_hrec_destroy(hrec)
             raise
@@ -4116,42 +4118,42 @@ cdef class VariantFile(HTSFile):
         if not self.htsfile or not self.header:
             return
 
+        cdef int ret
+
         # Write header if no records were written
         if self.htsfile.is_write and not self.header_written:
             with nogil:
-                bcf_hdr_write(self.htsfile, self.header.ptr)
+                ret = bcf_hdr_write(self.htsfile, self.header.ptr)
+            if ret < 0 and errno != EPIPE:
+                raise OSError_from_errno("Can't write headers", self.filename)
 
-        cdef int ret = hts_close(self.htsfile)
+        ret = hts_close(self.htsfile)
         self.htsfile = NULL
         self.header = self.index = None
 
-        if ret < 0:
-            global errno
-            if errno == EPIPE:
-                errno = 0
-            else:
-                raise IOError(errno, force_str(strerror(errno)))
+        if ret < 0 and errno != EPIPE:
+            raise OSError_from_errno("Closing failed", self.filename)
 
     def close(self):
         """closes the :class:`pysam.VariantFile`."""
         if not self.htsfile:
             return
 
+        cdef int ret
+
         # Write header if no records were written
         if self.htsfile.is_write and not self.header_written:
             with nogil:
-                bcf_hdr_write(self.htsfile, self.header.ptr)
+                ret = bcf_hdr_write(self.htsfile, self.header.ptr)
+            if ret < 0 and errno != EPIPE:
+                raise OSError_from_errno("Can't write headers", self.filename)
 
-        cdef int ret = hts_close(self.htsfile)
+        ret = hts_close(self.htsfile)
         self.htsfile = NULL
         self.header = self.index = None
 
-        if ret < 0:
-            global errno
-            if errno == EPIPE:
-                errno = 0
-            else:
-                raise IOError(errno, force_str(strerror(errno)))
+        if ret < 0 and errno != EPIPE:
+            raise OSError_from_errno("Closing failed", self.filename)
 
     def __iter__(self):
         if not self.is_open:
@@ -4188,7 +4190,7 @@ cdef class VariantFile(HTSFile):
             elif ret == -2:
                 raise IOError('truncated file')
             elif errno:
-                raise IOError(errno, strerror(errno))
+                raise OSError_from_errno("Unable to fetch next record", self.filename)
             else:
                 raise IOError('unable to fetch next record')
 
@@ -4335,7 +4337,7 @@ cdef class VariantFile(HTSFile):
 
             if not self.htsfile:
                 if errno:
-                    raise IOError(errno, 'could not open variant file `{}`: {}'.format(filename, force_str(strerror(errno))))
+                    raise OSError_from_errno("Could not open variant file", filename)
                 else:
                     raise ValueError('could not open variant file `{}`'.format(filename))
 
@@ -4485,15 +4487,19 @@ cdef class VariantFile(HTSFile):
             raise ValueError('record must not be None')
 
         if not self.is_open:
-            return ValueError('I/O operation on closed file')
+            raise ValueError('I/O operation on closed file')
 
         if not self.htsfile.is_write:
             raise ValueError('cannot write to a Variantfile opened for reading')
 
+        cdef int ret
+
         if not self.header_written:
             self.header_written = True
             with nogil:
-                bcf_hdr_write(self.htsfile, self.header.ptr)
+                ret = bcf_hdr_write(self.htsfile, self.header.ptr)
+            if ret < 0:
+                raise OSError_from_errno("Can't write headers", self.filename)
 
         #if record.header is not self.header:
         #    record.translate(self.header)
@@ -4506,13 +4512,11 @@ cdef class VariantFile(HTSFile):
         # Sync END annotation before writing
         bcf_sync_end(record)
 
-        cdef int ret
-
         with nogil:
             ret = bcf_write1(self.htsfile, self.header.ptr, record.ptr)
 
         if ret < 0:
-            raise IOError(errno, strerror(errno))
+            raise OSError_from_errno("Can't write record", self.filename)
 
         return ret
 
