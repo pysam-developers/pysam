@@ -65,13 +65,13 @@ import re
 import warnings
 import array
 from libc.errno  cimport errno, EPIPE
-from libc.string cimport strcmp, strpbrk, strerror
+from libc.string cimport strcmp, strpbrk
 from libc.stdint cimport INT32_MAX
 
 from cpython cimport array as c_array
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
-from pysam.libcutils cimport encode_filename, from_string_and_size
+from pysam.libcutils cimport OSError_from_errno, encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
 from pysam.libchtslib cimport HTSFile, hisremote, sam_index_load2, sam_index_load3, \
                               HTS_IDX_SAVE_REMOTE, HTS_IDX_SILENT_FAIL
@@ -818,6 +818,7 @@ cdef class AlignmentFile(HTSFile):
         cdef char *cindexname = NULL
         cdef char *cmode = NULL
         cdef bam_hdr_t * hdr = NULL
+        cdef int ret
 
         if threads > 1 and ignore_truncation:
            # This won't raise errors if reaching a truncated alignment,
@@ -921,9 +922,7 @@ cdef class AlignmentFile(HTSFile):
 
             if self.htsfile == NULL:
                 if errno:
-                    raise IOError(errno, "could not open alignment file `{}`: {}".format(
-                        force_str(filename),
-                        force_str(strerror(errno))))
+                    raise OSError_from_errno("Could not open alignment file", filename)
                 else:
                     raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
             if format_options and len(format_options):
@@ -939,7 +938,9 @@ cdef class AlignmentFile(HTSFile):
             if "b" in mode or "c" in mode or "h" in mode:
                 hdr = self.header.ptr
                 with nogil:
-                    sam_hdr_write(self.htsfile, hdr)
+                    ret = sam_hdr_write(self.htsfile, hdr)
+                if ret < 0:
+                    raise OSError_from_errno("Could not write headers", filename)
 
         elif mode[0] == "r":
             # open file for reading
@@ -947,8 +948,7 @@ cdef class AlignmentFile(HTSFile):
 
             if self.htsfile == NULL:
                 if errno:
-                    raise IOError(errno, "could not open alignment file `{}`: {}".format(force_str(filename),
-                                  force_str(strerror(errno))))
+                    raise OSError_from_errno("Could not open alignment file", filename)
                 else:
                     raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
 
@@ -1014,7 +1014,7 @@ cdef class AlignmentFile(HTSFile):
 
                     if not self.index and (cindexname or require_index):
                         if errno:
-                            raise IOError(errno, force_str(strerror(errno)))
+                            raise OSError_from_errno("Could not open index file", self.index_filename)
                         else:
                             raise IOError('unable to open index file `%s`' % self.index_filename)
 
@@ -1679,12 +1679,11 @@ cdef class AlignmentFile(HTSFile):
 
         self.header = None
 
-        if ret < 0:
-            global errno
-            if errno == EPIPE:
-                errno = 0
+        if ret < 0 and errno != EPIPE:
+            if isinstance(self.filename, (str, bytes)):
+                raise OSError_from_errno("Closing failed", self.filename)
             else:
-                raise IOError(errno, force_str(strerror(errno)))
+                raise OSError_from_errno("Closing failed")
 
     def __dealloc__(self):
         cdef int ret = 0
@@ -1703,12 +1702,11 @@ cdef class AlignmentFile(HTSFile):
             bam_destroy1(self.b)
             self.b = NULL
 
-        if ret < 0:
-            global errno
-            if errno == EPIPE:
-                errno = 0
+        if ret < 0 and errno != EPIPE:
+            if isinstance(self.filename, (str, bytes)):
+                raise OSError_from_errno("Closing failed", self.filename)
             else:
-                raise IOError(errno, force_str(strerror(errno)))
+                raise OSError_from_errno("Closing failed")
 
     cpdef int write(self, AlignedSegment read) except -1:
         '''
@@ -1742,8 +1740,7 @@ cdef class AlignmentFile(HTSFile):
         #      when ret == -1 we get a "SystemError: error return without
         #      exception set".
         if ret < 0:
-            raise IOError(
-            "sam_write1 failed with error code {}".format(ret))
+            raise IOError("sam_write1 failed with error code {}".format(ret))
 
         return ret
 
@@ -2298,14 +2295,14 @@ cdef class IteratorRowSelection(IteratorRow):
         # end iteration if out of positions
         if self.current_pos >= len(self.positions): return -1
 
+        cdef int ret
         cdef uint64_t pos = self.positions[self.current_pos]
         with nogil:
-            bgzf_seek(hts_get_bgzfp(self.htsfile),
-                      pos,
-                      0)
+            ret = bgzf_seek(hts_get_bgzfp(self.htsfile), pos, 0)
+        if ret < 0:
+            raise OSError_from_errno("Can't seek", self.samfile.filename)
         self.current_pos += 1
 
-        cdef int ret
         cdef bam_hdr_t * hdr = self.header.ptr
         with nogil:
             ret = sam_read1(self.htsfile,
@@ -2911,7 +2908,7 @@ cdef class IndexedReads:
             with nogil:
                 self.htsfile = hts_open(cfilename, 'r')
             if self.htsfile == NULL:
-                raise OSError("unable to reopen htsfile")
+                raise OSError_from_errno("Unable to reopen file", cfilename)
 
             # need to advance in newly opened file to position after header
             # better: use seek/tell?
