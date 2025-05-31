@@ -1,5 +1,5 @@
-/* 
-    Copyright (C) 2014-2016, 2018 Genome Research Ltd.
+/*
+    Copyright (C) 2014-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -9,10 +9,10 @@
     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
     copies of the Software, and to permit persons to whom the Software is
     furnished to do so, subject to the following conditions:
-    
+
     The above copyright notice and this permission notice shall be included in
     all copies or substantial portions of the Software.
-    
+
     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -39,7 +39,7 @@
 
         while ( regitr_overlap(itr) )
         {
-            printf("[%d,%d] overlaps with [%d,%d], payload=%s\n", beg,end, 
+            printf("[%d,%d] overlaps with [%d,%d], payload=%s\n", beg,end,
                 itr->beg+1, itr->end+1, regitr_payload(itr,char*));
         }
 
@@ -48,7 +48,7 @@
 
 
     Another example, loop over all regions:
-        
+
         regidx_t *idx = regidx_init(in_fname,NULL,NULL,0,NULL);
         regitr_t *itr = regitr_init(idx);
 
@@ -105,6 +105,15 @@ regitr_t;
 
 #define regitr_payload(itr,type_t) (*((type_t*)(itr)->payload))
 
+typedef enum
+{
+    merge_overlaps,     // merge overlapping regions
+}
+regidx_opt_t;
+
+int regidx_set(regidx_t *idx, regidx_opt_t key, ...);   // returns 0 on success
+
+
 /*
  *  regidx_parse_f - Function to parse one input line, such as regidx_parse_bed
  *  or regidx_parse_tab below. The function is expected to set `chr_from` and
@@ -121,7 +130,7 @@ typedef int  (*regidx_parse_f)(const char *line, char **chr_beg, char **chr_end,
 typedef void (*regidx_free_f)(void *payload);
 
 /*
- *  A note about the parsers: 
+ *  A note about the parsers:
  *      - leading spaces are ignored
  *      - lines starting with "#" are ignored
  */
@@ -164,7 +173,7 @@ void regidx_destroy(regidx_t *idx);
 int regidx_overlap(regidx_t *idx, const char *chr, uint32_t beg, uint32_t end, regitr_t *itr);
 
 /*
- *  regidx_insert() - add a new region. 
+ *  regidx_insert() - add a new region.
  *  regidx_insert_list() - add new regions from a list
  *  regidx_push() - low level insertion of a new region
  *

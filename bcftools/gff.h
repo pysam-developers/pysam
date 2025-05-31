@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2023-2024 Genome Research Ltd.
+   Copyright (c) 2023-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -289,7 +289,6 @@ typedef enum
 {
     // write options
     verbosity,          // int, 0-2
-    strip_chr_names,    // int, 0 to leave as is, 1 to strip 'chr' prefix
     force_out_of_phase, // int, 1 to proceed even CDS exon out of expected phase
     dump_fname,         // const char*, dump the parsed GFF into this file, for debugging purposes
 
@@ -313,5 +312,10 @@ int gff_set(gff_t *gff, gff_opt_t key, ...);   // returns 0 on success
 void *gff_get(gff_t *gff, gff_opt_t key);
 const char *gff_id2string(gff_t *gff, id_type_t type, int id);
 const char *gf_type2gff_string(int type);
+
+int gff_has_seq(gff_t *gff, const char *chr);
+int gff_nseq(gff_t *gff);
+const char *gff_iseq(gff_t *gff, int i);
+
 
 #endif

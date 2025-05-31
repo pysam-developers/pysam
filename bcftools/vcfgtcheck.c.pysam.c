@@ -2,7 +2,7 @@
 
 /*  vcfgtcheck.c -- Check sample identity.
 
-    Copyright (C) 2013-2024 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1178,6 +1178,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -T, --targets-file FILE            Similar to -R but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "        --targets-overlap 0|1|2        Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "    -u, --use TAG1[,TAG2]              Which tag to use in the query file (TAG1) and the -g file (TAG2) [PL,GT]\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT                Verbosity level\n");
     fprintf(bcftools_stderr, "Examples:\n");
     fprintf(bcftools_stderr, "   # Check discordance of all samples from B against all samples in A\n");
     fprintf(bcftools_stderr, "   bcftools gtcheck -g A.bcf B.bcf\n");
@@ -1249,11 +1250,15 @@ int main_vcfgtcheck(int argc, char *argv[])
         {"targets-overlap",required_argument,NULL,8},
         {"pairs",1,0,'p'},
         {"pairs-file",1,0,'P'},
+        {"verbosity",required_argument,NULL,'v'},
         {0,0,0,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "hg:p:s:S:p:P:Hr:R:at:T:G:c:u:e:E:i:o:O:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "hg:p:s:S:p:P:Hr:R:at:T:G:c:u:e:E:i:o:O:v:",loptions,NULL)) >= 0) {
         switch (c) {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'o': args->output_fname = optarg; break;
             case 'O':
                 switch (optarg[0]) {

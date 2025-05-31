@@ -61,6 +61,15 @@ void error_errno(const char *format, ...)
     exit(-1);
 }
 
+int apply_verbosity(const char *str)
+{
+    char *tmp;
+    int verbose = strtol(str,&tmp,10);
+    if ( *tmp || verbose<0 ) return -1;
+    if ( verbose > 3 ) hts_verbose = verbose;
+    return 0;
+}
+
 const char *hts_bcf_wmode(int file_type)
 {
     if ( file_type == FT_BCF ) return "wbu";    // uncompressed BCF

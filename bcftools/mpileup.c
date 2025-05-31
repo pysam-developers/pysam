@@ -1,6 +1,6 @@
 /*  mpileup.c -- mpileup subcommand. Previously bam_plcmd.c from samtools
 
-    Copyright (C) 2008-2024 Genome Research Ltd.
+    Copyright (C) 2008-2025 Genome Research Ltd.
     Portions copyright (C) 2009-2012 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -651,6 +651,7 @@ static int mpileup(mplp_conf_t *conf)
                 exit(EXIT_FAILURE);
             }
         }
+        regidx_set(conf->reg,merge_overlaps,1);
         nregs = regidx_nregs(conf->reg);
         if ( nregs )
         {
@@ -766,20 +767,20 @@ static int mpileup(mplp_conf_t *conf)
     if (conf->record_cmd_line)
     {
         ksprintf(&conf->buf, "##bcftoolsVersion=%s+htslib-%s\n",bcftools_version(),hts_version());
-        bcf_hdr_append(conf->bcf_hdr, conf->buf.s);
+        if ( bcf_hdr_append(conf->bcf_hdr, conf->buf.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
 
         conf->buf.l = 0;
         ksprintf(&conf->buf, "##bcftoolsCommand=mpileup");
         for (i=1; i<conf->argc; i++) ksprintf(&conf->buf, " %s", conf->argv[i]);
         kputc('\n', &conf->buf);
-        bcf_hdr_append(conf->bcf_hdr, conf->buf.s);
+        if ( bcf_hdr_append(conf->bcf_hdr, conf->buf.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
     }
 
     if (conf->fai_fname)
     {
         conf->buf.l = 0;
         ksprintf(&conf->buf, "##reference=file://%s\n", conf->fai_fname);
-        bcf_hdr_append(conf->bcf_hdr, conf->buf.s);
+        if ( bcf_hdr_append(conf->bcf_hdr, conf->buf.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
     }
 
     // Translate BAM @SQ tags to BCF ##contig tags
@@ -788,7 +789,7 @@ static int mpileup(mplp_conf_t *conf)
     {
         conf->buf.l = 0;
         ksprintf(&conf->buf, "##contig=<ID=%s,length=%d>", hdr->target_name[i], hdr->target_len[i]);
-        bcf_hdr_append(conf->bcf_hdr, conf->buf.s);
+        if ( bcf_hdr_append(conf->bcf_hdr, conf->buf.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
     }
     conf->buf.l = 0;
 
@@ -1269,6 +1270,7 @@ static void print_usage(FILE *fp, const mplp_conf_t *mplp)
         "  -O, --output-type TYPE  'b' compressed BCF; 'u' uncompressed BCF;\n"
         "                          'z' compressed VCF; 'v' uncompressed VCF; 0-9 compression level [v]\n"
         "      --threads INT       Use multithreading with INT worker threads [0]\n"
+        "  -v, --verbosity INT     Verbosity level\n"
         "  -W, --write-index[=FMT] Automatically index the output files [off]\n"
         "\n"
         "SNP/INDEL genotype likelihoods options:\n"
@@ -1464,10 +1466,14 @@ int main_mpileup(int argc, char *argv[])
         {"no-poly-mqual", no_argument, NULL, 26},
         {"score-vs-ref",required_argument, NULL, 27},
         {"seqq-offset", required_argument, NULL, 28},
+        {"verbosity",required_argument,NULL,'v'},
         {NULL, 0, NULL, 0}
     };
-    while ((c = getopt_long(argc, argv, "Ag:f:r:R:q:Q:C:BDd:L:b:P:po:e:h:Im:F:EG:6O:xa:s:S:t:T:M:X:UW::",lopts,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "Ag:f:r:R:q:Q:C:BDd:L:b:P:po:e:h:Im:F:EG:6O:xa:s:S:t:T:M:X:UW::v:",lopts,NULL)) >= 0) {
         switch (c) {
+        case 'v':
+            if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+            break;
         case 'x': mplp.flag &= ~MPLP_SMART_OVERLAPS; break;
         case  16 :
             mplp.rflag_skip_any_unset = bam_str2flag(optarg);

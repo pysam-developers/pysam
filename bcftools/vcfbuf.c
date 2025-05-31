@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2016-2024 Genome Research Ltd.
+   Copyright (c) 2016-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -49,9 +49,9 @@ typedef struct
 }
 vcfrec_t;
 
-#define PRUNE_MODE_MAX_AF 1
-#define PRUNE_MODE_1ST    2
-#define PRUNE_MODE_RAND   3
+#define PRUNE_MODE_MAX_AF  1
+#define PRUNE_MODE_1ST     2
+#define PRUNE_MODE_RAND    3
 typedef struct
 {
     int max_sites, mvrec, mac, mfarr, mode;
@@ -61,6 +61,18 @@ typedef struct
     vcfrec_t **vrec;
 }
 prune_t;
+
+#define CLUSTER_MODE_PRUNE 1     // remove cluster
+#define CLUSTER_MODE_SIZE  2     // make cluster size available via vcfbuf_get_val(buf,int,CLUSTER_SIZE);
+typedef struct
+{
+    int max_sites;  // used with CLUSTER_PRUNE, removes cluster with more than this many sites within the window
+    int mode;       // one of CLUSTER_MODE_PRUNE or CLUSTER_MODE_SIZE
+    int last;       // the value of the currently removed element
+    int *size;      // cluster size for this site
+    rbuf_t rbuf;
+}
+cluster_t;
 
 
 #define MARK_OVERLAP 1
@@ -108,7 +120,7 @@ mark_t;
 
 struct _vcfbuf_t
 {
-    int win,            // maximum number of sites in the buffer, either number of sites (<0) or bp (<0)
+    int win,            // maximum number of sites in the buffer, either number of sites (>0) or bp (<0)
         dummy;          // the caller maintains the buffer via push/peek/flush
     bcf_hdr_t *hdr;
     vcfrec_t *vcf;
@@ -116,6 +128,7 @@ struct _vcfbuf_t
     ld_t ld;
     prune_t prune;
     mark_t mark;
+    cluster_t cluster;
     enum { clean, dirty } status;
 };
 
@@ -129,6 +142,8 @@ vcfbuf_t *vcfbuf_init(bcf_hdr_t *hdr, int win)
     int i;
     for (i=0; i<VCFBUF_LD_N; i++) buf->ld.max[i] = HUGE_VAL;
     rbuf_init(&buf->rbuf, 0);
+    rbuf_init(&buf->mark.rbuf, 0);
+    rbuf_init(&buf->cluster.rbuf, 0);
     return buf;
 }
 
@@ -149,6 +164,7 @@ void vcfbuf_destroy(vcfbuf_t *buf)
     free(buf->mark.buf);
     free(buf->mark.buf_ptr);
     free(buf->mark.tmpi);
+    free(buf->cluster.size);
     free(buf);
 }
 
@@ -190,6 +206,20 @@ int vcfbuf_set(vcfbuf_t *buf, vcfbuf_opt_t key, ...)
         case VCFBUF_DUMMY:
             va_start(args, key);
             buf->dummy = va_arg(args,int);
+            va_end(args);
+            return 0;
+
+        case CLUSTER_PRUNE:
+            va_start(args, key);
+            buf->cluster.max_sites = va_arg(args,int);
+            buf->cluster.mode = CLUSTER_MODE_PRUNE;
+            va_end(args);
+            return 0;
+
+        case CLUSTER_SIZE:
+            va_start(args, key);
+            buf->cluster.max_sites = va_arg(args,int);
+            buf->cluster.mode = CLUSTER_MODE_SIZE;
             va_end(args);
             return 0;
 
@@ -252,6 +282,8 @@ void *vcfbuf_get(vcfbuf_t *buf, vcfbuf_opt_t key, ...)
     va_start(args, key);
     if ( key==MARK )
         return &buf->mark.last;
+    if ( key==CLUSTER_SIZE )
+        return &buf->cluster.last;
     va_end(args);
     return NULL;
 }
@@ -638,6 +670,106 @@ static int mark_expr_can_flush_(vcfbuf_t *buf, int flush_all)
     return 1;
 }
 
+int cluster_can_flush_(vcfbuf_t *buf, int flush_all)
+{
+    cluster_t *cluster = &buf->cluster;
+
+//{ int i; i=-1; while ( rbuf_next(&buf->rbuf,&i) ) fprintf(stderr," %d",(int)buf->vcf[i].rec->pos+1); fprintf(stderr," .. dirty=%d flush_all=%d\n",buf->status,flush_all); }
+    if ( buf->status==dirty )
+    {
+        // a new site was just added by vcfbuf_push()
+        rbuf_expand0(&cluster->rbuf, int, buf->rbuf.n, cluster->size);
+        int i = rbuf_append(&cluster->rbuf);
+        cluster->size[i] = 0;
+    }
+    assert( cluster->rbuf.n==buf->rbuf.n );
+
+    // The following cases can occur:
+    //  - if flush_all is set, then the entire buffer must be within the window
+    //  - else if the last record can be on a different chr, then everything before can be flushed
+    //  - else the last record can be either within or outside the window with respect to the first record
+
+
+    if ( buf->status==dirty )
+    {
+        int ib = 0;
+        while ( ib < buf->rbuf.n )
+        {
+            int b = rbuf_kth(&buf->rbuf, ib);
+            int ie = ib + 1;
+            while ( ie < buf->rbuf.n )
+            {
+                int e = rbuf_kth(&buf->rbuf, ie);
+                if ( buf->vcf[b].rec->rid != buf->vcf[e].rec->rid ) break;
+                if ( buf->vcf[e].rec->pos - buf->vcf[b].rec->pos + 1 > -buf->win ) break;   // win is negative
+                ie++;
+            }
+            // now ie is just outside the window or beyond the last element of the window
+
+            // count the number of unfiltered sites that contribute to the cluster. Note this is inefficient,
+            // recalculating the same bits over and over, should be improved..
+            int ix, nbuf = 0;
+            for (ix=ib; ix<ie; ix++)
+            {
+                int x = rbuf_kth(&buf->rbuf, ix);
+                if ( buf->vcf[x].filter ) continue;
+                nbuf++;
+            }
+            for (ix=ib; ix<ie; ix++)
+            {
+                int x = rbuf_kth(&cluster->rbuf, ix);
+                if ( cluster->size[x] < nbuf ) cluster->size[x] = nbuf;
+            }
+            ib++;
+        }
+        buf->status = clean;
+    }
+
+    int b = rbuf_kth(&buf->rbuf, 0);    // first
+    int e = rbuf_last(&buf->rbuf);      // last
+    int can_flush = flush_all;
+    if ( buf->vcf[b].rec->rid != buf->vcf[e].rec->rid ) can_flush = 1;
+    if ( buf->vcf[e].rec->pos - buf->vcf[b].rec->pos + 1 > -buf->win ) can_flush = 1;
+    if ( !can_flush ) return 0;
+
+    if ( buf->cluster.mode==CLUSTER_MODE_PRUNE )
+    {
+        int flush = 0;
+        while ( buf->rbuf.n )
+        {
+            flush = 0;
+            int b = rbuf_kth(&buf->rbuf, 0);
+            int e = rbuf_kth(&buf->rbuf, -1);
+            if ( buf->vcf[b].filter )
+            {
+                // not to be pruned, not counted as part of the cluster
+                flush = 1;
+                break;
+            }
+
+            if ( flush_all ) flush = 1;
+            else if ( buf->vcf[b].rec->rid != buf->vcf[e].rec->rid ) flush = 1;
+            else if ( buf->vcf[e].rec->pos - buf->vcf[b].rec->pos + 1 > -buf->win ) flush = 1;
+            if ( !flush ) break;
+
+            b = rbuf_kth(&cluster->rbuf, 0);
+            if ( cluster->size[b] <= cluster->max_sites ) break;     // not to be pruned
+
+            rbuf_remove_kth(&buf->rbuf, vcfrec_t, 0, buf->vcf);
+            rbuf_remove_kth(&cluster->rbuf, int, 0, cluster->size);
+        }
+        if ( !flush ) return 0;
+    }
+
+    if ( !cluster->rbuf.n ) return 0;
+
+    b = rbuf_shift(&cluster->rbuf);
+    cluster->last = cluster->size[b];
+    b = rbuf_kth(&buf->rbuf, 0);
+    if ( buf->vcf[b].filter ) cluster->last = 0;
+    return 1;
+}
+
 bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all)
 {
     int i,j;
@@ -647,6 +779,13 @@ bcf1_t *vcfbuf_flush(vcfbuf_t *buf, int flush_all)
 
     // dummy mode, always flushing
     if ( buf->dummy ) goto ret;
+
+    // either annotate or print clustered sites
+    if ( buf->cluster.mode )
+    {
+        if ( !cluster_can_flush_(buf,flush_all) ) return NULL;
+        goto ret;
+    }
 
     // pruning mode
     if ( buf->win )

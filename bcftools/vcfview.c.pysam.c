@@ -2,7 +2,7 @@
 
 /*  vcfview.c -- VCF/BCF conversion, view, subset and filter VCF/BCF files.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -527,6 +527,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -T, --targets-file [^]FILE        Similar to -R but streams rather than index-jumps. Exclude regions with \"^\" prefix\n");
     fprintf(bcftools_stderr, "        --targets-overlap 0|1|2       Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "        --threads INT                 Use multithreading with INT worker threads [0]\n");
+    fprintf(bcftools_stderr, "        --verbosity INT               Verbosity level\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Subset options:\n");
     fprintf(bcftools_stderr, "    -A, --trim-unseen-allele          Remove '<*>' or '<NON_REF>' at variant (-A) or at all (-AA) sites\n");
@@ -620,6 +621,7 @@ int main_vcfview(int argc, char *argv[])
         {"exclude-phased",no_argument,NULL,'P'},
         {"no-version",no_argument,NULL,8},
         {"write-index",optional_argument,NULL,'W'},
+        {"verbosity",required_argument,NULL,10},
         {NULL,0,NULL,0}
     };
     char *tmp;
@@ -752,6 +754,10 @@ int main_vcfview(int argc, char *argv[])
                 break;
             case  9 : args->n_threads = strtol(optarg, 0, 0); break;
             case  8 : args->record_cmd_line = 0; break;
+            case 10 :
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
+
             case 'W':
                 if (!(args->write_index = write_index_parse(optarg)))
                     error("Unsupported index format '%s'\n", optarg);

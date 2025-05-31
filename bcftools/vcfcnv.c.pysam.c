@@ -2,20 +2,20 @@
 
 /* The MIT License
 
-   Copyright (c) 2014-2022 Genome Research Ltd.
+   Copyright (c) 2014-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
-   
+
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
    in the Software without restriction, including without limitation the rights
    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
    copies of the Software, and to permit persons to whom the Software is
    furnished to do so, subject to the following conditions:
-   
+
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
-   
+
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -99,7 +99,7 @@ typedef struct _args_t
     uint32_t *sites;        // positions [nsites,msites]
     int nsites, msites;
 
-    double baum_welch_th, optimize_frac; 
+    double baum_welch_th, optimize_frac;
     float plot_th;
     FILE *summary_fh;
     char **argv, *regions_list, *summary_fname, *output_dir;
@@ -146,7 +146,7 @@ static double *init_tprob_matrix(int ndim, double ij_prob, double same_prob)
     {
         // interpret ij_prob differently, as ii_prob in fact, so that for two
         // samples the behaviour is somewhat closer to single sample calling
-        // with s=0. 
+        // with s=0.
         double pii = 1 - ij_prob*(N_STATES-1);
         ij_prob = (1 - pii) / (ndim - 1);
         for (j=0; j<ndim; j++)
@@ -186,17 +186,17 @@ static double *init_iprobs(int ndim, double same_prob)
 
     assert( ndim==N_STATES || ndim==N_STATES*N_STATES);
 
-    if ( ndim==N_STATES )   
+    if ( ndim==N_STATES )
     {
         // one sample: prior on CN2
-        for (i=0; i<ndim; i++) 
+        for (i=0; i<ndim; i++)
             probs[i] = i==CN2 ? 0.5 : 0.5/3;
     }
     else
     {
         // two samples
         double norm = 0;
-        for (i=0; i<ndim; i++) 
+        for (i=0; i<ndim; i++)
         {
             int ia,ib;
             hmm2cn_state(ndim, i, &ia, &ib);
@@ -247,7 +247,7 @@ static void init_data(args_t *args)
         if ( bcf_hdr_nsamples(args->hdr)>1 ) error("Multi-sample VCF, missing the -s option\n");
         args->query_sample.name = strdup(args->hdr->samples[0]);
     }
-    else 
+    else
         if ( bcf_hdr_id2int(args->hdr,BCF_DT_SAMPLE,args->query_sample.name)<0 ) error("The sample \"%s\" not found\n", args->query_sample.name);
     if ( !args->files->readers[0].file->is_bin )
     {
@@ -285,7 +285,7 @@ static void init_data(args_t *args)
     }
     else
         args->summary_fh = NULL;    // one sample only, no two-file summary
-        
+
 
     int i;
     FILE *fh = args->summary_fh ? args->summary_fh : args->query_sample.summary_fh;
@@ -393,7 +393,7 @@ static void plot_sample(args_t *args, sample_t *smpl)
             "    plt.subplots_adjust(left=0.08,right=0.95,bottom=0.08,top=0.92)\n"
             "    plt.savefig('%s/plot.%s.chr'+chr+'.png')\n"
             "    plt.close()\n"
-            "\n", 
+            "\n",
             smpl->dat_fname,smpl->cn_fname,smpl->name,args->output_dir,smpl->name
     );
     fclose(fp);
@@ -559,7 +559,7 @@ static void create_plots(args_t *args)
             "    plt.subplots_adjust(left=0.08,right=0.95,bottom=0.08,top=0.92,hspace=0)\n"
             "    plt.savefig('%s/plot.%s.%s.chr'+chr+'.png')\n"
             "    plt.close()\n"
-            "\n", 
+            "\n",
             args->control_sample.name,args->query_sample.name,
             args->output_dir,
             args->control_sample.dat_fname,args->query_sample.dat_fname,
@@ -645,17 +645,17 @@ static int set_observed_prob(args_t *args, sample_t *smpl, int isite)
         return 0;
     }
 
-    double cn1_baf = 
+    double cn1_baf =
         norm_prob(baf,GAUSS_CN1_PK_R(smpl)) * (fRR + fRA*0.5) +
         norm_prob(baf,GAUSS_CN1_PK_A(smpl)) * (fAA + fRA*0.5) ;
-    double cn2_baf = 
-        norm_prob(baf,GAUSS_CN2_PK_RR(smpl)) * fRR + 
-        norm_prob(baf,GAUSS_CN2_PK_RA(smpl)) * fRA + 
+    double cn2_baf =
+        norm_prob(baf,GAUSS_CN2_PK_RR(smpl)) * fRR +
+        norm_prob(baf,GAUSS_CN2_PK_RA(smpl)) * fRA +
         norm_prob(baf,GAUSS_CN2_PK_AA(smpl)) * fAA;
-    double cn3_baf = 
-        norm_prob(baf,GAUSS_CN3_PK_RRR(smpl)) * fRR + 
-        norm_prob(baf,GAUSS_CN3_PK_RRA(smpl)) * fRA*0.5 + 
-        norm_prob(baf,GAUSS_CN3_PK_RAA(smpl)) * fRA*0.5 + 
+    double cn3_baf =
+        norm_prob(baf,GAUSS_CN3_PK_RRR(smpl)) * fRR +
+        norm_prob(baf,GAUSS_CN3_PK_RRA(smpl)) * fRA*0.5 +
+        norm_prob(baf,GAUSS_CN3_PK_RAA(smpl)) * fRA*0.5 +
         norm_prob(baf,GAUSS_CN3_PK_AAA(smpl)) * fAA;
 
     double norm = cn1_baf + cn2_baf + cn3_baf;
@@ -1136,7 +1136,7 @@ static int parse_lrr_baf(sample_t *smpl, bcf_fmt_t *baf_fmt, bcf_fmt_t *lrr_fmt,
 
 static void cnv_next_line(args_t *args, bcf1_t *line)
 {
-    if ( !line ) 
+    if ( !line )
     {
         // Done, flush viterbi
         cnv_flush_viterbi(args);
@@ -1156,7 +1156,7 @@ static void cnv_next_line(args_t *args, bcf1_t *line)
     args->ntot++;
 
     bcf_fmt_t *baf_fmt, *lrr_fmt = NULL;
-    if ( !(baf_fmt = bcf_get_fmt(args->hdr, line, "BAF")) ) return; 
+    if ( !(baf_fmt = bcf_get_fmt(args->hdr, line, "BAF")) ) return;
     if ( args->lrr_bias>0 && !(lrr_fmt = bcf_get_fmt(args->hdr, line, "LRR")) ) return;
 
     float baf1,lrr1,baf2,lrr2;
@@ -1228,6 +1228,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -t, --targets REGION             Similar to -r but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "    -T, --targets-file FILE          Similar to -R but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "        --targets-overlap 0|1|2      Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT              Verbosity level\n");
     fprintf(bcftools_stderr, "HMM Options:\n");
     fprintf(bcftools_stderr, "    -a, --aberrant FLOAT[,FLOAT]     Fraction of aberrant cells in query and control [1.0,1.0]\n");
     fprintf(bcftools_stderr, "    -b, --BAF-weight FLOAT           Relative contribution from BAF [1]\n");
@@ -1273,7 +1274,7 @@ int main_vcfcnv(int argc, char *argv[])
     int regions_overlap = 1;
     int targets_overlap = 0;
 
-    static struct option loptions[] = 
+    static struct option loptions[] =
     {
         {"BAF-dev",1,0,'d'},
         {"LRR-dev",1,0,'k'},
@@ -1297,17 +1298,21 @@ int main_vcfcnv(int argc, char *argv[])
         {"regions-overlap",required_argument,NULL,3},
         {"plot-threshold",1,0,'p'},
         {"output-dir",1,0,'o'},
+        {"verbosity",required_argument,NULL,'v'},
         {0,0,0,0}
     };
     char *tmp = NULL;
-    while ((c = getopt_long(argc, argv, "h?r:R:t:T:s:o:p:l:T:c:b:P:x:e:O:W::f:a:L:d:k:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "h?r:R:t:T:s:o:p:l:T:c:b:P:x:e:O:W::f:a:L:d:k:v:",loptions,NULL)) >= 0) {
         switch (c) {
-            case 'L': 
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
+            case 'L':
                 args->lrr_smooth_win = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse: --LRR-smooth-win %s\n", optarg);
                 break;
             case 'f': args->af_fname = optarg; break;
-            case 'O': 
+            case 'O':
                 args->optimize_frac = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -O %s\n", optarg);
                 break;
@@ -1350,27 +1355,27 @@ int main_vcfcnv(int argc, char *argv[])
                 args->baum_welch_th = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -W %s\n", optarg);
                 break;
-            case 'e': 
+            case 'e':
                 args->err_prob = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -e %s\n", optarg);
                 break;
-            case 'b': 
+            case 'b':
                 args->baf_bias = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -b %s\n", optarg);
                 break;
-            case 'x': 
+            case 'x':
                 args->ij_prob = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -x %s\n", optarg);
                 break;
-            case 'P': 
+            case 'P':
                 args->same_prob = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -P %s\n", optarg);
                 break;
-            case 'l': 
+            case 'l':
                 args->lrr_bias = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -l %s\n", optarg);
                 break;
-            case 'p': 
+            case 'p':
                 args->plot_th = strtod(optarg,&tmp);
                 if ( *tmp ) error("Could not parse: -p %s\n", optarg);
                 break;
@@ -1389,7 +1394,7 @@ int main_vcfcnv(int argc, char *argv[])
                 targets_overlap = parse_overlap_option(optarg);
                 if ( targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
-            case 'h': 
+            case 'h':
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
         }
@@ -1423,7 +1428,7 @@ int main_vcfcnv(int argc, char *argv[])
     }
     if ( !bcf_sr_add_reader(args->files, fname) )
         error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
-    
+
     init_data(args);
     while ( bcf_sr_next_line(args->files) )
     {

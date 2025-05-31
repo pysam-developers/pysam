@@ -2,7 +2,7 @@
 
 /*  vcffilter.c -- Apply fixed-threshold filters.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -495,6 +495,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "    -T, --targets-file FILE        Similar to -R but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "        --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "        --threads INT              Use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT            Verbosity level\n");
     fprintf(bcftools_stderr, "    -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
@@ -539,11 +540,15 @@ int main_vcffilter(int argc, char *argv[])
         {"IndelGap",required_argument,NULL,'G'},
         {"no-version",no_argument,NULL,8},
         {"write-index",optional_argument,NULL,'W'},
+        {"verbosity",required_argument,NULL,'v'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "e:i:t:T:r:R:h?s:m:M:o:O:g:G:S:W::",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "e:i:t:T:r:R:h?s:m:M:o:O:g:G:S:W::v:",loptions,NULL)) >= 0) {
         switch (c) {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'g':
                 args->snp_gap = strtol(optarg,&tmp,10);
                 if ( *tmp && *tmp!=':' ) error("Could not parse argument: --SnpGap %s\n", optarg);
