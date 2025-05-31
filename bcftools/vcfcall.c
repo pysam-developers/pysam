@@ -1,6 +1,6 @@
 /*  vcfcall.c -- SNP/indel variant calling from VCF/BCF.
 
-    Copyright (C) 2013-2024 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -112,18 +112,15 @@ typedef struct
 }
 args_t;
 
-static char **add_sample(void *name2idx, char **lines, int *nlines, int *mlines, char *name, char sex, int *ith)
+static char **add_sample(void *name2idx, char **lines, int *nlines, int *mlines, char *name, char *sex, int *ith)
 {
     int ret = khash_str2int_get(name2idx, name, ith);
     if ( ret==0 ) return lines;
 
     hts_expand(char*,(*nlines+1),*mlines,lines);
-    int len = strlen(name);
-    lines[*nlines] = (char*) malloc(len+3);
-    memcpy(lines[*nlines],name,len);
-    lines[*nlines][len]   = ' ';
-    lines[*nlines][len+1] = sex;
-    lines[*nlines][len+2] = 0;
+    kstring_t str = {0,0,0};
+    ksprintf(&str,"%s %s",name,sex);
+    lines[*nlines] = str.s;
     *ith = *nlines;
     (*nlines)++;
     khash_str2int_set(name2idx, strdup(name), *ith);
@@ -205,12 +202,14 @@ static ploidy_predef_t ploidy_predefs[] =
 
 // only 5 columns are required and the first is ignored:
 //  ignored,sample,father(or 0),mother(or 0),sex(1=M,2=F)
-static char **parse_ped_samples(call_t *call, char **vals, int nvals, int *nsmpl)
+static char **parse_ped_samples(args_t *args, call_t *call, char **vals, int nvals, int *nsmpl)
 {
     int i, j, mlines = 0, nlines = 0;
     kstring_t str = {0,0,0}, fam_str = {0,0,0};
     void *name2idx = khash_str2int_init();
     char **lines = NULL;
+
+    char *msex = "M", *fsex = "F";
     for (i=0; i<nvals; i++)
     {
         str.l = 0;
@@ -232,11 +231,14 @@ static char **parse_ped_samples(call_t *call, char **vals, int nvals, int *nsmpl
         }
         if ( j<4 ) break;
 
-        char sex;
-        if ( col_ends[3][1]=='1' ) sex = 'M';
-        else if ( col_ends[3][1]=='2' ) sex = 'F';
-        else break;
-
+        char *sex = &col_ends[3][1];
+        if ( ploidy_sex2id(args->ploidy,sex)<0 )
+        {
+            // this gender is not defined, if 1/2, test if M/F is
+            if ( !strcmp(sex,"1") && ploidy_sex2id(args->ploidy,msex)>=0 ) sex = msex;
+            else if ( !strcmp(sex,"2") && ploidy_sex2id(args->ploidy,fsex)>=0 ) sex = fsex;
+            else error("[E::%s] The sex \"%s\" has not been declared in --ploidy/--ploidy-file\n",__func__,sex);
+        }
         lines = add_sample(name2idx, lines, &nlines, &mlines, col_ends[0]+1, sex, &j);
         if ( strcmp(col_ends[1]+1,"0") && strcmp(col_ends[2]+1,"0") )   // father and mother
         {
@@ -248,9 +250,9 @@ static char **parse_ped_samples(call_t *call, char **vals, int nvals, int *nsmpl
             fam->name = strdup(fam_str.s);
 
             if ( !khash_str2int_has_key(name2idx, col_ends[1]+1) )
-                lines = add_sample(name2idx, lines, &nlines, &mlines, col_ends[1]+1, 'M', &fam->sample[FATHER]);
+                lines = add_sample(name2idx, lines, &nlines, &mlines, col_ends[1]+1, msex, &fam->sample[FATHER]);
             if ( !khash_str2int_has_key(name2idx, col_ends[2]+1) )
-                lines = add_sample(name2idx, lines, &nlines, &mlines, col_ends[2]+1, 'F', &fam->sample[MOTHER]);
+                lines = add_sample(name2idx, lines, &nlines, &mlines, col_ends[2]+1, fsex, &fam->sample[MOTHER]);
 
             khash_str2int_get(name2idx, col_ends[0]+1, &fam->sample[CHILD]);
             khash_str2int_get(name2idx, col_ends[1]+1, &fam->sample[FATHER]);
@@ -276,12 +278,17 @@ static char **parse_ped_samples(call_t *call, char **vals, int nvals, int *nsmpl
  */
 static void set_samples(args_t *args, const char *fn, int is_file)
 {
-    int i, nlines;
+    int i, nlines, negate = 0;
+    if ( fn[0]=='^' )
+    {
+        negate = 1;
+        fn++;
+    }
     char **lines = hts_readlist(fn, is_file, &nlines);
     if ( !lines ) error("Could not read the file: %s\n", fn);
 
     int nsmpls;
-    char **smpls = parse_ped_samples(&args->aux, lines, nlines, &nsmpls);
+    char **smpls = parse_ped_samples(args, &args->aux, lines, nlines, &nsmpls);
     if ( smpls )
     {
         for (i=0; i<nlines; i++) free(lines[i]);
@@ -298,39 +305,80 @@ static void set_samples(args_t *args, const char *fn, int is_file)
     for (i=0; i<bcf_hdr_nsamples(args->aux.hdr); i++) args->sample2sex[i] = dflt_sex_id;
 
     int *old2new = (int*) malloc(sizeof(int)*bcf_hdr_nsamples(args->aux.hdr));
-    for (i=0; i<bcf_hdr_nsamples(args->aux.hdr); i++) old2new[i] = -1;
-
     int nsmpl = 0, map_needed = 0;
-    for (i=0; i<nlines; i++)
+    if ( !negate )
     {
-        char *ss = lines[i];
-        while ( *ss && isspace(*ss) ) ss++;
-        if ( !*ss ) error("Could not parse: %s\n", lines[i]);
-        if ( *ss=='#' ) continue;
-        char *se = ss;
-        while ( *se && !isspace(*se) ) se++;
-        char x = *se, *xptr = se; *se = 0;
+        for (i=0; i<bcf_hdr_nsamples(args->aux.hdr); i++) old2new[i] = -1;
+        for (i=0; i<nlines; i++)
+        {
+            char *ss = lines[i];
+            while ( *ss && isspace(*ss) ) ss++;
+            if ( !*ss ) error("Could not parse: %s\n", lines[i]);
+            if ( *ss=='#' ) continue;
+            char *se = ss;
+            while ( *se && !isspace(*se) ) se++;
+            char x = *se, *xptr = se; *se = 0;
 
-        int ismpl = bcf_hdr_id2int(args->aux.hdr, BCF_DT_SAMPLE, ss);
-        if ( ismpl < 0 ) { fprintf(stderr,"Warning: No such sample in the VCF: %s\n",ss); continue; }
-        if ( old2new[ismpl] != -1 ) { fprintf(stderr,"Warning: The sample is listed multiple times: %s\n",ss); continue; }
+            int ismpl = bcf_hdr_id2int(args->aux.hdr, BCF_DT_SAMPLE, ss);
+            if ( ismpl < 0 ) { fprintf(stderr,"Warning: No such sample in the VCF: %s\n",ss); continue; }
+            if ( old2new[ismpl] != -1 ) { fprintf(stderr,"Warning: The sample is listed multiple times: %s\n",ss); continue; }
 
-        ss = se+(x != '\0');
-        while ( *ss && isspace(*ss) ) ss++;
-        if ( !*ss ) ss = "2";   // default ploidy
-        se = ss;
-        while ( *se && !isspace(*se) ) se++;
-        if ( se==ss ) { *xptr = x; error("Could not parse: \"%s\"\n", lines[i]); }
+            ss = se+(x != '\0');
+            while ( *ss && isspace(*ss) ) ss++;
+            if ( !*ss ) ss = "2";   // default ploidy
+            se = ss;
+            while ( *se && !isspace(*se) ) se++;
+            if ( se==ss ) { *xptr = x; error("Could not parse: \"%s\"\n", lines[i]); }
 
-        if ( ss[1]==0 && (ss[0]=='0' || ss[0]=='1' || ss[0]=='2') )
-            args->sample2sex[nsmpl] = -1*(ss[0]-'0');
-        else
-            args->sample2sex[nsmpl] = ploidy_add_sex(args->ploidy, ss);
+            char *sex = ss;
+            if ( ploidy_sex2id(args->ploidy,sex)<0 )
+            {
+                if ( sex[1]==0 && (sex[0]=='0' || sex[0]=='1' || sex[0]=='2') ) args->sample2sex[nsmpl] = -1*(sex[0]-'0');
+                else error("[E::%s] The sex \"%s\" has not been declared in --ploidy/--ploidy-file\n",__func__,sex);
+            }
+            else
+                args->sample2sex[nsmpl] = ploidy_add_sex(args->ploidy,sex);
 
-        if ( ismpl!=nsmpl ) map_needed = 1;
-        args->samples_map[nsmpl] = ismpl;
-        old2new[ismpl] = nsmpl;
-        nsmpl++;
+            if ( ismpl!=nsmpl ) map_needed = 1;
+            args->samples_map[nsmpl] = ismpl;
+            old2new[ismpl] = nsmpl;
+            nsmpl++;
+        }
+        if ( nsmpl!=bcf_hdr_nsamples(args->aux.hdr) ) map_needed = 1;
+    }
+    else
+    {
+        // negate: in this mode the default ploidy must be used for obvious reason - there is no way to
+        // specify ploidy if the sample name is not shown
+        for (i=0; i<bcf_hdr_nsamples(args->aux.hdr); i++) old2new[i] = 1;   // by default keep the sample
+        for (i=0; i<nlines; i++)
+        {
+            char *ss = lines[i];
+            while ( *ss && isspace(*ss) ) ss++;
+            if ( !*ss ) error("Could not parse: %s\n", lines[i]);
+            if ( *ss=='#' ) continue;
+            char *se = ss;
+            while ( *se && !isspace(*se) ) se++;
+            *se = 0;
+
+            int ismpl = bcf_hdr_id2int(args->aux.hdr, BCF_DT_SAMPLE, ss);
+            if ( ismpl < 0 ) { fprintf(stderr,"Warning: No such sample in the VCF: %s\n",ss); continue; }
+
+            old2new[ismpl] = 0; // do not keep this sample
+            free(lines[i]);
+        }
+        free(lines);
+        lines = malloc(sizeof(*lines)*bcf_hdr_nsamples(args->aux.hdr));
+        nsmpl = 0;
+        for (i=0; i<bcf_hdr_nsamples(args->aux.hdr); i++)
+        {
+            if ( !old2new[i] ) continue;
+            lines[nsmpl] = strdup(args->aux.hdr->samples[i]);
+            args->samples_map[nsmpl] = i;
+            old2new[i] = nsmpl;
+            nsmpl++;
+        }
+        map_needed = 1;
     }
 
     for (i=0; i<args->aux.nfams; i++)
@@ -927,6 +975,7 @@ static void usage(args_t *args)
     fprintf(stderr, "   -M, --keep-masked-ref           Keep sites with masked reference allele (REF=N)\n");
     fprintf(stderr, "   -V, --skip-variants TYPE        Skip indels/snps\n");
     fprintf(stderr, "   -v, --variants-only             Output variant sites only\n");
+    fprintf(stderr, "       --verbosity INT             Verbosity level\n");
     fprintf(stderr, "   -W, --write-index[=FMT]         Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Consensus/variant calling options:\n");
@@ -1012,6 +1061,7 @@ int main_vcfcall(int argc, char *argv[])
         {"chromosome-Y",no_argument,NULL,'Y'},
         {"no-version",no_argument,NULL,8},
         {"write-index",optional_argument,NULL,'W'},
+        {"verbosity",required_argument,NULL,10},
         {NULL,0,NULL,0}
     };
 
@@ -1102,6 +1152,9 @@ int main_vcfcall(int argc, char *argv[])
             case 'W':
                 if (!(args.write_index = write_index_parse(optarg)))
                     error("Unsupported index format '%s'\n", optarg);
+                break;
+            case 10:
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
                 break;
             default: usage(&args);
         }

@@ -50,6 +50,9 @@ void error(const char *format, ...) HTS_NORETURN HTS_FORMAT(HTS_PRINTF_FMT, 1, 2
 //  newline will be added by the function.
 void error_errno(const char *format, ...) HTS_NORETURN HTS_FORMAT(HTS_PRINTF_FMT, 1, 2);
 
+//  Set hts_verbose and return 0, or return -1 if str is not a valid integer
+int apply_verbosity(const char *str);
+
 // For on the fly index creation with --write-index
 int init_index2(htsFile *fh, bcf_hdr_t *hdr, const char *fname, char **idx_fname, int idx_fmt);
 int init_index(htsFile *fh, bcf_hdr_t *hdr, const char *fname, char **idx_fname);

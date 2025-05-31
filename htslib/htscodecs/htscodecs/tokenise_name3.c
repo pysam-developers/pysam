@@ -1555,6 +1555,7 @@ uint8_t *tok3_encode_names(char *blk, int len, int level, int use_arith,
         if (compress(ctx->desc[i].buf, ctx->desc[i].buf_l, i&0xf, level,
                      use_arith, out, &out_len) < 0) {
             free_context(ctx);
+            free(out);
             return NULL;
         }
 

@@ -1,6 +1,6 @@
 /*  vcfannotate.c -- Annotate and edit VCF/BCF files.
 
-    Copyright (C) 2013-2024 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -774,6 +774,7 @@ static int vcf_setter_info_flag(args_t *args, bcf1_t *line, annot_col_t *col, vo
 }
 static int setter_ARinfo_int32(args_t *args, bcf1_t *line, annot_col_t *col, int nals, char **als, int ntmpi)
 {
+    if ( !nals ) error("Cannot fill Number=R,A tags without --columns ..,REF,ALT,..\n");
     if ( col->number==BCF_VL_A && ntmpi!=nals-1 && (ntmpi!=1 || args->tmpi[0]!=bcf_int32_missing || args->tmpi[1]!=bcf_int32_vector_end) )
         error("Incorrect number of values (%d) for the %s tag at %s:%"PRId64"\n", ntmpi,col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
     else if ( col->number==BCF_VL_R && ntmpi!=nals && (ntmpi!=1 || args->tmpi[0]!=bcf_int32_missing || args->tmpi[1]!=bcf_int32_vector_end) )
@@ -855,8 +856,8 @@ static int setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, void *d
             else
             {
                 args->tmpi[ntmpi-1] = strtol(str, &end, 10);
-                if ( end==str )
-                    error("Could not parse %s at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
+                if ( end==str || (*end && *end!=',') )
+                    error("Could not parse %s (Type=Integer) at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
                 str = end+1;
             }
         }
@@ -938,6 +939,7 @@ static int vcf_setter_info_int(args_t *args, bcf1_t *line, annot_col_t *col, voi
 }
 static int setter_ARinfo_real(args_t *args, bcf1_t *line, annot_col_t *col, int nals, char **als, int ntmpf)
 {
+    if ( !nals ) error("Cannot fill Number=R,A tags without --columns ..,REF,ALT,..\n");
     if ( col->number==BCF_VL_A && ntmpf!=nals-1 && (ntmpf!=1 || !bcf_float_is_missing(args->tmpf[0]) || !bcf_float_is_vector_end(args->tmpf[0])) )
         error("Incorrect number of values (%d) for the %s tag at %s:%"PRId64"\n", ntmpf,col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
     else if ( col->number==BCF_VL_R && ntmpf!=nals && (ntmpf!=1 || !bcf_float_is_missing(args->tmpf[0]) || !bcf_float_is_vector_end(args->tmpf[0])) )
@@ -1124,6 +1126,7 @@ int copy_string_field(char *src, int isrc, int src_len, kstring_t *dst, int idst
 static int setter_ARinfo_string(args_t *args, bcf1_t *line, annot_col_t *col, int nals, char **als)
 {
     assert( col->merge_method==MM_FIRST );
+    if ( !nals ) error("Cannot fill Number=R,A tags without --columns ..,REF,ALT,..\n");
 
     int nsrc = 1, lsrc = 0;
     while ( args->tmps[lsrc] )
@@ -1668,8 +1671,8 @@ static int setter_format_int(args_t *args, bcf1_t *line, annot_col_t *col, void 
 
             char *end = str;
             ptr[ival] = strtol(str, &end, 10);
-            if ( end==str )
-                error("Could not parse %s at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
+            if ( end==str || (*end && *end!=',')  )
+                error("Could not parse %s (Type=Integer) at %s:%"PRId64" .. [%s]\n", col->hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1,tab->cols[col->icol]);
 
             ival++;
             str = *end ? end+1 : end;
@@ -2313,7 +2316,7 @@ static void init_columns(args_t *args)
                 col->hdr_key_src = strdup(str.s);
                 col->hdr_key_dst = strdup(str.s);
                 col->replace = replace;
-                if ( args->pair_logic==-1 ) bcf_sr_set_opt(args->files,BCF_SR_PAIR_LOGIC,BCF_SR_PAIR_BOTH_REF);
+                if ( args->pair_logic==-1 ) args->pair_logic = BCF_SR_PAIR_ANY;
             }
             else args->alt_idx = icol;
         }
@@ -2321,7 +2324,6 @@ static void init_columns(args_t *args)
         {
             if ( replace & REPLACE_NON_MISSING ) error("Apologies, the -ID feature has not been implemented yet.\n");
             if ( str.s[0]=='~' ) replace = MATCH_VALUE;
-            if ( args->tgts_is_vcf && (replace & MATCH_VALUE) ) error("todo: -c ~ID with -a VCF?\n");
             args->ncols++; args->cols = (annot_col_t*) realloc(args->cols,sizeof(annot_col_t)*args->ncols);
             annot_col_t *col = &args->cols[args->ncols-1];
             memset(col,0,sizeof(*col));
@@ -2330,7 +2332,11 @@ static void init_columns(args_t *args)
             col->setter = args->tgts_is_vcf ? vcf_setter_id : setter_id;
             col->hdr_key_src = strdup(str.s);
             col->hdr_key_dst = strdup(str.s);
-            if ( replace & MATCH_VALUE ) args->match_id = icol;
+            if ( replace & MATCH_VALUE )
+            {
+                args->match_id = icol;
+                if ( args->tgts_is_vcf ) args->pair_logic = (args->pair_logic==-1) ? BCF_SR_PAIR_ID : args->pair_logic|BCF_SR_PAIR_ID;
+            }
         }
         else if ( !strcasecmp("~INFO/END",str.s) && !args->tgts_is_vcf )
         {
@@ -2408,8 +2414,8 @@ static void init_columns(args_t *args)
                 col->hdr_key_src = strdup(ptr+2);
                 col->hdr_key_dst = strdup(str.s+5);
                 tmp.l = 0;
-                ksprintf(&tmp,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Transferred FILTER column\">",col->hdr_key_dst);
-                bcf_hdr_append(args->hdr_out, tmp.s);
+                ksprintf(&tmp,"##INFO=<ID=%s,Number=.,Type=String,Description=\"Transferred FILTER column\">",col->hdr_key_dst);
+                if ( bcf_hdr_append(args->hdr_out, tmp.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
                 if (bcf_hdr_sync(args->hdr_out) < 0) error_errno("[%s] Failed to update header", __func__);
                 int hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, col->hdr_key_dst);
                 col->number = bcf_hdr_id2length(args->hdr_out,BCF_HL_INFO,hdr_id);
@@ -2441,7 +2447,7 @@ static void init_columns(args_t *args)
                     if ( k<0 ) error("[%s] Failed to parse the header, the ID attribute not found", __func__);
                     tmp.l = 0;
                     bcf_hrec_format(hrec, &tmp);
-                    bcf_hdr_append(args->hdr_out, tmp.s);
+                    if ( bcf_hdr_append(args->hdr_out, tmp.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
                 }
                 if (bcf_hdr_sync(args->hdr_out) < 0)
                     error_errno("[%s] Failed to update header", __func__);
@@ -2475,7 +2481,7 @@ static void init_columns(args_t *args)
                 if ( skip_info && khash_str2int_has_key(skip_info,hrec->vals[k]) ) continue;
                 tmp.l = 0;
                 bcf_hrec_format(hrec, &tmp);
-                bcf_hdr_append(args->hdr_out, tmp.s);
+                if ( bcf_hdr_append(args->hdr_out, tmp.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
                 if (bcf_hdr_sync(args->hdr_out) < 0)
                     error_errno("[%s] Failed to update header", __func__);
                 int hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, hrec->vals[k]);
@@ -2511,7 +2517,7 @@ static void init_columns(args_t *args)
                 if ( skip_fmt && khash_str2int_has_key(skip_fmt,hrec->vals[k]) ) continue;
                 tmp.l = 0;
                 bcf_hrec_format(hrec, &tmp);
-                bcf_hdr_append(args->hdr_out, tmp.s);
+                if ( bcf_hdr_append(args->hdr_out, tmp.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
                 if (bcf_hdr_sync(args->hdr_out) < 0)
                     error_errno("[%s] Failed to update header", __func__);
                 int hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, hrec->vals[k]);
@@ -2559,7 +2565,7 @@ static void init_columns(args_t *args)
                 if ( !hrec ) error("No such annotation \"%s\" in %s\n", key_src,args->targets_fname);
                 tmp.l = 0;
                 bcf_hrec_format_rename(hrec, key_dst, &tmp);
-                bcf_hdr_append(args->hdr_out, tmp.s);
+                if ( bcf_hdr_append(args->hdr_out, tmp.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
                 if (bcf_hdr_sync(args->hdr_out) < 0)
                     error_errno("[%s] Failed to update header", __func__);
             }
@@ -2666,13 +2672,13 @@ static void init_columns(args_t *args)
                     {
                         // transferring ID column into a new INFO tag
                         tmp.l = 0;
-                        ksprintf(&tmp,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Transferred ID column\">",key_dst);
+                        ksprintf(&tmp,"##INFO=<ID=%s,Number=.,Type=String,Description=\"Transferred ID column\">",key_dst);
                     }
                     else if ( !strcasecmp("FILTER",key_src) && !explicit_src_info )
                     {
                         // transferring FILTER column into a new INFO tag
                         tmp.l = 0;
-                        ksprintf(&tmp,"##INFO=<ID=%s,Number=1,Type=String,Description=\"Transferred FILTER column\">",key_dst);
+                        ksprintf(&tmp,"##INFO=<ID=%s,Number=.,Type=String,Description=\"Transferred FILTER column\">",key_dst);
                     }
                     else
                     {
@@ -2692,7 +2698,7 @@ static void init_columns(args_t *args)
                         tmp.l = 0;
                         bcf_hrec_format_rename(hrec, key_dst, &tmp);
                     }
-                    bcf_hdr_append(args->hdr_out, tmp.s);
+                    if ( bcf_hdr_append(args->hdr_out, tmp.s) ) error("[%s:%d] failed to update the header\n",__FILE__,__LINE__);
                     if (bcf_hdr_sync(args->hdr_out) < 0)
                         error_errno("[%s] Failed to update header", __func__);
                     hdr_id = bcf_hdr_id2int(args->hdr_out, BCF_DT_ID, key_dst);
@@ -3121,6 +3127,11 @@ static void init_data(args_t *args)
         if ( init_index2(args->out_fh,args->hdr,args->output_fname,
                          &args->index_fn, args->write_index) < 0 )
             error("Error: failed to initialise index for %s\n",args->output_fname);
+    }
+    if ( args->tgts_is_vcf )
+    {
+        if ( args->pair_logic==-1 ) args->pair_logic = BCF_SR_PAIR_SOME;
+        bcf_sr_set_opt(args->files,BCF_SR_PAIR_LOGIC,args->pair_logic);
     }
 }
 
@@ -3650,7 +3661,7 @@ static void usage(args_t *args)
     fprintf(stderr, "       --no-version                Do not append version and command line to the header\n");
     fprintf(stderr, "   -o, --output FILE               Write output to a file [standard output]\n");
     fprintf(stderr, "   -O, --output-type u|b|v|z[0-9]  u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
-    fprintf(stderr, "       --pair-logic STR            Matching records by <snps|indels|both|all|some|exact>, see man page for details [some]\n");
+    fprintf(stderr, "       --pair-logic STR            Matching records by <snps|indels|both|all|some|exact|id>, see man page for details [some]\n");
     fprintf(stderr, "   -r, --regions REGION            Restrict to comma-separated list of regions\n");
     fprintf(stderr, "   -R, --regions-file FILE         Restrict to regions listed in FILE\n");
     fprintf(stderr, "       --regions-overlap 0|1|2     Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
@@ -3661,6 +3672,7 @@ static void usage(args_t *args)
     fprintf(stderr, "       --single-overlaps           Keep memory low by avoiding complexities arising from handling multiple overlapping intervals\n");
     fprintf(stderr, "   -x, --remove LIST               List of annotations (e.g. ID,INFO/DP,FORMAT/DP,FILTER) to remove (or keep with \"^\" prefix). See man page for details\n");
     fprintf(stderr, "       --threads INT               Number of extra output compression threads [0]\n");
+    fprintf(stderr, "   -v, --verbosity INT             Verbosity level\n");
     fprintf(stderr, "   -W, --write-index[=FMT]         Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Examples:\n");
@@ -3718,13 +3730,17 @@ int main_vcfannotate(int argc, char *argv[])
         {"min-overlap",required_argument,NULL,12},
         {"no-version",no_argument,NULL,8},
         {"force",no_argument,NULL,'f'},
+        {"verbosity",required_argument,NULL,'v'},
         {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h:H:?o:O:r:R:a:x:c:C:i:e:S:s:I:m:kl:fW::",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:H:?o:O:r:R:a:x:c:C:i:e:S:s:I:m:kl:fW::v:",loptions,NULL)) >= 0)
     {
         switch (c) {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'f': args->force = 1; break;
             case 'k': args->keep_sites = 1; break;
             case 'm':
@@ -3784,6 +3800,7 @@ int main_vcfannotate(int argc, char *argv[])
                 else if ( !strcmp(optarg,"some") ) args->pair_logic |= BCF_SR_PAIR_SOME;
                 else if ( !strcmp(optarg,"none") ) args->pair_logic = BCF_SR_PAIR_EXACT;
                 else if ( !strcmp(optarg,"exact") ) args->pair_logic = BCF_SR_PAIR_EXACT;
+                else if ( !strcmp(optarg,"id") ) args->pair_logic |= BCF_SR_PAIR_ID;
                 else error("The --pair-logic string \"%s\" not recognised.\n", optarg);
                 break;
             case  3 :
@@ -3829,7 +3846,6 @@ int main_vcfannotate(int argc, char *argv[])
         {
             args->tgts_is_vcf = 1;
             args->files->require_index = 1;
-            bcf_sr_set_opt(args->files,BCF_SR_PAIR_LOGIC,args->pair_logic>=0 ? args->pair_logic : BCF_SR_PAIR_SOME);
             if ( args->min_overlap_str ) error("The --min-overlap option cannot be used when annotating from a VCF\n");
         }
     }
@@ -3837,10 +3853,19 @@ int main_vcfannotate(int argc, char *argv[])
     if ( bcf_sr_set_threads(args->files, args->n_threads)<0 ) error("Failed to create threads\n");
     if ( !bcf_sr_add_reader(args->files, fname) ) error("Failed to read from %s: %s\n", !strcmp("-",fname)?"standard input":fname,bcf_sr_strerror(args->files->errnum));
 
-    static int line_errcode_warned = 0;
+    static int line_errcode_warned = 0, vcf_parse_error_warned = 0;
     init_data(args);
     while ( bcf_sr_next_line(args->files) )
     {
+        if ( args->files->errnum )
+        {
+            if ( !args->force ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
+            else if ( !vcf_parse_error_warned )
+            {
+                fprintf(stderr,"Warning: Encountered an error, proceeding only because --force was given.\n");
+                vcf_parse_error_warned = 1;
+            }
+        }
         if ( !bcf_sr_has_line(args->files,0) ) continue;
         bcf1_t *line = bcf_sr_get_line(args->files,0);
         if ( line->errcode )

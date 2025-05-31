@@ -1,6 +1,6 @@
 /*  reheader.c -- reheader subcommand.
 
-    Copyright (C) 2014-2022,2024 Genome Research Ltd.
+    Copyright (C) 2014-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -418,7 +418,7 @@ static void reheader_vcf_gz(args_t *args)
     // Output all remaining data read with the header block
     if ( fp->block_length - skip_until > 0 )
     {
-        if ( bgzf_write(bgzf_out, buffer+skip_until, fp->block_length-skip_until)<0 ) error("Error: %d\n",fp->errcode);
+        if ( bgzf_write(bgzf_out, buffer+skip_until, fp->block_length-skip_until)<0 ) error("Error: %d\n",bgzf_out->errcode);
     }
     if ( bgzf_flush(bgzf_out)<0 ) error("Error: %d\n",bgzf_out->errcode);
 
@@ -434,8 +434,8 @@ static void reheader_vcf_gz(args_t *args)
         int count = bgzf_raw_write(bgzf_out, buf, nread);
         if (count != nread) error("Write failed, wrote %d instead of %d bytes.\n", count,(int)nread);
     }
-    if (bgzf_close(bgzf_out) < 0) error("Error closing %s: %d\n",args->output_fname ? args->output_fname : "-",bgzf_out->errcode);
-    if (hts_close(args->fp)) error("Error closing %s: %d\n",args->fname,fp->errcode);
+    if (bgzf_close(bgzf_out) < 0) error("Error closing %s: %s\n",args->output_fname ? args->output_fname : "-",strerror(errno));
+    if (hts_close(args->fp)) error("Error closing %s: %s\n",args->fname,strerror(errno));
     free(buf);
 }
 static void reheader_vcf(args_t *args)
@@ -661,12 +661,13 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools reheader [OPTIONS] <in.vcf.gz>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -f, --fai FILE             update sequences and their lengths from the .fai file\n");
-    fprintf(stderr, "    -h, --header FILE          new header\n");
-    fprintf(stderr, "    -o, --output FILE          write output to a file [standard output]\n");
-    fprintf(stderr, "    -s, --samples FILE         new sample names\n");
-    fprintf(stderr, "    -T, --temp-prefix PATH     ignored; was template for temporary file name\n");
-    fprintf(stderr, "        --threads INT          use multithreading with <int> worker threads (BCF only) [0]\n");
+    fprintf(stderr, "    -f, --fai FILE             Update sequences and their lengths from the .fai file\n");
+    fprintf(stderr, "    -h, --header FILE          New header\n");
+    fprintf(stderr, "    -o, --output FILE          Write output to a file [standard output]\n");
+    fprintf(stderr, "    -s, --samples FILE         New sample names\n");
+    fprintf(stderr, "    -T, --temp-prefix PATH     Ignored; was template for temporary file name\n");
+    fprintf(stderr, "        --threads INT          Use multithreading with <int> worker threads (BCF only) [0]\n");
+    fprintf(stderr, "    -v, --verbosity INT        Verbosity level\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Example:\n");
     fprintf(stderr, "   # Write out the header to be modified\n");
@@ -695,12 +696,16 @@ int main_reheader(int argc, char *argv[])
         {"header",1,0,'h'},
         {"samples",1,0,'s'},
         {"threads",1,NULL,1},
+        {"verbosity",required_argument,NULL,'v'},
         {0,0,0,0}
     };
-    while ((c = getopt_long(argc, argv, "s:h:o:f:T:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "s:h:o:f:T:v:",loptions,NULL)) >= 0)
     {
         switch (c)
         {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case  1 : args->n_threads = strtol(optarg, 0, 0); break;
             case 'T': break; // unused - was temp file prefix
             case 'f': args->fai_fname = optarg; break;

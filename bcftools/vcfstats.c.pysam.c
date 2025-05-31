@@ -2,7 +2,7 @@
 
 /*  vcfstats.c -- Produces stats which can be plotted using plot-vcfstats.
 
-    Copyright (C) 2012-2024 Genome Research Ltd.
+    Copyright (C) 2012-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1905,7 +1905,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -u, --user-tstv TAG[:min:max:n]  Collect Ts/Tv stats for any tag using the given binning [0:1:100]\n");
     fprintf(bcftools_stderr, "                                       A subfield can be selected as e.g. 'PV4[0]', here the first value of the PV4 tag\n");
     fprintf(bcftools_stderr, "        --threads INT                Use multithreading with <int> worker threads [0]\n");
-    fprintf(bcftools_stderr, "    -v, --verbose                    Produce verbose per-site and per-sample output\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT              Verbosity level\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -1933,7 +1933,8 @@ int main_vcfstats(int argc, char *argv[])
         {"regions",1,0,'r'},
         {"regions-file",1,0,'R'},
         {"regions-overlap",required_argument,NULL,3},
-        {"verbose",0,0,'v'},
+        {"verbose",optional_argument,0,'v'},
+        {"verbosity",optional_argument,0,'v'},
         {"depth",1,0,'d'},
         {"apply-filters",1,0,'f'},
         {"exons",1,0,'E'},
@@ -1948,7 +1949,7 @@ int main_vcfstats(int argc, char *argv[])
         {"threads",1,0,9},
         {0,0,0,0}
     };
-    while ((c = getopt_long(argc, argv, "hc:r:R:e:s:S:d:i:t:T:F:f:1u:vIE:",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "hc:r:R:e:s:S:d:i:t:T:F:f:1u:v::IE:",loptions,NULL)) >= 0) {
         switch (c) {
             case  1 : args->af_bins_list = optarg; break;
             case  2 : args->af_tag = optarg; break;
@@ -1967,7 +1968,16 @@ int main_vcfstats(int argc, char *argv[])
                 else if ( !strcmp(optarg,"none") ) args->files->collapse = COLLAPSE_NONE;
                 else error("The --collapse string \"%s\" not recognised.\n", optarg);
                 break;
-            case 'v': args->verbose_sites = 1; break;
+            case 'v':
+                if ( !optarg ) args->verbose_sites = 1;
+                else
+                {
+                    char *tmp;
+                    args->verbose_sites = strtol(optarg,&tmp,10);
+                    if ( *tmp || args->verbose_sites<0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                    if ( args->verbose_sites > 3 ) hts_verbose = args->verbose_sites;
+                }
+                break;
             case 'd':
                 if ( sscanf(optarg,"%d,%d,%d",&args->dp_min,&args->dp_max,&args->dp_step)!=3 )
                     error("Could not parse --depth %s\n", optarg);
