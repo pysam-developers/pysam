@@ -751,11 +751,11 @@ Overview
 The 0.9.0 release upgrades htslib to htslib 1.3 and numerous other
 enhancements and bugfixes. See below for a detailed list.
 
-`Htslib 1.3 <https://github.com/samtools/htslib/releases/tag/1.3>`_
-comes with additional capabilities for remote file access which depend
-on the presence of optional system libraries. As a consequence, the
-installation script :file:`setup.py` has become more complex. For an
-overview, see :ref:`installation`.  We have tested installation on
+The `Htslib 1.3 <https://github.com/samtools/htslib/releases/tag/1.3>`_
+release comes with additional capabilities for remote file access which
+depend on the presence of optional system libraries. As a consequence,
+the installation script :file:`setup.py` has become more complex. For
+an overview, see :ref:`installation`.  We have tested installation on
 linux and OS X, but could not capture all variations. It is possible
 that a 0.9.1 release might follow soon addressing installation issues.
 
