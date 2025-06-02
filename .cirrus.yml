@@ -1,3 +1,24 @@
+freebsd_ci_task:
+  name: CI / FreeBSD
+
+  freebsd_instance:
+    image_family: freebsd-14-2
+
+  install_script: |
+    pkg install -y bcftools gmake py311-cython3 py311-mypy py311-pytest samtools
+
+  env:
+    CC: "clang -I/usr/local/include"
+    MAKE: "gmake"
+    REF_PATH: ":"
+
+  build_script: |
+    python setup.py build
+
+  test_script: |
+    PYTHONPATH="$(echo $PWD/build/lib.*)" pytest
+
+
 build_wheels_task:
   only_if: $CIRRUS_BRANCH =~ "release/.*" || $CIRRUS_TAG =~ "v0\..*"
 

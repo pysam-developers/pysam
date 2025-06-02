@@ -78,7 +78,7 @@ def run_make(targets):
 
 
 def run_make_print_config():
-    stdout = subprocess.check_output(["make", "-s", "print-config"], encoding="ascii")
+    stdout = subprocess.check_output([os.environ.get("MAKE", "make"), "-s", "print-config"], encoding="ascii")
 
     make_print_config = {}
     for line in stdout.splitlines():
