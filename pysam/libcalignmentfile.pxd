@@ -99,6 +99,13 @@ cdef class IteratorRowSelection(IteratorRow):
     cdef int cnext(self)
 
 
+cdef class IteratorRowFilter(IteratorRow):
+    cdef int flag_filter
+    cdef int flag_require
+    cdef bam1_t * getCurrent(self)
+    cdef int cnext(self)
+
+
 cdef class IteratorColumn:
 
     # result of the last plbuf_push
