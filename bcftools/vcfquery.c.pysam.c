@@ -2,7 +2,7 @@
 
 /*  vcfquery.c -- Extracts fields from VCF/BCF file.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -256,6 +256,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "        --targets-overlap 0|1|2       Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "    -u, --allow-undef-tags            Print \".\" for undefined tags\n");
     fprintf(bcftools_stderr, "    -v, --vcf-list FILE               Process multiple VCFs listed in the file\n");
+    fprintf(bcftools_stderr, "        --verbosity INT               Verbosity level\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "Examples:\n");
     fprintf(bcftools_stderr, "\tbcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%SAMPLE=%%GT]\\n' file.vcf.gz\n");
@@ -299,6 +300,7 @@ int main_vcfquery(int argc, char *argv[])
         {"collapse",1,0,'c'},
         {"vcf-list",1,0,'v'},
         {"allow-undef-tags",0,0,'u'},
+        {"verbosity",required_argument,NULL,4},
         {0,0,0,0}
     };
     while ((c = getopt_long(argc, argv, "hlr:R:F:f:a:s:S:Ht:T:c:v:i:e:o:uN",loptions,NULL)) >= 0) {
@@ -352,6 +354,9 @@ int main_vcfquery(int argc, char *argv[])
                 if ( targets_overlap < 0 ) error("Could not parse: --targets-overlap %s\n",optarg);
                 break;
             case  3 : args->force_samples = 1; break;
+            case  4 :
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'h':
             case '?': usage(); break;
             default: error("Unknown argument: %s\n", optarg);

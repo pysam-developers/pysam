@@ -2,7 +2,7 @@
 
 /*  vcfconcat.c -- Concatenate or combine VCF/BCF files.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -643,7 +643,7 @@ static void concat(args_t *args)
                 bcf_hdr_remove(hdr, BCF_HL_FMT, NULL);
                 bcf_hdr_destroy(hdr_ori);
             }
-            if ( !fp->is_bin && args->output_type&FT_VCF )
+            if ( !fp->is_bin && args->output_type&FT_VCF && !args->out_fh->idx)
             {
                 line->max_unpack = BCF_UN_STR;
                 // if VCF is on both input and output, avoid VCF to BCF conversion
@@ -664,6 +664,7 @@ static void concat(args_t *args)
                             }
                             str++;
                         }
+                        fp->line.l = str - fp->line.s;
                         str = fp->line.s;
                     }
                     while ( *str && *str!='\t' ) str++;
@@ -920,7 +921,7 @@ static void naive_concat(args_t *args)
         // Output all non-header data that were read together with the header block
         if ( fp->block_length - nskip > 0 )
         {
-            if ( bgzf_write(bgzf_out, (char *)fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("\nError: %d\n",fp->errcode);
+            if ( bgzf_write(bgzf_out, (char *)fp->uncompressed_block+nskip, fp->block_length-nskip)<0 ) error("\nError: %d\n",bgzf_out->errcode);
         }
         if ( bgzf_flush(bgzf_out)<0 ) error("\nError: %d\n",bgzf_out->errcode);
 
@@ -953,7 +954,7 @@ static void naive_concat(args_t *args)
     }
     free(buf);
     free(tmp.s);
-    if (bgzf_close(bgzf_out) < 0) error("Error: %d\n",bgzf_out->errcode);
+    if (bgzf_close(bgzf_out) < 0) error("Error: %s\n",strerror(errno));
 }
 
 static void usage(args_t *args)
@@ -988,7 +989,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -R, --regions-file FILE        Restrict to regions listed in a file\n");
     fprintf(bcftools_stderr, "       --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(bcftools_stderr, "       --threads INT              Use multithreading with <int> worker threads [0]\n");
-    fprintf(bcftools_stderr, "   -v, --verbose 0|1              Set verbosity level [1]\n");
+    fprintf(bcftools_stderr, "   -v, --verbosity INT            Set verbosity level\n");
     fprintf(bcftools_stderr, "   -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
@@ -1010,6 +1011,7 @@ int main_vcfconcat(int argc, char *argv[])
     static struct option loptions[] =
     {
         {"verbose",required_argument,NULL,'v'},
+        {"verbosity",required_argument,NULL,'v'},
         {"naive",no_argument,NULL,'n'},
         {"naive-force",no_argument,NULL,7},
         {"compact-PS",no_argument,NULL,'c'},
@@ -1082,6 +1084,7 @@ int main_vcfconcat(int argc, char *argv[])
             case 'v':
                       args->verbose = strtol(optarg, &tmp, 0);
                       if ( *tmp || args->verbose<0 || args->verbose>1 ) error("Error: currently only --verbose 0 or --verbose 1 is supported\n");
+                      if ( args->verbose > 3 ) hts_verbose = args->verbose;
                       break;
             case 'W':
                 if (!(args->write_index = write_index_parse(optarg)))

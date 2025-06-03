@@ -1,6 +1,6 @@
 /*  vcfsort.c -- sort subcommand
 
-   Copyright (C) 2017-2024 Genome Research Ltd.
+   Copyright (C) 2017-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -158,7 +158,7 @@ static int cmp_packed_bcf_pos_ref_alt(const void *aptr, const void *bptr)
     if ( a->rid > b->rid ) return 1;
     if ( a->pos < b->pos ) return -1;
     if ( a->pos > b->pos ) return 1;
-    
+
     // Sort lexicographically by ref,alt.  These are stored tab-separated
     // as the first item in packed_bcf_t::data
     return strcmp((char *) a->data, (char *) b->data);
@@ -193,7 +193,7 @@ static uint8_t *pack_unsigned(uint8_t *data, uint64_t val)
         *data++ = (val & 0x7f) | ((val > 0x7f) ? 0x80 : 0);
         val >>= 7;
     } while (val > 0);
-    return data;    
+    return data;
 }
 
 static uint8_t *pack_hts_pos(uint8_t *data, hts_pos_t val)
@@ -258,7 +258,7 @@ static int write_packed_bcf(BGZF *fp, packed_bcf_t *src)
 
     // Skip the copy of the alleles
     size_t skip = strlen((char *) src->data) + 1;
- 
+
     // Write everything else
     if (src->len < SIZE_MAX)
     {
@@ -337,7 +337,7 @@ static int read_packed_bcf(BGZF *fp, bcf1_t *dest)
     int err = 0;
     packed_bcf_t tmp;
     size_t len = tmp.data - (uint8_t *) &tmp.pos;
-    
+
     bcf_clear(dest);
     ssize_t got = bgzf_read_small(fp, &tmp.pos, len);
     if (got == 0)
@@ -698,15 +698,16 @@ static void usage(args_t *args)
     fprintf(stderr, "Usage:   bcftools sort [OPTIONS] <FILE.vcf>\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -m, --max-mem FLOAT[kMG]       maximum memory to use [768M]\n");    // using metric units, 1M=1e6
-    fprintf(stderr, "    -o, --output FILE              output file name [stdout]\n");
+    fprintf(stderr, "    -m, --max-mem FLOAT[kMG]       Maximum memory to use [768M]\n");    // using metric units, 1M=1e6
+    fprintf(stderr, "    -o, --output FILE              Output file name [stdout]\n");
     fprintf(stderr, "    -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
 
 #ifdef _WIN32
-    fprintf(stderr, "    -T, --temp-dir DIR             temporary files [/bcftools.XXXXXX]\n");
+    fprintf(stderr, "    -T, --temp-dir DIR             Temporary files [/bcftools.XXXXXX]\n");
 #else
-    fprintf(stderr, "    -T, --temp-dir DIR             temporary files [/tmp/bcftools.XXXXXX]\n");
+    fprintf(stderr, "    -T, --temp-dir DIR             Temporary files [/tmp/bcftools.XXXXXX]\n");
 #endif
+    fprintf(stderr, "    -v, --verbosity INT            Verbosity level\n");
     fprintf(stderr, "    -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
     exit(1);
@@ -780,13 +781,17 @@ int main_sort(int argc, char *argv[])
         {"output",required_argument,NULL,'o'},
         {"help",no_argument,NULL,'h'},
         {"write-index",optional_argument,NULL,'W'},
+        {"verbosity",required_argument,NULL,'v'},
         {0,0,0,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "m:T:O:o:W::h?",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "m:T:O:o:W::h?v:",loptions,NULL)) >= 0)
     {
         switch (c)
         {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'm': args->max_mem = parse_mem_string(optarg); break;
             case 'T': args->tmp_dir = optarg; break;
             case 'o': args->output_fname = optarg; break;

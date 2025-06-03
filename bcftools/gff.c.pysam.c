@@ -2,7 +2,7 @@
 
 /* The MIT License
 
-   Copyright (c) 2023 Genome Research Ltd.
+   Copyright (c) 2023-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -89,11 +89,6 @@ typedef struct
     // mapping from transcript id to tscript, for quick CDS anchoring
     kh_int2tscript_t *id2tr;
 
-    // sequences
-    void *seq2int;  // str2int hash
-    char **seq;
-    int nseq, mseq;
-
     // ignored biotypes
     void *ignored_biotypes;
 
@@ -113,18 +108,25 @@ struct gff_t_
     // index iterator
     regidx_t *idx_cds, *idx_utr, *idx_exon, *idx_tscript;
 
+    // str2int hash with parsed sequence names
+    void *seq2int;
+
     // temporary structures, deleted after initializtion
     aux_t init;
+
+    // sequences
+    char **seq;
+    int nseq, mseq;
 
     // mapping between transcript id (eg. Zm00001d027245_T001) and a numeric idx
     id_tbl_t tscript_ids;
 
-    int strip_chr_names, verbosity;
+    int verbosity;
     int force;      // force run under various conditions. Currently only to skip out-of-phase transcripts
 
     struct {
         int unknown_chr,unknown_tscript_biotype,unknown_strand,unknown_phase,duplicate_id;
-        int unknown_cds_phase,incomplete_cds,wrong_phase,overlapping_cds;
+        int unknown_cds_phase,incomplete_cds,wrong_phase,overlapping_cds,ftr_out_of_bounds;
     } warned;
 };
 
@@ -157,12 +159,6 @@ int gff_set(gff_t *gff, gff_opt_t key, ...)
         case force_out_of_phase:
             va_start(args, key);
             gff->force = va_arg(args,int);
-            va_end(args);
-            return 0;
-
-        case strip_chr_names:
-            va_start(args, key);
-            gff->strip_chr_names = va_arg(args,int);
             va_end(args);
             return 0;
 
@@ -214,18 +210,17 @@ const char *gf_type2gff_string(int type)
 */
 static inline int feature_set_seq(gff_t *gff, char *chr_beg, char *chr_end)
 {
-    aux_t *aux = &gff->init;
     char tmp = chr_end[1];
     chr_end[1] = 0;
     int iseq;
-    if ( khash_str2int_get(aux->seq2int, chr_beg, &iseq)!=0 )
+    if ( khash_str2int_get(gff->seq2int, chr_beg, &iseq)!=0 )
     {
         char *new_chr = strdup(chr_beg);
-        hts_expand(char*, aux->nseq+1, aux->mseq, aux->seq);
-        aux->seq[aux->nseq] = new_chr;
-        iseq = khash_str2int_inc(aux->seq2int, aux->seq[aux->nseq]);
-        aux->nseq++;
-        assert( aux->nseq < 1<<29 );  // see gf_gene_t.iseq and ftr_t.iseq
+        hts_expand(char*, gff->nseq+1, gff->mseq, gff->seq);
+        gff->seq[gff->nseq] = new_chr;
+        iseq = khash_str2int_inc(gff->seq2int, gff->seq[gff->nseq]);
+        gff->nseq++;
+        assert( gff->nseq < 1<<29 );  // see gf_gene_t.iseq and ftr_t.iseq
     }
     chr_end[1] = tmp;
     return iseq;
@@ -241,7 +236,6 @@ static inline void gff_parse_chr(gff_t *gff, const char *line, char **chr_beg, c
     char *se = (char*) line;
     while ( *se && *se!='\t' ) se++;
     if ( !*se ) error("[%s:%d %s] Could not parse the line: %s\n",__FILE__,__LINE__,__FUNCTION__,line);
-    if ( gff->strip_chr_names && !strncasecmp("chr",line,3) ) line += 3;
     *chr_beg = (char*) line;
     *chr_end = se-1;
 }
@@ -635,9 +629,9 @@ static int cmp_cds_ptr(const void *a, const void *b)
     return 0;
 }
 
-static inline void chr_beg_end(aux_t *aux, int iseq, char **chr_beg, char **chr_end)
+static inline void chr_beg_end(gff_t *gff, int iseq, char **chr_beg, char **chr_end)
 {
-    *chr_beg = *chr_end = aux->seq[iseq];
+    *chr_beg = *chr_end = gff->seq[iseq];
     while ( (*chr_end)[1] ) (*chr_end)++;
 }
 static gf_tscript_t *tscript_init(aux_t *aux, uint32_t trid)
@@ -676,7 +670,7 @@ static void register_utr(gff_t *gff, ftr_t *ftr)
     utr->tr    = tscript_init(aux, ftr->trid);
 
     char *chr_beg, *chr_end;
-    chr_beg_end(&gff->init, utr->tr->gene->iseq, &chr_beg, &chr_end);
+    chr_beg_end(gff, utr->tr->gene->iseq, &chr_beg, &chr_end);
     regidx_push(gff->idx_utr, chr_beg,chr_end, utr->beg,utr->end, &utr);
 }
 static void register_exon(gff_t *gff, ftr_t *ftr)
@@ -688,7 +682,7 @@ static void register_exon(gff_t *gff, ftr_t *ftr)
     exon->tr  = tscript_init(aux, ftr->trid);
 
     char *chr_beg, *chr_end;
-    chr_beg_end(&gff->init, exon->tr->gene->iseq, &chr_beg, &chr_end);
+    chr_beg_end(gff, exon->tr->gene->iseq, &chr_beg, &chr_end);
     regidx_push(gff->idx_exon, chr_beg,chr_end, exon->beg - N_SPLICE_REGION_INTRON, exon->end + N_SPLICE_REGION_INTRON, &exon);
 }
 
@@ -705,7 +699,7 @@ static void tscript_init_cds(gff_t *gff)
 
         // position-to-tscript lookup
         char *chr_beg, *chr_end;
-        chr_beg_end(aux, tr->gene->iseq, &chr_beg, &chr_end);
+        chr_beg_end(gff, tr->gene->iseq, &chr_beg, &chr_end);
         regidx_push(gff->idx_tscript, chr_beg, chr_end, tr->beg, tr->end, &tr);
 
         if ( !tr->ncds ) continue;      // transcript with no CDS
@@ -916,7 +910,7 @@ static int gff_dump(gff_t *gff, const char *fname)
         gf_gene_t *gene = (gf_gene_t*) kh_val(gff->init.gid2gene, k);
         char *gene_id = gff->init.gene_ids.str[gene->id];
         str.l = 0;
-        ksprintf(&str,"%s\t.\tgene\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tID=%s;Name=%s;used=%d\n",gff->init.seq[gene->iseq],gene->beg+1,gene->end+1,gene->strand==STRAND_FWD?'+':(gene->strand==STRAND_REV?'-':'.'),gene_id,gene->name,gene->used);
+        ksprintf(&str,"%s\t.\tgene\t%"PRIu32"\t%"PRIu32"\t.\t%c\t.\tID=%s;Name=%s;used=%d\n",gff->seq[gene->iseq],gene->beg+1,gene->end+1,gene->strand==STRAND_FWD?'+':(gene->strand==STRAND_REV?'-':'.'),gene_id,gene->name,gene->used);
         if ( bgzf_write(out, str.s, str.l) != str.l ) error("Error writing %s: %s\n", fname, strerror(errno));
     }
 
@@ -976,7 +970,7 @@ int gff_parse(gff_t *gff)
     if ( gff->verbosity > 0 ) fprintf(bcftools_stderr,"Parsing %s ...\n", gff->fname);
 
     aux_t *aux = &gff->init;
-    aux->seq2int   = khash_str2int_init();   // chrom's numeric id
+    gff->seq2int   = khash_str2int_init();   // chrom's numeric id
     aux->gid2gene  = kh_init(int2gene);      // gene id to gf_gene_t, for idx_gene
     aux->id2tr     = kh_init(int2tscript);   // transcript id to tscript_t
     gff->idx_tscript = regidx_init(NULL, NULL, regidx_free_tscript, sizeof(gf_tscript_t*), NULL);
@@ -1012,7 +1006,16 @@ int gff_parse(gff_t *gff)
         khint_t k = kh_get(int2tscript, aux->id2tr, (int)ftr->trid);
         if ( k==kh_end(aux->id2tr) ) continue;       // no corresponding transcript registered, must be an unsupported biotype
 
+        // check whether the feature respects transcript's beg,end coordinates
         gf_tscript_t *tr = kh_val(aux->id2tr,k);
+        if ( ftr->beg < tr->beg || ftr->end > tr->end )
+        {
+            if ( !gff->warned.ftr_out_of_bounds || gff->verbosity > 1 )
+                fprintf(bcftools_stderr,"Warning: The GFF contains features outside the transcript boundaries .. %s\n",gff_id2string(gff,transcript,tr->id));
+            gff->warned.ftr_out_of_bounds++;
+            if ( ftr->beg < tr->beg ) tr->beg = ftr->beg;
+            if ( ftr->end > tr->end ) tr->end = ftr->end;
+        }
         tr->used = 1;
         tr->gene->used = 1;
 
@@ -1024,7 +1027,7 @@ int gff_parse(gff_t *gff)
         else if ( ftr->type==GF_UTR5 ) register_utr(gff, ftr);
         else if ( ftr->type==GF_UTR3 ) register_utr(gff, ftr);
         else
-            error("something: %s\t%"PRIu32"\t%"PRIu32"\t%s\t%s\n", aux->seq[ftr->iseq],ftr->beg+1,ftr->end+1,gff->tscript_ids.str[ftr->trid],gf_type2gff_string(ftr->type));
+            error("something: %s\t%"PRIu32"\t%"PRIu32"\t%s\t%s\n", gff->seq[ftr->iseq],ftr->beg+1,ftr->end+1,gff->tscript_ids.str[ftr->trid],gf_type2gff_string(ftr->type));
     }
     tscript_init_cds(gff);
 
@@ -1076,9 +1079,7 @@ int gff_parse(gff_t *gff)
               "       or misc/gff2gff.py script can fix the problem (both do different things). See also the man page for the description\n"
               "       of the expected format http://samtools.github.io/bcftools/bcftools-man.html#csq\n");
 
-    free(aux->seq);
     free(aux->ftr);
-    khash_str2int_destroy_free(aux->seq2int);
     // keeping only to destroy the genes at the end: kh_destroy(int2gene,aux->gid2gene);
     kh_destroy(int2tscript,aux->id2tr);
     gff_id_destroy(&aux->gene_ids);
@@ -1112,7 +1113,20 @@ void gff_destroy(gff_t *gff)
     regidx_destroy(gff->idx_exon);
     regidx_destroy(gff->idx_tscript);
 
+    khash_str2int_destroy_free(gff->seq2int);
     gff_id_destroy(&gff->tscript_ids);
+    free(gff->seq);
     free(gff);
 }
-
+int gff_has_seq(gff_t *gff, const char *seq)
+{
+    return khash_str2int_has_key(gff->seq2int, seq);
+}
+int gff_nseq(gff_t *gff)
+{
+    return gff->nseq;
+}
+const char *gff_iseq(gff_t *gff, int i)
+{
+    return i>=0 && i<gff->nseq ? gff->seq[i] : NULL;
+}

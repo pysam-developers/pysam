@@ -1,6 +1,6 @@
 /*  vcfnorm.c -- Left-align and normalize indels.
 
-    Copyright (C) 2013-2024 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -93,7 +93,7 @@ typedef struct
     int32_t *int32_arr;
     int ntmp_arr1, ntmp_arr2, nint32_arr;
     kstring_t *tmp_str;
-    kstring_t *tmp_als, *tmp_sym, tmp_kstr;
+    kstring_t *tmp_als, *tmp_sym, tmp_kstr, old_rec_tag_kstr;
     int ntmp_als, ntmp_sym;
     rbuf_t rbuf;
     int buf_win;            // maximum distance between two records to consider
@@ -105,7 +105,7 @@ typedef struct
     struct { int tot, set, swap; } nref;
     char **argv, *output_fname, *ref_fname, *vcf_fname, *region, *targets;
     int argc, rmdup, output_type, n_threads, check_ref, strict_filter, do_indels, clevel;
-    int nchanged, nskipped, nsplit, njoined, ntotal, nfilter, mrows_op, mrows_collapse, parsimonious;
+    int nchanged, nskipped, nsplit, njoined, ntotal, nfilter, nrmdup, mrows_op, mrows_collapse, parsimonious;
     int record_cmd_line, force, force_warned, keep_sum_ad;
     abuf_t *abuf;
     abuf_opt_t atomize;
@@ -113,7 +113,7 @@ typedef struct
     char *old_rec_tag;
     htsFile *out;
     char *index_fn;
-    int write_index, gff_verbosity;
+    int write_index, verbose;
     int right_align;
     char *gff_fname;
     gff_t *gff;
@@ -126,6 +126,42 @@ typedef struct
     filter_t *filter;
 }
 args_t;
+
+static void old_rec_tag_init(args_t *args, bcf1_t *line)
+{
+    if ( !args->old_rec_tag ) return;
+
+    args->old_rec_tag_kstr.l = 0;
+    ksprintf(&args->old_rec_tag_kstr,"%s|%"PRIhts_pos"|%s|",bcf_seqname(args->hdr,line),line->pos+1,line->d.allele[0]);
+    int i;
+    for (i=1; i<line->n_allele; i++)
+    {
+        kputs(line->d.allele[i],&args->old_rec_tag_kstr);
+        if ( i+1<line->n_allele ) kputc(',',&args->old_rec_tag_kstr);
+    }
+}
+static void old_rec_tag_set(args_t *args, bcf1_t *line, int ialt)
+{
+    if ( !args->old_rec_tag || !args->old_rec_tag_kstr.l ) return;
+
+    // only update if the tag is not present already, there can be multiple normalization steps
+    int i, id = bcf_hdr_id2int(args->out_hdr, BCF_DT_ID, args->old_rec_tag);
+    bcf_unpack(line, BCF_UN_INFO);
+    for (i=0; i<line->n_info; i++)
+    {
+        bcf_info_t *inf = &line->d.info[i];
+        if ( inf && inf->key == id ) return;
+    }
+
+    if ( ialt>0 )
+    {
+        kputc('|',&args->old_rec_tag_kstr);
+        kputw(ialt,&args->old_rec_tag_kstr);
+    }
+    if ( (bcf_update_info_string(args->out_hdr, line, args->old_rec_tag, args->old_rec_tag_kstr.s))!=0 )
+            error("An error occurred while updating INFO/%s\n",args->old_rec_tag);
+    args->old_rec_tag_kstr.l = 0;
+}
 
 static inline int replace_iupac_codes(char *seq, int nseq)
 {
@@ -159,7 +195,8 @@ static void seq_to_upper(char *seq, int len)
         for (i=0; seq[i]; i++) seq[i] = nt_to_upper(seq[i]);
 }
 
-static void fix_ref(args_t *args, bcf1_t *line)
+// returns 0 when no fix was needed, 1 otherwise
+static int fix_ref(args_t *args, bcf1_t *line)
 {
     bcf_unpack(line, BCF_UN_STR);
     int reflen = strlen(line->d.allele[0]);
@@ -177,7 +214,7 @@ static void fix_ref(args_t *args, bcf1_t *line)
     args->nref.tot++;
 
     // is the REF different? If not, we are done
-    if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return; }
+    if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return 0; }
 
     // is the REF allele missing?
     if ( reflen==1 && line->d.allele[0][0]=='.' )
@@ -186,11 +223,11 @@ static void fix_ref(args_t *args, bcf1_t *line)
         args->nref.set++;
         free(ref);
         bcf_update_alleles(args->out_hdr,line,(const char**)line->d.allele,line->n_allele);
-        return;
+        return 1;
     }
 
     // does REF or ALT contain non-standard bases?
-    int has_non_acgtn = 0;
+    int ret = 0, has_non_acgtn = 0;
     for (i=0; i<line->n_allele; i++)
     {
         if ( line->d.allele[i][0]=='<' ) continue;
@@ -200,7 +237,8 @@ static void fix_ref(args_t *args, bcf1_t *line)
     {
         args->nref.set++;
         bcf_update_alleles(args->out_hdr,line,(const char**)line->d.allele,line->n_allele);
-        if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return; }
+        if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return 1; }
+        ret = 1;
     }
 
     // does the REF allele contain N's ?
@@ -221,11 +259,11 @@ static void fix_ref(args_t *args, bcf1_t *line)
     }
     if ( fix )
     {
+        ret = 1;
         args->nref.set++;
         bcf_update_alleles(args->out_hdr,line,(const char**)line->d.allele,line->n_allele);
-        if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return; }
+        if ( !strncasecmp(line->d.allele[0],ref,reflen) ) { free(ref); return ret; }
     }
-
 
     // is it swapped?
     for (i=1; i<line->n_allele; i++)
@@ -237,6 +275,7 @@ static void fix_ref(args_t *args, bcf1_t *line)
     kstring_t str = {0,0,0};
     if ( i==line->n_allele )    // none of the alternate alleles matches the reference
     {
+        ret = 1;
         args->nref.set++;
         kputsn(ref,reflen,&str);
         for (i=1; i<line->n_allele; i++)
@@ -247,7 +286,7 @@ static void fix_ref(args_t *args, bcf1_t *line)
         bcf_update_alleles_str(args->out_hdr,line,str.s);
         free(ref);
         free(str.s);
-        return;
+        return ret;
     }
 
     // one of the alternate alleles matches the reference, assume it's a simple swap
@@ -289,6 +328,7 @@ static void fix_ref(args_t *args, bcf1_t *line)
         ac[i-1] = ni;
         bcf_update_info_int32(args->out_hdr, line, "AC", ac, nac);
     }
+    return 1;
 }
 
 static void fix_dup_alt(args_t *args, bcf1_t *line)
@@ -334,41 +374,41 @@ static void fix_dup_alt(args_t *args, bcf1_t *line)
     if ( changed ) bcf_update_genotypes(args->out_hdr,line,gts,ngts);
 }
 
-static void set_old_rec_tag(args_t *args, bcf1_t *dst, bcf1_t *src, int ialt)
-{
-    if ( !args->old_rec_tag ) return;
-
-    // only update if the tag is not present already, there can be multiple normalization steps
-    int i, id = bcf_hdr_id2int(args->out_hdr, BCF_DT_ID, args->old_rec_tag);
-    bcf_unpack(dst, BCF_UN_INFO);
-    for (i=0; i<dst->n_info; i++)
-    {
-        bcf_info_t *inf = &dst->d.info[i];
-        if ( inf && inf->key == id ) return;
-    }
-
-    args->tmp_kstr.l = 0;
-    ksprintf(&args->tmp_kstr,"%s|%"PRIhts_pos"|%s|",bcf_seqname(args->hdr,src),src->pos+1,src->d.allele[0]);
-    for (i=1; i<src->n_allele; i++)
-    {
-        kputs(src->d.allele[i],&args->tmp_kstr);
-        if ( i+1<src->n_allele ) kputc(',',&args->tmp_kstr);
-    }
-    if ( ialt>0 )
-    {
-        kputc('|',&args->tmp_kstr);
-        kputw(ialt,&args->tmp_kstr);
-    }
-    if ( (bcf_update_info_string(args->out_hdr, dst, args->old_rec_tag, args->tmp_kstr.s))!=0 )
-            error("An error occurred while updating INFO/%s\n",args->old_rec_tag);
-}
+// static void set_old_rec_tag(args_t *args, bcf1_t *dst, bcf1_t *src, int ialt)
+// {
+// fprintf(stderr,"remove me\n");
+//     if ( !args->old_rec_tag ) return;
+//
+//     // only update if the tag is not present already, there can be multiple normalization steps
+//     int i, id = bcf_hdr_id2int(args->out_hdr, BCF_DT_ID, args->old_rec_tag);
+//     bcf_unpack(dst, BCF_UN_INFO);
+//     for (i=0; i<dst->n_info; i++)
+//     {
+//         bcf_info_t *inf = &dst->d.info[i];
+//         if ( inf && inf->key == id ) return;
+//     }
+//
+//     args->tmp_kstr.l = 0;
+//     ksprintf(&args->tmp_kstr,"%s|%"PRIhts_pos"|%s|",bcf_seqname(args->hdr,src),src->pos+1,src->d.allele[0]);
+//     for (i=1; i<src->n_allele; i++)
+//     {
+//         kputs(src->d.allele[i],&args->tmp_kstr);
+//         if ( i+1<src->n_allele ) kputc(',',&args->tmp_kstr);
+//     }
+//     if ( ialt>0 )
+//     {
+//         kputc('|',&args->tmp_kstr);
+//         kputw(ialt,&args->tmp_kstr);
+//     }
+//     if ( (bcf_update_info_string(args->out_hdr, dst, args->old_rec_tag, args->tmp_kstr.s))!=0 )
+//             error("An error occurred while updating INFO/%s\n",args->old_rec_tag);
+// }
 
 static int is_left_align(args_t *args, bcf1_t *line)
 {
     if ( args->right_align ) return 0;
     if ( !args->gff ) return 1;
     const char *chr = bcf_seqname(args->hdr,line);
-    if ( !strncasecmp("chr",chr,3) ) chr += 3;  // strip 'chr' prefix, that's what we requested the GFF reader to do
     if ( !regidx_overlap(args->idx_tscript,chr,line->pos,line->pos+line->rlen, args->itr_tscript) ) return 1;
 
     // if there are two conflicting overlapping transcripts, go with the default left-alignment
@@ -523,6 +563,7 @@ static hts_pos_t realign_right(args_t *args, bcf1_t *line)
 static int realign(args_t *args, bcf1_t *line)
 {
     bcf_unpack(line, BCF_UN_STR);
+    old_rec_tag_init(args,line);
 
     // Sanity check REF
     int i, nref, reflen = strlen(line->d.allele[0]);
@@ -655,7 +696,7 @@ static int realign(args_t *args, bcf1_t *line)
     }
     if ( new_pos==line->pos && !strcasecmp(line->d.allele[0],als[0].s) ) return ERR_OK;
 
-    set_old_rec_tag(args, line, line, 0);
+    old_rec_tag_set(args, line, 0);
 
     // Create new block of alleles and update
     args->tmp_kstr.l = 0;
@@ -1247,6 +1288,7 @@ static void split_multiallelic_to_biallelics(args_t *args, bcf1_t *line)
         if ( !args->tmp_lines[i] ) args->tmp_lines[i] = bcf_init1();
         bcf1_t *dst = args->tmp_lines[i];
         bcf_clear(dst);
+        old_rec_tag_init(args,line);
 
         dst->rid  = line->rid;
         dst->pos  = line->pos;
@@ -1271,7 +1313,7 @@ static void split_multiallelic_to_biallelics(args_t *args, bcf1_t *line)
             else if ( type==BCF_HT_FLAG ) split_info_flag(args, line, info, i, dst);
             else split_info_string(args, line, info, i, dst);
         }
-        set_old_rec_tag(args, dst, line, i + 1); // 1-based indexes
+        old_rec_tag_set(args, dst, i + 1); // 1-based indexes
 
         dst->n_sample = line->n_sample;
         for (j=0; j<line->n_fmt; j++)
@@ -2138,10 +2180,10 @@ static void flush_buffer(args_t *args, htsFile *file, int n)
             int line_type = bcf_get_variant_types(args->lines[k]);
             if ( prev_rid>=0 && prev_rid==args->lines[k]->rid && prev_pos==args->lines[k]->pos )
             {
-                if ( args->rmdup & BCF_SR_PAIR_ANY ) continue;    // rmdup by position only
-                if ( args->rmdup & BCF_SR_PAIR_SNPS && line_type&(VCF_SNP|VCF_MNP) && prev_type&(VCF_SNP|VCF_MNP) ) continue;
-                if ( args->rmdup & BCF_SR_PAIR_INDELS && line_type&(VCF_INDEL) && prev_type&(VCF_INDEL) ) continue;
-                if ( args->rmdup & BCF_SR_PAIR_EXACT && cmpals_match(args, &args->cmpals_out, args->lines[k]) ) continue;
+                if ( args->rmdup & BCF_SR_PAIR_ANY ) { args->nrmdup++; continue; }   // rmdup by position only
+                if ( args->rmdup & BCF_SR_PAIR_SNPS && line_type&(VCF_SNP|VCF_MNP) && prev_type&(VCF_SNP|VCF_MNP) ) { args->nrmdup++; continue; }
+                if ( args->rmdup & BCF_SR_PAIR_INDELS && line_type&(VCF_INDEL) && prev_type&(VCF_INDEL) ) { args->nrmdup++; continue; }
+                if ( args->rmdup & BCF_SR_PAIR_EXACT && cmpals_match(args, &args->cmpals_out, args->lines[k]) ) { args->nrmdup++; continue; }
             }
             else
             {
@@ -2190,6 +2232,15 @@ static void init_data(args_t *args)
         args->tmp_str = (kstring_t*) calloc(bcf_hdr_nsamples(args->hdr),sizeof(kstring_t));
         args->diploid = (uint8_t*) malloc(bcf_hdr_nsamples(args->hdr));
     }
+    if ( args->mrows_op==MROWS_SPLIT )
+    {
+        // check the sanity of splitted fields, specifically of SVLEN (#2371)
+        int id = bcf_hdr_id2int(args->hdr,BCF_DT_ID,"SVLEN");
+        if ( id>=0 && bcf_hdr_id2length(args->hdr,BCF_HL_INFO,id)!=BCF_VL_A )
+            fprintf(stderr,
+                "Warning: the tag INFO/SVLEN must be defined as Number=A in order for the field to be split\n"
+                "         (the command `bcftools reheader` can be used to fix the header)\n");
+    }
     if ( args->atomize==SPLIT )
     {
         args->abuf = abuf_init(args->hdr, SPLIT);
@@ -2204,8 +2255,7 @@ static void init_data(args_t *args)
     if ( args->gff_fname )
     {
         args->gff = gff_init(args->gff_fname);
-        gff_set(args->gff,verbosity,args->gff_verbosity);
-        gff_set(args->gff,strip_chr_names,1);
+        gff_set(args->gff,verbosity,args->verbose);
         gff_parse(args->gff);
         args->idx_tscript = gff_get(args->gff,idx_tscript);
         args->itr_tscript = regitr_init(NULL);
@@ -2246,6 +2296,7 @@ static void destroy_data(args_t *args)
     free(args->tmp_als);
     free(args->tmp_sym);
     free(args->tmp_kstr.s);
+    free(args->old_rec_tag_kstr.s);
     if ( args->tmp_str )
     {
         for (i=0; i<bcf_hdr_nsamples(args->hdr); i++) free(args->tmp_str[i].s);
@@ -2269,7 +2320,11 @@ static void normalize_line(args_t *args, bcf1_t *line)
 {
     if ( args->fai )
     {
-        if ( args->filter_pass && (args->check_ref & CHECK_REF_FIX) ) fix_ref(args, line);
+        if ( args->filter_pass && (args->check_ref & CHECK_REF_FIX) )
+        {
+            old_rec_tag_init(args,line);
+            if ( fix_ref(args,line) ) old_rec_tag_set(args,line,0);
+        }
         if ( args->do_indels )
         {
             int ret = args->filter_pass ? realign(args, line) : ERR_OK;
@@ -2425,8 +2480,8 @@ static void normalize_vcf(args_t *args)
     }
     if ( hts_close(args->out)!=0 ) error("[%s] Error: close failed .. %s\n", __func__,args->output_fname);
 
-    fprintf(stderr,"Lines   total/split/joined/realigned/removed/skipped:\t%d/%d/%d/%d/%d/%d\n",
-        args->ntotal,args->nsplit,args->njoined,args->nchanged,args->nskipped,args->nfilter);
+    fprintf(stderr,"Lines   total/split/joined/realigned/mismatch_removed/dup_removed/skipped:\t%d/%d/%d/%d/%d/%d/%d\n",
+        args->ntotal,args->nsplit,args->njoined,args->nchanged,args->nskipped,args->nrmdup,args->nfilter);
     if ( args->check_ref & CHECK_REF_FIX )
         fprintf(stderr,"REF/ALT total/modified/added:  \t%d/%d/%d\n", args->nref.tot,args->nref.swap,args->nref.set);
 }
@@ -2467,7 +2522,7 @@ static void usage(void)
     fprintf(stderr, "    -T, --targets-file FILE         Similar to -R but streams rather than index-jumps\n");
     fprintf(stderr, "        --targets-overlap 0|1|2     Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(stderr, "        --threads INT               Use multithreading with INT worker threads [0]\n");
-    fprintf(stderr, "    -v, --verbose INT               Verbosity level (0-2) of GFF parsing [1]\n");
+    fprintf(stderr, "    -v, --verbosity INT             Verbosity level\n");
     fprintf(stderr, "    -w, --site-win INT              Buffer for sorting lines which changed position during realignment [1000]\n");
     fprintf(stderr, "    -W, --write-index[=FMT]         Automatically index the output files [off]\n");
     fprintf(stderr, "\n");
@@ -2500,7 +2555,7 @@ int main_vcfnorm(int argc, char *argv[])
     int region_is_file  = 0;
     int targets_is_file = 0;
     args->use_star_allele = 1;
-    args->gff_verbosity = 1;
+    args->verbose = 1;
     int regions_overlap = 1;
     int targets_overlap = 0;
     args->cmp_func = cmp_bcf_pos;
@@ -2539,6 +2594,7 @@ int main_vcfnorm(int argc, char *argv[])
         {"no-version",no_argument,NULL,8},
         {"write-index",optional_argument,NULL,'W'},
         {"verbose",required_argument,NULL,'v'},
+        {"verbosity",required_argument,NULL,'v'},
         {NULL,0,NULL,0}
     };
     char *tmp;
@@ -2552,8 +2608,9 @@ int main_vcfnorm(int argc, char *argv[])
                 break;
             case 'g': args->gff_fname = optarg; break;
             case 'v':
-                args->gff_verbosity = atoi(optarg);
-                if ( args->gff_verbosity<0 || args->gff_verbosity>2 ) error("Error: expected integer 0-2 with -v, --verbose\n");
+                args->verbose = strtol(optarg,&tmp,10);
+                if ( *tmp || args->verbose<0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                if ( args->verbose > 3 ) hts_verbose = args->verbose;
                 break;
             case 'a': args->atomize = SPLIT; break;
             case 'e':
@@ -2633,7 +2690,7 @@ int main_vcfnorm(int argc, char *argv[])
                 break;
             case 'o': args->output_fname = optarg; break;
             case 'D':
-                fprintf(stderr,"Warning: `-D` is functional but deprecated, replaced by and alias of `-d none`.\n");
+                fprintf(stderr,"Warning: `-D` is functional but deprecated, replaced by and alias of `-d exact`.\n");
                 args->rmdup = BCF_SR_PAIR_EXACT;
                 break;
             case 's': args->strict_filter = 1; break;
