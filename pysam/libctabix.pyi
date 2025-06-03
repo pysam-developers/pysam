@@ -1,10 +1,5 @@
 import sys
-from typing import Optional, List, Any
-
-if sys.version_info < (3, 8):
-    from typing_extensions import Literal
-else:
-    from typing import Literal
+from typing import Optional, List, Literal, Any
 
 from pysam.libchtslib import HTSFile
 

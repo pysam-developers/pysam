@@ -1,10 +1,5 @@
 import sys
-from typing import List, Union, NoReturn, Iterable, Any, Tuple, Optional, TypeVar
-
-if sys.version_info < (3, 8):
-    from typing_extensions import Protocol
-else:
-    from typing import Protocol
+from typing import List, Union, NoReturn, Iterable, Any, Tuple, Optional, Protocol, TypeVar
 
 class _HasFileNo(Protocol):
     def fileno(self) -> int: ...

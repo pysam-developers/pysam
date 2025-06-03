@@ -7,6 +7,7 @@ from typing import (
     Tuple,
     Iterator,
     List,
+    Literal,
     Iterable,
     Dict,
     overload,
@@ -14,11 +15,6 @@ from typing import (
     Mapping,
     Generic,
 )
-
-if sys.version_info < (3, 8):
-    from typing_extensions import Literal
-else:
-    from typing import Literal
 
 from pysam.libchtslib import HTSFile, _HasFileNo
 

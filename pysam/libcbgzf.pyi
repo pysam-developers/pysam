@@ -1,11 +1,6 @@
 import sys
 
-from typing import Optional, Union, Any, NoReturn
-
-if sys.version_info < (3, 8):
-    from typing_extensions import Literal
-else:
-    from typing import Literal
+from typing import Literal, Optional, Union, Any, NoReturn
 
 BUFFER_SIZE: int
 
