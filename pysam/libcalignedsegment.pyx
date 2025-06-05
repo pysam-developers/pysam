@@ -563,8 +563,7 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
     cdef AlignedSegment dest = AlignedSegment.__new__(AlignedSegment)
     dest._delegate = bam_dup1(src)
     dest.header = header
-    dest._clear_cached_query_sequences()
-    dest._clear_cached_query_qualities()
+    dest.cache = _AlignedSegment_Cache()
     return dest
 
 
@@ -897,6 +896,22 @@ cdef _alignedpairs_with_seq_cigar(qpos, pos, ref_seq, uint32_t r_idx, int op):
     return (qpos, pos, ref_base, CIGAR_OPS(op))
 
 
+cdef class _AlignedSegment_Cache:
+    def __cinit__(self):
+        self.clear_query_sequences()
+        self.clear_query_qualities()
+
+    cdef clear_query_sequences(self):
+        self.query_sequence = NotImplemented
+        self.query_alignment_sequence = NotImplemented
+
+    cdef clear_query_qualities(self):
+        self.query_qualities = NotImplemented
+        self.query_qualities_str = NotImplemented
+        self.query_alignment_qualities = NotImplemented
+        self.query_alignment_qualities_str = NotImplemented
+
+
 cdef class AlignedSegment:
     '''Class representing an aligned segment.
 
@@ -948,8 +963,7 @@ cdef class AlignedSegment:
         self._delegate.core.mpos = -1
 
         # caching for selected fields
-        self._clear_cached_query_sequences()
-        self._clear_cached_query_qualities()
+        self.cache = _AlignedSegment_Cache()
 
         self.header = header
 
@@ -1097,8 +1111,7 @@ cdef class AlignedSegment:
         cdef AlignedSegment dest = cls.__new__(cls)
         dest._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         dest.header = header
-        dest._clear_cached_query_sequences()
-        dest._clear_cached_query_qualities()
+        dest.cache = _AlignedSegment_Cache()
 
         cdef kstring_t line
         line.l = line.m = len(sam)
@@ -1395,10 +1408,6 @@ cdef class AlignedSegment:
         def __set__(self, isize):
             self._delegate.core.isize = isize
 
-    cdef void _clear_cached_query_sequences(self):
-        self.cache_query_sequence = NotImplemented
-        self.cache_query_alignment_sequence = NotImplemented
-
     property query_sequence:
         """read sequence bases, including :term:`soft clipped` bases
         (None if not present).
@@ -1416,20 +1425,20 @@ cdef class AlignedSegment:
         has aligned the read to the reverse strand.)
         """
         def __get__(self):
-            if self.cache_query_sequence is not NotImplemented:
-                return self.cache_query_sequence
+            if self.cache.query_sequence is not NotImplemented:
+                return self.cache.query_sequence
 
             cdef bam1_t * src
             cdef char * s
             src = self._delegate
 
             if src.core.l_qseq == 0:
-                self.cache_query_sequence = None
+                self.cache.query_sequence = None
                 return None
 
-            self.cache_query_sequence = force_str(getSequenceInRange(
+            self.cache.query_sequence = force_str(getSequenceInRange(
                 src, 0, src.core.l_qseq))
-            return self.cache_query_sequence
+            return self.cache.query_sequence
 
         def __set__(self, seq):
             # samtools manages sequence and quality length memory together
@@ -1481,14 +1490,8 @@ cdef class AlignedSegment:
                 p = pysam_bam_get_qual(src)
                 memset(p, 0xff, l)
 
-            self._clear_cached_query_sequences()
-            self._clear_cached_query_qualities()
-
-    cdef void _clear_cached_query_qualities(self):
-        self.cache_query_qualities = NotImplemented
-        self.cache_query_qualities_str = NotImplemented
-        self.cache_query_alignment_qualities = NotImplemented
-        self.cache_query_alignment_qualities_str = NotImplemented
+            self.cache.clear_query_sequences()
+            self.cache.clear_query_qualities()
 
     property query_qualities:
         """read sequence base qualities, including :term:`soft clipped` bases 
@@ -1510,21 +1513,21 @@ cdef class AlignedSegment:
         FASTQ/SAM-style base quality characters.
         """
         def __get__(self):
-            if self.cache_query_qualities is not NotImplemented:
-                return self.cache_query_qualities
+            if self.cache.query_qualities is not NotImplemented:
+                return self.cache.query_qualities
 
             cdef bam1_t *src = self._delegate
             cdef int qual_len = src.core.l_qseq
             cdef uint8_t *qual = pysam_bam_get_qual(src)
 
             if qual_len == 0 or qual[0] == 0xff:
-                self.cache_query_qualities = None
+                self.cache.query_qualities = None
                 return None
 
             cdef c_array.array qual_array = array.array('B')
             c_array.resize(qual_array, qual_len)
             memcpy(qual_array.data.as_uchars, qual, qual_len)
-            self.cache_query_qualities = qual_array
+            self.cache.query_qualities = qual_array
             return qual_array
 
         def __set__(self, new_qual):
@@ -1539,7 +1542,7 @@ cdef class AlignedSegment:
             cdef int new_qual_len = len(new_qual) if new_qual is not None else 0
             if new_qual_len == 0:
                 if qual_len != 0: memset(qual, 0xff, qual_len)
-                self._clear_cached_query_qualities()
+                self.cache.clear_query_qualities()
                 return
 
             if new_qual_len != qual_len:
@@ -1547,7 +1550,7 @@ cdef class AlignedSegment:
 
             if isinstance(new_qual, array.array) and new_qual.typecode == 'B':
                 memcpy(qual, (<c_array.array> new_qual).data.as_uchars, qual_len)
-                self._clear_cached_query_qualities()
+                self.cache.clear_query_qualities()
                 return
 
             cdef uint8_t *s = qual
@@ -1556,7 +1559,7 @@ cdef class AlignedSegment:
                 s[0] = q
                 s += 1
 
-            self._clear_cached_query_qualities()
+            self.cache.clear_query_qualities()
 
     property query_qualities_str:
         """read sequence base qualities, including :term:`soft clipped` bases,
@@ -1569,15 +1572,15 @@ cdef class AlignedSegment:
         is not the same as the length of the existing sequence.
         """
         def __get__(self):
-            if self.cache_query_qualities_str is not NotImplemented:
-                return self.cache_query_qualities_str
+            if self.cache.query_qualities_str is not NotImplemented:
+                return self.cache.query_qualities_str
 
             cdef bam1_t *src = self._delegate
             cdef int qual_len = src.core.l_qseq
             cdef uint8_t *qual = pysam_bam_get_qual(src)
 
             if qual_len == 0 or qual[0] == 0xff:
-                self.cache_query_qualities_str = None
+                self.cache.query_qualities_str = None
                 return None
 
             cdef bytes qual_bytes = qual[:qual_len]
@@ -1585,8 +1588,8 @@ cdef class AlignedSegment:
             cdef int i
             for i in range(qual_len): s[i] += 33
 
-            self.cache_query_qualities_str = qual_bytes.decode('ascii')
-            return self.cache_query_qualities_str
+            self.cache.query_qualities_str = qual_bytes.decode('ascii')
+            return self.cache.query_qualities_str
 
         def __set__(self, new_qual):
             cdef bam1_t *src = self._delegate
@@ -1596,7 +1599,7 @@ cdef class AlignedSegment:
             cdef int new_qual_len = len(new_qual) if new_qual is not None else 0
             if new_qual_len == 0 or new_qual == "*":
                 if qual_len != 0: memset(qual, 0xff, qual_len)
-                self._clear_cached_query_qualities()
+                self.cache.clear_query_qualities()
                 return
 
             if new_qual_len != qual_len:
@@ -1607,7 +1610,7 @@ cdef class AlignedSegment:
             cdef int i
             for i in range(qual_len): qual[i] = s[i] - 33
 
-            self._clear_cached_query_qualities()
+            self.cache.clear_query_qualities()
 
     property bin:
         """properties bin"""
@@ -1786,8 +1789,8 @@ cdef class AlignedSegment:
         """
 
         def __get__(self):
-            if self.cache_query_alignment_sequence is not NotImplemented:
-                return self.cache_query_alignment_sequence
+            if self.cache.query_alignment_sequence is not NotImplemented:
+                return self.cache.query_alignment_sequence
 
             cdef bam1_t * src
             cdef uint32_t start, end
@@ -1795,14 +1798,14 @@ cdef class AlignedSegment:
             src = self._delegate
 
             if src.core.l_qseq == 0:
-                self.cache_query_alignment_sequence = None
+                self.cache.query_alignment_sequence = None
                 return None
 
             start = getQueryStart(src)
             end   = getQueryEnd(src)
 
-            self.cache_query_alignment_sequence = force_str(getSequenceInRange(src, start, end))
-            return self.cache_query_alignment_sequence
+            self.cache.query_alignment_sequence = force_str(getSequenceInRange(src, start, end))
+            return self.cache.query_alignment_sequence
 
     property query_alignment_qualities:
         """aligned query sequence quality values (None if not present). These
@@ -1819,19 +1822,19 @@ cdef class AlignedSegment:
         This property is read-only.
         """
         def __get__(self):
-            if self.cache_query_alignment_qualities is not NotImplemented:
-                return self.cache_query_alignment_qualities
+            if self.cache.query_alignment_qualities is not NotImplemented:
+                return self.cache.query_alignment_qualities
 
             cdef object full_qual = self.query_qualities
             if full_qual is None:
-                self.cache_query_alignment_qualities = None
+                self.cache.query_alignment_qualities = None
                 return None
 
             cdef bam1_t *src = self._delegate
             cdef uint32_t start = getQueryStart(src)
             cdef uint32_t end = getQueryEnd(src)
-            self.cache_query_alignment_qualities = full_qual[start:end]
-            return self.cache_query_alignment_qualities
+            self.cache.query_alignment_qualities = full_qual[start:end]
+            return self.cache.query_alignment_qualities
 
     property query_alignment_qualities_str:
         """aligned query sequence quality values, returned as an ASCII-encoded string
@@ -1842,19 +1845,19 @@ cdef class AlignedSegment:
         This property is read-only.
         """
         def __get__(self):
-            if self.cache_query_alignment_qualities_str is not NotImplemented:
-                return self.cache_query_alignment_qualities_str
+            if self.cache.query_alignment_qualities_str is not NotImplemented:
+                return self.cache.query_alignment_qualities_str
 
             cdef object full_qual = self.query_qualities_str
             if full_qual is None:
-                self.cache_query_alignment_qualities_str = None
+                self.cache.query_alignment_qualities_str = None
                 return None
 
             cdef bam1_t *src = self._delegate
             cdef uint32_t start = getQueryStart(src)
             cdef uint32_t end = getQueryEnd(src)
-            self.cache_query_alignment_qualities_str = full_qual[start:end]
-            return self.cache_query_alignment_qualities_str
+            self.cache.query_alignment_qualities_str = full_qual[start:end]
+            return self.cache.query_alignment_qualities_str
 
     property query_alignment_start:
         """start index of the aligned query portion of the sequence (0-based,
