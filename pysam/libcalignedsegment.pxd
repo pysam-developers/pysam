@@ -31,6 +31,18 @@ from pysam.libcalignmentfile cimport AlignmentFile, AlignmentHeader
 ctypedef AlignmentFile AlignmentFile_t
 
 
+cdef class _AlignedSegment_Cache:  # For internal use only
+    cdef clear_query_sequences(self)
+    cdef clear_query_qualities(self)
+
+    cdef object query_sequence
+    cdef object query_alignment_sequence
+    cdef object query_qualities
+    cdef object query_qualities_str
+    cdef object query_alignment_qualities
+    cdef object query_alignment_qualities_str
+
+
 # Note: need to declare all C fields and methods here
 cdef class AlignedSegment:
 
@@ -41,14 +53,11 @@ cdef class AlignedSegment:
     cdef readonly AlignmentHeader header
 
     # caching of array properties for quick access
-    cdef object cache_query_qualities
-    cdef object cache_query_qualities_str
-    cdef object cache_query_alignment_qualities
-    cdef object cache_query_alignment_qualities_str
-    cdef void _clear_cached_query_qualities(self)
-    cdef object cache_query_sequence
-    cdef object cache_query_alignment_sequence
-    cdef void _clear_cached_query_sequences(self)
+    cdef _AlignedSegment_Cache cache
+
+    cdef object unused1
+    cdef object unused2
+    cdef object unused3
 
     # add an alignment tag with value to the AlignedSegment
     # an existing tag of the same name will be replaced.

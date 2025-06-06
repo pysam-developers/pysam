@@ -1,6 +1,32 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.23.2
+==============
+
+.. rubric:: 6 June 2025
+
+This is a bugfix release, still wrapping htslib/samtools/bcftools 1.21.
+
+It has been tested with Python versions 3.8 through 3.13, and wheels are
+available via PyPI_ for all of those Python versions. Wheels are built for
+macOS and Linux (manylinux_2_28 and musllinux_1_2) on both ARM and x86-64.
+
+The final pysam release that supported Python 3.6 and 3.7 was v0.23.0.
+
+Bugs fixed:
+
+* Pysam 0.23.1 inadvertently broke binary compatibility for Cython projects
+  by changing the size of :class:`.AlignedSegment`. That class has been
+  restored to its previous size, so v0.23.2 restores binary compatibility
+  with Cython projects previously compiled against v0.23.0 and earlier.
+  (This bug does not affect pure Python projects using pysam.)
+
+* Improved I/O exception messages in :class:`.AlignmentFile` and
+  :class:`.VariantFile`, and ensured that error codes returned by all
+  HTSlib function invocations result in an exception being raised.
+
+
 Release 0.23.1
 ==============
 
@@ -12,7 +38,9 @@ It has been tested with Python versions 3.8 through 3.13, and wheels are
 available via PyPI_ for all of those Python versions. Wheels are built for
 macOS and Linux (manylinux_2_28 and musllinux_1_2) on both ARM and x86-64.
 
-The final pysam release that supported Python 3.6 and 3.7 was v0.23.0.
+    This release inadvertently broke binary compatibility for Cython projects.
+    This should not affect Python projects using pysam. However Cython projects
+    should update to release 0.23.2.
 
 Bugs fixed:
 
