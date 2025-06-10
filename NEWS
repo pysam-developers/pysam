@@ -1,6 +1,25 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.23.3
+==============
+
+.. rubric:: 10 June 2025
+
+This is a bugfix release, still wrapping htslib/samtools/bcftools 1.21.
+
+It has been tested with Python versions 3.8 through 3.13, and wheels are
+available via PyPI_ for all of those Python versions. Wheels are built for
+macOS and Linux (manylinux_2_28 and musllinux_1_2) on both ARM and x86-64.
+
+The final pysam release that supported Python 3.6 and 3.7 was v0.23.0.
+
+Bugs fixed:
+
+* Worked around Cython 3.1.2 bug whereby a new Cython-internal function
+  incorrectly triggered the pysam build system's duplicate symbol check.
+
+
 Release 0.23.2
 ==============
 
@@ -11,8 +30,6 @@ This is a bugfix release, still wrapping htslib/samtools/bcftools 1.21.
 It has been tested with Python versions 3.8 through 3.13, and wheels are
 available via PyPI_ for all of those Python versions. Wheels are built for
 macOS and Linux (manylinux_2_28 and musllinux_1_2) on both ARM and x86-64.
-
-The final pysam release that supported Python 3.6 and 3.7 was v0.23.0.
 
 Bugs fixed:
 
