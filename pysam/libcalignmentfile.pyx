@@ -1663,6 +1663,30 @@ cdef class AlignmentFile(HTSFile):
                     res[(junc_start, base_position)] += 1
         return res
 
+    def filter(self, **kwargs):
+        """iterate and filter segments in the file.
+
+        Parameters
+        ----------
+
+        flag_filter : int
+
+           ignore reads where any of the bits in the flag are set. The default 
+           is BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP.
+
+        flag_require : int
+
+           only use reads where certain flags are set. The default is 0.
+
+        Returns
+        -------
+
+        an iterator over filtered rows. : IteratorRowFilter
+
+        """
+        if not self.is_open:
+            raise ValueError("I/O operation on closed file")
+        return IteratorRowFilter(self, **kwargs)
 
     def close(self):
         '''closes the :class:`pysam.AlignmentFile`.'''
@@ -2308,6 +2332,59 @@ cdef class IteratorRowSelection(IteratorRow):
             ret = sam_read1(self.htsfile,
                             hdr,
                             self.b)
+        return ret
+
+    def __next__(self):
+        cdef int ret = self.cnext()
+        if ret >= 0:
+            return makeAlignedSegment(self.b, self.header)
+        elif ret == -1:
+            raise StopIteration
+        else:
+            raise IOError(read_failure_reason(ret))
+
+
+cdef class IteratorRowFilter(IteratorRow):
+    """*(AlignmentFile samfile, int flag_filter = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP, int flag_require = 0, bool multiple_iterators=False)*
+
+    iterates over reads that have none of the given flags set.
+
+    .. note::
+        It is usually not necessary to create an object of this class
+        explicitly. It is returned as a result of call to a :meth:`AlignmentFile.filter`.
+    """
+    def __init__(
+        self, 
+        AlignmentFile samfile, 
+        int flag_filter = BAM_FUNMAP | BAM_FSECONDARY | BAM_FQCFAIL | BAM_FDUP, 
+        int flag_require = 0,
+        bint multiple_iterators=True
+    ):
+        super().__init__(samfile, multiple_iterators=multiple_iterators)
+
+        self.flag_filter = flag_filter
+        self.flag_require = flag_require
+
+    def __iter__(self):
+        return self
+
+    cdef bam1_t* getCurrent(self):
+        return self.b
+
+    cdef int cnext(self):
+        '''cversion of iterator. Used by IteratorColumn'''
+        cdef int ret
+        cdef bam_hdr_t * hdr = self.header.ptr
+        with nogil:
+            while 1:
+                ret = sam_read1(self.htsfile, hdr, self.b)
+                if ret < 0:
+                    break
+                if self.b.core.flag & self.flag_filter:
+                    continue
+                elif self.flag_require and not (self.b.core.flag & self.flag_require):
+                    continue
+                break
         return ret
 
     def __next__(self):
