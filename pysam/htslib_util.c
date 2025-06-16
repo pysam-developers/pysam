@@ -1,13 +1,8 @@
-#include <ctype.h>
 #include <assert.h>
 #include "htslib/khash.h"
-#include "htslib/ksort.h"
 #include "htslib/sam.h"
 #include "htslib/hts.h"
-#include "htslib/knetfile.h"
-#include "htslib/kseq.h"
 #include "htslib_util.h"
-#include <stdio.h>
 
 #ifndef inline
 #define inline __inline
