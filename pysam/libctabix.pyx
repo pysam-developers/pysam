@@ -69,7 +69,7 @@ from cpython cimport PyErr_SetString, PyBytes_Check, \
 cimport pysam.libctabixproxies as ctabixproxies
 
 from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
-    BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_write, \
+    BGZF, bgzf_open, bgzf_dopen, bgzf_close, bgzf_getline, bgzf_write, \
     tbx_index_build2, tbx_index_load2, tbx_itr_queryi, tbx_itr_querys, \
     tbx_conf_t, tbx_seqnames, tbx_itr_next, tbx_itr_destroy, \
     tbx_destroy, hisremote, region_list, hts_getline, \
@@ -78,22 +78,6 @@ from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
 
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
-
-cdef extern from "htslib/kseq.h" nogil:
-    """
-    #undef __KS_TYPE
-    #define __KS_TYPE(type_t)
-    KSTREAM_INIT2(static, BGZF *, bgzf_read, 16384)
-    """
-    kstream_t *ks_init(BGZF *)
-    void ks_destroy(kstream_t *)
-
-    # Retrieve characters from stream until delimiter
-    # is reached placing results in str.
-    int ks_getuntil(kstream_t *,
-                    int delimiter,
-                    kstring_t * str,
-                    int * dret)
 
 
 cdef class Parser:
@@ -749,7 +733,6 @@ cdef class GZIterator:
         with nogil:
             self.gzipfile = bgzf_open(cfilename, "r")
         self._filename = filename
-        self.kstream = ks_init(self.gzipfile)
         self.encoding = encoding
 
         self.buffer.l = 0
@@ -763,24 +746,15 @@ cdef class GZIterator:
             self.gzipfile = NULL
         if self.buffer.s != NULL:
             free(self.buffer.s)
-        if self.kstream != NULL:
-            ks_destroy(self.kstream)
 
     def __iter__(self):
         return self
 
     cdef int __cnext__(self):
-        cdef int dret = 0
-        cdef int retval = 0
-        while 1:
-            with nogil:
-                retval = ks_getuntil(self.kstream, b'\n', &self.buffer, &dret)
-            
-            if retval < 0: 
-                break
-
-            return dret
-        return -1
+        cdef int retval
+        with nogil:
+            retval = bgzf_getline(self.gzipfile, b'\n', &self.buffer)
+        return retval
 
     def __next__(self):
         """python version of next().
@@ -1144,8 +1118,6 @@ cdef class tabix_file_iterator:
         if self.fh == NULL: 
             raise IOError('%s' % strerror(errno))
 
-        self.kstream = ks_init(self.fh) 
-        
         self.buffer.s = <char*>malloc(buffer_size)
         #if self.buffer == NULL:
         #    raise MemoryError( "tabix_file_iterator: could not allocate %i bytes" % buffer_size)
@@ -1158,12 +1130,11 @@ cdef class tabix_file_iterator:
     cdef __cnext__(self):
 
         cdef char * b
-        cdef int dret = 0
         cdef int retval = 0
         while 1:
             with nogil:
-                retval = ks_getuntil(self.kstream, b'\n', &self.buffer, &dret)
-            
+                retval = bgzf_getline(self.fh, b'\n', &self.buffer)
+
             if retval < 0: 
                 break
                 #raise IOError('gzip error: %s' % buildGzipError( self.fh ))
@@ -1187,7 +1158,6 @@ cdef class tabix_file_iterator:
 
     def __dealloc__(self):
         free(self.buffer.s)
-        ks_destroy(self.kstream)
         bgzf_close(self.fh)
         
     def __next__(self):

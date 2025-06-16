@@ -17,16 +17,10 @@ cdef extern from "unistd.h" nogil:
 from pysam.libchtslib cimport hts_idx_t, hts_itr_t, htsFile, \
     tbx_t, kstring_t, BGZF, HTSFile
 
-cdef extern from "htslib/kseq.h" nogil:
-    """
-    __KS_TYPE(BGZF *)
-    """
-    ctypedef struct kstream_t
-
 
 cdef class tabix_file_iterator:
     cdef BGZF * fh
-    cdef kstream_t * kstream
+    cdef void * unused
     cdef kstring_t buffer
     cdef size_t size
     cdef Parser parser
@@ -88,7 +82,7 @@ cdef class TabixIteratorParsed(TabixIterator):
 cdef class GZIterator:
     cdef object _filename
     cdef BGZF * gzipfile
-    cdef kstream_t * kstream
+    cdef void * unused
     cdef kstring_t buffer
     cdef int __cnext__(self)
     cdef encoding

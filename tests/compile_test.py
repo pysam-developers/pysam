@@ -63,6 +63,15 @@ class TestBinaryCompatibility:
         assert hdr.__sizeof__() == 24
         assert aln.__sizeof__() == 72
 
+    def test_tabix(self):
+        gzit = pysam.GZIterator(os.path.join(TABIX_DATADIR, "example.gtf.gz"))
+
+        with open(os.path.join(TABIX_DATADIR, "example.gtf.gz")) as fp:
+            tfit = pysam.tabix_file_iterator(fp, pysam.asTuple())
+
+        assert gzit.__sizeof__() == 80
+        assert tfit.__sizeof__() == 96
+
     def test_variants(self):
         fp = pysam.VariantFile(os.path.join(CBCF_DATADIR, "example_vcf43.vcf"))
         hdr = pysam.VariantHeader()
