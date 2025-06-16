@@ -70,6 +70,17 @@ from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
 from pysam.libcutils cimport qualitystring_to_array, parse_region
 
+cdef extern from "htslib/kseq.h" nogil:
+    """
+    #undef __KSEQ_TYPE
+    #define __KSEQ_TYPE(type_t)
+    KSEQ_INIT2(static, BGZF *, bgzf_read)
+    """
+    kseq_t *kseq_init(BGZF *)
+    int kseq_read(kseq_t *)
+    void kseq_destroy(kseq_t *)
+
+
 cdef class FastqProxy
 cdef makeFastqProxy(kseq_t * src):
     '''enter src into AlignedRead.'''

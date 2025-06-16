@@ -79,6 +79,23 @@ from pysam.libchtslib cimport htsFile, hts_open, hts_close, HTS_IDX_START,\
 from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport encode_filename, from_string_and_size
 
+cdef extern from "htslib/kseq.h" nogil:
+    """
+    #undef __KS_TYPE
+    #define __KS_TYPE(type_t)
+    KSTREAM_INIT2(static, BGZF *, bgzf_read, 16384)
+    """
+    kstream_t *ks_init(BGZF *)
+    void ks_destroy(kstream_t *)
+
+    # Retrieve characters from stream until delimiter
+    # is reached placing results in str.
+    int ks_getuntil(kstream_t *,
+                    int delimiter,
+                    kstring_t * str,
+                    int * dret)
+
+
 cdef class Parser:
 
     def __init__(self, encoding="ascii"):

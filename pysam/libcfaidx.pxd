@@ -9,31 +9,19 @@ cimport cython
 from cpython cimport array
 from pysam.libchtslib cimport faidx_t, kstring_t, BGZF
 
-# These functions are put here and not in chtslib.pxd in order
-# to avoid warnings for unused functions.
-cdef extern from "pysam_stream.h" nogil:
-
-    ctypedef struct kstream_t:
-        pass
-
+cdef extern from "htslib/kseq.h" nogil:
+    """
+    struct __kstream_t;
+    #define kstream_t  struct __kstream_t
+    __KSEQ_TYPE(type_t_unused_here)
+    #undef kstream_t
+    """
     ctypedef struct kseq_t:
         kstring_t name
         kstring_t comment
         kstring_t seq
         kstring_t qual
 
-    kseq_t *kseq_init(BGZF *)
-    int kseq_read(kseq_t *)
-    void kseq_destroy(kseq_t *)
-    kstream_t *ks_init(BGZF *)
-    void ks_destroy(kstream_t *)
-
-    # Retrieve characters from stream until delimiter
-    # is reached placing results in str.
-    int ks_getuntil(kstream_t *,
-                    int delimiter,
-                    kstring_t * str,
-                    int * dret)
 
 cdef class FastaFile:
     cdef bint is_remote
