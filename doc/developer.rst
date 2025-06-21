@@ -36,19 +36,21 @@ directories:
 Python language level
 =====================
 
-Pysam currently requires Python 3.6 as a minimum language level.
+Pysam currently requires Python 3.8 as a minimum language level.
 For example, this means that the following comparatively recent
 language features and library functions are available for use:
 
 * f-strings
 * ``raise ... from None``
 * :meth:`str.startswith`, :meth:`str.endswith`, :meth:`str.rstrip`, etc
+* walrus ``:=`` operator in Python code
 
-However in particular the the following should not be used in
+However in particular the following should not be used in
 pysam source code or infrastructure scripts:
 
 * :meth:`str.removeprefix`, :meth:`str.removesuffix` (new in 3.9)
-* walrus ``:=`` operator (new in 3.8)
+* walrus ``:=`` operator in Cython code (requires Cython 3)
+* ``Optional[type]`` type hints written as ``type | None`` etc (new in 3.10)
 
 
 Importing new versions of htslib and samtools
