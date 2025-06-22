@@ -1880,46 +1880,53 @@ cdef class AlignedSegment:
             return getQueryEnd(self._delegate)
 
     property modified_bases:
-        """Modified bases annotations from Ml/Mm tags. The output is
+        """Modified bases annotations from MM/ML tags. The output is
         Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
         with qual being (256*probability), or -1 if unknown.
         Strand==0 for forward and 1 for reverse strand modification
         """
         def __get__(self):
-            cdef bam1_t * src
-            cdef hts_base_mod_state *m = hts_base_mod_state_alloc()
-            cdef hts_base_mod mods[5]
-            cdef int pos
+            cdef bam1_t *src = self._delegate
+            cdef hts_base_mod_state *m = NULL
+            cdef hts_base_mod *mods = NULL
+            cdef int qpos, max_mods
+            cdef int *mod_codes
 
-            ret = {}
-            src = self._delegate
-            
-            if bam_parse_basemod(src, m) < 0:        
-                return None
-            
-            n = bam_next_basemod(src, m, mods, 5, &pos)
+            try:
+                m = hts_base_mod_state_alloc()
+                if m == NULL:
+                    raise MemoryError("Can't allocate modified_bases state")
 
-            while n>0:
-                for i in range(n):
-                    mod_code = chr(mods[i].modified_base) if mods[i].modified_base>0 else -mods[i].modified_base
-                    mod_strand = mods[i].strand
-                    if self.is_reverse:
-                        mod_strand = 1 - mod_strand
-                    key = (chr(mods[i].canonical_base), 
-                            mod_strand,
-                            mod_code )
-                    ret.setdefault(key,[]).append((pos,mods[i].qual))
-                    
-                n = bam_next_basemod(src, m, mods, 5, &pos)
+                if bam_parse_basemod(src, m) < 0:
+                    return None
 
-            if n<0:
-                return None
+                mod_codes = bam_mods_recorded(m, &max_mods)
+                mods = <hts_base_mod *> calloc(max_mods, sizeof(hts_base_mod))
+                if mods == NULL:
+                    raise MemoryError("Can't allocate modified_bases buffer")
 
-            hts_base_mod_state_free(m)
-            return ret
+                ret = {}
+
+                while (n := bam_next_basemod(src, m, mods, max_mods, &qpos)) > 0:
+                    for i in range(n):
+                        mod_code = chr(mods[i].modified_base) if mods[i].modified_base>0 else -mods[i].modified_base
+                        mod_strand = mods[i].strand
+                        if self.is_reverse:
+                            mod_strand = 1 - mod_strand
+                        key = (chr(mods[i].canonical_base), mod_strand, mod_code)
+                        ret.setdefault(key, []).append((qpos, mods[i].qual))
+
+                if n < 0:
+                    return None
+
+                return ret
+
+            finally:
+                free(mods)
+                hts_base_mod_state_free(m)
 
     property modified_bases_forward:
-        """Modified bases annotations from Ml/Mm tags. The output is
+        """Modified bases annotations from MM/ML tags. The output is
         Dict[(canonical base, strand, modification)] -> [ (pos,qual), ...]
         with qual being (256*probability), or -1 if unknown.
         Strand==0 for forward and 1 for reverse strand modification.
