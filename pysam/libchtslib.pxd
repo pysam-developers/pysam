@@ -579,6 +579,122 @@ cdef extern from "htslib/sam.h" nogil:
     int sam_prob_realn(bam1_t *b, const char *ref, int ref_len, int flag)
 
 
+cdef extern from "htslib/cram.h" nogil:
+
+    cdef enum cram_block_method:
+        ERROR
+        RAW
+        GZIP
+        BZIP2
+        LZMA
+        RANS
+        RANS0
+        RANS1
+        GZIP_RLE
+
+    cdef enum cram_content_type:
+        CT_ERROR
+        FILE_HEADER
+        COMPRESSION_HEADER
+        MAPPED_SLICE
+        UNMAPPED_SLICE
+        EXTERNAL
+        CORE
+
+    ctypedef struct SAM_hdr
+    ctypedef struct cram_file_def
+    ctypedef struct cram_fd
+    ctypedef struct cram_container
+    ctypedef struct cram_block
+    ctypedef struct cram_slice
+    ctypedef struct cram_metrics
+    ctypedef struct cram_block_slice_hdr
+    ctypedef struct cram_block_compression_hdr
+    ctypedef struct refs_t
+
+    SAM_hdr *cram_fd_get_header(cram_fd *fd)
+    void cram_fd_set_header(cram_fd *fd, SAM_hdr *hdr)
+
+    int cram_fd_get_version(cram_fd *fd)
+    void cram_fd_set_version(cram_fd *fd, int vers)
+
+    int cram_major_vers(cram_fd *fd)
+    int cram_minor_vers(cram_fd *fd)
+
+    hFILE *cram_fd_get_fp(cram_fd *fd)
+    void cram_fd_set_fp(cram_fd *fd, hFILE *fp)
+
+    int32_t cram_container_get_length(cram_container *c)
+    void cram_container_set_length(cram_container *c, int32_t length)
+    int32_t cram_container_get_num_blocks(cram_container *c)
+    void cram_container_set_num_blocks(cram_container *c, int32_t num_blocks)
+    int32_t *cram_container_get_landmarks(cram_container *c, int32_t *num_landmarks)
+    void cram_container_set_landmarks(cram_container *c, int32_t num_landmarks, int32_t *landmarks)
+    int cram_container_is_empty(cram_fd *fd)
+
+    int32_t cram_block_get_content_id(cram_block *b)
+    int32_t cram_block_get_comp_size(cram_block *b)
+    int32_t cram_block_get_uncomp_size(cram_block *b)
+    int32_t cram_block_get_crc32(cram_block *b)
+    void *  cram_block_get_data(cram_block *b)
+
+    cram_content_type cram_block_get_content_type(cram_block *b)
+
+    void cram_block_set_content_id(cram_block *b, int32_t id)
+    void cram_block_set_comp_size(cram_block *b, int32_t size)
+    void cram_block_set_uncomp_size(cram_block *b, int32_t size)
+    void cram_block_set_crc32(cram_block *b, int32_t crc)
+    void cram_block_set_data(cram_block *b, void *data)
+
+    int cram_block_append(cram_block *b, void *data, int size)
+    void cram_block_update_size(cram_block *b)
+
+    size_t cram_block_get_offset(cram_block *b)
+    void cram_block_set_offset(cram_block *b, size_t offset)
+    uint32_t cram_block_size(cram_block *b)
+
+    int cram_transcode_rg(cram_fd *input, cram_fd *output, cram_container *c, int nrg, int *in_rg, int *out_rg)
+
+    int cram_copy_slice(cram_fd *input, cram_fd *output, int32_t num_slice)
+
+    SAM_hdr *sam_hdr_parse_(const char *hdr, int len)
+
+    cram_block *cram_new_block(cram_content_type content_type, int content_id)
+    cram_block *cram_read_block(cram_fd *fd)
+    int cram_write_block(cram_fd *fd, cram_block *b)
+    void cram_free_block(cram_block *b)
+    int cram_uncompress_block(cram_block *b)
+    int cram_compress_block(cram_fd *fd, cram_block *b, cram_metrics *metrics, int method, int level)
+
+    cram_container *cram_new_container(int nrec, int nslice)
+    void cram_free_container(cram_container *c)
+    cram_container *cram_read_container(cram_fd *fd)
+    int cram_write_container(cram_fd *fd, cram_container *h)
+    int cram_store_container(cram_fd *fd, cram_container *c, char *dat, int *size)
+    int cram_container_size(cram_container *c)
+
+    cram_fd *cram_open(const char *filename, const char *mode)
+    cram_fd *cram_dopen(hFILE *fp, const char *filename, const char *mode)
+    int cram_close(cram_fd *fd)
+    int cram_seek(cram_fd *fd, off_t offset, int whence)
+    int cram_flush(cram_fd *fd)
+    int cram_eof(cram_fd *fd)
+    int cram_set_option(cram_fd *fd, hts_fmt_option opt, ...)
+    int cram_set_voption(cram_fd *fd, hts_fmt_option opt, va_list args)
+    int cram_set_header(cram_fd *fd, SAM_hdr *hdr)
+    int cram_check_EOF(cram_fd *fd)
+
+    int int32_put_blk(cram_block *b, int32_t val)
+
+    void sam_hdr_free(SAM_hdr *hdr)
+    int sam_hdr_length(SAM_hdr *hdr)
+    char *sam_hdr_str(SAM_hdr *hdr)
+    int sam_hdr_add_PG(SAM_hdr *sh, const char *name, ...)
+    char *stringify_argv(int argc, char *argv[])
+
+    refs_t *cram_get_refs(htsFile *fd)
+
+
 cdef extern from "htslib/faidx.h" nogil:
 
     ctypedef struct faidx_t:
@@ -993,122 +1109,6 @@ cdef extern from "htslib/vcfutils.h" nogil:
     char bcf_int2acgt(int i)
 
     uint32_t bcf_ij2G(uint32_t i, uint32_t j)
-
-
-cdef extern from "htslib/cram.h" nogil:
-
-    cdef enum cram_block_method:
-        ERROR
-        RAW
-        GZIP
-        BZIP2
-        LZMA
-        RANS
-        RANS0
-        RANS1
-        GZIP_RLE
-
-    cdef enum cram_content_type:
-        CT_ERROR
-        FILE_HEADER
-        COMPRESSION_HEADER
-        MAPPED_SLICE
-        UNMAPPED_SLICE
-        EXTERNAL
-        CORE
-
-    ctypedef struct SAM_hdr
-    ctypedef struct cram_file_def
-    ctypedef struct cram_fd
-    ctypedef struct cram_container
-    ctypedef struct cram_block
-    ctypedef struct cram_slice
-    ctypedef struct cram_metrics
-    ctypedef struct cram_block_slice_hdr
-    ctypedef struct cram_block_compression_hdr
-    ctypedef struct refs_t
-
-    SAM_hdr *cram_fd_get_header(cram_fd *fd)
-    void cram_fd_set_header(cram_fd *fd, SAM_hdr *hdr)
-
-    int cram_fd_get_version(cram_fd *fd)
-    void cram_fd_set_version(cram_fd *fd, int vers)
-
-    int cram_major_vers(cram_fd *fd)
-    int cram_minor_vers(cram_fd *fd)
-
-    hFILE *cram_fd_get_fp(cram_fd *fd)
-    void cram_fd_set_fp(cram_fd *fd, hFILE *fp)
-
-    int32_t cram_container_get_length(cram_container *c)
-    void cram_container_set_length(cram_container *c, int32_t length)
-    int32_t cram_container_get_num_blocks(cram_container *c)
-    void cram_container_set_num_blocks(cram_container *c, int32_t num_blocks)
-    int32_t *cram_container_get_landmarks(cram_container *c, int32_t *num_landmarks)
-    void cram_container_set_landmarks(cram_container *c, int32_t num_landmarks, int32_t *landmarks)
-    int cram_container_is_empty(cram_fd *fd)
-
-    int32_t cram_block_get_content_id(cram_block *b)
-    int32_t cram_block_get_comp_size(cram_block *b)
-    int32_t cram_block_get_uncomp_size(cram_block *b)
-    int32_t cram_block_get_crc32(cram_block *b)
-    void *  cram_block_get_data(cram_block *b)
-
-    cram_content_type cram_block_get_content_type(cram_block *b)
-
-    void cram_block_set_content_id(cram_block *b, int32_t id)
-    void cram_block_set_comp_size(cram_block *b, int32_t size)
-    void cram_block_set_uncomp_size(cram_block *b, int32_t size)
-    void cram_block_set_crc32(cram_block *b, int32_t crc)
-    void cram_block_set_data(cram_block *b, void *data)
-
-    int cram_block_append(cram_block *b, void *data, int size)
-    void cram_block_update_size(cram_block *b)
-
-    size_t cram_block_get_offset(cram_block *b)
-    void cram_block_set_offset(cram_block *b, size_t offset)
-    uint32_t cram_block_size(cram_block *b)
-
-    int cram_transcode_rg(cram_fd *input, cram_fd *output, cram_container *c, int nrg, int *in_rg, int *out_rg)
-
-    int cram_copy_slice(cram_fd *input, cram_fd *output, int32_t num_slice)
-
-    SAM_hdr *sam_hdr_parse_(const char *hdr, int len)
-
-    cram_block *cram_new_block(cram_content_type content_type, int content_id)
-    cram_block *cram_read_block(cram_fd *fd)
-    int cram_write_block(cram_fd *fd, cram_block *b)
-    void cram_free_block(cram_block *b)
-    int cram_uncompress_block(cram_block *b)
-    int cram_compress_block(cram_fd *fd, cram_block *b, cram_metrics *metrics, int method, int level)
-
-    cram_container *cram_new_container(int nrec, int nslice)
-    void cram_free_container(cram_container *c)
-    cram_container *cram_read_container(cram_fd *fd)
-    int cram_write_container(cram_fd *fd, cram_container *h)
-    int cram_store_container(cram_fd *fd, cram_container *c, char *dat, int *size)
-    int cram_container_size(cram_container *c)
-
-    cram_fd *cram_open(const char *filename, const char *mode)
-    cram_fd *cram_dopen(hFILE *fp, const char *filename, const char *mode)
-    int cram_close(cram_fd *fd)
-    int cram_seek(cram_fd *fd, off_t offset, int whence)
-    int cram_flush(cram_fd *fd)
-    int cram_eof(cram_fd *fd)
-    int cram_set_option(cram_fd *fd, hts_fmt_option opt, ...)
-    int cram_set_voption(cram_fd *fd, hts_fmt_option opt, va_list args)
-    int cram_set_header(cram_fd *fd, SAM_hdr *hdr)
-    int cram_check_EOF(cram_fd *fd)
-
-    int int32_put_blk(cram_block *b, int32_t val)
-
-    void sam_hdr_free(SAM_hdr *hdr)
-    int sam_hdr_length(SAM_hdr *hdr)
-    char *sam_hdr_str(SAM_hdr *hdr)
-    int sam_hdr_add_PG(SAM_hdr *sh, const char *name, ...)
-    char *stringify_argv(int argc, char *argv[])
-
-    refs_t *cram_get_refs(htsFile *fd)
 
 
 cdef class HTSFile(object):
