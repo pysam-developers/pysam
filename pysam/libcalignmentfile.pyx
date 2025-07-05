@@ -29,6 +29,7 @@
 # class IteratorColumnRegion
 # class IteratorColumnAll
 # class IteratorColumnAllRefs
+# class IteratorColumnRecords
 #
 ########################################################
 #
@@ -89,6 +90,7 @@ __all__ = [
     "AlignmentHeader",
     "IteratorRow",
     "IteratorColumn",
+    "IteratorColumnRecords",
     "IndexedReads"]
 
 IndexStats = collections.namedtuple("IndexStats",
@@ -2816,6 +2818,28 @@ cdef class IteratorColumnAll(IteratorColumn):
 
 
 cdef class IteratorColumnRecords:
+    '''Iterator over columns when given a collection of :class:`~pysam.AlignedSegment`s.
+
+       For reasons of efficiency, the iterator requires the given
+       :class:`~pysam.AlignedSegment`s to be in coordinate sorted order.
+       For implementation simplicity, all the records will be consumed
+       from the given iterator.
+
+       For example:
+
+          f = AlignmentFile("file.bam", "rb")
+          result = list(IteratorColumnRecords([rec for rec in f]))
+
+       Here, `result`` will be a list of ``n`` lists of objects of type
+       :class:`~pysam.PileupRead`.
+
+       If the iterator is associated with a :class:`~pysam.Fastafile`
+       using the :meth:`add_reference` method, then the iterator will
+       export the current sequence via the methods :meth:`get_sequence`
+       and :meth:`seq_len`.
+
+       See :class:`~AlignmentFile.pileup` for kwargs to the iterator.
+       '''
 
     def __cinit__(self, recs: Iterable[AlignedSegment], **kwargs):
         cdef FastaFile fastafile = kwargs.get("fastafile", None)
@@ -2835,7 +2859,7 @@ cdef class IteratorColumnRecords:
 
     def __dealloc__(self):
         bam_plp_destroy(self.plp_iter)
-        self.plp_iter = <bam_plp_t>NULL;
+        self.plp_iter = <bam_plp_t>NULL
         if self.seq != NULL:
             free(self.seq)
             self.seq = NULL
@@ -2896,8 +2920,32 @@ cdef class IteratorColumnRecords:
                                 self.pos,
                                 self.n_plp,
                                 self.min_base_quality,
-                                NULL,  # FIXME: fetch from a FASTA file...
+                                self.seq,
                                 self.header)
+
+    cdef char * get_sequence(self):
+        '''return current reference sequence underlying the iterator.
+        '''
+        return self.seq
+
+    property seq_len:
+        '''current sequence length.'''
+        def __get__(self):
+            return self.seq_len
+
+    def add_reference(self, FastaFile fastafile):
+       '''add reference sequences in `fastafile` to iterator.'''
+       self.fastafile = fastafile.fastafile
+       if self.seq != NULL:
+           free(self.seq)
+       self.tid = -1
+
+
+    def has_reference(self):
+        '''
+        return true if iterator is associated with a reference'''
+        return self.fastafile != NULL
+
 
 
 cdef class SNPCall:
