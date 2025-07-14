@@ -344,8 +344,9 @@ int pileup_loop(samFile *fp,
         hts_pos_t pos;
 
         r = seq_fetch(client_data, fp, h, &pnew->b);
+        //fprintf(samtools_stderr, "Fetch at %ld\n", pnew->b.core.pos);
         if (r < -1) {
-            fprintf(samtools_stderr, "bam_next_seq() failure.\n");
+            fprintf(samtools_stderr, "pileup_loop() seq_fetch failure.\n");
             goto error;
         }
 
@@ -550,8 +551,11 @@ int pileup_loop(samFile *fp,
             if (seq_init) {
                 int v;
                 v = seq_init(client_data, fp, h, p);
-                if (v == -1)
+                if (v == -1) {
+                    p->next = pfree;
+                    pfree = p;
                     goto error;
+                }
 
                 if (v == 1) {
                     /* Keep this seq */
@@ -604,3 +608,4 @@ int pileup_loop(samFile *fp,
 
     return ret;
 }
+

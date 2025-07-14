@@ -2,7 +2,7 @@
 
 /*  vcfplugin.c -- plugin modules for operating on VCF/BCF files.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -615,7 +615,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "Plugin options:\n");
     fprintf(bcftools_stderr, "   -h, --help                     List plugin's options\n");
     fprintf(bcftools_stderr, "   -l, --list-plugins             List available plugins. See BCFTOOLS_PLUGINS environment variable and man page for details\n");
-    fprintf(bcftools_stderr, "   -v, --verbose                  Print verbose information, -vv increases verbosity\n");
+    fprintf(bcftools_stderr, "   -v, --verbosity INT            Verbosity level\n");
     fprintf(bcftools_stderr, "   -V, --version                  Print version string and exit\n");
     fprintf(bcftools_stderr, "   -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
@@ -680,7 +680,8 @@ int main_plugin(int argc, char *argv[])
     static struct option loptions[] =
     {
         {"version",no_argument,NULL,'V'},
-        {"verbose",no_argument,NULL,'v'},
+        {"verbose",optional_argument,NULL,'v'},
+        {"verbosity",optional_argument,NULL,'v'},
         {"help",no_argument,NULL,'h'},
         {"list-plugins",no_argument,NULL,'l'},
         {"output",required_argument,NULL,'o'},
@@ -699,11 +700,18 @@ int main_plugin(int argc, char *argv[])
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h?o:O:r:R:t:T:li:e:vVW::",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h?o:O:r:R:t:T:li:e:v::VW::",loptions,NULL)) >= 0)
     {
         switch (c) {
             case 'V': version_only = 1; break;
-            case 'v': args->verbose++; break;
+            case 'v':
+                if ( !optarg ) args->verbose++;
+                else
+                {
+                    args->verbose = strtol(optarg,&tmp,10);
+                    if ( *tmp || args->verbose<0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                    if ( args->verbose > 3 ) hts_verbose = args->verbose;
+                }
             case 'o': args->output_fname = optarg; break;
             case 'O':
                 switch (optarg[0]) {

@@ -1,6 +1,6 @@
 /*  convert.c -- functions for converting between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2024 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -28,6 +28,7 @@ THE SOFTWARE.  */
 #include <assert.h>
 #include <ctype.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -79,6 +80,7 @@ THE SOFTWARE.  */
 #define T_VKX          31   // VARIANTKEY HEX
 #define T_PBINOM       32
 #define T_NPASS        33
+#define T_FILTER_EXPR  34   // print the results of -i/-e functions via query
 
 typedef struct _fmt_t
 {
@@ -122,6 +124,16 @@ typedef struct
     int n, m;
 }
 bcsq_t;
+
+typedef struct
+{
+    filter_t *filter;
+    int nval;
+    double *val;
+}
+filter_expr_t;
+
+static fmt_t *register_tag(convert_t *convert, char *key, int is_gtf, int type);
 
 static void process_chrom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputs(convert->header->id[BCF_DT_CTG][line->rid].key, str); }
 static void process_pos(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str) { kputw(line->pos+1, str); }
@@ -1157,6 +1169,50 @@ static void destroy_npass(void *usr)
 {
     filter_destroy((filter_t*)usr);
 }
+static void process_filter_expr(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
+{
+    filter_expr_t *dat = (filter_expr_t*) fmt->usr;
+
+    int i, nval, nval1;
+    const double *val;
+    if ( fmt->is_gt_field )
+    {
+        if ( !fmt->ready )
+        {
+            filter_test(dat->filter,line,NULL);
+            val = filter_get_doubles(dat->filter,&nval,&nval1);
+            if ( fmt->is_gt_field )
+            {
+                if ( !dat->nval )
+                {
+                    dat->nval = nval;
+                    dat->val = malloc(nval*sizeof(double));
+                    if ( !dat->val ) error("Error: failed to allocate %zu bytes\n",nval*sizeof(double));
+                }
+                assert( dat->nval==nval );
+                for (i=0; i<nval; i++) dat->val[i] = val[i];
+            }
+            fmt->ready = 1;
+        }
+        val = dat->val;
+        nval = dat->nval;
+    }
+    else
+    {
+        filter_test(dat->filter,line,NULL);
+        val = filter_get_doubles(dat->filter,&nval,&nval1);
+    }
+    if ( isample<0 ) isample = 0;
+    if ( isample>=nval ) isample = 0;
+    kputd(val[isample], str);
+}
+static void destroy_filter_expr(void *usr)
+{
+    filter_expr_t *dat = (filter_expr_t*) usr;
+    filter_destroy(dat->filter);
+    free(dat->val);
+    free(dat);
+}
 
 static void process_pbinom(convert_t *convert, bcf1_t *line, fmt_t *fmt, int isample, kstring_t *str)
 {
@@ -1249,6 +1305,48 @@ static void _used_tags_add(convert_t *convert, int type, char *key)
     else if ( !strcmp("MASK",key) ) { function(__VA_ARGS__, T_MASK); } \
     else if ( !strcmp("LINE",key) ) { function(__VA_ARGS__, T_LINE); }
 
+// This invokes the functionality of -i/-e expressions
+static char *set_filter_expr(convert_t *convert, char *key, int is_gtf)
+{
+    kstring_t str = {0,0,0};
+    char *ptr = key;
+    while ( *ptr && *ptr!=')' ) ptr++;
+    if ( !*ptr ) error("Could not parse format string: %s\n",convert->format_str);
+    kputsn(key, ptr-key+1, &str);
+    register_tag(convert, str.s, is_gtf, T_FILTER_EXPR);
+    free(str.s);
+    return key+str.l;
+}
+
+// These are the -i/-e functions made to be printed via `query -f`
+#define _SET_FILTER_EXPR(convert,function,key,ptr,is_gtf) \
+    if ( !strncasecmp(key,"MAX(",4) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"MIN(",4) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"MEAN(",5) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"MEDIAN(",7) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"AVG(",4) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SUM(",4) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"ABS(",4) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"COUNT(",6) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"STDEV(",6) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"STRLEN(",7) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"BINOM(",6) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"PHRED(",6) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_MAX(",9) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_MIN(",9) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_MEAN(",10) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_MEDIAN(",12) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_AVG(",9) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_STDEV(",11) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_SUM(",9) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sMAX(",5) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sMIN(",5) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sMEAN(",6) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sMEDIAN(",8) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sAVG(",5) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sSTDEV(",7) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sSUM(",5) ) { ptr = function(convert,key,is_gtf); }
+
 static void set_type(fmt_t *fmt, int type) { fmt->type = type; }
 static fmt_t *register_tag(convert_t *convert, char *key, int is_gtf, int type)
 {
@@ -1273,8 +1371,8 @@ static fmt_t *register_tag(convert_t *convert, char *key, int is_gtf, int type)
         if ( fmt->type==T_FORMAT && !bcf_hdr_idinfo_exists(convert->header,BCF_HL_FMT,id) )
         {
             _SET_NON_FORMAT_TAGS(set_type,key,fmt)
-           else if ( !strcmp("ALT",key) ) { fmt->type = T_ALT; }
-           else if ( !strcmp("_CHROM_POS_ID",key) ) { fmt->type = T_CHROM_POS_ID; }
+            else if ( !strcmp("ALT",key) ) { fmt->type = T_ALT; }
+            else if ( !strcmp("_CHROM_POS_ID",key) ) { fmt->type = T_CHROM_POS_ID; }
             else if ( !strcmp("RSX",key) ) { fmt->type = T_RSX; }
             else if ( !strcmp("VKX",key) ) { fmt->type = T_VKX; }
             else if ( id>=0 && bcf_hdr_idinfo_exists(convert->header,BCF_HL_INFO,id) )
@@ -1294,6 +1392,14 @@ static fmt_t *register_tag(convert_t *convert, char *key, int is_gtf, int type)
             filter_t *flt = filter_init(convert->header,key);
             convert->max_unpack |= filter_max_unpack(flt);
             fmt->usr = (void*) flt;
+        }
+        else if ( fmt->type==T_FILTER_EXPR )
+        {
+            filter_t *filter = filter_init(convert->header,key);
+            convert->max_unpack |= filter_max_unpack(filter);
+            filter_expr_t *dat = calloc(1,sizeof(filter_expr_t));
+            fmt->usr = dat;
+            dat->filter = filter;
         }
     }
 
@@ -1332,6 +1438,7 @@ static fmt_t *register_tag(convert_t *convert, char *key, int is_gtf, int type)
         case T_VKX: fmt->handler = &process_variantkey_hex; break;
         case T_PBINOM: fmt->handler = &process_pbinom; convert->max_unpack |= BCF_UN_FMT; break;
         case T_NPASS: fmt->handler = &process_npass; fmt->destroy = &destroy_npass; break;
+        case T_FILTER_EXPR: fmt->handler = &process_filter_expr; fmt->destroy = &destroy_filter_expr; break;
         default: error("TODO: handler for type %d\n", fmt->type);
     }
     if ( key && fmt->type==T_INFO )
@@ -1360,14 +1467,28 @@ static int parse_subscript(char **p)
 
 static char *parse_tag(convert_t *convert, char *p, int is_gtf)
 {
+    int is_vcf_column = p[1]=='/' ? 1 : 0;
+    if ( is_vcf_column ) p++;
+
     char *q = ++p;
     while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
     kstring_t str = {0,0,0};
     if ( q-p==0 ) error("Could not parse format string: %s\n", convert->format_str);
     kputsn(p, q-p, &str);
-    if ( is_gtf )
+    if ( is_gtf && is_vcf_column )
     {
-        if ( !strcmp(str.s, "SAMPLE") ) register_tag(convert, "SAMPLE", is_gtf, T_SAMPLE);
+        _SET_NON_FORMAT_TAGS(register_tag, str.s, convert, str.s, is_gtf)
+        else if ( !strcmp(str.s, "ALT") )
+        {
+            fmt_t *fmt = register_tag(convert, str.s, is_gtf, T_ALT);
+            fmt->subscript = parse_subscript(&q);
+        }
+        else error("Could not parse tag: %s .. %s\n", str.s,convert->format_str);
+    }
+    else if ( is_gtf )
+    {
+        _SET_FILTER_EXPR(convert,set_filter_expr,p,q,1)
+        else if ( !strcmp(str.s, "SAMPLE") ) register_tag(convert, "SAMPLE", is_gtf, T_SAMPLE);
         else if ( !strcmp(str.s, "GT") ) register_tag(convert, "GT", is_gtf, T_GT);
         else if ( !strcmp(str.s, "TGT") ) register_tag(convert, "GT", is_gtf, T_TGT);
         else if ( !strcmp(str.s, "TBCSQ") )
@@ -1422,6 +1543,7 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
     else
     {
         _SET_NON_FORMAT_TAGS(register_tag, str.s, convert, str.s, is_gtf)
+        else _SET_FILTER_EXPR(convert,set_filter_expr,p,q,0)
         else if ( !strcmp(str.s, "ALT") )
         {
             fmt_t *fmt = register_tag(convert, str.s, is_gtf, T_ALT);

@@ -1,6 +1,6 @@
 /*  vcfindex.c -- Index bgzip compressed VCF/BCF files for random access.
 
-    Copyright (C) 2014-2024 Genome Research Ltd.
+    Copyright (C) 2014-2025 Genome Research Ltd.
 
     Author: Shane McCarthy <sm15@sanger.ac.uk>
 
@@ -57,6 +57,7 @@ static void usage(void)
     fprintf(stderr, "    -o, --output FILE        optional output index file name\n");
     fprintf(stderr, "    -t, --tbi                generate TBI-format index for VCF files\n");
     fprintf(stderr, "        --threads INT        use multithreading with INT worker threads [0]\n");
+    fprintf(stderr, "    -v, --verbosity INT      verbosity level\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Stats options:\n");
     fprintf(stderr, "    -a, --all            with --stats, print stats for all contigs even when zero\n");
@@ -236,16 +237,20 @@ int main_vcfindex(int argc, char *argv[])
         {"stats",no_argument,NULL,'s'},
         {"nrecords",no_argument,NULL,'n'},
         {"threads",required_argument,NULL,9},
+        {"verbosity",required_argument,NULL,'v'},
         {"output-file",required_argument,NULL,'o'},
         {"output",required_argument,NULL,'o'},
         {NULL, 0, NULL, 0}
     };
 
     char *tmp;
-    while ((c = getopt_long(argc, argv, "ctfm:snao:", loptions, NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "ctfm:snao:v:", loptions, NULL)) >= 0)
     {
         switch (c)
         {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'c': tbi = 0; break;
             case 't': tbi = 1; min_shift = 0; break;
             case 'f': force = 1; break;
