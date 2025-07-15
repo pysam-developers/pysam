@@ -28,7 +28,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython mypy pytest setuptools
+        run:  pip install cython mypy pytest setuptools parameterized
 
       - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'

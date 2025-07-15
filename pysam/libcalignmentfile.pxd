@@ -155,6 +155,7 @@ cdef class IteratorColumnRecords:
     cdef char * seq
     cdef int seq_len
     cdef faidx_t * fastafile
+    cdef char * get_sequence(self)
 
 
 cdef class IndexedReads:
