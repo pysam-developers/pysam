@@ -23,10 +23,10 @@ cdef extern from "htslib/kstring.h" nogil:
         size_t l, m
         char *s
 
+    int ksprintf(kstring_t *s, const char *fmt, ...)
     int kputc(int c, kstring_t *s)
     int kputw(int c, kstring_t *s)
     int kputl(long c, kstring_t *s)
-    int ksprintf(kstring_t *s, const char *fmt, ...)
 
 
 cdef extern from "htslib_util.h" nogil:
@@ -151,15 +151,11 @@ cdef extern from "htslib/bgzf.h" nogil:
 
 cdef extern from "htslib/hts.h" nogil:
 
+    int hts_verbose
+
     uint32_t kroundup32(uint32_t x)
 
     ctypedef struct cram_fd
-
-    cdef union FilePointerUnion:
-        BGZF    *bgzf
-        cram_fd *cram
-        hFILE   *hfile
-        void    *voidp
 
     cdef enum htsFormatCategory:
         unknown_category
@@ -178,6 +174,34 @@ cdef extern from "htslib/hts.h" nogil:
     cdef enum htsCompression:
         no_compression, gzip, bgzf, custom
         compression_maximum
+
+    ctypedef struct htsVersion:
+        short major, minor
+
+    ctypedef struct htsFormat:
+        htsFormatCategory category
+        htsExactFormat    format
+        htsVersion        version
+        htsCompression    compression
+        short             compression_level
+        void              *specific
+
+    ctypedef struct hts_idx_t
+
+    cdef union FilePointerUnion:
+        BGZF    *bgzf
+        cram_fd *cram
+        hFILE   *hfile
+        void    *voidp
+
+    ctypedef struct htsFile:
+        uint8_t is_bin, is_write, is_be, is_cram
+        int64_t lineno
+        kstring_t line
+        char *fn
+        char *fn_aux
+        FilePointerUnion fp
+        htsFormat format
 
     cdef enum hts_fmt_option:
         CRAM_OPT_DECODE_MD
@@ -201,28 +225,6 @@ cdef extern from "htslib/hts.h" nogil:
         CRAM_OPT_REQUIRED_FIELDS
         HTS_OPT_COMPRESSION_LEVEL
         HTS_OPT_NTHREADS
-
-    ctypedef struct htsVersion:
-        short major, minor
-
-    ctypedef struct htsFormat:
-        htsFormatCategory category
-        htsExactFormat    format
-        htsVersion        version
-        htsCompression    compression
-        short             compression_level
-        void              *specific
-
-    ctypedef struct htsFile:
-        uint8_t is_bin, is_write, is_be, is_cram
-        int64_t lineno
-        kstring_t line
-        char *fn
-        char *fn_aux
-        FilePointerUnion fp
-        htsFormat format
-
-    int hts_verbose
 
     cdef union hts_opt_val_union:
         int i
@@ -273,12 +275,10 @@ cdef extern from "htslib/hts.h" nogil:
     int8_t HTS_FMT_TBI
     int8_t HTS_FMT_CRAI
 
-    BGZF *hts_get_bgzfp(htsFile *fp)
-
-    ctypedef struct hts_idx_t
-
     ctypedef struct hts_pair64_t:
         uint64_t u, v
+
+
 
     ctypedef int hts_readrec_func(BGZF *fp, void *data, void *r, int *tid, int *beg, int *end)
 
@@ -308,28 +308,31 @@ cdef extern from "htslib/hts.h" nogil:
     int HTS_IDX_SAVE_REMOTE
     int HTS_IDX_SILENT_FAIL
 
+    ctypedef const char *(*hts_id2name_f)(void *, int)
+
     uint8_t *hts_idx_get_meta(hts_idx_t *idx, uint32_t *l_meta)
     void hts_idx_set_meta(hts_idx_t *idx, int l_meta, uint8_t *meta, int is_copy)
 
     int hts_idx_get_stat(const hts_idx_t *idx, int tid, uint64_t *mapped, uint64_t *unmapped)
     uint64_t hts_idx_get_n_no_coor(const hts_idx_t *idx)
+    const char **hts_idx_seqnames(const hts_idx_t *idx, int *n, hts_id2name_f getid, void *hdr)
 
     int HTS_PARSE_THOUSANDS_SEP
 
     long long hts_parse_decimal(const char *str, char **strend, int flags)
+
+    ctypedef int (*hts_name2id_f)(void *, const char *)
+
     const char *hts_parse_reg(const char *str, int *beg, int *end)
 
     hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, int beg, int end, hts_readrec_func *readrec)
     void hts_itr_destroy(hts_itr_t *iter)
 
-    ctypedef int (*hts_name2id_f)(void *, const char *)
-    ctypedef const char *(*hts_id2name_f)(void *, int)
     ctypedef hts_itr_t *hts_itr_query_func(const hts_idx_t *idx, int tid, int beg, int end, hts_readrec_func *readrec)
 
     hts_itr_t *hts_itr_querys(const hts_idx_t *idx, const char *reg, hts_name2id_f getid, void *hdr, hts_itr_query_func *itr_query, hts_readrec_func *readrec)
 
     int hts_itr_next(BGZF *fp, hts_itr_t *iter, void *r, void *data)
-    const char **hts_idx_seqnames(const hts_idx_t *idx, int *n, hts_id2name_f getid, void *hdr)
 
     int FT_UNKN
     int FT_GZ
@@ -426,14 +429,14 @@ cdef extern from "htslib/sam.h" nogil:
     int BAM_FSUPPLEMENTARY
 
     ctypedef struct bam1_core_t:
-        int32_t tid
         int32_t pos
+        int32_t tid
         uint16_t bin
         uint8_t qual
-        uint8_t l_qname
-        uint16_t flag
-        uint8_t unused1
         uint8_t l_extranul
+        uint16_t flag
+        uint8_t l_qname
+        uint8_t unused1
         uint32_t n_cigar
         int32_t l_qseq
         int32_t mtid
@@ -442,10 +445,10 @@ cdef extern from "htslib/sam.h" nogil:
 
     ctypedef struct bam1_t:
         bam1_core_t core
+        uint64_t id
+        uint8_t *data
         int l_data
         uint32_t m_data
-        uint8_t *data
-        uint64_t id
 
     int bam_is_rev(bam1_t *b)
     int bam_is_mrev(bam1_t *b)
@@ -462,8 +465,16 @@ cdef extern from "htslib/sam.h" nogil:
     bam_hdr_t *bam_hdr_read(BGZF *fp)
     int bam_hdr_write(BGZF *fp, const bam_hdr_t *h)
     void bam_hdr_destroy(bam_hdr_t *h)
-    int bam_name2id(bam_hdr_t *h, const char *ref)
     bam_hdr_t *bam_hdr_dup(const bam_hdr_t *h0)
+
+    bam_hdr_t *sam_hdr_parse(int l_text, const char *text)
+    bam_hdr_t *sam_hdr_read(htsFile *fp)
+    int sam_hdr_write(htsFile *fp, const bam_hdr_t *h)
+    int sam_hdr_length(SAM_hdr *hdr)
+    char *sam_hdr_str(SAM_hdr *hdr)
+
+    int bam_name2id(bam_hdr_t *h, const char *ref)
+    char *stringify_argv(int argc, char *argv[])
 
     bam1_t *bam_init1()
     void bam_destroy1(bam1_t *b)
@@ -504,10 +515,6 @@ cdef extern from "htslib/sam.h" nogil:
 
     int sam_open_mode(char *mode, const char *fn, const char *format)
     char *sam_open_mode_opts(const char *fn, const char *mode, const char *format)
-
-    bam_hdr_t *sam_hdr_parse(int l_text, const char *text)
-    bam_hdr_t *sam_hdr_read(htsFile *fp)
-    int sam_hdr_write(htsFile *fp, const bam_hdr_t *h)
 
     int sam_parse1(kstring_t *s, bam_hdr_t *h, bam1_t *b)
     int sam_format1(const bam_hdr_t *h, const bam1_t *b, kstring_t *str)
@@ -553,6 +560,8 @@ cdef extern from "htslib/sam.h" nogil:
     void bam_plp_set_maxcnt(bam_plp_t iter, int maxcnt)
     void bam_plp_reset(bam_plp_t iter)
 
+    ctypedef struct hts_base_mod_state
+
     bam_mplp_t bam_mplp_init(int n, bam_plp_auto_f func, void **data)
     void bam_mplp_init_overlaps(bam_mplp_t iter)
     void bam_mplp_destroy(bam_mplp_t iter)
@@ -562,21 +571,19 @@ cdef extern from "htslib/sam.h" nogil:
     void bam_mplp_constructor(bam_mplp_t iter, int (*func)(void *data, const bam1_t *b, bam_pileup_cd *cd))
     void bam_mplp_destructor (bam_mplp_t iter, int (*func)(void *data, const bam1_t *b, bam_pileup_cd *cd))
 
+    int sam_cap_mapq(bam1_t *b, const char *ref, int ref_len, int thres)
+    int sam_prob_realn(bam1_t *b, const char *ref, int ref_len, int flag)
+
     ctypedef struct hts_base_mod:
         int modified_base
         int canonical_base
         int strand
         int qual
 
-    ctypedef struct hts_base_mod_state
-
     hts_base_mod_state *hts_base_mod_state_alloc()
     void hts_base_mod_state_free(hts_base_mod_state *state)
     int bam_parse_basemod(const bam1_t *b, hts_base_mod_state *state)
     int bam_next_basemod(const bam1_t *b, hts_base_mod_state *state, hts_base_mod *mods, int n_mods, int *pos)
-
-    int sam_cap_mapq(bam1_t *b, const char *ref, int ref_len, int thres)
-    int sam_prob_realn(bam1_t *b, const char *ref, int ref_len, int flag)
 
 
 cdef extern from "htslib/cram.h" nogil:
@@ -657,8 +664,6 @@ cdef extern from "htslib/cram.h" nogil:
 
     int cram_copy_slice(cram_fd *input, cram_fd *output, int32_t num_slice)
 
-    SAM_hdr *sam_hdr_parse_(const char *hdr, int len)
-
     cram_block *cram_new_block(cram_content_type content_type, int content_id)
     cram_block *cram_read_block(cram_fd *fd)
     int cram_write_block(cram_fd *fd, cram_block *b)
@@ -686,11 +691,9 @@ cdef extern from "htslib/cram.h" nogil:
 
     int int32_put_blk(cram_block *b, int32_t val)
 
+    SAM_hdr *sam_hdr_parse_(const char *hdr, int len)
     void sam_hdr_free(SAM_hdr *hdr)
-    int sam_hdr_length(SAM_hdr *hdr)
-    char *sam_hdr_str(SAM_hdr *hdr)
     int sam_hdr_add_PG(SAM_hdr *sh, const char *name, ...)
-    char *stringify_argv(int argc, char *argv[])
 
     refs_t *cram_get_refs(htsFile *fd)
 
@@ -743,6 +746,7 @@ cdef extern from "htslib/tbx.h" nogil:
     int tbx_itr_next(htsFile *fp, tbx_t *tbx, hts_itr_t *iter, void *r)
 
     int tbx_name2id(tbx_t *tbx, char *ss)
+    BGZF *hts_get_bgzfp(htsFile *fp)
 
     int tbx_index_build(char *fn, int min_shift, tbx_conf_t *conf)
     int tbx_index_build2(const char *fn, const char *fnidx, int min_shift, const tbx_conf_t *conf)
@@ -845,12 +849,13 @@ cdef extern from "htslib/vcf.h" nogil:
 
     ctypedef struct bcf_info_t:
         int key
-        int type, len
+        int type
         bcf_info_union_t v1
         uint8_t *vptr
         uint32_t vptr_len
         uint32_t vptr_off
         uint8_t  vptr_free
+        int len
 
     uint8_t BCF1_DIRTY_ID
     uint8_t BCF1_DIRTY_ALS
@@ -880,9 +885,9 @@ cdef extern from "htslib/vcf.h" nogil:
     uint8_t BCF_ERR_TAG_INVALID
 
     ctypedef struct bcf1_t:
-        int32_t rid
         int32_t pos
         int32_t rlen
+        int32_t rid
         float qual
         uint32_t n_info, n_allele
         uint32_t n_fmt, n_sample
@@ -892,6 +897,17 @@ cdef extern from "htslib/vcf.h" nogil:
         int unpacked
         int unpack_size[3]
         int errcode
+
+    bcf1_t *bcf_init1()
+    int bcf_read1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
+    int vcf_read1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
+    int bcf_write1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
+    int vcf_write1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
+    void bcf_destroy1(bcf1_t *v)
+    void bcf_empty1(bcf1_t *v)
+    int vcf_parse1(kstring_t *s, const bcf_hdr_t *h, bcf1_t *v)
+    void bcf_clear1(bcf1_t *v)
+    int vcf_format1(const bcf_hdr_t *h, const bcf1_t *v, kstring_t *s)
 
     bcf_hdr_t *bcf_hdr_init(const char *mode)
     void bcf_hdr_destroy(bcf_hdr_t *h)
@@ -1035,6 +1051,13 @@ cdef extern from "htslib/vcf.h" nogil:
     void bcf_enc_vint(kstring_t *s, int n, int32_t *a, int wsize)
     void bcf_enc_vfloat(kstring_t *s, int n, float *a)
 
+    void bcf_itr_destroy(hts_itr_t *iter)
+    hts_itr_t *bcf_itr_queryi(const hts_idx_t *idx, int tid, int beg, int end)
+    hts_itr_t *bcf_itr_querys(const hts_idx_t *idx, const bcf_hdr_t *hdr, char *s)
+    int bcf_itr_next(htsFile *htsfp, hts_itr_t *itr, void *r)
+
+    hts_idx_t *bcf_index_load(const char *fn)
+    const char **bcf_index_seqnames(const hts_idx_t *idx, const bcf_hdr_t *hdr, int *nptr)
     hts_idx_t *bcf_index_load2(const char *fn, const char *fnidx)
     hts_idx_t *bcf_index_load3(const char *fn, const char *fnidx, int flags)
     int bcf_index_build(const char *fn, int min_shift)
@@ -1067,24 +1090,6 @@ cdef extern from "htslib/vcf.h" nogil:
     int32_t bcf_dec_int1(const uint8_t *p, int type, uint8_t **q)
     int32_t bcf_dec_typed_int1(const uint8_t *p, uint8_t **q)
     int32_t bcf_dec_size(const uint8_t *p, uint8_t **q, int *type)
-
-    bcf1_t *bcf_init1()
-    int bcf_read1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
-    int vcf_read1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
-    int bcf_write1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
-    int vcf_write1(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
-    void bcf_destroy1(bcf1_t *v)
-    void bcf_empty1(bcf1_t *v)
-    int vcf_parse1(kstring_t *s, const bcf_hdr_t *h, bcf1_t *v)
-    void bcf_clear1(bcf1_t *v)
-    int vcf_format1(const bcf_hdr_t *h, const bcf1_t *v, kstring_t *s)
-
-    void bcf_itr_destroy(hts_itr_t *iter)
-    hts_itr_t *bcf_itr_queryi(const hts_idx_t *idx, int tid, int beg, int end)
-    hts_itr_t *bcf_itr_querys(const hts_idx_t *idx, const bcf_hdr_t *hdr, char *s)
-    int bcf_itr_next(htsFile *htsfp, hts_itr_t *itr, void *r)
-    hts_idx_t *bcf_index_load(const char *fn)
-    const char **bcf_index_seqnames(const hts_idx_t *idx, const bcf_hdr_t *hdr, int *nptr)
 
 
 cdef extern from "htslib/vcfutils.h" nogil:
