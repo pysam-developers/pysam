@@ -127,7 +127,7 @@ cdef extern from "htslib/bgzf.h" nogil:
     ssize_t bgzf_raw_read(BGZF *fp, void *data, size_t length)
     ssize_t bgzf_raw_write(BGZF *fp, const void *data, size_t length)
     int bgzf_flush(BGZF *fp)
-    int64_t bgzf_tell(BGZF *fp)
+    int64_t bgzf_tell(const BGZF *fp)
     int64_t bgzf_seek(BGZF *fp, int64_t pos, int whence)
 
     int bgzf_check_EOF(BGZF *fp)
@@ -240,9 +240,9 @@ cdef extern from "htslib/hts.h" nogil:
     int hts_opt_apply(htsFile *fp, hts_opt *opts)
     void hts_opt_free(hts_opt *opts)
 
-    const unsigned char *seq_nt16_table
-    const char *seq_nt16_str
-    const int *seq_nt16_int
+    const unsigned char seq_nt16_table[]
+    const char seq_nt16_str[]
+    const int seq_nt16_int[]
 
     const char *hts_version()
     int hts_detect_format(hFILE *fp, htsFormat *fmt)
@@ -384,7 +384,7 @@ cdef extern from "htslib/hts.h" nogil:
 
 cdef extern from "htslib/sam.h" nogil:
 
-    ctypedef struct bam_hdr_t:
+    ctypedef struct sam_hdr_t:
         int32_t n_targets, ignore_sam_err
         uint32_t l_text
         uint32_t *target_len
@@ -392,6 +392,8 @@ cdef extern from "htslib/sam.h" nogil:
         char **target_name
         char *text
         void *sdict
+
+    ctypedef sam_hdr_t bam_hdr_t
 
     int BAM_CMATCH
     int BAM_CINS
@@ -404,7 +406,7 @@ cdef extern from "htslib/sam.h" nogil:
     int BAM_CDIFF
     int BAM_CBACK
 
-    char    *BAM_CIGAR_STR
+    const char BAM_CIGAR_STR[]
     int      BAM_CIGAR_SHIFT
     uint32_t BAM_CIGAR_MASK
     uint32_t BAM_CIGAR_TYPE
@@ -450,30 +452,32 @@ cdef extern from "htslib/sam.h" nogil:
         int l_data
         uint32_t m_data
 
-    int bam_is_rev(bam1_t *b)
-    int bam_is_mrev(bam1_t *b)
+    int bam_is_rev(const bam1_t *b)
+    int bam_is_mrev(const bam1_t *b)
 
     char *bam_get_qname(bam1_t *b)
     uint32_t *bam_get_cigar(bam1_t *b)
     char *bam_get_seq(bam1_t *b)
     uint8_t *bam_get_qual(bam1_t *b)
     uint8_t *bam_get_aux(bam1_t *b)
-    int bam_get_l_aux(bam1_t *b)
+    int bam_get_l_aux(const bam1_t *b)
     char bam_seqi(char *s, int i)
 
-    bam_hdr_t *bam_hdr_init()
-    bam_hdr_t *bam_hdr_read(BGZF *fp)
-    int bam_hdr_write(BGZF *fp, const bam_hdr_t *h)
-    void bam_hdr_destroy(bam_hdr_t *h)
-    bam_hdr_t *bam_hdr_dup(const bam_hdr_t *h0)
+    sam_hdr_t *bam_hdr_init()
+    sam_hdr_t *bam_hdr_read(BGZF *fp)
+    int bam_hdr_write(BGZF *fp, const sam_hdr_t *h)
+    void bam_hdr_destroy(sam_hdr_t *h)
+    sam_hdr_t *bam_hdr_dup(const sam_hdr_t *h0)
 
-    bam_hdr_t *sam_hdr_parse(int l_text, const char *text)
-    bam_hdr_t *sam_hdr_read(htsFile *fp)
-    int sam_hdr_write(htsFile *fp, const bam_hdr_t *h)
-    int sam_hdr_length(SAM_hdr *hdr)
-    char *sam_hdr_str(SAM_hdr *hdr)
+    ctypedef htsFile samFile
 
-    int bam_name2id(bam_hdr_t *h, const char *ref)
+    sam_hdr_t *sam_hdr_parse(int l_text, const char *text)
+    sam_hdr_t *sam_hdr_read(samFile *fp)
+    int sam_hdr_write(samFile *fp, const sam_hdr_t *h)
+    int sam_hdr_length(sam_hdr_t *h)
+    const char *sam_hdr_str(sam_hdr_t *h)
+
+    int bam_name2id(sam_hdr_t *h, const char *ref)
     char *stringify_argv(int argc, char *argv[])
 
     bam1_t *bam_init1()
@@ -493,7 +497,7 @@ cdef extern from "htslib/sam.h" nogil:
 
     void bam_itr_destroy(hts_itr_t *iter)
     hts_itr_t *bam_itr_queryi(const hts_idx_t *idx, int tid, int beg, int end)
-    hts_itr_t *bam_itr_querys(const hts_idx_t *idx, bam_hdr_t *hdr, const char *region)
+    hts_itr_t *bam_itr_querys(const hts_idx_t *idx, sam_hdr_t *hdr, const char *region)
     int bam_itr_next(htsFile *htsfp, hts_itr_t *itr, void *r)
 
     hts_idx_t *bam_index_load(const char *fn)
@@ -506,28 +510,28 @@ cdef extern from "htslib/sam.h" nogil:
 
     void sam_itr_destroy(hts_itr_t *iter)
     hts_itr_t *sam_itr_queryi(const hts_idx_t *idx, int tid, int beg, int end)
-    hts_itr_t *sam_itr_querys(const hts_idx_t *idx, bam_hdr_t *hdr, const char *region)
+    hts_itr_t *sam_itr_querys(const hts_idx_t *idx, sam_hdr_t *hdr, const char *region)
     int sam_itr_next(htsFile *htsfp, hts_itr_t *itr, void *r)
 
-    htsFile *sam_open(const char *fn, const char *mode)
-    htsFile *sam_open_format(const char *fn, const char *mode, const htsFormat *fmt)
-    int sam_close(htsFile *fp)
+    samFile *sam_open(const char *fn, const char *mode)
+    samFile *sam_open_format(const char *fn, const char *mode, const htsFormat *fmt)
+    int sam_close(samFile *fp)
 
     int sam_open_mode(char *mode, const char *fn, const char *format)
     char *sam_open_mode_opts(const char *fn, const char *mode, const char *format)
 
-    int sam_parse1(kstring_t *s, bam_hdr_t *h, bam1_t *b)
-    int sam_format1(const bam_hdr_t *h, const bam1_t *b, kstring_t *str)
-    int sam_read1(htsFile *fp, bam_hdr_t *h, bam1_t *b)
-    int sam_write1(htsFile *fp, const bam_hdr_t *h, const bam1_t *b)
+    int sam_parse1(kstring_t *s, sam_hdr_t *h, bam1_t *b)
+    int sam_format1(const sam_hdr_t *h, const bam1_t *b, kstring_t *str)
+    int sam_read1(samFile *fp, sam_hdr_t *h, bam1_t *b)
+    int sam_write1(samFile *fp, const sam_hdr_t *h, const bam1_t *b)
 
-    uint8_t *bam_aux_get(const bam1_t *b, const char *tag)
+    uint8_t *bam_aux_get(const bam1_t *b, const char tag[2])
     int64_t  bam_aux2i(const uint8_t *s)
     double   bam_aux2f(const uint8_t *s)
     char     bam_aux2A(const uint8_t *s)
     char    *bam_aux2Z(const uint8_t *s)
 
-    void bam_aux_append(bam1_t *b, const char *tag, char type, int len, uint8_t *data)
+    void bam_aux_append(bam1_t *b, const char tag[2], char type, int len, uint8_t *data)
     int bam_aux_del(bam1_t *b, uint8_t *s)
 
     ctypedef union bam_pileup_cd:
@@ -608,7 +612,6 @@ cdef extern from "htslib/cram.h" nogil:
         EXTERNAL
         CORE
 
-    ctypedef struct SAM_hdr
     ctypedef struct cram_file_def
     ctypedef struct cram_fd
     ctypedef struct cram_container
@@ -619,8 +622,8 @@ cdef extern from "htslib/cram.h" nogil:
     ctypedef struct cram_block_compression_hdr
     ctypedef struct refs_t
 
-    SAM_hdr *cram_fd_get_header(cram_fd *fd)
-    void cram_fd_set_header(cram_fd *fd, SAM_hdr *hdr)
+    sam_hdr_t *cram_fd_get_header(cram_fd *fd)
+    void cram_fd_set_header(cram_fd *fd, sam_hdr_t *hdr)
 
     int cram_fd_get_version(cram_fd *fd)
     void cram_fd_set_version(cram_fd *fd, int vers)
@@ -653,7 +656,7 @@ cdef extern from "htslib/cram.h" nogil:
     void cram_block_set_crc32(cram_block *b, int32_t crc)
     void cram_block_set_data(cram_block *b, void *data)
 
-    int cram_block_append(cram_block *b, void *data, int size)
+    int cram_block_append(cram_block *b, const void *data, int size)
     void cram_block_update_size(cram_block *b)
 
     size_t cram_block_get_offset(cram_block *b)
@@ -686,11 +689,12 @@ cdef extern from "htslib/cram.h" nogil:
     int cram_eof(cram_fd *fd)
     int cram_set_option(cram_fd *fd, hts_fmt_option opt, ...)
     int cram_set_voption(cram_fd *fd, hts_fmt_option opt, va_list args)
-    int cram_set_header(cram_fd *fd, SAM_hdr *hdr)
+    int cram_set_header(cram_fd *fd, sam_hdr_t *hdr)
     int cram_check_EOF(cram_fd *fd)
 
     int int32_put_blk(cram_block *b, int32_t val)
 
+    ctypedef sam_hdr_t SAM_hdr
     SAM_hdr *sam_hdr_parse_(const char *hdr, int len)
     void sam_hdr_free(SAM_hdr *hdr)
     int sam_hdr_add_PG(SAM_hdr *sh, const char *name, ...)
@@ -704,16 +708,16 @@ cdef extern from "htslib/faidx.h" nogil:
        pass
 
     int fai_build3(const char *fn, const char *fnfai, const char *fngzi)
-    int fai_build(char *fn)
+    int fai_build(const char *fn)
     void fai_destroy(faidx_t *fai)
     faidx_t *fai_load3(const char *fn, const char *fnfai, const char *fngzi, int flags)
-    faidx_t *fai_load(char *fn)
-    char *fai_fetch(faidx_t *fai, char *reg, int *len)
-    char *faidx_fetch_seq(faidx_t *fai, char *c_name, int p_beg_i, int p_end_i, int *len)
-    int faidx_has_seq(faidx_t *fai, const char *seq)
+    faidx_t *fai_load(const char *fn)
+    char *fai_fetch(const faidx_t *fai, const char *reg, int *len)
+    char *faidx_fetch_seq(const faidx_t *fai, const char *c_name, int p_beg_i, int p_end_i, int *len)
+    int faidx_has_seq(const faidx_t *fai, const char *seq)
     int faidx_nseq(const faidx_t *fai)
     const char *faidx_iseq(const faidx_t *fai, int i)
-    int faidx_seq_len(faidx_t *fai, const char *seq)
+    int faidx_seq_len(const faidx_t *fai, const char *seq)
 
 
 cdef extern from "htslib/tbx.h" nogil:
@@ -742,20 +746,20 @@ cdef extern from "htslib/tbx.h" nogil:
 
     void tbx_itr_destroy(hts_itr_t *iter)
     hts_itr_t *tbx_itr_queryi(tbx_t *tbx, int tid, int beg, int end)
-    hts_itr_t *tbx_itr_querys(tbx_t *tbx, char *s)
+    hts_itr_t *tbx_itr_querys(tbx_t *tbx, const char *s)
     int tbx_itr_next(htsFile *fp, tbx_t *tbx, hts_itr_t *iter, void *r)
 
-    int tbx_name2id(tbx_t *tbx, char *ss)
+    int tbx_name2id(tbx_t *tbx, const char *ss)
     BGZF *hts_get_bgzfp(htsFile *fp)
 
-    int tbx_index_build(char *fn, int min_shift, tbx_conf_t *conf)
+    int tbx_index_build(const char *fn, int min_shift, const tbx_conf_t *conf)
     int tbx_index_build2(const char *fn, const char *fnidx, int min_shift, const tbx_conf_t *conf)
 
-    tbx_t *tbx_index_load(char *fn)
+    tbx_t *tbx_index_load(const char *fn)
     tbx_t *tbx_index_load2(const char *fn, const char *fnidx)
     tbx_t *tbx_index_load3(const char *fn, const char *fnidx, int flags)
 
-    char **tbx_seqnames(tbx_t *tbx, int *n)
+    const char **tbx_seqnames(tbx_t *tbx, int *n)
 
     void tbx_destroy(tbx_t *tbx)
 
@@ -1035,7 +1039,7 @@ cdef extern from "htslib/vcf.h" nogil:
     const char *bcf_hdr_int2id(const bcf_hdr_t *hdr, int type, int int_id)
     int bcf_hdr_name2id(const bcf_hdr_t *hdr, const char *id)
     const char *bcf_hdr_id2name(const bcf_hdr_t *hdr, int rid)
-    const char *bcf_seqname(const bcf_hdr_t *hdr, bcf1_t *rec)
+    const char *bcf_seqname(const bcf_hdr_t *hdr, const bcf1_t *rec)
 
     int bcf_hdr_id2length(const bcf_hdr_t *hdr, int type, int int_id)
     int bcf_hdr_id2number(const bcf_hdr_t *hdr, int type, int int_id)
@@ -1053,7 +1057,7 @@ cdef extern from "htslib/vcf.h" nogil:
 
     void bcf_itr_destroy(hts_itr_t *iter)
     hts_itr_t *bcf_itr_queryi(const hts_idx_t *idx, int tid, int beg, int end)
-    hts_itr_t *bcf_itr_querys(const hts_idx_t *idx, const bcf_hdr_t *hdr, char *s)
+    hts_itr_t *bcf_itr_querys(const hts_idx_t *idx, const bcf_hdr_t *hdr, const char *s)
     int bcf_itr_next(htsFile *htsfp, hts_itr_t *itr, void *r)
 
     hts_idx_t *bcf_index_load(const char *fn)
