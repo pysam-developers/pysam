@@ -4248,6 +4248,7 @@ cdef class VariantFile(HTSFile):
         """
         cdef bcf_hdr_t *hdr
         cdef BGZF *bgzfp
+        cdef const htsFormat *fmt
         cdef hts_idx_t *idx
         cdef tbx_t *tidx
         cdef char *cfilename
@@ -4341,7 +4342,8 @@ cdef class VariantFile(HTSFile):
                 else:
                     raise ValueError('could not open variant file `{}`'.format(filename))
 
-            if self.htsfile.format.format not in (bcf, vcf):
+            fmt = hts_get_format(self.htsfile)
+            if fmt.format not in (bcf, vcf):
                 raise ValueError('invalid file `{}` (mode=`{}`) - is it VCF/BCF format?'.format(filename, mode))
 
             self.check_truncation(ignore_truncation)
@@ -4360,14 +4362,14 @@ cdef class VariantFile(HTSFile):
                 cfilename = NULL
 
             # check for index and open if present
-            if self.htsfile.format.format == bcf and cfilename:
+            if fmt.format == bcf and cfilename:
                 if index_filename is not None:
                     cindex_filename = index_filename
                 with nogil:
                     idx = bcf_index_load2(cfilename, cindex_filename)
                 self.index = makeBCFIndex(self.header, idx)
 
-            elif self.htsfile.format.compression == bgzf and cfilename:
+            elif fmt.compression == bgzf and cfilename:
                 if index_filename is not None:
                     cindex_filename = index_filename
                 with nogil:

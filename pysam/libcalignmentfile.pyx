@@ -952,7 +952,7 @@ cdef class AlignmentFile(HTSFile):
                 else:
                     raise ValueError("could not open alignment file `{}`".format(force_str(filename)))
 
-            if self.htsfile.format.category != sequence_data:
+            if hts_get_format(self.htsfile).category != sequence_data:
                 raise ValueError("file does not contain alignment data")
 
             if format_options and len(format_options):

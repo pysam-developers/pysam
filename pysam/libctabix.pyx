@@ -390,7 +390,7 @@ cdef class TabixFile:
         if self.htsfile == NULL:
             raise IOError("could not open file `%s`" % filename)
         
-        #if self.htsfile.format.category != region_list:
+        #if hts_get_format(self.htsfile).category != region_list:
         #    raise ValueError("file does not contain region data")
 
         with nogil:

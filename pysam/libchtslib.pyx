@@ -349,7 +349,7 @@ cdef class HTSFile(object):
         if not self.htsfile:
             return
 
-        if self.htsfile.format.compression != bgzf:
+        if hts_get_format(self.htsfile).compression != bgzf:
             return
 
         cdef BGZF *bgzfp = hts_get_bgzfp(self.htsfile)
@@ -379,7 +379,7 @@ cdef class HTSFile(object):
         VARIANTS, INDEX, REGIONS"""
         if not self.htsfile:
             raise ValueError('metadata not available on closed file')
-        return FORMAT_CATEGORIES[self.htsfile.format.category]
+        return FORMAT_CATEGORIES[hts_get_format(self.htsfile).category]
 
     @property
     def format(self):
@@ -390,14 +390,15 @@ cdef class HTSFile(object):
         """
         if not self.htsfile:
             raise ValueError('metadata not available on closed file')
-        return FORMATS[self.htsfile.format.format]
+        return FORMATS[hts_get_format(self.htsfile).format]
 
     @property
     def version(self):
         """Tuple of file format version numbers (major, minor)"""
         if not self.htsfile:
             raise ValueError('metadata not available on closed file')
-        return self.htsfile.format.version.major, self.htsfile.format.version.minor
+        cdef const htsFormat *fmt = hts_get_format(self.htsfile)
+        return fmt.version.major, fmt.version.minor
 
     @property
     def compression(self):
@@ -406,14 +407,14 @@ cdef class HTSFile(object):
         One of NONE, GZIP, BGZF, CUSTOM."""
         if not self.htsfile:
             raise ValueError('metadata not available on closed file')
-        return COMPRESSION[self.htsfile.format.compression]
+        return COMPRESSION[hts_get_format(self.htsfile).compression]
 
     @property
     def description(self):
         """Vaguely human readable description of the file format"""
         if not self.htsfile:
             raise ValueError('metadata not available on closed file')
-        cdef char *desc = hts_format_description(&self.htsfile.format)
+        cdef char *desc = hts_format_description(hts_get_format(self.htsfile))
         try:
             return charptr_to_str(desc)
         finally:
@@ -447,27 +448,27 @@ cdef class HTSFile(object):
     @property
     def is_sam(self):
         """return True if HTSFile is reading or writing a SAM alignment file"""
-        return self.htsfile != NULL and self.htsfile.format.format == sam
+        return self.htsfile != NULL and hts_get_format(self.htsfile).format == sam
 
     @property
     def is_bam(self):
         """return True if HTSFile is reading or writing a BAM alignment file"""
-        return self.htsfile != NULL and self.htsfile.format.format == bam
+        return self.htsfile != NULL and hts_get_format(self.htsfile).format == bam
 
     @property
     def is_cram(self):
         """return True if HTSFile is reading or writing a BAM alignment file"""
-        return self.htsfile != NULL and self.htsfile.format.format == cram
+        return self.htsfile != NULL and hts_get_format(self.htsfile).format == cram
 
     @property
     def is_vcf(self):
         """return True if HTSFile is reading or writing a VCF variant file"""
-        return self.htsfile != NULL and self.htsfile.format.format == vcf
+        return self.htsfile != NULL and hts_get_format(self.htsfile).format == vcf
 
     @property
     def is_bcf(self):
         """return True if HTSFile is reading or writing a BCF variant file"""
-        return self.htsfile != NULL and self.htsfile.format.format == bcf
+        return self.htsfile != NULL and hts_get_format(self.htsfile).format == bcf
 
     def reset(self):
         """reset file position to beginning of file just after the header.
@@ -490,14 +491,14 @@ cdef class HTSFile(object):
         whence = libc_whence_from_io(whence)
 
         cdef int64_t ret
-        if self.htsfile.format.compression == bgzf:
+        cdef htsCompression compression = hts_get_format(self.htsfile).compression
+        if compression == bgzf:
             with nogil:
                 ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, whence)
-        elif self.htsfile.format.compression == no_compression:
+        elif compression == no_compression:
             ret = 0 if (hseek(self.htsfile.fp.hfile, offset, whence) >= 0) else -1
         else:
-            raise NotImplementedError("seek not implemented in files compressed by method {}".format(
-                self.htsfile.format.compression))
+            raise NotImplementedError(f"seek not implemented in files compressed by method {compression}")
         return ret
 
     def tell(self):
@@ -508,17 +509,17 @@ cdef class HTSFile(object):
             raise IOError('tell not available in streams')
 
         cdef int64_t ret
-        if self.htsfile.format.compression == bgzf:
+        cdef const htsFormat *fmt = hts_get_format(self.htsfile)
+        if fmt.compression == bgzf:
             with nogil:
                 ret = bgzf_tell(hts_get_bgzfp(self.htsfile))
-        elif self.htsfile.format.compression == no_compression:
+        elif fmt.compression == no_compression:
             ret = htell(self.htsfile.fp.hfile)
-        elif self.htsfile.format.format == cram:
+        elif fmt.format == cram:
             with nogil:
                 ret = htell(cram_fd_get_fp(self.htsfile.fp.cram))
         else:
-            raise NotImplementedError("seek not implemented in files compressed by method {}".format(
-                self.htsfile.format.compression))
+            raise NotImplementedError(f"seek not implemented in files compressed by method {fmt.compression}")
 
         return ret
 
