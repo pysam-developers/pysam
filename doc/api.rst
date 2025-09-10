@@ -15,7 +15,7 @@ To use the module to read a file in BAM format, create a
    import pysam
    samfile = pysam.AlignmentFile("ex1.bam", "rb")
 
-Once a file is opened you can iterate over all of the read mapping to
+Once a file is opened you can iterate over all of the reads mapping to
 a specified region using :meth:`~pysam.AlignmentFile.fetch`.  Each
 iteration returns a :class:`~pysam.AlignedSegment` object which
 represents a single read along with its fields and optional tags::
@@ -103,7 +103,7 @@ tabix indexed tab-separated file formats with genomic data::
 :class:`~pysam.TabixFile` implements lazy parsing in order to iterate
 over large tables efficiently.
 
-More detailed usage instructions is at :ref:`usage`.
+More detailed usage instructions are available at :ref:`usage`.
 
 .. note::
 
@@ -200,7 +200,6 @@ FASTQ files
 .. autoclass:: pysam.FastxFile
    :members:
 
-
 .. autoclass:: pysam.FastqProxy
    :members:
 
@@ -214,10 +213,10 @@ VCF/BCF files
 .. autoclass:: pysam.VariantHeader
    :members:
 
-.. autoclass:: pysam.VariantRecord
+.. autoclass:: pysam.VariantHeaderRecord
    :members:
 
-.. autoclass:: pysam.VariantHeaderRecord
+.. autoclass:: pysam.VariantRecord
    :members:
 
 HTSFile
