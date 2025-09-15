@@ -8,7 +8,7 @@ freebsd_ci_task:
     pkg install -y bcftools gmake py311-cython3 py311-mypy py311-pytest samtools
 
   env:
-    CC: "clang -I/usr/local/include"
+    CC: "clang -isystem /usr/local/include"
     MAKE: "gmake"
     REF_PATH: ":"
 
