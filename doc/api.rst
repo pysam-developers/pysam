@@ -219,6 +219,9 @@ VCF/BCF files
 .. autoclass:: pysam.VariantRecord
    :members:
 
+.. autoclass:: pysam.VariantRecordSample
+   :members:
+
 HTSFile
 =======
 
