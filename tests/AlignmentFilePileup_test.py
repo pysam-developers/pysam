@@ -1,5 +1,8 @@
 """Benchmarking module for AlignmentFile functionality"""
 import os
+
+from parameterized import parameterized_class
+
 import pysam
 import sys
 import unittest
@@ -352,15 +355,18 @@ class TestIteratorColumn2(unittest.TestCase):
         s = str(pcolumn)
         self.assertEqual(len(s.split("\n")), 2)
 
-
+@parameterized_class(("from_file", ), [
+    (True, ), (False, )
+])
 class PileUpColumnTests(unittest.TestCase):
+    from_file: bool
 
     fn = os.path.join(BAM_DATADIR, "ex2.bam")
     fn_fasta = os.path.join(BAM_DATADIR, "ex1.fa")
     
     def test_pileup_depths_are_equal(self):
         samtools_result = PileupTestUtils.build_depth_with_samtoolspipe(self.fn)
-        pysam_result = PileupTestUtils.build_depth_with_filter_with_pysam(self.fn)
+        pysam_result = PileupTestUtils.build_depth_with_filter_with_pysam(self.fn, from_file=self.from_file)
         self.assertEqual(pysam_result, samtools_result)
 
     def test_pileup_query_bases_without_reference_are_equal(self):

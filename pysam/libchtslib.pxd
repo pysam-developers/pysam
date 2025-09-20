@@ -1222,7 +1222,8 @@ cdef extern from "htslib/sam.h" nogil:
     ctypedef int (*bam_plp_auto_f)(void *data, bam1_t *b)
     ctypedef int (*bam_test_f)()
 
-    ctypedef struct __bam_plp_t
+    ctypedef struct __bam_plp_t:
+        int error
     ctypedef __bam_plp_t *bam_plp_t
 
     ctypedef struct __bam_mplp_t

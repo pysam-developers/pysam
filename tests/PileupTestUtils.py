@@ -3,6 +3,7 @@ import subprocess
 import pysam
 
 from TestUtils import force_str
+from pysam.libcalignmentfile import IteratorColumnRecords
 
 
 def build_pileup_with_samtoolsshell(fn):
@@ -40,9 +41,12 @@ def build_depth_with_samtoolspipe(fn):
         return [int(x[3]) for x in data]
 
 
-def build_depth_with_filter_with_pysam(*args, **kwargs):
+def build_depth_with_filter_with_pysam(*args, from_file: bool = True, **kwargs):
     with pysam.AlignmentFile(*args, **kwargs) as inf:
-        return [x.get_num_aligned() for x in inf.pileup(stepper="samtools")]
+        if from_file:
+            return [x.get_num_aligned() for x in inf.pileup(stepper="samtools")]
+        else:
+            return [x.get_num_aligned() for x in IteratorColumnRecords(inf)]
 
 
 def build_depth_with_pysam(*args, **kwargs):
