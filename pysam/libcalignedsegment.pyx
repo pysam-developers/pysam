@@ -564,6 +564,7 @@ cdef AlignedSegment makeAlignedSegment(bam1_t *src,
     dest._delegate = bam_dup1(src)
     dest.header = header
     dest.cache = _AlignedSegment_Cache()
+    dest._query_bases = AlignedSegmentBases(dest)
     return dest
 
 
@@ -912,6 +913,64 @@ cdef class _AlignedSegment_Cache:
         self.query_alignment_qualities_str = NotImplemented
 
 
+cdef class AlignedSegmentBases:
+    def __cinit__(self, AlignedSegment aseg):
+        self._delegate = aseg._delegate
+
+    def __getitem__(self, key):
+        cdef bam1_t *src = self._delegate
+        cdef int length = src.core.l_qseq
+        cdef uint8_t *seq = pysam_bam_get_seq(src)
+
+        cdef int qpos, start, stop
+        cdef uint8_t twobases
+
+        if isinstance(key, int):
+            qpos = key
+            if qpos < 0: qpos += length
+            if qpos < 0 or qpos >= length:
+                raise IndexError("query_bases index out of range")
+
+            twobases = seq[qpos // 2]
+            return chr(seq_nt16_str[twobases >> 4 if qpos % 2 == 0 else twobases & 0x0f])
+
+        elif isinstance(key, slice):
+            if length == 0:
+                return ""
+
+            start = key.start if key.start is not None else 0
+            if start < 0: start += length
+            if start < 0: start = 0
+            if start > length: start = length
+
+            stop = key.stop if key.stop is not None else length
+            if stop < 0: stop += length
+            if stop < 0: stop = 0
+            if stop > length: stop = length
+
+            return getSequenceInRange(src, start, stop).decode('ascii')
+
+        else:
+            raise TypeError("query_bases indices must be integers or slices")
+
+    def __len__(self):
+        return self._delegate.core.l_qseq
+
+    def __repr__(self):
+        cdef bam1_t *src = self._delegate
+        cdef length = src.core.l_qseq
+
+        if src.core.l_qname == 0:
+            return f"<{type(self).__name__} {self[:48]}{'...' if length > 48 else ''}>"
+
+        cdef char *qname = pysam_bam_get_qname(src)
+        return f"<{type(self).__name__} {self[:48]}{'...' if length > 48 else ''} for {qname.decode('ascii')!r}>"
+
+    def __str__(self):
+        cdef bam1_t *src = self._delegate
+        return getSequenceInRange(src, 0, src.core.l_qseq).decode('ascii')
+
+
 cdef class AlignedSegment:
     '''Class representing an aligned segment.
 
@@ -966,6 +1025,7 @@ cdef class AlignedSegment:
         self.cache = _AlignedSegment_Cache()
 
         self.header = header
+        self._query_bases = AlignedSegmentBases(self)
 
     def __dealloc__(self):
         bam_destroy1(self._delegate)
@@ -1112,6 +1172,7 @@ cdef class AlignedSegment:
         dest._delegate = <bam1_t*>calloc(1, sizeof(bam1_t))
         dest.header = header
         dest.cache = _AlignedSegment_Cache()
+        dest._query_bases = AlignedSegmentBases(dest)
 
         cdef kstring_t line
         line.l = line.m = len(sam)
@@ -1407,6 +1468,10 @@ cdef class AlignedSegment:
             return self._delegate.core.isize
         def __set__(self, isize):
             self._delegate.core.isize = isize
+
+    property query_bases:
+        def __get__(self):
+            return self._query_bases
 
     property query_sequence:
         """read sequence bases, including :term:`soft clipped` bases
