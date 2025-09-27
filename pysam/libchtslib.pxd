@@ -129,7 +129,7 @@ cdef extern from "htslib/bgzf.h" nogil:
     ctypedef struct hts_tpool
     ctypedef struct z_stream_s
 
-    ctypedef struct BGZF:
+    ctypedef struct BGZF:  # struct will be made opaque in future
         unsigned      errcode
         unsigned      is_write
         unsigned      is_be
@@ -242,18 +242,18 @@ cdef extern from "htslib/hts.h" nogil:
 
     ctypedef struct hts_idx_t
 
-    cdef union FilePointerUnion:
+    cdef union htsFile_fp_union:
         BGZF    *bgzf
         cram_fd *cram
         hFILE   *hfile
 
-    ctypedef struct htsFile:
+    ctypedef struct htsFile:  # struct will be made opaque in future
         uint8_t is_bin, is_write, is_be, is_cram, is_bgzf
         int64_t lineno
         kstring_t line
         char *fn
         char *fn_aux
-        FilePointerUnion fp
+        htsFile_fp_union fp
         htsFormat format
 
     ctypedef struct htsThreadPool:
@@ -417,7 +417,7 @@ cdef extern from "htslib/hts.h" nogil:
         uint64_t u, v
         uint64_t max
 
-    ctypedef struct hts_reglist_t:
+    ctypedef struct hts_reglist_t:  # struct will be made opaque in future
         const char *reg
         hts_pair_pos_t *intervals
         int tid
@@ -428,11 +428,11 @@ cdef extern from "htslib/hts.h" nogil:
     ctypedef int hts_seek_func(void *fp, int64_t offset, int where)
     ctypedef int64_t hts_tell_func(void *fp)
 
-    ctypedef struct hts_bins_t:
+    ctypedef struct hts_itr_bins_struct:
         int n, m
         int *a
 
-    ctypedef struct hts_itr_t:
+    ctypedef struct hts_itr_t:  # struct will be made opaque in future
         uint8_t read_rest, finished
         int tid, n_off, i
         hts_pos_t beg, end
@@ -441,7 +441,7 @@ cdef extern from "htslib/hts.h" nogil:
         uint64_t curr_off
         hts_pair64_max_t *off
         hts_readrec_func *readrec
-        hts_bins_t bins
+        hts_itr_bins_struct bins
 
     ctypedef hts_itr_t hts_itr_multi_t
 
@@ -559,7 +559,7 @@ cdef extern from "htslib/hts.h" nogil:
 
 cdef extern from "htslib/sam.h" nogil:
 
-    ctypedef struct sam_hdr_t:
+    ctypedef struct sam_hdr_t:  # struct will be made opaque in future
         int32_t n_targets, ignore_sam_err
         size_t l_text
         uint32_t *target_len
@@ -1087,7 +1087,7 @@ cdef extern from "htslib/tbx.h" nogil:
         int32_t sc, bc, ec
         int32_t meta_char, line_skip
 
-    ctypedef struct tbx_t:
+    ctypedef struct tbx_t:  # struct will be made opaque in future
         tbx_conf_t conf
         hts_idx_t *idx
         void *dict
@@ -1205,14 +1205,14 @@ cdef extern from "htslib/vcf.h" nogil:
         uint32_t p_off
         uint8_t p_free
 
-    cdef union bcf_info_union_t:
+    cdef union bcf_info_v1_union:
         int64_t i
         float f
 
     ctypedef struct bcf_info_t:
         int key
         int type
-        bcf_info_union_t v1
+        bcf_info_v1_union v1
         uint8_t *vptr
         uint32_t vptr_len
         uint32_t vptr_off
