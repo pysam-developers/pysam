@@ -41,7 +41,7 @@ intersphinx_mapping = {'python': ('https://docs.python.org/%d.%d' % sys.version_
 templates_path = ['_templates']
 
 # The suffix of source filenames.
-source_suffix = '.rst'
+source_suffix = {'.rst': 'restructuredtext'}
 
 # The encoding of source files.
 #source_encoding = 'utf-8'
@@ -50,7 +50,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'pysam'
+project = 'pysam'
 copyright = '2009–2025 Andreas Heger, John Marshall, Kevin Jacobs, et al'
 
 # Included at the end of each rst file
@@ -227,7 +227,7 @@ htmlhelp_basename = 'samtoolsdoc'
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-    ('index', 'pysam.tex', u'pysam documentation',
+    ('index', 'pysam.tex', 'pysam documentation',
      'Andreas Heger, John Marshall, Kevin Jacobs, et al', 'manual'),
 ]
 
