@@ -43,13 +43,12 @@ language features and library functions are available for use:
 * f-strings
 * ``raise ... from None``
 * :meth:`str.startswith`, :meth:`str.endswith`, :meth:`str.rstrip`, etc
-* walrus ``:=`` operator in Python code
+* walrus ``:=`` operator
 
 However in particular the following should not be used in
 pysam source code or infrastructure scripts:
 
 * :meth:`str.removeprefix`, :meth:`str.removesuffix` (new in 3.9)
-* walrus ``:=`` operator in Cython code (requires Cython 3)
 * ``Optional[type]`` type hints written as ``type | None`` etc (new in 3.10)
 
 

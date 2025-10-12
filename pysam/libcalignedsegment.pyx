@@ -888,12 +888,12 @@ cdef _alignedpairs_with_seq(qpos, pos, ref_seq, uint32_t r_idx, int op):
 
 
 cdef _alignedpairs_with_cigar(qpos, pos, ref_seq, uint32_t r_idx, int op):
-    return (qpos, pos, CIGAR_OPS(op))
+    return (qpos, pos, <CIGAR_OPS>op)
 
 
 cdef _alignedpairs_with_seq_cigar(qpos, pos, ref_seq, uint32_t r_idx, int op):
     ref_base = ref_seq[r_idx] if ref_seq is not None else None
-    return (qpos, pos, ref_base, CIGAR_OPS(op))
+    return (qpos, pos, ref_base, <CIGAR_OPS>op)
 
 
 cdef class _AlignedSegment_Cache:

@@ -18,7 +18,7 @@ dynamic = [
 "Release notes" = "https://pysam.readthedocs.io/en/stable/release.html"
 
 [build-system]
-requires = ["setuptools>=59.0", "Cython>=0.29.12,<4"]
+requires = ["setuptools>=59.0", "Cython>=3,<4"]
 build-backend = "setuptools.build_meta:__legacy__"
 
 [tool.cibuildwheel]
