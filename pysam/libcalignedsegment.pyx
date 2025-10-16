@@ -1863,18 +1863,20 @@ cdef class AlignedSegment:
         """start index of the aligned query portion of the sequence (0-based,
         inclusive).
 
-        This the index of the first base in :attr:`query_sequence` 
-        that is not soft-clipped.
+        This the index of the first base in :attr:`query_sequence` that is not
+        soft-clipped. (For unmapped reads and when CIGAR is unavailable, this
+        will be zero.)
         """
         def __get__(self):
             return getQueryStart(self._delegate)
 
     property query_alignment_end:
         """end index of the aligned query portion of the sequence (0-based,
-        exclusive)
+        exclusive).
 
         This the index just past the last base in :attr:`query_sequence` 
-        that is not soft-clipped.
+        that is not soft-clipped. (For unmapped reads and when CIGAR is
+        unavailable, this will be the length of the query/read.)
         """
         def __get__(self):
             return getQueryEnd(self._delegate)
@@ -1958,8 +1960,9 @@ cdef class AlignedSegment:
     property query_alignment_length:
         """length of the aligned query sequence.
 
-        This is equal to :attr:`query_alignment_end` - 
-        :attr:`query_alignment_start`
+        This is the number of bases in :attr:`query_sequence` that are not
+        soft-clipped. (For unmapped reads and when CIGAR is unavailable, this
+        will equal the length of the query/read.)
         """
         def __get__(self):
             cdef bam1_t * src
