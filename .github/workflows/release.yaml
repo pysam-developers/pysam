@@ -9,16 +9,19 @@ on:
 
 jobs:
   build_wheels:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.kind == 'macos' && (matrix.arch == 'arm' && 'macos-latest' || 'macos-15-intel')
+                                        || (matrix.arch == 'arm' && 'ubuntu-24.04-arm' || 'ubuntu-latest') }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-13]
-        build: ["cp38-* cp39-*", "cp310-* cp311-*", "cp312-* cp313-*"]
+        kind: [macos, many, musl]
+        arch: [arm, intel]
+        build: ["cp38-* cp39-*", "cp310-* cp311-*", "cp312-* cp313-* cp314-*"]
         x64image: [manylinux_2_28]
         nametag: [none]
 
         include:
-          - os: ubuntu-latest
+          - kind: many
+            arch: intel
             build: "cp38-manylinux_x86_64"
             x64image: manylinux2014
             nametag: focal
@@ -27,25 +30,26 @@ jobs:
       - name: Checkout pysam
         uses: actions/checkout@v5
 
-      - name: Check platform ${{ matrix.os }} is the expected architecture
-        run:  devtools/check-platform.sh ${{ matrix.os }}
+      - name: Check platform is the expected ${{ matrix.arch }} architecture
+        run:  devtools/check-platform.sh ${{ matrix.arch }}
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.23.3
+        uses: pypa/cibuildwheel@v3.3.0
         env:
           CIBW_BUILD: ${{ matrix.build }}
+          CIBW_SKIP:  ${{ matrix.kind == 'many' && '*-musllinux_*' || '*-manylinux_*' }} cp38-macosx_arm64
+
           CIBW_BUILD_VERBOSITY: 1
 
           # Avoid linking with non-system library libdeflate.dylib
           CIBW_ENVIRONMENT_MACOS: HTSLIB_CONFIGURE_OPTIONS="--without-libdeflate"
 
-          CIBW_ARCHS_LINUX: x86_64
-          CIBW_ARCHS_MACOS: x86_64
+          CIBW_ARCHS: native
 
           CIBW_MANYLINUX_X86_64_IMAGE:  ${{ matrix.x64image }}
-          CIBW_MANYLINUX_I686_IMAGE:    manylinux2014
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
           CIBW_MUSLLINUX_X86_64_IMAGE:  musllinux_1_2
+          CIBW_MUSLLINUX_AARCH64_IMAGE: musllinux_1_2
 
       - name: Check wheelhouse
         run:  devtools/artifactname.py wheelhouse/*.whl >> $GITHUB_ENV
