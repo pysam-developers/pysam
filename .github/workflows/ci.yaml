@@ -20,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -71,10 +71,10 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -110,7 +110,7 @@ jobs:
 
       - name: Upload sdist tarball
         if:   runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: dist/pysam-*.tar.gz
@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Conda and Python ${{ matrix.python-version }}
         uses: conda-incubator/setup-miniconda@v3

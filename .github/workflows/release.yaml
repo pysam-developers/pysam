@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check platform ${{ matrix.os }} is the expected architecture
         run:  devtools/check-platform.sh ${{ matrix.os }}
@@ -53,7 +53,7 @@ jobs:
           NAMETAG: ${{ matrix.nametag }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ env.artifactname }}
           path: wheelhouse/*.whl
@@ -65,10 +65,10 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python ${{ env.job_python_version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.job_python_version }}
 
@@ -83,7 +83,7 @@ jobs:
       - name: Create source distribution
         run:  python setup.py sdist --owner=root --group=root
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: dist/pysam-*.tar.gz
@@ -98,7 +98,7 @@ jobs:
 
     steps:
       - name: Get artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           merge-multiple: true
           path: dist
