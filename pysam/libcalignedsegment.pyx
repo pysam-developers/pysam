@@ -2524,7 +2524,7 @@ cdef class AlignedSegment:
             # validate Hex values
             if not HEX_VALUE_REGEX.fullmatch(value):
                 raise ValueError(
-                    f"Invalid value {value} for tag {tag.decode()} with value_type 'H':
+                    f"Invalid value {value} for tag {tag.decode()} with value_type 'H': "
                     f"must match the regular expression {HEX_VALUE_REGEX.pattern}"
                 )
             # Note that hex tags are stored the very same
