@@ -900,14 +900,6 @@ unsigned char *(*rans_enc_func(int do_simd, int order))
      unsigned char *out,
      unsigned int *out_size) {
 
-    int have_e_sse4_1  = have_sse4_1;
-    int have_e_avx2    = have_avx2;
-    int have_e_avx512f = have_avx512f;
-
-    if (!(rans_cpu & RANS_CPU_ENC_AVX512)) have_e_avx512f = 0;
-    if (!(rans_cpu & RANS_CPU_ENC_AVX2))   have_e_avx2    = 0;
-    if (!(rans_cpu & RANS_CPU_ENC_SSE4))   have_e_sse4_1  = 0;
-
     if (!do_simd) { // SIMD disabled
         return order & 1
             ? rans_compress_O1_4x16
@@ -924,6 +916,14 @@ unsigned char *(*rans_enc_func(int do_simd, int order))
         fprintf(stderr, "Using scalar code only\n");
     }
 #endif
+
+    int have_e_sse4_1  = have_sse4_1;
+    int have_e_avx2    = have_avx2;
+    int have_e_avx512f = have_avx512f;
+
+    if (!(rans_cpu & RANS_CPU_ENC_AVX512)) have_e_avx512f = 0;
+    if (!(rans_cpu & RANS_CPU_ENC_AVX2))   have_e_avx2    = 0;
+    if (!(rans_cpu & RANS_CPU_ENC_SSE4))   have_e_sse4_1  = 0;
 
     if (order & 1) {
         // With simulated gathers, the AVX512 is now slower than AVX2, so
@@ -974,14 +974,6 @@ unsigned char *(*rans_dec_func(int do_simd, int order))
      unsigned char *out,
      unsigned int out_size) {
 
-    int have_d_sse4_1  = have_sse4_1;
-    int have_d_avx2    = have_avx2;
-    int have_d_avx512f = have_avx512f;
-
-    if (!(rans_cpu & RANS_CPU_DEC_AVX512)) have_d_avx512f = 0;
-    if (!(rans_cpu & RANS_CPU_DEC_AVX2))   have_d_avx2    = 0;
-    if (!(rans_cpu & RANS_CPU_DEC_SSE4))   have_d_sse4_1  = 0;
-
     if (!do_simd) { // SIMD disabled
         return order & 1
             ? rans_uncompress_O1_4x16
@@ -998,6 +990,14 @@ unsigned char *(*rans_dec_func(int do_simd, int order))
         fprintf(stderr, "Using scalar code only\n");
     }
 #endif
+
+    int have_d_sse4_1  = have_sse4_1;
+    int have_d_avx2    = have_avx2;
+    int have_d_avx512f = have_avx512f;
+
+    if (!(rans_cpu & RANS_CPU_DEC_AVX512)) have_d_avx512f = 0;
+    if (!(rans_cpu & RANS_CPU_DEC_AVX2))   have_d_avx2    = 0;
+    if (!(rans_cpu & RANS_CPU_DEC_SSE4))   have_d_sse4_1  = 0;
 
     if (order & 1) {
 #if defined(HAVE_AVX512)
@@ -1168,6 +1168,12 @@ unsigned char *rans_compress_to_4x16(unsigned char *in, unsigned int in_size,
         *out_size = 0;
         return NULL;
     }
+
+#ifdef VALIDATE_RANS
+    int orig_order = order;
+    int orig_in_size = in_size;
+    unsigned char *orig_in = in;
+#endif
 
     unsigned int c_meta_len;
     uint8_t *meta = NULL, *rle = NULL, *packed = NULL;
@@ -1385,6 +1391,11 @@ unsigned char *rans_compress_to_4x16(unsigned char *in, unsigned int in_size,
             int sz = var_put_u32(out+c_meta_len, out_end, in_size);
             c_meta_len += sz;
             *out_size -= sz;
+
+            if (do_simd && in_size < 32) {
+                do_simd = 0;
+                out[0] &= ~RANS_ORDER_X32;
+            }
         }
     } else if (do_pack) {
         out[0] &= ~RANS_ORDER_PACK;
@@ -1430,6 +1441,10 @@ unsigned char *rans_compress_to_4x16(unsigned char *in, unsigned int in_size,
                 return NULL;
             }
             c_rmeta_len = *out_size - (c_meta_len+sz+5);
+            if (do_simd && (rmeta_len < 32 || rle_len < 32)) {
+                do_simd = 0;
+                out[0] &= ~RANS_ORDER_X32;
+            }
             if (!rans_enc_func(do_simd, 0)(meta, rmeta_len, out+c_meta_len+sz+5, &c_rmeta_len)) {
                 free(out_free);
                 free(rle);
@@ -1502,6 +1517,24 @@ unsigned char *rans_compress_to_4x16(unsigned char *in, unsigned int in_size,
     free(packed);
 
     *out_size += c_meta_len;
+
+// Validation mode
+#ifdef VALIDATE_RANS
+    unsigned int decoded_size = orig_in_size;
+    unsigned char *decoded = malloc(decoded_size);
+    decoded = rans_uncompress_to_4x16(out, *out_size,
+                                      decoded, &decoded_size);
+    if (!decoded ||
+        decoded_size != orig_in_size ||
+        memcmp(orig_in, decoded, orig_in_size) != 0) {
+        fprintf(stderr, "rans round trip failed for order %d. Written to fd 5\n", orig_order);
+        if (write(5, orig_in, orig_in_size) < 0)
+            abort();
+        abort();
+    }
+    free(decoded);
+#endif
+
 
     return out;
 }

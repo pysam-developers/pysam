@@ -610,12 +610,16 @@ int search_trie(name_context *ctx, char *data, size_t len, int n, int *exact, in
         prefix_len = 6;  // IonTorrent
         *fixed_len = 6;
         *is_fixed = 1;
-    } else if (l > 37 && d[f+8] == '-' && d[f+13] == '-' && d[f+18] == '-' && d[f+23] == '-' &&
-               ((d[f+0] >= '0' && d[f+0] <='9') || (d[f+0] >= 'a' && d[f+0] <= 'f')) &&
-               ((d[f+35] >= '0' && d[f+35] <='9') || (d[f+35] >= 'a' && d[f+35] <= 'f'))) {
+    } else if (l >= 36
+               && d[f+8]=='-' && d[f+13]=='-' && d[f+18]=='-' && d[f+23]=='-'
+               && isxdigit((uint8_t)d[f+0])  && isxdigit((uint8_t)d[f+7])
+               && isxdigit((uint8_t)d[f+9])  && isxdigit((uint8_t)d[f+12])
+               && isxdigit((uint8_t)d[f+14]) && isxdigit((uint8_t)d[f+17])
+               && isxdigit((uint8_t)d[f+19]) && isxdigit((uint8_t)d[f+22])
+               && isxdigit((uint8_t)d[f+24]) && isxdigit((uint8_t)d[f+35])) {
         // ONT: f33d30d5-6eb8-4115-8f46-154c2620a5da_Basecall_1D_template...
-        prefix_len = 37;
-        *fixed_len = 37;
+        prefix_len = 36;
+        *fixed_len = 36;
         *is_fixed = 1;
     } else {
         // Check Illumina and trim back to lane:tile:x:y.
@@ -638,7 +642,6 @@ int search_trie(name_context *ctx, char *data, size_t len, int n, int *exact, in
             *is_fixed = 0;
         }
     }
-    //prefix_len = INT_MAX;
 
     if (!ctx->t_head) {
         ctx->t_head = calloc(1, sizeof(*ctx->t_head));
@@ -647,6 +650,7 @@ int search_trie(name_context *ctx, char *data, size_t len, int n, int *exact, in
     }
 
     // Find an item in the trie
+    int from_punct = from;
     for (nlines = i = 0; i < len; i++, nlines++) {
         t = ctx->t_head;
         while (i < len && data[i] > '\n') {
@@ -661,16 +665,10 @@ int search_trie(name_context *ctx, char *data, size_t len, int n, int *exact, in
                 x = x->sibling;
             t = x;
 
-//          t = t->next[c];
-
-//          if (!t)
-//              return -1;
-
             from = t->n;
+            if ((ispunct(c) || isspace(c)) && t->n != n)
+                from_punct = t->n;
             if (i == prefix_len) p3 = t->n;
-            //if (t->count >= .0035*ctx->t_head->count && t->n != n) p3 = t->n; // pacbio
-            //if (i == 60) p3 = t->n; // pacbio
-            //if (i == 7) p3 = t->n; // iontorrent
             t->n = n;
         }
     }
@@ -678,7 +676,7 @@ int search_trie(name_context *ctx, char *data, size_t len, int n, int *exact, in
     //printf("Looked for %d, found %d, prefix %d\n", n, from, p3);
 
     *exact = (n != from) && len;
-    return *exact ? from : p3;
+    return *exact ? from : (p3 != -1 ? p3 : from_punct);
 }
 
 
@@ -729,10 +727,29 @@ static int encode_name(name_context *ctx, char *name, int len, int mode) {
     if (!ctx->lc[cnum].last)
         return -1;
     encode_token_diff(ctx, cnum-pnum);
-
     int ntok = 1;
-    i = 0;
-    if (is_fixed) {
+
+    if (fixed_len == 36) {
+        // ONT uuid4 format data
+        if (37 >= ctx->max_tok) {
+            do {
+                memset(&ctx->desc[ctx->max_tok << 4], 0, 16*sizeof(ctx->desc[0]));
+                memset(&ctx->token_dcount[ctx->max_tok], 0, sizeof(int));
+                memset(&ctx->token_icount[ctx->max_tok], 0, sizeof(int));
+            } while (ctx->max_tok++ < 37);
+        }
+#ifdef ENC_DEBUG
+        fprintf(stderr, "Tok %d (%d x uuid chr)", ntok, len);
+#endif
+        for (i = 0; i < 36; i++, ntok++) {
+            encode_token_char(ctx, ntok, name[i]);
+            ctx->lc[cnum].last[ntok].token_int = name[i];
+            ctx->lc[cnum].last[ntok].token_type = N_CHAR;
+        }
+        is_fixed = 0;
+        i = 36;
+    } else if (is_fixed) {
+        // Other fixed length data
         if (ntok >= ctx->max_tok) {
             memset(&ctx->desc[ctx->max_tok << 4], 0, 16*sizeof(ctx->desc[0]));
             memset(&ctx->token_dcount[ctx->max_tok], 0, sizeof(int));
@@ -752,6 +769,8 @@ static int encode_name(name_context *ctx, char *name, int len, int mode) {
         ctx->lc[cnum].last[ntok].token_str = 0;
         ctx->lc[cnum].last[ntok++].token_type = N_ALPHA;
         i = fixed_len;
+    } else {
+        i = 0;
     }
 
     for (; i < len; i++) {
