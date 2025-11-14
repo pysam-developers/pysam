@@ -8,6 +8,7 @@ pysam and tabix works.
 
 # clean up previous compilation
 import os
+import platform
 import pytest
 import pysam
 from TestUtils import make_data_files, BAM_DATADIR, CBCF_DATADIR, TABIX_DATADIR
@@ -53,6 +54,7 @@ def test_gtf():
     assert nread == 237
 
 
+@pytest.mark.skipif(platform.machine() not in ('aarch64', 'arm64', 'AMD64', 'x86_64'), reason="different scalar sizes")
 class TestBinaryCompatibility:
     def test_alignments(self):
         fp = pysam.AlignmentFile(os.path.join(BAM_DATADIR, "ex1.bam"))
