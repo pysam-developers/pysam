@@ -53,6 +53,9 @@ cdef extern from "htslib/kstring.h" nogil:
     int kputll(long long c, kstring_t *s)
     int kputl(long c, kstring_t *s)
 
+    int kinsert_char(char c, size_t pos, kstring_t *s)
+    int kinsert_str(const char *str, size_t pos, kstring_t *s)
+
 
 cdef extern from "htslib_util.h" nogil:
 
@@ -545,6 +548,9 @@ cdef extern from "htslib/hts.h" nogil:
 
     int hts_reg2bin(hts_pos_t beg, hts_pos_t end, int min_shift, int n_lvls)
     int hts_bin_level(int bin)
+
+    uint32_t hts_crc32(uint32_t crc, const void *buf, size_t len)
+
     int hts_bin_bot(int bin, int n_lvls)
     hts_pos_t hts_bin_maxpos(int min_shift, int n_lvls)
 
@@ -1390,7 +1396,7 @@ cdef extern from "htslib/vcf.h" nogil:
     uint32_t bcf_gt_unphased(uint32_t idx)
     uint32_t bcf_gt_missing
     uint32_t bcf_gt_is_missing(uint32_t val)
-    uint32_t bcf_gt_is_phased(uint32_t idx)
+    uint32_t bcf_gt_is_phased(uint32_t val)
     uint32_t bcf_gt_allele(uint32_t val)
 
     uint32_t bcf_alleles2gt(uint32_t a, uint32_t b)
@@ -1480,6 +1486,7 @@ cdef extern from "htslib/vcf.h" nogil:
     int bcf_float_is_missing(float f)
     int bcf_float_is_vector_end(float f)
 
+    int bcf_format_gt_v2(const bcf_hdr_t *hdr, bcf_fmt_t *fmt, int isample, kstring_t *str)
     int bcf_format_gt(bcf_fmt_t *fmt, int isample, kstring_t *str)
 
     int bcf_enc_size(kstring_t *s, int size, int type)
