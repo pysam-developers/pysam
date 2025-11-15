@@ -1,6 +1,80 @@
 .. An online version of the release history can be found here:
 .. http://pysam.readthedocs.io/en/latest/release.html
 
+Release 0.24.0
+==============
+
+.. rubric:: 27 April 2026
+
+This pysam release wraps htslib/samtools/bcftools version 1.23.1 (PR #1343,
+PR #1372, and PR #1396) and now requires Cython 3.
+
+It has been tested with Python versions 3.8 through 3.14, and wheels are
+available via PyPI_ for all of those Python versions. Wheels are built for
+macOS and Linux (manylinux_2_28 and musllinux_1_2) on both ARM and x86-64.
+
+This release is the first to wrap htslib 1.22 or later, which contains
+significant CRAM-related operational changes inherited by pysam:
+
+* The default output CRAM version is now 3.1 rather than 3.0.
+  The version can be explicitly specified by using
+  :class:`AlignmentFile(..., "wc", format_options=["version=3.0"]) <.AlignmentFile>`.
+
+* CRAM reference data is no longer fetched from EBI's server by default.
+  Use the :envvar:`REF_CACHE` and :envvar:`REF_PATH` environment variables
+  if necessary to set up an alternative source of CRAM reference data.
+
+The final pysam release that supported Python 3.6 and 3.7 was v0.23.0.
+This release is expected to be the last release supporting Python 3.8.
+
+Bugs fixed:
+
+* Removed :attr:`.AlignedSegment.modified_bases`'s limitation of only five
+  modification types in MM/ML fields. (#1348, reported by Leszek Pryszcz)
+
+* Fixed :attr:`.AlignedSegment.modified_bases` crash when given a degenerate
+  MM field that modifies no bases at all. (#1355, reported by Jun Mencius)
+
+* Fixed type hints for :class:`.AlignmentFile` and :class:`.VariantFile`
+  constructor `filename` and `mode` parameters. (#1405, reported by Matt Stone)
+
+* Fixed coverage functionality for Python 3.13 and later. Pysam's Cython code
+  is no longer built with Python profiling enabled by default. :ref:`Profiling
+  <pysam-profile>` can be re-enabled by using the :envvar:`PYSAM_PROFILE`
+  environment variable when building pysam from source.
+  (#1350, reported by Marcus Fedarko)
+
+* Fixed capturing :func:`pysam.samtools.calmd() <.samtools.command>` output,
+  which fixed tests on 32-bit i386. Also suppressed TestBinaryCompatibility
+  test cases on platforms where we have not calculated the expected sizes.
+  (#1367, reported by Étienne Mollier for Debian)
+
+* Adjusted :attr:`.HTSFile.add_hts_options` for Python 3: it now expects
+  a list of :class:`str` as documented, rather than needing :class:`bytes`.
+  This method's :attr:`format_options` argument is no longer optional.
+  Similarly :class:`AlignmentFile(format_options=...) <.AlignmentFile>`
+  now accepts a list of :class:`str` as documented.
+
+New functionality:
+
+* Updated :file:`pysam/libchtslib.pxd` declarations to the HTSlib 1.23.1 API.
+  This is the first comprehensive update that these Cython HTSlib API
+  declarations have received. (PR #1362)
+
+* Optimized :func:`pysam.array_to_qualitystring` using Cython memoryviews,
+  resulting in an approximately 70x-100x speed improvement in this function.
+  (PR #1363, thanks to Josh Chorlton)
+
+Documentation improvements:
+
+* The numerous internal classes representing :class:`.VariantHeader` and
+  :class:`.VariantRecord` fields are now documented.
+  (#407 et al; PR #1358, PR #1359, PR #1361, PR #1394, thanks to Tim Dunn)
+
+* Clarified :attr:`.AlignedSegment.query_alignment_length` et al
+  behaviour for unmapped reads. (#1319, reported by Sam Chorlton)
+
+
 Release 0.23.3
 ==============
 

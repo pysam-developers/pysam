@@ -104,6 +104,8 @@ the htslib/INSTALL file.
 
 Installing from the repository will require cython_ to be installed.
 
+.. _pysam-profile:
+
 Profiling
 =========
 
