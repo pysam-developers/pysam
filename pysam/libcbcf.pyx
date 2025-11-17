@@ -3432,35 +3432,60 @@ cdef VariantRecord makeVariantRecord(VariantHeader header, bcf1_t *r):
     return record
 
 
-########################################################################
-########################################################################
-## Variant Sampletype object
-########################################################################
-
-
 cdef class VariantRecordSample(object):
-    """Data for a single sample from a :class:`VariantRecord` object.
-       Provides data accessors for genotypes and a mapping interface
-       from format name to values.
+    """Data for a single sample from a :class:`VariantRecord` object. Provides data accessors for
+       genotypes and a mapping interface from FORMAT fields to values.
+
+       Notes:
+         The :class:`VariantRecordSample` object implements a mapping-like object for a specific
+         VCF/BCF row and sample column. The keys are FORMAT fields and the values are the values in
+         the VCF/BCF file. There is special handling for ``"GT"``, through the :attr:`alleles`,
+         :attr:`allele_indices` and :attr:`phased` attributes. There is also a :attr:`name` property
+         that provides the sample's name.
+
+       Examples:
+         Here is an example of accessing and printing the data in a :class:`VariantRecordSample`::
+
+             variant_file = pysam.VariantFile('/path/to/file.vcf.gz')
+             for variant_record in variant_file.fetch():
+                 for sample_name in variant_record.samples:
+                     variant_record_sample = variant_record.samples[sample_name]
+                         variant_record_sample["GT"] = (0, 1)
+                         print(dict(variant_record_sample))
+
+         The above code will print the following::
+
+             {
+                 'AD': (0, 80),
+                 'DP': 79,
+                 'GQ': 32,
+                 'GT': (0, 1),
+                 'PL': (33, 34, 0),
+                 'VAF': (1.0,),
+                 'PS': None
+             }
+
+       Note:
+         The ``"GT"`` value must be provided as a tuple ``(0, 1)`` and not a string ``"0/1"``.
     """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError('This class cannot be instantiated from Python')
 
     @property
     def name(self):
-        """sample name"""
+        """The sample name."""
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef int32_t n = r.n_sample
 
         if self.index < 0 or self.index >= n:
-            raise ValueError('invalid sample index')
+            raise ValueError('Invalid sample index')
 
         return charptr_to_str(hdr.samples[self.index])
 
     @property
     def allele_indices(self):
-        """allele indices for called genotype, if present.  Otherwise None"""
+        """Allele indices (e.g. ``(0, 1)``) for the called genotype (if present), otherwise None."""
         return bcf_format_get_allele_indices(self)
 
     @allele_indices.setter
@@ -3473,7 +3498,7 @@ cdef class VariantRecordSample(object):
 
     @property
     def alleles(self):
-        """alleles for called genotype, if present.  Otherwise None"""
+        """Alleles (e.g. ``("CT", "C")``) for the called genotype (if present), otherwise None."""
         return bcf_format_get_alleles(self)
 
     @alleles.setter
@@ -3502,7 +3527,7 @@ cdef class VariantRecordSample(object):
 
     @property
     def phased(self):
-        """False if genotype is missing or any allele is unphased.  Otherwise True."""
+        """``False`` if the genotype is missing or any allele is unphased, otherwise ``True``."""
         return bcf_sample_get_phased(self)
 
     @phased.setter
@@ -3545,7 +3570,7 @@ cdef class VariantRecordSample(object):
         bcf_format_del_value(self, key)
 
     def clear(self):
-        """Clear all format data (including genotype) for this sample"""
+        """Clear all FORMAT fields (including GT) for this sample."""
         cdef bcf_hdr_t *hdr = self.record.header.ptr
         cdef bcf1_t *r = self.record.ptr
         cdef bcf_fmt_t *fmt
@@ -3568,7 +3593,16 @@ cdef class VariantRecordSample(object):
                 yield bcf_str_cache_get_charptr(bcf_hdr_int2id(hdr, BCF_DT_ID, fmt.id))
 
     def get(self, key, default=None):
-        """D.get(k[,d]) -> D[k] if k in D, else d.  d defaults to None."""
+        """Retrieve sample data for FORMAT field ``key`` (e.g. ``"DP"``).
+        If ``key`` is not present, return ``default``.
+
+        Parameters:
+          key : str
+            FORMAT field to retrieve for the sample.
+          default
+            Data to return if ``key`` is not present in the FORMAT field for the sample.
+            Defaults to None.
+        """
         try:
             return self[key]
         except KeyError:
@@ -3582,35 +3616,37 @@ cdef class VariantRecordSample(object):
         return fmt != NULL and fmt.p != NULL
 
     def iterkeys(self):
-        """D.iterkeys() -> an iterator over the keys of D"""
+        """Return an iterator over all FORMAT field names for this record."""
         return iter(self)
 
     def itervalues(self):
-        """D.itervalues() -> an iterator over the values of D"""
+        """Return an iterator over all FORMAT field values for this sample."""
         for key in self:
             yield self[key]
 
     def iteritems(self):
-        """D.iteritems() -> an iterator over the (key, value) items of D"""
+        """Return an iterator over all FORMAT field ``(name, value)`` tuples for this sample."""
         for key in self:
             yield (key, self[key])
 
     def keys(self):
-        """D.keys() -> list of D's keys"""
+        """Return a list of all FORMAT field names for this record."""
         return list(self)
 
-    def items(self):
-        """D.items() -> list of D's (key, value) pairs, as 2-tuples"""
-        return list(self.iteritems())
-
     def values(self):
-        """D.values() -> list of D's values"""
+        """Return a list of all FORMAT field values for this sample."""
         return list(self.itervalues())
 
-    def update(self, items=None, **kwargs):
-        """D.update([E, ]**F) -> None.
+    def items(self):
+        """Return a list of all FORMAT field ``(name, value)`` tuples for this sample."""
+        return list(self.iteritems())
 
-        Update D from dict/iterable E and F.
+    def update(self, items=None, **kwargs):
+        """Update the FORMAT field values for this sample.
+
+        Parameters:
+          items : dict | None
+            A dictionary or dictionary-like object used to update the FORMAT field names and values.
         """
         for k, v in items.items():
             self[k] = v
@@ -3620,6 +3656,23 @@ cdef class VariantRecordSample(object):
                 self[k] = v
 
     def pop(self, key, default=_nothing):
+        """Remove the FORMAT field ``key`` for this sample and returns its value.
+
+        Parameters:
+          key : str
+            FORMAT field to retrieve for the sample.
+          default: Any
+            Data to return if ``key`` is not present.
+
+        Raises:
+          KeyError
+            When ``key`` is not present and ``default`` is unset.
+
+        Returns:
+          value
+            The value of the removed FORMAT field for this sample.
+        """
+
         try:
             value = self[key]
             del self[key]
@@ -3646,7 +3699,7 @@ cdef class VariantRecordSample(object):
 
 cdef VariantRecordSample makeVariantRecordSample(VariantRecord record, int32_t sample_index):
     if not record or sample_index < 0:
-        raise ValueError('cannot create VariantRecordSample')
+        raise ValueError("Cannot create a VariantRecordSample")
 
     cdef VariantRecordSample sample = VariantRecordSample.__new__(VariantRecordSample)
     sample.record = record
