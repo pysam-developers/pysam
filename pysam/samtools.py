@@ -8,6 +8,7 @@ bamshuf = pysam.utils.PysamDispatcher('samtools', 'bamshuf')
 bedcov = pysam.utils.PysamDispatcher('samtools', 'bedcov')
 calmd = pysam.utils.PysamDispatcher('samtools', 'calmd')
 cat = pysam.utils.PysamDispatcher('samtools', 'cat')
+checksum = pysam.utils.PysamDispatcher('samtools', 'checksum')
 collate = pysam.utils.PysamDispatcher('samtools', 'collate')
 consensus = pysam.utils.PysamDispatcher('samtools', 'consensus')
 coverage = pysam.utils.PysamDispatcher('samtools', 'coverage')
@@ -47,7 +48,7 @@ view = pysam.utils.PysamDispatcher('samtools', 'view')
 
 __all__ = [
     'addreplacerg', 'ampliconclip', 'ampliconstats',
-    'bam2fq', 'bamshuf', 'bedcov', 'calmd', 'cat',
+    'bam2fq', 'bamshuf', 'bedcov', 'calmd', 'cat', 'checksum',
     'collate', 'consensus', 'coverage', 'cram_size',
     'depad', 'depth', 'dict', 'faidx', 'fasta',
     'fastq', 'fixmate', 'flags', 'flagstat', 'fqidx',

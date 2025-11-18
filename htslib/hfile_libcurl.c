@@ -34,7 +34,6 @@ DEALINGS IN THE SOFTWARE.  */
 #ifndef _WIN32
 # include <sys/select.h>
 #endif
-#include <sys/stat.h>
 #include <assert.h>
 
 #include "hfile_internal.h"
@@ -1223,7 +1222,8 @@ libcurl_open(const char *url, const char *modes, http_headers *headers)
 
     // Avoid many repeated CWD calls with FTP, instead requesting the filename
     // by full path (but not strictly compliant with RFC1738).
-    err |= curl_easy_setopt(fp->easy, CURLOPT_FTP_FILEMETHOD, CURLFTPMETHOD_NOCWD);
+    err |= curl_easy_setopt(fp->easy, CURLOPT_FTP_FILEMETHOD,
+                            (long) CURLFTPMETHOD_NOCWD);
 
     if (mode == 'r') {
         err |= curl_easy_setopt(fp->easy, CURLOPT_WRITEFUNCTION, recv_callback);
@@ -1247,19 +1247,6 @@ libcurl_open(const char *url, const char *modes, http_headers *headers)
         if (env_curl_ca_bundle) {
             err |= curl_easy_setopt(fp->easy, CURLOPT_CAINFO, env_curl_ca_bundle);
         }
-#if defined __linux__ && defined BUILDING_WHEEL
-        else {
-            // Linux wheels are (currently) built on AlmaLinux, so the libcurl.so bundled
-            // into the wheel follows Alma/Red Hat/Fedora conventions for the location of
-            // its certificate bundle. This fails when the wheel is used on a Debian/Ubuntu
-            // platform with a different convention for this location. When not overridden
-            // by $CURL_CA_BUNDLE, work around this by specifying the expected Debian bundle
-            // location if the Red Hat one isn't present.
-            struct stat st;
-            if (stat("/etc/pki", &st) < 0 && errno == ENOENT)
-                err |= curl_easy_setopt(fp->easy, CURLOPT_CAINFO, "/etc/ssl/certs/ca-certificates.crt");
-        }
-#endif
     }
     err |= curl_easy_setopt(fp->easy, CURLOPT_USERAGENT, curl.useragent.s);
     if (fp->headers.callback) {

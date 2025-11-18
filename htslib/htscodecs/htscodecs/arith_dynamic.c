@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2022 Genome Research Ltd.
+ * Copyright (c) 2019-2022, 2025 Genome Research Ltd.
  * Author(s): James Bonfield
  *
  * Redistribution and use in source and binary forms, with or without
@@ -733,15 +733,17 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
     unsigned int c_meta_len;
     uint8_t *rle = NULL, *packed = NULL;
 
-    if (in_size > INT_MAX) {
+    if (in_size > INT_MAX || (out && *out_size == 0)) {
         *out_size = 0;
         return NULL;
     }
 
     if (!out) {
         *out_size = arith_compress_bound(in_size, order);
-        if (!(out = malloc(*out_size)))
+        if (!(out = malloc(*out_size))) {
+            *out_size = 0;
             return NULL;
+        }
     }
     unsigned char *out_end = out + *out_size;
 
@@ -751,24 +753,30 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
     if (order & X_CAT) {
         out[0] = X_CAT;
         c_meta_len = 1 + var_put_u32(&out[1], out_end, in_size);
+        if (c_meta_len + in_size > *out_size) {
+            *out_size = 0;
+            return NULL;
+        }
         memcpy(out+c_meta_len, in, in_size);
         *out_size = in_size+c_meta_len;
     }
 
     if (order & X_STRIPE) {
-        int N = (order>>8);
+        int N = (order>>8) & 0xff;
         if (N == 0) N = 4; // default for compatibility with old tests
 
-        if (N > 255)
-            return NULL;
+        if (N > in_size)
+            N = in_size;
 
         unsigned char *transposed = malloc(in_size);
         unsigned int part_len[256];
         unsigned int idx[256];
-        if (!transposed)
+        if (!transposed) {
+            *out_size = 0;
             return NULL;
-        int i, j, x;
+        }
 
+        int i, j, x;
         for (i = 0; i < N; i++) {
             part_len[i] = in_size / N + ((in_size % N) > i);
             idx[i] = i ? idx[i-1] + part_len[i-1] : 0; // cumulative index
@@ -788,6 +796,12 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
         c_meta_len = 1;
         *out = order & ~X_NOSZ;
         c_meta_len += var_put_u32(out+c_meta_len, out_end, in_size);
+        if (c_meta_len >= *out_size) {
+            free(transposed);
+            *out_size = 0;
+            return NULL;
+        }
+
         out[c_meta_len++] = N;
 
         out2_start = out2 = out+7+5*N; // shares a buffer with c_meta
@@ -795,6 +809,7 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
             // Brute force try all methods.
             // FIXME: optimise this bit.  Maybe learn over time?
             int j, best_j = 0, best_sz = INT_MAX;
+            uint8_t *r;
 
             // Works OK with read names. The first byte is the most important,
             // as it has most variability (little-endian).  After that it's
@@ -843,24 +858,37 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
 //                        {1, 128}};
 
             for (j = 1; j <= m[MIN(i,3)][0]; j++) {
+                if (out2 - out > *out_size)
+                    continue; // an error, but caught in best_sz check later
+
                 olen2 = *out_size - (out2 - out);
                 //fprintf(stderr, "order=%d m=%d\n", order&3, m[MIN(i,4)][j]);
                 if ((order&3) == 0 && (m[MIN(i,3)][j]&1))
                     continue;
 
-                arith_compress_to(transposed+idx[i], part_len[i],
-                                  out2, &olen2, m[MIN(i,3)][j] | X_NOSZ);
-                if (best_sz > olen2) {
+                r = arith_compress_to(transposed+idx[i], part_len[i],
+                                      out2, &olen2, m[MIN(i,3)][j] | X_NOSZ);
+                if (r && olen2 && best_sz > olen2) {
                     best_sz = olen2;
                     best_j = j;
                 }
             }
-//          if (best_j == 0) // none desireable
-//              return NULL;
+
+            if (best_sz == INT_MAX) {
+                free(transposed);
+                *out_size = 0;
+                return NULL;
+            }
             if (best_j != j-1) {
                 olen2 = *out_size - (out2 - out);
-                arith_compress_to(transposed+idx[i], part_len[i],
-                                  out2, &olen2, m[MIN(i,3)][best_j] | X_NOSZ);
+                r = arith_compress_to(transposed+idx[i], part_len[i],
+                                      out2, &olen2,
+                                      m[MIN(i,3)][best_j] | X_NOSZ);
+                if (!r) {
+                    free(transposed);
+                    *out_size = 0;
+                    return NULL;
+                }
             }
             out2 += olen2;
             c_meta_len += var_put_u32(out+c_meta_len, out_end, olen2);
@@ -893,6 +921,10 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
         // PACK 2, 4 or 8 symbols into one byte.
         int pmeta_len;
         uint64_t packed_len;
+        if (c_meta_len + 256 > *out_size) {
+            *out_size = 0;
+            return NULL;
+        }
         packed = hts_pack(in, in_size, out+c_meta_len, &pmeta_len, &packed_len);
         if (!packed) {
             out[0] &= ~X_PACK;
@@ -934,6 +966,7 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
 #else
         fprintf(stderr, "Htscodecs has been compiled without libbz2 support\n");
         free(out);
+        *out_size = 0;
         return NULL;
 #endif
 
@@ -945,25 +978,40 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
 //      *out_size = lzma_size;
 
     } else {
+        uint8_t *r;
         if (do_rle) {
             if (order == 0)
-                arith_compress_O0_RLE(in, in_size, out+c_meta_len, out_size);
+                r=arith_compress_O0_RLE(in, in_size, out+c_meta_len, out_size);
             else
-                arith_compress_O1_RLE(in, in_size, out+c_meta_len, out_size);
+                r=arith_compress_O1_RLE(in, in_size, out+c_meta_len, out_size);
         } else {
             //if (order == 2)
             //  arith_compress_O2(in, in_size, out+c_meta_len, out_size);
             //else
             if (order == 1)
-                arith_compress_O1(in, in_size, out+c_meta_len, out_size);
+                r=arith_compress_O1(in, in_size, out+c_meta_len, out_size);
             else
-                arith_compress_O0(in, in_size, out+c_meta_len, out_size);
+                r=arith_compress_O0(in, in_size, out+c_meta_len, out_size);
+        }
+
+        if (!r) {
+            free(rle);
+            free(packed);
+            *out_size = 0;
+            return NULL;
         }
     }
 
     if (*out_size >= in_size) {
         out[0] &= ~(3|X_EXT); // no entropy encoding, but keep e.g. PACK
         out[0] |= X_CAT | no_size;
+
+        if (out + c_meta_len + in_size > out_end) {
+            free(rle);
+            free(packed);
+            *out_size = 0;
+            return NULL;
+        }
         memcpy(out+c_meta_len, in, in_size);
         *out_size = in_size;
     }

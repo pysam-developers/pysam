@@ -1,6 +1,6 @@
 /*  filter.c -- filter expressions.
 
-    Copyright (C) 2013-2024 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -73,7 +73,7 @@ typedef struct _token_t
     char *tag;          // for debugging and printout only, VCF tag name
     double threshold;   // filtering threshold
     int is_constant;    // the threshold is set
-    int hdr_id, hl_type, ht_type;   // BCF header lookup ID and one of BCF_HL_* types and BCF_HT_* types
+    int hdr_id, hl_type, ht_type, vl_len;   // BCF header lookup ID and one of BCF_HL_*, BCF_HT_*, BCF_VL_* types
     int idx;            // 0-based index to VCF vectors,
                         //  -2: list (e.g. [0,1,2] or [1..3] or [1..] or any field[*], which is equivalent to [0..])
                         //  -3: select indices on the fly based on values in GT
@@ -167,6 +167,7 @@ struct _filter_t
 #define TOK_NOT_IN  39      // does not contain, e.g. FILTER!~"A"
 #define TOK_MODULO  40      // %
 #define TOK_EXT     41      // external values set before each filter_test_ext() call, can be one of {},{str},{int},{float}
+#define TOK_FISHER  42
 
 //                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41
 //                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p  b  P  i  s                          %
@@ -219,9 +220,10 @@ static int filters_next_token(char **str, int *len)
     if ( !strncasecmp(tmp,"STDEV(",6) ) { (*str) += 5; return TOK_STDEV; }
     if ( !strncasecmp(tmp,"SUM(",4) ) { (*str) += 3; return TOK_SUM; }
     if ( !strncasecmp(tmp,"ABS(",4) ) { (*str) += 3; return TOK_ABS; }
-    if ( !strncasecmp(tmp,"COUNT(",4) ) { (*str) += 5; return TOK_CNT; }
+    if ( !strncasecmp(tmp,"COUNT(",6) ) { (*str) += 5; return TOK_CNT; }
     if ( !strncasecmp(tmp,"STRLEN(",7) ) { (*str) += 6; return TOK_LEN; }
     if ( !strncasecmp(tmp,"BINOM(",6) ) { (*str) += 5; return -TOK_BINOM; }
+    if ( !strncasecmp(tmp,"FISHER(",6) ) { (*str) += 6; return -TOK_FISHER; }
     if ( !strncasecmp(tmp,"PHRED(",6) ) { (*str) += 5; return TOK_PHRED; }
     if ( !strncasecmp(tmp,"%MAX(",5) ) { (*str) += 4; return TOK_MAX; } // for backward compatibility
     if ( !strncasecmp(tmp,"%MIN(",5) ) { (*str) += 4; return TOK_MIN; } // for backward compatibility
@@ -323,10 +325,6 @@ static int filters_next_token(char **str, int *len)
     *len = tmp - (*str);
     return TOK_VAL;
 }
-
-#define FILTER_OK 0
-#define FILTER_ERR_UNKN_TAGS 1
-#define FILTER_ERR_OTHER 2
 
 static void filter_add_undef_tag(filter_t *filter, char *str)
 {
@@ -1191,12 +1189,9 @@ static void filters_set_format_string(filter_t *flt, bcf1_t *line, token_t *tok)
 }
 static void _filters_set_genotype(filter_t *flt, bcf1_t *line, token_t *tok, int type)
 {
+    tok->nvalues = tok->str_value.l = 0;
     bcf_fmt_t *fmt = bcf_get_fmt(flt->hdr, line, "GT");
-    if ( !fmt )
-    {
-        tok->nvalues = tok->str_value.l = 0;
-        return;
-    }
+    if ( !fmt ) return;
 
     int i,j, nsmpl = bcf_hdr_nsamples(flt->hdr), nvals1 = type==2 ? 3 : 4;
     if ( tok->str_value.m <= nvals1*nsmpl )
@@ -1276,12 +1271,10 @@ static void filters_set_genotype4(filter_t *flt, bcf1_t *line, token_t *tok) { _
 
 static void filters_set_genotype_string(filter_t *flt, bcf1_t *line, token_t *tok)
 {
+    tok->nvalues = tok->str_value.l = 0;
     bcf_fmt_t *fmt = bcf_get_fmt(flt->hdr, line, "GT");
-    if ( !fmt )
-    {
-        tok->nvalues = 0;
-        return;
-    }
+    if ( !fmt ) return;
+
     int i, blen = 4, nsmpl = line->n_sample;
 
 gt_length_too_big:
@@ -2036,6 +2029,154 @@ static int func_strlen(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **sta
     }
     return 1;
 }
+static int func_fisher(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
+{
+    int i, istack = nstack - rtok->nargs;
+    token_t *tok  = stack[istack];
+    token_t *tok2 = istack+2==nstack ? stack[istack+1] : NULL;
+    if ( !tok->nsamples )
+    {
+        // INFO tag, such as DP4
+        rtok->nvalues  = 1;
+        hts_expand(double, rtok->nvalues, rtok->mvalues, rtok->values);
+        double *n11 = NULL, *n12 = NULL, *n21 = NULL, *n22 = NULL;
+        if ( istack+1==nstack )
+        {
+            // only one tag, expecting four values: binom(INFO/DP4)
+            if ( tok->nvalues==4 )
+            {
+                n11 = &tok->values[0];
+                n12 = &tok->values[1];
+                n21 = &tok->values[2];
+                n22 = &tok->values[3];
+            }
+        }
+        else if ( istack+2==nstack )
+        {
+            // two tags, expecting two values in each: binom(INFO/ADF[0,2],INFO/ADR[0,2])
+            if ( tok->nvalues>=2 && tok2->nvalues>=2 )
+            {
+                n11 = &tok->values[0];
+                n21 = &tok->values[1];
+                n12 = &tok2->values[0];
+                n22 = &tok2->values[1];
+            }
+        }
+        if ( !n11 || !n12 || !n21 || !n22
+                || bcf_double_is_missing_or_vector_end(n11[0])
+                || bcf_double_is_missing_or_vector_end(n12[0])
+                || bcf_double_is_missing_or_vector_end(n21[0])
+                || bcf_double_is_missing_or_vector_end(n22[0]) ) bcf_double_set_missing(rtok->values[0]);
+        else
+        {
+            double left,right,two;
+            kt_fisher_exact(n11[0],n12[0],n21[0],n22[0], &left, &right, &two);
+            rtok->values[0] = two;
+        }
+    }
+    else
+    {
+        rtok->nval1    = 1;
+        rtok->nvalues  = tok->nsamples;
+        rtok->nsamples = tok->nsamples;
+        hts_expand(double, rtok->nvalues, rtok->mvalues, rtok->values);
+        assert(tok->usmpl);
+        if ( !rtok->usmpl ) rtok->usmpl = (uint8_t*) malloc(tok->nsamples);
+        memcpy(rtok->usmpl, tok->usmpl, tok->nsamples);
+
+        if ( istack+1==nstack && tok->nval1==4 )
+        {
+            // only one tag, expecting four values: fisher(FORMAT/DP4)
+            for (i=0; i<rtok->nsamples; i++)
+            {
+                if ( !rtok->usmpl[i] ) continue;
+                double *n11 = tok->values + tok->nval1*i;
+                double *n12 = tok->values + tok->nval1*i+1;
+                double *n21 = tok->values + tok->nval1*i+2;
+                double *n22 = tok->values + tok->nval1*i+3;
+                if ( !n11 || !n12 || !n21 || !n22
+                        || bcf_double_is_missing_or_vector_end(n11[0])
+                        || bcf_double_is_missing_or_vector_end(n12[0])
+                        || bcf_double_is_missing_or_vector_end(n21[0])
+                        || bcf_double_is_missing_or_vector_end(n22[0]) ) bcf_double_set_missing(rtok->values[i]);
+                else
+                {
+                    double left,right,two;
+                    kt_fisher_exact(n11[0],n12[0],n21[0],n22[0], &left, &right, &two);
+                    rtok->values[i] = two;
+                }
+            }
+        }
+        else if ( istack+2==nstack && tok->vl_len==BCF_VL_R && tok2->vl_len==BCF_VL_R && tok->nuidxs+tok2->nuidxs==4 )
+        {
+            // two Number=R tags with explicit indices, e.g. fisher(FORMAT/ADF[:0,1],FORMAT/ADR[:0,1])
+            for (i=0; i<rtok->nsamples; i++)
+            {
+                if ( !rtok->usmpl[i] ) continue;
+                double *n11 = tok->values + tok->nval1*i;
+                double *n12 = tok->values + tok->nval1*i+1;
+                double *n21 = tok2->values + tok2->nval1*i;
+                double *n22 = tok2->values + tok2->nval1*i+1;
+                if ( !n11 || !n12 || !n21 || !n22
+                        || bcf_double_is_missing_or_vector_end(n11[0])
+                        || bcf_double_is_missing_or_vector_end(n12[0])
+                        || bcf_double_is_missing_or_vector_end(n21[0])
+                        || bcf_double_is_missing_or_vector_end(n22[0]) ) bcf_double_set_missing(rtok->values[i]);
+                else
+                {
+                    double left,right,two;
+                    kt_fisher_exact(n11[0],n12[0],n21[0],n22[0], &left, &right, &two);
+                    rtok->values[i] = two;
+                }
+            }
+        }
+        else if ( istack+2==nstack && tok->vl_len==BCF_VL_R && tok2->vl_len==BCF_VL_R )
+        {
+            // two Number=R tags, fisher(FORMAT/ADF,FORMAT/ADR), take thae ALT allele index from GT
+            int ngt = bcf_get_genotypes(flt->hdr, line, &flt->tmpi, &flt->mtmpi);
+            int max_ploidy = ngt/line->n_sample;
+            if ( ngt <= 0 || max_ploidy < 2 ) // GT not present or not diploid, cannot set
+            {
+                for (i=0; i<rtok->nsamples; i++)
+                    if ( rtok->usmpl[i] ) bcf_double_set_missing(rtok->values[i]);
+                return rtok->nargs;
+            }
+            for (i=0; i<rtok->nsamples; i++)
+            {
+                if ( !rtok->usmpl[i] ) continue;
+                int32_t *ptr = flt->tmpi + i*max_ploidy;
+                if ( bcf_gt_is_missing(ptr[0]) || bcf_gt_is_missing(ptr[1]) || ptr[1]==bcf_int32_vector_end )
+                {
+                    bcf_double_set_missing(rtok->values[i]);
+                    continue;
+                }
+                int idx1 = bcf_gt_allele(ptr[0]);
+                int idx2 = bcf_gt_allele(ptr[1]);
+                if ( idx1>=line->n_allele ) error("Incorrect allele index at %s:%"PRId64", sample %s\n", bcf_seqname(flt->hdr,line),(int64_t) line->pos+1,flt->hdr->samples[i]);
+                if ( idx2>=line->n_allele ) error("Incorrect allele index at %s:%"PRId64", sample %s\n", bcf_seqname(flt->hdr,line),(int64_t) line->pos+1,flt->hdr->samples[i]);
+                double *vals  = tok->values + tok->nval1*i;
+                double *vals2 = tok2->values + tok2->nval1*i;
+                double *n11 = &vals[idx1];
+                double *n12 = &vals[idx2];
+                double *n21 = &vals2[idx1];
+                double *n22 = &vals2[idx2];
+                if ( !n11 || !n12 || !n21 || !n22
+                        || bcf_double_is_missing_or_vector_end(n11[0])
+                        || bcf_double_is_missing_or_vector_end(n12[0])
+                        || bcf_double_is_missing_or_vector_end(n21[0])
+                        || bcf_double_is_missing_or_vector_end(n22[0]) )
+                {
+                    bcf_double_set_missing(rtok->values[i]);
+                    continue;
+                }
+                double left,right,two;
+                kt_fisher_exact(n11[0],n12[0],n21[0],n22[0], &left, &right, &two);
+                rtok->values[i] = two;
+            }
+        }
+    }
+    return rtok->nargs;
+}
 static int func_binom(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
 {
     int i, istack = nstack - rtok->nargs;
@@ -2181,7 +2322,6 @@ static int func_phred(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
     rtok->nsamples = tok->nsamples;
     rtok->nval1 = tok->nval1;
     memcpy(rtok->pass_samples, tok->pass_samples, rtok->nsamples*sizeof(*rtok->pass_samples));
-    assert(tok->usmpl);
     if ( !rtok->usmpl )
     {
         rtok->usmpl = (uint8_t*) malloc(tok->nsamples*sizeof(*rtok->usmpl));
@@ -2618,9 +2758,11 @@ static int _regex_vector_strings(regex_t *regex, char *str, size_t len, int logi
         char *mid = str;
         while ( mid < end && *mid && *mid!=',' ) mid++;
         int miss = mid - str == 1 && str[0]=='.' ? 1 : 0;
-        if ( miss && missing_logic[miss] ) return 1;
+        int match = ( miss && missing_logic[miss] ) ? 1 : 0;
+        if ( logic==TOK_NLIKE ) match = match ? 0 : 1;
+        if ( match ) return 1;
         char tmp = *mid; *mid = 0;
-        int match = regexec(regex, str, 0,NULL,0) ? 0 : 1;
+        match = regexec(regex, str, 0,NULL,0) ? 0 : 1;
         *mid = tmp;
         if ( logic==TOK_NLIKE ) match = match ? 0 : 1;
         if ( match ) return 1;
@@ -2707,6 +2849,7 @@ static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok)
         {
             token_t *tok = atok->regex ? btok : atok;
             rtok->pass_site = _regex_vector_strings(regex, tok->str_value.s, tok->str_value.l, logic, missing_logic);
+    fprintf(stderr,"pass=%d [%s]\n",rtok->pass_site,tok->str_value.s);
         }
         return;
     }
@@ -2955,6 +3098,7 @@ static int max_ac_an_unpack(bcf_hdr_t *hdr)
 }
 static int filters_init1_ext(filter_t *filter, char *str, int len, token_t *tok)
 {
+    tok->vl_len   = BCF_VL_FIXED;
     tok->hl_type  = -1;
     tok->ht_type  = -1;
     tok->tok_type  = TOK_VAL;
@@ -2971,6 +3115,7 @@ static int filters_init1_ext(filter_t *filter, char *str, int len, token_t *tok)
 }
 static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
 {
+    tok->vl_len   = BCF_VL_FIXED;
     tok->ht_type  = -1;
     tok->hl_type  = -1;
     tok->tok_type  = TOK_VAL;
@@ -3168,6 +3313,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
     }
 
     tok->hl_type = is_fmt ? BCF_HL_FMT : BCF_HL_INFO;
+    if ( tok->hdr_id >= 0 ) tok->vl_len = bcf_hdr_id2length(filter->hdr,tok->hl_type,tok->hdr_id);
     if ( is_fmt ) filter->max_unpack |= BCF_UN_FMT;
     if ( tok->hdr_id>=0 )
     {
@@ -3502,6 +3648,49 @@ static void determine_ext_types(filter_t *filter, int ntok, token_t *tok)
     }
 }
 
+// Same as hts_readlist but recognizes brackets, () and [], and does not split by comma inside
+// Possible todo: the escaping is simplistic, does not check the syntax, so "([)]" is not distinguishable from "([])"
+char **parse_tag_list(const char *string, int *_n)
+{
+    *_n = 0;
+    unsigned int m = 0, n = 0;
+    char **s = 0, **s_new;
+    const char *q = string, *p = string;
+    int escape_bracket = 0;
+    while ( 1 )
+    {
+        if ((*p == ',' && !escape_bracket) || *p == 0)
+        {
+            if (hts_resize(char*, n + 1, &m, &s, 0) < 0)
+                goto err;
+            s[n] = (char*)calloc(p - q + 1, 1);
+            if (!s[n])
+                goto err;
+            strncpy(s[n++], q, p - q);
+            q = p + 1;
+        }
+        if ( !*p ) break;
+        if ( *p=='[' || *p=='(' ) escape_bracket++;
+        if ( (*p==']' || *p==')') && escape_bracket ) escape_bracket--;
+        p++;
+    }
+
+    // Try to shrink s to the minimum size needed
+    s_new = (char**)realloc(s, n * sizeof(char*));
+    if (!s_new)
+        goto err;
+
+    s = s_new;
+    assert(n < INT_MAX); // hts_resize() should ensure this
+    *_n = n;
+    return s;
+
+err:
+    for (m = 0; m < n; m++)
+        free(s[m]);
+    free(s);
+    return NULL;
+}
 
 // Parse filter expression and convert to reverse polish notation. Dijkstra's shunting-yard algorithm
 static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error)
@@ -3573,7 +3762,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
             }
             else if ( ret == -TOK_FUNC )
             {
-                // this is different from TOK_PERLSUB,TOK_BINOM in that the expression inside the
+                // this is different from TOK_PERLSUB,TOK_BINOM,TOK_FISHER in that the expression inside the
                 // brackets gets evaluated as normal expression
                 nops++;
                 hts_expand0(token_t, nops, mops, ops);
@@ -3597,7 +3786,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
                 else error("The function \"%s\" is not supported\n", tmp-len);
                 continue;
             }
-            else if ( ret < 0 )     // variable number of arguments: TOK_PERLSUB,TOK_BINOM
+            else if ( ret < 0 )     // variable number of arguments: TOK_PERLSUB,TOK_BINOM,TOK_FISHER
             {
                 ret = -ret;
 
@@ -3609,7 +3798,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
                 if ( ret == TOK_PERLSUB )
                 {
                     while ( *beg && ((isalnum(*beg) && !ispunct(*beg)) || *beg=='_') ) beg++;
-                    if ( *beg!='(' ) error("Could not parse the expression: %s\n", str);
+                    if ( *beg!='(' ) error("[%s:%d] Could not parse the expression: %s\n", __FILE__,__LINE__,str);
 
                     // the subroutine name
                     kputc('"', &rmme);
@@ -3622,12 +3811,12 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
                 }
                 char *end = beg;
                 while ( *end && *end!=')' ) end++;
-                if ( !*end ) error("Could not parse the expression: %s\n", str);
+                if ( !*end ) error("[%s:%d] Could not parse the expression: %s\n", __FILE__,__LINE__,str);
 
                 // subroutine arguments
                 rmme.l = 0;
                 kputsn(beg+1, end-beg-1, &rmme);
-                char **rmme_list = hts_readlist(rmme.s, 0, &margs);
+                char **rmme_list = parse_tag_list(rmme.s, &margs);
                 for (i=0; i<margs; i++)
                 {
                     nargs++;
@@ -3693,6 +3882,12 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
         nops--;
     }
 
+    if ( !nout )
+    {
+        if ( filter->exit_on_error )
+            error("[%s:%d %s] Error: could not parse the expression \"%s\"\n", __FILE__,__LINE__,__FUNCTION__,filter->str);
+        filter->status |= FILTER_ERR_OTHER;
+    }
     if ( filter->status != FILTER_OK )
     {
         if ( mops ) free(ops);
@@ -3745,6 +3940,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
                     if ( type==BCF_HT_INT ) set_missing = 1;
                     else if ( type==BCF_HT_REAL ) set_missing = 1;
                 }
+                else if ( !out[k].tag ) error("Error: could not parse the expression\n"); // e.g. =~
                 else if ( !strcmp("QUAL",out[k].tag) ) set_missing = 1;
                 if ( set_missing ) { out[j].is_str = 0; out[j].is_missing = 1; bcf_double_set_missing(out[j].values[0]); }
             }
@@ -3890,6 +4086,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
         else if ( out[i].tok_type==TOK_LEN ) { out[i].func = func_strlen; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_PHRED ) { out[i].func = func_phred; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_BINOM ) { out[i].func = func_binom; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_FISHER ) { out[i].func = func_fisher; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_PERLSUB ) { out[i].func = perl_exec; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_sMAX ) { out[i].func = func_smpl_max; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_sMIN ) { out[i].func = func_smpl_min; out[i].tok_type = TOK_FUNC; }

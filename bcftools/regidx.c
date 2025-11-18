@@ -1,5 +1,5 @@
-/* 
-    Copyright (C) 2014-2018 Genome Research Ltd.
+/*
+    Copyright (C) 2014-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -9,10 +9,10 @@
     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
     copies of the Software, and to permit persons to whom the Software is
     furnished to do so, subject to the following conditions:
-    
+
     The above copyright notice and this permission notice shall be included in
     all copies or substantial portions of the Software.
-    
+
     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -65,12 +65,13 @@ struct _reglist_t
     void *dat;              // payload data
     char *seq;              // sequence name
     int unsorted;
-
+    int merged;
 };
 
 // Container of all sequences
 struct _regidx_t
 {
+    int merge_overlaps;
     int nseq, mseq;         // n:used, m:alloced
     reglist_t *seq;         // regions for each sequence
     void *seq2regs;         // hash for fast lookup from chr name to regions
@@ -147,6 +148,11 @@ inline int regidx_push(regidx_t *idx, char *chr_beg, char *chr_end, uint32_t beg
     if ( beg > MAX_COOR_0 ) beg = MAX_COOR_0;
     if ( end > MAX_COOR_0 ) end = MAX_COOR_0;
 
+    if ( beg > end )
+    {
+        uint32_t tmp = beg; beg = end; end = tmp;
+    }
+
     int rid;
     idx->str.l = 0;
     kputsn(chr_beg, chr_end-chr_beg+1, &idx->str);
@@ -218,6 +224,24 @@ regidx_t *regidx_init_string(const char *str, regidx_parse_f parser, regidx_free
     return idx;
 }
 
+int regidx_set(regidx_t *idx, regidx_opt_t key, ...)
+{
+    va_list args;
+    switch (key)
+    {
+        case merge_overlaps:
+            va_start(args, key);
+            idx->merge_overlaps = va_arg(args,int);
+            va_end(args);
+            return 0;
+        default:
+            hts_log_error("Todo: regidx_set key=%d",(int)key);
+            return -1;
+            break;
+    }
+    return 0;
+}
+
 regidx_t *regidx_init(const char *fname, regidx_parse_f parser, regidx_free_f free_f, size_t payload_size, void *usr_dat)
 {
     if ( !parser )
@@ -250,7 +274,7 @@ regidx_t *regidx_init(const char *fname, regidx_parse_f parser, regidx_free_f fr
     if ( payload_size ) idx->payload = malloc(payload_size);
 
     if ( !fname ) return idx;
-    
+
     kstring_t str = {0,0,0};
 
     htsFile *fp = hts_open(fname,"r");
@@ -299,53 +323,72 @@ void regidx_destroy(regidx_t *idx)
     free(idx);
 }
 
+static void reglist_sort_(regidx_t *regidx, reglist_t *list)
+{
+    if ( !list->unsorted ) return;
+
+    if ( !regidx->payload_size )
+        qsort(list->reg,list->nreg,sizeof(reg_t),cmp_reg_ptrs);
+    else
+    {
+        int i;
+        reg_t **ptr = (reg_t**) malloc(sizeof(reg_t*)*list->nreg);
+        for (i=0; i<list->nreg; i++) ptr[i] = list->reg + i;
+        qsort(ptr,list->nreg,sizeof(*ptr),cmp_reg_ptrs2);
+
+        void *tmp_dat = malloc(regidx->payload_size*list->nreg);
+        for (i=0; i<list->nreg; i++)
+        {
+            size_t iori = ptr[i] - list->reg;
+            memcpy((char *)tmp_dat+i*regidx->payload_size,
+                    (char *)list->dat+iori*regidx->payload_size,
+                    regidx->payload_size);
+        }
+        free(list->dat);
+        list->dat = tmp_dat;
+
+        reg_t *tmp_reg = (reg_t*) malloc(sizeof(reg_t)*list->nreg);
+        for (i=0; i<list->nreg; i++)
+        {
+            size_t iori = ptr[i] - list->reg;
+            tmp_reg[i] = list->reg[iori];
+        }
+        free(ptr);
+        free(list->reg);
+        list->reg  = tmp_reg;
+        list->mreg = list->nreg;
+    }
+    list->unsorted = 0;
+}
+static void reglist_merge_(regidx_t *regidx, reglist_t *list)
+{
+    if ( list->merged ) return;
+    int j;
+    for (j=1; j<list->nreg; j++)
+    {
+        if ( list->reg[j-1].end < list->reg[j].beg ) continue;
+        if ( list->reg[j-1].end < list->reg[j].end ) list->reg[j-1].end = list->reg[j].end;
+        if ( j+1 < list->nreg ) memmove(&list->reg[j],&list->reg[j+1],(list->nreg-j-1)*sizeof(*list->reg));
+        j--;
+        list->nreg--;
+    }
+    list->merged = 1;
+}
+
 int _reglist_build_index(regidx_t *regidx, reglist_t *list)
 {
-    int i;
-    if ( list->unsorted )
-    {
-        if ( !regidx->payload_size )
-            qsort(list->reg,list->nreg,sizeof(reg_t),cmp_reg_ptrs);
-        else
-        {
-            reg_t **ptr = (reg_t**) malloc(sizeof(reg_t*)*list->nreg);
-            for (i=0; i<list->nreg; i++) ptr[i] = list->reg + i;
-            qsort(ptr,list->nreg,sizeof(*ptr),cmp_reg_ptrs2);
-
-            void *tmp_dat = malloc(regidx->payload_size*list->nreg);
-            for (i=0; i<list->nreg; i++)
-            {
-                size_t iori = ptr[i] - list->reg;
-                memcpy((char *)tmp_dat+i*regidx->payload_size,
-                       (char *)list->dat+iori*regidx->payload_size,
-                       regidx->payload_size);
-            }
-            free(list->dat);
-            list->dat = tmp_dat;
-
-            reg_t *tmp_reg = (reg_t*) malloc(sizeof(reg_t)*list->nreg);
-            for (i=0; i<list->nreg; i++)
-            {
-                size_t iori = ptr[i] - list->reg;
-                tmp_reg[i] = list->reg[iori];
-            }
-            free(ptr);
-            free(list->reg);
-            list->reg  = tmp_reg;
-            list->mreg = list->nreg;
-        }
-        list->unsorted = 0;
-    }
+    reglist_sort_(regidx,list);
+    if ( regidx->merge_overlaps ) reglist_merge_(regidx,list);
 
     list->nidx = 0;
-    int j,k, midx = 0;
+    int j, k, midx = 0;
     for (j=0; j<list->nreg; j++)
     {
         int ibeg = iBIN(list->reg[j].beg);
         int iend = iBIN(list->reg[j].end);
         if ( midx <= iend )
         {
-            int old_midx = midx; 
+            int old_midx = midx;
             midx = iend + 1;
             kroundup32(midx);
             list->idx = (uint32_t*) realloc(list->idx, midx*sizeof(uint32_t));
@@ -436,7 +479,7 @@ int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, uint32_t 
     while ( *ss && isspace(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
     if ( *ss=='#' ) return -1;  // skip comments
-    
+
     char *se = ss;
     while ( *se && !isspace(*se) ) se++;
 
@@ -458,7 +501,7 @@ int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, uint32_t 
     ss = se+1;
     *end = strtod(ss, &se) - 1;
     if ( ss==se ) { fprintf(stderr,"Could not parse bed line: %s\n", line); return -2; }
-    
+
     return 0;
 }
 
@@ -468,7 +511,7 @@ int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, uint32_t 
     while ( *ss && isspace(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
     if ( *ss=='#' ) return -1;  // skip comments
-    
+
     char *se = ss;
     while ( *se && !isspace(*se) ) se++;
 
@@ -515,7 +558,7 @@ int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, uint32_t 
     while ( *ss && isspace(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
     if ( *ss=='#' ) return -1;  // skip comments
-    
+
     char *se = ss;
     while ( *se && *se!=':' ) se++;
 
@@ -625,6 +668,12 @@ int regitr_loop(regitr_t *regitr)
         if ( iseq >= regidx->nseq ) return 0; // no more sequences, done
         itr->ireg = 0;
         itr->list = &regidx->seq[iseq];
+    }
+
+    if ( regidx->merge_overlaps )
+    {
+        reglist_sort_(regidx,itr->list);
+        reglist_merge_(regidx,itr->list);
     }
 
     regitr->seq = itr->list->seq;

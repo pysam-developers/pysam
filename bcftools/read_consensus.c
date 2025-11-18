@@ -521,7 +521,7 @@ static int create_haplotype_frequency_spectrum(read_cns_t *rcns)
             }
             else if ( cvar->vtype==ins )
             {
-                int len;
+                int len = 0;
                 ins_freq_t *ifrq = &rcns->ins_freq[cvar->pos - rcns->beg];
                 int iseq = cstate_seek_op_fwd(&cigar, cvar->pos+1, BAM_CINS, &len);
                 if ( iseq==-2 ) break;
@@ -533,7 +533,7 @@ static int create_haplotype_frequency_spectrum(read_cns_t *rcns)
             }
             else if ( cvar->vtype==del )
             {
-                int len;
+                int len = 0;
                 del_freq_t *dfrq = &rcns->del_freq[cvar->pos - rcns->beg];
                 int ret = cstate_seek_op_fwd(&cigar, cvar->pos+1, BAM_CDEL, &len);
                 if ( ret==-2 ) break;
