@@ -28,7 +28,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython mypy pytest setuptools
+        run:  pip install cython mypy pytest setuptools parameterized
 
       - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'
@@ -79,7 +79,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest
+        run:  pip install cython pytest parameterized
 
       - name: Install build prerequisites
         if:   runner.os == 'Linux'
@@ -147,7 +147,7 @@ jobs:
         run:  python setup.py install
 
       - name: Install test prerequisites via Conda
-        run:  conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest
+        run:  conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest parameterized
 
       - name: Run tests
         run:  REF_PATH=':' pytest
