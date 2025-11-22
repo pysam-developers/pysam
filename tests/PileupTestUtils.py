@@ -3,6 +3,7 @@ import subprocess
 import pysam
 
 from TestUtils import force_str
+from pysam.libcalignmentfile import IteratorColumnRecords
 
 
 def build_pileup_with_samtoolsshell(fn):
@@ -40,9 +41,23 @@ def build_depth_with_samtoolspipe(fn):
         return [int(x[3]) for x in data]
 
 
-def build_depth_with_filter_with_pysam(*args, **kwargs):
+def build_depth_with_filter_with_pysam(*args, from_file: bool = True, **kwargs):
     with pysam.AlignmentFile(*args, **kwargs) as inf:
-        return [x.get_num_aligned() for x in inf.pileup(stepper="samtools")]
+        if from_file:
+            return [x.get_num_aligned() for x in inf.pileup(stepper="samtools")]
+        else:
+            # Mimic the default values of:
+            # 1. --excl-flags "UNMAP,SECONDARY,QCFAIL,DUP"
+            # 2. does not count orphans
+            # Note: Manual filtering before IteratorColumnRecords may produce slightly
+            # different results than samtools mpileup due to differences in when/how
+            # filtering and BAQ/overlap handling are applied. See IteratorColumnRecords
+            # documentation for details.
+            records_iter = (
+                rec for rec in inf
+                if rec.is_mapped and not rec.is_secondary and not rec.is_qcfail and not rec.is_duplicate and (not rec.is_paired or rec.is_proper_pair)
+            )
+            return [x.get_num_aligned() for x in IteratorColumnRecords(records_iter)]
 
 
 def build_depth_with_pysam(*args, **kwargs):
