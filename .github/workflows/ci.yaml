@@ -24,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install Cython mypy pytest setuptools
+        run:  pip install Cython mypy pytest setuptools parameterized
 
       - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'
@@ -113,6 +113,9 @@ jobs:
       - name: Install prerequisites
         run:  sudo devtools/install-prerequisites.sh $PWD/devtools/emulate-tools.py /usr/local/bin
 
+      - name: Install prerequisite Python libraries
+        run:  $python -m pip install parameterized
+
       - name: Build (directly from checkout)
         run:  $python setup.py build
 
@@ -139,7 +142,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install Cython mypy pytest setuptools
+        run:  pip install Cython mypy pytest setuptools parameterized
 
       - name: Install build prerequisites
         if:   runner.os == 'Linux'
@@ -209,7 +212,7 @@ jobs:
         run:  python setup.py install
 
       - name: Install test prerequisites via Conda
-        run:  conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest
+        run:  conda install "samtools>=1.11" "bcftools>=1.11" "htslib>=1.11" pytest parameterized
 
       - name: Run tests
         run:  pytest

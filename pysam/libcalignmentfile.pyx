@@ -29,6 +29,7 @@
 # class IteratorColumnRegion
 # class IteratorColumnAll
 # class IteratorColumnAllRefs
+# class IteratorColumnRecords
 #
 ########################################################
 #
@@ -57,6 +58,8 @@
 ########################################################
 import os
 import collections
+from typing import Iterable, Optional
+
 try:
     from collections.abc import Sequence, Mapping  # noqa
 except ImportError:
@@ -74,7 +77,7 @@ from pysam.libcutils cimport force_bytes, force_str, charptr_to_str
 from pysam.libcutils cimport OSError_from_errno, encode_filename, from_string_and_size
 from pysam.libcalignedsegment cimport makeAlignedSegment, makePileupColumn
 from pysam.libchtslib cimport HTSFile, hisremote, sam_index_load2, sam_index_load3, \
-                              HTS_IDX_SAVE_REMOTE, HTS_IDX_SILENT_FAIL
+                              HTS_IDX_SAVE_REMOTE, HTS_IDX_SILENT_FAIL, hts_pos_t
 
 from io import StringIO
 
@@ -86,6 +89,7 @@ __all__ = [
     "AlignmentHeader",
     "IteratorRow",
     "IteratorColumn",
+    "IteratorColumnRecords",
     "IndexedReads"]
 
 IndexStats = collections.namedtuple("IndexStats",
@@ -2782,6 +2786,168 @@ cdef class IteratorColumnAll(IteratorColumn):
                                 self.min_base_quality,
                                 self.iterdata.seq,
                                 self.samfile.header)
+
+
+cdef class IteratorColumnRecords:
+    '''Iterator over columns when given a collection of :class:`~pysam.AlignedSegment`s.
+
+       For reasons of efficiency, the iterator requires the given
+       :class:`~pysam.AlignedSegment`s to be in coordinate sorted order.
+       For implementation simplicity, all the records will be consumed
+       from the given iterator.
+
+       For example:
+
+          f = AlignmentFile("file.bam", "rb")
+          result = list(IteratorColumnRecords([rec for rec in f]))
+
+       Here, ``result`` will be a list of ``n`` lists of objects of type
+       :class:`~pysam.PileupRead`.
+
+       If the iterator is associated with a :class:`~pysam.Fastafile`
+       using the :meth:`add_reference` method, then the iterator will
+       export the current sequence via the methods :meth:`get_sequence`
+       and :meth:`seq_len`.
+
+       Accepts the keyword arguments ``fastafile`` (a :class:`~pysam.FastaFile`,
+       equivalent to calling :meth:`add_reference`) and ``min_base_quality``
+       (default 13); see :class:`~AlignmentFile.pileup` for the meaning of
+       the latter. Any other keyword argument raises ``TypeError``. Unlike
+       :class:`~AlignmentFile.pileup`, ``max_depth`` and ``ignore_overlaps``
+       are not supported: htslib only enforces both on records added as it
+       consumes them, but this iterator pushes all of its records up front
+       in one batch, before any are inspected.
+
+       .. note::
+
+          This iterator uses a push-based approach, adding records via
+          ``bam_plp_push()``. This differs from :meth:`AlignmentFile.pileup`,
+          which pulls records through htslib's callback-based filtering
+          pipeline. If you filter records yourself before passing them to
+          this iterator (by flag, mapping quality, etc.), the resulting
+          pileup may differ slightly from equivalent ``samtools mpileup``
+          output even with identical filtering criteria, because the
+          standard pileup pipeline also applies BAQ computation, mapping
+          quality adjustment, overlap handling, and filters at different
+          points during iteration. For exact ``samtools mpileup``
+          compatibility, use :meth:`AlignmentFile.pileup` with
+          ``stepper="samtools"`` instead of manually filtering and using
+          this iterator.
+
+          This iterator is best suited for building pileups from records
+          already in memory, applying custom filtering not available in
+          the standard pileup, or combining records from multiple sources.
+
+       '''
+
+    def __cinit__(self, recs: Iterable[AlignedSegment], **kwargs):
+        unsupported = set(kwargs) - {"fastafile", "min_base_quality"}
+        if unsupported:
+            raise TypeError(
+                "IteratorColumnRecords() got unexpected keyword argument(s): {}".format(
+                    ", ".join(sorted(unsupported))))
+        cdef FastaFile fastafile = kwargs.get("fastafile", None)
+        if fastafile is None:
+            self.fastafile = NULL
+        else:
+            self.fastafile = fastafile.fastafile
+        self.min_base_quality = kwargs.get("min_base_quality", 13)
+        self.seq_tid = -1
+        self.plp_iter = <bam_plp_t>bam_plp_init(NULL, NULL)
+        if self.plp_iter == NULL:
+            raise MemoryError("could not allocate pileup iterator")
+        rec: AlignedSegment
+        self.header: Optional[AlignmentHeader] = None
+        for rec in recs:
+            if self.header is None:
+                self.header = rec.header
+            if bam_plp_push(self.plp_iter, rec._delegate) != 0:
+                raise ValueError("could not add record to the iterator: {}".format(str(rec)))
+        # Signal end of input
+        if bam_plp_push(self.plp_iter, NULL) != 0:
+            raise ValueError("could not finalize the iterator")
+
+    def __dealloc__(self):
+        if self.plp_iter != <bam_plp_t>NULL:
+            bam_plp_destroy(self.plp_iter)
+            self.plp_iter = <bam_plp_t>NULL
+        if self.seq != NULL:
+            free(self.seq)
+            self.seq = NULL
+
+    def __iter__(self):
+        return self
+
+    cdef int cnext(self):
+        '''perform next iteration.
+        '''
+        self.plp = <bam_pileup1_t*>bam_plp64_next(self.plp_iter,
+                                                  &self.tid,
+                                                  &self.pos,
+                                                  &self.n_plp)
+        if self.plp == NULL:
+            return 0
+        else:
+            return 1
+
+    def __next__(self):
+        cdef int n
+        cdef int tid
+        n = self.cnext()
+        if n == 0:
+            raise StopIteration
+
+        # reload sequence
+        if self.fastafile != NULL and self.seq_tid != self.tid:
+            if self.seq != NULL:
+                free(self.seq)
+                self.seq = NULL
+            self.seq_tid = self.tid
+            tid = self.tid
+            assert self.header is not None
+            with nogil:
+                self.seq = faidx_fetch_seq64(
+                    self.fastafile,
+                    self.header.ptr.target_name[tid],
+                    0, MAX_POS,
+                    &self._seq_len)
+
+            if self.seq == NULL:
+                raise ValueError(
+                    "reference sequence for '{}' (tid={}) not found".format(
+                        self.header.target_name[self.tid], self.tid))
+
+        return makePileupColumn(&self.plp,
+                                self.tid,
+                                self.pos,
+                                self.n_plp,
+                                self.min_base_quality,
+                                self.seq,
+                                self.header)
+
+    cdef char * get_sequence(self):
+        '''return current reference sequence underlying the iterator.
+        '''
+        return self.seq
+
+    property seq_len:
+        '''current sequence length.'''
+        def __get__(self):
+            return self._seq_len
+
+    def add_reference(self, FastaFile fastafile):
+        '''add reference sequences in `fastafile` to iterator.'''
+        self.fastafile = fastafile.fastafile
+        if self.seq != NULL:
+            free(self.seq)
+            self.seq = NULL
+        self._seq_len = 0
+        self.seq_tid = -1
+
+    def has_reference(self):
+        '''
+        return true if iterator is associated with a reference'''
+        return self.fastafile != NULL
 
 
 cdef class SNPCall:
