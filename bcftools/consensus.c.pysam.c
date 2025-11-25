@@ -2,7 +2,7 @@
 
 /* The MIT License
 
-   Copyright (c) 2014-2024 Genome Research Ltd.
+   Copyright (c) 2014-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -230,7 +230,17 @@ static void init_data(args_t *args)
     if ( !bcf_sr_add_reader(args->files,args->fname) ) error("Failed to read from %s: %s\n", !strcmp("-",args->fname)?"standard input":args->fname, bcf_sr_strerror(args->files->errnum));
     args->hdr = args->files->readers[0].header;
     args->isample = -1;
-    if ( !args->sample )
+    if ( args->sample_fname )
+    {
+        args->smpl = smpl_ilist_init(args->hdr,args->sample_fname,1,SMPL_NONE|SMPL_VERBOSE);
+        if ( args->smpl && !args->smpl->n ) error("No matching sample found\n");
+    }
+    else if ( args->sample && strcmp("-",args->sample) )
+    {
+        args->smpl = smpl_ilist_init(args->hdr,args->sample,0,SMPL_NONE|SMPL_VERBOSE);
+        if ( args->smpl && !args->smpl->n ) error("No matching sample found\n");
+    }
+    else if ( !args->sample )
     {
         args->smpl = smpl_ilist_init(args->hdr,NULL,0,SMPL_NONE|SMPL_VERBOSE);
         if ( !args->smpl->n )
@@ -238,16 +248,6 @@ static void init_data(args_t *args)
             smpl_ilist_destroy(args->smpl);
             args->smpl = NULL;
         }
-    }
-    else if ( args->sample && strcmp("-",args->sample) )
-    {
-        args->smpl = smpl_ilist_init(args->hdr,args->sample,0,SMPL_NONE|SMPL_VERBOSE);
-        if ( args->smpl && !args->smpl->n ) error("No matching sample found\n");
-    }
-    else if ( args->sample_fname )
-    {
-        args->smpl = smpl_ilist_init(args->hdr,args->sample_fname,1,SMPL_NONE|SMPL_VERBOSE);
-        if ( args->smpl && !args->smpl->n ) error("No matching sample found\n");
     }
     if ( args->smpl )
     {
@@ -770,12 +770,26 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     }
     if ( ialt==-1 )
     {
-        char alleles[4];
-        alleles[0] = rec->d.allele[0][0];
-        alleles[1] = ',';
-        alleles[2] = args->missing_allele;
-        alleles[3] = 0;
-        bcf_update_alleles_str(args->hdr, rec, alleles);
+        // missing allele, it can be a single position or an entire gvcf block
+        if ( rec->rlen>1 && bcf_has_variant_types(rec,VCF_REF,bcf_match_exact)>0 )
+        {
+            kstring_t str = {0,0,0};
+            int idx = rec->pos - args->fa_ori_pos + args->fa_mod_off;   // position of the variant within the modified fasta sequence
+            kputsn(args->fa_buf.s+idx,rec->rlen, &str);
+            kputc(',', &str);
+            for (i=0; i<rec->rlen; i++) kputc(args->missing_allele, &str);
+            bcf_update_alleles_str(args->hdr, rec, str.s);
+            free(str.s);
+        }
+        else
+        {
+            char alleles[4];
+            alleles[0] = rec->d.allele[0][0];
+            alleles[1] = ',';
+            alleles[2] = args->missing_allele;
+            alleles[3] = 0;
+            bcf_update_alleles_str(args->hdr, rec, alleles);
+        }
         ialt = 1;
     }
 
@@ -1205,6 +1219,7 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "        --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(bcftools_stderr, "    -s, --samples LIST             Comma-separated list of samples to include, \"-\" to ignore samples and use REF,ALT\n");
     fprintf(bcftools_stderr, "    -S, --samples-file FILE        File of samples to include\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT            Verbosity level\n");
     fprintf(bcftools_stderr, "Examples:\n");
     fprintf(bcftools_stderr, "   # Get the consensus for one region. The fasta header lines are then expected\n");
     fprintf(bcftools_stderr, "   # in the form \">chr:from-to\".\n");
@@ -1242,13 +1257,17 @@ int main_consensus(int argc, char *argv[])
         {"chain",1,0,'c'},
         {"prefix",required_argument,0,'p'},
         {"regions-overlap",required_argument,0,5},
+        {"verbosity",required_argument,NULL,'v'},
         {0,0,0,0}
     };
     int c;
-    while ((c = getopt_long(argc, argv, "h?s:S:1Ii:e:H:f:o:m:c:M:p:a:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h?s:S:1Ii:e:H:f:o:m:c:M:p:a:v:",loptions,NULL)) >= 0)
     {
         switch (c)
         {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case  1 : args->mark_del = optarg[0]; break;
             case  2 :
                 if ( !strcasecmp(optarg,"uc") ) args->mark_ins = TO_UPPER;

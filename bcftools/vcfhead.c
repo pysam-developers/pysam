@@ -1,7 +1,7 @@
 /*  vcfhead.c -- view VCF/BCF file headers.
 
     Copyright (C) 2021 University of Glasgow.
-    Copyright (C) 2023 Genome Research Ltd.
+    Copyright (C) 2023-2025 Genome Research Ltd.
 
     Author: John Marshall <jmarshall@hey.com>
 
@@ -42,15 +42,17 @@ int main_vcfhead(int argc, char *argv[])
 "Usage: bcftools head [OPTION]... [FILE]\n"
 "\n"
 "Options:\n"
-"  -h, --headers INT    Display INT header lines [all]\n"
-"  -n, --records INT    Display INT variant record lines [none]\n"
-"  -s, --samples INT    Display INT records starting with the #CHROM header line [none]\n"
+"  -h, --headers INT      Display INT header lines [all]\n"
+"  -n, --records INT      Display INT variant record lines [none]\n"
+"  -s, --samples INT      Display INT records starting with the #CHROM header line [none]\n"
+"  -v, --verbosity INT    Verbosity level\n"
 "\n";
 
     static const struct option loptions[] = {
         { "headers", required_argument, NULL, 'h' },
         { "records", required_argument, NULL, 'n' },
         { "samples", required_argument, NULL, 's' },
+        { "verbosity", required_argument, NULL, 'v' },
         { NULL, 0, NULL, 0 }
     };
 
@@ -60,8 +62,11 @@ int main_vcfhead(int argc, char *argv[])
     uint64_t nrecords = 0;
 
     int c, nargs;
-    while ((c = getopt_long(argc, argv, "h:n:s:", loptions, NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "h:n:s:v:", loptions, NULL)) >= 0)
         switch (c) {
+        case 'v':
+            if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+            break;
         case 'h': all_headers = 0; nheaders = strtoull(optarg, NULL, 0); break;
         case 'n': nrecords = strtoull(optarg, NULL, 0); break;
         case 's': nrecords = strtoull(optarg, NULL, 0); samples = 1; break;

@@ -32,13 +32,14 @@ EXCLUDE = {
         "vcf-miniview.c",
     ),
     "bcftools": (
+        "mpileup2",
         "test", "plugins", "peakfit.c",
         "peakfit.h",
         "polysomy.c"),
     "htslib": (
         'annot-tsv.c', 'bgzip.c', 'htsfile.c', 'tabix.c',
         'hts_probe_cc.sh',
-        "samples", "test", "tests"),
+        "ref_cache", "samples", "test", "tests"),
 }
 
 

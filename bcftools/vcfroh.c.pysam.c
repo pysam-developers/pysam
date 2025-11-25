@@ -2,7 +2,7 @@
 
 /*  vcfroh.c -- HMM model for detecting runs of autozygosity.
 
-    Copyright (C) 2013-2022 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1078,40 +1078,48 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "Usage:   bcftools roh [options] <in.vcf.gz>\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "General Options:\n");
-    fprintf(bcftools_stderr, "        --AF-dflt <float>              if AF is not known, use this allele frequency [skip]\n");
-    fprintf(bcftools_stderr, "        --AF-tag <TAG>                 use TAG for allele frequency\n");
-    fprintf(bcftools_stderr, "        --AF-file <file>               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
-    fprintf(bcftools_stderr, "    -b  --buffer-size <int[,int]>      buffer size and the number of overlapping sites, 0 for unlimited [0]\n");
-    fprintf(bcftools_stderr, "                                           If the first number is negative, it is interpreted as the maximum memory to\n");
-    fprintf(bcftools_stderr, "                                           use, in MB. The default overlap is set to roughly 1%% of the buffer size.\n");
-    fprintf(bcftools_stderr, "    -e, --estimate-AF [TAG],<file>     estimate AF from FORMAT/TAG (GT or PL) of all samples (\"-\") or samples listed\n");
-    fprintf(bcftools_stderr, "                                            in <file>. If TAG is not given, the frequency is estimated from GT by default\n");
-    fprintf(bcftools_stderr, "        --exclude <expr>               exclude sites for which the expression is true\n");
-    fprintf(bcftools_stderr, "    -G, --GTs-only <float>             use GTs and ignore PLs, instead using <float> for PL of the two least likely genotypes.\n");
-    fprintf(bcftools_stderr, "                                           Safe value to use is 30 to account for GT errors.\n");
-    fprintf(bcftools_stderr, "        --include <expr>               select sites for which the expression is true\n");
-    fprintf(bcftools_stderr, "    -i, --ignore-homref                skip hom-ref genotypes (0/0)\n");
-    fprintf(bcftools_stderr, "        --include-noalt                include sites with no ALT allele (ignored by default)\n");
-    fprintf(bcftools_stderr, "    -I, --skip-indels                  skip indels as their genotypes are enriched for errors\n");
-    fprintf(bcftools_stderr, "    -m, --genetic-map <file>           genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\"\n");
-    fprintf(bcftools_stderr, "                                           is replaced with chromosome name\n");
-    fprintf(bcftools_stderr, "    -M, --rec-rate <float>             constant recombination rate per bp\n");
-    fprintf(bcftools_stderr, "    -o, --output <file>                write output to a file [standard output]\n");
-    fprintf(bcftools_stderr, "    -O, --output-type [srz]            output s:per-site, r:regions, z:compressed [sr]\n");
-    fprintf(bcftools_stderr, "    -r, --regions <region>             restrict to comma-separated list of regions\n");
-    fprintf(bcftools_stderr, "    -R, --regions-file <file>          restrict to regions listed in a file\n");
-    fprintf(bcftools_stderr, "        --regions-overlap 0|1|2        Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
-    fprintf(bcftools_stderr, "    -s, --samples <list>               list of samples to analyze [all samples]\n");
-    fprintf(bcftools_stderr, "    -S, --samples-file <file>          file of samples to analyze [all samples]\n");
-    fprintf(bcftools_stderr, "    -t, --targets <region>             similar to -r but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "    -T, --targets-file <file>          similar to -R but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "        --targets-overlap 0|1|2        Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
-    fprintf(bcftools_stderr, "        --threads <int>                use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "        --AF-dflt FLOAT              If AF is not known, use this allele frequency [skip]\n");
+    fprintf(bcftools_stderr, "        --AF-tag TAG                 Use TAG for allele frequency\n");
+    fprintf(bcftools_stderr, "        --AF-file FILE               read allele frequencies from file (CHR\\tPOS\\tREF,ALT\\tAF)\n");
+    fprintf(bcftools_stderr, "    -b  --buffer-size INT[,INT]      Buffer size and the number of overlapping sites, 0 for unlimited [0]\n");
+    fprintf(bcftools_stderr, "                                       If the first number is negative, it is interpreted as the maximum memory to\n");
+    fprintf(bcftools_stderr, "                                       use, in MB. The default overlap is set to roughly 1%% of the buffer size.\n");
+    fprintf(bcftools_stderr, "    -e, --estimate-AF [TAG],FILE     Estimate AF from FORMAT/TAG (GT or PL) of all samples (\"-\") or samples listed\n");
+    fprintf(bcftools_stderr, "                                       in FILE. If TAG is not given, the frequency is estimated from GT by default\n");
+    fprintf(bcftools_stderr, "        --exclude EXPR               Exclude sites for which the expression is true\n");
+    fprintf(bcftools_stderr, "    -G, --GTs-only FLOAT             Use GTs and ignore PLs, instead using FLOAT for PL of the two least likely genotypes.\n");
+    fprintf(bcftools_stderr, "                                       Safe value to use is 30 to account for GT errors.\n");
+    fprintf(bcftools_stderr, "        --include EXPR               Select sites for which the expression is true\n");
+    fprintf(bcftools_stderr, "    -i, --ignore-homref              Skip hom-ref genotypes (0/0)\n");
+    fprintf(bcftools_stderr, "        --include-noalt              Include sites with no ALT allele (ignored by default)\n");
+    fprintf(bcftools_stderr, "    -I, --skip-indels                Skip indels as their genotypes are enriched for errors\n");
+    fprintf(bcftools_stderr, "    -m, --genetic-map FILE           Genetic map in IMPUTE2 format, single file or mask, where string \"{CHROM}\"\n");
+    fprintf(bcftools_stderr, "                                       is replaced with chromosome name\n");
+    fprintf(bcftools_stderr, "    -M, --rec-rate FLOAT             Constant recombination rate per bp\n");
+    fprintf(bcftools_stderr, "    -o, --output FILE                Write output to a file [standard output]\n");
+    fprintf(bcftools_stderr, "    -O, --output-type [srz]          Output s:per-site, r:regions, z:compressed [sr]\n");
+    fprintf(bcftools_stderr, "    -r, --regions REGION             Restrict to comma-separated list of regions\n");
+    fprintf(bcftools_stderr, "    -R, --regions-file FILE          Restrict to regions listed in a file\n");
+    fprintf(bcftools_stderr, "        --regions-overlap 0|1|2      include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(bcftools_stderr, "    -s, --samples LIST               List of samples to analyze [all samples]\n");
+    fprintf(bcftools_stderr, "    -S, --samples-file FILE          File of samples to analyze [all samples]\n");
+    fprintf(bcftools_stderr, "    -t, --targets REGION             Similar to -r but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "    -T, --targets-file FILE          Similar to -R but streams rather than index-jumps\n");
+    fprintf(bcftools_stderr, "        --targets-overlap 0|1|2      Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
+    fprintf(bcftools_stderr, "        --threads INT                Use multithreading with <int> worker threads [0]\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT              Verbosity level\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "HMM Options:\n");
-    fprintf(bcftools_stderr, "    -a, --hw-to-az <float>             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
-    fprintf(bcftools_stderr, "    -H, --az-to-hw <float>             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
-    fprintf(bcftools_stderr, "    -V, --viterbi-training <float>     estimate HMM parameters, <float> is the convergence threshold, e.g. 1e-10 (experimental)\n");
+    fprintf(bcftools_stderr, "    -a, --hw-to-az FLOAT             P(AZ|HW) transition probability from HW (Hardy-Weinberg) to AZ (autozygous) state [6.7e-8]\n");
+    fprintf(bcftools_stderr, "    -H, --az-to-hw FLOAT             P(HW|AZ) transition probability from AZ to HW state [5e-9]\n");
+    fprintf(bcftools_stderr, "    -V, --viterbi-training FLOAT     Estimate HMM parameters, FLOAT is the convergence threshold, e.g. 1e-10 (experimental)\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "Example:\n");
+    fprintf(bcftools_stderr, "   # Find RoH regions assuming default allele frequency 0.4\n");
+    fprintf(bcftools_stderr, "   bcftools roh -G30 --AF-dflt 0.4 test.vcf -o out.txt\n");
+    fprintf(bcftools_stderr, "\n");
+    fprintf(bcftools_stderr, "   # Create HTML/JavaScript visualization with the accompanied roh-viz script\n");
+    fprintf(bcftools_stderr, "   misc/roh-viz -i out.txt -v test.vcf -o out.html\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
 }
@@ -1158,13 +1166,17 @@ int main_vcfroh(int argc, char *argv[])
         {"rec-rate",1,0,'M'},
         {"skip-indels",0,0,'I'},
         {"threads",1,0,9},
+        {"verbosity",required_argument,NULL,'v'},
         {0,0,0,0}
     };
 
     int naf_opts = 0;
     char *tmp;
-    while ((c = getopt_long(argc, argv, "h?r:R:t:T:H:a:s:S:m:M:G:Ia:e:V:b:O:o:i",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "h?r:R:t:T:H:a:s:S:m:M:G:Ia:e:V:b:O:o:iv:",loptions,NULL)) >= 0) {
         switch (c) {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 0: args->af_tag = optarg; naf_opts++; break;
             case 1: args->af_fname = optarg; naf_opts++; break;
             case 2:

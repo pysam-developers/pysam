@@ -2,7 +2,7 @@
 
 /*  vcfconvert.c -- convert between VCF/BCF and related formats.
 
-    Copyright (C) 2013-2023 Genome Research Ltd.
+    Copyright (C) 2013-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -1585,6 +1585,7 @@ static void gvcf_to_vcf(args_t *args)
             char *ref = faidx_fetch_seq(args->ref, (char*)bcf_hdr_id2name(hdr,line->rid), line->pos, line->pos, &len);
             if ( !ref ) error("faidx_fetch_seq failed at %s:%"PRId64"\n", bcf_hdr_id2name(hdr,line->rid),(int64_t) line->pos+1);
             strncpy(line->d.allele[0],ref,len);
+            bcf_update_alleles(hdr,line,(const char**)line->d.allele,line->n_allele);
             if ( bcf_write(out_fh,hdr,line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
             free(ref);
         }
@@ -1622,11 +1623,12 @@ static void usage(void)
     fprintf(bcftools_stderr, "   -T, --targets-file FILE        Similar to -R but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "       --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "\n");
-    fprintf(bcftools_stderr, "VCF output options:\n");
+    fprintf(bcftools_stderr, "General options:\n");
     fprintf(bcftools_stderr, "       --no-version               Do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "   -o, --output FILE              Output file name [bcftools_stdout]\n");
     fprintf(bcftools_stderr, "   -O, --output-type u|b|v|z[0-9] u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]\n");
     fprintf(bcftools_stderr, "       --threads INT              Use multithreading with INT worker threads [0]\n");
+    fprintf(bcftools_stderr, "   -v, --verbosity INT            Verbosity level\n");
     fprintf(bcftools_stderr, "   -W, --write-index[=FMT]        Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     fprintf(bcftools_stderr, "GEN/SAMPLE conversion (input/output from IMPUTE2):\n");
@@ -1721,12 +1723,16 @@ int main_vcfconvert(int argc, char *argv[])
         {"fasta-ref",required_argument,NULL,'f'},
         {"no-version",no_argument,NULL,10},
         {"keep-duplicates",no_argument,NULL,12},
+        {"verbosity",required_argument,NULL,'v'},
         {"write-index",optional_argument,NULL,'W'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "?h:r:R:s:S:t:T:i:e:g:G:o:O:c:f:H:W::",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "?h:r:R:s:S:t:T:i:e:g:G:o:O:c:f:H:W::v:",loptions,NULL)) >= 0) {
         switch (c) {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'e':
                 if ( args->filter_str ) error("Error: only one -i or -e expression can be given, and they cannot be combined\n");
                 args->filter_str = optarg; args->filter_logic |= FLT_EXCLUDE; break;

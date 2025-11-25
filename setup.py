@@ -61,8 +61,9 @@ def changedir(path):
 def run_configure(option):
     sys.stdout.flush()
     try:
+        # Always disable ref-cache as its code is omitted from pysam's htslib/
         retcode = subprocess.call(
-            " ".join(("./configure", option)),
+            " ".join(("./configure", "--disable-ref-cache", option)),
             shell=True)
         if retcode != 0:
             return False

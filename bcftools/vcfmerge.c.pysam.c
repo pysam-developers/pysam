@@ -2,7 +2,7 @@
 
 /*  vcfmerge.c -- Merge multiple VCF/BCF files to create one multi-sample file.
 
-    Copyright (C) 2012-2024 Genome Research Ltd.
+    Copyright (C) 2012-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -134,6 +134,7 @@ typedef struct
     int mrec;       // allocated size of buf
     maux1_t *rec;   // buffer to keep reader's lines
     bcf1_t **lines; // source buffer: either gvcf or readers' buffer
+    bcf_hdr_t *hdr; // this reader's header
     int var_types;  // reader's variant types in the active [beg,end] window
 }
 buffer_t;
@@ -873,7 +874,10 @@ maux_t *maux_init(args_t *args)
     ma->smpl_nGsize = (int*) malloc(n_smpl*sizeof(int));
     ma->buf = (buffer_t*) calloc(ma->n,sizeof(buffer_t));
     for (i=0; i<ma->n; i++)
+    {
         ma->buf[i].rid = -1;
+        ma->buf[i].hdr = files->readers[i].header;
+    }
     ma->str = (kstring_t*) calloc(n_smpl,sizeof(kstring_t));
     if ( args->local_alleles )
     {
@@ -1761,7 +1765,11 @@ void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
                         type_t val = convert(&p_ori[k * sizeof(type_t)]); \
                         if ( val==vector_end ) break; /* smaller ploidy */ \
                         ma->smpl_ploidy[ismpl+j]++; \
-                        if ( bcf_gt_is_missing(val) ) tmp[k] = 0; /* missing allele */ \
+                        if ( bcf_gt_is_missing(val) ) \
+                        { \
+                            if ( bcf_gt_is_phased(val) ) tmp[k] = 1; /* missing allele, phased */ \
+                            else tmp[k] = 0; /* missing allele, unphased */ \
+                        } \
                         else tmp[k] = val; \
                     } \
                     for (; k<nsize; k++) tmp[k] = bcf_int32_vector_end; \
@@ -1779,7 +1787,11 @@ void merge_GT(args_t *args, bcf_fmt_t **fmt_map, bcf1_t *out)
                     type_t val = convert(&p_ori[k * sizeof(type_t)]); \
                     if ( val==vector_end ) break; /* smaller ploidy */ \
                     ma->smpl_ploidy[ismpl+j]++; \
-                    if ( bcf_gt_is_missing(val) ) tmp[k] = 0; /* missing allele */ \
+                    if ( bcf_gt_is_missing(val) ) \
+                    { \
+                        if ( bcf_gt_is_phased(val) ) tmp[k] = 1; /* missing allele, phased */ \
+                        else tmp[k] = 0; /* missing allele, unphased */ \
+                    } \
                     else \
                     { \
                         int al = (val>>1) - 1; \
@@ -2713,20 +2725,33 @@ void gvcf_flush(args_t *args, int done)
     }
 }
 
-static inline int is_gvcf_block(bcf1_t *line)
+static inline int is_gvcf_block(args_t *args, bcf1_t *line)
 {
+    maux_t *ma;
+
     if ( line->rlen<=1 ) return 0;
     if ( strlen(line->d.allele[0])==line->rlen ) return 0;
-    if ( line->n_allele==1 ) return 1;
+    if ( line->n_allele==1 ) goto is_gvcf;
 
     int i;
     for (i=1; i<line->n_allele; i++)
     {
-        if ( !strcmp(line->d.allele[i],"<*>") ) return 1;
-        if ( !strcmp(line->d.allele[i],"<NON_REF>") ) return 1;
-        if ( !strcmp(line->d.allele[i],"<X>") ) return 1;
+        if ( !strcmp(line->d.allele[i],"<*>") ) goto is_gvcf;
+        if ( !strcmp(line->d.allele[i],"<NON_REF>") ) goto is_gvcf;
+        if ( !strcmp(line->d.allele[i],"<X>") ) goto is_gvcf;
     }
     return 0;
+
+is_gvcf:
+    ma = args->maux;
+    if ( !ma->gvcf )
+    {
+        args->do_gvcf = 1;
+        ma->gvcf = (gvcf_aux_t*) calloc(ma->n,sizeof(gvcf_aux_t));  // -Walloc-size-larger-than gives a harmless warning caused by signed integer ma->n
+        for (i=0; i<ma->n; i++)
+            ma->gvcf[i].line = bcf_init1();
+    }
+    return 1;
 }
 
 /*
@@ -2766,7 +2791,7 @@ void gvcf_stage(args_t *args, int pos)
         int irec = maux->buf[i].beg;
         bcf_hdr_t *hdr = bcf_sr_get_header(files, i);
         bcf1_t *line = args->files->readers[i].buffer[irec];
-        int ret = is_gvcf_block(line) ? bcf_get_info_int32(hdr,line,"END",&end,&nend) : 0;
+        int ret = is_gvcf_block(args,line) ? bcf_get_info_int32(hdr,line,"END",&end,&nend) : 0;
         if ( ret==1 )
         {
             if ( end[0] == line->pos + 1 )  // POS and INFO/END are identical, treat as if a normal w/o INFO/END
@@ -2919,23 +2944,48 @@ static const int
     indel_mask = (VCF_INDEL<<1),
     ins_mask   = VCF_INS<<1,
     del_mask   = VCF_DEL<<1,
-    ref_mask   = 1;
+    ref_mask   = 1,
+    other_mask = VCF_OTHER<<1;
+
+typedef struct
+{
+    int types,      // selected types, see the *_mask(s) above
+        end;        // if symbolic allele is involved, the END coordinate of the first record
+    bcf1_t *rec;    // the first record selected
+}
+selected_t;
 
 // Can these types be merged given the -m settings? Despite the function's name, its focus is on
 // excluding incompatible records, there will be a finer matching later in stage_line()
-static inline int types_compatible(args_t *args, int selected_types, buffer_t *buf, int irec)
+static inline int types_compatible(args_t *args, selected_t *selected, buffer_t *buf, int irec)
 {
     int k;
     maux_t *maux = args->maux;
     bcf1_t *rec = buf->lines[irec];
     int rec_types = buf->rec[irec].var_types;
 
-    assert( selected_types );   // this is trivially true, set in can_merge()
+    int end = -1;
+    if ( rec_types&other_mask )
+    {
+        int32_t *itmp = NULL, nitmp = 0;
+        bcf_get_info_int32(buf->hdr,rec,"END",&itmp,&nitmp);
+        end = nitmp==1 ? itmp[0] : -1;
+        free(itmp);
+    }
+
+    // First time here?
+    if ( !selected->types )
+    {
+        selected->end = end;
+        selected->rec = rec;
+        selected->types = rec_types;
+        return 1;
+    }
 
     if ( args->collapse & COLLAPSE_ANY ) return 1;  // can merge anything with anything
 
     // REF and gVCF_REF with no other alleles present can be merged with anything
-    if ( (selected_types&ref_mask) && !(selected_types&(~ref_mask)) ) return 1;
+    if ( (selected->types&ref_mask) && !(selected->types&(~ref_mask)) ) return 1;
     if ( (rec_types&ref_mask) && !(rec_types&(~ref_mask)) ) return 1;
 
     if ( args->collapse!=COLLAPSE_NONE )
@@ -2946,26 +2996,26 @@ static inline int types_compatible(args_t *args, int selected_types, buffer_t *b
         //  - rec has indel, we already have an indel, and -m both,indels,snp-ins-del
         if ( args->collapse&(COLLAPSE_SNPS|COLLAPSE_SNP_INS_DEL) )
         {
-            if ( (rec_types&snp_mask) && (selected_types&snp_mask) ) return 1;
+            if ( (rec_types&snp_mask) && (selected->types&snp_mask) ) return 1;
         }
         if ( args->collapse&COLLAPSE_INDELS )
         {
-            if ( (rec_types&indel_mask) && (selected_types&indel_mask) ) return 1;
+            if ( (rec_types&indel_mask) && (selected->types&indel_mask) ) return 1;
         }
         if ( args->collapse&COLLAPSE_SNP_INS_DEL )
         {
-            if ( (rec_types&ins_mask) && (selected_types&ins_mask) ) return 1;
-            if ( (rec_types&del_mask) && (selected_types&del_mask) ) return 1;
+            if ( (rec_types&ins_mask) && (selected->types&ins_mask) ) return 1;
+            if ( (rec_types&del_mask) && (selected->types&del_mask) ) return 1;
         }
         // Whatever is left, allow to match if the alleles match exactly
     }
 
     // The -m none mode or exact matching requested
     // Simple test first: are the variants of the same type?
-    int x = selected_types >> 1;        // remove REF
-    int y = rec_types >> 1;             // remove REF
-    while ( x && y ) { x>>=1; y>>=1; }
-    if ( x || y ) return 0;             // the types differ
+    int x = selected->types;
+    int y = rec_types;
+    if ( !(x&y) ) return 0;                 // no matching type
+    if ( (x&y)!=x && (x&y)!=y ) return 0;   // not a subset
 
     if ( vcmp_set_ref(args->vcmp,maux->als[0],rec->d.allele[0]) < 0 ) return 0;   // refs are not compatible
     for (k=1; k<rec->n_allele; k++)
@@ -2974,6 +3024,13 @@ static inline int types_compatible(args_t *args, int selected_types, buffer_t *b
         if ( vcmp_find_allele(args->vcmp,maux->als+1,maux->nals-1,rec->d.allele[k])>=0 ) break;
     }
     if ( k==rec->n_allele ) return 0;   // this record has a new allele rec->d.allele[k]
+
+    if ( selected->types&other_mask && rec_types&other_mask )
+    {
+        // both records have symbolic alleles and the alleles are the same
+        if ( selected->end!=end ) return 0;
+    }
+
     return 1;   // all alleles in rec are also in the records selected thus far, perhaps save for gVCF_REF
 }
 
@@ -3091,7 +3148,7 @@ int can_merge(args_t *args)
                     var_type &= ~VCF_INDEL;
                 }
                 var_type = var_type ? var_type<<1 : ref_mask;
-                if ( args->do_gvcf && is_gvcf_block(line) ) var_type |= ref_mask;
+                if ( args->do_gvcf && is_gvcf_block(args,line) ) var_type |= ref_mask;
                 buf->rec[j].var_types = var_type;
             }
             maux->var_types |= buf->rec[j].var_types;
@@ -3100,7 +3157,7 @@ int can_merge(args_t *args)
     }
     if ( !ntodo ) return 0;
 
-    int selected_types = 0;
+    selected_t selected = {0,0,NULL};
 
     // In this loop we select from each reader compatible candidate lines.
     // (i.e. SNPs or indels). Go through all files and all lines at this
@@ -3115,7 +3172,7 @@ int can_merge(args_t *args)
             gaux[i].line->d.allele[0][0] = ref;
             gaux[i].line->pos = maux->pos;
             maux_update_alleles(args, i, buf->beg);
-            selected_types |= ref_mask;
+            selected.types |= ref_mask;
             continue;
         }
         for (j=buf->beg; j<buf->end; j++)
@@ -3130,16 +3187,25 @@ int can_merge(args_t *args)
             {
                 if ( strcmp(id,line->d.id) ) continue;      // matching by ID and it does not match the selected record
             }
-            else if ( selected_types && !types_compatible(args,selected_types,buf,j) ) continue;
-            else
-            {
-                // First time here, choosing the first line: prioritize SNPs when available in the -m snps,both modes
-                if ( (args->collapse&COLLAPSE_SNPS || args->collapse==COLLAPSE_NONE)     // asked to merge SNVs into multiallelics
-                        && (maux->var_types&snp_mask)                   // there are SNVs at the current position
-                        && !(buf->rec[j].var_types&(snp_mask|ref_mask)) // and this record is not a SNV nor ref
-                   ) continue;
-            }
-            selected_types |= line_types;
+            else if ( !types_compatible(args,&selected,buf,j) ) continue;
+
+            // This is not a good code. It makes the incorrect assumption of always having a SNP record available.
+            // However, that is not always the case and prevents the merging of G>GT,T with G>GT (see test/merge.multiallelics.1.*.vcf).
+            // We'd need to first check if it is possible to merge with something at all, and only then start excluding.
+            // Anyway, the can_merge() function should be about a *possibility*, one might argue that the priority should be handled in
+            // the stage_line() function.
+            // Commenting this out makes only one difference in our test case: reorders the output lines so that indels can come first.
+            //
+            //  else
+            //  {
+            //      // First time here, choosing the first line: prioritize SNPs when available in the -m snps,both modes
+            //      if ( (args->collapse&COLLAPSE_SNPS || args->collapse==COLLAPSE_NONE)     // asked to merge SNVs into multiallelics
+            //              && (maux->var_types&snp_mask)                   // there are SNVs at the current position
+            //              && !(buf->rec[j].var_types&(snp_mask|ref_mask)) // and this record is not a SNV nor ref
+            //         ) continue;
+            //  }
+
+            selected.types |= line_types;
 
             buf->rec[j].skip = 0;   // the j-th record from i-th reader can be included. Final decision will be made in stage_line
             maux_update_alleles(args, i, j);
@@ -3182,7 +3248,8 @@ void stage_line(args_t *args)
             if ( buf->rec[j].skip )
             {
                 int is_gvcf = maux->gvcf && maux->gvcf[i].active ? 1 : 0;
-                if ( !is_gvcf && is_gvcf_block(buf->lines[j]) ) is_gvcf = 1;
+                if ( !is_gvcf && is_gvcf_block(args,buf->lines[j]) ) is_gvcf = 1;
+                if ( is_gvcf && buf->rec[j].skip && !maux->gvcf[i].active ) continue;
                 if ( !is_gvcf ) continue;   // done or not compatible
             }
             if ( args->merge_by_id ) break;     // if merging by ID and the line is compatible, the this is THE line
@@ -3373,6 +3440,7 @@ void merge_vcf(args_t *args)
     if ( args->out_fh == NULL ) error("Can't write to \"%s\": %s\n", args->output_fname, strerror(errno));
     if ( args->n_threads ) hts_set_opt(args->out_fh, HTS_OPT_THREAD_POOL, args->files->p); //hts_set_threads(args->out_fh, args->n_threads);
     args->out_hdr = bcf_hdr_init("w");
+    bcf_hdr_set_version(args->out_hdr, bcf_hdr_get_version(args->files->readers[0].header));
 
     if ( args->header_fname )
     {
@@ -3394,7 +3462,6 @@ void merge_vcf(args_t *args)
     info_rules_init(args);
     missing_rules_init(args);
 
-    bcf_hdr_set_version(args->out_hdr, bcf_hdr_get_version(args->files->readers[0].header));
     if ( bcf_hdr_write(args->out_fh, args->out_hdr)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
     if ( args->header_only )
     {
@@ -3490,6 +3557,7 @@ static void usage(void)
     fprintf(bcftools_stderr, "    -R, --regions-file FILE           Restrict to regions listed in a file\n");
     fprintf(bcftools_stderr, "        --regions-overlap 0|1|2       Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(bcftools_stderr, "        --threads INT                 Use multithreading with INT worker threads [0]\n");
+    fprintf(bcftools_stderr, "    -v, --verbosity INT               Verbosity level\n");
     fprintf(bcftools_stderr, "    -W, --write-index[=FMT]           Automatically index the output files [off]\n");
     fprintf(bcftools_stderr, "\n");
     bcftools_exit(1);
@@ -3536,11 +3604,15 @@ int main_vcfmerge(int argc, char *argv[])
         {"force-single",no_argument,NULL,12},
         {"filter-logic",required_argument,NULL,'F'},
         {"write-index",optional_argument,NULL,'W'},
+        {"verbosity",required_argument,NULL,'v'},
         {NULL,0,NULL,0}
     };
     char *tmp;
-    while ((c = getopt_long(argc, argv, "hm:f:r:R:o:O:i:M:l:g:F:0L:W::",loptions,NULL)) >= 0) {
+    while ((c = getopt_long(argc, argv, "hm:f:r:R:o:O:i:M:l:g:F:0L:W::v:",loptions,NULL)) >= 0) {
         switch (c) {
+            case 'v':
+                if ( apply_verbosity(optarg) < 0 ) error("Could not parse argument: --verbosity %s\n", optarg);
+                break;
             case 'L':
                 args->local_alleles = strtol(optarg,&tmp,10);
                 if ( *tmp ) error("Could not parse argument: --local-alleles %s\n", optarg);

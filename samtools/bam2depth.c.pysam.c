@@ -404,7 +404,7 @@ static int add_depth(depth_opt *opt, depth_hist *dh, sam_hdr_t *h, bam1_t *b,
                 int *hist = dh->hist[file];
                 k = 0;
                 if (overlap_clip) {
-                    if (i+oplen < overlap_clip) {
+                    if (i+oplen <= overlap_clip) {
                         i += oplen;
                         break;
                     } else if (i < overlap_clip) {
@@ -432,8 +432,9 @@ static int add_depth(depth_opt *opt, depth_hist *dh, sam_hdr_t *h, bam1_t *b,
             int *hist = dh->hist[file];
             k = 0;
             if (overlap_clip) {
-                if (i+oplen < overlap_clip) {
+                if (i+oplen <= overlap_clip) {
                     i += oplen;
+                    spos += oplen;
                     break;
                 } else if (i < overlap_clip) {
                     oplen -= overlap_clip - i;

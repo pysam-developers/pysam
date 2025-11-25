@@ -40,6 +40,22 @@
 /* Define if you have the Common Crypto library. */
 #undef HAVE_COMMONCRYPTO
 
+/* Define to 1 if you have the declaration of 'AI_ADDRCONFIG', and to 0 if you
+   don't. */
+#undef HAVE_DECL_AI_ADDRCONFIG
+
+/* Define to 1 if you have the declaration of 'AI_V4MAPPED', and to 0 if you
+   don't. */
+#undef HAVE_DECL_AI_V4MAPPED
+
+/* Define to 1 if you have the declaration of 'EHOSTDOWN', and to 0 if you
+   don't. */
+#undef HAVE_DECL_EHOSTDOWN
+
+/* Define to 1 if you have the declaration of 'ENONET', and to 0 if you don't.
+   */
+#undef HAVE_DECL_ENONET
+
 /* Define to 1 if you have the declaration of '__cpuid_count', and to 0 if you
    don't. */
 #undef HAVE_DECL___CPUID_COUNT
@@ -51,14 +67,26 @@
 /* Define to 1 if you have the 'drand48' function. */
 #undef HAVE_DRAND48
 
+/* Define to 1 if you have the 'elf_aux_info' function. */
+#undef HAVE_ELF_AUX_INFO
+
+/* Define if epoll is available */
+#undef HAVE_EPOLL
+
 /* Define if using an external libhtscodecs */
 #undef HAVE_EXTERNAL_LIBHTSCODECS
 
 /* Define to 1 if you have the 'fdatasync' function. */
 #undef HAVE_FDATASYNC
 
+/* Define if you have FreeBSD-type sendfile */
+#undef HAVE_FREEBSD_SENDFILE
+
 /* Define to 1 if you have the 'fsync' function. */
 #undef HAVE_FSYNC
+
+/* Define to 1 if you have the 'getauxval' function. */
+#undef HAVE_GETAUXVAL
 
 /* Define to 1 if you have the 'getpagesize' function. */
 #undef HAVE_GETPAGESIZE
@@ -87,14 +115,23 @@
 /* Define to 1 if you have the 'z' library (-lz). */
 #undef HAVE_LIBZ
 
+/* Define if you have Linux-type sendfile */
+#undef HAVE_LINUX_SENDFILE
+
 /* Define to 1 if you have the <lzma.h> header file. */
 #undef HAVE_LZMA_H
+
+/* Define if you have macOS-type sendfile */
+#undef HAVE_MACOS_SENDFILE
 
 /* Define to 1 if you have a working 'mmap' system call. */
 #undef HAVE_MMAP
 
 /* Defined to 1 if rANS source using popcnt can be compiled. */
 #undef HAVE_POPCNT
+
+/* Define to 1 if you have the 'posix_memalign' function. */
+#undef HAVE_POSIX_MEMALIGN
 
 /* Define to 1 if you have the 'srand48_deterministic' function. */
 #undef HAVE_SRAND48_DETERMINISTIC
@@ -152,6 +189,9 @@
 
 /* Platform-dependent plugin filename extension. */
 #undef PLUGIN_EXT
+
+/* Define if epoll edge triggering is available */
+#undef PW_HAVE_EDGE
 
 /* Define to 1 if all of the C89 standard headers exist (not just the ones
    required in a freestanding environment). This macro is provided for

@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2017-2024 Genome Research Ltd.
+   Copyright (c) 2017-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -44,6 +44,11 @@ typedef enum
     PRUNE_NSITES,           // int, leave max this many sites in the window
     PRUNE_NSITES_MODE,      // char *, maxAF (keep sites with max AF), 1st (sites that come first), rand (pick randomly)
     PRUNE_AF_TAG,           // char *, use this INFO/AF tag with VCFBUF_NSITES
+
+    CLUSTER_PRUNE,          // int, remove clusters of more than this many sites within the window
+    CLUSTER_SIZE,           // w: int, if set, vcfbuf_get_val(buf,int,CLUSTER_SIZE) will be returning the cluster size
+                            // r: use as in the example for MARK below. Returns positive values for valid sites,
+                            //    0 for filtered sites
 
     // duplicates and overlaps
     MARK,                   // w: char *, resolve overlaps by preferentially removing sites according to EXPR:
@@ -134,19 +139,20 @@ int vcfbuf_nsites(vcfbuf_t *buf);
  *  Returns 0 on success or -1 if no values were filled.
  *
  *  @val:  will be filled with the values
- *          .. correlation coefficient r-squared
- *          .. Lewontin's D' (PMID: 19433632)
- *          .. Ragsdale's \hat{D} (doi:10.1093/molbev/msz265)
+ *          r2    .. correlation coefficient r-squared
+ *          LD    .. Lewontin's D' (doi:10.1534/genetics.108.093153)
+ *          RD,HD .. Ragsdale's \hat{D} (doi:10.1093/molbev/msz265)
  *  @rec: corresponding positions or NULL if the value(s) has not been set
  */
 #define VCFBUF_LD_N 3
 #define VCFBUF_LD_IDX_R2 0
 #define VCFBUF_LD_IDX_LD 1
 #define VCFBUF_LD_IDX_HD 2
+#define VCFBUF_LD_IDX_RD 2
 typedef struct
 {
-    double val[VCFBUF_LD_N];    // r2, ld, hd
-    bcf1_t *rec[VCFBUF_LD_N];   // record with max r2, ld, hd
+    double val[VCFBUF_LD_N];    // r2, ld, rd
+    bcf1_t *rec[VCFBUF_LD_N];   // record with max r2, ld, rd
 }
 vcfbuf_ld_t;
 int vcfbuf_ld(vcfbuf_t *buf, bcf1_t *rec, vcfbuf_ld_t *ld);

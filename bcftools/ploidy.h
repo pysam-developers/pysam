@@ -1,5 +1,5 @@
-/* 
-    Copyright (C) 2014-2015 Genome Research Ltd.
+/*
+    Copyright (C) 2014-2025 Genome Research Ltd.
 
     Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -9,10 +9,10 @@
     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
     copies of the Software, and to permit persons to whom the Software is
     furnished to do so, subject to the following conditions:
-    
+
     The above copyright notice and this permission notice shall be included in
     all copies or substantial portions of the Software.
-    
+
     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -81,8 +81,8 @@ void ploidy_destroy(ploidy_t *ploidy);
  *  @param seq: chromosome name
  *  @param pos: 0-based position
  *  @param sex2ploidy:  if not NULL, array will be filled with mapping from sex id to ploidy
- *  @param min: if not NULL, minimum encountered encountered will be set
- *  @param max: if not NULL, maximum encountered encountered will be set
+ *  @param min: if not NULL, minimum encountered ploidy will be set
+ *  @param max: if not NULL, maximum encountered ploidy will be set
  *
  *  Returns 1 if the position is listed in the regions or 0 otherwise.
  */
@@ -124,6 +124,9 @@ regidx_t *ploidy_regions(ploidy_t *ploidy);
 /** Return the minimum / maximum recognised ploidy  */
 int ploidy_max(ploidy_t *ploidy);
 int ploidy_min(ploidy_t *ploidy);
+
+/** Create a parseable ploidy file for debugging. The string must be free()-ed by the caller */
+char *ploidy_format(ploidy_t *ploidy);
 
 #endif
 
