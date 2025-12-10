@@ -6,6 +6,7 @@ freebsd_ci_task:
 
   install_script: |
     pkg install -y bcftools gmake py311-cython3 py311-mypy py311-pytest samtools
+    pip install parameterized
 
   env:
     CC: "clang -isystem /usr/local/include"
