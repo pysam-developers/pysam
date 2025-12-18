@@ -8,15 +8,11 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos]
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
         exclude:
-          # Run only the latest few 3.x versions on macOS
+          # Avoid spurious "upgrade pip" error annotation
           - os: macos
             python-version: 3.8
-          - os: macos
-            python-version: 3.9
-          - os: macos
-            python-version: 3.10
 
     steps:
       - name: Checkout pysam
@@ -28,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython mypy pytest setuptools
+        run:  pip install Cython mypy pytest setuptools
 
       - name: Install Linux build prerequisites
         if:   runner.os == 'Linux'
@@ -67,7 +63,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu, macos]
-        python-version: ['3.10']
+        python-version: ['3.14']
 
     steps:
       - name: Checkout pysam
@@ -79,7 +75,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython pytest
+        run:  pip install Cython mypy pytest setuptools
 
       - name: Install build prerequisites
         if:   runner.os == 'Linux'
@@ -123,7 +119,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu]
-        python-version: ['3.10']
+        python-version: ['3.13']
     defaults:
       run:
         shell: bash -el {0}  # needed for conda activation
@@ -139,6 +135,7 @@ jobs:
         with:
           channels: conda-forge,bioconda
           channel-priority: strict
+          conda-remove-defaults: true
           python-version: ${{ matrix.python-version }}
           environment-file: devtools/environment-dev.yaml
           auto-activate-base: false

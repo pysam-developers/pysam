@@ -65,7 +65,7 @@ jobs:
   build_sdist:
     runs-on: ubuntu-latest
     env:
-      job_python_version: "3.10"
+      job_python_version: "3.14"
 
     steps:
       - name: Checkout pysam
@@ -77,7 +77,7 @@ jobs:
           python-version: ${{ env.job_python_version }}
 
       - name: Install prerequisite Python libraries
-        run:  pip install cython
+        run:  pip install Cython setuptools
 
       - name: Install build prerequisites
         run: |
