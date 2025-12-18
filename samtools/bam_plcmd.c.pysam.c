@@ -2,7 +2,7 @@
 
 /*  bam_plcmd.c -- mpileup subcommand.
 
-    Copyright (C) 2008-2015, 2019-2021, 2023-2024 Genome Research Ltd.
+    Copyright (C) 2008-2015, 2019-2021, 2023-2025 Genome Research Ltd.
     Portions copyright (C) 2009-2012 Broad Institute.
 
     Author: Heng Li <lh3@sanger.ac.uk>
@@ -1222,5 +1222,6 @@ int bam_mpileup(int argc, char *argv[])
     if (mplp.fai) fai_destroy(mplp.fai);
     if (mplp.bed) bed_destroy(mplp.bed);
     if (mplp.auxlist) kl_destroy(auxlist, (klist_t(auxlist) *)mplp.auxlist);
+    sam_global_args_free(&mplp.ga);
     return ret;
 }

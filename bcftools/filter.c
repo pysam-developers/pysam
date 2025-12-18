@@ -168,10 +168,11 @@ struct _filter_t
 #define TOK_MODULO  40      // %
 #define TOK_EXT     41      // external values set before each filter_test_ext() call, can be one of {},{str},{int},{float}
 #define TOK_FISHER  42
+#define TOK_sCOUNT  43
 
-//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41
+//                      0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43
 //                        ( ) [ < = > ] ! | &  +  -  *  /  M  m  a  A  O  ~  ^  S  .  l  f  c  p  b  P  i  s                          %
-static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 0};
+static int op_prec[] = {0,1,1,5,5,5,5,5,5,2,3, 6, 6, 7, 7, 8, 8, 8, 3, 2, 5, 5, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7, 0, 8, 8};
 #define TOKEN_STRING "x()[<=>]!|&+-*/MmaAO~^S.lfcpis"       // this is only for debugging, not maintained diligently
 
 static void cmp_vector_strings(token_t *atok, token_t *btok, token_t *rtok);
@@ -198,6 +199,7 @@ static int filters_next_token(char **str, int *len)
         tmp = *str;
     }
 
+    if ( !strncasecmp(tmp,"SMPL_COUNT(",11) ) { (*str) += 10; return TOK_sCOUNT; }
     if ( !strncasecmp(tmp,"SMPL_MAX(",9) ) { (*str) += 8; return TOK_sMAX; }
     if ( !strncasecmp(tmp,"SMPL_MIN(",9) ) { (*str) += 8; return TOK_sMIN; }
     if ( !strncasecmp(tmp,"SMPL_MEAN(",10) ) { (*str) += 9; return TOK_sAVG; }
@@ -205,6 +207,7 @@ static int filters_next_token(char **str, int *len)
     if ( !strncasecmp(tmp,"SMPL_AVG(",9) ) { (*str) += 8; return TOK_sAVG; }
     if ( !strncasecmp(tmp,"SMPL_STDEV(",11) ) { (*str) += 10; return TOK_sSTDEV; }
     if ( !strncasecmp(tmp,"SMPL_SUM(",9) ) { (*str) += 8; return TOK_sSUM; }
+    if ( !strncasecmp(tmp,"sCOUNT(",7) ) { (*str) += 6; return TOK_sCOUNT; }
     if ( !strncasecmp(tmp,"sMAX(",5) ) { (*str) += 4; return TOK_sMAX; }
     if ( !strncasecmp(tmp,"sMIN(",5) ) { (*str) += 4; return TOK_sMIN; }
     if ( !strncasecmp(tmp,"sMEAN(",6) ) { (*str) += 5; return TOK_sAVG; }
@@ -619,6 +622,8 @@ static void filters_cmp_string_hash(token_t *atok, token_t *btok, token_t *rtok,
     }
     if ( rtok->tok_type!=TOK_EQ && rtok->tok_type!=TOK_NE )
         error("Only == and != operators are supported for strings read from a file\n");
+    if ( !btok->is_str )
+        error("Error: Lookup of values from a file is currenlty supported only for strings\n");
 
     // INFO
     if ( !btok->nsamples )
@@ -1363,6 +1368,8 @@ static void filters_set_alt_string(filter_t *flt, bcf1_t *line, token_t *tok)
 }
 static void filters_set_nmissing(filter_t *flt, bcf1_t *line, token_t *tok)
 {
+    assert(tok->usmpl);
+
     bcf_unpack(line, BCF_UN_FMT);
     if ( !line->n_sample )
     {
@@ -1381,16 +1388,18 @@ static void filters_set_nmissing(filter_t *flt, bcf1_t *line, token_t *tok)
         return;
     }
 
-    int j,nmissing = 0;
+    int j,nsmpl = 0, nmissing = 0;
     #define BRANCH(type_t, convert, is_vector_end) { \
         for (i=0; i<line->n_sample; i++) \
         { \
+            if ( !tok->usmpl[i] ) continue; \
             uint8_t *ptr = fmt->p + i*fmt->size; \
+            nsmpl++; \
             for (j=0; j<fmt->n; j++) \
             { \
                 type_t val = convert(&ptr[j * sizeof(type_t)]); \
                 if ( val==is_vector_end ) break; \
-                if ( val==bcf_gt_missing ) { nmissing++; break; } \
+                if ( bcf_gt_is_missing(val) ) { nmissing++; break; } \
             } \
         } \
     }
@@ -1401,8 +1410,9 @@ static void filters_set_nmissing(filter_t *flt, bcf1_t *line, token_t *tok)
         default: fprintf(stderr,"todo: type %d\n", fmt->type); exit(1); break;
     }
     #undef BRANCH
-    tok->nvalues = 1;
-    tok->values[0] = tok->tag[0]=='N' ? nmissing : (double)nmissing / line->n_sample;
+    tok->nsamples = 0;
+    tok->nvalues  = 1;
+    tok->values[0] = tok->tag[0]=='N' ? nmissing : (nsmpl ? (double)nmissing / nsmpl : 0);
 }
 static int func_npass(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
 {
@@ -1411,16 +1421,17 @@ static int func_npass(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
     if ( !tok->nsamples ) error("The function %s works with FORMAT fields\n", rtok->tag);
     assert(tok->usmpl);
 
-    int i, npass = 0;
+    int i, nsmpl = 0, npass = 0;
     for (i=0; i<tok->nsamples; i++)
     {
         if ( !tok->usmpl[i] ) continue;
+        nsmpl++;
         if ( tok->pass_samples[i] ) npass++;
     }
     hts_expand(double,1,rtok->mvalues,rtok->values);
     rtok->nsamples = 0;
     rtok->nvalues = 1;
-    rtok->values[0] = rtok->tag[0]=='N' ? npass : (line->n_sample ? 1.0*npass/line->n_sample : 0);
+    rtok->values[0] = rtok->tag[0]=='N' ? npass : (nsmpl ? 1.0*npass/nsmpl : 0);
 
     return 1;
 }
@@ -1990,6 +2001,34 @@ static int func_count(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stac
 
     rtok->nvalues = 1;
     rtok->values[0] = cnt;
+    return 1;
+}
+static int func_smpl_count(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
+{
+    token_t *tok = stack[nstack - 1];
+    if ( !tok->nsamples ) return func_max(flt,line,rtok,stack,nstack);
+    rtok->nsamples = tok->nsamples;
+    rtok->nvalues  = tok->nsamples;
+    rtok->nval1 = 1;
+    hts_expand(double,rtok->nvalues,rtok->mvalues,rtok->values);
+    assert(tok->usmpl);
+    if ( !rtok->usmpl ) rtok->usmpl = (uint8_t*) malloc(tok->nsamples);
+    memcpy(rtok->usmpl, tok->usmpl, tok->nsamples);
+    int i,j;
+    if ( tok->nsamples )
+    {
+        // raw number of values in a FMT tag, e.g. COUNT(FMT/TAG)
+        if ( tok->is_str ) error("todo: Type=String for COUNT on FORMAT fields?\n");
+        for (i=0; i<tok->nsamples; i++)
+        {
+            if ( !tok->usmpl[i] ) continue;
+            int cnt = 0;
+            double *ptr = tok->values + i*tok->nval1;
+            for (j=0; j<tok->nval1; j++)
+                if ( !bcf_double_is_missing_or_vector_end(ptr[j]) ) cnt++;
+            rtok->values[i] = cnt;
+        }
+    }
     return 1;
 }
 static int func_strlen(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
@@ -3113,6 +3152,14 @@ static int filters_init1_ext(filter_t *filter, char *str, int len, token_t *tok)
     filter->ext[filter->n_ext-1] = tok->ht_type;
     return 0;
 }
+static void init_usmpl(filter_t *flt, token_t *tok)
+{
+    if ( tok->nsamples ) return;
+    int i;
+    tok->nsamples = bcf_hdr_nsamples(flt->hdr);
+    tok->usmpl = (uint8_t*) malloc(tok->nsamples);
+    for (i=0; i<tok->nsamples; i++) tok->usmpl[i] = 1;
+}
 static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
 {
     tok->vl_len   = BCF_VL_FIXED;
@@ -3264,6 +3311,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
             tok->setter = &filters_set_nmissing;
             tok->tag = strdup("N_MISSING");
             tok->ht_type = BCF_HT_INT;
+            init_usmpl(filter,tok);
             return 0;
         }
         else if ( !strncasecmp(str,"F_MISSING",len) )
@@ -3272,6 +3320,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
             tok->setter = &filters_set_nmissing;
             tok->tag = strdup("F_MISSING");
             tok->ht_type = BCF_HT_REAL;
+            init_usmpl(filter,tok);
             return 0;
         }
     }
@@ -3304,13 +3353,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         if ( tok->idx==-3 && bcf_hdr_id2length(filter->hdr,BCF_HL_FMT,tok->hdr_id)!=BCF_VL_R )
             error("Error: GT subscripts can be used only with Number=R tags\n");
     }
-    else if ( is_fmt && !tok->nsamples )
-    {
-        int i;
-        tok->nsamples = bcf_hdr_nsamples(filter->hdr);
-        tok->usmpl = (uint8_t*) malloc(tok->nsamples);
-        for (i=0; i<tok->nsamples; i++) tok->usmpl[i] = 1;
-    }
+    else if ( is_fmt ) init_usmpl(filter,tok);
 
     tok->hl_type = is_fmt ? BCF_HL_FMT : BCF_HL_INFO;
     if ( tok->hdr_id >= 0 ) tok->vl_len = bcf_hdr_id2length(filter->hdr,tok->hl_type,tok->hdr_id);
@@ -4088,6 +4131,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
         else if ( out[i].tok_type==TOK_BINOM ) { out[i].func = func_binom; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_FISHER ) { out[i].func = func_fisher; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_PERLSUB ) { out[i].func = perl_exec; out[i].tok_type = TOK_FUNC; }
+        else if ( out[i].tok_type==TOK_sCOUNT ) { out[i].func = func_smpl_count; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_sMAX ) { out[i].func = func_smpl_max; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_sMIN ) { out[i].func = func_smpl_min; out[i].tok_type = TOK_FUNC; }
         else if ( out[i].tok_type==TOK_sAVG ) { out[i].func = func_smpl_avg; out[i].tok_type = TOK_FUNC; }
@@ -4335,15 +4379,10 @@ const double *filter_get_doubles(filter_t *filter, int *nval, int *nval1)
     {
         *nval  = tok->nvalues;
         *nval1 = tok->nval1;
+        return tok->values;
     }
-    else
-    {
-        if ( !tok->values ) error("fixme in filter_get_doubles(): %s\n", filter->str);
-        *nval  = 1;
-        *nval1 = 1;
-        tok->values[0] = filter->flt_stack[0]->pass_site;
-    }
-    return tok->values;
+    *nval = *nval1 = 0;
+    return NULL;
 }
 
 void filter_set_samples(filter_t *filter, const uint8_t *samples)

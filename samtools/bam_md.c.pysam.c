@@ -517,6 +517,7 @@ int bam_fillmd(int argc, char *argv[])
         return 1;
     }
     if (p.pool) hts_tpool_destroy(p.pool);
+    sam_global_args_free(&ga);
 
     return 0;
 
@@ -529,6 +530,7 @@ int bam_fillmd(int argc, char *argv[])
     if (fp) sam_close(fp);
     if (fpout) sam_close(fpout);
     if (p.pool) hts_tpool_destroy(p.pool);
+    sam_global_args_free(&ga);
 
     return 1;
 }

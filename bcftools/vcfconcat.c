@@ -892,7 +892,8 @@ static void naive_concat(args_t *args)
         int nskip;
         if ( type.format==bcf )
         {
-            const size_t magic_len = 5 + 4; // "Magic" string + header length
+            // Macro here as magic_len is used in an array declaration.
+            #define magic_len (5 + 4) // "Magic" string + header length.
             uint8_t magic[magic_len];
             if ( bgzf_read(fp, magic, magic_len) != magic_len ) error("\nFailed to read the BCF header in %s\n", args->fnames[i]);
             // First five bytes are the "Magic" string
@@ -905,10 +906,11 @@ static void naive_concat(args_t *args)
             // write only the first header
             if ( i==0 )
             {
-                if ( bgzf_write(bgzf_out, magic, magic_len) != magic_len ) error("\nFailed to write %zu bytes to %s\n", magic_len,args->output_fname);
+                if ( bgzf_write(bgzf_out, magic, magic_len) != magic_len ) error("\nFailed to write %d bytes to %s\n", magic_len,args->output_fname);
                 if ( bgzf_write(bgzf_out, tmp.s, tmp.l) != tmp.l) error("\nFailed to write %"PRId64" bytes to %s\n", (uint64_t)tmp.l,args->output_fname);
             }
             nskip = fp->block_offset;
+            #undef magic_len
         }
         else
         {

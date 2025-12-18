@@ -842,7 +842,7 @@ static double _estimate_af(int8_t *ptr, int size, int nvals, int nsamples)
     {
         for (j=0; j<nvals; j++)
         {
-            if ( ptr[j]==bcf_gt_missing ) break;
+            if ( bcf_gt_is_missing(ptr[j]) ) break;
             if ( ptr[j]==bcf_int8_vector_end ) break;
             if ( bcf_gt_allele(ptr[j]) ) nalt++;
             else nref++;
@@ -911,7 +911,7 @@ static int _calc_r2_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec, vcfbuf_ld_t *l
         for (j=0; j<afmt->n; j++)
         {
             if ( aptr[j]==bcf_int8_vector_end ) break;
-            if ( aptr[j]==bcf_gt_missing )
+            if ( bcf_gt_is_missing(aptr[j]) )
             {
                 if ( !buf->ld.rand_missing ) break;
                 if ( hts_drand48() >= aaf ) adsg += 1;
@@ -922,7 +922,7 @@ static int _calc_r2_ld(vcfbuf_t *buf, bcf1_t *arec, bcf1_t *brec, vcfbuf_ld_t *l
         for (j=0; j<bfmt->n; j++)
         {
             if ( bptr[j]==bcf_int8_vector_end ) break;
-            if ( bptr[j]==bcf_gt_missing )
+            if ( bcf_gt_is_missing(bptr[j]) )
             {
                 if ( !buf->ld.rand_missing ) break;
                 if ( hts_drand48() >= baf ) bdsg += 1;

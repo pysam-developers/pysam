@@ -56,8 +56,8 @@ copyright = '2009–2025 Andreas Heger, John Marshall, Kevin Jacobs, et al'
 # Included at the end of each rst file
 rst_epilog = '''
 .. _pysam: https://github.com/pysam-developers/pysam
-.. _samtools: https://www.htslib.org/doc/1.22.1/samtools.html
-.. _bcftools: https://www.htslib.org/doc/1.22/bcftools.html
+.. _samtools: https://www.htslib.org/doc/1.23/samtools.html
+.. _bcftools: https://www.htslib.org/doc/1.23/bcftools.html
 .. _htslib: https://www.htslib.org/
 .. _tabix: https://www.htslib.org/doc/tabix.html
 .. _Galaxy: https://usegalaxy.org/
