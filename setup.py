@@ -94,19 +94,20 @@ def run_make_print_config():
 def run_nm_defined_symbols(objfile):
     stdout = subprocess.check_output(["nm", "-g", "-P", objfile], encoding="ascii")
 
+    def cython_internal(sym):
+        offset = 1 if sym.startswith("___") else 0  # Skip extra underscore on macOS
+        return sym.startswith("__pyx_", offset) or sym.startswith("__Pyx_", offset)
+
     symbols = set()
     for line in stdout.splitlines():
         (sym, symtype) = line.split()[:2]
-        if symtype not in "UFNWw":
+        if symtype not in "UFNWw" and not cython_internal(sym):
             if IS_DARWIN:
                 # On macOS, all symbols have a leading underscore
                 symbols.add(sym[1:] if sym.startswith("_") else sym)
             else:
                 # Ignore symbols such as _edata (present in all shared objects)
                 if sym[0] not in "_$.@": symbols.add(sym)
-
-    # Work around Cython 3.1.2 bug whereby this function is not static
-    symbols.discard("__pyx_CommonTypesMetaclass_get_module")
 
     return symbols
 
@@ -689,7 +690,6 @@ classifiers = """
 Development Status :: 4 - Beta
 Intended Audience :: Science/Research
 Intended Audience :: Developers
-License :: OSI Approved
 Programming Language :: Python
 Topic :: Software Development
 Topic :: Scientific/Engineering
