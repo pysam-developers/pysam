@@ -3005,7 +3005,7 @@ static void init_filters(args_t *args)
 
     if ( !args->n_ext ) return;
 
-    if ( !args->tgts )
+    if ( !args->tgts && !args->tgt_idx )
         error("Error: dynamic variables in -i/-e expressions can be currently used only with tab-delimited file, not with VCF (todo)\n");
 
     // contains external values
@@ -3332,58 +3332,6 @@ static int strstr_match(char *a, char *b)
     }
     return 0;
 }
-static int annotate_from_regidx(args_t *args, bcf1_t *line)
-{
-    int j;
-    int has_overlap = 0;
-
-    for (j=0; j<args->ncols; j++) args->cols[j].done = 0;
-    if ( regidx_overlap(args->tgt_idx, bcf_seqname(args->hdr,line),line->pos,line->pos+line->rlen-1, args->tgt_itr) )
-    {
-        hts_pos_t vcf_end = line->pos + line->rlen - 1;
-        while ( regitr_overlap(args->tgt_itr) )
-        {
-            annot_line_t *tmp = &args->alines[0];
-            tmp->rid   = line->rid;
-            tmp->start = args->tgt_itr->beg;
-            tmp->end   = args->tgt_itr->end;
-
-            // Check min overlap
-            int len_ann = tmp->end - tmp->start + 1;
-            int len_vcf = line->rlen;
-            int isec = (tmp->end < vcf_end ? tmp->end : vcf_end) - (tmp->start > line->pos ? tmp->start : line->pos) + 1;
-            assert( isec > 0 );
-            if ( args->min_overlap_ann && args->min_overlap_ann > (float)isec/len_ann ) continue;
-            if ( args->min_overlap_vcf && args->min_overlap_vcf > (float)isec/len_vcf ) continue;
-
-            parse_annot_line(args, regitr_payload(args->tgt_itr,char*), tmp);
-
-            // If a plain BED file is provided and we are asked to just mark overlapping sites, there are
-            // no additional columns. Not sure if there can be any side effects for ill-formatted BED files
-            // with variable number of columns
-            if ( !args->ncols && args->mark_sites ) has_overlap = 1;
-
-            for (j=0; j<args->ncols; j++)
-            {
-                if ( args->cols[j].done==1 ) continue;
-                int ret = args->cols[j].setter(args,line,&args->cols[j],tmp);
-                if ( ret < 0 )
-                    error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
-                if ( ret==0 )
-                    args->cols[j].done = 1;
-                has_overlap = 1;
-            }
-        }
-    }
-    for (j=0; j<args->ncols; j++)
-    {
-        if ( args->cols[j].done==1 || args->cols[j].merge_method == MM_FIRST ) continue;
-        if ( !args->cols[j].setter ) continue;
-        if ( args->cols[j].setter(args,line,&args->cols[j],NULL) < 0 )
-            error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
-    }
-    return has_overlap;
-}
 static int pass_filter_test_ext(args_t *args, bcf1_t *line, annot_line_t *ann)
 {
     char *tmp;
@@ -3418,6 +3366,64 @@ static int pass_filter_test_ext(args_t *args, bcf1_t *line, annot_line_t *ann)
     int pass = filter_test_ext(args->filter_ext,line,NULL,(const void**)args->ext_ptr);
     if ( args->filter_logic==FLT_EXCLUDE ) pass = pass ? 0 : 1;
     return pass;
+}
+static int annotate_from_regidx(args_t *args, bcf1_t *line)
+{
+    int j;
+    int has_overlap = 0;
+
+    for (j=0; j<args->ncols; j++) args->cols[j].done = 0;
+    if ( regidx_overlap(args->tgt_idx, bcf_seqname(args->hdr,line),line->pos,line->pos+line->rlen-1, args->tgt_itr) )
+    {
+        hts_pos_t vcf_end = line->pos + line->rlen - 1;
+        while ( regitr_overlap(args->tgt_itr) )
+        {
+            annot_line_t *tmp = &args->alines[0];
+            tmp->rid   = line->rid;
+            tmp->start = args->tgt_itr->beg;
+            tmp->end   = args->tgt_itr->end;
+
+            // Check min overlap
+            int len_ann = tmp->end - tmp->start + 1;
+            int len_vcf = line->rlen;
+            int isec = (tmp->end < vcf_end ? tmp->end : vcf_end) - (tmp->start > line->pos ? tmp->start : line->pos) + 1;
+            assert( isec > 0 );
+            if ( args->min_overlap_ann && args->min_overlap_ann > (float)isec/len_ann ) continue;
+            if ( args->min_overlap_vcf && args->min_overlap_vcf > (float)isec/len_vcf ) continue;
+
+            parse_annot_line(args, regitr_payload(args->tgt_itr,char*), tmp);
+            if ( args->filter_ext )
+            {
+                if ( !pass_filter_test_ext(args,line,tmp) ) continue;
+                has_overlap = 1;
+            }
+
+            // If a plain BED file is provided and we are asked to just mark overlapping sites, there are
+            // no additional columns. Not sure if there can be any side effects for ill-formatted BED files
+            // with variable number of columns
+            if ( !args->ncols && args->mark_sites ) has_overlap = 1;
+
+            for (j=0; j<args->ncols; j++)
+            {
+                if ( args->cols[j].done==1 ) continue;
+                if ( !args->cols[j].setter ) continue;
+                int ret = args->cols[j].setter(args,line,&args->cols[j],tmp);
+                if ( ret < 0 )
+                    error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+                if ( ret==0 )
+                    args->cols[j].done = 1;
+                has_overlap = 1;
+            }
+        }
+    }
+    for (j=0; j<args->ncols; j++)
+    {
+        if ( args->cols[j].done==1 || args->cols[j].merge_method == MM_FIRST ) continue;
+        if ( !args->cols[j].setter ) continue;
+        if ( args->cols[j].setter(args,line,&args->cols[j],NULL) < 0 )
+            error("fixme: Could not set %s at %s:%"PRId64"\n", args->cols[j].hdr_key_src,bcf_seqname(args->hdr,line),(int64_t) line->pos+1);
+    }
+    return has_overlap;
 }
 static int annotate_from_tab(args_t *args, bcf1_t *line)
 {

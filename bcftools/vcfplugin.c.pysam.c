@@ -603,10 +603,10 @@ static void usage(args_t *args)
     fprintf(bcftools_stderr, "   -i, --include EXPR             Select sites for which the expression is true\n");
     fprintf(bcftools_stderr, "   -r, --regions REGION           Restrict to comma-separated list of regions\n");
     fprintf(bcftools_stderr, "   -R, --regions-file FILE        Restrict to regions listed in a file\n");
-    fprintf(bcftools_stderr, "        --regions-overlap 0|1|2   Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(bcftools_stderr, "       --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(bcftools_stderr, "   -t, --targets REGION           Similar to -r but streams rather than index-jumps\n");
     fprintf(bcftools_stderr, "   -T, --targets-file FILE        Similar to -R but streams rather than index-jumps\n");
-    fprintf(bcftools_stderr, "        --targets-overlap 0|1|2   Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
+    fprintf(bcftools_stderr, "       --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(bcftools_stderr, "VCF output options:\n");
     fprintf(bcftools_stderr, "       --no-version               Do not append version and command line to the header\n");
     fprintf(bcftools_stderr, "   -o, --output FILE              Write output to a file [standard output]\n");

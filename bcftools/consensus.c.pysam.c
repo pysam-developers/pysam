@@ -432,7 +432,7 @@ static void flush_fa_buffer(args_t *args, int len)
 {
     if ( !args->fa_buf.l ) return;
     int nwr = 0;
-    while ( nwr + 60 <= args->fa_buf.l )
+    while ( nwr + 60 <= args->fa_buf.l && (!len || args->fa_ori_pos + nwr + 60 < args->fa_frz_pos) )
     {
         if ( fwrite(args->fa_buf.s+nwr,1,60,args->fp_out) != 60 ) error("Could not write: %s\n", args->output_fname);
         if ( fwrite("\n",1,1,args->fp_out) != 1 ) error("Could not write: %s\n", args->output_fname);
@@ -464,7 +464,9 @@ static void flush_fa_buffer(args_t *args, int len)
 }
 static void apply_absent(args_t *args, hts_pos_t pos)
 {
-    if ( !args->fa_buf.l || pos <= args->fa_frz_pos + 1 || pos <= args->fa_ori_pos ) return;
+    if ( !args->fa_buf.l ) return;
+    if ( pos <= args->fa_frz_pos + 1 ) return;  // if pos==frz+1, then there is no gap, ie=ib, nothing to fill
+    if ( pos <= args->fa_ori_pos ) return;
 
     int ie = pos && pos - args->fa_ori_pos + args->fa_mod_off < args->fa_buf.l ? pos - args->fa_ori_pos + args->fa_mod_off : args->fa_buf.l;
     int ib = args->fa_frz_mod < 0 ? 0 : args->fa_frz_mod;
@@ -587,7 +589,6 @@ static int iupac_set_allele(args_t *args, bcf1_t *rec)
 static void apply_variant(args_t *args, bcf1_t *rec)
 {
     static int warned_haplotype = 0;
-
     if ( args->absent_allele ) apply_absent(args, rec->pos);
     if ( rec->n_allele==1 && !args->missing_allele && !args->absent_allele ) { return; }
 
@@ -1095,7 +1096,7 @@ static void consensus(args_t *args)
     BGZF *fasta = bgzf_open(args->ref_fname, "r");
     if ( !fasta ) error("Error reading %s\n", args->ref_fname);
     kstring_t str = {0,0,0};
-    while ( bgzf_getline(fasta, '\n', &str) > 0 )
+    while ( bgzf_getline(fasta, '\n', &str) >= 0 )
     {
         if ( str.s[0]=='>' )
         {
