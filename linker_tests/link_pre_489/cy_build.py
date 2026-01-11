@@ -1,21 +1,14 @@
 import os
 import re
 import sys
+import sysconfig
 
 try:
     from Cython.Distutils import build_ext
 except ImportError:
     from setuptools.command.build_ext import build_ext
 
-from distutils.extension import Extension
-from distutils.sysconfig import get_config_var, get_config_vars, get_python_lib, get_python_version
-from pkg_resources import Distribution
-
-
-if sys.platform == 'darwin':
-    config_vars = get_config_vars()
-    config_vars['LDSHARED'] = config_vars['LDSHARED'].replace('-bundle', '')
-    config_vars['SHLIB_EXT'] = '.so'
+from setuptools.extension import Extension
 
 
 def is_pip_install():
@@ -45,11 +38,12 @@ class CyExtension(Extension):
 
 class cy_build_ext(build_ext):
 
-    def _get_egg_name(self):
-        ei_cmd = self.get_finalized_command("egg_info")
-        return Distribution(
-            None, None, ei_cmd.egg_name, ei_cmd.egg_version, get_python_version(),
-            self.distribution.has_ext_modules() and self.plat_name).egg_name()
+    def run(self):
+        if sys.platform == 'darwin':
+            ldshared = os.environ.get('LDSHARED', sysconfig.get_config_var('LDSHARED'))
+            os.environ['LDSHARED'] = ldshared.replace('-bundle', '')
+
+        super().run()
 
     def build_extension(self, ext):
 
@@ -65,7 +59,7 @@ class cy_build_ext(build_ext):
             # @loader_path. This will allow Python packages to find the library
             # in the expected place, while still giving enough flexibility to
             # external applications to link against the library.
-            relative_module_path = ext.name.replace(".", os.sep) + get_config_var('EXT_SUFFIX')
+            relative_module_path = ext.name.replace(".", os.sep) + sysconfig.get_config_var("EXT_SUFFIX")
             library_path = os.path.join(
                 "@rpath", os.path.basename(relative_module_path)
             )
