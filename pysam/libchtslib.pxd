@@ -320,6 +320,8 @@ cdef extern from "htslib/hts.h" nogil:
         FASTQ_OPT_RNUM
         FASTQ_OPT_BARCODE
         FASTQ_OPT_NAME2
+        FASTQ_OPT_UMI
+        FASTQ_OPT_UMI_REGEX
 
     cdef enum hts_profile_option:
         HTS_PROFILE_FAST
@@ -873,6 +875,9 @@ cdef extern from "htslib/sam.h" nogil:
     int bam_mods_queryi(hts_base_mod_state *state, int i, int *strand, int *implicit, char *canonical)
     int *bam_mods_recorded(hts_base_mod_state *state, int *ntype)
 
+    int sam_hdr_set(samFile *fp, sam_hdr_t *h, int dup)
+    sam_hdr_t *sam_hdr_get(samFile *fp)
+
 
 cdef extern from "htslib/cram.h" nogil:
 
@@ -1147,6 +1152,11 @@ cdef extern from "htslib/vcf.h" nogil:
     uint8_t BCF_VL_A
     uint8_t BCF_VL_G
     uint8_t BCF_VL_R
+    uint8_t BCF_VL_P
+    uint8_t BCF_VL_LA
+    uint8_t BCF_VL_LG
+    uint8_t BCF_VL_LR
+    uint8_t BCF_VL_M
 
     uint8_t BCF_DT_ID
     uint8_t BCF_DT_CTG

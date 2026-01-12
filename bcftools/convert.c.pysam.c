@@ -880,7 +880,7 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
         ptr += fmt_gt->n;
         if ( fmt_gt->n==1 ) // haploid genotypes
         {
-            if ( ptr[0]==2 ) /* 0 */
+            if ( ( ptr[0] >> 1 )==1 ) /* 0 */
             {
                 str->s[str->l++] = '0'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
             }
@@ -888,7 +888,7 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
             {
                 str->s[str->l++] = '?'; str->s[str->l++] = ' '; str->s[str->l++] = '?'; str->s[str->l++] = ' ';
             }
-            else if ( ptr[0]==4 ) /* 1 */
+            else if ( ( ptr[0] >> 1 )==2 ) /* 1 */
             {
                 str->s[str->l++] = '1'; str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
             }
@@ -897,7 +897,7 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
                 kputw(bcf_gt_allele(ptr[0]),str); str->s[str->l++] = ' '; str->s[str->l++] = '-'; str->s[str->l++] = ' ';
             }
         }
-        else if ( ptr[0]==2 )
+        else if ( ( ptr[0] >> 1 )==1 )
         {
             if ( ptr[1]==3 ) /* 0|0 */
             {
@@ -936,7 +936,7 @@ static void process_gt_to_hap(convert_t *convert, bcf1_t *line, fmt_t *fmt, int 
                 str->s[str->l++] = '*'; str->s[str->l++] = ' ';
             }
         }
-        else if ( ptr[0]==4 )
+        else if ( ( ptr[0] >> 1 )==2 )
         {
             if ( ptr[1]==3 ) /* 1|0 */
             {
@@ -1030,7 +1030,7 @@ static void process_gt_to_hap2(convert_t *convert, bcf1_t *line, fmt_t *fmt, int
     for (i=0; i<convert->nsamples; i++)
     {
         ptr += fmt_gt->n;
-        if ( ptr[0]==2 )
+        if ( ( ptr[0] >> 1 )==1 )
         {
             if ( ptr[1]==3 ) /* 0|0 */
             {
@@ -1069,7 +1069,7 @@ static void process_gt_to_hap2(convert_t *convert, bcf1_t *line, fmt_t *fmt, int
                 str->s[str->l++] = '*'; str->s[str->l++] = ' ';
             }
         }
-        else if ( ptr[0]==4 )
+        else if ( ( ptr[0] >> 1 )==2 )
         {
             if ( ptr[1]==3 ) /* 1|0 */
             {
@@ -1185,7 +1185,7 @@ static void process_filter_expr(convert_t *convert, bcf1_t *line, fmt_t *fmt, in
             val = filter_get_doubles(dat->filter,&nval,&nval1);
             if ( fmt->is_gt_field )
             {
-                if ( !dat->nval )
+                if ( nval && !dat->nval )
                 {
                     dat->nval = nval;
                     dat->val = malloc(nval*sizeof(double));
@@ -1206,7 +1206,8 @@ static void process_filter_expr(convert_t *convert, bcf1_t *line, fmt_t *fmt, in
     }
     if ( isample<0 ) isample = 0;
     if ( isample>=nval ) isample = 0;
-    kputd(val[isample], str);
+    if ( nval ) kputd(val[isample], str);
+    else kputc('.', str);
 }
 static void destroy_filter_expr(void *usr)
 {
@@ -1341,13 +1342,15 @@ static char *set_filter_expr(convert_t *convert, char *key, int is_gtf)
     else if ( !strncasecmp(key,"SMPL_AVG(",9) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"SMPL_STDEV(",11) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"SMPL_SUM(",9) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"SMPL_COUNT(",11) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"sMAX(",5) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"sMIN(",5) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"sMEAN(",6) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"sMEDIAN(",8) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"sAVG(",5) ) { ptr = function(convert,key,is_gtf); } \
     else if ( !strncasecmp(key,"sSTDEV(",7) ) { ptr = function(convert,key,is_gtf); } \
-    else if ( !strncasecmp(key,"sSUM(",5) ) { ptr = function(convert,key,is_gtf); }
+    else if ( !strncasecmp(key,"sSUM(",5) ) { ptr = function(convert,key,is_gtf); } \
+    else if ( !strncasecmp(key,"sCOUNT(",7) ) { ptr = function(convert,key,is_gtf); }
 
 static void set_type(fmt_t *fmt, int type) { fmt->type = type; }
 static fmt_t *register_tag(convert_t *convert, char *key, int is_gtf, int type)

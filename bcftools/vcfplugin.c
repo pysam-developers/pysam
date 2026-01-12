@@ -601,10 +601,10 @@ static void usage(args_t *args)
     fprintf(stderr, "   -i, --include EXPR             Select sites for which the expression is true\n");
     fprintf(stderr, "   -r, --regions REGION           Restrict to comma-separated list of regions\n");
     fprintf(stderr, "   -R, --regions-file FILE        Restrict to regions listed in a file\n");
-    fprintf(stderr, "        --regions-overlap 0|1|2   Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
+    fprintf(stderr, "       --regions-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [1]\n");
     fprintf(stderr, "   -t, --targets REGION           Similar to -r but streams rather than index-jumps\n");
     fprintf(stderr, "   -T, --targets-file FILE        Similar to -R but streams rather than index-jumps\n");
-    fprintf(stderr, "        --targets-overlap 0|1|2   Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
+    fprintf(stderr, "       --targets-overlap 0|1|2    Include if POS in the region (0), record overlaps (1), variant overlaps (2) [0]\n");
     fprintf(stderr, "VCF output options:\n");
     fprintf(stderr, "       --no-version               Do not append version and command line to the header\n");
     fprintf(stderr, "   -o, --output FILE              Write output to a file [standard output]\n");

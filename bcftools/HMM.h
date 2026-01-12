@@ -1,6 +1,6 @@
 /* The MIT License
 
-   Copyright (c) 2014-2016 Genome Research Ltd.
+   Copyright (c) 2014-2025 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
 
@@ -23,13 +23,58 @@
    THE SOFTWARE.
 
  */
+/*
+    // Usage example, print the Viterbi path at the corresponding fwd-bwd posterior
+    // probabilities
+
+    hmm_run_viterbi(hmm, nsites, eprob, sites);
+    hmm_run_fwd_bwd(hmm, nsites, eprob, sites);
+    uint8_t *path = hmm_get_viterbi_path(hmm);
+    double *prob  = hmm_get_fwd_bwd_prob(hmm);
+    for (i=0; i<nsites; i++)
+    {
+        printf("pos=%d  path=%d\n",i,HMM_VPATH(path,nsites,i));
+        for (j=0; j<nsites; j++) printf("\t%f",HMM_PPROB(prob,nsites,i,j));
+        printf("\n");
+    }
+*/
 
 #ifndef __HMM_H__
 #define __HMM_H__
 
-#define MAT(matrix,ndim,i,j) (matrix)[(ndim)*(i)+(j)]       // P(i|j), that is, transition j->i
+#include <stdio.h>
+#include <stdint.h>
+#include <stdarg.h>
+
+#define MAT(matrix,ndim,i,j) (matrix)[(ndim)*(i)+(j)]           // P(i|j), that is, transition j->i
+#define HMM_VPATH(arr,n,ipos) (arr)[n*ipos]                     // access Viterbi path returned by hmm_get_viterbi_path()
+#define HMM_PPROB(arr,n,ipos,istate) (arr)[n*(ipos+1)+istate]   // access posterior probabilities returned by hmm_get_fwd_bwd_prob()
 
 typedef struct _hmm_t hmm_t;
+
+typedef enum
+{
+    DEBUG,     // FILE*; print detailed debugging information
+}
+hmm_opt_t;
+
+/**
+ *  hmm_set() - set various options, see the hmm_opt_t keys for the complete list
+ *
+ *  Returns 0 if the call succeeded, or negative number on error.
+ */
+int hmm_set(hmm_t *hmm, hmm_opt_t key, ...);   // returns 0 on success
+
+/**
+ *  hmm_get()     - get various options, see the hmm_opt_t keys
+ *  hmm_get_val() - wrapper for `hmm_get()` to return typed value
+ *
+ *  The former returns pointer to the memory area populated by the requested setting,
+ *  its type can be inferred from the hmm_opt_t documentation.
+ */
+void *hmm_get(hmm_t *hmm, hmm_opt_t key, ...);
+#define hmm_get_val(hmm,type,key) (*(type*)hmm_get(hmm, key))
+
 
 typedef void (*set_tprob_f) (hmm_t *hmm, uint32_t prev_pos, uint32_t pos, void *data, double *tprob);
 
@@ -90,7 +135,7 @@ void hmm_set_tprob_func(hmm_t *hmm, set_tprob_f set_tprob, void *data);
 
 /**
  *   hmm_run_viterbi() - run Viterbi algorithm
- *   @nsites:   number of sites 
+ *   @nsites:   number of sites
  *   @eprob:    emission probabilities for each site and state (nsites x nstates)
  *   @sites:    list of positions
  *
@@ -108,7 +153,7 @@ uint8_t *hmm_get_viterbi_path(hmm_t *hmm);
 
 /**
  *   hmm_run_fwd_bwd() - run the forward-backward algorithm
- *   @nsites:   number of sites 
+ *   @nsites:   number of sites
  *   @eprob:    emission probabilities for each site and state (nsites x nstates)
  *   @sites:    list of positions
  */
@@ -122,7 +167,7 @@ double *hmm_get_fwd_bwd_prob(hmm_t *hmm);
 
 /**
  *   hmm_run_baum_welch() - run one iteration of Baum-Welch algorithm
- *   @nsites:   number of sites 
+ *   @nsites:   number of sites
  *   @eprob:    emission probabilities for each site and state (nsites x nstates)
  *   @sites:    list of positions
  *

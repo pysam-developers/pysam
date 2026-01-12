@@ -49,6 +49,7 @@ THE SOFTWARE.  */
 typedef struct _args_t
 {
     char **argv, *fname, *samples_fname, *header_fname, *output_fname;
+    int samples_is_file;
     char *fai_fname;
     htsFile *fp;
     faidx_t *fai;
@@ -202,6 +203,14 @@ static void update_from_fai(faidx_t *fai, kstring_t *hdr_txt)
     memcpy(hdr_txt, &hdr_txt_new, sizeof(*hdr_txt));
 
     khash_str2int_destroy_free(chr_seen);
+}
+
+static char **read_samples(char *fname, int is_file, int *nsamples)
+{
+    char **samples = hts_readlist(fname, is_file, nsamples);
+    if ( !samples && !*nsamples )
+        error("Error parsing the %s %s \"%s\"\n", is_file?"--samples-file":"--samples-list",is_file?"file":"list",fname);
+    return samples;
 }
 
 static void read_header_file(char *fname, kstring_t *hdr)
@@ -389,10 +398,7 @@ static void reheader_vcf_gz(args_t *args)
     int nsamples = 0;
     char **samples = NULL;
     if ( args->samples_fname )
-    {
-        samples = hts_readlines(args->samples_fname, &nsamples);
-        if ( !samples || !nsamples ) error("Error reading the --samples file \"%s\"\n", args->samples_fname);
-    }
+        samples = read_samples(args->samples_fname, args->samples_is_file, &nsamples);
     if ( args->header_fname )
     {
         free(hdr.s); hdr.s = NULL; hdr.l = hdr.m = 0;
@@ -452,10 +458,7 @@ static void reheader_vcf(args_t *args)
     int nsamples = 0;
     char **samples = NULL;
     if ( args->samples_fname )
-    {
-        samples = hts_readlines(args->samples_fname, &nsamples);
-        if ( !samples || !nsamples ) error("Error reading the --samples file \"%s\"\n", args->samples_fname);
-    }
+        samples = read_samples(args->samples_fname, args->samples_is_file, &nsamples);
     if ( args->header_fname )
     {
         free(hdr.s); hdr.s = NULL; hdr.l = hdr.m = 0;
@@ -563,10 +566,7 @@ static void reheader_bcf(args_t *args, int is_compressed)
     int i, nsamples = 0;
     char **samples = NULL;
     if ( args->samples_fname )
-    {
-        samples = hts_readlines(args->samples_fname, &nsamples);
-        if ( !samples || !nsamples ) error("Error reading the --samples file \"%s\"\n", args->samples_fname);
-    }
+        samples = read_samples(args->samples_fname, args->samples_is_file, &nsamples);
     if ( args->header_fname )
     {
         free(htxt.s); htxt.s = NULL; htxt.l = htxt.m = 0;
@@ -664,9 +664,10 @@ static void usage(args_t *args)
     fprintf(stderr, "    -f, --fai FILE             Update sequences and their lengths from the .fai file\n");
     fprintf(stderr, "    -h, --header FILE          New header\n");
     fprintf(stderr, "    -o, --output FILE          Write output to a file [standard output]\n");
-    fprintf(stderr, "    -s, --samples FILE         New sample names\n");
+    fprintf(stderr, "    -n, --samples-list LIST    New sample names given as a comma-separated list\n");
+    fprintf(stderr, "    -N, --samples-file FILE    New sample names in a file, see the man page for details\n");
     fprintf(stderr, "    -T, --temp-prefix PATH     Ignored; was template for temporary file name\n");
-    fprintf(stderr, "        --threads INT          Use multithreading with <int> worker threads (BCF only) [0]\n");
+    fprintf(stderr, "        --threads INT          Use multithreading with INT worker threads (BCF only) [0]\n");
     fprintf(stderr, "    -v, --verbosity INT        Verbosity level\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Example:\n");
@@ -695,11 +696,13 @@ int main_reheader(int argc, char *argv[])
         {"output",1,0,'o'},
         {"header",1,0,'h'},
         {"samples",1,0,'s'},
+        {"samples-file",1,0,'N'},
+        {"samples-list",1,0,'n'},
         {"threads",1,NULL,1},
         {"verbosity",required_argument,NULL,'v'},
         {0,0,0,0}
     };
-    while ((c = getopt_long(argc, argv, "s:h:o:f:T:v:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "s:h:o:f:T:v:N:n:",loptions,NULL)) >= 0)
     {
         switch (c)
         {
@@ -710,7 +713,9 @@ int main_reheader(int argc, char *argv[])
             case 'T': break; // unused - was temp file prefix
             case 'f': args->fai_fname = optarg; break;
             case 'o': args->output_fname = optarg; break;
-            case 's': args->samples_fname = optarg; break;
+            case 's': args->samples_fname = optarg; args->samples_is_file = 1; break;
+            case 'N': args->samples_fname = optarg; args->samples_is_file = 1; break;
+            case 'n': args->samples_fname = optarg; args->samples_is_file = 0; break;
             case 'h': args->header_fname = optarg; break;
             case '?': usage(args); break;
             default: error("Unknown argument: %s\n", optarg);
