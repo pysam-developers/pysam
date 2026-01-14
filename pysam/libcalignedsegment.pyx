@@ -241,7 +241,7 @@ cdef inline uint8_t get_tag_typecode(value, value_type=None):
                 isinstance(value, tuple):
             typecode = b'B'
     else:
-        if value_type in 'aAsSIcCZidfH':
+        if value_type in 'aABsSIcCZidfH':
             typecode = force_bytes(value_type)[0]
 
     return typecode
