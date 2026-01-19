@@ -330,7 +330,7 @@ class TestIterationWithoutComments(IterationTest):
         # if skip_invalid_references is set to True
         self.assertEqual(
             0,
-            len(list(self.tabix.fetch("chrUn", skip_invalid_references=True)))
+            len(list(self.tabix.fetch("chrUn", skip_invalid_references=True))))
 
         # out of range access
         # to be implemented
