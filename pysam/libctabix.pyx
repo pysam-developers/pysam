@@ -420,7 +420,8 @@ cdef class TabixFile:
               end=None, 
               region=None,
               parser=None,
-              multiple_iterators=False):
+              multiple_iterators=False,
+              skip_invalid_references=False):
         '''fetch one or more rows in a :term:`region` using 0-based
         indexing. The region is specified by :term:`reference`,
         *start* and *end*. Alternatively, a samtools :term:`region`
@@ -439,6 +440,10 @@ cdef class TabixFile:
         returned will receive its own copy of a filehandle to the file
         effectively re-opening the file. Re-opening a file creates
         some overhead, so beware.
+
+        Set *skip_invalid_references* if you want to gracefully ignore
+        cases where a reference name is not valid. By default,
+        a *ValueError* will be raised in such cases.
 
         '''
         if not self.is_open():
@@ -505,9 +510,12 @@ cdef class TabixFile:
                     # return an empty iterator
                     return EmptyIterator()
             else:
-                raise ValueError(
-                    "could not create iterator for region '%s'" %
-                    region)
+                if skip_invalid_references:
+                    return EmptyIterator()
+                else:
+                    raise ValueError(
+                        "could not create iterator for region '%s'" %
+                        region)
             
         # use default parser if no parser is specified
         if parser is None:
