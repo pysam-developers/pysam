@@ -2256,8 +2256,15 @@ cdef class IteratorRowAllRefs(IteratorRow):
             self.rowiter.cnext()
 
             # If current iterator is not exhausted, return aligned read
-            if self.rowiter.retval > 0:
+            if self.rowiter.retval >= 0:
                 return makeAlignedSegment(self.rowiter.b, self.header)
+
+            if self.rowiter.retval == -2:
+                raise IOError('truncated file')
+            elif self.rowiter.retval < -1:
+                raise IOError(
+                    "error while reading file {}: {}".format(
+                        self.samfile.filename, self.rowiter.retval))
 
             self.tid += 1
 
