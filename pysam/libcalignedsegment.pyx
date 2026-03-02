@@ -1939,12 +1939,9 @@ cdef class AlignedSegment:
             if pmods and self.is_reverse:                
                 rmod = {}
 
-                # Try to find the length of the original sequence
-                rlen = self.infer_read_length()
-                if rlen is None and self.query_sequence is None:
+                if self.query_sequence is None:
                     return rmod
-                else:
-                    rlen = len(self.query_sequence)
+                rlen = len(self.query_sequence)
                     
                 for k,mods in pmods.items():
                     nk = k[0],1 - k[1],k[2]
