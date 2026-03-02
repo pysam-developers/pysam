@@ -1,5 +1,5 @@
 # cython: embedsignature=True
-# cython: profile=True
+# cython: profile=False
 # adds doc-strings for sphinx
 import tempfile
 import os

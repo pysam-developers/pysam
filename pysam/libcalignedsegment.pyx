@@ -1,6 +1,6 @@
 # cython: language_level=3
 # cython: embedsignature=True
-# cython: profile=True
+# cython: profile=False
 ###############################################################################
 ###############################################################################
 # Cython wrapper for SAM/BAM/CRAM files based on htslib
