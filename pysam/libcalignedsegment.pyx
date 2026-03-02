@@ -1035,9 +1035,6 @@ cdef class AlignedSegment:
         if t == o:
             return 0
 
-        cdef uint8_t *a = <uint8_t*>&t.core
-        cdef uint8_t *b = <uint8_t*>&o.core
-
         retval = memcmp(&t.core, &o.core, sizeof(bam1_core_t))
         if retval:
             return retval
