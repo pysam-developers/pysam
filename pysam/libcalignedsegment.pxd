@@ -59,6 +59,8 @@ cdef class AlignedSegment:
     cdef object unused2
     cdef object unused3
 
+    cdef _decode_aux_value(self, uint8_t * s)
+
     # add an alignment tag with value to the AlignedSegment
     # an existing tag of the same name will be replaced.
     cpdef set_tag(self, tag, value, value_type=?, replace=?)
