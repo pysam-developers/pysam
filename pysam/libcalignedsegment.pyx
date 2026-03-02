@@ -155,20 +155,14 @@ cdef inline uint8_t map_typecode_python_to_htslib(char s):
 
 
 cdef inline void update_bin(bam1_t * src):
-    if src.core.flag & BAM_FUNMAP:
-        # treat alignment as length of 1 for unmapped reads
-        src.core.bin = hts_reg2bin(
-            src.core.pos,
-            src.core.pos + 1,
-            14,
-            5)
-    elif pysam_get_n_cigar(src):
+    if pysam_get_n_cigar(src) and not (src.core.flag & BAM_FUNMAP):
         src.core.bin = hts_reg2bin(
             src.core.pos,
             bam_endpos(src),
             14,
             5)
     else:
+        # treat alignment as length of 1 for unmapped or cigar-less reads
         src.core.bin = hts_reg2bin(
             src.core.pos,
             src.core.pos + 1,
