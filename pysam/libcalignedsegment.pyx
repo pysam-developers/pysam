@@ -69,7 +69,7 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
 
-from pysam.libchtslib cimport HTS_IDX_NOCOOR
+from pysam.libchtslib cimport HTS_IDX_NOCOOR, bam_set_qname
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 
@@ -1190,35 +1190,9 @@ cdef class AlignedSegment:
 
             qname = force_bytes(qname)
             cdef bam1_t * src = self._delegate
-            # the qname is \0 terminated
-            cdef uint8_t l = len(qname) + 1
 
-            cdef char * p = pysam_bam_get_qname(src)
-            cdef uint8_t l_extranul = 0
-
-            if l % 4 != 0:
-                l_extranul = 4 - l % 4
-
-            cdef bam1_t * retval = pysam_bam_update(src,
-                                                    src.core.l_qname,
-                                                    l + l_extranul,
-                                                    <uint8_t*>p)
-            if retval == NULL:
+            if bam_set_qname(src, qname) < 0:
                 raise MemoryError("could not allocate memory")
-
-            src.core.l_extranul = l_extranul
-            src.core.l_qname = l + l_extranul
-
-            # re-acquire pointer to location in memory
-            # as it might have moved
-            p = pysam_bam_get_qname(src)
-
-            strncpy(p, qname, l)
-            # x might be > 255
-            cdef uint16_t x = 0
-
-            for x from l <= x < l + l_extranul:
-                p[x] = b'\0'
 
     property flag:
         """properties flag"""
