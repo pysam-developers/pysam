@@ -3258,6 +3258,9 @@ cdef class PileupColumn:
 
         a list of quality scores : list
         """
+        if self.plp == NULL or self.plp[0] == NULL:
+            raise ValueError("PileupColumn accessed after iterator finished")
+
         cdef uint32_t x = 0
         cdef const bam_pileup1_t * p = NULL
         cdef uint32_t c = 0
