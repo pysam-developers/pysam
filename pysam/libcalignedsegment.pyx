@@ -69,7 +69,7 @@ from libc.stdint cimport INT8_MIN, INT16_MIN, INT32_MIN, \
     INT8_MAX, INT16_MAX, INT32_MAX, \
     UINT8_MAX, UINT16_MAX, UINT32_MAX
 
-from pysam.libchtslib cimport HTS_IDX_NOCOOR
+from pysam.libchtslib cimport HTS_IDX_NOCOOR, bam_cigar2qlen
 from pysam.libcutils cimport force_bytes, force_str, \
     charptr_to_str, charptr_to_bytes
 
@@ -431,21 +431,7 @@ cdef inline int32_t calculateQueryLengthWithoutHardClipping(bam1_t * src):
     if cigar_p == NULL:
         return 0
 
-    cdef uint32_t k, qpos
-    cdef int op
-    qpos = 0
-
-    for k from 0 <= k < pysam_get_n_cigar(src):
-        op = cigar_p[k] & BAM_CIGAR_MASK
-
-        if op == BAM_CMATCH or \
-           op == BAM_CINS or \
-           op == BAM_CSOFT_CLIP or \
-           op == BAM_CEQUAL or \
-           op == BAM_CDIFF:
-            qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
-
-    return qpos
+    return bam_cigar2qlen(pysam_get_n_cigar(src), cigar_p)
 
 
 cdef inline int32_t calculateQueryLengthWithHardClipping(bam1_t * src):
@@ -461,22 +447,16 @@ cdef inline int32_t calculateQueryLengthWithHardClipping(bam1_t * src):
     if cigar_p == NULL:
         return 0
 
-    cdef uint32_t k, qpos
+    cdef uint32_t k
     cdef int op
-    qpos = 0
+    cdef int32_t qlen = bam_cigar2qlen(pysam_get_n_cigar(src), cigar_p)
 
     for k from 0 <= k < pysam_get_n_cigar(src):
         op = cigar_p[k] & BAM_CIGAR_MASK
+        if op == BAM_CHARD_CLIP:
+            qlen += cigar_p[k] >> BAM_CIGAR_SHIFT
 
-        if op == BAM_CMATCH or \
-           op == BAM_CINS or \
-           op == BAM_CSOFT_CLIP or \
-           op == BAM_CHARD_CLIP or \
-           op == BAM_CEQUAL or \
-           op == BAM_CDIFF:
-            qpos += cigar_p[k] >> BAM_CIGAR_SHIFT
-
-    return qpos
+    return qlen
 
 
 cdef inline int32_t getQueryStart(bam1_t *src) except -1:
