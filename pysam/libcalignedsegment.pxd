@@ -59,6 +59,9 @@ cdef class AlignedSegment:
     cdef object unused2
     cdef object unused3
 
+    cdef _get_reference_name(self, int tid, label)
+    cdef int _resolve_reference_id(self, reference, label) except -2
+
     # add an alignment tag with value to the AlignedSegment
     # an existing tag of the same name will be replaced.
     cpdef set_tag(self, tag, value, value_type=?, replace=?)
