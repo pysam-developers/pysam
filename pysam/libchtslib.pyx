@@ -491,14 +491,17 @@ cdef class HTSFile(object):
         whence = libc_whence_from_io(whence)
 
         cdef int64_t ret
-        cdef htsCompression compression = hts_get_format(self.htsfile).compression
-        if compression == bgzf:
+        cdef const htsFormat *fmt = hts_get_format(self.htsfile)
+        if fmt.compression == bgzf:
             with nogil:
                 ret = bgzf_seek(hts_get_bgzfp(self.htsfile), offset, whence)
-        elif compression == no_compression:
+        elif fmt.compression == no_compression:
             ret = 0 if (hseek(self.htsfile.fp.hfile, offset, whence) >= 0) else -1
+        elif fmt.format == cram:
+            with nogil:
+                ret = cram_seek(hts_get_bgzfp(self.htsfile), offset, whence)
         else:
-            raise NotImplementedError(f"seek not implemented in files compressed by method {compression}")
+            raise NotImplementedError(f"seek not implemented in files compressed by method {fmt.compression}")
         return ret
 
     def tell(self):
