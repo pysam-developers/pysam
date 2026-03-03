@@ -499,7 +499,7 @@ cdef class HTSFile(object):
             ret = 0 if (hseek(self.htsfile.fp.hfile, offset, whence) >= 0) else -1
         elif fmt.format == cram:
             with nogil:
-                ret = cram_seek(hts_get_bgzfp(self.htsfile), offset, whence)
+                ret = cram_seek(self.htsfile.fp.cram, offset, whence)
         else:
             raise NotImplementedError(f"seek not implemented in files compressed by method {fmt.compression}")
         return ret
