@@ -1,3 +1,4 @@
+# cython: language_level=3
 # cython: embedsignature=True
 #
 # Code to read, write and edit VCF files

@@ -76,6 +76,19 @@ environment-varirable `LD_LIBRARY_PATH`.
 Note that generally the pysam and htslib version need to be
 compatible. See the release notes for more information.
 
+Profiling
+---------
+
+Pysam's Cython code is no longer built with Python profiling enabled by default.
+Profiling can be enabled when building it yourself from source by setting the
+environment variable `PYSAM_PROFILE`::
+
+    export PYSAM_PROFILE=1
+    pip install --no-binary pysam pysam
+
+Note that when installing via pip you will need to use ``--no-binary pysam`` to
+ensure pip does not simply install a pre-built wheel.
+
 Installation from repository
 ============================
 

@@ -1,3 +1,4 @@
+# cython: language_level=3
 from cpython cimport PyBytes_FromStringAndSize
 
 from libc.stdio cimport printf, feof, fgets

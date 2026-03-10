@@ -1,6 +1,5 @@
 # cython: language_level=3
 # cython: embedsignature=True
-# cython: profile=True
 ###############################################################################
 ###############################################################################
 ## Cython wrapper for htslib VCF/BCF reader/writer

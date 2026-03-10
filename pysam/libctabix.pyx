@@ -1,6 +1,5 @@
 # cython: language_level=3
 # cython: embedsignature=True
-# cython: profile=True
 ###############################################################################
 ###############################################################################
 # Cython wrapper for access to tabix indexed files in bgzf format
