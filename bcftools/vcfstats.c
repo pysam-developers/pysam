@@ -1299,6 +1299,7 @@ static void do_vcf_stats(args_t *args)
         if ( bcf_get_info_int32(reader->header,line,"DP",&args->iarr,&args->miarr)==1 )
             (*idist(&stats->dp_sites, args->iarr[0]))++;
     }
+    if ( files->errnum ) error("Error: %s\n", bcf_sr_strerror(files->errnum));
 }
 
 static void print_header(args_t *args)

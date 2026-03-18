@@ -220,8 +220,6 @@ unsigned char *rans_compress_O0_32x16_avx2(unsigned char *in,
     while (z-- > 0)
       RansEncPutSymbol(&ransN[z], &ptr, &syms[in[in_size-(i-z)]]);
 
-    uint16_t *ptr16 = (uint16_t *)ptr;
-
     LOAD(Rv, ransN);
 
     for (i=(in_size &~(NX-1)); i>0; i-=NX) {
@@ -306,7 +304,7 @@ unsigned char *rans_compress_O0_32x16_avx2(unsigned char *in,
                                         _mm256_and_si256(sh[x+3], D)))
 
         // Renorm:
-        // if (x > x_max) {*--ptr16 = x & 0xffff; x >>= 16;}
+        // if (x > x_max) { ptr -=2; *((uint16_t *)ptr) = x & 0xffff; x >>= 16;}
         __m256i xmax1 = SYM_LOAD( 0, xA, xB, xC, xD);
         __m256i xmax2 = SYM_LOAD( 4, xA, xB, xC, xD);
         __m256i xmax3 = SYM_LOAD( 8, xA, xB, xC, xD);
@@ -317,7 +315,7 @@ unsigned char *rans_compress_O0_32x16_avx2(unsigned char *in,
         __m256i cv3 = _mm256_cmpgt_epi32(Rv3, xmax3);
         __m256i cv4 = _mm256_cmpgt_epi32(Rv4, xmax4);
 
-        // Store bottom 16-bits at ptr16
+        // Store bottom 16-bits at ptr
         unsigned int imask1 = _mm256_movemask_ps((__m256)cv1);
         unsigned int imask2 = _mm256_movemask_ps((__m256)cv2);
         unsigned int imask3 = _mm256_movemask_ps((__m256)cv3);
@@ -349,20 +347,20 @@ unsigned char *rans_compress_O0_32x16_avx2(unsigned char *in,
 
         // Now we have bottom N 16-bit values in each V12/V34 to flush
         __m128i f =  _mm256_extractf128_si256(V34, 1);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask4);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask4) * 2;
 
         f =  _mm256_extractf128_si256(V34, 0);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask3);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask3) * 2;
 
         f =  _mm256_extractf128_si256(V12, 1);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask2);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask2) * 2;
 
         f =  _mm256_extractf128_si256(V12, 0);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask1);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask1) * 2;
 
         __m256i Rs;
         Rs = _mm256_srli_epi32(Rv1,16); Rv1 = _mm256_blendv_epi8(Rv1, Rs, cv1);
@@ -437,7 +435,6 @@ unsigned char *rans_compress_O0_32x16_avx2(unsigned char *in,
 
     STORE(Rv, ransN);
 
-    ptr = (uint8_t *)ptr16;
     for (z = NX-1; z >= 0; z--)
       RansEncFlush(&ransN[z], &ptr);
 
@@ -506,15 +503,15 @@ unsigned char *rans_uncompress_O0_32x16_avx2(unsigned char *in,
             goto err;
     }
 
-    uint16_t *sp = (uint16_t *)cp;
+    uint8_t *sp = cp;
     uint8_t overflow[64+64] = {0};
     cp_end -= 64;
 
     // Protect against running off the end of in buffer.
     // We copy it to a worst-case local buffer when near the end.
-    if ((uint8_t *)sp > cp_end) {
-        memmove(overflow, sp, cp_end+64 - (uint8_t *)sp);
-        sp = (uint16_t *)overflow;
+    if (sp > cp_end) {
+        memmove(overflow, sp, cp_end+64 - sp);
+        sp = overflow;
         cp_end = overflow + sizeof(overflow) - 64;
     }
 
@@ -569,9 +566,9 @@ unsigned char *rans_uncompress_O0_32x16_avx2(unsigned char *in,
 
         // Protect against running off the end of in buffer.
         // We copy it to a worst-case local buffer when near the end.
-        if ((uint8_t *)sp > cp_end) {
-            memmove(overflow, sp, cp_end+64 - (uint8_t *)sp);
-            sp = (uint16_t *)overflow;
+        if (sp > cp_end) {
+            memmove(overflow, sp, cp_end+64 - sp);
+            sp = overflow;
             cp_end = overflow + sizeof(overflow) - 64;
         }
 
@@ -600,11 +597,11 @@ unsigned char *rans_uncompress_O0_32x16_avx2(unsigned char *in,
 
         // Shuffle the renorm values to correct lanes and incr sp pointer
         unsigned int imask2 = _mm256_movemask_ps((__m256)renorm_mask2);
-        sp += _mm_popcnt_u32(imask1);
+        sp += _mm_popcnt_u32(imask1) * 2;
 
         __m256i idx2 = _mm256_load_si256((const __m256i*)permute[imask2]);
         __m256i Vv2 = _mm256_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
-        sp += _mm_popcnt_u32(imask2);
+        sp += _mm_popcnt_u32(imask2) * 2;
 
         Yv1 = _mm256_or_si256(Yv1, Vv1);
         Vv2 = _mm256_permutevar8x32_epi32(Vv2, idx2);
@@ -662,7 +659,7 @@ unsigned char *rans_uncompress_O0_32x16_avx2(unsigned char *in,
         Vv3 = _mm256_permutevar8x32_epi32(Vv3, idx3);
         __m256i Yv4 = _mm256_slli_epi32(Rv4, 16);
         unsigned int imask4 = _mm256_movemask_ps((__m256)renorm_mask4);
-        sp += _mm_popcnt_u32(imask3);
+        sp += _mm_popcnt_u32(imask3) * 2;
 
         __m256i idx4 = _mm256_load_si256((const __m256i*)permute[imask4]);
         __m256i Vv4 = _mm256_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
@@ -671,7 +668,7 @@ unsigned char *rans_uncompress_O0_32x16_avx2(unsigned char *in,
         Yv3 = _mm256_or_si256(Yv3, Vv3);
         Vv4 = _mm256_permutevar8x32_epi32(Vv4, idx4);
         Yv4 = _mm256_or_si256(Yv4, Vv4);
-        sp += _mm_popcnt_u32(imask4);
+        sp += _mm_popcnt_u32(imask4) * 2;
 
         // R[z] = c ? Y[z] : R[z];
         Rv3 = _mm256_blendv_epi8(Rv3, Yv3, renorm_mask3);
@@ -756,8 +753,6 @@ unsigned char *rans_compress_O1_32x16_avx2(unsigned char *in, unsigned int in_si
         RansEncPutSymbol(&ransN[z], &ptr, &syms[c][lN[z]]);
         lN[z] = c;
     }
-
-    uint16_t *ptr16 = (uint16_t *)ptr;
 
 //       clang16      clang10      gcc7         gcc13
 //       587 435 381  588 438 403  504 386 415  527 381 394
@@ -865,7 +860,8 @@ unsigned char *rans_compress_O1_32x16_avx2(unsigned char *in, unsigned int in_si
         // ------------------------------------------------------------
         //      for (z = NX-1; z >= 0; z--) {
         //          if (ransN[z] >= x_max[z]) {
-        //              *--ptr16 = ransN[z] & 0xffff;
+        //              ptr -= 2;
+        //              *((uint16_t *)ptr) = ransN[z] & 0xffff;
         //              ransN[z] >>= 16;
         //          }
         //      }
@@ -874,10 +870,13 @@ unsigned char *rans_compress_O1_32x16_avx2(unsigned char *in, unsigned int in_si
         __m256i cv3 = _mm256_cmpgt_epi32(Rv3, xmaxv[2]);
         __m256i cv4 = _mm256_cmpgt_epi32(Rv4, xmaxv[3]);
 
-        // Store bottom 16-bits at ptr16
+        // Store bottom 16-bits at ptr
         //
         // for (z = NX-1; z >= 0; z--) {
-        //     if (cond[z]) *--ptr16 = (uint16_t )(ransN[z] & 0xffff);
+        //     if (cond[z]) {
+        //         ptr -=2;
+        //         *((uint16_t *) ptr) = (ransN[z] & 0xffff);
+        //     }
         // }
         unsigned int imask1 = _mm256_movemask_ps((__m256)cv1);
         unsigned int imask2 = _mm256_movemask_ps((__m256)cv2);
@@ -910,20 +909,20 @@ unsigned char *rans_compress_O1_32x16_avx2(unsigned char *in, unsigned int in_si
 
         // Now we have bottom N 16-bit values in each V12/V34 to flush
         __m128i f =  _mm256_extractf128_si256(V34, 1);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask4);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask4) * 2;
 
         f =  _mm256_extractf128_si256(V34, 0);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask3);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask3) * 2;
 
         f =  _mm256_extractf128_si256(V12, 1);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask2);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask2) * 2;
 
         f =  _mm256_extractf128_si256(V12, 0);
-        _mm_storeu_si128((__m128i *)(ptr16-8), f);
-        ptr16 -= _mm_popcnt_u32(imask1);
+        _mm_storeu_si128((__m128i *)(ptr-16), f);
+        ptr -= _mm_popcnt_u32(imask1) * 2;
 
         __m256i Rs1, Rs2, Rs3, Rs4;
         Rs1 = _mm256_srli_epi32(Rv1,16);
@@ -994,8 +993,6 @@ unsigned char *rans_compress_O1_32x16_avx2(unsigned char *in, unsigned int in_si
     }
 
     STORE(Rv, ransN);
-
-    ptr = (uint8_t *)ptr16;
 
     for (z = NX-1; z>=0; z--)
         RansEncPutSymbol(&ransN[z], &ptr, &syms[0][lN[z]]);
@@ -1106,7 +1103,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
     for (z = 0; z < NX; z++)
         iN[z] = z*isz4;
 
-    uint16_t *sp = (uint16_t *)ptr;
+    uint8_t *sp = ptr;
     const uint32_t mask = (1u << shift)-1;
 
     __m256i maskv  = _mm256_set1_epi32(mask);
@@ -1127,7 +1124,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
 
     if (shift == TF_SHIFT_O1) {
         isz4 -= 64;
-        for (; iN[0] < isz4 && (uint8_t *)sp+64 < ptr_end; ) {
+        for (; iN[0] < isz4 && ptr_end - sp > 64; ) {
             // m[z] = R[z] & mask;
             __m256i masked1 = _mm256_and_si256(Rv1, maskv);
             __m256i masked2 = _mm256_and_si256(Rv2, maskv);
@@ -1240,12 +1237,12 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
 
             unsigned int imask2 = _mm256_movemask_ps((__m256)renorm_mask2);
             Vv1 = _mm256_permutevar8x32_epi32(Vv1, idx1);
-            sp += _mm_popcnt_u32(imask1);
+            sp += _mm_popcnt_u32(imask1) * 2;
 
             __m256i idx2 = _mm256_load_si256((const __m256i*)permute[imask2]);
             __m256i Vv2 = _mm256_cvtepu16_epi32(
                               _mm_loadu_si128((__m128i *)sp));
-            sp += _mm_popcnt_u32(imask2);
+            sp += _mm_popcnt_u32(imask2) * 2;
             Vv2 = _mm256_permutevar8x32_epi32(Vv2, idx2);
 
             Yv1 = _mm256_or_si256(Yv1, Vv1);
@@ -1300,7 +1297,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
             unsigned int imask3 = _mm256_movemask_ps((__m256)renorm_mask3);
             unsigned int imask4 = _mm256_movemask_ps((__m256)renorm_mask4);
             __m256i idx3 = _mm256_load_si256((const __m256i*)permute[imask3]);
-            sp += _mm_popcnt_u32(imask3);
+            sp += _mm_popcnt_u32(imask3) * 2;
             Vv3 = _mm256_permutevar8x32_epi32(Vv3, idx3);
 
             sv3 = _mm256_packus_epi32(sv3, sv4);
@@ -1328,7 +1325,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
             Vv4 = _mm256_permutevar8x32_epi32(Vv4, idx4);
             Yv4 = _mm256_or_si256(Yv4, Vv4);
 
-            sp += _mm_popcnt_u32(imask4);
+            sp += _mm_popcnt_u32(imask4) * 2;
 
             Rv3 = _mm256_blendv_epi8(Rv3, Yv3, renorm_mask3);
             Rv4 = _mm256_blendv_epi8(Rv4, Yv4, renorm_mask4);
@@ -1338,7 +1335,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
 
         STORE(Rv, R);
         STORE(Lv, lN);
-        ptr = (uint8_t *)sp;
+        ptr = sp;
 
         if (1) {
             iN[0]-=tidx;
@@ -1383,7 +1380,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
         // SIMD version ends decoding early as it reads at most 64 bytes
         // from input via 4 vectorised loads.
         isz4 -= 64;
-        for (; iN[0] < isz4 && (uint8_t *)sp+64 < ptr_end; ) {
+        for (; iN[0] < isz4 && ptr_end - sp > 64; ) {
             // m[z] = R[z] & mask;
             __m256i masked1 = _mm256_and_si256(Rv1, maskv);
             __m256i masked2 = _mm256_and_si256(Rv2, maskv);
@@ -1475,12 +1472,12 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
 
             unsigned int imask2 = _mm256_movemask_ps((__m256)renorm_mask2);
             Vv1 = _mm256_permutevar8x32_epi32(Vv1, idx1);
-            sp += _mm_popcnt_u32(imask1);
+            sp += _mm_popcnt_u32(imask1) * 2;
 
             __m256i idx2 = _mm256_load_si256((const __m256i*)permute[imask2]);
             __m256i Vv2 = _mm256_cvtepu16_epi32(
                               _mm_loadu_si128((__m128i *)sp));
-            sp += _mm_popcnt_u32(imask2);
+            sp += _mm_popcnt_u32(imask2) * 2;
             Vv2 = _mm256_permutevar8x32_epi32(Vv2, idx2);
 
             Yv1 = _mm256_or_si256(Yv1, Vv1);
@@ -1525,7 +1522,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
             unsigned int imask3 = _mm256_movemask_ps((__m256)renorm_mask3);
             unsigned int imask4 = _mm256_movemask_ps((__m256)renorm_mask4);
             __m256i idx3 = _mm256_load_si256((const __m256i*)permute[imask3]);
-            sp += _mm_popcnt_u32(imask3);
+            sp += _mm_popcnt_u32(imask3) * 2;
             Vv3 = _mm256_permutevar8x32_epi32(Vv3, idx3);
 
             // sv3 sv4 are 32-bit ints with lowest bit being char
@@ -1562,7 +1559,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
             Vv4 = _mm256_permutevar8x32_epi32(Vv4, idx4);
             Yv4 = _mm256_or_si256(Yv4, Vv4);
 
-            sp += _mm_popcnt_u32(imask4);
+            sp += _mm_popcnt_u32(imask4) * 2;
 
             Rv3 = _mm256_blendv_epi8(Rv3, Yv3, renorm_mask3);
             Rv4 = _mm256_blendv_epi8(Rv4, Yv4, renorm_mask4);
@@ -1571,7 +1568,7 @@ unsigned char *rans_uncompress_O1_32x16_avx2(unsigned char *in,
 
         STORE(Rv, R);
         STORE(Lv, lN);
-        ptr = (uint8_t *)sp;
+        ptr = sp;
 
         if (1) {
             iN[0]-=tidx;

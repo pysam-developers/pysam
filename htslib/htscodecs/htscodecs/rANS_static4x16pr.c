@@ -190,31 +190,10 @@ unsigned char *rans_compress_O0_4x16(unsigned char *in, unsigned int in_size,
         RansEncSymbol *s1 = &syms[in[i-3]];
         RansEncSymbol *s0 = &syms[in[i-4]];
 
-#if 1
         RansEncPutSymbol(&rans3, &ptr, s3);
         RansEncPutSymbol(&rans2, &ptr, s2);
         RansEncPutSymbol(&rans1, &ptr, s1);
         RansEncPutSymbol(&rans0, &ptr, s0);
-#else
-        // Slightly beter on gcc, much better on clang
-        uint16_t *ptr16 = (uint16_t *)ptr;
-
-        if (rans3 >= s3->x_max) *--ptr16 = (uint16_t)rans3, rans3 >>= 16;
-        if (rans2 >= s2->x_max) *--ptr16 = (uint16_t)rans2, rans2 >>= 16;
-        uint32_t q3 = (uint32_t) (((uint64_t)rans3 * s3->rcp_freq) >> s3->rcp_shift);
-        uint32_t q2 = (uint32_t) (((uint64_t)rans2 * s2->rcp_freq) >> s2->rcp_shift);
-        rans3 += s3->bias + q3 * s3->cmpl_freq;
-        rans2 += s2->bias + q2 * s2->cmpl_freq;
-
-        if (rans1 >= s1->x_max) *--ptr16 = (uint16_t)rans1, rans1 >>= 16;
-        if (rans0 >= s0->x_max) *--ptr16 = (uint16_t)rans0, rans0 >>= 16;
-        uint32_t q1 = (uint32_t) (((uint64_t)rans1 * s1->rcp_freq) >> s1->rcp_shift);
-        uint32_t q0 = (uint32_t) (((uint64_t)rans0 * s0->rcp_freq) >> s0->rcp_shift);
-        rans1 += s1->bias + q1 * s1->cmpl_freq;
-        rans0 += s0->bias + q0 * s0->cmpl_freq;
-
-        ptr = (uint8_t *)ptr16;
-#endif
     }
 
     RansEncFlush(&rans3, &ptr);

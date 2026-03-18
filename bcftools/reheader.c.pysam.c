@@ -80,10 +80,10 @@ static char *copy_and_update_contig_line(faidx_t *fai, char *line, void *chr_see
         p = ++q;
         while ( *q && (*q==' ' || *q=='\t') ) { p++; q++; }
         // ^[A-Za-z_][0-9A-Za-z_.]*$
-        if (p==q && *q && (isalpha(*q) || *q=='_'))
+        if (p==q && *q && (isalpha_c(*q) || *q=='_'))
         {
             q++;
-            while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
+            while ( *q && (isalnum_c(*q) || *q=='_' || *q=='.') ) q++;
         }
         int n = q-p;
         int m = 0;
@@ -230,7 +230,7 @@ static void read_header_file(char *fname, kstring_t *hdr)
     if ( hts_close(fp) ) error("Close failed: %s\n", fname);
     free(tmp.s);
 
-    while ( hdr->l>0 && isspace(hdr->s[hdr->l-1]) ) hdr->l--;  // remove trailing newlines
+    while ( hdr->l>0 && isspace_c(hdr->s[hdr->l-1]) ) hdr->l--;  // remove trailing newlines
     kputc('\n',hdr);
 }
 
@@ -250,17 +250,17 @@ static int set_sample_pairs(char **samples, int nsamples, kstring_t *hdr, int id
         while ( *ptr )
         {
             if ( *ptr=='\\' && !escaped ) { escaped = 1; ptr++; continue; }
-            if ( isspace(*ptr) && !escaped ) break;
+            if ( isspace_c(*ptr) && !escaped ) break;
             kputc(*ptr, &key);
             escaped = 0;
             ptr++;
         }
         if ( !*ptr ) break;
-        while ( *ptr && isspace(*ptr) ) ptr++;
+        while ( *ptr && isspace_c(*ptr) ) ptr++;
         while ( *ptr )
         {
             if ( *ptr=='\\' && !escaped ) { escaped = 1; ptr++; continue; }
-            if ( isspace(*ptr) && !escaped ) break;
+            if ( isspace_c(*ptr) && !escaped ) break;
             kputc(*ptr, &val);
             escaped = 0;
             ptr++;
@@ -275,7 +275,7 @@ static int set_sample_pairs(char **samples, int nsamples, kstring_t *hdr, int id
         return 0;
     }
 
-    while ( hdr->l>0 && isspace(hdr->s[hdr->l-1]) ) hdr->l--;  // remove trailing newlines
+    while ( hdr->l>0 && isspace_c(hdr->s[hdr->l-1]) ) hdr->l--;  // remove trailing newlines
     hdr->s[hdr->l] = 0;
 
     kstring_t tmp = {0,0,0};

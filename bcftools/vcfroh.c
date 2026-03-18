@@ -408,7 +408,7 @@ static int load_genmap(args_t *args, const char *chr)
 
         // skip second column
         tmp++;
-        while ( *tmp && !isspace(*tmp) ) tmp++;
+        while ( *tmp && !isspace_c(*tmp) ) tmp++;
 
         // read the genetic map in cM, scale from % to likelihood
         gm->rate = strtod(tmp+1, &end);
@@ -677,9 +677,9 @@ int read_AF(bcf_sr_regions_t *tgt, bcf1_t *line, double *alt_freq)
         str++;
     }
     *alt_freq = strtod(str, &tmp);
-    if ( *tmp && !isspace(*tmp) )
+    if ( *tmp && !isspace_c(*tmp) )
     {
-        if ( str[0]=='.' && (!str[1] || isspace(str[1])) ) return -1; // missing value
+        if ( str[0]=='.' && (!str[1] || isspace_c(str[1])) ) return -1; // missing value
         error("Could not parse: [%s]\n", tgt->line.s);
     }
     if ( *alt_freq<0 || *alt_freq>1 ) error("Could not parse AF: [%s]\n", tgt->line.s);

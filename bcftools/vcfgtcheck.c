@@ -359,13 +359,13 @@ static void init_data(args_t *args)
             for (i=0; i<args->npairs; i++)
             {
                 char *ptr = tmp[i];
-                while ( *ptr && !isspace(*ptr) ) ptr++;
+                while ( *ptr && !isspace_c(*ptr) ) ptr++;
                 if ( !*ptr ) error("Could not parse %s: %s\n",args->pair_samples,tmp[i]);
                 *ptr = 0;
                 args->pairs[i].iqry = bcf_hdr_id2int(args->qry_hdr, BCF_DT_SAMPLE, tmp[i]);
                 if ( args->pairs[i].iqry < 0 ) error("No such sample in %s: [%s]\n",args->qry_fname,tmp[i]);
                 ptr++;
-                while ( *ptr && isspace(*ptr) ) ptr++;
+                while ( *ptr && isspace_c(*ptr) ) ptr++;
                 args->pairs[i].igt = bcf_hdr_id2int(args->gt_hdr?args->gt_hdr:args->qry_hdr, BCF_DT_SAMPLE, ptr);
                 if ( args->pairs[i].igt < 0 ) error("No such sample in %s: [%s]\n",args->gt_fname?args->gt_fname:args->qry_fname,ptr);
                 free(tmp[i]);
@@ -1505,6 +1505,7 @@ int main_vcfgtcheck(int argc, char *argv[])
             if ( args->dry_run ) break;
         }
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     if ( !args->dry_run )
     {
         report(args);

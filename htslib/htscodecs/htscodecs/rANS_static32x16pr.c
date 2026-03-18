@@ -165,7 +165,6 @@ unsigned char *rans_compress_O0_32x16(unsigned char *in,
     } else {
         // Branchless version optimises poorly with gcc unless we have
         // AVX2 capability, so have a custom rewrite of it.
-        uint16_t* ptr16 = (uint16_t *)ptr;
         for (i=(in_size &~(NX-1)); likely(i>0); i-=NX) {
             // Unrolled copy of below, because gcc doesn't optimise this
             // well in the original form.
@@ -197,15 +196,15 @@ unsigned char *rans_compress_O0_32x16(unsigned char *in,
                 int c1  = rp[3-1] > sy[1]->x_max;
 
 #ifdef HTSCODECS_LITTLE_ENDIAN
-                ptr16[-1] = rp[3-0]; ptr16 -= c0;
-                ptr16[-1] = rp[3-1]; ptr16 -= c1;
+                memcpy(&ptr[-2], &rp[3-0], 2); ptr -= c0 * 2;
+                memcpy(&ptr[-2], &rp[3-1], 2); ptr -= c1 * 2;
 #else
-                ((uint8_t *)&ptr16[-1])[0] = rp[3-0];
-                ((uint8_t *)&ptr16[-1])[1] = rp[3-0]>>8;
-                ptr16 -= c0;
-                ((uint8_t *)&ptr16[-1])[0] = rp[3-1];
-                ((uint8_t *)&ptr16[-1])[1] = rp[3-1]>>8;
-                ptr16 -= c1;
+                ptr[-2] = rp[3-0];
+                ptr[-1] = rp[3-0]>>8;
+                ptr -= c0 * 2;
+                ptr[-2] = rp[3-1];
+                ptr[-1] = rp[3-1]>>8;
+                ptr -= c1 * 2;
 #endif
 
                 rp[3-0] = c0 ? rp[3-0]>>16 : rp[3-0];
@@ -217,15 +216,15 @@ unsigned char *rans_compress_O0_32x16(unsigned char *in,
                 int c2  = rp[3-2] > sy[2]->x_max;
                 int c3  = rp[3-3] > sy[3]->x_max;
 #ifdef HTSCODECS_LITTLE_ENDIAN
-                ptr16[-1] = rp[3-2]; ptr16 -= c2;
-                ptr16[-1] = rp[3-3]; ptr16 -= c3;
+                memcpy(&ptr[-2], &rp[3-2], 2); ptr -= c2 * 2;
+                memcpy(&ptr[-2], &rp[3-3], 2); ptr -= c3 * 2;
 #else
-                ((uint8_t *)&ptr16[-1])[0] = rp[3-2];
-                ((uint8_t *)&ptr16[-1])[1] = rp[3-2]>>8;
-                ptr16 -= c2;
-                ((uint8_t *)&ptr16[-1])[0] = rp[3-3];
-                ((uint8_t *)&ptr16[-1])[1] = rp[3-3]>>8;
-                ptr16 -= c3;
+                ptr[-2] = rp[3-2];
+                ptr[-1] = rp[3-2]>>8;
+                ptr -= c2 * 2;
+                ptr[-2] = rp[3-3];
+                ptr[-1] = rp[3-3]>>8;
+                ptr -= c3 * 2;
 #endif
                 rp[3-2] = c2 ? rp[3-2]>>16 : rp[3-2];
                 rp[3-3] = c3 ? rp[3-3]>>16 : rp[3-3];
@@ -239,7 +238,6 @@ unsigned char *rans_compress_O0_32x16(unsigned char *in,
             }
             if (z < -1) abort();
         }
-        ptr = (uint8_t *)ptr16;
     }
     for (z = NX-1; z >= 0; z--)
         RansEncFlush(&ransN[z], &ptr);
@@ -476,7 +474,6 @@ unsigned char *rans_compress_O1_32x16(unsigned char *in,
         i32[i] = &in[iN[i]];
 
     for (; likely(i32[0] >= in); ) {
-        uint16_t *ptr16 = (uint16_t *)ptr;
         for (z = NX-1; z >= 0; z-=4) {
             RansEncSymbol *sy[4];
             int k;
@@ -490,12 +487,12 @@ unsigned char *rans_compress_O1_32x16(unsigned char *in,
             for (k = 0; k < 4; k++) {
                 int c = ransN[z-k] > sy[k]->x_max;
 #ifdef HTSCODECS_LITTLE_ENDIAN
-                ptr16[-1] = ransN[z-k];
+                memcpy(&ptr[-2], &ransN[z-k], 2);
 #else
-                ((uint8_t *)&ptr16[-1])[0] = ransN[z-k];
-                ((uint8_t *)&ptr16[-1])[1] = ransN[z-k]>>8;
+                ptr[-2] = ransN[z-k];
+                ptr[-1] = ransN[z-k]>>8;
 #endif
-                ptr16 -= c;
+                ptr -= c * 2;
                 //ransN[z-k] >>= c<<4;
                 ransN[z-k] = c ? ransN[z-k]>>16 : ransN[z-k];
             }
@@ -506,7 +503,6 @@ unsigned char *rans_compress_O1_32x16(unsigned char *in,
                 ransN[z-k] += sy[k]->bias + q*sy[k]->cmpl_freq;
             }
         }
-        ptr = (uint8_t *)ptr16;
     }
 
     for (z = NX-1; z>=0; z--)

@@ -275,7 +275,6 @@ unsigned char *rans_compress_O0_32x16_sse4(unsigned char *in,
     uint32_t SB[256], SA[256], SD[256], SC[256];
 
     // Build lookup tables for SIMD encoding
-    uint16_t *ptr16 = (uint16_t *)ptr;
     for (i = 0; i < 256; i++) {
         SB[i] = syms[i].x_max;
         SA[i] = syms[i].rcp_freq;
@@ -315,7 +314,7 @@ unsigned char *rans_compress_O0_32x16_sse4(unsigned char *in,
         __m128i cv6 = _mm_cmpgt_epi32(Rv[H+1], xmax6);
         __m128i cv5 = _mm_cmpgt_epi32(Rv[H+0], xmax5);
 
-        // Store bottom 16-bits at ptr16
+        // Store bottom 16-bits at ptr
         unsigned int imask8 = _mm_movemask_ps((__m128)cv8);
         unsigned int imask7 = _mm_movemask_ps((__m128)cv7);
         unsigned int imask6 = _mm_movemask_ps((__m128)cv6);
@@ -367,10 +366,10 @@ unsigned char *rans_compress_O0_32x16_sse4(unsigned char *in,
         V6 = _mm_shuffle_epi8(V6, shuf);
         V5 = _mm_shuffle_epi8(V5, shuf);
 
-        _mm_storeu_si64(ptr16-4, V8); ptr16 -= _mm_popcnt_u32(imask8);
-        _mm_storeu_si64(ptr16-4, V7); ptr16 -= _mm_popcnt_u32(imask7);
-        _mm_storeu_si64(ptr16-4, V6); ptr16 -= _mm_popcnt_u32(imask6);
-        _mm_storeu_si64(ptr16-4, V5); ptr16 -= _mm_popcnt_u32(imask5);
+        _mm_storeu_si64(ptr-8, V8); ptr -= _mm_popcnt_u32(imask8) * 2;
+        _mm_storeu_si64(ptr-8, V7); ptr -= _mm_popcnt_u32(imask7) * 2;
+        _mm_storeu_si64(ptr-8, V6); ptr -= _mm_popcnt_u32(imask6) * 2;
+        _mm_storeu_si64(ptr-8, V5); ptr -= _mm_popcnt_u32(imask5) * 2;
 
         Rv[H+3] = _mm_blendv_epi8(Rv[H+3], _mm_srli_epi32(Rv[H+3], 16), cv8);
         Rv[H+2] = _mm_blendv_epi8(Rv[H+2], _mm_srli_epi32(Rv[H+2], 16), cv7);
@@ -441,8 +440,6 @@ unsigned char *rans_compress_O0_32x16_sse4(unsigned char *in,
 
     STORE128v(Rv, ransN);
 
-    ptr = (uint8_t *)ptr16;
-
     for (z = NX-1; z >= 0; z--)
       RansEncFlush(&ransN[z], &ptr);
 
@@ -512,7 +509,7 @@ unsigned char *rans_uncompress_O0_32x16_sse4(unsigned char *in,
             goto err;
     }
 
-    uint16_t *sp = (uint16_t *)cp;
+    uint8_t *sp = cp;
 
     int out_end = (out_sz&~(NX-1));
     const uint32_t mask = (1u << TF_SHIFT)-1;
@@ -628,31 +625,31 @@ unsigned char *rans_uncompress_O0_32x16_sse4(unsigned char *in,
         // 72 = 7*8(imask1..7) + 16;  worse case for 8th _mm_loadu_si128 call.
         // An extra 64 bytes is to avoid triggering this multiple times
         // after we swap sp/cp_end over.
-        if ((uint8_t *)sp+72 > cp_end) {
-            memmove(overflow, sp, cp_end - (uint8_t *)sp);
-            sp = (uint16_t *)overflow;
-            cp_end = (uint8_t *)overflow + sizeof(overflow);
+        if (cp_end - sp < 72) {
+            memmove(overflow, sp, cp_end - sp);
+            sp = overflow;
+            cp_end = overflow + sizeof(overflow);
         }
 
         // Shuffle the renorm values to correct lanes and incr sp pointer
         __m128i Vv1 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask1 = _mm_movemask_ps((__m128)renorm_mask1);
         Vv1 = _mm_shuffle_epi8(Vv1, _mm_load_si128((__m128i*)pidx[imask1]));
-        sp += _mm_popcnt_u32(imask1);
+        sp += _mm_popcnt_u32(imask1) * 2;
 
         __m128i Vv2 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask2 = _mm_movemask_ps((__m128)renorm_mask2);
-        sp += _mm_popcnt_u32(imask2);
+        sp += _mm_popcnt_u32(imask2) * 2;
         Vv2 = _mm_shuffle_epi8(Vv2, _mm_load_si128((__m128i*)pidx[imask2]));
 
         __m128i Vv3 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask3 = _mm_movemask_ps((__m128)renorm_mask3);
         Vv3 = _mm_shuffle_epi8(Vv3, _mm_load_si128((__m128i*)pidx[imask3]));
-        sp += _mm_popcnt_u32(imask3);
+        sp += _mm_popcnt_u32(imask3) * 2;
 
         __m128i Vv4 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask4 = _mm_movemask_ps((__m128)renorm_mask4);
-        sp += _mm_popcnt_u32(imask4);
+        sp += _mm_popcnt_u32(imask4) * 2;
         Vv4 = _mm_shuffle_epi8(Vv4, _mm_load_si128((__m128i*)pidx[imask4]));
 
         __m128i Yv1 = _mm_slli_epi32(Rv1, 16);
@@ -738,21 +735,21 @@ unsigned char *rans_uncompress_O0_32x16_sse4(unsigned char *in,
         __m128i Vv5 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask5 = _mm_movemask_ps((__m128)renorm_mask5);
         Vv5 = _mm_shuffle_epi8(Vv5, _mm_load_si128((__m128i*)pidx[imask5]));
-        sp += _mm_popcnt_u32(imask5);
+        sp += _mm_popcnt_u32(imask5) * 2;
 
         __m128i Vv6 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask6 = _mm_movemask_ps((__m128)renorm_mask6);
-        sp += _mm_popcnt_u32(imask6);
+        sp += _mm_popcnt_u32(imask6) * 2;
         Vv6 = _mm_shuffle_epi8(Vv6, _mm_load_si128((__m128i*)pidx[imask6]));
 
         __m128i Vv7 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask7 = _mm_movemask_ps((__m128)renorm_mask7);
         Vv7 = _mm_shuffle_epi8(Vv7, _mm_load_si128((__m128i*)pidx[imask7]));
-        sp += _mm_popcnt_u32(imask7);
+        sp += _mm_popcnt_u32(imask7) * 2;
 
         __m128i Vv8 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
         unsigned int imask8 = _mm_movemask_ps((__m128)renorm_mask8);
-        sp += _mm_popcnt_u32(imask8);
+        sp += _mm_popcnt_u32(imask8) * 2;
         Vv8 = _mm_shuffle_epi8(Vv8, _mm_load_si128((__m128i*)pidx[imask8]));
 
         __m128i Yv5 = _mm_slli_epi32(Rv5, 16);
@@ -1108,7 +1105,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
     // loop with shift as a variable.
     if (shift == TF_SHIFT_O1) {
         // TF_SHIFT_O1 = 12
-        uint16_t *sp = (uint16_t *)ptr;
+        uint8_t *sp = ptr;
         const uint32_t mask = ((1u << TF_SHIFT_O1)-1);
         __m128i maskv  = _mm_set1_epi32(mask); // set mask in all lanes
         uint8_t tbuf[32][32];
@@ -1117,7 +1114,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
         LOAD128(Lv, l);
 
         isz4 -= 64;
-        for (; i4[0] < isz4 && (uint8_t *)sp+72 < ptr_end; ) {
+        for (; i4[0] < isz4 && ptr_end - sp > 72; ) {
             //for (z = 0; z < NX; z++)
             //  m[z] = R[z] & mask;
             __m128i masked1 = _mm_and_si128(Rv1, maskv);
@@ -1257,21 +1254,21 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
             __m128i Vv1 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask1 = _mm_movemask_ps((__m128)renorm_mask1);
             Vv1 = _mm_shuffle_epi8(Vv1, _mm_load_si128((__m128i*)pidx[imask1]));
-            sp += _mm_popcnt_u32(imask1);
+            sp += _mm_popcnt_u32(imask1) * 2;
 
             __m128i Vv2 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask2 = _mm_movemask_ps((__m128)renorm_mask2);
-            sp += _mm_popcnt_u32(imask2);
+            sp += _mm_popcnt_u32(imask2) * 2;
             Vv2 = _mm_shuffle_epi8(Vv2, _mm_load_si128((__m128i*)pidx[imask2]));
 
             __m128i Vv3 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask3 = _mm_movemask_ps((__m128)renorm_mask3);
             Vv3 = _mm_shuffle_epi8(Vv3, _mm_load_si128((__m128i*)pidx[imask3]));
-            sp += _mm_popcnt_u32(imask3);
+            sp += _mm_popcnt_u32(imask3) * 2;
 
             __m128i Vv4 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask4 = _mm_movemask_ps((__m128)renorm_mask4);
-            sp += _mm_popcnt_u32(imask4);
+            sp += _mm_popcnt_u32(imask4) * 2;
             Vv4 = _mm_shuffle_epi8(Vv4, _mm_load_si128((__m128i*)pidx[imask4]));
 
             __m128i Yv1 = _mm_slli_epi32(Rv1, 16);
@@ -1382,21 +1379,21 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
             __m128i Vv5 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask5 = _mm_movemask_ps((__m128)renorm_mask5);
             Vv5 = _mm_shuffle_epi8(Vv5, _mm_load_si128((__m128i*)pidx[imask5]));
-            sp += _mm_popcnt_u32(imask5);
+            sp += _mm_popcnt_u32(imask5) * 2;
 
             __m128i Vv6 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask6 = _mm_movemask_ps((__m128)renorm_mask6);
-            sp += _mm_popcnt_u32(imask6);
+            sp += _mm_popcnt_u32(imask6) * 2;
             Vv6 = _mm_shuffle_epi8(Vv6, _mm_load_si128((__m128i*)pidx[imask6]));
 
             __m128i Vv7 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask7 = _mm_movemask_ps((__m128)renorm_mask7);
             Vv7 = _mm_shuffle_epi8(Vv7, _mm_load_si128((__m128i*)pidx[imask7]));
-            sp += _mm_popcnt_u32(imask7);
+            sp += _mm_popcnt_u32(imask7) * 2;
 
             __m128i Vv8 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask8 = _mm_movemask_ps((__m128)renorm_mask8);
-            sp += _mm_popcnt_u32(imask8);
+            sp += _mm_popcnt_u32(imask8) * 2;
             Vv8 = _mm_shuffle_epi8(Vv8, _mm_load_si128((__m128i*)pidx[imask8]));
 
             __m128i Yv5 = _mm_slli_epi32(Rv5, 16);
@@ -1438,7 +1435,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
 
         STORE128(Rv, R);
         STORE128(Lv, l);
-        ptr = (uint8_t *)sp;
+        ptr = sp;
 
         i4[0]-=tidx;
         int T;
@@ -1478,7 +1475,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
         }
     } else {
         // TF_SHIFT_O1 = 10
-        uint16_t *sp = (uint16_t *)ptr;
+        uint8_t *sp = ptr;
         const uint32_t mask = ((1u << TF_SHIFT_O1_FAST)-1);
         __m128i maskv  = _mm_set1_epi32(mask); // set mask in all lanes
         uint8_t tbuf[32][32] __attribute__((aligned(32)));
@@ -1487,7 +1484,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
         LOAD128(Lv, l);
 
         isz4 -= 64;
-        for (; i4[0] < isz4 && (uint8_t *)sp+72 < ptr_end; ) {
+        for (; i4[0] < isz4 && ptr_end - sp > 72; ) {
             //for (z = 0; z < NX; z++)
             //  m[z] = R[z] & mask;
             __m128i masked1 = _mm_and_si128(Rv1, maskv);
@@ -1607,21 +1604,21 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
             __m128i Vv1 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask1 = _mm_movemask_ps((__m128)renorm_mask1);
             Vv1 = _mm_shuffle_epi8(Vv1, _mm_load_si128((__m128i*)pidx[imask1]));
-            sp += _mm_popcnt_u32(imask1);
+            sp += _mm_popcnt_u32(imask1) * 2;
 
             __m128i Vv2 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask2 = _mm_movemask_ps((__m128)renorm_mask2);
-            sp += _mm_popcnt_u32(imask2);
+            sp += _mm_popcnt_u32(imask2) * 2;
             Vv2 = _mm_shuffle_epi8(Vv2, _mm_load_si128((__m128i*)pidx[imask2]));
 
             __m128i Vv3 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask3 = _mm_movemask_ps((__m128)renorm_mask3);
             Vv3 = _mm_shuffle_epi8(Vv3, _mm_load_si128((__m128i*)pidx[imask3]));
-            sp += _mm_popcnt_u32(imask3);
+            sp += _mm_popcnt_u32(imask3) * 2;
 
             __m128i Vv4 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask4 = _mm_movemask_ps((__m128)renorm_mask4);
-            sp += _mm_popcnt_u32(imask4);
+            sp += _mm_popcnt_u32(imask4) * 2;
             Vv4 = _mm_shuffle_epi8(Vv4, _mm_load_si128((__m128i*)pidx[imask4]));
 
             __m128i Yv1 = _mm_slli_epi32(Rv1, 16);
@@ -1722,21 +1719,21 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
             __m128i Vv5 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask5 = _mm_movemask_ps((__m128)renorm_mask5);
             Vv5 = _mm_shuffle_epi8(Vv5, _mm_load_si128((__m128i*)pidx[imask5]));
-            sp += _mm_popcnt_u32(imask5);
+            sp += _mm_popcnt_u32(imask5) * 2;
 
             __m128i Vv6 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask6 = _mm_movemask_ps((__m128)renorm_mask6);
-            sp += _mm_popcnt_u32(imask6);
+            sp += _mm_popcnt_u32(imask6) * 2;
             Vv6 = _mm_shuffle_epi8(Vv6, _mm_load_si128((__m128i*)pidx[imask6]));
 
             __m128i Vv7 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask7 = _mm_movemask_ps((__m128)renorm_mask7);
             Vv7 = _mm_shuffle_epi8(Vv7, _mm_load_si128((__m128i*)pidx[imask7]));
-            sp += _mm_popcnt_u32(imask7);
+            sp += _mm_popcnt_u32(imask7) * 2;
 
             __m128i Vv8 = _mm_cvtepu16_epi32(_mm_loadu_si128((__m128i *)sp));
             unsigned int imask8 = _mm_movemask_ps((__m128)renorm_mask8);
-            sp += _mm_popcnt_u32(imask8);
+            sp += _mm_popcnt_u32(imask8) * 2;
             Vv8 = _mm_shuffle_epi8(Vv8, _mm_load_si128((__m128i*)pidx[imask8]));
 
             __m128i Yv5 = _mm_slli_epi32(Rv5, 16);
@@ -1777,7 +1774,7 @@ unsigned char *rans_uncompress_O1_32x16_sse4(unsigned char *in,
 
         STORE128(Rv, R);
         STORE128(Lv, l);
-        ptr = (uint8_t *)sp;
+        ptr = sp;
 
         i4[0]-=tidx;
         int T;

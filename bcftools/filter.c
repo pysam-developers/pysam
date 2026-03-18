@@ -183,15 +183,15 @@ inline static void tok_init_samples(token_t *atok, token_t *btok, token_t *rtok)
 static int filters_next_token(char **str, int *len)
 {
     char *tmp = *str;
-    while ( *tmp && isspace(*tmp) ) tmp++;
+    while ( *tmp && isspace_c(*tmp) ) tmp++;
     *str = tmp;
     *len = 0;
 
     // test for doubles: d.ddde[+-]dd
-    if ( isdigit(*str[0]) || *str[0]=='.' )   // strtod would eat +/-
+    if ( isdigit_c(*str[0]) || *str[0]=='.' )   // strtod would eat +/-
     {
         double HTS_UNUSED v = strtod(*str, &tmp);
-        if ( *str!=tmp && (!tmp[0] || !isalnum(tmp[0])) )
+        if ( *str!=tmp && (!tmp[0] || !isalnum_c(tmp[0])) )
         {
             *len = tmp - (*str);
             return TOK_VAL;
@@ -246,7 +246,7 @@ static int filters_next_token(char **str, int *len)
 
     if ( tmp[0]=='@' )  // file name
     {
-        while ( *tmp && !isspace(*tmp) && *tmp!='=' && *tmp!='!' ) tmp++;
+        while ( *tmp && !isspace_c(*tmp) && *tmp!='=' && *tmp!='!' ) tmp++;
         *len = tmp - (*str);
         return TOK_VAL;
     }
@@ -258,7 +258,7 @@ static int filters_next_token(char **str, int *len)
         {
             if ( tmp[0]=='"' ) break;
             if ( tmp[0]=='\'' ) break;
-            if ( isspace(tmp[0]) ) break;
+            if ( isspace_c(tmp[0]) ) break;
             if ( tmp[0]=='<' ) break;
             if ( tmp[0]=='>' ) break;
             if ( tmp[0]=='=' ) break;
@@ -3202,7 +3202,7 @@ static int filters_init1(filter_t *filter, char *str, int len, token_t *tok)
         for (i=0; i<n; i++)
         {
             char *se = list[i];
-            while ( *se && !isspace(*se) ) se++;
+            while ( *se && !isspace_c(*se) ) se++;
             *se = 0;
             if ( !khash_str2int_has_key(tok->hash,list[i]) )
                 khash_str2int_inc(tok->hash,list[i]);
@@ -3541,7 +3541,7 @@ static void filter_debug_print(token_t *toks, token_t **tok_ptrs, int ntoks)
 
 static void str_to_lower(char *str)
 {
-    while ( *str ) { *str = tolower(*str); str++; }
+    while ( *str ) { *str = tolower_c(*str); str++; }
 }
 static int perl_exec(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack, int nstack)
 {
@@ -3606,7 +3606,7 @@ static int perl_exec(filter_t *flt, bcf1_t *line, token_t *rtok, token_t **stack
 static void perl_init(filter_t *filter, char **str)
 {
     char *beg = *str;
-    while ( *beg && isspace(*beg) ) beg++;
+    while ( *beg && isspace_c(*beg) ) beg++;
     if ( !*beg ) return;
     if ( strncasecmp("perl:", beg, 5) ) return;
 #if ENABLE_PERL_FILTERS
@@ -3840,7 +3840,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
 
                 if ( ret == TOK_PERLSUB )
                 {
-                    while ( *beg && ((isalnum(*beg) && !ispunct(*beg)) || *beg=='_') ) beg++;
+                    while ( *beg && ((isalnum_c(*beg) && !ispunct_c(*beg)) || *beg=='_') ) beg++;
                     if ( *beg!='(' ) error("[%s:%d] Could not parse the expression: %s\n", __FILE__,__LINE__,str);
 
                     // the subroutine name
@@ -3900,7 +3900,7 @@ static filter_t *filter_init_(bcf_hdr_t *hdr, const char *str, int exit_on_error
         }
         else if ( !len )    // all tokes read or an error
         {
-            if ( *tmp && !isspace(*tmp) ) error("Could not parse the expression: [%s]\n", str);
+            if ( *tmp && !isspace_c(*tmp) ) error("Could not parse the expression: [%s]\n", str);
             break;     // all tokens read
         }
         else           // TOK_VAL: annotation name or value

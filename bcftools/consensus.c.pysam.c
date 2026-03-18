@@ -341,7 +341,7 @@ static void destroy_data(args_t *args)
 static void init_region(args_t *args, char *line)
 {
     char *ss, *se = line;
-    while ( *se && !isspace(*se) && *se!=':' ) se++;
+    while ( *se && !isspace_c(*se) && *se!=':' ) se++;
     hts_pos_t from = 0, to = 0;
     char tmp = 0, *tmp_ptr = NULL;
     if ( *se )
@@ -355,7 +355,7 @@ static void init_region(args_t *args, char *line)
             from--;
             ss = ++se;
             to = strtol(ss,&se,10);
-            if ( ss==se || (*se && !isspace(*se)) ) { from = 0; to = 0; }
+            if ( ss==se || (*se && !isspace_c(*se)) ) { from = 0; to = 0; }
             else to--;
         }
     }
@@ -413,6 +413,7 @@ static bcf1_t **next_vcf_line(args_t *args)
         }
         return &args->files->readers[0].buffer[0];
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     return NULL;
 }
 static void unread_vcf_line(args_t *args, bcf1_t **rec_ptr)
@@ -502,9 +503,9 @@ static void mark_ins(char *ref, char *alt, char mark)
 {
     int i, nref = strlen(ref), nalt = strlen(alt);
     if ( mark==TO_LOWER )
-        for (i=nref; i<nalt; i++) alt[i] = tolower(alt[i]);
+        for (i=nref; i<nalt; i++) alt[i] = tolower_c(alt[i]);
     else if ( mark==TO_UPPER )
-        for (i=nref; i<nalt; i++) alt[i] = toupper(alt[i]);
+        for (i=nref; i<nalt; i++) alt[i] = toupper_c(alt[i]);
     else if ( mark )
         for (i=nref; i<nalt; i++) alt[i] = mark;
 }
@@ -515,22 +516,17 @@ static void mark_snv(char *ref, char *alt, char mark)
     if ( mark==TO_LOWER )
     {
         for (i=0; i<n; i++)
-            if ( tolower(ref[i])!=tolower(alt[i]) ) alt[i] = tolower(alt[i]);
+            if ( tolower_c(ref[i])!=tolower_c(alt[i]) ) alt[i] = tolower_c(alt[i]);
     }
     else if ( mark==TO_UPPER)
     {
         for (i=0; i<n; i++)
-            if ( tolower(ref[i])!=tolower(alt[i]) ) alt[i] = toupper(alt[i]);
-    }
-    else if ( mark==TO_UPPER)
-    {
-        for (i=0; i<n; i++)
-            if ( tolower(ref[i])!=tolower(alt[i]) ) alt[i] = toupper(alt[i]);
+            if ( tolower_c(ref[i])!=tolower_c(alt[i]) ) alt[i] = toupper_c(alt[i]);
     }
     else if ( mark )
     {
         for (i=0; i<n; i++)
-            if ( tolower(ref[i])!=tolower(alt[i]) ) alt[i] = mark;
+            if ( tolower_c(ref[i])!=tolower_c(alt[i]) ) alt[i] = mark;
     }
 }
 static void iupac_init(args_t *args, bcf1_t *rec)
@@ -945,7 +941,7 @@ static void apply_variant(args_t *args, bcf1_t *rec)
         // one base overlap
 
         int fail = 1;
-        if ( args->prev_base_pos==rec->pos && toupper(ref_allele[0])==toupper(args->prev_base) )
+        if ( args->prev_base_pos==rec->pos && toupper_c(ref_allele[0])==toupper_c(args->prev_base) )
         {
             if ( rec->rlen==1 ) fail = 0;
             else if ( !strncasecmp(ref_allele+1,args->fa_buf.s+idx+1,rec->rlen-1) ) fail = 0;
@@ -994,11 +990,11 @@ static void apply_variant(args_t *args, bcf1_t *rec)
     }
 
     int safe_idx = idx<0 ? 0 : idx; // idx can be negative in case of overlapping deletion
-    args->fa_case = toupper(args->fa_buf.s[safe_idx])==args->fa_buf.s[safe_idx] ? TO_UPPER : TO_LOWER;
+    args->fa_case = toupper_c(args->fa_buf.s[safe_idx])==args->fa_buf.s[safe_idx] ? TO_UPPER : TO_LOWER;
     if ( args->fa_case==TO_UPPER )
-        for (i=0; i<alen; i++) alt_allele[i] = toupper(alt_allele[i]);
+        for (i=0; i<alen; i++) alt_allele[i] = toupper_c(alt_allele[i]);
     else
-        for (i=0; i<alen; i++) alt_allele[i] = tolower(alt_allele[i]);
+        for (i=0; i<alen; i++) alt_allele[i] = tolower_c(alt_allele[i]);
 
     if ( args->mark_ins && len_diff>0 )
         mark_ins(ref_allele, alt_allele, args->mark_ins);
@@ -1082,9 +1078,9 @@ static void mask_region(args_t *args, char *seq, int len)
             if ( idx_start < 0 ) idx_start = 0;
             if ( idx_end >= len ) idx_end = len - 1;
             if ( mask->with==MASK_UC )
-                for (j=idx_start; j<=idx_end; j++) seq[j] = toupper(seq[j]);
+                for (j=idx_start; j<=idx_end; j++) seq[j] = toupper_c(seq[j]);
             else if ( mask->with==MASK_LC )
-                for (j=idx_start; j<=idx_end; j++) seq[j] = tolower(seq[j]);
+                for (j=idx_start; j<=idx_end; j++) seq[j] = tolower_c(seq[j]);
             else
                 for (j=idx_start; j<=idx_end; j++) seq[j] = mask->with;
         }
@@ -1126,7 +1122,7 @@ static void consensus(args_t *args)
         args->fa_src_pos += str.l;
 
         // determine if uppercase or lowercase is used in this fasta file
-        if ( args->fa_case==-1 ) args->fa_case = toupper(str.s[0])==str.s[0] ? 1 : 0;
+        if ( args->fa_case==-1 ) args->fa_case = toupper_c(str.s[0])==str.s[0] ? 1 : 0;
 
         if ( args->mask ) mask_region(args, str.s, str.l);
         kputs(str.s, &args->fa_buf);

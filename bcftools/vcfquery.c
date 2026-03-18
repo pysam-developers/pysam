@@ -170,6 +170,7 @@ static void query_vcf(args_t *args)
         convert_line(args->convert, line, &str);
         if ( str.l && fwrite(str.s, str.l, 1, args->out)!=1 ) error("[%s] Error: cannot write to %s\n", __func__,args->fn_out?args->fn_out:"standard output");
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     if ( str.m ) free(str.s);
 }
 

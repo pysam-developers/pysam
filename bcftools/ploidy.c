@@ -62,8 +62,8 @@ int ploidy_parse(const char *line, char **chr_beg, char **chr_end, uint32_t *beg
     int default_ploidy_def = 0;
 
     char *ss = (char*) line;
-    while ( *ss && isspace(*ss) ) ss++;
-    if ( ss[0]=='*' && (!ss[1] || isspace(ss[1])) )
+    while ( *ss && isspace_c(*ss) ) ss++;
+    if ( ss[0]=='*' && (!ss[1] || isspace_c(ss[1])) )
         default_ploidy_def = 1; // definition of default ploidy, chr="*"
     else
     {
@@ -74,18 +74,18 @@ int ploidy_parse(const char *line, char **chr_beg, char **chr_end, uint32_t *beg
 
     // Skip the fields already parsed by regidx_parse_tab
     ss = (char*) line;
-    while ( *ss && isspace(*ss) ) ss++;
+    while ( *ss && isspace_c(*ss) ) ss++;
     for (i=0; i<3; i++)
     {
-        while ( *ss && !isspace(*ss) ) ss++;
+        while ( *ss && !isspace_c(*ss) ) ss++;
         if ( !*ss ) return -2;  // wrong number of fields
-        while ( *ss && isspace(*ss) ) ss++;
+        while ( *ss && isspace_c(*ss) ) ss++;
     }
     if ( !*ss ) return -2;
 
     // Parse the payload
     char *se = ss;
-    while ( *se && !isspace(*se) ) se++;
+    while ( *se && !isspace_c(*se) ) se++;
     if ( !*se || se==ss ) error("Could not parse: %s\n", line);
     ploidy->tmp_str.l = 0;
     kputsn(ss,se-ss,&ploidy->tmp_str);
@@ -102,7 +102,7 @@ int ploidy_parse(const char *line, char **chr_beg, char **chr_end, uint32_t *beg
     }
 
     ss = se;
-    while ( *se && isspace(*se) ) se++;
+    while ( *se && isspace_c(*se) ) se++;
     if ( !*se ) error("Could not parse: %s\n", line);
     sp->ploidy = strtol(ss,&se,10);
     if ( ss==se ) error("Could not parse: %s\n", line);
@@ -163,13 +163,13 @@ ploidy_t *ploidy_init_string(const char *str, int dflt)
     const char *ss = str;
     while ( *ss )
     {
-        while ( *ss && isspace(*ss) ) ss++;
+        while ( *ss && isspace_c(*ss) ) ss++;
         const char *se = ss;
         while ( *se && *se!='\r' && *se!='\n' ) se++;
         tmp.l = 0;
         kputsn(ss, se-ss, &tmp);
         regidx_insert(pld->idx,tmp.s);
-        while ( *se && isspace(*se) ) se++;
+        while ( *se && isspace_c(*se) ) se++;
         ss = se;
     }
     free(tmp.s);

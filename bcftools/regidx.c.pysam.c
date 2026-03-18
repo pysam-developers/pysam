@@ -31,6 +31,9 @@
 #include <htslib/khash_str2int.h>
 #include "regidx.h"
 
+// Avoid having to include all of bcftools.h
+static inline int isspace_c(char c) { return isspace((unsigned char) c); }
+
 #define MAX_COOR_0 REGIDX_MAX   // CSI and hts_itr_query limit, 0-based
 
 #define iBIN(x) ((x)>>13)
@@ -213,13 +216,13 @@ regidx_t *regidx_init_string(const char *str, regidx_parse_f parser, regidx_free
     const char *ss = str;
     while ( *ss )
     {
-        while ( *ss && isspace(*ss) ) ss++;
+        while ( *ss && isspace_c(*ss) ) ss++;
         const char *se = ss;
         while ( *se && *se!='\r' && *se!='\n' ) se++;
         tmp.l = 0;
         kputsn(ss, se-ss, &tmp);
         regidx_insert(idx,tmp.s);
-        while ( *se && isspace(*se) ) se++;
+        while ( *se && isspace_c(*se) ) se++;
         ss = se;
     }
     free(tmp.s);
@@ -478,12 +481,12 @@ int regidx_overlap(regidx_t *regidx, const char *chr, uint32_t beg, uint32_t end
 int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, uint32_t *beg, uint32_t *end, void *payload, void *usr)
 {
     char *ss = (char*) line;
-    while ( *ss && isspace(*ss) ) ss++;
+    while ( *ss && isspace_c(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
     if ( *ss=='#' ) return -1;  // skip comments
 
     char *se = ss;
-    while ( *se && !isspace(*se) ) se++;
+    while ( *se && !isspace_c(*se) ) se++;
 
     *chr_beg = ss;
     *chr_end = se-1;
@@ -510,12 +513,12 @@ int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, uint32_t 
 int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, uint32_t *beg, uint32_t *end, void *payload, void *usr)
 {
     char *ss = (char*) line;
-    while ( *ss && isspace(*ss) ) ss++;
+    while ( *ss && isspace_c(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
     if ( *ss=='#' ) return -1;  // skip comments
 
     char *se = ss;
-    while ( *se && !isspace(*se) ) se++;
+    while ( *se && !isspace_c(*se) ) se++;
 
     *chr_beg = ss;
     *chr_end = se-1;
@@ -540,7 +543,7 @@ int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, uint32_t 
     {
         ss = se+1;
         *end = strtod(ss, &se);
-        if ( ss==se || (*se && !isspace(*se)) ) *end = *beg;
+        if ( ss==se || (*se && !isspace_c(*se)) ) *end = *beg;
         else if ( *end==0 ) { fprintf(bcftools_stderr,"Could not parse tab line, expected 1-based coordinate: %s\n", line); return -2; }
         else (*end)--;
     }
@@ -557,7 +560,7 @@ int regidx_parse_vcf(const char *line, char **chr_beg, char **chr_end, uint32_t 
 int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, uint32_t *beg, uint32_t *end, void *payload, void *usr)
 {
     char *ss = (char*) line;
-    while ( *ss && isspace(*ss) ) ss++;
+    while ( *ss && isspace_c(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
     if ( *ss=='#' ) return -1;  // skip comments
 

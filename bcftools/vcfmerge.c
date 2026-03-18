@@ -793,12 +793,12 @@ char **merge_alleles(char **a, int na, int *map, char **b, int *nb, int *mb)
         for (i=0; i<na; i++)
         {
             int len = strlen(a[i]);
-            for (j=0; j<len; j++) a[i][j] = toupper(a[i][j]);
+            for (j=0; j<len; j++) a[i][j] = toupper_c(a[i][j]);
         }
         for (i=0; i<*nb; i++)
         {
             int len = strlen(b[i]);
-            for (j=0; j<len; j++) b[i][j] = toupper(b[i][j]);
+            for (j=0; j<len; j++) b[i][j] = toupper_c(b[i][j]);
         }
     }
 
@@ -3500,6 +3500,7 @@ void merge_vcf(args_t *args)
         clean_buffer(args);
         // debug_state(args);
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     free(rid_tab);
     if ( args->do_gvcf )
         gvcf_flush(args,1);

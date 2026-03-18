@@ -218,11 +218,11 @@ static char **parse_ped_samples(args_t *args, call_t *call, char **vals, int nva
         j = 0;
         while ( *tmp && j<5 )
         {
-            if ( isspace(*tmp) )
+            if ( isspace_c(*tmp) )
             {
                 *tmp = 0;
                 ++tmp;
-                while ( isspace(*tmp) ) tmp++;  // allow multiple spaces
+                while ( isspace_c(*tmp) ) tmp++;  // allow multiple spaces
                 col_ends[j] = tmp-1;
                 j++;
                 continue;
@@ -312,11 +312,11 @@ static void set_samples(args_t *args, const char *fn, int is_file)
         for (i=0; i<nlines; i++)
         {
             char *ss = lines[i];
-            while ( *ss && isspace(*ss) ) ss++;
+            while ( *ss && isspace_c(*ss) ) ss++;
             if ( !*ss ) error("Could not parse: %s\n", lines[i]);
             if ( *ss=='#' ) continue;
             char *se = ss;
-            while ( *se && !isspace(*se) ) se++;
+            while ( *se && !isspace_c(*se) ) se++;
             char x = *se, *xptr = se; *se = 0;
 
             int ismpl = bcf_hdr_id2int(args->aux.hdr, BCF_DT_SAMPLE, ss);
@@ -324,10 +324,10 @@ static void set_samples(args_t *args, const char *fn, int is_file)
             if ( old2new[ismpl] != -1 ) { fprintf(stderr,"Warning: The sample is listed multiple times: %s\n",ss); continue; }
 
             ss = se+(x != '\0');
-            while ( *ss && isspace(*ss) ) ss++;
+            while ( *ss && isspace_c(*ss) ) ss++;
             if ( !*ss ) ss = "2";   // default ploidy
             se = ss;
-            while ( *se && !isspace(*se) ) se++;
+            while ( *se && !isspace_c(*se) ) se++;
             if ( se==ss ) { *xptr = x; error("Could not parse: \"%s\"\n", lines[i]); }
 
             char *sex = ss;
@@ -354,11 +354,11 @@ static void set_samples(args_t *args, const char *fn, int is_file)
         for (i=0; i<nlines; i++)
         {
             char *ss = lines[i];
-            while ( *ss && isspace(*ss) ) ss++;
+            while ( *ss && isspace_c(*ss) ) ss++;
             if ( !*ss ) error("Could not parse: %s\n", lines[i]);
             if ( *ss=='#' ) continue;
             char *se = ss;
-            while ( *se && !isspace(*se) ) se++;
+            while ( *se && !isspace_c(*se) ) se++;
             *se = 0;
 
             int ismpl = bcf_hdr_id2int(args->aux.hdr, BCF_DT_SAMPLE, ss);
@@ -416,12 +416,12 @@ static void init_missed_line(args_t *args)
 static int tgt_parse(const char *line, char **chr_beg, char **chr_end, uint32_t *beg, uint32_t *end, void *payload, void *usr)
 {
     char *ss = (char*) line;
-    while ( *ss && isspace(*ss) ) ss++;
+    while ( *ss && isspace_c(*ss) ) ss++;
     if ( !*ss ) { fprintf(stderr,"Could not parse the line: %s\n", line); return -2; }
     if ( *ss=='#' ) return -1;  // skip comments
 
     char *se = ss;
-    while ( *se && !isspace(*se) ) se++;
+    while ( *se && !isspace_c(*se) ) se++;
 
     *chr_beg = ss;
     *chr_end = se-1;
@@ -445,14 +445,14 @@ static int tgt_parse(const char *line, char **chr_beg, char **chr_end, uint32_t 
     while ( *ss )
     {
         se = ss;
-        while ( *se && *se!=',' && !isspace(*se) ) se++;
+        while ( *se && *se!=',' && !isspace_c(*se) ) se++;
         als->n++;
         als->allele = (char**)realloc(als->allele,als->n*sizeof(*als->allele));
         als->allele[als->n-1] = (char*)malloc(se-ss+1);
         memcpy(als->allele[als->n-1],ss,se-ss);
         als->allele[als->n-1][se-ss] = 0;
         ss = se+1;
-        if ( !*se || isspace(*se) ) break;
+        if ( !*se || isspace_c(*se) ) break;
     }
     if ( als->n<2 ) error("Unable to parse the -T file; expected CHROM\\tPOS\\tREF,ALT with -C alleles but found instead:\n\t%s\n",line);
     return 0;

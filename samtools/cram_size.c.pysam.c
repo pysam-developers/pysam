@@ -2,7 +2,7 @@
 
 /*  cram_size.c -- produces summary of the size of each cram data-series
 
-    Copyright (C) 2023 Genome Research Ltd.
+    Copyright (C) 2023,2026 Genome Research Ltd.
 
     Author: James Bonfield <jkb@sanger.ac.uk>
 
@@ -416,6 +416,7 @@ static int cram_size(hFILE *hf_in, samFile *in, sam_hdr_t *h, FILE *outfp,
     cram_fd *in_c;
     cram_container *c = NULL;
     cram_block *blk = NULL;
+    cram_block_compression_hdr *chdr = NULL;
     cram_block_slice_hdr *shdr = NULL;
     khiter_t k;
     int ret;
@@ -423,6 +424,11 @@ static int cram_size(hFILE *hf_in, samFile *in, sam_hdr_t *h, FILE *outfp,
     khash_t(cu) *cu_size = kh_init(cu);
     int ref_seq_blk_used = -1;
     int64_t nseqs = 0, nbases = 0, ncont = 0, nslice = 0;
+
+    if (!cu_size) {
+        print_error("cram_size", "Out of memory");
+        goto err;
+    }
 
     if (!in->is_cram) {
         print_error("cram_size", "Input is not a CRAM file");
@@ -450,8 +456,9 @@ static int cram_size(hFILE *hf_in, samFile *in, sam_hdr_t *h, FILE *outfp,
             goto err;
 
         // Decode compression header...
-        cram_block_compression_hdr *chdr;
         chdr = cram_decode_compression_header(in_c, blk);
+        if (!chdr)
+            goto err;
 
         if (encodings) {
             kstring_t ks = KS_INITIALIZE;
@@ -469,6 +476,7 @@ static int cram_size(hFILE *hf_in, samFile *in, sam_hdr_t *h, FILE *outfp,
         blk = NULL;
 
         cram_free_compression_header(chdr);
+        chdr = NULL;
 
         // Container num_blocks can be invalid, due to a bug.
         // Instead we iterate in slice context instead.
@@ -573,10 +581,14 @@ static int cram_size(hFILE *hf_in, samFile *in, sam_hdr_t *h, FILE *outfp,
     print_error("cram_size", "Failed in decoding CRAM file");
     if (blk)
         cram_free_block(blk);
+    if (chdr)
+        cram_free_compression_header(chdr);
     if (shdr)
         cram_free_slice_header(shdr);
     if (c)
         cram_free_container(c);
+    if (cu_size)
+        kh_destroy(cu, cu_size);
     if (cid2ds)
         cram_cid2ds_free(cid2ds);
 
@@ -643,6 +655,8 @@ int main_cram_size(int argc, char *argv[]) {
     }
     if (!(in = hts_hopen(hf_in, fn, "r"))) {
         print_error_errno("cram_size", "failed to open file '%s'", fn);
+        hclose_abruptly(hf_in);
+        hf_in = NULL;
         goto err;
     }
 

@@ -264,6 +264,7 @@ void isec_vcf(args_t *args)
             }
         }
     }
+    if ( files->errnum ) error("Error: %s\n", bcf_sr_strerror(files->errnum));
     if ( str.s ) free(str.s);
     if ( out_fh )
     {
@@ -632,7 +633,7 @@ int main_vcfisec(int argc, char *argv[])
                     else if ( *p=='+' ) { args->isec_op = OP_PLUS; p++; }
                     else if ( *p=='=' ) { args->isec_op = OP_EQUAL; p++; }
                     else if ( *p=='~' ) { args->isec_op = OP_EXACT; p++; }
-                    else if ( isdigit(*p) ) args->isec_op = OP_EQUAL;
+                    else if ( isdigit_c(*p) ) args->isec_op = OP_EQUAL;
                     else error("Could not parse --nfiles %s\n", optarg);
                     if ( args->isec_op == OP_EXACT ) args->isec_exact = p;
                     else if ( sscanf(p,"%d",&args->isec_n)!=1 ) error("Could not parse --nfiles %s\n", optarg);

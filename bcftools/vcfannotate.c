@@ -2229,12 +2229,12 @@ static void init_columns(args_t *args)
         for (i=0; i<n; i++)
         {
             char *ptr = str[i];
-            while ( *ptr && !isspace(*ptr) ) ptr++;
+            while ( *ptr && !isspace_c(*ptr) ) ptr++;
             if ( *ptr )
             {
                 *ptr = 0;
                 ptr++;
-                while ( *ptr && isspace(*ptr) ) ptr++;
+                while ( *ptr && isspace_c(*ptr) ) ptr++;
                 if ( *ptr )
                 {
                     if ( args->merge_method_str.l ) kputc(',',&args->merge_method_str);
@@ -2834,7 +2834,7 @@ static void rename_chrs(args_t *args, char *fname)
     for (i=0; i<n; i++)
     {
         char *ss = map[i];
-        while ( *ss && !isspace(*ss) ) ss++;
+        while ( *ss && !isspace_c(*ss) ) ss++;
         if ( !*ss ) error("Could not parse: %s\n", fname);
         *ss = 0;
         int rid = bcf_hdr_name2id(args->hdr_out, map[i]);
@@ -2844,9 +2844,9 @@ static void rename_chrs(args_t *args, char *fname)
         assert( j>=0 );
         free(hrec->vals[j]);
         ss++;
-        while ( *ss && isspace(*ss) ) ss++;
+        while ( *ss && isspace_c(*ss) ) ss++;
         char *se = ss;
-        while ( *se && !isspace(*se) ) se++;
+        while ( *se && !isspace_c(*se) ) se++;
         *se = 0;
         hrec->vals[j] = strdup(ss);
         args->hdr_out->id[BCF_DT_CTG][rid].key = hrec->vals[j];
@@ -2891,7 +2891,7 @@ static int rename_annots_core(args_t *args, char *ori_tag, char *new_tag)
     assert( j>=0 );
     free(hrec->vals[j]);
     char *ptr = new_tag;
-    while ( *ptr && !isspace(*ptr) ) ptr++;
+    while ( *ptr && !isspace_c(*ptr) ) ptr++;
     *ptr = 0;
     hrec->vals[j] = strdup(new_tag);
     args->hdr_out->id[BCF_DT_ID][id].key = hrec->vals[j];
@@ -2908,12 +2908,12 @@ static void rename_annots(args_t *args)
     for (i=0; i<args->rename_annots_nmap; i++)
     {
         char *ptr = args->rename_annots_map[i];
-        while ( *ptr && !isspace(*ptr) ) ptr++;
+        while ( *ptr && !isspace_c(*ptr) ) ptr++;
         if ( !*ptr ) error("Could not parse: %s\n", args->rename_annots_map[i]);
         char *rmme = ptr;
         *ptr = 0;
         ptr++;
-        while ( *ptr && isspace(*ptr) ) ptr++;
+        while ( *ptr && isspace_c(*ptr) ) ptr++;
         if ( !*ptr ) { *rmme = ' '; error("Could not parse: %s\n", args->rename_annots_map[i]); }
         if ( rename_annots_core(args, args->rename_annots_map[i], ptr) < 0 )
             error("Cannot rename \"%s\" to \"%s\"\n",args->rename_annots_map[i],ptr);
@@ -3902,6 +3902,7 @@ int main_vcfannotate(int argc, char *argv[])
         if ( args->filter_ext && !args->keep_sites && !keep ) continue;
         if ( bcf_write1(args->out_fh, args->hdr_out, line)!=0 ) error("[%s] Error: failed to write to %s\n", __func__,args->output_fname);
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     destroy_data(args);
     bcf_sr_destroy(args->files);
     free(args);

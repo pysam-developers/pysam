@@ -1435,6 +1435,7 @@ int main_vcfcnv(int argc, char *argv[])
         bcf1_t *line = bcf_sr_get_line(args->files,0);
         cnv_next_line(args, line);
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     cnv_next_line(args, NULL);
     create_plots(args);
     fprintf(bcftools_stderr,"Number of lines: total/processed: %d/%d\n", args->ntot,args->nused);

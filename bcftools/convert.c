@@ -1461,7 +1461,7 @@ static int parse_subscript(char **p)
     char *q = *p;
     if ( *q!='{' ) return -1;
     q++;
-    while ( *q && *q!='}' && isdigit(*q) ) q++;
+    while ( *q && *q!='}' && isdigit_c(*q) ) q++;
     if ( *q!='}' ) return -1;
     int idx = atoi((*p)+1);
     *p = q+1;
@@ -1474,7 +1474,7 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
     if ( is_vcf_column ) p++;
 
     char *q = ++p;
-    while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
+    while ( *q && (isalnum_c(*q) || *q=='_' || *q=='.') ) q++;
     kstring_t str = {0,0,0};
     if ( q-p==0 ) error("Could not parse format string: %s\n", convert->format_str);
     kputsn(p, q-p, &str);
@@ -1517,7 +1517,7 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
             }
             p = ++q;
             str.l = 0;
-            while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
+            while ( *q && (isalnum_c(*q) || *q=='_' || *q=='.') ) q++;
             if ( q-p==0 ) error("Could not parse format string: %s\n", convert->format_str);
             kputsn(p, q-p, &str);
             fmt_t *fmt = register_tag(convert, str.s, is_gtf, T_INFO);
@@ -1567,7 +1567,7 @@ static char *parse_tag(convert_t *convert, char *p, int is_gtf)
             {
                 p = ++q;
                 str.l = 0;
-                while ( *q && (isalnum(*q) || *q=='_' || *q=='.') ) q++;
+                while ( *q && (isalnum_c(*q) || *q=='_' || *q=='.') ) q++;
                 if ( q-p==0 ) error("Could not parse format string: %s\n", convert->format_str);
                 kputsn(p, q-p, &str);
                 fmt_t *fmt = register_tag(convert, str.s, is_gtf, T_INFO);

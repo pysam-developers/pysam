@@ -40,7 +40,7 @@ void smpl_ilist_destroy(smpl_ilist_t *smpl)
 
 static inline int is_space_or_escaped(const char *min, const char *str)
 {
-    if ( !isspace(*str) ) return 0;
+    if ( !isspace_c(*str) ) return 0;
     int n = 0;
     while ( --str>=min && *str=='\\' ) n++;
     return n%2 ? 0 : 1;

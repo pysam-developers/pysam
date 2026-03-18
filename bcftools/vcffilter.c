@@ -728,6 +728,7 @@ int main_vcffilter(int argc, char *argv[])
                 buffered_filters(args, line);
         }
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     buffered_filters(args, NULL);
     if ( args->write_index )
     {

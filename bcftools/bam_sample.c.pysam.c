@@ -297,18 +297,18 @@ int bam_smpl_add_samples(bam_smpl_t *bsmpl, char *list, int is_file)
         while ( *ptr )
         {
             if ( *ptr=='\\' && !escaped ) { escaped = 1; ptr++; continue; }
-            if ( isspace(*ptr) && !escaped ) break;
+            if ( isspace_c(*ptr) && !escaped ) break;
             kputc(*ptr, &ori);
             escaped = 0;
             ptr++;
         }
         if ( *ptr )
         {
-            while ( *ptr && isspace(*ptr) ) ptr++;
+            while ( *ptr && isspace_c(*ptr) ) ptr++;
             while ( *ptr )
             {
                 if ( *ptr=='\\' && !escaped ) { escaped = 1; ptr++; continue; }
-                if ( isspace(*ptr) && !escaped ) break;
+                if ( isspace_c(*ptr) && !escaped ) break;
                 kputc(*ptr, &ren);
                 escaped = 0;
                 ptr++;
@@ -345,18 +345,18 @@ int bam_smpl_add_readgroups(bam_smpl_t *bsmpl, char *list, int is_file)
         while ( *ptr )
         {
             if ( *ptr=='\\' && !escaped ) { escaped = 1; ptr++; continue; }
-            if ( isspace(*ptr) && !escaped ) break;
+            if ( isspace_c(*ptr) && !escaped ) break;
             kputc(*ptr, &fld1);
             escaped = 0;
             ptr++;
         }
         if ( *ptr )
         {
-            while ( *ptr && isspace(*ptr) ) ptr++;
+            while ( *ptr && isspace_c(*ptr) ) ptr++;
             while ( *ptr )
             {
                 if ( *ptr=='\\' && !escaped ) { escaped = 1; ptr++; continue; }
-                if ( isspace(*ptr) && !escaped ) break;
+                if ( isspace_c(*ptr) && !escaped ) break;
                 kputc(*ptr, &fld2);
                 escaped = 0;
                 ptr++;
@@ -364,11 +364,11 @@ int bam_smpl_add_readgroups(bam_smpl_t *bsmpl, char *list, int is_file)
         }
         if ( *ptr )
         {
-            while ( *ptr && isspace(*ptr) ) ptr++;
+            while ( *ptr && isspace_c(*ptr) ) ptr++;
             while ( *ptr )
             {
                 if ( *ptr=='\\' && !escaped ) { escaped = 1; ptr++; continue; }
-                if ( isspace(*ptr) && !escaped ) break;
+                if ( isspace_c(*ptr) && !escaped ) break;
                 kputc(*ptr, &fld3);
                 escaped = 0;
                 ptr++;

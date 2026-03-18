@@ -203,8 +203,8 @@ static int _set_chrom_pos_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
     if ( *se!='_' ) return -1;
     kputsn(ss,se-ss,&args->str);
     ss = ++se;
-    while ( se < tsv->se && *se!='_' && isspace(*tsv->se) ) se++;
-    if ( se < tsv->se && *se!='_' && isspace(*tsv->se) ) return -1;
+    while ( se < tsv->se && *se!='_' && isspace_c(*tsv->se) ) se++;
+    if ( se < tsv->se && *se!='_' && isspace_c(*tsv->se) ) return -1;
     kputc(',',&args->str);
     kputsn(ss,se-ss,&args->str);
 
@@ -277,9 +277,9 @@ static int tsv_setter_verify_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
         args->rev_als = 1;
     }
     *tsv->se = tmp;
-    while ( *tsv->se && isspace(*tsv->se) ) tsv->se++;
+    while ( *tsv->se && isspace_c(*tsv->se) ) tsv->se++;
     tsv->ss = tsv->se;
-    while ( *tsv->se && !isspace(*tsv->se) ) tsv->se++;
+    while ( *tsv->se && !isspace_c(*tsv->se) ) tsv->se++;
     tmp = *tsv->se; *tsv->se = 0;
     if ( !args->rev_als && strcmp(tsv->ss,rec->d.allele[1]) ) { *tsv->se = tmp; error("REF/ALT mismatch: [%s][%s]\n", tsv->ss,rec->d.allele[1]); }
     else if ( args->rev_als && strcmp(tsv->ss,rec->d.allele[0]) ) { *tsv->se = tmp; error("REF/ALT mismatch: [%s][%s]\n", tsv->ss,rec->d.allele[0]); }
@@ -438,7 +438,7 @@ static void gensample_to_vcf(args_t *args)
     // of the columns (CHROM:POS_REF_ALT comes first or second)
     args->str.l = 0;
     char *sb = line.s, *se = line.s;
-    while ( *se && !isspace(*se) ) se++;
+    while ( *se && !isspace_c(*se) ) se++;
     if ( !*se ) error("Could not determine CHROM in %s: %s\n", gen_fname,line.s);
     if ( args->gen_3N6 )    // first column, just CHROM
         kputsn(sb, se-sb, &args->str);
@@ -447,7 +447,7 @@ static void gensample_to_vcf(args_t *args)
         char *sc = strchr(sb,':');
         if ( !sc || sc > se )
         {
-            while ( *se && !isspace(*se) ) se++;
+            while ( *se && !isspace_c(*se) ) se++;
             if ( !*se ) error("Could not determine CHROM in %s: %s\n", gen_fname,line.s);
             sb = ++se;
             sc = strchr(sb,':');
@@ -484,7 +484,7 @@ static void gensample_to_vcf(args_t *args)
     if ( !samples ) error("Could not read %s\n", sample_fname);
     for (i=2; i<nsamples; i++)
     {
-        se = samples[i]; while ( *se && !isspace(*se) ) se++;
+        se = samples[i]; while ( *se && !isspace_c(*se) ) se++;
         *se = 0;
         bcf_hdr_add_sample(args->header,samples[i]);
     }
@@ -629,7 +629,7 @@ static void haplegendsample_to_vcf(args_t *args)
     // returned from hts_readlist (i=1, and not i=0)
     for (i=1; i<nrows; i++)
     {
-        se = samples[i]; while ( *se && !isspace(*se) ) se++;
+        se = samples[i]; while ( *se && !isspace_c(*se) ) se++;
         *se = 0;
         bcf_hdr_add_sample(args->header,samples[i]);
     }
@@ -738,13 +738,13 @@ static void hapsample_to_vcf(args_t *args)
     // Find out the chromosome name, it can be either in the first or second column
     args->str.l = 0;
     char *sb = line.s, *se = line.s;
-    while ( *se && !isspace(*se) ) se++;
+    while ( *se && !isspace_c(*se) ) se++;
     if ( !*se ) error("Could not determine CHROM in %s: %s\n", hap_fname,line.s);
     if ( !args->output_vcf_ids )
     {
         // first column should be just CHROM, but the second must be CHROM:POS_REF_ALT, use that
         sb = ++se;
-        while ( *se && !isspace(*se) ) se++;
+        while ( *se && !isspace_c(*se) ) se++;
         if ( !*se ) error("Could not determine CHROM in %s: %s\n", hap_fname,line.s);
         if ( !strchr(sb,':') )
             error("Could not determine CHROM in the second column of %s: %s\n", hap_fname,line.s);
@@ -783,7 +783,7 @@ static void hapsample_to_vcf(args_t *args)
     if ( !samples ) error("Could not read %s\n", sample_fname);
     for (i=2; i<nsamples; i++)
     {
-        se = samples[i]; while ( *se && !isspace(*se) ) se++;
+        se = samples[i]; while ( *se && !isspace_c(*se) ) se++;
         *se = 0;
         bcf_hdr_add_sample(args->header,samples[i]);
     }
@@ -849,13 +849,13 @@ char *init_sample2sex(bcf_hdr_t *hdr, char *sex_fname)
     if ( !lines ) error("Could not read %s\n", sex_fname);
     for (i=0; i<nlines; i++)
     {
-        char *se = lines[i]; while ( *se && !isspace(*se) ) se++;
+        char *se = lines[i]; while ( *se && !isspace_c(*se) ) se++;
         char tmp = *se;
         *se = 0;
         int id = bcf_hdr_id2int(hdr, BCF_DT_SAMPLE, lines[i]);
         *se = tmp;
         if ( id<0 ) continue;
-        while ( *se && isspace(*se) ) se++;
+        while ( *se && isspace_c(*se) ) se++;
         if ( *se=='M' ) sample2sex[id] = '1';
         else if ( *se=='F' ) sample2sex[id] = '2';
         else error("Could not parse %s: %s\n", sex_fname,lines[i]);
@@ -993,6 +993,7 @@ static void vcf_to_gensample(args_t *args)
             nok++;
         }
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     fprintf(bcftools_stderr, "%d records written, %d skipped: %d/%d/%d/%d no-ALT/non-biallelic/filtered/duplicated\n",
         nok, no_alt+non_biallelic+filtered+ndup, no_alt, non_biallelic, filtered, ndup);
 
@@ -1131,6 +1132,7 @@ static void vcf_to_haplegendsample(args_t *args)
         }
         nok++;
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     fprintf(bcftools_stderr, "%d records written, %d skipped: %d/%d/%d no-ALT/non-biallelic/filtered\n", nok,no_alt+non_biallelic+filtered, no_alt, non_biallelic, filtered);
     if ( str.m ) free(str.s);
     if ( hout && bgzf_close(hout)!=0 ) error("Error closing %s: %s\n", hap_fname, strerror(errno));
@@ -1263,6 +1265,7 @@ static void vcf_to_hapsample(args_t *args)
         }
         nok++;
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     fprintf(bcftools_stderr, "%d records written, %d skipped: %d/%d/%d no-ALT/non-biallelic/filtered\n", nok, no_alt+non_biallelic+filtered, no_alt, non_biallelic, filtered);
     if ( str.m ) free(str.s);
     if ( hout && bgzf_close(hout)!=0 ) error("Error closing %s: %s\n", hap_fname, strerror(errno));
@@ -1302,8 +1305,8 @@ static inline int tsv_setter_aa1(args_t *args, char *ss, char *se, int alleles[]
     if ( ss[0]=='I' ) return -2;    // skip insertions/deletions for now
     if ( ss[0]=='D' ) return -2;
 
-    int a0 = acgt_to_5(toupper(ss[0]));
-    int a1 = ss[1] ? acgt_to_5(toupper(ss[1])) : a0;
+    int a0 = acgt_to_5(toupper_c(ss[0]));
+    int a1 = ss[1] ? acgt_to_5(toupper_c(ss[1])) : a0;
     if ( alleles[a0]<0 ) alleles[a0] = (*nals)++;
     if ( alleles[a1]<0 ) alleles[a1] = (*nals)++;
 
@@ -1327,7 +1330,7 @@ static int tsv_setter_aa(tsv_t *tsv, bcf1_t *rec, void *usr)
     if ( !ref ) error("faidx_fetch_seq failed at %s:%"PRId64"\n", bcf_hdr_id2name(args->header,rec->rid),(int64_t) rec->pos+1);
 
     int nals = 1, alleles[5] = { -1, -1, -1, -1, -1 };    // a,c,g,t,n
-    ref[0] = toupper(ref[0]);
+    ref[0] = toupper_c(ref[0]);
     int iref = acgt_to_5(ref[0]);
     alleles[iref] = 0;
 
@@ -1498,6 +1501,7 @@ static void vcf_to_vcf(args_t *args)
         }
         if ( bcf_write(out_fh,hdr,line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->outfname);
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     if ( args->write_index )
     {
         if ( bcf_idx_save(out_fh)<0 )
@@ -1590,6 +1594,7 @@ static void gvcf_to_vcf(args_t *args)
             free(ref);
         }
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     free(itmp);
     if ( args->write_index )
     {

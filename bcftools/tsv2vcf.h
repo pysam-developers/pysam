@@ -27,6 +27,7 @@
 #define __TSV2VCF_H__
 
 #include <htslib/vcf.h>
+#include "bcftools.h"
 
 typedef struct _tsv_t tsv_t;
 typedef int (*tsv_setter_t)(tsv_t *, bcf1_t *, void *);
@@ -65,12 +66,12 @@ static inline int tsv_next(tsv_t *tsv)
     if ( !*tsv->se ) return -1;
     if ( tsv->ss==tsv->se )
     {
-        while ( *tsv->se && !isspace(*tsv->se) ) tsv->se++;
+        while ( *tsv->se && !isspace_c(*tsv->se) ) tsv->se++;
         return 0;
     }
-    while ( *tsv->se && isspace(*tsv->se) ) tsv->se++;
+    while ( *tsv->se && isspace_c(*tsv->se) ) tsv->se++;
     tsv->ss = tsv->se;
-    while ( *tsv->se && !isspace(*tsv->se) ) tsv->se++;
+    while ( *tsv->se && !isspace_c(*tsv->se) ) tsv->se++;
     return 0;
 }
 

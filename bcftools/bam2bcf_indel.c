@@ -36,6 +36,9 @@ DEALINGS IN THE SOFTWARE.  */
 #include <htslib/ksort.h>
 KSORT_INIT_GENERIC(uint32_t)
 
+// Avoid having to include all of bcftools.h
+static inline char toupper_c(char c) { return toupper((unsigned char) c); }
+
 #define MINUS_CONST 0x10000000
 
 #define MAX_TYPES 64
@@ -89,8 +92,8 @@ inline int est_indelreg(int pos, const char *ref, int l, char *ins4)
     int i, j, max = 0, max_i = pos, score = 0;
     l = abs(l);
     for (i = pos + 1, j = 0; ref[i]; ++i, ++j) {
-        if (ins4) score += (toupper(ref[i]) != "ACGTN"[(int)ins4[j%l]])? -10 : 1;
-        else score += (toupper(ref[i]) != toupper(ref[pos+1+j%l]))? -10 : 1;
+        if (ins4) score += (toupper_c(ref[i]) != "ACGTN"[(int)ins4[j%l]])? -10 : 1;
+        else score += (toupper_c(ref[i]) != toupper_c(ref[pos+1+j%l]))? -10 : 1;
         if (score < 0) break;
         if (max < score) max = score, max_i = i;
     }

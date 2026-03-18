@@ -31,6 +31,9 @@ THE SOFTWARE.  */
 #include "call.h"
 #include "prob1.h"
 
+// Avoid having to include all of bcftools.h
+static inline int isspace_c(char c) { return isspace((unsigned char) c); }
+
 // Using priors for GTs does not seem to be mathematically justified. Although
 // it seems effective in removing false calls, it also flips a significant
 // proportion of HET genotypes. Better is to filter by FORMAT/GQ using
@@ -308,10 +311,10 @@ static void init_sample_groups(call_t *call)
         for (i=0; i<nlines; i++)
         {
             char *ptr = lines[i];
-            while ( *ptr && !isspace(*ptr) ) ptr++;
+            while ( *ptr && !isspace_c(*ptr) ) ptr++;
             if ( !*ptr ) error("Could not parse the line in %s, expected a sample name followed by tab and a population name: %s\n",call->sample_groups,lines[i]);
             char *tmp = ptr;
-            while ( *ptr && isspace(*ptr) ) ptr++;
+            while ( *ptr && isspace_c(*ptr) ) ptr++;
             if ( !*ptr ) error("Could not parse the line in %s, expected a sample name followed by tab and a population name: %s\n",call->sample_groups,lines[i]);
             *tmp = 0;
             int ismpl = bcf_hdr_id2int(call->hdr, BCF_DT_SAMPLE, lines[i]);

@@ -759,6 +759,7 @@ unsigned char *arith_compress_to(unsigned char *in,  unsigned int in_size,
         }
         memcpy(out+c_meta_len, in, in_size);
         *out_size = in_size+c_meta_len;
+        return out;
     }
 
     if (order & X_STRIPE) {

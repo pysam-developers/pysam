@@ -721,7 +721,7 @@ static inline int _is_acgtn(char *seq)
 {
     while ( *seq )
     {
-        char c = toupper(*seq);
+        char c = toupper_c(*seq);
         if ( c!='A' && c!='C' && c!='G' && c!='T' && c!='N' ) return 0;
         seq++;
     }

@@ -79,14 +79,14 @@ int tsv_parse(tsv_t *tsv, bcf1_t *rec, char *str)
     tsv->ss = tsv->se = str;
     while ( *tsv->ss && tsv->icol < tsv->ncols )
     {
-        while ( *tsv->se && !isspace(*tsv->se) ) tsv->se++;
+        while ( *tsv->se && !isspace_c(*tsv->se) ) tsv->se++;
         if ( tsv->cols[tsv->icol].setter )
         {
             int ret = tsv->cols[tsv->icol].setter(tsv,rec,tsv->cols[tsv->icol].usr);
             if ( ret<0 ) return -1;
             status++;
         }
-        while ( *tsv->se && isspace(*tsv->se) ) tsv->se++;
+        while ( *tsv->se && isspace_c(*tsv->se) ) tsv->se++;
         tsv->ss = tsv->se;
         tsv->icol++;
     }
@@ -123,7 +123,7 @@ int tsv_setter_ref_alt(tsv_t *tsv, bcf1_t *rec, void *usr)
 {
     bcf_hdr_t *hdr = (bcf_hdr_t*)usr;
     char *sb = tsv->ss;
-    while ( *sb && !isspace(*sb) ) sb++;
+    while ( *sb && !isspace_c(*sb) ) sb++;
     if ( !*sb ) return -1;
     char tmp = *sb;
     *sb = ',';

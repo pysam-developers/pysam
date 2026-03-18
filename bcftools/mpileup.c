@@ -1074,7 +1074,7 @@ int read_file_list(const char *file_list,int *n,char **argv[])
     {
         // allow empty lines and trailing spaces
         len = strlen(buf);
-        while ( len>0 && isspace(buf[len-1]) ) len--;
+        while ( len>0 && isspace_c(buf[len-1]) ) len--;
         if ( !len ) continue;
 
         // check sanity of the file list
@@ -1084,7 +1084,7 @@ int read_file_list(const char *file_list,int *n,char **argv[])
             // no such file, check if it is safe to print its name
             int i, safe_to_print = 1;
             for (i=0; i<len; i++)
-                if (!isprint(buf[i])) { safe_to_print = 0; break; }
+                if (!isprint_c(buf[i])) { safe_to_print = 0; break; }
             if ( safe_to_print )
                 fprintf(stderr,"The file list \"%s\" appears broken, could not locate: %s\n", file_list,buf);
             else

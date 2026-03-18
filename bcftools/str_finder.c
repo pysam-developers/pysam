@@ -94,7 +94,7 @@ static void add_rep(rep_ele **list, char *cons, int clen, int pos, int rlen,
     if (lower_only) {
 	int lc = 0;
 	for (i = el->start; i <= el->end; i++) {
-	    if (islower(cons[i])) {
+	    if (islower((unsigned char) cons[i])) {
 		lc = 1;
 		break;
 	    }

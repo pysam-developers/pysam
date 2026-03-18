@@ -835,6 +835,7 @@ int main_plugin(int argc, char *argv[])
             if ( bcf_write1(args->out_fh, args->hdr_out, line)!=0 ) error("[%s] Error: cannot write to %s\n", __func__,args->output_fname);
         }
     }
+    if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     destroy_data(args);
     bcf_sr_destroy(args->files);
     free(args);

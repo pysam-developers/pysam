@@ -594,6 +594,7 @@ static void concat(args_t *args)
                 bcf1_t *line1 = args->files->nreaders > 1 ? bcf_sr_get_line(args->files,1) : NULL;
                 phased_push(args, line0, line1, is_overlap);
             }
+            if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
 
             if ( args->files->nreaders )
             {
@@ -617,6 +618,7 @@ static void concat(args_t *args)
                 if ( args->remove_dups ) break;
             }
         }
+        if ( args->files->errnum ) error("Error: %s\n", bcf_sr_strerror(args->files->errnum));
     }
     else    // concatenate as is
     {

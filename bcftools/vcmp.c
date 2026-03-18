@@ -30,6 +30,9 @@ THE SOFTWARE.  */
 #include <ctype.h>
 #include "vcmp.h"
 
+// Avoid having to include all of bcftools.h
+static inline char toupper_c(char c) { return toupper((unsigned char) c); }
+
 struct _vcmp_t
 {
     char *dref;
@@ -57,7 +60,7 @@ int vcmp_set_ref(vcmp_t *vcmp, char *ref1, char *ref2)
     vcmp->ndref = 0;
 
     char *a = ref1, *b = ref2;
-    while ( *a && *b && toupper(*a)==toupper(*b) ) { a++; b++; }
+    while ( *a && *b && toupper_c(*a)==toupper_c(*b) ) { a++; b++; }
     if ( !*a && !*b ) return 0;
     if ( *a && *b ) return -1;  // refs not compatible
 
@@ -68,7 +71,7 @@ int vcmp_set_ref(vcmp_t *vcmp, char *ref1, char *ref2)
         while ( *a ) a++;
         vcmp->ndref = (a-ref1) - vcmp->nmatch;
         hts_expand(char,vcmp->ndref+1,vcmp->mdref,vcmp->dref);
-        for (i=0; i<vcmp->ndref; i++) vcmp->dref[i] = toupper(ref1[vcmp->nmatch+i]);
+        for (i=0; i<vcmp->ndref; i++) vcmp->dref[i] = toupper_c(ref1[vcmp->nmatch+i]);
         vcmp->dref[vcmp->ndref] = 0;
         return 0;
     }
@@ -78,7 +81,7 @@ int vcmp_set_ref(vcmp_t *vcmp, char *ref1, char *ref2)
     while ( *b ) b++;
     vcmp->ndref = (b-ref2) - vcmp->nmatch;
     hts_expand(char,vcmp->ndref+1,vcmp->mdref,vcmp->dref);
-    for (i=0; i<vcmp->ndref; i++) vcmp->dref[i] = toupper(ref2[vcmp->nmatch+i]);
+    for (i=0; i<vcmp->ndref; i++) vcmp->dref[i] = toupper_c(ref2[vcmp->nmatch+i]);
     vcmp->dref[vcmp->ndref] = 0;
     vcmp->ndref *= -1;
     return 0;
@@ -90,7 +93,7 @@ int vcmp_find_allele(vcmp_t *vcmp, char **als1, int nals1, char *al2)
     for (i=0; i<nals1; i++)
     {
         char *a = als1[i], *b = al2;
-        while ( *a && *b && toupper(*a)==toupper(*b) ) { a++; b++; }
+        while ( *a && *b && toupper_c(*a)==toupper_c(*b) ) { a++; b++; }
         if ( *a && *b ) continue;   // mismatch
         if ( !vcmp->ndref )
         {
@@ -103,14 +106,14 @@ int vcmp_find_allele(vcmp_t *vcmp, char **als1, int nals1, char *al2)
         {
             if ( vcmp->ndref<0 ) continue;
             for (j=0; j<vcmp->ndref; j++)
-                if ( !a[j] || toupper(a[j])!=vcmp->dref[j] ) break;
+                if ( !a[j] || toupper_c(a[j])!=vcmp->dref[j] ) break;
             if ( j!=vcmp->ndref || a[j] ) continue;
             break;  // found
         }
 
         if ( vcmp->ndref>0 ) continue;
         for (j=0; j<-vcmp->ndref; j++)
-            if ( !b[j] || toupper(b[j])!=vcmp->dref[j] ) break;
+            if ( !b[j] || toupper_c(b[j])!=vcmp->dref[j] ) break;
         if ( j!=-vcmp->ndref || b[j] ) continue;
         break;  // found
     }

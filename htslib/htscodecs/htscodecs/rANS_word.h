@@ -77,8 +77,10 @@ static inline RansState RansEncRenorm(RansState x, uint8_t** pptr, uint32_t freq
 {
     uint32_t x_max = ((RANS_BYTE_L >> scale_bits) << 16) * freq-1; // this turns into a shift.
     if (x > x_max) {
-        uint16_t* ptr = (uint16_t *)*pptr;
-        *--ptr = (uint16_t) (x & 0xffff);
+        uint8_t* ptr = *pptr;
+        ptr -= 2;
+        ptr[0] = x & 0xff;
+        ptr[1] = (x >> 8) & 0xff;
         x >>= 16;
         *pptr = (uint8_t *)ptr;
     }
