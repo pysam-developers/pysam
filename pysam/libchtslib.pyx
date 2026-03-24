@@ -572,25 +572,23 @@ cdef class HTSFile(object):
                     hts_set_threads(htsfile, threads)
                 return htsfile
 
-    def add_hts_options(self, format_options=None):
-        """Given a list of key=value format option strings, add them to an open htsFile
+    def add_hts_options(self, format_options):
+        """Given a list of ``key=value`` format option strings, add them to an open htsFile.
         """
         cdef int rval
         cdef hts_opt *opts = NULL
 
-        if format_options:
+        try:
             for format_option in format_options:
-                rval = hts_opt_add(&opts, format_option)
+                rval = hts_opt_add(&opts, force_bytes(format_option))
                 if rval != 0:
-                    if opts != NULL:
-                        hts_opt_free(opts)
-                    raise RuntimeError('Invalid format option ({}) specified'.format(format_option))
-            if opts != NULL:
-                rval = hts_opt_apply(self.htsfile, opts)
-                if rval != 0:
-                    hts_opt_free(opts)
-                    raise RuntimeError('An error occurred while applying the requested format options')
-                hts_opt_free(opts)
+                    raise ValueError(f'Invalid format option: {format_option!r}')
+
+            rval = hts_opt_apply(self.htsfile, opts)
+            if rval != 0:
+                raise ValueError('An error occurred while applying the requested format options')
+        finally:
+            hts_opt_free(opts)
 
     def parse_region(self, contig=None, start=None, stop=None,
                      region=None, tid=None,
