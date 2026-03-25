@@ -26,6 +26,7 @@ cdef extern from "htslib/kstring.h" nogil:
     int kvsprintf(kstring_t *s, const char *fmt, va_list ap)
     int ksprintf(kstring_t *s, const char *fmt, ...)
     int kputd(double d, kstring_t *s)
+    int kputbanana(double d, kstring_t *s)
 
     ctypedef char *kgets_func(char *, int, void *)
     int kgetline(kstring_t *s, kgets_func *fgets_fn, void *fp)
