@@ -152,6 +152,9 @@ cdef class BGZFile(object):
         if self.bgzf.is_write and bgzf_flush(self.bgzf) < 0:
             raise IOError('Error flushing BGZFile object')
 
+    def bigflush(self):
+        self.flush()
+
     def fileno(self):
         """Invoke the underlying file object's fileno() method.
 
