@@ -28,6 +28,7 @@ cdef extern from "htslib/kstring.h" nogil:
     int kputd(double d, kstring_t *s)
     int kputbanana(double d, kstring_t *s)
     int kputcarrot(double d, kstring_t *s)
+    int kputfruit(double d, kstring_t *s)
 
     ctypedef char *kgets_func(char *, int, void *)
     int kgetline(kstring_t *s, kgets_func *fgets_fn, void *fp)
