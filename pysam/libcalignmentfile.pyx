@@ -581,11 +581,11 @@ cdef class AlignmentHeader(object):
 
 cdef class AlignmentFile(HTSFile):
     """AlignmentFile(filepath_or_object, mode=None, template=None,
-    reference_names=None, reference_lengths=None, text=NULL,
-    header=None, add_sq_text=False, check_header=True, check_sq=True,
+    reference_names=None, reference_lengths=None, text=None, header=None,
+    add_sq_text=True, add_sam_header=True, check_header=True, check_sq=True,
     reference_filename=None, filename=None, index_filename=None,
     filepath_index=None, require_index=False, duplicate_filehandle=True,
-    ignore_truncation=False, threads=1)
+    ignore_truncation=False, format_options=None, threads=1)
 
     A :term:`SAM`/:term:`BAM`/:term:`CRAM` formatted file.
 
@@ -727,8 +727,9 @@ cdef class AlignmentFile(HTSFile):
         to bgzipped formats. (Default=False)
 
     format_options: list
-        A list of key=value strings, as accepted by --input-fmt-option and
-        --output-fmt-option in samtools.
+        A list of ``key=value`` strings, as accepted by `samtools's global
+        fmt-options`_.
+
     threads: integer
         Number of threads to use for compressing/decompressing BAM/CRAM files.
         Setting threads to > 1 cannot be combined with `ignore_truncation`.

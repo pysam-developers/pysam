@@ -60,6 +60,7 @@ rst_epilog = '''
 .. _bcftools: https://www.htslib.org/doc/1.23.1/bcftools.html
 .. _htslib: https://www.htslib.org/
 .. _tabix: https://www.htslib.org/doc/tabix.html
+.. _samtools's global fmt-options: https://www.htslib.org/doc/samtools.html#GLOBAL_COMMAND_OPTIONS
 .. _Galaxy: https://usegalaxy.org/
 .. _cython: https://cython.org/
 .. _python: https://www.python.org/

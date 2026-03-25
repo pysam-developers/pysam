@@ -573,7 +573,8 @@ cdef class HTSFile(object):
                 return htsfile
 
     def add_hts_options(self, format_options):
-        """Given a list of ``key=value`` format option strings, add them to an open htsFile.
+        """Given a list of ``key=value`` format option strings (as accepted
+        by `samtools's global fmt-options`_), add them to an open htsFile.
         """
         cdef int rval
         cdef hts_opt *opts = NULL
