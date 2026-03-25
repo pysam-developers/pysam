@@ -251,6 +251,7 @@ cdef class AlignmentHeader(object):
             self.ptr.l_text = l_text
             memcpy(self.ptr.text, ctext, l_text + 1)
 
+        print('Hello this is from libcalignmentfile.pyx')
         if reference_names and reference_lengths:
             reference_names = [force_bytes(ref) for ref in reference_names]
 
