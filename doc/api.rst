@@ -213,10 +213,43 @@ VCF/BCF files
 .. autoclass:: pysam.VariantHeader
    :members:
 
+.. autoclass:: pysam.VariantHeaderMetadata
+   :members:
+
+.. autoclass:: pysam.VariantMetadata
+   :members:
+
+.. autoclass:: pysam.VariantHeaderRecords
+   :members:
+
 .. autoclass:: pysam.VariantHeaderRecord
    :members:
 
+.. autoclass:: pysam.VariantHeaderContigs
+   :members:
+
+.. autoclass:: pysam.VariantContig
+   :members:
+
+.. autoclass:: pysam.VariantHeaderSamples
+   :members:
+
 .. autoclass:: pysam.VariantRecord
+   :members:
+
+.. autoclass:: pysam.VariantRecordFilter
+   :members:
+
+.. autoclass:: pysam.VariantRecordFormat
+   :members:
+
+.. autoclass:: pysam.VariantRecordInfo
+   :members:
+
+.. autoclass:: pysam.VariantRecordSamples
+   :members:
+
+.. autoclass:: pysam.VariantRecordSample
    :members:
 
 HTSFile
