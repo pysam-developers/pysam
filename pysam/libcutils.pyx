@@ -46,14 +46,20 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
     """convert an array of quality values to a string."""
     if qualities is None:
         return None
-    cdef int x
 
-    cdef c_array.array result
-    result = c_array.clone(qualities, len(qualities), zero=False)
+    cdef Py_ssize_t n = len(qualities)
 
-    for x from 0 <= x < len(qualities):
-        result[x] = qualities[x] + offset
-    return force_str(result.tobytes())
+    cdef bytearray result_ba = bytearray(n)
+
+    cdef char[:] qualities_view = qualities
+    cdef unsigned char[:] result_view = result_ba
+
+    cdef Py_ssize_t i
+
+    for i in range(n):
+        result_view[i] = qualities_view[i] + offset
+
+    return force_str(bytes(result_ba))
 
 
 cpdef qualities_to_qualitystring(qualities, int offset=33):
