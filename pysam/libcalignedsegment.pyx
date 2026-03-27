@@ -2610,6 +2610,32 @@ cdef class AlignedSegment:
         v = bam_aux_get(self._delegate, btag)
         return v != NULL
 
+    cdef _decode_aux_value(self, uint8_t * s):
+        """Decode a single aux tag value from the raw aux data pointer.
+
+        Returns (value, type_string) tuple.
+        """
+        cdef char auxtype = bam_aux_type(s)
+
+        if auxtype in (b'c', b'C', b's', b'S', b'i', b'I'):
+            value = <int64_t>bam_aux2i(s)
+        elif auxtype == b'f' or auxtype == b'F':
+            value = <float>bam_aux2f(s)
+        elif auxtype == b'd' or auxtype == b'D':
+            value = <double>bam_aux2f(s)
+        elif auxtype == b'A' or auxtype == b'a':
+            # force type to A
+            s[0] = b'A'
+            value = '%c' % <char>bam_aux2A(s)
+        elif auxtype == b'Z' or auxtype == b'H':
+            value = charptr_to_str(<char*>bam_aux2Z(s))
+        elif auxtype == b'B':
+            bytesize, nvalues, value = convert_binary_tag(s + 1)
+        else:
+            raise ValueError("unknown auxiliary type '%s'" % chr(auxtype))
+
+        return value, chr(auxtype)
+
     cpdef get_tag(self, tag, with_value_type=False):
         """
         retrieves data from the optional alignment section
@@ -2645,38 +2671,14 @@ cdef class AlignedSegment:
 
         """
         cdef uint8_t * v
-        cdef int nvalues
         btag = force_bytes(tag)
         v = bam_aux_get(self._delegate, btag)
         if v == NULL:
             raise KeyError("tag '%s' not present" % tag)
-        if chr(v[0]) == "B":
-            auxtype = chr(v[0]) + chr(v[1])
-        else:
-            auxtype = chr(v[0])
-
-        if auxtype in "iIcCsS":
-            value = bam_aux2i(v)
-        elif auxtype == 'f' or auxtype == 'F':
-            value = bam_aux2f(v)
-        elif auxtype == 'd' or auxtype == 'D':
-            value = bam_aux2f(v)
-        elif auxtype == 'A' or auxtype == 'a':
-            # force A to a
-            v[0] = b'A'
-            # there might a more efficient way
-            # to convert a char into a string
-            value = '%c' % <char>bam_aux2A(v)
-        elif auxtype == 'Z' or auxtype == 'H':
-            # Z and H are treated equally as strings in htslib
-            value = charptr_to_str(<char*>bam_aux2Z(v))
-        elif auxtype[0] == 'B':
-            bytesize, nvalues, values = convert_binary_tag(v + 1)
-            value = values
-        else:
-            raise ValueError("unknown auxiliary type '%s'" % auxtype)
-
+        value, auxtype = self._decode_aux_value(v)
         if with_value_type:
+            if auxtype == "B":
+                auxtype = "B" + chr(v[1])
             return (value, auxtype)
         else:
             return value
@@ -2699,62 +2701,25 @@ cdef class AlignedSegment:
 
         """
 
-        cdef char * ctag
-        cdef bam1_t * src
+        cdef bam1_t * src = self._delegate
         cdef uint8_t * s
-        cdef char auxtag[3]
-        cdef char auxtype
-        cdef uint8_t byte_size
-        cdef int32_t nvalues
+        cdef const char * tag_ptr
 
-        src = self._delegate
         if src.l_data == 0:
             return []
-        s = pysam_bam_get_aux(src)
-        result = []
-        auxtag[2] = 0
-        while s < (src.data + src.l_data):
-            # get tag
-            auxtag[0] = s[0]
-            auxtag[1] = s[1]
-            s += 2
-            auxtype = s[0]
-            if auxtype in (b'c', b'C'):
-                value = <int>bam_aux2i(s)
-                s += 1
-            elif auxtype in (b's', b'S'):
-                value = <int>bam_aux2i(s)
-                s += 2
-            elif auxtype in (b'i', b'I'):
-                value = <int32_t>bam_aux2i(s)
-                s += 4
-            elif auxtype == b'f':
-                value = <float>bam_aux2f(s)
-                s += 4
-            elif auxtype == b'd':
-                value = <double>bam_aux2f(s)
-                s += 8
-            elif auxtype in (b'A', b'a'):
-                value = "%c" % <char>bam_aux2A(s)
-                s += 1
-            elif auxtype in (b'Z', b'H'):
-                value = charptr_to_str(<char*>bam_aux2Z(s))
-                # +1 for NULL terminated string
-                s += len(value) + 1
-            elif auxtype == b'B':
-                s += 1
-                byte_size, nvalues, value = convert_binary_tag(s)
-                # 5 for 1 char and 1 int
-                s += 5 + (nvalues * byte_size) - 1
-            else:
-                raise KeyError("unknown type '%s'" % auxtype)
 
-            s += 1
+        result = []
+        s = bam_aux_first(src)
+        while s != NULL:
+            tag_ptr = bam_aux_tag(s)
+            tag_name = PyBytes_FromStringAndSize(<char*>tag_ptr, 2).decode('ascii')
+            value, auxtype = self._decode_aux_value(s)
 
             if with_value_type:
-                result.append((charptr_to_str(auxtag), value, chr(auxtype)))
+                result.append((tag_name, value, auxtype))
             else:
-                result.append((charptr_to_str(auxtag), value))
+                result.append((tag_name, value))
+            s = bam_aux_next(src, s)
 
         return result
 
