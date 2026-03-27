@@ -698,6 +698,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     cdef int op
     cdef uint32_t k, i, l, x
     cdef int nmatches = 0
+    cdef int insertions = 0
     cdef int s_idx = 0
 
     cdef uint32_t max_len = get_alignment_length(src)
@@ -724,6 +725,7 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
         elif op == BAM_CREF_SKIP:
             pass
         elif op == BAM_CINS or op == BAM_CPAD:
+            insertions += l
             for i from 0 <= i < l:
                 # encode insertions into reference as lowercase
                 s[s_idx] = read_sequence[r_idx] + 32
@@ -754,14 +756,6 @@ cdef inline bytes build_alignment_sequence(bam1_t * src):
     # Check if MD tag is valid by matching CIGAR length to MD tag defined length
     # Insertions would be in addition to what is described by MD, so we calculate
     # the number of insertions separately.
-    cdef int insertions = 0
-
-    while s[s_idx] != 0:
-        if s[s_idx] >= b'a':
-            insertions += 1
-        s_idx += 1
-    s_idx = 0
-
     cdef uint32_t md_len = get_md_reference_length(md_tag)
     if md_len + insertions > max_len:
         free(s)
