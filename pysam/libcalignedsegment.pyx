@@ -549,7 +549,7 @@ cdef inline bytes getSequenceInRange(bam1_t *src,
         # note: do not use string literal as it will be a python string
         s[k-start] = seq_nt16_str[p[k//2] >> 4 * (1 - k%2) & 0xf]
 
-    return charptr_to_bytes(seq)
+    return seq
 
 
 #####################################################################
