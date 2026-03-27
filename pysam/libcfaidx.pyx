@@ -425,6 +425,44 @@ cdef class FastxRecord:
     A record must contain a name and a sequence. If either of them are
     None, a ValueError is raised on writing.
 
+    Attributes
+    ----------
+    name : str
+        The name (identifier) of the record.
+    sequence : str
+        The nucleotide or amino acid sequence.
+    comment : str or None
+        An optional comment or description following the name.
+    quality : str or None
+        Quality scores as an ASCII-encoded string (for FASTQ records).
+        None for FASTA records.
+
+    Parameters
+    ----------
+    name : str, optional
+        The name of the record.
+    comment : str, optional
+        An optional comment for the record.
+    sequence : str, optional
+        The sequence of the record.
+    quality : str, optional
+        Quality scores as an ASCII-encoded string.
+    proxy : FastqProxy, optional
+        If provided, initialize from an existing FastqProxy object.
+
+    Examples
+    --------
+    >>> record = pysam.FastxRecord(name="read1", sequence="ACGT")
+    >>> print(record)
+    >read1
+    ACGT
+    >>> record = pysam.FastxRecord(name="read1", sequence="ACGT", quality="IIII")
+    >>> print(record)
+    @read1
+    ACGT
+    +
+    IIII
+
     """
     def __init__(self,
                  name=None,
