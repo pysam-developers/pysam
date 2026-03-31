@@ -1360,17 +1360,20 @@ cdef class VariantHeaderRecord(object):
         """D.values() -> list of D's values"""
         return list(self.itervalues())
 
-    def update(self, items=None, **kwargs):
+    def update(self, items=(), **kwargs):
         """D.update([E, ]**F) -> None.
 
         Update D from dict/iterable E and F.
         """
-        for k, v in items.items():
-            self[k] = v
-
-        if kwargs:
-            for k, v in kwargs.items():
+        if hasattr(items, "items"):
+            for k, v in items.items():
                 self[k] = v
+        else:
+            for k, v in items:
+                self[k] = v
+
+        for k, v in kwargs.items():
+            self[k] = v
 
     def pop(self, key, default=_nothing):
         try:
@@ -2785,19 +2788,23 @@ cdef class VariantRecordInfo(object):
         """D.values() -> list of D's values"""
         return list(self.itervalues())
 
-    def update(self, items=None, **kwargs):
+    def update(self, items=(), **kwargs):
         """D.update([E, ]**F) -> None.
 
         Update D from dict/iterable E and F.
         """
-        for k, v in items.items():
-            if k != 'END':
-                self[k] = v
+        if hasattr(items, "items"):
+            for k, v in items.items():
+                if k != 'END':
+                    self[k] = v
+        else:
+            for k, v in items:
+                if k != 'END':
+                    self[k] = v
 
-        if kwargs:
-            kwargs.pop('END', None)
-            for k, v in kwargs.items():
-                self[k] = v
+        kwargs.pop('END', None)
+        for k, v in kwargs.items():
+            self[k] = v
 
     def pop(self, key, default=_nothing):
         cdef bcf_hdr_t *hdr = self.record.header.ptr
@@ -2964,17 +2971,20 @@ cdef class VariantRecordSamples(object):
         """D.values() -> list of D's values"""
         return list(self.itervalues())
 
-    def update(self, items=None, **kwargs):
+    def update(self, items=(), **kwargs):
         """D.update([E, ]**F) -> None.
 
         Update D from dict/iterable E and F.
         """
-        for k, v in items.items():
-            self[k] = v
-
-        if kwargs:
-            for k, v in kwargs.items():
+        if hasattr(items, "items"):
+            for k, v in items.items():
                 self[k] = v
+        else:
+            for k, v in items:
+                self[k] = v
+
+        for k, v in kwargs.items():
+            self[k] = v
 
     def pop(self, key, default=_nothing):
         try:
@@ -3754,17 +3764,20 @@ cdef class BaseIndex(object):
         """D.values() -> list of D's values"""
         return list(self.itervalues())
 
-    def update(self, items=None, **kwargs):
+    def update(self, items=(), **kwargs):
         """D.update([E, ]**F) -> None.
 
         Update D from dict/iterable E and F.
         """
-        for k, v in items.items():
-            self[k] = v
-
-        if kwargs:
-            for k, v in kwargs.items():
+        if hasattr(items, "items"):
+            for k, v in items.items():
                 self[k] = v
+        else:
+            for k, v in items:
+                self[k] = v
+
+        for k, v in kwargs.items():
+            self[k] = v
 
     def pop(self, key, default=_nothing):
         try:
