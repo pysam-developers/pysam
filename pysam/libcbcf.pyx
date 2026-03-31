@@ -3606,17 +3606,20 @@ cdef class VariantRecordSample(object):
         """D.values() -> list of D's values"""
         return list(self.itervalues())
 
-    def update(self, items=None, **kwargs):
+    def update(self, items=(), **kwargs):
         """D.update([E, ]**F) -> None.
 
         Update D from dict/iterable E and F.
         """
-        for k, v in items.items():
-            self[k] = v
-
-        if kwargs:
-            for k, v in kwargs.items():
+        if hasattr(items, "items"):
+            for k, v in items.items():
                 self[k] = v
+        else:
+            for k, v in items:
+                self[k] = v
+
+        for k, v in kwargs.items():
+            self[k] = v
 
     def pop(self, key, default=_nothing):
         try:

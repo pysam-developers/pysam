@@ -89,6 +89,43 @@ def test_set_sample_alleles(vcf_header):
     with pytest.raises(ValueError, match='Use .allele_indices to set integer allele indices'):
         record.samples['sample1'].alleles = (1, 0)
 
+def test_sample_update_dict(vcf_header):
+    vcf_header.formats.add("DA", 1, "Integer", "Misc")
+    vcf_header.formats.add("DB", 1, "String", "Misc")
+    rec = vcf_header.new_record(contig="1", start=30, stop=40)
+
+    rec.samples["sample1"].update({"DA": 28, "DB": "test"})
+    assert dict(rec.samples["sample1"]) == {"DA": 28, "DB": "test"}
+
+def test_sample_update_iterable(vcf_header):
+    vcf_header.formats.add("YA", 1, "Integer", "Misc")
+    vcf_header.formats.add("YB", 1, "String", "Misc")
+    rec = vcf_header.new_record(contig="1", start=30, stop=40)
+
+    def yield_formats():
+        yield ("YA", 28)
+        yield ("YB", "test")
+
+    rec.samples["sample1"].update(yield_formats())
+    assert dict(rec.samples["sample1"]) == {"YA": 28, "YB": "test"}
+
+def test_sample_update_keywords(vcf_header):
+    vcf_header.formats.add("KA", 1, "Integer", "Misc")
+    vcf_header.formats.add("KB", 1, "String", "Misc")
+    rec = vcf_header.new_record(contig="1", start=30, stop=40)
+
+    rec.samples["sample1"].update(KA=28, KB="test")
+    assert dict(rec.samples["sample1"]) == {"KA": 28, "KB": "test"}
+
+def test_sample_update_dict_and_keywords(vcf_header):
+    vcf_header.formats.add("DA", 1, "Integer", "Misc")
+    vcf_header.formats.add("DB", 1, "String", "Misc")
+    vcf_header.formats.add("KA", 1, "Integer", "Misc")
+    vcf_header.formats.add("KB", 1, "String", "Misc")
+    rec = vcf_header.new_record(contig="1", start=30, stop=40)
+
+    rec.samples["sample1"].update({"DA": 28, "DB": "test"}, KA=28, KB="test")
+    assert dict(rec.samples["sample1"]) == {"DA": 28, "DB": "test", "KA": 28, "KB": "test"}
 
 def test_repeated_new_record(vcf_header):
     vcf_header.formats.add('GT', 1, 'String', "Genotype")
