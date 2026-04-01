@@ -39,19 +39,22 @@ def typecheck(check_locals: bool = True):
     stdout, stderr, status = mypy.api.run(MYPY_OPTIONS + ['--command', PREAMBLE + code])
     assert status == 0, f'mypy failed:\n{stdout}{stderr}'
 
+    def plain_mypy(s):
+        s = re.sub(r'builtins\.', '', s)
+        return s
+
     types = {}
     for line in stdout.splitlines():
         m = re.search(r'note:   *(\w+): ([\w.]*)', line)
-        if m: types[m.group(1)] = m.group(2)
+        if m: types[m.group(1)] = plain_mypy(m.group(2))
 
-    def _plain(s):
+    def plain_repr(s):
         s = re.sub(r"<class '([^']*)'>", r'\1', s)
-        s = re.sub(r'builtins\.', '', s)
         return s
 
     if check_locals:
         for var, vartype in types.items():
-            assert _plain(vartype) == _plain(repr(type(caller.f_locals[var]))), f'Incorrect type for {var!r}'
+            assert vartype == plain_repr(repr(type(caller.f_locals[var]))), f'Incorrect type for {var!r}'
 
     return types
 
@@ -119,8 +122,8 @@ def test_pileup_iterator_column(bam_fname: str) -> None:
     types = typecheck(check_locals=False)
     assert re.search(r'\.IteratorColumn(|All|AllRefs|Region)$', types['pu'])
     assert types['p'].endswith('PileupColumn')
-    assert types['pid'] == 'builtins.int'
-    assert types['ppos'] == 'builtins.int'
+    assert types['pid'] == 'int'
+    assert types['ppos'] == 'int'
 
 
 def test_samtools_subcommands() -> None:
