@@ -2624,25 +2624,25 @@ cdef class AlignedSegment:
         specification) as well as additional value type 'd' as
         implemented in htslib.
 
-        Parameters:
+        Parameters
+        ----------
+        tag : str
+            Data tag.
 
-            tag :
-                data tag.
+        with_value_type : Optional[bool]
+            If set to True, the return value is a tuple of (tag value, type code).
+            (default False)
 
-            with_value_type : Optional[bool]
-                if set to True, the return value is a tuple of (tag value, type
-                code). (default False)
-
-        Returns:
-
+        Returns
+        -------
+        Any or tuple(Any, str)
             A python object with the value of the `tag`. The type of the
             object depends on the data type in the data record.
 
-        Raises:
-
-            KeyError
-                If `tag` is not present, a KeyError is raised.
-
+        Raises
+        ------
+        KeyError
+            If `tag` is not present, a KeyError is raised.
         """
         cdef uint8_t * v
         cdef int nvalues
