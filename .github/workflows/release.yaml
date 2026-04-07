@@ -29,13 +29,13 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Check platform is the expected ${{ matrix.arch }} architecture
         run:  devtools/check-platform.sh ${{ matrix.arch }}
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v3.3.1
+        uses: pypa/cibuildwheel@v3.4.1
         env:
           CIBW_BUILD: ${{ matrix.build }}
           CIBW_SKIP:  ${{ case(matrix.kind == 'many', '*-musllinux_*', '*-manylinux_*') }} cp38-macosx_arm64
@@ -58,7 +58,7 @@ jobs:
           NAMETAG: ${{ matrix.nametag }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.artifactname }}
           path: wheelhouse/*.whl
@@ -70,7 +70,7 @@ jobs:
 
     steps:
       - name: Checkout pysam
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Python ${{ env.job_python_version }}
         uses: actions/setup-python@v6
@@ -88,7 +88,8 @@ jobs:
       - name: Create source distribution
         run:  python setup.py sdist --owner=root --group=root
 
-      - uses: actions/upload-artifact@v5
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/pysam-*.tar.gz
@@ -103,7 +104,7 @@ jobs:
 
     steps:
       - name: Get artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: dist
