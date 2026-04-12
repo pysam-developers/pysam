@@ -1472,46 +1472,47 @@ cdef VariantHeaderRecords makeVariantHeaderRecords(VariantHeader header):
 cdef class VariantMetadata(object):
     """A FILTER, INFO or FORMAT metadata line from a :class:`VariantHeader` object.
 
-        Example:
-          Here is an example :class:`VariantMetadata` header line::
+    Example:
+      Given a VCF meta-information line such as::
 
-              ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
+          ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
 
-          In this example, :attr:`name` = ``"NS"``, :attr:`number` = ``1``, :attr:`type` = ``"Integer"``,
-          and :attr:`description` = ``"Number of Samples With Data"``.
+      The corresponding :class:`VariantMetadata` object would have
+      :attr:`name` = "``NS``", :attr:`number` = ``1``, :attr:`type` = "``Integer``",
+      and :attr:`description` = "``Number of Samples With Data``".
+
+    Note:
+      Many of these properties will raise :exc:`ValueError` when the record is invalid,
+      usually due to an invalid header ID number.
     """
     def __init__(self, *args, **kwargs):
         raise TypeError('This class cannot be instantiated from Python')
 
     @property
     def name(self):
-        """The metadata field name (e.g. "AD")."""
+        """str : The metadata field name (e.g., "AD")."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         return bcf_str_cache_get_charptr(hdr.id[BCF_DT_ID][self.id].key)
 
     # Q: Should this be exposed?
     @property
     def id(self):
-        """The metadata **internal** header ID number.
+        """int : The metadata **internal** header ID number.
         To access the ``ID`` field of a header metadata line, use :attr:`name` instead.
         """
         return self.id
 
     @property
     def number(self):
-        """The number of values present for this metadata field (i.e. cardinality).
+        """int or str or None : The number of values present for this metadata field (i.e., cardinality),
+        which is one of:
 
-        Raises:
-          ValueError
-            If the header ID number is invalid.
-
-        Returns:
-          * None if the header line is not a FILTER, INFO, or FORMAT metadata line.
-          * ``"."`` if there are a variable number of values.
-          * ``n`` if there are a fixed number of exactly ``n`` values.
-          * ``"A"`` if there is one value per alternate allele.
-          * ``"R"`` if there is one value per allele (including the reference).
-          * ``"G"`` if there is one value per genotype (usually for FORMAT tags).
+        * An :class:`int` *n* if there is a fixed number of exactly `n` values.
+        * ``A`` if there is one value per alternate allele.
+        * ``R`` if there is one value per allele (including the reference).
+        * ``G`` if there is one value per genotype---usually used for FORMAT tags.
+        * ``.`` if there is a variable or unknown number of values.
+        * None if the header line is not a FILTER, INFO, or FORMAT metadata line.
         """
         cdef bcf_hdr_t *hdr = self.header.ptr
 
@@ -1531,16 +1532,9 @@ cdef class VariantMetadata(object):
 
     @property
     def type(self):
-        """The metadata value type.
-
-        Raises:
-          ValueError
-            If the header ID number is invalid.
-
-        Returns:
-          None if the header line is not a FILTER, INFO, or FORMAT metadata line.
-          Otherwise, one of the following strings representing the possible value types:
-          ``"Flag"``, ``"Integer"``, ``"Float"``, or ``"String"``.
+        """str or None : The metadata value type. One of ``Flag``, ``Integer``,
+        ``Float``, or ``String``, or None if the header line is not a FILTER,
+        INFO, or FORMAT metadata line.
         """
         cdef bcf_hdr_t *hdr = self.header.ptr
         if not check_header_id(hdr, self.type, self.id):
@@ -1552,11 +1546,7 @@ cdef class VariantMetadata(object):
 
     @property
     def description(self):
-        """The metadata description.
-
-        Returns:
-          None if the description is unset, otherwise a string description of the metadata line.
-        """
+        """str or None : The metadata description, or None if the field is not present."""
         descr = self.record.get('Description')
         if descr:
             descr = descr.strip('"')
@@ -1564,14 +1554,8 @@ cdef class VariantMetadata(object):
 
     @property
     def record(self):
-        """The :class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object.
-
-        Raises:
-          ValueError
-            If the header ID number is invalid.
-
-        Returns:
-          None if there is no associated record, otherwise the :class:`VariantHeaderRecord`.
+        """VariantHeaderRecord or None : The :class:`VariantHeaderRecord` associated with
+        this :class:`VariantMetadata` object, or None if there is no associated record.
         """
         cdef bcf_hdr_t *hdr = self.header.ptr
         if not check_header_id(hdr, self.type, self.id):
@@ -1583,7 +1567,7 @@ cdef class VariantMetadata(object):
 
     def remove_header(self):
         """Mark the :class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object for deletion.
-`
+
         Warning:
           Due to HTSlib limitations, the record is not immediately removed from the header.
         """
@@ -1765,43 +1749,39 @@ cdef class VariantContig(object):
     """Contig metadata from a :class:`VariantHeader` metadata header line.
 
     Example:
-      Here is an example :class:`VariantContig` metadata header line::
+      Given a VCF meta-information line such as::
 
           ##contig=<ID=20,length=62435964,assembly=B36,species="Homo sapiens">
 
-      In this example, :attr:`name` = ``"20"`` and :attr:`length` = ``62435964``.
+      The corresponding :class:`VariantContig` object would have :attr:`name` = "``20``"
+      and :attr:`length` = ``62435964``.
     """
     def __init__(self, *args, **kwargs):
         raise TypeError("This class cannot be instantiated from Python")
 
     @property
     def name(self):
-        """The contig name."""
+        """str : The contig name."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         return bcf_str_cache_get_charptr(hdr.id[BCF_DT_CTG][self.id].key)
 
     @property
     def id(self):
-        """The contig internal ID number.
-
-        To access the "ID" field of a header contig line, use :attr:`name` instead.
+        """int : The contig internal ID number.
+        To access the ``ID`` field of a header contig line, use :attr:`name` instead.
         """
         return self.id
 
     @property
     def length(self):
-        """The contig length.
-
-        Returns:
-            The contig length, or None if not available.
-        """
+        """int or None : The contig length, or None if not available."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef uint32_t length = hdr.id[BCF_DT_CTG][self.id].val.info[0]
         return length if length else None
 
     @property
     def header_record(self):
-        """The :class:`VariantHeaderRecord` associated with this :class:`VariantContig` object."""
+        """VariantHeaderRecord : The :class:`VariantHeaderRecord` associated with this :class:`VariantContig` object."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_CTG][self.id].val.hrec[0]
         return makeVariantHeaderRecord(self.header, hrec)
