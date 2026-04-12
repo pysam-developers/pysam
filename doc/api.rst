@@ -213,7 +213,13 @@ VCF/BCF files
 .. autoclass:: pysam.VariantHeader
    :members:
 
+.. autoclass:: pysam.VariantMetadata
+   :members:
+
 .. autoclass:: pysam.VariantHeaderRecord
+   :members:
+
+.. autoclass:: pysam.VariantContig
    :members:
 
 .. autoclass:: pysam.VariantRecord

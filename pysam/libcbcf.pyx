@@ -1470,29 +1470,54 @@ cdef VariantHeaderRecords makeVariantHeaderRecords(VariantHeader header):
 
 
 cdef class VariantMetadata(object):
-    """filter, info or format metadata record from a :class:`VariantHeader` object"""
+    """A FILTER, INFO or FORMAT metadata line from a :class:`VariantHeader` object.
+
+    Example:
+      Given a VCF meta-information line such as::
+
+          ##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
+
+      The corresponding :class:`VariantMetadata` object would have
+      :attr:`name` = "``NS``", :attr:`number` = ``1``, :attr:`type` = "``Integer``",
+      and :attr:`description` = "``Number of Samples With Data``".
+
+    Note:
+      Many of these properties will raise :exc:`ValueError` when the record is invalid,
+      usually due to an invalid header ID number.
+    """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError('This class cannot be instantiated from Python')
 
     @property
     def name(self):
-        """metadata name"""
+        """str : The metadata field name (e.g., "AD")."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         return bcf_str_cache_get_charptr(hdr.id[BCF_DT_ID][self.id].key)
 
     # Q: Should this be exposed?
     @property
     def id(self):
-        """metadata internal header id number"""
+        """int : The metadata **internal** header ID number.
+        To access the ``ID`` field of a header metadata line, use :attr:`name` instead.
+        """
         return self.id
 
     @property
     def number(self):
-        """metadata number (i.e. cardinality)"""
+        """int or str or None : The number of values present for this metadata field (i.e., cardinality),
+        which is one of:
+
+        * An :class:`int` *n* if there is a fixed number of exactly `n` values.
+        * ``A`` if there is one value per alternate allele.
+        * ``R`` if there is one value per allele (including the reference).
+        * ``G`` if there is one value per genotype---usually used for FORMAT tags.
+        * ``.`` if there is a variable or unknown number of values.
+        * None if the header line is not a FILTER, INFO, or FORMAT metadata line.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
 
         if not check_header_id(hdr, self.type, self.id):
-            raise ValueError('Invalid header id')
+            raise ValueError('Invalid header ID')
 
         if self.type == BCF_HL_FLT:
             return None
@@ -1507,10 +1532,13 @@ cdef class VariantMetadata(object):
 
     @property
     def type(self):
-        """metadata value type"""
+        """str or None : The metadata value type. One of ``Flag``, ``Integer``,
+        ``Float``, or ``String``, or None if the header line is not a FILTER,
+        INFO, or FORMAT metadata line.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         if not check_header_id(hdr, self.type, self.id):
-            raise ValueError('Invalid header id')
+            raise ValueError('Invalid header ID')
 
         if self.type == BCF_HL_FLT:
             return None
@@ -1518,7 +1546,7 @@ cdef class VariantMetadata(object):
 
     @property
     def description(self):
-        """metadata description (or None if not set)"""
+        """str or None : The metadata description, or None if the field is not present."""
         descr = self.record.get('Description')
         if descr:
             descr = descr.strip('"')
@@ -1526,16 +1554,23 @@ cdef class VariantMetadata(object):
 
     @property
     def record(self):
-        """:class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object"""
+        """VariantHeaderRecord or None : The :class:`VariantHeaderRecord` associated with
+        this :class:`VariantMetadata` object, or None if there is no associated record.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         if not check_header_id(hdr, self.type, self.id):
-            raise ValueError('Invalid header id')
+            raise ValueError('Invalid header ID')
         cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_ID][self.id].val.hrec[self.type]
         if not hrec:
             return None
         return makeVariantHeaderRecord(self.header, hrec)
 
     def remove_header(self):
+        """Mark the :class:`VariantHeaderRecord` associated with this :class:`VariantMetadata` object for deletion.
+
+        Warning:
+          Due to HTSlib limitations, the record is not immediately removed from the header.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef const char *key = hdr.id[BCF_DT_ID][self.id].key
         bcf_hdr_remove(hdr, self.type, key)
@@ -1543,13 +1578,13 @@ cdef class VariantMetadata(object):
 
 cdef VariantMetadata makeVariantMetadata(VariantHeader header, int type, int id):
     if not header:
-        raise ValueError('invalid VariantHeader')
+        raise ValueError('Invalid VariantHeader')
 
     if type != BCF_HL_FLT and type != BCF_HL_INFO and type != BCF_HL_FMT:
-        raise ValueError('invalid metadata type')
+        raise ValueError('Invalid metadata type')
 
     if id < 0 or id >= header.ptr.n[BCF_DT_ID]:
-        raise ValueError('invalid metadata id')
+        raise ValueError('Invalid metadata ID')
 
     cdef VariantMetadata meta = VariantMetadata.__new__(VariantMetadata)
     meta.header = header
@@ -1711,36 +1746,52 @@ cdef VariantHeaderMetadata makeVariantHeaderMetadata(VariantHeader header, int32
 
 
 cdef class VariantContig(object):
-    """contig metadata from a :class:`VariantHeader`"""
+    """Contig metadata from a :class:`VariantHeader` metadata header line.
+
+    Example:
+      Given a VCF meta-information line such as::
+
+          ##contig=<ID=20,length=62435964,assembly=B36,species="Homo sapiens">
+
+      The corresponding :class:`VariantContig` object would have :attr:`name` = "``20``"
+      and :attr:`length` = ``62435964``.
+    """
     def __init__(self, *args, **kwargs):
-        raise TypeError('this class cannot be instantiated from Python')
+        raise TypeError("This class cannot be instantiated from Python")
 
     @property
     def name(self):
-        """contig name"""
+        """str : The contig name."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         return bcf_str_cache_get_charptr(hdr.id[BCF_DT_CTG][self.id].key)
 
     @property
     def id(self):
-        """contig internal id number"""
+        """int : The contig internal ID number.
+        To access the ``ID`` field of a header contig line, use :attr:`name` instead.
+        """
         return self.id
 
     @property
     def length(self):
-        """contig length or None if not available"""
+        """int or None : The contig length, or None if not available."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef uint32_t length = hdr.id[BCF_DT_CTG][self.id].val.info[0]
         return length if length else None
 
     @property
     def header_record(self):
-        """:class:`VariantHeaderRecord` associated with this :class:`VariantContig` object"""
+        """VariantHeaderRecord : The :class:`VariantHeaderRecord` associated with this :class:`VariantContig` object."""
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef bcf_hrec_t *hrec = hdr.id[BCF_DT_CTG][self.id].val.hrec[0]
         return makeVariantHeaderRecord(self.header, hrec)
 
     def remove_header(self):
+        """Mark the :class:`VariantHeaderRecord` associated with this :class:`VariantContig` object for deletion.
+
+        Warning:
+          Due to HTSlib limitations, the record is not immediately removed from the header.
+        """
         cdef bcf_hdr_t *hdr = self.header.ptr
         cdef const char *key = hdr.id[BCF_DT_CTG][self.id].key
         bcf_hdr_remove(hdr, BCF_HL_CTG, key)
@@ -1748,10 +1799,10 @@ cdef class VariantContig(object):
 
 cdef VariantContig makeVariantContig(VariantHeader header, int id):
     if not header:
-        raise ValueError('invalid VariantHeader')
+        raise ValueError('Invalid VariantHeader')
 
     if id < 0 or id >= header.ptr.n[BCF_DT_CTG]:
-        raise ValueError('invalid contig id')
+        raise ValueError('Invalid contig ID')
 
     cdef VariantContig contig = VariantContig.__new__(VariantContig)
     contig.header = header
