@@ -1901,5 +1901,27 @@ class TestExportImport(ReadTest):
         self.assertEqual(a, b)
 
 
+class TestArrayUtilities(unittest.TestCase):
+    def test_array_to_qualstr(self):
+        data = [
+            "",
+            "Q",
+            """!"#$%&'()*+,-./012...xyz{|}~""",
+            ">>?AB",
+            "ABDDEFGHIJabcdefghij",
+            "ACAFFGGFFFJDFJHHJIJIHKGGHKHHIJHHHJ7123" * 50,
+        ]
+
+        for qual in data:
+            qual_array = pysam.qualitystring_to_array(qual)
+            result = pysam.array_to_qualitystring(qual_array)
+            self.assertEqual(result, qual)
+
+    def test_longarray_to_qualstr(self):
+        qual_array = array.array('l', [64, 65, 66, 67, 68])
+        with self.assertRaises(ValueError):
+            pysam.array_to_qualitystring(qual_array)
+
+
 if __name__ == "__main__":
     unittest.main()
