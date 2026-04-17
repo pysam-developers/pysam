@@ -47,14 +47,13 @@ cpdef array_to_qualitystring(c_array.array qualities, int offset=33):
     if qualities is None:
         return None
 
-    cdef Py_ssize_t n = len(qualities)
+    cdef const unsigned char[::1] qualities_view = qualities
+    cdef size_t n = qualities_view.shape[0]
 
     cdef bytearray result_ba = bytearray(n)
+    cdef unsigned char[::1] result_view = result_ba
 
-    cdef char[:] qualities_view = qualities
-    cdef unsigned char[:] result_view = result_ba
-
-    cdef Py_ssize_t i
+    cdef size_t i
 
     for i in range(n):
         result_view[i] = qualities_view[i] + offset
