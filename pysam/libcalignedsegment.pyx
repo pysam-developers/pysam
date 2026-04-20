@@ -85,6 +85,8 @@ cdef int NCIGAR_CODES = 10
 CIGAR2CODE = dict([y, x] for x, y in enumerate(CODE2CIGAR))
 CIGAR_REGEX = re.compile("(\d+)([MIDNSHP=XB])")
 
+COMPLEMENT_TABLE = str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx")
+
 # names for keys in dictionary representation of an AlignedSegment
 KEY_NAMES = ["name", "flag", "ref_name", "ref_pos", "map_quality", "cigar",
              "next_ref_name", "next_ref_pos", "length", "seq", "qual", "tags"]
@@ -2071,7 +2073,7 @@ cdef class AlignedSegment:
             return None
         s = force_str(self.query_sequence)
         if self.is_reverse:
-            s = s.translate(str.maketrans("ACGTacgtNnXx", "TGCAtgcaNnXx"))[::-1]
+            s = s.translate(COMPLEMENT_TABLE)[::-1]
         return s
 
     def get_forward_qualities(self):
