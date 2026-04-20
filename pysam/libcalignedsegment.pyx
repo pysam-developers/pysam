@@ -1219,6 +1219,24 @@ cdef class AlignedSegment:
             for x from l <= x < l + l_extranul:
                 p[x] = b'\0'
 
+    cdef _get_reference_name(self, int tid, label):
+        if tid == -1:
+            return None
+        if self.header:
+            return self.header.get_reference_name(tid)
+        raise ValueError("{} unknown if no header associated with record".format(label))
+
+    cdef int _resolve_reference_id(self, reference, label) except -2:
+        if reference is None or reference == "*":
+            return -1
+        if self.header:
+            tid = self.header.get_tid(reference)
+            if tid < 0:
+                raise ValueError("reference {} does not exist in header".format(
+                    reference))
+            return tid
+        raise ValueError("{} can not be set if no header associated with record".format(label))
+
     property flag:
         """properties flag"""
         def __get__(self):
@@ -1229,24 +1247,9 @@ cdef class AlignedSegment:
     property reference_name:
         """:term:`reference` name"""
         def __get__(self):
-            if self._delegate.core.tid == -1:
-                return None
-            if self.header:
-                return self.header.get_reference_name(self._delegate.core.tid)
-            else:
-                raise ValueError("reference_name unknown if no header associated with record")
+            return self._get_reference_name(self._delegate.core.tid, "reference_name")
         def __set__(self, reference):
-            cdef int tid
-            if reference is None or reference == "*":
-                self._delegate.core.tid = -1
-            elif self.header:
-                tid = self.header.get_tid(reference)
-                if tid < 0:
-                    raise ValueError("reference {} does not exist in header".format(
-                        reference))
-                self._delegate.core.tid = tid
-            else:
-                raise ValueError("reference_name can not be set if no header associated with record")
+            self._delegate.core.tid = self._resolve_reference_id(reference, "reference_name")
 
     property reference_id:
         """:term:`reference` ID
@@ -1350,27 +1353,13 @@ cdef class AlignedSegment:
         """:term:`reference` name of the mate/next read (None if no
         AlignmentFile is associated)"""
         def __get__(self):
-            if self._delegate.core.mtid == -1:
-                return None
-            if self.header:
-                return self.header.get_reference_name(self._delegate.core.mtid)
-            else:
-                raise ValueError("next_reference_name unknown if no header associated with record")
+            return self._get_reference_name(self._delegate.core.mtid, "next_reference_name")
 
         def __set__(self, reference):
-            cdef int mtid
-            if reference is None or reference == "*":
-                self._delegate.core.mtid = -1
-            elif reference == "=":
+            if reference == "=":
                 self._delegate.core.mtid = self._delegate.core.tid
-            elif self.header:
-                mtid = self.header.get_tid(reference)
-                if mtid < 0:
-                    raise ValueError("reference {} does not exist in header".format(
-                        reference))
-                self._delegate.core.mtid = mtid
             else:
-                raise ValueError("next_reference_name can not be set if no header associated with record")
+                self._delegate.core.mtid = self._resolve_reference_id(reference, "next_reference_name")
 
     property next_reference_start:
         """the position of the mate/next read."""
